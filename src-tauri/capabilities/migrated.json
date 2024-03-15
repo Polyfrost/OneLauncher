@@ -1,4 +1,5 @@
 {
+    "$schema": "../gen/schemas/desktop-schema.json",
     "identifier": "migrated",
     "description": "permissions that were migrated from v1",
     "local": true,
@@ -6,15 +7,8 @@
         "main"
     ],
     "permissions": [
-        "path:default",
-        "event:default",
-        "window:default",
-        "app:default",
-        "resources:default",
-        "menu:default",
-        "tray:default",
-        "shell:allow-open",
-
-        "auth:default"
+        "window:allow-close",
+        "window:allow-minimize",
+        "window:allow-start-dragging"
     ]
 }

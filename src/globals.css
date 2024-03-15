@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* start lynith's native experience */
+* { user-select: none; }
+*:hover { cursor: default; }
+/* end lynith's native experience */

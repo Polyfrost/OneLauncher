@@ -21,14 +21,20 @@
     "identifier": "com.tauri.dev",
     "plugins": {},
     "app": {
+        "withGlobalTauri": true,
         "security": {
-            "csp": null
+            "csp": null,
+            "capabilities": []
         },
         "windows": [
             {
                 "title": "polyfrost-launcher",
-                "width": 1200,
-                "height": 800
+                "width": 1280,
+                "height": 800,
+                "resizable": false,
+                "center": true,
+                "decorations": false,
+                "shadow": true
             }
         ]
     }

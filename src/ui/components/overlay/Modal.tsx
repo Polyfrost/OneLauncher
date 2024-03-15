@@ -1,42 +1,71 @@
 import {
     Accessor,
-    ParentProps, Setter, Show, createEffect, createSignal,
+    ParentProps, Setter, Show, createEffect, createSignal, For,
+    mergeProps,
+    JSX,
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
+import Button from '../base/Button';
 
-type ModalButton = {
-    text: string,
-    class?: string,
-    onClick?: (event: MouseEvent) => void,
-};
+type ModalButtonProps = string | JSX.Element;
+
+function ModalButton(button: { props: ModalButtonProps }) {
+    return <>
+        {typeof button.props === 'string' ? (
+            <Button>
+                {button.props}
+            </Button>
+        ) : (
+            button.props
+        )}
+    </>;
+}
 
 type ModalProps = {
     title: string,
     visible: Accessor<boolean>,
     setVisible: Setter<boolean>,
-    buttons?: ModalButton[],
+    buttons?: ModalButtonProps[],
 } & ParentProps;
 
 function Modal(props: ModalProps) {
+    const [localVisible, setLocalVisible] = createSignal(false);
     const [animate, setAnimate] = createSignal('animate-fade-in');
+    const merged: ModalProps = mergeProps({ buttons: ['Ok'] }, props);
+
+    createEffect(() => {
+        if (props.visible()) {
+            setAnimate('animate-fade-in');
+            setLocalVisible(true);
+        } else {
+            setAnimate('animate-fade-out');
+            setTimeout(() => {
+                setLocalVisible(false);
+            }, 150);
+        }
+    });
 
     function onBackdropClick() {
-        setAnimate('animate-fade-out pointer-events-none');
-        setTimeout(() => {
-            props.setVisible(false);
-            setAnimate('animate-fade-in pointer-events-auto');
-        }, 150);
+        props.setVisible(false);
     }
 
     return (
-        <Show when={props.visible()}>
+        <Show when={localVisible()}>
             <Portal>
                 <div class={`fixed z-[1000] top-0 left-0 w-screen h-screen bg-black/50 backdrop-blur-md ${animate()}`}>
                     <div class='absolute w-full h-full' onClick={() => onBackdropClick()} />
 
                     <div class='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'>
-                        <div class='bg-white p-4'>
-                            <h1>Hello World</h1>
+                        <div class='bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-1'>
+                            <h2>{props.title}</h2>
+                            <div class='flex flex-col'>
+                                {props.children}
+                            </div>
+                            <div class='flex flex-row gap-x-4 [&>*]:flex-1'>
+                                {<For each={merged.buttons}>{(button) => (
+                                    <ModalButton props={button} />
+                                )}</For>}
+                            </div>
                         </div>
                     </div>
 

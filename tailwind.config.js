@@ -2,15 +2,36 @@
 export default {
     content: ['./src/**/*.{js,ts,jsx,tsx}'],
     theme: {
+        fontSize: {
+            // Based off 16px
+            sm: '0.688rem',
+            md: '0.875rem',
+            lg: '1rem',
+            xl: '1.25rem',
+            xxl: '1.5rem',
+            '2xl': '2rem',
+        },
         colors: {
             white: '#ffffff',
             black: '#000000',
+
             slate: '#9BA1A6',
             danger: '#E5484D',
-            bg: {
-                primary: '#11171C',
-                secondary: '#192026',
+
+            gray: {
+                400: '#D5DBFF',
             },
+
+            component: {
+                bg: {
+                    DEFAULT: '#1A2229',
+                    hover: '#171F25',
+                    pressed: '#222C35',
+                },
+            },
+
+            primary: '#11171C',
+            secondary: '#192026',
         },
         extend: {
             animation: {

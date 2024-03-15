@@ -1,0 +1,16 @@
+.button {
+    @apply border border-white/5 
+        bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed;
+
+    &.size--sm {
+
+    }
+
+    &.size-md {
+        @apply py-2 px-4 rounded-lg;
+    }
+
+    &.size-lg {
+
+    }
+}

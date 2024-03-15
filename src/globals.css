@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+body { 
+    @apply text-gray-400 text-md;
+}
+
 /* start lynith's native experience */
 * { user-select: none; }
 *:hover { cursor: default; }
 /* end lynith's native experience */
+
+h1 { @apply text-2xl font-bold; }
+h2 { @apply text-xxl font-bold; }
+h3 { @apply text-xl font-bold; }

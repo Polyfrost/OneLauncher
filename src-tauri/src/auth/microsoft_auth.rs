@@ -9,8 +9,8 @@ use super::{Account, AuthenticationMethod};
     
 #[tauri::command]
 pub async fn login_msa<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Account, String> {
-    match MicrosoftAuthenticationMethod::auth(&app, |status, stage| {
-        let _ = app.emit("msa:status", Some((status, stage)));
+    match MicrosoftAuthenticationMethod::auth(&app, |status, stage, was_last| {
+        let _ = app.emit("msa:status", (status, stage, was_last));
     }).await {
         Ok(account) => Ok(account),
         Err(err) => Err(err.to_string())
@@ -22,24 +22,24 @@ const CLIENT_ID: &str = "9419b7ee-1448-4d1b-b52a-550d8f36ab56";
 struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
     async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> Result<Account, Box<dyn Error>>
-            where F: Fn(String, u8) -> () {
+            where F: Fn(String, u8, bool) -> () {
         
-        stage("Authenticating with Microsoft".into(), 0);
+        stage("Authenticating with Microsoft".into(), 0, false);
         let msa_code: String = msa_code(handle).await?;
 
-        stage("Authenticating with Microsoft".into(), 1);
+        stage("Authenticating with Microsoft".into(), 1, false);
         let msa_token: String = msa_code_to_token(msa_code).await?;
 
-        stage("Authenticating with Xbox Live".into(), 2);
+        stage("Authenticating with Xbox Live".into(), 2, false);
         let (xbl_token, user_hash): (String, String) = auth_xbl(msa_token).await?;
 
-        stage("Retrieving XSTS token".into(), 3);
+        stage("Retrieving XSTS token".into(), 3, false);
         let xsts_token: String = auth_xsts(xbl_token).await?;
 
-        stage("Authenticating with Minecraft".into(), 4);
+        stage("Authenticating with Minecraft".into(), 4, false);
         let access_token: String = auth_minecraft(xsts_token, user_hash).await?;
 
-        stage("Retrieving Minecraft profile".into(), 5);
+        stage("Retrieving Minecraft profile".into(), 5, true);
         let account: Account = Self::get_profile(access_token).await?;
 
         Ok(account)

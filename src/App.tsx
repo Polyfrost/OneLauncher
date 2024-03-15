@@ -1,14 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
+import auth from './bridge/auth';
 
 function App() {
     return (
-        <div>
-            <h1>Test</h1>
-            <button onClick={async () => {
-                const result = await invoke('plugin:auth|login_msa');
-                console.log(result);
-            }}>MSA Auth</button>
-        </div>
+        <button onClick={() => auth.loginMicrosoft()}>loginMicrosoft</button>
     );
 }
 

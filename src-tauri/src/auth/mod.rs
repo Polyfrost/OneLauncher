@@ -25,7 +25,7 @@ pub trait AuthenticationMethod {
     /// Authenticate with a given method. Stage is a function that takes a string and a u8.
     /// The string is the message to display to the user, and the u8 is the progress of the authentication.
     async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> Result<Account, Box<dyn Error>>
-        where F: Fn(String, u8) -> ();
+        where F: Fn(String, u8, bool) -> ();
 
     async fn get_profile(access_token: String) -> Result<Account, Box<dyn Error>> {
         let response = Client::new()

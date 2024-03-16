@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.scss": "tailwindcss",
+        "*.css": "tailwindcss"
+    }
+}

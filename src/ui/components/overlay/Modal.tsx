@@ -52,7 +52,7 @@ function Modal(props: ModalProps) {
     return (
         <Show when={localVisible()}>
             <Portal>
-                <div class={`fixed z-[1000] top-0 left-0 w-screen h-screen bg-black/50 backdrop-blur-md ${animate()}`}>
+                <div class={`fixed z-[1000] top-0 left-0 w-screen h-screen bg-black/60 backdrop-blur-sm backdrop-grayscale ${animate()}`}>
                     <div class='absolute w-full h-full' onClick={() => onBackdropClick()} />
 
                     <div class='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2'>

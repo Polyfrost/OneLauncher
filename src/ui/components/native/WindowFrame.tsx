@@ -25,7 +25,11 @@ function WindowFrame() {
     const [isModalVisible, setModalVisible] = createSignal(false);
 
     const minimize = () => Window.getCurrent().minimize();
-    const quit = () => Window.getCurrent().close();
+    const quit = () => Window.getCurrent().destroy();
+
+    Window.getCurrent().listen('handle_window_close_request', () => {
+        setModalVisible(true);
+    });
 
     return (
         <div data-tauri-drag-region class="flex flex-row gap-2 justify-end items-center w-screen h-8 bg-secondary pr-4">
@@ -37,8 +41,8 @@ function WindowFrame() {
                 visible={isModalVisible}
                 setVisible={setModalVisible}
                 buttons={[
-                    <Button onClick={() => setModalVisible(false)}>No</Button>,
-                    <Button onClick={() => quit()}>Yes</Button>,
+                    <Button styleType='secondary' onClick={() => setModalVisible(false)}>No</Button>,
+                    <Button styleType='danger' onClick={() => quit()}>Yes</Button>,
                 ]}
             />
         </div>

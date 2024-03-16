@@ -1,16 +1,17 @@
 .button {
-    @apply border border-white/5 
-        bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed;
+    @apply py-2 px-4 rounded-lg;
 
-    &.size--sm {
-
+    &__primary {
+        @apply text-onbrand hover:text-onbrand-hover active:text-onbrand-pressed disabled:text-onbrand-disabled;
+        @apply bg-brand hover:bg-brand-hover active:bg-brand-pressed disabled:bg-brand-disabled;
     }
 
-    &.size-md {
-        @apply py-2 px-4 rounded-lg;
+    &__secondary {
+        @apply border border-gray-.5;
+        @apply bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     }
 
-    &.size-lg {
-
+    &__danger {
+        @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
     }
 }

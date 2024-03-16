@@ -14,12 +14,33 @@ export default {
         colors: {
             white: '#ffffff',
             black: '#000000',
-
             slate: '#9BA1A6',
-            danger: '#E5484D',
 
             gray: {
                 400: '#D5DBFF',
+                '.5': '#FFFFFF0D',
+                '.10': '#FFFFFF1A',
+            },
+
+            brand: {
+                DEFAULT: '#2B4BFF',
+                hover: '#2843DD',
+                pressed: '#3957FF',
+                disabled: '#3957FF80',
+            },
+
+            onbrand: {
+                DEFAULT: '#D5DBFF',
+                hover: '#D5DBFFD9',
+                pressed: '#E1E5FF',
+                disabled: '#E1E5FF80',
+            },
+
+            danger: {
+                DEFAULT: '#FF4444',
+                hover: '#D63434',
+                pressed: '#FF5656',
+                disabled: '#FF444480',
             },
 
             component: {
@@ -27,6 +48,7 @@ export default {
                     DEFAULT: '#1A2229',
                     hover: '#171F25',
                     pressed: '#222C35',
+                    disabled: '#1A222980',
                 },
             },
 

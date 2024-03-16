@@ -83,6 +83,10 @@ export default {
                 3: 3,
             },
 
+            backgroundColor: {
+                transparent: 'transparent',
+            },
+
             animation: {
                 'fade-in': 'fadeIn 150ms easeOutExpo forwards',
                 'fade-out': 'fadeOut 150ms easeOutExpo forwards',

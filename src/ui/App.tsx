@@ -43,15 +43,18 @@ function AnimatedRoutes(props: ParentProps) {
         },
     ];
 
+    const properties: KeyframeAnimationOptions = {
+        duration: 100,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+    };
+
     return (
         <Transition
             mode='outin'
             onEnter={(element, done) => {
                 const animation = element.animate(
                     keyframesEnter,
-                    {
-                        duration: 100,
-                    },
+                    properties,
                 );
 
                 animation.onfinish = done;
@@ -59,9 +62,7 @@ function AnimatedRoutes(props: ParentProps) {
             onExit={(element, done) => {
                 const animation = element.animate(
                     keyframesExit,
-                    {
-                        duration: 100,
-                    },
+                    properties,
                 );
 
                 animation.onfinish = done;

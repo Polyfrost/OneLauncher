@@ -1,8 +1,12 @@
-import { CheckIcon, DotsVerticalIcon, PlayIcon } from '@untitled-theme/icons-solid';
+import {
+    CheckIcon, DotsVerticalIcon, Download01Icon, PlayIcon, PlusIcon, SearchMdIcon,
+} from '@untitled-theme/icons-solid';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
+import TextField from '../components/base/TextField';
 
+// TODO: Replace this into it's own component
 function OneConfigLogo() {
     return (
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -16,32 +20,46 @@ function OneConfigLogo() {
                 </g>
             </g>
         </svg>
+    );
+}
 
+function Banner() {
+    return (
+        <div class='relative w-full h-52'>
+            <img src={image} class='absolute rounded-xl w-full h-52 object-cover' />
+            <div class='relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start'>
+                <div class='flex flex-col gap-y-2'>
+                    <h1>Building worlds</h1>
+                    <p>A description would go here if I was smart</p>
+                </div>
+                <div class='flex w-full flex-row justify-between items-end'>
+                    <div class='flex flex-row items-center gap-x-4'>
+                        <Button iconLeft={<PlayIcon />}>Launch 1.19.2</Button>
+                        <button class='p-1.5 hover:bg-gray-.10 rounded-md'>
+                            <DotsVerticalIcon />
+                        </button>
+                    </div>
+                    <div class='flex flex-row gap-x-2'>
+                        <Tag iconLeft={<OneConfigLogo />} />
+                        <Tag iconLeft={<CheckIcon />}>Verified</Tag>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
 function HomePage() {
     return (
-        <div>
-            <div class='relative w-full h-52'>
-                <img src={image} class='absolute rounded-xl w-full h-52 object-cover' />
-                <div class='relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start'>
-                    <div class='flex flex-col gap-y-2'>
-                        <h1>Building worlds</h1>
-                        <p>A description would go here if I was smart</p>
-                    </div>
-                    <div class='flex w-full flex-row justify-between items-end'>
-                        <div class='flex flex-row items-center gap-x-4'>
-                            <Button iconLeft={<PlayIcon />} class='font-medium'>Launch 1.19.2</Button>
-                            <button class='p-1.5 hover:bg-gray-.10 rounded-md'>
-                                <DotsVerticalIcon />
-                            </button>
-                        </div>
-                        <div class='flex flex-row gap-x-2'>
-                            <Tag iconLeft={<OneConfigLogo />} />
-                            <Tag iconLeft={<CheckIcon />}>Verified</Tag>
-                        </div>
-                    </div>
+        <div class='flex flex-col gap-y-6'>
+            <Banner />
+            <div class='flex flex-row justify-between items-center'>
+                <div>
+                    <TextField iconLeft={<SearchMdIcon />} placeholder="Search for something..." />
+                </div>
+                <div class='flex flex-row gap-x-4'>
+                    <Button styleType='primary' iconLeft={<PlusIcon class='!w-5 stroke-[2.2]' />}>New Instance</Button>
+                    <Button styleType='secondary' iconLeft={<Download01Icon />}>From URL</Button>
                 </div>
             </div>
         </div>

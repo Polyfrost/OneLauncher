@@ -22,7 +22,7 @@ function NavbarButton(props: NavbarButtonProps) {
 function Navbar() {
     return (
         <div class='flex flex-row justify-evenly items-center h-15'>
-            <div class='flex flex-row gap-x-16 py-1'>
+            <div class='flex flex-row gap-x-10 py-1'>
                 <NavbarButton path="/" label="Home" />
                 <NavbarButton path="/browser" label="Browser" />
                 <NavbarButton path="/updates" label="Updates" />

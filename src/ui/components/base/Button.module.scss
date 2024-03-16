@@ -8,6 +8,7 @@
 
     &__secondary {
         @apply border border-gray-.5;
+        @apply text-fg-primary hover:text-fg-primary-hover active:text-fg-primary-pressed disabled:text-fg-primary-disabled;
         @apply bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     }
 

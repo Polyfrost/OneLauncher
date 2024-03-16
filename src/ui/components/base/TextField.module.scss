@@ -1,0 +1,21 @@
+.textfield {
+    @apply bg-component-bg [&:not(:focus-within)]:hover:bg-component-bg-hover focus-within:bg-component-bg-pressed disabled:bg-component-bg-disabled;
+    @apply border border-gray-.5 text-fg-primary fill-fg-primary;
+    @apply rounded-lg px-2.5 py-1;
+    @apply flex flex-row gap-x-1.5;
+
+    
+    & input {
+        &::selection {
+            @apply bg-brand/30;
+        }
+        
+        @apply bg-transparent outline-none appearance-none p-0 m-0 box-border w-full;
+    }
+
+    & span {
+        & * {
+            @apply w-4;
+        }
+    }
+}

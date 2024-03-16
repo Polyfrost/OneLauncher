@@ -27,7 +27,8 @@ function WindowFrame() {
     const minimize = () => Window.getCurrent().minimize();
     const quit = () => Window.getCurrent().destroy();
 
-    Window.getCurrent().listen('handle_window_close_request', () => {
+    Window.getCurrent().onCloseRequested((event) => {
+        event.preventDefault();
         setModalVisible(true);
     });
 

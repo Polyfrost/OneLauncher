@@ -8,7 +8,7 @@ function App(props: ParentProps) {
         <main class='flex flex-col bg-primary min-h-screen text-white'>
             <WindowFrame />
             <Navbar />
-            <div class='flex flex-col flex-1 *:flex-1 overflow-x-hidden'>
+            <div class='flex flex-col flex-1 *:flex-1 overflow-x-hidden px-8'>
                 { /* eslint-disable-next-line @typescript-eslint/no-use-before-define */ }
                 <AnimatedRoutes>
                     {props.children}

@@ -1,0 +1,8 @@
+.tag {
+    @apply flex flex-row justify-center items-center gap-x-2;
+    @apply bg-component-bg/60 border border-gray-.5 text-fg-secondary text-sm font-medium backdrop-blur-md rounded-lg px-2.5 py-0.5;
+}
+
+.icon > * {
+    @apply w-4;
+}

@@ -1,6 +1,5 @@
 .button {
-    cursor: default !important;
-    @apply py-2 px-4 rounded-lg;
+    @apply py-1.5 px-4 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
     &__primary {
         @apply text-onbrand hover:text-onbrand-hover active:text-onbrand-pressed disabled:text-onbrand-disabled;
@@ -15,4 +14,8 @@
     &__danger {
         @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
     }
+}
+
+.icon > * {
+    @apply w-4;
 }

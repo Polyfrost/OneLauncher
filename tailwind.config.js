@@ -8,7 +8,8 @@ export default {
 
         fontSize: {
             // Based off 16px
-            sm: '0.688rem',
+            xs: '0.688rem',
+            sm: '0.75rem',
             md: '0.875rem',
             lg: '1rem',
             xl: '1.25rem',
@@ -76,6 +77,10 @@ export default {
         extend: {
             height: {
                 15: '60px',
+            },
+
+            strokeWidth: {
+                3: 3,
             },
 
             animation: {

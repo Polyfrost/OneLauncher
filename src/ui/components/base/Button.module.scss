@@ -1,5 +1,5 @@
 .button {
-    @apply py-1.5 px-4 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
+    @apply py-1.5 px-3 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
     &__primary {
         @apply text-onbrand hover:text-onbrand-hover active:text-onbrand-pressed disabled:text-onbrand-disabled;
@@ -14,6 +14,18 @@
 
     &__danger {
         @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
+    }
+
+    &__ghost {
+        @apply hover:bg-gray-.5 active:bg-gray-.10;
+    }
+
+    &__icon {
+        @apply p-1.5 hover:bg-gray-.5 active:bg-gray-.10 aspect-square box-border;
+
+        & > * {
+            @apply w-full h-full;
+        }
     }
 }
 

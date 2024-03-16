@@ -1,6 +1,6 @@
 import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
-import { JSX, createSignal } from 'solid-js';
+import { JSX, createSignal, onMount } from 'solid-js';
 import Modal from '../overlay/Modal';
 import Button from '../base/Button';
 
@@ -27,13 +27,15 @@ function WindowFrame() {
     const minimize = () => Window.getCurrent().minimize();
     const quit = () => Window.getCurrent().destroy();
 
-    Window.getCurrent().onCloseRequested((event) => {
-        event.preventDefault();
-        setModalVisible(true);
+    onMount(() => {
+        Window.getCurrent().onCloseRequested((event) => {
+            event.preventDefault();
+            setModalVisible(true);
+        });
     });
 
     return (
-        <div data-tauri-drag-region class="flex flex-row gap-2 justify-end items-center w-screen h-8 bg-secondary pr-4">
+        <div data-tauri-drag-region class="flex flex-row justify-end items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
             <TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
             <TitlebarButton icon={XCloseIcon} onClick={() => setModalVisible(true)} danger />
 

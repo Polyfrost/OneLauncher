@@ -19,6 +19,7 @@ module.exports = {
         '@typescript-eslint/indent': 'off',
         '@stylistic/ts/indent': ['error', 4],
         '@typescript-eslint/no-unused-vars': 'warn',
+        '@typescript-eslint/no-namespace': 'off',
         'import/extensions': [
             'error',
             {

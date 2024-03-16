@@ -2,13 +2,20 @@ import { ParentProps } from 'solid-js';
 import { Transition } from 'solid-transition-group';
 import WindowFrame from './components/native/WindowFrame';
 import Navbar from './components/Navbar';
+import environment from '../utils/environment';
 
 function App(props: ParentProps) {
+    if (!environment.isDev()) {
+        document.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+        });
+    }
+
     return (
         <main class='flex flex-col bg-primary min-h-screen text-white'>
             <WindowFrame />
-            <Navbar />
-            <div class='flex flex-col flex-1 *:flex-1 overflow-x-hidden px-8'>
+            <div class='flex flex-col flex-1 overflow-x-hidden px-8'>
+                <Navbar />
                 { /* eslint-disable-next-line @typescript-eslint/no-use-before-define */ }
                 <AnimatedRoutes>
                     {props.children}

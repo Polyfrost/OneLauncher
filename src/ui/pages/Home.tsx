@@ -35,9 +35,9 @@ function Banner() {
                 <div class='flex w-full flex-row justify-between items-end'>
                     <div class='flex flex-row items-center gap-x-4'>
                         <Button iconLeft={<PlayIcon />}>Launch 1.19.2</Button>
-                        <button class='p-1.5 hover:bg-gray-.10 rounded-md'>
+                        <Button styleType='icon' class='w-8 h-8'>
                             <DotsVerticalIcon />
-                        </button>
+                        </Button>
                     </div>
                     <div class='flex flex-row gap-x-2'>
                         <Tag iconLeft={<OneConfigLogo />} />

@@ -1,4 +1,4 @@
-import { JSX, splitProps } from 'solid-js';
+import { JSX, createUniqueId, splitProps } from 'solid-js';
 import styles from './TextField.module.scss';
 
 type TextFieldProps = {
@@ -8,13 +8,14 @@ type TextFieldProps = {
 
 function TextField(props: TextFieldProps) {
     const [fieldProps, rest] = splitProps(props, ['iconLeft', 'iconRight']);
+    const id = createUniqueId();
 
     return (
-        <div class={styles.textfield}>
+        <label for={id} class={styles.textfield}>
             {fieldProps.iconLeft && <span class={styles.icon}>{fieldProps.iconLeft}</span>}
-            <input type="text" {...rest} />
+            <input id={id} type="text" {...rest} />
             {fieldProps.iconRight && <span class={styles.icon}>{fieldProps.iconRight}</span>}
-        </div>
+        </label>
     );
 }
 

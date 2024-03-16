@@ -1,5 +1,5 @@
 import { A } from '@solidjs/router';
-import { ParentProps, createSignal } from 'solid-js';
+import { createSignal } from 'solid-js';
 import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/AccountPopup';
 

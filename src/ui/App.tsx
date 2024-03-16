@@ -12,14 +12,18 @@ function App(props: ParentProps) {
     }
 
     return (
-        <main class='flex flex-col bg-primary min-h-screen text-white'>
+        <main class='flex flex-col bg-primary min-h-screen text-white overflow-hidden'>
             <WindowFrame />
-            <div class='flex flex-col flex-1 overflow-x-hidden px-8'>
+            <div class='flex flex-col flex-1 overflow-hidden px-8'>
                 <Navbar />
-                { /* eslint-disable-next-line @typescript-eslint/no-use-before-define */ }
-                <AnimatedRoutes>
-                    {props.children}
-                </AnimatedRoutes>
+
+                {/* // TODO fix overflow */}
+                <div class=''>
+                    { /* eslint-disable-next-line @typescript-eslint/no-use-before-define */ }
+                    <AnimatedRoutes>
+                        {props.children}
+                    </AnimatedRoutes>
+                </div>
             </div>
         </main>
     );

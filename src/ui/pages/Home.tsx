@@ -1,10 +1,13 @@
 import {
-    CheckIcon, DotsVerticalIcon, Download01Icon, PlayIcon, PlusIcon, SearchMdIcon,
+    CheckIcon, DotsVerticalIcon, Download01Icon, HeartRoundedIcon, PlayIcon, PlusIcon, SearchMdIcon,
 } from '@untitled-theme/icons-solid';
+import { createEffect, createSignal, For } from 'solid-js';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
+import defaultCover from '../../assets/images/default_instance_cover.jpg';
+import { upperFirst } from '../../utils/string';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -49,10 +52,118 @@ function Banner() {
     );
 }
 
-function HomePage() {
+type InstanceCardProps = {
+    name: string,
+    version: string,
+    client: game.Client,
+    mods?: number,
+    cover?: string,
+    lastPlayed?: number,
+};
+
+function InstanceCard(props: InstanceCardProps) {
     return (
-        <div class='flex flex-col gap-y-6'>
+        <div class='h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-.5 overflow-hidden'>
+            <div class='flex-1 relative overflow-hidden'>
+                <div class='absolute h-full w-full group-hover:scale-110 transition-transform'>
+                    <img
+                        class={`object-cover h-full w-full ${props.cover ? '' : ' filter grayscale'}`}
+                        src={props.cover || defaultCover}
+                    />
+                </div>
+            </div>
+            <div class='z-10 p-3 flex flex-row items-center justify-between'>
+                <div class='flex flex-col gap-1.5'>
+                    <p class='h-4 font-semibold'>{props.name}</p>
+                    <p class='h-4 text-xs'>
+                        {upperFirst(props.client)} {props.version} {props.mods && `• ${props.mods} mods`}
+                    </p>
+                </div>
+                <Button styleType='icon' class='w-8 h-8'>
+                    <DotsVerticalIcon />
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+type InstanceGroupProps = {
+    title: string,
+    instances: InstanceCardProps[],
+};
+
+function InstanceGroup(props: InstanceGroupProps) {
+    const [sorted, setSorted] = createSignal<InstanceCardProps[]>([]);
+
+    createEffect(() => {
+        setSorted(props.instances.sort((a, b) => {
+            if (a.lastPlayed && b.lastPlayed) {
+                return b.lastPlayed - a.lastPlayed;
+            }
+
+            return 0;
+        }));
+    });
+
+    return (
+        <div class='flex flex-col gap-y-4'>
+            <h4>{props.title}</h4>
+            <div class='grid grid-cols-4 gap-4'>
+                <For each={sorted()}>{(instance) => (
+                    <InstanceCard {...instance} />
+                )}</For>
+            </div>
+        </div>
+    );
+}
+
+function HomePage() {
+    const myInstances: InstanceCardProps[] = [
+        {
+            name: 'Hypixel',
+            client: 'vanilla',
+            version: '1.8.9',
+        },
+        {
+            name: 'OneConfig ??',
+            client: 'forge',
+            version: '1.8.9',
+            mods: 12,
+        },
+        {
+            name: 'Fabulously Optimised',
+            client: 'fabric',
+            version: '1.20.4',
+            mods: 48,
+        },
+        {
+            name: 'sus client',
+            client: 'other',
+            version: '1.8.9',
+        },
+        {
+            name: 'OneConfig ??',
+            client: 'forge',
+            version: '1.8.9',
+            mods: 12,
+        },
+        {
+            name: 'Fabulously Optimised',
+            client: 'fabric',
+            version: '1.20.4',
+            mods: 48,
+        },
+        {
+            name: 'sus client',
+            client: 'other',
+            version: '1.8.9',
+        },
+    ];
+
+    return (
+        <div class='flex flex-col gap-y-4 text-fg-primary'>
             <Banner />
+
             <div class='flex flex-row justify-between items-center'>
                 <div>
                     <TextField iconLeft={<SearchMdIcon />} placeholder="Search for something..." />
@@ -62,6 +173,9 @@ function HomePage() {
                     <Button styleType='secondary' iconLeft={<Download01Icon />}>From URL</Button>
                 </div>
             </div>
+
+            <InstanceGroup title='Hypixel' instances={myInstances} />
+            <InstanceGroup title='Hypixel' instances={myInstances} />
         </div>
     );
 }

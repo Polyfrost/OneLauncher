@@ -1,7 +1,7 @@
 .textfield {
     @apply bg-component-bg [&:not(:focus-within)]:hover:bg-component-bg-hover focus-within:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     @apply border border-gray-.5 text-fg-primary fill-fg-primary;
-    @apply rounded-lg px-2.5 py-1;
+    @apply rounded-lg px-2.5 py-1.5;
     @apply flex flex-row gap-x-1.5;
 
     

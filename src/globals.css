@@ -15,16 +15,4 @@ img { -webkit-user-drag: none; }
 h1 { @apply text-2xl font-semibold; }
 h2 { @apply text-xxl font-semibold; }
 h3 { @apply text-xl font-medium; }
-
-.slide-fade-enter-active,
-.slide-fade-exit-active {
-  transition: opacity 0.3s, transform 0.3s;
-}
-.slide-fade-enter,
-.slide-fade-exit-to {
-  transform: translateX(10px);
-  opacity: 0;
-}
-.slide-fade-enter {
-  transform: translateX(-10px);
-}
+h4 { @apply text-lg font-medium; }

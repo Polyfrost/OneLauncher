@@ -1,8 +1,8 @@
 /* @refresh reload */
 import { render } from 'solid-js/web';
 
-import './assets/fonts/Poppins/index.css';
 import './globals.css';
+import '@fontsource/poppins';
 import { Route, Router } from '@solidjs/router';
 import App from './ui/App';
 import HomePage from './ui/pages/Home';

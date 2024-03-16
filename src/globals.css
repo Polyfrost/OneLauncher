@@ -1,16 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@tailwind variants;
 
 body {
     @apply font-sans text-fg-primary text-md;
 }
 
-/* start lynith's native experience */
+/* start lynith's native experience (tm) */
 * { user-select: none; cursor: default !important; }
 *:hover { cursor: default !important; }
 img { -webkit-user-drag: none; }
-/* end lynith's native experience */
+/* end lynith's native experience (tm) */
 
 h1 { @apply text-2xl font-semibold; }
 h2 { @apply text-xxl font-semibold; }

@@ -1,5 +1,6 @@
-/** @type {import('tailwindcss').Config} */
-export default {
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
     content: ['./src/**/*.{js,ts,jsx,tsx}'],
     theme: {
         fontFamily: {
@@ -80,7 +81,7 @@ export default {
             },
 
             strokeWidth: {
-                3: 3,
+                '3': '3',
             },
 
             backgroundColor: {
@@ -106,3 +107,5 @@ export default {
     },
     plugins: [],
 };
+
+export default config;

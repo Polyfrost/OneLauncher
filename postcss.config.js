@@ -3,10 +3,12 @@ import postcssEasings from 'postcss-easings';
 import tailwind from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
-export default {
+const config = {
     plugins: [
         tailwind,
         autoprefixer,
-        postcssEasings,
-    ],
+        postcssEasings
+    ]
 };
+
+export default config;

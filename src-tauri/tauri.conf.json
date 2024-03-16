@@ -18,7 +18,7 @@
     },
     "productName": "polyfrost-launcher",
     "version": "0.0.0",
-    "identifier": "com.tauri.dev",
+    "identifier": "org.polyfrost.launcher",
     "plugins": {},
     "app": {
         "withGlobalTauri": true,

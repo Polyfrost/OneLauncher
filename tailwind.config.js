@@ -2,6 +2,10 @@
 export default {
     content: ['./src/**/*.{js,ts,jsx,tsx}'],
     theme: {
+        fontFamily: {
+            sans: 'Poppins',
+        },
+
         fontSize: {
             // Based off 16px
             sm: '0.688rem',
@@ -11,15 +15,29 @@ export default {
             xxl: '1.5rem',
             '2xl': '2rem',
         },
+
         colors: {
             white: '#ffffff',
             black: '#000000',
-            slate: '#9BA1A6',
 
             gray: {
-                400: '#D5DBFF',
                 '.5': '#FFFFFF0D',
                 '.10': '#FFFFFF1A',
+            },
+
+            fg: {
+                primary: {
+                    DEFAULT: '#D5DBFF',
+                    hover: '#D5DBFFD9',
+                    pressed: '#E1E5FF',
+                    disabled: '#E1E5FF80',
+                },
+                secondary: {
+                    DEFAULT: '#78818D',
+                    hover: '#5F6874',
+                    pressed: '#828D9B',
+                    disabled: '#78818D80',
+                },
             },
 
             brand: {
@@ -56,6 +74,10 @@ export default {
             secondary: '#192026',
         },
         extend: {
+            height: {
+                15: '60px',
+            },
+
             animation: {
                 'fade-in': 'fadeIn 150ms easeOutExpo forwards',
                 'fade-out': 'fadeOut 150ms easeOutExpo forwards',

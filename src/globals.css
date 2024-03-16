@@ -2,15 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-body { 
-    @apply text-gray-400 text-md;
+body {
+    @apply font-sans text-fg-primary text-md;
 }
 
 /* start lynith's native experience */
-* { user-select: none; }
-*:hover { cursor: default; }
+* { user-select: none; cursor: default !important; }
+*:hover { cursor: default !important; }
 /* end lynith's native experience */
 
 h1 { @apply text-2xl font-bold; }
-h2 { @apply text-xxl font-bold; }
-h3 { @apply text-xl font-bold; }
+h2 { @apply text-xxl font-semibold; }
+h3 { @apply text-xl font-medium; }

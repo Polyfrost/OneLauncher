@@ -20,6 +20,9 @@ dependencies:
   solid-js:
     specifier: ^1.7.8
     version: 1.8.15
+  solid-transition-group:
+    specifier: ^0.2.3
+    version: 0.2.3(solid-js@1.8.15)
 
 devDependencies:
   '@solid/eslint-config-base':
@@ -746,6 +749,31 @@ packages:
     requiresBuild: true
     dev: true
     optional: true
+
+  /@solid-primitives/refs@1.0.8(solid-js@1.8.15):
+    resolution: {integrity: sha512-+jIsWG8/nYvhaCoG2Vg6CJOLgTmPKFbaCrNQKWfChalgUf9WrVxWw0CdJb3yX15n5lUcQ0jBo6qYtuVVmBLpBw==}
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      '@solid-primitives/utils': 6.2.3(solid-js@1.8.15)
+      solid-js: 1.8.15
+    dev: false
+
+  /@solid-primitives/transition-group@1.0.5(solid-js@1.8.15):
+    resolution: {integrity: sha512-G3FuqvL13kQ55WzWPX2ewiXdZ/1iboiX53195sq7bbkDbXqP6TYKiadwEdsaDogW5rPnPYAym3+xnsNplQJRKQ==}
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      solid-js: 1.8.15
+    dev: false
+
+  /@solid-primitives/utils@6.2.3(solid-js@1.8.15):
+    resolution: {integrity: sha512-CqAwKb2T5Vi72+rhebSsqNZ9o67buYRdEJrIFzRXz3U59QqezuuxPsyzTSVCacwS5Pf109VRsgCJQoxKRoECZQ==}
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      solid-js: 1.8.15
+    dev: false
 
   /@solid/eslint-config-base@0.6.0(@typescript-eslint/eslint-plugin@7.2.0)(@typescript-eslint/parser@7.2.0)(eslint-config-airbnb-base@15.0.0)(eslint-config-prettier@9.1.0)(eslint-plugin-import@2.29.1)(eslint-plugin-jest@27.9.0)(eslint-plugin-prettier@5.1.3)(eslint@8.57.0):
     resolution: {integrity: sha512-9bRRTP7tlJI5wjeFFxiT79RRnJ1ploXfHmzzvHK4uk1c0+dkW+gUA1OC9TYtsLQhRDcpzoLUW1gXPgRBHl7WpQ==}
@@ -3240,6 +3268,17 @@ packages:
       '@babel/types': 7.24.0
       solid-js: 1.8.15
     dev: true
+
+  /solid-transition-group@0.2.3(solid-js@1.8.15):
+    resolution: {integrity: sha512-iB72c9N5Kz9ykRqIXl0lQohOau4t0dhel9kjwFvx81UZJbVwaChMuBuyhiZmK24b8aKEK0w3uFM96ZxzcyZGdg==}
+    engines: {node: '>=18.0.0', pnpm: '>=8.6.0'}
+    peerDependencies:
+      solid-js: ^1.6.12
+    dependencies:
+      '@solid-primitives/refs': 1.0.8(solid-js@1.8.15)
+      '@solid-primitives/transition-group': 1.0.5(solid-js@1.8.15)
+      solid-js: 1.8.15
+    dev: false
 
   /source-map-js@1.0.2:
     resolution: {integrity: sha512-R0XvVJ9WusLiqTCEiGCmICCMplcCkIwwR11mOSD9CR5u+IXYdiseeEuXCVAjS54zqwkLcPNnmU4OeJ6tUrWhDw==}

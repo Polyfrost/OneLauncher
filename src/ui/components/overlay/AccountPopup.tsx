@@ -10,7 +10,7 @@ interface AccountComponentProps {
 
 function AccountComponent(props: AccountComponentProps) {
 	return (
-		<div class={`flex flex-row justify-between p-2 rounded-lg ${!props.loggedIn && 'hover:bg-gray-.5 active:bg-gray-.10 hover:text-fg-primary-hover'}`}>
+		<div class={`flex flex-row justify-between p-2 rounded-lg ${!props.loggedIn && 'hover:bg-gray-0.05 active:bg-gray-0.10 hover:text-fg-primary-hover'}`}>
 			<div class="flex flex-row justify-start flex-1 gap-x-3">
 				<img class="w-8 h-8 rounded-md" src={props.headSrc} alt="" />
 				<div class="flex flex-col items-center justify-center">
@@ -32,17 +32,17 @@ function AccountComponent(props: AccountComponentProps) {
 function AccountPopup(props: Popup.PopupProps) {
 	return (
 		<Popup {...props}>
-			<div class="bg-component-bg rounded-xl border border-gray-.10 w-72 p-2 shadow-lg shadow-black/50">
+			<div class="bg-component-bg rounded-xl border border-gray-0.10 w-72 p-2 shadow-lg shadow-black/50">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
 					<AccountComponent username="Caledonian" headSrc="https://crafatar.com/avatars/f247be7c5b8241c69148793ded77e71f?size=100" loggedIn />
 
-					<div class="w-full h-px bg-gray-.5 rounded-md" />
+					<div class="w-full h-px bg-gray-0.05 rounded-md" />
 
 					<AccountComponent username="Caledonian" headSrc="https://crafatar.com/avatars/f247be7c5b8241c69148793ded77e71f?size=100" />
 					<AccountComponent username="Caledonian" headSrc="https://crafatar.com/avatars/f247be7c5b8241c69148793ded77e71f?size=100" />
 					<AccountComponent username="Caledonian" headSrc="https://crafatar.com/avatars/f247be7c5b8241c69148793ded77e71f?size=100" />
 
-					<div class="w-full h-px bg-gray-.5 rounded-md" />
+					<div class="w-full h-px bg-gray-0.05 rounded-md" />
 
 					<div class="flex flex-row justify-between">
 						<div>

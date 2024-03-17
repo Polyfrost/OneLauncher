@@ -20,6 +20,12 @@ dependencies:
   '@untitled-theme/icons-solid':
     specifier: ^0.6.0
     version: 0.6.0(solid-js@1.8.15)
+  overlayscrollbars:
+    specifier: ^2.6.1
+    version: 2.6.1
+  overlayscrollbars-solid:
+    specifier: ^0.5.3
+    version: 0.5.3(overlayscrollbars@2.6.1)(solid-js@1.8.15)
   solid-js:
     specifier: ^1.8.15
     version: 1.8.15
@@ -3833,6 +3839,20 @@ packages:
       prelude-ls: 1.2.1
       type-check: 0.4.0
     dev: true
+
+  /overlayscrollbars-solid@0.5.3(overlayscrollbars@2.6.1)(solid-js@1.8.15):
+    resolution: {integrity: sha512-KVTmdyeDctH6eAsagSw3c0LDG6cGmVxES6cBFQT6BxBP0zhWLccSZQaSIXAZP91JIcicWUxRxPmqaJf50SOugA==}
+    peerDependencies:
+      overlayscrollbars: ^2.0.0
+      solid-js: ^1.7.0
+    dependencies:
+      overlayscrollbars: 2.6.1
+      solid-js: 1.8.15
+    dev: false
+
+  /overlayscrollbars@2.6.1:
+    resolution: {integrity: sha512-V+ZAqWMYMyGBJNRDEcdRC7Ch+WT9RBx9hY8bfJSMyFObQeJoecs1Vqg7ZAzBVcpN6sCUXFAZldCbeySwmmD0RA==}
+    dev: false
 
   /p-limit@2.3.0:
     resolution: {integrity: sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==}

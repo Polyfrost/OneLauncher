@@ -23,8 +23,8 @@ const config: Config = {
 			black: '#000000',
 
 			gray: {
-				'.5': '#FFFFFF0D',
-				'.10': '#FFFFFF1A',
+				'0.05': '#FFFFFF0D',
+				'0.10': '#FFFFFF1A',
 			},
 
 			fg: {

@@ -68,7 +68,7 @@ interface InstanceCardProps {
 
 function InstanceCard(props: InstanceCardProps) {
 	return (
-		<div class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-.5 overflow-hidden">
+		<div class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05 overflow-hidden">
 			<div class="flex-1 relative overflow-hidden">
 				<div
 					class="absolute h-full w-full group-hover:!scale-110 transition-transform"

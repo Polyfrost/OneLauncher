@@ -17,3 +17,11 @@ h1 { @apply text-2xl font-semibold; }
 h2 { @apply text-xxl font-semibold; }
 h3 { @apply text-xl font-medium; }
 h4 { @apply text-lg font-medium; }
+
+.os-scrollbar {
+    --os-size: 10px;
+    --os-track-border-radius: theme(borderRadius.lg);
+    --os-handle-bg: theme(colors.gray[0.05]);
+    --os-handle-bg-hover: theme(colors.gray[0.10]);
+    --os-handle-bg-active: theme(colors.gray[0.05]);
+}

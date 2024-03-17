@@ -12,13 +12,15 @@ function App(props: ParentProps) {
 	}
 
 	return (
-		<main class="flex flex-col bg-primary min-h-screen text-white">
+		<main class="flex flex-col bg-primary overflow-hidden min-h-screen max-h-screen text-white">
 			<WindowFrame />
-			<div class="flex flex-col flex-1 overflow-x-hidden px-8">
+			<div class="flex flex-col flex-1 px-8 max-h-screen">
 				<Navbar />
-				<AnimatedRoutes>
-					{props.children}
-				</AnimatedRoutes>
+				<div class="max-h-full overflow-y-auto">
+					<AnimatedRoutes>
+						{props.children}
+					</AnimatedRoutes>
+				</div>
 			</div>
 		</main>
 	);

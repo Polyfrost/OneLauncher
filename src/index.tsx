@@ -2,7 +2,7 @@
 import { render } from 'solid-js/web';
 
 import './globals.css';
-import '@fontsource/poppins';
+import './fonts';
 import { Route, Router } from '@solidjs/router';
 import App from './ui/App';
 import HomePage from './ui/pages/Home';

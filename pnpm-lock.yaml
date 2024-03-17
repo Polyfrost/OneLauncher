@@ -17,6 +17,9 @@ dependencies:
   '@tauri-apps/plugin-shell':
     specifier: 2.0.0-beta.2
     version: 2.0.0-beta.2
+  '@thisbeyond/solid-dnd':
+    specifier: ^0.7.5
+    version: 0.7.5(solid-js@1.8.15)
   '@untitled-theme/icons-solid':
     specifier: ^0.6.0
     version: 0.6.0(solid-js@1.8.15)
@@ -1111,6 +1114,15 @@ packages:
     resolution: {integrity: sha512-9rWsfN7Wt+EuWmpmNnK8bCs+04fzhEYrHtWyLIAYxb9diFdcJrEoctCP9YM2v+Uf8/y8qFC7VCbZ/9VQHANymQ==}
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.4
+    dev: false
+
+  /@thisbeyond/solid-dnd@0.7.5(solid-js@1.8.15):
+    resolution: {integrity: sha512-DfI5ff+yYGpK9M21LhYwIPlbP2msKxN2ARwuu6GF8tT1GgNVDTI8VCQvH4TJFoVApP9d44izmAcTh/iTCH2UUw==}
+    engines: {node: '>=18.0.0', pnpm: '>=8.6.0'}
+    peerDependencies:
+      solid-js: ^1.5
+    dependencies:
+      solid-js: 1.8.15
     dev: false
 
   /@types/babel__core@7.20.5:

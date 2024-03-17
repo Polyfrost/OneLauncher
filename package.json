@@ -18,6 +18,7 @@
 		"@solidjs/router": "^0.13.0",
 		"@tauri-apps/api": "2.0.0-beta.5",
 		"@tauri-apps/plugin-shell": "2.0.0-beta.2",
+		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@untitled-theme/icons-solid": "^0.6.0",
 		"overlayscrollbars": "^2.6.1",
 		"overlayscrollbars-solid": "^0.5.3",

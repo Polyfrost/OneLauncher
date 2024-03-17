@@ -6,7 +6,9 @@ import {
 	PlusIcon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, createEffect, createSignal } from 'solid-js';
+import { For, createSignal } from 'solid-js';
+import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter, createSortable, useDragDropContext } from '@thisbeyond/solid-dnd';
+import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
@@ -61,14 +63,28 @@ interface InstanceCardProps {
 	name: string;
 	version: string;
 	client: game.Client;
+	id: number;
 	mods?: number;
 	cover?: string;
 	lastPlayed?: number;
 }
 
+declare module 'solid-js' {
+	// eslint-disable-next-line ts/no-namespace
+	namespace JSX {
+		interface Directives {
+			sortable: any;
+		}
+	}
+}
+
 function InstanceCard(props: InstanceCardProps) {
+	const id = () => props.id as Id;
+	// eslint-disable-next-line solid/reactivity
+	const sortable = createSortable(id());
+
 	return (
-		<div class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05 overflow-hidden">
+		<div use:sortable={sortable} class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05 overflow-hidden">
 			<div class="flex-1 relative overflow-hidden">
 				<div
 					class="absolute h-full w-full group-hover:!scale-110 transition-transform"
@@ -105,27 +121,44 @@ interface InstanceGroupProps {
 }
 
 function InstanceGroup(props: InstanceGroupProps) {
-	const [sorted, setSorted] = createSignal<InstanceCardProps[]>([]);
+	// eslint-disable-next-line solid/reactivity
+	const [instances, setInstances] = createSignal(props.instances);
+	const ids = () => instances().map(instance => instance.id);
 
-	createEffect(() => {
-		setSorted(props.instances.sort((a, b) => {
-			if (a.lastPlayed && b.lastPlayed)
-				return b.lastPlayed - a.lastPlayed;
+	const onDragStart: DragEventHandler = ({ draggable }) => {
+		draggable.node.style.zIndex = '1000';
+	};
 
-			return 0;
-		}));
-	});
+	const onDragEnd: DragEventHandler = ({ draggable, droppable }) => {
+		draggable.node.style.zIndex = '';
+		if (draggable && droppable) {
+			const currentItems = ids();
+			const fromIndex = currentItems.indexOf(draggable.id as number);
+			const toIndex = currentItems.indexOf(droppable.id as number);
+
+			if (fromIndex !== toIndex) {
+				const updatedItems = instances().slice();
+				updatedItems.splice(toIndex, 0, ...updatedItems.splice(fromIndex, 1));
+				setInstances(updatedItems);
+			}
+		}
+	};
 
 	return (
 		<div class="flex flex-col gap-y-4">
 			<h4>{props.title}</h4>
-			<div class="grid grid-cols-4 gap-4">
-				<For each={sorted()}>
-					{instance => (
-						<InstanceCard {...instance} />
-					)}
-				</For>
-			</div>
+			<DragDropProvider
+				onDragStart={onDragStart}
+				onDragEnd={onDragEnd}
+				collisionDetector={closestCenter}
+			>
+				<DragDropSensors />
+				<div class="grid grid-cols-4 gap-4">
+					<SortableProvider ids={ids()}>
+						<For each={instances()}>{item => <InstanceCard {...item} />}</For>
+					</SortableProvider>
+				</div>
+			</DragDropProvider>
 		</div>
 	);
 }
@@ -136,41 +169,61 @@ function HomePage() {
 			name: 'Hypixel',
 			client: 'vanilla',
 			version: '1.8.9',
+			id: 1,
 		},
 		{
 			name: 'OneConfig ??',
 			client: 'forge',
 			version: '1.8.9',
 			mods: 12,
+			id: 2,
 		},
 		{
 			name: 'Fabulously Optimised',
 			client: 'fabric',
 			version: '1.20.4',
 			mods: 48,
+			id: 3,
 		},
 		{
 			name: 'sus client',
 			client: 'other',
 			version: '1.8.9',
+			id: 4,
+		},
+		{
+			name: 'Hypixel',
+			client: 'vanilla',
+			version: '1.8.9',
+			id: 5,
 		},
 		{
 			name: 'OneConfig ??',
 			client: 'forge',
 			version: '1.8.9',
 			mods: 12,
+			id: 6,
 		},
 		{
 			name: 'Fabulously Optimised',
 			client: 'fabric',
 			version: '1.20.4',
 			mods: 48,
+			id: 7,
 		},
 		{
 			name: 'sus client',
 			client: 'other',
 			version: '1.8.9',
+			id: 8,
 		},
+		// {
+		// 	name: 'OneConfig ??',
+		// 	client: 'forge',
+		// 	version: '1.8.9',
+		// 	mods: 12,
+		// 	id: 5,
+		// },
 	];
 
 	return (

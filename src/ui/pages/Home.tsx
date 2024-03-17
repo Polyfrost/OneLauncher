@@ -2,7 +2,6 @@ import {
 	CheckIcon,
 	DotsVerticalIcon,
 	Download01Icon,
-	HeartRoundedIcon,
 	PlayIcon,
 	PlusIcon,
 	SearchMdIcon,
@@ -53,76 +52,6 @@ function Banner() {
 						<Tag iconLeft={<CheckIcon />}>Verified</Tag>
 					</div>
 				</div>
-			</div>
-		</div>
-	);
-}
-
-interface InstanceCardProps {
-	name: string;
-	version: string;
-	client: game.Client;
-	mods?: number;
-	cover?: string;
-	lastPlayed?: number;
-}
-
-function InstanceCard(props: InstanceCardProps) {
-	return (
-		<div class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-.5 overflow-hidden">
-			<div class="flex-1 relative overflow-hidden">
-				<div class="absolute h-full w-full group-hover:scale-110 transition-transform">
-					<img
-						class={`object-cover h-full w-full ${props.cover ? '' : ' filter grayscale'}`}
-						src={props.cover || defaultCover}
-					/>
-				</div>
-			</div>
-			<div class="z-10 p-3 flex flex-row items-center justify-between">
-				<div class="flex flex-col gap-1.5">
-					<p class="h-4 font-semibold">{props.name}</p>
-					<p class="h-4 text-xs">
-						{upperFirst(props.client)}
-						{' '}
-						{props.version}
-						{' '}
-						{props.mods && `• ${props.mods} mods`}
-					</p>
-				</div>
-				<Button styleType="icon" class="w-8 h-8">
-					<DotsVerticalIcon />
-				</Button>
-			</div>
-		</div>
-	);
-}
-
-interface InstanceGroupProps {
-	title: string;
-	instances: InstanceCardProps[];
-}
-
-function InstanceGroup(props: InstanceGroupProps) {
-	const [sorted, setSorted] = createSignal<InstanceCardProps[]>([]);
-
-	createEffect(() => {
-		setSorted(props.instances.sort((a, b) => {
-			if (a.lastPlayed && b.lastPlayed)
-				return b.lastPlayed - a.lastPlayed;
-
-			return 0;
-		}));
-	});
-
-	return (
-		<div class="flex flex-col gap-y-4">
-			<h4>{props.title}</h4>
-			<div class="grid grid-cols-4 gap-4">
-				<For each={sorted()}>
-					{instance => (
-						<InstanceCard {...instance} />
-					)}
-				</For>
 			</div>
 		</div>
 	);

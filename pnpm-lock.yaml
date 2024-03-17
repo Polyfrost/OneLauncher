@@ -37,9 +37,9 @@ devDependencies:
   '@tauri-apps/cli':
     specifier: 2.0.0-beta.9
     version: 2.0.0-beta.9
-  '@typescript-eslint/parser':
-    specifier: ^7.2.0
-    version: 7.2.0(eslint@8.57.0)(typescript@5.4.2)
+  '@types/uuid':
+    specifier: ^9.0.8
+    version: 9.0.8
   autoprefixer:
     specifier: ^10.4.18
     version: 10.4.18(postcss@8.4.35)
@@ -1165,6 +1165,14 @@ packages:
     resolution: {integrity: sha512-I8EUhyrgfLrcTkzV3TSsGyl1tSuPrEDzr0yd5m90UgNxQkyDXULk3b6MlQqTCpZpNtWe1K0hzclnZkTcLBe2UQ==}
     dev: true
 
+  /@types/unist@2.0.10:
+    resolution: {integrity: sha512-IfYcSBWE3hLpBg8+X2SEa8LVkJdJEkT2Ese2aaLs3ptGdVtABxndrMaxuFlQ1qdFf9Q5rDvDpxI3WwgvKFAsQA==}
+    dev: true
+
+  /@types/uuid@9.0.8:
+    resolution: {integrity: sha512-jg+97EGIcY9AGHJJRaaPVgetKDsrTgbRjQ5Msgjh/DQKEFl0DtyRr/VCOyD1T2R1MNeWPK/u7JoGhlDZnKBAfA==}
+    dev: true
+
   /@typescript-eslint/eslint-plugin@7.2.0(@typescript-eslint/parser@7.2.0)(eslint@8.57.0)(typescript@5.4.2):
     resolution: {integrity: sha512-mdekAHOqS9UjlmyF/LSs6AIEvfceV749GFxoBAjwAv0nkevfKHWQFDMcBZWUiIC5ft6ePWivXoS36aKQ0Cy3sw==}
     engines: {node: ^16.0.0 || >=18.0.0}
@@ -2042,7 +2050,7 @@ packages:
       safe-array-concat: 1.1.2
       safe-regex-test: 1.0.3
       string.prototype.trim: 1.2.8
-      string.prototype.trimend: 1.0.7
+      string.prototype.trimend: 1.0.8
       string.prototype.trimstart: 1.0.7
       typed-array-buffer: 1.0.2
       typed-array-byte-length: 1.0.1
@@ -2093,7 +2101,7 @@ packages:
       safe-array-concat: 1.1.2
       safe-regex-test: 1.0.3
       string.prototype.trim: 1.2.8
-      string.prototype.trimend: 1.0.7
+      string.prototype.trimend: 1.0.8
       string.prototype.trimstart: 1.0.7
       typed-array-buffer: 1.0.2
       typed-array-byte-length: 1.0.1
@@ -2133,6 +2141,13 @@ packages:
       internal-slot: 1.0.7
       iterator.prototype: 1.1.2
       safe-array-concat: 1.1.2
+    dev: true
+
+  /es-object-atoms@1.0.0:
+    resolution: {integrity: sha512-MZ4iQ6JwHOBQjahnjwaC1ZtIBH+2ohjamzAO3oaHcXYup7qxjF2fixyH+Q71voWHeOkI2q/TnJao/KfXYIZWbw==}
+    engines: {node: '>= 0.4'}
+    dependencies:
+      es-errors: 1.3.0
     dev: true
 
   /es-set-tostringtag@2.0.3:
@@ -4455,12 +4470,12 @@ packages:
       es-abstract: 1.22.5
     dev: true
 
-  /string.prototype.trimend@1.0.7:
-    resolution: {integrity: sha512-Ni79DqeB72ZFq1uH/L6zJ+DKZTkOtPIHovb3YZHQViE+HDouuU4mBrLOLDn5Dde3RF8qw5qVETEjhu9locMLvA==}
+  /string.prototype.trimend@1.0.8:
+    resolution: {integrity: sha512-p73uL5VCHCO2BZZ6krwwQE3kCzM7NKmis8S//xEC6fQonchbum4eP6kR4DLEjQFO3Wnj3Fuo8NM0kOSjVdHjZQ==}
     dependencies:
       call-bind: 1.0.7
       define-properties: 1.2.1
-      es-abstract: 1.22.5
+      es-object-atoms: 1.0.0
     dev: true
 
   /string.prototype.trimstart@1.0.7:

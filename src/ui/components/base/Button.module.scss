@@ -24,7 +24,19 @@
         @apply p-1.5 hover:bg-gray-0.05 active:bg-gray-0.10 aspect-square box-border;
 
         & > * {
-            @apply w-full h-full;
+            @apply w-full h-full stroke-fg-primary;
+        }
+
+        &:hover > * {
+            @apply stroke-fg-primary-hover;
+        }
+
+        &:active > * {
+            @apply stroke-fg-primary-pressed;
+        }
+
+        &:disabled > * {
+            @apply stroke-fg-primary-disabled;
         }
     }
 }

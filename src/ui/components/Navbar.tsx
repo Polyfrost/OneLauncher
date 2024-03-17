@@ -1,7 +1,11 @@
 import { A } from '@solidjs/router';
 import { createSignal } from 'solid-js';
+import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon, TerminalIcon } from '@untitled-theme/icons-solid';
+import useAccount from '../hooks/useAccount';
 import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/AccountPopup';
+import PlayerHead from './game/PlayerHead';
+import Button from './base/Button';
 
 interface NavbarLinkProps {
 	path: string;
@@ -24,6 +28,8 @@ function NavbarLink(props: NavbarLinkProps) {
 
 function Navbar() {
 	const [profileMenuOpen, setProfileMenuOpen] = createSignal(false);
+	const account = useAccount();
+
 	let profileButton!: HTMLButtonElement;
 
 	return (
@@ -36,9 +42,25 @@ function Navbar() {
 				<NavbarLink path="/browser" label="Browser" />
 				<NavbarLink path="/updates" label="Updates" />
 			</div>
-			<div class="flex flex-row justify-end relative">
+			<div class="flex flex-row justify-end items-center gap-x-2 relative">
+				<Button styleType="icon" class="w-8 h-8">
+					<TerminalBrowserIcon class="w-7 h-7" />
+				</Button>
+
+				<Button styleType="icon" class="w-8 h-8">
+					<Cloud01Icon class="w-7 h-7" />
+				</Button>
+
+				<Button styleType="icon" class="w-8 h-8">
+					<Bell01Icon class="w-7 h-7" />
+				</Button>
+
+				<Button styleType="icon" class="w-8 h-8">
+					<Settings01Icon class="w-7 h-7" />
+				</Button>
+
 				<button ref={profileButton} onClick={() => setProfileMenuOpen(!profileMenuOpen())}>
-					<img class="w-7 h-7 rounded-md hover:opacity-70" src="https://crafatar.com/avatars/f247be7c5b8241c69148793ded77e71f?size=100" alt="" />
+					<PlayerHead class="w-[30px] h-[30px] rounded-md hover:opacity-70" uuid={account.uuid} />
 				</button>
 			</div>
 

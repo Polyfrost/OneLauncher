@@ -1,7 +1,3 @@
-export function isDev() {
-    return window.location.host.startsWith('localhost:');
-}
+export const isDev = () => window.location.host.startsWith('localhost:');
 
-export default {
-    isDev,
-};
+export default { isDev };

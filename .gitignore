@@ -289,3 +289,5 @@ $RECYCLE.BIN/
 # .pnp.*
 
 # End of https://www.toptal.com/developers/gitignore/api/node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,git
+
+src-tauri/gen/**

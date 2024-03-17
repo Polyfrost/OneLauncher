@@ -1,45 +1,41 @@
 {
-    "name": "polyfrost-launcher",
-    "version": "0.0.0",
-    "description": "",
-    "type": "module",
-    "scripts": {
-        "start": "vite",
-        "dev": "vite",
-        "build": "vite build",
-        "serve": "vite preview",
-        "tauri": "tauri",
-        "lint": "eslint . --cache",
-        "format": "pnpm lint --fix"
-    },
-    "license": "MIT",
-    "dependencies": {
-        "@fontsource/poppins": "^5.0.12",
-        "@solidjs/router": "^0.13.0",
-        "@tauri-apps/api": "2.0.0-beta.5",
-        "@tauri-apps/plugin-shell": "2.0.0-beta.2",
-        "@untitled-theme/icons-solid": "^0.6.0",
-        "solid-js": "^1.8.15",
-        "solid-transition-group": "^0.2.3",
+	"name": "polyfrost-launcher",
+	"type": "module",
+	"version": "0.0.0",
+	"description": "",
+	"license": "MIT",
+	"scripts": {
+		"start": "vite",
+		"dev": "vite",
+		"build": "vite build",
+		"serve": "vite preview",
+		"tauri": "tauri",
+		"lint": "eslint . --cache",
+		"format": "pnpm lint --fix"
+	},
+	"dependencies": {
+		"@fontsource/poppins": "^5.0.12",
+		"@solidjs/router": "^0.13.0",
+		"@tauri-apps/api": "2.0.0-beta.5",
+		"@tauri-apps/plugin-shell": "2.0.0-beta.2",
+		"@untitled-theme/icons-solid": "^0.6.0",
+		"solid-js": "^1.8.15",
+		"solid-transition-group": "^0.2.3",
         "uuid": "^9.0.1"
-    },
-    "devDependencies": {
-        "@solid/eslint-config-base": "^0.6.0",
-        "@stylistic/eslint-plugin-ts": "^1.7.0",
-        "@tauri-apps/cli": "2.0.0-beta.9",
+	},
+	"devDependencies": {
+		"@flowr/eslint-config": "^2.2.1",
+		"@tauri-apps/cli": "2.0.0-beta.9",
         "@types/uuid": "^9.0.8",
-        "@typescript-eslint/parser": "^7.2.0",
-        "autoprefixer": "^10.4.18",
-        "eslint": "^8.57.0",
-        "eslint-config-airbnb-base": "^15.0.0",
-        "eslint-config-airbnb-typescript": "^18.0.0",
-        "eslint-plugin-solid": "^0.13.1",
-        "postcss": "^8.4.35",
-        "postcss-easings": "^4.0.0",
-        "sass": "^1.72.0",
-        "tailwindcss": "^3.4.1",
-        "typescript": "^5.4.2",
-        "vite": "^5.1.6",
-        "vite-plugin-solid": "^2.10.2"
-    }
+		"autoprefixer": "^10.4.18",
+		"eslint": "^8.57.0",
+		"eslint-plugin-solid": "^0.13.1",
+		"postcss": "^8.4.35",
+		"postcss-easings": "^4.0.0",
+		"sass": "^1.72.0",
+		"tailwindcss": "^3.4.1",
+		"typescript": "^5.4.2",
+		"vite": "^5.1.6",
+		"vite-plugin-solid": "^2.10.2"
+	}
 }

@@ -27,7 +27,7 @@ function Navbar() {
 	let profileButton!: HTMLButtonElement;
 
 	return (
-		<div class="flex flex-row *:flex-1 items-center h-15 mx-2">
+		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15 mx-2">
 			<div>
 				<PolyfrostFull />
 			</div>

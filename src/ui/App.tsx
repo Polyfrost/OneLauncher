@@ -12,14 +12,20 @@ function App(props: ParentProps) {
 	}
 
 	return (
-		<main class="flex flex-col bg-primary overflow-hidden min-h-screen max-h-screen text-white">
+		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-white">
+
 			<WindowFrame />
-			<div class="flex flex-col flex-1 px-8 max-h-screen">
+			<div class="flex flex-col px-8">
 				<Navbar />
-				<div class="max-h-full overflow-y-auto">
-					<AnimatedRoutes>
-						{props.children}
-					</AnimatedRoutes>
+			</div>
+
+			<div class="relative h-full w-full overflow-hidden">
+				<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
+					<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8">
+						<AnimatedRoutes>
+							{props.children}
+						</AnimatedRoutes>
+					</div>
 				</div>
 			</div>
 		</main>

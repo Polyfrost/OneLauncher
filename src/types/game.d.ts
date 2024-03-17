@@ -1,3 +1,3 @@
 declare namespace game {
-	export type Client = 'fabric' | 'forge' | 'quilt' | 'vanilla' | 'other';
+	export type Client = 'Fabric' | 'Forge' | 'Quilt' | 'Vanilla' | 'Other';
 }

@@ -7,7 +7,7 @@ import {
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import { For, createSignal } from 'solid-js';
-import { DragDropProvider, DragDropSensors, DragOverlay, SortableProvider, closestCenter, createSortable, useDragDropContext } from '@thisbeyond/solid-dnd';
+import { DragDropProvider, DragDropSensors, SortableProvider, closestCenter, createSortable } from '@thisbeyond/solid-dnd';
 import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
@@ -100,7 +100,7 @@ function InstanceCard(props: InstanceCardProps) {
 				<div class="flex flex-col gap-1.5">
 					<p class="h-4 font-semibold">{props.name}</p>
 					<p class="h-4 text-xs">
-						{upperFirst(props.client)}
+						{props.client}
 						{' '}
 						{props.version}
 						{' '}
@@ -167,63 +167,56 @@ function HomePage() {
 	const myInstances: InstanceCardProps[] = [
 		{
 			name: 'Hypixel',
-			client: 'vanilla',
+			client: 'Vanilla',
 			version: '1.8.9',
 			id: 1,
 		},
 		{
 			name: 'OneConfig ??',
-			client: 'forge',
+			client: 'Forge',
 			version: '1.8.9',
 			mods: 12,
 			id: 2,
 		},
 		{
 			name: 'Fabulously Optimised',
-			client: 'fabric',
+			client: 'Fabric',
 			version: '1.20.4',
 			mods: 48,
 			id: 3,
 		},
 		{
 			name: 'sus client',
-			client: 'other',
+			client: 'Other',
 			version: '1.8.9',
 			id: 4,
 		},
 		{
 			name: 'Hypixel',
-			client: 'vanilla',
+			client: 'Vanilla',
 			version: '1.8.9',
 			id: 5,
 		},
 		{
 			name: 'OneConfig ??',
-			client: 'forge',
+			client: 'Forge',
 			version: '1.8.9',
 			mods: 12,
 			id: 6,
 		},
 		{
 			name: 'Fabulously Optimised',
-			client: 'fabric',
+			client: 'Fabric',
 			version: '1.20.4',
 			mods: 48,
 			id: 7,
 		},
 		{
 			name: 'sus client',
-			client: 'other',
+			client: 'Other',
 			version: '1.8.9',
 			id: 8,
 		},
-		// {
-		// 	name: 'OneConfig ??',
-		// 	client: 'forge',
-		// 	version: '1.8.9',
-		// 	mods: 12,
-		// 	id: 5,
-		// },
 	];
 
 	return (

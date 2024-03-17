@@ -21,6 +21,7 @@ pub struct AccountSkin {
     pub variant: String,
 }
 
+#[allow(async_fn_in_trait)]
 pub trait AuthenticationMethod {
     /// Authenticate with a given method. Stage is a function that takes a string and a u8.
     /// The string is the message to display to the user, and the u8 is the progress of the authentication.

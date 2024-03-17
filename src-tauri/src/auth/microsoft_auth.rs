@@ -5,6 +5,8 @@ use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_http::reqwest::Client;
 use tauri_plugin_shell::ShellExt;
 
+use crate::{constants::CLIENT_ID, utils::http::create_client};
+
 use super::{Account, AuthenticationMethod};
     
 #[tauri::command]
@@ -16,8 +18,6 @@ pub async fn login_msa<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Ac
         Err(err) => Err(err.to_string())
     }
 }
-
-const CLIENT_ID: &str = "9419b7ee-1448-4d1b-b52a-550d8f36ab56";
 
 struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
@@ -47,7 +47,7 @@ impl AuthenticationMethod for MicrosoftAuthenticationMethod {
 }
 
 async fn auth_minecraft(xsts_token: String, user_hash: String) -> Result<String, Box<dyn Error>> {
-    let response = Client::new()
+    let response = create_client()
         .post("https://api.minecraftservices.com/authentication/login_with_xbox")
         .json(&json!({
             "identityToken": format!("XBL3.0 x={};{}", user_hash, xsts_token)
@@ -65,7 +65,7 @@ async fn auth_minecraft(xsts_token: String, user_hash: String) -> Result<String,
 }
 
 async fn auth_xsts(token: String) -> Result<String, Box<dyn Error>> {
-    let response = Client::new()
+    let response = create_client()
         .post("https://xsts.auth.xboxlive.com/xsts/authorize")
         .json(&json!({
             "Properties": {
@@ -102,7 +102,7 @@ async fn auth_xsts(token: String) -> Result<String, Box<dyn Error>> {
 }
 
 async fn auth_xbl(code: String) -> Result<(String, String), Box<dyn Error>> {
-    let response = Client::new()
+    let response = create_client()
         .post("https://user.auth.xboxlive.com/user/authenticate")
         .json(&json!({
             "Properties": {
@@ -131,7 +131,7 @@ async fn auth_xbl(code: String) -> Result<(String, String), Box<dyn Error>> {
 }
 
 async fn msa_code_to_token(code: String) -> Result<String, Box<dyn Error>> {
-    let token = Client::new()
+    let token = create_client()
         .post("https://login.live.com/oauth20_token.srf")
         .form(&[
             ("client_id", CLIENT_ID),

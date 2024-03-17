@@ -1,16 +1,14 @@
-use std::{env, error::Error, fmt::Display, fs::{self, File}, path::PathBuf};
+use std::{env, error::Error, fs, path::PathBuf};
 
+use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_http::reqwest::Client;
 
-use crate::utils::http;
+use crate::utils::{file, http};
 
 use super::{manifest::Manifest, JavaVersion};
 
-#[allow(async_fn_in_trait)]
+#[async_trait::async_trait]
 pub trait GameClient {
-    fn from_manifest(manifest: Manifest) -> Self;
-
     fn get_handle(&self) -> &AppHandle;
     fn get_manifest(&self) -> &Manifest;
     async fn launch(&self) -> Result<(), Box<dyn Error>>;
@@ -20,7 +18,7 @@ pub trait GameClient {
     }
 }
 
-pub async fn download_java<R: Runtime>(handle: &AppHandle<R>, java_version: JavaVersion) -> Result<PathBuf, JavaDownloadError> {
+async fn download_java<R: Runtime>(handle: &AppHandle<R>, java_version: JavaVersion) -> Result<PathBuf, JavaDownloadError> {
     let config_dir = match handle.path().app_config_dir() {
         Ok(dir) => dir,
         Err(_) => return Err(JavaDownloadError::UnsupportedOS)
@@ -44,6 +42,53 @@ pub async fn download_java<R: Runtime>(handle: &AppHandle<R>, java_version: Java
         _ => return Err(JavaDownloadError::UnsupportedOS)
     };
 
+    let archive_name = format!("zulu-{}.{}", java_version.to_string(), archive_type);
+    let archive = java_dir.join(&archive_name);
+    let dest = java_dir.join(format!("zulu-{}-{}", java_version.to_string(), get_arch()));
+
+    if archive.exists() && dest.exists() {
+        let _ = fs::remove_file(archive.as_path());
+    } else if archive.exists() && !dest.exists() {
+        extract(&archive, &dest)?;
+    } else if !archive.exists() && !dest.exists() {
+        download(java_version, os, archive_type, &archive).await?;
+        extract(&archive, &dest)?;
+    }
+
+    if let Ok(mut files) = fs::read_dir(&dest) {
+        let file = match files.nth(0) {
+            Some(file) => file.unwrap().path(),
+            None => return Err(JavaDownloadError::NoJavaVersionFound)
+        };
+
+        return Ok(file.join("bin").join("java"));
+    }
+
+    Err(JavaDownloadError::NoJavaVersionFound)
+}
+
+pub fn get_arch() -> String {
+    let arch = env::consts::ARCH;
+    match arch {
+        "x86" => "x86",
+        "x86_64" => "x64",
+        "arm" => "aarch32",
+        "aarch64" => "aarch64",
+        _ => "unsupported"
+    }.to_string()
+}
+
+#[derive(Debug)]
+pub enum JavaDownloadError {
+    NoJavaVersionFound,
+    PermissionDenied,
+    UnsupportedOS,
+    UnsupportedArch,
+    ExtractError,
+    DownloadError,
+}
+
+async fn get_java_versions(java_version: JavaVersion, os: &str, archive_type: &str) -> Result<Value, JavaDownloadError> {
     let url = format!("
         https://api.azul.com/metadata/v1/zulu/packages/\
         ?java_version={}\
@@ -69,38 +114,28 @@ pub async fn download_java<R: Runtime>(handle: &AppHandle<R>, java_version: Java
         return Err(JavaDownloadError::NoJavaVersionFound);
     }
 
+    Ok(response)
+}
+async fn download(java_version: JavaVersion, os: &str, archive_type: &str, archive: &PathBuf) -> Result<(), JavaDownloadError> {
+    let response = get_java_versions(java_version, os, archive_type).await?;
     let latest = response.as_array().unwrap().first().unwrap();
     let download_url = latest.get("download_url").unwrap().as_str().unwrap();
-    let archive_name = format!("zulu-{}.{}", java_version.to_string(), archive_type);
-    let tmp_archive = java_dir.join(&archive_name);
 
-    if let Err(err) = http::download_file(download_url, tmp_archive.as_path()).await {
+    if let Err(err) = http::download_file(download_url, archive.as_path()).await {
         eprintln!("{}", err);
         return Err(JavaDownloadError::DownloadError);
     };
-
-    // TODO: Extract the archive and delete the archive after a SUCCESSFUL extraction.
-    // Name the folder containing the JRE `zulu-{version}-{arch}`
-
-    Ok(tmp_archive)
+    
+    Ok(())
 }
 
-pub fn get_arch() -> String {
-    let arch = env::consts::ARCH;
-    match arch {
-        "x86" => "x86",
-        "x86_64" => "x64",
-        "arm" => "aarch32",
-        "aarch64" => "aarch64",
-        _ => "unsupported"
-    }.to_string()
-}
+fn extract(archive: &PathBuf, dest: &PathBuf) -> Result<(), JavaDownloadError> {
+    if let Err(err) = file::extract_archive(archive.as_path(), dest.as_path()) {
+        eprintln!("{}", err);
+        let _ = fs::remove_file(dest.as_path());
+        return Err(JavaDownloadError::ExtractError);
+    }
 
-#[derive(Debug)]
-pub enum JavaDownloadError {
-    NoJavaVersionFound,
-    PermissionDenied,
-    UnsupportedOS,
-    UnsupportedArch,
-    DownloadError,
+    let _ = fs::remove_file(archive.as_path());
+    Ok(())
 }

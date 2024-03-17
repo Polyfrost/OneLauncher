@@ -1,25 +1,14 @@
 use std::{error::Error, io::{Read, Write}, net::{SocketAddr, TcpListener, TcpStream}};
 
 use serde_json::json;
-use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_http::reqwest::Client;
+use tauri::{AppHandle, Runtime};
 use tauri_plugin_shell::ShellExt;
 
 use crate::{constants::CLIENT_ID, utils::http::create_client};
 
 use super::{Account, AuthenticationMethod};
-    
-#[tauri::command]
-pub async fn login_msa<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Account, String> {
-    match MicrosoftAuthenticationMethod::auth(&app, |status, stage, was_last| {
-        let _ = app.emit("msa:status", (status, stage, was_last));
-    }).await {
-        Ok(account) => Ok(account),
-        Err(err) => Err(err.to_string())
-    }
-}
 
-struct MicrosoftAuthenticationMethod;
+pub(super) struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
     async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> Result<Account, Box<dyn Error>>
             where F: Fn(String, u8, bool) -> () {

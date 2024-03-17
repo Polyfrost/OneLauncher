@@ -1,8 +1,10 @@
 use std::error::Error;
 
 use serde::{Deserialize, Serialize};
-use tauri::{plugin::TauriPlugin, AppHandle, Runtime};
+use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime};
 use tauri_plugin_http::reqwest::Client;
+
+use self::microsoft_auth::MicrosoftAuthenticationMethod;
 
 mod microsoft_auth;
 
@@ -49,7 +51,17 @@ pub trait AuthenticationMethod {
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::new("auth")
     .invoke_handler(tauri::generate_handler![
-        microsoft_auth::login_msa
+        login_msa
     ])
     .build()
+}
+
+#[tauri::command]
+async fn login_msa<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<Account, String> {
+    match MicrosoftAuthenticationMethod::auth(&app, |status, stage, was_last| {
+        let _ = app.emit("msa:status", (status, stage, was_last));
+    }).await {
+        Ok(account) => Ok(account),
+        Err(err) => Err(err.to_string())
+    }
 }

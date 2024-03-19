@@ -1,15 +1,40 @@
 import { invoke } from '@tauri-apps/api/core';
+import * as uuid from 'uuid';
 import Button from '../components/base/Button';
 
 function BrowserPage() {
-	function downloadJava() {
-		invoke('download_java_test');
-	}
-
 	return (
 		<div class="flex flex-col gap-y-4">
 			<h1>Browser</h1>
-			<Button onClick={() => downloadJava()}>Download java</Button>
+			<Button
+				onClick={async () => {
+					const value = await invoke('plugin:game|launch_game');
+					console.log(`hello${value}`);
+				}}
+			>
+				Test Button
+			</Button>
+
+			<Button
+				onClick={() => {
+					invoke('plugin:game|set_selected_client', {
+						details: {
+							uuid: uuid.v4(),
+							name: 'my vanilla instance',
+							version: '1.8.9',
+							main_class: 'net.minecraft.client.main.Main',
+							java_version: 'v8',
+							startup_args: ['--username', 'player', '--password', 'password'],
+							client_type: {
+								type: 'Vanilla',
+								manifest: {},
+							},
+						} as game.GameClientDetails,
+					});
+				}}
+			>
+				Test Button2
+			</Button>
 		</div>
 	);
 }

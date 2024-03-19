@@ -1,12 +1,14 @@
-use std::sync::Mutex;
-
 use serde::{Deserialize, Serialize};
 use tauri::{plugin::TauriPlugin, Manager};
+use tokio::sync::Mutex;
+
+use self::client::get_game_client;
 
 pub mod client;
-pub mod manifest;
+mod clients;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum JavaVersion {
     V8,
     V16,
@@ -29,7 +31,7 @@ pub struct GameManagerState {
 }
 
 unsafe impl Send for GameManagerState {}
-
+unsafe impl Sync for GameManagerState {}
 impl Default for GameManagerState {
     fn default() -> Self {
         GameManagerState {
@@ -38,31 +40,38 @@ impl Default for GameManagerState {
     }
 }
 
-pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
+pub fn init() -> TauriPlugin<tauri::Wry> {
     tauri::plugin::Builder::new("game")
         .setup(|app, _| {
             app.manage(Mutex::new(GameManagerState::default()));
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            launch_game
+            launch_game,
+            set_selected_client
         ])
         .build()
 }
 
-enum LaunchGameError {
-    NoGameSelected
+#[tauri::command]
+async fn launch_game(state: tauri::State<'_, Mutex<GameManagerState>>) -> Result<(), String> {
+    let state = state.lock().await;
+    let selected_client = match &state.selected_client {
+        Some(client) => client,
+        None => return Err("No client selected".into())
+    };
+
+    let res = selected_client.launch().await;
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("An error has occurred: {}", e))
+    }
 }
 
 #[tauri::command]
-async fn launch_game<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), u8> {
-    let state = app.state::<Mutex<GameManagerState>>();
-    let state = state.lock().unwrap();
-    match state.selected_client {
-        Some(ref client) => println!("Launching game: {:?}", client.get_manifest().name),
-        None => println!("No game selected")
-    }
-
-    Err(LaunchGameError::NoGameSelected as u8)
+async fn set_selected_client(handle: tauri::AppHandle, state: tauri::State<'_, Mutex<GameManagerState>>, details: client::GameClientDetails) -> Result<(), String> {
+    let mut state = state.lock().await;
+    let client = get_game_client(handle, details);
+    state.selected_client = Some(client);
+    Ok(())
 }

@@ -11,6 +11,8 @@
 		"window:allow-destroy",
 		"window:allow-minimize",
 		"window:allow-start-dragging",
-		"event:default"
+		"event:default",
+		"auth:default",
+		"game:default"
 	]
 }

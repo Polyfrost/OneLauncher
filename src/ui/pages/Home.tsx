@@ -14,7 +14,6 @@ import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
-import { upperFirst } from '../../utils/string';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -62,7 +61,7 @@ function Banner() {
 interface InstanceCardProps {
 	name: string;
 	version: string;
-	client: game.Client;
+	clientType: game.ClientType;
 	id: number;
 	mods?: number;
 	cover?: string;
@@ -100,7 +99,7 @@ function InstanceCard(props: InstanceCardProps) {
 				<div class="flex flex-col gap-1.5">
 					<p class="h-4 font-semibold">{props.name}</p>
 					<p class="h-4 text-xs">
-						{props.client}
+						{props.clientType}
 						{' '}
 						{props.version}
 						{' '}
@@ -167,55 +166,9 @@ function HomePage() {
 	const myInstances: InstanceCardProps[] = [
 		{
 			name: 'Hypixel',
-			client: 'Vanilla',
+			clientType: 'Vanilla',
 			version: '1.8.9',
 			id: 1,
-		},
-		{
-			name: 'OneConfig ??',
-			client: 'Forge',
-			version: '1.8.9',
-			mods: 12,
-			id: 2,
-		},
-		{
-			name: 'Fabulously Optimised',
-			client: 'Fabric',
-			version: '1.20.4',
-			mods: 48,
-			id: 3,
-		},
-		{
-			name: 'sus client',
-			client: 'Other',
-			version: '1.8.9',
-			id: 4,
-		},
-		{
-			name: 'Hypixel',
-			client: 'Vanilla',
-			version: '1.8.9',
-			id: 5,
-		},
-		{
-			name: 'OneConfig ??',
-			client: 'Forge',
-			version: '1.8.9',
-			mods: 12,
-			id: 6,
-		},
-		{
-			name: 'Fabulously Optimised',
-			client: 'Fabric',
-			version: '1.20.4',
-			mods: 48,
-			id: 7,
-		},
-		{
-			name: 'sus client',
-			client: 'Other',
-			version: '1.8.9',
-			id: 8,
 		},
 	];
 

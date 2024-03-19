@@ -3,13 +3,14 @@
 
 use std::error::Error;
 
-use polyfrost_launcher::auth;
+use polyfrost_launcher::{auth, game};
 use tauri::{menu::Menu, App};
 
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(auth::init())
+        .plugin(game::init())
         .menu(|handle| Menu::new(handle))
         .setup(setup)
         .run(tauri::generate_context!())

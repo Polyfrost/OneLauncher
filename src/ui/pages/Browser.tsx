@@ -7,9 +7,11 @@ function BrowserPage() {
 		<div class="flex flex-col gap-y-4">
 			<h1>Browser</h1>
 			<Button
+				// eslint-disable-next-line solid/reactivity
 				onClick={async () => {
-					const value = await invoke('plugin:game|launch_game');
-					console.log(`hello${value}`);
+					await invoke('plugin:game|launch_game');
+					// eslint-disable-next-line no-console
+					console.log(`Game exited`);
 				}}
 			>
 				Test Button

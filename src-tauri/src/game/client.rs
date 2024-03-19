@@ -1,4 +1,4 @@
-use std::{env, error::Error, fs, path::PathBuf};
+use std::{collections::HashMap, env, error::Error, fs, path::PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,8 @@ pub fn get_game_client(handle: AppHandle, details: GameClientDetails) -> Box<dyn
 #[async_trait]
 pub trait GameClient {
     fn new(handle: AppHandle, details: GameClientDetails) -> Self where Self: Sized;
+    fn get_version_urls() -> HashMap<String, String> where Self: Sized;
+    fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> where Self: Sized;
 
     fn get_handle(&self) -> &AppHandle;
     fn get_details(&self) -> &GameClientDetails;

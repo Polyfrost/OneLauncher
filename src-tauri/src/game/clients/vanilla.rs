@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{collections::HashMap, error::Error};
 
 use async_trait::async_trait;
 use tauri::AppHandle;
@@ -9,6 +9,22 @@ use crate::{create_client, create_manifest, game::client::{GameClient, GameClien
 create_manifest!(VanillaManifest {});
 create_client!(VanillaClient {});
 
+pub mod vanilla_impl {
+    use std::error::Error;
+
+    pub async fn install_libraries() -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
+    pub async fn install_natives() -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
+    pub async fn install_assets() -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl GameClient for VanillaClient {
     fn new(handle: AppHandle, details: GameClientDetails) -> Self {
@@ -16,6 +32,14 @@ impl GameClient for VanillaClient {
             handle: handle.clone(),
             details
         }
+    }
+
+    fn get_version_urls() -> HashMap<String, String> {
+        HashMap::new()
+    }
+
+    fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> {
+        Err("a".into())
     }
 
     fn get_handle(&self) -> &AppHandle {
@@ -31,9 +55,9 @@ impl GameClient for VanillaClient {
     }
 
     async fn install(&self) -> Result<(), Box<dyn Error>> {
-        println!("Installing Vanilla client");
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        println!("Vanilla client installed");
+        vanilla_impl::install_libraries().await?;
+        vanilla_impl::install_natives().await?;
+        vanilla_impl::install_assets().await?;
         Ok(())
     }
 

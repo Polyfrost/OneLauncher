@@ -6,6 +6,11 @@ export default petal({
 	typescript: true,
 	solid: true,
 	gitignore: true,
+	toml: {
+		overrides: {
+			'toml/padding-line-between-pairs': 'off',
+		},
+	},
 	ignores: [
 		'**/target',
 		'**/dist',

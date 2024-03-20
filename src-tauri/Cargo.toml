@@ -15,7 +15,6 @@ tauri-build = { version = "2.0.0-beta", features = [] }
 
 [dependencies]
 poly-prisma = { path = "../crates/prisma" }
-poly-utils = { path = "../crates/utils" }
 tauri = { version = "2.0.0-beta", features = [] }
 tauri-plugin-shell = "2.0.0-beta.2"
 tauri-plugin-http = "2.0.0-beta"

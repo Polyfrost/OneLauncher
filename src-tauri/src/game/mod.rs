@@ -61,13 +61,17 @@ async fn launch_game(state: tauri::State<'_, Mutex<GameManagerState>>) -> Result
         None => return Err("No client selected".into())
     };
 
-    let res = selected_client.launch().await;
-    match res {
+    if let Err(err) = selected_client.setup().await {
+        return Err(format!("An error has occurred during install: {}", err));
+    }
+
+    match selected_client.launch().await {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("An error has occurred: {}", e))
     }
 }
 
+// TODO: Implement setting client by UUID, as currently this is creating a new client and setting that
 #[tauri::command]
 async fn set_selected_client(handle: tauri::AppHandle, state: tauri::State<'_, Mutex<GameManagerState>>, details: client::GameClientDetails) -> Result<(), String> {
     let mut state = state.lock().await;

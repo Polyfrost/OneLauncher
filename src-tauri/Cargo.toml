@@ -10,31 +10,18 @@ tauri-build = { version = "2.0.0-beta", features = [] }
 
 [dependencies]
 poly-prisma = { path = "../crates/prisma" }
-rspc = { workspace = true, features = [
-  "tracing",
-  "unstable",
-] }
-tauri-specta = { workspace = true, features = [ "typescript" ] }
-specta = { workspace = true }
-prisma-client-rust = { workspace = true }
-tauri = { workspace = true, features = [] }
-tokio = { workspace = true, features = [
-  "sync",
-  "rt-multi-thread",
-  "io-util",
-  "macros",
-  "time",
-  "process",
-] }
-serde = { workspace = true }
-serde_json = "1"
+tauri = { version = "2.0.0-beta", features = [] }
 tauri-plugin-shell = "2.0.0-beta.2"
 tauri-plugin-http = "2.0.0-beta"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 flate2 = "1.0.28"
 tar = "0.4.40"
 zip = "0.6.6"
 uuid = { workspace = true }
 async-trait = "0.1.78"
+prisma-client-rust = { workspace = true }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

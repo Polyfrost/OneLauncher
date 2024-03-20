@@ -58,7 +58,7 @@ pub fn get_game_client(handle: AppHandle, details: GameClientDetails) -> Box<dyn
 }
 
 #[async_trait]
-pub trait GameClient {
+pub trait GameClient: Send + Sync {
     fn new(handle: AppHandle, details: GameClientDetails) -> Self where Self: Sized;
     fn get_version_urls() -> HashMap<String, String> where Self: Sized;
     fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> where Self: Sized;
@@ -70,7 +70,7 @@ pub trait GameClient {
     }
     
     async fn launch(&self) -> Result<(), Box<dyn Error>>;
-    async fn install(&self) -> Result<(), Box<dyn Error>>;
+    async fn setup(&self) -> Result<(), Box<dyn Error>>;
 
     async fn download_java(&self) -> Result<PathBuf, JavaDownloadError> {
         let config_dir = match self.get_handle().path().app_config_dir() {

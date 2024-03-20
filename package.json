@@ -6,7 +6,7 @@
 	"license": "MIT",
 	"scripts": {
 		"start": "vite",
-		"dev": "vite",
+		"dev": "pnpm tauri dev",
 		"build": "vite build",
 		"serve": "vite preview",
 		"tauri": "tauri",

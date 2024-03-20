@@ -1,5 +1,5 @@
 [package]
-name = "prisma-cli"
+name = "poly-utils"
 version = "0.1.0"
 license = { workspace = true }
 edition = { workspace = true }
@@ -10,4 +10,3 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-prisma-client-rust-cli = { workspace = true }

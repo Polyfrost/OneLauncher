@@ -1,60 +1,60 @@
 datasource db {
-    provider = "sqlite"
-    url = "file:dev.db"
+  provider = "sqlite"
+  url      = "file:dev.db"
 }
 
 generator client {
-    provider = "cargo prisma"
-    output = "../../crates/prisma/src/prisma.rs"
+  provider = "cargo prisma"
+  output   = "../../crates/prisma/src/prisma.rs"
 }
 
 // todo: replace all `path` fields with a model with a checksum n shit
 
 // represents a single minecraft instance
 model Instance {
-    id Int @id @default(autoincrement())
-    name String?
-    path String?
-    hidden Boolean?
+  id     Int      @id @default(autoincrement())
+  name   String?
+  path   String?
+  hidden Boolean?
 
-    time_played DateTime
-    last_played DateTime
-    date_created DateTime
+  time_played  DateTime
+  last_played  DateTime
+  date_created DateTime
 
-    mods Mod[]
-    // java_instance JavaInstance
+  mods Mod[]
 
-    @@map("instance")
+  java_instance    JavaInstance @relation(fields: [java_instance_id], references: [id])
+  java_instance_id Int
+
+  @@map("instance")
 }
 
 model JavaInstance {
-    id Int @id @default(autoincrement())
-    name String?
-    path String?
-    version String?
-    arch String?
+  id      Int     @id @default(autoincrement())
+  name    String?
+  path    String?
+  version String?
+  arch    String?
 
-    /// @local
-    instance_id Int?
-    // instance Instance? @relation(fields: [instance_id], references: [id])
+  instance Instance[]
 
-    @@map("java_instance")
+  @@map("java_instance")
 }
 
 model Mod {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    name String?
-    path String?
-    enabled Boolean @default(true)
-    hidden Boolean?
-    date_added DateTime?
+  name       String?
+  path       String?
+  enabled    Boolean   @default(true)
+  hidden     Boolean?
+  date_added DateTime?
 
-    /// @local
-    instance_id Int?
-    instance Instance? @relation(fields: [instance_id], references: [id], onDelete: SetNull)
+  /// @local
+  instance_id Int?
+  instance    Instance? @relation(fields: [instance_id], references: [id], onDelete: SetNull)
 
-    @@map("location")
+  @@map("location")
 }
 
 // todo the rest of this shit loll

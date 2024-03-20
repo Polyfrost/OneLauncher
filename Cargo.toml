@@ -6,17 +6,25 @@ members = [
 ]
 
 [workspace.package]
-license = "GPL-3.0-only"
+license = "AGPL-3.0-only"
 edition = "2021"
 repository = "https://github.com/Polyfrost/Nexus"
+documentation = "https://docs.polyfrost.org/nexus"
+readme = "README.md"
+homepage = "https://polyfrost.org"
+authors = [ "Polyfrost" ]
 
 [workspace.dependencies]
 prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
 prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
-uuid = { version = "1.7.0", features = [ "serde" ] }
+uuid = { version = "1.8", features = [ "serde" ] }
 serde = { version = "1", features = [ "derive" ] }
 serde_json = { version = "1" }
+flate2 = { version = "1" }
+tar = { version = "0.4" }
+zip = { version = "0.6" }
 tokio = { version = "1", features = [ "full" ] }
+async-trait = { version = "0.1" }
 
 [profile.dev]
 # Make compilation faster on macOS

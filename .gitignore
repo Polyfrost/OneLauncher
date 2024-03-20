@@ -1,6 +1,14 @@
 
 # Prisma
 crates/prisma/src/prisma.rs
+dev.db
+dev.db-journal
+
+# Vendor
+dist
+.eslintcache
+.env*
+vendor/
 
 # Created by https://www.toptal.com/developers/gitignore/api/node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,git
 # Edit at https://www.toptal.com/developers/gitignore?templates=node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,git

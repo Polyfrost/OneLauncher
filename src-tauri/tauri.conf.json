@@ -12,7 +12,7 @@
 			{
 				"title": "polyfrost-launcher",
 				"width": 1280,
-				"height": 800,
+				"height": 802,
 				"minWidth": 1080,
 				"minHeight": 600,
 				"resizable": true,

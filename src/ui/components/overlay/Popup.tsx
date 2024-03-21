@@ -1,13 +1,12 @@
-import type {
-	Accessor,
-	ParentProps,
-	Setter,
-} from 'solid-js';
 import {
 	Show,
 	createEffect,
-	createSignal,
-} from 'solid-js';
+	createSignal } from 'solid-js';
+import type {
+	Accessor,
+	JSX,
+	ParentProps,
+	Setter } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 // eslint-disable-next-line ts/no-namespace
@@ -16,6 +15,7 @@ declare namespace Popup {
 		visible: Accessor<boolean>;
 		setVisible: Setter<boolean>;
 		class?: string;
+		style?: JSX.CSSProperties | string;
 		mount?: Node;
 	}
 }
@@ -54,7 +54,7 @@ function Popup(props: Popup.PopupProps) {
 	return (
 		<Show when={localVisible()}>
 			<Portal mount={props.mount || document.body}>
-				<div ref={popupRef} class={`absolute z-[1000] ${animate()} ${props.class || ''}`}>
+				<div ref={popupRef} style={props.style || ''} class={`absolute z-[1000] ${animate()} ${props.class || ''}`}>
 					{props.children}
 				</div>
 			</Portal>

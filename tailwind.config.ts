@@ -88,6 +88,10 @@ const config: Config = {
 				transparent: 'transparent',
 			},
 
+			borderRadius: {
+				mdlg: '0.438rem',
+			},
+
 			animation: {
 				'fade-in': 'fadeIn 150ms easeOutExpo forwards',
 				'fade-out': 'fadeOut 150ms easeOutExpo forwards',

@@ -35,9 +35,15 @@ function WindowFrame() {
 	});
 
 	return (
-		<div data-tauri-drag-region class="flex flex-row justify-end items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
-			<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
-			<TitlebarButton icon={XCloseIcon} onClick={() => setModalVisible(true)} danger />
+		<div data-tauri-drag-region class="flex flex-row justify-between items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
+			<div class="flex flex-row items-center">
+				{/* Empty */}
+			</div>
+
+			<div class="flex flex-row items-center justify-end">
+				<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
+				<TitlebarButton icon={XCloseIcon} onClick={() => setModalVisible(true)} danger />
+			</div>
 
 			<Modal
 				title="Close OneLauncher?"

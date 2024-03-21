@@ -2,11 +2,13 @@ import {
 	CheckIcon,
 	DotsVerticalIcon,
 	Download01Icon,
+	EyeIcon,
 	PlayIcon,
 	PlusIcon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, createSignal } from 'solid-js';
+import type { Accessor, Setter } from 'solid-js';
+import { For, createSignal, untrack } from 'solid-js';
 import { DragDropProvider, DragDropSensors, SortableProvider, closestCenter, createSortable } from '@thisbeyond/solid-dnd';
 import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
 import { useNavigate } from '@solidjs/router';
@@ -17,6 +19,7 @@ import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
 import Popup from '../components/overlay/Popup';
+import ContextMenu from '../components/overlay/ContextMenu';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -81,6 +84,40 @@ declare module 'solid-js' {
 	}
 }
 
+interface InstanceCardContextMenuProps {
+	pos: Accessor<{ x: number; y: number }>;
+	contextMenuVisible: Accessor<boolean>;
+	setContextMenuVisible: Setter<boolean>;
+	id: string;
+}
+
+function InstanceCardContextMenu(props: InstanceCardContextMenuProps) {
+	const navigate = useNavigate();
+
+	return (
+		<ContextMenu
+			pos={props.pos}
+			visible={props.contextMenuVisible}
+			setVisible={props.setContextMenuVisible}
+		>
+			<ContextMenu.Row
+				icon={<EyeIcon />}
+				text="View"
+				onClick={() => {
+					navigate(`/instances/?id=${props.id}`);
+				}}
+			/>
+
+			<ContextMenu.Seperator />
+
+			<ContextMenu.Row
+				icon={<PlayIcon />}
+				text="Launch"
+			/>
+		</ContextMenu>
+	);
+}
+
 function InstanceCard(props: InstanceCardProps) {
 	const navigate = useNavigate();
 	const [pos, setPos] = createSignal({ x: 0, y: 0 });
@@ -89,7 +126,6 @@ function InstanceCard(props: InstanceCardProps) {
 	const id = () => props.elementId as Id;
 	let ref!: HTMLDivElement;
 
-	// eslint-disable-next-line solid/reactivity
 	const sortable = createSortable(id());
 
 	function didDrag() {
@@ -131,51 +167,50 @@ function InstanceCard(props: InstanceCardProps) {
 	}
 
 	return (
-		<div
-			use:sortable={sortable}
-			onClick={e => openInstancePage(e)}
-			onMouseDown={e => onMouseDown(e)}
-			onMouseUp={e => onMouseUp(e)}
-			onContextMenu={e => openContextMenu(e)}
-			ref={ref}
-			class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05"
-		>
-			<div class="flex-1 relative overflow-hidden rounded-t-xl">
-				<div
-					class="absolute h-full w-full group-hover:!scale-110 transition-transform"
-					style={{ '-webkit-transform': 'translateZ(0)' }} // WebKit starts flickering whenever we try scrolling. This is a 'fix'
-				>
-					<img
-						class={`object-cover h-full w-full ${props.cover ? '' : ' filter grayscale'}`}
-						src={props.cover || defaultCover}
-					/>
-				</div>
-			</div>
-			<div class="z-10 p-3 flex flex-row items-center justify-between">
-				<div class="flex flex-col gap-1.5">
-					<p class="h-4 font-semibold">{props.name}</p>
-					<p class="h-4 text-xs">
-						{props.clientType}
-						{' '}
-						{props.version}
-						{' '}
-						{props.mods && `• ${props.mods} mods`}
-					</p>
-				</div>
-				<Button onClick={e => openContextMenu(e)} styleType="icon" class="w-8 h-8">
-					<DotsVerticalIcon />
-				</Button>
-			</div>
-
-			<Popup visible={contextMenuVisible} setVisible={setContextMenuVisible}>
-				<div class="bg-secondary rounded-xl border border-gray-0.10 w-72 p-2 shadow-lg shadow-black/50">
-					<div class="flex flex-col gap-y-2 text-fg-primary">
-						<p>hello world</p>
-
+		<>
+			<div
+				use:sortable={sortable}
+				onClick={e => openInstancePage(e)}
+				onMouseDown={e => onMouseDown(e)}
+				onMouseUp={e => onMouseUp(e)}
+				onContextMenu={e => openContextMenu(e)}
+				ref={ref}
+				class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05"
+			>
+				<div class="flex-1 relative overflow-hidden rounded-t-xl">
+					<div
+						class="absolute h-full w-full group-hover:!scale-110 transition-transform"
+						style={{ '-webkit-transform': 'translateZ(0)' }}
+					>
+						<img
+							class={`object-cover h-full w-full ${props.cover ? '' : ' filter grayscale'}`}
+							src={props.cover || defaultCover}
+						/>
 					</div>
 				</div>
-			</Popup>
-		</div>
+				<div class="z-10 p-3 flex flex-row items-center justify-between">
+					<div class="flex flex-col gap-1.5">
+						<p class="h-4 font-semibold">{props.name}</p>
+						<p class="h-4 text-xs">
+							{props.clientType}
+							{' '}
+							{props.version}
+							{' '}
+							{props.mods && `• ${props.mods} mods`}
+						</p>
+					</div>
+					<Button onClick={e => openContextMenu(e)} styleType="icon" class="w-8 h-8">
+						<DotsVerticalIcon />
+					</Button>
+				</div>
+			</div>
+			<InstanceCardContextMenu
+				contextMenuVisible={contextMenuVisible}
+				setContextMenuVisible={setContextMenuVisible}
+				pos={pos}
+				id={props.id}
+			/>
+		</>
 	);
 }
 

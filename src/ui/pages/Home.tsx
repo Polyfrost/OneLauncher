@@ -152,7 +152,7 @@ function InstanceGroup(props: InstanceGroupProps) {
 				collisionDetector={closestCenter}
 			>
 				<DragDropSensors />
-				<div class="grid grid-cols-4 gap-4">
+				<div class="grid grid-cols-4 2xl:grid-cols-6 gap-4">
 					<SortableProvider ids={ids()}>
 						<For each={instances()}>{item => <InstanceCard {...item} />}</For>
 					</SortableProvider>

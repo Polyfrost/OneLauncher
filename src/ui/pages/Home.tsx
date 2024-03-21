@@ -9,11 +9,14 @@ import {
 import { For, createSignal } from 'solid-js';
 import { DragDropProvider, DragDropSensors, SortableProvider, closestCenter, createSortable } from '@thisbeyond/solid-dnd';
 import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
+import { useNavigate } from '@solidjs/router';
+import { v4 } from 'uuid';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
+import Popup from '../components/overlay/Popup';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -59,10 +62,11 @@ function Banner() {
 }
 
 interface InstanceCardProps {
+	elementId: number;
+	id: string;
 	name: string;
 	version: string;
 	clientType: game.ClientType;
-	id: number;
 	mods?: number;
 	cover?: string;
 	lastPlayed?: number;
@@ -78,13 +82,65 @@ declare module 'solid-js' {
 }
 
 function InstanceCard(props: InstanceCardProps) {
-	const id = () => props.id as Id;
+	const navigate = useNavigate();
+	const [pos, setPos] = createSignal({ x: 0, y: 0 });
+	const [dragged, setDragged] = createSignal(false);
+	const [contextMenuVisible, setContextMenuVisible] = createSignal(false);
+	const id = () => props.elementId as Id;
+	let ref!: HTMLDivElement;
+
 	// eslint-disable-next-line solid/reactivity
 	const sortable = createSortable(id());
 
+	function didDrag() {
+		const value = dragged();
+		if (value) {
+			setDragged(false);
+			return true;
+		}
+
+		return false;
+	}
+
+	function openInstancePage(_e: MouseEvent) {
+		if (didDrag())
+			return;
+
+		navigate(`/instances/?id=${props.id}`);
+	}
+
+	function openContextMenu(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (didDrag())
+			return;
+
+		setContextMenuVisible(!contextMenuVisible());
+	}
+
+	function onMouseDown(e: MouseEvent) {
+		setPos({ x: e.clientX, y: e.clientY });
+	}
+
+	function onMouseUp(e: MouseEvent) {
+		const xMoved = Math.abs(e.clientX - pos().x) > 3;
+		const yMoved = Math.abs(e.clientY - pos().y) > 3;
+
+		if (xMoved || yMoved)
+			setDragged(true);
+	}
+
 	return (
-		<div use:sortable={sortable} class="h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05 overflow-hidden">
-			<div class="flex-1 relative overflow-hidden">
+		<div
+			use:sortable={sortable}
+			onClick={e => openInstancePage(e)}
+			onMouseDown={e => onMouseDown(e)}
+			onMouseUp={e => onMouseUp(e)}
+			onContextMenu={e => openContextMenu(e)}
+			ref={ref}
+			class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05"
+		>
+			<div class="flex-1 relative overflow-hidden rounded-t-xl">
 				<div
 					class="absolute h-full w-full group-hover:!scale-110 transition-transform"
 					style={{ '-webkit-transform': 'translateZ(0)' }} // WebKit starts flickering whenever we try scrolling. This is a 'fix'
@@ -106,10 +162,19 @@ function InstanceCard(props: InstanceCardProps) {
 						{props.mods && `• ${props.mods} mods`}
 					</p>
 				</div>
-				<Button styleType="icon" class="w-8 h-8">
+				<Button onClick={e => openContextMenu(e)} styleType="icon" class="w-8 h-8">
 					<DotsVerticalIcon />
 				</Button>
 			</div>
+
+			<Popup visible={contextMenuVisible} setVisible={setContextMenuVisible}>
+				<div class="bg-secondary rounded-xl border border-gray-0.10 w-72 p-2 shadow-lg shadow-black/50">
+					<div class="flex flex-col gap-y-2 text-fg-primary">
+						<p>hello world</p>
+
+					</div>
+				</div>
+			</Popup>
 		</div>
 	);
 }
@@ -122,13 +187,15 @@ interface InstanceGroupProps {
 function InstanceGroup(props: InstanceGroupProps) {
 	// eslint-disable-next-line solid/reactivity
 	const [instances, setInstances] = createSignal(props.instances);
-	const ids = () => instances().map(instance => instance.id);
+	const ids = () => instances().map(instance => instance.elementId);
 
 	const onDragStart: DragEventHandler = ({ draggable }) => {
+		draggable.node.setAttribute('data-dragging', 'true');
 		draggable.node.style.zIndex = '1000';
 	};
 
 	const onDragEnd: DragEventHandler = ({ draggable, droppable }) => {
+		draggable.node.setAttribute('data-dragging', 'false');
 		draggable.node.style.zIndex = '';
 		if (draggable && droppable) {
 			const currentItems = ids();
@@ -165,10 +232,21 @@ function InstanceGroup(props: InstanceGroupProps) {
 function HomePage() {
 	const myInstances: InstanceCardProps[] = [
 		{
+			id: v4(),
 			name: 'Hypixel',
 			clientType: 'Vanilla',
 			version: '1.8.9',
-			id: 1,
+			elementId: 1,
+		},
+	];
+
+	const myInstances2: InstanceCardProps[] = [
+		{
+			id: v4(),
+			name: 'Hypixel',
+			clientType: 'Vanilla',
+			version: '1.8.9',
+			elementId: 2,
 		},
 	];
 
@@ -187,7 +265,7 @@ function HomePage() {
 			</div>
 
 			<InstanceGroup title="Hypixel" instances={myInstances} />
-			<InstanceGroup title="Hypixel" instances={myInstances} />
+			<InstanceGroup title="Hypixel" instances={myInstances2} />
 		</div>
 	);
 }

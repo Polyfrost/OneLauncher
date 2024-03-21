@@ -1,7 +1,7 @@
 function InstanceMods() {
 	return (
 		<div>
-			<h1>Mods Config</h1>
+			<h1>This is the Mods page</h1>
 		</div>
 	);
 }

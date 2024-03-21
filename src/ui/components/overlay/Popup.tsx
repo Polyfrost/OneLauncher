@@ -26,7 +26,8 @@ function Popup(props: Popup.PopupProps) {
 
 	let popupRef!: HTMLDivElement;
 
-	function onClick(e: MouseEvent) {
+	function onMouseDown(e: MouseEvent) {
+		e.stopPropagation();
 		if (!popupRef || !localVisible())
 			return;
 
@@ -37,12 +38,12 @@ function Popup(props: Popup.PopupProps) {
 
 	createEffect(() => {
 		if (props.visible()) {
-			document.addEventListener('click', onClick);
+			document.addEventListener('mousedown', onMouseDown);
 			setAnimate('animate-fade-in');
 			setLocalVisible(true);
 		}
 		else {
-			document.removeEventListener('click', onClick);
+			document.removeEventListener('mousedown', onMouseDown);
 			setAnimate('animate-fade-out');
 			setTimeout(() => {
 				setLocalVisible(false);

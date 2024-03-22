@@ -1,4 +1,4 @@
-import { type Accessor, type JSX, createEffect, createSignal, onMount } from 'solid-js';
+import { type Accessor, type JSX, createEffect, createSignal } from 'solid-js';
 import Popup from './Popup';
 
 type ContextMenuProps = {

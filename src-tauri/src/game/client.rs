@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::utils::{file, http};
 
-use super::{clients::vanilla::{VanillaClient, VanillaManifest}, JavaVersion};
+use super::{clients::vanilla::{vanilla_manifest, VanillaClient, VanillaManifest}, JavaVersion};
 
 #[macro_export]
 macro_rules! create_manifest {
@@ -60,8 +60,11 @@ pub fn get_game_client(handle: AppHandle, details: GameClientDetails) -> Box<dyn
 #[async_trait]
 pub trait GameClient: Send + Sync {
     fn new(handle: AppHandle, details: GameClientDetails) -> Self where Self: Sized;
-    fn get_version_urls() -> HashMap<String, String> where Self: Sized;
-    fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> where Self: Sized;
+
+    async fn get_all_version_urls() -> Result<HashMap<String, String>, Box<dyn Error>> where Self: Sized;
+    async fn get_minecraft_manifest(version: String) -> Result<vanilla_manifest::MinecraftManifest, Box<dyn Error>> where Self: Sized;
+
+    // async fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> where Self: Sized;
 
     fn get_handle(&self) -> &AppHandle;
     fn get_details(&self) -> &GameClientDetails;

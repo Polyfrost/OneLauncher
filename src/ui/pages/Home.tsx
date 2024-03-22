@@ -8,7 +8,7 @@ import {
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import type { Accessor, Setter } from 'solid-js';
-import { For, createSignal, untrack } from 'solid-js';
+import { For, createSignal } from 'solid-js';
 import { DragDropProvider, DragDropSensors, SortableProvider, closestCenter, createSortable } from '@thisbeyond/solid-dnd';
 import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
 import { useNavigate } from '@solidjs/router';
@@ -18,7 +18,6 @@ import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
-import Popup from '../components/overlay/Popup';
 import ContextMenu from '../components/overlay/ContextMenu';
 
 // TODO: Replace this into it's own component

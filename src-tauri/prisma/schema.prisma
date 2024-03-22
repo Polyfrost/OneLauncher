@@ -9,6 +9,7 @@ generator client {
 }
 
 // todo: replace all `path` fields with a model with a checksum n shit
+// todo: replace all `String` fields with an enum if applicable
 
 // represents a single minecraft instance
 model Instance {
@@ -19,7 +20,7 @@ model Instance {
 
   time_played  DateTime
   last_played  DateTime
-  date_created DateTime
+  date_created DateTime @default(now())
 
   mods Mod[]
 
@@ -41,7 +42,7 @@ model JavaInstance {
   @@map("java_instance")
 }
 
-model Mod {
+model Asset {
   id Int @id @default(autoincrement())
 
   name       String?
@@ -54,7 +55,46 @@ model Mod {
   instance_id Int?
   instance    Instance? @relation(fields: [instance_id], references: [id], onDelete: SetNull)
 
-  @@map("location")
+  @@map("asset")
 }
 
-// todo the rest of this shit loll
+model MinecraftManifest {
+  id String @id
+  assets String
+  compliance_level Int
+  downloads Downloads
+
+  @@map("minecraft_manifest")
+}
+
+model Downloads {
+  client Client
+
+  @@map("downloads")
+}
+
+model Client {
+  sha1 String @unique
+  size Int
+  url String
+
+  @@map("client")
+}
+
+model JavaVersion {
+  component String
+  major_version MajorVersion @default(VERSION_1_21)
+}
+
+enum MajorVersion {
+  VERSION_1_21
+  VERSION_1_8
+}
+
+model Library {
+  downloads LibraryDownloads
+  name String
+  rules Rule[]
+  extract Extract?
+  natives Natives?
+}

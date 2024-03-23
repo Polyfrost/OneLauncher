@@ -1,8 +1,8 @@
-use std::error::Error;
-
 use serde::{Deserialize, Serialize};
 use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime};
 use tauri_plugin_http::reqwest::Client;
+
+use crate::{PolyError, PolyResult};
 
 use self::microsoft_auth::MicrosoftAuthenticationMethod;
 
@@ -27,10 +27,10 @@ pub struct AccountSkin {
 pub trait AuthenticationMethod {
     /// Authenticate with a given method. Stage is a function that takes a string and a u8.
     /// The string is the message to display to the user, and the u8 is the progress of the authentication.
-    async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> Result<Account, Box<dyn Error>>
+    async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> PolyResult<Account>
         where F: Fn(String, u8, bool) -> ();
 
-    async fn get_profile(access_token: String) -> Result<Account, Box<dyn Error>> {
+    async fn get_profile(access_token: String) -> PolyResult<Account> {
         let response = Client::new()
             .get("https://api.minecraftservices.com/minecraft/profile")
             .header("Authorization", format!("Bearer {}", access_token))
@@ -39,7 +39,7 @@ pub trait AuthenticationMethod {
     
         let response = response.json::<serde_json::Value>().await?;
         if let Some(error) = response.get("error") {
-            return Err(error.to_string().into());
+            return Err(PolyError(error.to_string()));
         }
     
         let account = serde_json::from_value::<Account>(response)?;

@@ -28,6 +28,7 @@ tar = { version = "0.4" }
 zip = { version = "0.6" }
 async-trait = { version = "0.1" }
 thiserror = { version = "1" }
+anyhow = { version = "1" }
 
 [profile.dev]
 # Make compilation faster on macOS

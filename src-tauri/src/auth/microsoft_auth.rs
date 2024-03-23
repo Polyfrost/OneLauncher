@@ -4,13 +4,13 @@ use serde_json::json;
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_shell::ShellExt;
 
-use crate::{constants::CLIENT_ID, utils::http::create_client};
+use crate::{constants::CLIENT_ID, utils::http::create_client, PolyResult};
 
 use super::{Account, AuthenticationMethod};
 
 pub(super) struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
-    async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> <Account, Box<dyn Error>>
+    async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> PolyResult<Account>
             where F: Fn(String, u8, bool) -> () {
         
         stage("Authenticating with Microsoft".into(), 0, false);

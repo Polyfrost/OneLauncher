@@ -28,6 +28,7 @@ uuid = { workspace = true }
 async-trait = { workspace = true }
 prisma-client-rust = { workspace = true }
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

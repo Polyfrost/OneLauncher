@@ -36,9 +36,15 @@ pub enum PolyError {
     #[error("failed to establish a connection to the database: {0}")]
     /// Wrapper around [`prisma_client_rust::NewClientError`] to handle errors occuring while programmatically connecting to Prisma.
     DBConnectionError(#[from] prisma_client_rust::NewClientError),
+    #[error("failed to establish a HTTP connection: {0}")]
+    /// Wrapper around [`reqwest::Error`] to handle HTTP errors.
+    HTTPError(#[from] tauri_plugin_http::reqwest::Error),
     #[error("failed to download java: {0}")]
     /// Wrapper around [`game::client::JavaDownloadError`] to handle Java executable downloading.
     JavaError(#[from] game::client::JavaDownloadError),
+    #[error("file management failed: {0}")]
+    /// Wrapper around [`utils::file::FileError`] to handle file management errors.
+    FileError(#[from] utils::file::FileError),
 }
 
 /// Alias for a [`Result`] with the error type [`PolyError`].

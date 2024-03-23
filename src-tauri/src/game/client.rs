@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::PolyResult;
 
-use super::{minecraft::MinecraftManifest, vanilla};
+use super::{minecraft::{MinecraftManifest, ReleaseType}, vanilla::{self, VanillaImpl}};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
@@ -28,15 +28,32 @@ pub struct Instance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    id: String,
+    url: String,
+    #[serde(default)]
+    release_type: ReleaseType,
+    #[serde(default)]
+    release_time: chrono::DateTime<chrono::Utc>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientType {
-    Vanilla
+    Vanilla(VanillaImpl)
+}
+
+impl ClientType {
+    pub async fn get_versions(&self, file: Option<&PathBuf>) -> PolyResult<Vec<Version>> {
+        match self {
+            ClientType::Vanilla(_) => vanilla::get_versions(file).await
+        }
+    }
 }
 
 #[async_trait]
 pub trait ClientTrait: Send + Sync {
-    fn from_instance(instance: Instance) -> Self where Self: Sized;
-
     async fn launch(&self) -> PolyResult<()>;
     async fn setup(&self) -> PolyResult<()>;
 
@@ -47,6 +64,7 @@ pub trait ClientTrait: Send + Sync {
 }
 
 pub struct ClientManager {
+    handle: AppHandle,
     instances: HashMap<Uuid, Instance>,
     instances_dir: PathBuf,
 
@@ -63,6 +81,7 @@ impl ClientManager {
         let manifests = load_and_serialize::<Manifest>(&manifests_dir)?;
 
         Ok(Self {
+            handle: handle.clone(),
             instances,
             instances_dir,
             manifests,
@@ -101,8 +120,10 @@ impl ClientManager {
         group: Option<Uuid>,
         client: ClientType
     ) -> PolyResult<Uuid> {
-        // TODO: Implement cahcing
-        let url = String::from("https://piston-meta.mojang.com/v1/packages/d546f1707a3f2b7d034eece5ea2e311eda875787/1.8.9.json");
+        let version_cache = self.handle.path().app_config_dir()?.join("versions_cache.json");
+        let versions = client.get_versions(Some(&version_cache)).await?;
+        let url = &versions.iter().find(|v| v.id == version).ok_or(anyhow!("Version not found"))?.url;
+
         let uuid = Uuid::new_v4();
 
         // Save the manifest

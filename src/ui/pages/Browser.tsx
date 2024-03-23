@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import * as uuid from 'uuid';
 import Button from '../components/base/Button';
 
 function BrowserPage() {

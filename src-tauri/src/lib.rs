@@ -52,6 +52,9 @@ pub enum PolyError {
     /// Wrapper around [`anyhow::Error`] to handle generic errors.
 	#[error(transparent)]
 	AnyhowError(#[from] anyhow::Error),
+    /// Wrapper around [`chrono::ParseError`] to handle date parsing errors.
+    #[error("failed to parse a date: {0}")]
+    ChronoError(#[from] chrono::ParseError),
 }
 
 /// Alias for a [`Result`] with the error type [`PolyError`].

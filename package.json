@@ -11,7 +11,7 @@
 		"serve": "vite preview",
 		"tauri": "tauri",
 		"lint": "eslint . --cache",
-		"format": "pnpm lint --fix",
+		"format": "pnpm lint --fix && cargo fmt",
 		"prisma": "cd src-tauri && cargo prisma"
 	},
 	"dependencies": {

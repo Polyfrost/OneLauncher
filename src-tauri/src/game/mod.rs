@@ -7,6 +7,7 @@ use self::client::get_game_client;
 pub mod client;
 mod clients;
 
+// todo move to prisma
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JavaVersion {

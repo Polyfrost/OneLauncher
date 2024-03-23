@@ -1,3 +1,5 @@
+use anyhow::anyhow;
+use thiserror::Error;
 use serde::{Deserialize, Serialize};
 use tauri::{plugin::TauriPlugin, AppHandle, Manager, Runtime};
 use tauri_plugin_http::reqwest::Client;
@@ -7,6 +9,12 @@ use crate::{PolyError, PolyResult};
 use self::microsoft_auth::MicrosoftAuthenticationMethod;
 
 mod microsoft_auth;
+
+#[derive(Error, Debug)]
+pub enum AuthenticationError {
+    #[error(transparent)]
+    MicrosoftError(#[from] microsoft_auth::MicrosoftAuthError)
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Account {
@@ -39,7 +47,7 @@ pub trait AuthenticationMethod {
     
         let response = response.json::<serde_json::Value>().await?;
         if let Some(error) = response.get("error") {
-            return Err(PolyError(error.to_string()));
+            return Err(PolyError::AnyhowError(anyhow!(error.to_string())));
         }
     
         let account = serde_json::from_value::<Account>(response)?;

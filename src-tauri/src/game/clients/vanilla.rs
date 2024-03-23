@@ -1,11 +1,12 @@
 use std::{collections::HashMap, error::Error};
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 use tokio::io::{stdout, AsyncWriteExt};
 
-use crate::{create_client, create_manifest, game::client::{GameClient, GameClientDetails, GameClientType}, utils::http};
+use crate::{create_client, create_manifest, game::client::{GameClient, GameClientDetails, GameClientType}, utils::http, PolyError, PolyResult};
 
 create_manifest!(VanillaManifest {
     // minecraft: vanilla_manifest::MinecraftManifest
@@ -22,14 +23,14 @@ impl GameClient for VanillaClient {
         }
     }
 
-    async fn get_all_version_urls() -> Result<HashMap<String, String>, Box<dyn Error>> {
+    async fn get_all_version_urls() -> PolyResult<HashMap<String, String>> {
         const URL: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-        let request = http::create_client().get(URL).send().await?;
+        let request = http::create_client()?.get(URL).send().await.map_err(|err| PolyError::HTTPError(err))?;
 
-        let json = request.json::<Value>().await?;
+        let json = request.json::<Value>().await.map_err(|err| PolyError::HTTPError(err))?;
 
-        let versions = json.get("versions").ok_or("No versions object")?
-            .as_array().ok_or("Invalid versions object")?; 
+        let versions = json.get("versions").ok_or(PolyError::AnyhowError(anyhow!("failed to get versions object")))?
+            .as_array().ok_or(PolyError::AnyhowError(anyhow!("invalid versions object")))?;
 
         let mut map = HashMap::new();
 
@@ -157,6 +158,7 @@ pub mod vanilla_impl {
     }
 }
 
+// todo move to prisma
 pub mod vanilla_manifest {
     use serde::Deserialize;
     use serde::Serialize;

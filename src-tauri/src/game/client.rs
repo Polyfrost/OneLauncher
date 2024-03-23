@@ -173,7 +173,7 @@ async fn get_java_versions(java_version: &JavaVersion, os: &str, archive_type: &
         archive_type
     );
 
-    let response = match http::create_client().get(&url).send().await {
+    let response = match http::create_client()?.get(&url).send().await {
         Ok(response) => match response.json::<serde_json::Value>().await {
             Ok(json) => json,
             Err(err) => return Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound(err.to_string())))

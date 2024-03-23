@@ -11,6 +11,9 @@ pub enum PolyError {
     #[error("a tauri runtime error occured (this should not happen): {0}")]
     /// Wrapper around [`tauri::Error`] to handle expected Tauri errors.
     TauriError(#[from] tauri::Error),
+    #[error("failed to manage shell task: {0}")]
+    /// Wrapper around [`tauri_plugin_shell::Error`] to handle shell errors.
+    TauriShellError(#[from] tauri_plugin_shell::Error),
     #[error("failed to manage a tokio semaphore: {0}")]
     /// Wrapper around [`tokio::sync::AcquireError`] to handle sempahore errors.
     TokioError(#[from] tokio::sync::AcquireError),
@@ -42,9 +45,14 @@ pub enum PolyError {
     #[error("failed to download java: {0}")]
     /// Wrapper around [`game::client::JavaDownloadError`] to handle Java executable downloading.
     JavaError(#[from] game::client::JavaDownloadError),
-    #[error("file management failed: {0}")]
-    /// Wrapper around [`utils::file::FileError`] to handle file management errors.
-    FileError(#[from] utils::file::FileError),
+    /// Wrapper around [`zip::result::ZipError`] to handle zip errors.
+    #[error("failed to manage zip files: {0}")]
+    ZipError(#[from] zip::result::ZipError),
+    #[error("failed to authenticate: {0}")]
+    // Wrapper around [`auth::AuthenticationError`] to handle authentication errors.
+    AuthError(#[from] auth::AuthenticationError),
+    #[error(transparent)]
+    AnyhowError(#[from] anyhow::Error),
 }
 
 /// Alias for a [`Result`] with the error type [`PolyError`].

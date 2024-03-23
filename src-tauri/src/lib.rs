@@ -5,6 +5,10 @@ pub mod constants;
 pub mod game;
 pub mod utils;
 
+pub struct AppState {
+    // pub ,
+}
+
 /// A standardized [`Error`] type that is used across the launcher
 #[derive(Debug, Error)]
 pub enum PolyError {
@@ -33,24 +37,19 @@ pub enum PolyError {
 	#[error("failed to manage writing and reading of files: {0}")]
 	/// Wrapper around [`std::io::Error`] only to be used if a more defined error isn't available (e.g. when using `zip`)
 	IOError(#[from] std::io::Error),
-	#[error("failed to query the database: {0}")]
-	/// Wrapper around [`prisma_client_rust::QueryError`] to handle DB query errors.
-	DBQueryError(#[from] prisma_client_rust::QueryError),
-	#[error("failed to establish a connection to the database: {0}")]
-	/// Wrapper around [`prisma_client_rust::NewClientError`] to handle errors occuring while programmatically connecting to Prisma.
-	DBConnectionError(#[from] prisma_client_rust::NewClientError),
 	#[error("failed to establish a HTTP connection: {0}")]
 	/// Wrapper around [`reqwest::Error`] to handle HTTP errors.
 	HTTPError(#[from] tauri_plugin_http::reqwest::Error),
 	#[error("failed to download java: {0}")]
 	/// Wrapper around [`game::client::JavaDownloadError`] to handle Java executable downloading.
-	JavaError(#[from] game::client::JavaDownloadError),
+	JavaError(#[from] game::java::JavaDownloadError),
 	/// Wrapper around [`zip::result::ZipError`] to handle zip errors.
 	#[error("failed to manage zip files: {0}")]
 	ZipError(#[from] zip::result::ZipError),
 	#[error("failed to authenticate: {0}")]
-	// Wrapper around [`auth::AuthenticationError`] to handle authentication errors.
+	/// Wrapper around [`auth::AuthenticationError`] to handle authentication errors.
 	AuthError(#[from] auth::AuthenticationError),
+    /// Wrapper around [`anyhow::Error`] to handle generic errors.
 	#[error(transparent)]
 	AnyhowError(#[from] anyhow::Error),
 }

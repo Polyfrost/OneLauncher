@@ -6,11 +6,12 @@ use std::error::Error;
 use polyfrost_launcher::{auth, game};
 use tauri::{menu::Menu, App};
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
 		.plugin(auth::init())
-		.plugin(game::init())
+		.plugin(game::plugin::init())
 		.menu(|handle| Menu::new(handle))
 		.setup(setup)
 		.run(tauri::generate_context!())

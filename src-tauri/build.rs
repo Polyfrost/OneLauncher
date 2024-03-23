@@ -6,7 +6,11 @@ fn main() {
 			.plugin("auth", InlinedPlugin::new().commands(&["login_msa"]))
 			.plugin(
 				"game",
-				InlinedPlugin::new().commands(&["launch_game", "set_selected_client"]),
+				InlinedPlugin::new().commands(&[
+                    "create_instance",
+                    "get_instances",
+                    "get_instance"
+                ]),
 			),
 	);
 }

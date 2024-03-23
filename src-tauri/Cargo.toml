@@ -14,7 +14,6 @@ authors = { workspace = true }
 tauri-build = { workspace = true }
 
 [dependencies]
-poly-prisma = { path = "../crates/prisma" }
 tauri = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-http = { workspace = true }
@@ -26,9 +25,10 @@ tar = { workspace = true }
 zip = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
-prisma-client-rust = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+chrono = { workspace = true }
+sha1 = "0.10.6"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

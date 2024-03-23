@@ -18,24 +18,28 @@ function BrowserPage() {
 			</Button>
 
 			<Button
-				onClick={() => {
-					invoke('plugin:game|set_selected_client', {
-						details: {
-							uuid: uuid.v4(),
-							name: 'my vanilla instance',
-							version: '1.8.9',
-							main_class: 'net.minecraft.client.main.Main',
-							java_version: 'v8',
-							startup_args: ['--username', 'player', '--password', 'password'],
-							client_type: {
-								type: 'Vanilla',
-								manifest: {},
-							},
-						} as game.GameClientDetails,
-					});
+				onClick={async () => {
+					const result = invoke('plugin:game|get_instances');
+					console.log(result);
 				}}
 			>
-				Test Button2
+				Test Button 2
+			</Button>
+
+			<Button
+				onClick={async () => {
+					const result = await invoke('plugin:game|create_instance', {
+						name: 'My epic instance name',
+						version: '1.8.9',
+						client: {
+							type: 'Vanilla',
+						},
+					});
+
+					console.log(result);
+				}}
+			>
+				Test Button 3
 			</Button>
 		</div>
 	);

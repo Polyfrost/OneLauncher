@@ -1,6 +1,7 @@
 [default]
 description = "Default permissions for the plugin"
 permissions = [
-  "allow-launch-game",
-  "allow-set-selected-client"
+  "allow-get-instance",
+  "allow-get-instances",
+  "allow-create-instance"
 ]

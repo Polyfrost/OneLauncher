@@ -29,6 +29,6 @@ pub async fn download_file(url: &str, path: &Path) -> PolyResult<()> {
 			.await
 			.map_err(|err| PolyError::HTTPError(err))?,
 	);
-	io::copy(&mut content, &mut file).map_err(|err| PolyError::IOError(err));
+	io::copy(&mut content, &mut file).map_err(|err| PolyError::IOError(err))?;
 	Ok(())
 }

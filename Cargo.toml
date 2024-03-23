@@ -1,9 +1,6 @@
 [workspace]
 resolver = "2"
-members = [
-  "src-tauri",
-  "crates/*",
-]
+members = [ "src-tauri", ]
 
 [workspace.package]
 license = "AGPL-3.0-only"
@@ -20,12 +17,10 @@ tauri-build = { version = "2.0.0-beta", features = [] }
 tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-http = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
-prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
-prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
-
 uuid = { version = "1.8", features = [ "serde" ] }
-serde = { version = "1", features = [ "derive" ] }
 tokio = { version = "1", features = [ "full" ] }
+serde = { version = "1", features = [ "derive" ] }
+chrono = { version = "0.4", features = [ "serde" ] }
 
 serde_json = { version = "1" }
 flate2 = { version = "1" }

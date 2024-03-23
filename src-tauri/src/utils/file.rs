@@ -25,10 +25,10 @@ pub fn extract_archive(archive: &Path, dest: &Path) -> PolyResult<()> {
 
 pub fn extract_zip(archive: &Path, dest: &Path) -> PolyResult<()> {
 	let file = File::open(archive).map_err(|err| PolyError::IOError(err))?;
-	let mut archive = zip::ZipArchive::new(file).map_err(|err| PolyError::ZipError(err));
+	let archive = zip::ZipArchive::new(file).map_err(|err| PolyError::ZipError(err));
 	archive?
 		.extract(dest)
-		.map_err(|err| PolyError::ZipError(err));
+		.map_err(|err| PolyError::ZipError(err))?;
 	Ok(())
 }
 
@@ -36,6 +36,6 @@ pub fn extract_tar_gz(archive: &Path, dest: &Path) -> PolyResult<()> {
 	let file = File::open(archive).map_err(|err| PolyError::IOError(err))?;
 	let tar_gz = flate2::read::GzDecoder::new(file);
 	let mut archive = tar::Archive::new(tar_gz);
-	archive.unpack(dest).map_err(|err| PolyError::IOError(err));
+	archive.unpack(dest).map_err(|err| PolyError::IOError(err))?;
 	Ok(())
 }

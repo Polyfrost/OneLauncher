@@ -11,13 +11,13 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [build-dependencies]
-tauri-build = { version = "2.0.0-beta", features = [] }
+tauri-build = { workspace = true }
 
 [dependencies]
 poly-prisma = { path = "../crates/prisma" }
-tauri = { version = "2.0.0-beta", features = [] }
-tauri-plugin-shell = "2.0.0-beta.2"
-tauri-plugin-http = "2.0.0-beta"
+tauri = { workspace = true }
+tauri-plugin-shell = { workspace = true }
+tauri-plugin-http = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

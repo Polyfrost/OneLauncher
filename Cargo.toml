@@ -15,6 +15,11 @@ homepage = "https://polyfrost.org"
 authors = [ "Polyfrost" ]
 
 [workspace.dependencies]
+tauri = { version = "2.0.0-beta", features = [] }
+tauri-build = { version = "2.0.0-beta", features = [] }
+tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-http = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+
 prisma-client-rust = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
 prisma-client-rust-cli = { git = "https://github.com/Brendonovich/prisma-client-rust", tag = "0.6.11", default-features = false, features = [ "sqlite" ] }
 

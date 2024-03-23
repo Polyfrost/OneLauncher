@@ -1,12 +1,13 @@
-use std::{collections::HashMap, env, error::Error, fs, path::PathBuf};
+use std::{collections::HashMap, env, fs, path::PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
+use thiserror::Error;
 use uuid::Uuid;
 
-use crate::utils::{file, http};
+use crate::{utils::{file, http}, PolyError, PolyResult};
 
 use super::{clients::vanilla::{vanilla_manifest, VanillaClient, VanillaManifest}, JavaVersion};
 
@@ -61,8 +62,8 @@ pub fn get_game_client(handle: AppHandle, details: GameClientDetails) -> Box<dyn
 pub trait GameClient: Send + Sync {
     fn new(handle: AppHandle, details: GameClientDetails) -> Self where Self: Sized;
 
-    async fn get_all_version_urls() -> Result<HashMap<String, String>, Box<dyn Error>> where Self: Sized;
-    async fn get_minecraft_manifest(version: String) -> Result<vanilla_manifest::MinecraftManifest, Box<dyn Error>> where Self: Sized;
+    async fn get_all_version_urls() -> PolyResult<HashMap<String, String>> where Self: Sized;
+    async fn get_minecraft_manifest(version: String) -> PolyResult<vanilla_manifest::MinecraftManifest> where Self: Sized;
 
     // async fn get_details_from_version(version: String) -> Result<GameClientDetails, Box<dyn Error>> where Self: Sized;
 
@@ -72,13 +73,14 @@ pub trait GameClient: Send + Sync {
         &self.get_details().client_type
     }
     
-    async fn launch(&self) -> Result<(), Box<dyn Error>>;
-    async fn setup(&self) -> Result<(), Box<dyn Error>>;
+    async fn launch(&self) -> PolyResult<()>;
+    async fn setup(&self) -> PolyResult<()>;
 
-    async fn download_java(&self) -> Result<PathBuf, JavaDownloadError> {
+    async fn download_java(&self) -> PolyResult<PathBuf> {
         let config_dir = match self.get_handle().path().app_config_dir() {
             Ok(dir) => dir,
-            Err(_) => return Err(JavaDownloadError::UnsupportedOS)
+            // SURELY THERES A BETTER WAY TO DO THIS IDK LOLL
+            Err(err) => return Err(PolyError::JavaError(JavaDownloadError::UnsupportedOS(err.to_string())))
         };
     
         let java_dir = config_dir.join("java");
@@ -86,7 +88,7 @@ pub trait GameClient: Send + Sync {
         if !java_dir.exists() {
             match fs::create_dir_all(&java_dir) {
                 Ok(_) => (),
-                Err(_) => return Err(JavaDownloadError::PermissionDenied)
+                Err(err) => return Err(PolyError::JavaError(JavaDownloadError::PermissionDenied(err.to_string())))
             };
         }
         
@@ -96,7 +98,7 @@ pub trait GameClient: Send + Sync {
             "windows" => "zip",
             "macos" => "tar.gz",
             "linux" => "tar.gz",
-            _ => return Err(JavaDownloadError::UnsupportedOS)
+            _ => return Err(PolyError::JavaError(JavaDownloadError::UnsupportedOS(os.to_string())))
         };
     
         let archive_name = format!("zulu-{}.{}", java_version.to_string(), archive_type);
@@ -115,29 +117,35 @@ pub trait GameClient: Send + Sync {
         if let Ok(mut files) = fs::read_dir(&dest) {
             let file = match files.nth(0) {
                 Some(file) => file.unwrap().path(),
-                None => return Err(JavaDownloadError::NoJavaVersionFound)
+                None => return Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound("unable to get the java executable file".to_string())))
             };
     
             return Ok(file.join("bin").join("java"));
         }
     
-        Err(JavaDownloadError::NoJavaVersionFound)
+        Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound("unable to download the java executable file".to_string())))
     }
 }
 
 #[async_trait]
 pub trait ModdedGameClient: GameClient {
-    async fn install_mods(&self) -> Result<(), Box<dyn Error>>;
+    async fn install_mods(&self) -> PolyResult<()>;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum JavaDownloadError {
-    NoJavaVersionFound,
-    PermissionDenied,
-    UnsupportedOS,
-    UnsupportedArch,
-    ExtractError,
-    DownloadError,
+    #[error("failed to find a valid java version: {0}")]
+    NoJavaVersionFound(String),
+    #[error("failed creating a java directory (try running at an elevated permission): {0}")]
+    PermissionDenied(String),
+    #[error("unable to match your operating system ({0}) with a valid java version")]
+    UnsupportedOS(String),
+    #[error("unable to match your architecture ({0}) with a valid java version")]
+    UnsupportedArch(String),
+    #[error("failed to extract the java executable: {0}")]
+    ExtractError(String),
+    #[error("failed to download the java executable")]
+    DownloadError(String),
 }
 
 fn get_arch() -> String {
@@ -151,7 +159,7 @@ fn get_arch() -> String {
     }.to_string()
 }
 
-async fn get_java_versions(java_version: &JavaVersion, os: &str, archive_type: &str) -> Result<Value, JavaDownloadError> {
+async fn get_java_versions(java_version: &JavaVersion, os: &str, archive_type: &str) -> PolyResult<Value> {
     let url = format!("
         https://api.azul.com/metadata/v1/zulu/packages/\
         ?java_version={}\
@@ -168,36 +176,36 @@ async fn get_java_versions(java_version: &JavaVersion, os: &str, archive_type: &
     let response = match http::create_client().get(&url).send().await {
         Ok(response) => match response.json::<serde_json::Value>().await {
             Ok(json) => json,
-            Err(_) => return Err(JavaDownloadError::NoJavaVersionFound)
+            Err(err) => return Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound(err.to_string())))
         },
-        Err(_) => return Err(JavaDownloadError::NoJavaVersionFound)
+        Err(err) => return Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound(err.to_string())))
     };
 
     if !response.is_array() || response.as_array().unwrap().is_empty() {
-        return Err(JavaDownloadError::NoJavaVersionFound);
+        return Err(PolyError::JavaError(JavaDownloadError::NoJavaVersionFound("didn't get the expected java api result".to_string())));
     }
 
     Ok(response)
 }
 
-async fn download(java_version: &JavaVersion, os: &str, archive_type: &str, archive: &PathBuf) -> Result<(), JavaDownloadError> {
+async fn download(java_version: &JavaVersion, os: &str, archive_type: &str, archive: &PathBuf) -> PolyResult<()> {
     let response = get_java_versions(java_version, os, archive_type).await?;
     let latest = response.as_array().unwrap().first().unwrap();
     let download_url = latest.get("download_url").unwrap().as_str().unwrap();
 
     if let Err(err) = http::download_file(download_url, archive.as_path()).await {
-        eprintln!("{}", err);
-        return Err(JavaDownloadError::DownloadError);
+        // eprintln!("{}", err);
+        return Err(PolyError::JavaError(JavaDownloadError::DownloadError(err.to_string())));
     };
     
     Ok(())
 }
 
-fn extract(archive: &PathBuf, dest: &PathBuf) -> Result<(), JavaDownloadError> {
+fn extract(archive: &PathBuf, dest: &PathBuf) -> PolyResult<()> {
     if let Err(err) = file::extract_archive(archive.as_path(), dest.as_path()) {
-        eprintln!("{}", err);
+        // eprintln!("{}", err);
         let _ = fs::remove_file(dest.as_path());
-        return Err(JavaDownloadError::ExtractError);
+        return Err(PolyError::JavaError(JavaDownloadError::ExtractError(err.to_string())));
     }
 
     let _ = fs::remove_file(archive.as_path());

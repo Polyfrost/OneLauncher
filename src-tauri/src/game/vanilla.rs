@@ -2,14 +2,27 @@ use std::{fs, path::PathBuf};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use crate::{constants::MINECRAFT_VERSIONS_MANIFEST, utils::http, PolyResult};
-use super::{client::{ClientTrait, Version}, minecraft::MinecraftManifest};
+use crate::{constants::MINECRAFT_VERSIONS_MANIFEST, create_game_client, impl_game_client, utils::http, PolyResult};
+use super::{client::{ClientTrait, Instance, Manifest, Version}, minecraft::MinecraftManifest};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VanillaImpl;
+create_game_client! {
+    VanillaClientProps {}
+
+    VanillaClient {}
+}
 
 #[async_trait]
-impl ClientTrait for VanillaImpl {
+impl<'a> ClientTrait<'a> for VanillaClient<'a> {
+    impl_game_client!();
+    
+    fn new(handle: tauri::AppHandle, instance: &'a Instance, manifest: &'a Manifest) -> Self {
+        VanillaClient {
+            handle,
+            instance,
+            manifest
+        }
+    }
+
     async fn launch(&self) -> PolyResult<()> {
         Ok(())
     }
@@ -19,6 +32,8 @@ impl ClientTrait for VanillaImpl {
     }
 
     async fn install_game(&self) -> PolyResult<()> {
+        let artifact = &self.manifest.manifest.downloads.client;
+
         Ok(())
     }
 

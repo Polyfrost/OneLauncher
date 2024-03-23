@@ -9,7 +9,18 @@ use uuid::Uuid;
 
 use crate::PolyResult;
 
-use super::{minecraft::{MinecraftManifest, ReleaseType}, vanilla::{self, VanillaImpl}};
+use super::{minecraft::{MinecraftManifest, ReleaseType}, vanilla::{self, VanillaClientProps}};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Version {
+    id: String,
+    url: String,
+    #[serde(default)]
+    release_type: ReleaseType,
+    #[serde(default)]
+    release_time: chrono::DateTime<chrono::Utc>
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
@@ -28,20 +39,9 @@ pub struct Instance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Version {
-    id: String,
-    url: String,
-    #[serde(default)]
-    release_type: ReleaseType,
-    #[serde(default)]
-    release_time: chrono::DateTime<chrono::Utc>
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientType {
-    Vanilla(VanillaImpl)
+    Vanilla(VanillaClientProps)
 }
 
 impl ClientType {
@@ -53,7 +53,15 @@ impl ClientType {
 }
 
 #[async_trait]
-pub trait ClientTrait: Send + Sync {
+pub trait ClientTrait<'a>: Send + Sync {
+    fn get_impl(handle: AppHandle, client: &'a ClientType, instance: &'a Instance, manifest: &'a Manifest) -> Box<dyn ClientTrait<'a> + 'a> where Self: Sized {
+        Box::new(match client {
+            ClientType::Vanilla(_) => vanilla::VanillaClient::new(handle, instance, manifest)
+        })
+    }
+
+    fn new(handle: AppHandle, instance: &'a Instance, manifest: &'a Manifest) -> Self where Self: Sized;
+
     async fn launch(&self) -> PolyResult<()>;
     async fn setup(&self) -> PolyResult<()>;
 
@@ -61,6 +69,55 @@ pub trait ClientTrait: Send + Sync {
     async fn install_libraries(&self) -> PolyResult<String>;
     async fn install_natives(&self) -> PolyResult<()>;
     async fn install_assets(&self) -> PolyResult<()>;
+
+    fn get_instance(&self) -> &'a Instance where Self: Sized;
+    fn get_manifest(&self) -> &'a Manifest where Self: Sized;
+    fn get_handle(&'a self) -> &'a AppHandle where Self: Sized;
+}
+
+#[macro_export]
+macro_rules! create_game_client_props {
+    ($client:ident { $($name:ident: $type:ty),* }) => {
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        pub struct $client {
+            $(pub $name: $type),*
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! create_game_client {
+    ($props:ident { $($props_name:ident: $props_type:ty),* } $client:ident { $($name:ident: $type:ty),* }) => {
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        pub struct $props {
+            $(pub $props_name: $props_type),*
+        }
+
+        #[derive(Debug, Clone)]
+        pub struct $client<'a> {
+            pub handle: tauri::AppHandle,
+            pub instance: &'a crate::game::client::Instance,
+            pub manifest: &'a crate::game::client::Manifest,
+            $(pub $name: $type),*
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_game_client {
+    () => {
+        fn get_instance(&self) -> &'a crate::game::client::Instance where Self: Sized {
+            self.instance
+        }
+
+        fn get_manifest(&self) -> &'a crate::game::client::Manifest where Self: Sized {
+            self.manifest
+        }
+
+        fn get_handle(&'a self) -> &'a tauri::AppHandle where Self: Sized {
+            &self.handle
+        }
+    };
 }
 
 pub struct ClientManager {

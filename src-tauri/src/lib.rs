@@ -56,4 +56,4 @@ pub enum PolyError {
 }
 
 /// Alias for a [`Result`] with the error type [`PolyError`].
-pub type PolyResult<T> = std::result::Result<T, PolyError>;
+pub type PolyResult<T> = anyhow::Result<T, PolyError>;

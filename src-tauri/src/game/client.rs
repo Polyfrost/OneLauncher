@@ -73,6 +73,7 @@ pub trait GameClient: Send + Sync {
 	async fn get_all_version_urls() -> PolyResult<HashMap<String, String>>
 	where
 		Self: Sized;
+        
 	async fn get_minecraft_manifest(
 		version: String,
 	) -> PolyResult<vanilla_manifest::MinecraftManifest>

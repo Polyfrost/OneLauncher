@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -52,18 +52,18 @@ impl GameClient for VanillaClient {
 		let mut map = HashMap::new();
 
 		for version in versions {
-			let version = version.as_object().ok_or("Invalid version object")?;
+			let version = version.as_object().ok_or(anyhow!("Invalid version object"))?;
 
 			let id = version
 				.get("id")
-				.ok_or("No id object")?
+				.ok_or(anyhow!("No id object"))?
 				.as_str()
-				.ok_or("Invalid id object")?;
+				.ok_or(anyhow!("Invalid id object"))?;
 			let url = version
 				.get("url")
-				.ok_or("No url object")?
+				.ok_or(anyhow!("No url object"))?
 				.as_str()
-				.ok_or("Invalid url object")?;
+				.ok_or(anyhow!("Invalid url object"))?;
 
 			map.insert(id.to_string(), url.to_string());
 		}
@@ -73,8 +73,8 @@ impl GameClient for VanillaClient {
 
 	async fn get_minecraft_manifest(
 		version_url: String,
-	) -> Result<vanilla_manifest::MinecraftManifest, Box<dyn Error>> {
-		let request = http::create_client().get(version_url).send().await?;
+	) -> PolyResult<vanilla_manifest::MinecraftManifest> {
+		let request = http::create_client()?.get(version_url).send().await?;
 
 		match request.json::<vanilla_manifest::MinecraftManifest>().await {
 			Ok(manifest) => Ok(manifest),
@@ -94,12 +94,12 @@ impl GameClient for VanillaClient {
 		&self.get_details().client_type
 	}
 
-	async fn setup(&self) -> Result<(), Box<dyn Error>> {
+	async fn setup(&self) -> PolyResult<()> {
 		let libraries_dir = self.get_handle().path().app_config_dir()?.join("libraries");
 		let versions = Self::get_all_version_urls().await?;
 		let version = versions
 			.get(&self.get_details().version)
-			.ok_or("Version not found")?
+			.ok_or(anyhow!("Version not found"))?
 			.to_owned();
 		let manifest = Self::get_minecraft_manifest(version).await?;
 
@@ -110,7 +110,7 @@ impl GameClient for VanillaClient {
 		Ok(())
 	}
 
-	async fn launch(&self) -> Result<(), Box<dyn Error>> {
+	async fn launch(&self) -> PolyResult<()> {
 		println!("Launching Vanilla client");
 		tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 		println!("Vanilla client launched");
@@ -122,40 +122,22 @@ impl GameClient for VanillaClient {
 }
 
 pub mod vanilla_impl {
-	use std::{error::Error, fs, path::PathBuf};
+	use std::{fs, path::PathBuf};
 
-	use serde_json::{Map, Value};
-	use tauri::AppHandle;
+	use anyhow::anyhow;
 
-	use crate::utils::http::download_file;
+use crate::{utils::http::download_file, PolyResult};
 
-	use super::vanilla_manifest::{self, Library};
+	use super::vanilla_manifest::Library;
 
 	pub async fn setup_libraries(
 		libraries: &Vec<Library>,
 		libraries_folder: &PathBuf,
-	) -> Result<Vec<String>, Box<dyn Error>> {
+	) -> PolyResult<Vec<String>> {
 		let mut natives_ret: Vec<&Library> = vec![];
 		let mut libraries_ret: Vec<String> = vec![];
 
 		for library in libraries {
-			// let library: &Map<String, Value> = library.as_object().unwrap();
-
-			// if let Some(_) = library.get("natives") {
-			//     natives_ret.push(library);
-			//     continue;
-			// }
-
-			// let artifact = library.get("downloads").ok_or("No downloads object")?
-			//     .as_object().ok_or("Invalid downloads object")?
-			//     .get("artifact").ok_or("No artifact object")?
-			//     .as_object().ok_or("Invalid artifact object")?;
-
-			// let path = artifact.get("path").ok_or("No path object")?
-			//     .as_str().ok_or("Invalid path object")?;
-			// let url = artifact.get("url").ok_or("No url object")?
-			//     .as_str().ok_or("Invalid url object")?;
-
 			if let Some(_) = library.natives {
 				natives_ret.push(library);
 				continue;
@@ -165,14 +147,14 @@ pub mod vanilla_impl {
 				.downloads
 				.artifact
 				.clone()
-				.ok_or("No artifact object")?;
+				.ok_or(anyhow!("No artifact object"))?;
 			let path = artifact.path;
 			let url = artifact.url;
 
 			// TODO: Add checks for rules + platform
 
 			let dest = libraries_folder.join(path);
-			fs::create_dir_all(dest.parent().ok_or("Couldn't get library parent")?)?;
+			fs::create_dir_all(dest.parent().ok_or(anyhow!("Couldn't get library parent"))?)?;
 
 			if !dest.exists() {
 				download_file(url.as_str(), &dest).await?;
@@ -180,7 +162,7 @@ pub mod vanilla_impl {
 
 			libraries_ret.push(
 				dest.to_str()
-					.ok_or("Couldn't get library path")?
+					.ok_or(anyhow!("Couldn't get library path"))?
 					.to_string(),
 			);
 		}
@@ -188,11 +170,11 @@ pub mod vanilla_impl {
 		Ok(libraries_ret)
 	}
 
-	pub async fn setup_natives() -> Result<(), Box<dyn Error>> {
+	pub async fn setup_natives() -> PolyResult<()> {
 		Ok(())
 	}
 
-	pub async fn setup_assets() -> Result<(), Box<dyn Error>> {
+	pub async fn setup_assets() -> PolyResult<()> {
 		Ok(())
 	}
 }

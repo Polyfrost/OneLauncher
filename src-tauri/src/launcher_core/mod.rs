@@ -1,5 +1,5 @@
 use launcher_core::game::client::ClientManager;
-use tauri::{plugin::TauriPlugin, Manager};
+use tauri::{plugin::TauriPlugin, Manager, State};
 use tokio::sync::Mutex;
 
 mod auth;
@@ -26,6 +26,17 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             game::create_instance,
             game::get_instances,
             game::get_instance,
+            game::get_manifest,
+            refresh_client_manager,
         ])
 		.build()
+}
+
+#[tauri::command]
+async fn refresh_client_manager(
+    state: State<'_, Mutex<GameManagerState>>
+) -> Result<(), String> {
+    let mut state = state.lock().await;
+    state.client_manager = ClientManager::new()?;
+    Ok(())
 }

@@ -22,13 +22,14 @@ pub struct Version {
     release_time: chrono::DateTime<chrono::Utc>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub id: Uuid,
     pub manifest: MinecraftManifest
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Instance {
     pub id: Uuid,
     pub created_at: DateTime<Local>,
@@ -66,7 +67,7 @@ pub trait ClientTrait<'a>: Send + Sync {
     async fn launch(&self) -> PolyResult<()>;
     async fn setup(&self) -> PolyResult<()>;
 
-    async fn install_game(&self) -> PolyResult<()>;
+    async fn install_game(&self) -> PolyResult<PathBuf>;
     async fn install_libraries(&self) -> PolyResult<String>;
     async fn install_natives(&self) -> PolyResult<()>;
     async fn install_assets(&self) -> PolyResult<()>;
@@ -236,8 +237,21 @@ fn load_and_serialize<T>(dir: &PathBuf) -> PolyResult<HashMap<Uuid, T>> where T:
         };
 
         let path = file.path();
-        let content = fs::read_to_string(&path)?;
-        let parsed = serde_json::from_str::<T>(&content)?;
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => {
+                eprintln!("Couldn't read file: '{:?}'", path);
+                continue;
+            }
+        };
+
+        let parsed = match serde_json::from_str::<T>(&content) {
+            Ok(parsed) => parsed,
+            Err(_) => {
+                eprintln!("Couldn't parse file content as JSON: '{:?}'", content);
+                continue;
+            }
+        };
 
         result.insert(uuid, parsed);
     }

@@ -1,7 +1,19 @@
 use anyhow::anyhow;
-use std::{fs::File, path::Path};
+use sha1::{Digest, Sha1};
+use std::{fs::File, io::BufReader, path::{Path, PathBuf}};
 
 use crate::{PolyError, PolyResult};
+
+pub fn file_sha1(file: &PathBuf) -> PolyResult<String> {
+    let file = File::open(file)?;
+    let reader = BufReader::new(file);
+
+    let mut hasher = Sha1::new();
+    hasher.update(&reader.buffer());
+    let hash = hasher.finalize();
+
+    Ok(format!("{:x}", hash))
+}
 
 pub fn extract_archive(archive: &Path, dest: &Path) -> PolyResult<()> {
 	let ext = match archive.extension() {

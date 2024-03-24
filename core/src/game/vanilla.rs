@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use crate::{constants::MINECRAFT_VERSIONS_MANIFEST, create_game_client, impl_game_client, utils::http, PolyResult};
+use crate::{constants::MINECRAFT_VERSIONS_MANIFEST, create_game_client, impl_game_client, utils::{dirs, file, http}, PolyResult};
 use super::{client::{ClientTrait, Instance, Manifest, Version}, minecraft::MinecraftManifest};
 
 create_game_client! {
@@ -30,10 +30,24 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
         Ok(())
     }
 
-    async fn install_game(&self) -> PolyResult<()> {
-        let artifact = &self.manifest.manifest.downloads.client;
+    async fn install_game(&self) -> PolyResult<PathBuf> {
+        let manifest = &self.manifest.manifest;
+        let file = dirs::clients_dir()?.join(format!("{}.jar", manifest.version));
+        
+        if !file.exists() {
+            fs::create_dir_all(&file)?;
+            let artifact = &manifest.downloads.client;
+            
+            http::download_file(&artifact.url, &file).await?;
+            let file_hash = file::file_sha1(&file)?;
+            
+            println!("Downloaded: '{}' | '{}'", file_hash, artifact.sha1);
+            if file_hash != artifact.sha1 {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Hashes do not match").into());
+            }
+        }
 
-        Ok(())
+        Ok(file)
     }
 
     async fn install_libraries(&self) -> PolyResult<String> {

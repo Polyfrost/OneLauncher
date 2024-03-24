@@ -1,8 +1,10 @@
 [default]
 description = "Default permissions for the plugin"
 permissions = [
-  "allow-get-instance",
-  "allow-get-instances",
+  "allow-refresh-client-manager",
   "allow-create-instance",
-  "allow-login-msa"
+  "allow-get-instances",
+  "allow-get-instance",
+  "allow-get-manifest",
+  "allow-login-msa",
 ]

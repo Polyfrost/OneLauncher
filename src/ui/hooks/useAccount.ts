@@ -1,4 +1,4 @@
-function useAccount(): auth.Account {
+function useAccount(): Core.Account {
 	// TODO return the currently logged in account
 
 	return {

@@ -23,4 +23,9 @@ export default petal({
 		'pnpm-lock.yaml',
 		'./src-tauri/prisma/migrations/migration_lock.toml',
 	],
-}, { rules: { 'petal/consistent-list-newline': 'off' } });
+}, {
+	rules: {
+		'petal/consistent-list-newline': 'off',
+		'no-console': 'off',
+	},
+});

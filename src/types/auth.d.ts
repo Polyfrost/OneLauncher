@@ -1,4 +1,4 @@
-declare namespace auth {
+declare namespace Core {
 	export interface Account {
 		username: string;
 		uuid: string;

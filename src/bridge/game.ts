@@ -1,0 +1,30 @@
+import { invoke } from '@tauri-apps/api/core';
+
+export async function getInstance(uuid: string): Promise<Core.Instance> {
+	return await invoke<Core.Instance>('plugin:launcher-core|get_instance', {
+		uuid,
+	});
+}
+
+export async function getManifest(uuid: string): Promise<Core.Manifest> {
+	return await invoke<Core.Manifest>('plugin:launcher-core|get_manifest', {
+		uuid,
+	});
+}
+
+export async function getInstancesWithManifests(): Promise<Core.InstanceWithManifest[]> {
+	const instances = await getInstances();
+
+	return Promise.all(instances.map(async instance => ({
+		instance,
+		manifest: await getManifest(instance.id),
+	})));
+}
+
+export async function getInstances(): Promise<Core.Instance[]> {
+	return await invoke<Core.Instance[]>('plugin:launcher-core|get_instances');
+}
+
+export async function refreshClientManager(): Promise<void> {
+	return await invoke('plugin:launcher-core|refresh_client_manager');
+}

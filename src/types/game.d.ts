@@ -1,22 +1,35 @@
-declare namespace game {
-	export interface GameClientDetails {
-		uuid: Uuid;
-		name: string;
-		version: string;
-		main_class: string;
-		java_version: JavaVersion;
-		startup_args: Vec<string>;
-		client_type: {
-			type: keyof GameClientType;
-			manifest: GameClientType[keyof GameClientType];
-		};
-	}
+declare namespace Core {
+    export interface InstanceWithManifest {
+        instance: Instance,
+        manifest: Manifest,
+    }
 
-	export interface GameClientType {
-		Vanilla: VanillaManifest;
-	}
+    export interface Manifest {
+        id: string,
+        manifest: MinecraftManifest
+    }
 
-	export type ClientType = keyof GameClientType;
+    export interface MinecraftManifest {
+        id: string,
+        javaVersion: {
+            majorVersion: number;
+        },
+    }
 
-	export interface VanillaManifest {}
+	export interface Instance<T extends keyof ClientType = keyof ClientType> {
+        id: string,
+        createdAt: number,
+        name: string,
+        cover: string | null,
+        group: string | null,
+        client: ClientType[T],
+    }
+
+    export interface ClientType {
+        Vanilla: VanillaProps,
+    }
+
+    export interface VanillaProps {
+        type: "Vanilla",
+    }
 }

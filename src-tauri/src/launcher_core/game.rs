@@ -1,4 +1,4 @@
-use launcher_core::game::client::{ClientType, Instance};
+use launcher_core::game::client::{ClientType, Instance, Manifest};
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -35,4 +35,14 @@ pub async fn get_instance(
     let manager = &mut state.lock().await.client_manager;
     let instance = manager.get_instance(uuid)?;
     Ok(instance.clone())
+}
+
+#[tauri::command]
+pub async fn get_manifest(
+    state: State<'_, Mutex<GameManagerState>>,
+    uuid: Uuid
+) -> Result<Manifest, String> {
+    let manager = &mut state.lock().await.client_manager;
+    let manifest = manager.get_manifest(uuid)?;
+    Ok(manifest.clone())
 }

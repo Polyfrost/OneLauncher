@@ -6,8 +6,6 @@ use crate::{constants, PolyResult};
 
 #[derive(Debug, Error)]
 pub enum DirectoryError {
-    #[error("failed to get the user's home directory")]
-    HomeDir,
     #[error("failed to get the user's config directory")]
     ConfigDir,
 }
@@ -32,4 +30,8 @@ pub fn instances_dir() -> PolyResult<PathBuf> {
 
 pub fn manifests_dir() -> PolyResult<PathBuf> {
     Ok(app_config_dir()?.join("manifests"))
+}
+
+pub fn clients_dir() -> PolyResult<PathBuf> {
+    Ok(app_config_dir()?.join("clients"))
 }

@@ -5,20 +5,21 @@ import {
 	EyeIcon,
 	PlayIcon,
 	PlusIcon,
+	RefreshCw01Icon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import type { Accessor, Setter } from 'solid-js';
-import { For, createSignal } from 'solid-js';
+import { For, Suspense, createSignal, lazy } from 'solid-js';
 import { DragDropProvider, DragDropSensors, SortableProvider, closestCenter, createSortable } from '@thisbeyond/solid-dnd';
 import type { DragEventHandler, Id } from '@thisbeyond/solid-dnd';
 import { useNavigate } from '@solidjs/router';
-import { v4 } from 'uuid';
 import image from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
 import ContextMenu from '../components/overlay/ContextMenu';
+import { getInstancesWithManifests, refreshClientManager } from '../../bridge/game';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -63,26 +64,6 @@ function Banner() {
 	);
 }
 
-interface InstanceCardProps {
-	elementId: number;
-	id: string;
-	name: string;
-	version: string;
-	clientType: game.ClientType;
-	mods?: number;
-	cover?: string;
-	lastPlayed?: number;
-}
-
-declare module 'solid-js' {
-	// eslint-disable-next-line ts/no-namespace
-	namespace JSX {
-		interface Directives {
-			sortable: any;
-		}
-	}
-}
-
 interface InstanceCardContextMenuProps {
 	pos: Accessor<{ x: number; y: number }>;
 	contextMenuVisible: Accessor<boolean>;
@@ -117,12 +98,27 @@ function InstanceCardContextMenu(props: InstanceCardContextMenuProps) {
 	);
 }
 
+interface InstanceCardProps {
+	id: number;
+	instance: Core.Instance;
+	manifest: Core.Manifest;
+}
+
+declare module 'solid-js' {
+	// eslint-disable-next-line ts/no-namespace
+	namespace JSX {
+		interface Directives {
+			sortable: any;
+		}
+	}
+}
+
 function InstanceCard(props: InstanceCardProps) {
 	const navigate = useNavigate();
 	const [pos, setPos] = createSignal({ x: 0, y: 0 });
 	const [dragged, setDragged] = createSignal(false);
 	const [contextMenuVisible, setContextMenuVisible] = createSignal(false);
-	const id = () => props.elementId as Id;
+	const id = () => props.id as Id;
 	let ref!: HTMLDivElement;
 
 	const sortable = createSortable(id());
@@ -141,7 +137,7 @@ function InstanceCard(props: InstanceCardProps) {
 		if (didDrag())
 			return;
 
-		navigate(`/instances/?id=${props.id}`);
+		navigate(`/instances/?id=${props.instance.id}`);
 	}
 
 	function openContextMenu(e: MouseEvent) {
@@ -182,20 +178,20 @@ function InstanceCard(props: InstanceCardProps) {
 						style={{ '-webkit-transform': 'translateZ(0)' }}
 					>
 						<img
-							class={`object-cover h-full w-full ${props.cover ? '' : ' filter grayscale'}`}
-							src={props.cover || defaultCover}
+							class={`object-cover h-full w-full ${props.instance.cover ? '' : ' filter grayscale'}`}
+							src={props.instance.cover || defaultCover}
 						/>
 					</div>
 				</div>
 				<div class="z-10 p-3 flex flex-row items-center justify-between">
 					<div class="flex flex-col gap-1.5">
-						<p class="h-4 font-semibold">{props.name}</p>
+						<p class="h-4 font-semibold">{props.instance.name}</p>
 						<p class="h-4 text-xs">
-							{props.clientType}
+							{props.instance.client.type}
 							{' '}
-							{props.version}
-							{' '}
-							{props.mods && `• ${props.mods} mods`}
+							{props.manifest.manifest.id}
+							{/* {' '}
+							{props.instance.mods && `• ${props.mods} mods`} */}
 						</p>
 					</div>
 					<Button onClick={e => openContextMenu(e)} styleType="icon" class="w-8 h-8">
@@ -207,7 +203,7 @@ function InstanceCard(props: InstanceCardProps) {
 				contextMenuVisible={contextMenuVisible}
 				setContextMenuVisible={setContextMenuVisible}
 				pos={pos}
-				id={props.id}
+				id={props.instance.id}
 			/>
 		</>
 	);
@@ -215,13 +211,13 @@ function InstanceCard(props: InstanceCardProps) {
 
 interface InstanceGroupProps {
 	title: string;
-	instances: InstanceCardProps[];
+	instances: Core.InstanceWithManifest[];
 }
 
 function InstanceGroup(props: InstanceGroupProps) {
 	// eslint-disable-next-line solid/reactivity
-	const [instances, setInstances] = createSignal(props.instances);
-	const ids = () => instances().map(instance => instance.elementId);
+	const [instances, setInstances] = createSignal(props.instances.map((instance, index) => ({ ...instance, id: index })));
+	const ids = () => instances().map(instance => instance.id);
 
 	const onDragStart: DragEventHandler = ({ draggable }) => {
 		draggable.node.setAttribute('data-dragging', 'true');
@@ -263,27 +259,15 @@ function InstanceGroup(props: InstanceGroupProps) {
 	);
 }
 
+const Instances = lazy(async () => {
+	const instances = await getInstancesWithManifests();
+
+	return {
+		default: () => <InstanceGroup title="Unnamed" instances={instances} />,
+	};
+});
+
 function HomePage() {
-	const myInstances: InstanceCardProps[] = [
-		{
-			id: v4(),
-			name: 'Hypixel',
-			clientType: 'Vanilla',
-			version: '1.8.9',
-			elementId: 1,
-		},
-	];
-
-	const myInstances2: InstanceCardProps[] = [
-		{
-			id: v4(),
-			name: 'Hypixel',
-			clientType: 'Vanilla',
-			version: '1.8.9',
-			elementId: 2,
-		},
-	];
-
 	return (
 		<div class="flex flex-col gap-y-4 text-fg-primary">
 			<Banner />
@@ -295,11 +279,13 @@ function HomePage() {
 				<div class="flex flex-row gap-x-4">
 					<Button styleType="primary" iconLeft={<PlusIcon class="!w-5 stroke-[2.2]" />}>New Instance</Button>
 					<Button styleType="secondary" iconLeft={<Download01Icon />}>From URL</Button>
+					<Button styleType="secondary" iconLeft={<RefreshCw01Icon />} onClick={() => refreshClientManager()} />
 				</div>
 			</div>
 
-			<InstanceGroup title="Hypixel" instances={myInstances} />
-			<InstanceGroup title="Hypixel" instances={myInstances2} />
+			<Suspense>
+				<Instances />
+			</Suspense>
 		</div>
 	);
 }

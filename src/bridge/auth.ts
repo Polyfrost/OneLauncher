@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 type MicrosoftLoginCallback = (msg: string, stage: number) => never;
-export async function loginMicrosoft(cb?: MicrosoftLoginCallback): Promise<auth.Account> {
+export async function loginMicrosoft(cb?: MicrosoftLoginCallback): Promise<Core.Account> {
 	if (cb) {
 		const unlisten = await listen<[string, number, boolean]>('msa:status', (event) => {
 			cb(event.payload[0], event.payload[1]);

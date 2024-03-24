@@ -25,6 +25,7 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             auth::login_msa,
             game::create_instance,
             game::get_instances,
+            game::get_instance,
         ])
 		.build()
 }

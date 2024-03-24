@@ -59,6 +59,16 @@ pub enum PolyError {
 	/// Wrapper around [`utils::dirs::DirectoryError`] to handle directory errors.
 	#[error("failed to get directory: {0}")]
 	DirectoryError(#[from] utils::dirs::DirectoryError),
+
+    	/// Wrapper around [`game::client::ClientManagerError`] to handle directory errors.
+	#[error("failed to manage clients: {0}")]
+	ClientManagerError(#[from] game::client::ClientManagerError),
+}
+
+impl From<PolyError> for String {
+    fn from(value: PolyError) -> Self {
+        value.to_string()
+    }
 }
 
 /// Alias for a [`Result`] with the error type [`PolyError`].

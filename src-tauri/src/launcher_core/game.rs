@@ -15,15 +15,24 @@ pub async fn create_instance(
     client: ClientType
 ) -> Result<Uuid, String> {
     let manager = &mut state.lock().await.client_manager;
-
-    manager.create_instance(name, version, cover, group, client).await.or_else(|e| {
-        Err(e.to_string())
-    })
+    let uuid = manager.create_instance(name, version, cover, group, client).await?;
+    Ok(uuid)
 }
 
 #[tauri::command]
-pub async fn get_instances(state: State<'_, Mutex<GameManagerState>>) -> Result<Vec<Instance>, String> {
+pub async fn get_instances(
+    state: State<'_, Mutex<GameManagerState>>
+) -> Result<Vec<Instance>, String> {
     let manager = &mut state.lock().await.client_manager;
-
     Ok(manager.get_instances_owned())
+}
+
+#[tauri::command]
+pub async fn get_instance(
+    state: State<'_, Mutex<GameManagerState>>,
+    uuid: Uuid
+) -> Result<Instance, String> {
+    let manager = &mut state.lock().await.client_manager;
+    let instance = manager.get_instance(uuid)?;
+    Ok(instance.clone())
 }

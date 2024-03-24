@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{utils::dirs, PolyResult};
@@ -51,13 +52,14 @@ impl ClientType {
     }
 }
 
+pub fn get_impl<'a>(client: &'a ClientType, instance: &'a Instance, manifest: &'a Manifest) -> Box<dyn ClientTrait<'a> + 'a> {
+    Box::new(match client {
+        ClientType::Vanilla(_) => vanilla::VanillaClient::new(instance, manifest)
+    })
+}
+
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
-    fn get_impl(client: &'a ClientType, instance: &'a Instance, manifest: &'a Manifest) -> Box<dyn ClientTrait<'a> + 'a> where Self: Sized {
-        Box::new(match client {
-            ClientType::Vanilla(_) => vanilla::VanillaClient::new(instance, manifest)
-        })
-    }
 
     fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self where Self: Sized;
 
@@ -103,6 +105,14 @@ macro_rules! impl_game_client {
     };
 }
 
+#[derive(Debug, Error)]
+pub enum ClientManagerError {
+    #[error("Instance not found")]
+    InstanceNotFound,
+    #[error("Manifest not found")]
+    ManifestNotFound,
+}
+
 pub struct ClientManager {
     instances: HashMap<Uuid, Instance>,
     manifests: HashMap<Uuid, Manifest>,
@@ -124,6 +134,13 @@ impl ClientManager {
         })
     }
 
+    pub fn get_impl_uuid<'a>(&'a self, uuid: Uuid) -> PolyResult<Box<dyn ClientTrait<'a> + 'a>> {
+        let instance = self.get_instance(uuid)?;
+        let manifest = self.get_manifest(uuid)?;
+
+        Ok(get_impl(&instance.client, &instance, &manifest))
+    }
+
     pub fn get_instances(&self) -> Vec<&Instance> {
         self.instances.values().collect()
     }
@@ -132,20 +149,20 @@ impl ClientManager {
         self.instances.values().cloned().collect()
     }
 
-    pub fn get_instance(&self, uuid: Uuid) -> Option<&Instance> {
-        self.instances.get(&uuid)
+    pub fn get_instance(&self, uuid: Uuid) -> PolyResult<&Instance> {
+        self.instances.get(&uuid).ok_or(ClientManagerError::InstanceNotFound.into())
     }
 
-    pub fn get_instance_mut(&mut self, uuid: Uuid) -> Option<&mut Instance> {
-        self.instances.get_mut(&uuid)
+    pub fn get_instance_mut(&mut self, uuid: Uuid) -> PolyResult<&mut Instance> {
+        self.instances.get_mut(&uuid).ok_or(ClientManagerError::InstanceNotFound.into())
     }
 
-    pub fn get_manifest(&self, uuid: Uuid) -> Option<&Manifest> {
-        self.manifests.get(&uuid)
+    pub fn get_manifest(&self, uuid: Uuid) -> PolyResult<&Manifest> {
+        self.manifests.get(&uuid).ok_or(ClientManagerError::ManifestNotFound.into())
     }
 
-    pub fn get_manifest_mut(&mut self, uuid: Uuid) -> Option<&mut Manifest> {
-        self.manifests.get_mut(&uuid)
+    pub fn get_manifest_mut(&mut self, uuid: Uuid) -> PolyResult<&mut Manifest> {
+        self.manifests.get_mut(&uuid).ok_or(ClientManagerError::ManifestNotFound.into())
     }
 
     pub async fn create_instance(&mut self, 

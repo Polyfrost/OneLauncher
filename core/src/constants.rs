@@ -1,5 +1,5 @@
 // Authentication and HTTP (TODO: env?)
-pub const APP_CONFIG_DIR: &str = "org.polyfrost.onelauncher";
+pub const APP_CONFIG_DIR: &str = "org.polyfrost.launcher";
 pub const USER_AGENT: &str = "OneLauncher/1.0.0 (polyfrost.org)";
 
 // Microsoft Authentication

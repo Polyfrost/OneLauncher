@@ -8,9 +8,11 @@ function BrowserPage() {
 			<Button
 				// eslint-disable-next-line solid/reactivity
 				onClick={async () => {
-					await invoke('plugin:launcher-core|launch_game');
+					const result = await invoke('plugin:launcher-core|get_instance', {
+						uuid: 'de69f608-c8de-4cb5-a295-8747dc05380a',
+					});
 					// eslint-disable-next-line no-console
-					console.log(`Game exited`);
+					console.log(result);
 				}}
 			>
 				Test Button
@@ -18,7 +20,7 @@ function BrowserPage() {
 
 			<Button
 				onClick={async () => {
-					const result = invoke('plugin:launcher-core|get_instances');
+					const result = await invoke('plugin:launcher-core|get_instances');
 					console.log(result);
 				}}
 			>

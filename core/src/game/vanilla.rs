@@ -15,9 +15,8 @@ create_game_client! {
 impl<'a> ClientTrait<'a> for VanillaClient<'a> {
     impl_game_client!();
     
-    fn new(handle: tauri::AppHandle, instance: &'a Instance, manifest: &'a Manifest) -> Self {
+    fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self {
         VanillaClient {
-            handle,
             instance,
             manifest
         }

@@ -4,7 +4,7 @@ use std::{
 	path::Path,
 };
 
-use tauri_plugin_http::reqwest::{Client, ClientBuilder};
+use reqwest::{Client, ClientBuilder};
 
 use crate::{constants::USER_AGENT, PolyError, PolyResult};
 

@@ -3,5 +3,6 @@ description = "Default permissions for the plugin"
 permissions = [
   "allow-get-instance",
   "allow-get-instances",
-  "allow-create-instance"
+  "allow-create-instance",
+  "allow-login-msa"
 ]

@@ -3,13 +3,13 @@ use tauri_build::{Attributes, InlinedPlugin};
 fn main() {
 	let _ = tauri_build::try_build(
 		Attributes::new()
-			.plugin("auth", InlinedPlugin::new().commands(&["login_msa"]))
 			.plugin(
-				"game",
+				"launcher-core",
 				InlinedPlugin::new().commands(&[
+                    "login_msa",
                     "create_instance",
                     "get_instances",
-                    "get_instance"
+                    "get_instance",
                 ]),
 			),
 	);

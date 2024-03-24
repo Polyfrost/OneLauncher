@@ -4,11 +4,9 @@ use std::{
 };
 
 use serde_json::json;
-use tauri::{AppHandle, Runtime};
-use tauri_plugin_shell::ShellExt;
 use thiserror::Error;
 
-use crate::{constants::CLIENT_ID, utils::http::create_client, PolyError, PolyResult};
+use crate::{constants::{self, CLIENT_ID}, utils::http::create_client, PolyError, PolyResult};
 
 use super::{Account, AuthenticationError, AuthenticationMethod};
 
@@ -37,14 +35,14 @@ pub enum MicrosoftAuthError {
 	UnknownError(u64),
 }
 
-pub(super) struct MicrosoftAuthenticationMethod;
+pub struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
-	async fn auth<R: Runtime, F>(handle: &AppHandle<R>, stage: F) -> PolyResult<Account>
+	async fn auth<F>(stage: F) -> PolyResult<Account>
 	where
 		F: Fn(String, u8, bool) -> (),
 	{
 		stage("Authenticating with Microsoft".into(), 0, false);
-		let msa_code: String = msa_code(handle).await?;
+		let msa_code: String = msa_code().await?;
 
 		stage("Authenticating with Microsoft".into(), 1, false);
 		let msa_token: String = msa_code_to_token(msa_code).await?;
@@ -196,7 +194,7 @@ async fn msa_code_to_token(code: String) -> PolyResult<String> {
 		.post("https://login.live.com/oauth20_token.srf")
 		.form(&[
 			("client_id", CLIENT_ID),
-			("redirect_uri", &format!("http://localhost:{}/", PORT)),
+			("redirect_uri", &format!("http://localhost:{}/", constants::MSA_PORT)),
 			("code", &code),
 			("grant_type", "authorization_code"),
 		])
@@ -208,20 +206,19 @@ async fn msa_code_to_token(code: String) -> PolyResult<String> {
 	Ok(token["access_token"].as_str().unwrap().to_string())
 }
 
-const PORT: u16 = 13523;
-async fn msa_code<R: Runtime>(handle: &AppHandle<R>) -> PolyResult<String> {
+async fn msa_code() -> PolyResult<String> {
 	let url = format!(
         "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id={}&response_type=code&redirect_uri=http://localhost:{}/&response_mode=query&scope=XboxLive.signin%20offline_access&prompt=consent",
         CLIENT_ID,
-        PORT
+        constants::MSA_PORT
     );
 
-	handle.shell().open(url, None)?;
+    open::that(url)?;
 
 	let mut token: String = String::new();
 
-	let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], PORT)))?;
-	println!("Started local server for MSA on port {}", PORT);
+	let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], constants::MSA_PORT)))?;
+	println!("Started local server for MSA on port {}", constants::MSA_PORT);
 
 	for conn in listener.incoming() {
 		match conn {

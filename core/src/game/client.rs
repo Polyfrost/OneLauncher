@@ -4,10 +4,9 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
-use crate::PolyResult;
+use crate::{utils::dirs, PolyResult};
 
 use super::{minecraft::{MinecraftManifest, ReleaseType}, vanilla::{self, VanillaClientProps}};
 
@@ -54,13 +53,13 @@ impl ClientType {
 
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
-    fn get_impl(handle: AppHandle, client: &'a ClientType, instance: &'a Instance, manifest: &'a Manifest) -> Box<dyn ClientTrait<'a> + 'a> where Self: Sized {
+    fn get_impl(client: &'a ClientType, instance: &'a Instance, manifest: &'a Manifest) -> Box<dyn ClientTrait<'a> + 'a> where Self: Sized {
         Box::new(match client {
-            ClientType::Vanilla(_) => vanilla::VanillaClient::new(handle, instance, manifest)
+            ClientType::Vanilla(_) => vanilla::VanillaClient::new(instance, manifest)
         })
     }
 
-    fn new(handle: AppHandle, instance: &'a Instance, manifest: &'a Manifest) -> Self where Self: Sized;
+    fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self where Self: Sized;
 
     async fn launch(&self) -> PolyResult<()>;
     async fn setup(&self) -> PolyResult<()>;
@@ -72,17 +71,6 @@ pub trait ClientTrait<'a>: Send + Sync {
 
     fn get_instance(&self) -> &'a Instance where Self: Sized;
     fn get_manifest(&self) -> &'a Manifest where Self: Sized;
-    fn get_handle(&'a self) -> &'a AppHandle where Self: Sized;
-}
-
-#[macro_export]
-macro_rules! create_game_client_props {
-    ($client:ident { $($name:ident: $type:ty),* }) => {
-        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-        pub struct $client {
-            $(pub $name: $type),*
-        }
-    };
 }
 
 #[macro_export]
@@ -95,7 +83,6 @@ macro_rules! create_game_client {
 
         #[derive(Debug, Clone)]
         pub struct $client<'a> {
-            pub handle: tauri::AppHandle,
             pub instance: &'a crate::game::client::Instance,
             pub manifest: &'a crate::game::client::Manifest,
             $(pub $name: $type),*
@@ -113,36 +100,27 @@ macro_rules! impl_game_client {
         fn get_manifest(&self) -> &'a crate::game::client::Manifest where Self: Sized {
             self.manifest
         }
-
-        fn get_handle(&'a self) -> &'a tauri::AppHandle where Self: Sized {
-            &self.handle
-        }
     };
 }
 
 pub struct ClientManager {
-    handle: AppHandle,
     instances: HashMap<Uuid, Instance>,
-    instances_dir: PathBuf,
-
     manifests: HashMap<Uuid, Manifest>,
-    manifests_dir: PathBuf,
 }
 
 impl ClientManager {
-    pub fn new(handle: &AppHandle) -> PolyResult<Self> {
-        let instances_dir = handle.path().app_config_dir()?.join("instances");
-        let instances = load_and_serialize::<Instance>(&instances_dir)?;
+    pub fn new() -> PolyResult<Self> {
+        let instances = load_and_serialize::<Instance>(
+            &dirs::instances_dir()?
+        )?;
 
-        let manifests_dir = handle.path().app_config_dir()?.join("manifests");
-        let manifests = load_and_serialize::<Manifest>(&manifests_dir)?;
+        let manifests = load_and_serialize::<Manifest>(
+            &dirs::manifests_dir()?
+        )?;
 
         Ok(Self {
-            handle: handle.clone(),
             instances,
-            instances_dir,
             manifests,
-            manifests_dir,
         })
     }
 
@@ -177,7 +155,7 @@ impl ClientManager {
         group: Option<Uuid>,
         client: ClientType
     ) -> PolyResult<Uuid> {
-        let version_cache = self.handle.path().app_config_dir()?.join("versions_cache.json");
+        let version_cache = dirs::app_config_dir()?.join("versions_cache.json");
         let versions = client.get_versions(Some(&version_cache)).await?;
         let url = &versions.iter().find(|v| v.id == version).ok_or(anyhow!("Version not found"))?.url;
 
@@ -190,7 +168,7 @@ impl ClientManager {
             manifest: minecraft_manifest
         };
 
-        save(&self.manifests_dir.join(format!("{}.json", uuid)), &manifest)?;
+        save(&dirs::manifests_dir()?.join(format!("{}.json", uuid)), &manifest)?;
         self.manifests.insert(uuid, manifest);
 
         // Save the instance
@@ -203,7 +181,7 @@ impl ClientManager {
             client
         };
 
-        save(&self.instances_dir.join(format!("{}.json", uuid)), &instance)?;
+        save(&dirs::instances_dir()?.join(format!("{}.json", uuid)), &instance)?;
         self.instances.insert(uuid, instance);
 
         Ok(uuid)

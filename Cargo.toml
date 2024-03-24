@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = [ "src-tauri", ]
+members = [
+  "src-tauri",
+  "core"
+]
 
 [workspace.package]
 license = "AGPL-3.0-only"
@@ -21,7 +24,7 @@ uuid = { version = "1.8", features = [ "serde" ] }
 tokio = { version = "1", features = [ "full" ] }
 serde = { version = "1", features = [ "derive" ] }
 chrono = { version = "0.4", features = [ "serde" ] }
-
+reqwest = { version = "0.12", features = [ "json" ] }
 serde_json = { version = "1" }
 flate2 = { version = "1" }
 tar = { version = "0.4" }
@@ -29,6 +32,8 @@ zip = { version = "0.6" }
 async-trait = { version = "0.1" }
 thiserror = { version = "1" }
 anyhow = { version = "1" }
+dirs = { version = "5" }
+open = { version = "5" }
 
 [profile.dev]
 # Make compilation faster on macOS

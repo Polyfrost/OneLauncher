@@ -8,7 +8,7 @@ function BrowserPage() {
 			<Button
 				// eslint-disable-next-line solid/reactivity
 				onClick={async () => {
-					await invoke('plugin:game|launch_game');
+					await invoke('plugin:launcher-core|launch_game');
 					// eslint-disable-next-line no-console
 					console.log(`Game exited`);
 				}}
@@ -18,7 +18,7 @@ function BrowserPage() {
 
 			<Button
 				onClick={async () => {
-					const result = invoke('plugin:game|get_instances');
+					const result = invoke('plugin:launcher-core|get_instances');
 					console.log(result);
 				}}
 			>
@@ -27,7 +27,7 @@ function BrowserPage() {
 
 			<Button
 				onClick={async () => {
-					const result = await invoke('plugin:game|create_instance', {
+					const result = await invoke('plugin:launcher-core|create_instance', {
 						name: 'My epic instance name',
 						version: '1.8.9',
 						client: {

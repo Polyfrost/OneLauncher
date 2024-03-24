@@ -1,18 +1,17 @@
 {
 	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "migrated",
+	"identifier": "default",
 	"description": "permissions that were migrated from v1",
 	"local": true,
 	"windows": [
-		"main"
+		"*"
 	],
 	"permissions": [
+		"launcher-core:default",
 		"window:allow-close",
 		"window:allow-destroy",
-		"window:allow-minimize",
 		"window:allow-start-dragging",
-		"event:default",
-		"auth:default",
-		"game:default"
+		"window:allow-minimize",
+		"event:default"
 	]
 }

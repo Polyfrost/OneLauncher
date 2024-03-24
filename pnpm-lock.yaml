@@ -15,11 +15,11 @@ dependencies:
     specifier: ^0.13.1
     version: 0.13.1(solid-js@1.8.16)
   '@tauri-apps/api':
-    specifier: 2.0.0-beta.6
+    specifier: ^2.0.0-beta
     version: 2.0.0-beta.6
   '@tauri-apps/plugin-shell':
-    specifier: 2.0.0-beta.2
-    version: 2.0.0-beta.2
+    specifier: github:tauri-apps/tauri-plugin-shell#v2
+    version: github.com/tauri-apps/tauri-plugin-shell/9391c784953c9576d1883aed9d91ffc17a45ce88
   '@thisbeyond/solid-dnd':
     specifier: ^0.7.5
     version: 0.7.5(solid-js@1.8.16)
@@ -1099,11 +1099,6 @@ packages:
       - typescript
     dev: true
 
-  /@tauri-apps/api@2.0.0-beta.4:
-    resolution: {integrity: sha512-Nxtj28NYUo5iwYkpYslxmOPkdI2WkELU2e3UH9nbJm9Ydki2CQwJVGQxx4EANtdZcMNsEsUzRqaDTvEUYH1l6w==}
-    engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
-    dev: false
-
   /@tauri-apps/api@2.0.0-beta.6:
     resolution: {integrity: sha512-ay3kAXYQoqC3rX4Vr3y6uGwrBhRPM7UQqZ9wr1VYzN6lkcMIcu7+UBvytmcfXDlVctqFoMQJafn6+dK/Oqh8+Q==}
     engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
@@ -1215,12 +1210,6 @@ packages:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.10
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.10
     dev: true
-
-  /@tauri-apps/plugin-shell@2.0.0-beta.2:
-    resolution: {integrity: sha512-9rWsfN7Wt+EuWmpmNnK8bCs+04fzhEYrHtWyLIAYxb9diFdcJrEoctCP9YM2v+Uf8/y8qFC7VCbZ/9VQHANymQ==}
-    dependencies:
-      '@tauri-apps/api': 2.0.0-beta.4
-    dev: false
 
   /@thisbeyond/solid-dnd@0.7.5(solid-js@1.8.16):
     resolution: {integrity: sha512-DfI5ff+yYGpK9M21LhYwIPlbP2msKxN2ARwuu6GF8tT1GgNVDTI8VCQvH4TJFoVApP9d44izmAcTh/iTCH2UUw==}
@@ -5208,3 +5197,11 @@ packages:
     resolution: {integrity: sha512-9bnSc/HEW2uRy67wc+T8UwauLuPJVn28jb+GtJY16iiKWyvmYJRXVT4UamsAEGQfPohgr2q4Tq0sQbQlxTfi1g==}
     engines: {node: '>=12.20'}
     dev: true
+
+  github.com/tauri-apps/tauri-plugin-shell/9391c784953c9576d1883aed9d91ffc17a45ce88:
+    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/9391c784953c9576d1883aed9d91ffc17a45ce88}
+    name: '@tauri-apps/plugin-shell'
+    version: 2.0.0-beta.2
+    dependencies:
+      '@tauri-apps/api': 2.0.0-beta.6
+    dev: false

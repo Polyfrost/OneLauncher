@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use serde_json::Value;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,10 +12,45 @@ pub struct MinecraftManifest {
     pub libraries: Vec<Library>,
     pub logging: Logging,
     pub main_class: String,
-    pub minecraft_arguments: String,
+    pub arguments: Arguments,
     pub release_time: String,
     #[serde(rename = "type")]
     pub release_type: ReleaseType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum Arguments {
+    // TODO: https://serde.rs/string-or-struct.html
+    MinecraftArguments(String),
+    Arguments {
+        game: Vec<ModernArgumentsItem>,
+        jvm: Vec<ModernArgumentsItem>,
+    }
+}
+
+impl Default for Arguments {
+    fn default() -> Self { Arguments::MinecraftArguments(String::new()) }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum ModernArgumentsItem {
+    Simple(String),
+    Rule {
+        rules: Vec<Rule>,
+        value: ArgumentRuleValue,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum ArgumentRuleValue {
+    String(String),
+    List(Vec<String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -109,19 +145,32 @@ pub struct Native {
     pub url: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
-    pub action: String,
+    pub action: RuleAction,
     
     #[serde(skip_serializing_if = "Option::is_none")]
     pub os: Option<Os>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(untagged)]
+pub enum RuleAction {
+    Allow,
+    Disallow,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Os {
-    pub name: String,
+    pub name: Option<String>,
+    pub arch: Option<String>,
+    pub version: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

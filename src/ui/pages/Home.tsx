@@ -19,7 +19,7 @@ import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import defaultCover from '../../assets/images/default_instance_cover.jpg';
 import ContextMenu from '../components/overlay/ContextMenu';
-import { getInstancesWithManifests, refreshClientManager } from '../../bridge/game';
+import { createInstance, getInstancesWithManifests, refreshClientManager } from '../../bridge/game';
 
 // TODO: Replace this into it's own component
 function OneConfigLogo() {
@@ -261,13 +261,37 @@ function InstanceGroup(props: InstanceGroupProps) {
 
 const Instances = lazy(async () => {
 	const instances = await getInstancesWithManifests();
+	const map = new Map<string, Core.InstanceWithManifest[]>();
+
+	instances.forEach((instance) => {
+		const groupName = instance.instance.group || 'Unnamed';
+
+		if (map.has(groupName))
+			map.get(groupName)!.push(instance);
+		else
+			map.set(groupName, [instance]);
+	});
 
 	return {
-		default: () => <InstanceGroup title="Unnamed" instances={instances} />,
+		default: () => Array.from(map.entries()).map(([title, instances]) => (
+			<InstanceGroup title={title} instances={instances} />
+		)),
 	};
 });
 
 function HomePage() {
+	function newInstance() {
+		createInstance({
+			name: 'New Instance',
+			version: '1.19.2',
+			client: {
+				type: 'Vanilla',
+			},
+			cover: null,
+			group: null,
+		});
+	}
+
 	return (
 		<div class="flex flex-col gap-y-4 text-fg-primary">
 			<Banner />
@@ -277,9 +301,24 @@ function HomePage() {
 					<TextField iconLeft={<SearchMdIcon />} placeholder="Search for something..." />
 				</div>
 				<div class="flex flex-row gap-x-4">
-					<Button styleType="primary" iconLeft={<PlusIcon class="!w-5 stroke-[2.2]" />}>New Instance</Button>
-					<Button styleType="secondary" iconLeft={<Download01Icon />}>From URL</Button>
-					<Button styleType="secondary" iconLeft={<RefreshCw01Icon />} onClick={() => refreshClientManager()} />
+					<Button
+						styleType="primary"
+						iconLeft={<PlusIcon class="!w-5 stroke-[2.2]" />}
+						children="New Instance"
+						onClick={() => newInstance()}
+					/>
+
+					<Button
+						styleType="secondary"
+						iconLeft={<Download01Icon />}
+						children="From URL"
+					/>
+
+					<Button
+						styleType="secondary"
+						iconLeft={<RefreshCw01Icon />}
+						onClick={() => refreshClientManager()}
+					/>
 				</div>
 			</div>
 

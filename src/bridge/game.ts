@@ -25,6 +25,24 @@ export async function getInstances(): Promise<Core.Instance[]> {
 	return await invoke<Core.Instance[]>('plugin:launcher-core|get_instances');
 }
 
+export async function createInstance(instance: Omit<Core.Instance, 'id' | 'createdAt'> & { version: string }): Promise<void> {
+	return await invoke(
+		'plugin:launcher-core|create_instance',
+		{
+			name: instance.name,
+			version: instance.version,
+			client: instance.client,
+			// cover: instance.cover,
+			// group: instance.group,
+		},
+		{
+			headers: {
+				Accept: 'text/plain',
+			},
+		},
+	);
+}
+
 export async function refreshClientManager(): Promise<void> {
 	return await invoke('plugin:launcher-core|refresh_client_manager');
 }

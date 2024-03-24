@@ -10,9 +10,9 @@ pub async fn create_instance(
     state: State<'_, Mutex<GameManagerState>>,
     name: String,
     version: String,
+    client: ClientType,
     cover: Option<String>,
     group: Option<Uuid>,
-    client: ClientType
 ) -> Result<Uuid, String> {
     let manager = &mut state.lock().await.client_manager;
     let uuid = manager.create_instance(name, version, cover, group, client).await?;

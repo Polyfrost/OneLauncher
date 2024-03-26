@@ -19,6 +19,7 @@ tauri = { version = "2.0.0-beta", features = [] }
 tauri-build = { version = "2.0.0-beta", features = [] }
 tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-http = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
+tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
 uuid = { version = "1.8", features = [ "serde" ] }
 tokio = { version = "1", features = [ "full" ] }

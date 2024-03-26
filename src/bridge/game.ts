@@ -21,6 +21,23 @@ export async function getInstancesWithManifests(): Promise<Core.InstanceWithMani
 	})));
 }
 
+export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWithManifest[]>> {
+	const instances = await getInstancesWithManifests();
+	const map = new Map<string, Core.InstanceWithManifest[]>();
+
+	instances.forEach((instance, index) => {
+		const groupName = instance.instance.group || 'Unnamed';
+		const value = { ...instance, index };
+
+		if (map.has(groupName))
+			map.get(groupName)!.push(value);
+		else
+			map.set(groupName, [value]);
+	});
+
+	return map;
+}
+
 export async function getInstances(): Promise<Core.Instance[]> {
 	return await invoke<Core.Instance[]>('plugin:launcher-core|get_instances');
 }

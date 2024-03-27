@@ -1,14 +1,9 @@
 import process from 'node:process';
-import type { Plugin } from 'vite';
+import type { Plugin, UserConfig } from 'vite';
 import { defineConfig, loadEnv } from 'vite';
 
 import solid from 'vite-plugin-solid';
-// idk if we are going to want to use sentry since we would have to selfhost
-// we also need to consider self hosting a translation service
-// and figuring out a way to implement analytics into this
-import { sentryVitePlugin } from '@sentry/vite-plugin';
 
-// hopefully once we merge into nexus monorepo this can be one standard vite config
 const devtoolsPlugin: Plugin = {
 	name: 'devtools-plugin',
 	transformIndexHtml(html) {
@@ -26,11 +21,18 @@ const devtoolsPlugin: Plugin = {
 export default defineConfig(async ({ mode }) => {
 	process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
 
-	const config = {
+	const config: UserConfig = {
 		plugins: [
 			solid(),
 			devtoolsPlugin,
 		],
+
+		envPrefix: ['VITE_', 'TAURI_'],
+
+		build: {
+			minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
+			sourcemap: !!process.env.TAURI_DEBUG,
+		},
 
 		clearScreen: false,
 		server: {
@@ -41,15 +43,6 @@ export default defineConfig(async ({ mode }) => {
 			},
 		},
 	};
-
-	if (process.env.SENTRY_AUTH_TOKEN) {
-		config.plugins.push(sentryVitePlugin({
-			authToken: process.env.SENTRY_AUTH_TOKEN,
-			url: 'https://sentry.polyfrost.org',
-			org: 'polyfrost',
-			project: 'launcher',
-		}));
-	}
 
 	return config;
 });

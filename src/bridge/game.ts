@@ -1,13 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export async function getInstance(uuid: string): Promise<Core.Instance> {
-	return await invoke<Core.Instance>('plugin:launcher-core|get_instance', {
+	return await invoke<Core.Instance>('plugin:onelauncher|get_instance', {
 		uuid,
 	});
 }
 
 export async function getManifest(uuid: string): Promise<Core.Manifest> {
-	return await invoke<Core.Manifest>('plugin:launcher-core|get_manifest', {
+	return await invoke<Core.Manifest>('plugin:onelauncher|get_manifest', {
 		uuid,
 	});
 }
@@ -39,12 +39,12 @@ export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWi
 }
 
 export async function getInstances(): Promise<Core.Instance[]> {
-	return await invoke<Core.Instance[]>('plugin:launcher-core|get_instances');
+	return await invoke<Core.Instance[]>('plugin:onelauncher|get_instances');
 }
 
 export async function createInstance(instance: Omit<Core.Instance, 'id' | 'createdAt'> & { version: string }): Promise<void> {
 	return await invoke(
-		'plugin:launcher-core|create_instance',
+		'plugin:onelauncher|create_instance',
 		{
 			name: instance.name,
 			version: instance.version,
@@ -61,5 +61,5 @@ export async function createInstance(instance: Omit<Core.Instance, 'id' | 'creat
 }
 
 export async function refreshClientManager(): Promise<void> {
-	return await invoke('plugin:launcher-core|refresh_client_manager');
+	return await invoke('plugin:onelauncher|refresh_client_manager');
 }

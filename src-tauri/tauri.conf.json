@@ -1,16 +1,16 @@
 {
-	"productName": "polyfrost-launcher",
+	"productName": "onelauncher",
 	"version": "0.0.0",
 	"identifier": "org.polyfrost.launcher",
 	"app": {
 		"withGlobalTauri": true,
 		"security": {
-			"csp": null,
+			"csp": "default-src 'self'; connect-src https://modrinth.com https://*.modrinth.com https://polyfrost.org https://*.polyfrost.org https://*.cloudflare.com https://api.mclo.gs; img-src tauri: https: data: blob: 'unsafe-inline' asset: https://asset.localhost; script-src https://*.cloudflare.com 'self'; frame-src https://*.cloudflare.com https://www.youtube.com https://www.youtube-nocookie.com https://discord.com 'self'; style-src unsafe-inline 'self'",
 			"capabilities": []
 		},
 		"windows": [
 			{
-				"title": "polyfrost-launcher",
+				"title": "OneLauncher",
 				"width": 1280,
 				"height": 802,
 				"minWidth": 1080,
@@ -31,6 +31,7 @@
 	"bundle": {
 		"active": true,
 		"targets": "all",
+		"category": "Game",
 		"icon": [
 			"icons/32x32.png",
 			"icons/128x128.png",
@@ -38,7 +39,13 @@
 			"icons/icon.icns",
 			"icons/icon.ico"
 		],
-		"copyright": "Polyfrost"
+		"copyright": "Polyfrost",
+		"fileAssociations": [
+			{
+				"ext": ["mrpack"],
+				"description": ""
+			}
+		]
 	},
 	"plugins": {}
 }

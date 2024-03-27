@@ -15,7 +15,6 @@
 	},
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.12",
-		"@sentry/vite-plugin": "^2.16.0",
 		"@solidjs/router": "^0.13.1",
 		"@tauri-apps/api": "^2.0.0-beta",
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",

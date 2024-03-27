@@ -1,4 +1,6 @@
-use launcher_core::auth::{microsoft_auth::MicrosoftAuthenticationMethod, Account, AuthenticationMethod};
+use launcher_core::auth::{
+	microsoft_auth::MicrosoftAuthenticationMethod, Account, AuthenticationMethod,
+};
 use tauri::Manager;
 
 #[tauri::command]

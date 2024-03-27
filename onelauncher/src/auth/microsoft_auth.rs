@@ -4,16 +4,19 @@ use std::{
 };
 
 use serde_json::json;
-use thiserror::Error;
 
-use crate::{constants::{self, CLIENT_ID}, utils::http::create_client, PolyError, PolyResult};
+use crate::{
+	constants::{self, CLIENT_ID},
+	utils::http::create_client,
+	ErrorKind,
+};
 
 use super::{Account, AuthenticationError, AuthenticationMethod};
 
 // TODO: store auth keys with https://beta.tauri.app/features/stronghold/
 // TODO: store auth key public in prisma for easy access
 
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum MicrosoftAuthError {
 	#[error("failed to get Minecraft access token")]
 	MSAccessToken,
@@ -23,7 +26,9 @@ pub enum MicrosoftAuthError {
 	XBLToken,
 	#[error("failed to get XBL user hash")]
 	XBLUserHash,
-	#[error("this account doesn't have an xbox account, sign in through minecraft.net and try again")]
+	#[error(
+		"this account doesn't have an xbox account, sign in through minecraft.net and try again"
+	)]
 	NoXBoxAccount,
 	#[error("this account is from a country where xbox live is not available")]
 	XBoxLiveBlocked,
@@ -37,7 +42,7 @@ pub enum MicrosoftAuthError {
 
 pub struct MicrosoftAuthenticationMethod;
 impl AuthenticationMethod for MicrosoftAuthenticationMethod {
-	async fn auth<F>(stage: F) -> PolyResult<Account>
+	async fn auth<F>(stage: F) -> crate::Result<Account>
 	where
 		F: Fn(String, u8, bool) -> (),
 	{
@@ -63,7 +68,7 @@ impl AuthenticationMethod for MicrosoftAuthenticationMethod {
 	}
 }
 
-async fn auth_minecraft(xsts_token: String, user_hash: String) -> PolyResult<String> {
+async fn auth_minecraft(xsts_token: String, user_hash: String) -> crate::Result<String> {
 	let response = create_client()?
 		.post("https://api.minecraftservices.com/authentication/login_with_xbox")
 		.json(&json!({
@@ -76,16 +81,17 @@ async fn auth_minecraft(xsts_token: String, user_hash: String) -> PolyResult<Str
 	let access_token = match response.get("access_token") {
 		Some(token) => token.as_str().unwrap(),
 		None => {
-			return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+			return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 				MicrosoftAuthError::MSAccessToken,
-			)))
+			))
+			.into())
 		}
 	};
 
 	Ok(access_token.to_string())
 }
 
-async fn auth_xsts(token: String) -> PolyResult<String> {
+async fn auth_xsts(token: String) -> crate::Result<String> {
 	let response = create_client()?
 		.post("https://xsts.auth.xboxlive.com/xsts/authorize")
 		.json(&json!({
@@ -108,29 +114,34 @@ async fn auth_xsts(token: String) -> PolyResult<String> {
 
 		match error_code {
 			2148916233 => {
-				return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+				return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 					MicrosoftAuthError::NoXBoxAccount,
-				)))
+				))
+				.into())
 			}
 			2148916235 => {
-				return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+				return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 					MicrosoftAuthError::XBoxLiveBlocked,
-				)))
+				))
+				.into())
 			}
 			2148916236 | 2148916237 => {
-				return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+				return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 					MicrosoftAuthError::AdultVerification,
-				)))
+				))
+				.into())
 			}
 			2148916238 => {
-				return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+				return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 					MicrosoftAuthError::ChildAccount,
-				)))
+				))
+				.into())
 			}
 			_ => {
-				return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+				return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 					MicrosoftAuthError::UnknownError(error_code),
-				)))
+				))
+				.into())
 			}
 		}
 	}
@@ -139,16 +150,17 @@ async fn auth_xsts(token: String) -> PolyResult<String> {
 	let xsts_token = match response.get("Token") {
 		Some(token) => token.as_str().unwrap(),
 		None => {
-			return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+			return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 				MicrosoftAuthError::XSTSToken,
-			)))
+			))
+			.into())
 		}
 	};
 
 	Ok(xsts_token.to_string())
 }
 
-async fn auth_xbl(code: String) -> PolyResult<(String, String)> {
+async fn auth_xbl(code: String) -> crate::Result<(String, String)> {
 	let response = create_client()?
 		.post("https://user.auth.xboxlive.com/user/authenticate")
 		.json(&json!({
@@ -167,9 +179,10 @@ async fn auth_xbl(code: String) -> PolyResult<(String, String)> {
 	let xbl_token = match response.get("Token") {
 		Some(token) => token.as_str().unwrap(),
 		None => {
-			return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+			return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 				MicrosoftAuthError::XBLToken,
-			)))
+			))
+			.into())
 		}
 	};
 
@@ -180,21 +193,25 @@ async fn auth_xbl(code: String) -> PolyResult<(String, String)> {
 	}) {
 		Some(hash) => hash.as_str().unwrap(),
 		None => {
-			return Err(PolyError::AuthError(AuthenticationError::MicrosoftError(
+			return Err(ErrorKind::AuthError(AuthenticationError::MicrosoftError(
 				MicrosoftAuthError::XBLUserHash,
-			)))
+			))
+			.into())
 		}
 	};
 
 	Ok((xbl_token.to_string(), user_hash.to_string()))
 }
 
-async fn msa_code_to_token(code: String) -> PolyResult<String> {
+async fn msa_code_to_token(code: String) -> crate::Result<String> {
 	let token = create_client()?
 		.post("https://login.live.com/oauth20_token.srf")
 		.form(&[
 			("client_id", CLIENT_ID),
-			("redirect_uri", &format!("http://localhost:{}/", constants::MSA_PORT)),
+			(
+				"redirect_uri",
+				&format!("http://localhost:{}/", constants::MSA_PORT),
+			),
 			("code", &code),
 			("grant_type", "authorization_code"),
 		])
@@ -206,19 +223,22 @@ async fn msa_code_to_token(code: String) -> PolyResult<String> {
 	Ok(token["access_token"].as_str().unwrap().to_string())
 }
 
-async fn msa_code() -> PolyResult<String> {
+async fn msa_code() -> crate::Result<String> {
 	let url = format!(
         "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?client_id={}&response_type=code&redirect_uri=http://localhost:{}/&response_mode=query&scope=XboxLive.signin%20offline_access&prompt=consent",
         CLIENT_ID,
         constants::MSA_PORT
     );
 
-    open::that(url)?;
+	open::that(url)?;
 
 	let mut token: String = String::new();
 
 	let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], constants::MSA_PORT)))?;
-	println!("Started local server for MSA on port {}", constants::MSA_PORT);
+	println!(
+		"Started local server for MSA on port {}",
+		constants::MSA_PORT
+	);
 
 	for conn in listener.incoming() {
 		match conn {

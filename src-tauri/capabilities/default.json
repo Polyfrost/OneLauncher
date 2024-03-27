@@ -7,7 +7,7 @@
 		"*"
 	],
 	"permissions": [
-		"launcher-core:default",
+		"onelauncher:default",
 		"window:allow-close",
 		"window:allow-destroy",
 		"window:allow-start-dragging",

@@ -1,5 +1,5 @@
 [package]
-name = "polyfrost-launcher"
+name = "onelauncher_gui"
 version = "0.0.0"
 description = "A Tauri App"
 license = { workspace = true }
@@ -14,10 +14,12 @@ authors = { workspace = true }
 tauri-build = { workspace = true }
 
 [dependencies]
-launcher-core = { path = "../core" }
+onelauncher = { path = "../onelauncher", features = [ "tauri" ] }
+
 tauri = { workspace = true }
 tauri-plugin-shell = { workspace = true }
-tauri-plugin-http = { workspace = true }
+tauri-plugin-window-state = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -26,6 +28,9 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+
+tracing = { workspace = true }
+tracing-error = { workspace = true }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

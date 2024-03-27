@@ -1,4 +1,7 @@
-use serde::{Deserialize, Serialize};
+use core::fmt;
+use std::{collections::HashMap, marker::PhantomData};
+
+use serde::{de::{self, SeqAccess, Visitor}, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -6,16 +9,17 @@ use serde_json::Value;
 pub struct MinecraftManifest {
 	pub asset_index: AssetIndex,
 	pub downloads: Downloads,
-	#[serde(rename = "id")]
-	pub version: String,
 	pub java_version: JavaVersion,
 	pub libraries: Vec<Library>,
 	pub logging: Logging,
 	pub main_class: String,
-	pub arguments: Arguments,
 	pub release_time: String,
+	#[serde(rename = "id")]
+	pub version: String,
 	#[serde(rename = "type")]
 	pub release_type: ReleaseType,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub minecraft_arguments
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

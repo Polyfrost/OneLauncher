@@ -22,6 +22,8 @@ tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspa
 tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 
+interpulse = { version = "0.1" }
+
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
   "chrono",
@@ -59,6 +61,9 @@ tokio-stream = { version = "0.1", features = [ "fs" ] }
 async-recursion = { version = "1.1" }
 notify = { version = "6.1", default-features = false, features = [ "serde" ] }
 notify-debouncer-mini = { version = "0.4", default-features = false }
+regex = { version = "1.10" }
+sysinfo = { version = "0.30" }
+sys-info = { version = "0.9" }
 
 [profile.dev]
 # Make compilation faster on macOS

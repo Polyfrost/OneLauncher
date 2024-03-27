@@ -1,4 +1,4 @@
-#![warn(unused_import_braces)]
+#![warn(unused_import_braces, missing_debug_implementations)]
 #![deny(unused_must_use)]
 
 pub mod auth;

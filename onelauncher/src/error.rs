@@ -31,6 +31,10 @@ pub enum ErrorKind {
 	#[error("failed to parse uuids: {0}")]
 	UUIDError(#[from] uuid::Error),
 
+	/// Wrapper around [`interpulse::Error`] to handle interpulse errors.
+	#[error("metadata error: {0}")]
+	MetadataError(#[from] interpulse::Error),
+
 	/// Wrapper around [`serde_json::Error`] to handle Serde JSON parsing errors.
 	#[error("failed to manage serialization of json: {0}")]
 	SerdeError(#[from] serde_json::Error),

@@ -18,6 +18,8 @@ cli = [ "dep:indicatif" ]
 tauri = { workspace = true, optional = true }
 indicatif = { workspace = true, optional = true }
 
+interpulse = { workspace = true }
+
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-error = { workspace = true }
@@ -41,6 +43,9 @@ sha1 = { workspace = true }
 discord-rich-presence = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
+regex = { workspace = true }
+sysinfo = { workspace = true }
+sys-info = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }

@@ -1,4 +1,4 @@
-use onelauncher::game::client::{ClientType, Cluster, Manifest};
+use onelauncher::game::{client::{Cluster, Manifest}, clients::ClientType};
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -37,6 +37,16 @@ pub async fn get_cluster(
 	let manager = &mut state.lock().await.client_manager;
 	let instance = manager.get_cluster(uuid)?;
 	Ok(instance.clone())
+}
+
+#[tauri::command]
+pub async fn launch_cluster(
+    state: State<'_, Mutex<GameManagerState>>,
+	uuid: Uuid,
+) -> Result<(), String> {
+    let manager = &mut state.lock().await.client_manager;
+    manager.launch_cluster(uuid).await?; // TODO: Change how this works
+    Ok(())
 }
 
 #[tauri::command]

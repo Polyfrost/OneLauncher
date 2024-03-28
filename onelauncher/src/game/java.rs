@@ -104,7 +104,7 @@ async fn download(
 	let latest = response.as_array().unwrap().first().unwrap();
 	let download_url = latest.get("download_url").unwrap().as_str().unwrap();
 
-	if let Err(err) = http::download_file(download_url, archive.as_path()).await {
+	if let Err(err) = http::download_file(download_url, archive).await {
 		return Err(ErrorKind::JavaError(JavaDownloadError::DownloadError(err.to_string())).into());
 	};
 

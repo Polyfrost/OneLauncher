@@ -1,15 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export async function getCluster(uuid: string): Promise<Core.Cluster> {
-	return await invoke<Core.Cluster>('plugin:onelauncher|get_cluster', {
-		uuid,
-	});
+	return await invoke<Core.Cluster>(
+		'plugin:onelauncher|get_cluster',
+		{ uuid },
+	);
 }
 
 export async function getManifest(uuid: string): Promise<Core.Manifest> {
-	return await invoke<Core.Manifest>('plugin:onelauncher|get_manifest', {
-		uuid,
-	});
+	return await invoke<Core.Manifest>(
+		'plugin:onelauncher|get_manifest',
+		{ uuid },
+	);
 }
 
 export async function getClustersWithManifests(): Promise<Core.ClusterWithManifest[]> {
@@ -57,4 +59,11 @@ export async function createCluster(cluster: Omit<Core.Cluster, 'id' | 'createdA
 
 export async function refreshClientManager(): Promise<void> {
 	return await invoke('plugin:onelauncher|refresh_client_manager');
+}
+
+export async function launchCluster(uuid: string): Promise<number> {
+	return await invoke<number>(
+		'plugin:onelauncher|launch_cluster',
+		{ uuid },
+	);
 }

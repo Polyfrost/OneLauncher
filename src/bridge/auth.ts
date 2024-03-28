@@ -19,8 +19,3 @@ export async function getUuidHeadSrc(uuid: string): Promise<string> {
 	// TODO implement some kind of caching + fallback
 	return `https://crafatar.com/avatars/${uuid}?size=32`;
 }
-
-export default {
-	loginMicrosoft,
-	getUuidHeadSrc,
-};

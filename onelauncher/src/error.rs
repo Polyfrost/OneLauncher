@@ -65,7 +65,7 @@ pub enum ErrorKind {
 
 	/// Wrapper around [`crate::game::client::ClientManagerError`] to handle directory errors.
 	#[error("failed to manage clients: {0}")]
-	ClientManagerError(#[from] crate::game::client::ClientManagerError),
+	ClientManagerError(#[from] crate::game::client_manager::ClientManagerError),
 }
 
 #[derive(Debug)]

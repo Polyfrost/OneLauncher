@@ -1,11 +1,9 @@
-use super::{
-	client::{ClientTrait, Cluster, Manifest, Version},
-	minecraft::MinecraftManifest,
-};
 use crate::{
-	constants::MINECRAFT_VERSIONS_MANIFEST,
-	create_game_client, impl_game_client,
-	utils::{dirs, file, http},
+	constants::MINECRAFT_VERSIONS_MANIFEST, 
+    create_game_client, 
+    game::{client::{ClientTrait, Cluster, Manifest, MinecraftVersion}, minecraft::MinecraftManifest}, 
+    impl_game_client, 
+    utils::{dirs, http}
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -31,6 +29,8 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 	}
 
 	async fn setup(&self) -> crate::Result<()> {
+        let client_path = self.install_game().await?;
+        println!("{:?}", client_path);
 		Ok(())
 	}
 
@@ -42,17 +42,7 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 			fs::create_dir_all(&file)?;
 			let artifact = &manifest.downloads.client;
 
-			http::download_file(&artifact.url, &file).await?;
-			let file_hash = file::file_sha1(&file)?;
-
-			println!("Downloaded: '{}' | '{}'", file_hash, artifact.sha1);
-			if file_hash != artifact.sha1 {
-				return Err(std::io::Error::new(
-					std::io::ErrorKind::InvalidData,
-					"Hashes do not match",
-				)
-				.into());
-			}
+			http::download_file_sha1_check(&artifact.url, &file, &artifact.sha1).await?;
 		}
 
 		Ok(file)
@@ -73,16 +63,16 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct VersionList {
-	versions: Vec<Version>,
+	versions: Vec<MinecraftVersion>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct CachedVersions {
 	last_updated: i64,
-	versions: Vec<Version>,
+	versions: Vec<MinecraftVersion>,
 }
 
-pub async fn get_versions(file: Option<&PathBuf>) -> crate::Result<Vec<Version>> {
+pub async fn get_versions(file: Option<&PathBuf>) -> crate::Result<Vec<MinecraftVersion>> {
 	if let Some(file) = file {
 		if file.exists() && file.is_file() {
 			if let Some(versions) = get_cached_versions(file).await? {
@@ -110,7 +100,7 @@ pub async fn get_versions(file: Option<&PathBuf>) -> crate::Result<Vec<Version>>
 	Ok(response.versions)
 }
 
-async fn get_cached_versions(file: &PathBuf) -> crate::Result<Option<Vec<Version>>> {
+async fn get_cached_versions(file: &PathBuf) -> crate::Result<Option<Vec<MinecraftVersion>>> {
 	let cached = serde_json::from_str::<CachedVersions>(&fs::read_to_string(file)?)?;
 	let head_request = http::create_client()?
 		.head(MINECRAFT_VERSIONS_MANIFEST)

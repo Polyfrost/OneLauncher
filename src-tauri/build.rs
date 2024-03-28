@@ -6,6 +6,7 @@ fn main() {
 		InlinedPlugin::new().commands(&[
 			"login_msa",
 			"refresh_client_manager",
+            "launch_cluster",
 			"create_cluster",
 			"get_clusters",
 			"get_cluster",

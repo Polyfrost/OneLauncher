@@ -1,4 +1,4 @@
-use onelauncher::game::client::ClientManager;
+use onelauncher::game::client_manager::ClientManager;
 use tauri::{plugin::TauriPlugin, Manager, State};
 use tokio::sync::Mutex;
 
@@ -27,6 +27,7 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
 			game::get_clusters,
 			game::get_cluster,
 			game::get_manifest,
+            game::launch_cluster,
 			refresh_client_manager,
 		])
 		.build()

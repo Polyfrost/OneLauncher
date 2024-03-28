@@ -30,8 +30,8 @@ pub struct MinecraftManifest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModernArguments {
-    game: Vec<ModernArgumentsItem>,
-    jvm: Vec<ModernArgumentsItem>,
+    pub game: Vec<ModernArgumentsItem>,
+    pub jvm: Vec<ModernArgumentsItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,11 +46,11 @@ pub enum ModernArgumentsItem {
 #[serde(rename_all = "camelCase")]
 pub struct ArgumentRule {
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    rules: Vec<Rule>,
+    pub rules: Vec<Rule>,
 
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "string_or_seq")]
-    value: Vec<String>,
+    pub value: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
-export async function getInstance(uuid: string): Promise<Core.Instance> {
-	return await invoke<Core.Instance>('plugin:onelauncher|get_instance', {
+export async function getCluster(uuid: string): Promise<Core.Cluster> {
+	return await invoke<Core.Cluster>('plugin:onelauncher|get_cluster', {
 		uuid,
 	});
 }
@@ -12,22 +12,22 @@ export async function getManifest(uuid: string): Promise<Core.Manifest> {
 	});
 }
 
-export async function getInstancesWithManifests(): Promise<Core.InstanceWithManifest[]> {
-	const instances = await getInstances();
+export async function getClustersWithManifests(): Promise<Core.ClusterWithManifest[]> {
+	const clusters = await getClusters();
 
-	return Promise.all(instances.map(async instance => ({
-		instance,
-		manifest: await getManifest(instance.id),
+	return Promise.all(clusters.map(async cluster => ({
+		cluster,
+		manifest: await getManifest(cluster.id),
 	})));
 }
 
-export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWithManifest[]>> {
-	const instances = await getInstancesWithManifests();
-	const map = new Map<string, Core.InstanceWithManifest[]>();
+export async function getClustersGrouped(): Promise<Map<string, Core.ClusterWithManifest[]>> {
+	const clusters = await getClustersWithManifests();
+	const map = new Map<string, Core.ClusterWithManifest[]>();
 
-	instances.forEach((instance, index) => {
-		const groupName = instance.instance.group || 'Unnamed';
-		const value = { ...instance, index };
+	clusters.forEach((cluster, index) => {
+		const groupName = cluster.cluster.group || 'Unnamed';
+		const value = { ...cluster, index };
 
 		if (map.has(groupName))
 			map.get(groupName)!.push(value);
@@ -38,24 +38,19 @@ export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWi
 	return map;
 }
 
-export async function getInstances(): Promise<Core.Instance[]> {
-	return await invoke<Core.Instance[]>('plugin:onelauncher|get_instances');
+export async function getClusters(): Promise<Core.Cluster[]> {
+	return await invoke<Core.Cluster[]>('plugin:onelauncher|get_clusters');
 }
 
-export async function createInstance(instance: Omit<Core.Instance, 'id' | 'createdAt'> & { version: string }): Promise<void> {
+export async function createCluster(cluster: Omit<Core.Cluster, 'id' | 'createdAt'> & { version: string }): Promise<void> {
 	return await invoke(
-		'plugin:onelauncher|create_instance',
+		'plugin:onelauncher|create_cluster',
 		{
-			name: instance.name,
-			version: instance.version,
-			client: instance.client,
-			// cover: instance.cover,
-			// group: instance.group,
-		},
-		{
-			headers: {
-				Accept: 'text/plain',
-			},
+			name: cluster.name,
+			version: cluster.version,
+			client: cluster.client,
+			// cover: cluster.cover,
+			// group: cluster.group,
 		},
 	);
 }

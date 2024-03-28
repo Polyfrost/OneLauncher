@@ -6,9 +6,9 @@ fn main() {
 		InlinedPlugin::new().commands(&[
 			"login_msa",
 			"refresh_client_manager",
-			"create_instance",
-			"get_instances",
-			"get_instance",
+			"create_cluster",
+			"get_clusters",
+			"get_cluster",
 			"get_manifest",
 		]),
 	));

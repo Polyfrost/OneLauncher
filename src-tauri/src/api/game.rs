@@ -1,4 +1,4 @@
-use onelauncher::game::client::{ClientType, Instance, Manifest};
+use onelauncher::game::client::{ClientType, Cluster, Manifest};
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -6,7 +6,7 @@ use uuid::Uuid;
 use super::GameManagerState;
 
 #[tauri::command]
-pub async fn create_instance(
+pub async fn create_cluster(
 	state: State<'_, Mutex<GameManagerState>>,
 	name: String,
 	version: String,
@@ -16,26 +16,26 @@ pub async fn create_instance(
 ) -> Result<Uuid, String> {
 	let manager = &mut state.lock().await.client_manager;
 	let uuid = manager
-		.create_instance(name, version, cover, group, client)
+		.create_cluster(name, version, cover, group, client)
 		.await?;
 	Ok(uuid)
 }
 
 #[tauri::command]
-pub async fn get_instances(
+pub async fn get_clusters(
 	state: State<'_, Mutex<GameManagerState>>,
-) -> Result<Vec<Instance>, String> {
+) -> Result<Vec<Cluster>, String> {
 	let manager = &mut state.lock().await.client_manager;
-	Ok(manager.get_instances_owned())
+	Ok(manager.get_clusters_owned())
 }
 
 #[tauri::command]
-pub async fn get_instance(
+pub async fn get_cluster(
 	state: State<'_, Mutex<GameManagerState>>,
 	uuid: Uuid,
-) -> Result<Instance, String> {
+) -> Result<Cluster, String> {
 	let manager = &mut state.lock().await.client_manager;
-	let instance = manager.get_instance(uuid)?;
+	let instance = manager.get_cluster(uuid)?;
 	Ok(instance.clone())
 }
 

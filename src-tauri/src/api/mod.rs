@@ -23,9 +23,9 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
 		})
 		.invoke_handler(tauri::generate_handler![
 			auth::login_msa,
-			game::create_instance,
-			game::get_instances,
-			game::get_instance,
+			game::create_cluster,
+			game::get_clusters,
+			game::get_cluster,
 			game::get_manifest,
 			refresh_client_manager,
 		])

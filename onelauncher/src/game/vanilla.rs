@@ -1,5 +1,5 @@
 use super::{
-	client::{ClientTrait, Instance, Manifest, Version},
+	client::{ClientTrait, Cluster, Manifest, Version},
 	minecraft::MinecraftManifest,
 };
 use crate::{
@@ -22,8 +22,8 @@ create_game_client! {
 impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 	impl_game_client!();
 
-	fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self {
-		VanillaClient { instance, manifest }
+	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self {
+		VanillaClient { cluster, manifest }
 	}
 
 	async fn launch(&self) -> crate::Result<()> {

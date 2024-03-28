@@ -1,4 +1,4 @@
-function InstanceOverview() {
+function ClusterOverview() {
 	return (
 		<div>
 			<h1>This is the overview</h1>
@@ -6,4 +6,4 @@ function InstanceOverview() {
 	);
 }
 
-export default InstanceOverview;
+export default ClusterOverview;

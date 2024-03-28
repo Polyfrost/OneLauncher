@@ -22,8 +22,8 @@ pub fn java_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("java"))
 }
 
-pub fn instances_dir() -> crate::Result<PathBuf> {
-	Ok(app_config_dir()?.join("instances"))
+pub fn clusters_dir() -> crate::Result<PathBuf> {
+	Ok(app_config_dir()?.join("clusters"))
 }
 
 pub fn manifests_dir() -> crate::Result<PathBuf> {

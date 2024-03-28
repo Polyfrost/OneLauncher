@@ -32,7 +32,7 @@ pub struct Manifest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Instance {
+pub struct Cluster {
 	pub id: Uuid,
 	pub created_at: DateTime<Local>,
 	pub name: String,
@@ -57,17 +57,17 @@ impl ClientType {
 
 pub fn get_impl<'a>(
 	client: &'a ClientType,
-	instance: &'a Instance,
+	cluster: &'a Cluster,
 	manifest: &'a Manifest,
 ) -> Box<dyn ClientTrait<'a> + 'a> {
 	Box::new(match client {
-		ClientType::Vanilla(_) => vanilla::VanillaClient::new(instance, manifest),
+		ClientType::Vanilla(_) => vanilla::VanillaClient::new(cluster, manifest),
 	})
 }
 
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
-	fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self
+	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self
 	where
 		Self: Sized;
 
@@ -79,9 +79,10 @@ pub trait ClientTrait<'a>: Send + Sync {
 	async fn install_natives(&self) -> crate::Result<()>;
 	async fn install_assets(&self) -> crate::Result<()>;
 
-	fn get_instance(&self) -> &'a Instance
+	fn get_cluster(&self) -> &'a Cluster
 	where
 		Self: Sized;
+
 	fn get_manifest(&self) -> &'a Manifest
 	where
 		Self: Sized;
@@ -97,7 +98,7 @@ macro_rules! create_game_client {
 
         #[derive(Debug, Clone)]
         pub struct $client<'a> {
-            pub instance: &'a crate::game::client::Instance,
+            pub cluster: &'a crate::game::client::Cluster,
             pub manifest: &'a crate::game::client::Manifest,
             $(pub $name: $type),*
         }
@@ -107,11 +108,11 @@ macro_rules! create_game_client {
 #[macro_export]
 macro_rules! impl_game_client {
 	() => {
-		fn get_instance(&self) -> &'a crate::game::client::Instance
+		fn get_cluster(&self) -> &'a crate::game::client::Cluster
 		where
 			Self: Sized,
 		{
-			self.instance
+			self.cluster
 		}
 
 		fn get_manifest(&self) -> &'a crate::game::client::Manifest
@@ -125,54 +126,54 @@ macro_rules! impl_game_client {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientManagerError {
-	#[error("Instance not found")]
-	InstanceNotFound,
+	#[error("Cluster not found")]
+	ClusterNotFound,
 	#[error("Manifest not found")]
 	ManifestNotFound,
 }
 
 pub struct ClientManager {
-	instances: HashMap<Uuid, Instance>,
+	clusters: HashMap<Uuid, Cluster>,
 	manifests: HashMap<Uuid, Manifest>,
 }
 
 impl ClientManager {
 	pub fn new() -> crate::Result<Self> {
-		let instances = load_and_serialize::<Instance>(&dirs::instances_dir()?)?;
+		let clusters = load_and_serialize::<Cluster>(&dirs::clusters_dir()?)?;
 
 		let manifests = load_and_serialize::<Manifest>(&dirs::manifests_dir()?)?;
 
 		Ok(Self {
-			instances,
+			clusters,
 			manifests,
 		})
 	}
 
 	pub fn get_impl_uuid<'a>(&'a self, uuid: Uuid) -> crate::Result<Box<dyn ClientTrait<'a> + 'a>> {
-		let instance = self.get_instance(uuid)?;
+		let cluster = self.get_cluster(uuid)?;
 		let manifest = self.get_manifest(uuid)?;
 
-		Ok(get_impl(&instance.client, &instance, &manifest))
+		Ok(get_impl(&cluster.client, &cluster, &manifest))
 	}
 
-	pub fn get_instances(&self) -> Vec<&Instance> {
-		self.instances.values().collect()
+	pub fn get_clusters(&self) -> Vec<&Cluster> {
+		self.clusters.values().collect()
 	}
 
-	pub fn get_instances_owned(&self) -> Vec<Instance> {
-		self.instances.values().cloned().collect()
+	pub fn get_clusters_owned(&self) -> Vec<Cluster> {
+		self.clusters.values().cloned().collect()
 	}
 
-	pub fn get_instance(&self, uuid: Uuid) -> crate::Result<&Instance> {
-		self.instances
+	pub fn get_cluster(&self, uuid: Uuid) -> crate::Result<&Cluster> {
+		self.clusters
 			.get(&uuid)
-			.ok_or(ClientManagerError::InstanceNotFound.into())
+			.ok_or(ClientManagerError::ClusterNotFound.into())
 	}
 
-	pub fn get_instance_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Instance> {
-		self.instances
+	pub fn get_cluster_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Cluster> {
+		self.clusters
 			.get_mut(&uuid)
-			.ok_or(ClientManagerError::InstanceNotFound.into())
+			.ok_or(ClientManagerError::ClusterNotFound.into())
 	}
 
 	pub fn get_manifest(&self, uuid: Uuid) -> crate::Result<&Manifest> {
@@ -187,7 +188,7 @@ impl ClientManager {
 			.ok_or(ClientManagerError::ManifestNotFound.into())
 	}
 
-	pub async fn create_instance(
+	pub async fn create_cluster(
 		&mut self,
 		name: String,
 		version: String,
@@ -218,8 +219,8 @@ impl ClientManager {
 		)?;
 		self.manifests.insert(uuid, manifest);
 
-		// Save the instance
-		let instance = Instance {
+		// Save the cluster
+		let cluster = Cluster {
 			id: uuid,
 			created_at: Local::now(),
 			name,
@@ -229,10 +230,10 @@ impl ClientManager {
 		};
 
 		save(
-			&dirs::instances_dir()?.join(format!("{}.json", uuid)),
-			&instance,
+			&dirs::clusters_dir()?.join(format!("{}.json", uuid)),
+			&cluster,
 		)?;
-		self.instances.insert(uuid, instance);
+		self.clusters.insert(uuid, cluster);
 
 		Ok(uuid)
 	}
@@ -292,7 +293,7 @@ where
 		let parsed = match serde_json::from_str::<T>(&content) {
 			Ok(parsed) => parsed,
 			Err(_) => {
-				eprintln!("Couldn't parse file content as JSON: '{:?}'", content);
+				eprintln!("Couldn't parse file '{}' content as JSON", path.display());
 				continue;
 			}
 		};

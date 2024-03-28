@@ -10,7 +10,7 @@ function Link(props: AnchorProps) {
 	);
 }
 
-function InstancePage(props: ParentProps) {
+function ClusterPage(props: ParentProps) {
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
 
@@ -22,8 +22,8 @@ function InstancePage(props: ParentProps) {
 	return (
 		<div>
 			<div>
-				<Link href="/instances/">Overview</Link>
-				<Link href="/instances/mods">mods</Link>
+				<Link href="/clusters/">Overview</Link>
+				<Link href="/clusters/mods">mods</Link>
 			</div>
 			{props.children}
 			{searchParams.id}
@@ -31,4 +31,4 @@ function InstancePage(props: ParentProps) {
 	);
 }
 
-export default InstancePage;
+export default ClusterPage;

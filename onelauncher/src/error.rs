@@ -15,10 +15,6 @@ pub enum ErrorKind {
 	#[error("tokio join handle error: {0}")]
 	JoinError(#[from] tokio::task::JoinError),
 
-	/// Wrapper around [`notify::Error`] to handle file watching errors.
-	#[error("failed to watch file: {0}")]
-	NotifyError(#[from] notify::Error),
-
 	/// Wrapper around [`flate2::CompressError`] to handle flate compression errors.
 	#[error("failed to compress a file with flate: {0}")]
 	FlateError(#[from] flate2::CompressError),
@@ -70,10 +66,6 @@ pub enum ErrorKind {
 	/// Wrapper around [`crate::game::client::ClientManagerError`] to handle directory errors.
 	#[error("failed to manage clients: {0}")]
 	ClientManagerError(#[from] crate::game::client::ClientManagerError),
-
-	#[cfg(feature = "tauri")]
-	#[error("failed to launch tauri: {0}")]
-	TauriError(#[from] tauri::Error),
 }
 
 #[derive(Debug)]

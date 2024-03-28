@@ -1,4 +1,4 @@
-use launcher_core::game::client::ClientManager;
+use onelauncher::game::client::ClientManager;
 use tauri::{plugin::TauriPlugin, Manager, State};
 use tokio::sync::Mutex;
 

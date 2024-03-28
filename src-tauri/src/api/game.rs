@@ -1,4 +1,4 @@
-use launcher_core::game::client::{ClientType, Instance, Manifest};
+use onelauncher::game::client::{ClientType, Instance, Manifest};
 use tauri::State;
 use tokio::sync::Mutex;
 use uuid::Uuid;

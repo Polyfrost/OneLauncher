@@ -1,209 +1,223 @@
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use core::fmt;
+use std::{collections::HashMap, marker::PhantomData};
+
+use serde::{de::{self, SeqAccess, Visitor}, Deserialize, Deserializer, Serialize};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinecraftManifest {
-	pub asset_index: AssetIndex,
-	pub downloads: Downloads,
-	#[serde(rename = "id")]
-	pub version: String,
-	pub java_version: JavaVersion,
-	pub libraries: Vec<Library>,
-	pub logging: Logging,
-	pub main_class: String,
-	pub arguments: Arguments,
-	pub release_time: String,
-	#[serde(rename = "type")]
-	pub release_type: ReleaseType,
+    pub asset_index: AssetIndex,
+    pub downloads: Downloads,
+    pub java_version: JavaVersion,
+    pub libraries: Vec<Library>,
+    pub logging: Logging,
+    pub main_class: String,
+    pub release_time: String,
+
+    #[serde(rename = "id")]
+    pub version: String,
+    
+    #[serde(rename = "type")]
+    pub release_type: ReleaseType,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minecraft_arguments: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<ModernArguments>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(untagged)]
-pub enum Arguments {
-	// TODO: https://serde.rs/string-or-struct.html
-	MinecraftArguments(String),
-	Arguments {
-		game: Vec<ModernArgumentsItem>,
-		jvm: Vec<ModernArgumentsItem>,
-	},
-}
-
-impl Default for Arguments {
-	fn default() -> Self {
-		Arguments::MinecraftArguments(String::new())
-	}
+pub struct ModernArguments {
+    game: Vec<ModernArgumentsItem>,
+    jvm: Vec<ModernArgumentsItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum ModernArgumentsItem {
-	Simple(String),
-	Rule {
-		rules: Vec<Rule>,
-		value: ArgumentRuleValue,
-	},
+    Simple(String),
+    Rule(ArgumentRule),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(untagged)]
-pub enum ArgumentRuleValue {
-	String(String),
-	List(Vec<String>),
+pub struct ArgumentRule {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<Rule>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(deserialize_with = "string_or_seq")]
+    value: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReleaseType {
-	Snapshot,
-	Release,
-	OldBeta,
-	OldAlpha,
+    Snapshot,
+    Release,
+    OldBeta,
+    OldAlpha,
 }
 
 impl Default for ReleaseType {
-	fn default() -> Self {
-		ReleaseType::Release
-	}
+    fn default() -> Self { ReleaseType::Release }
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetIndex {
-	pub id: String,
-	pub sha1: String,
-	pub url: String,
+    pub id: String,
+    pub sha1: String,
+    pub url: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Downloads {
-	pub client: Client,
+    pub client: Client,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Client {
-	pub sha1: String,
-	pub url: String,
+    pub sha1: String,
+    pub url: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JavaVersion {
-	pub major_version: u8,
+    pub major_version: u8,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Library {
-	pub downloads: Downloads2,
-	pub name: String,
-	#[serde(default)]
-	pub rules: Vec<Rule>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub natives: Option<Natives>,
+    pub downloads: LibraryDownload,
+    pub name: String,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub rules: Vec<Rule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub natives: Option<HashMap<String, String>>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Downloads2 {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub artifact: Option<Artifact>,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub classifiers: Option<Classifiers>,
+pub struct LibraryDownload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<Artifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classifiers: Option<Classifiers>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Artifact {
-	pub path: String,
-	pub sha1: String,
-	pub url: String,
+    pub path: String,
+    pub sha1: String,
+    pub url: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Classifiers {
-	#[serde(skip_serializing_if = "Option::is_none")]
-	#[serde(rename = "natives-osx")]
-	pub natives_osx: Option<Native>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "natives-osx")]
+    pub natives_osx: Option<Artifact>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "natives-linux")]
+    pub natives_linux: Option<Artifact>,
 
-	#[serde(skip_serializing_if = "Option::is_none")]
-	#[serde(rename = "natives-linux")]
-	pub natives_linux: Option<Native>,
-
-	#[serde(skip_serializing_if = "Option::is_none")]
-	#[serde(rename = "natives-windows")]
-	pub natives_windows: Option<Native>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Native {
-	pub path: String,
-	pub sha1: String,
-	pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "natives-windows")]
+    pub natives_windows: Option<Artifact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Rule {
-	pub action: RuleAction,
+    pub action: RuleAction,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub os: Option<Os>,
 
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub os: Option<Os>,
-
-	#[serde(skip_serializing_if = "Option::is_none")]
-	pub features: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features: Option<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(untagged)]
 pub enum RuleAction {
-	Allow,
-	Disallow,
+    #[serde(rename = "allow")]
+    Allow,
+    #[serde(rename = "disallow")]
+    Disallow,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Os {
-	pub name: Option<String>,
-	pub arch: Option<String>,
-	pub version: Option<String>,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Natives {
-	pub windows: Option<String>,
-	pub linux: Option<String>,
-	pub osx: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Logging {
-	pub client: Client2,
+    pub client: Client2,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Client2 {
-	pub argument: String,
-	pub file: File,
-	#[serde(rename = "type")]
-	pub type_field: String,
+    pub argument: String,
+    pub file: File,
+    #[serde(rename = "type")]
+    pub type_field: String,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct File {
-	pub id: String,
-	pub sha1: String,
-	pub url: String,
+    pub id: String,
+    pub sha1: String,
+    pub url: String,
+}
+
+fn string_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct StringOrVec(PhantomData<Vec<String>>);
+
+    impl<'de> Visitor<'de> for StringOrVec {
+        type Value = Vec<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or list of strings")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(vec![value.into()])
+        }
+
+        fn visit_seq<S>(self, seq: S) -> Result<Self::Value, S::Error>
+        where
+            S: SeqAccess<'de>,
+        {
+            Deserialize::deserialize(de::value::SeqAccessDeserializer::new(seq))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrVec(PhantomData))
 }

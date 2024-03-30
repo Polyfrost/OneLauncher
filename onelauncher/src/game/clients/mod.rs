@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use self::vanilla::VanillaClientProps;
 
-use super::client::{ClientTrait, Cluster, Manifest, MinecraftVersion};
+use super::{client::{ClientTrait, Cluster, Manifest}, minecraft::MinecraftVersion};
 
 pub mod vanilla;
 
@@ -12,6 +12,12 @@ pub mod vanilla;
 #[serde(tag = "type")]
 pub enum ClientType {
 	Vanilla(VanillaClientProps),
+}
+
+#[derive(Debug)]
+pub struct LaunchInfo {
+    // This is where things like account info, features etc will go
+    pub java: PathBuf
 }
 
 pub async fn get_versions(client: &ClientType, file: Option<&PathBuf>) -> crate::Result<Vec<MinecraftVersion>> {

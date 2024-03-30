@@ -9,12 +9,11 @@ use std::{
 use crate::ErrorKind;
 
 pub fn file_sha1(file: &PathBuf) -> crate::Result<String> {
-	let file = File::open(file)?;
-	let reader = BufReader::new(file);
-
+	let mut file = File::open(file)?;
 	let mut hasher = Sha1::new();
-	hasher.update(&reader.buffer());
-	let hash = hasher.finalize();
+    let mut reader = BufReader::new(&mut file);
+    std::io::copy(&mut reader, &mut hasher)?;
+    let hash = hasher.finalize();
 
 	Ok(format!("{:x}", hash))
 }

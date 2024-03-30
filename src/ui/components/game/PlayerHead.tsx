@@ -1,6 +1,6 @@
 import { createResource } from 'solid-js';
 import type { JSX } from 'solid-js';
-import auth from '../../../bridge/auth';
+import * as auth from '../../../bridge/auth';
 import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & { uuid: string };

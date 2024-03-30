@@ -1,27 +1,15 @@
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{clients::ClientType, minecraft::{MinecraftManifest, ReleaseType}};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MinecraftVersion {
-	pub id: String,
-	pub url: String,
-	#[serde(default)]
-	pub release_type: ReleaseType,
-	#[serde(default)]
-	pub release_time: chrono::DateTime<chrono::Utc>,
-}
+use super::{clients::ClientType, minecraft::MinecraftManifest};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
 	pub id: Uuid,
-	pub manifest: MinecraftManifest,
+    #[serde(rename = "manifest")]
+	pub minecraft_manifest: MinecraftManifest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,11 +31,6 @@ pub trait ClientTrait<'a>: Send + Sync {
 
 	async fn launch(&self) -> crate::Result<()>;
 	async fn setup(&self) -> crate::Result<()>;
-
-	async fn install_game(&self) -> crate::Result<PathBuf>;
-	async fn install_libraries(&self) -> crate::Result<String>;
-	async fn install_natives(&self) -> crate::Result<()>;
-	async fn install_assets(&self) -> crate::Result<()>;
 
 	fn get_cluster(&self) -> &'a Cluster
 	where

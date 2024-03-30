@@ -13,6 +13,7 @@ use super::{client::{ClientTrait, Cluster, Manifest}, clients::{self, vanilla, C
 pub enum ClientManagerError {
 	#[error("Cluster not found")]
 	ClusterNotFound,
+
 	#[error("Manifest not found")]
 	ManifestNotFound,
 }
@@ -24,13 +25,9 @@ pub struct ClientManager {
 
 impl ClientManager {
     pub fn new() -> crate::Result<Self> {
-		let clusters = load_and_serialize::<Cluster>(&dirs::clusters_dir()?)?;
-
-		let manifests = load_and_serialize::<Manifest>(&dirs::manifests_dir()?)?;
-
 		Ok(Self {
-			clusters,
-			manifests,
+			clusters: load_and_serialize::<Cluster>(&dirs::clusters_dir()?)?,
+			manifests: load_and_serialize::<Manifest>(&dirs::manifests_dir()?)?,
 		})
 	}
 
@@ -108,7 +105,7 @@ impl ClientManager {
 		let minecraft_manifest = vanilla::retrieve_version_manifest(url).await?;
 		let manifest = Manifest {
 			id: uuid,
-			manifest: minecraft_manifest,
+			minecraft_manifest,
 		};
 
 		save(

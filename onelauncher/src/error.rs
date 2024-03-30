@@ -66,6 +66,10 @@ pub enum ErrorKind {
 	/// Wrapper around [`crate::game::client::ClientManagerError`] to handle directory errors.
 	#[error("failed to manage clients: {0}")]
 	ClientManagerError(#[from] crate::game::client_manager::ClientManagerError),
+
+    /// Wrapper around [`reqwest::header::ToStrError`] to handle header conversion errors.
+    #[error("failed to convert header to string: {0}")]
+    HeaderToStrError(#[from] reqwest::header::ToStrError),
 }
 
 #[derive(Debug)]

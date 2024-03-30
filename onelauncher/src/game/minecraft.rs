@@ -3,6 +3,19 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use serde::{de::{self, SeqAccess, Visitor}, Deserialize, Deserializer, Serialize};
 
+use crate::constants;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MinecraftVersion {
+	pub id: String,
+	pub url: String,
+	#[serde(default)]
+	pub release_type: ReleaseType,
+	#[serde(default)]
+	pub release_time: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MinecraftManifest {
@@ -34,17 +47,52 @@ pub struct ModernArguments {
     pub jvm: Vec<ModernArgumentsItem>,
 }
 
+pub trait ModernArgumentsExt {
+    fn build(&self) -> String;
+}
+
+impl ModernArgumentsExt for ModernArguments {
+    fn build(&self) -> String {
+        // TODO: Implement the custom rules
+        let mut builder = String::new();
+
+        for item in &self.game {
+            match item {
+                ModernArgumentsItem::Simple(s) => {
+                    builder.push_str(s);
+                    builder.push(' ');
+                },
+
+                ModernArgumentsItem::Rule(_) => {}
+            }
+        }
+
+        for item in &self.jvm {
+            match item {
+                ModernArgumentsItem::Simple(s) => {
+                    builder.push_str(s);
+                    builder.push(' ');
+                },
+
+                ModernArgumentsItem::Rule(_) => {}
+            }
+        }
+
+        builder
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum ModernArgumentsItem {
     Simple(String),
-    Rule(ArgumentRule),
+    Rule(ModernArgumentRuleItem),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArgumentRule {
+pub struct ModernArgumentRuleItem {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<Rule>,
 
@@ -110,7 +158,7 @@ pub struct LibraryDownload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact: Option<Artifact>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub classifiers: Option<Classifiers>,
+    pub classifiers: Option<HashMap<String, Artifact>>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -119,22 +167,6 @@ pub struct Artifact {
     pub path: String,
     pub sha1: String,
     pub url: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Classifiers {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "natives-osx")]
-    pub natives_osx: Option<Artifact>,
-    
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "natives-linux")]
-    pub natives_linux: Option<Artifact>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "natives-windows")]
-    pub natives_windows: Option<Artifact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -147,6 +179,60 @@ pub struct Rule {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub features: Option<HashMap<String, bool>>,
+}
+
+pub trait RuleExt {
+    fn check(&self) -> bool;
+}
+
+pub trait RuleListExt {
+    fn check(&self) -> bool;
+}
+
+impl RuleListExt for Vec<Rule> {
+    fn check(&self) -> bool {
+        for rule in self {
+            if !rule.check() {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+impl RuleExt for Rule {
+    fn check(&self) -> bool {
+        if let Some(os) = &self.os {
+            match &self.action {
+                RuleAction::Allow => {
+                    // os name check
+                    if let Some(name) = &os.name {
+                        if name != constants::TARGET_OS {
+                            return false;
+                        }
+                    }
+
+                    // TODO: os version check
+                    // os version check
+
+                    // TODO: os arch check
+                    // os arch check
+                },
+
+                RuleAction::Disallow => {
+                    // os name check
+                    if let Some(name) = &os.name {
+                        if name == constants::TARGET_OS {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        true
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

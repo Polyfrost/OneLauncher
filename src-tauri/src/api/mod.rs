@@ -1,23 +1,14 @@
-use onelauncher::game::client_manager::ClientManager;
+use onelauncher::{game::client_manager::ClientManager, AppState};
 use tauri::{plugin::TauriPlugin, Manager, State};
 use tokio::sync::Mutex;
 
 mod auth;
 mod game;
 
-pub struct GameManagerState {
-	pub client_manager: ClientManager,
-}
-
-unsafe impl Send for GameManagerState {}
-unsafe impl Sync for GameManagerState {}
-
 pub fn init() -> TauriPlugin<tauri::Wry> {
 	tauri::plugin::Builder::new("onelauncher")
 		.setup(|app, _| {
-			app.manage(Mutex::new(GameManagerState {
-				client_manager: ClientManager::new().expect("Failed to initialize client manager"),
-			}));
+			app.manage(Mutex::new(AppState::new()?));
 
 			Ok(())
 		})
@@ -35,8 +26,8 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
 
 #[tauri::command]
 #[tracing::instrument(skip_all)]
-async fn refresh_client_manager(state: State<'_, Mutex<GameManagerState>>) -> Result<(), String> {
+async fn refresh_client_manager(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
 	let mut state = state.lock().await;
-	state.client_manager = ClientManager::new()?;
+	state.clients = ClientManager::new()?;
 	Ok(())
 }

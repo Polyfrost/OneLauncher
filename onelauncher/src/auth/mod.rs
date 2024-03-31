@@ -16,6 +16,7 @@ pub struct Account {
 	pub username: String,
 	pub uuid: String,
 	pub skins: Vec<AccountSkin>,
+    pub access_token: String, // TODO deal with this properly
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

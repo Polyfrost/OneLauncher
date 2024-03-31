@@ -47,27 +47,16 @@ pub struct ModernArguments {
     pub jvm: Vec<ModernArgumentsItem>,
 }
 
-pub trait ModernArgumentsExt {
+pub trait ModernArgumentsItemExt {
     fn build(&self) -> String;
 }
 
-impl ModernArgumentsExt for ModernArguments {
+impl ModernArgumentsItemExt for [ModernArgumentsItem] {
     fn build(&self) -> String {
         // TODO: Implement the custom rules
         let mut builder = String::new();
 
-        for item in &self.game {
-            match item {
-                ModernArgumentsItem::Simple(s) => {
-                    builder.push_str(s);
-                    builder.push(' ');
-                },
-
-                ModernArgumentsItem::Rule(_) => {}
-            }
-        }
-
-        for item in &self.jvm {
+        for item in self {
             match item {
                 ModernArgumentsItem::Simple(s) => {
                     builder.push_str(s);

@@ -1,9 +1,15 @@
+use std::{io::{stderr, stdout}, path::PathBuf};
+
+use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use tokio::process;
 use uuid::Uuid;
 
-use super::{clients::ClientType, minecraft::MinecraftManifest};
+use crate::auth::Account;
+
+use super::{clients::ClientType, minecraft::{MinecraftManifest, ModernArgumentsItemExt}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -23,22 +29,81 @@ pub struct Cluster {
 	pub client: ClientType,
 }
 
+#[derive(Debug)]
+pub struct LaunchInfo {
+    pub java: PathBuf,
+    pub account: Account,
+    pub mem_min: u32,
+    pub mem_max: u32,
+    pub setup: SetupInfo,
+}
+
+#[derive(Debug)]
+pub struct SetupInfo {
+    pub version: String,
+    pub libraries: String,
+    pub game_dir: PathBuf,
+    pub natives_dir: PathBuf,
+}
+
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
-	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self
-	where
-		Self: Sized;
+	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self where Self: Sized;
 
-	async fn launch(&self) -> crate::Result<()>;
-	async fn setup(&self) -> crate::Result<()>;
+	async fn launch(&self, info: LaunchInfo) -> crate::Result<()> {
+        let manifest = &self.get_manifest().minecraft_manifest;
 
-	fn get_cluster(&self) -> &'a Cluster
-	where
-		Self: Sized;
+        let args = get_arguments(manifest)?
+            .replace("${auth_player_name}", &info.account.username)
+            .replace("${version_name}", &info.setup.version)
+            .replace("${game_directory}", info.setup.game_dir.to_str().unwrap())
+            .replace("${assets_root}", format!("{}/assets", info.setup.game_dir.to_str().unwrap()).as_str())
+            .replace("${assets_index_name}", &manifest.asset_index.id)
+            .replace("${auth_uuid}", &info.account.uuid)
+            .replace("${auth_access_token}", &info.account.access_token)
+            .replace("${auth_session}", "0") // TODO: Figure out how to get this session ID.
+            .replace("${user_properties}", "{}") // TODO: Figure out these properties.
+            .replace("${user_type}", "1");
 
-	fn get_manifest(&self) -> &'a Manifest
-	where
-		Self: Sized;
+        process::Command::new(&info.java).arg("-XX:-UseAdaptiveSizePolicy")
+            .arg("-XX:-OmitStackTraceInFastThrow")
+            .arg("-Dminecraft.launcher.brand=onelauncher")
+            .arg("-Dminecraft.launcher.version=1")
+            .arg(format!("-Djava.library.path={}", info.setup.natives_dir.to_str().unwrap()))
+            .arg(format!("-Xms{}M", info.mem_min))
+            .arg(format!("-Xmx{}M", info.mem_max))
+            .arg("-cp")
+            .arg(info.setup.libraries)
+            .arg(manifest.main_class.clone())
+            .args(args.split_whitespace())
+            .stdout(stdout()) // TODO: Implement better logging
+            .stderr(stderr())
+            .spawn()?
+            .wait()
+            .await?;
+
+        Ok(())
+    }
+
+	async fn setup(&self) -> crate::Result<SetupInfo>;
+
+	fn get_cluster(&self) -> &'a Cluster;
+
+	fn get_manifest(&self) -> &'a Manifest;
+}
+
+pub fn get_arguments(manifest: &MinecraftManifest) -> crate::Result<String> {
+    // Modern
+    if let Some(arguments) = &manifest.arguments {
+        return Ok(arguments.game.build());
+    }
+
+    // Legacy
+    if let Some(arguments) = &manifest.minecraft_arguments {
+        return Ok(arguments.clone());
+    }
+
+    Err(anyhow!("No arguments found").into())
 }
 
 #[macro_export]

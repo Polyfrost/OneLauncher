@@ -5,9 +5,9 @@ use chrono::Local;
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-use crate::utils::dirs;
+use crate::{auth::Account, utils::dirs};
 
-use super::{client::{ClientTrait, Cluster, Manifest}, clients::{self, vanilla, ClientType}};
+use super::{client::{ClientTrait, Cluster, LaunchInfo, Manifest}, clients::{self, vanilla, ClientType}, java};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientManagerError {
@@ -77,8 +77,25 @@ impl ClientManager {
         uuid: Uuid,
     ) -> crate::Result<()> {
         let client = self.get_impl_uuid(uuid)?;
-        client.setup().await?;
-        client.launch().await?;
+        
+        let java = java::download_java(&dirs::java_dir()?, client.get_manifest().minecraft_manifest.java_version.major_version).await?;
+        let setup = client.setup().await?;
+
+        // TODO: Make this configurable
+        let info = LaunchInfo {
+            java,
+            setup,
+            account: Account {
+                username: "Player 0".to_string(),
+                access_token: "0".to_string(),
+                uuid: Uuid::new_v4().to_string(),
+                skins: vec![]
+            },
+            mem_min: 1024,
+            mem_max: 4096,
+        };
+
+        client.launch(info).await?;
         Ok(())
     }
 

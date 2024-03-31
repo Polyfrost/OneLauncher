@@ -45,7 +45,7 @@ pub async fn launch_cluster(
 	uuid: Uuid,
 ) -> Result<(), String> {
     let manager = &mut state.lock().await.client_manager;
-    manager.launch_cluster(uuid).await?; // TODO: Change how this works
+    manager.launch_cluster(uuid).await?;
     Ok(())
 }
 

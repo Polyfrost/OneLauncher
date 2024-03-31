@@ -190,8 +190,8 @@ function HomePage() {
 
 	async function newInstance() {
 		await createCluster({
-			name: 'New Cluster',
-			version: '1.8.9',
+			name: 'Modern cluster',
+			version: '1.20.4',
 			client: {
 				type: 'Vanilla',
 			},

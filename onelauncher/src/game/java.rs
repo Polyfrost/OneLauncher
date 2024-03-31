@@ -112,7 +112,7 @@ async fn download(
 }
 
 fn extract(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
-	if let Err(err) = file::extract_archive(archive.as_path(), dest.as_path()) {
+	if let Err(err) = file::extract_archive(archive, dest) {
 		let _ = fs::remove_file(dest.as_path());
 		return Err(ErrorKind::JavaError(JavaDownloadError::ExtractError(err.to_string())).into());
 	}

@@ -18,6 +18,10 @@ pub fn libraries_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("libraries"))
 }
 
+pub fn natives_dir() -> crate::Result<PathBuf> {
+	Ok(app_config_dir()?.join("natives"))
+}
+
 pub fn java_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("java"))
 }
@@ -32,4 +36,8 @@ pub fn manifests_dir() -> crate::Result<PathBuf> {
 
 pub fn clients_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("clients"))
+}
+
+pub fn game_dir() -> crate::Result<PathBuf> {
+	Ok(app_config_dir()?.join("games"))
 }

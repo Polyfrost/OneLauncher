@@ -14,12 +14,6 @@ pub enum ClientType {
 	Vanilla(VanillaClientProps),
 }
 
-#[derive(Debug)]
-pub struct LaunchInfo {
-    // This is where things like account info, features etc will go
-    pub java: PathBuf
-}
-
 pub async fn get_versions(client: &ClientType, file: Option<&PathBuf>) -> crate::Result<Vec<MinecraftVersion>> {
     match client {
         ClientType::Vanilla(_) => vanilla::get_versions(file).await,

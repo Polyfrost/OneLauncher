@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{auth::Account, utils::dirs};
 
-use super::{client::{ClientTrait, Cluster, LaunchInfo, Manifest}, clients::{self, vanilla, ClientType}, java};
+use super::{client::{ClientTrait, Cluster, LaunchCallbacks, LaunchInfo, Manifest}, clients::{self, vanilla, ClientType}, java};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientManagerError {
@@ -75,7 +75,8 @@ impl ClientManager {
     pub async fn launch_cluster(
         &mut self,
         uuid: Uuid,
-    ) -> crate::Result<()> {
+        callbacks: LaunchCallbacks,
+    ) -> crate::Result<i32> {
         let client = self.get_impl_uuid(uuid)?;
         
         let java = java::download_java(&dirs::java_dir()?, client.get_manifest().minecraft_manifest.java_version.major_version).await?;
@@ -95,8 +96,8 @@ impl ClientManager {
             mem_max: 4096,
         };
 
-        client.launch(info).await?;
-        Ok(())
+        let exit_code = client.launch(info, callbacks).await?;
+        Ok(exit_code)
     }
 
 	pub async fn create_cluster(

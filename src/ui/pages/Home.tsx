@@ -76,7 +76,13 @@ function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 	}
 
 	function launch() {
-		launchCluster(props.id);
+		const exit_code = launchCluster(props.id, {
+			on_launch: pid => console.log('Launched with PID:', pid),
+			on_stdout: line => console.log('STDOUT:', line),
+			on_stderr: line => console.log('STDERR:', line),
+		});
+
+		console.log('Exit with code: ', exit_code);
 	}
 
 	return (

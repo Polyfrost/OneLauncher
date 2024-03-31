@@ -1,10 +1,10 @@
-use std::{io::{stderr, stdout}, path::PathBuf};
+use std::{path::PathBuf, process::Stdio};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use tokio::process;
+use tokio::{io::{AsyncBufReadExt, BufReader}, process};
 use uuid::Uuid;
 
 use crate::auth::Account;
@@ -46,11 +46,17 @@ pub struct SetupInfo {
     pub natives_dir: PathBuf,
 }
 
+pub struct LaunchCallbacks {
+    pub on_launch: Box<dyn FnMut(u32) + Send>,
+    pub on_stdout: Box<dyn FnMut(String) + Send>,
+    pub on_stderr: Box<dyn FnMut(String) + Send>,
+}
+
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
 	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self where Self: Sized;
 
-	async fn launch(&self, info: LaunchInfo) -> crate::Result<()> {
+	async fn launch(&self, info: LaunchInfo, mut callbacks: LaunchCallbacks) -> crate::Result<i32> {
         let manifest = &self.get_manifest().minecraft_manifest;
 
         let args = get_arguments(manifest)?
@@ -63,9 +69,10 @@ pub trait ClientTrait<'a>: Send + Sync {
             .replace("${auth_access_token}", &info.account.access_token)
             .replace("${auth_session}", "0") // TODO: Figure out how to get this session ID.
             .replace("${user_properties}", "{}") // TODO: Figure out these properties.
-            .replace("${user_type}", "1");
+            .replace("${user_type}", "1")
+            .replace("${version_type}", "OneLauncher");
 
-        process::Command::new(&info.java).arg("-XX:-UseAdaptiveSizePolicy")
+        let mut process = process::Command::new(&info.java).arg("-XX:-UseAdaptiveSizePolicy")
             .arg("-XX:-OmitStackTraceInFastThrow")
             .arg("-Dminecraft.launcher.brand=onelauncher")
             .arg("-Dminecraft.launcher.version=1")
@@ -76,13 +83,36 @@ pub trait ClientTrait<'a>: Send + Sync {
             .arg(info.setup.libraries)
             .arg(manifest.main_class.clone())
             .args(args.split_whitespace())
-            .stdout(stdout()) // TODO: Implement better logging
-            .stderr(stderr())
-            .spawn()?
-            .wait()
-            .await?;
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        
+        let pid = process.id().unwrap_or(0);
+        (callbacks.on_launch)(pid);
+        
+        let stdout = process.stdout.take().ok_or(anyhow!("Couldn't take stdout"))?;
+        let stderr = process.stderr.take().ok_or(anyhow!("Couldn't take stderr"))?;
 
-        Ok(())
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        let mut stderr_lines = BufReader::new(stderr).lines();
+
+        let stdout_task = tokio::spawn(async move {
+            while let Some(line) = stdout_lines.next_line().await.expect("Couldn't read line") {
+                (callbacks.on_stdout)(line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            while let Some(line) = stderr_lines.next_line().await.expect("Couldn't read line") {
+                (callbacks.on_stderr)(line);
+            }
+        });
+
+        let status = process.wait().await?;
+        tokio::try_join!(stdout_task, stderr_task)?;
+
+        let exit_code = status.code().unwrap_or(0);
+        Ok(exit_code)
     }
 
 	async fn setup(&self) -> crate::Result<SetupInfo>;

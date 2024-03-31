@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export async function getCluster(uuid: string): Promise<Core.Cluster> {
 	return await invoke<Core.Cluster>(
@@ -61,9 +62,25 @@ export async function refreshClientManager(): Promise<void> {
 	return await invoke('plugin:onelauncher|refresh_client_manager');
 }
 
-export async function launchCluster(uuid: string): Promise<number> {
-	return await invoke<number>(
+interface LaunchCallbacks {
+	on_launch: (pid: number) => any;
+	on_stdout: (line: string) => any;
+	on_stderr: (line: string) => any;
+};
+
+export async function launchCluster(uuid: string, callbacks: LaunchCallbacks): Promise<number> {
+	const unlisten_launch = await listen<number>('game:launch', e => callbacks.on_launch(e.payload));
+	const unlisten_stdout = await listen<string>('game:stdout', e => callbacks.on_stdout(e.payload));
+	const unlisten_stderr = await listen<string>('game:stderr', e => callbacks.on_stderr(e.payload));
+
+	const exit_code = await invoke<number>(
 		'plugin:onelauncher|launch_cluster',
 		{ uuid },
 	);
+
+	unlisten_launch();
+	unlisten_stdout();
+	unlisten_stderr();
+
+	return exit_code;
 }

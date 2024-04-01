@@ -14,6 +14,10 @@ pub fn app_config_dir() -> crate::Result<PathBuf> {
 		.ok_or(DirectoryError::ConfigDir.into())
 }
 
+pub fn assets_dir() -> crate::Result<PathBuf> {
+    Ok(app_config_dir()?.join("assets"))
+}
+
 pub fn libraries_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("libraries"))
 }
@@ -30,14 +34,10 @@ pub fn clusters_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("clusters"))
 }
 
-pub fn manifests_dir() -> crate::Result<PathBuf> {
-	Ok(app_config_dir()?.join("manifests"))
+pub fn cluster_dir(uuid: String) -> crate::Result<PathBuf> {
+    Ok(clusters_dir()?.join(uuid))
 }
 
 pub fn clients_dir() -> crate::Result<PathBuf> {
 	Ok(app_config_dir()?.join("clients"))
-}
-
-pub fn game_dir() -> crate::Result<PathBuf> {
-	Ok(app_config_dir()?.join("games"))
 }

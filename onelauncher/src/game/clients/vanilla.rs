@@ -1,7 +1,7 @@
 use crate::{
 	constants::{self, MINECRAFT_VERSIONS_MANIFEST}, 
     create_game_client, 
-    game::{client::{ClientTrait, Cluster, Manifest, SetupInfo}, minecraft::{Library, MinecraftManifest, MinecraftVersion, RuleListExt}}, 
+    game::{client::{ClientTrait, Cluster, Manifest, SetupInfo}, minecraft::{AssetIndexFile, Library, MinecraftManifest, MinecraftVersion, RuleListExt}}, 
     impl_game_client, 
     utils::{dirs, file, http}
 };
@@ -37,7 +37,7 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
         libraries.push_str(constants::LIBRARY_SPLITTER);
         libraries.push_str(client_path.to_str().unwrap());
         
-        let game_dir = dirs::game_dir()?.join(&self.cluster.id.to_string());
+        let game_dir = dirs::cluster_dir(self.cluster.id.to_string())?.join("game");
         fs::create_dir_all(&game_dir)?;
 
 		Ok(SetupInfo {
@@ -125,10 +125,34 @@ pub async fn install_natives(natives: Vec<&Library>) -> crate::Result<()> {
     Ok(())
 }
 
-pub async fn install_assets() -> crate::Result<()> {
+pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<()> {
+    let assets = dirs::assets_dir()?;
+    let objects = assets.join("objects");
+    let indexes = assets.join("indexes");
+    let index = indexes.join(format!("{}.json", manifest.asset_index.id));
+
+    fs::create_dir_all(&objects)?;
+    fs::create_dir_all(&indexes)?;
+
+    if !index.exists() {
+        let artifact = &manifest.asset_index;
+        http::download_file_sha1_check(&artifact.url, &index, &artifact.sha1).await?;
+    }
+
+    let contents = serde_json::from_str::<AssetIndexFile>(&fs::read_to_string(&index)?)?;
+    for (hash, asset) in contents.objects {
+        let short = &hash[..2];
+        let file = objects.join(&short).join(&hash);
+        fs::create_dir_all(file.parent().ok_or(anyhow!("Couldn't get asset parent"))?)?;
+
+        if !file.exists() {
+            let url = format!("https://resources.download.minecraft.net/{}/{}", &short, hash);
+            http::download_file_sha1_check(&url, &file, &asset.hash).await?;
+        }
+    }
+
     Ok(())
 }
-
 
 #[derive(Clone, Serialize, Deserialize)]
 struct VersionList {

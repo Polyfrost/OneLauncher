@@ -1,4 +1,4 @@
-use onelauncher::{game::{client::{Cluster, LaunchCallbacks, Manifest}, clients::ClientType}, AppState};
+use onelauncher::{game::{client::LaunchCallbacks, client_manager::ClusterWithManifest, clients::ClientType}, AppState};
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -22,7 +22,7 @@ pub async fn create_cluster(
 #[tauri::command]
 pub async fn get_clusters(
 	state: State<'_, Mutex<AppState>>,
-) -> Result<Vec<Cluster>, String> {
+) -> Result<Vec<ClusterWithManifest>, String> {
 	let manager = &mut state.lock().await.clients;
 	Ok(manager.get_clusters_owned())
 }
@@ -31,10 +31,10 @@ pub async fn get_clusters(
 pub async fn get_cluster(
 	state: State<'_, Mutex<AppState>>,
 	uuid: Uuid,
-) -> Result<Cluster, String> {
+) -> Result<ClusterWithManifest, String> {
 	let manager = &mut state.lock().await.clients;
-	let instance = manager.get_cluster(uuid)?;
-	Ok(instance.clone())
+	let cluster = manager.get_cluster(uuid)?;
+	Ok(cluster.clone())
 }
 
 #[tauri::command]
@@ -65,14 +65,4 @@ pub async fn launch_cluster(
 
     let exit_code = manager.launch_cluster(uuid, callbacks).await?;
     Ok(exit_code)
-}
-
-#[tauri::command]
-pub async fn get_manifest(
-	state: State<'_, Mutex<AppState>>,
-	uuid: Uuid,
-) -> Result<Manifest, String> {
-	let manager = &mut state.lock().await.clients;
-	let manifest = manager.get_manifest(uuid)?;
-	Ok(manifest.clone())
 }

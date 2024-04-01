@@ -75,8 +75,8 @@ function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 		navigate(`/clusters/?id=${props.id}`);
 	}
 
-	function launch() {
-		const exit_code = launchCluster(props.id, {
+	async function launch() {
+		const exit_code = await launchCluster(props.id, {
 			on_launch: pid => console.log('Launched with PID:', pid),
 			on_stdout: line => console.log('STDOUT:', line),
 			on_stderr: line => console.log('STDERR:', line),

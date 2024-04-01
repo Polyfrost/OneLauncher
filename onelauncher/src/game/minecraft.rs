@@ -266,6 +266,17 @@ pub struct File {
     pub url: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetIndexFile {
+    pub objects: HashMap<String, AssetObject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AssetObject {
+    pub hash: String,
+    pub size: u64,
+}
+
 fn string_or_seq<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: Deserializer<'de>,

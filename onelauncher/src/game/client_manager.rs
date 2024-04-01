@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, path::PathBuf};
 
 use anyhow::anyhow;
 use chrono::Local;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{auth::Account, utils::dirs};
@@ -18,57 +18,42 @@ pub enum ClientManagerError {
 	ManifestNotFound,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ClusterWithManifest {
+    pub cluster: Cluster, 
+    pub manifest: Manifest
+}
+
 pub struct ClientManager {
-	clusters: HashMap<Uuid, Cluster>,
-	manifests: HashMap<Uuid, Manifest>,
+	clusters: HashMap<Uuid, ClusterWithManifest>,
 }
 
 impl ClientManager {
     pub fn new() -> crate::Result<Self> {
 		Ok(Self {
-			clusters: load_and_serialize::<Cluster>(&dirs::clusters_dir()?)?,
-			manifests: load_and_serialize::<Manifest>(&dirs::manifests_dir()?)?,
-		})
+            clusters: load_and_serialize()?
+        })
 	}
 
 	pub fn get_impl_uuid<'a>(&'a self, uuid: Uuid) -> crate::Result<Box<dyn ClientTrait<'a> + 'a>> {
-		let cluster = self.get_cluster(uuid)?;
-		let manifest = self.get_manifest(uuid)?;
+		let ClusterWithManifest { cluster, manifest } = self.get_cluster(uuid)?;
 
-		Ok(clients::get_impl(&cluster.client, &cluster, &manifest))
+		Ok(clients::get_impl(&cluster.client, cluster, manifest))
 	}
 
-	pub fn get_clusters(&self) -> Vec<&Cluster> {
+	pub fn get_clusters(&self) -> Vec<&ClusterWithManifest> {
 		self.clusters.values().collect()
 	}
 
-	pub fn get_clusters_owned(&self) -> Vec<Cluster> {
+    pub fn get_clusters_owned(&self) -> Vec<ClusterWithManifest> {
 		self.clusters.values().cloned().collect()
 	}
 
-	pub fn get_cluster(&self, uuid: Uuid) -> crate::Result<&Cluster> {
-		self.clusters
-			.get(&uuid)
-			.ok_or(ClientManagerError::ClusterNotFound.into())
-	}
-
-	pub fn get_cluster_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Cluster> {
-		self.clusters
-			.get_mut(&uuid)
-			.ok_or(ClientManagerError::ClusterNotFound.into())
-	}
-
-	pub fn get_manifest(&self, uuid: Uuid) -> crate::Result<&Manifest> {
-		self.manifests
-			.get(&uuid)
-			.ok_or(ClientManagerError::ManifestNotFound.into())
-	}
-
-	pub fn get_manifest_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Manifest> {
-		self.manifests
-			.get_mut(&uuid)
-			.ok_or(ClientManagerError::ManifestNotFound.into())
-	}
+    pub fn get_cluster(&self, uuid: Uuid) -> crate::Result<&ClusterWithManifest> {
+        self.clusters
+            .get(&uuid)
+            .ok_or(ClientManagerError::ClusterNotFound.into())
+    }
 }
 
 impl ClientManager {
@@ -117,6 +102,7 @@ impl ClientManager {
 			.url;
 
 		let uuid = Uuid::new_v4();
+        let dir = &dirs::cluster_dir(uuid.to_string())?;
 
 		// Save the manifest
         // TODO: Is this correct?
@@ -127,10 +113,9 @@ impl ClientManager {
 		};
 
 		save(
-			&dirs::manifests_dir()?.join(format!("{}.json", uuid)),
+			&dir.join("manifest.json"),
 			&manifest,
 		)?;
-		self.manifests.insert(uuid, manifest);
 
 		// Save the cluster
 		let cluster = Cluster {
@@ -143,10 +128,11 @@ impl ClientManager {
 		};
 
 		save(
-			&dirs::clusters_dir()?.join(format!("{}.json", uuid)),
+			&dir.join("cluster.json"),
 			&cluster,
 		)?;
-		self.clusters.insert(uuid, cluster);
+
+		self.clusters.insert(uuid, ClusterWithManifest { cluster, manifest });
 
 		Ok(uuid)
 	}
@@ -168,51 +154,40 @@ where
 	Ok(())
 }
 
-fn load_and_serialize<T>(dir: &PathBuf) -> crate::Result<HashMap<Uuid, T>>
-where
-	T: DeserializeOwned,
-{
-	let mut result = HashMap::<Uuid, T>::new();
+fn load_and_serialize() -> crate::Result<HashMap<Uuid, ClusterWithManifest>> {
+	let mut result = HashMap::<Uuid, ClusterWithManifest>::new();
 
-	if !dir.exists() {
-		fs::create_dir_all(dir)?;
-		return Ok(result);
-	}
+    let dir = dirs::clusters_dir()?;
+    if !dir.exists() {
+        fs::create_dir_all(&dir)?;
+        return Ok(result);
+    }
+	
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
 
-	for file in fs::read_dir(dir)? {
-		let file = file?;
-		let file_name = file.file_name();
-		let file_name = file_name
-			.to_str()
-			.ok_or(anyhow!("Couldn't convert OsStr to str"))?
-			.replace(".json", "");
-		let uuid = match Uuid::parse_str(&file_name) {
-			Ok(uuid) => uuid,
-			Err(_) => {
-				eprintln!("Couldn't parse file name as UUID: '{:?}'", file_name);
-				continue;
-			}
-		};
-
-		let path = file.path();
-		let content = match fs::read_to_string(&path) {
-			Ok(content) => content,
-			Err(_) => {
-				eprintln!("Couldn't read file: '{:?}'", path);
-				continue;
-			}
-		};
-
-		let parsed = match serde_json::from_str::<T>(&content) {
-			Ok(parsed) => parsed,
-			Err(_) => {
-				eprintln!("Couldn't parse file '{}' content as JSON", path.display());
-				continue;
-			}
-		};
-
-		result.insert(uuid, parsed);
-	}
+        if path.is_dir() {
+            match get_entry(&path) {
+                Ok((uuid, cluster)) => {
+                    result.insert(uuid, cluster);
+                }
+                Err(e) => {
+                    eprintln!("Failed to load cluster: {}", e);
+                }
+            }
+        }
+    }
 
 	Ok(result)
+}
+
+fn get_entry(path: &PathBuf) -> crate::Result<(Uuid, ClusterWithManifest)> {
+    let manifest_path = path.join("manifest.json");
+    let cluster_path = path.join("cluster.json");
+
+    let manifest: Manifest = serde_json::from_str(&fs::read_to_string(manifest_path)?)?;
+    let cluster: Cluster = serde_json::from_str(&fs::read_to_string(cluster_path)?)?;
+
+    Ok((cluster.id, ClusterWithManifest { cluster, manifest }))
 }

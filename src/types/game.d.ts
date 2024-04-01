@@ -1,7 +1,7 @@
 declare namespace Core {
-    export interface ClusterWithManifest {
-        cluster: Cluster,
-        manifest: Manifest,
+    export type ClusterWithManifest<T extends keyof ClientType = keyof ClientType> = {
+        cluster: Cluster<T>,
+        manifest: Manifest
     }
 
     export interface Manifest {

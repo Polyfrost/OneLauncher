@@ -1,36 +1,23 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-export async function getCluster(uuid: string): Promise<Core.Cluster> {
-	return await invoke<Core.Cluster>(
+export async function getCluster(uuid: string): Promise<Core.ClusterWithManifest> {
+	return await invoke<Core.ClusterWithManifest>(
 		'plugin:onelauncher|get_cluster',
 		{ uuid },
 	);
 }
 
-export async function getManifest(uuid: string): Promise<Core.Manifest> {
-	return await invoke<Core.Manifest>(
-		'plugin:onelauncher|get_manifest',
-		{ uuid },
-	);
-}
-
-export async function getClustersWithManifests(): Promise<Core.ClusterWithManifest[]> {
+export async function getClustersGrouped(): Promise<Map<string, WithIndex<Core.ClusterWithManifest>[]>> {
 	const clusters = await getClusters();
-
-	return Promise.all(clusters.map(async cluster => ({
-		cluster,
-		manifest: await getManifest(cluster.id),
-	})));
-}
-
-export async function getClustersGrouped(): Promise<Map<string, Core.ClusterWithManifest[]>> {
-	const clusters = await getClustersWithManifests();
-	const map = new Map<string, Core.ClusterWithManifest[]>();
+	const map = new Map<string, WithIndex<Core.ClusterWithManifest>[]>();
 
 	clusters.forEach((cluster, index) => {
 		const groupName = cluster.cluster.group || 'Unnamed';
-		const value = { ...cluster, index };
+		const value: WithIndex<Core.ClusterWithManifest> = {
+			...cluster,
+			index,
+		};
 
 		if (map.has(groupName))
 			map.get(groupName)!.push(value);
@@ -41,8 +28,8 @@ export async function getClustersGrouped(): Promise<Map<string, Core.ClusterWith
 	return map;
 }
 
-export async function getClusters(): Promise<Core.Cluster[]> {
-	return await invoke<Core.Cluster[]>('plugin:onelauncher|get_clusters');
+export async function getClusters(): Promise<Core.ClusterWithManifest[]> {
+	return await invoke<Core.ClusterWithManifest[]>('plugin:onelauncher|get_clusters');
 }
 
 export async function createCluster(cluster: Omit<Core.Cluster, 'id' | 'createdAt'> & { version: string }): Promise<void> {

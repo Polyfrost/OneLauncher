@@ -30,26 +30,31 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 	async fn setup(&self) -> crate::Result<SetupInfo> {
         let manifest = &self.manifest.minecraft_manifest;
 
+        // Create game directory
+        let game_dir = self.cluster.dir()?.join("game");
+        fs::create_dir_all(&game_dir)?;
+
         // Install everything
         let client_path = install_game(manifest).await?;
         let mut libraries = install_libraries(manifest).await?;
-        let assets = install_assets(manifest).await?;
+
+        // Resources dir used for legacy versions 
+        // with map_to_resources set to true in their asset indexes
+        let resources_dir = game_dir.join("resources");
+        let (asset_index, assets_dir) = install_assets(manifest, &resources_dir).await?;
 
         // Append client path to the libraries string at the end
         libraries.push_str(constants::LIBRARY_SPLITTER);
         libraries.push_str(client_path.to_str().unwrap());
         
-        // Create game directory
-        let game_dir = self.cluster.dir()?.join("game");
-        fs::create_dir_all(&game_dir)?;
 
 		Ok(SetupInfo {
             version: manifest.version.clone(),
             libraries,
             natives_dir: dirs::natives_dir()?,
             game_dir,
-            assets_dir: dirs::assets_dir()?,
-            asset_index: assets,
+            assets_dir,
+            asset_index,
         })
 	}
 }
@@ -130,7 +135,7 @@ pub async fn install_natives(natives: Vec<&Library>) -> crate::Result<()> {
     Ok(())
 }
 
-pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<String> {
+pub async fn install_assets(manifest: &MinecraftManifest, resources_dir: &PathBuf) -> crate::Result<(String, PathBuf)> {
     let assets = dirs::assets_dir()?;
     let objects = assets.join("objects");
     let indexes = assets.join("indexes");
@@ -145,10 +150,16 @@ pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<Strin
     }
 
     let contents = serde_json::from_str::<AssetIndexFile>(&fs::read_to_string(&index)?)?;
-    for (_, asset) in contents.objects {
+    for (path, asset) in contents.objects {
         let hash = asset.hash.clone();
         let short = &hash[..2];
-        let file = objects.join(&short).join(&hash);
+        
+        let file = if contents.map_to_resources {
+            resources_dir.join(path)
+        } else {
+            objects.join(&short).join(&hash)
+        };
+        
         fs::create_dir_all(file.parent().ok_or(anyhow!("Couldn't get asset parent"))?)?;
 
         if !file.exists() {
@@ -157,7 +168,10 @@ pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<Strin
         }
     }
 
-    Ok(manifest.asset_index.id.clone())
+    Ok((
+        manifest.asset_index.id.clone(),
+        if contents.map_to_resources { resources_dir.clone() } else { assets }
+    ))
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -217,7 +231,11 @@ pub async fn retrieve_version_manifest(url: &str) -> crate::Result<MinecraftMani
 		.get(url)
 		.send()
 		.await?
-		.json::<MinecraftManifest>()
-		.await?;
-	Ok(manifest)
+		.json::<MinecraftManifest>().await;
+
+    if let Err(err) = manifest {
+        println!("{:#?}", err);
+        return Err(err.into());
+    }
+	Ok(manifest.unwrap())
 }

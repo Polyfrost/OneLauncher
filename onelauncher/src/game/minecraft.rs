@@ -23,12 +23,14 @@ pub struct MinecraftManifest {
     pub downloads: Downloads,
     pub java_version: JavaVersion,
     pub libraries: Vec<Library>,
-    pub logging: Logging,
     pub main_class: String,
     pub release_time: String,
-
+    
     #[serde(rename = "id")]
     pub version: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<Logging>,
     
     #[serde(rename = "type")]
     pub release_type: ReleaseType,
@@ -91,7 +93,7 @@ pub struct ModernArgumentRuleItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum ReleaseType {
     Snapshot,
     Release,
@@ -268,8 +270,12 @@ pub struct File {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetIndexFile {
+    #[serde(default = "default_false")]
+    pub map_to_resources: bool,
     pub objects: HashMap<String, AssetObject>,
 }
+
+fn default_false() -> bool { false }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetObject {

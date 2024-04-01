@@ -69,6 +69,7 @@ pub trait ClientTrait<'a>: Send + Sync {
         let manifest = &self.get_manifest().minecraft_manifest;
 
         let args = get_arguments(manifest)?
+            .replace("${game_assets}", "${assets_root}")
             .replace("${auth_player_name}", &info.account.username)
             .replace("${version_name}", &info.setup.version)
             .replace("${game_directory}", info.setup.game_dir.to_str().unwrap())

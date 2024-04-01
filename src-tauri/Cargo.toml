@@ -16,6 +16,8 @@ tauri-build = { workspace = true }
 [dependencies]
 onelauncher = { path = "../onelauncher" }
 
+interpulse = { workspace = true, features = [ "bincode" ] }
+
 tauri = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }

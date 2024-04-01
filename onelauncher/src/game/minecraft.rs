@@ -2,7 +2,6 @@ use core::fmt;
 use std::{collections::HashMap, marker::PhantomData};
 
 use serde::{de::{self, SeqAccess, Visitor}, Deserialize, Deserializer, Serialize};
-
 use crate::constants;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

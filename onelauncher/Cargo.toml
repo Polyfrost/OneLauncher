@@ -11,6 +11,11 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
+tauri = { workspace = true, optional = true }
+indicatif = { workspace = true, optional = true }
+
+interpulse = { workspace = true }
+
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-error = { workspace = true }

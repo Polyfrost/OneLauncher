@@ -37,3 +37,6 @@ dirs = { workspace = true }
 open = { workspace = true }
 sha1 = { workspace = true }
 discord-rich-presence = { workspace = true }
+regex = { workspace = true }
+sysinfo = { workspace = true }
+sys-info = { workspace = true }

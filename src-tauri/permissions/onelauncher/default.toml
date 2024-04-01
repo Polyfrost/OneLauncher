@@ -2,9 +2,10 @@
 description = "Default permissions for the plugin"
 permissions = [
   "allow-refresh-client-manager",
-  "allow-create-instance",
-  "allow-get-instances",
-  "allow-get-instance",
+  "allow-launch-cluster",
+  "allow-create-cluster",
+  "allow-get-clusters",
+  "allow-get-cluster",
   "allow-get-manifest",
   "allow-login-msa",
 ]

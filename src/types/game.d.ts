@@ -1,7 +1,7 @@
 declare namespace Core {
-    export interface InstanceWithManifest {
-        instance: Instance,
-        manifest: Manifest,
+    export type ClusterWithManifest<T extends keyof ClientType = keyof ClientType> = {
+        cluster: Cluster<T>,
+        manifest: Manifest
     }
 
     export interface Manifest {
@@ -16,7 +16,7 @@ declare namespace Core {
         },
     }
 
-	export interface Instance<T extends keyof ClientType = keyof ClientType> {
+	export interface Cluster<T extends keyof ClientType = keyof ClientType> {
         id: string,
         createdAt: number,
         name: string,

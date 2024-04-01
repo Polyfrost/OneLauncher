@@ -1,4 +1,4 @@
-use launcher_core::auth::{
+use onelauncher::auth::{
 	microsoft_auth::MicrosoftAuthenticationMethod, Account, AuthenticationMethod,
 };
 use tauri::Manager;

@@ -104,7 +104,7 @@ async fn download(
 	let latest = response.as_array().unwrap().first().unwrap();
 	let download_url = latest.get("download_url").unwrap().as_str().unwrap();
 
-	if let Err(err) = http::download_file(download_url, archive.as_path()).await {
+	if let Err(err) = http::download_file(download_url, archive).await {
 		return Err(ErrorKind::JavaError(JavaDownloadError::DownloadError(err.to_string())).into());
 	};
 
@@ -112,7 +112,7 @@ async fn download(
 }
 
 fn extract(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
-	if let Err(err) = file::extract_archive(archive.as_path(), dest.as_path()) {
+	if let Err(err) = file::extract_archive(archive, dest) {
 		let _ = fs::remove_file(dest.as_path());
 		return Err(ErrorKind::JavaError(JavaDownloadError::ExtractError(err.to_string())).into());
 	}

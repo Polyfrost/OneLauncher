@@ -3,8 +3,8 @@
 
 use std::error::Error;
 
-use polyfrost_launcher::api;
-use tauri::{menu::Menu, App};
+use onelauncher_gui::api;
+use tauri::{menu::Menu, App, Manager};
 
 #[derive(Clone, serde::Serialize)]
 struct Payload {
@@ -14,7 +14,7 @@ struct Payload {
 
 #[tokio::main]
 async fn main() {
-	let _log_guard = launcher_core::start_logger();
+	let _log_guard = onelauncher::start_logger();
 	tracing::info!("initialized tracing subscriber. loading OneLauncher");
 
 	tauri::Builder::default()
@@ -22,7 +22,7 @@ async fn main() {
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
 
-			app.emit_all("single-instance", Payload { args: argv, cwd })
+			app.emit("single-instance", Payload { args: argv, cwd })
 				.unwrap();
 		}))
 		.plugin(tauri_plugin_window_state::Builder::default().build())

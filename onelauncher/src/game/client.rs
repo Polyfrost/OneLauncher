@@ -1,38 +1,27 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{path::PathBuf, process::Stdio};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use chrono::{DateTime, Local};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
+use tokio::{io::{AsyncBufReadExt, BufReader}, process};
+use tracing::info;
 use uuid::Uuid;
 
-use crate::utils::dirs;
+use crate::auth::Account;
 
-use super::{
-	minecraft::{MinecraftManifest, ReleaseType},
-	vanilla::{self, VanillaClientProps},
-};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Version {
-	id: String,
-	url: String,
-	#[serde(default)]
-	release_type: ReleaseType,
-	#[serde(default)]
-	release_time: chrono::DateTime<chrono::Utc>,
-}
+use super::{clients::ClientType, minecraft::{MinecraftManifest, ModernArgumentsItemExt}};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
 	pub id: Uuid,
-	pub manifest: MinecraftManifest,
+    #[serde(rename = "manifest")]
+	pub minecraft_manifest: MinecraftManifest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Instance {
+pub struct Cluster {
 	pub id: Uuid,
 	pub created_at: DateTime<Local>,
 	pub name: String,
@@ -41,50 +30,120 @@ pub struct Instance {
 	pub client: ClientType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ClientType {
-	Vanilla(VanillaClientProps),
+impl Cluster {
+    pub fn dir(&self) -> crate::Result<PathBuf> {
+        Ok(crate::utils::dirs::cluster_dir(self.id.to_string())?)
+    }
 }
 
-impl ClientType {
-	pub async fn get_versions(&self, file: Option<&PathBuf>) -> crate::Result<Vec<Version>> {
-		match self {
-			ClientType::Vanilla(_) => vanilla::get_versions(file).await,
-		}
-	}
+#[derive(Debug)]
+pub struct LaunchInfo {
+    pub java: PathBuf,
+    pub account: Account,
+    pub mem_min: u32,
+    pub mem_max: u32,
+    pub setup: SetupInfo,
 }
 
-pub fn get_impl<'a>(
-	client: &'a ClientType,
-	instance: &'a Instance,
-	manifest: &'a Manifest,
-) -> Box<dyn ClientTrait<'a> + 'a> {
-	Box::new(match client {
-		ClientType::Vanilla(_) => vanilla::VanillaClient::new(instance, manifest),
-	})
+#[derive(Debug)]
+pub struct SetupInfo {
+    pub version: String,
+    pub libraries: String,
+    pub game_dir: PathBuf,
+    pub natives_dir: PathBuf,
+    pub assets_dir: PathBuf,
+    pub asset_index: String,
+}
+
+pub struct LaunchCallbacks {
+    pub on_launch: Box<dyn FnMut(u32) + Send>,
+    pub on_stdout: Box<dyn FnMut(String) + Send>,
+    pub on_stderr: Box<dyn FnMut(String) + Send>,
 }
 
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
-	fn new(instance: &'a Instance, manifest: &'a Manifest) -> Self
-	where
-		Self: Sized;
+	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self where Self: Sized;
 
-	async fn launch(&self) -> crate::Result<()>;
-	async fn setup(&self) -> crate::Result<()>;
+	async fn launch(&self, info: LaunchInfo, mut callbacks: LaunchCallbacks) -> crate::Result<i32> {
+        let manifest = &self.get_manifest().minecraft_manifest;
 
-	async fn install_game(&self) -> crate::Result<PathBuf>;
-	async fn install_libraries(&self) -> crate::Result<String>;
-	async fn install_natives(&self) -> crate::Result<()>;
-	async fn install_assets(&self) -> crate::Result<()>;
+        let args = get_arguments(manifest)?
+            .replace("${game_assets}", "${assets_root}")
+            .replace("${auth_player_name}", &info.account.username)
+            .replace("${version_name}", &info.setup.version)
+            .replace("${game_directory}", info.setup.game_dir.to_str().unwrap())
+            .replace("${assets_root}", info.setup.assets_dir.to_str().unwrap())
+            .replace("${assets_index_name}", &manifest.asset_index.id)
+            .replace("${auth_uuid}", &info.account.uuid)
+            .replace("${auth_access_token}", &info.account.access_token)
+            .replace("${auth_session}", "0") // TODO: Figure out how to get this session ID.
+            .replace("${user_properties}", "{}") // TODO: Figure out these properties.
+            .replace("${user_type}", "1")
+            .replace("${version_type}", "OneLauncher");
 
-	fn get_instance(&self) -> &'a Instance
-	where
-		Self: Sized;
-	fn get_manifest(&self) -> &'a Manifest
-	where
-		Self: Sized;
+        let mut process = process::Command::new(&info.java).arg("-XX:-UseAdaptiveSizePolicy")
+            .arg("-XX:-OmitStackTraceInFastThrow")
+            .arg("-Dminecraft.launcher.brand=onelauncher")
+            .arg("-Dminecraft.launcher.version=1")
+            .arg(format!("-Djava.library.path={}", info.setup.natives_dir.to_str().unwrap()))
+            .arg(format!("-Xms{}M", info.mem_min))
+            .arg(format!("-Xmx{}M", info.mem_max))
+            .arg("-cp")
+            .arg(info.setup.libraries)
+            .arg(manifest.main_class.clone())
+            .args(args.split_whitespace())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        
+        let pid = process.id().unwrap_or(0);
+        (callbacks.on_launch)(pid);
+        
+        let stdout = process.stdout.take().ok_or(anyhow!("Couldn't take stdout"))?;
+        let stderr = process.stderr.take().ok_or(anyhow!("Couldn't take stderr"))?;
+
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        let mut stderr_lines = BufReader::new(stderr).lines();
+
+        let stdout_task = tokio::spawn(async move {
+            while let Some(line) = stdout_lines.next_line().await.expect("Couldn't read line") {
+                (callbacks.on_stdout)(line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            while let Some(line) = stderr_lines.next_line().await.expect("Couldn't read line") {
+                (callbacks.on_stderr)(line);
+            }
+        });
+
+        let status = process.wait().await?;
+        tokio::try_join!(stdout_task, stderr_task)?;
+
+        let exit_code = status.code().unwrap_or(0);
+        Ok(exit_code)
+    }
+
+	async fn setup(&self) -> crate::Result<SetupInfo>;
+
+	fn get_cluster(&self) -> &'a Cluster;
+
+	fn get_manifest(&self) -> &'a Manifest;
+}
+
+pub fn get_arguments(manifest: &MinecraftManifest) -> crate::Result<String> {
+    // Modern
+    if let Some(arguments) = &manifest.arguments {
+        return Ok(arguments.game.build());
+    }
+
+    // Legacy
+    if let Some(arguments) = &manifest.minecraft_arguments {
+        return Ok(arguments.clone());
+    }
+
+    Err(anyhow!("No arguments found").into())
 }
 
 #[macro_export]
@@ -97,7 +156,7 @@ macro_rules! create_game_client {
 
         #[derive(Debug, Clone)]
         pub struct $client<'a> {
-            pub instance: &'a crate::game::client::Instance,
+            pub cluster: &'a crate::game::client::Cluster,
             pub manifest: &'a crate::game::client::Manifest,
             $(pub $name: $type),*
         }
@@ -107,11 +166,11 @@ macro_rules! create_game_client {
 #[macro_export]
 macro_rules! impl_game_client {
 	() => {
-		fn get_instance(&self) -> &'a crate::game::client::Instance
+		fn get_cluster(&self) -> &'a crate::game::client::Cluster
 		where
 			Self: Sized,
 		{
-			self.instance
+			self.cluster
 		}
 
 		fn get_manifest(&self) -> &'a crate::game::client::Manifest
@@ -121,184 +180,4 @@ macro_rules! impl_game_client {
 			self.manifest
 		}
 	};
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ClientManagerError {
-	#[error("Instance not found")]
-	InstanceNotFound,
-	#[error("Manifest not found")]
-	ManifestNotFound,
-}
-
-pub struct ClientManager {
-	instances: HashMap<Uuid, Instance>,
-	manifests: HashMap<Uuid, Manifest>,
-}
-
-impl ClientManager {
-	pub fn new() -> crate::Result<Self> {
-		let instances = load_and_serialize::<Instance>(&dirs::instances_dir()?)?;
-
-		let manifests = load_and_serialize::<Manifest>(&dirs::manifests_dir()?)?;
-
-		Ok(Self {
-			instances,
-			manifests,
-		})
-	}
-
-	pub fn get_impl_uuid<'a>(&'a self, uuid: Uuid) -> crate::Result<Box<dyn ClientTrait<'a> + 'a>> {
-		let instance = self.get_instance(uuid)?;
-		let manifest = self.get_manifest(uuid)?;
-
-		Ok(get_impl(&instance.client, &instance, &manifest))
-	}
-
-	pub fn get_instances(&self) -> Vec<&Instance> {
-		self.instances.values().collect()
-	}
-
-	pub fn get_instances_owned(&self) -> Vec<Instance> {
-		self.instances.values().cloned().collect()
-	}
-
-	pub fn get_instance(&self, uuid: Uuid) -> crate::Result<&Instance> {
-		self.instances
-			.get(&uuid)
-			.ok_or(ClientManagerError::InstanceNotFound.into())
-	}
-
-	pub fn get_instance_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Instance> {
-		self.instances
-			.get_mut(&uuid)
-			.ok_or(ClientManagerError::InstanceNotFound.into())
-	}
-
-	pub fn get_manifest(&self, uuid: Uuid) -> crate::Result<&Manifest> {
-		self.manifests
-			.get(&uuid)
-			.ok_or(ClientManagerError::ManifestNotFound.into())
-	}
-
-	pub fn get_manifest_mut(&mut self, uuid: Uuid) -> crate::Result<&mut Manifest> {
-		self.manifests
-			.get_mut(&uuid)
-			.ok_or(ClientManagerError::ManifestNotFound.into())
-	}
-
-	pub async fn create_instance(
-		&mut self,
-		name: String,
-		version: String,
-		cover: Option<String>,
-		group: Option<Uuid>,
-		client: ClientType,
-	) -> crate::Result<Uuid> {
-		let version_cache = dirs::app_config_dir()?.join("versions_cache.json");
-		let versions = client.get_versions(Some(&version_cache)).await?;
-		let url = &versions
-			.iter()
-			.find(|v| v.id == version)
-			.ok_or(anyhow!("Version not found"))?
-			.url;
-
-		let uuid = Uuid::new_v4();
-
-		// Save the manifest
-		let minecraft_manifest = vanilla::retrieve_version_manifest(url).await?;
-		let manifest = Manifest {
-			id: uuid,
-			manifest: minecraft_manifest,
-		};
-
-		save(
-			&dirs::manifests_dir()?.join(format!("{}.json", uuid)),
-			&manifest,
-		)?;
-		self.manifests.insert(uuid, manifest);
-
-		// Save the instance
-		let instance = Instance {
-			id: uuid,
-			created_at: Local::now(),
-			name,
-			cover,
-			group,
-			client,
-		};
-
-		save(
-			&dirs::instances_dir()?.join(format!("{}.json", uuid)),
-			&instance,
-		)?;
-		self.instances.insert(uuid, instance);
-
-		Ok(uuid)
-	}
-}
-
-fn save<T>(path: &PathBuf, object: T) -> crate::Result<()>
-where
-	T: Serialize,
-{
-	if !path.exists() {
-		fs::create_dir_all(
-			path.parent()
-				.expect("Couldn't get parent of path whilst saving object. 'client.rs'"),
-		)?;
-	}
-
-	let content = serde_json::to_string(&object)?;
-	fs::write(path, content)?;
-	Ok(())
-}
-
-fn load_and_serialize<T>(dir: &PathBuf) -> crate::Result<HashMap<Uuid, T>>
-where
-	T: DeserializeOwned,
-{
-	let mut result = HashMap::<Uuid, T>::new();
-
-	if !dir.exists() {
-		fs::create_dir_all(dir)?;
-		return Ok(result);
-	}
-
-	for file in fs::read_dir(dir)? {
-		let file = file?;
-		let file_name = file.file_name();
-		let file_name = file_name
-			.to_str()
-			.ok_or(anyhow!("Couldn't convert OsStr to str"))?
-			.replace(".json", "");
-		let uuid = match Uuid::parse_str(&file_name) {
-			Ok(uuid) => uuid,
-			Err(_) => {
-				eprintln!("Couldn't parse file name as UUID: '{:?}'", file_name);
-				continue;
-			}
-		};
-
-		let path = file.path();
-		let content = match fs::read_to_string(&path) {
-			Ok(content) => content,
-			Err(_) => {
-				eprintln!("Couldn't read file: '{:?}'", path);
-				continue;
-			}
-		};
-
-		let parsed = match serde_json::from_str::<T>(&content) {
-			Ok(parsed) => parsed,
-			Err(_) => {
-				eprintln!("Couldn't parse file content as JSON: '{:?}'", content);
-				continue;
-			}
-		};
-
-		result.insert(uuid, parsed);
-	}
-
-	Ok(result)
 }

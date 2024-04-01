@@ -14,7 +14,7 @@ authors = { workspace = true }
 tauri-build = { workspace = true }
 
 [dependencies]
-onelauncher = { path = "../onelauncher", features = [ "tauri" ] }
+onelauncher = { path = "../onelauncher" }
 
 interpulse = { workspace = true, features = [ "bincode" ] }
 

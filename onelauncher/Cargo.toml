@@ -10,10 +10,6 @@ readme = { workspace = true }
 homepage = { workspace = true }
 authors = { workspace = true }
 
-[features]
-tauri = [ "dep:tauri" ]
-cli = [ "dep:indicatif" ]
-
 [dependencies]
 tauri = { workspace = true, optional = true }
 indicatif = { workspace = true, optional = true }
@@ -41,11 +37,3 @@ dirs = { workspace = true }
 open = { workspace = true }
 sha1 = { workspace = true }
 discord-rich-presence = { workspace = true }
-notify = { workspace = true }
-notify-debouncer-mini = { workspace = true }
-regex = { workspace = true }
-sysinfo = { workspace = true }
-sys-info = { workspace = true }
-
-[target.'cfg(windows)'.dependencies]
-winreg = { workspace = true }

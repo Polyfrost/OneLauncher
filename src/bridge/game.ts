@@ -1,33 +1,23 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
-export async function getInstance(uuid: string): Promise<Core.Instance> {
-	return await invoke<Core.Instance>('plugin:onelauncher|get_instance', {
-		uuid,
-	});
+export async function getCluster(uuid: string): Promise<Core.ClusterWithManifest> {
+	return await invoke<Core.ClusterWithManifest>(
+		'plugin:onelauncher|get_cluster',
+		{ uuid },
+	);
 }
 
-export async function getManifest(uuid: string): Promise<Core.Manifest> {
-	return await invoke<Core.Manifest>('plugin:onelauncher|get_manifest', {
-		uuid,
-	});
-}
+export async function getClustersGrouped(): Promise<Map<string, WithIndex<Core.ClusterWithManifest>[]>> {
+	const clusters = await getClusters();
+	const map = new Map<string, WithIndex<Core.ClusterWithManifest>[]>();
 
-export async function getInstancesWithManifests(): Promise<Core.InstanceWithManifest[]> {
-	const instances = await getInstances();
-
-	return Promise.all(instances.map(async instance => ({
-		instance,
-		manifest: await getManifest(instance.id),
-	})));
-}
-
-export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWithManifest[]>> {
-	const instances = await getInstancesWithManifests();
-	const map = new Map<string, Core.InstanceWithManifest[]>();
-
-	instances.forEach((instance, index) => {
-		const groupName = instance.instance.group || 'Unnamed';
-		const value = { ...instance, index };
+	clusters.forEach((cluster, index) => {
+		const groupName = cluster.cluster.group || 'Unnamed';
+		const value: WithIndex<Core.ClusterWithManifest> = {
+			...cluster,
+			index,
+		};
 
 		if (map.has(groupName))
 			map.get(groupName)!.push(value);
@@ -38,28 +28,46 @@ export async function getGroupedInstances(): Promise<Map<string, Core.InstanceWi
 	return map;
 }
 
-export async function getInstances(): Promise<Core.Instance[]> {
-	return await invoke<Core.Instance[]>('plugin:onelauncher|get_instances');
+export async function getClusters(): Promise<Core.ClusterWithManifest[]> {
+	return await invoke<Core.ClusterWithManifest[]>('plugin:onelauncher|get_clusters');
 }
 
-export async function createInstance(instance: Omit<Core.Instance, 'id' | 'createdAt'> & { version: string }): Promise<void> {
+export async function createCluster(cluster: Omit<Core.Cluster, 'id' | 'createdAt'> & { version: string }): Promise<void> {
 	return await invoke(
-		'plugin:onelauncher|create_instance',
+		'plugin:onelauncher|create_cluster',
 		{
-			name: instance.name,
-			version: instance.version,
-			client: instance.client,
-			// cover: instance.cover,
-			// group: instance.group,
-		},
-		{
-			headers: {
-				Accept: 'text/plain',
-			},
+			name: cluster.name,
+			version: cluster.version,
+			client: cluster.client,
+			// cover: cluster.cover,
+			// group: cluster.group,
 		},
 	);
 }
 
 export async function refreshClientManager(): Promise<void> {
 	return await invoke('plugin:onelauncher|refresh_client_manager');
+}
+
+interface LaunchCallbacks {
+	on_launch: (pid: number) => any;
+	on_stdout: (line: string) => any;
+	on_stderr: (line: string) => any;
+};
+
+export async function launchCluster(uuid: string, callbacks: LaunchCallbacks): Promise<number> {
+	const unlisten_launch = await listen<number>('game:launch', e => callbacks.on_launch(e.payload));
+	const unlisten_stdout = await listen<string>('game:stdout', e => callbacks.on_stdout(e.payload));
+	const unlisten_stderr = await listen<string>('game:stderr', e => callbacks.on_stderr(e.payload));
+
+	const exit_code = await invoke<number>(
+		'plugin:onelauncher|launch_cluster',
+		{ uuid },
+	);
+
+	unlisten_launch();
+	unlisten_stdout();
+	unlisten_stderr();
+
+	return exit_code;
 }

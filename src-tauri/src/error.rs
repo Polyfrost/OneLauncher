@@ -1,6 +1,6 @@
 use tracing_error::ExtractSpanTrace;
 
-pub fn display_tracing_error(err: &launcher_core::Error) {
+pub fn display_tracing_error(err: &onelauncher::Error) {
 	match get_span_trace(err) {
 		Some(span_trace) => {
 			tracing::error!(error = %err, span_trace = %span_trace);

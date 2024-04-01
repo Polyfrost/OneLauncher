@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncBufReadExt, BufReader}, process};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::auth::Account;
@@ -29,6 +30,12 @@ pub struct Cluster {
 	pub client: ClientType,
 }
 
+impl Cluster {
+    pub fn dir(&self) -> crate::Result<PathBuf> {
+        Ok(crate::utils::dirs::cluster_dir(self.id.to_string())?)
+    }
+}
+
 #[derive(Debug)]
 pub struct LaunchInfo {
     pub java: PathBuf,
@@ -44,6 +51,8 @@ pub struct SetupInfo {
     pub libraries: String,
     pub game_dir: PathBuf,
     pub natives_dir: PathBuf,
+    pub assets_dir: PathBuf,
+    pub asset_index: String,
 }
 
 pub struct LaunchCallbacks {
@@ -63,7 +72,7 @@ pub trait ClientTrait<'a>: Send + Sync {
             .replace("${auth_player_name}", &info.account.username)
             .replace("${version_name}", &info.setup.version)
             .replace("${game_directory}", info.setup.game_dir.to_str().unwrap())
-            .replace("${assets_root}", format!("{}/assets", info.setup.game_dir.to_str().unwrap()).as_str())
+            .replace("${assets_root}", info.setup.assets_dir.to_str().unwrap())
             .replace("${assets_index_name}", &manifest.asset_index.id)
             .replace("${auth_uuid}", &info.account.uuid)
             .replace("${auth_access_token}", &info.account.access_token)

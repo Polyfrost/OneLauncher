@@ -30,14 +30,17 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
 	async fn setup(&self) -> crate::Result<SetupInfo> {
         let manifest = &self.manifest.minecraft_manifest;
 
+        // Install everything
         let client_path = install_game(manifest).await?;
         let mut libraries = install_libraries(manifest).await?;
+        let assets = install_assets(manifest).await?;
 
         // Append client path to the libraries string at the end
         libraries.push_str(constants::LIBRARY_SPLITTER);
         libraries.push_str(client_path.to_str().unwrap());
         
-        let game_dir = dirs::cluster_dir(self.cluster.id.to_string())?.join("game");
+        // Create game directory
+        let game_dir = self.cluster.dir()?.join("game");
         fs::create_dir_all(&game_dir)?;
 
 		Ok(SetupInfo {
@@ -45,6 +48,8 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
             libraries,
             natives_dir: dirs::natives_dir()?,
             game_dir,
+            assets_dir: dirs::assets_dir()?,
+            asset_index: assets,
         })
 	}
 }
@@ -125,7 +130,7 @@ pub async fn install_natives(natives: Vec<&Library>) -> crate::Result<()> {
     Ok(())
 }
 
-pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<()> {
+pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<String> {
     let assets = dirs::assets_dir()?;
     let objects = assets.join("objects");
     let indexes = assets.join("indexes");
@@ -140,7 +145,8 @@ pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<()> {
     }
 
     let contents = serde_json::from_str::<AssetIndexFile>(&fs::read_to_string(&index)?)?;
-    for (hash, asset) in contents.objects {
+    for (_, asset) in contents.objects {
+        let hash = asset.hash.clone();
         let short = &hash[..2];
         let file = objects.join(&short).join(&hash);
         fs::create_dir_all(file.parent().ok_or(anyhow!("Couldn't get asset parent"))?)?;
@@ -151,7 +157,7 @@ pub async fn install_assets(manifest: &MinecraftManifest) -> crate::Result<()> {
         }
     }
 
-    Ok(())
+    Ok(manifest.asset_index.id.clone())
 }
 
 #[derive(Clone, Serialize, Deserialize)]

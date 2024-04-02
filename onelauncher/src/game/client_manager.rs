@@ -24,6 +24,7 @@ pub struct ClusterWithManifest {
     pub manifest: Manifest
 }
 
+#[derive(Debug)]
 pub struct ClientManager {
 	clusters: HashMap<Uuid, ClusterWithManifest>,
 }

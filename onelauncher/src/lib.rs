@@ -1,4 +1,4 @@
-#![warn(unused_import_braces, missing_debug_implementations)]
+#![warn(unused_import_braces)]
 #![deny(unused_must_use)]
 
 pub mod auth;
@@ -12,6 +12,7 @@ pub mod settings;
 pub use error::*;
 pub use logger::start_logger;
 
+#[derive(Debug)]
 pub struct AppState {
     pub settings: settings::SettingsManager,
     pub clients: game::client_manager::ClientManager,

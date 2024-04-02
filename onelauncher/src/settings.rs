@@ -18,6 +18,7 @@ impl Default for Setings {
     }
 }
 
+#[derive(Debug)]
 pub struct SettingsManager {
     pub settings: Setings,
 }

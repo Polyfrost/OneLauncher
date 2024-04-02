@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use tokio::{io::{AsyncBufReadExt, BufReader}, process};
-use tracing::info;
 use uuid::Uuid;
 
 use crate::auth::Account;

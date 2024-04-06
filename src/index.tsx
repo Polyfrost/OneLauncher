@@ -8,7 +8,7 @@ import App from './ui/App';
 import HomePage from './ui/pages/Home';
 import BrowserPage from './ui/pages/Browser';
 import UpdatesPage from './ui/pages/Updates';
-import ClusterPage from './ui/pages/cluster';
+import ClusterPage from './ui/pages/cluster/layout';
 import ClusterOverview from './ui/pages/cluster/ClusterOverview';
 import ClusterMods from './ui/pages/cluster/ClusterMods';
 

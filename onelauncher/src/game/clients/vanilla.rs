@@ -1,7 +1,7 @@
 use crate::{
 	constants::{self, MINECRAFT_VERSIONS_MANIFEST}, 
     create_game_client, 
-    game::{client::{ClientTrait, Cluster, Manifest, SetupInfo}, minecraft::{AssetIndexFile, Library, MinecraftManifest, MinecraftVersion, RuleListExt}}, 
+    game::{clients::{ClientTrait, Cluster, Manifest, SetupInfo}, minecraft::{AssetIndexFile, Library, MinecraftManifest, MinecraftVersion, RuleListExt}}, 
     impl_game_client, 
     utils::{dirs, file, http}
 };
@@ -31,7 +31,7 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
         let manifest = &self.manifest.minecraft_manifest;
 
         // Create game directory
-        let game_dir = self.cluster.dir()?.join("game");
+        let game_dir = self.cluster.game_dir()?;
         fs::create_dir_all(&game_dir)?;
 
         // Install everything
@@ -46,7 +46,6 @@ impl<'a> ClientTrait<'a> for VanillaClient<'a> {
         // Append client path to the libraries string at the end
         libraries.push_str(constants::LIBRARY_SPLITTER);
         libraries.push_str(client_path.to_str().unwrap());
-        
 
 		Ok(SetupInfo {
             version: manifest.version.clone(),
@@ -128,8 +127,12 @@ pub async fn install_natives(natives: Vec<&Library>) -> crate::Result<()> {
 
         if !dest.exists() {
             http::download_file_sha1_check(url.as_str(), &dest, &artifact.sha1).await?;
-            file::extract_zip(&dest, &dirs::natives_dir()?)?; // TODO: Handle this properly
         }
+
+        // if !dirs::natives_dir()?.join(&classifier).exists() {
+        file::extract_zip(&dest, &dirs::natives_dir()?)?; // TODO: Handle this properly
+        // }
+
     }
 
     Ok(())

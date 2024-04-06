@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{auth::Account, utils::dirs};
 
-use super::{client::{ClientTrait, Cluster, LaunchCallbacks, LaunchInfo, Manifest}, clients::{self, vanilla, ClientType}, java};
+use super::{clients::{self, vanilla, ClientTrait, ClientType, LaunchCallbacks, LaunchInfo}, cluster::{Cluster, Manifest}, java};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientManagerError {

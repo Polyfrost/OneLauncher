@@ -11,6 +11,7 @@ import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from './ui/pages/cluster/ClusterRoot';
 import ClusterOverview from './ui/pages/cluster/ClusterOverview';
 import ClusterMods from './ui/pages/cluster/ClusterMods';
+import ClusterLogs from './ui/pages/cluster/ClusterLogs';
 
 render(() => (
 	<Router root={App}>
@@ -19,6 +20,7 @@ render(() => (
 		<Route path="/updates" component={UpdatesPage} />
 		<Route path="/clusters" component={ClusterRoot}>
 			<Route path="/" component={ClusterOverview} />
+			<Route path="/logs" component={ClusterLogs} />
 			<Route path="/mods" component={ClusterMods} />
 		</Route>
 	</Router>

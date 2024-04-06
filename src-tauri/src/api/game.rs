@@ -1,4 +1,6 @@
-use onelauncher::{game::{client::LaunchCallbacks, client_manager::ClusterWithManifest, clients::ClientType}, AppState};
+use std::path::PathBuf;
+
+use onelauncher::{game::{clients::LaunchCallbacks, client_manager::ClusterWithManifest, clients::ClientType}, AppState};
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -35,6 +37,31 @@ pub async fn get_cluster(
 	let manager = &mut state.lock().await.clients;
 	let cluster = manager.get_cluster(uuid)?;
 	Ok(cluster.clone())
+}
+
+#[tauri::command]
+pub async fn get_cluster_logs(
+    state: State<'_, Mutex<AppState>>,
+    uuid: Uuid,
+) -> Result<Vec<PathBuf>, String> {
+    let manager = &mut state.lock().await.clients;
+    let cluster = manager.get_cluster(uuid)?;
+
+    let log_files = cluster.cluster.get_log_files()?;
+    Ok(log_files)
+}
+
+#[tauri::command]
+pub async fn get_cluster_log(
+    state: State<'_, Mutex<AppState>>,
+    uuid: Uuid,
+    log: PathBuf,
+) -> Result<String, String> {
+    let manager = &mut state.lock().await.clients;
+    let cluster = manager.get_cluster(uuid)?;
+
+    let log = cluster.cluster.get_log(&log)?;
+    Ok(log)
 }
 
 #[tauri::command]

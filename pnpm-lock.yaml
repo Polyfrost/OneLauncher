@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  '@fontsource/jetbrains-mono':
+    specifier: ^5.0.19
+    version: 5.0.19
   '@fontsource/poppins':
     specifier: ^5.0.12
     version: 5.0.12
@@ -716,6 +719,10 @@ packages:
       glob: 10.3.10
       read-package-up: 11.0.0
     dev: true
+
+  /@fontsource/jetbrains-mono@5.0.19:
+    resolution: {integrity: sha512-SdwUuvdfuAvGWRRc4LOFRSmDrpkE+vFUpCtOIOUl1PpXdLfeU//93BZiGf7j/oFGSZJbHAurfux2uLT38/NIjw==}
+    dev: false
 
   /@fontsource/poppins@5.0.12:
     resolution: {integrity: sha512-0qzBxtIJLh82iMJ9pCXKYwGs1zyS+jyUmwVJ59+JdYnEaFVkDsxVOk9yDWfVOs14ALUneodU2m5YSGma6dCYCw==}

@@ -17,6 +17,8 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
 			game::create_cluster,
 			game::get_clusters,
 			game::get_cluster,
+            game::get_cluster_logs,
+            game::get_cluster_log,
             game::launch_cluster,
 			refresh_client_manager,
 		])

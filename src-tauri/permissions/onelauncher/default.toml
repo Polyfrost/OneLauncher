@@ -6,6 +6,8 @@ permissions = [
   "allow-create-cluster",
   "allow-get-clusters",
   "allow-get-cluster",
+  "allow-get-cluster-logs",
+  "allow-get-cluster-log",
   "allow-get-manifest",
   "allow-login-msa",
 ]

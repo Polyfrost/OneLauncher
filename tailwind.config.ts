@@ -5,6 +5,7 @@ const config: Config = {
 	theme: {
 		fontFamily: {
 			sans: 'Poppins',
+			mono: 'Jetbrains Mono',
 		},
 
 		fontSize: {

@@ -14,6 +14,7 @@
 		"format": "pnpm lint --fix && cargo fmt"
 	},
 	"dependencies": {
+		"@fontsource/jetbrains-mono": "^5.0.19",
 		"@fontsource/poppins": "^5.0.12",
 		"@solidjs/router": "^0.13.1",
 		"@tauri-apps/api": "^2.0.0-beta",

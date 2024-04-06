@@ -8,6 +8,20 @@ export async function getCluster(uuid: string): Promise<Core.ClusterWithManifest
 	);
 }
 
+export async function getClusterLogs(uuid: string): Promise<string[]> {
+	return await invoke<string[]>(
+		'plugin:onelauncher|get_cluster_logs',
+		{ uuid },
+	);
+}
+
+export async function getClusterLog(uuid: string, log: string): Promise<string> {
+	return await invoke<string>(
+		'plugin:onelauncher|get_cluster_log',
+		{ uuid, log },
+	);
+}
+
 export async function getClustersGrouped(): Promise<Map<string, WithIndex<Core.ClusterWithManifest>[]>> {
 	const clusters = await getClusters();
 	const map = new Map<string, WithIndex<Core.ClusterWithManifest>[]>();
@@ -58,14 +72,12 @@ interface LaunchCallbacks {
 export async function launchCluster(uuid: string, callbacks: LaunchCallbacks = {}): Promise<number> {
 	async function listen_evt(name: string): Promise<() => void> {
 		// @ts-expect-error Any
-		const callback = callbacks[`on_${name}`](e.payload);
+		const callback = callbacks[`on_${name}`];
 
-		if (callback !== undefined) {
-			// @ts-expect-error Any
-			return await listen(`game:${name}`, e => callbacks[`on_${name}`](e.payload));
-		}
+		if (!callback)
+			return () => {};
 
-		return () => {};
+		return await listen(`game:${name}`, e => callback(e.payload));
 	}
 
 	const unlisten_launch = await listen_evt('launch');

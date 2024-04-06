@@ -10,6 +10,8 @@ fn main() {
 			"create_cluster",
 			"get_clusters",
 			"get_cluster",
+            "get_cluster_logs",
+            "get_cluster_log",
 			"get_manifest",
 		]),
 	));

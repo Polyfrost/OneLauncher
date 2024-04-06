@@ -13,7 +13,7 @@ function App(props: ParentProps) {
 	}
 
 	return (
-		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-white">
+		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
 			<WindowFrame />
 			<div class="flex flex-col px-8">
 				<Navbar />
@@ -22,11 +22,10 @@ function App(props: ParentProps) {
 			{/* This was a pain to do */}
 			<div class="relative h-full w-full overflow-hidden">
 				<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
-					<OverlayScrollbarsComponent class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8">
+					<OverlayScrollbarsComponent class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8 pb-8">
 						<AnimatedRoutes>
 							{props.children}
 						</AnimatedRoutes>
-						<div class="pb-8" />
 					</OverlayScrollbarsComponent>
 				</div>
 			</div>

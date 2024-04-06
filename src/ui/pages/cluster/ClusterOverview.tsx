@@ -5,6 +5,7 @@ import useCluster from '../../hooks/useCluster';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
+import { launchCluster } from '../../../bridge/game';
 
 function ClusterOverview() {
 	const [params] = useSearchParams();
@@ -50,8 +51,17 @@ function Banner({ cluster, manifest }: Core.ClusterWithManifest) {
 			</div>
 
 			<div class="flex flex-row items-end gap-x-2.5 *:h-8 *:w-8">
-				<Button styleType="secondary" iconLeft={<Share07Icon />} />
-				<Button styleType="primary" iconLeft={<PlayIcon />} class="!w-auto">Launch</Button>
+				<Button
+					styleType="secondary"
+					iconLeft={<Share07Icon />}
+				/>
+				<Button
+					styleType="primary"
+					iconLeft={<PlayIcon />}
+					children="Launch"
+					class="!w-auto"
+					onClick={() => launchCluster(cluster.id)}
+				/>
 			</div>
 		</div>
 	);

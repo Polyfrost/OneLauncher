@@ -12,6 +12,7 @@
 		"window:allow-destroy",
 		"window:allow-start-dragging",
 		"window:allow-minimize",
-		"event:default"
+		"event:default",
+		"shell:allow-open"
 	]
 }

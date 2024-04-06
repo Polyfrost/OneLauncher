@@ -1,7 +1,9 @@
 import { A } from '@solidjs/router';
 import { createSignal } from 'solid-js';
 import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-solid';
+import { open } from '@tauri-apps/plugin-shell';
 import useAccount from '../hooks/useAccount';
+import { WEBSITE } from '../../constants';
 import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/AccountPopup';
 import PlayerHead from './game/PlayerHead';
@@ -35,7 +37,9 @@ function Navbar() {
 	return (
 		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15 mx-2">
 			<div>
-				<PolyfrostFull />
+				<div onClick={() => open(WEBSITE)} class="flex items-center justify-center active:scale-90 transition-transform w-min">
+					<PolyfrostFull />
+				</div>
 			</div>
 			<div class="flex flex-row items-center justify-center gap-x-10 py-1">
 				<NavbarLink path="/" label="Home" />

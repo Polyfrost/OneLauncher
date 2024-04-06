@@ -50,15 +50,27 @@ export async function refreshClientManager(): Promise<void> {
 }
 
 interface LaunchCallbacks {
-	on_launch: (pid: number) => any;
-	on_stdout: (line: string) => any;
-	on_stderr: (line: string) => any;
+	on_launch?: (pid: number) => any;
+	on_stdout?: (line: string) => any;
+	on_stderr?: (line: string) => any;
 };
 
-export async function launchCluster(uuid: string, callbacks: LaunchCallbacks): Promise<number> {
-	const unlisten_launch = await listen<number>('game:launch', e => callbacks.on_launch(e.payload));
-	const unlisten_stdout = await listen<string>('game:stdout', e => callbacks.on_stdout(e.payload));
-	const unlisten_stderr = await listen<string>('game:stderr', e => callbacks.on_stderr(e.payload));
+export async function launchCluster(uuid: string, callbacks: LaunchCallbacks = {}): Promise<number> {
+	async function listen_evt(name: string): Promise<() => void> {
+		// @ts-expect-error Any
+		const callback = callbacks[`on_${name}`](e.payload);
+
+		if (callback !== undefined) {
+			// @ts-expect-error Any
+			return await listen(`game:${name}`, e => callbacks[`on_${name}`](e.payload));
+		}
+
+		return () => {};
+	}
+
+	const unlisten_launch = await listen_evt('launch');
+	const unlisten_stdout = await listen_evt('stdout');
+	const unlisten_stderr = await listen_evt('stderr');
 
 	const exit_code = await invoke<number>(
 		'plugin:onelauncher|launch_cluster',

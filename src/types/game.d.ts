@@ -27,9 +27,26 @@ declare namespace Core {
 
     export interface ClientType {
         Vanilla: VanillaProps,
+        Forge: ForgeProps,
+        Fabric: FabricProps,
+        Quilt: QuiltProps
     }
+
+    export type Loader = keyof ClientType;
 
     export interface VanillaProps {
         type: "Vanilla",
+    }
+
+    export interface ForgeProps {
+        type: "Forge",
+    }
+
+    export interface FabricProps {
+        type: "Fabric",
+    }
+
+    export interface QuiltProps {
+        type: "Quilt",
     }
 }

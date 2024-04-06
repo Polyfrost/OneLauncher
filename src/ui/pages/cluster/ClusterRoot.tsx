@@ -3,8 +3,9 @@ import type { ParentProps } from 'solid-js';
 import { EyeIcon, PackagePlusIcon } from '@untitled-theme/icons-solid';
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
-function ClusterPage(props: ParentProps) {
+function ClusterRoot(props: ParentProps) {
 	const [searchParams] = useSearchParams();
 
 	return (
@@ -22,13 +23,15 @@ function ClusterPage(props: ParentProps) {
 				/>
 			</div>
 
-			<div>
+			<div class="flex flex-col w-full h-full">
 				<AnimatedRoutes>
-					{props.children}
+					<ErrorBoundary>
+						{props.children}
+					</ErrorBoundary>
 				</AnimatedRoutes>
 			</div>
 		</div>
 	);
 }
 
-export default ClusterPage;
+export default ClusterRoot;

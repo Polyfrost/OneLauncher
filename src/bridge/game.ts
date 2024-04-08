@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import { listen } from '@tauri-apps/api/event';
 
 export async function getCluster(uuid: string): Promise<Core.ClusterWithManifest> {
@@ -64,34 +65,60 @@ export async function refreshClientManager(): Promise<void> {
 }
 
 interface LaunchCallbacks {
-	on_launch?: (pid: number) => any;
-	on_stdout?: (line: string) => any;
-	on_stderr?: (line: string) => any;
+	on_launch: (pid: number) => any;
+	on_stdout: (line: string) => any;
+	on_stderr: (line: string) => any;
 };
 
-export async function launchCluster(uuid: string, callbacks: LaunchCallbacks = {}): Promise<number> {
-	async function listen_evt(name: string): Promise<() => void> {
-		// @ts-expect-error Any
-		const callback = callbacks[`on_${name}`];
+export function launchCluster(uuid: string, callbacks?: LaunchCallbacks): Promise<number> {
+	// eslint-disable-next-line no-async-promise-executor
+	return new Promise(async (resolve) => {
+		let unlisten_stdout: UnlistenFn | undefined;
+		let unlisten_stderr: UnlistenFn | undefined;
+		let pid: number = -1;
 
-		if (!callback)
-			return () => {};
+		function guard(passed_pid: number, fn: () => any | undefined) {
+			if (passed_pid !== pid)
+				return;
 
-		return await listen(`game:${name}`, e => callback(e.payload));
-	}
+			if (fn)
+				fn();
+		}
 
-	const unlisten_launch = await listen_evt('launch');
-	const unlisten_stdout = await listen_evt('stdout');
-	const unlisten_stderr = await listen_evt('stderr');
+		const unlisten_launch = await listen<number>('game:launch', async (e) => {
+			pid = e.payload;
 
-	const exit_code = await invoke<number>(
-		'plugin:onelauncher|launch_cluster',
-		{ uuid },
-	);
+			if (callbacks)
+				callbacks.on_launch(pid);
 
-	unlisten_launch();
-	unlisten_stdout();
-	unlisten_stderr();
+			unlisten_launch!();
+		});
 
-	return exit_code;
+		const unlisten_exit = await listen<[number, number]>(`game:exit`, e => guard(e.payload[0], () => {
+			if (callbacks) {
+				unlisten_stdout!();
+				unlisten_stderr!();
+			}
+
+			unlisten_exit!();
+			resolve(e.payload[1]);
+		}));
+
+		if (callbacks) {
+			unlisten_stdout = await listen<[number, string]>(`game:stdout`, e => guard(
+				e.payload[0],
+				callbacks.on_stdout(e.payload[1]),
+			));
+
+			unlisten_stderr = await listen<[number, string]>(`game:stderr`, e => guard(
+				e.payload[0],
+				callbacks.on_stderr(e.payload[1]),
+			));
+		}
+
+		await invoke<number>(
+			'plugin:onelauncher|launch_cluster',
+			{ uuid },
+		);
+	});
 }

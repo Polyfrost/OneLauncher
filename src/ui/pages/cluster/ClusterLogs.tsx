@@ -25,7 +25,7 @@ function ClusterLogs() {
 	});
 
 	return (
-		<div class="h-full">
+		<div>
 			<h1>Logs</h1>
 
 			<div class="flex flex-col h-full">
@@ -36,10 +36,7 @@ function ClusterLogs() {
 							return (
 								<button
 									class={`border border-gray-0.10 rounded-md px-2 py-1 ${activeLogFile() === log ? 'bg-gray-0.10' : ''}`}
-									onClick={() => {
-										console.log(log);
-										setActiveLogFile(log);
-									}}
+									onClick={() => setActiveLogFile(log)}
 									children={pretty}
 								/>
 							);

@@ -58,11 +58,11 @@ impl ClientManager {
 }
 
 impl ClientManager {
-    pub async fn launch_cluster(
+    pub async fn launch(
         &mut self,
         uuid: Uuid,
         callbacks: LaunchCallbacks,
-    ) -> crate::Result<i32> {
+    ) -> crate::Result<()> {
         let client = self.get_impl_uuid(uuid)?;
         
         let java = java::download_java(&dirs::java_dir()?, client.get_manifest().minecraft_manifest.java_version.major_version).await?;
@@ -82,8 +82,8 @@ impl ClientManager {
             mem_max: 4096,
         };
 
-        let exit_code = client.launch(info, callbacks).await?;
-        Ok(exit_code)
+        client.launch(info, callbacks).await?;
+        Ok(())
     }
 
 	pub async fn create_cluster(

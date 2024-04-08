@@ -52,15 +52,16 @@ pub struct SetupInfo {
 
 pub struct LaunchCallbacks {
     pub on_launch: Box<dyn FnMut(u32) + Send>,
-    pub on_stdout: Box<dyn FnMut(String) + Send>,
-    pub on_stderr: Box<dyn FnMut(String) + Send>,
+    pub on_stdout: Box<dyn FnMut(u32, String) + Send>,
+    pub on_stderr: Box<dyn FnMut(u32, String) + Send>,
+    pub on_exit: Box<dyn FnMut(u32, i32) + Send>,
 }
 
 #[async_trait]
 pub trait ClientTrait<'a>: Send + Sync {
 	fn new(cluster: &'a Cluster, manifest: &'a Manifest) -> Self where Self: Sized;
 
-	async fn launch(&self, info: LaunchInfo, mut callbacks: LaunchCallbacks) -> crate::Result<i32> {
+	async fn launch(&self, info: LaunchInfo, mut callbacks: LaunchCallbacks) -> crate::Result<()> {
         let manifest = &self.get_manifest().minecraft_manifest;
 
         let args = get_arguments(manifest)?
@@ -107,21 +108,28 @@ pub trait ClientTrait<'a>: Send + Sync {
 
         let stdout_task = tokio::spawn(async move {
             while let Some(line) = stdout_lines.next_line().await.expect("Couldn't read line") {
-                (callbacks.on_stdout)(line);
+                (callbacks.on_stdout)(pid, line);
             }
         });
 
         let stderr_task = tokio::spawn(async move {
             while let Some(line) = stderr_lines.next_line().await.expect("Couldn't read line") {
-                (callbacks.on_stderr)(line);
+                (callbacks.on_stderr)(pid, line);
             }
         });
 
-        let status = process.wait().await?;
-        tokio::try_join!(stdout_task, stderr_task)?;
+        tokio::spawn(async move {
+            let status = process.wait().await?;
+            tokio::try_join!(stdout_task, stderr_task)?;
 
-        let exit_code = status.code().unwrap_or(0);
-        Ok(exit_code)
+            let exit_code = status.code().unwrap_or(0);
+            (callbacks.on_exit)(pid, exit_code);
+
+            // Turbo fish syntax to accept ? in the closure
+            Ok::<(), crate::Error>(())
+        });
+        
+        Ok(())
     }
 
 	async fn setup(&self) -> crate::Result<SetupInfo>;

@@ -67,29 +67,34 @@ pub async fn get_cluster_log(
 #[tauri::command]
 pub async fn launch_cluster(
     app: tauri::AppHandle,
-    state: State<'_, Mutex<AppState>>,
 	uuid: Uuid,
-) -> Result<i32, String> {
+) -> Result<(), String> {
+    let state = &mut app.state::<Mutex<AppState>>();
     let manager = &mut state.lock().await.clients;
 
     let on_launch_app = app.clone();
     let on_stdout_app = app.clone();
     let on_stderr_app = app.clone();
+    let on_exit_app = app.clone();
 
     let callbacks = LaunchCallbacks {
         on_launch: Box::new(move |pid| {
             on_launch_app.emit("game:launch", pid).expect("Failed to emit game:launched");
         }),
 
-        on_stdout: Box::new(move |line| {
-            on_stdout_app.emit("game:stdout", line).expect("Failed to emit game:stdout");
+        on_stdout: Box::new(move |pid, line| {
+            on_stdout_app.emit("game:stdout", (pid, line)).expect("Failed to emit game:stdout");
         }),
 
-        on_stderr: Box::new(move |line| {
-            on_stderr_app.emit("game:stderr", line).expect("Failed to emit game:stderr");
+        on_stderr: Box::new(move |pid, line| {
+            on_stderr_app.emit("game:stderr", (pid, line)).expect("Failed to emit game:stderr");
+        }),
+
+        on_exit: Box::new(move |pid, exit_code| {
+            on_exit_app.emit("game:exit", (pid, exit_code)).expect("Failed to emit game:exit");
         })
     };
 
-    let exit_code = manager.launch_cluster(uuid, callbacks).await?;
-    Ok(exit_code)
+    let _ = manager.launch(uuid, callbacks).await?;
+    Ok(())
 }

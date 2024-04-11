@@ -26,9 +26,9 @@ function ClusterRoot(props: ParentProps) {
 
 			<div class="flex flex-col w-full h-full">
 				<AnimatedRoutes>
-					<ErrorBoundary>
+					{/* <ErrorBoundary> */}
 						{props.children}
-					</ErrorBoundary>
+					{/* </ErrorBoundary> */}
 				</AnimatedRoutes>
 			</div>
 		</div>

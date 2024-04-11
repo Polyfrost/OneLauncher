@@ -1,5 +1,6 @@
 import { useSearchParams } from '@solidjs/router';
 import { For, createEffect, createResource, createSignal } from 'solid-js';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { getClusterLog, getClusterLogs } from '../../../bridge/game';
 
 function ClusterLogs() {
@@ -25,10 +26,10 @@ function ClusterLogs() {
 	});
 
 	return (
-		<div>
+		<div class="flex flex-col flex-1">
 			<h1>Logs</h1>
 
-			<div class="flex flex-col h-full">
+			<div class="flex flex-col flex-1">
 				<div class="flex flex-row gap-x-1 overflow-auto">
 					<For each={logs() || []}>
 						{(log) => {
@@ -44,9 +45,9 @@ function ClusterLogs() {
 					</For>
 				</div>
 
-				<div class="flex-1 h-full font-mono font-medium overflow-auto">
-					<code class="whitespace-pre select-text">{log()}</code>
-				</div>
+				<OverlayScrollbarsComponent class="bg-component-bg flex-1 h-full font-mono font-medium relative overflow-auto p-2 rounded-md my-2">
+					<code class="whitespace-pre select-text absolute">{log()}</code>
+				</OverlayScrollbarsComponent>
 			</div>
 		</div>
 	);

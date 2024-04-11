@@ -21,8 +21,8 @@
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@untitled-theme/icons-solid": "^0.6.0",
-		"overlayscrollbars": "^2.6.1",
-		"overlayscrollbars-solid": "^0.5.3",
+		"overlayscrollbars": "^2.7.0",
+		"overlayscrollbars-solid": "^0.5.5",
 		"solid-js": "^1.8.16",
 		"solid-transition-group": "^0.2.3",
 		"uuid": "^9.0.1"

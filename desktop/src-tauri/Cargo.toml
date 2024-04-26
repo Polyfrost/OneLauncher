@@ -1,0 +1,65 @@
+[package]
+name = "onelauncher_gui"
+version = "1.0.0"
+description = "Next-generation open source Minecraft launcher"
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+readme = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+
+[lib]
+name = "onelauncher_gui"
+crate-type = [
+  "staticlib",
+  "cdylib",
+  "rlib"
+]
+
+[build-dependencies]
+tauri-build = { workspace = true, features = [
+  "isolation",
+  "codegen",
+] }
+
+[dependencies]
+onelauncher = { path = "../../core", features = [ "tauri" ] }
+
+interpulse = { workspace = true, features = [ "bincode" ] }
+
+tauri = { workspace = true, features = [
+  "isolation",
+  "macos-private-api",
+  "image-ico",
+  "image-png",
+  "protocol-asset"
+] }
+tauri-plugin-shell = { workspace = true }
+tauri-plugin-window-state = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-authenticator = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+tracing = { workspace = true }
+tracing-error = { workspace = true }
+
+[dev-dependencies]
+tauri = { workspace = true, features = [ "test" ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.25.0"
+objc = "0.2.7"
+
+[features]
+# This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
+custom-protocol = [ "tauri/custom-protocol" ]

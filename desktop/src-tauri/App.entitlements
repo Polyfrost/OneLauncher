@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- allows us to load minecraft libraries -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- allows us to set DYLD_FALLBACK_LIBRARY_PATH set by cargo which breaks minecraft -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <!-- allows us to request microphone permissions (for things like voice chat) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <!-- allows us to request camera permissions (for things like voice chat) -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
+</dict>
+</plist>

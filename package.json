@@ -1,45 +1,26 @@
 {
-	"name": "polyfrost-launcher",
+	"name": "@onelauncher/root",
 	"type": "module",
 	"version": "0.0.0",
-	"description": "",
+	"packageManager": "pnpm@9.0.4",
+	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher"
+	},
 	"scripts": {
-		"start": "vite",
-		"dev": "vite dev",
-		"build": "vite build",
-		"serve": "vite preview",
-		"tauri": "tauri",
+		"gui": "pnpm --filter @onelauncher/gui",
+		"dev": "pnpm gui tauri dev",
+		"build": "pnpm gui tauri build",
 		"lint": "eslint . --cache",
 		"format": "pnpm lint --fix && cargo fmt"
 	},
-	"dependencies": {
-		"@fontsource/poppins": "^5.0.12",
-		"@solidjs/router": "^0.13.1",
-		"@tauri-apps/api": "^2.0.0-beta",
-		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
-		"@thisbeyond/solid-dnd": "^0.7.5",
-		"@untitled-theme/icons-solid": "^0.6.0",
-		"overlayscrollbars": "^2.6.1",
-		"overlayscrollbars-solid": "^0.5.3",
-		"solid-js": "^1.8.16",
-		"solid-transition-group": "^0.2.3",
-		"uuid": "^9.0.1"
-	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^2.2.2",
-		"@tauri-apps/cli": "2.0.0-beta.10",
-		"@types/node": "^20.11.30",
-		"@types/uuid": "^9.0.8",
-		"autoprefixer": "^10.4.19",
-		"eslint": "^8.57.0",
+		"@flowr/eslint-config": "^2.4.0",
+		"@types/node": "^20.12.7",
+		"eslint": "^9.1.0",
 		"eslint-plugin-solid": "^0.13.2",
-		"postcss": "^8.4.38",
-		"postcss-easings": "^4.0.0",
-		"sass": "^1.72.0",
-		"tailwindcss": "^3.4.1",
-		"typescript": "^5.4.3",
-		"vite": "^5.2.6",
-		"vite-plugin-solid": "^2.10.2"
+		"typescript": "^5.4.5"
 	}
 }

@@ -1,11 +1,48 @@
 {
-	"files.associations": {
-		"*.scss": "tailwindcss",
-		"*.css": "tailwindcss"
-	},
 	"[rust]": {
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
+	"files.watcherExclude": {
+		"**/_build": true,
+		"**/.classpath": true,
+		"**/.flatpak-builder": true,
+		"**/.git/objects/**": true,
+		"**/.git/subtree-cache/**": true,
+		"**/.idea": true,
+		"**/.project": true,
+		"**/.settings": true,
+		"**/.venv": true,
+		"**/node_modules": true,
+		"**/.rustup": true,
+		"**/.cargo": true,
+		"**/.crates": true
+	},
+	"rust-analyzer.diagnostics.disabled": [
+		"E0004",
+		"inactive-code",
+		"inactive_code"
+	],
+	"rust-analyzer.files.excludeDirs": [
+		"_build",
+		".flatpak-builder",
+		".git",
+		".gitlab",
+		".gitlab-ci",
+		".gradle",
+		".idea",
+		".next",
+		".project",
+		".settings",
+		".venv",
+		"bin",
+		"hooks",
+		"node_modules",
+		"screenshots",
+		"target",
+		".cargo",
+		".rustup",
+		".crates"
+	],
 	"rust-analyzer.procMacro.enable": true,
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"search.exclude": {
@@ -38,9 +75,6 @@
 		"astro",
 		"toml",
 		"solid"
-	],
-	"css.customData": [
-		".vscode/tailwind.json"
 	],
 	"eslint.lintTask.enable": true,
 	"eslint.workingDirectories": [],

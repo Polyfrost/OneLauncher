@@ -1,0 +1,50 @@
+name: Bug report
+description: Create a report to help us improve Polyfrost. Include screenshots if possible.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Before raising an issue, please search for existing issues to avoid creating duplicates.
+  - type: textarea
+    attributes:
+      label: Original reporter/ticket ID
+      description: If you are rewording a ticket, put the original reporter(s) and ticket ID(s). If not, leave this blank.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Operating System information
+      description: Information about your environment.
+      placeholder: |
+        macOS 13.4.2, git 1.4.0, etc.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here.
+    validations:
+      required: false

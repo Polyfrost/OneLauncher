@@ -1,0 +1,8 @@
+.vscode
+target
+.gitignore
+docker-compose.yml
+Dockerfile
+.dockerignore
+node_modules
+.github

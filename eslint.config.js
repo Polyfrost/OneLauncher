@@ -1,11 +1,11 @@
 // @ts-check
-
 import petal from '@flowr/eslint-config';
 
 export default petal({
 	typescript: true,
 	solid: true,
 	gitignore: true,
+	unocss: true,
 	toml: {
 		overrides: {
 			'toml/padding-line-between-pairs': 'off',
@@ -23,9 +23,11 @@ export default petal({
 		'pnpm-lock.yaml',
 		'./src-tauri/prisma/migrations/migration_lock.toml',
 	],
-}, {
-	rules: {
-		'petal/consistent-list-newline': 'off',
-		'no-console': 'off',
+}).append([
+	{
+		rules: {
+			'petal/consistent-list-newline': 'off',
+			'no-console': 'off',
+		},
 	},
-});
+]);

@@ -1,0 +1,10 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Discord
+    about: Ask questions or share feature requests on our Discord Server.
+    url: https://polyfrost.org/discord
+  - name: Polyfrost Documentation
+    about: Useful documentation about Polyfrost, OneConfig, and other Polyfrost projects.
+    url: https://docs.modrinth.com
+  - name: Polyfrost Docs^2
+    about: Useful documentation about how you can contribute to Polyfrost projects.

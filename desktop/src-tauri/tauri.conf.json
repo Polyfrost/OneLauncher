@@ -1,0 +1,107 @@
+{
+	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/core/tauri-config-schema/schema.json",
+	"productName": "onelauncher",
+	"version": "../package.json",
+	"identifier": "org.polyfrost.launcher",
+	"app": {
+		"withGlobalTauri": true,
+		"macOSPrivateApi": true,
+		"security": {
+			"csp": {
+				"default-src": ["'self'", "customprotocol:", "asset:"],
+				"connect-src": ["https://modrinth.com", "https://api.modrinth.com", "https://polyfrost.org", "https://*.polyfrost.org", "https://*.cloudflare.com", "https://api.mclo.gs"],
+				"img-src": ["'self'", "tauri:", "https:", "data:", "blob:", "'unsafe-inline'", "asset:", "https://asset.localhost"],
+				"script-src": ["'self'", "https://*.cloudflare.com", "https://*.polyfrost.org"],
+				"frame-src": ["https://*.cloudflare.com", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://discord.com", "'self'"],
+				"style-src": ["unsafe-inline", "'self'"]
+			},
+			"pattern": {
+				"use": "isolation",
+				"options": {
+					"dir": "../src-isolation/"
+				}
+			},
+			"assetProtocol": {
+				"enable": true,
+				"scope": {
+					"allow": [
+						"$APPDATA/caches/icons/*",
+						"$APPCONFIG/caches/icons/*",
+						"$CONFIG/caches/icons/*",
+						"$APPDATA/db/**",
+						"$RESOURCE/**"
+					],
+					"deny": ["$APPDATA/db/*.stronghold"]
+				}
+			},
+			"freezePrototype": true,
+			"capabilities": []
+		},
+		"windows": [
+			{
+				"title": "OneLauncher",
+				"titleBarStyle": "Overlay",
+				"hiddenTitle": true,
+				"width": 1280,
+				"height": 802,
+				"minWidth": 700,
+				"minHeight": 1100,
+				"resizable": true,
+				"center": true,
+				"decorations": false,
+				"fullscreen": false,
+				"shadow": true,
+				"visible": false
+			}
+		]
+	},
+	"build": {
+		"beforeDevCommand": "pnpm gui dev",
+		"beforeBuildCommand": "pnpm gui build",
+		"frontendDist": "../dist",
+		"devUrl": "http://localhost:8001"
+	},
+	"bundle": {
+		"active": true,
+		"targets": "all",
+		"category": "Game",
+		"icon": [
+			"../.icons/32x32.png",
+			"../.icons/128x128.png",
+			"../.icons/128x128@2x.png",
+			"../.icons/icon.icns",
+			"../.icons/icon.ico"
+		],
+		"copyright": "Polyfrost",
+		"longDescription": "",
+		"resources": [],
+		"externalBin": [],
+		"publisher": "Polyfrost",
+		"linux": {
+			"deb": {
+				"depends": [],
+				"desktopTemplate": "../../distribution/linux/org.polyfrost.launcher.desktop.template"
+			}
+		},
+		"shortDescription": "Next-generation open source Minecraft launcher",
+		"macOS": {
+			"entitlements": "App.entitlements",
+			"exceptionDomain": "",
+			"frameworks": [],
+			"providerShortName": null,
+			"signingIdentity": null,
+			"minimumSystemVersion": "10.13"
+		},
+		"windows": {
+			"certificateThumbprint": null,
+			"digestAlgorithm": "sha256",
+			"timestampUrl": "https://timestamp.digicert.com"
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "",
+			"endpoints": ["https://api.polyfrost.org/launcher/update/{{target}}/{{custom_version}}"]
+		}
+	}
+}

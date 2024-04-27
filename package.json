@@ -17,10 +17,10 @@
 		"dev": "pnpm gui tauri dev",
 		"build": "pnpm gui tauri build",
 		"lint": "eslint . --cache",
-		"lint:fix": "pnpm lint --fix && cargo fmt"
+		"format": "pnpm lint --fix && cargo fmt"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^2.4.1",
+		"@flowr/eslint-config": "^3.0.0",
 		"@types/node": "^20.12.7",
 		"eslint": "^8.56.0",
 		"eslint-plugin-solid": "^0.13.2",

@@ -30,7 +30,7 @@
 		"verbatimModuleSyntax": true,
 		"skipLibCheck": true
 	},
-	"exclude": ["**/node_modules", "target"],
+	"exclude": ["**/node_modules/**", "**/target/**", "**/dist/**", "**/build/**"],
 	"$schema": "https://json.schemastore.org/tsconfig",
 	"_version": "2.0.0"
 }

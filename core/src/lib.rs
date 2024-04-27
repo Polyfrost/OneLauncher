@@ -19,4 +19,5 @@ pub use api::*;
 pub use error::*;
 pub use api::proxy::{ProxyState, Ingress, IngressType};
 pub use logger::start_logger;
+pub use store::InnerPathLinux;
 pub use store::State;

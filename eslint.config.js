@@ -5,7 +5,7 @@ export default petal({
 	typescript: true,
 	solid: true,
 	gitignore: true,
-	unocss: true,
+	unocss: false,
 	toml: {
 		overrides: {
 			'toml/padding-line-between-pairs': 'off',

@@ -1,16 +1,16 @@
 import {
-    defineConfig,
-    presetUno,
-    presetAttributify,
-    presetIcons,
-    transformerVariantGroup,
-    transformerDirectives,
+	defineConfig,
+	presetAttributify,
+	presetIcons,
+	presetUno,
+	transformerDirectives,
+	transformerVariantGroup,
 } from 'unocss';
 
 export default defineConfig({
-    rules: [],
-    shortcuts: {},
-    theme: {
+	rules: [],
+	shortcuts: {},
+	theme: {
 		fontFamily: {
 			sans: 'Poppins',
 		},
@@ -117,13 +117,13 @@ export default defineConfig({
 			},
 		},
 	},
-    presets: [
-        presetUno(),
-        presetAttributify(),
-        presetIcons(),
-    ],
-    transformers: [
-        transformerVariantGroup(),
-        transformerDirectives()
-    ]
+	presets: [
+		presetUno(),
+		presetAttributify(),
+		presetIcons(),
+	],
+	transformers: [
+		transformerVariantGroup(),
+		transformerDirectives(),
+	],
 });

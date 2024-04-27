@@ -22,7 +22,7 @@
 	"devDependencies": {
 		"@flowr/eslint-config": "^2.4.1",
 		"@types/node": "^20.12.7",
-		"eslint": "^9.1.1",
+		"eslint": "^8.56.0",
 		"eslint-plugin-solid": "^0.13.2",
 		"typescript": "^5.4.5"
 	}

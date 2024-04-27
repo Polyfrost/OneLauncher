@@ -15,7 +15,10 @@ repository = "https://github.com/Polyfrost/Nexus"
 documentation = "https://docs.polyfrost.org/nexus"
 readme = "README.md"
 homepage = "https://polyfrost.org"
-authors = [ "Polyfrost", "Polyfrost Contributors" ]
+authors = [
+  "Polyfrost",
+  "Polyfrost Contributors"
+]
 
 [workspace.dependencies]
 tauri = { version = "2.0.0-beta", features = [

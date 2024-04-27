@@ -1,4 +1,3 @@
-
 # Contributor Covenant Code of Conduct
 
 This is a modified version of the Contributor Covenant to clarify trolling (line 35),

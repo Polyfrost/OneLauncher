@@ -2,24 +2,27 @@
 	"name": "@onelauncher/root",
 	"type": "module",
 	"version": "0.0.0",
-	"packageManager": "pnpm@9.0.4",
+	"packageManager": "pnpm@9.0.6",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url": "git@github.com:polyfrost/onelauncher"
 	},
+	"bugs": {
+		"url": "https://github.com/polyfrost/onelauncher/issues"
+	},
 	"scripts": {
 		"gui": "pnpm --filter @onelauncher/gui",
 		"dev": "pnpm gui tauri dev",
 		"build": "pnpm gui tauri build",
 		"lint": "eslint . --cache",
-		"format": "pnpm lint --fix && cargo fmt"
+		"lint:fix": "pnpm lint --fix && cargo fmt"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^2.4.0",
+		"@flowr/eslint-config": "^2.4.1",
 		"@types/node": "^20.12.7",
-		"eslint": "^9.1.0",
+		"eslint": "^9.1.1",
 		"eslint-plugin-solid": "^0.13.2",
 		"typescript": "^5.4.5"
 	}

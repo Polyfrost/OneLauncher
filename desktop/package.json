@@ -24,9 +24,9 @@
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@untitled-theme/icons-solid": "^0.8.0",
-		"overlayscrollbars": "^2.7.1",
+		"overlayscrollbars": "^2.7.3",
 		"overlayscrollbars-solid": "^0.5.5",
-		"solid-js": "^1.8.16",
+		"solid-js": "^1.8.17",
 		"solid-transition-group": "^0.2.3",
 		"uuid": "^9.0.1"
 	},
@@ -39,6 +39,6 @@
 		"vite": "^5.2.10",
 		"vite-plugin-solid": "^2.10.2",
 		"vite-tsconfig-paths": "^4.3.2",
-		"vitest": "^1.4.0"
+		"vitest": "^1.5.2"
 	}
 }

@@ -16,7 +16,6 @@ vendor/
 vender/
 
 core/src/game
-core/src/api/package
 
 # Created by https://www.toptal.com/developers/gitignore/api/git,node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,intellij+all
 # Edit at https://www.toptal.com/developers/gitignore?templates=git,node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,intellij+all

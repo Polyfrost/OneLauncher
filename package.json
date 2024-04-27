@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/root",
 	"type": "module",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"packageManager": "pnpm@9.0.6",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "MIT",
@@ -17,11 +17,13 @@
 		"dev": "pnpm gui tauri dev",
 		"build": "pnpm gui tauri build",
 		"lint": "eslint . --cache",
-		"format": "pnpm lint --fix && cargo fmt"
+		"format": "pnpm lint --fix && cargo fmt",
+		"release:node": "bumpp -r"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.0.0",
 		"@types/node": "^20.12.7",
+		"bumpp": "^9.4.0",
 		"eslint": "^8.56.0",
 		"eslint-plugin-solid": "^0.13.2",
 		"typescript": "^5.4.5"

@@ -5,7 +5,6 @@ members = [
   "debugger",
   "desktop/src-tauri",
   "testing",
-  "backend"
 ]
 
 [workspace.package]

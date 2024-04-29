@@ -1,2 +1,1 @@
 //! Global Package Metadata management.
-

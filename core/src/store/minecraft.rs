@@ -1,16 +1,16 @@
 //! Handles MSA Authentication flow.
 
-use std::collections::HashMap;
 use base64::Engine;
-use rand::Rng;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use p256::ecdsa::signature::Signer;
 use p256::ecdsa::SigningKey;
 use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::Digest;
+use std::collections::HashMap;
+use uuid::Uuid;
 
 const AUTH_STORE: &str = "authentication.json";
 
@@ -28,9 +28,14 @@ pub struct MinecraftState {
 impl MinecraftState {
 	/// Initialize a new Minecraft global state.
 	#[tracing::instrument]
-	pub async fn initialize(dirs: &super::Directories, io_semaphore: &crate::utils::http::IoSemaphore) -> crate::Result<Self> {
+	pub async fn initialize(
+		dirs: &super::Directories,
+		io_semaphore: &crate::utils::http::IoSemaphore,
+	) -> crate::Result<Self> {
 		let path = dirs.caches_dir().await.join(AUTH_STORE);
-		let store = crate::utils::http::read_json(&path, io_semaphore).await.ok();
+		let store = crate::utils::http::read_json(&path, io_semaphore)
+			.await
+			.ok();
 
 		if let Some(store) = store {
 			Ok(store)
@@ -113,15 +118,30 @@ impl MinecraftState {
 		let hash_result = hash.finalize();
 		let challenge = base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(&hash_result);
 		let (sid, ruri) = sisu_authenticate(&token.token, &challenge, &key).await?;
-		Ok(MinecraftLogin { verify, challenge, session_id: sid, redirect_uri: ruri.msa_oauth_redirect })
+		Ok(MinecraftLogin {
+			verify,
+			challenge,
+			session_id: sid,
+			redirect_uri: ruri.msa_oauth_redirect,
+		})
 	}
 
 	/// Finish a Microsoft authentication flow.
 	#[tracing::instrument(skip(self))]
-	pub async fn finish(&mut self, code: &str, flow: MinecraftLogin) -> crate::Result<MinecraftCredentials> {
+	pub async fn finish(
+		&mut self,
+		code: &str,
+		flow: MinecraftLogin,
+	) -> crate::Result<MinecraftCredentials> {
 		let (key, token) = self.refresh().await?;
 		let oauth_token = oauth_token(code, &flow.verify).await?;
-		let sisu_authorize = sisu_authorize(Some(&flow.session_id), &oauth_token.access_token, &token.token, &key).await?;
+		let sisu_authorize = sisu_authorize(
+			Some(&flow.session_id),
+			&oauth_token.access_token,
+			&token.token,
+			&key,
+		)
+		.await?;
 		let xbox_token = xsts_authorize(sisu_authorize, &token.token, &key).await?;
 		let minecraft_token = minecraft_token(xbox_token).await?;
 		minecraft_entitlements(&minecraft_token.access_token).await?;
@@ -132,7 +152,8 @@ impl MinecraftState {
 			username: profile.name,
 			access_token: minecraft_token.access_token,
 			refresh_token: oauth_token.refresh_token,
-			#[allow(deprecated)] expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
+			#[allow(deprecated)]
+			expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
 		};
 
 		self.users.insert(profile_id, credentials.clone());
@@ -171,12 +192,8 @@ impl MinecraftState {
 
 				let oauth_token = oauth_refresh(&creds.refresh_token).await?;
 				let (key, token) = self.refresh().await?;
-				let sisu_authorize = sisu_authorize(
-					None,
-					&oauth_token.access_token,
-					&token.token,
-					&key,
-				).await?;
+				let sisu_authorize =
+					sisu_authorize(None, &oauth_token.access_token, &token.token, &key).await?;
 
 				let xbox_token = xsts_authorize(sisu_authorize, &token.token, &key).await?;
 				let minecraft_token = minecraft_token(xbox_token).await?;
@@ -185,7 +202,8 @@ impl MinecraftState {
 					username: profile_name,
 					access_token: minecraft_token.access_token,
 					refresh_token: oauth_token.refresh_token,
-					#[allow(deprecated)] expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
+					#[allow(deprecated)]
+					expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
 				};
 
 				self.users.insert(val.id, val.clone());
@@ -315,7 +333,9 @@ pub async fn device_token(key: &DeviceKey) -> Result<DeviceToken, MinecraftAuthE
 		}),
 		key,
 		MinecraftAuthStep::DeviceToken,
-	).await?.1)
+	)
+	.await?
+	.1)
 }
 
 #[derive(Deserialize)]
@@ -352,7 +372,8 @@ async fn sisu_authenticate(
 		}),
 		key,
 		MinecraftAuthStep::SisuAuthenicate,
-	).await?;
+	)
+	.await?;
 
 	let session_id = headers
 		.get("X-SessionId")
@@ -395,14 +416,21 @@ async fn oauth_token(code: &str, verify: &str) -> Result<OAuthToken, MinecraftAu
 		source,
 		step: MinecraftAuthStep::OAuthToken,
 	})?;
-	
-	let status = res.status();
-	let text = res.text().await.map_err(|source| {
-		MinecraftAuthError::RequestError { step: MinecraftAuthStep::OAuthToken, source }
-	})?;
 
-	serde_json::from_str(&text).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step: MinecraftAuthStep::OAuthToken, raw: text, source, status_code: status }
+	let status = res.status();
+	let text = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError {
+			step: MinecraftAuthStep::OAuthToken,
+			source,
+		})?;
+
+	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+		step: MinecraftAuthStep::OAuthToken,
+		raw: text,
+		source,
+		status_code: status,
 	})
 }
 
@@ -422,15 +450,25 @@ async fn oauth_refresh(refresh_token: &str) -> Result<OAuthToken, MinecraftAuthE
 			.send()
 	})
 	.await
-	.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::RefreshOAuthToken, source })?;
-
-	let status = res.status();
-	let text = res.text().await.map_err(|source| {
-		MinecraftAuthError::RequestError { step: MinecraftAuthStep::RefreshOAuthToken, source }
+	.map_err(|source| MinecraftAuthError::RequestError {
+		step: MinecraftAuthStep::RefreshOAuthToken,
+		source,
 	})?;
 
-	serde_json::from_str(&text).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step: MinecraftAuthStep::RefreshOAuthToken, raw: text, source, status_code: status }
+	let status = res.status();
+	let text = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError {
+			step: MinecraftAuthStep::RefreshOAuthToken,
+			source,
+		})?;
+
+	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+		step: MinecraftAuthStep::RefreshOAuthToken,
+		raw: text,
+		source,
+		status_code: status,
 	})
 }
 
@@ -477,7 +515,9 @@ async fn sisu_authorize(
 		}),
 		key,
 		MinecraftAuthStep::SisuAuthorize,
-	).await?.1)
+	)
+	.await?
+	.1)
 }
 
 #[tracing::instrument(skip(key))]
@@ -502,7 +542,9 @@ async fn xsts_authorize(
 		}),
 		key,
 		MinecraftAuthStep::XstsAuthorize,
-	).await?.1)
+	)
+	.await?
+	.1)
 }
 
 #[derive(Deserialize)]
@@ -533,14 +575,27 @@ async fn minecraft_token(token: DeviceToken) -> Result<MinecraftToken, Minecraft
 				"xtoken": format!("XBL3.0 x={uhs};{token}"),
 			}))
 			.send()
-	}).await
-	.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftToken, source })?;
+	})
+	.await
+	.map_err(|source| MinecraftAuthError::RequestError {
+		step: MinecraftAuthStep::MinecraftToken,
+		source,
+	})?;
 
 	let status = res.status();
-	let text = res.text().await.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftToken, source })?;
+	let text = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError {
+			step: MinecraftAuthStep::MinecraftToken,
+			source,
+		})?;
 
-	serde_json::from_str(&text).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step: MinecraftAuthStep::MinecraftToken, raw: text, source, status_code: status }
+	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+		step: MinecraftAuthStep::MinecraftToken,
+		raw: text,
+		source,
+		status_code: status,
 	})
 }
 
@@ -560,13 +615,25 @@ async fn minecraft_profile(token: &str) -> Result<MinecraftProfile, MinecraftAut
 			.send()
 	})
 	.await
-	.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftProfile, source })?;
+	.map_err(|source| MinecraftAuthError::RequestError {
+		step: MinecraftAuthStep::MinecraftProfile,
+		source,
+	})?;
 
 	let status = res.status();
-	let text = res.text().await.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftProfile, source })?;
+	let text = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError {
+			step: MinecraftAuthStep::MinecraftProfile,
+			source,
+		})?;
 
-	serde_json::from_str(&text).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step: MinecraftAuthStep::MinecraftProfile, raw: text, source, status_code: status }
+	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+		step: MinecraftAuthStep::MinecraftProfile,
+		raw: text,
+		source,
+		status_code: status,
 	})
 }
 
@@ -584,20 +651,30 @@ async fn minecraft_entitlements(token: &str) -> Result<MinecraftEntitlements, Mi
 			.send()
 	})
 	.await
-	.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftEntitlements, source })?;
+	.map_err(|source| MinecraftAuthError::RequestError {
+		step: MinecraftAuthStep::MinecraftEntitlements,
+		source,
+	})?;
 
 	let status = res.status();
-	let text = res.text().await.map_err(|source| MinecraftAuthError::RequestError { step: MinecraftAuthStep::MinecraftEntitlements, source })?;
+	let text = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError {
+			step: MinecraftAuthStep::MinecraftEntitlements,
+			source,
+		})?;
 
-	serde_json::from_str(&text).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step: MinecraftAuthStep::MinecraftEntitlements, raw: text, source, status_code: status }
+	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+		step: MinecraftAuthStep::MinecraftEntitlements,
+		raw: text,
+		source,
+		status_code: status,
 	})
 }
 
 #[tracing::instrument(skip(request_fn))]
-async fn auth_retry<F>(
-	request_fn: impl Fn() -> F,
-) -> Result<reqwest::Response, reqwest::Error>
+async fn auth_retry<F>(request_fn: impl Fn() -> F) -> Result<reqwest::Response, reqwest::Error>
 where
 	F: std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
 {
@@ -613,7 +690,9 @@ where
 			Err(err) => {
 				if err.is_connect() || err.is_timeout() {
 					if i < RETRY_COUNT - 1 {
-						tracing::debug!("request failed due to a connection error, retrying request...");
+						tracing::debug!(
+							"request failed due to a connection error, retrying request..."
+						);
 						tokio::time::sleep(RETRY_WAIT).await;
 						resp = request_fn().await;
 					} else {
@@ -638,15 +717,15 @@ fn device_key() -> Result<DeviceKey, MinecraftAuthError> {
 		id,
 		key: signing_key,
 		x: base64::prelude::BASE64_STANDARD_NO_PAD.encode(
-			encoded_point.x().ok_or_else(|| {
-				MinecraftAuthError::PublicKeyReading
-			})?,
+			encoded_point
+				.x()
+				.ok_or_else(|| MinecraftAuthError::PublicKeyReading)?,
 		),
 		y: base64::prelude::BASE64_STANDARD_NO_PAD.encode(
-			encoded_point.y().ok_or_else(|| {
-				MinecraftAuthError::PublicKeyReading
-			})?,
-		)
+			encoded_point
+				.y()
+				.ok_or_else(|| MinecraftAuthError::PublicKeyReading)?,
+		),
 	})
 }
 
@@ -658,52 +737,53 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	key: &DeviceKey,
 	step: MinecraftAuthStep,
 ) -> Result<(reqwest::header::HeaderMap, T), MinecraftAuthError> {
-	let auth = authorization.clone().map_or(Vec::new(), |v| v.as_bytes().to_vec());
-	let body = serde_json::to_vec(&raw_body).map_err(|source| {
-		MinecraftAuthError::SerializeError { step, source }
-	})?;
+	let auth = authorization
+		.clone()
+		.map_or(Vec::new(), |v| v.as_bytes().to_vec());
+	let body = serde_json::to_vec(&raw_body)
+		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;
 	let time: u128 = { ((Utc::now().timestamp() as u128) + 11644473600) * 10000000 };
-	
+
 	use byteorder::WriteBytesExt;
 	let mut buffer = Vec::new();
-	buffer.write_u32::<byteorder::BigEndian>(1).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
-	buffer.write_u64::<byteorder::BigEndian>(time as u64).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
+	buffer
+		.write_u32::<byteorder::BigEndian>(1)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
+	buffer
+		.write_u64::<byteorder::BigEndian>(time as u64)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
 	buffer.extend_from_slice("POST".as_bytes());
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
 	buffer.extend_from_slice(url_path.as_bytes());
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
 	buffer.extend_from_slice(&auth);
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
 	buffer.extend_from_slice(&body);
-	buffer.write_u8(0).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
-	
+	buffer
+		.write_u8(0)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
+
 	let ecdsa_sig: p256::ecdsa::Signature = key.key.sign(&buffer);
 	let mut sig_buffer = Vec::new();
 
-	sig_buffer.write_i32::<byteorder::BigEndian>(1).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
-	sig_buffer.write_u64::<byteorder::BigEndian>(time as u64).map_err(|source| {
-		MinecraftAuthError::SigningError { step, source }
-	})?;
+	sig_buffer
+		.write_i32::<byteorder::BigEndian>(1)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
+	sig_buffer
+		.write_u64::<byteorder::BigEndian>(time as u64)
+		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
 	sig_buffer.extend_from_slice(&ecdsa_sig.r().to_bytes());
 	sig_buffer.extend_from_slice(&ecdsa_sig.s().to_bytes());
 
@@ -725,18 +805,24 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 		}
 
 		request.body(body.clone()).send()
-	}).await
+	})
+	.await
 	.map_err(|source| MinecraftAuthError::RequestError { step, source })?;
 
 	let status = res.status();
 	let headers = res.headers().clone();
-	let body = res.text().await.map_err(|source| {
-		MinecraftAuthError::RequestError { step, source }
-	})?;
+	let body = res
+		.text()
+		.await
+		.map_err(|source| MinecraftAuthError::RequestError { step, source })?;
 
-	let body = serde_json::from_str(&body).map_err(|source| {
-		MinecraftAuthError::DeserializeError { step, raw: body, source, status_code: status }
-	})?;
+	let body =
+		serde_json::from_str(&body).map_err(|source| MinecraftAuthError::DeserializeError {
+			step,
+			raw: body,
+			source,
+			status_code: status,
+		})?;
 	Ok((headers, body))
 }
 
@@ -750,15 +836,15 @@ fn generate_oauth_challenge() -> String {
 /// An ordered list of all MSA authentication steps.
 #[derive(Debug, Clone, Copy)]
 pub enum MinecraftAuthStep {
-    DeviceToken,
-    SisuAuthenicate,
-    OAuthToken,
-    RefreshOAuthToken,
-    SisuAuthorize,
-    XstsAuthorize,
-    MinecraftToken,
-    MinecraftEntitlements,
-    MinecraftProfile,
+	DeviceToken,
+	SisuAuthenicate,
+	OAuthToken,
+	RefreshOAuthToken,
+	SisuAuthorize,
+	XstsAuthorize,
+	MinecraftToken,
+	MinecraftEntitlements,
+	MinecraftProfile,
 }
 
 /// Wrapper around all `Error`s that can occur during the Microsoft authentication process.
@@ -769,13 +855,31 @@ pub enum MinecraftAuthError {
 	#[error("failed to serialize private key using PKCS8: {0}")]
 	PKCS8Error(#[from] p256::pkcs8::Error),
 	#[error("failed to serialize JSON during MSA step {step:?}: {source}")]
-	SerializeError { step: MinecraftAuthStep, #[source] source: serde_json::Error },
+	SerializeError {
+		step: MinecraftAuthStep,
+		#[source]
+		source: serde_json::Error,
+	},
 	#[error("failed to deserialize JSON during MSA step {step:?}: {source}! status code {status_code} - body: {raw}")]
-	DeserializeError { step: MinecraftAuthStep, raw: String, #[source] source: serde_json::Error, status_code: reqwest::StatusCode },
+	DeserializeError {
+		step: MinecraftAuthStep,
+		raw: String,
+		#[source]
+		source: serde_json::Error,
+		status_code: reqwest::StatusCode,
+	},
 	#[error("failed to request using HTTP during MSA step {step:?}: {source}")]
-	RequestError { step: MinecraftAuthStep, #[source] source: reqwest::Error },
+	RequestError {
+		step: MinecraftAuthStep,
+		#[source]
+		source: reqwest::Error,
+	},
 	#[error("failed to create signed buffer during MSA step {step:?}: {source}")]
-	SigningError { step: MinecraftAuthStep, #[source] source: std::io::Error },
+	SigningError {
+		step: MinecraftAuthStep,
+		#[source]
+		source: std::io::Error,
+	},
 	#[error("failed to read user hash")]
 	HashError,
 	#[error("failed to read user xbox session ID")]

@@ -1,5 +1,5 @@
 //! **OneLauncher Errors**
-//! 
+//!
 //! Public wrappers around common OneLauncher errors.
 
 use tracing_error::InstrumentError;
@@ -75,9 +75,17 @@ pub enum ErrorKind {
 	#[error("failed to authenticate with microsoft: {0}")]
 	AuthError(#[from] crate::store::MinecraftAuthError),
 
+	/// Wrapper around [`crate::api::cluster::create::CreateClusterError`] to handle Cluster creation errors.
+	#[error("failed to create clusters: {0}")]
+	CreateClusterError(#[from] crate::api::cluster::create::CreateClusterError),
+
 	/// Wrapper around [`notify:Error`] to handle file watching errors.
 	#[error("failed to watch file {0}")]
 	NotifyError(#[from] notify::Error),
+
+	/// Wrapper around [`regex::Error`] to handle RegExp errors.
+	#[error("string verification with regex failed: {0}")]
+	RegexError(#[from] regex::Error),
 
 	/// Wrapper around [`reqwest::header::ToStrError`] to handle header conversion errors.
 	#[error("failed to convert header to string: {0}")]
@@ -97,7 +105,7 @@ pub enum ErrorKind {
 
 	/// Wrapper around [`std::io::Error`] to handle non-wrapped std::io errors.
 	#[error("I/O (std) error: {0}")]
-    StdIOError(#[from] std::io::Error),
+	StdIOError(#[from] std::io::Error),
 
 	/// Wrapper around [`crate::utils::java::JavaError`] to handle java errors.
 	#[error("there was an error managing java installations: {0}")]
@@ -109,8 +117,8 @@ pub enum ErrorKind {
 
 	/// Wrapper around [`tauri::Error`] to handle Tauri errors when the feature flag is enabled
 	#[cfg(feature = "tauri")]
-    #[error("Tauri error: {0}")]
-    TauriError(#[from] tauri::Error),
+	#[error("Tauri error: {0}")]
+	TauriError(#[from] tauri::Error),
 }
 
 #[derive(Debug)]

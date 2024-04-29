@@ -1,5 +1,5 @@
 //! # OneLauncher
-//! 
+//!
 //! A library used as a core for our launcher and Rust APIs.
 
 #![warn(unused_import_braces, missing_debug_implementations)]
@@ -15,9 +15,8 @@ pub mod game;
 pub mod logger;
 pub mod store;
 
+pub use api::proxy::{Ingress, IngressType, ProxyState};
 pub use api::*;
 pub use error::*;
-pub use api::proxy::{ProxyState, Ingress, IngressType};
 pub use logger::start_logger;
-pub use store::InnerPathLinux;
-pub use store::State;
+pub use store::{InnerPathLinux, State};

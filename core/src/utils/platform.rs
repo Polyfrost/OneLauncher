@@ -1,5 +1,5 @@
 //! **Platform Utilities**
-//! 
+//!
 //! Async utilities for managing OS-specific [`interpulse`] operations and rules.
 
 use interpulse::api::minecraft::{Os, OsRule};
@@ -58,11 +58,7 @@ pub const ARCH_WIDTH: &str = "64";
 pub const ARCH_WIDTH: &str = "32";
 
 // Platform rule handling
-pub fn os_rule(
-	rule: &OsRule,
-	java_arch: &str,
-	updated: bool,
-) -> bool {
+pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 	let mut rule_match = true;
 
 	if let Some(ref arch) = rule.arch {

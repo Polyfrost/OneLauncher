@@ -1,21 +1,21 @@
 //! **HTTP Utilities**
-//! 
+//!
 //! Async extensions and wrappers around [`reqwest`] functions.
 
 use std::ffi::OsStr;
-use std::path::PathBuf;
-use std::{path::Path, time::Duration};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
+use bytes::Bytes;
 use reqwest::Method;
 use serde::de::DeserializeOwned;
-use tokio::sync::{RwLock, Semaphore};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-use bytes::Bytes;
+use tokio::sync::{RwLock, Semaphore};
 
 use crate::proxy::send::send_ingress;
-use crate::utils::io;
 use crate::proxy::IngressId;
+use crate::utils::io;
 
 use super::io::IOError;
 
@@ -53,15 +53,7 @@ pub async fn fetch(
 	sha1: Option<&str>,
 	semaphore: &FetchSemaphore,
 ) -> crate::Result<Bytes> {
-	fetch_advanced(
-		Method::GET,
-		url,
-		sha1,
-		None,
-		None,
-		None,
-		semaphore,
-	).await
+	fetch_advanced(Method::GET, url, sha1, None, None, None, semaphore).await
 }
 
 /// Basic JSON fetch interface.
@@ -76,15 +68,7 @@ pub async fn fetch_json<T>(
 where
 	T: DeserializeOwned,
 {
-	let result = fetch_advanced(
-		method,
-		url,
-		sha1,
-		json_body,
-		None,
-		None,
-		semaphore,
-	).await?;
+	let result = fetch_advanced(method, url, sha1, json_body, None, None, semaphore).await?;
 
 	let value = serde_json::from_slice(&result)?;
 	Ok(value)
@@ -120,48 +104,61 @@ pub async fn fetch_advanced(
 
 		match result {
 			Ok(x) => {
-					let bytes = if let Some((feed, total)) = &ingress {
-						let length = x.content_length();
-						if let Some(total_size) = length {
-							use futures::StreamExt;
-							let mut stream = x.bytes_stream();
-							let mut bytes = Vec::new();
-							while let Some(item) = stream.next().await {
-								let chunk = item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
-								bytes.append(&mut chunk.to_vec());
-								send_ingress(feed, (chunk.len() as f64 / total_size as f64) * total, None).await?;
-							}
-
-							Ok(bytes::Bytes::from(bytes))
-						} else {
-							x.bytes().await
+				let bytes = if let Some((feed, total)) = &ingress {
+					let length = x.content_length();
+					if let Some(total_size) = length {
+						use futures::StreamExt;
+						let mut stream = x.bytes_stream();
+						let mut bytes = Vec::new();
+						while let Some(item) = stream.next().await {
+							let chunk =
+								item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
+							bytes.append(&mut chunk.to_vec());
+							send_ingress(
+								feed,
+								(chunk.len() as f64 / total_size as f64) * total,
+								None,
+							)
+							.await?;
 						}
+
+						Ok(bytes::Bytes::from(bytes))
 					} else {
 						x.bytes().await
-					};
+					}
+				} else {
+					x.bytes().await
+				};
 
-					if let Ok(bytes) = bytes {
-						if let Some(sha1) = sha1 {
-							let hash = check_sha1(bytes.clone()).await?;
-							if &*hash != sha1 {
-								if attempt <= 3 {
-									continue;
-								} else {
-									return Err(anyhow::anyhow!("hash {0} does not match {1}", sha1.to_string(), hash).into());
-								}
+				if let Ok(bytes) = bytes {
+					if let Some(sha1) = sha1 {
+						let hash = check_sha1(bytes.clone()).await?;
+						if &*hash != sha1 {
+							if attempt <= 3 {
+								continue;
+							} else {
+								return Err(anyhow::anyhow!(
+									"hash {0} does not match {1}",
+									sha1.to_string(),
+									hash
+								)
+								.into());
 							}
 						}
-
-						tracing::trace!("finished downloading {url}");
-						return Ok(bytes);
-					} else if attempt <= 3 {
-						continue;
-					} else if let Err(err) = bytes {
-						return Err(err.into());
 					}
+
+					tracing::trace!("finished downloading {url}");
+					return Ok(bytes);
+				} else if attempt <= 3 {
+					continue;
+				} else if let Err(err) = bytes {
+					return Err(err.into());
 				}
-				Err(_) if attempt <= 3 => continue,
-				Err(err) => { return Err(err.into()); }
+			}
+			Err(_) if attempt <= 3 => continue,
+			Err(err) => {
+				return Err(err.into());
+			}
 		}
 	}
 
@@ -225,10 +222,7 @@ where
 }
 
 /// Read JSON from a specified [`Path`].
-pub async fn read_json<T>(
-	path: &Path,
-	semaphore: &IoSemaphore,
-) -> crate::Result<T>
+pub async fn read_json<T>(path: &Path, semaphore: &IoSemaphore) -> crate::Result<T>
 where
 	T: DeserializeOwned,
 {
@@ -243,11 +237,7 @@ where
 
 /// Write to a file at a specified [`Path`].
 #[tracing::instrument(skip(bytes, semaphore))]
-pub async fn write<'a>(
-	path: &Path,
-	bytes: &[u8],
-	semaphore: &IoSemaphore,
-) -> crate::Result<()> {
+pub async fn write<'a>(path: &Path, bytes: &[u8], semaphore: &IoSemaphore) -> crate::Result<()> {
 	let io_semaphore = semaphore.0.read().await;
 	let _permit = io_semaphore.acquire().await?;
 
@@ -255,8 +245,12 @@ pub async fn write<'a>(
 		io::create_dir_all(parent).await?;
 	}
 
-	let mut file = File::create(path).await.map_err(|e| IOError::with_path(e, path))?;
-	file.write_all(bytes).await.map_err(|e| IOError::with_path(e, path))?;
+	let mut file = File::create(path)
+		.await
+		.map_err(|e| IOError::with_path(e, path))?;
+	file.write_all(bytes)
+		.await
+		.map_err(|e| IOError::with_path(e, path))?;
 	tracing::trace!("done writing to file {}", path.display());
 	Ok(())
 }
@@ -278,16 +272,29 @@ pub async fn copy(
 	}
 
 	io::copy(src, dest).await?;
-	tracing::trace!("done copying file from {} to {}", src.display(), dest.display());
+	tracing::trace!(
+		"done copying file from {} to {}",
+		src.display(),
+		dest.display()
+	);
 	Ok(())
 }
 
 #[tracing::instrument(skip(bytes, io_semaphore))]
-pub async fn write_icon(icon_path: &str, cache_path: &Path, bytes: Bytes, io_semaphore: &IoSemaphore) -> crate::Result<PathBuf> {
+pub async fn write_icon(
+	icon_path: &str,
+	cache_path: &Path,
+	bytes: Bytes,
+	io_semaphore: &IoSemaphore,
+) -> crate::Result<PathBuf> {
 	let ext = Path::new(&icon_path).extension().and_then(OsStr::to_str);
 	let hash = check_sha1(bytes.clone()).await?;
-	let path = cache_path.join("icons").join(if let Some(e) = ext { format!("{hash}.{e}") } else { hash });
-	
+	let path = cache_path.join("icons").join(if let Some(e) = ext {
+		format!("{hash}.{e}")
+	} else {
+		hash
+	});
+
 	write(&path, &bytes, io_semaphore).await?;
 
 	let path = io::canonicalize(path)?;
@@ -296,9 +303,8 @@ pub async fn write_icon(icon_path: &str, cache_path: &Path, bytes: Bytes, io_sem
 
 /// Get the Sha1 hash of [`bytes::Bytes`] array.
 pub async fn check_sha1(bytes: Bytes) -> crate::Result<String> {
-	let hash = tokio::task::spawn_blocking(move || {
-		sha1_smol::Sha1::from(bytes).hexdigest()
-	}).await?;
+	let hash =
+		tokio::task::spawn_blocking(move || sha1_smol::Sha1::from(bytes).hexdigest()).await?;
 
 	Ok(hash)
 }

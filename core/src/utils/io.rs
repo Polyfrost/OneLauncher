@@ -1,12 +1,14 @@
 //! **IO Utilities**
-//! 
+//!
 //! Wrapper around [`tokio::io`] for our error system.
 
-use std::{fs::File, io::Write, path::PathBuf};
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 
 use anyhow::anyhow;
-use tempfile::NamedTempFile;
 use tauri::async_runtime::spawn_blocking;
+use tempfile::NamedTempFile;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
@@ -32,21 +34,15 @@ impl IOError {
 		Self::ZipError(source)
 	}
 
-	pub fn with_path(
-		source: std::io::Error,
-		path: impl AsRef<std::path::Path>,
-	) -> Self {
+	pub fn with_path(source: std::io::Error, path: impl AsRef<std::path::Path>) -> Self {
 		let path = path.as_ref().to_string_lossy().to_string();
 
 		Self::IOErrorWrapper { source, path }
 	}
 }
 
-
 /// An OS specific wrapper of [`std::fs::canonicalize`], but on Windows it outputs the most compatible form of a path instead of UNC.
-pub fn canonicalize(
-	path: impl AsRef<std::path::Path>,
-) -> Result<std::path::PathBuf, IOError> {
+pub fn canonicalize(path: impl AsRef<std::path::Path>) -> Result<std::path::PathBuf, IOError> {
 	let path = path.as_ref();
 	dunce::canonicalize(path).map_err(|e| IOError::IOErrorWrapper {
 		source: e,
@@ -55,9 +51,7 @@ pub fn canonicalize(
 }
 
 /// Returns a stream over the entries within a directory.
-pub async fn read_dir(
-	path: impl AsRef<std::path::Path>,
-) -> Result<tokio::fs::ReadDir, IOError> {
+pub async fn read_dir(path: impl AsRef<std::path::Path>) -> Result<tokio::fs::ReadDir, IOError> {
 	let path = path.as_ref();
 	tokio::fs::read_dir(path)
 		.await
@@ -68,56 +62,65 @@ pub async fn read_dir(
 }
 
 /// Recursively creates a directory and all of its parent components if they are missing.
-pub async fn create_dir_all(
-	path: impl AsRef<std::path::Path>,
-) -> Result<(), IOError> {
+pub async fn create_dir_all(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
 	let path = path.as_ref();
 	tokio::fs::create_dir_all(path)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: path.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
 }
 
 /// Removes a directory at this path, after removing all its contents. Use carefully!
-pub async fn remove_dir_all(
-	path: impl AsRef<std::path::Path>,
-) -> Result<(), IOError> {
+pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
 	let path = path.as_ref();
 	tokio::fs::remove_dir_all(path)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: path.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
 }
 
 /// Creates a future which will open a file for reading and read the entire contents into a string and return said string.
-pub async fn read_to_string(
-	path: impl AsRef<std::path::Path>,
-) -> Result<String, IOError> {
+pub async fn read_to_string(path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
 	let path = path.as_ref();
 	tokio::fs::read_to_string(path)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: path.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
 }
 
 /// Reads the entire contents of a file into a bytes vector.
-pub async fn read(
-	path: impl AsRef<std::path::Path>,
-) -> Result<Vec<u8>, IOError> {
+pub async fn read(path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, IOError> {
 	let path = path.as_ref();
 	tokio::fs::read(path)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: path.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
 }
 
 /// Asynchrously write to a tempfile that is then transferred to an official [`AsRef<Path>`].
 pub async fn write(
 	path: impl AsRef<std::path::Path>,
-	data: impl AsRef<[u8]>
+	data: impl AsRef<[u8]>,
 ) -> Result<(), IOError> {
 	let path = path.as_ref().to_owned();
 	let data = data.as_ref().to_owned();
 	spawn_blocking(move || {
 		let cloned_path = path.clone();
-		sync_write(data, path).map_err(|e| IOError::IOErrorWrapper { source: e, path: cloned_path.to_string_lossy().to_string() })
-	}).await.map_err(|_| {std::io::Error::new(std::io::ErrorKind::Other, "tokio task failed")})??;
+		sync_write(data, path).map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: cloned_path.to_string_lossy().to_string(),
+		})
+	})
+	.await
+	.map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "tokio task failed"))??;
 
 	Ok(())
 }
@@ -150,7 +153,10 @@ pub async fn rename(
 	let to = to.as_ref();
 	tokio::fs::rename(from, to)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: from.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: from.to_string_lossy().to_string(),
+		})
 }
 
 /// Copies the contents of one file to another. This function will also copy the permission bits of the original file to the destination file. This function will overwrite the contents of to.
@@ -162,17 +168,21 @@ pub async fn copy(
 	let to = to.as_ref();
 	tokio::fs::copy(from, to)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: from.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: from.to_string_lossy().to_string(),
+		})
 }
 
 /// Removes a file from the filesystem.
-pub async fn remove_file(
-	path: impl AsRef<std::path::Path>,
-) -> Result<(), IOError> {
+pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
 	let path = path.as_ref();
 	tokio::fs::remove_file(path)
 		.await
-		.map_err(|e| IOError::IOErrorWrapper { source: e, path: path.to_string_lossy().to_string() })
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
 }
 
 /// Extract an archive based on its file extension, supporting ZIP files and GZ files.
@@ -202,8 +212,6 @@ pub fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> 
 	let file = File::open(archive).map_err(|err| IOError::from(err))?;
 	let tar_gz = flate2::read::GzDecoder::new(file);
 	let mut archive = tar::Archive::new(tar_gz);
-	archive
-		.unpack(dest)
-		.map_err(|err| IOError::from(err))?;
+	archive.unpack(dest).map_err(|err| IOError::from(err))?;
 	Ok(())
 }

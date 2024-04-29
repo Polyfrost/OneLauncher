@@ -1,10 +1,9 @@
-use onelauncher::{game::client_manager::ClientManager, AppState};
+use onelauncher::game::client_manager::ClientManager;
+use onelauncher::AppState;
 use serde::{Serialize, Serializer};
-use tauri::{plugin::TauriPlugin, Manager, State};
+use tauri::plugin::TauriPlugin;
+use tauri::{Manager, State};
 use tokio::sync::Mutex;
-
-pub mod auth;
-pub mod game;
 
 pub fn init() -> TauriPlugin<tauri::Wry> {
 	tauri::plugin::Builder::new("onelauncher")
@@ -13,14 +12,7 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
 
 			Ok(())
 		})
-		.invoke_handler(tauri::generate_handler![
-			auth::login_msa,
-			game::create_cluster,
-			game::get_clusters,
-			game::get_cluster,
-			game::launch_cluster,
-			refresh_client_manager,
-		])
+		.invoke_handler(tauri::generate_handler![])
 		.build()
 }
 

@@ -1,73 +1,71 @@
 //! Handles all available Java installations
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
 
-use crate::utils::java::JavaVersion;
 use crate::utils::java;
+use crate::utils::java::JavaVersion;
 
 /// A HashMap of all located and installed available Java versions
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JavaVersions(HashMap<String, JavaVersion>);
 
 impl Default for JavaVersions {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl JavaVersions {
-    /// Create an empty JavaVersions `HashMap`.
-    pub fn new() -> JavaVersions {
-        JavaVersions(HashMap::new())
-    }
+	/// Create an empty JavaVersions `HashMap`.
+	pub fn new() -> JavaVersions {
+		JavaVersions(HashMap::new())
+	}
 
-    /// Inserts a key-value pair into the map.
-    pub fn insert(&mut self, key: String, java: JavaVersion) {
-        self.0.insert(key, java);
-    }
+	/// Inserts a key-value pair into the map.
+	pub fn insert(&mut self, key: String, java: JavaVersion) {
+		self.0.insert(key, java);
+	}
 
-    /// Removes a key from the map, returning the value at the key if the key was previously in the map.
-    pub fn remove(&mut self, key: &String) {
-        self.0.remove(key);
-    }
+	/// Removes a key from the map, returning the value at the key if the key was previously in the map.
+	pub fn remove(&mut self, key: &String) {
+		self.0.remove(key);
+	}
 
-    /// Returns a reference to the value corresponding to the key.
-    pub fn get(&self, key: &String) -> Option<&JavaVersion> {
-        self.0.get(key)
-    }
+	/// Returns a reference to the value corresponding to the key.
+	pub fn get(&self, key: &String) -> Option<&JavaVersion> {
+		self.0.get(key)
+	}
 
-    /// Returns a mutable reference to the value corresponding to the key.
-    pub fn get_mut(&mut self, key: &String) -> Option<&mut JavaVersion> {
-        self.0.get_mut(key)
-    }
+	/// Returns a mutable reference to the value corresponding to the key.
+	pub fn get_mut(&mut self, key: &String) -> Option<&mut JavaVersion> {
+		self.0.get_mut(key)
+	}
 
-    /// Returns the number of elements in the map.
-    pub fn count(&self) -> usize {
-        self.0.len()
-    }
+	/// Returns the number of elements in the map.
+	pub fn count(&self) -> usize {
+		self.0.len()
+	}
 
-    /// A collection visiting all keys in arbitrary order.
-    pub fn keys(&self) -> Vec<String> {
-        self.0.keys().cloned().collect()
-    }
+	/// A collection visiting all keys in arbitrary order.
+	pub fn keys(&self) -> Vec<String> {
+		self.0.keys().cloned().collect()
+	}
 
-    /// Validates all stored java versions.
-    pub async fn validate(&self) -> bool {
-        for (_, java) in self.0.iter() {
-            let runtime = java::check_java_instance(
-                PathBuf::from(&java.path).as_path()
-            ).await;
-            if let Some(runtime) = runtime {
-                if runtime.version != java.version {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
+	/// Validates all stored java versions.
+	pub async fn validate(&self) -> bool {
+		for (_, java) in self.0.iter() {
+			let runtime = java::check_java_instance(PathBuf::from(&java.path).as_path()).await;
+			if let Some(runtime) = runtime {
+				if runtime.version != java.version {
+					return false;
+				}
+			} else {
+				return false;
+			}
+		}
 
-        true
-    }
+		true
+	}
 }

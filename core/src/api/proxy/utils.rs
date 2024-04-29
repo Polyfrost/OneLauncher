@@ -47,31 +47,32 @@ macro_rules! ingress_join {
 #[tracing::instrument(skip(stream, f))]
 #[onelauncher_debug::debugger]
 pub async fn ingress_try_for_each<I, F, Fut, T>(
-    stream: I,
-    limit: Option<usize>,
-    key: Option<&IngressId>,
-    total: f64,
-    num_futs: usize,
-    message: Option<&str>,
-    f: F,
+	stream: I,
+	limit: Option<usize>,
+	key: Option<&IngressId>,
+	total: f64,
+	num_futs: usize,
+	message: Option<&str>,
+	f: F,
 ) -> crate::Result<()>
 where
-    I: futures::TryStreamExt<Error = crate::Error> + TryStream<Ok = T>,
-    F: FnMut(T) -> Fut + Send,
-    Fut: Future<Output = crate::Result<()>> + Send,
-    T: Send,
+	I: futures::TryStreamExt<Error = crate::Error> + TryStream<Ok = T>,
+	F: FnMut(T) -> Fut + Send,
+	Fut: Future<Output = crate::Result<()>> + Send,
+	T: Send,
 {
-    let mut f = f;
-    stream.try_for_each_concurrent(limit, |item| {
-        let f = f(item);
-        async move {
-            f.await?;
-            if let Some(key) = key {
-                send_ingress(key, total / (num_futs as f64), message).await?;
-            }
+	let mut f = f;
+	stream
+		.try_for_each_concurrent(limit, |item| {
+			let f = f(item);
+			async move {
+				f.await?;
+				if let Some(key) = key {
+					send_ingress(key, total / (num_futs as f64), message).await?;
+				}
 
-            Ok(())
-        }
-    })
-    .await
+				Ok(())
+			}
+		})
+		.await
 }

@@ -19,7 +19,7 @@
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",
 		"@iconify-json/logos": "^1.1.42",
-		"@solidjs/router": "^0.13.2",
+		"@solidjs/router": "^0.13.3",
 		"@tauri-apps/api": "^2.0.0-beta",
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
@@ -33,12 +33,12 @@
 	"devDependencies": {
 		"@tauri-apps/cli": "2.0.0-beta.10",
 		"@types/uuid": "^9.0.8",
-		"sass": "^1.75.0",
+		"sass": "^1.77.0",
 		"typescript": "^5.4.5",
 		"unocss": "^0.59.4",
-		"vite": "^5.2.10",
+		"vite": "^5.2.11",
 		"vite-plugin-solid": "^2.10.2",
 		"vite-tsconfig-paths": "^4.3.2",
-		"vitest": "^1.5.2"
+		"vitest": "^1.6.0"
 	}
 }

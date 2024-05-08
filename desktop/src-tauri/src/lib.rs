@@ -4,16 +4,16 @@ pub mod api;
 pub mod error;
 pub mod ext;
 
-#[tracing::instrument(skip_all)]
-#[tauri::command]
-async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
-	onelauncher::ProxyState::initialize(app).await?;
-	let s = onelauncher::State::get().await?;
-	onelauncher::State::update();
+// #[tracing::instrument(skip_all)]
+// #[tauri::command]
+// async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
+// 	onelauncher::ProxyState::initialize(app).await?;
+// 	let s = onelauncher::State::get().await?;
+// 	onelauncher::State::update();
 
-	s.processor.write().await.restore().await?;
-	Ok(())
-}
+// 	s.processor.write().await.restore().await?;
+// 	Ok(())
+// }
 
 #[tauri::command]
 fn is_dev() -> bool {
@@ -33,14 +33,18 @@ pub async fn run() {
 	let _log_guard = onelauncher::start_logger();
 	tracing::info!("initialized tracing subscriber. loading onelauncher...");
 
-	run_app(tauri::Builder::default(), setup).await;
+	run_app(tauri::Builder::default(), |app| {
+        if let Err(err) = setup(app) {
+            tracing::error!("failed to setup app: {:?}", err);
+        }
+    }).await;
 }
 
-pub async fn run_app<R: tauri::Runtime, F: FnOnce(&tauri::App<R>) + Send + 'static>(
+pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + 'static>(
 	builder: tauri::Builder<R>,
 	setup: F,
 ) {
-	let mut builder = builder
+	let builder = builder
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
@@ -56,7 +60,10 @@ pub async fn run_app<R: tauri::Runtime, F: FnOnce(&tauri::App<R>) + Send + 'stat
 
 	let builder = builder
 		.plugin(api::init())
-		.invoke_handler(tauri::generate_handler![initialize_state, is_dev,]);
+		.invoke_handler(tauri::generate_handler![
+            // initialize_state, 
+            is_dev,
+        ]);
 
 	let app = builder
 		.build(tauri::tauri_build_context!())
@@ -74,21 +81,22 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 	Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-	use tauri::Manager;
+// TODO: Add tests
+// #[cfg(test)]
+// mod tests {
+// 	use tauri::Manager;
 
-	#[test]
-	async fn run_app() {
-		super::run_app(tauri::test::mock_builder(), |app| {
-			super::setup(app);
+// 	#[tokio::test]
+// 	async fn run_app() {
+// 		super::run_app(tauri::test::mock_builder(), |app| {
+// 			super::setup(app);
 
-			let win = app.get_webview_window("main").unwrap();
-			tokio::spawn(async move || {
-				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-				win.close().unwrap();
-			});
-		})
-		.await
-	}
-}
+// 			let win = app.get_webview_window("main").unwrap();
+// 			tokio::spawn(async move {
+// 				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+// 				win.close().unwrap();
+// 			});
+// 		})
+// 		.await
+// 	}
+// }

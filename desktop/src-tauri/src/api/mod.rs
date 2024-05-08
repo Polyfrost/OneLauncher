@@ -1,27 +1,18 @@
-use onelauncher::game::client_manager::ClientManager;
-use onelauncher::AppState;
+use onelauncher::State;
 use serde::{Serialize, Serializer};
 use tauri::plugin::TauriPlugin;
-use tauri::{Manager, State};
+use tauri::Manager;
 use tokio::sync::Mutex;
 
-pub fn init() -> TauriPlugin<tauri::Wry> {
+pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 	tauri::plugin::Builder::new("onelauncher")
 		.setup(|app, _| {
-			app.manage(Mutex::new(AppState::new()?));
+			app.manage(Mutex::new(State::get()));
 
 			Ok(())
 		})
 		.invoke_handler(tauri::generate_handler![])
 		.build()
-}
-
-#[tauri::command]
-#[tracing::instrument(skip_all)]
-async fn refresh_client_manager(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
-	let mut state = state.lock().await;
-	state.clients = ClientManager::new()?;
-	Ok(())
 }
 
 pub type Result<T> = std::result::Result<T, OneLauncherSerializableError>;
@@ -51,6 +42,7 @@ macro_rules! impl_serialize_err {
 			where
 				S: Serializer,
 			{
+                use serde::ser::SerializeStruct;
 				match self {
 					OneLauncherSerializableError::OneLauncher(onelauncher_error) => {
 						$crate::error::display_tracing_error(onelauncher_error);

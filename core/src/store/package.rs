@@ -58,11 +58,12 @@ pub async fn generate_context(
 	}
 
 	let mut result = HashMap::new();
-	let mut stream = tokio_stream::iter(result_packages);
-	while let Some((k, v)) = stream.next().await {
-		let k = PackagePath::from_path(k).await?;
-		result.insert(k, v);
-	}
+    // TODO(pauline): Finish this
+	// let mut stream = tokio_stream::iter(result_packages);
+	// while let Some((k, v)) = stream.next().await {
+	// 	let k = PackagePath::from_path(k).await?;
+	// 	result.insert(k, v);
+	// }
 
 	Ok(result)
 }

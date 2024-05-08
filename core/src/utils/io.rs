@@ -140,7 +140,7 @@ fn sync_write(
 	let tmp_path = tempfile.into_temp_path();
 	let path = path.as_ref();
 	// this is a sorta dangerous call but shouldnt matter because of async
-	tmp_path.persist(path);
+	tmp_path.persist(path)?;
 	std::io::Result::Ok(())
 }
 

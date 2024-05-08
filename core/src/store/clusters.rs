@@ -63,7 +63,7 @@ impl ClusterPath {
 		self.0.to_str().ok_or(anyhow::anyhow!(
 			"invalid file path string {}!",
 			self.0.clone().to_string_lossy()
-		));
+		))?;
 		Ok(self)
 	}
 

@@ -16,7 +16,7 @@ function NavbarLink(props: NavbarLinkProps) {
 	return (
 		<A
 			href={props.path}
-			class="text-lg px-4 py-1 hover:bg-component-bg-hover rounded-lg hover:text-fg-primary-hover"
+			class="text-lg px-4 py-2 hover:bg-component-bg-hover rounded-lg hover:text-fg-primary-hover"
 			inactiveClass="text-fg-secondary"
 			activeClass="text-fg-primary"
 			end
@@ -33,11 +33,11 @@ function Navbar() {
 	let profileButton!: HTMLButtonElement;
 
 	return (
-		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15 mx-2">
+		<div class="flex flex-row justify-center items-center min-h-[60px] h-15 mx-2">
 			<div>
 				<PolyfrostFull />
 			</div>
-			<div class="flex flex-row items-center justify-center gap-x-10 py-1">
+			<div class="flex flex-1 flex-row items-center justify-center gap-x-10 py-1">
 				<NavbarLink path="/" label="Home" />
 				<NavbarLink path="/browser" label="Browser" />
 				<NavbarLink path="/updates" label="Updates" />

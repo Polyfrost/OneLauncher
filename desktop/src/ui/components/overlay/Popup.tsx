@@ -54,7 +54,7 @@ function Popup(props: Popup.PopupProps) {
 	return (
 		<Show when={localVisible()}>
 			<Portal mount={props.mount || document.body}>
-				<div ref={popupRef} style={props.style || ''} class={`absolute z-[1000] ${animate()} ${props.class || ''}`}>
+				<div ref={popupRef} style={props.style || ''} class={`absolute z-[1000] animate-duration-150 ${animate()} ${props.class || ''}`}>
 					{props.children}
 				</div>
 			</Portal>

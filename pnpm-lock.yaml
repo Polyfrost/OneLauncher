@@ -47,6 +47,9 @@ importers:
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.17)
+      '@unocss/reset':
+        specifier: ^0.59.4
+        version: 0.59.4
       '@untitled-theme/icons-solid':
         specifier: ^0.8.0
         version: 0.8.0(solid-js@1.8.17)

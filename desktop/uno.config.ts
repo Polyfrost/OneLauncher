@@ -10,6 +10,15 @@ import {
 export default defineConfig({
 	rules: [],
 	shortcuts: {},
+	presets: [
+		presetUno(),
+		presetAttributify(),
+		presetIcons(),
+	],
+	transformers: [
+		transformerVariantGroup(),
+		transformerDirectives(),
+	],
 	theme: {
 		fontFamily: {
 			sans: 'Poppins',
@@ -100,30 +109,21 @@ export default defineConfig({
 				mdlg: '0.438rem',
 			},
 
-			animation: {
-				'fade-in': 'fadeIn 150ms easeOutExpo forwards',
-				'fade-out': 'fadeOut 150ms easeOutExpo forwards',
-			},
+			// animation: {
+			// 	'fade-in': 'fadeIn 150ms easeOutExpo forwards',
+			// 	'fade-out': 'fadeOut 150ms easeOutExpo forwards',
+			// },
 
-			keyframes: {
-				fadeIn: {
-					'0%': { opacity: '0' },
-					'100%': { opacity: '1' },
-				},
-				fadeOut: {
-					'0%': { opacity: '1' },
-					'100%': { opacity: '0' },
-				},
-			},
+			// keyframes: {
+			// 	fadeIn: {
+			// 		'0%': { opacity: '0' },
+			// 		'100%': { opacity: '1' },
+			// 	},
+			// 	fadeOut: {
+			// 		'0%': { opacity: '1' },
+			// 		'100%': { opacity: '0' },
+			// 	},
+			// },
 		},
 	},
-	presets: [
-		presetUno(),
-		presetAttributify(),
-		presetIcons(),
-	],
-	transformers: [
-		transformerVariantGroup(),
-		transformerDirectives(),
-	],
 });

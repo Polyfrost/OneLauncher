@@ -1,7 +1,7 @@
 /* @refresh reload */
 import { render } from 'solid-js/web';
 
-import './global_assets';
+import './imports';
 
 import { Route, Router } from '@solidjs/router';
 import App from './ui/App';

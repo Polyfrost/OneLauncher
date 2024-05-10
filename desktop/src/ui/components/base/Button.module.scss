@@ -21,7 +21,14 @@
     }
 
     &__icon {
-        @apply p-1.5 hover:bg-gray-0.05 active:bg-gray-0.10 aspect-square box-border;
+        @apply p-1.5 hover:bg-gray-0.05 active:bg-gray-0.10 aspect-square box-border w-8 h-8;
+
+        &.large {
+            @apply w-9 h-9;
+            & > * {
+                @apply p-0.5;
+            }
+        }
 
         & > * {
             @apply w-full h-full stroke-fg-primary;

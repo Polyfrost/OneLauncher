@@ -1,3 +1,4 @@
+import { mergeRefs } from '@solid-primitives/refs';
 import {
 	Show,
 	createEffect,
@@ -11,13 +12,13 @@ import { Portal } from 'solid-js/web';
 
 // eslint-disable-next-line ts/no-namespace
 declare namespace Popup {
-	interface PopupProps extends ParentProps {
+	type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
 		visible: Accessor<boolean>;
 		setVisible: Setter<boolean>;
 		class?: string;
 		style?: JSX.CSSProperties | string;
 		mount?: Node;
-	}
+	};
 }
 
 function Popup(props: Popup.PopupProps) {
@@ -53,13 +54,29 @@ function Popup(props: Popup.PopupProps) {
 
 	return (
 		<Show when={localVisible()}>
-			<Portal mount={props.mount || document.body}>
-				<div ref={popupRef} style={props.style || ''} class={`absolute z-[1000] animate-duration-150 ${animate()} ${props.class || ''}`}>
+			<Portal
+				mount={props.mount || document.body}
+				ref={mergeRefs((el) => {
+					el.classList.add('absolute', 'z-[1000]');
+					return el;
+				}, props.ref)}
+			>
+				<div ref={popupRef} style={props.style || ''} class={`${animate()} ${props.class || ''}`}>
 					{props.children}
 				</div>
 			</Portal>
 		</Show>
 	);
 }
+
+Popup.setPos = (parent: HTMLElement, ref: (SVGGElement | HTMLDivElement)) => {
+	const parentRect = parent.getBoundingClientRect();
+
+	const top = parentRect.bottom;
+	const right = document.body.clientWidth - parentRect.right;
+
+	ref.style.top = `${top}px`;
+	ref.style.right = `${right}px`;
+};
 
 export default Popup;

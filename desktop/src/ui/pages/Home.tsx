@@ -47,7 +47,7 @@ function Banner() {
 				<div class="flex w-full flex-row justify-between items-end">
 					<div class="flex flex-row items-center gap-x-4">
 						<Button iconLeft={<PlayIcon />}>Launch 1.19.2</Button>
-						<Button styleType="icon" class="w-8 h-8">
+						<Button buttonStyle="icon" class="w-8 h-8">
 							<DotsVerticalIcon />
 						</Button>
 					</div>
@@ -159,7 +159,7 @@ function ClusterCard(props: Core.ClusterWithManifest) {
 							{props.instance.mods && `• ${props.mods} mods`} */}
 						</p>
 					</div>
-					<Button onClick={e => openContextMenu(e)} styleType="icon" class="w-8 h-8">
+					<Button onClick={e => openContextMenu(e)} buttonStyle="icon" class="w-8 h-8">
 						<DotsVerticalIcon />
 					</Button>
 				</div>
@@ -218,7 +218,7 @@ function HomePage() {
 				</div>
 				<div class="flex flex-row gap-x-4">
 					<Button
-						styleType="primary"
+						buttonStyle="primary"
 						iconLeft={<PlusIcon class="!w-5 stroke-[2.2]" />}
 						children="New Cluster"
 						onClick={() => newInstance()}

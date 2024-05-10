@@ -20,6 +20,7 @@
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",
 		"@iconify-json/logos": "^1.1.42",
+		"@solid-primitives/refs": "^1.0.8",
 		"@solidjs/router": "^0.13.3",
 		"@tauri-apps/api": "^2.0.0-beta",
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",

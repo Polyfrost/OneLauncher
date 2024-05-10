@@ -23,7 +23,7 @@ function AccountComponent(props: AccountComponentProps) {
 				</div>
 			</div>
 			{props.loggedIn && (
-				<Button styleType="icon" class="w-8 h-8">
+				<Button buttonStyle="icon">
 					<LogOut01Icon class=" stroke-danger" />
 				</Button>
 			)}
@@ -50,11 +50,11 @@ function AccountPopup(props: Popup.PopupProps) {
 
 					<div class="flex flex-row justify-between">
 						<div>
-							<Button styleType="ghost" iconLeft={<PlusIcon />}>Add Account</Button>
+							<Button buttonStyle="ghost" iconLeft={<PlusIcon />}>Add Account</Button>
 						</div>
 						<div class="flex flex-row">
-							<Button styleType="icon" class="w-9 h-9">
-								<Settings01Icon class="p-0.5 stroke-fg-primary" />
+							<Button buttonStyle="icon" large>
+								<Settings01Icon class="stroke-fg-primary" />
 							</Button>
 						</div>
 					</div>

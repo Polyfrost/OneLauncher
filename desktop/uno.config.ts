@@ -30,9 +30,12 @@ export default defineConfig({
 			'sm': '0.75rem',
 			'md': '0.875rem',
 			'lg': '1rem',
+			'2lg': '1.125rem',
 			'xl': '1.25rem',
 			'xxl': '1.5rem',
 			'2xl': '2rem',
+			'3xl': '2.5rem',
+			'4xl': '3rem',
 		},
 
 		colors: {

@@ -1,11 +1,15 @@
 import { A } from '@solidjs/router';
 import { createSignal } from 'solid-js';
 import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-solid';
+import { open } from '@tauri-apps/plugin-shell';
 import useAccount from '../hooks/useAccount';
 import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/AccountPopup';
 import PlayerHead from './game/PlayerHead';
 import Button from './base/Button';
+import NotificationPopup from './overlay/notifications/NotificationPopup';
+import Popup from './overlay/Popup';
+import { WEBSITE } from '~constants';
 
 interface NavbarLinkProps {
 	path: string;
@@ -28,38 +32,54 @@ function NavbarLink(props: NavbarLinkProps) {
 
 function Navbar() {
 	const [profileMenuOpen, setProfileMenuOpen] = createSignal(false);
+	const [notificationMenuOpen, setNotificationMenuOpen] = createSignal(false);
+
 	const account = useAccount();
 
 	let profileButton!: HTMLButtonElement;
+	let notificationButton!: HTMLButtonElement;
 
 	return (
-		<div class="flex flex-row justify-center items-center min-h-[60px] h-15 mx-2">
+		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15 mx-2">
 			<div>
-				<PolyfrostFull />
+				<div onClick={() => open(WEBSITE)} class="flex items-center justify-center active:scale-90 transition-transform w-min">
+					<PolyfrostFull />
+				</div>
 			</div>
-			<div class="flex flex-1 flex-row items-center justify-center gap-x-10 py-1">
+			<div class="flex flex-row items-center justify-center gap-x-10 py-1">
 				<NavbarLink path="/" label="Home" />
 				<NavbarLink path="/browser" label="Browser" />
 				<NavbarLink path="/updates" label="Updates" />
 			</div>
 			<div class="flex flex-row justify-end items-center gap-x-2 relative">
-				<Button styleType="icon" class="w-8 h-8">
-					<TerminalBrowserIcon class="w-7 h-7" />
+				<Button buttonStyle="icon">
+					<TerminalBrowserIcon />
 				</Button>
 
-				<Button styleType="icon" class="w-8 h-8">
-					<Cloud01Icon class="w-7 h-7" />
+				<Button buttonStyle="icon">
+					<Cloud01Icon />
 				</Button>
 
-				<Button styleType="icon" class="w-8 h-8">
-					<Bell01Icon class="w-7 h-7" />
+				{/* Notification Manager Button */}
+				<Button
+					buttonStyle="icon"
+					ref={notificationButton}
+					class="[&>div]:absolute relative"
+					onClick={() => setNotificationMenuOpen(!notificationMenuOpen())}
+				>
+					<Bell01Icon />
 				</Button>
 
-				<Button styleType="icon" class="w-8 h-8">
-					<Settings01Icon class="w-7 h-7" />
+				{/* Launcher Settings Button */}
+				<Button buttonStyle="icon">
+					<Settings01Icon />
 				</Button>
 
-				<button ref={profileButton} onClick={() => setProfileMenuOpen(!profileMenuOpen())}>
+				{/* Account Menu Button */}
+				<button
+					ref={profileButton}
+					onClick={() => setProfileMenuOpen(!profileMenuOpen())}
+				>
 					<PlayerHead class="w-[30px] h-[30px] rounded-md hover:opacity-70" uuid={account.uuid} />
 				</button>
 			</div>
@@ -67,8 +87,18 @@ function Navbar() {
 			<AccountPopup
 				visible={profileMenuOpen}
 				setVisible={setProfileMenuOpen}
-				mount={profileButton}
-				class="right-0 top-full mt-2"
+				ref={(el) => {
+					el.style.left = `${profileButton.getBoundingClientRect().right - el.getBoundingClientRect().width}px`;
+					el.style.top = `${profileButton.getBoundingClientRect().bottom}px`;
+				}}
+				class="mt-2"
+			/>
+
+			<NotificationPopup
+				visible={notificationMenuOpen}
+				setVisible={setNotificationMenuOpen}
+				ref={el => Popup.setPos(notificationButton, el)}
+				class="mt-2"
 			/>
 		</div>
 	);

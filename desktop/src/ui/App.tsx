@@ -2,8 +2,9 @@ import type { ParentProps } from 'solid-js';
 import { Transition } from 'solid-transition-group';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import environment from '../utils/environment';
-import WindowFrame from './components/native/WindowFrame';
+import WindowFrame from './components/WindowFrame';
 import Navbar from './components/Navbar';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App(props: ParentProps) {
 	if (!environment.isDev()) {
@@ -14,21 +15,21 @@ function App(props: ParentProps) {
 
 	return (
 		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-white">
-
 			<WindowFrame />
 			<div class="flex flex-col px-8">
 				<Navbar />
 			</div>
 
-			{/* This was a pain to do */}
 			<div class="relative h-full w-full overflow-hidden">
 				<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
-					<OverlayScrollbarsComponent class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8">
-						<AnimatedRoutes>
-							{props.children}
-						</AnimatedRoutes>
-						<div class="pb-8" />
-					</OverlayScrollbarsComponent>
+					<ErrorBoundary>
+						<OverlayScrollbarsComponent class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8">
+							<AnimatedRoutes>
+								{props.children}
+							</AnimatedRoutes>
+							<div class="pb-8" />
+						</OverlayScrollbarsComponent>
+					</ErrorBoundary>
 				</div>
 			</div>
 

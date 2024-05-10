@@ -2,8 +2,8 @@ import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
-import Modal from '../overlay/Modal';
-import Button from '../base/Button';
+import Modal from './overlay/Modal';
+import Button from './base/Button';
 
 interface TitlebarButtonProps {
 	icon: (any: any) => JSX.Element;
@@ -50,8 +50,8 @@ function WindowFrame() {
 				visible={isModalVisible}
 				setVisible={setModalVisible}
 				buttons={[
-					<Button styleType="secondary" onClick={() => setModalVisible(false)}>No</Button>,
-					<Button styleType="danger" onClick={() => quit()}>Yes</Button>,
+					<Button buttonStyle="secondary" onClick={() => setModalVisible(false)}>No</Button>,
+					<Button buttonStyle="danger" onClick={() => quit()}>Yes</Button>,
 				]}
 			/>
 		</div>

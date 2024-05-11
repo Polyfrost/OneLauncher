@@ -264,8 +264,8 @@ impl Processor {
 	}
 
 	/// Returns a reference to the value corresponding to the key.
-	pub fn get(&self, uuid: &Uuid) -> Option<Arc<RwLock<ProcessorChild>>> {
-		self.0.get(uuid).cloned()
+	pub fn get(&self, uuid: Uuid) -> Option<Arc<RwLock<ProcessorChild>>> {
+		self.0.get(&uuid).cloned()
 	}
 
 	/// An collection visiting all keys in arbitrary order.
@@ -277,7 +277,7 @@ impl Processor {
 	pub async fn running(&self) -> crate::Result<Vec<Uuid>> {
 		let mut keys = Vec::new();
 		for key in self.keys() {
-			if let Some(process) = self.get(&key) {
+			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
 				if process
@@ -300,7 +300,7 @@ impl Processor {
 		let running = self.running().await?;
 		let mut keys = Vec::new();
 		for key in running {
-			if let Some(process) = self.get(&key) {
+			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.read().await;
 				if process.cluster_path == cluster_path {
@@ -315,7 +315,7 @@ impl Processor {
 	pub async fn running_cluster_paths(&self) -> crate::Result<Vec<ClusterPath>> {
 		let mut clusters = Vec::new();
 		for key in self.keys() {
-			if let Some(process) = self.get(&key) {
+			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
 				if process
@@ -337,7 +337,7 @@ impl Processor {
 	pub async fn running_clusters(&self) -> crate::Result<Vec<Cluster>> {
 		let mut clusters = Vec::new();
 		for key in self.keys() {
-			if let Some(process) = self.get(&key) {
+			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
 				if process
@@ -359,7 +359,7 @@ impl Processor {
 	}
 
 	/// get the exit status of a process by its [`Uuid`].
-	pub async fn exit_status(&self, uuid: &Uuid) -> crate::Result<Option<i32>> {
+	pub async fn exit_status(&self, uuid: Uuid) -> crate::Result<Option<i32>> {
 		if let Some(process) = self.get(uuid) {
 			let process = process.write().await;
 			let status = process.current_child.write().await.try_wait().await?;

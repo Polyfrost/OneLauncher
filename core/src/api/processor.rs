@@ -6,13 +6,13 @@ use uuid::Uuid;
 
 /// check whether or not a process has completed by its [`Uuid`].
 #[tracing::instrument]
-pub async fn uuid_is_finished(uuid: &Uuid) -> crate::Result<bool> {
+pub async fn uuid_is_finished(uuid: Uuid) -> crate::Result<bool> {
 	Ok(uuid_exit_status(uuid).await?.is_some())
 }
 
 /// check the exit status of a process by its [`Uuid`].
 #[tracing::instrument]
-pub async fn uuid_exit_status(uuid: &Uuid) -> crate::Result<Option<i32>> {
+pub async fn uuid_exit_status(uuid: Uuid) -> crate::Result<Option<i32>> {
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
 	processor.exit_status(uuid).await
@@ -60,7 +60,7 @@ pub async fn get_uuids_by_cluster_path(cluster_path: ClusterPath) -> crate::Resu
 
 /// kill an existing and running process by its [`Uuid`]
 #[tracing::instrument]
-pub async fn kill_by_uuid(uuid: &Uuid) -> crate::Result<()> {
+pub async fn kill_by_uuid(uuid: Uuid) -> crate::Result<()> {
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
 
@@ -74,7 +74,7 @@ pub async fn kill_by_uuid(uuid: &Uuid) -> crate::Result<()> {
 
 /// wait for a child process to finish running its manager by its [`Uuid`].
 #[tracing::instrument]
-pub async fn wait_for_by_uuid(uuid: &Uuid) -> crate::Result<()> {
+pub async fn wait_for_by_uuid(uuid: Uuid) -> crate::Result<()> {
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
 

@@ -59,11 +59,15 @@ impl MinecraftState {
 
 	/// Refresh all tokens in the global state.
 	#[tracing::instrument(skip(self))]
-	async fn refresh(&mut self) -> crate::Result<(DeviceKey, DeviceToken)> {
+	async fn refresh(
+		&mut self,
+		current_date: DateTime<Utc>,
+		force: bool,
+	) -> crate::Result<(DeviceKey, DeviceToken, DateTime<Utc>, bool)> {
 		macro_rules! device_key {
 			($self:ident, $device_key:expr, $device_token:expr, $SaveDeviceToken:path) => {{
 				let key = device_key()?;
-				let token = device_token(&key).await?;
+				let res = device_token(&key, current_date).await?;
 
 				self.token = Some(SaveDeviceToken {
 					id: key.id.clone(),
@@ -74,18 +78,17 @@ impl MinecraftState {
 						.to_string(),
 					x: key.x.clone(),
 					y: key.y.clone(),
-					token: token.clone(),
-					modern: true,
+					token: res.value.clone(),
 				});
 				self.save().await?;
 
-				(key, token)
+				(key, res.value, res.date, true)
 			}};
 		}
 
-		let (key, token) = if let Some(ref token) = self.token {
-			if token.token.not_after > Utc::now() {
-				if let Ok(private_key) = SigningKey::from_pkcs8_pem(&token.private_key) {
+		let (key, token, date, valid_date) = if let Some(ref token) = self.token {
+			if let Ok(private_key) = SigningKey::from_pkcs8_pem(&token.private_key) {
+				if token.token.not_after > Utc::now() && !force {
 					(
 						DeviceKey {
 							id: token.id.clone(),
@@ -94,9 +97,20 @@ impl MinecraftState {
 							y: token.y.clone(),
 						},
 						token.token.clone(),
+						current_date,
+						false,
 					)
 				} else {
-					device_key!(self, device_key, device_token, SaveDeviceToken)
+					let key = DeviceKey {
+						id: token.id.clone(),
+						key: private_key,
+						x: token.x.clone(),
+						y: token.y.clone(),
+					};
+
+					let res = device_token(&key, current_date).await?;
+
+					(key, res.value, res.date, true)
 				}
 			} else {
 				device_key!(self, device_key, device_token, SaveDeviceToken)
@@ -105,25 +119,48 @@ impl MinecraftState {
 			device_key!(self, device_key, device_token, SaveDeviceToken)
 		};
 
-		Ok((key, token))
+		Ok((key, token, date, valid_date))
 	}
 
 	/// Begin a Microsoft authentication flow.
 	#[tracing::instrument(skip(self))]
 	pub async fn begin(&mut self) -> crate::Result<MinecraftLogin> {
-		let (key, token) = self.refresh().await?;
+		let (key, token, current_date, valid_date) = self.refresh(Utc::now(), false).await?;
 		let verify = generate_oauth_challenge();
 		let mut hash = sha2::Sha256::new();
 		hash.update(&verify);
 		let hash_result = hash.finalize();
-		let challenge = base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(&hash_result);
-		let (sid, ruri) = sisu_authenticate(&token.token, &challenge, &key).await?;
-		Ok(MinecraftLogin {
-			verify,
-			challenge,
-			session_id: sid,
-			redirect_uri: ruri.msa_oauth_redirect,
-		})
+		let challenge = base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(hash_result);
+
+		match sisu_authenticate(&token.token, &challenge, &key, current_date).await {
+			Ok((session_id, redirect_uri)) => Ok(MinecraftLogin {
+				verify,
+				challenge,
+				session_id,
+				redirect_uri: redirect_uri.value.msa_oauth_redirect,
+			}),
+			Err(err) => {
+				if !valid_date {
+					let (key, token, current_date, _) = self.refresh(Utc::now(), false).await?;
+					let verify = generate_oauth_challenge();
+					let mut hash = sha2::Sha256::new();
+					hash.update(&verify);
+					let hash_result = hash.finalize();
+					let challenge = base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(hash_result);
+					let (session_id, redirect_uri) =
+						sisu_authenticate(&token.token, &challenge, &key, current_date).await?;
+
+					Ok(MinecraftLogin {
+						verify,
+						challenge,
+						session_id,
+						redirect_uri: redirect_uri.value.msa_oauth_redirect,
+					})
+				} else {
+					Err(crate::ErrorKind::from(err).into())
+				}
+			}
+		}
 	}
 
 	/// Finish a Microsoft authentication flow.
@@ -133,17 +170,24 @@ impl MinecraftState {
 		code: &str,
 		flow: MinecraftLogin,
 	) -> crate::Result<MinecraftCredentials> {
-		let (key, token) = self.refresh().await?;
+		let (key, token, _, _) = self.refresh(Utc::now(), false).await?;
 		let oauth_token = oauth_token(code, &flow.verify).await?;
 		let sisu_authorize = sisu_authorize(
 			Some(&flow.session_id),
-			&oauth_token.access_token,
+			&oauth_token.value.access_token,
 			&token.token,
 			&key,
+			oauth_token.date,
 		)
 		.await?;
-		let xbox_token = xsts_authorize(sisu_authorize, &token.token, &key).await?;
-		let minecraft_token = minecraft_token(xbox_token).await?;
+		let xbox_token = xsts_authorize(
+			sisu_authorize.value,
+			&token.token,
+			&key,
+			sisu_authorize.date,
+		)
+		.await?;
+		let minecraft_token = minecraft_token(xbox_token.value).await?;
 		minecraft_entitlements(&minecraft_token.access_token).await?;
 		let profile = minecraft_profile(&minecraft_token.access_token).await?;
 		let profile_id = profile.id.unwrap_or_default();
@@ -151,9 +195,10 @@ impl MinecraftState {
 			id: profile_id,
 			username: profile.name,
 			access_token: minecraft_token.access_token,
-			refresh_token: oauth_token.refresh_token,
+			refresh_token: oauth_token.value.refresh_token,
 			#[allow(deprecated)]
-			expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
+			expires: oauth_token.date
+				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
 		};
 
 		self.users.insert(profile_id, credentials.clone());
@@ -165,6 +210,47 @@ impl MinecraftState {
 		self.save().await?;
 
 		Ok(credentials)
+	}
+
+	/// Refresh the current stored [`MinecraftCredentials`].
+	async fn refresh_token(
+		&mut self,
+		creds: &MinecraftCredentials,
+	) -> crate::Result<Option<MinecraftCredentials>> {
+		let cred_id = creds.id;
+		let cred_name = creds.username.clone();
+		let oauth_token = oauth_refresh(&creds.refresh_token).await?;
+		let (key, token, current_date, _) = self.refresh(oauth_token.date, false).await?;
+		let sisu_authorize = sisu_authorize(
+			None,
+			&oauth_token.value.access_token,
+			&token.token,
+			&key,
+			current_date,
+		)
+		.await?;
+		let xbox_token = xsts_authorize(
+			sisu_authorize.value,
+			&token.token,
+			&key,
+			sisu_authorize.date,
+		)
+		.await?;
+		let minecraft_token = minecraft_token(xbox_token.value).await?;
+		let val = MinecraftCredentials {
+			id: cred_id,
+			username: cred_name,
+			access_token: minecraft_token.access_token,
+			refresh_token: oauth_token.value.refresh_token,
+			#[allow(deprecated)]
+			expires: oauth_token.date
+				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
+		};
+
+		self.users.insert(val.id, val.clone());
+		self.save().await?;
+
+		Ok(Some(val))
 	}
 
 	/// Get the default user account as a set of optional [`MinecraftCredentials`].
@@ -187,29 +273,25 @@ impl MinecraftState {
 			}
 
 			if creds.expires < Utc::now() {
-				let cred_id = creds.id;
-				let profile_name = creds.username.clone();
+				let old_creds = creds.clone();
+				let res = self.refresh_token(&old_creds).await;
 
-				let oauth_token = oauth_refresh(&creds.refresh_token).await?;
-				let (key, token) = self.refresh().await?;
-				let sisu_authorize =
-					sisu_authorize(None, &oauth_token.access_token, &token.token, &key).await?;
+				match res {
+					Ok(val) => Ok(val),
+					Err(err) => {
+						if let crate::ErrorKind::AuthError(MinecraftAuthError::RequestError {
+							ref source,
+							..
+						}) = *err.raw
+						{
+							if source.is_connect() || source.is_timeout() {
+								return Ok(Some(old_creds));
+							}
+						}
 
-				let xbox_token = xsts_authorize(sisu_authorize, &token.token, &key).await?;
-				let minecraft_token = minecraft_token(xbox_token).await?;
-				let val = MinecraftCredentials {
-					id: cred_id,
-					username: profile_name,
-					access_token: minecraft_token.access_token,
-					refresh_token: oauth_token.refresh_token,
-					#[allow(deprecated)]
-					expires: Utc::now() + chrono::TimeDelta::seconds(oauth_token.expires_in as i64),
-				};
-
-				self.users.insert(val.id, val.clone());
-				self.save().await?;
-
-				Ok(Some(val))
+						Err(err)
+					}
+				}
 			} else {
 				Ok(Some(creds.clone()))
 			}
@@ -234,6 +316,12 @@ const MICROSOFT_CLIENT_ID: &str = "";
 const REDIRECT_URL: &str = "https://login.live.com/oauth20_desktop.srf";
 /// Microsoft login xboxlive scopes to get tokens.
 const SCOPES: &str = "service::user.auth.xboxlive.com::MBI_SSL";
+
+/// A [`reqwest::Request`] with a [`DateTime<Utc>`] attached to it.
+struct RequestWithDate<T> {
+	pub date: DateTime<Utc>,
+	pub value: T,
+}
 
 /// A device token used for Microsoft authentication.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -275,9 +363,6 @@ pub struct SaveDeviceToken {
 	pub y: String,
 	/// The assocated [`DeviceToken`].
 	pub token: DeviceToken,
-	/// Whether or not we should patch the auth device token to use a modern auth flow
-	#[serde(default)]
-	modern: bool,
 }
 
 /// Core variables passed throughout the Minecraft login flow.
@@ -308,8 +393,11 @@ pub struct MinecraftCredentials {
 }
 
 #[tracing::instrument(skip(key))]
-pub async fn device_token(key: &DeviceKey) -> Result<DeviceToken, MinecraftAuthError> {
-	Ok(send_signed_request(
+pub async fn device_token(
+	key: &DeviceKey,
+	current_date: DateTime<Utc>,
+) -> Result<RequestWithDate<DeviceToken>, MinecraftAuthError> {
+	let res = send_signed_request(
 		None,
 		"https://device.auth.xboxlive.com/device/authenticate",
 		"/device/authenticate",
@@ -333,9 +421,14 @@ pub async fn device_token(key: &DeviceKey) -> Result<DeviceToken, MinecraftAuthE
 		}),
 		key,
 		MinecraftAuthStep::DeviceToken,
+		current_date,
 	)
-	.await?
-	.1)
+	.await?;
+
+	Ok(RequestWithDate {
+		date: res.current_date,
+		value: res.body,
+	})
 }
 
 #[derive(Deserialize)]
@@ -349,9 +442,10 @@ async fn sisu_authenticate(
 	token: &str,
 	challenge: &str,
 	key: &DeviceKey,
-) -> Result<(String, RedirectUri), MinecraftAuthError> {
+	current_date: DateTime<Utc>,
+) -> Result<(String, RequestWithDate<RedirectUri>), MinecraftAuthError> {
 	// what was microsoft on when writing this??????????
-	let (headers, res) = send_signed_request(
+	let res = send_signed_request::<RedirectUri>(
 		None,
 		"https://sisu.xboxlive.com/authenticate",
 		"/authenticate",
@@ -372,16 +466,24 @@ async fn sisu_authenticate(
 		}),
 		key,
 		MinecraftAuthStep::SisuAuthenicate,
+		current_date,
 	)
 	.await?;
 
-	let session_id = headers
+	let session_id = res
+		.headers
 		.get("X-SessionId")
 		.and_then(|x| x.to_str().ok())
 		.ok_or_else(|| MinecraftAuthError::SessionIdError)?
 		.to_string();
 
-	Ok((session_id, res))
+	Ok((
+		session_id,
+		RequestWithDate {
+			date: res.current_date,
+			value: res.body,
+		},
+	))
 }
 
 #[derive(Deserialize)]
@@ -396,11 +498,14 @@ struct OAuthToken {
 }
 
 #[tracing::instrument]
-async fn oauth_token(code: &str, verify: &str) -> Result<OAuthToken, MinecraftAuthError> {
+async fn oauth_token(
+	code: &str,
+	verify: &str,
+) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
 	query.insert("client_id", MICROSOFT_CLIENT_ID);
 	query.insert("code", code);
-	query.insert("code_verifier", &*verify);
+	query.insert("code_verifier", verify);
 	query.insert("grant_type", "authorization_code");
 	query.insert("redirect_uri", REDIRECT_URL);
 	query.insert("scope", SCOPES);
@@ -418,6 +523,7 @@ async fn oauth_token(code: &str, verify: &str) -> Result<OAuthToken, MinecraftAu
 	})?;
 
 	let status = res.status();
+	let current_date = get_date_header(res.headers());
 	let text = res
 		.text()
 		.await
@@ -426,16 +532,24 @@ async fn oauth_token(code: &str, verify: &str) -> Result<OAuthToken, MinecraftAu
 			source,
 		})?;
 
-	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
-		step: MinecraftAuthStep::OAuthToken,
-		raw: text,
-		source,
-		status_code: status,
+	let body =
+		serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+			step: MinecraftAuthStep::OAuthToken,
+			raw: text,
+			source,
+			status_code: status,
+		})?;
+
+	Ok(RequestWithDate {
+		date: current_date,
+		value: body,
 	})
 }
 
 #[tracing::instrument]
-async fn oauth_refresh(refresh_token: &str) -> Result<OAuthToken, MinecraftAuthError> {
+async fn oauth_refresh(
+	refresh_token: &str,
+) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
 	query.insert("client_id", MICROSOFT_CLIENT_ID);
 	query.insert("refresh_token", refresh_token);
@@ -456,6 +570,7 @@ async fn oauth_refresh(refresh_token: &str) -> Result<OAuthToken, MinecraftAuthE
 	})?;
 
 	let status = res.status();
+	let current_date = get_date_header(res.headers());
 	let text = res
 		.text()
 		.await
@@ -464,11 +579,17 @@ async fn oauth_refresh(refresh_token: &str) -> Result<OAuthToken, MinecraftAuthE
 			source,
 		})?;
 
-	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
-		step: MinecraftAuthStep::RefreshOAuthToken,
-		raw: text,
-		source,
-		status_code: status,
+	let body =
+		serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
+			step: MinecraftAuthStep::RefreshOAuthToken,
+			raw: text,
+			source,
+			status_code: status,
+		})?;
+
+	Ok(RequestWithDate {
+		date: current_date,
+		value: body,
 	})
 }
 
@@ -489,8 +610,9 @@ async fn sisu_authorize(
 	access_token: &str,
 	device_token: &str,
 	key: &DeviceKey,
-) -> Result<SisuAuthorize, MinecraftAuthError> {
-	Ok(send_signed_request(
+	current_date: DateTime<Utc>,
+) -> Result<RequestWithDate<SisuAuthorize>, MinecraftAuthError> {
+	let res = send_signed_request(
 		None,
 		"https://sisu.xboxlive.com/authorize",
 		"/authorize",
@@ -515,9 +637,14 @@ async fn sisu_authorize(
 		}),
 		key,
 		MinecraftAuthStep::SisuAuthorize,
+		current_date,
 	)
-	.await?
-	.1)
+	.await?;
+
+	Ok(RequestWithDate {
+		date: res.current_date,
+		value: res.body,
+	})
 }
 
 #[tracing::instrument(skip(key))]
@@ -525,8 +652,9 @@ async fn xsts_authorize(
 	authorize: SisuAuthorize,
 	device_token: &str,
 	key: &DeviceKey,
-) -> Result<DeviceToken, MinecraftAuthError> {
-	Ok(send_signed_request(
+	current_date: DateTime<Utc>,
+) -> Result<RequestWithDate<DeviceToken>, MinecraftAuthError> {
+	let res = send_signed_request(
 		None,
 		"https://xsts.auth.xboxlive.com/xsts/authorize",
 		"/xsts/authorize",
@@ -542,9 +670,14 @@ async fn xsts_authorize(
 		}),
 		key,
 		MinecraftAuthStep::XstsAuthorize,
+		current_date,
 	)
-	.await?
-	.1)
+	.await?;
+
+	Ok(RequestWithDate {
+		date: res.current_date,
+		value: res.body,
+	})
 }
 
 #[derive(Deserialize)]
@@ -729,6 +862,12 @@ fn device_key() -> Result<DeviceKey, MinecraftAuthError> {
 	})
 }
 
+struct SignedRequestResponse<T> {
+	pub headers: reqwest::header::HeaderMap,
+	pub current_date: DateTime<Utc>,
+	pub body: T,
+}
+
 async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	authorization: Option<&str>,
 	url: &str,
@@ -736,13 +875,14 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	raw_body: serde_json::Value,
 	key: &DeviceKey,
 	step: MinecraftAuthStep,
-) -> Result<(reqwest::header::HeaderMap, T), MinecraftAuthError> {
+	current_date: DateTime<Utc>,
+) -> Result<SignedRequestResponse<T>, MinecraftAuthError> {
 	let auth = authorization
 		.clone()
 		.map_or(Vec::new(), |v| v.as_bytes().to_vec());
 	let body = serde_json::to_vec(&raw_body)
 		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;
-	let time: u128 = { ((Utc::now().timestamp() as u128) + 11644473600) * 10000000 };
+	let time: u128 = { ((current_date.timestamp() as u128) + 11644473600) * 10000000 };
 
 	use byteorder::WriteBytesExt;
 	let mut buffer = Vec::new();
@@ -811,6 +951,7 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 
 	let status = res.status();
 	let headers = res.headers().clone();
+	let current_date = get_date_header(&headers);
 	let body = res
 		.text()
 		.await
@@ -823,7 +964,21 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 			source,
 			status_code: status,
 		})?;
-	Ok((headers, body))
+	Ok(SignedRequestResponse {
+		headers,
+		current_date,
+		body,
+	})
+}
+
+#[tracing::instrument]
+fn get_date_header(headers: &reqwest::header::HeaderMap) -> DateTime<Utc> {
+	headers
+		.get(reqwest::header::DATE)
+		.and_then(|x| x.to_str().ok())
+		.and_then(|x| DateTime::parse_from_rfc2822(x).ok())
+		.map(|x| x.with_timezone(&Utc))
+		.unwrap_or(Utc::now())
 }
 
 #[tracing::instrument]

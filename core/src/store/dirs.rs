@@ -140,6 +140,12 @@ impl Directories {
 		Ok(cluster_path.full_path().await?.join("logs"))
 	}
 
+	/// Get the `{cluster_path}/crash_reports` directory.
+	#[inline]
+	pub async fn crash_reports_dir(cluster_path: &super::ClusterPath) -> crate::Result<PathBuf> {
+		Ok(cluster_path.full_path().await?.join("crash-reports"))
+	}
+
 	/// Get the `config_dir/metadata/resources` directory.
 	#[inline]
 	pub async fn legacy_assets_dir(&self) -> PathBuf {

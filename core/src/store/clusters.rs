@@ -67,6 +67,19 @@ impl ClusterPath {
 		Ok(self)
 	}
 
+	/// Validate the cluster and clone the current [`ClusterPath`].
+	pub async fn cluster_path(&self) -> crate::Result<ClusterPath> {
+		if let Some(c) = crate::cluster::get(&self, None).await? {
+			Ok(c.cluster_path())
+		} else {
+			Err(anyhow::anyhow!(
+				"failed to get path of unmanaged or corrupted cluster {}",
+				self.to_string()
+			)
+			.into())
+		}
+	}
+
 	/// Create a [`ClusterPath`] from a full [`PathBuf`].
 	pub async fn from_path(path: PathBuf) -> crate::Result<Self> {
 		let path: PathBuf = io::canonicalize(path)?;

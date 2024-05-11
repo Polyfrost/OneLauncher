@@ -4,93 +4,116 @@ use crate::data::{Credentials, Directories, MinecraftCredentials};
 use crate::prelude::ClusterPath;
 use crate::utils::io::{self, IOError};
 use futures::TryFutureExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::Read;
+use std::time::SystemTime;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 // TODO: put this in the global store
 /// Core logging state and reader for OneLauncher.
 #[derive(Serialize, Debug)]
 pub struct LogManager {
-	/// The log file to read as a [`String`]
+	/// Type log type associated with this log file.
+	pub log_type: LogType,
+	/// The age of this log as a [`u64`] in seconds.
+	pub age: u64,
+	/// The log file to read as a [`String`].
 	pub log_file: String,
 	/// The parsed and censored output of the logfile.
 	pub output: Option<LogOutput>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Eq, PartialEq)]
+pub enum LogType {
+	Info,
+	Crash,
+}
+
 impl LogManager {
 	/// Initialize a new [`LogManager`].
 	async fn initialize(
+		log_type: LogType,
+		age: SystemTime,
 		cluster: &ClusterPath,
 		log_file: String,
 		clear: Option<bool>,
 	) -> crate::Result<Self> {
 		Ok(Self {
+			log_type,
+			age: age
+				.duration_since(SystemTime::UNIX_EPOCH)
+				.unwrap_or_else(|_| std::time::Duration::from_secs(0))
+				.as_secs(),
 			output: if clear.unwrap_or(false) {
 				None
 			} else {
-				Some(get_output_by_file(cluster, &log_file).await?)
+				Some(get_output_by_file(cluster, log_type, &log_file).await?)
 			},
 			log_file,
 		})
 	}
 }
 
-/// Get a [`Vec<LogManager>`] for a specific [`ClusterPath`].
+/// Verify all [`LogManager`]s of a certain [`LogType`]
 #[tracing::instrument]
-pub async fn get_logs(
-	cluster_path: ClusterPath,
+pub async fn get_logs_by_type(
+	cluster_path: &ClusterPath,
+	log_type: LogType,
 	clear: Option<bool>,
-) -> crate::Result<Vec<LogManager>> {
-	let cluster_path = if let Some(c) = crate::cluster::get(&cluster_path, None).await? {
-		c.cluster_path()
-	} else {
-		return Err(anyhow::anyhow!(
-			"cluster {} isn't managed by onelauncher!",
-			cluster_path.to_string()
-		)
-		.into());
+	logs: &mut Vec<crate::Result<LogManager>>,
+) -> crate::Result<()> {
+	let logs_folder = match log_type {
+		LogType::Info => Directories::cluster_logs_dir(cluster_path).await?,
+		LogType::Crash => Directories::crash_reports_dir(cluster_path).await?,
 	};
 
-	let logs_folder = Directories::cluster_logs_dir(&cluster_path).await?;
-	let mut logs = Vec::new();
 	if logs_folder.exists() {
 		for entry in
 			std::fs::read_dir(&logs_folder).map_err(|e| IOError::with_path(e, &logs_folder))?
 		{
 			let entry: std::fs::DirEntry =
 				entry.map_err(|e| IOError::with_path(e, &logs_folder))?;
+			let age = entry
+				.metadata()?
+				.created()
+				.unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
 			let path = entry.path();
 			if !path.is_file() {
 				continue;
 			}
 			if let Some(name) = path.file_name() {
 				let name = name.to_string_lossy().to_string();
-				logs.push(LogManager::initialize(&cluster_path, name, clear).await);
+
+				logs.push(LogManager::initialize(log_type, age, &cluster_path, name, clear).await);
 			}
 		}
 	}
 
+	Ok(())
+}
+
+/// Get all [`LogManager`]s in the global [`State`].
+pub async fn get_logs(
+	cluster_path: ClusterPath,
+	clear: Option<bool>,
+) -> crate::Result<Vec<LogManager>> {
+	let cluster_path = cluster_path.cluster_path().await?;
+
+	let mut logs = Vec::new();
+	get_logs_by_type(&cluster_path, LogType::Info, clear, &mut logs).await?;
+	get_logs_by_type(&cluster_path, LogType::Crash, clear, &mut logs).await?;
+
 	let mut logs = logs
 		.into_iter()
 		.collect::<crate::Result<Vec<LogManager>>>()?;
-	logs.sort_by_key(|x| x.log_file.clone());
+	logs.sort_by(|a, b| b.age.cmp(&a.age).then(b.log_file.cmp(&a.log_file)));
 	Ok(logs)
 }
 
 /// Delete all stored logs from a specific [`ClusterPath`].
 #[tracing::instrument]
 pub async fn delete_logs(cluster_path: ClusterPath) -> crate::Result<()> {
-	let cluster_path = if let Some(c) = crate::cluster::get(&cluster_path, None).await? {
-		c.cluster_path()
-	} else {
-		return Err(anyhow::anyhow!(
-			"cluster {} isn't managed by onelauncher!",
-			cluster_path.to_string()
-		)
-		.into());
-	};
-
+	let cluster_path = cluster_path.cluster_path().await?;
 	let logs_folder = Directories::cluster_logs_dir(&cluster_path).await?;
 	for entry in std::fs::read_dir(&logs_folder).map_err(|e| IOError::with_path(e, &logs_folder))? {
 		let entry = entry.map_err(|e| IOError::with_path(e, &logs_folder))?;
@@ -107,22 +130,23 @@ pub async fn delete_logs(cluster_path: ClusterPath) -> crate::Result<()> {
 #[tracing::instrument]
 pub async fn get_logs_by_file(
 	cluster_path: ClusterPath,
+	log_type: LogType,
 	log_file: String,
 ) -> crate::Result<LogManager> {
-	let cluster_path = if let Some(c) = crate::cluster::get(&cluster_path, None).await? {
-		c.cluster_path()
-	} else {
-		return Err(anyhow::anyhow!(
-			"cluster {} isn't managed by onelauncher!",
-			cluster_path.to_string()
-		)
-		.into());
-	};
+	let cluster_path = cluster_path.cluster_path().await?;
 
-	Ok(LogManager {
-		output: Some(get_output_by_file(&cluster_path, &log_file).await?),
-		log_file,
-	})
+	let path = match log_type {
+		LogType::Info => Directories::cluster_logs_dir(&cluster_path).await,
+		LogType::Crash => Directories::crash_reports_dir(&cluster_path).await,
+	}?
+	.join(&log_file);
+
+	let metadata = std::fs::metadata(&path)?;
+	let age = metadata
+		.created()
+		.unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
+
+	LogManager::initialize(log_type, age, &cluster_path, log_file, Some(true)).await
 }
 
 /// Get the default [`LogCursor`] for a [`ClusterPath`].
@@ -138,16 +162,7 @@ pub async fn get_live_log_cursor(
 	log_file: &str,
 	mut cursor: u64,
 ) -> crate::Result<LogCursor> {
-	let cluster_path = if let Some(c) = crate::cluster::get(&cluster_path, None).await? {
-		c.cluster_path()
-	} else {
-		return Err(anyhow::anyhow!(
-			"cluster {} isn't managed by onelauncher!",
-			cluster_path.to_string()
-		)
-		.into());
-	};
-
+	let cluster_path = cluster_path.cluster_path().await?;
 	let state = crate::State::get().await?;
 	let logs_folder = Directories::cluster_logs_dir(&cluster_path).await?;
 	let path = logs_folder.join(log_file);
@@ -201,18 +216,17 @@ pub async fn get_live_log_cursor(
 
 /// Delete a specific minecraft log file.
 #[tracing::instrument]
-pub async fn delete_logs_by_file(cluster_path: ClusterPath, log_file: &str) -> crate::Result<()> {
-	let cluster_path = if let Some(c) = crate::cluster::get(&cluster_path, None).await? {
-		c.cluster_path()
-	} else {
-		return Err(anyhow::anyhow!(
-			"cluster {} isn't managed by onelauncher!",
-			cluster_path.to_string()
-		)
-		.into());
+pub async fn delete_logs_by_file(
+	cluster_path: ClusterPath,
+	log_type: LogType,
+	log_file: &str,
+) -> crate::Result<()> {
+	let cluster_path = cluster_path.cluster_path().await?;
+	let logs_folder = match log_type {
+		LogType::Info => Directories::cluster_logs_dir(&cluster_path).await?,
+		LogType::Crash => Directories::crash_reports_dir(&cluster_path).await?,
 	};
 
-	let logs_folder = Directories::cluster_logs_dir(&cluster_path).await?;
 	let path = logs_folder.join(log_file);
 	io::remove_dir_all(&path).await?;
 	Ok(())
@@ -222,10 +236,14 @@ pub async fn delete_logs_by_file(cluster_path: ClusterPath, log_file: &str) -> c
 #[tracing::instrument]
 pub async fn get_output_by_file(
 	cluster_path: &ClusterPath,
+	log_type: LogType,
 	log_file: &str,
 ) -> crate::Result<LogOutput> {
 	let state = crate::State::get().await?;
-	let logs_folder = Directories::cluster_logs_dir(cluster_path).await?;
+	let logs_folder = match log_type {
+		LogType::Info => Directories::cluster_logs_dir(cluster_path).await?,
+		LogType::Crash => Directories::crash_reports_dir(cluster_path).await?,
+	};
 	let path = logs_folder.join(log_file);
 	let credentials: Vec<MinecraftCredentials> = state
 		.users
@@ -255,7 +273,7 @@ pub async fn get_output_by_file(
 			}
 
 			return Ok(LogOutput::censor_secrets(result, &credentials, None));
-		} else if ext == "log" {
+		} else if ext == "log" || ext == "txt" {
 			while file
 				.read(&mut contents)
 				.map_err(|e| IOError::with_path(e, &path))?

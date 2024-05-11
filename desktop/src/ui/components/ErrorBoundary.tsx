@@ -1,5 +1,4 @@
 import type { ParentProps } from 'solid-js';
-import { ErrorBoundary as Capturer } from 'solid-js';
 
 // TODO: Uncomment code
 function ErrorBoundary(props: ParentProps) {

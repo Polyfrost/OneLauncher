@@ -63,7 +63,7 @@ impl fmt::Display for ImportType {
 }
 
 pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Result<Vec<String>> {
-    // TODO(pauline)(instance_import): Fix MultiMC based launcher import
+	// TODO(pauline)(instance_import): Fix MultiMC based launcher import
 	let instances_path = match import {
 		ImportType::GDLauncher | ImportType::ATLauncher => "instances".to_string(),
 		ImportType::Curseforge => "Instances".to_string(),
@@ -119,7 +119,7 @@ pub async fn import_instance(
 ) -> crate::Result<()> {
 	tracing::debug!("importing instance from {instance_path}");
 
-    // TODO(pauline)(instance_import): Finish this
+	// TODO(pauline)(instance_import): Finish this
 	// let result = match import {
 	// 	ImportType::MultiMC | ImportType::PrismLauncher => {
 	// 		multibased::import(path, instance_path, cluster_path.clone()).await
@@ -216,8 +216,8 @@ pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 #[tracing::instrument]
 #[onelauncher_debug::debugger]
 pub async fn is_valid_instance(instance_path: PathBuf, r#type: ImportType) -> bool {
-    false
-    // TODO(pauline)(instance_import): Finish this
+	false
+	// TODO(pauline)(instance_import): Finish this
 	// match r#type {
 	// 	ImportType::MultiMC | ImportType::PrismLauncher => multibased::is_valid(insance_path).await,
 	// 	ImportType::ATLauncher => atlauncher::is_valid(instance_path).await,

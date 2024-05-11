@@ -34,10 +34,11 @@ pub async fn run() {
 	tracing::info!("initialized tracing subscriber. loading onelauncher...");
 
 	run_app(tauri::Builder::default(), |app| {
-        if let Err(err) = setup(app) {
-            tracing::error!("failed to setup app: {:?}", err);
-        }
-    }).await;
+		if let Err(err) = setup(app) {
+			tracing::error!("failed to setup app: {:?}", err);
+		}
+	})
+	.await;
 }
 
 pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + 'static>(
@@ -61,9 +62,9 @@ pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + '
 	let builder = builder
 		.plugin(api::init())
 		.invoke_handler(tauri::generate_handler![
-            // initialize_state, 
-            is_dev,
-        ]);
+			// initialize_state,
+			is_dev,
+		]);
 
 	let app = builder
 		.build(tauri::tauri_build_context!())

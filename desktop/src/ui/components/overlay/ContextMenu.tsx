@@ -29,7 +29,10 @@ function ContextMenu(props: ContextMenuProps) {
 
 	return (
 		<Popup
-			style={{ top: `${pos().y}px`, left: `${pos().x}px` }}
+			ref={(el) => {
+				el.style.left = `${pos().x}px`;
+				el.style.top = `${pos().y}px`;
+			}}
 			visible={props.visible}
 			setVisible={props.setVisible}
 		>
@@ -56,7 +59,7 @@ ContextMenu.Row = function (props: ContextMenuRowProps) {
 	return (
 		<div
 			onClick={e => props.onClick?.(e)}
-			class="flex items-center gap-x-2 m-px px-1.5 py-0.5 rounded-mdlg hover:bg-gray-0.05 active:bg-gray-0.10 [&>svg]:w-[18px]"
+			class="flex items-center gap-x-2 m-px px-1.5 py-0.5 rounded-lg hover:bg-gray-0.05 active:bg-gray-0.10 [&>svg]:w-[18px]"
 		>
 			{props.icon}
 			{props.text}

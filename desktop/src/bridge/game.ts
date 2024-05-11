@@ -1,7 +1,31 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
+const _test_cluster = {
+	cluster: {
+		id: 'd09575a6-7c17-4399-a7a3-a117fffa5420',
+		name: 'Placeholder Name',
+		createdAt: 1715454720,
+		cover: null,
+		group: null,
+		client: {
+			type: 'Vanilla',
+		},
+	},
+	manifest: {
+		id: '1.0 cluster',
+		manifest: {
+			id: '1.8.9',
+			javaVersion: {
+				majorVersion: 8,
+			},
+		},
+	},
+} as Core.ClusterWithManifest;
+
 export async function getCluster(uuid: string): Promise<Core.ClusterWithManifest> {
+	return _test_cluster;
+
 	return await invoke<Core.ClusterWithManifest>(
 		'plugin:onelauncher|get_cluster',
 		{ uuid },
@@ -29,6 +53,7 @@ export async function getClustersGrouped(): Promise<Map<string, WithIndex<Core.C
 }
 
 export async function getClusters(): Promise<Core.ClusterWithManifest[]> {
+	return [_test_cluster];
 	return await invoke<Core.ClusterWithManifest[]>('plugin:onelauncher|get_clusters');
 }
 

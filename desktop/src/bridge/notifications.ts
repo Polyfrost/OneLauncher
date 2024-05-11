@@ -30,6 +30,7 @@ export async function clearNotifications(): Promise<void> {
 }
 
 export async function getNotifications(): Promise<Core.Notification[]> {
+	return [];
 	return await invoke('plugin:onelauncher|notifications_get');
 }
 

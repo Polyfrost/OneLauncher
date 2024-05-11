@@ -40,6 +40,12 @@ pub enum IngressProcessType {
 	// Fetch,
 }
 
+impl Default for IngressProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IngressProcessor {
 	/// Initialize a new ingresss process manager.
 	pub fn new() -> Self {

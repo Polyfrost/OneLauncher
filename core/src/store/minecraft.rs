@@ -878,7 +878,6 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	current_date: DateTime<Utc>,
 ) -> Result<SignedRequestResponse<T>, MinecraftAuthError> {
 	let auth = authorization
-		.clone()
 		.map_or(Vec::new(), |v| v.as_bytes().to_vec());
 	let body = serde_json::to_vec(&raw_body)
 		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;

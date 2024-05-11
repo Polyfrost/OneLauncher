@@ -23,11 +23,11 @@ use super::{Cluster, PackagePath};
 // #[tracing::instrument(skip(paths, cluster, io_semaphore, fetch_semaphore))]
 #[onelauncher_debug::debugger]
 pub async fn generate_context(
-	cluster: Cluster,
+	_cluster: Cluster,
 	paths: Vec<PathBuf>,
-	cache_path: PathBuf,
-	io_semaphore: &IoSemaphore,
-	fetch_semaphore: &FetchSemaphore,
+	_cache_path: PathBuf,
+	_io_semaphore: &IoSemaphore,
+	_fetch_semaphore: &FetchSemaphore,
 	// credentials: &Credentials,
 ) -> crate::Result<HashMap<PackagePath, Package>> {
 	let mut hashes = HashMap::new();
@@ -59,7 +59,7 @@ pub async fn generate_context(
 		hashes.insert(hash, path.clone());
 	}
 
-	let mut result = HashMap::new();
+	let result = HashMap::new();
 	// TODO(pauline): Finish this
 	// let mut stream = tokio_stream::iter(result_packages);
 	// while let Some((k, v)) = stream.next().await {

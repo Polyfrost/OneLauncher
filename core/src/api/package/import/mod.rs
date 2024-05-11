@@ -3,7 +3,7 @@
 use crate::prelude::ClusterPath;
 use crate::proxy::send::{init_or_edit_ingress, send_ingress};
 use crate::proxy::IngressId;
-use crate::store::Clusters;
+
 use crate::utils::http::{self, IoSemaphore};
 use crate::utils::io::{self, IOError};
 use serde::{Deserialize, Serialize};
@@ -79,7 +79,7 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 		ImportType::TLauncher => "instances".to_string(),
 		ImportType::Technic => "instances".to_string(),
 		ImportType::FTBLauncher => "instances".to_string(),
-		_ | ImportType::Unknown => {
+		_ => {
 			return Err(anyhow::anyhow!("launcher type unknown, cant import").into())
 		}
 	};
@@ -96,14 +96,12 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 		.map_err(|e| IOError::with_path(e, &instances_dir))?
 	{
 		let path = e.path();
-		if path.is_dir() {
-			if is_valid_instance(path.clone(), import).await {
-				let name = path.file_name();
-				if let Some(name) = name {
-					instances.push(name.to_string_lossy().to_string());
-				}
-			}
-		}
+		if path.is_dir() && is_valid_instance(path.clone(), import).await {
+  				let name = path.file_name();
+  				if let Some(name) = name {
+  					instances.push(name.to_string_lossy().to_string());
+  				}
+  			}
 	}
 
 	Ok(instances)
@@ -255,7 +253,7 @@ pub async fn copy_minecraft(
 	io_semaphore: &IoSemaphore,
 	old_ingress: Option<IngressId>,
 ) -> crate::Result<IngressId> {
-	let cluster_full = cluster_path.full_path().await?;
+	let _cluster_full = cluster_path.full_path().await?;
 	let subfiles = sub(&minecraft_path).await?;
 	let total_subfiles = subfiles.len() as u64;
 	let ingress = init_or_edit_ingress(

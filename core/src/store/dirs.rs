@@ -43,7 +43,7 @@ impl Directories {
 	/// Initialize the core directory manager
 	#[tracing::instrument]
 	pub fn initalize(settings: &Settings) -> crate::Result<Self> {
-		let cwd = std::env::current_dir().map_err(|err| DirectoryError::WorkingDir(err))?;
+		let cwd = std::env::current_dir().map_err(DirectoryError::WorkingDir)?;
 		let settings_dir = Self::init_settings_dir().ok_or(DirectoryError::ConfigDir)?;
 		let config_dir = settings
 			.config_dir

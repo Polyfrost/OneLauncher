@@ -52,7 +52,7 @@ impl Drop for IngressId {
 
 					#[cfg(feature = "tauri")]
 					{
-						let ingress_feed_uuid = ingress.ingress_uuid;
+						let _ingress_feed_uuid = ingress.ingress_uuid;
 						let event = ingress.ingress_type.clone();
 						let fraction = ingress.current / ingress.total;
 

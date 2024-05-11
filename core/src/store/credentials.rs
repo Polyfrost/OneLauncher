@@ -21,17 +21,17 @@ impl Credentials {
 	pub fn new<P: AsRef<Path>>(
 		path: P,
 		password: Zeroizing<Vec<u8>>,
-		dirs: &Directories,
-		io_semaphore: &IoSemaphore,
+		_dirs: &Directories,
+		_io_semaphore: &IoSemaphore,
 	) -> crate::Result<Self> {
 		let path = SnapshotPath::from_path(path);
 		let stronghold = iota_stronghold::Stronghold::default();
 		let keyprovider =
-			KeyProvider::try_from(password).map_err(|e| StrongholdError::MemoryError(e))?;
+			KeyProvider::try_from(password).map_err(StrongholdError::MemoryError)?;
 		if path.exists() {
 			stronghold
 				.load_snapshot(&keyprovider, &path)
-				.map_err(|e| StrongholdError::ClientError(e))?;
+				.map_err(StrongholdError::ClientError)?;
 		}
 		Ok(Self {
 			inner: stronghold,
@@ -43,7 +43,7 @@ impl Credentials {
 	pub fn save(&self) -> crate::Result<()> {
 		self.inner
 			.commit_with_keyprovider(&self.path, &self.keyprovider)
-			.map_err(|e| StrongholdError::ClientError(e))?;
+			.map_err(StrongholdError::ClientError)?;
 		Ok(())
 	}
 

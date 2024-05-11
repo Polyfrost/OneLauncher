@@ -69,7 +69,7 @@ impl ClusterPath {
 
 	/// Validate the cluster and clone the current [`ClusterPath`].
 	pub async fn cluster_path(&self) -> crate::Result<ClusterPath> {
-		if let Some(c) = crate::cluster::get(&self, None).await? {
+		if let Some(c) = crate::cluster::get(self, None).await? {
 			Ok(c.cluster_path())
 		} else {
 			Err(anyhow::anyhow!(
@@ -403,7 +403,7 @@ impl Cluster {
 	/// Handle a cluster crash.
 	pub fn handle_crash(path: ClusterPath) {
 		tokio::task::spawn(async move {
-			let mut res = async {
+			let res = async {
 				let cluster = crate::api::cluster::get(&path, None).await?;
 				if let Some(cluster) = cluster {
 					if cluster.stage == ClusterStage::Installed {

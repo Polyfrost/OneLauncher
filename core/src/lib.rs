@@ -2,7 +2,7 @@
 //!
 //! A library used as a core for our launcher and Rust APIs.
 
-#![warn(unused_import_braces, missing_debug_implementations)]
+#![warn(unused_import_braces)]
 #![deny(unused_must_use)]
 
 #[macro_use]

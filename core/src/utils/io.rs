@@ -201,17 +201,17 @@ pub fn extract_archive(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
 
 pub fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> {
 	let file = File::open(archive).map_err(|err| IOError::with_path(err, archive.as_path()))?;
-	let archive = zip::ZipArchive::new(file).map_err(|err| IOError::from_zip(err));
+	let archive = zip::ZipArchive::new(file).map_err(IOError::from_zip);
 	archive?
 		.extract(dest)
-		.map_err(|err| IOError::from_zip(err))?;
+		.map_err(IOError::from_zip)?;
 	Ok(())
 }
 
 pub fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> {
-	let file = File::open(archive).map_err(|err| IOError::from(err))?;
+	let file = File::open(archive).map_err(IOError::from)?;
 	let tar_gz = flate2::read::GzDecoder::new(file);
 	let mut archive = tar::Archive::new(tar_gz);
-	archive.unpack(dest).map_err(|err| IOError::from(err))?;
+	archive.unpack(dest).map_err(IOError::from)?;
 	Ok(())
 }

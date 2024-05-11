@@ -76,7 +76,7 @@ pub async fn get_logs_by_type(
 			let age = entry
 				.metadata()?
 				.created()
-				.unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
+				.unwrap_or(SystemTime::UNIX_EPOCH);
 			let path = entry.path();
 			if !path.is_file() {
 				continue;
@@ -84,7 +84,7 @@ pub async fn get_logs_by_type(
 			if let Some(name) = path.file_name() {
 				let name = name.to_string_lossy().to_string();
 
-				logs.push(LogManager::initialize(log_type, age, &cluster_path, name, clear).await);
+				logs.push(LogManager::initialize(log_type, age, cluster_path, name, clear).await);
 			}
 		}
 	}
@@ -144,7 +144,7 @@ pub async fn get_logs_by_file(
 	let metadata = std::fs::metadata(&path)?;
 	let age = metadata
 		.created()
-		.unwrap_or_else(|_| SystemTime::UNIX_EPOCH);
+		.unwrap_or(SystemTime::UNIX_EPOCH);
 
 	LogManager::initialize(log_type, age, &cluster_path, log_file, Some(true)).await
 }
@@ -311,7 +311,7 @@ impl LogOutput {
 	pub fn censor_secrets(
 		mut output: String,
 		credentials: &Vec<MinecraftCredentials>,
-		credentials_store: Option<Credentials>,
+		_credentials_store: Option<Credentials>,
 	) -> Self {
 		let username = whoami::username();
 		let realname = whoami::realname();

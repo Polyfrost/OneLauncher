@@ -19,8 +19,8 @@ img {
 }
 /* end lynith's native experience (tm) */
 
-h1 { @apply text-2xl font-semibold; }
-h2 { @apply text-xxl font-semibold; }
+h1 { @apply text-2xl font-semibold; line-height: 1.5 !important; }
+h2 { @apply text-xxl font-semibold; line-height: 1.25 !important; }
 h3 { @apply text-xl font-medium; }
 h4 { @apply text-lg font-medium; }
 
@@ -30,4 +30,8 @@ h4 { @apply text-lg font-medium; }
     /* --os-handle-bg: theme("colors.gray[0.05]");
     --os-handle-bg-hover: theme(colors.gray[0.10]); */
     /* --os-handle-bg-active: theme(colors.gray[0.05]); */
+}
+
+.os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
+    display: none;
 }

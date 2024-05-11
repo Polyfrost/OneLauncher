@@ -13,13 +13,12 @@ use crate::store::MinecraftCredentials;
 
 use crate::utils::io::{self, IOError};
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::future::Future;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 

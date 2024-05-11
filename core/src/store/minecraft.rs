@@ -1,5 +1,6 @@
 //! Handles MSA Authentication flow.
 
+use std::fmt::Write;
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use p256::ecdsa::signature::Signer;
@@ -984,7 +985,10 @@ fn get_date_header(headers: &reqwest::header::HeaderMap) -> DateTime<Utc> {
 fn generate_oauth_challenge() -> String {
 	let mut rng = rand::thread_rng();
 	let bytes: Vec<u8> = (0..64).map(|_| rng.gen::<u8>()).collect();
-	bytes.iter().map(|b| format!("{:02x}", b)).collect()
+	bytes.iter().fold(String::new(), |mut output, b| {
+		let _ = write!(output, "{b:02x}");
+		output
+	})
 }
 
 /// An ordered list of all MSA authentication steps.

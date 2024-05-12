@@ -41,7 +41,7 @@ function Sidebar(props: SidebarProps) {
 				{section => (
 					<div class="flex flex-col gap-y-2">
 						<div>
-							<h3 class="text-fg-secondary text-xs font-medium ml-1.5 m-1">{section.toUpperCase()}</h3>
+							<h3 class="text-fg-secondary text-xs font-medium m-1.5 mt-5">{section.toUpperCase()}</h3>
 							<div class="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
 								<For each={props.links[section]}>
 									{link => (

@@ -52,7 +52,10 @@ pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + '
 			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
 				.unwrap();
 		}))
-		.plugin(tauri_plugin_window_state::Builder::default().build())
+		.plugin(tauri_plugin_updater::Builder::new().build())
+		.plugin(ext::updater::plugin())
+		.manage(ext::updater::State::default())
+		// .plugin(tauri_plugin_window_state::Builder::default().build())
 		.menu(tauri::menu::Menu::new)
 		.setup(move |app| {
 			setup(app);

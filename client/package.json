@@ -1,0 +1,26 @@
+{
+	"name": "@onelauncher/client",
+	"type": "module",
+	"version": "1.0.0",
+	"private": true,
+	"description": "RSPC Client for OneLauncher",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "client"
+	},
+	"sideEffects": false,
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"dependencies": {
+		"@rspc/client": "^0.2.0",
+		"@rspc/tauri": "^0.2.0",
+		"@solid-primitives/deep": "^0.2.8",
+		"@tanstack/solid-query": "^5.35.5",
+		"fast-equals": "^5.0.1",
+		"plausible-tracker": "^0.3.8",
+		"solid-js": "^1.8.17",
+		"zod": "^3.23.8"
+	}
+}

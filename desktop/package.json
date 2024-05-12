@@ -3,16 +3,13 @@
 	"type": "module",
 	"version": "1.0.0",
 	"description": "Next-generation open source Minecraft desktop launcher",
-	"license": "MIT",
+	"license": "GPL-3.0-only",
 	"repository": {
 		"type": "git",
 		"url": "git@github.com:polyfrost/onelauncher",
 		"directory": "desktop"
 	},
 	"scripts": {
-		"test": "vitest run",
-		"test:dev": "vitest",
-		"test:ui": "vitest --ui",
 		"tauri": "tauri",
 		"dev": "vite dev",
 		"build": "vite build"
@@ -20,6 +17,9 @@
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",
 		"@iconify-json/logos": "^1.1.42",
+		"@onelauncher/client": "workspace:*",
+		"@rspc/client": "^0.2.0",
+		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/refs": "^1.0.8",
 		"@solidjs/router": "^0.13.3",
 		"@tauri-apps/api": "^2.0.0-beta",
@@ -38,15 +38,10 @@
 		"@tauri-apps/cli": "2.0.0-beta.10",
 		"@testing-library/jest-dom": "^6.4.5",
 		"@types/uuid": "^9.0.8",
-		"@vitest/ui": "^1.6.0",
 		"jsdom": "^24.0.0",
 		"sass": "^1.77.1",
-		"ts-node": "^10.9.2",
-		"typescript": "^5.4.5",
 		"unocss": "^0.60.0",
-		"vite": "^5.2.11",
 		"vite-plugin-solid": "^2.10.2",
-		"vite-tsconfig-paths": "^4.3.2",
-		"vitest": "^1.6.0"
+		"vite-tsconfig-paths": "^4.3.2"
 	}
 }

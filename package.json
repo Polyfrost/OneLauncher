@@ -4,7 +4,7 @@
 	"version": "1.0.0",
 	"packageManager": "pnpm@9.1.0",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
-	"license": "MIT",
+	"license": "GPL-3.0-only",
 	"repository": {
 		"type": "git",
 		"url": "git@github.com:polyfrost/onelauncher"
@@ -14,6 +14,7 @@
 	},
 	"scripts": {
 		"gui": "pnpm --filter @onelauncher/gui",
+		"client": "pnpm --filter @onelauncher/client",
 		"dev": "pnpm gui tauri dev",
 		"build": "pnpm gui tauri build",
 		"lint": "eslint . --cache",
@@ -21,11 +22,21 @@
 		"release:node": "bumpp -r"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.2.0",
+		"@flowr/eslint-config": "^3.2.1",
 		"@types/node": "^20.12.11",
+		"@vitest/ui": "^1.6.0",
 		"bumpp": "^9.4.1",
 		"eslint": "^8.56.0",
 		"eslint-plugin-solid": "^0.14.0",
-		"typescript": "^5.4.5"
+		"ts-node": "^10.9.2",
+		"tsx": "^4.10.0",
+		"typescript": "^5.4.5",
+		"vite": "^5.2.11",
+		"vitest": "^1.6.0"
+	},
+	"pnpm": {
+		"patchDependencies": {
+			"@rspc/tauri@0.2.0": "patches/@rspc__tauri@0.2.0.patch"
+		}
 	}
 }

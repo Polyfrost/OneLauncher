@@ -9,7 +9,6 @@ dev.db
 dev.db-journal
 
 # Vendor
-dist
 .eslintcache
 # .env*
 vendor/
@@ -261,7 +260,7 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
+
 
 # Gatsby files
 .cache/

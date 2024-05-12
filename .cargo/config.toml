@@ -3,3 +3,5 @@ rustflags = [
   "-C",
   "link-args=/STACK:16777220"
 ]
+
+[alias]

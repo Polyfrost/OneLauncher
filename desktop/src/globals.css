@@ -35,3 +35,18 @@ h4 { @apply text-lg font-medium; }
 .os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
     display: none;
 }
+
+.page-animation-enter-active, .page-animation-leave-active {
+    transition: opacity 200ms, transform 250ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.page-animation-enter, .page-animation-leave-to {
+    opacity: 0;
+    transform: translateX(-75px);
+}
+
+.page-animation-enter-to, .page-animation-leave {
+    opacity: 1;
+    transform: translateX(0);
+}

@@ -25,6 +25,9 @@ export default defineConfig(async ({ mode }) => {
 			target: ['esnext', 'chrome110', 'safari13'],
 			minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
 			sourcemap: !!process.env.TAURI_DEBUG,
+			rollupOptions: {
+				treeshake: 'recommended',
+			},
 		},
 
 		clearScreen: false,

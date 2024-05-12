@@ -1,0 +1,90 @@
+diff --git a/dist/index.js b/dist/index.js
+index 9c147bac563ff3f42130b6bbcaa39be46a5a2df2..1e14b7ecdd5e812c1c3c02ffecdda0f8fe7c8e4e 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -39,7 +39,7 @@ var TauriTransport = (_class = class {
+       resolve = res;
+     });
+     this.requestMap.set(id, resolve);
+-    await _window.appWindow.emit("plugin:rspc:transport", {
++    await _window.getCurrent.call(void 0, ).emit("plugin:rspc:transport", {
+       id,
+       method: operation,
+       params: {
+diff --git a/dist/index.js.map b/dist/index.js.map
+index e81a18ddd3c2b9e0062ffe1fb3232bd075288310..dbc9a1a1f37c670c6b1c642da3a2d327938c6ba1 100644
+--- a/dist/index.js.map
++++ b/dist/index.js.map
+@@ -1 +1 @@
+-{"version":3,"sources":["../src/index.ts"],"names":[],"mappings":";AAAA,SAAS,UAAoC,iBAAiB;AAC9D,SAAS,cAA0B;AACnC,SAAS,iBAAiB;AAEnB,IAAM,iBAAN,MAA0C;AAAA,EACvC,aAAa,oBAAI,IAAiC;AAAA,EAClD;AAAA,EACR;AAAA,EAEA,cAAc;AACZ,SAAK,WAAW,OAAO,8BAA8B,CAAC,UAAU;AAVpE;AAWM,YAAM,EAAE,IAAI,OAAO,IAAI,MAAM;AAC7B,UAAI,OAAO,SAAS,SAAS;AAC3B,YAAI,KAAK;AACP,eAAK,2BAA2B,IAAI,OAAO,IAAI;AAAA,MACnD,WAAW,OAAO,SAAS,YAAY;AACrC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,YAAY,QAAQ,OAAO,KAAK;AAClE,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,WAAW,OAAO,SAAS,SAAS;AAClC,cAAM,EAAE,SAAS,KAAK,IAAI,OAAO;AACjC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,SAAS,SAAS,KAAK;AACzD,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,OAAO;AACL,gBAAQ,MAAM,qCAAqC,OAAO,IAAI,GAAG;AAAA,MACnE;AAAA,IACF,CAAC;AAAA,EACH;AAAA,EAEA,MAAM,UACJ,WACA,KACA,OACc;AACd,QAAI,CAAC,KAAK,UAAU;AAClB,YAAM,KAAK;AAAA,IACb;AAEA,UAAM,KAAK,SAAS;AACpB,QAAI;AACJ,UAAM,UAAU,IAAI,QAAQ,CAAC,QAAQ;AACnC,gBAAU;AAAA,IACZ,CAAC;AAGD,SAAK,WAAW,IAAI,IAAI,OAAO;AAE/B,UAAM,UAAU,KAAK,yBAAyB;AAAA,MAC5C;AAAA,MACA,QAAQ;AAAA,MACR,QAAQ;AAAA,QACN,MAAM;AAAA,QACN;AAAA,MACF;AAAA,IACF,CAAC;AAED,UAAM,OAAQ,MAAM;AACpB,QAAI,KAAK,SAAS,SAAS;AACzB,YAAM,EAAE,MAAM,QAAQ,IAAI;AAC1B,YAAM,IAAI,UAAU,MAAM,OAAO;AAAA,IACnC,WAAW,KAAK,SAAS,YAAY;AACnC,aAAO,KAAK;AAAA,IACd,OAAO;AACL,YAAM,IAAI;AAAA,QACR,oDAAoD,6BAAM,IAAI;AAAA,MAChE;AAAA,IACF;AAAA,EACF;AACF","sourcesContent":["import { randomId, OperationType, Transport, RSPCError } from \"@rspc/client\";\nimport { listen, UnlistenFn } from \"@tauri-apps/api/event\";\nimport { appWindow } from \"@tauri-apps/api/window\";\n\nexport class TauriTransport implements Transport {\n  private requestMap = new Map<string, (data: any) => void>();\n  private listener?: Promise<UnlistenFn>;\n  clientSubscriptionCallback?: (id: string, value: any) => void;\n\n  constructor() {\n    this.listener = listen(\"plugin:rspc:transport:resp\", (event) => {\n      const { id, result } = event.payload as any;\n      if (result.type === \"event\") {\n        if (this.clientSubscriptionCallback)\n          this.clientSubscriptionCallback(id, result.data);\n      } else if (result.type === \"response\") {\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"response\", result: result.data });\n          this.requestMap.delete(id);\n        }\n      } else if (result.type === \"error\") {\n        const { message, code } = result.data;\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"error\", message, code });\n          this.requestMap.delete(id);\n        }\n      } else {\n        console.error(`Received event of unknown method '${result.type}'`);\n      }\n    });\n  }\n\n  async doRequest(\n    operation: OperationType,\n    key: string,\n    input: any\n  ): Promise<any> {\n    if (!this.listener) {\n      await this.listener;\n    }\n\n    const id = randomId();\n    let resolve: (data: any) => void;\n    const promise = new Promise((res) => {\n      resolve = res;\n    });\n\n    // @ts-ignore\n    this.requestMap.set(id, resolve);\n\n    await appWindow.emit(\"plugin:rspc:transport\", {\n      id,\n      method: operation,\n      params: {\n        path: key,\n        input,\n      },\n    });\n\n    const body = (await promise) as any;\n    if (body.type === \"error\") {\n      const { code, message } = body;\n      throw new RSPCError(code, message);\n    } else if (body.type === \"response\") {\n      return body.result;\n    } else {\n      throw new Error(\n        `RSPC Tauri doRequest received invalid body type '${body?.type}'`\n      );\n    }\n  }\n}\n"]}
+\ No newline at end of file
++{"version":3,"sources":["../src/index.ts"],"names":[],"mappings":";AAAA,SAAS,UAAoC,iBAAiB;AAC9D,SAAS,cAA0B;AACnC,SAAS,kBAAkB;AAEpB,IAAM,iBAAN,MAA0C;AAAA,EACvC,aAAa,oBAAI,IAAiC;AAAA,EAClD;AAAA,EACR;AAAA,EAEA,cAAc;AACZ,SAAK,WAAW,OAAO,8BAA8B,CAAC,UAAU;AAVpE;AAWM,YAAM,EAAE,IAAI,OAAO,IAAI,MAAM;AAC7B,UAAI,OAAO,SAAS,SAAS;AAC3B,YAAI,KAAK;AACP,eAAK,2BAA2B,IAAI,OAAO,IAAI;AAAA,MACnD,WAAW,OAAO,SAAS,YAAY;AACrC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,YAAY,QAAQ,OAAO,KAAK;AAClE,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,WAAW,OAAO,SAAS,SAAS;AAClC,cAAM,EAAE,SAAS,KAAK,IAAI,OAAO;AACjC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,SAAS,SAAS,KAAK;AACzD,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,OAAO;AACL,gBAAQ,MAAM,qCAAqC,OAAO,IAAI,GAAG;AAAA,MACnE;AAAA,IACF,CAAC;AAAA,EACH;AAAA,EAEA,MAAM,UACJ,WACA,KACA,OACc;AACd,QAAI,CAAC,KAAK,UAAU;AAClB,YAAM,KAAK;AAAA,IACb;AAEA,UAAM,KAAK,SAAS;AACpB,QAAI;AACJ,UAAM,UAAU,IAAI,QAAQ,CAAC,QAAQ;AACnC,gBAAU;AAAA,IACZ,CAAC;AAGD,SAAK,WAAW,IAAI,IAAI,OAAO;AAE/B,UAAM,WAAW,EAAE,KAAK,yBAAyB;AAAA,MAC/C;AAAA,MACA,QAAQ;AAAA,MACR,QAAQ;AAAA,QACN,MAAM;AAAA,QACN;AAAA,MACF;AAAA,IACF,CAAC;AAED,UAAM,OAAQ,MAAM;AACpB,QAAI,KAAK,SAAS,SAAS;AACzB,YAAM,EAAE,MAAM,QAAQ,IAAI;AAC1B,YAAM,IAAI,UAAU,MAAM,OAAO;AAAA,IACnC,WAAW,KAAK,SAAS,YAAY;AACnC,aAAO,KAAK;AAAA,IACd,OAAO;AACL,YAAM,IAAI;AAAA,QACR,oDAAoD,6BAAM,IAAI;AAAA,MAChE;AAAA,IACF;AAAA,EACF;AACF","sourcesContent":["import { randomId, OperationType, Transport, RSPCError } from \"@rspc/client\";\nimport { listen, UnlistenFn } from \"@tauri-apps/api/event\";\nimport { getCurrent } from \"@tauri-apps/api/window\";\n\nexport class TauriTransport implements Transport {\n  private requestMap = new Map<string, (data: any) => void>();\n  private listener?: Promise<UnlistenFn>;\n  clientSubscriptionCallback?: (id: string, value: any) => void;\n\n  constructor() {\n    this.listener = listen(\"plugin:rspc:transport:resp\", (event) => {\n      const { id, result } = event.payload as any;\n      if (result.type === \"event\") {\n        if (this.clientSubscriptionCallback)\n          this.clientSubscriptionCallback(id, result.data);\n      } else if (result.type === \"response\") {\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"response\", result: result.data });\n          this.requestMap.delete(id);\n        }\n      } else if (result.type === \"error\") {\n        const { message, code } = result.data;\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"error\", message, code });\n          this.requestMap.delete(id);\n        }\n      } else {\n        console.error(`Received event of unknown method '${result.type}'`);\n      }\n    });\n  }\n\n  async doRequest(\n    operation: OperationType,\n    key: string,\n    input: any\n  ): Promise<any> {\n    if (!this.listener) {\n      await this.listener;\n    }\n\n    const id = randomId();\n    let resolve: (data: any) => void;\n    const promise = new Promise((res) => {\n      resolve = res;\n    });\n\n    // @ts-ignore\n    this.requestMap.set(id, resolve);\n\n    await getCurrent().emit(\"plugin:rspc:transport\", {\n      id,\n      method: operation,\n      params: {\n        path: key,\n        input,\n      },\n    });\n\n    const body = (await promise) as any;\n    if (body.type === \"error\") {\n      const { code, message } = body;\n      throw new RSPCError(code, message);\n    } else if (body.type === \"response\") {\n      return body.result;\n    } else {\n      throw new Error(\n        `RSPC Tauri doRequest received invalid body type '${body?.type}'`\n      );\n    }\n  }\n}\n"]}
+\ No newline at end of file
+diff --git a/dist/index.mjs b/dist/index.mjs
+index bba6888c0dd213cb086fad7d7548afb43fb8494c..7b01ceaee03edeb751f3e1d772b666a791242105 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1,7 +1,7 @@
+ // src/index.ts
+ import { randomId, RSPCError } from "@rspc/client";
+ import { listen } from "@tauri-apps/api/event";
+-import { appWindow } from "@tauri-apps/api/window";
++import { getCurrent } from "@tauri-apps/api/window";
+ var TauriTransport = class {
+   requestMap = /* @__PURE__ */ new Map();
+   listener;
+@@ -39,7 +39,7 @@ var TauriTransport = class {
+       resolve = res;
+     });
+     this.requestMap.set(id, resolve);
+-    await appWindow.emit("plugin:rspc:transport", {
++    await getCurrent().emit("plugin:rspc:transport", {
+       id,
+       method: operation,
+       params: {
+diff --git a/dist/index.mjs.map b/dist/index.mjs.map
+index c83073015352b197d4d4a7ee6239c180c89f31db..8d27d5faa80fc5815477e54a832c88f5da9967b4 100644
+--- a/dist/index.mjs.map
++++ b/dist/index.mjs.map
+@@ -1 +1 @@
+-{"version":3,"sources":["../src/index.ts"],"sourcesContent":["import { randomId, OperationType, Transport, RSPCError } from \"@rspc/client\";\nimport { listen, UnlistenFn } from \"@tauri-apps/api/event\";\nimport { appWindow } from \"@tauri-apps/api/window\";\n\nexport class TauriTransport implements Transport {\n  private requestMap = new Map<string, (data: any) => void>();\n  private listener?: Promise<UnlistenFn>;\n  clientSubscriptionCallback?: (id: string, value: any) => void;\n\n  constructor() {\n    this.listener = listen(\"plugin:rspc:transport:resp\", (event) => {\n      const { id, result } = event.payload as any;\n      if (result.type === \"event\") {\n        if (this.clientSubscriptionCallback)\n          this.clientSubscriptionCallback(id, result.data);\n      } else if (result.type === \"response\") {\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"response\", result: result.data });\n          this.requestMap.delete(id);\n        }\n      } else if (result.type === \"error\") {\n        const { message, code } = result.data;\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"error\", message, code });\n          this.requestMap.delete(id);\n        }\n      } else {\n        console.error(`Received event of unknown method '${result.type}'`);\n      }\n    });\n  }\n\n  async doRequest(\n    operation: OperationType,\n    key: string,\n    input: any\n  ): Promise<any> {\n    if (!this.listener) {\n      await this.listener;\n    }\n\n    const id = randomId();\n    let resolve: (data: any) => void;\n    const promise = new Promise((res) => {\n      resolve = res;\n    });\n\n    // @ts-ignore\n    this.requestMap.set(id, resolve);\n\n    await appWindow.emit(\"plugin:rspc:transport\", {\n      id,\n      method: operation,\n      params: {\n        path: key,\n        input,\n      },\n    });\n\n    const body = (await promise) as any;\n    if (body.type === \"error\") {\n      const { code, message } = body;\n      throw new RSPCError(code, message);\n    } else if (body.type === \"response\") {\n      return body.result;\n    } else {\n      throw new Error(\n        `RSPC Tauri doRequest received invalid body type '${body?.type}'`\n      );\n    }\n  }\n}\n"],"mappings":";AAAA,SAAS,UAAoC,iBAAiB;AAC9D,SAAS,cAA0B;AACnC,SAAS,iBAAiB;AAEnB,IAAM,iBAAN,MAA0C;AAAA,EACvC,aAAa,oBAAI,IAAiC;AAAA,EAClD;AAAA,EACR;AAAA,EAEA,cAAc;AACZ,SAAK,WAAW,OAAO,8BAA8B,CAAC,UAAU;AAVpE;AAWM,YAAM,EAAE,IAAI,OAAO,IAAI,MAAM;AAC7B,UAAI,OAAO,SAAS,SAAS;AAC3B,YAAI,KAAK;AACP,eAAK,2BAA2B,IAAI,OAAO,IAAI;AAAA,MACnD,WAAW,OAAO,SAAS,YAAY;AACrC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,YAAY,QAAQ,OAAO,KAAK;AAClE,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,WAAW,OAAO,SAAS,SAAS;AAClC,cAAM,EAAE,SAAS,KAAK,IAAI,OAAO;AACjC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,SAAS,SAAS,KAAK;AACzD,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,OAAO;AACL,gBAAQ,MAAM,qCAAqC,OAAO,IAAI,GAAG;AAAA,MACnE;AAAA,IACF,CAAC;AAAA,EACH;AAAA,EAEA,MAAM,UACJ,WACA,KACA,OACc;AACd,QAAI,CAAC,KAAK,UAAU;AAClB,YAAM,KAAK;AAAA,IACb;AAEA,UAAM,KAAK,SAAS;AACpB,QAAI;AACJ,UAAM,UAAU,IAAI,QAAQ,CAAC,QAAQ;AACnC,gBAAU;AAAA,IACZ,CAAC;AAGD,SAAK,WAAW,IAAI,IAAI,OAAO;AAE/B,UAAM,UAAU,KAAK,yBAAyB;AAAA,MAC5C;AAAA,MACA,QAAQ;AAAA,MACR,QAAQ;AAAA,QACN,MAAM;AAAA,QACN;AAAA,MACF;AAAA,IACF,CAAC;AAED,UAAM,OAAQ,MAAM;AACpB,QAAI,KAAK,SAAS,SAAS;AACzB,YAAM,EAAE,MAAM,QAAQ,IAAI;AAC1B,YAAM,IAAI,UAAU,MAAM,OAAO;AAAA,IACnC,WAAW,KAAK,SAAS,YAAY;AACnC,aAAO,KAAK;AAAA,IACd,OAAO;AACL,YAAM,IAAI;AAAA,QACR,oDAAoD,6BAAM,IAAI;AAAA,MAChE;AAAA,IACF;AAAA,EACF;AACF;","names":[]}
+\ No newline at end of file
++{"version":3,"sources":["../src/index.ts"],"sourcesContent":["import { randomId, OperationType, Transport, RSPCError } from \"@rspc/client\";\nimport { listen, UnlistenFn } from \"@tauri-apps/api/event\";\nimport { getCurrent } from \"@tauri-apps/api/window\";\n\nexport class TauriTransport implements Transport {\n  private requestMap = new Map<string, (data: any) => void>();\n  private listener?: Promise<UnlistenFn>;\n  clientSubscriptionCallback?: (id: string, value: any) => void;\n\n  constructor() {\n    this.listener = listen(\"plugin:rspc:transport:resp\", (event) => {\n      const { id, result } = event.payload as any;\n      if (result.type === \"event\") {\n        if (this.clientSubscriptionCallback)\n          this.clientSubscriptionCallback(id, result.data);\n      } else if (result.type === \"response\") {\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"response\", result: result.data });\n          this.requestMap.delete(id);\n        }\n      } else if (result.type === \"error\") {\n        const { message, code } = result.data;\n        if (this.requestMap.has(id)) {\n          this.requestMap.get(id)?.({ type: \"error\", message, code });\n          this.requestMap.delete(id);\n        }\n      } else {\n        console.error(`Received event of unknown method '${result.type}'`);\n      }\n    });\n  }\n\n  async doRequest(\n    operation: OperationType,\n    key: string,\n    input: any\n  ): Promise<any> {\n    if (!this.listener) {\n      await this.listener;\n    }\n\n    const id = randomId();\n    let resolve: (data: any) => void;\n    const promise = new Promise((res) => {\n      resolve = res;\n    });\n\n    // @ts-ignore\n    this.requestMap.set(id, resolve);\n\n    await getCurrent().emit(\"plugin:rspc:transport\", {\n      id,\n      method: operation,\n      params: {\n        path: key,\n        input,\n      },\n    });\n\n    const body = (await promise) as any;\n    if (body.type === \"error\") {\n      const { code, message } = body;\n      throw new RSPCError(code, message);\n    } else if (body.type === \"response\") {\n      return body.result;\n    } else {\n      throw new Error(\n        `RSPC Tauri doRequest received invalid body type '${body?.type}'`\n      );\n    }\n  }\n}\n"],"mappings":";AAAA,SAAS,UAAoC,iBAAiB;AAC9D,SAAS,cAA0B;AACnC,SAAS,kBAAkB;AAEpB,IAAM,iBAAN,MAA0C;AAAA,EACvC,aAAa,oBAAI,IAAiC;AAAA,EAClD;AAAA,EACR;AAAA,EAEA,cAAc;AACZ,SAAK,WAAW,OAAO,8BAA8B,CAAC,UAAU;AAVpE;AAWM,YAAM,EAAE,IAAI,OAAO,IAAI,MAAM;AAC7B,UAAI,OAAO,SAAS,SAAS;AAC3B,YAAI,KAAK;AACP,eAAK,2BAA2B,IAAI,OAAO,IAAI;AAAA,MACnD,WAAW,OAAO,SAAS,YAAY;AACrC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,YAAY,QAAQ,OAAO,KAAK;AAClE,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,WAAW,OAAO,SAAS,SAAS;AAClC,cAAM,EAAE,SAAS,KAAK,IAAI,OAAO;AACjC,YAAI,KAAK,WAAW,IAAI,EAAE,GAAG;AAC3B,qBAAK,WAAW,IAAI,EAAE,MAAtB,mBAA0B,EAAE,MAAM,SAAS,SAAS,KAAK;AACzD,eAAK,WAAW,OAAO,EAAE;AAAA,QAC3B;AAAA,MACF,OAAO;AACL,gBAAQ,MAAM,qCAAqC,OAAO,IAAI,GAAG;AAAA,MACnE;AAAA,IACF,CAAC;AAAA,EACH;AAAA,EAEA,MAAM,UACJ,WACA,KACA,OACc;AACd,QAAI,CAAC,KAAK,UAAU;AAClB,YAAM,KAAK;AAAA,IACb;AAEA,UAAM,KAAK,SAAS;AACpB,QAAI;AACJ,UAAM,UAAU,IAAI,QAAQ,CAAC,QAAQ;AACnC,gBAAU;AAAA,IACZ,CAAC;AAGD,SAAK,WAAW,IAAI,IAAI,OAAO;AAE/B,UAAM,WAAW,EAAE,KAAK,yBAAyB;AAAA,MAC/C;AAAA,MACA,QAAQ;AAAA,MACR,QAAQ;AAAA,QACN,MAAM;AAAA,QACN;AAAA,MACF;AAAA,IACF,CAAC;AAED,UAAM,OAAQ,MAAM;AACpB,QAAI,KAAK,SAAS,SAAS;AACzB,YAAM,EAAE,MAAM,QAAQ,IAAI;AAC1B,YAAM,IAAI,UAAU,MAAM,OAAO;AAAA,IACnC,WAAW,KAAK,SAAS,YAAY;AACnC,aAAO,KAAK;AAAA,IACd,OAAO;AACL,YAAM,IAAI;AAAA,QACR,oDAAoD,6BAAM,IAAI;AAAA,MAChE;AAAA,IACF;AAAA,EACF;AACF;","names":[]}
+\ No newline at end of file
+diff --git a/package.json b/package.json
+index 270887cf93791db63c8b60ed44db12ccd2393f65..9be62429b39828236ddf5e5da7ae1b0697cc591a 100644
+--- a/package.json
++++ b/package.json
+@@ -17,6 +17,11 @@
+   "files": [
+     "dist"
+   ],
++  "scripts": {
++    "dev": "tsup --watch",
++    "build": "tsup",
++    "prepare": "tsup"
++  },
+   "tsup": {
+     "entry": [
+       "src/index.ts"
+@@ -33,18 +38,14 @@
+     "sourcemap": true
+   },
+   "dependencies": {
+-    "@rspc/client": "0.2.0"
++    "@rspc/client": "workspace:*"
+   },
+   "devDependencies": {
+-    "@tauri-apps/api": "^1.5.3",
++    "@tauri-apps/api": "next",
+     "tsup": "^8.0.2",
+     "typescript": "^5.4.2"
+   },
+   "peerDependencies": {
+     "@tauri-apps/api": "^1.2.0"
+-  },
+-  "scripts": {
+-    "dev": "tsup --watch",
+-    "build": "tsup"
+   }
+ }

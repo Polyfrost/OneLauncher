@@ -86,22 +86,28 @@
 		"shortDescription": "Next-generation open source Minecraft launcher",
 		"macOS": {
 			"entitlements": "App.entitlements",
-			"exceptionDomain": "",
+			"exceptionDomain": null,
 			"frameworks": [],
 			"providerShortName": null,
 			"signingIdentity": null,
-			"minimumSystemVersion": "10.13"
+			"minimumSystemVersion": "10.15"
 		},
 		"windows": {
 			"certificateThumbprint": null,
+			"webviewInstallMode": {
+				"silent": true,
+				"type": "downloadBootstrapper"
+			},
 			"digestAlgorithm": "sha256",
 			"timestampUrl": "https://timestamp.digicert.com"
 		}
 	},
 	"plugins": {
 		"updater": {
+			"active": true,
+			"dialog": false,
 			"pubkey": "",
-			"endpoints": ["https://api.polyfrost.org/launcher/update/{{target}}/{{custom_version}}"]
+			"endpoints": ["https://polyfrost.org/releases/update/{{version}}/{{target}}/{{arch}}"]
 		}
 	}
 }

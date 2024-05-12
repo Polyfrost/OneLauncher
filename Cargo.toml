@@ -31,6 +31,10 @@ tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-works
 tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
 tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2", features = [ "rustls-tls" ] }
 
+rspc = { version = "0.2.0", features = [ "specta2" ] }
+specta = { version = "=2.0.0-rc.12" }
+rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2" }
+
 interpulse = { version = "0.1.3" }
 
 tracing = { version = "0.1" }
@@ -114,6 +118,10 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
+
+[patch.crates-io]
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "f3bc75ec6120ea0fc6cd8e2e2e3aebef049e93cb" }
+rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "f250409db9e21a67ae252c963d605f863f73d5f0" }
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

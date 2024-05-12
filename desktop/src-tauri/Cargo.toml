@@ -26,7 +26,6 @@ tauri-build = { workspace = true, features = [
 
 [dependencies]
 onelauncher = { path = "../../core", features = [ "tauri" ] }
-
 interpulse = { workspace = true, features = [ "bincode" ] }
 
 tauri = { workspace = true, features = [
@@ -41,6 +40,7 @@ tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-authenticator = { workspace = true }
+
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -61,5 +61,14 @@ cocoa = "0.25.0"
 objc = "0.2.7"
 
 [features]
+default = [ "custom-protocol" ]
+devtools = [ "tauri/devtools" ]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = [ "tauri/custom-protocol" ]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

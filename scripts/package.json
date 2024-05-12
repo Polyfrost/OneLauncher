@@ -1,0 +1,30 @@
+{
+	"name": "@onelauncher/scripts",
+	"type": "module",
+	"version": "1.0.0",
+	"private": true,
+	"description": "Scripts for developing OneLauncher",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "client"
+	},
+	"sideEffects": false,
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"scripts": {
+		"tauri": "tsx tauri.ts"
+	},
+	"dependencies": {
+		"@flowr/utils": "^3.2.1",
+		"@iarna/toml": "^2.2.5",
+		"execa": "^9.0.2",
+		"semver": "^7.6.2",
+		"undici": "^6.16.1"
+	},
+	"devDependencies": {
+		"@types/iarna__toml": "^2.0.5",
+		"@types/semver": "^7.5.8"
+	}
+}

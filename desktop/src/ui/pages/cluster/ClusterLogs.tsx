@@ -36,7 +36,7 @@ function ClusterLogs() {
 							const pretty = log.split('/').pop();
 							return (
 								<button
-									class={`border border-gray-0.10 rounded-md px-2 py-1 ${activeLogFile() === log ? 'bg-gray-0.10' : ''}`}
+									class={`border border-gray-10 rounded-md px-2 py-1 ${activeLogFile() === log ? 'bg-gray-10' : ''}`}
 									onClick={() => setActiveLogFile(log)}
 									children={pretty}
 								/>

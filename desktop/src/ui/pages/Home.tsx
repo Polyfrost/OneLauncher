@@ -135,7 +135,7 @@ function ClusterCard(props: Core.ClusterWithManifest) {
 				onMouseDown={e => onMouseDown(e)}
 				onContextMenu={e => openContextMenu(e)}
 				ref={ref}
-				class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-0.05"
+				class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-05"
 			>
 				<div class="flex-1 relative overflow-hidden rounded-t-xl">
 					<div

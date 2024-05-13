@@ -48,7 +48,7 @@ function Sidebar(props: SidebarProps) {
 										<a
 											onClick={() => goto(link[2])}
 											class={
-                                                `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-0.05' : ''}`
+                                                `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-05' : ''}`
                                             }
 										>
 											<span class="flex flex-row items-center gap-x-3 *:w-5">

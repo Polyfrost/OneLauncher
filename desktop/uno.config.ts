@@ -43,8 +43,8 @@ export default defineConfig({
 			black: '#000000',
 
 			gray: {
-				'0.05': '#FFFFFF0D',
-				'0.10': '#FFFFFF1A',
+				'05': '#FFFFFF0D',
+				'10': '#FFFFFF1A',
 			},
 
 			fg: {
@@ -81,6 +81,13 @@ export default defineConfig({
 				hover: '#D63434',
 				pressed: '#FF5656',
 				disabled: '#FF444480',
+			},
+
+			success: {
+				DEFAULT: '#239A60',
+				hover: '#1A8752',
+				pressed: '#2CAC6E',
+				disabled: '#239A6080',
 			},
 
 			component: {

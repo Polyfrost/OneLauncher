@@ -27,9 +27,16 @@ h4 { @apply text-lg font-medium; }
 .os-scrollbar {
     --os-size: 10px;
     --os-track-border-radius: theme(borderRadius.lg);
-    /* --os-handle-bg: theme("colors.gray[0.05]");
-    --os-handle-bg-hover: theme(colors.gray[0.10]); */
-    /* --os-handle-bg-active: theme(colors.gray[0.05]); */
+    --os-handle-bg: rgba(255, 255, 255, 0.05);
+    --os-handle-bg-hover: rgba(255, 255, 255, 0.10);
+    --os-handle-bg-active: rgba(255, 255, 255, 0.07);
+    --os-handle-perpendicular-size-hover: 140%;
+    --os-handle-perpendicular-size-active: 140%;
+    --os-handle-interactive-area-offset: 1;
+}
+
+.os-scrollbar-offset-right {
+    --os-padding-axis: 10;
 }
 
 .os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
@@ -37,7 +44,7 @@ h4 { @apply text-lg font-medium; }
 }
 
 .page-animation-enter-active, .page-animation-leave-active {
-    transition: opacity 200ms, transform 250ms;
+    transition: opacity 160ms, transform 175ms;
     transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 

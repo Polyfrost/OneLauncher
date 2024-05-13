@@ -28,7 +28,7 @@ function ClusterOverview() {
 function Banner({ cluster, manifest }: Core.ClusterWithManifest) {
 	return (
 		<div class="flex flex-row bg-component-bg rounded-xl p-2.5 gap-x-2.5">
-			<div class="w-48 rounded-lg overflow-hidden border border-gray-0.10">
+			<div class="w-48 rounded-lg overflow-hidden border border-gray-10">
 				<ClusterCover cluster={cluster} />
 			</div>
 
@@ -50,10 +50,10 @@ function Banner({ cluster, manifest }: Core.ClusterWithManifest) {
 				</span>
 			</div>
 
-			<div class="flex flex-row items-end gap-x-2.5 *:h-8 *:w-8">
+			<div class="flex flex-row items-end gap-x-2.5 *:h-8">
 				<Button
-					buttonStyle="secondary"
-					iconLeft={<Share07Icon />}
+					buttonStyle="iconSecondary"
+					children={<Share07Icon />}
 				/>
 				<Button
 					buttonStyle="primary"

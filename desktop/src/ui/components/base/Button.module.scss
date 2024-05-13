@@ -6,8 +6,8 @@
         @apply bg-brand hover:bg-brand-hover active:bg-brand-pressed disabled:bg-brand-disabled;
     }
 
-    &__secondary {
-        @apply border border-gray-0.05;
+    &__secondary, &__iconSecondary {
+        @apply border border-gray-05;
         @apply text-fg-primary hover:text-fg-primary-hover active:text-fg-primary-pressed disabled:text-fg-primary-disabled;
         @apply bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     }
@@ -17,11 +17,11 @@
     }
 
     &__ghost {
-        @apply hover:bg-gray-0.05 active:bg-gray-0.10;
+        @apply hover:bg-gray-05 active:bg-gray-10;
     }
 
-    &__icon {
-        @apply p-1.5 hover:bg-gray-0.05 active:bg-gray-0.10 aspect-square box-border w-8 h-8;
+    &__icon, &__iconSecondary {
+        @apply p-1.5 hover:bg-gray-05 active:bg-gray-10 aspect-square box-border w-8 h-8;
 
         &.large {
             @apply w-9 h-9;

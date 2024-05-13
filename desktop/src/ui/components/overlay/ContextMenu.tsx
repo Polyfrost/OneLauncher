@@ -36,7 +36,7 @@ function ContextMenu(props: ContextMenuProps) {
 			visible={props.visible}
 			setVisible={props.setVisible}
 		>
-			<div ref={setRef} class="bg-secondary rounded-xl border border-gray-0.10 p-1 shadow-lg shadow-black/50">
+			<div ref={setRef} class="bg-secondary rounded-xl border border-gray-10 p-1 shadow-lg shadow-black/50">
 				<div class="flex flex-col gap-y-1 text-fg-primary">
 					{props.children}
 				</div>
@@ -46,7 +46,7 @@ function ContextMenu(props: ContextMenuProps) {
 }
 
 ContextMenu.Seperator = function () {
-	return <div class="border-b mx-1 border-gray-0.05" />;
+	return <div class="border-b mx-1 border-gray-05" />;
 };
 
 interface ContextMenuRowProps {
@@ -59,7 +59,7 @@ ContextMenu.Row = function (props: ContextMenuRowProps) {
 	return (
 		<div
 			onClick={e => props.onClick?.(e)}
-			class="flex items-center gap-x-2 m-px px-1.5 py-0.5 rounded-lg hover:bg-gray-0.05 active:bg-gray-0.10 [&>svg]:w-[18px]"
+			class="flex items-center gap-x-2 m-px px-1.5 py-0.5 rounded-lg hover:bg-gray-05 active:bg-gray-10 [&>svg]:w-[18px]"
 		>
 			{props.icon}
 			{props.text}

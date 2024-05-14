@@ -11,6 +11,7 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [features]
+default = []
 # feature flag allowing us to interact with tauri (for loading animations, errors showing on gui, etc)
 # also allows us to compile onelauncher core without tauri
 tauri = [ "dep:tauri" ]

@@ -1,7 +1,7 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { ArrowRightIcon, Edit02Icon, LinkExternal01Icon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { For, Show } from 'solid-js';
+import { For } from 'solid-js';
 import * as uuid from 'uuid';
 import Button from '~ui/components/base/Button';
 

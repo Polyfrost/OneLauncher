@@ -12,6 +12,7 @@ import ClusterOverview from './ui/pages/cluster/ClusterOverview';
 import ClusterMods from './ui/pages/cluster/ClusterMods';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import ClusterLogs from '~ui/pages/cluster/ClusterLogs';
+import ClusterScreenshots from '~ui/pages/cluster/ClusterScreenshots';
 
 render(() => (
 	<Router root={App}>
@@ -22,6 +23,7 @@ render(() => (
 			<Route path="/" component={ClusterOverview} />
 			<Route path="/logs" component={ClusterLogs} />
 			<Route path="/mods" component={ClusterMods} />
+            <Route path="/screenshots" component={ClusterScreenshots} />
 		</Route>
 	</Router>
 ), document.getElementById('root') as HTMLElement);

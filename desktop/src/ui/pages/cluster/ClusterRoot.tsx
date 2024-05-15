@@ -1,6 +1,6 @@
 import { useSearchParams } from '@solidjs/router';
 import type { ParentProps } from 'solid-js';
-import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon, Tool02Icon, User01Icon } from '@untitled-theme/icons-solid';
+import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon, Tool02Icon } from '@untitled-theme/icons-solid';
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';

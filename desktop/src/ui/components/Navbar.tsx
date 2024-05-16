@@ -1,7 +1,8 @@
-import { A } from '@solidjs/router';
+import { A, useNavigate } from '@solidjs/router';
 import { createSignal } from 'solid-js';
 import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
+import { WEBSITE } from '@onelauncher/client';
 import useAccount from '../hooks/useAccount';
 import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/AccountPopup';
@@ -9,7 +10,6 @@ import PlayerHead from './game/PlayerHead';
 import Button from './base/Button';
 import NotificationPopup from './overlay/notifications/NotificationPopup';
 import Popup from './overlay/Popup';
-import { WEBSITE } from '~constants';
 
 interface NavbarLinkProps {
 	path: string;
@@ -33,6 +33,7 @@ function NavbarLink(props: NavbarLinkProps) {
 function Navbar() {
 	const [profileMenuOpen, setProfileMenuOpen] = createSignal(false);
 	const [notificationMenuOpen, setNotificationMenuOpen] = createSignal(false);
+	const navigate = useNavigate();
 
 	const account = useAccount();
 
@@ -71,7 +72,7 @@ function Navbar() {
 				</Button>
 
 				{/* Launcher Settings Button */}
-				<Button buttonStyle="icon">
+				<Button buttonStyle="icon" onClick={() => navigate('/settings')}>
 					<Settings01Icon />
 				</Button>
 

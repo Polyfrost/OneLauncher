@@ -32,7 +32,7 @@ function Sidebar(props: SidebarProps) {
 	}
 
 	function isActive(link: string) {
-		return location.pathname === `${props.base}${link}`;
+		return location.pathname === `${props.base}${link}` || `${location.pathname}/` === `${props.base}${link}`;
 	}
 
 	return (

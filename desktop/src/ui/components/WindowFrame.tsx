@@ -1,5 +1,5 @@
 import { Window } from '@tauri-apps/api/window';
-import { MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
+import { ChevronLeftIcon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
 import Modal from './overlay/Modal';
@@ -37,7 +37,7 @@ function WindowFrame() {
 	return (
 		<div data-tauri-drag-region class="flex flex-row justify-between items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
 			<div class="flex flex-row items-center">
-				{/* Empty */}
+				<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
 			</div>
 
 			<div class="flex flex-row items-center justify-end">

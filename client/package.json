@@ -15,9 +15,10 @@
 	"types": "./src/index.ts",
 	"dependencies": {
 		"@rspc/client": "^0.2.0",
+		"@rspc/solid": "^0.2.0",
 		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/deep": "^0.2.8",
-		"@tanstack/solid-query": "^5.35.5",
+		"@tanstack/solid-query": "^5.36.0",
 		"fast-equals": "^5.0.1",
 		"plausible-tracker": "^0.3.8",
 		"solid-js": "^1.8.17",

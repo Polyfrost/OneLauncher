@@ -4,6 +4,7 @@ import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
 import Modal from './overlay/Modal';
 import Button from './base/Button';
+import appSettings from '~ui/state/appSettings';
 
 interface TitlebarButtonProps {
 	icon: (any: any) => JSX.Element;
@@ -25,12 +26,15 @@ function WindowFrame() {
 	const [isModalVisible, setModalVisible] = createSignal(false);
 
 	const minimize = () => Window.getCurrent().minimize();
-	const quit = () => Window.getCurrent().destroy();
+	const quit = () => Window.getCurrent().close();
+	// const kill = () => Window.getCurrent().destroy();
 
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
-			event.preventDefault();
-			setModalVisible(true);
+			if (appSettings.settings.closeDialog) {
+				event.preventDefault();
+				setModalVisible(true);
+			}
 		});
 	});
 
@@ -42,7 +46,7 @@ function WindowFrame() {
 
 			<div class="flex flex-row items-center justify-end">
 				<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
-				<TitlebarButton icon={XCloseIcon} onClick={() => setModalVisible(true)} danger />
+				<TitlebarButton icon={XCloseIcon} onClick={() => quit()} danger />
 			</div>
 
 			<Modal

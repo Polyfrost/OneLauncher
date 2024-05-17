@@ -1,11 +1,24 @@
-import { Code01Icon } from '@untitled-theme/icons-solid';
+import { XIcon } from '@untitled-theme/icons-solid';
 import SettingsRow from '../components';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
+import Toggle from '~ui/components/base/Toggle';
+import appSettings from '~ui/state/appSettings';
 
 function SettingsGeneral() {
 	return (
 		<ScrollableContainer title="General">
-			<SettingsRow title="Title" description="In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the" icon={<Code01Icon />} />
+			<SettingsRow
+                title='Show Close Dialog'
+                description='Show a confirmation dialog when closing the launcher.'
+                icon={<XIcon />}
+            >
+                <Toggle
+                    defaultChecked={appSettings.settings.closeDialog}
+                    onChecked={(checked) => {
+                        appSettings.setSettings('closeDialog', checked);
+                    }}
+                />
+            </SettingsRow>
 		</ScrollableContainer>
 	);
 }

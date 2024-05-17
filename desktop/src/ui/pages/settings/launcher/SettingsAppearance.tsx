@@ -3,10 +3,10 @@ import SettingsRow from '../components';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
-import reducedMotionTracker from '~ui/state/reducedMotionTracker';
+import appSettings from '~ui/state/appSettings';
 
 function SettingsAppearance() {
-	const { reducedMotion, setReducedMotion } = reducedMotionTracker;
+	const { settings, setSettings } = appSettings;
 
 	return (
 		<ScrollableContainer title="Appearance">
@@ -28,9 +28,9 @@ function SettingsAppearance() {
 				icon={<Speedometer04Icon />}
 			>
 				<Toggle
-					defaultChecked={reducedMotion()}
+					defaultChecked={settings.reducedMotion}
 					onChecked={(checked) => {
-						setReducedMotion(checked);
+						setSettings('reducedMotion', checked);
 					}}
 				/>
 			</SettingsRow>

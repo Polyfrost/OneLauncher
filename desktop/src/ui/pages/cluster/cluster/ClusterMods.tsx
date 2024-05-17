@@ -50,8 +50,8 @@ function ModEntry(props: ModEntryProps) {
 				<div class="flex flex-row justify-between items-center">
 					<div class="flex flex-col items-start justify-center">
 						<div class="flex flex-row items-center">
-							<h3>{props.name}</h3>
-							<span class="flex flex-row items-center text-sm font-600 text-fg-secondary/50 ml-2">
+							<h4>{props.name}</h4>
+							<span class="flex flex-row items-center text-xs font-600 text-fg-secondary/50 ml-2">
 								{props.version}
 								{/* TODO: Add version checker */}
 								{/* <Show when={props.version.includes()}> */}

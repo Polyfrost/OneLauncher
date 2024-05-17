@@ -1,11 +1,11 @@
 import { useSearchParams } from '@solidjs/router';
 import { Show } from 'solid-js';
 import { PlayIcon, Share07Icon } from '@untitled-theme/icons-solid';
-import useCluster from '../../hooks/useCluster';
-import ClusterCover from '../../components/game/ClusterCover';
-import LoaderIcon from '../../components/game/LoaderIcon';
-import Button from '../../components/base/Button';
-import { launchCluster } from '../../../bridge/game';
+import useCluster from '../../../hooks/useCluster';
+import ClusterCover from '../../../components/game/ClusterCover';
+import LoaderIcon from '../../../components/game/LoaderIcon';
+import Button from '../../../components/base/Button';
+import { launchCluster } from '../../../../bridge/game';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 
 function ClusterOverview() {

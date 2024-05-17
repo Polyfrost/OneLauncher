@@ -57,3 +57,8 @@ h4 { @apply text-lg font-medium; }
     opacity: 1;
     transform: translateX(0);
 }
+
+body.reduce-motion * {
+    transition-duration: 0.0001ms !important;
+    animation-duration: 0.0001ms !important;
+}

@@ -4,10 +4,10 @@ import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Setting
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import ClusterOverview from './ClusterOverview';
-import ClusterLogs from './ClusterLogs';
-import ClusterMods from './ClusterMods';
-import ClusterScreenshots from './ClusterScreenshots';
+import ClusterOverview from './cluster/ClusterOverview';
+import ClusterLogs from './cluster/ClusterLogs';
+import ClusterMods from './cluster/ClusterMods';
+import ClusterScreenshots from './cluster/ClusterScreenshots';
 
 function ClusterRoutes() {
 	return (

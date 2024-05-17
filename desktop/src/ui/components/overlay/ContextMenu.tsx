@@ -36,7 +36,7 @@ function ContextMenu(props: ContextMenuProps) {
 			visible={props.visible}
 			setVisible={props.setVisible}
 		>
-			<div ref={setRef} class="bg-secondary rounded-xl border border-gray-10 p-1 shadow-lg shadow-black/50">
+			<div ref={setRef} class="bg-secondary rounded-xl border border-gray-05 p-1 shadow-md shadow-black/30">
 				<div class="flex flex-col gap-y-1 text-fg-primary">
 					{props.children}
 				</div>

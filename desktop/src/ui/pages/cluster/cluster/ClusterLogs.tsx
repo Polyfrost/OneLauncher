@@ -1,7 +1,7 @@
 import { useSearchParams } from '@solidjs/router';
 import { For, Show, createEffect, createResource, createSignal } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { getClusterLog, getClusterLogs } from '../../../bridge/game';
+import { getClusterLog, getClusterLogs } from '../../../../bridge/game';
 
 function ClusterLogs() {
 	const [params] = useSearchParams();

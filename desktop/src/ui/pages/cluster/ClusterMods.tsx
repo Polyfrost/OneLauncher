@@ -1,9 +1,9 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { ArrowRightIcon, Edit02Icon, LinkExternal01Icon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { For } from 'solid-js';
 import * as uuid from 'uuid';
 import Button from '~ui/components/base/Button';
+import ScrollableContainer from '~ui/components/ScrollableContainer';
 
 const mods = Array<ModEntryProps>(15).fill({
 	id: uuid.v4(),
@@ -17,20 +17,13 @@ const mods = Array<ModEntryProps>(15).fill({
 
 function ClusterMods() {
 	return (
-		<div class="flex flex-col flex-1">
-			<h1>Mods</h1>
-			<div class="flex flex-col flex-1 rounded-lg overflow-hidden w-[calc(100%+14px)]">
-				<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar relative flex-1">
-					<div class="flex flex-col absolute w-[calc(100%-14px)] gap-2">
-						<For each={mods}>
-							{mod => (
-								<ModEntry {...mod} />
-							)}
-						</For>
-					</div>
-				</OverlayScrollbarsComponent>
-			</div>
-		</div>
+		<ScrollableContainer title="Mods">
+			<For each={mods}>
+				{mod => (
+					<ModEntry {...mod} />
+				)}
+			</For>
+		</ScrollableContainer>
 	);
 }
 

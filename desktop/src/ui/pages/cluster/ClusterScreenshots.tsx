@@ -1,5 +1,5 @@
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { For } from 'solid-js';
+import ScrollableContainer from '~ui/components/ScrollableContainer';
 
 const list = Array<Screenshot>(19).fill({
 	date_taken: Math.floor(Date.now() / 1000),
@@ -14,21 +14,15 @@ interface Screenshot {
 
 function ClusterScreenshots() {
 	return (
-		<div class="flex flex-col flex-1">
-			<h1>Screenshots</h1>
-
-			<div class="flex flex-col flex-1 rounded-lg overflow-hidden w-[calc(100%+14px)]">
-				<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar relative flex-1">
-					<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] absolute w-[calc(100%-14px)] gap-2">
-						<For each={list}>
-							{screenshot => (
-								<ScreenshotEntry {...screenshot} />
-							)}
-						</For>
-					</div>
-				</OverlayScrollbarsComponent>
+		<ScrollableContainer title="Screenshots">
+			<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full gap-2">
+				<For each={list}>
+					{screenshot => (
+						<ScreenshotEntry {...screenshot} />
+					)}
+				</For>
 			</div>
-		</div>
+		</ScrollableContainer>
 	);
 }
 

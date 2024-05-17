@@ -62,7 +62,7 @@ function Modal(props: ModalProps) {
 					<div class="absolute w-full h-full" onClick={() => onBackdropClick()} />
 
 					<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-						<div class="bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-1">
+						<div class="bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-2">
 							<h2>{props.title}</h2>
 							<div class="flex flex-col">
 								{props.children}

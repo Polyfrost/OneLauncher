@@ -6,6 +6,7 @@ import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
 import { launchCluster } from '../../../bridge/game';
+import ScrollableContainer from '~ui/components/ScrollableContainer';
 
 function ClusterOverview() {
 	const [params] = useSearchParams();
@@ -14,13 +15,11 @@ function ClusterOverview() {
 		throw new Error('Cluster doesn\'t exist');
 
 	return (
-		<div class="flex flex-col flex-1">
-			<h1>Overview</h1>
-
+		<ScrollableContainer title="Overview">
 			<Show when={!cluster.loading}>
 				<Banner {...cluster()!} />
 			</Show>
-		</div>
+		</ScrollableContainer>
 	);
 }
 

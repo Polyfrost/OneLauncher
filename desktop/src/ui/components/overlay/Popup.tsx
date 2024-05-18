@@ -1,8 +1,5 @@
 import { mergeRefs } from '@solid-primitives/refs';
-import {
-	Show,
-	createEffect,
-	createSignal } from 'solid-js';
+import { createEffect } from 'solid-js';
 import type {
 	Accessor,
 	JSX,
@@ -22,14 +19,11 @@ declare namespace Popup {
 }
 
 function Popup(props: Popup.PopupProps) {
-	const [localVisible, setLocalVisible] = createSignal(false);
-	const [animate, setAnimate] = createSignal('animate-fade-in');
-
 	let popupRef!: HTMLDivElement;
 
 	function onMouseDown(e: MouseEvent) {
 		e.stopPropagation();
-		if (!popupRef || !localVisible())
+		if (!popupRef || !props.visible())
 			return;
 
 		const clicked = e.target === popupRef || popupRef.contains(e.target as Node);
@@ -38,34 +32,24 @@ function Popup(props: Popup.PopupProps) {
 	}
 
 	createEffect(() => {
-		if (props.visible()) {
+		if (props.visible())
 			document.addEventListener('mousedown', onMouseDown);
-			setAnimate('animate-fade-in');
-			setLocalVisible(true);
-		}
-		else {
+		else
 			document.removeEventListener('mousedown', onMouseDown);
-			setAnimate('animate-fade-out');
-			setTimeout(() => {
-				setLocalVisible(false);
-			}, 150);
-		}
 	});
 
 	return (
-		<Show when={localVisible()}>
-			<Portal
-				mount={props.mount || document.body}
-				ref={mergeRefs((el) => {
-					el.classList.add('absolute', 'z-[1000]');
-					return el;
-				}, props.ref)}
-			>
-				<div ref={popupRef} style={props.style || ''} class={`${animate()} ${props.class || ''}`}>
-					{props.children}
-				</div>
-			</Portal>
-		</Show>
+		<Portal
+			mount={props.mount || document.body}
+			ref={mergeRefs((el) => {
+				el.classList.add('absolute', 'z-[1000]', 'pointer-events-none');
+				return el;
+			}, props.ref)}
+		>
+			<div ref={popupRef} style={props.style || ''} class={`transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} ${props.class || ''}`}>
+				{props.children}
+			</div>
+		</Portal>
 	);
 }
 

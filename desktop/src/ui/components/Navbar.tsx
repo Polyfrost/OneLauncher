@@ -41,7 +41,7 @@ function Navbar() {
 	let notificationButton!: HTMLButtonElement;
 
 	return (
-		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15 mx-2">
+		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15">
 			<div>
 				<div onClick={() => open(WEBSITE)} class="flex items-center justify-center active:scale-90 transition-transform w-min">
 					<PolyfrostFull />

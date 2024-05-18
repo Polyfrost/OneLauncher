@@ -28,6 +28,7 @@ export default petal({
 		rules: {
 			'petal/consistent-list-newline': 'off',
 			'no-console': 'off',
+			'new-cap': 'off',
 		},
 	},
 ]);

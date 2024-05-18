@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from '@solidjs/router';
 import type { JSX, ParentProps } from 'solid-js';
-import { For, createEffect } from 'solid-js';
+import { For, createEffect, splitProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
 	state: {
@@ -66,5 +66,14 @@ function Sidebar(props: SidebarProps) {
 		</div>
 	);
 }
+
+Sidebar.Page = function (props: JSX.HTMLAttributes<HTMLDivElement>) {
+	const [split, rest] = splitProps(props, ['class', 'children']);
+	return (
+		<div class={`flex flex-col flex-1 gap-y-1 ${split.class || ''}`} {...rest}>
+			{split.children}
+		</div>
+	);
+};
 
 export default Sidebar;

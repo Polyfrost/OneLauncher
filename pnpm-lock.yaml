@@ -80,6 +80,9 @@ importers:
       '@iconify-json/logos':
         specifier: ^1.1.42
         version: 1.1.42
+      '@leeoniya/ufuzzy':
+        specifier: ^1.0.14
+        version: 1.0.14
       '@onelauncher/client':
         specifier: workspace:*
         version: link:../client
@@ -683,6 +686,9 @@ packages:
   '@jsdevtools/ez-spawn@3.0.4':
     resolution: {integrity: sha512-f5DRIOZf7wxogefH03RjMPMdBF7ADTWUMoOs9kaJo06EfwF+aFhMZMDZxHg/Xe12hptN9xoZjGso2fdjapBRIA==}
     engines: {node: '>=10'}
+
+  '@leeoniya/ufuzzy@1.0.14':
+    resolution: {integrity: sha512-/xF4baYuCQMo+L/fMSUrZnibcu0BquEGnbxfVPiZhs/NbJeKj4c/UmFpQzW9Us0w45ui/yYW3vyaqawhNYsTzA==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -3928,6 +3934,8 @@ snapshots:
       cross-spawn: 7.0.3
       string-argv: 0.3.2
       type-detect: 4.0.8
+
+  '@leeoniya/ufuzzy@1.0.14': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:

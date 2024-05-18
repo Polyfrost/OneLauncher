@@ -1,5 +1,6 @@
 import { For } from 'solid-js';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
+import Sidebar from '~ui/components/Sidebar';
 
 const list = Array<Screenshot>(19).fill({
 	date_taken: Math.floor(Date.now() / 1000),
@@ -14,15 +15,18 @@ interface Screenshot {
 
 function ClusterScreenshots() {
 	return (
-		<ScrollableContainer title="Screenshots">
-			<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full gap-2">
-				<For each={list}>
-					{screenshot => (
-						<ScreenshotEntry {...screenshot} />
-					)}
-				</For>
-			</div>
-		</ScrollableContainer>
+		<Sidebar.Page>
+			<h1>Screenshots</h1>
+			<ScrollableContainer>
+				<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full gap-2">
+					<For each={list}>
+						{screenshot => (
+							<ScreenshotEntry {...screenshot} />
+						)}
+					</For>
+				</div>
+			</ScrollableContainer>
+		</Sidebar.Page>
 	);
 }
 

@@ -1,29 +1,103 @@
-import { open } from '@tauri-apps/plugin-shell';
-import { ArrowRightIcon, Edit02Icon, LinkExternal01Icon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For } from 'solid-js';
+import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { For, Index, Match, Switch, createEffect, createSignal } from 'solid-js';
 import * as uuid from 'uuid';
+import uFuzzy from '@leeoniya/ufuzzy';
 import Button from '~ui/components/base/Button';
+import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
+import Sidebar from '~ui/components/Sidebar';
 
-const mods = Array<ModEntryProps>(15).fill({
-	id: uuid.v4(),
-	name: 'Mod Name',
-	author: 'Author Name',
-	version: '1.0.0',
-	description: 'This is a mod description',
-	provider: 'curseforge',
-	thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
-});
+const randomModNames = [
+	'Sodium',
+	'Nvidium',
+	'Iris Shaders',
+	'Create',
+	'Fabric API',
+	'Create: Estrogen',
+	'OneConfig',
+	'PolySprint',
+	'PolyEffects',
+];
+
+const mods: ModEntryProps[] = [];
+
+for (let i = 0; i < randomModNames.length; i++) {
+	mods.push({
+		id: uuid.v4(),
+		name: randomModNames[i] || 'Unknown',
+		author: 'Author Name',
+		version: '1.0.0',
+		description: 'This is a mod description',
+		provider: 'curseforge',
+		thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
+	});
+}
 
 function ClusterMods() {
+	// Search state:
+	// `null` - No search query, show all mods
+	// `[]` - Search query, but no results, show "no results" message
+	// `[...]` - Search query, with results, show results
+	const [indexes, setIndexes] = createSignal<number[] | null>(null);
+
+	// State:
+	// true - A to Z
+	// false - Z to A
+	const [sortingName, setSortingName] = createSignal<boolean>(true);
+
+	const uf = new uFuzzy();
+	const modsSearchable = mods
+		.map(mod => mod.name);
+
+	function search(value: string) {
+		if (value === '' || value === undefined) {
+			setIndexes(null);
+			return;
+		}
+
+		const result = uf.search(modsSearchable, value);
+		setIndexes(result[0] ?? []);
+	}
+
 	return (
-		<ScrollableContainer title="Mods">
-			<For each={mods}>
-				{mod => (
-					<ModEntry {...mod} />
-				)}
-			</For>
-		</ScrollableContainer>
+		<Sidebar.Page>
+			<div class="flex flex-row justify-between w-full">
+				<h1>Mods</h1>
+				<div class="flex flex-row justify-end items-center gap-x-2">
+					<Button
+						buttonStyle="secondary"
+						iconLeft={sortingName() ? <ChevronUpIcon /> : <ChevronDownIcon />}
+						onClick={() => setSortingName(!sortingName())}
+						children="Name"
+					/>
+
+					<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
+				</div>
+			</div>
+
+			<ScrollableContainer>
+				<Switch>
+					<Match when={indexes() === null}>
+						<For each={mods}>
+							{mod => (
+								<ModEntry {...mod} />
+							)}
+						</For>
+					</Match>
+					<Match when={indexes()!.length > 0}>
+						<For each={indexes()}>
+							{(index) => {
+								const mod = mods[index];
+								return !mod ? <></> : <ModEntry {...mod} />;
+							}}
+						</For>
+					</Match>
+					<Match when={indexes()!.length === 0}>
+						<p class="text-2lg text-center my-4">No mods were found</p>
+					</Match>
+				</Switch>
+			</ScrollableContainer>
+		</Sidebar.Page>
 	);
 }
 
@@ -49,9 +123,9 @@ function ModEntry(props: ModEntryProps) {
 			<div class="flex flex-col flex-1">
 				<div class="flex flex-row justify-between items-center">
 					<div class="flex flex-col items-start justify-center">
-						<div class="flex flex-row items-center">
+						<div class="flex flex-col items-start justify-center gap-y-2">
 							<h4>{props.name}</h4>
-							<span class="flex flex-row items-center text-xs font-600 text-fg-secondary/50 ml-2">
+							<span class="h-2 flex flex-row items-center justify-start text-xs font-600 text-fg-secondary/50">
 								{props.version}
 								{/* TODO: Add version checker */}
 								{/* <Show when={props.version.includes()}> */}
@@ -60,15 +134,6 @@ function ModEntry(props: ModEntryProps) {
 								{/* </Show> */}
 							</span>
 						</div>
-
-						<span class="flex flex-row text-xs -mb-1 gap-1 items-center text-fg-secondary opacity-50">
-							by
-							{/* TODO: Implement prompt */}
-							<a onClick={() => open('https://google.com/')} class="text-fg-primary hover:opacity-70 flex flex-row gap-1 items-center">
-								{props.author}
-								<LinkExternal01Icon class="w-3" />
-							</a>
-						</span>
 					</div>
 
 					<div class="flex flex-row gap-2 items-end justify-center">

@@ -13,6 +13,8 @@
 		"window:allow-start-dragging",
 		"window:allow-minimize",
 		"window:allow-maximize",
+		"window:allow-toggle-maximize",
+		"window:allow-internal-toggle-maximize",
 		"event:default",
 		"shell:allow-open"
 	]

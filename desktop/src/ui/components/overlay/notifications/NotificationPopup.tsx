@@ -46,7 +46,7 @@ function NotificationPopup(props: Popup.PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="bg-secondary rounded-xl border border-gray-10 w-96 p-2 shadow-lg shadow-black/50">
+			<div class="bg-secondary rounded-xl border border-gray-10 w-96 p-2 shadow-md shadow-black/30">
 				<div class="overflow-hidden transition-[height]" ref={parent}>
 					<div class="flex flex-col justify-start items-stretch text-start gap-2" ref={inner}>
 						<p class="text-2lg px-2 pt-1">Notifications</p>

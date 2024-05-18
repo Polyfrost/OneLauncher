@@ -36,7 +36,7 @@ function AccountPopup(props: Popup.PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="bg-secondary rounded-xl border border-gray-10 w-72 p-2 shadow-lg shadow-black/50">
+			<div class="bg-secondary rounded-xl border border-gray-10 w-72 p-2 shadow-md shadow-black/30">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
 					<AccountComponent username={loggedInAccount.username} uuid={loggedInAccount.uuid} loggedIn />
 

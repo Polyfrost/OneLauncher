@@ -88,10 +88,7 @@ function Navbar() {
 			<AccountPopup
 				visible={profileMenuOpen}
 				setVisible={setProfileMenuOpen}
-				ref={(el) => {
-					el.style.left = `${profileButton.getBoundingClientRect().right - el.getBoundingClientRect().width}px`;
-					el.style.top = `${profileButton.getBoundingClientRect().bottom}px`;
-				}}
+				ref={el => Popup.setPos(profileButton, el)}
 				class="mt-2"
 			/>
 

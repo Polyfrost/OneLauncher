@@ -1,5 +1,5 @@
 import { Window } from '@tauri-apps/api/window';
-import { ChevronLeftIcon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
+import { ChevronLeftIcon, Maximize02Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
 import Modal from './overlay/Modal';
@@ -25,9 +25,10 @@ function TitlebarButton(props: TitlebarButtonProps) {
 function WindowFrame() {
 	const [isModalVisible, setModalVisible] = createSignal(false);
 
+	const maximize = () => Window.getCurrent().toggleMaximize();
 	const minimize = () => Window.getCurrent().minimize();
 	const quit = () => Window.getCurrent().close();
-	// const kill = () => Window.getCurrent().destroy();
+	const kill = () => Window.getCurrent().destroy();
 
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
@@ -46,6 +47,7 @@ function WindowFrame() {
 
 			<div class="flex flex-row items-center justify-end">
 				<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
+				<TitlebarButton icon={Maximize02Icon} onClick={() => maximize()} />
 				<TitlebarButton icon={XCloseIcon} onClick={() => quit()} danger />
 			</div>
 
@@ -55,7 +57,7 @@ function WindowFrame() {
 				setVisible={setModalVisible}
 				buttons={[
 					<Button buttonStyle="secondary" onClick={() => setModalVisible(false)}>No</Button>,
-					<Button buttonStyle="danger" onClick={() => quit()}>Yes</Button>,
+					<Button buttonStyle="danger" onClick={() => kill()}>Yes</Button>,
 				]}
 			/>
 		</div>

@@ -1,5 +1,5 @@
 import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Index, Match, Switch, createEffect, createSignal } from 'solid-js';
+import { For, Match, Switch, createSignal, onMount } from 'solid-js';
 import * as uuid from 'uuid';
 import uFuzzy from '@leeoniya/ufuzzy';
 import Button from '~ui/components/base/Button';
@@ -19,45 +19,67 @@ const randomModNames = [
 	'PolyEffects',
 ];
 
-const mods: ModEntryProps[] = [];
+const _mods: readonly ModEntryProps[] = Array(randomModNames.length).fill(undefined).map((_, index) => ({
+	id: uuid.v4(),
+	name: randomModNames[index] || 'Unknown',
+	author: 'Author Name',
+	version: '1.0.0',
+	description: 'This is a mod description',
+	provider: 'curseforge',
+	thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
+}));
 
-for (let i = 0; i < randomModNames.length; i++) {
-	mods.push({
-		id: uuid.v4(),
-		name: randomModNames[i] || 'Unknown',
-		author: 'Author Name',
-		version: '1.0.0',
-		description: 'This is a mod description',
-		provider: 'curseforge',
-		thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
-	});
-}
-
+// TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
-	// Search state:
-	// `null` - No search query, show all mods
-	// `[]` - Search query, but no results, show "no results" message
-	// `[...]` - Search query, with results, show results
-	const [indexes, setIndexes] = createSignal<number[] | null>(null);
+	// Initial mods for this cluster
+	const [mods] = createSignal<ModEntryProps[]>([..._mods]); // TODO: Replace with hook
 
-	// State:
-	// true - A to Z
-	// false - Z to A
-	const [sortingName, setSortingName] = createSignal<boolean>(true);
+	// Mods to display, should be a clone of the mods array but sorted
+	const [displayedMods, setDisplayedMods] = createSignal<ModEntryProps[]>([]);
+
+	// true - `A to Z` & false - `Z to A`
+	const [sortingAtoZ, setSortingAtoZ] = createSignal<boolean>(true);
 
 	const uf = new uFuzzy();
-	const modsSearchable = mods
-		.map(mod => mod.name);
+	const [modsSearchable] = createSignal(() => mods().map(mod => mod.name));
 
 	function search(value: string) {
 		if (value === '' || value === undefined) {
-			setIndexes(null);
+			resetMods();
 			return;
 		}
 
-		const result = uf.search(modsSearchable, value);
-		setIndexes(result[0] ?? []);
+		const result = uf.search(modsSearchable()(), value);
+
+		const filtered: ModEntryProps[] = [];
+		result[0]?.forEach((index) => {
+			const mod = mods()[index];
+			if (mod)
+				filtered.push(mod);
+		});
+
+		setDisplayedMods(sortListByName(filtered));
 	}
+
+	function sortListByName(list: ModEntryProps[]): ModEntryProps[] {
+		if (sortingAtoZ())
+			return list.sort((a, b) => a.name.localeCompare(b.name));
+		else
+			return list.sort((a, b) => b.name.localeCompare(a.name));
+	}
+
+	function toggleNameSort() {
+		setSortingAtoZ(!sortingAtoZ());
+		setDisplayedMods(sortListByName([...displayedMods()]));
+	}
+
+	function resetMods() {
+		setDisplayedMods(sortListByName([...mods()]));
+	}
+
+	onMount(() => {
+		resetMods();
+	});
 
 	return (
 		<Sidebar.Page>
@@ -66,8 +88,8 @@ function ClusterMods() {
 				<div class="flex flex-row justify-end items-center gap-x-2">
 					<Button
 						buttonStyle="secondary"
-						iconLeft={sortingName() ? <ChevronUpIcon /> : <ChevronDownIcon />}
-						onClick={() => setSortingName(!sortingName())}
+						iconLeft={sortingAtoZ() ? <ChevronUpIcon /> : <ChevronDownIcon />}
+						onClick={() => toggleNameSort()}
 						children="Name"
 					/>
 
@@ -77,22 +99,15 @@ function ClusterMods() {
 
 			<ScrollableContainer>
 				<Switch>
-					<Match when={indexes() === null}>
-						<For each={mods}>
+					<Match when={displayedMods().length > 0}>
+						<For each={displayedMods()}>
 							{mod => (
 								<ModEntry {...mod} />
 							)}
 						</For>
 					</Match>
-					<Match when={indexes()!.length > 0}>
-						<For each={indexes()}>
-							{(index) => {
-								const mod = mods[index];
-								return !mod ? <></> : <ModEntry {...mod} />;
-							}}
-						</For>
-					</Match>
-					<Match when={indexes()!.length === 0}>
+
+					<Match when={displayedMods().length === 0}>
 						<p class="text-2lg text-center my-4">No mods were found</p>
 					</Match>
 				</Switch>

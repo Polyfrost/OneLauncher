@@ -1,4 +1,4 @@
-import { For, Match, Switch, createSignal, onMount } from 'solid-js';
+import { For, Match, Switch, createEffect, createSignal, onMount } from 'solid-js';
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../Popup';
@@ -23,7 +23,6 @@ function NotificationPopup(props: Popup.PopupProps) {
 		const notis = await manager.getNotifications();
 		setNotifications(notis);
 		updateSize();
-		console.log(notifications());
 	}
 
 	onMount(() => {
@@ -51,17 +50,22 @@ function NotificationPopup(props: Popup.PopupProps) {
 					<div class="flex flex-col justify-start items-stretch text-start gap-2" ref={inner}>
 						<p class="text-2lg px-2 pt-1">Notifications</p>
 
+						{notifications().length}
+
 						<Switch>
-							<Match when={notifications().length !== 0}>
+							<Match when={notifications().length > 0}>
 								<OverlayScrollbarsComponent class="max-h-[min(500px,60vh)] overflow-auto">
 									<div class="flex flex-col-reverse justify-center items-stretch ">
 										<For each={notifications()}>
-											{noti => (
-												<div class="flex flex-col w-full">
-													<NotificationComponent data={noti} overlay={false} />
-													<span class="bg-gray-05 h-px w-full" />
-												</div>
-											)}
+											{(noti) => {
+												console.log(noti);
+												return (
+													<div class="flex flex-col w-full">
+														<NotificationComponent data={noti} overlay={false} />
+														<span class="bg-gray-05 h-px w-full" />
+													</div>
+												);
+											}}
 										</For>
 									</div>
 								</OverlayScrollbarsComponent>

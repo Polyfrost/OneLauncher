@@ -12,26 +12,51 @@ export enum NotificationType {
 	Refresh = 'Refresh',
 }
 
+let _notifications: Core.Notification[] = [];
+
+class _Emitter {
+	private listeners: ((event: string) => unknown)[] = [];
+
+	public emit(event: Core.NotificationEvents) {
+		this.listeners.forEach(value => value(event));
+	}
+
+	public on(callback: (event: string) => unknown) {
+		this.listeners.push(callback);
+	}
+}
+
+const emitter = new _Emitter();
+
 export async function addNotification(notification: MakeOptional<Core.Notification, 'created_at'>): Promise<void> {
-	await invoke('plugin:onelauncher|notifications_add', {
-		notification: {
-			created_at: Math.floor(Date.now() / 1000),
-			...notification,
-		},
+	_notifications.push({
+		created_at: Math.floor(Date.now() / 1000),
+		...notification,
 	});
+	emitter.emit('added');
+	// await invoke('plugin:onelauncher|notifications_add', {
+	// 	notification: {
+	// 		created_at: Math.floor(Date.now() / 1000),
+	// 		...notification,
+	// 	},
+	// });
 }
 
 export async function removeNotification(index: number): Promise<void> {
-	await invoke('plugin:onelauncher|notifications_remove_by_index', { index });
+	_notifications.splice(index, 1);
+	emitter.emit('removed');
+	// await invoke('plugin:onelauncher|notifications_remove_by_index', { index });
 }
 
 export async function clearNotifications(): Promise<void> {
-	await invoke('plugin:onelauncher|notifications_clear');
+	_notifications = [];
+	emitter.emit('cleared');
+	// await invoke('plugin:onelauncher|notifications_clear');
 }
 
 export async function getNotifications(): Promise<Core.Notification[]> {
-	return [];
-	return await invoke('plugin:onelauncher|notifications_get');
+	return [..._notifications];
+	// return await invoke('plugin:onelauncher|notifications_get');
 }
 
 export async function on<
@@ -40,8 +65,13 @@ export async function on<
 	event: T,
 	callback: () => void,
 ): Promise<UnlistenFn> {
-	return await listen<string>(`notifications_event`, (e) => {
-		if (e.payload.toLowerCase() === event)
+	emitter.on((e) => {
+		if (event === e)
 			callback();
 	});
+	return () => {};
+	// return await listen<string>(`notifications_event`, (e) => {
+	// 	if (e.payload.toLowerCase() === event)
+	// 		callback();
+	// });
 };

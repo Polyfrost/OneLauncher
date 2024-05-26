@@ -1,13 +1,14 @@
-import { For, Match, Switch, createEffect, createSignal, onMount } from 'solid-js';
+import { For, Match, Switch, onMount } from 'solid-js';
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../Popup';
 import Button from '../../base/Button';
 import * as manager from '../../../../bridge/notifications';
 import NotificationComponent from './NotificationComponent';
+import useNotifications from '~ui/hooks/useNotifications';
 
 function NotificationPopup(props: Popup.PopupProps) {
-	const [notifications, setNotifications] = createSignal<Core.Notification[]>([]);
+	const [notifications] = useNotifications(updateSize);
 
 	let inner!: HTMLDivElement;
 	let parent!: HTMLDivElement;
@@ -19,12 +20,6 @@ function NotificationPopup(props: Popup.PopupProps) {
 		}
 	}
 
-	async function refetchNotifications() {
-		const notis = await manager.getNotifications();
-		setNotifications(notis);
-		updateSize();
-	}
-
 	onMount(() => {
 		document.addEventListener('keypress', (e) => {
 			if (e.key === 'n') {
@@ -32,40 +27,29 @@ function NotificationPopup(props: Popup.PopupProps) {
 					title: 'Test Notification',
 					message: 'This is a test notification',
 					notification_type: manager.NotificationType.Download,
-					progress: 0.39,
+					...(Math.random() > 0.7 ? { progress: 0.39 } : {}),
 				});
 			}
 		});
-
-		refetchNotifications();
-		manager.on('added', refetchNotifications);
-		manager.on('removed', refetchNotifications);
-		manager.on('cleared', refetchNotifications);
 	});
 
 	return (
 		<Popup {...props}>
 			<div class="bg-secondary rounded-xl border border-gray-10 w-96 p-2 shadow-md shadow-black/30">
-				<div class="overflow-hidden transition-[height]" ref={parent}>
+				<div class="overflow-hidden transition-height" ref={parent}>
 					<div class="flex flex-col justify-start items-stretch text-start gap-2" ref={inner}>
 						<p class="text-2lg px-2 pt-1">Notifications</p>
-
-						{notifications().length}
-
 						<Switch>
 							<Match when={notifications().length > 0}>
 								<OverlayScrollbarsComponent class="max-h-[min(500px,60vh)] overflow-auto">
 									<div class="flex flex-col-reverse justify-center items-stretch ">
 										<For each={notifications()}>
-											{(noti) => {
-												console.log(noti);
-												return (
-													<div class="flex flex-col w-full">
-														<NotificationComponent data={noti} overlay={false} />
-														<span class="bg-gray-05 h-px w-full" />
-													</div>
-												);
-											}}
+											{noti => (
+												<div class="flex flex-col w-full">
+													<NotificationComponent data={noti} overlay={false} />
+													<span class="bg-gray-05 h-px w-full" />
+												</div>
+											)}
 										</For>
 									</div>
 								</OverlayScrollbarsComponent>

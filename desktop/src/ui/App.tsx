@@ -5,6 +5,7 @@ import WindowFrame from './components/WindowFrame';
 import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
 import AnimatedRoutes from './components/AnimatedRoutes';
+import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
 
 function App(props: ParentProps) {
 	if (!environment.isDev()) {
@@ -31,6 +32,8 @@ function App(props: ParentProps) {
 					</ErrorBoundary>
 				</div>
 			</div>
+
+			<NotificationOverlay />
 		</main>
 	);
 }

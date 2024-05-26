@@ -1,7 +1,8 @@
-import { type JSX, Show } from 'solid-js';
+import { type JSX, Show, createEffect, createSignal } from 'solid-js';
 import { AlertTriangleIcon, CheckCircleIcon, FolderCheckIcon, FolderDownloadIcon, FolderXIcon, InfoCircleIcon, RefreshCcw02Icon } from '@untitled-theme/icons-solid';
 import TimeAgo from '../../TimeAgo';
 import { NotificationType } from '../../../../bridge/notifications';
+import { PausableTimer } from '~utils/PausableTimer';
 
 interface NotificationComponentProps {
 	overlay: boolean;
@@ -48,11 +49,75 @@ function ColorFromNotificationType(type: NotificationType): string {
 	}
 }
 
+const TOTAL_SECONDS = 7.5;
+// TODO(refactor): Use only an interval for this (Remove the pausable signal and in the interval, check if elapsed is longer than duraihon)
 function NotificationOverlayComponent(props: NotificationComponentProps) {
+	const [disappearing, setDisappearing] = createSignal<boolean>(true);
+	const [pausable, setPausable] = createSignal<PausableTimer | undefined>();
+	const [interval, setSecondsInterval] = createSignal<PausableTimer | undefined>();
+	const [visible, setVisible] = createSignal<boolean>(true);
+	const [secondsLeft, setSecondsLeft] = createSignal<number>(TOTAL_SECONDS);
+
+	createEffect(() => {
+		setDisappearing(props.data.progress === undefined || props.data.progress > 1);
+
+		if (disappearing()) {
+			initTimers();
+		}
+		else if (pausable()) {
+			clearTimeout(pausable()?.timeout);
+			setPausable(undefined);
+		}
+	});
+
+	function initTimers() {
+		setPausable(new PausableTimer(hide, (TOTAL_SECONDS + 0.5) * 1000));
+		setSecondsInterval(new PausableTimer(onInterval, 1000, true));
+	}
+
+	function onInterval() {
+		setSecondsLeft(secondsLeft() - 1);
+	}
+
+	function hide() {
+		setVisible(false);
+		interval()?.stop();
+		setSecondsInterval(undefined);
+	}
+
+	function onEnter() {
+		pausable()?.pause();
+		interval()?.pause();
+	}
+
+	function onLeave() {
+		pausable()?.resume();
+		interval()?.resume();
+	}
+
 	return (
-		<div>
-			<span>{props.data.title}</span>
-		</div>
+		<Show when={visible()}>
+			<div
+				onMouseEnter={() => onEnter()}
+				onMouseLeave={() => onLeave()}
+				class="flex flex-col overflow-hidden rounded-lg bg-component-bg"
+			>
+				<div class="px-2">
+					<NotificationPopupComponent {...props} />
+				</div>
+
+				<Show when={disappearing()}>
+					<div class="w-full h-1.5 bg-brand-disabled">
+						<div
+							style={{
+								width: `${(secondsLeft() / TOTAL_SECONDS) * 100}%`,
+							}}
+							class="transition-width h-1.5 bg-brand rounded-lg"
+						/>
+					</div>
+				</Show>
+			</div>
+		</Show>
 	);
 }
 
@@ -69,12 +134,14 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 					<span class="text-sm text-white/60">{props.data.message}</span>
 				</div>
 
-				<div class="flex flex-row justify-end items-center gap-1">
-					<span class="text-sm text-white/40">
-						<TimeAgo timestamp={props.data.created_at * 1000} />
-					</span>
-					<span class="w-1.5 h-1.5 rounded-full bg-brand" />
-				</div>
+				<Show when={props.overlay !== true}>
+					<div class="flex flex-row justify-end items-center gap-1">
+						<span class="text-sm text-white/40">
+							<TimeAgo timestamp={props.data.created_at * 1000} />
+						</span>
+						<span class="w-1.5 h-1.5 rounded-full bg-brand" />
+					</div>
+				</Show>
 			</div>
 
 			<Show when={props.data.progress}>

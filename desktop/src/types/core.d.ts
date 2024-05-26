@@ -1,5 +1,6 @@
 declare namespace Core {
     export interface Notification {
+        id: number;
         created_at: number;
         title: string;
         message: string;
@@ -7,5 +8,5 @@ declare namespace Core {
         progress?: number;
     }
 
-    export type NotificationEvents = 'added' | 'removed' | 'cleared';
+    export type NotificationEvents = 'init' | 'added' | 'removed' | 'cleared';
 }

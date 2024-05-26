@@ -28,8 +28,9 @@ class _Emitter {
 
 const emitter = new _Emitter();
 
-export async function addNotification(notification: MakeOptional<Core.Notification, 'created_at'>): Promise<void> {
+export async function addNotification(notification: MakeOptional<Core.Notification, 'id' | 'created_at'>): Promise<void> {
 	_notifications.push({
+		id: _notifications.length + 1,
 		created_at: Math.floor(Date.now() / 1000),
 		...notification,
 	});
@@ -42,7 +43,15 @@ export async function addNotification(notification: MakeOptional<Core.Notificati
 	// });
 }
 
-export async function removeNotification(index: number): Promise<void> {
+export async function removeNotificationById(id: number): Promise<void> {
+	const index = _notifications.findIndex(noti => noti.id === id);
+	if (index > -1) {
+		_notifications.splice(index, 1);
+		emitter.emit('removed');
+	}
+}
+
+export async function removeNotificationByIndex(index: number): Promise<void> {
 	_notifications.splice(index, 1);
 	emitter.emit('removed');
 	// await invoke('plugin:onelauncher|notifications_remove_by_index', { index });

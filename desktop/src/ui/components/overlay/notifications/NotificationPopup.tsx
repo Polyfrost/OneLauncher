@@ -21,14 +21,35 @@ function NotificationPopup(props: Popup.PopupProps) {
 	}
 
 	onMount(() => {
-		document.addEventListener('keypress', (e) => {
+		document.addEventListener('keypress', async (e) => {
 			if (e.key === 'n') {
-				manager.addNotification({
+				const progress = Math.random() > 0.0 ? { progress: 0.39 } : {};
+				const id = await manager.addNotification({
 					title: 'Test Notification',
 					message: 'This is a test notification',
 					notification_type: manager.NotificationType.Download,
-					...(Math.random() > 0.7 ? { progress: 0.39 } : {}),
+					...(progress),
 				});
+
+				// if (progress.progress) {
+				setTimeout(() => {
+					manager.updateNotification(id, {
+						progress: 0.5,
+					});
+				}, 3500);
+
+				setTimeout(() => {
+					manager.updateNotification(id, {
+						progress: 0.75,
+					});
+				}, 8500);
+
+				setTimeout(() => {
+					manager.updateNotification(id, {
+						progress: 1,
+					});
+				}, 13500);
+				// }
 			}
 		});
 	});
@@ -46,7 +67,7 @@ function NotificationPopup(props: Popup.PopupProps) {
 										<For each={notifications()}>
 											{noti => (
 												<div class="flex flex-col w-full">
-													<NotificationComponent data={noti} overlay={false} />
+													<NotificationComponent {...noti} overlay={false} />
 													<span class="bg-gray-05 h-px w-full" />
 												</div>
 											)}

@@ -58,6 +58,21 @@ h4 { @apply text-lg font-medium; }
     transform: translateX(0);
 }
 
+.noti-animation-enter-active, .noti-animation-leave-active {
+    transition: opacity 160ms, transform 175ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.noti-animation-enter, .noti-animation-leave-to {
+    opacity: 0;
+    transform: translateX(75px);
+}
+
+.noti-animation-enter-to, .noti-animation-leave {
+    opacity: 1;
+    transform: translateX(0);
+}
+
 body.reduce-motion * {
     transition-duration: 0.0001ms !important;
     animation-duration: 0.0001ms !important;

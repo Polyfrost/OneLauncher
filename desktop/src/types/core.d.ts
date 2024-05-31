@@ -8,5 +8,5 @@ declare namespace Core {
         progress?: number;
     }
 
-    export type NotificationEvents = 'init' | 'added' | 'removed' | 'cleared';
+    export type NotificationEvents = 'init' | 'modified' | 'added' | 'removed' | 'cleared';
 }

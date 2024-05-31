@@ -2,6 +2,12 @@ import { invoke } from '@tauri-apps/api/core';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { listen } from '@tauri-apps/api/event';
 
+// TODO: Refactor notifications
+// - getNotifications should return a list of notifications
+// - event "update" + "add" + "remove" should emit the event AS WELL AS emitting
+//      the ID of the notification / the entire notification data
+//      so that the frontend can easily find the notification reference and update it without losing reactivity
+
 export enum NotificationType {
 	Info = 'Info',
 	Alert = 'Alert',
@@ -28,13 +34,38 @@ class _Emitter {
 
 const emitter = new _Emitter();
 
-export async function addNotification(notification: MakeOptional<Core.Notification, 'id' | 'created_at'>): Promise<void> {
+export async function updateNotification(id: number, notification: Partial<Core.Notification>): Promise<void> {
+	const index = _notifications.findIndex(noti => noti.id === id);
+	if (index < 0) {
+		console.log('no index');
+		return;
+	}
+
+	const found = _notifications[index];
+	if (!found) {
+		console.log('not found');
+		return;
+	}
+
+	const newNoti = {
+		...found,
+		...notification,
+	};
+
+	_notifications[index] = newNoti;
+	emitter.emit('modified');
+}
+
+export async function addNotification(notification: MakeOptional<Core.Notification, 'id' | 'created_at'>): Promise<number> {
+	const id = notification.id || _notifications.length + 1;
 	_notifications.push({
-		id: _notifications.length + 1,
+		id,
 		created_at: Math.floor(Date.now() / 1000),
 		...notification,
 	});
 	emitter.emit('added');
+	return id;
+
 	// await invoke('plugin:onelauncher|notifications_add', {
 	// 	notification: {
 	// 		created_at: Math.floor(Date.now() / 1000),
@@ -64,8 +95,12 @@ export async function clearNotifications(): Promise<void> {
 }
 
 export async function getNotifications(): Promise<Core.Notification[]> {
-	return [..._notifications];
+	return [..._notifications]; // Destructured to mock the way backend <-> frontend works. (new list gets sent)
 	// return await invoke('plugin:onelauncher|notifications_get');
+}
+
+export async function getNotificationById(id: number): Promise<Core.Notification | undefined> {
+	return _notifications.find(noti => noti.id === id);
 }
 
 export async function on<

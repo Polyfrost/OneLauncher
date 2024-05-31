@@ -1,12 +1,11 @@
-import { type JSX, Show, createEffect, createSignal } from 'solid-js';
+import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
 import { AlertTriangleIcon, CheckCircleIcon, FolderCheckIcon, FolderDownloadIcon, FolderXIcon, InfoCircleIcon, RefreshCcw02Icon } from '@untitled-theme/icons-solid';
 import TimeAgo from '../../TimeAgo';
 import { NotificationType } from '../../../../bridge/notifications';
 import { PausableTimer } from '~utils/PausableTimer';
 
-interface NotificationComponentProps {
+type NotificationComponentProps = Core.Notification & {
 	overlay: boolean;
-	data: Core.Notification;
 };
 
 function IconFromNotificationType(type: NotificationType): (props: JSX.HTMLAttributes<HTMLDivElement>) => JSX.Element {
@@ -49,53 +48,68 @@ function ColorFromNotificationType(type: NotificationType): string {
 	}
 }
 
-const TOTAL_SECONDS = 7.5;
-// TODO(refactor): Use only an interval for this (Remove the pausable signal and in the interval, check if elapsed is longer than duraihon)
+const TOTAL_SECONDS = 7;
 function NotificationOverlayComponent(props: NotificationComponentProps) {
 	const [disappearing, setDisappearing] = createSignal<boolean>(true);
-	const [pausable, setPausable] = createSignal<PausableTimer | undefined>();
-	const [interval, setSecondsInterval] = createSignal<PausableTimer | undefined>();
+	const [timer, setTimer] = createSignal<PausableTimer | undefined>();
 	const [visible, setVisible] = createSignal<boolean>(true);
 	const [secondsLeft, setSecondsLeft] = createSignal<number>(TOTAL_SECONDS);
 
 	createEffect(() => {
-		setDisappearing(props.data.progress === undefined || props.data.progress > 1);
+		setDisappearing(props.progress === undefined);
+
+		if (props.progress !== undefined && props.progress >= 1) {
+			setVisible(false);
+			return;
+		}
 
 		if (disappearing()) {
-			initTimers();
+			setTimer(new PausableTimer(onInterval, 1000, true));
+			return;
 		}
-		else if (pausable()) {
-			clearTimeout(pausable()?.timeout);
-			setPausable(undefined);
+
+		if (timer()) {
+			timer()?.stop();
+			setTimer(undefined);
 		}
 	});
 
-	function initTimers() {
-		setPausable(new PausableTimer(hide, (TOTAL_SECONDS + 0.5) * 1000));
-		setSecondsInterval(new PausableTimer(onInterval, 1000, true));
-	}
+	// onMount(() => {
+	// 	setVisible(true);
+	// });
 
 	function onInterval() {
+		if (secondsLeft() <= 0) {
+			hide();
+			return;
+		}
+
 		setSecondsLeft(secondsLeft() - 1);
 	}
 
 	function hide() {
+		timer()?.stop();
 		setVisible(false);
-		interval()?.stop();
-		setSecondsInterval(undefined);
+		setTimer(undefined);
 	}
 
 	function onEnter() {
-		pausable()?.pause();
-		interval()?.pause();
+		timer()?.pause();
 	}
 
 	function onLeave() {
-		pausable()?.resume();
-		interval()?.resume();
+		timer()?.resume();
 	}
 
 	return (
+	// <Transition
+	// 	enterClass="noti-animation-enter"
+	// 	enterActiveClass="noti-animation-enter-active"
+	// 	enterToClass="noti-animation-enter-to"
+	// 	exitClass="noti-animation-leave"
+	// 	exitActiveClass="noti-animation-leave-active"
+	// 	exitToClass="noti-animation-leave-to"
+	// >
 		<Show when={visible()}>
 			<div
 				onMouseEnter={() => onEnter()}
@@ -106,7 +120,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 					<NotificationPopupComponent {...props} />
 				</div>
 
-				<Show when={disappearing()}>
+				<Show when={disappearing() === true && props.progress === undefined}>
 					<div class="w-full h-1.5 bg-brand-disabled">
 						<div
 							style={{
@@ -118,6 +132,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 				</Show>
 			</div>
 		</Show>
+	// </Transition>
 	);
 }
 
@@ -125,31 +140,31 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 	return (
 		<div class="p-2 flex flex-col gap-y-1">
 			<div class="min-h-10 grid place-items-center grid-cols-[24px_1fr_auto] gap-3">
-				{IconFromNotificationType(props.data.notification_type)({
-					class: `w-6 h-6 ${ColorFromNotificationType(props.data.notification_type)}`,
+				{IconFromNotificationType(props.notification_type)({
+					class: `w-6 h-6 ${ColorFromNotificationType(props.notification_type)}`,
 				})}
 
 				<div class="flex flex-col w-full">
-					<span class={`font-medium ${ColorFromNotificationType(props.data.notification_type)}`}>{props.data.title}</span>
-					<span class="text-sm text-white/60">{props.data.message}</span>
+					<span class={`font-medium ${ColorFromNotificationType(props.notification_type)}`}>{props.title}</span>
+					<span class="text-sm text-white/60">{props.message}</span>
 				</div>
 
 				<Show when={props.overlay !== true}>
 					<div class="flex flex-row justify-end items-center gap-1">
 						<span class="text-sm text-white/40">
-							<TimeAgo timestamp={props.data.created_at * 1000} />
+							<TimeAgo timestamp={props.created_at * 1000} />
 						</span>
 						<span class="w-1.5 h-1.5 rounded-full bg-brand" />
 					</div>
 				</Show>
 			</div>
 
-			<Show when={props.data.progress}>
+			<Show when={props.progress !== undefined}>
 				<div class="rounded-full overflow-hidden h-1.5 bg-brand-disabled w-full">
 					<div
-						class="rounded-full h-full min-w-0 max-w-full bg-brand transition-[width]"
+						class="rounded-full h-full min-w-0 max-w-full bg-brand transition-width"
 						style={{
-							width: `${Math.floor(props.data.progress! * 100)}%`,
+							width: `${Math.floor(props.progress! * 100)}%`,
 						}}
 					/>
 				</div>
@@ -160,9 +175,14 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 
 function NotificationComponent(props: NotificationComponentProps) {
 	return (
-		<>
-			{(props.overlay ? NotificationOverlayComponent : NotificationPopupComponent)(props)}
-		</>
+		<Switch>
+			<Match when={props.overlay === true}>
+				<NotificationOverlayComponent {...props} />
+			</Match>
+			<Match when={props.overlay !== true}>
+				<NotificationPopupComponent {...props} />
+			</Match>
+		</Switch>
 	);
 }
 

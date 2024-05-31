@@ -21,6 +21,7 @@ function useNotifications(onUpdate?: OnUpdateFn): Signal<Notifications> {
 		manager.on('added', () => update('added'));
 		manager.on('removed', () => update('removed'));
 		manager.on('cleared', () => update('cleared'));
+		manager.on('modified', () => update('modified'));
 	});
 
 	return [notifications, setNotifications];

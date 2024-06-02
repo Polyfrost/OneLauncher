@@ -41,6 +41,9 @@ tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-authenticator = { workspace = true }
 
+tauri-specta = { workspace = true }
+specta = { workspace = true }
+
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

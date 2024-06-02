@@ -1,24 +1,9 @@
 use tauri::Manager;
+use crate::api::commands;
 
 pub mod api;
 pub mod error;
 pub mod ext;
-
-// #[tracing::instrument(skip_all)]
-// #[tauri::command]
-// async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
-// 	onelauncher::ProxyState::initialize(app).await?;
-// 	let s = onelauncher::State::get().await?;
-// 	onelauncher::State::update();
-
-// 	s.processor.write().await.restore().await?;
-// 	Ok(())
-// }
-
-#[tauri::command]
-fn is_dev() -> bool {
-	cfg!(debug_assertions)
-}
 
 #[derive(Clone, serde::Serialize)]
 struct SingleInstancePayload {
@@ -33,7 +18,7 @@ pub async fn run() {
 	let _log_guard = onelauncher::start_logger();
 	tracing::info!("initialized tracing subscriber. loading onelauncher...");
 
-	run_app(tauri::Builder::default(), |app| {
+	run_app(|app| {
 		if let Err(err) = setup(app) {
 			tracing::error!("failed to setup app: {:?}", err);
 		}
@@ -41,11 +26,10 @@ pub async fn run() {
 	.await;
 }
 
-pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + 'static>(
-	builder: tauri::Builder<R>,
+pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
 	setup: F,
 ) {
-	let builder = builder
+	let builder = tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
@@ -55,7 +39,7 @@ pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + '
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
-		// .plugin(tauri_plugin_window_state::Builder::default().build())
+		.plugin(tauri_plugin_window_state::Builder::default().build())
 		.menu(tauri::menu::Menu::new)
 		.setup(move |app| {
 			setup(app);
@@ -64,10 +48,14 @@ pub async fn run_app<R: tauri::Runtime, F: FnOnce(&mut tauri::App<R>) + Send + '
 
 	let builder = builder
 		.plugin(api::init())
-		.invoke_handler(tauri::generate_handler![
-			// initialize_state,
-			is_dev,
-		]);
+		.invoke_handler({
+            let builder = commands::test();
+
+            #[cfg(debug_assertions)]
+            let builder = builder.path("../src/bindings.ts");
+
+            builder.build().unwrap()
+        });
 
 	let app = builder
 		.build(tauri::tauri_build_context!())

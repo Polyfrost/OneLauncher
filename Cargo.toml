@@ -4,7 +4,6 @@ members = [
   "core",
   "debugger",
   "desktop/src-tauri",
-  "testing",
 ]
 
 [workspace.package]
@@ -33,7 +32,7 @@ tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace"
 
 rspc = { version = "0.2.0", features = [ "specta2" ] }
 specta = { version = "=2.0.0-rc.12" }
-tauri-specta = { version = "=2.0.0-rc.9", features = [
+tauri-specta = { version = "=2.0.0-rc.10", features = [
   "javascript",
   "typescript"
 ] }

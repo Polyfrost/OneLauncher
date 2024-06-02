@@ -4,6 +4,8 @@ use tauri::plugin::TauriPlugin;
 use tauri::Manager;
 use tokio::sync::Mutex;
 
+pub mod commands;
+
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 	tauri::plugin::Builder::new("onelauncher")
 		.setup(|app, _| {
@@ -11,14 +13,31 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 
 			Ok(())
 		})
-		.invoke_handler(tauri::generate_handler![])
 		.build()
 }
 
 pub type Result<T> = std::result::Result<T, OneLauncherSerializableError>;
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Serialize, specta::Type)]
 pub enum OneLauncherSerializableError {
+    #[error("{0}")]
+    CommonError(String),
+}
+
+impl From<OneLauncherError> for OneLauncherSerializableError {
+    fn from(value: OneLauncherError) -> Self {
+        Self::CommonError(value.to_string())
+    }
+}
+
+impl From<onelauncher::Error> for OneLauncherSerializableError {
+    fn from(value: onelauncher::Error) -> Self {
+        Self::CommonError(value.to_string())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum OneLauncherError {
 	#[error("{0}")]
 	OneLauncher(#[from] onelauncher::Error),
 
@@ -37,14 +56,14 @@ pub enum OneLauncherSerializableError {
 // (yoinked under MIT license)
 macro_rules! impl_serialize_err {
 	($($variant:ident),* $(,)?) => {
-		impl Serialize for OneLauncherSerializableError {
+		impl Serialize for OneLauncherError {
 			fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
 			where
 				S: Serializer,
 			{
                 use serde::ser::SerializeStruct;
 				match self {
-					OneLauncherSerializableError::OneLauncher(onelauncher_error) => {
+					OneLauncherError::OneLauncher(onelauncher_error) => {
 						$crate::error::display_tracing_error(onelauncher_error);
 
 						let mut state = serializer.serialize_struct("OneLauncher", 2)?;
@@ -53,7 +72,7 @@ macro_rules! impl_serialize_err {
 						state.end()
 					}
 					$(
-						OneLauncherSerializableError::$variant(message) => {
+						OneLauncherError::$variant(message) => {
 							let mut state = serializer.serialize_struct(stringify!($variant), 2)?;
 							state.serialize_field("field_name", stringify!($variant))?;
 							state.serialize_field("message", &message.to_string())?;

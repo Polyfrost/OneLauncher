@@ -26,6 +26,7 @@ const CLUSTER_JSON: &str = "cluster.json";
 pub(crate) struct Clusters(pub HashMap<ClusterPath, Cluster>);
 
 /// Core Cluster stages used in package logic.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClusterStage {
@@ -141,6 +142,7 @@ impl From<InnerPathLinux> for RawPackagePath {
 }
 
 /// Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(transparent)]
 pub struct PackagePath(pub PathBuf);
@@ -187,6 +189,7 @@ impl PackagePath {
 
 /// Represents a single Instance and installation of Minecraft
 /// Contains settings and identifiers on a per-Cluster basis, falling back to default settings for Options<>
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cluster {
 	/// The Uuid of a specific cluster.
@@ -219,6 +222,7 @@ pub struct Cluster {
 }
 
 /// Represents core Cluster metadata ([`Cluster#meta`]).
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ClusterMeta {
 	/// The user-facing name of the cluster stored as a string.
@@ -267,6 +271,7 @@ pub struct ClusterMeta {
 }
 
 /// Optional data used to link a specific cluster to a package project.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PackageData {
 	/// The package ID as a String.
@@ -283,6 +288,7 @@ pub fn default_locked() -> Option<bool> {
 }
 
 /// Available mod loaders to be used for a cluster.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Loader {
@@ -330,6 +336,7 @@ impl Loader {
 
 /// Custom Java arguments on a per-cluster basis.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct JavaOptions {
 	/// A custom java version from the global java store, if specified.
 	#[serde(skip_serializing_if = "Option::is_none")]

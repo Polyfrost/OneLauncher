@@ -138,6 +138,7 @@ pub enum Theme {
 
 /// Global memory settings across all clusters.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct Memory {
 	/// Maximum amount of Java memory available globally.
 	pub maximum: u32,
@@ -156,6 +157,7 @@ impl Default for Memory {
 
 /// Global Minecraft resolution.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct Resolution(pub u16, pub u16);
 
 impl Default for Resolution {
@@ -167,6 +169,7 @@ impl Default for Resolution {
 /// Global initialization hooks for all Minecraft clusters.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct InitHooks {
 	/// Pre-launch hook.
 	#[serde(skip_serializing_if = "Option::is_none")]

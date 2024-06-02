@@ -23,6 +23,7 @@ use super::io;
 /// Use [`locate_java`] to get an array of all located java instances on the machine
 /// paths from https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp under GPL 3.0
 /// paths and java_check from https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs under MIT
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct JavaVersion {
 	pub version: String,

@@ -138,6 +138,7 @@ impl PackageType {
 
 /// A struct that represents a Package.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct Package {
 	pub sha512: String,
 	pub meta: PackageMetadata,
@@ -146,6 +147,7 @@ pub struct Package {
 }
 
 /// Metadata that represents a [`Package`].
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PackageMetadata {
@@ -168,6 +170,7 @@ pub enum PackageMetadata {
 }
 
 /// Universal metadata for any managed package from a Mod distribution platform.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedPackage {
 	// Core Metadata
@@ -193,6 +196,7 @@ pub struct ManagedPackage {
 }
 
 /// Universal managed package version of a package.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedVersion {
 	pub id: String,
@@ -216,6 +220,7 @@ pub struct ManagedVersion {
 }
 
 /// Universal interface for managed package files.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedVersionFile {
 	pub url: String,
@@ -228,6 +233,7 @@ pub struct ManagedVersionFile {
 }
 
 /// Universal interface for managed package dependencies.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedDependency {
 	pub version_id: Option<String>,
@@ -237,6 +243,7 @@ pub struct ManagedDependency {
 }
 
 /// Universal interface for managed package authors and users.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedUser {
 	pub id: String,
@@ -249,6 +256,7 @@ pub struct ManagedUser {
 }
 
 /// The type of a [`ManagedDependency`].
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum PackageDependency {
 	Required,
@@ -259,7 +267,8 @@ pub enum PackageDependency {
 
 /// The Client/Server side type of a [`Package`].
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
+// #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub enum PackageSide {
 	Required,
 	Optional,
@@ -268,8 +277,9 @@ pub enum PackageSide {
 }
 
 /// The file type of a [`Package`].
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "kebab-case")]
+// #[serde(rename_all = "kebab-case")]
 pub enum PackageFile {
 	RequiredPack,
 	OptionalPack,

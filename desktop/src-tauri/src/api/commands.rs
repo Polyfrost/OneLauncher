@@ -1,4 +1,3 @@
-use tauri_specta::{Builder, ExportLanguage};
 use crate::api;
 
 #[macro_export]
@@ -13,15 +12,6 @@ macro_rules! collect_commands {
                 ])
         }
     };
-}
-
-pub fn test() -> Builder {
-    use crate::api::commands::*;
-    tauri_specta::ts::builder()
-        .commands(tauri_specta::collect_commands![
-            initialize_state,
-            is_dev
-        ])
 }
 
 #[specta::specta]

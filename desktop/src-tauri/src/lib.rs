@@ -1,5 +1,4 @@
 use tauri::Manager;
-use crate::api::commands;
 
 pub mod api;
 pub mod error;
@@ -49,7 +48,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
 	let builder = builder
 		.plugin(api::init())
 		.invoke_handler({
-            let builder = commands::test();
+            let builder = collect_commands!();
 
             #[cfg(debug_assertions)]
             let builder = builder.path("../src/bindings.ts");

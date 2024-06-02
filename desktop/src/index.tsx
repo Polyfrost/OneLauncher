@@ -2,6 +2,7 @@
 import { render } from 'solid-js/web';
 
 import './imports';
+import * as bridge from "./bindings";
 
 import { Route, Router } from '@solidjs/router';
 import App from './ui/App';
@@ -10,6 +11,8 @@ import BrowserPage from './ui/pages/Browser';
 import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
+
+bridge.commands.initializeState()
 
 render(() => (
 	<Router root={App}>

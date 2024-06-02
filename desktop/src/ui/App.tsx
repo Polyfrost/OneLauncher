@@ -16,7 +16,7 @@ function App(props: ParentProps) {
 
 	return (
 		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
-			<ErrorBoundary><WindowFrame /></ErrorBoundary>
+			<WindowFrame />
 			<div class="flex flex-col px-8">
 				<Navbar />
 			</div>

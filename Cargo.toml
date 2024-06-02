@@ -57,7 +57,7 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 ], default-features = false }
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "dd85302dddc14861b60829cf8c71f52ffd6a7851" }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "909a08897a5dc6f9e13729c3e6c622f045496801", features = [ "specta" ] }
 
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
@@ -82,7 +82,7 @@ uuid = { version = "1.8", features = [
   "serde",
   "v4"
 ] }
-tokio = { version = "1.37", features = [ "full" ] }
+tokio = { version = "1.38", features = [ "full" ] }
 async-tungstenite = { version = "0.25", features = [
   "tokio-runtime",
   "tokio-rustls-native-certs"

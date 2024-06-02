@@ -6,6 +6,7 @@ use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use specta::specta;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
@@ -267,7 +268,7 @@ pub enum PackageDependency {
 
 /// The Client/Server side type of a [`Package`].
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-// #[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub enum PackageSide {
 	Required,
@@ -279,7 +280,7 @@ pub enum PackageSide {
 /// The file type of a [`Package`].
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
-// #[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum PackageFile {
 	RequiredPack,
 	OptionalPack,

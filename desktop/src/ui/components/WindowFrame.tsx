@@ -40,7 +40,7 @@ function WindowFrame() {
 	});
 
 	return (
-		<div data-tauri-drag-region class="flex flex-row justify-between items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
+		<div data-tauri-drag-region class="z-[99999] flex flex-row justify-between items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
 			<div class="flex flex-row items-center">
 				<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
 			</div>

@@ -103,6 +103,7 @@ interface LaunchCallbacks {
 };
 
 export function launchCluster(uuid: string, callbacks?: LaunchCallbacks): Promise<number> {
+    return;
 	// eslint-disable-next-line no-async-promise-executor
 	return new Promise(async (resolve) => {
 		let unlisten_stdout: UnlistenFn | undefined;

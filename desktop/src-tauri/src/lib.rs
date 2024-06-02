@@ -10,6 +10,16 @@ struct SingleInstancePayload {
 	cwd: String,
 }
 
+#[tracing::instrument(skip_all)]
+async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
+	onelauncher::ProxyState::initialize(app).await?;
+	let s = onelauncher::State::get().await?;
+	onelauncher::State::update();
+
+	s.processor.write().await.restore().await?;
+	Ok(())
+}
+
 pub async fn run() {
 	// initializes the logger and runs the app. if the logger fails to initialize
 	// we panic because nothing else can be debugged once the logger fails.
@@ -59,6 +69,8 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
 	let app = builder
 		.build(tauri::tauri_build_context!())
 		.expect("failed to build tauri application");
+
+    initialize_state(app.app_handle().clone()).await;
 
 	app.run(|_app_handle, _event| {})
 }

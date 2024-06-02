@@ -2,7 +2,6 @@
 import { render } from 'solid-js/web';
 
 import './imports';
-import * as bridge from "./bindings";
 
 import { Route, Router } from '@solidjs/router';
 import App from './ui/App';
@@ -12,18 +11,16 @@ import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
 
-bridge.commands.initializeState()
-
 render(() => (
-	<Router root={App}>
-		<Route path="/" component={HomePage} />
-		<Route path="/browser" component={BrowserPage} />
-		<Route path="/updates" component={UpdatesPage} />
-		<Route path="/clusters" component={ClusterRoot}>
-			<ClusterRoot.Routes />
-		</Route>
-		<Route path="/settings" component={SettingsRoot}>
-			<SettingsRoot.Routes />
-		</Route>
-	</Router>
+    <Router root={App}>
+        <Route path="/" component={HomePage} />
+        <Route path="/browser" component={BrowserPage} />
+        <Route path="/updates" component={UpdatesPage} />
+        <Route path="/clusters" component={ClusterRoot}>
+            <ClusterRoot.Routes />
+        </Route>
+        <Route path="/settings" component={SettingsRoot}>
+            <SettingsRoot.Routes />
+        </Route>
+    </Router>
 ), document.getElementById('root') as HTMLElement);

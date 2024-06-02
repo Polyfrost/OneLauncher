@@ -1,28 +1,29 @@
 import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
 import { AlertTriangleIcon, CheckCircleIcon, FolderCheckIcon, FolderDownloadIcon, FolderXIcon, InfoCircleIcon, RefreshCcw02Icon } from '@untitled-theme/icons-solid';
 import TimeAgo from '../../TimeAgo';
-import { NotificationType } from '../../../../bridge/notifications';
 import { PausableTimer } from '~utils/PausableTimer';
 
 type NotificationComponentProps = Core.Notification & {
 	overlay: boolean;
 };
 
+type NotificationType = '';
+
 function IconFromNotificationType(type: NotificationType): (props: JSX.HTMLAttributes<HTMLDivElement>) => JSX.Element {
 	switch (type) {
-		case NotificationType.Alert:
-			return AlertTriangleIcon as any;
-		case NotificationType.Download:
-			return FolderDownloadIcon as any;
-		case NotificationType.DownloadSuccess:
-			return FolderCheckIcon as any;
-		case NotificationType.DownloadError:
-			return FolderXIcon as any;
-		case NotificationType.Refresh:
-			return RefreshCcw02Icon as any;
-		case NotificationType.Success:
-			return CheckCircleIcon as any;
-		case NotificationType.Info:
+		// case NotificationType.Alert:
+		// 	return AlertTriangleIcon as any;
+		// case NotificationType.Download:
+		// 	return FolderDownloadIcon as any;
+		// case NotificationType.DownloadSuccess:
+		// 	return FolderCheckIcon as any;
+		// case NotificationType.DownloadError:
+		// 	return FolderXIcon as any;
+		// case NotificationType.Refresh:
+		// 	return RefreshCcw02Icon as any;
+		// case NotificationType.Success:
+		// 	return CheckCircleIcon as any;
+		// case NotificationType.Info:
 		default:
 			return InfoCircleIcon as any;
 	}
@@ -30,19 +31,19 @@ function IconFromNotificationType(type: NotificationType): (props: JSX.HTMLAttri
 
 function ColorFromNotificationType(type: NotificationType): string {
 	switch (type) {
-		case NotificationType.Info:
-		case NotificationType.Refresh:
-			return 'text-brand';
+		// case NotificationType.Info:
+		// case NotificationType.Refresh:
+		// 	return 'text-brand';
 
-		case NotificationType.Alert:
-		case NotificationType.DownloadError:
-			return 'text-danger';
+		// case NotificationType.Alert:
+		// case NotificationType.DownloadError:
+		// 	return 'text-danger';
 
-		case NotificationType.DownloadSuccess:
-		case NotificationType.Success:
-			return 'text-success';
+		// case NotificationType.DownloadSuccess:
+		// case NotificationType.Success:
+		// 	return 'text-success';
 
-		case NotificationType.Download:
+		// case NotificationType.Download:
 		default:
 			return 'text-fg-primary';
 	}

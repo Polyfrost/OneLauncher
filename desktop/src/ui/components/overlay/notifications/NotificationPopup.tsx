@@ -3,7 +3,6 @@ import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../Popup';
 import Button from '../../base/Button';
-import * as manager from '../../../../bridge/notifications';
 import NotificationComponent from './NotificationComponent';
 import useNotifications from '~ui/hooks/useNotifications';
 
@@ -20,39 +19,19 @@ function NotificationPopup(props: Popup.PopupProps) {
 		}
 	}
 
-	onMount(() => {
-		document.addEventListener('keypress', async (e) => {
-			if (e.key === 'n') {
-				const progress = Math.random() > 0.0 ? { progress: 0.39 } : {};
-				const id = await manager.addNotification({
-					title: 'Test Notification',
-					message: 'This is a test notification',
-					notification_type: manager.NotificationType.Download,
-					...(progress),
-				});
-
-				// if (progress.progress) {
-				setTimeout(() => {
-					manager.updateNotification(id, {
-						progress: 0.5,
-					});
-				}, 3500);
-
-				setTimeout(() => {
-					manager.updateNotification(id, {
-						progress: 0.75,
-					});
-				}, 8500);
-
-				setTimeout(() => {
-					manager.updateNotification(id, {
-						progress: 1,
-					});
-				}, 13500);
-				// }
-			}
-		});
-	});
+	// onMount(() => {
+	// 	document.addEventListener('keypress', async (e) => {
+	// 		if (e.key === 'n') {
+	// 			const progress = Math.random() > 0.0 ? { progress: 0.39 } : {};
+	// 			const id = await manager.addNotification({
+	// 				title: 'Test Notification',
+	// 				message: 'This is a test notification',
+	// 				notification_type: manager.NotificationType.Download,
+	// 				...(progress),
+	// 			});
+	// 		}
+	// 	});
+	// });
 
 	return (
 		<Popup {...props}>
@@ -82,7 +61,7 @@ function NotificationPopup(props: Popup.PopupProps) {
 						</Switch>
 
 						<div class="flex flex-row justify-between items-end">
-							<Button onClick={() => manager.clearNotifications()} buttonStyle="ghost" iconLeft={<Trash01Icon />}>
+							<Button onClick={() => {}} buttonStyle="ghost" iconLeft={<Trash01Icon />}>
 								Clear Notifications
 							</Button>
 

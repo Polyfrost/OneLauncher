@@ -7,11 +7,10 @@ import {
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import type { Accessor, Setter } from 'solid-js';
-import { For, Show, createResource, createSignal } from 'solid-js';
+import { For, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import image from '../../assets/images/header.png';
 import ContextMenu from '../components/overlay/ContextMenu';
-import { createCluster, getClustersGrouped, launchCluster } from '../../bridge/game';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
@@ -75,16 +74,6 @@ function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 		navigate(`/clusters/?id=${props.id}`);
 	}
 
-	async function launch() {
-		const exit_code = await launchCluster(props.id, {
-			on_launch: pid => console.log('Launched with PID:', pid),
-			on_stdout: line => console.log('STDOUT:', line),
-			on_stderr: line => console.log('STDERR:', line),
-		});
-
-		console.log('Exit with code: ', exit_code);
-	}
-
 	return (
 		<ContextMenu
 			pos={props.pos}
@@ -102,7 +91,7 @@ function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 			<ContextMenu.Row
 				icon={<PlayIcon />}
 				text="Launch"
-				onClick={() => launch()}
+				onClick={() => {}}
 			/>
 		</ContextMenu>
 	);
@@ -192,20 +181,20 @@ function ClusterGroup(props: ClusterGroupProps) {
 }
 
 function HomePage() {
-	const [clusters, { refetch }] = createResource(getClustersGrouped);
+	// const [clusters, { refetch }] = createResource(getClustersGrouped);
 
 	async function newInstance() {
-		await createCluster({
-			name: '1.0 cluster',
-			version: 'a1.0.11',
-			client: {
-				type: 'Vanilla',
-			},
-			cover: null,
-			group: null,
-		});
+		// await createCluster({
+		// 	name: '1.0 cluster',
+		// 	version: 'a1.0.11',
+		// 	client: {
+		// 		type: 'Vanilla',
+		// 	},
+		// 	cover: null,
+		// 	group: null,
+		// });
 
-		await refetch();
+		// await refetch();
 	}
 
 	return (
@@ -232,13 +221,13 @@ function HomePage() {
 				</div>
 			</div>
 
-			<Show when={clusters() !== undefined}>
+			{/* <Show when={clusters() !== undefined}>
 				<For each={Array.from(clusters()!.entries())}>
 					{([title, clusters]) => (
 						<ClusterGroup title={title} clusters={clusters} />
 					)}
 				</For>
-			</Show>
+			</Show> */}
 		</div>
 	);
 }

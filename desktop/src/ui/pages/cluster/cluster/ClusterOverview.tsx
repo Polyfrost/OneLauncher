@@ -5,7 +5,6 @@ import useCluster from '../../../hooks/useCluster';
 import ClusterCover from '../../../components/game/ClusterCover';
 import LoaderIcon from '../../../components/game/LoaderIcon';
 import Button from '../../../components/base/Button';
-import { launchCluster } from '../../../../bridge/game';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 
@@ -63,7 +62,7 @@ function Banner({ cluster, manifest }: Core.ClusterWithManifest) {
 					iconLeft={<PlayIcon />}
 					children="Launch"
 					class="!w-auto"
-					onClick={() => launchCluster(cluster.id)}
+					onClick={() => {}}
 				/>
 			</div>
 		</div>

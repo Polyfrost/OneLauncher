@@ -1,12 +1,11 @@
 import { createResource } from 'solid-js';
 import type { JSX } from 'solid-js';
-import * as auth from '../../../bridge/auth';
 import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & { uuid: string };
 
 async function fetchHeadSrc(uuid: string) {
-	return await auth.getUuidHeadSrc(uuid);
+	return `https://crafatar.com/avatars/${uuid}?size=32`;
 }
 
 function PlayerHead(props: PlayerHeadProps) {

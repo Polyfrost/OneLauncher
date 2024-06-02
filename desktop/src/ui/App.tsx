@@ -1,14 +1,14 @@
 import type { ParentProps } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import environment from '../utils/environment';
 import WindowFrame from './components/WindowFrame';
 import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
 import AnimatedRoutes from './components/AnimatedRoutes';
 import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
+import { bridge } from '~index';
 
 function App(props: ParentProps) {
-	if (!environment.isDev()) {
+	if (!bridge.commands.isDev()) {
 		document.addEventListener('contextmenu', (event) => {
 			event.preventDefault();
 		});

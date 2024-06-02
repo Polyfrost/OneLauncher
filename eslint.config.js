@@ -22,6 +22,7 @@ export default petal({
 		'*.rs',
 		'pnpm-lock.yaml',
 		'./src-tauri/prisma/migrations/migration_lock.toml',
+		'./desktop/src/bindings.ts',
 	],
 }).append([
 	{

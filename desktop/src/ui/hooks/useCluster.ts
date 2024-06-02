@@ -1,6 +1,9 @@
 import type { Resource } from 'solid-js';
 import { createResource } from 'solid-js';
-import { getCluster } from '../../bridge/game';
+
+function getCluster(uuid: string): Core.ClusterWithManifest {
+	throw new Error('get cluster');
+}
 
 function useCluster(uuid: string | undefined | null): Resource<Core.ClusterWithManifest> | null {
 	if (typeof uuid !== 'string' || uuid.length === 0)

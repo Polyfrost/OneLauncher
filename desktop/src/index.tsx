@@ -11,6 +11,8 @@ import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
 
+export * as bridge from "./bindings";
+
 render(() => (
     <Router root={App}>
         <Route path="/" component={HomePage} />

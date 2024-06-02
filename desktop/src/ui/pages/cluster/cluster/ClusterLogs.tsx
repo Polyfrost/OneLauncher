@@ -1,29 +1,30 @@
 import { useSearchParams } from '@solidjs/router';
 import { For, Show, createEffect, createResource, createSignal } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { getClusterLog, getClusterLogs } from '../../../../bridge/game';
 
 function ClusterLogs() {
 	const [params] = useSearchParams();
-	const [logs] = createResource(params.id, getClusterLogs);
+	const [logs] = createResource(params.id, async (uuid: string) => {
+		return [] as string[];
+	});
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
 	const [log, setLog] = createSignal<string | null>(null);
 
-	createEffect(() => {
-		const log = logs()?.[0];
+	// createEffect(() => {
+	// 	const log = logs()?.[0];
 
-		// Set default log to the first file
-		if (log && activeLogFile() === null)
-			setActiveLogFile(log);
+	// 	// Set default log to the first file
+	// 	if (log && activeLogFile() === null)
+	// 		setActiveLogFile(log);
 
-		// Fetch log content
-		if (activeLogFile() !== null) {
-			getClusterLog(params.id!, activeLogFile()!).then((log) => {
-				setLog(log);
-			});
-		}
-	});
+	// 	// Fetch log content
+	// 	if (activeLogFile() !== null) {
+	// 		getClusterLog(params.id!, activeLogFile()!).then((log) => {
+	// 			setLog(log);
+	// 		});
+	// 	}
+	// });
 
 	return (
 		<div class="flex flex-col flex-1">

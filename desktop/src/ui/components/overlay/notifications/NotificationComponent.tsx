@@ -1,5 +1,5 @@
 import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
-import { AlertTriangleIcon, CheckCircleIcon, FolderCheckIcon, FolderDownloadIcon, FolderXIcon, InfoCircleIcon, RefreshCcw02Icon } from '@untitled-theme/icons-solid';
+import { InfoCircleIcon } from '@untitled-theme/icons-solid';
 import TimeAgo from '../../TimeAgo';
 import { PausableTimer } from '~utils/PausableTimer';
 

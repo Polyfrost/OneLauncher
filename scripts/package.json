@@ -17,11 +17,11 @@
 		"tauri": "tsx tauri.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.2.1",
+		"@flowr/utils": "^3.5.2",
 		"@iarna/toml": "^2.2.5",
 		"execa": "^9.1.0",
 		"semver": "^7.6.2",
-		"undici": "^6.16.1"
+		"undici": "^6.18.2"
 	},
 	"devDependencies": {
 		"@types/iarna__toml": "^2.0.5",

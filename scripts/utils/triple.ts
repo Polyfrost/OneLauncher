@@ -7,7 +7,7 @@ const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 	libc: 'glibc',
 };
 
-if (os.type() === 'Linux') {
+if (os.type() === 'Linux')
 	try {
 		const lldResult = await execaCommand('ldd /bin/ls');
 		if (lldResult.stdout.includes('msl'))
@@ -19,7 +19,6 @@ if (os.type() === 'Linux') {
 			console.error(error);
 		}
 	}
-}
 
 const OS_TYPE: Record<string, string> = {
 	darwin: 'Darwin',

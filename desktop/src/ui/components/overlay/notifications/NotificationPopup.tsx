@@ -1,4 +1,4 @@
-import { For, Match, Switch, onMount } from 'solid-js';
+import { For, Match, Switch } from 'solid-js';
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../Popup';

@@ -8,11 +8,10 @@ import NotificationOverlay from './components/overlay/notifications/Notification
 import { bridge } from '~index';
 
 function App(props: ParentProps) {
-	if (!bridge.commands.isDev()) {
+	if (!bridge.commands.isDev())
 		document.addEventListener('contextmenu', (event) => {
 			event.preventDefault();
 		});
-	}
 
 	return (
 		<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">

@@ -22,10 +22,9 @@ function TimeAgo(props: TimeAgoProps) {
 		const getRelativeTime = (timestamp: number): string => {
 			const elapsed = timestamp - Date.now();
 
-			for (const [unit, ms] of Object.entries(units)) {
+			for (const [unit, ms] of Object.entries(units))
 				if (Math.abs(elapsed) > ms || unit === 'second')
 					return formatter.format(Math.round(elapsed / ms), unit as Intl.RelativeTimeFormatUnit);
-			}
 
 			return 'now';
 		};

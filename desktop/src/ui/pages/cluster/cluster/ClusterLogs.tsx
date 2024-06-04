@@ -1,5 +1,5 @@
 import { useSearchParams } from '@solidjs/router';
-import { For, Show, createEffect, createResource, createSignal } from 'solid-js';
+import { For, Show, createResource, createSignal } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 
 function ClusterLogs() {

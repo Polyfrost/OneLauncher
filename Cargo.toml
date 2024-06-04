@@ -37,7 +37,7 @@ specta = { version = "=2.0.0-rc.12", features = [
   "serde",
   "serde_json"
 ] }
-tauri-specta = { version = "=2.0.0-rc.10", features = [
+tauri-specta = { version = "=2.0.0-rc.11", features = [
   "javascript",
   "typescript"
 ] }
@@ -57,7 +57,7 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 ], default-features = false }
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "909a08897a5dc6f9e13729c3e6c622f045496801", features = [ "specta" ] }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "d946e86da93e110468c9e436dccc84139f353496", features = [ "specta" ] }
 
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
@@ -66,7 +66,7 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 tracing-error = { version = "0.2" }
 tracing-appender = { version = "0.2" }
-sentry = { version = "0.32", default-features = false, features = [
+sentry = { version = "0.33", default-features = false, features = [
   "rustls",
   "reqwest",
   "backtrace",
@@ -83,7 +83,7 @@ uuid = { version = "1.8", features = [
   "v4"
 ] }
 tokio = { version = "1.38", features = [ "full" ] }
-async-tungstenite = { version = "0.25", features = [
+async-tungstenite = { version = "0.26", features = [
   "tokio-runtime",
   "tokio-rustls-native-certs"
 ] }
@@ -104,10 +104,10 @@ reqwest = { version = "0.12", default-features = false, features = [
   "gzip",
   "brotli"
 ] }
-iota_stronghold = { version = "2" }
+iota_stronghold = { version = "2.1" }
 iota-crypto = { version = "0.23" }
-hex = { version = "0.4" }
-zeroize = { version = "1", features = [ "zeroize_derive" ] }
+hex = { version = "0.4.3" }
+zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 quote = { version = "1.0" }
 syn = { version = "2.0", features = [ "full" ] }
 tempfile = { version = "3.10" }
@@ -125,7 +125,7 @@ open = { version = "5.1" }
 discord-rich-presence = { version = "0.2" }
 winreg = { version = "0.52" }
 paste = { version = "1.0" }
-sha1_smol = { version = "1.0", features = [ "std" ] }
+sha1_smol = { version = "1.0.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
 bytes = { version = "1.6" }
 lazy_static = { version = "1.4" }
@@ -142,7 +142,7 @@ cocoa = { version = "0.25" }
 objc = { version = "0.2" }
 
 [patch.crates-io]
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "f3bc75ec6120ea0fc6cd8e2e2e3aebef049e93cb" }
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
 rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "f250409db9e21a67ae252c963d605f863f73d5f0" }
 
 [profile.dev]

@@ -93,5 +93,5 @@
 		"package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, pnpm-workspace.yaml, .pnp.cjs, .pnp.loader.mjs",
 		"tsconfig.json": "tsconfig.*.json",
 		"flake.nix": "shell.nix, flake.lock, Cargo.nix"
-    }
+	}
 }

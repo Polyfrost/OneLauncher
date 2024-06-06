@@ -18,7 +18,7 @@
 		"@rspc/solid": "^0.2.0",
 		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/deep": "^0.2.8",
-		"@tanstack/solid-query": "^5.40.0",
+		"@tanstack/solid-query": "^5.40.1",
 		"fast-equals": "^5.0.1",
 		"plausible-tracker": "^0.3.9",
 		"solid-js": "^1.8.17",

@@ -228,7 +228,7 @@ pub async fn delete_logs_by_file(
 	};
 
 	let path = logs_folder.join(log_file);
-	io::remove_dir_all(&path).await?;
+	io::remove_file(&path).await?;
 	Ok(())
 }
 

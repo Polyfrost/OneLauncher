@@ -142,7 +142,7 @@ impl State {
 		}?;
 
 		let ingress_processor = IngressProcessor::new();
-		let discord_rpc = DiscordRPC::initialize(is_offline).await?;
+		let discord_rpc = DiscordRPC::initialize(is_offline || settings.disable_discord).await?;
 		if !settings.disable_discord && !is_offline {
 			let _ = discord_rpc.apply_activity("Idling...", true).await;
 		}

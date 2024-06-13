@@ -8,7 +8,7 @@ type SidebarProps = ParentProps & {
 	};
 	base: string;
 	links: {
-		[key: string]: [JSX.Element, string, string][];
+		[key: string]: ([JSX.Element, string, string] | undefined)[];
 	};
 };
 
@@ -44,19 +44,24 @@ function Sidebar(props: SidebarProps) {
 							<h3 class="text-fg-secondary text-xs font-medium m-1.5 mt-5">{section.toUpperCase()}</h3>
 							<div class="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
 								<For each={props.links[section]}>
-									{link => (
-										<a
-											onClick={() => goto(link[2])}
-											class={
-                                                `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-05' : ''}`
-                                            }
-										>
-											<span class="flex flex-row items-center gap-x-3 *:w-5">
-												{link[0]}
-												{link[1]}
-											</span>
-										</a>
-									)}
+									{(link) => {
+										if (!link)
+											return;
+
+										return (
+											<a
+												onClick={() => goto(link[2])}
+												class={
+                                                    `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-05' : ''}`
+                                                }
+											>
+												<span class="flex flex-row items-center gap-x-3 *:w-5">
+													{link[0]}
+													{link[1]}
+												</span>
+											</a>
+										);
+									}}
 								</For>
 							</div>
 						</div>

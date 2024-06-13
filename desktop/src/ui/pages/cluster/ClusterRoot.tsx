@@ -8,6 +8,7 @@ import ClusterOverview from './cluster/ClusterOverview';
 import ClusterLogs from './cluster/ClusterLogs';
 import ClusterMods from './cluster/ClusterMods';
 import ClusterScreenshots from './cluster/ClusterScreenshots';
+import useCluster from '~ui/hooks/useCluster';
 
 function ClusterRoutes() {
 	return (
@@ -22,18 +23,25 @@ function ClusterRoutes() {
 
 function ClusterRoot(props: ParentProps) {
 	const [searchParams] = useSearchParams();
+	const cluster = useCluster(searchParams.id);
+
+	if (!cluster) {
+		location.href = '/';
+		return;
+	}
 
 	return (
 		<div class="flex flex-row flex-1 h-full gap-x-7">
 			<div class="mt-8">
 				<Sidebar
 					base="/clusters"
-					state={{ id: searchParams.id }}
+					state={{ id: cluster()!.uuid }}
 					links={{
 						Cluster: [
 							[<EyeIcon />, 'Overview', '/'],
 							// [<User01Icon />, 'Accounts', '/users'],
-							[<PackagePlusIcon />, 'Mods', '/mods'],
+							// TODO: Better way of checking mods
+							(cluster()?.meta.loader !== 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
 							[<Image03Icon />, 'Screenshots', '/screenshots'],
 							[<Globe04Icon />, 'Worlds', '/worlds'],
 							[<File06Icon />, 'Logs', '/logs'],

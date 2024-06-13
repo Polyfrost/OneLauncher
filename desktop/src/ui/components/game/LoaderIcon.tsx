@@ -3,28 +3,30 @@ import fabric from '~assets/logos/fabric.png';
 import forge from '~assets/logos/forge.png';
 import quilt from '~assets/logos/quilt.png';
 import vanilla from '~assets/logos/vanilla.png';
+import type { Loader } from '~bindings';
 
-export function getLoaderIcon(loader: Core.Loader) {
+export function getLoaderIcon(loader: Loader): string {
 	switch (loader) {
-		case 'Vanilla':
-			return vanilla;
-		case 'Forge':
+		case 'forge':
 			return forge;
-		case 'Fabric':
+		case 'fabric':
 			return fabric;
-		case 'Quilt':
+		case 'quilt':
 			return quilt;
+		case 'vanilla':
+		default:
+			return vanilla;
 	}
 }
 
 type LoaderIconProp = JSX.HTMLAttributes<HTMLImageElement> & {
-	loader: Core.Loader;
+	loader: Loader | undefined;
 };
 
 function LoaderIcon(props: LoaderIconProp) {
-	const [split, rest] = splitProps(props, ['loader']);
+	const [{ loader = 'vanilla' }, rest] = splitProps(props, ['loader']);
 	return (
-		<img {...rest} src={getLoaderIcon(split.loader)} alt={split.loader} />
+		<img {...rest} src={getLoaderIcon(loader)} alt={loader} />
 	);
 }
 

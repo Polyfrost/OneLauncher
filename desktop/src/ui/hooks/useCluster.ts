@@ -1,15 +1,13 @@
 import type { Resource } from 'solid-js';
-import { createResource } from 'solid-js';
+import useCommand from './useCommand';
+import type { Cluster } from '~bindings';
+import { bridge } from '~index';
 
-function getCluster(uuid: string): Core.ClusterWithManifest {
-	throw new Error('get cluster');
-}
-
-function useCluster(uuid: string | undefined | null): Resource<Core.ClusterWithManifest> | null {
+function useCluster(uuid: string | undefined | null): Resource<Cluster> | null {
 	if (typeof uuid !== 'string' || uuid.length === 0)
 		return null;
 
-	const [resource] = createResource(uuid, getCluster);
+	const [resource] = useCommand(bridge.commands.getCluster, uuid);
 	return resource;
 }
 

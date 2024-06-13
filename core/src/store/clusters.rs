@@ -42,6 +42,7 @@ pub enum ClusterStage {
 }
 
 /// Relative Path wrapper to be used as an identifer for a cluster path.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(transparent)]
 pub struct ClusterPath(pub PathBuf);

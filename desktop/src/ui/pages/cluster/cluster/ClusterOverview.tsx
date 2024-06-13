@@ -7,6 +7,8 @@ import LoaderIcon from '../../../components/game/LoaderIcon';
 import Button from '../../../components/base/Button';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
+import type { Cluster } from '~bindings';
+import { upperFirst } from '~utils/string';
 
 function ClusterOverview() {
 	const [params] = useSearchParams();
@@ -26,29 +28,30 @@ function ClusterOverview() {
 	);
 }
 
-// eslint-disable-next-line solid/no-destructure
-function Banner({ cluster, manifest }: Core.ClusterWithManifest) {
+function Banner(props: Cluster) {
 	return (
 		<div class="flex flex-row bg-component-bg rounded-xl p-2.5 gap-x-2.5">
 			<div class="w-48 rounded-lg overflow-hidden border border-gray-10">
-				<ClusterCover cluster={cluster} />
+				<ClusterCover cluster={props} />
 			</div>
 
 			<div class="flex flex-col flex-1 text-fg-primary">
 				<div class="flex-1">
-					<h2 class="text-2xl">{cluster.name}</h2>
+					<h2 class="text-2xl">{props.meta.name}</h2>
 					<span class="flex flex-row items-center gap-x-1">
-						<LoaderIcon loader={cluster.client.type} class="w-5" />
-						<span>{cluster.client.type}</span>
-						<span>{manifest.manifest.id}</span>
+						<LoaderIcon loader={props.meta.loader} class="w-5" />
+						<span>{upperFirst(props.meta.loader || 'unknown')}</span>
+						{props.meta.loader_version && <span>{props.meta.loader_version.id}</span>}
+						<span>{props.meta.mc_version}</span>
 					</span>
 				</div>
 				<span class="text-xs text-fg-secondary">
 					Played for
 					{' '}
-					<b>3.9</b>
+					<b>{((props.meta.overall_played || 0n)).toString()}</b>
 					{' '}
 					hours
+					{/* TODO: Ask Pauline if this is measured in seconds or milliseconds */}
 				</span>
 			</div>
 

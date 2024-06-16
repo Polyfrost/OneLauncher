@@ -1,5 +1,5 @@
 import { XIcon } from '@untitled-theme/icons-solid';
-import SettingsRow from '../components';
+import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Toggle from '~ui/components/base/Toggle';
 import appSettings from '~ui/state/appSettings';

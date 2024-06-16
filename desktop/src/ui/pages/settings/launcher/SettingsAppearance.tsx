@@ -1,5 +1,5 @@
 import { ColorsIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
-import SettingsRow from '../components';
+import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';

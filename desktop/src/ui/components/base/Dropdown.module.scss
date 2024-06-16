@@ -1,0 +1,19 @@
+.dropdown {
+    @apply relative;
+
+    .row {
+        @apply flex flex-row justify-start items-center gap-1.5 h-4;
+
+        > svg {
+            @apply w-4 h-4;
+        }
+    }
+
+    .selected {
+        @apply w-1 h-1 bg-white rounded-full opacity-0;
+        &.visible {
+            @apply opacity-100;
+        }
+    }
+
+}

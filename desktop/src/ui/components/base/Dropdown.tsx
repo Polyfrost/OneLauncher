@@ -1,4 +1,4 @@
-import { Index, type JSX, type ParentProps, children, createEffect, createSignal, splitProps } from 'solid-js';
+import { Index, type JSX, type ParentProps, children, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon } from '@untitled-theme/icons-solid';
 import Popup from '../overlay/Popup';
 import Button from './Button';

@@ -8,4 +8,6 @@ permissions = [
   "allow-get-cluster",
   "allow-get-manifest",
   "allow-login-msa",
+  "allow-get-settings",
+  "allow-change-settings"
 ]

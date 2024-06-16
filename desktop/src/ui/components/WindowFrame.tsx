@@ -4,7 +4,6 @@ import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
 import Modal from './overlay/Modal';
 import Button from './base/Button';
-import appSettings from '~ui/state/appSettings';
 
 interface TitlebarButtonProps {
 	icon: (any: any) => JSX.Element;
@@ -32,10 +31,10 @@ function WindowFrame() {
 
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
-			if (appSettings.settings.closeDialog) {
-				event.preventDefault();
-				setModalVisible(true);
-			}
+			// if (appSettings.settings.closeDialog) {
+			// 	event.preventDefault();
+			// 	setModalVisible(true);
+			// }
 		});
 	});
 

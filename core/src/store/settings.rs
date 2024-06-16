@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 const CURRENT_FORMAT_VERSION: u32 = 1;
 
 /// A global settings state for the launcher.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
 	/// A OneLauncher [`Theme`] managed by the core GUI.
@@ -123,6 +124,7 @@ impl Settings {
 }
 
 /// A OneLauncher theme managed by the GUI.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {

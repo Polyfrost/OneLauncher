@@ -24,17 +24,17 @@ const METADATA_URL: &str = "localhost:5543";
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Metadata {
 	/// The [`MinecraftManifest`] associated with core Minecraft versions.
-	pub minecraft: MinecraftManifest,
+	pub minecraft: Option<MinecraftManifest>,
 	/// The [`ModdedManifest`] associated with core Fabric versions.
-	pub fabric: ModdedManifest,
+	pub fabric: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core Quilt versions.
-	pub quilt: ModdedManifest,
+	pub quilt: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core NeoForge versions.
-	pub neoforge: ModdedManifest,
+	pub neoforge: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core Forge versions.
-	pub forge: ModdedManifest,
+	pub forge: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core Legacy Fabric versions.
-	pub legacy_fabric: ModdedManifest,
+	pub legacy_fabric: Option<ModdedManifest>,
 }
 
 impl Metadata {
@@ -45,41 +45,49 @@ impl Metadata {
 
 	/// Fetch all available metadata types and get a new [`Metadata`] structure.
 	pub async fn fetch() -> crate::Result<Self> {
-		let (minecraft, fabric, quilt, neoforge, forge, legacy_fabric) = tokio::try_join! {
-			async {
-				let url = Self::get_manifest("minecraft");
-				fetch_version_manifest(Some(&url)).await
-			},
-			async {
-				let url = Self::get_manifest("fabric");
-				fetch_modded_manifest(&url).await
-			},
-			async {
-				let url = Self::get_manifest("quilt");
-				fetch_modded_manifest(&url).await
-			},
-			async {
-				let url = Self::get_manifest("neo");
-				fetch_modded_manifest(&url).await
-			},
-			async {
-				let url = Self::get_manifest("forge");
-				fetch_modded_manifest(&url).await
-			},
-			async {
-				let url = Self::get_manifest("legacy-fabric");
-				fetch_modded_manifest(&url).await
-			},
-		}?;
+		// let (minecraft, fabric, quilt, neoforge, forge, legacy_fabric) = tokio::try_join! {
+		// 	async {
+		// 		let url = Self::get_manifest("minecraft");
+		// 		fetch_version_manifest(Some(&url)).await
+		// 	},
+		// 	async {
+		// 		let url = Self::get_manifest("fabric");
+		// 		fetch_modded_manifest(&url).await
+		// 	},
+		// 	async {
+		// 		let url = Self::get_manifest("quilt");
+		// 		fetch_modded_manifest(&url).await
+		// 	},
+		// 	async {
+		// 		let url = Self::get_manifest("neo");
+		// 		fetch_modded_manifest(&url).await
+		// 	},
+		// 	async {
+		// 		let url = Self::get_manifest("forge");
+		// 		fetch_modded_manifest(&url).await
+		// 	},
+		// 	async {
+		// 		let url = Self::get_manifest("legacy-fabric");
+		// 		fetch_modded_manifest(&url).await
+		// 	},
+		// }?;
 
-		Ok(Self {
-			minecraft,
-			fabric,
-			quilt,
-			neoforge,
-			forge,
-			legacy_fabric,
-		})
+		// Ok(Self {
+		// 	minecraft,
+		// 	fabric,
+		// 	quilt,
+		// 	neoforge,
+		// 	forge,
+		// 	legacy_fabric,
+		// })
+        Ok(Self {
+            minecraft: None, 
+            fabric: None, 
+            quilt: None, 
+            neoforge: None, 
+            forge: None, 
+            legacy_fabric: None
+        })
 	}
 
 	/// Initialize the core Metadata manager.

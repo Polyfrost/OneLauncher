@@ -11,6 +11,7 @@ use crate::store::{
 };
 use crate::utils::io::{self, IOError};
 
+use anyhow::anyhow;
 use chrono::Utc;
 use interpulse as ip;
 use interpulse::api::minecraft::{RuleAction, VersionInfo};
@@ -71,8 +72,9 @@ pub async fn install_minecraft(
 	let instance_path = &io::canonicalize(cluster.get_full_path().await?)?;
 	let metadata = state.metadata.read().await;
 
-	let version_idx = metadata
-		.minecraft
+    let version_manifest = metadata.minecraft.to_owned().ok_or(anyhow!("missing metadata"))?;
+    
+	let version_idx = version_manifest
 		.versions
 		.iter()
 		.position(|g| g.id == cluster.meta.mc_version)
@@ -81,11 +83,10 @@ pub async fn install_minecraft(
 			cluster.meta.mc_version
 		))?;
 
-	let version = &metadata.minecraft.versions[version_idx];
+	let version = &version_manifest.versions[version_idx];
 	let updated = version_idx
-		<= metadata
-			.minecraft
-			.versions
+		<= version_manifest
+            .versions
 			.iter()
 			.position(|g| g.id == "22w16a")
 			.unwrap_or(0); // LWJGL patching
@@ -273,8 +274,9 @@ pub async fn launch_minecraft(
 	let instance_path = cluster.get_full_path().await?;
 	let instance_path = &io::canonicalize(instance_path)?;
 
-	let version_index = metadata
-		.minecraft
+    let version_manifest = metadata.minecraft.to_owned().ok_or(anyhow!("missing minecraft metadata"))?;
+
+	let version_index = version_manifest
 		.versions
 		.iter()
 		.position(|it| it.id == cluster.meta.mc_version)
@@ -282,10 +284,9 @@ pub async fn launch_minecraft(
 			"invalid game version {}",
 			cluster.meta.mc_version
 		))?;
-	let version = &metadata.minecraft.versions[version_index];
+	let version = &version_manifest.versions[version_index];
 	let updated = version_index
-		<= metadata
-			.minecraft
+		<= version_manifest
 			.versions
 			.iter()
 			.position(|x| x.id == "22w16a")

@@ -1,9 +1,10 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use chrono::DateTime;
-use onelauncher::{cluster, data::{ClusterMeta, Loader, PackageData}, store::{Cluster, ClusterPath}, State};
+use onelauncher::{cluster, data::{ClusterMeta, Loader, PackageData, Settings}, store::{Cluster, ClusterPath}, State};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[macro_export]
@@ -17,7 +18,9 @@ macro_rules! collect_commands {
                     is_dev,
                     create_cluster,
                     get_cluster,
-                    get_clusters
+                    get_clusters,
+                    get_settings,
+                    change_settings
                 ])
         }
     };
@@ -116,4 +119,17 @@ pub async fn get_clusters() -> Result<HashMap<ClusterPath, Cluster>, String> {
     Ok(map)
     
     // cluster::list(None).await.map_err(|op| op.into())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_settings() -> Result<Settings, String> {
+    Ok(State::get().await?.settings.read().await.clone())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn change_settings(settings: Settings) -> Result<(), String> {
+    State::get().await?.settings.write().await.clone_from(&settings);
+    Ok(())
 }

@@ -7,6 +7,7 @@ use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, ClusterPath, JavaOptions, PackageData, State};
 use crate::utils::io::{self, canonicalize};
 use crate::{cluster, package};
+use anyhow::anyhow;
 use interpulse::api::modded::LoaderVersion;
 use std::path::PathBuf;
 
@@ -225,6 +226,10 @@ pub(crate) async fn get_loader_version(
 		Loader::LegacyFabric => &metadata.legacy_fabric,
 		_ => return Err(CreateClusterError::MissingManifest(loader.to_string()).into()),
 	};
+
+    let loader_meta = loader_meta
+    .to_owned()
+    .ok_or(anyhow!("missing loader meta"))?;
 
 	let loaders = &loader_meta
 		.game_versions

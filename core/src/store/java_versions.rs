@@ -8,6 +8,7 @@ use crate::utils::java;
 use crate::utils::java::JavaVersion;
 
 /// A HashMap of all located and installed available Java versions
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JavaVersions(HashMap<String, JavaVersion>);
 

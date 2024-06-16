@@ -3,12 +3,9 @@ import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
-import appSettings from '~ui/state/appSettings';
 import Sidebar from '~ui/components/Sidebar';
 
 function SettingsAppearance() {
-	const { settings, setSettings } = appSettings;
-
 	return (
 		<Sidebar.Page>
 			<h1>Appearance</h1>
@@ -30,12 +27,7 @@ function SettingsAppearance() {
 					description="Toggle all animations in the launcher."
 					icon={<Speedometer04Icon />}
 				>
-					<Toggle
-						defaultChecked={settings.reducedMotion}
-						onChecked={(checked) => {
-							setSettings('reducedMotion', checked);
-						}}
-					/>
+					<Toggle />
 				</SettingsRow>
 			</ScrollableContainer>
 		</Sidebar.Page>

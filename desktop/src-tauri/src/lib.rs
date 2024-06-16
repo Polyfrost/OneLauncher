@@ -70,7 +70,9 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
 		.build(tauri::tauri_build_context!())
 		.expect("failed to build tauri application");
 
-    initialize_state(app.app_handle().clone()).await;
+    if let Err(err) = initialize_state(app.app_handle().clone()).await {
+        tracing::error!("{err}");
+    };
 
 	app.run(|_app_handle, _event| {})
 }

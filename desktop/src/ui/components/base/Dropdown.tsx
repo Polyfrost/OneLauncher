@@ -29,7 +29,7 @@ function Dropdown(props: DropdownProps) {
 				iconRight={<ChevronDownIcon />}
 			>
 				<div
-					class="w-full h-full mt-px"
+					class="flex-1 h-full mt-px overflow-hidden"
 				>
 					{items()[selected()]}
 				</div>
@@ -59,10 +59,6 @@ function Dropdown(props: DropdownProps) {
 		</div>
 	);
 }
-
-interface DropdownRowProps {
-	iconLeft?: JSX.Element;
-};
 
 Dropdown.Row = function (props: ParentProps) {
 	return (

@@ -1,4 +1,4 @@
-import { type Resource, type ResourceReturn, createResource } from 'solid-js';
+import { type ResourceReturn, createResource } from 'solid-js';
 import type { Result } from '~bindings';
 
 /**

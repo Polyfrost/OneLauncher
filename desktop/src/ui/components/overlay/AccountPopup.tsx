@@ -1,4 +1,5 @@
 import { LogOut01Icon, PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
+import { useNavigate } from '@solidjs/router';
 import Button from '../base/Button';
 import PlayerHead from '../game/PlayerHead';
 import useAccount from '../../hooks/useAccount';
@@ -33,6 +34,7 @@ function AccountComponent(props: AccountComponentProps) {
 
 function AccountPopup(props: Popup.PopupProps) {
 	const loggedInAccount = useAccount();
+	const navigate = useNavigate();
 
 	return (
 		<Popup {...props}>
@@ -53,7 +55,14 @@ function AccountPopup(props: Popup.PopupProps) {
 							<Button buttonStyle="ghost" iconLeft={<PlusIcon />}>Add Account</Button>
 						</div>
 						<div class="flex flex-row">
-							<Button buttonStyle="icon" large>
+							<Button
+								buttonStyle="icon"
+								large
+								onClick={() => {
+									props.setVisible(false);
+									navigate('/settings/accounts');
+								}}
+							>
 								<Settings01Icon class="stroke-fg-primary" />
 							</Button>
 						</div>

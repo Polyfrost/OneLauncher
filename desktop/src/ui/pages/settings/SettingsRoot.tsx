@@ -4,6 +4,7 @@ import { Route } from '@solidjs/router';
 import Sidebar from '../../components/Sidebar';
 import SettingsGeneral from './launcher/SettingsGeneral';
 import SettingsAppearance from './launcher/SettingsAppearance';
+import SettingsAccounts from './game/SettingsAccounts';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 
@@ -12,6 +13,7 @@ function SettingsRoutes() {
 		<>
 			<Route path="/" component={SettingsGeneral} />
 			<Route path="/appearance" component={SettingsAppearance} />
+			<Route path="/accounts" component={SettingsAccounts} />
 		</>
 	);
 }

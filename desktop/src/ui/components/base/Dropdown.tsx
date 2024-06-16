@@ -4,12 +4,18 @@ import Popup from '../overlay/Popup';
 import Button from './Button';
 import styles from './Dropdown.module.scss';
 
-export type DropdownProps = JSX.HTMLAttributes<HTMLDivElement>;
+export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'> & {
+	onChange?: (selected: number) => any;
+	text?: string;
+	selected?: number;
+};
 
 function Dropdown(props: DropdownProps) {
-	const [split, rest] = splitProps(props, ['children', 'class']);
+	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected']);
 	const [visible, setVisible] = createSignal(false);
-	const [selected, setSelected] = createSignal<number>(0);
+
+	// eslint-disable-next-line solid/reactivity
+	const [selected, setSelected] = createSignal<number>(split.selected || 0);
 
 	let ref!: HTMLDivElement;
 
@@ -18,6 +24,9 @@ function Dropdown(props: DropdownProps) {
 	function select(index: number) {
 		setSelected(index);
 		setVisible(false);
+
+		if (split.onChange)
+			split.onChange(selected());
 	}
 
 	return (
@@ -29,8 +38,9 @@ function Dropdown(props: DropdownProps) {
 				iconRight={<ChevronDownIcon />}
 			>
 				<div
-					class="flex-1 h-full mt-px overflow-hidden"
+					class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
 				>
+					<span>{split.text}</span>
 					{items()[selected()]}
 				</div>
 			</Button>

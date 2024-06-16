@@ -1,0 +1,16 @@
+.tooltip {
+    @apply relative;
+
+    &:hover::after {
+        @apply opacity-100;
+    }
+
+    &::after {
+        content: attr(data-text);
+        @apply opacity-0 transition-opacity;
+        @apply absolute left-1/2 -translate-x-1/2 bottom-6;
+        @apply min-w-44 w-max max-w-52;
+        @apply backdrop-blur-lg rounded-md bg-black/60 p-2 text-center text-sm text-wrap text-white shadow shadow-black/30;
+    }
+
+}

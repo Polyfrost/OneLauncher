@@ -1,5 +1,5 @@
-import { HeartIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
-import { createSignal } from 'solid-js';
+import { SearchMdIcon } from '@untitled-theme/icons-solid';
+import { For, createSignal } from 'solid-js';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import createSortable from '~utils/sorting';
@@ -28,34 +28,27 @@ function BrowserMain() {
 		provider: [Provider.Curseforge],
 	});
 
-	const [list, key, setList, setKey] = createSortable<CardProps>([], {
+	const sortable = createSortable<CardProps>([], {
 		'A-Z': (a, b) => a.name.localeCompare(b.name),
 		'Z-A': (a, b) => b.name.localeCompare(a.name),
 		'Last Updated': (a, b) => a.date_updated - b.date_updated,
 		'New': (a, b) => b.date_added - a.date_added,
-		// 'Provider': (a, b) => a.provider
 	});
+
+	function onSortChange(selected: number) {
+		sortable.setKey(selected);
+	}
 
 	return (
 		<div class="flex flex-col flex-grow-1">
 			<div class="flex flex-row gap-2 h-8">
 				<TextField iconLeft={<SearchMdIcon />} />
-				<Dropdown class="w-32!">
-					<Dropdown.Row>
-						<HeartIcon />
-						<p>Test</p>
-					</Dropdown.Row>
-					<Dropdown.Row>
-						<HeartIcon />
-						<p>Test 2</p>
-					</Dropdown.Row>
-					<Dropdown.Row>
-						<p>Test 333333333</p>
-					</Dropdown.Row>
-					<Dropdown.Row>
-						<HeartIcon />
-						<p>Lorem Ipsum dolor</p>
-					</Dropdown.Row>
+				<Dropdown onChange={onSortChange} text="Sort By: ">
+					<For each={Object.keys(sortable.sortables)}>
+						{sortable => (
+							<Dropdown.Row>{sortable}</Dropdown.Row>
+						)}
+					</For>
 				</Dropdown>
 			</div>
 		</div>

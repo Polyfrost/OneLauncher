@@ -40,7 +40,7 @@ function BrowserMain() {
 		<div class="flex flex-col flex-grow-1">
 			<div class="flex flex-row gap-2 h-8">
 				<TextField iconLeft={<SearchMdIcon />} />
-				<Dropdown>
+				<Dropdown class="w-32!">
 					<Dropdown.Row>
 						<HeartIcon />
 						<p>Test</p>

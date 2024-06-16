@@ -1,11 +1,11 @@
 .dropdown {
-    @apply relative;
+    @apply relative w-52;
 
     .row {
-        @apply flex flex-row justify-start items-center gap-1.5 h-4;
+        @apply w-full flex flex-row justify-start items-center gap-1.5 h-4 text-nowrap overflow-hidden;
 
         > svg {
-            @apply w-4 h-4;
+            @apply min-w-4 min-h-4 w-4 h-4;
         }
     }
 

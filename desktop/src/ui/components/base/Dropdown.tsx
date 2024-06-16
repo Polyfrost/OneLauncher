@@ -1,17 +1,19 @@
-import { Index, type JSX, type ParentProps, children, createSignal } from 'solid-js';
+import { Index, type JSX, type ParentProps, children, createEffect, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon } from '@untitled-theme/icons-solid';
 import Popup from '../overlay/Popup';
 import Button from './Button';
 import styles from './Dropdown.module.scss';
 
-export type DropdownProps = ParentProps;
+export type DropdownProps = JSX.HTMLAttributes<HTMLDivElement>;
 
 function Dropdown(props: DropdownProps) {
+	const [split, rest] = splitProps(props, ['children', 'class']);
 	const [visible, setVisible] = createSignal(false);
 	const [selected, setSelected] = createSignal<number>(0);
+
 	let ref!: HTMLDivElement;
 
-	const items = () => children(() => props.children).toArray();
+	const items = () => children(() => split.children).toArray();
 
 	function select(index: number) {
 		setSelected(index);
@@ -19,24 +21,17 @@ function Dropdown(props: DropdownProps) {
 	}
 
 	return (
-		<div ref={ref} class={styles.dropdown}>
+		<div ref={ref} class={`${styles.dropdown} ${split.class}`} {...rest}>
 			<Button
-				class="h-full"
+				class="h-full w-full"
 				buttonStyle="secondary"
 				onClick={() => setVisible(true)}
 				iconRight={<ChevronDownIcon />}
 			>
 				<div
-					class="w-full h-full overflow-hidden mt-px"
+					class="w-full h-full mt-px"
 				>
-					<div
-						class="flex flex-col justify-start relative gap-4"
-						style={{
-							transform: `translateY(-${(selected() * 16) * 2}px)`,
-						}}
-					>
-						{items()}
-					</div>
+					{items()[selected()]}
 				</div>
 			</Button>
 
@@ -44,7 +39,7 @@ function Dropdown(props: DropdownProps) {
 				mount={ref}
 				visible={visible}
 				setVisible={setVisible}
-				ref={ref => ref.classList.add('mt-1', 'left-0', 'right-0')}
+				ref={ref => ref.classList.add('mt-1', 'w-full')}
 			>
 				<div class="bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30">
 					<div class="flex flex-col gap-2">

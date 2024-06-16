@@ -1,7 +1,4 @@
-import { useSearchParams } from '@solidjs/router';
-import { Show } from 'solid-js';
 import { PlayIcon, Share07Icon } from '@untitled-theme/icons-solid';
-import useCluster from '../../../hooks/useCluster';
 import ClusterCover from '../../../components/game/ClusterCover';
 import LoaderIcon from '../../../components/game/LoaderIcon';
 import Button from '../../../components/base/Button';
@@ -9,20 +6,16 @@ import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
 import { upperFirst } from '~utils/string';
+import useClusterContext from '~ui/hooks/useCluster';
 
 function ClusterOverview() {
-	const [params] = useSearchParams();
-	const cluster = useCluster(params.id);
-	if (cluster === null)
-		throw new Error('Cluster doesn\'t exist');
+	const cluster = useClusterContext();
 
 	return (
 		<Sidebar.Page>
 			<h1>Overview</h1>
 			<ScrollableContainer>
-				<Show when={!cluster.loading}>
-					<Banner {...cluster()!} />
-				</Show>
+				<Banner {...cluster} />
 			</ScrollableContainer>
 		</Sidebar.Page>
 	);

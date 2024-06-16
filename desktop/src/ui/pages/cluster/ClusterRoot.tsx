@@ -1,6 +1,6 @@
 import { Route, useSearchParams } from '@solidjs/router';
-import { type ParentProps, Show } from 'solid-js';
-import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon, Tool02Icon } from '@untitled-theme/icons-solid';
+import type { ParentProps } from 'solid-js';
+import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, Settings04Icon, Tool02Icon } from '@untitled-theme/icons-solid';
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
@@ -8,7 +8,7 @@ import ClusterOverview from './cluster/ClusterOverview';
 import ClusterLogs from './cluster/ClusterLogs';
 import ClusterMods from './cluster/ClusterMods';
 import ClusterScreenshots from './cluster/ClusterScreenshots';
-import useCluster from '~ui/hooks/useCluster';
+import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 
 function ClusterRoutes() {
 	return (
@@ -23,30 +23,12 @@ function ClusterRoutes() {
 
 function ClusterRoot(props: ParentProps) {
 	const [searchParams] = useSearchParams();
-	const cluster = useCluster(searchParams.id);
 
 	return (
-		<Show when={cluster !== null && cluster() !== undefined}>
+		<ClusterProvider uuid={searchParams.id}>
 			<div class="flex flex-row flex-1 h-full gap-x-7">
 				<div class="mt-8">
-					<Sidebar
-						base="/clusters"
-						state={{ id: cluster!()!.uuid }}
-						links={{
-							Cluster: [
-								[<EyeIcon />, 'Overview', '/'],
-								// TODO: Better way of checking mods
-								(cluster!()!.meta.loader === 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
-								[<Image03Icon />, 'Screenshots', '/screenshots'],
-								[<Globe04Icon />, 'Worlds', '/worlds'],
-								[<File06Icon />, 'Logs', '/logs'],
-							],
-							Settings: [
-								[<Tool02Icon />, 'Java', '/java'],
-								[<Settings04Icon />, 'Miscellaneous', '/misc'],
-							],
-						}}
-					/>
+					<ClusterSidebar />
 				</div>
 
 				<div class="flex flex-col w-full h-full">
@@ -57,7 +39,32 @@ function ClusterRoot(props: ParentProps) {
 					</AnimatedRoutes>
 				</div>
 			</div>
-		</Show>
+		</ClusterProvider>
+	);
+}
+
+function ClusterSidebar() {
+	const cluster = useClusterContext();
+
+	return (
+		<Sidebar
+			base="/clusters"
+			state={{ id: cluster.uuid }}
+			links={{
+				Cluster: [
+					[<EyeIcon />, 'Overview', '/'],
+					// TODO: Better way of checking mods
+					// (cluster!.meta.loader === 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
+					[<Image03Icon />, 'Screenshots', '/screenshots'],
+					[<Globe04Icon />, 'Worlds', '/worlds'],
+					[<File06Icon />, 'Logs', '/logs'],
+				],
+				Settings: [
+					[<Tool02Icon />, 'Java', '/java'],
+					[<Settings04Icon />, 'Miscellaneous', '/misc'],
+				],
+			}}
+		/>
 	);
 }
 

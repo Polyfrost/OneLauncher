@@ -7,6 +7,7 @@
 
     &::after {
         content: attr(data-text);
+        @apply pointer-events-none;
         @apply opacity-0 transition-opacity;
         @apply absolute left-1/2 -translate-x-1/2 bottom-6;
         @apply min-w-44 w-max max-w-52;

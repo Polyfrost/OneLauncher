@@ -26,8 +26,7 @@ impl Credentials {
 	) -> crate::Result<Self> {
 		let path = SnapshotPath::from_path(path);
 		let stronghold = iota_stronghold::Stronghold::default();
-		let keyprovider =
-			KeyProvider::try_from(password).map_err(StrongholdError::MemoryError)?;
+		let keyprovider = KeyProvider::try_from(password).map_err(StrongholdError::MemoryError)?;
 		if path.exists() {
 			stronghold
 				.load_snapshot(&keyprovider, &path)

@@ -20,20 +20,20 @@ pub type Result<T> = std::result::Result<T, OneLauncherSerializableError>;
 
 #[derive(thiserror::Error, Debug, Serialize, specta::Type)]
 pub enum OneLauncherSerializableError {
-    #[error("{0}")]
-    CommonError(String),
+	#[error("{0}")]
+	CommonError(String),
 }
 
 impl From<OneLauncherError> for OneLauncherSerializableError {
-    fn from(value: OneLauncherError) -> Self {
-        Self::CommonError(value.to_string())
-    }
+	fn from(value: OneLauncherError) -> Self {
+		Self::CommonError(value.to_string())
+	}
 }
 
 impl From<onelauncher::Error> for OneLauncherSerializableError {
-    fn from(value: onelauncher::Error) -> Self {
-        Self::CommonError(value.to_string())
-    }
+	fn from(value: onelauncher::Error) -> Self {
+		Self::CommonError(value.to_string())
+	}
 }
 
 #[derive(thiserror::Error, Debug)]

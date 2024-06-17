@@ -202,9 +202,7 @@ pub fn extract_archive(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
 pub fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> {
 	let file = File::open(archive).map_err(|err| IOError::with_path(err, archive.as_path()))?;
 	let archive = zip::ZipArchive::new(file).map_err(IOError::from_zip);
-	archive?
-		.extract(dest)
-		.map_err(IOError::from_zip)?;
+	archive?.extract(dest).map_err(IOError::from_zip)?;
 	Ok(())
 }
 

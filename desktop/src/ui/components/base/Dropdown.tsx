@@ -14,7 +14,7 @@ function Dropdown(props: DropdownProps) {
 	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected']);
 	const [visible, setVisible] = createSignal(false);
 
-	// eslint-disable-next-line solid/reactivity
+	// eslint-disable-next-line solid/reactivity -- todo
 	const [selected, setSelected] = createSignal<number>(split.selected || 0);
 
 	let ref!: HTMLDivElement;

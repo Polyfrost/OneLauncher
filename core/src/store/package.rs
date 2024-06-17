@@ -1,7 +1,6 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
 #[allow(clippy::all)]
-
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

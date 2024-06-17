@@ -1,6 +1,5 @@
 //! Handles MSA Authentication flow.
 
-use std::fmt::Write;
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use p256::ecdsa::signature::Signer;
@@ -11,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::Digest;
 use std::collections::HashMap;
+use std::fmt::Write;
 use uuid::Uuid;
 
 const AUTH_STORE: &str = "authentication.json";
@@ -878,8 +878,7 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	step: MinecraftAuthStep,
 	current_date: DateTime<Utc>,
 ) -> Result<SignedRequestResponse<T>, MinecraftAuthError> {
-	let auth = authorization
-		.map_or(Vec::new(), |v| v.as_bytes().to_vec());
+	let auth = authorization.map_or(Vec::new(), |v| v.as_bytes().to_vec());
 	let body = serde_json::to_vec(&raw_body)
 		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;
 	let time: u128 = { ((current_date.timestamp() as u128) + 11644473600) * 10000000 };

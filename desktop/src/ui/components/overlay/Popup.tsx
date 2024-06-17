@@ -7,7 +7,7 @@ import type {
 	Setter } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
-// eslint-disable-next-line ts/no-namespace
+// eslint-disable-next-line ts/no-namespace -- todo
 declare namespace Popup {
 	type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
 		visible: Accessor<boolean>;

@@ -142,9 +142,7 @@ pub async fn get_logs_by_file(
 	.join(&log_file);
 
 	let metadata = std::fs::metadata(&path)?;
-	let age = metadata
-		.created()
-		.unwrap_or(SystemTime::UNIX_EPOCH);
+	let age = metadata.created().unwrap_or(SystemTime::UNIX_EPOCH);
 
 	LogManager::initialize(log_type, age, &cluster_path, log_file, Some(true)).await
 }

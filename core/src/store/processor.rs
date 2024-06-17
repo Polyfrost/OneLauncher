@@ -41,9 +41,9 @@ pub enum IngressProcessType {
 }
 
 impl Default for IngressProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl IngressProcessor {

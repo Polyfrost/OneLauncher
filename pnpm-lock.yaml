@@ -52,7 +52,7 @@ importers:
         version: 0.2.0(@tanstack/solid-query@5.40.1(solid-js@1.8.17))(solid-js@1.8.17)
       '@rspc/tauri':
         specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-beta.8)
+        version: 0.2.0(@tauri-apps/api@2.0.0-beta.13)
       '@solid-primitives/deep':
         specifier: ^0.2.8
         version: 0.2.8(solid-js@1.8.17)
@@ -109,7 +109,7 @@ importers:
         version: 2.0.0-beta.8
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.17)
@@ -178,8 +178,8 @@ importers:
         specifier: ^7.6.2
         version: 7.6.2
       undici:
-        specifier: ^6.18.2
-        version: 6.18.2
+        specifier: ^6.19.1
+        version: 6.19.1
     devDependencies:
       '@types/iarna__toml':
         specifier: ^2.0.5
@@ -677,6 +677,7 @@ packages:
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
     engines: {node: '>=10.10.0'}
+    deprecated: Use @eslint/config-array instead
 
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==}
@@ -684,6 +685,7 @@ packages:
 
   '@humanwhocodes/object-schema@2.0.3':
     resolution: {integrity: sha512-93zYdMES/c1D69yZiKDBj0V24vqNzB/koF26KPaagAfd3P/4gUlh3Dys5ogAK+Exi9QyzlD8x/08Zt7wIKcDcA==}
+    deprecated: Use @eslint/object-schema instead
 
   '@iarna/toml@2.2.5':
     resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
@@ -943,6 +945,10 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
+  '@tauri-apps/api@2.0.0-beta.13':
+    resolution: {integrity: sha512-Np1opKANzRMF3lgJ9gDquBCB9SxlE2lRmNpVx1+L6RyzAmigkuh0ZulT5jMnDA3JLsuSDU135r/s4t/Pmx4atg==}
+    engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
+
   '@tauri-apps/api@2.0.0-beta.8':
     resolution: {integrity: sha512-fN5u+9HsSfhRaXGOdD2kPGbqDgyX+nkm1XF/4d/LNuM4WiNfvHjjRAqWQYBhQsg1aF9nsTPmSW+tmy+Yn5T5+A==}
     engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
@@ -1012,9 +1018,9 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270}
-    version: 2.0.0-beta.2
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
+    resolution: {commit: d06be03760751d5465e24e87c98de4c59f701c4a, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-beta.6
 
   '@testing-library/dom@10.1.0':
     resolution: {integrity: sha512-wdsYKy5zupPyLCW2Je5DLHSxSfbIp6h80WoHOQc+RPtmPGA52O9x5MJEkv92Sjonpq+poOAtUKhh1kBGAXBrNA==}
@@ -2005,6 +2011,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
+    deprecated: Glob versions prior to v9 are no longer supported
 
   globals@11.12.0:
     resolution: {integrity: sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA==}
@@ -2110,6 +2117,7 @@ packages:
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
+    deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -2700,6 +2708,7 @@ packages:
 
   rimraf@3.0.2:
     resolution: {integrity: sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA==}
+    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
 
   rollup@4.18.0:
@@ -3009,8 +3018,8 @@ packages:
   undici-types@5.26.5:
     resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
-  undici@6.18.2:
-    resolution: {integrity: sha512-o/MQLTwRm9IVhOqhZ0NQ9oXax1ygPjw6Vs+Vq/4QRjbOAC3B1GCHy7TYxxbExKlb7bzDRzt9vBWU6BDz0RFfYg==}
+  undici@6.19.1:
+    resolution: {integrity: sha512-m9QbEf5+YWXYycRHQtE22hTmRv2R6IDpBVR9UuHKvrDZJxrpgqnKkdV5inOdFskVxz3DmcKhDY/B1sE+ShhopQ==}
     engines: {node: '>=18.17'}
 
   unicorn-magic@0.1.0:
@@ -3921,6 +3930,11 @@ snapshots:
       '@tanstack/solid-query': 5.40.1(solid-js@1.8.17)
       solid-js: 1.8.17
 
+  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.13)':
+    dependencies:
+      '@rspc/client': 0.2.0
+      '@tauri-apps/api': 2.0.0-beta.13
+
   '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.8)':
     dependencies:
       '@rspc/client': 0.2.0
@@ -4025,6 +4039,8 @@ snapshots:
       '@tanstack/query-core': 5.40.0
       solid-js: 1.8.17
 
+  '@tauri-apps/api@2.0.0-beta.13': {}
+
   '@tauri-apps/api@2.0.0-beta.8': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-beta.10':
@@ -4070,9 +4086,9 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.10
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.10
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.8
+      '@tauri-apps/api': 2.0.0-beta.13
 
   '@testing-library/dom@10.1.0':
     dependencies:
@@ -6265,7 +6281,7 @@ snapshots:
 
   undici-types@5.26.5: {}
 
-  undici@6.18.2: {}
+  undici@6.19.1: {}
 
   unicorn-magic@0.1.0: {}
 

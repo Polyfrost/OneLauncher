@@ -52,7 +52,7 @@ importers:
         version: 0.2.0(@tanstack/solid-query@5.40.1(solid-js@1.8.17))(solid-js@1.8.17)
       '@rspc/tauri':
         specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-beta.8)
+        version: 0.2.0(@tauri-apps/api@2.0.0-beta.13)
       '@solid-primitives/deep':
         specifier: ^0.2.8
         version: 0.2.8(solid-js@1.8.17)
@@ -109,7 +109,7 @@ importers:
         version: 2.0.0-beta.8
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.17)
@@ -142,8 +142,8 @@ importers:
         specifier: 2.0.0-beta.10
         version: 2.0.0-beta.10
       '@testing-library/jest-dom':
-        specifier: ^6.4.5
-        version: 6.4.5(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))
+        specifier: ^6.4.6
+        version: 6.4.6(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))
       '@types/uuid':
         specifier: ^9.0.8
         version: 9.0.8
@@ -158,7 +158,7 @@ importers:
         version: 0.60.4(postcss@8.4.38)(rollup@4.18.0)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4))
       vite-plugin-solid:
         specifier: ^2.10.2
-        version: 2.10.2(@testing-library/jest-dom@6.4.5(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4)))(solid-js@1.8.17)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4))
+        version: 2.10.2(@testing-library/jest-dom@6.4.6(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4)))(solid-js@1.8.17)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4))
       vite-tsconfig-paths:
         specifier: ^4.3.2
         version: 4.3.2(typescript@5.4.5)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4))
@@ -190,8 +190,8 @@ importers:
 
 packages:
 
-  '@adobe/css-tools@4.3.3':
-    resolution: {integrity: sha512-rE0Pygv0sEZ4vBWHlAgJLGDU7Pm8xoO6p3wsEceb7GYAjScrOHpEo8KK/eVkAcnSM+slAEtXjA2JpdjLp4fJQQ==}
+  '@adobe/css-tools@4.4.0':
+    resolution: {integrity: sha512-Ff9+ksdQQB3rMncgqDK78uLznstjyfIf2Arnh22pW8kBpLs6rpKDwgnZT46hin5Hl1WzazzK64DOrhSwYpS7bQ==}
 
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
@@ -404,10 +404,6 @@ packages:
     engines: {node: '>=6.9.0'}
     peerDependencies:
       '@babel/core': ^7.0.0-0
-
-  '@babel/runtime@7.24.5':
-    resolution: {integrity: sha512-Nms86NXrsaeU9vbBJKni6gXiEXZ4CVpYVzEjDH9Sb8vmZ3UljyA1GSOJl/6LGPO8EHLuSF9H+IxNXHPX8QHJ4g==}
-    engines: {node: '>=6.9.0'}
 
   '@babel/runtime@7.24.6':
     resolution: {integrity: sha512-Ja18XcETdEl5mzzACGd+DKgaGJzPTCow7EglgwTmHdwokzDFYh/MHua6lU6DV/hjF2IaOJ4oX2nqnjG7RElKOw==}
@@ -677,6 +673,7 @@ packages:
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
     engines: {node: '>=10.10.0'}
+    deprecated: Use @eslint/config-array instead
 
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==}
@@ -684,6 +681,7 @@ packages:
 
   '@humanwhocodes/object-schema@2.0.3':
     resolution: {integrity: sha512-93zYdMES/c1D69yZiKDBj0V24vqNzB/koF26KPaagAfd3P/4gUlh3Dys5ogAK+Exi9QyzlD8x/08Zt7wIKcDcA==}
+    deprecated: Use @eslint/object-schema instead
 
   '@iarna/toml@2.2.5':
     resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
@@ -943,6 +941,10 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
+  '@tauri-apps/api@2.0.0-beta.13':
+    resolution: {integrity: sha512-Np1opKANzRMF3lgJ9gDquBCB9SxlE2lRmNpVx1+L6RyzAmigkuh0ZulT5jMnDA3JLsuSDU135r/s4t/Pmx4atg==}
+    engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
+
   '@tauri-apps/api@2.0.0-beta.8':
     resolution: {integrity: sha512-fN5u+9HsSfhRaXGOdD2kPGbqDgyX+nkm1XF/4d/LNuM4WiNfvHjjRAqWQYBhQsg1aF9nsTPmSW+tmy+Yn5T5+A==}
     engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
@@ -1012,16 +1014,16 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270}
-    version: 2.0.0-beta.2
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
+    resolution: {commit: d06be03760751d5465e24e87c98de4c59f701c4a, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-beta.6
 
   '@testing-library/dom@10.1.0':
     resolution: {integrity: sha512-wdsYKy5zupPyLCW2Je5DLHSxSfbIp6h80WoHOQc+RPtmPGA52O9x5MJEkv92Sjonpq+poOAtUKhh1kBGAXBrNA==}
     engines: {node: '>=18'}
 
-  '@testing-library/jest-dom@6.4.5':
-    resolution: {integrity: sha512-AguB9yvTXmCnySBP1lWjfNNUwpbElsaQ567lt2VdGqAdHtpieLgjmcVyv1q7PMIvLbgpDdkWV5Ydv3FEejyp2A==}
+  '@testing-library/jest-dom@6.4.6':
+    resolution: {integrity: sha512-8qpnGVincVDLEcQXWaHOf6zmlbwTKc6Us6PPu4CRnPXCzo2OGBS5cwgMMOWdxDpEz1mkbvXHpEy99M5Yvt682w==}
     engines: {node: '>=14', npm: '>=6', yarn: '>=1'}
     peerDependencies:
       '@jest/globals': '>= 28'
@@ -2005,6 +2007,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
+    deprecated: Glob versions prior to v9 are no longer supported
 
   globals@11.12.0:
     resolution: {integrity: sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA==}
@@ -2110,6 +2113,7 @@ packages:
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
+    deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -2700,6 +2704,7 @@ packages:
 
   rimraf@3.0.2:
     resolution: {integrity: sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA==}
+    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
 
   rollup@4.18.0:
@@ -3250,7 +3255,7 @@ packages:
 
 snapshots:
 
-  '@adobe/css-tools@4.3.3': {}
+  '@adobe/css-tools@4.4.0': {}
 
   '@ampproject/remapping@2.3.0':
     dependencies:
@@ -3519,10 +3524,6 @@ snapshots:
       '@babel/plugin-syntax-jsx': 7.24.6(@babel/core@7.24.6)
       '@babel/plugin-transform-modules-commonjs': 7.24.6(@babel/core@7.24.6)
       '@babel/plugin-transform-typescript': 7.24.6(@babel/core@7.24.6)
-
-  '@babel/runtime@7.24.5':
-    dependencies:
-      regenerator-runtime: 0.14.1
 
   '@babel/runtime@7.24.6':
     dependencies:
@@ -3921,6 +3922,11 @@ snapshots:
       '@tanstack/solid-query': 5.40.1(solid-js@1.8.17)
       solid-js: 1.8.17
 
+  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.13)':
+    dependencies:
+      '@rspc/client': 0.2.0
+      '@tauri-apps/api': 2.0.0-beta.13
+
   '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.8)':
     dependencies:
       '@rspc/client': 0.2.0
@@ -4025,6 +4031,8 @@ snapshots:
       '@tanstack/query-core': 5.40.0
       solid-js: 1.8.17
 
+  '@tauri-apps/api@2.0.0-beta.13': {}
+
   '@tauri-apps/api@2.0.0-beta.8': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-beta.10':
@@ -4070,9 +4078,9 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.10
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.10
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.8
+      '@tauri-apps/api': 2.0.0-beta.13
 
   '@testing-library/dom@10.1.0':
     dependencies:
@@ -4085,10 +4093,10 @@ snapshots:
       lz-string: 1.5.0
       pretty-format: 27.5.1
 
-  '@testing-library/jest-dom@6.4.5(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))':
+  '@testing-library/jest-dom@6.4.6(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))':
     dependencies:
-      '@adobe/css-tools': 4.3.3
-      '@babel/runtime': 7.24.5
+      '@adobe/css-tools': 4.4.0
+      '@babel/runtime': 7.24.6
       aria-query: 5.3.0
       chalk: 3.0.0
       css.escape: 1.5.1
@@ -6349,7 +6357,7 @@ snapshots:
       - supports-color
       - terser
 
-  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.4.5(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4)))(solid-js@1.8.17)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4)):
+  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.4.6(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4)))(solid-js@1.8.17)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4)):
     dependencies:
       '@babel/core': 7.24.4
       '@types/babel__core': 7.20.5
@@ -6360,7 +6368,7 @@ snapshots:
       vite: 5.2.12(@types/node@20.14.2)(sass@1.77.4)
       vitefu: 0.2.5(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4))
     optionalDependencies:
-      '@testing-library/jest-dom': 6.4.5(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))
+      '@testing-library/jest-dom': 6.4.6(vitest@1.6.0(@types/node@20.14.2)(@vitest/ui@1.6.0(vitest@1.6.0))(jsdom@24.1.0)(sass@1.77.4))
     transitivePeerDependencies:
       - supports-color
 

@@ -17,7 +17,7 @@
 		"tauri": "tsx tauri.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.5.2",
+		"@flowr/utils": "^3.7.0",
 		"@iarna/toml": "^2.2.5",
 		"execa": "^9.1.0",
 		"semver": "^7.6.2",

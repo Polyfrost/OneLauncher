@@ -52,7 +52,7 @@ importers:
         version: 0.2.0(@tanstack/solid-query@5.40.1(solid-js@1.8.17))(solid-js@1.8.17)
       '@rspc/tauri':
         specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-beta.8)
+        version: 0.2.0(@tauri-apps/api@2.0.0-beta.13)
       '@solid-primitives/deep':
         specifier: ^0.2.8
         version: 0.2.8(solid-js@1.8.17)
@@ -109,7 +109,7 @@ importers:
         version: 2.0.0-beta.8
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.17)
@@ -166,8 +166,8 @@ importers:
   scripts:
     dependencies:
       '@flowr/utils':
-        specifier: ^3.5.2
-        version: 3.5.2
+        specifier: ^3.7.0
+        version: 3.7.0
       '@iarna/toml':
         specifier: ^2.2.5
         version: 2.2.5
@@ -667,8 +667,8 @@ packages:
       svelte-eslint-parser:
         optional: true
 
-  '@flowr/utils@3.5.2':
-    resolution: {integrity: sha512-Fc1xOmDfKjKT9Oky6av3TEoJ2l0lT5Ye5mJDmOMYd60aRX1+sYXIAGgKATTRnirjKa6/+zLLFEhUSU63gcPHEQ==}
+  '@flowr/utils@3.7.0':
+    resolution: {integrity: sha512-noQbZgWerq38w3dx6UnJygChJdRkNQxQNBMPbX5kRZbAv3hS5sLTxJ1EIIqsDdMhbq6S2hhXpV0kUmWeV69+Dw==}
     engines: {node: '>=20'}
 
   '@fontsource/poppins@5.0.14':
@@ -677,6 +677,7 @@ packages:
   '@humanwhocodes/config-array@0.11.14':
     resolution: {integrity: sha512-3T8LkOmg45BV5FICb15QQMsyUSWrQ8AygVfC7ZG32zOalnqrilm018ZVCw0eapXux8FtA33q8PSRSstjee3jSg==}
     engines: {node: '>=10.10.0'}
+    deprecated: Use @eslint/config-array instead
 
   '@humanwhocodes/module-importer@1.0.1':
     resolution: {integrity: sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==}
@@ -684,6 +685,7 @@ packages:
 
   '@humanwhocodes/object-schema@2.0.3':
     resolution: {integrity: sha512-93zYdMES/c1D69yZiKDBj0V24vqNzB/koF26KPaagAfd3P/4gUlh3Dys5ogAK+Exi9QyzlD8x/08Zt7wIKcDcA==}
+    deprecated: Use @eslint/object-schema instead
 
   '@iarna/toml@2.2.5':
     resolution: {integrity: sha512-trnsAYxU3xnS1gPHPyU961coFyLkh4gAD/0zQ5mymY4yOZ+CYvsPqUbOFSw0aDM4y0tV7tiFxL/1XfXPNC6IPg==}
@@ -943,6 +945,10 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
+  '@tauri-apps/api@2.0.0-beta.13':
+    resolution: {integrity: sha512-Np1opKANzRMF3lgJ9gDquBCB9SxlE2lRmNpVx1+L6RyzAmigkuh0ZulT5jMnDA3JLsuSDU135r/s4t/Pmx4atg==}
+    engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
+
   '@tauri-apps/api@2.0.0-beta.8':
     resolution: {integrity: sha512-fN5u+9HsSfhRaXGOdD2kPGbqDgyX+nkm1XF/4d/LNuM4WiNfvHjjRAqWQYBhQsg1aF9nsTPmSW+tmy+Yn5T5+A==}
     engines: {node: '>= 18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
@@ -1012,9 +1018,9 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270}
-    version: 2.0.0-beta.2
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
+    resolution: {commit: d06be03760751d5465e24e87c98de4c59f701c4a, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-beta.6
 
   '@testing-library/dom@10.1.0':
     resolution: {integrity: sha512-wdsYKy5zupPyLCW2Je5DLHSxSfbIp6h80WoHOQc+RPtmPGA52O9x5MJEkv92Sjonpq+poOAtUKhh1kBGAXBrNA==}
@@ -1954,6 +1960,10 @@ packages:
     resolution: {integrity: sha512-ETEklSGi5t0QMZuiXoA/Q6vcnxcLQP5vdugSpuAyi6SVGi2clPPp+xgEhuMaHC+zGgn31Kd235W35f7Hykkaww==}
     engines: {node: '>= 6'}
 
+  fs-extra@11.2.0:
+    resolution: {integrity: sha512-PmDi3uwK5nFuXh7XDTlVnS17xJS7vW36is2+w3xcv8SVxiB4NyATf4ctkVY5bkSjX0Y4nbvZCq1/EjtEyr9ktw==}
+    engines: {node: '>=14.14'}
+
   fs-minipass@2.1.0:
     resolution: {integrity: sha512-V/JgOLFCS+R6Vcq0slCuaeWEdNC3ouDlJMNIsacH2VtALiu9mV4LPrHc5cDl8k5aw6J8jwgWWpiTo5RYhmIzvg==}
     engines: {node: '>= 8'}
@@ -2005,6 +2015,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
+    deprecated: Glob versions prior to v9 are no longer supported
 
   globals@11.12.0:
     resolution: {integrity: sha512-WOBp/EEGUiIsJSp7wcv/y6MO+lV9UoncWqxuFfm8eBwzWNgyfBd6Gz+IeKQ9jCmyhoH99g15M3T+QaVHFjizVA==}
@@ -2110,6 +2121,7 @@ packages:
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
+    deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -2254,6 +2266,9 @@ packages:
   jsonc-eslint-parser@2.4.0:
     resolution: {integrity: sha512-WYDyuc/uFcGp6YtM2H0uKmUwieOuzeE/5YocFJLnLfclZ4inf3mRn8ZVy1s7Hxji7Jxm6Ss8gqpexD/GlKoGgg==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
+
+  jsonfile@6.1.0:
+    resolution: {integrity: sha512-5dgndWOriYSm5cnYaJNhalLNDKOqFwyDB/rr1E9ZsGciGvKPs8R2xYGCacuf3z6K1YKDz182fd+fY3cn3pMqXQ==}
 
   kebab-case@1.0.2:
     resolution: {integrity: sha512-7n6wXq4gNgBELfDCpzKc+mRrZFs7D+wgfF5WRFLNAr4DA/qtr9Js8uOAVAfHhuLMfAcQ0pRKqbpjx+TcJVdE1Q==}
@@ -2700,6 +2715,7 @@ packages:
 
   rimraf@3.0.2:
     resolution: {integrity: sha512-JZkJMZkAGFFPP2YqXZXPbMlMBgsxzE8ILs4lMIX/2o0L9UBw9O/Y3o6wFw/i9YLapcUJWwqbi3kdxIPdC62TIA==}
+    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
 
   rollup@4.18.0:
@@ -3023,6 +3039,10 @@ packages:
   universalify@0.2.0:
     resolution: {integrity: sha512-CJ1QgKmNg3CwvAv/kOFmtnEN05f0D/cn9QntgNOQlQF9dgvVTHj3t+8JPdjqawCHk7V/KA+fbUqzZ9XWhcqPUg==}
     engines: {node: '>= 4.0.0'}
+
+  universalify@2.0.1:
+    resolution: {integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==}
+    engines: {node: '>= 10.0.0'}
 
   unocss@0.60.4:
     resolution: {integrity: sha512-KtYVzm1sV1J7hpXFvILPZiJVTni+XzC2vJzKYFTEe80fEGsrL+572YjS3QjZB52TMSppLYJk6WIVTb4mE4RmvQ==}
@@ -3764,8 +3784,10 @@ snapshots:
       - typescript
       - vitest
 
-  '@flowr/utils@3.5.2':
+  '@flowr/utils@3.7.0':
     dependencies:
+      fast-glob: 3.3.2
+      fs-extra: 11.2.0
       luxon: 3.4.4
       pathe: 1.1.2
       serialize-error: 11.0.3
@@ -3921,6 +3943,11 @@ snapshots:
       '@tanstack/solid-query': 5.40.1(solid-js@1.8.17)
       solid-js: 1.8.17
 
+  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.13)':
+    dependencies:
+      '@rspc/client': 0.2.0
+      '@tauri-apps/api': 2.0.0-beta.13
+
   '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.8)':
     dependencies:
       '@rspc/client': 0.2.0
@@ -4025,6 +4052,8 @@ snapshots:
       '@tanstack/query-core': 5.40.0
       solid-js: 1.8.17
 
+  '@tauri-apps/api@2.0.0-beta.13': {}
+
   '@tauri-apps/api@2.0.0-beta.8': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-beta.10':
@@ -4070,9 +4099,9 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.10
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.10
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5b496abe090f771847887edc8dd2e5eeee0af270':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#d06be03760751d5465e24e87c98de4c59f701c4a':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.8
+      '@tauri-apps/api': 2.0.0-beta.13
 
   '@testing-library/dom@10.1.0':
     dependencies:
@@ -4994,7 +5023,7 @@ snapshots:
 
   eslint-plugin-petal@3.5.2(eslint@8.57.0):
     dependencies:
-      '@flowr/utils': 3.5.2
+      '@flowr/utils': 3.7.0
       eslint: 8.57.0
 
   eslint-plugin-regexp@2.6.0(eslint@8.57.0):
@@ -5288,6 +5317,12 @@ snapshots:
       combined-stream: 1.0.8
       mime-types: 2.1.35
 
+  fs-extra@11.2.0:
+    dependencies:
+      graceful-fs: 4.2.11
+      jsonfile: 6.1.0
+      universalify: 2.0.1
+
   fs-minipass@2.1.0:
     dependencies:
       minipass: 3.3.6
@@ -5554,6 +5589,12 @@ snapshots:
       eslint-visitor-keys: 3.4.3
       espree: 9.6.1
       semver: 7.6.2
+
+  jsonfile@6.1.0:
+    dependencies:
+      universalify: 2.0.1
+    optionalDependencies:
+      graceful-fs: 4.2.11
 
   kebab-case@1.0.2: {}
 
@@ -6274,6 +6315,8 @@ snapshots:
       '@types/unist': 2.0.10
 
   universalify@0.2.0: {}
+
+  universalify@2.0.1: {}
 
   unocss@0.60.4(postcss@8.4.38)(rollup@4.18.0)(vite@5.2.12(@types/node@20.14.2)(sass@1.77.4)):
     dependencies:

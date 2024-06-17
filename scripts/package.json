@@ -19,7 +19,7 @@
 	"dependencies": {
 		"@flowr/utils": "^3.5.2",
 		"@iarna/toml": "^2.2.5",
-		"execa": "^9.1.0",
+		"execa": "^9.2.0",
 		"semver": "^7.6.2",
 		"undici": "^6.18.2"
 	},

@@ -5,15 +5,22 @@ import Sidebar from '../../components/Sidebar';
 import SettingsGeneral from './launcher/SettingsGeneral';
 import SettingsAppearance from './launcher/SettingsAppearance';
 import SettingsAccounts from './game/SettingsAccounts';
+import SettingsMinecraft from './game/SettingsMinecraft';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 
 function SettingsRoutes() {
 	return (
 		<>
+			{/* Launcher Settings */}
 			<Route path="/" component={SettingsGeneral} />
 			<Route path="/appearance" component={SettingsAppearance} />
+
+			{/* Game Settings */}
+			<Route path="/minecraft" component={SettingsMinecraft} />
 			<Route path="/accounts" component={SettingsAccounts} />
+
+			{/* About */}
 		</>
 	);
 }

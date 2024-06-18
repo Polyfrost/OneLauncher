@@ -14,7 +14,7 @@ export function getCluster(uuid: string | undefined | null): Resource<Cluster> |
 }
 
 export function ClusterProvider(props: ParentProps & { uuid: string | undefined }) {
-	// eslint-disable-next-line solid/reactivity
+	// eslint-disable-next-line solid/reactivity -- todo
 	const cluster = getCluster(props.uuid);
 
 	return (

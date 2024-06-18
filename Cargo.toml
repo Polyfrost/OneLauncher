@@ -9,10 +9,10 @@ members = [
 [workspace.package]
 license = "GPL-3.0-only"
 edition = "2021"
-repository = "https://github.com/Polyfrost/Nexus"
-documentation = "https://docs.polyfrost.org/nexus"
+repository = "https://github.com/Polyfrost/OneLauncher"
+documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
-homepage = "https://polyfrost.org"
+homepage = "https://polyfrost.org/"
 authors = [
   "Polyfrost",
   "Polyfrost Contributors"
@@ -22,6 +22,7 @@ authors = [
 tauri = { version = "2.0.0-beta", features = [
   "rustls-tls",
   "tracing",
+  "specta"
 ] }
 tauri-build = { version = "2.0.0-beta" }
 tauri-plugin-authenticator = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
@@ -66,7 +67,7 @@ tracing-subscriber = { version = "0.3", features = [
 ] }
 tracing-error = { version = "0.2" }
 tracing-appender = { version = "0.2" }
-sentry = { version = "0.33", default-features = false, features = [
+sentry = { version = "0.34", default-features = false, features = [
   "rustls",
   "reqwest",
   "backtrace",

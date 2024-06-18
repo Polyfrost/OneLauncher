@@ -79,9 +79,7 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 		ImportType::TLauncher => "instances".to_string(),
 		ImportType::Technic => "instances".to_string(),
 		ImportType::FTBLauncher => "instances".to_string(),
-		_ => {
-			return Err(anyhow::anyhow!("launcher type unknown, cant import").into())
-		}
+		_ => return Err(anyhow::anyhow!("launcher type unknown, cant import").into()),
 	};
 
 	let instances_dir = path.join(&instances_path);
@@ -97,11 +95,11 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 	{
 		let path = e.path();
 		if path.is_dir() && is_valid_instance(path.clone(), import).await {
-  				let name = path.file_name();
-  				if let Some(name) = name {
-  					instances.push(name.to_string_lossy().to_string());
-  				}
-  			}
+			let name = path.file_name();
+			if let Some(name) = name {
+				instances.push(name.to_string_lossy().to_string());
+			}
+		}
 	}
 
 	Ok(instances)

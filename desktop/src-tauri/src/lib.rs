@@ -35,9 +35,7 @@ pub async fn run() {
 	.await;
 }
 
-pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
-	setup: F,
-) {
+pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 	let builder = tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -55,16 +53,14 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(
 			Ok(())
 		});
 
-	let builder = builder
-		.plugin(api::init())
-		.invoke_handler({
-            let builder = collect_commands!();
+	let builder = builder.plugin(api::init()).invoke_handler({
+		let builder = collect_commands!();
 
-            #[cfg(debug_assertions)]
-            let builder = builder.path("../src/bindings.ts");
+		#[cfg(debug_assertions)]
+		let builder = builder.path("../src/bindings.ts");
 
-            builder.build().unwrap()
-        });
+		builder.build().unwrap()
+	});
 
 	let app = builder
 		.build(tauri::tauri_build_context!())

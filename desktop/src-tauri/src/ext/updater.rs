@@ -1,18 +1,19 @@
-use tauri::{plugin::TauriPlugin, Manager, Runtime};
+use tauri::plugin::TauriPlugin;
+use tauri::{Manager, Runtime};
 use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Update {
-    pub version: String,
+	pub version: String,
 }
 
 impl Update {
-    fn new(update: &TauriPluginUpdate) -> Self {
-        Self {
-            version: update.version.clone(),
-        }
-    }
+	fn new(update: &TauriPluginUpdate) -> Self {
+		Self {
+			version: update.version.clone(),
+		}
+	}
 }
 
 #[derive(Default)]

@@ -2,7 +2,7 @@
 	"name": "@onelauncher/root",
 	"type": "module",
 	"version": "1.0.0",
-	"packageManager": "pnpm@9.1.4",
+	"packageManager": "pnpm@9.4.0",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
 	"repository": {
@@ -22,16 +22,16 @@
 		"release:node": "bumpp -r"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.5.2",
-		"@types/node": "^20.14.2",
+		"@flowr/eslint-config": "^3.7.0",
+		"@types/node": "^20.14.3",
 		"@vitest/ui": "^1.6.0",
 		"bumpp": "^9.4.1",
 		"eslint": "^8.56.0",
 		"eslint-plugin-solid": "^0.14.0",
 		"ts-node": "^10.9.2",
-		"tsx": "^4.12.0",
+		"tsx": "^4.15.6",
 		"typescript": "^5.4.5",
-		"vite": "^5.2.12",
+		"vite": "^5.3.1",
 		"vitest": "^1.6.0"
 	},
 	"pnpm": {

@@ -4,7 +4,6 @@ import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
-import SettingsRow from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
 
 const Accounts: {

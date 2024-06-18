@@ -66,8 +66,8 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 		.await?;
 
 		let path = state.directories.java_dir().await;
-		let mut archive = zip::ZipArchive::new(std::io::Cursor::new(file))
-			.map_err(IOError::from_zip)?;
+		let mut archive =
+			zip::ZipArchive::new(std::io::Cursor::new(file)).map_err(IOError::from_zip)?;
 
 		if let Some(file) = archive.file_names().next() {
 			if let Some(dir) = file.split('/').next() {
@@ -79,9 +79,7 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 		}
 
 		send_ingress(&ingress, 0.0, Some("extracing java binary")).await?;
-		archive
-			.extract(&path)
-			.map_err(IOError::from_zip)?;
+		archive.extract(&path).map_err(IOError::from_zip)?;
 		send_ingress(&ingress, 10.0, Some("extracted java binary")).await?;
 		let mut base_path = path.join(
 			download

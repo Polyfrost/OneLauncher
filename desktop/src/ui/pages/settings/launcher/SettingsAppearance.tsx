@@ -4,8 +4,11 @@ import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
 import Sidebar from '~ui/components/Sidebar';
+import useSettingsContext from '~ui/hooks/useSettings';
 
 function SettingsAppearance() {
+	const settings = useSettingsContext();
+
 	return (
 		<Sidebar.Page>
 			<h1>Appearance</h1>
@@ -27,7 +30,10 @@ function SettingsAppearance() {
 					description="Toggle all animations in the launcher."
 					icon={<Speedometer04Icon />}
 				>
-					<Toggle />
+					<Toggle
+						defaultChecked={settings.disable_animations ?? false}
+						onChecked={value => settings.disable_animations = value}
+					/>
 				</SettingsRow>
 			</ScrollableContainer>
 		</Sidebar.Page>

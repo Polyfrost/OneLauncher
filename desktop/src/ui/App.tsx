@@ -9,10 +9,11 @@ import { SettingsProvider } from './hooks/useSettings';
 import { bridge } from '~index';
 
 function App(props: ParentProps) {
-	if (!bridge.commands.isDev())
+	if (!bridge.commands.isDev()) {
 		document.addEventListener('contextmenu', (event) => {
 			event.preventDefault();
 		});
+	}
 
 	return (
 		<SettingsProvider>

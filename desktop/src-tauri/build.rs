@@ -13,7 +13,7 @@ fn main() {
 					"get_cluster",
 					"get_manifest",
                     "get_settings",
-                    "change_settings"
+                    "set_settings"
 				]),
 			),
 	)

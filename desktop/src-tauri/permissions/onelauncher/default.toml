@@ -9,5 +9,5 @@ permissions = [
   "allow-get-manifest",
   "allow-login-msa",
   "allow-get-settings",
-  "allow-change-settings"
+  "allow-set-settings"
 ]

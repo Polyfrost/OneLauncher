@@ -4,6 +4,7 @@ import type { JSX } from 'solid-js';
 import { createSignal, onMount } from 'solid-js';
 import Modal from './overlay/Modal';
 import Button from './base/Button';
+import useSettingsContext from '~ui/hooks/useSettings';
 
 interface TitlebarButtonProps {
 	icon: (any: any) => JSX.Element;
@@ -23,6 +24,7 @@ function TitlebarButton(props: TitlebarButtonProps) {
 
 function WindowFrame() {
 	const [isModalVisible, setModalVisible] = createSignal(false);
+	const settings = useSettingsContext();
 
 	const maximize = () => Window.getCurrent().toggleMaximize();
 	const minimize = () => Window.getCurrent().minimize();
@@ -31,10 +33,10 @@ function WindowFrame() {
 
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
-			// if (appSettings.settings.closeDialog) {
-			// 	event.preventDefault();
-			// 	setModalVisible(true);
-			// }
+			if (settings.hide_close_prompt !== true) {
+				event.preventDefault();
+				setModalVisible(true);
+			}
 		});
 	});
 

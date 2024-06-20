@@ -1,7 +1,7 @@
 import { type Context, type ParentProps, type Resource, Show, createContext, createEffect, useContext } from 'solid-js';
 import useCommand from './useCommand';
 import type { Settings } from '~bindings';
-import { bridge } from '~index';
+import { bridge } from '~imports';
 
 const SettingsContext = createContext<Settings>() as Context<Settings>;
 

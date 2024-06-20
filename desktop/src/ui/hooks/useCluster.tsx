@@ -1,7 +1,7 @@
 import { type Context, type ParentProps, type Resource, Show, createContext, useContext } from 'solid-js';
 import useCommand from './useCommand';
 import type { Cluster } from '~bindings';
-import { bridge } from '~index';
+import { bridge } from '~imports';
 
 const ClusterContext = createContext<Cluster>() as Context<Cluster>;
 

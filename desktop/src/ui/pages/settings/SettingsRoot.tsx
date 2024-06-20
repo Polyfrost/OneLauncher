@@ -13,8 +13,6 @@ import SettingsChangelog from './about/SettingsChangelog';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 import Tooltip from '~ui/components/base/Tooltip';
-import { bridge } from '~index';
-import useCommand from '~ui/hooks/useCommand';
 import { AppInfo } from '~utils/program-info';
 
 function SettingsRoutes() {

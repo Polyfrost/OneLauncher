@@ -17,7 +17,7 @@ import TextField from '../components/base/TextField';
 import ClusterCover from '~ui/components/game/ClusterCover';
 import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
-import { bridge } from '~index';
+import { bridge } from '~imports';
 import { upperFirst } from '~utils/string';
 
 // TODO: Replace this into it's own component

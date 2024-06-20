@@ -12,8 +12,9 @@ fn main() {
 					"get_clusters",
 					"get_cluster",
 					"get_manifest",
-                    "get_settings",
-                    "set_settings"
+					"get_settings",
+					"set_settings",
+                    "get_program_info"
 				]),
 			),
 	)

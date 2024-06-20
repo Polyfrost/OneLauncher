@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use chrono::DateTime;
+use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{ClusterMeta, Loader, PackageData, Settings};
 use onelauncher::store::{Cluster, ClusterPath};
 use onelauncher::{cluster, settings};
@@ -12,27 +13,22 @@ use uuid::Uuid;
 
 #[macro_export]
 macro_rules! collect_commands {
-    () => {
-        {
-            use $crate::api::commands::*;
-            tauri_specta::ts::builder()
-                .config(specta::ts::ExportConfig::default().bigint(specta::ts::BigIntExportBehavior::BigInt))
-                .commands(tauri_specta::collect_commands![
-                    is_dev,
-                    create_cluster,
-                    get_cluster,
-                    get_clusters,
-                    get_settings,
-                    set_settings,
-                ])
-        }
-    };
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn is_dev() -> bool {
-	cfg!(debug_assertions)
+	() => {{
+		use $crate::api::commands::*;
+		tauri_specta::ts::builder()
+			.config(
+				specta::ts::ExportConfig::default()
+					.bigint(specta::ts::BigIntExportBehavior::BigInt),
+			)
+			.commands(tauri_specta::collect_commands![
+				create_cluster,
+				get_cluster,
+				get_clusters,
+				get_settings,
+				set_settings,
+                get_program_info
+			])
+	}};
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -128,11 +124,39 @@ pub async fn get_clusters() -> Result<HashMap<ClusterPath, Cluster>, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_settings() -> Result<Settings, String> {
-    settings::get().await.map_err(|err| err.into())
+	settings::get().await.map_err(|err| err.into())
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn set_settings(settings: Settings) -> Result<(), String> {
-    settings::set(settings).await.map_err(|err| err.into())
+	settings::set(settings).await.map_err(|err| err.into())
+}
+
+
+#[derive(Serialize, Deserialize, Type)]
+pub struct ProgramInfo {
+    launcher_version: String,
+    webview_version: String,
+    tauri_version: String,
+    dev_build: bool,
+    platform: String,
+    arch: String
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn get_program_info() -> ProgramInfo {
+    let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
+	let tauri_version = tauri::VERSION;
+	let dev_build = tauri::is_dev();
+
+    ProgramInfo {
+        launcher_version: VERSION.into(),
+        webview_version,
+        tauri_version: tauri_version.into(),
+        dev_build,
+        platform: TARGET_OS.into(),
+        arch: NATIVE_ARCH.into()
+    }
 }

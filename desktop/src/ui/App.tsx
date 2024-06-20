@@ -6,14 +6,13 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AnimatedRoutes from './components/AnimatedRoutes';
 import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
 import { SettingsProvider } from './hooks/useSettings';
-import { bridge } from '~index';
+import { AppInfo } from '~utils/program-info';
 
 function App(props: ParentProps) {
-	if (!bridge.commands.isDev()) {
+	if (AppInfo.dev_build !== true)
 		document.addEventListener('contextmenu', (event) => {
 			event.preventDefault();
 		});
-	}
 
 	return (
 		<SettingsProvider>

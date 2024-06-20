@@ -37,13 +37,14 @@ pub async fn run() {
 
 pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 	let builder = tauri::Builder::default()
-		.plugin(tauri_plugin_shell::init())
-		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-			println!("{}, {argv:?}, {cwd}", app.package_info().name);
-			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
-				.unwrap();
-		}))
-		.plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            println!("{}, {argv:?}, {cwd}", app.package_info().name);
+            app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
+            .unwrap();
+        }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
 		.plugin(tauri_plugin_window_state::Builder::default().build())
@@ -66,9 +67,9 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.build(tauri::tauri_build_context!())
 		.expect("failed to build tauri application");
 
-    if let Err(err) = initialize_state(app.app_handle().clone()).await {
-        tracing::error!("{err}");
-    };
+	if let Err(err) = initialize_state(app.app_handle().clone()).await {
+		tracing::error!("{err}");
+	};
 
 	app.run(|_app_handle, _event| {})
 }

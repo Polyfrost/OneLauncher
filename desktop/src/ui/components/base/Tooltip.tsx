@@ -9,7 +9,7 @@ function Tooltip(props: TooltipProps) {
 	const [split, rest] = splitProps(props, ['class']);
 
 	return (
-		<div data-text={props.text} class={`${styles.tooltip} ${split.class}`} {...rest} />
+		<div data-text={props.text} class={`${styles.tooltip} ${split.class || ''}`} {...rest} />
 	);
 }
 

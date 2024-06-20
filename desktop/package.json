@@ -26,6 +26,7 @@
 		"@solidjs/router": "^0.13.5",
 		"@tanstack/solid-query": "^5.45.0",
 		"@tauri-apps/api": "^2.0.0-beta.13",
+		"@tauri-apps/plugin-clipboard-manager": "2.1.0-beta.3",
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@unocss/reset": "^0.61.0",

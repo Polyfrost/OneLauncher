@@ -27,7 +27,7 @@
 		"@vitest/ui": "^1.6.0",
 		"bumpp": "^9.4.1",
 		"eslint": "^8.56.0",
-		"eslint-plugin-solid": "^0.14.0",
+		"eslint-plugin-solid": "^0.14.1",
 		"ts-node": "^10.9.2",
 		"tsx": "^4.15.6",
 		"typescript": "^5.4.5",

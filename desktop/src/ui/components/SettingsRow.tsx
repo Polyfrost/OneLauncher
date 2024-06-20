@@ -1,17 +1,18 @@
-import { type JSX, type ParentProps, createEffect } from 'solid-js';
+import type { JSX, ParentProps } from 'solid-js';
 
 type SettingsRowProps = ParentProps & {
-	title: string;
-	description: string;
+	title: JSX.Element;
+	description: JSX.Element;
 	icon: JSX.Element;
-	clickable?: () => any;
+	onClick?: () => any;
 };
 
 function SettingsRow(props: SettingsRowProps) {
-	const interactableClass = createEffect(() => props.clickable ? 'hover:bg-component-bg-hover active:bg-component-bg-pressed' : '');
-
 	return (
-		<div class={`flex flex-row bg-component-bg rounded-xl gap-3.5 p-4 ${interactableClass} items-center`}>
+		<div
+			class={`flex flex-row bg-component-bg rounded-xl gap-3.5 p-4 ${props.onClick ? 'hover:bg-component-bg-hover active:bg-component-bg-pressed' : ''} items-center`}
+			{...(props.onClick ? { onClick: props.onClick } : {})}
+		>
 			<div class="flex justify-center items-center h-8 w-8">
 				{props.icon}
 			</div>
@@ -21,11 +22,15 @@ function SettingsRow(props: SettingsRowProps) {
 				<p class="text-wrap text-sm">{props.description}</p>
 			</div>
 
-			<div class="">
+			<div>
 				{props.children}
 			</div>
 		</div>
 	);
 }
+
+SettingsRow.Header = (props: JSX.HTMLAttributes<HTMLHeadingElement>) => {
+	return <h3 class={`mt-4 mb-1 ml-2 text-md text-fg-secondary uppercase ${props.class || ''}`} {...props} />;
+};
 
 export default SettingsRow;

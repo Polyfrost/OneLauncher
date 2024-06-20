@@ -6,6 +6,7 @@ import SettingsGeneral from './launcher/SettingsGeneral';
 import SettingsAppearance from './launcher/SettingsAppearance';
 import SettingsAccounts from './game/SettingsAccounts';
 import SettingsMinecraft from './game/SettingsMinecraft';
+import SettingsDeveloper from './about/SettingsDeveloper';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 
@@ -21,6 +22,7 @@ function SettingsRoutes() {
 			<Route path="/accounts" component={SettingsAccounts} />
 
 			{/* About */}
+			<Route path="/developer" component={SettingsDeveloper} />
 		</>
 	);
 }
@@ -44,9 +46,9 @@ function SettingsRoot(props: ParentProps) {
 							[<Users01Icon />, 'Accounts', '/accounts'],
 						],
 						'About': [
-							[<CodeSnippet02Icon />, 'Developer Options', '/developer'],
 							[<RefreshCcw02Icon />, 'Changelog', '/changelog'],
 							[<MessageTextSquare01Icon />, 'Feedback', '/feedback'],
+							[<CodeSnippet02Icon />, 'Developer Options', '/developer'],
 						],
 					}}
 				/>

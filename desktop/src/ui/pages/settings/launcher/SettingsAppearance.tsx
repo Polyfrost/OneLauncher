@@ -26,8 +26,8 @@ function SettingsAppearance() {
 				</SettingsRow>
 
 				<SettingsRow
-					title="Animations"
-					description="Toggle all animations in the launcher."
+					title="Disable Animations"
+					description="Disables all animations in the launcher."
 					icon={<Speedometer04Icon />}
 				>
 					<Toggle

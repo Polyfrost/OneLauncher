@@ -73,7 +73,7 @@ h4 { @apply text-lg font-medium; }
     transform: translateX(0);
 }
 
-body.reduce-motion * {
-    transition-duration: 0.0001ms !important;
-    animation-duration: 0.0001ms !important;
+body.reduce-motion *, body.reduce-motion *::after, body.reduce-motion *::before {
+    transition-duration: 0.00001ms !important;
+    animation-duration: 0.00001ms !important;
 }

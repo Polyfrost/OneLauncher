@@ -40,7 +40,7 @@
 		"@solidjs/testing-library": "^0.8.8",
 		"@tauri-apps/cli": "^2.0.0-beta.20",
 		"@testing-library/jest-dom": "^6.4.6",
-		"@types/uuid": "^9.0.8",
+		"@types/uuid": "^10.0.0",
 		"jsdom": "^24.1.0",
 		"sass": "^1.77.6",
 		"unocss": "^0.61.0",

@@ -6,6 +6,7 @@ import Toggle from '~ui/components/base/Toggle';
 import Sidebar from '~ui/components/Sidebar';
 import useSettingsContext from '~ui/hooks/useSettings';
 import Button from '~ui/components/base/Button';
+import DiscordIcon from '~assets/logos/discord.svg?component-solid';
 
 function SettingsGeneral() {
 	const settings = useSettingsContext();
@@ -18,7 +19,7 @@ function SettingsGeneral() {
 				<SettingsRow
 					title="Discord RPC"
 					description="Enable Discord Rich Presence."
-					icon={<XIcon />}
+					icon={<DiscordIcon class="w-6" />}
 				>
 					<Toggle
 						defaultChecked={!(settings.disable_discord ?? false)}

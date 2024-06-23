@@ -14,7 +14,11 @@
 		},
 
 		"resolveJsonModule": true,
-		"types": ["vitest/globals", "@testing-library/jest-dom"],
+		"types": [
+			"vitest/globals",
+			"@testing-library/jest-dom",
+			"vite-plugin-solid-svg/types"
+		],
 		"allowImportingTsExtensions": true,
 		"strict": true,
 		"noFallthroughCasesInSwitch": true,

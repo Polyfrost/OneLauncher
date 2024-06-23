@@ -1,5 +1,5 @@
-import { Index, type JSX, type ParentProps, children, createSignal, splitProps } from 'solid-js';
-import { ChevronDownIcon } from '@untitled-theme/icons-solid';
+import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Switch, children, createSignal, splitProps } from 'solid-js';
+import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-solid';
 import Popup from '../overlay/Popup';
 import Button from './Button';
 import styles from './Dropdown.module.scss';
@@ -8,10 +8,18 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 	onChange?: (selected: number) => any;
 	text?: string;
 	selected?: number;
+	dropdownClass?: string;
+	component?: (
+		props: {
+			visible: Accessor<boolean>;
+			setVisible: Setter<boolean>;
+			children: () => ResolvedJSXElement[];
+		}
+	) => JSX.Element;
 };
 
 function Dropdown(props: DropdownProps) {
-	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected']);
+	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass']);
 	const [visible, setVisible] = createSignal(false);
 
 	// eslint-disable-next-line solid/reactivity -- todo
@@ -29,27 +37,39 @@ function Dropdown(props: DropdownProps) {
 			split.onChange(selected());
 	}
 
-	return (
-		<div ref={ref} class={`${styles.dropdown} ${split.class}`} {...rest}>
-			<Button
-				class="h-full w-full"
-				buttonStyle="secondary"
-				onClick={() => setVisible(true)}
-				iconRight={<ChevronDownIcon />}
-			>
-				<div
-					class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
+	const Component = () => (
+		split.component
+			? split.component({ visible, setVisible, children: items })
+			: (
+				<Button
+					class="h-full w-full"
+					buttonStyle="secondary"
+					onClick={() => setVisible(true)}
+					iconRight={<ChevronDownIcon />}
 				>
-					<span>{split.text}</span>
-					{items()[selected()]}
-				</div>
-			</Button>
+					<div
+						class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
+					>
+						<span>{split.text}</span>
+						{items()[selected()]}
+					</div>
+				</Button>
+				)
+	);
+
+	return (
+		<div ref={ref} class={`${styles.dropdown} ${split.class || ''}`} {...rest}>
+			<Component />
 
 			<Popup
 				mount={ref}
 				visible={visible}
 				setVisible={setVisible}
-				ref={ref => ref.classList.add('mt-1', 'w-full')}
+				ref={(ref) => {
+					ref.classList.add('mt-1', 'w-full');
+					if (split.dropdownClass)
+						ref.classList.add(...split.dropdownClass.split(' '));
+				}}
 			>
 				<div class="bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30">
 					<div class="flex flex-col gap-2">
@@ -75,6 +95,40 @@ Dropdown.Row = function (props: ParentProps) {
 		<div class={styles.row}>
 			{props.children}
 		</div>
+	);
+};
+
+type MinimalDropdownProps = Omit<DropdownProps, 'component' | 'icon'> & {
+	icon?: JSX.Element;
+};
+
+Dropdown.Minimal = function (props: MinimalDropdownProps) {
+	const [split, rest] = splitProps(props, ['icon']);
+	return (
+		<Dropdown
+			class="w-auto!"
+			dropdownClass="w-max!"
+			component={props => (
+				<Button
+					onClick={() => props.setVisible(true)}
+					children={(
+						<Switch>
+							<Match when={split.icon}>
+								{split.icon}
+							</Match>
+							<Match when={props.visible() === true}>
+								<ChevronUpIcon />
+							</Match>
+							<Match when={props.visible() !== true}>
+								<ChevronDownIcon />
+							</Match>
+						</Switch>
+					)}
+					buttonStyle="iconSecondary"
+				/>
+			)}
+			{...rest}
+		/>
 	);
 };
 

@@ -33,7 +33,7 @@ function TextField(props: TextFieldProps) {
 	}
 
 	return (
-		<label for={id} class={`${styles.textfield} ${isValid() ? {} : styles.invalid}`}>
+		<label for={id} class={`${styles.textfield} ${isValid() ? '' : styles.invalid}`}>
 			{fieldProps.iconLeft && <span class={styles.icon}>{fieldProps.iconLeft}</span>}
 			<input
 				id={id}

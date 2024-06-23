@@ -4,18 +4,16 @@ body {
 
 /* start lynith's native experience (tm) */
 * { 
-    user-select: none;
     -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    user-drag: none;
     cursor: default !important; 
     animation-duration: 150ms !important;
 }
 
 *:hover { 
     cursor: default !important; 
-}
-
-img { 
-    -webkit-user-drag: none; 
 }
 /* end lynith's native experience (tm) */
 

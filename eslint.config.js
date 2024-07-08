@@ -21,6 +21,7 @@ export default petal({
 		'**/*.svg',
 		'*.rs',
 		'pnpm-lock.yaml',
+        '**/node_modules',
 		'desktop/src/bindings.ts',
 	],
 }).append([

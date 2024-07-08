@@ -67,6 +67,12 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	}
 }
 
+// #[specta::specta]
+// #[tauri::command]
+// pub fn update_cluster(cluster: Cluster) -> Result<(), String> {
+    
+// }
+
 fn placeholder_cluster() -> Cluster {
 	let path = ClusterPath("test".into());
 	Cluster {

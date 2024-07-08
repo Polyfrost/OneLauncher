@@ -22,7 +22,7 @@ function SettingsRow(props: SettingsRowProps) {
 				<p class="text-wrap text-sm">{props.description}</p>
 			</div>
 
-			<div>
+			<div class="flex flex-row justify-center items-center gap-2">
 				{props.children}
 			</div>
 		</div>

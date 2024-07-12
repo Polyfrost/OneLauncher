@@ -30,6 +30,7 @@ tauri-plugin-authenticator = { version = "2.0.0-beta" }
 tauri-plugin-shell = { version = "2.0.0-beta" }
 tauri-plugin-window-state = { version = "2.0.0-beta" }
 tauri-plugin-single-instance = { version = "2.0.0-beta" }
+tauri-plugin-clipboard-manager = { version = "2.1.0-beta" }
 tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
 
 # rspc is updated on the v0.x branch

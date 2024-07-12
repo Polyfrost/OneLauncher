@@ -39,6 +39,7 @@ tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-authenticator = { workspace = true }
+tauri-plugin-clipboard-manager = { workspace = true }
 
 tauri-specta = { workspace = true }
 specta = { workspace = true }
@@ -55,11 +56,10 @@ uuid = { workspace = true }
 
 tracing = { workspace = true }
 tracing-error = { workspace = true }
-tauri-plugin-clipboard-manager = "2.1.0-beta.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa = "0.25.0"
-objc = "0.2.7"
+cocoa.workspace = true
+objc.workspace = true
 
 [features]
 default = [ "custom-protocol" ]

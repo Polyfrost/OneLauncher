@@ -312,7 +312,10 @@ pub async fn get_optimal_java_version(path: &ClusterPath) -> crate::Result<Optio
 	let state = State::get().await?;
 	if let Some(cluster) = get(path, None).await? {
 		let metadata = state.metadata.read().await;
-        let minecraft_metadata = metadata.minecraft.to_owned().ok_or(anyhow!("misisng minecraft metadata"))?;
+		let minecraft_metadata = metadata
+			.minecraft
+			.to_owned()
+			.ok_or(anyhow!("misisng minecraft metadata"))?;
 
 		let version = minecraft_metadata
 			.versions

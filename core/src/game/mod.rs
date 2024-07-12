@@ -72,8 +72,11 @@ pub async fn install_minecraft(
 	let instance_path = &io::canonicalize(cluster.get_full_path().await?)?;
 	let metadata = state.metadata.read().await;
 
-    let version_manifest = metadata.minecraft.to_owned().ok_or(anyhow!("missing metadata"))?;
-    
+	let version_manifest = metadata
+		.minecraft
+		.to_owned()
+		.ok_or(anyhow!("missing metadata"))?;
+
 	let version_idx = version_manifest
 		.versions
 		.iter()
@@ -86,7 +89,7 @@ pub async fn install_minecraft(
 	let version = &version_manifest.versions[version_idx];
 	let updated = version_idx
 		<= version_manifest
-            .versions
+			.versions
 			.iter()
 			.position(|g| g.id == "22w16a")
 			.unwrap_or(0); // LWJGL patching
@@ -274,7 +277,10 @@ pub async fn launch_minecraft(
 	let instance_path = cluster.get_full_path().await?;
 	let instance_path = &io::canonicalize(instance_path)?;
 
-    let version_manifest = metadata.minecraft.to_owned().ok_or(anyhow!("missing minecraft metadata"))?;
+	let version_manifest = metadata
+		.minecraft
+		.to_owned()
+		.ok_or(anyhow!("missing minecraft metadata"))?;
 
 	let version_index = version_manifest
 		.versions

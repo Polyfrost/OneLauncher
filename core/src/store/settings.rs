@@ -15,12 +15,12 @@ const CURRENT_FORMAT_VERSION: u32 = 1;
 pub struct Settings {
 	/// A OneLauncher [`Theme`] managed by the core GUI.
 	pub theme: Theme,
-    /// Does not ask for confirmation when closing the OneLauncher GUI
-    #[serde(default)]
-    pub hide_close_prompt: bool,
-    /// Disables animations in the OneLauncher GUI
-    #[serde(default)]
-    pub disable_animations: bool,
+	/// Does not ask for confirmation when closing the OneLauncher GUI
+	#[serde(default)]
+	pub hide_close_prompt: bool,
+	/// Disables animations in the OneLauncher GUI
+	#[serde(default)]
+	pub disable_animations: bool,
 	/// A global fullscreen Minecraft state.
 	#[serde(default)]
 	pub force_fullscreen: bool,
@@ -95,8 +95,8 @@ impl Settings {
 		} else {
 			let settings = Self {
 				theme: Theme::Dark,
-                hide_close_prompt: false,
-                disable_animations: false,
+				hide_close_prompt: false,
+				disable_animations: false,
 				force_fullscreen: false,
 				resolution: Resolution::default(),
 				java_versions: JavaVersions::new(),

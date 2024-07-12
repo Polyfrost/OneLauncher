@@ -26,7 +26,6 @@ tauri-build = { workspace = true, features = [
 
 [dependencies]
 onelauncher = { path = "../../core", features = [ "tauri" ] }
-interpulse = { workspace = true, features = [ "bincode" ] }
 
 tauri = { workspace = true, features = [
   "isolation",
@@ -43,6 +42,8 @@ tauri-plugin-authenticator = { workspace = true }
 
 tauri-specta = { workspace = true }
 specta = { workspace = true }
+
+interpulse.workspace = true
 
 tokio = { workspace = true }
 serde = { workspace = true }

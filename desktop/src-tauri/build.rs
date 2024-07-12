@@ -14,7 +14,7 @@ fn main() {
 					"get_manifest",
 					"get_settings",
 					"set_settings",
-                    "get_program_info"
+					"get_program_info",
 				]),
 			),
 	)

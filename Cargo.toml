@@ -19,17 +19,17 @@ authors = [
 ]
 
 [workspace.dependencies]
-tauri = { version = "2.0.0-beta", features = [
+tauri = { version = "=2.0.0-beta.22", features = [
   "rustls-tls",
   "tracing",
   "specta"
 ] }
 tauri-build = { version = "2.0.0-beta" }
-tauri-plugin-authenticator = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" }
-tauri-plugin-updater = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2", features = [ "rustls-tls" ] }
+tauri-plugin-authenticator = { version = "2.0.0-beta" }
+tauri-plugin-shell = { version = "2.0.0-beta" }
+tauri-plugin-window-state = { version = "2.0.0-beta" }
+tauri-plugin-single-instance = { version = "2.0.0-beta" }
+tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
 
 rspc = { version = "0.2.0", features = [ "specta2" ] }
 specta = { version = "=2.0.0-rc.12", features = [
@@ -58,7 +58,7 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 ], default-features = false }
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "d946e86da93e110468c9e436dccc84139f353496", features = [ "specta" ] }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "abc6fb0f263a6f3a5e1fa5810f7ee9d2ad61e8b8", features = [ "specta" ] }
 
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
@@ -143,8 +143,9 @@ cocoa = { version = "0.25" }
 objc = { version = "0.2" }
 
 [patch.crates-io]
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
-rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "f250409db9e21a67ae252c963d605f863f73d5f0" }
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "13fd87c6a1e5c64f296ff76f113314ed6a3fe685" } # main branch
+rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9e56e7f5161043f1834594e38bb2bdcdb485d57a" } # v0.x branch
+# tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" } # main branch
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

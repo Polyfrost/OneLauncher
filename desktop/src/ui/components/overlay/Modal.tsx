@@ -15,9 +15,9 @@ function ModalButton(button: { props: ModalButtonProps }) {
 		<>
 			{typeof button.props === 'string'
 				? (
-					<Button>
-						{button.props}
-					</Button>
+						<Button>
+							{button.props}
+						</Button>
 					)
 				: (
 						button.props

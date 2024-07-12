@@ -4,7 +4,6 @@ import petal from '@flowr/eslint-config';
 export default petal({
 	typescript: true,
 	solid: true,
-	gitignore: true,
 	unocss: false,
 	toml: {
 		overrides: {
@@ -19,9 +18,10 @@ export default petal({
 		'**/dist',
 		'**/.temp',
 		'**/*.svg',
+		'**/gen',
 		'*.rs',
 		'pnpm-lock.yaml',
-        '**/node_modules',
+		'**/node_modules',
 		'desktop/src/bindings.ts',
 	],
 }).append([

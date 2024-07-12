@@ -1,10 +1,7 @@
-import { EyeIcon, FlipBackwardIcon, Globe02Icon, InfoCircleIcon, LayoutTopIcon, Maximize01Icon, XIcon } from '@untitled-theme/icons-solid';
+import { EyeIcon, LayoutTopIcon, Maximize01Icon, XIcon } from '@untitled-theme/icons-solid';
 import { Show } from 'solid-js';
-import Button from '~ui/components/base/Button';
-import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
-import Tooltip from '~ui/components/base/Tooltip';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import SettingsRow from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';

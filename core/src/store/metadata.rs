@@ -80,14 +80,14 @@ impl Metadata {
 		// 	forge,
 		// 	legacy_fabric,
 		// })
-        Ok(Self {
-            minecraft: None, 
-            fabric: None, 
-            quilt: None, 
-            neoforge: None, 
-            forge: None, 
-            legacy_fabric: None
-        })
+		Ok(Self {
+			minecraft: None,
+			fabric: None,
+			quilt: None,
+			neoforge: None,
+			forge: None,
+			legacy_fabric: None,
+		})
 	}
 
 	/// Initialize the core Metadata manager.

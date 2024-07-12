@@ -9,7 +9,13 @@ pub use interpulse::api::modded::Manifest;
 #[tracing::instrument]
 pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.minecraft.clone().ok_or(anyhow!("missing minecraft metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.minecraft
+		.clone()
+		.ok_or(anyhow!("missing minecraft metadata"))?;
 
 	Ok(meta)
 }
@@ -18,7 +24,13 @@ pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {
 #[tracing::instrument]
 pub async fn get_fabric_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.fabric.clone().ok_or(anyhow!("missing fabric metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.fabric
+		.clone()
+		.ok_or(anyhow!("missing fabric metadata"))?;
 
 	Ok(meta)
 }
@@ -27,7 +39,13 @@ pub async fn get_fabric_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_quilt_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.quilt.clone().ok_or(anyhow!("missing quilt metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.quilt
+		.clone()
+		.ok_or(anyhow!("missing quilt metadata"))?;
 
 	Ok(meta)
 }
@@ -36,7 +54,13 @@ pub async fn get_quilt_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_forge_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.forge.clone().ok_or(anyhow!("missing forge metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.forge
+		.clone()
+		.ok_or(anyhow!("missing forge metadata"))?;
 
 	Ok(meta)
 }
@@ -45,7 +69,13 @@ pub async fn get_forge_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_neoforge_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.neoforge.clone().ok_or(anyhow!("missing neoforce metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.neoforge
+		.clone()
+		.ok_or(anyhow!("missing neoforce metadata"))?;
 
 	Ok(meta)
 }
@@ -54,7 +84,13 @@ pub async fn get_neoforge_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_legacy_fabric_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.legacy_fabric.clone().ok_or(anyhow!("missing legacyfabric metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.legacy_fabric
+		.clone()
+		.ok_or(anyhow!("missing legacyfabric metadata"))?;
 
 	Ok(meta)
 }

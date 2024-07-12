@@ -26,7 +26,7 @@ macro_rules! collect_commands {
 				get_clusters,
 				get_settings,
 				set_settings,
-                get_program_info
+				get_program_info
 			])
 	}};
 }
@@ -70,7 +70,7 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 // #[specta::specta]
 // #[tauri::command]
 // pub fn update_cluster(cluster: Cluster) -> Result<(), String> {
-    
+
 // }
 
 fn placeholder_cluster() -> Cluster {
@@ -139,30 +139,29 @@ pub async fn set_settings(settings: Settings) -> Result<(), String> {
 	settings::set(settings).await.map_err(|err| err.into())
 }
 
-
 #[derive(Serialize, Deserialize, Type)]
 pub struct ProgramInfo {
-    launcher_version: String,
-    webview_version: String,
-    tauri_version: String,
-    dev_build: bool,
-    platform: String,
-    arch: String
+	launcher_version: String,
+	webview_version: String,
+	tauri_version: String,
+	dev_build: bool,
+	platform: String,
+	arch: String,
 }
 
 #[specta::specta]
 #[tauri::command]
 pub fn get_program_info() -> ProgramInfo {
-    let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
+	let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
 	let tauri_version = tauri::VERSION;
 	let dev_build = tauri::is_dev();
 
-    ProgramInfo {
-        launcher_version: VERSION.into(),
-        webview_version,
-        tauri_version: tauri_version.into(),
-        dev_build,
-        platform: TARGET_OS.into(),
-        arch: NATIVE_ARCH.into()
-    }
+	ProgramInfo {
+		launcher_version: VERSION.into(),
+		webview_version,
+		tauri_version: tauri_version.into(),
+		dev_build,
+		platform: TARGET_OS.into(),
+		arch: NATIVE_ARCH.into(),
+	}
 }

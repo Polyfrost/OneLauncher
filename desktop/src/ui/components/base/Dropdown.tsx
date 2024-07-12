@@ -41,19 +41,19 @@ function Dropdown(props: DropdownProps) {
 		split.component
 			? split.component({ visible, setVisible, children: items })
 			: (
-				<Button
-					class="h-full w-full"
-					buttonStyle="secondary"
-					onClick={() => setVisible(true)}
-					iconRight={<ChevronDownIcon />}
-				>
-					<div
-						class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
+					<Button
+						class="h-full w-full"
+						buttonStyle="secondary"
+						onClick={() => setVisible(true)}
+						iconRight={<ChevronDownIcon />}
 					>
-						<span>{split.text}</span>
-						{items()[selected()]}
-					</div>
-				</Button>
+						<div
+							class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
+						>
+							<span>{split.text}</span>
+							{items()[selected()]}
+						</div>
+					</Button>
 				)
 	);
 

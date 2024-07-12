@@ -45,7 +45,6 @@ notify-debouncer-mini = { workspace = true }
 iota_stronghold = { workspace = true }
 iota-crypto = { workspace = true }
 
-hex = { workspace = true }
 zeroize = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -57,7 +56,6 @@ futures = { workspace = true }
 tar = { workspace = true }
 zip = { workspace = true }
 uuid = { workspace = true }
-async-trait = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }

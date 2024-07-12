@@ -12,38 +12,44 @@ edition = "2021"
 repository = "https://github.com/Polyfrost/OneLauncher"
 documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
-homepage = "https://polyfrost.org/"
+homepage = "https://polyfrost.org/projects/onelauncher"
 authors = [
   "Polyfrost",
   "Polyfrost Contributors"
 ]
 
 [workspace.dependencies]
-tauri = { version = "=2.0.0-beta.22", features = [
+# tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
+tauri = { version = "=2.0.0-beta.23", features = [
   "rustls-tls",
   "tracing",
   "specta"
 ] }
-tauri-build = { version = "2.0.0-beta" }
+tauri-build = { version = "=2.0.0-beta.18" }
 tauri-plugin-authenticator = { version = "2.0.0-beta" }
 tauri-plugin-shell = { version = "2.0.0-beta" }
 tauri-plugin-window-state = { version = "2.0.0-beta" }
 tauri-plugin-single-instance = { version = "2.0.0-beta" }
 tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
 
-rspc = { version = "0.2.0", features = [ "specta2" ] }
-specta = { version = "=2.0.0-rc.12", features = [
+# rspc is updated on the v0.x branch
+rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9e56e7f5161043f1834594e38bb2bdcdb485d57a", features = [ "specta2" ] }
+# specta is updated on the main branch
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "13fd87c6a1e5c64f296ff76f113314ed6a3fe685", features = [
   "chrono",
   "uuid",
   "serde",
   "serde_json"
 ] }
-tauri-specta = { version = "=2.0.0-rc.11", features = [
+# tauri-specta is updated via crates.io
+tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839", features = [
   "javascript",
   "typescript"
 ] }
+# rspc-tauri2 is updated on the main branch
 rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
 
+# prisma-client-rust* is updated on the main branch
 prisma-client-rust = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [
   "migrations",
   "specta",
@@ -58,8 +64,10 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 ], default-features = false }
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
+# interpulse is updated on the main branch
 interpulse = { git = "https://github.com/pulseflow/workers", rev = "abc6fb0f263a6f3a5e1fa5810f7ee9d2ad61e8b8", features = [ "specta" ] }
 
+# all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
   "chrono",
@@ -107,7 +115,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 iota_stronghold = { version = "2.1" }
 iota-crypto = { version = "0.23" }
-hex = { version = "0.4.3" }
 zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 quote = { version = "1.0" }
 syn = { version = "2.0", features = [ "full" ] }
@@ -118,7 +125,6 @@ serde_ini = { version = "0.2" }
 flate2 = { version = "1.0" }
 tar = { version = "0.4" }
 zip = { version = "0.6" }
-async-trait = { version = "0.1" }
 thiserror = { version = "1.0" }
 anyhow = { version = "1.0" }
 dirs = { version = "5.0" }
@@ -130,7 +136,6 @@ sha1_smol = { version = "1.0.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
 bytes = { version = "1.6" }
 lazy_static = { version = "1.4" }
-once_cell = { version = "1.19" }
 indicatif = { version = "0.17" }
 futures = { version = "0.3" }
 async-recursion = { version = "1.1" }
@@ -141,11 +146,6 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
-
-[patch.crates-io]
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "13fd87c6a1e5c64f296ff76f113314ed6a3fe685" } # main branch
-rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9e56e7f5161043f1834594e38bb2bdcdb485d57a" } # v0.x branch
-# tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" } # main branch
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

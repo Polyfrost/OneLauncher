@@ -36,7 +36,7 @@
 	},
 	"pnpm": {
 		"patchDependencies": {
-			"@rspc/tauri@0.2.0": "patches/@rspc__tauri@0.2.0.patch"
+			"@rspc/tauri@0.2.0": "packages/patches/@rspc__tauri@0.2.0.patch"
 		}
 	}
 }

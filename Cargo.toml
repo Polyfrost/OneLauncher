@@ -1,9 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-  "core",
-  "debugger",
-  "desktop/src-tauri",
+  "crates/*",
+  "apps/desktop/src-tauri",
 ]
 
 [workspace.package]

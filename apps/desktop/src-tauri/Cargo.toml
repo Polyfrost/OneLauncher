@@ -25,7 +25,7 @@ tauri-build = { workspace = true, features = [
 ] }
 
 [dependencies]
-onelauncher = { path = "../../core", features = [ "tauri" ] }
+onelauncher = { path = "../../../crates/core", features = [ "tauri" ] }
 
 tauri = { workspace = true, features = [
   "isolation",

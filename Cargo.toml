@@ -39,7 +39,9 @@ specta = { git = "https://github.com/oscartbeaumont/specta", rev = "13fd87c6a1e5
   "chrono",
   "uuid",
   "serde",
-  "serde_json"
+  "serde_json",
+  "derive",
+  "function"
 ] }
 # tauri-specta is updated via crates.io
 tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839", features = [
@@ -65,7 +67,7 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
 # interpulse is updated on the main branch
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "abc6fb0f263a6f3a5e1fa5810f7ee9d2ad61e8b8", features = [ "specta" ] }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "98f7a1135ac75f9734172595cb86379b1c416d18", features = [ "specta" ] }
 
 # all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }

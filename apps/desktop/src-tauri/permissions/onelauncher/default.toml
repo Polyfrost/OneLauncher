@@ -1,13 +1,16 @@
 [default]
 description = "Default permissions for the plugin"
 permissions = [
-  "allow-refresh-client-manager",
+  "allow-begin-msa",
+  "allow-finish-msa",
+  "allow-get-users",
+  "allow-get-user",
+  "allow-remove-user",
   "allow-launch-cluster",
   "allow-create-cluster",
   "allow-get-clusters",
   "allow-get-cluster",
   "allow-get-manifest",
-  "allow-login-msa",
   "allow-get-settings",
   "allow-set-settings",
   "allow-get-program-info"

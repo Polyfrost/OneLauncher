@@ -1,5 +1,6 @@
-import { ChevronRightIcon, InfoCircleIcon } from '@untitled-theme/icons-solid';
+import { ChevronRightIcon, InfoCircleIcon, UserPlus02Icon } from '@untitled-theme/icons-solid';
 import { For, Show, createSignal, mergeProps } from 'solid-js';
+import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
@@ -48,6 +49,27 @@ function SettingsAccounts() {
 				</For>
 
 			</ScrollableContainer>
+			<div class="flex flex-row justify-end items-end mt-2">
+				<Button
+					buttonStyle="primary"
+					iconLeft={<UserPlus02Icon />}
+					children="Add Account"
+					onClick={() => {
+						// @ts-expect-error -- aa
+						window.doTheThing = bridge.comments.finishMsa;
+						bridge.commands.beginMsa().then((data) => {
+							if (data.status === 'ok') {
+								// @ts-expect-error -- aa
+								window.tempData = data.data;
+								console.log('set');
+							}
+							else {
+								console.log(data.error);
+							}
+						});
+					}}
+				/>
+			</div>
 		</Sidebar.Page>
 	);
 }

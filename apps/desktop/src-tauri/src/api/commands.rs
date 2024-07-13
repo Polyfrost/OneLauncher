@@ -4,9 +4,9 @@ use std::str::FromStr;
 
 use chrono::DateTime;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
-use onelauncher::data::{ClusterMeta, Loader, PackageData, Settings};
-use onelauncher::store::{Cluster, ClusterPath};
-use onelauncher::{cluster, settings};
+use onelauncher::data::{ClusterMeta, Loader, MinecraftCredentials, PackageData, Settings};
+use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
+use onelauncher::{cluster, minecraft, settings};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use uuid::Uuid;
@@ -21,6 +21,11 @@ macro_rules! collect_commands {
 					.bigint(specta::ts::BigIntExportBehavior::BigInt),
 			)
 			.commands(tauri_specta::collect_commands![
+				begin_msa,
+				finish_msa,
+				get_users,
+				get_user,
+				remove_user,
 				create_cluster,
 				get_cluster,
 				get_clusters,
@@ -164,4 +169,34 @@ pub fn get_program_info() -> ProgramInfo {
 		platform: TARGET_OS.into(),
 		arch: NATIVE_ARCH.into(),
 	}
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_users() -> Result<Vec<MinecraftCredentials>, String> {
+    minecraft::users().await.map_err(|err| err.into())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
+    minecraft::get_user(uuid).await.map_err(|err| err.into())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn begin_msa() -> Result<MinecraftLogin, String> {
+    minecraft::begin().await.map_err(|err| err.into())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn finish_msa(code: String, login: MinecraftLogin) -> Result<MinecraftCredentials, String> {
+    minecraft::finish(code.as_str(), login).await.map_err(|err| err.into())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
+    minecraft::remove_user(uuid).await.map_err(|err| err.into())
 }

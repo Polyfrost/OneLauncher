@@ -5,8 +5,11 @@ fn main() {
 			.plugin(
 				"onelauncher",
 				tauri_build::InlinedPlugin::new().commands(&[
-					"login_msa",
-					"refresh_client_manager",
+					"begin_msa",
+					"finish_msa",
+					"get_users",
+					"get_user",
+					"remove_user",
 					"launch_cluster",
 					"create_cluster",
 					"get_clusters",

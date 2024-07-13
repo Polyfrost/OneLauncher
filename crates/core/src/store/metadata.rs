@@ -1,8 +1,12 @@
 //! Handles fetching metadata via interpulse.
 
-use interpulse::api::minecraft::{fetch_version_manifest, VersionManifest as MinecraftManifest};
+use interpulse::api::minecraft::{
+	// fetch_version_manifest,
+	VersionManifest as MinecraftManifest
+};
 use interpulse::api::modded::{
-	fetch_manifest as fetch_modded_manifest, Manifest as ModdedManifest,
+	// fetch_manifest as fetch_modded_manifest,
+	Manifest as ModdedManifest,
 };
 use serde::{Deserialize, Serialize};
 

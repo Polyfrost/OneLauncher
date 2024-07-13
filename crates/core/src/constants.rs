@@ -13,11 +13,7 @@ pub const DISCORD_RPC_CLIENT_ID: &str = "1234567890000000";
 
 // Microsoft Authentication
 pub const CLIENT_ID: &str = "9419b7ee-1448-4d1b-b52a-550d8f36ab56";
-pub const MSA_PORT: u16 = 13523;
-
-// Minecraft
-pub const MINECRAFT_VERSIONS_MANIFEST: &str =
-	"https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+pub const MICROSOFT_CLIENT_ID: &str = "";
 
 // OS constants which match Minecraft's/Mojang's scheme
 #[cfg(target_os = "windows")]

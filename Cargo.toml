@@ -157,7 +157,7 @@ specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e1
 rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" }
 rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "370e2e51fe4aa932889b534072b9f89ca8329da2" }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "4d247c78545703200435a4a063c3f77fd644370f" }
 
 prisma-client-rust = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
 prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }

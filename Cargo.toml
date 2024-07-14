@@ -71,7 +71,7 @@ prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-
 prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
 
 # interpulse is updated on the main branch
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "98f7a1135ac75f9734172595cb86379b1c416d18", features = [ "specta" ] }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "370e2e51fe4aa932889b534072b9f89ca8329da2", features = [ "specta" ] }
 
 # all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }

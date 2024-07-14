@@ -37,41 +37,40 @@ tauri-plugin-clipboard-manager = { version = "2.1.0-beta" }
 tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
 
 # rspc is updated on the v0.x branch
-rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9e56e7f5161043f1834594e38bb2bdcdb485d57a", features = [ "specta2" ] }
+rspc = { version = "=0.2.0", features = [ "specta2" ] }
 # specta is updated on the main branch
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "d13ce97b70766c2681b63c80daf431c2bf4d255c", features = [
+specta = { version = "=2.0.0-rc.12", features = [
   "chrono",
   "uuid",
   "serde",
   "serde_json",
-  # "derive",
-  # "function",
+  "function",
 ] }
 # tauri-specta is updated via crates.io
-tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839", features = [
+tauri-specta = { version = "=2.0.0-rc.11", features = [
   "javascript",
   "typescript"
 ] }
 # rspc-tauri2 is updated on the main branch
-rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
+rspc-tauri2 = { version = "=0.0.1" }
 
 # prisma-client-rust* is updated on the main branch
-prisma-client-rust = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [
+prisma-client-rust = { version = "=0.6.8", features = [
   "migrations",
   "specta",
   "sqlite",
   "sqlite-create-many",
 ], default-features = false }
-prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [
+prisma-client-rust-cli = { version = "=0.6.8", features = [
   "migrations",
   "specta",
   "sqlite",
   "sqlite-create-many",
 ], default-features = false }
-prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab", features = [ "sqlite" ], default-features = false }
+prisma-client-rust-sdk = { version = "=0.6.8", features = [ "sqlite" ], default-features = false }
 
 # interpulse is updated on the main branch
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "370e2e51fe4aa932889b534072b9f89ca8329da2", features = [ "specta" ] }
+interpulse = { version = "=1.0.0", features = [ "specta" ] }
 
 # all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }
@@ -152,6 +151,17 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
+
+[patch.crates-io]
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
+rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
+tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" }
+rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "370e2e51fe4aa932889b534072b9f89ca8329da2" }
+
+prisma-client-rust = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
+prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
+prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

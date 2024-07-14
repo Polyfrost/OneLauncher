@@ -34,6 +34,11 @@ tauri = { workspace = true, features = [
   "image-png",
   "protocol-asset"
 ] }
+tauri-utils = { workspace = true }
+tauri-build = { workspace = true }
+tauri-codegen = { workspace = true }
+tauri-macros = { workspace = true }
+tauri-plugin = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }

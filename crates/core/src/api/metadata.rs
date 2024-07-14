@@ -1,7 +1,6 @@
 //! Metadata management interface
 
 use crate::State;
-use anyhow::anyhow;
 pub use interpulse::api::minecraft::VersionManifest;
 pub use interpulse::api::modded::Manifest;
 
@@ -14,8 +13,7 @@ pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {
 		.read()
 		.await
 		.minecraft
-		.clone()
-		.ok_or(anyhow!("missing minecraft metadata"))?;
+		.clone();
 
 	Ok(meta)
 }
@@ -29,8 +27,7 @@ pub async fn get_fabric_versions() -> crate::Result<Manifest> {
 		.read()
 		.await
 		.fabric
-		.clone()
-		.ok_or(anyhow!("missing fabric metadata"))?;
+		.clone();
 
 	Ok(meta)
 }
@@ -44,8 +41,7 @@ pub async fn get_quilt_versions() -> crate::Result<Manifest> {
 		.read()
 		.await
 		.quilt
-		.clone()
-		.ok_or(anyhow!("missing quilt metadata"))?;
+		.clone();
 
 	Ok(meta)
 }
@@ -59,8 +55,7 @@ pub async fn get_forge_versions() -> crate::Result<Manifest> {
 		.read()
 		.await
 		.forge
-		.clone()
-		.ok_or(anyhow!("missing forge metadata"))?;
+		.clone();
 
 	Ok(meta)
 }
@@ -74,23 +69,22 @@ pub async fn get_neoforge_versions() -> crate::Result<Manifest> {
 		.read()
 		.await
 		.neoforge
-		.clone()
-		.ok_or(anyhow!("missing neoforce metadata"))?;
+		.clone();
 
 	Ok(meta)
 }
 
-/// Get a [`Manifest`] for all available Legacy Fabric versions.
-#[tracing::instrument]
-pub async fn get_legacy_fabric_versions() -> crate::Result<Manifest> {
-	let state = State::get().await?;
-	let meta = state
-		.metadata
-		.read()
-		.await
-		.legacy_fabric
-		.clone()
-		.ok_or(anyhow!("missing legacyfabric metadata"))?;
+// /// Get a [`Manifest`] for all available Legacy Fabric versions.
+// #[tracing::instrument]
+// pub async fn get_legacy_fabric_versions() -> crate::Result<Manifest> {
+// 	let state = State::get().await?;
+// 	let meta = state
+// 		.metadata
+// 		.read()
+// 		.await
+// 		.legacy_fabric
+// 		.clone()
+// 		.ok_or(anyhow!("missing legacyfabric metadata"))?;
 
-	Ok(meta)
-}
+// 	Ok(meta)
+// }

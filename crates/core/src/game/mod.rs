@@ -11,7 +11,6 @@ use crate::store::{
 };
 use crate::utils::io::{self, IOError};
 
-use anyhow::anyhow;
 use chrono::Utc;
 use interpulse as ip;
 use interpulse::api::minecraft::{RuleAction, VersionInfo};
@@ -72,10 +71,7 @@ pub async fn install_minecraft(
 	let instance_path = &io::canonicalize(cluster.get_full_path().await?)?;
 	let metadata = state.metadata.read().await;
 
-	let version_manifest = metadata
-		.minecraft
-		.to_owned()
-		.ok_or(anyhow!("missing metadata"))?;
+	let version_manifest = metadata.minecraft.to_owned();
 
 	let version_idx = version_manifest
 		.versions
@@ -277,10 +273,7 @@ pub async fn launch_minecraft(
 	let instance_path = cluster.get_full_path().await?;
 	let instance_path = &io::canonicalize(instance_path)?;
 
-	let version_manifest = metadata
-		.minecraft
-		.to_owned()
-		.ok_or(anyhow!("missing minecraft metadata"))?;
+	let version_manifest = metadata.minecraft.to_owned();
 
 	let version_index = version_manifest
 		.versions

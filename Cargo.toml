@@ -39,13 +39,13 @@ tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
 # rspc is updated on the v0.x branch
 rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9e56e7f5161043f1834594e38bb2bdcdb485d57a", features = [ "specta2" ] }
 # specta is updated on the main branch
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "13fd87c6a1e5c64f296ff76f113314ed6a3fe685", features = [
+specta = { git = "https://github.com/oscartbeaumont/specta", rev = "d13ce97b70766c2681b63c80daf431c2bf4d255c", features = [
   "chrono",
   "uuid",
   "serde",
   "serde_json",
-  "derive",
-  "function"
+  # "derive",
+  # "function",
 ] }
 # tauri-specta is updated via crates.io
 tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839", features = [

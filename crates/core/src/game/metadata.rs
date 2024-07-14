@@ -75,10 +75,10 @@ pub async fn download_version_info(
 			"downloading minecraft version info for minecraft version {}",
 			&version_id
 		);
-		let mut info = ip::api::minecraft::fetch_version_info(version).await?;
+		let mut info = fetch_version_info(version, &st.fetch_semaphore).await?;
 
 		if let Some(loader) = loader {
-			let partial = ip::api::modded::fetch_partial_version(&loader.url).await?;
+			let partial = fetch_partial_version(&loader.url, &st.fetch_semaphore).await?;
 			info = ip::api::modded::merge_partial_version(partial, info);
 		}
 
@@ -94,6 +94,14 @@ pub async fn download_version_info(
 
 	tracing::debug!("loaded minecraft version info for minecraft version {version_id}");
 	Ok(result)
+}
+
+pub async fn fetch_version_info(version: &ip::api::minecraft::Version, semaphore: &FetchSemaphore) -> crate::Result<ip::api::minecraft::VersionInfo> {
+	Ok(serde_json::from_slice(&fetch(&version.url, Some(&version.sha1), semaphore).await?)?)
+}
+
+pub async fn fetch_partial_version(url: &str, semaphore: &FetchSemaphore) -> crate::Result<ip::api::modded::PartialVersionInfo> {
+	Ok(serde_json::from_slice(&fetch(url, None, semaphore).await?)?)
 }
 
 #[tracing::instrument(skip_all)]
@@ -117,7 +125,7 @@ pub async fn download_assets_index(
 			.await
 			.and_then(|ref it| Ok(serde_json::from_slice(it)?))
 	} else {
-		let index = ip::api::minecraft::fetch_assets_index(version).await?;
+		let index = fetch_assets_index(version, &st.fetch_semaphore).await?;
 		write(&path, &serde_json::to_vec(&index)?, &st.io_semaphore).await?;
 		tracing::info!("downloaded assets index");
 		Ok(index)
@@ -129,6 +137,10 @@ pub async fn download_assets_index(
 
 	tracing::debug!("loaded assets index");
 	Ok(result)
+}
+
+pub async fn fetch_assets_index(version: &ip::api::minecraft::VersionInfo, semaphore: &FetchSemaphore) -> crate::Result<AssetsIndex> {
+	Ok(serde_json::from_slice(&fetch(&version.asset_index.url, Some(&version.asset_index.sha1), semaphore).await?)?)
 }
 
 #[tracing::instrument(skip(st, index))]

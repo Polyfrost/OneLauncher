@@ -365,6 +365,7 @@ pub struct SaveDeviceToken {
 
 /// Core variables passed throughout the Minecraft login flow.
 #[derive(Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct MinecraftLogin {
 	pub verify: String,
 	/// The OAuth challenge generated at the start of the flow.
@@ -377,6 +378,7 @@ pub struct MinecraftLogin {
 
 /// A structure of all needed Minecraft credentials for logging in and account management.
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct MinecraftCredentials {
 	/// The uuid of the credentials.
 	pub id: Uuid,

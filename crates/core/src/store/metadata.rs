@@ -50,15 +50,15 @@ impl Metadata {
 			},
 			async {
 				let url = Self::get_manifest("quilt", interpulse::api::modded::CURRENT_QUILT_FORMAT_VERSION);
-				fetch_modded_manifest(&url, &semaphore).await
+				fetch_modded_manifest(&url, semaphore).await
 			},
 			async {
 				let url = Self::get_manifest("neo", interpulse::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION);
-				fetch_modded_manifest(&url, &semaphore).await
+				fetch_modded_manifest(&url, semaphore).await
 			},
 			async {
 				let url = Self::get_manifest("forge", interpulse::api::modded::CURRENT_FORGE_FORMAT_VERSION);
-				fetch_modded_manifest(&url, &semaphore).await
+				fetch_modded_manifest(&url, semaphore).await
 			},
 		}?;
 
@@ -165,10 +165,23 @@ impl Metadata {
 	}
 }
 
-async fn fetch_version_manifest(url: Option<&str>, semaphore: &FetchSemaphore) -> crate::Result<MinecraftManifest> {
-	Ok(serde_json::from_slice(&fetch(url.unwrap_or(interpulse::api::minecraft::VERSION_MANIFEST_URL), None, semaphore).await?)?)
+async fn fetch_version_manifest(
+	url: Option<&str>,
+	semaphore: &FetchSemaphore,
+) -> crate::Result<MinecraftManifest> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			url.unwrap_or(interpulse::api::minecraft::VERSION_MANIFEST_URL),
+			None,
+			semaphore,
+		)
+		.await?,
+	)?)
 }
 
-async fn fetch_modded_manifest(url: &str, semaphore: &FetchSemaphore) -> crate::Result<ModdedManifest> {
+async fn fetch_modded_manifest(
+	url: &str,
+	semaphore: &FetchSemaphore,
+) -> crate::Result<ModdedManifest> {
 	Ok(serde_json::from_slice(&fetch(url, None, semaphore).await?)?)
 }

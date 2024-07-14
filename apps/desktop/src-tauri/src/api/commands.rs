@@ -174,29 +174,34 @@ pub fn get_program_info() -> ProgramInfo {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_users() -> Result<Vec<MinecraftCredentials>, String> {
-    minecraft::users().await.map_err(|err| err.into())
+	minecraft::users().await.map_err(|err| err.into())
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
-    minecraft::get_user(uuid).await.map_err(|err| err.into())
+	minecraft::get_user(uuid).await.map_err(|err| err.into())
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn begin_msa() -> Result<MinecraftLogin, String> {
-    minecraft::begin().await.map_err(|err| err.into())
+	minecraft::begin().await.map_err(|err| err.into())
 }
 
 #[specta::specta]
 #[tauri::command]
-pub async fn finish_msa(code: String, login: MinecraftLogin) -> Result<MinecraftCredentials, String> {
-    minecraft::finish(code.as_str(), login).await.map_err(|err| err.into())
+pub async fn finish_msa(
+	code: String,
+	login: MinecraftLogin,
+) -> Result<MinecraftCredentials, String> {
+	minecraft::finish(code.as_str(), login)
+		.await
+		.map_err(|err| err.into())
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
-    minecraft::remove_user(uuid).await.map_err(|err| err.into())
+	minecraft::remove_user(uuid).await.map_err(|err| err.into())
 }

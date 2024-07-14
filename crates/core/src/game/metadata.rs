@@ -82,7 +82,7 @@ pub async fn download_version_info(
 			info = ip::api::modded::merge_partial_version(partial, info);
 		}
 
-		info.id = version_id.clone();
+		info.id.clone_from(&version_id);
 
 		write(&path, &serde_json::to_vec(&info)?, &st.io_semaphore).await?;
 		Ok(info)
@@ -96,11 +96,19 @@ pub async fn download_version_info(
 	Ok(result)
 }
 
-pub async fn fetch_version_info(version: &ip::api::minecraft::Version, semaphore: &FetchSemaphore) -> crate::Result<ip::api::minecraft::VersionInfo> {
-	Ok(serde_json::from_slice(&fetch(&version.url, Some(&version.sha1), semaphore).await?)?)
+pub async fn fetch_version_info(
+	version: &ip::api::minecraft::Version,
+	semaphore: &FetchSemaphore,
+) -> crate::Result<ip::api::minecraft::VersionInfo> {
+	Ok(serde_json::from_slice(
+		&fetch(&version.url, Some(&version.sha1), semaphore).await?,
+	)?)
 }
 
-pub async fn fetch_partial_version(url: &str, semaphore: &FetchSemaphore) -> crate::Result<ip::api::modded::PartialVersionInfo> {
+pub async fn fetch_partial_version(
+	url: &str,
+	semaphore: &FetchSemaphore,
+) -> crate::Result<ip::api::modded::PartialVersionInfo> {
 	Ok(serde_json::from_slice(&fetch(url, None, semaphore).await?)?)
 }
 
@@ -139,8 +147,18 @@ pub async fn download_assets_index(
 	Ok(result)
 }
 
-pub async fn fetch_assets_index(version: &ip::api::minecraft::VersionInfo, semaphore: &FetchSemaphore) -> crate::Result<AssetsIndex> {
-	Ok(serde_json::from_slice(&fetch(&version.asset_index.url, Some(&version.asset_index.sha1), semaphore).await?)?)
+pub async fn fetch_assets_index(
+	version: &ip::api::minecraft::VersionInfo,
+	semaphore: &FetchSemaphore,
+) -> crate::Result<AssetsIndex> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			&version.asset_index.url,
+			Some(&version.asset_index.sha1),
+			semaphore,
+		)
+		.await?,
+	)?)
 }
 
 #[tracing::instrument(skip(st, index))]

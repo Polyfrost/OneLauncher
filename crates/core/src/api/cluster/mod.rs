@@ -1,6 +1,8 @@
 //! **OneLauncher Cluster**
 //!
-//! API for our managed Minecraft instances, Clusters.
+//! API for creating our managed Minecraft instances, Clusters.
+
+// TODO: (pauline) fully implement the cluster::self APIs.
 
 use crate::proxy::send::send_cluster;
 
@@ -201,7 +203,7 @@ pub async fn get_by_uuid(uuid: uuid::Uuid, clear: Option<bool>) -> crate::Result
 #[tracing::instrument]
 pub async fn get_full_path(path: &ClusterPath) -> crate::Result<PathBuf> {
 	let _ = get(path, Some(true)).await?.ok_or_else(|| {
-		anyhow::anyhow!("failed to get the full path of profile at path {}", path)
+		anyhow::anyhow!("failed to get the full path of cluster at path {}", path)
 	})?;
 	let full_path = io::canonicalize(path.full_path().await?)?;
 
@@ -255,7 +257,7 @@ where
 
 			Ok(())
 		}
-		None => Err(anyhow::anyhow!("unmanaged profile edited at {}", path.to_string()).into()),
+		None => Err(anyhow::anyhow!("unmanaged cluster edited at {}", path.to_string()).into()),
 	}
 }
 

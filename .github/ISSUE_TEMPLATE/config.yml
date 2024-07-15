@@ -5,6 +5,7 @@ contact_links:
     url: https://polyfrost.org/discord
   - name: Polyfrost Documentation
     about: Useful documentation about Polyfrost, OneConfig, and other Polyfrost projects.
-    url: https://docs.modrinth.com
+    url: https://docs.polyfrost.org
   - name: Polyfrost Docs^2
     about: Useful documentation about how you can contribute to Polyfrost projects.
+    url: https://contributing.polyfrost.org

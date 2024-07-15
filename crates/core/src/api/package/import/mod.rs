@@ -4,6 +4,7 @@ use crate::prelude::ClusterPath;
 use crate::proxy::send::{init_or_edit_ingress, send_ingress};
 use crate::proxy::IngressId;
 
+use crate::store::Clusters;
 use crate::utils::http::{self, IoSemaphore};
 use crate::utils::io::{self, IOError};
 use serde::{Deserialize, Serialize};
@@ -52,10 +53,10 @@ impl fmt::Display for ImportType {
 			ImportType::ATLauncher => write!(f, "ATLauncher"),
 			ImportType::Curseforge => write!(f, "Curseforge"),
 			ImportType::GDLauncher => write!(f, "GDLauncher"),
-			ImportType::Modrinth => write!(f, "Modrinth"),
+			ImportType::Modrinth => write!(f, "Modrinth App"),
 			ImportType::PrismLauncher => write!(f, "PrismLauncher"),
 			ImportType::TLauncher => write!(f, "TLauncher"),
-			ImportType::FTBLauncher => write!(f, "FTB"),
+			ImportType::FTBLauncher => write!(f, "Feed The Beast"),
 			ImportType::Technic => write!(f, "Technic"),
 			ImportType::Unknown => write!(f, "Unknown"),
 		}
@@ -63,22 +64,21 @@ impl fmt::Display for ImportType {
 }
 
 pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Result<Vec<String>> {
-	// TODO(pauline)(instance_import): Fix MultiMC based launcher import
 	let instances_path = match import {
 		ImportType::GDLauncher | ImportType::ATLauncher => "instances".to_string(),
 		ImportType::Curseforge => "Instances".to_string(),
-		// ImportType::MultiMC => multibased::get_instances_path(path.clone().join("multimc.cfg"))
-		// 	.await
-		// 	.unwrap_or_else(|| "instances".to_string()),
-		// ImportType::PrismLauncher => {
-		// 	multibased::get_instances_path(path.clone().join("prismlauncher.cfg"))
-		// 		.await
-		// 		.unwrap_or_else(|| "instances".to_string())
-		// }
+		ImportType::MultiMC => multibased::get_instances_subpath(path.clone().join("multimc.cfg"))
+			.await
+			.unwrap_or_else(|| "instances".to_string()),
+		ImportType::PrismLauncher => {
+			multibased::get_instances_subpath(path.clone().join("prismlauncher.cfg"))
+				.await
+				.unwrap_or_else(|| "instances".to_string())
+		}
 		ImportType::Modrinth => "profiles".to_string(),
 		ImportType::TLauncher => "instances".to_string(),
-		ImportType::Technic => "instances".to_string(),
 		ImportType::FTBLauncher => "instances".to_string(),
+		ImportType::Technic => "instances".to_string(),
 		_ => return Err(anyhow::anyhow!("launcher type unknown, cant import").into()),
 	};
 
@@ -115,80 +115,54 @@ pub async fn import_instance(
 ) -> crate::Result<()> {
 	tracing::debug!("importing instance from {instance_path}");
 
-	// TODO(pauline)(instance_import): Finish this
-	// let result = match import {
-	// 	ImportType::MultiMC | ImportType::PrismLauncher => {
-	// 		multibased::import(path, instance_path, cluster_path.clone()).await
-	// 	}
-	// 	ImportType::ATLauncher => {
-	// 		atlauncher::import(path, instance_path, cluster_path.clone()).await
-	// 	}
-	// 	ImportType::GDLauncher => {
-	// 		gdlauncher::import(
-	// 			path.join("instances").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::Curseforge => {
-	// 		curseforge::import(
-	// 			path.join("Instances").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::Modrinth => {
-	// 		modrinth::import(
-	// 			path.join("profiles").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::TLauncher => {
-	// 		tlauncher::import(
-	// 			path.join("instances").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::Technic => {
-	// 		technic::import(
-	// 			path.join("instances").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::FTBLauncher => {
-	// 		ftb::import(
-	// 			path.join("instances").join(instance_path),
-	// 			cluster_path.clone(),
-	// 		)
-	// 		.await
-	// 	}
-	// 	ImportType::Unknown => {
-	// 		return Err(anyhow::anyhow!("unknown launcher type").into());
-	// 	}
-	// };
+	let result = match import {
+		ImportType::MultiMC | ImportType::PrismLauncher => {
+			multibased::import_mmc(path, instance_path, cluster_path.clone()).await
+		}
+		ImportType::ATLauncher => {
+			atlauncher::import_atlauncher(path, instance_path, cluster_path.clone()).await
+		}
+		ImportType::GDLauncher => {
+			gdlauncher::import_gdlauncher(
+				path.join("instances").join(instance_path),
+				cluster_path.clone(),
+			)
+			.await
+		}
+		ImportType::Curseforge => {
+			curseforge::import_curseforge(
+				path.join("Instances").join(instance_path),
+				cluster_path.clone(),
+			)
+			.await
+		}
+		// ImportType::Modrinth => modrinth::import_modrinth(path.join("profiles").join(instance_path), cluster_path.clone()).await,
+		// ImportType::TLauncher => tlauncher::import_tlauncher(path.join("instances").join(instance_path), cluster_path.clone()).await,
+		// ImportType::Technic => technic::import_technic(path.join("instances").join(instance_path), cluster_path.clone()).await,
+		// ImportType::FTBLauncher => ftb::import_ftb(path.join("instances").join(instance_path), cluster_path.clone()).await,
+		ImportType::Unknown => Err(anyhow::anyhow!("unknown launcher type").into()),
+		_ => todo!(),
+	};
 
-	// match result {
-	// 	Ok(_) => {}
-	// 	Err(e) => {
-	// 		tracing::warn!("failed to import modpack: {:?}", e);
-	// 		let _ = crate::api::cluster::remove(&cluster_path).await;
-	// 		return Err(e);
-	// 	}
-	// }
+	match result {
+		Ok(_) => {}
+		Err(e) => {
+			tracing::warn!("failed to import modpack: {:?}", e);
+			let _ = crate::api::cluster::remove(&cluster_path).await;
+			return Err(e);
+		}
+	}
 
-	// tokio::task::spawn(Clusters::update_versions());
+	tokio::task::spawn(Clusters::update_versions());
 
-	// tracing::debug!("completed import of instance.");
+	tracing::debug!("completed import of instance.");
 	Ok(())
 }
 
 /// returns the default path for a given [`ImportType`].
 pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 	let path = match r#type {
-		ImportType::MultiMC => None,
+		ImportType::MultiMC => None, // MultiMC data is in it's application directory
 		ImportType::PrismLauncher => Some(dirs::data_dir()?.join("PrismLauncher")),
 		ImportType::ATLauncher => Some(dirs::data_dir()?.join("ATLauncher")),
 		ImportType::GDLauncher => Some(dirs::data_dir()?.join("gdlauncher_next")),
@@ -208,26 +182,26 @@ pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 	}
 }
 
-/// checks if a [`PathBuf`] is a valid instance for a given [`ImportType`]
+/// Checks if a [`PathBuf`] is a valid instance for a given [`ImportType`]
 #[tracing::instrument]
 #[onelauncher_debug::debugger]
 pub async fn is_valid_instance(instance_path: PathBuf, r#type: ImportType) -> bool {
-	false
-	// TODO(pauline)(instance_import): Finish this
-	// match r#type {
-	// 	ImportType::MultiMC | ImportType::PrismLauncher => multibased::is_valid(insance_path).await,
-	// 	ImportType::ATLauncher => atlauncher::is_valid(instance_path).await,
-	// 	ImportType::GDLauncher => gdlauncher::is_valid(instance_path).await,
-	// 	ImportType::Curseforge => curseforge::is_valid(instance_path).await,
-	// 	ImportType::Modrinth => modrinth::is_valid(instance_path).await,
-	// 	ImportType::TLauncher => tlauncher::is_valid(instance_path).await,
-	// 	ImportType::FTBLauncher => ftb::is_valid(instance_path).await,
-	// 	ImportType::Technic => technic::is_valid(instance_path).await,
-	// 	ImportType::Unknown => false,
-	// }
+	match r#type {
+		ImportType::MultiMC | ImportType::PrismLauncher => {
+			multibased::is_valid_multibased(instance_path).await
+		}
+		ImportType::ATLauncher => atlauncher::is_valid_atlauncher(instance_path).await,
+		ImportType::GDLauncher => gdlauncher::is_valid_gdlauncher(instance_path).await,
+		ImportType::Curseforge => curseforge::is_valid_curseforge(instance_path).await,
+		// ImportType::Modrinth => modrinth::is_valid_modrinth(instance_path).await,
+		// ImportType::TLauncher => tlauncher::is_valid_tlauncher(instance_path).await,
+		// ImportType::FTBLauncher => ftb::is_valid_ftb(instance_path).await,
+		// ImportType::Technic => technic::is_valid_technic(instance_path).await,
+		ImportType::Unknown => false,
+		_ => todo!(),
+	}
 }
 
-/// caches an image file
 #[tracing::instrument]
 #[onelauncher_debug::debugger]
 pub async fn cache_icon(icon_path: PathBuf) -> crate::Result<Option<PathBuf>> {
@@ -251,7 +225,7 @@ pub async fn copy_minecraft(
 	io_semaphore: &IoSemaphore,
 	old_ingress: Option<IngressId>,
 ) -> crate::Result<IngressId> {
-	let _cluster_full = cluster_path.full_path().await?;
+	let cluster_path_full = cluster_path.full_path().await?;
 	let subfiles = sub(&minecraft_path).await?;
 	let total_subfiles = subfiles.len() as u64;
 	let ingress = init_or_edit_ingress(
@@ -269,7 +243,7 @@ pub async fn copy_minecraft(
 		let child = sub
 			.strip_prefix(&minecraft_path)
 			.map_err(|_| anyhow::anyhow!("invalid .minecraft file {}", &sub.display()))?;
-		let child = cluster_path.0.join(child);
+		let child = cluster_path_full.join(child);
 		tokio::time::sleep(std::time::Duration::from_millis(1)).await;
 		http::copy(&sub, &child, io_semaphore).await?;
 		send_ingress(&ingress, 1.0, None).await?;

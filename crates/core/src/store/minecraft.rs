@@ -158,7 +158,7 @@ impl MinecraftState {
 						redirect_uri: redirect_uri.value.msa_oauth_redirect,
 					})
 				} else {
-					Err(crate::ErrorKind::from(err).into())
+					Err(err.into())
 				}
 			}
 		}

@@ -30,4 +30,10 @@ impl OneConfig {
 		.await?;
 		Ok(Self { socket })
 	}
+
+	pub async fn close(&mut self) -> crate::Result<()> {
+		self.socket.close(None).await?;
+
+		Ok(())
+	}
 }

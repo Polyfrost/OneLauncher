@@ -176,6 +176,12 @@ pub enum IngressType {
 		package_id: Option<String>,
 		package_version: Option<String>,
 	},
+	DownloadPack {
+		cluster_path: PathBuf,
+		package_name: String,
+		icon: Option<String>,
+		package_version: String,
+	},
 }
 
 #[derive(Serialize, Clone)]

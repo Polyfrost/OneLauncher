@@ -193,8 +193,8 @@ pub fn extract_archive(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
 	};
 
 	match ext {
-		"zip" => extract_zip(archive, dest).map_err(|err| crate::ErrorKind::IOError(err).into()),
-		"gz" => extract_tar_gz(archive, dest).map_err(|err| crate::ErrorKind::IOError(err).into()),
+		"zip" => Ok(extract_zip(archive, dest)?),
+		"gz" => Ok(extract_tar_gz(archive, dest)?),
 		_ => Err(anyhow!("unsupported file extension {:?}", ext).into()),
 	}
 }

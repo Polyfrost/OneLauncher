@@ -1,3 +1,6 @@
+//! Launcher Import: GDLauncher (legacy)
+//! Source Code available at https://github.com/gorilla-devs/GDLauncher
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

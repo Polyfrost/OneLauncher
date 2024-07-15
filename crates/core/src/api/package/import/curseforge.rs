@@ -1,3 +1,6 @@
+//! Launcher Import: CurseForge
+//! Closed Source, all this information is datamined unfortunately.
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

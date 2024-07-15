@@ -1,3 +1,7 @@
+//! Launcher Import: MultiMC & Prism Launcher
+//! Source Code available at https://github.com/PrismLauncher/PrismLauncher
+//! Source Code available at https://github.com/MultiMC/Launcher
+
 use serde::{de, Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

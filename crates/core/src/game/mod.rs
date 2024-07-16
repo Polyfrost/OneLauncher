@@ -72,9 +72,13 @@ pub async fn install_minecraft(
 	let metadata = state.metadata.read().await;
 
 	let version_manifest = metadata.minecraft.to_owned();
+    let versions = version_manifest
+        .ok_or(anyhow::anyhow!(
+            "couldn't get minecraft manifest"
+        ))?
+        .versions;
 
-	let version_idx = version_manifest
-		.versions
+	let version_idx = versions
 		.iter()
 		.position(|g| g.id == cluster.meta.mc_version)
 		.ok_or(anyhow::anyhow!(
@@ -82,10 +86,9 @@ pub async fn install_minecraft(
 			cluster.meta.mc_version
 		))?;
 
-	let version = &version_manifest.versions[version_idx];
+	let version = &versions[version_idx];
 	let updated = version_idx
-		<= version_manifest
-			.versions
+		<= versions
 			.iter()
 			.position(|g| g.id == "22w16a")
 			.unwrap_or(0); // LWJGL patching
@@ -274,19 +277,21 @@ pub async fn launch_minecraft(
 	let instance_path = &io::canonicalize(instance_path)?;
 
 	let version_manifest = metadata.minecraft.to_owned();
+    let versions = version_manifest
+        .ok_or(anyhow::anyhow!("couldn't get minecraft manifest"))?
+        .versions;
 
-	let version_index = version_manifest
-		.versions
+	let version_index = versions
 		.iter()
 		.position(|it| it.id == cluster.meta.mc_version)
 		.ok_or(anyhow::anyhow!(
 			"invalid game version {}",
 			cluster.meta.mc_version
 		))?;
-	let version = &version_manifest.versions[version_index];
+
+	let version = &versions[version_index];
 	let updated = version_index
-		<= version_manifest
-			.versions
+		<= versions
 			.iter()
 			.position(|x| x.id == "22w16a")
 			.unwrap_or(0);

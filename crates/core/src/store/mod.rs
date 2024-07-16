@@ -131,7 +131,8 @@ impl State {
 
 		let is_offline = !http::check_internet_connection(3).await;
 
-		let metadata_in = Metadata::initialize(&directories, !is_offline, &io_semaphore);
+        // TODO: Make this run in the background, this delays launcher startup by a couple seconds
+		let metadata_in = Metadata::initialize(&directories, !is_offline, &io_semaphore, &fetch_semaphore);
 		let clusters_in = Clusters::initialize(&directories, &mut watcher);
 		let users_in = MinecraftState::initialize(&directories, &io_semaphore);
 		let (metadata, clusters, users) = crate::ingress_join! {

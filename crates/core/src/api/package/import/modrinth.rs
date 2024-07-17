@@ -1,8 +1,8 @@
 //! Launcher Import: Modrinth App
 //! Source Code available at https://github.com/modrinth/code
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::prelude::ClusterPath;
 use crate::utils::io;

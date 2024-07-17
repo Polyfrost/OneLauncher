@@ -30,7 +30,7 @@ impl Directories {
 	/// Bootstrap the initial settings directory on first startup.
 	pub fn init_settings_dir() -> Option<PathBuf> {
 		Self::env_path("ONELAUNCHER_CONFIG")
-			.or_else(|| Some(dirs::config_dir()?.join(constants::APP_CONFIG_DIR)))
+			.or_else(|| Some(dirs::config_dir()?.join(constants::ID)))
 	}
 
 	/// Bootstrap the initial settings directory on first startup.

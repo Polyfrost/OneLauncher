@@ -207,9 +207,10 @@ fn parse_minecraft_argument(
 		.replace("${auth_player_name}", username)
 		.replace("${auth_xuid}", "10")
 		.replace("${auth_uuid}", &uuid.simple().to_string())
-		.replace("${client_id}", crate::constants::CLIENT_ID)
+		.replace("${uuid}", &uuid.simple().to_string())
+		.replace("${clientid}", crate::constants::MICROSOFT_CLIENT_ID)
 		.replace("${user_properties}", "{}")
-		.replace("${user_type", "msa")
+		.replace("${user_type}", "msa")
 		.replace("${version_name}", version)
 		.replace("${asset_index_name}", asset_index)
 		.replace(

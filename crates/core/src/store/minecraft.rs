@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
 
+use crate::constants::{MICROSOFT_CLIENT_ID, SCOPES, REDIRECT_URL};
+
 const AUTH_STORE: &str = "authentication.json";
 
 /// The core state of Microsoft authentication for the launcher
@@ -310,11 +312,6 @@ impl MinecraftState {
 	}
 }
 
-/// Microsoft login redirect URI.
-const REDIRECT_URL: &str = "https://login.live.com/oauth20_desktop.srf";
-/// Microsoft login xboxlive scopes to get tokens.
-const SCOPES: &str = "service::user.auth.xboxlive.com::MBI_SSL";
-
 /// A [`reqwest::Request`] with a [`DateTime<Utc>`] attached to it.
 struct RequestWithDate<T> {
 	pub date: DateTime<Utc>,
@@ -450,7 +447,7 @@ async fn sisu_authenticate(
 		"https://sisu.xboxlive.com/authenticate",
 		"/authenticate",
 		json!({
-			"AppId": crate::constants::MICROSOFT_CLIENT_ID,
+			"AppId": MICROSOFT_CLIENT_ID,
 			"DeviceToken": token,
 			"Offers": [SCOPES],
 			"Query": {
@@ -503,7 +500,7 @@ async fn oauth_token(
 	verify: &str,
 ) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
-	query.insert("client_id", crate::constants::MICROSOFT_CLIENT_ID);
+	query.insert("client_id", MICROSOFT_CLIENT_ID);
 	query.insert("code", code);
 	query.insert("code_verifier", verify);
 	query.insert("grant_type", "authorization_code");
@@ -551,7 +548,7 @@ async fn oauth_refresh(
 	refresh_token: &str,
 ) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
-	query.insert("client_id", crate::constants::MICROSOFT_CLIENT_ID);
+	query.insert("client_id", MICROSOFT_CLIENT_ID);
 	query.insert("refresh_token", refresh_token);
 	query.insert("grant_type", "refresh_token");
 	query.insert("redirect_uri", REDIRECT_URL);
@@ -618,7 +615,7 @@ async fn sisu_authorize(
 		"/authorize",
 		json!({
 			"AccessToken": format!("t={access_token}"),
-			"AppId": crate::constants::MICROSOFT_CLIENT_ID,
+			"AppId": MICROSOFT_CLIENT_ID,
 			"DeviceToken": device_token,
 			"ProofKey": {
 				// kibty (kty)

@@ -8,7 +8,13 @@ pub use interpulse::api::modded::Manifest;
 #[tracing::instrument]
 pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.minecraft.clone().ok_or(anyhow::anyhow!("couldn't get minecraft metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.minecraft
+		.clone()
+		.ok_or(anyhow::anyhow!("couldn't get minecraft metadata"))?;
 
 	Ok(meta)
 }
@@ -17,7 +23,13 @@ pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {
 #[tracing::instrument]
 pub async fn get_fabric_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.fabric.clone().ok_or(anyhow::anyhow!("couldn't get fabric metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.fabric
+		.clone()
+		.ok_or(anyhow::anyhow!("couldn't get fabric metadata"))?;
 
 	Ok(meta)
 }
@@ -26,7 +38,13 @@ pub async fn get_fabric_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_quilt_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.quilt.clone().ok_or(anyhow::anyhow!("couldn't get quilt metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.quilt
+		.clone()
+		.ok_or(anyhow::anyhow!("couldn't get quilt metadata"))?;
 
 	Ok(meta)
 }
@@ -35,7 +53,13 @@ pub async fn get_quilt_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_forge_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.forge.clone().ok_or(anyhow::anyhow!("couldn't get forge metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.forge
+		.clone()
+		.ok_or(anyhow::anyhow!("couldn't get forge metadata"))?;
 
 	Ok(meta)
 }
@@ -44,7 +68,13 @@ pub async fn get_forge_versions() -> crate::Result<Manifest> {
 #[tracing::instrument]
 pub async fn get_neoforge_versions() -> crate::Result<Manifest> {
 	let state = State::get().await?;
-	let meta = state.metadata.read().await.neoforge.clone().ok_or(anyhow::anyhow!("couldn't get neoforge metadata"))?;
+	let meta = state
+		.metadata
+		.read()
+		.await
+		.neoforge
+		.clone()
+		.ok_or(anyhow::anyhow!("couldn't get neoforge metadata"))?;
 
 	Ok(meta)
 }

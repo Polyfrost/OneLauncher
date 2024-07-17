@@ -7,7 +7,7 @@ use uuid::Uuid;
 /// Wrapper over an [`async_tungstenite::WebSocketStream`] to connect to the OneConfig server.
 pub struct OneConfig {
 	/// The public tokio socket connection.
-	socket: async_tungstenite::WebSocketStream<async_tungstenite::tokio::ConnectStream>,
+	pub socket: async_tungstenite::WebSocketStream<async_tungstenite::tokio::ConnectStream>,
 }
 
 /// A WebSocket packet while updating a mod to display a GUI in game.
@@ -23,7 +23,7 @@ pub struct ModUpdatePacket {
 
 impl OneConfig {
 	/// Initializes a OneConfig socket connection on localhost port `4023`.
-	pub async fn new(cluster: ClusterPath) -> crate::Result<Self> {
+	pub async fn initialize(cluster: ClusterPath) -> crate::Result<Self> {
 		let (socket, _) = async_tungstenite::tokio::connect_async(format!(
 			"wss://localhost:4023/oneconfig/ws?cluster={cluster}"
 		))

@@ -226,7 +226,9 @@ pub(crate) async fn get_loader_version(
 		_ => return Err(CreateClusterError::MissingManifest(loader.to_string()).into()),
 	};
 
-	let loader_meta = loader_meta.to_owned().ok_or(anyhow::anyhow!("couldn't get game versions"))?;
+	let loader_meta = loader_meta
+		.to_owned()
+		.ok_or(anyhow::anyhow!("couldn't get game versions"))?;
 
 	let loaders = &loader_meta
 		.game_versions

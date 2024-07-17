@@ -23,7 +23,7 @@
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.7.0",
-		"@types/node": "^20.14.3",
+		"@types/node": "^20.14.11",
 		"@vitest/ui": "^1.6.0",
 		"bumpp": "^9.4.1",
 		"eslint": "^8.56.0",

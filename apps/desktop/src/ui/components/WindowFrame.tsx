@@ -52,7 +52,7 @@ function WindowFrame() {
 				<TitlebarButton icon={XCloseIcon} onClick={() => quit()} danger />
 			</div>
 
-			<Modal
+			<Modal.Simple
 				title="Close OneLauncher?"
 				visible={isModalVisible}
 				setVisible={setModalVisible}

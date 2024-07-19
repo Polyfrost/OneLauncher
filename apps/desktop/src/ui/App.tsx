@@ -6,6 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AnimatedRoutes from './components/AnimatedRoutes';
 import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
 import { SettingsProvider } from './hooks/useSettings';
+import { ClusterModalController } from './components/overlay/cluster/ClusterCreationModal';
 import { AppInfo } from '~utils/program-info';
 
 function App(props: ParentProps) {
@@ -15,28 +16,30 @@ function App(props: ParentProps) {
 		});
 
 	return (
-		<SettingsProvider>
-			<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
-				<WindowFrame />
-				<div class="flex flex-col px-8">
-					<Navbar />
-				</div>
-
-				<div class="relative h-full w-full overflow-hidden">
-					<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
-						<ErrorBoundary>
-							<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8 pb-8">
-								<AnimatedRoutes>
-									{props.children}
-								</AnimatedRoutes>
-							</OverlayScrollbarsComponent>
-						</ErrorBoundary>
+		<ClusterModalController>
+			<SettingsProvider>
+				<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
+					<WindowFrame />
+					<div class="flex flex-col px-8">
+						<Navbar />
 					</div>
-				</div>
 
-				<NotificationOverlay />
-			</main>
-		</SettingsProvider>
+					<div class="relative h-full w-full overflow-hidden">
+						<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
+							<ErrorBoundary>
+								<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8 pb-8">
+									<AnimatedRoutes>
+										{props.children}
+									</AnimatedRoutes>
+								</OverlayScrollbarsComponent>
+							</ErrorBoundary>
+						</div>
+					</div>
+
+					<NotificationOverlay />
+				</main>
+			</SettingsProvider>
+		</ClusterModalController>
 	);
 }
 

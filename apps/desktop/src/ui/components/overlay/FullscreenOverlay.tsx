@@ -5,7 +5,7 @@ import type {
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
-type FullscreenOverlayProps = {
+export type FullscreenOverlayProps = {
 	visible: Accessor<boolean>;
 	setVisible: Setter<boolean>;
 	mount?: Node | undefined;

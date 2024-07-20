@@ -1,3 +1,4 @@
+import { A } from '@solidjs/router';
 import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
 import { For, createSignal } from 'solid-js';
 import Button from '~ui/components/base/Button';
@@ -115,7 +116,7 @@ function ModsRow(props: ModsRowProps) {
 		<div class="flex flex-col flex-1 gap-3">
 			<div class="flex flex-row flex-1 justify-between">
 				<h4>{props.header}</h4>
-				<a class="text-fg-secondary hover:text-fg-secondary-hover active:text-fg-secondary-pressed" href={`/browser/category?category=${props.category}`}>See all</a>
+				<A class="text-fg-secondary hover:text-fg-secondary-hover active:text-fg-secondary-pressed" href={`category?category=${props.category}`}>See all</A>
 			</div>
 
 			<div class="flex flex-row gap-2">

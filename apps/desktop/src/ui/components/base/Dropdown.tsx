@@ -1,5 +1,6 @@
 import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Switch, children, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-solid';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../overlay/Popup';
 import Button from './Button';
 import styles from './Dropdown.module.scss';
@@ -71,20 +72,18 @@ function Dropdown(props: DropdownProps) {
 						ref.classList.add(...split.dropdownClass.split(' '));
 				}}
 			>
-				<div class="bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30">
-					<div class="flex flex-col gap-2">
-						<Index each={items()}>
-							{(item, index) => (
-								<div onClick={() => select(index)}>
-									<div class="hover:bg-gray-05 p-2 rounded-lg flex flex-row gap-2 justify-between items-center">
-										{item()}
-										<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
-									</div>
+				<OverlayScrollbarsComponent class={styles.list}>
+					<Index each={items()}>
+						{(item, index) => (
+							<div onClick={() => select(index)}>
+								<div class="hover:bg-gray-05 p-2 rounded-lg flex flex-row gap-2 justify-between items-center">
+									{item()}
+									<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
 								</div>
-							)}
-						</Index>
-					</div>
-				</div>
+							</div>
+						)}
+					</Index>
+				</OverlayScrollbarsComponent>
 			</Popup>
 		</div>
 	);

@@ -1,5 +1,11 @@
 .dropdown {
-    @apply relative w-52;
+    @apply relative h-full;
+
+    .list {
+        @apply bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30;
+        @apply flex flex-col gap-2;
+        @apply max-h-46 overflow-auto;
+    }
 
     .row {
         @apply w-full flex flex-row justify-start items-center gap-1.5 h-4 text-nowrap overflow-hidden;

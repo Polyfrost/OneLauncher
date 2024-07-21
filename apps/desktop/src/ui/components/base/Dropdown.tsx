@@ -72,7 +72,7 @@ function Dropdown(props: DropdownProps) {
 						ref.classList.add(...split.dropdownClass.split(' '));
 				}}
 			>
-				<OverlayScrollbarsComponent class={styles.list}>
+				<OverlayScrollbarsComponent class={`${styles.list} ${visible() ? styles.visible : ''}`}>
 					<Index each={items()}>
 						{(item, index) => (
 							<div onClick={() => select(index)}>
@@ -91,6 +91,7 @@ function Dropdown(props: DropdownProps) {
 
 Dropdown.Row = function (props: ParentProps) {
 	return (
+	// TODO(a11y): tabIndex
 		<div class={styles.row}>
 			{props.children}
 		</div>

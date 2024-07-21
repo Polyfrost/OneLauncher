@@ -1,5 +1,6 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, type JSX, splitProps } from 'solid-js';
+import { For, type JSX, createEffect, createSignal, on, splitProps } from 'solid-js';
+import type { ClusterStepProps } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import VanillaImage from '~assets/logos/vanilla.png';
@@ -29,11 +30,27 @@ const loaders: {
 	},
 ];
 
-export function ClusterStepTwo() {
+export function ClusterStepTwo(props: ClusterStepProps) {
+	const [name, setName] = createSignal('');
+
+	const check = () => {
+		const hasName = name().length > 0;
+
+		props.setCanGoForward(hasName);
+	};
+
+	// TODO: refactor this so its handled by the modal, I am lazy and running out of time so thisll do
+	createEffect(on(() => props.visible(), check));
+	createEffect(check);
+
 	return (
 		<div class="flex flex-col gap-y-4">
 			<Option header="Name">
-				<TextField placeholder="Default Name" iconLeft={<TextInputIcon />} />
+				<TextField
+					onInput={e => setName(e.target.value)}
+					placeholder="Name"
+					iconLeft={<TextInputIcon />}
+				/>
 			</Option>
 
 			<div class="flex flex-row gap-x-2">
@@ -41,7 +58,7 @@ export function ClusterStepTwo() {
 					<Dropdown>
 						<For each={Array.from({ length: 300 }, (_, i) => i).reverse()}>
 							{version => (
-								<p>{version}</p>
+								<Dropdown.Row>{version}</Dropdown.Row>
 							)}
 						</For>
 					</Dropdown>
@@ -50,12 +67,14 @@ export function ClusterStepTwo() {
 					<Dropdown>
 						<For each={loaders}>
 							{loader => (
-								<div class="flex flex-row gap-x-2">
-									<div class="w-4 h-4">
-										<loader.icon />
+								<Dropdown.Row>
+									<div class="flex flex-row gap-x-2">
+										<div class="w-4 h-4">
+											<loader.icon />
+										</div>
+										{loader.name}
 									</div>
-									{loader.name}
-								</div>
+								</Dropdown.Row>
 							)}
 						</For>
 					</Dropdown>

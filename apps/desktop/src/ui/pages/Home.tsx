@@ -187,7 +187,7 @@ function ClusterGroup(props: ClusterGroupProps) {
 
 function HomePage() {
 	const [clusters, { refetch }] = useCommand(bridge.commands.getClusters);
-	const [step, setStep, setVisible] = useClusterModalController();
+	const { setVisible } = useClusterModalController();
 
 	async function newInstance() {
 		setVisible(true);

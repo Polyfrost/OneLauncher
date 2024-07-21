@@ -3,8 +3,13 @@
 
     .list {
         @apply bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30;
-        @apply flex flex-col gap-2;
+        @apply flex-col gap-2;
         @apply max-h-46 overflow-auto;
+        @apply hidden;
+
+        &.visible {
+            @apply flex;
+        }
     }
 
     .row {

@@ -1,9 +1,10 @@
 import { User03Icon } from '@untitled-theme/icons-solid';
-import { For, type JSX } from 'solid-js';
+import { Index, type JSX, createEffect, createSignal } from 'solid-js';
+import type { ClusterStepProps } from './ClusterCreationModal';
 import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
 
-const providers: ProviderCardProps[] = [
+const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
 	{
 		name: 'New',
 		icon: <User03Icon />,
@@ -30,12 +31,24 @@ const providers: ProviderCardProps[] = [
 	},
 ];
 
-export default function ClusterStepOne() {
+export default function ClusterStepOne(props: ClusterStepProps) {
+	const [selected, setSelected] = createSignal<number>();
+
+	createEffect(() => {
+		props.setCanGoForward(selected() !== undefined);
+	});
+
 	return (
 		<div class="grid grid-cols-3 gap-2">
-			<For each={providers}>
-				{provider => <ProviderCard {...provider} />}
-			</For>
+			<Index each={providers}>
+				{(provider, index) => (
+					<ProviderCard
+						{...provider()}
+						selected={index === selected()}
+						setSelected={() => setSelected(index)}
+					/>
+				)}
+			</Index>
 		</div>
 	);
 }
@@ -43,11 +56,16 @@ export default function ClusterStepOne() {
 interface ProviderCardProps {
 	icon: JSX.Element;
 	name: string;
+	setSelected: () => any;
+	selected: boolean;
 };
 
 function ProviderCard(props: ProviderCardProps) {
 	return (
-		<div class="flex flex-col justify-center items-center gap-y-2 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg">
+		<div
+			onClick={() => props.setSelected()}
+			class={`flex flex-col justify-center items-center gap-y-2 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg ${props.selected ? 'bg-component-bg' : ''}`}
+		>
 			<div class="[&>svg]:(w-8 h-8)">
 				{props.icon}
 			</div>

@@ -26,6 +26,7 @@ type ClusterModalStagesLength = UnionToArray<keyof typeof ClusterModalStages>['l
 export function ClusterModalController(props: ParentProps) {
 	const [step, setStep] = createSignal<number>(ClusterModalStages.STAGE_1_PROVIDER);
 	const [visible, setVisible] = createSignal(false);
+	const [canGoForward, setCanGoForward] = createSignal(false);
 
 	const stepper: ClusterModalContextFunc = [
 		step,
@@ -51,9 +52,12 @@ export function ClusterModalController(props: ParentProps) {
 				setVisible={setVisible}
 				step={step}
 				setStep={setStep}
+				canGoForward={canGoForward}
 				buttonIsNext={step() !== ((Object.keys(ClusterModalStages).length / 2) - 1)}
 			>
-				{(stepComponents[step()]!)()}
+				{(stepComponents[step()]!({
+					canGoForward, setCanGoForward,
+				}))}
 			</ClusterCreationModal>
 		</ClusterModalContext.Provider>
 	);
@@ -63,10 +67,16 @@ export function useClusterModalController() {
 	return useContext(ClusterModalContext);
 }
 
+export interface ClusterStepProps {
+	canGoForward: Accessor<boolean>;
+	setCanGoForward: Setter<boolean>;
+};
+
 type ClusterCreationModalProps = FullscreenOverlayProps & {
 	step: Accessor<number>;
 	setStep: Setter<number>;
 	buttonIsNext: boolean;
+	canGoForward: Accessor<boolean>;
 };
 
 function ClusterCreationModal(props: ClusterCreationModalProps) {
@@ -75,13 +85,6 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 		'Provider selection',
 		'Game Setup',
 	];
-
-	let content!: HTMLDivElement;
-
-	// TODO: For animation
-	function updateHeight() {
-		// content.
-	}
 
 	return (
 		<FullscreenOverlay
@@ -108,7 +111,7 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 						</div>
 					</div>
 					<div class="flex flex-col border border-white/5 rounded-b-lg">
-						<div ref={content} class="p-3">
+						<div class="p-3">
 							{props.children}
 						</div>
 
@@ -135,6 +138,7 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 									<Button
 										children="Next"
 										buttonStyle="primary"
+										disabled={!props.canGoForward()}
 										iconRight={<ArrowRightIcon />}
 										onClick={() => props.setStep(prev => prev + 1)}
 									/>
@@ -143,6 +147,7 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 									<Button
 										children="Create"
 										buttonStyle="primary"
+										disabled={!props.canGoForward()}
 										iconRight={<ArrowRightIcon />}
 									/>
 								</Match>

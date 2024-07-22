@@ -1,8 +1,6 @@
-import { Camera01Icon, FilterFunnel01Icon, TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, Index, type JSX, Show, createEffect, createMemo, createSignal, on, onMount, splitProps } from 'solid-js';
-import { Select } from '@thisbeyond/solid-select';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import type { ClusterStepProps } from './ClusterCreationModal';
+import { TextInputIcon } from '@untitled-theme/icons-solid';
+import { For, Index, type JSX, type Setter, Show, createEffect, createSignal, on, splitProps, untrack } from 'solid-js';
+import { type ClusterStepProps, useClusterModalController } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import VanillaImage from '~assets/logos/vanilla.png';
@@ -11,12 +9,9 @@ import ForgeImage from '~assets/logos/forge.png';
 import QuiltImage from '~assets/logos/quilt.png';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
-import Button from '~ui/components/base/Button';
-import Tooltip from '~ui/components/base/Tooltip';
 import SelectList from '~ui/components/base/SelectList';
 import Checkbox from '~ui/components/base/Checkbox';
-import { getEnumMembers } from '~utils/primitives';
-import type { VersionType } from '~bindings';
+import type { Loader, VersionType } from '~bindings';
 import { formatVersionRelease } from '~utils/helpers';
 
 const loaders: {
@@ -42,12 +37,14 @@ const loaders: {
 ];
 
 export function ClusterStepTwo(props: ClusterStepProps) {
-	const [name, setName] = createSignal('');
+	const { partialCluster, updatePartialCluster } = useClusterModalController();
 
 	const check = () => {
-		const hasName = name().length > 0;
+		const hasName = (partialCluster().name?.length ?? 0) > 0;
+		const hasVersion = (partialCluster().mc_version?.length ?? 0) > 0;
+		const hasLoader = (partialCluster().mod_loader?.length ?? 0) > 0;
 
-		props.setCanGoForward(hasName);
+		props.setCanGoForward(hasName && hasVersion && hasLoader);
 	};
 
 	createEffect(check);
@@ -55,6 +52,10 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 		if (curr)
 			check();
 	}));
+
+	const setName = (name: string) => updatePartialCluster('name', name);
+	const setVersion = (version: string) => updatePartialCluster('mc_version', version);
+	const setLoader = (loader: string) => updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
 
 	return (
 		<div class="flex flex-col gap-y-4">
@@ -67,11 +68,11 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 			</Option>
 
 			<Option header="Versions">
-				<VersionSelector />
+				<VersionSelector setVersion={setVersion} />
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown>
+				<Dropdown onChange={index => setLoader(loaders[index]?.name || 'vanilla')}>
 					<For each={loaders}>
 						{loader => (
 							<Dropdown.Row>
@@ -94,7 +95,7 @@ type VersionReleaseFilters = {
 	[key in VersionType]: boolean;
 };
 
-function VersionSelector() {
+function VersionSelector(props: { setVersion: (version: string) => any }) {
 	const [versions] = useCommand(bridge.commands.getMinecraftVersions);
 	const [filteredVersions, setFilteredVersions] = createSignal<bridge.Version[]>([]);
 	const [filters, setFilters] = createSignal<VersionReleaseFilters>({
@@ -124,6 +125,17 @@ function VersionSelector() {
 		});
 	}
 
+	function setVersion(index: number | undefined) {
+		if (index === undefined)
+			return;
+
+		const versions = untrack(() => filteredVersions);
+		const version = versions()[index];
+
+		if (version)
+			props.setVersion(version.id);
+	}
+
 	createEffect(() => {
 		const list = versions();
 		if (list !== undefined)
@@ -136,7 +148,10 @@ function VersionSelector() {
 
 	return (
 		<div class="flex flex-row flex-1 gap-2">
-			<SelectList class="max-h-40 min-w-3/5">
+			<SelectList
+				class="max-h-40 min-w-3/5"
+				onChange={setVersion}
+			>
 				<Show when={filteredVersions() !== undefined}>
 					<Index each={filteredVersions()}>
 						{(version, index) => (

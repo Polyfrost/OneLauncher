@@ -16,6 +16,7 @@ interface ClusterModalContextFunc {
 	setStep: Setter<number>;
 	partialCluster: Accessor<PartialCluster>;
 	setPartialCluster: Setter<PartialCluster>;
+	updatePartialCluster: <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => any;
 	setVisible: Setter<boolean>;
 }
 
@@ -38,6 +39,14 @@ export function ClusterModalController(props: ParentProps) {
 		setStep,
 		partialCluster,
 		setPartialCluster,
+		updatePartialCluster(key, value) {
+			setPartialCluster((prev) => {
+				return {
+					...prev,
+					[key]: value,
+				};
+			});
+		},
 		setVisible,
 	};
 

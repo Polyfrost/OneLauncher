@@ -1,12 +1,18 @@
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { type Context, type JSX, type ParentProps, type Signal, createContext, createSignal, splitProps, useContext } from 'solid-js';
+import { type Context, type JSX, type ParentProps, type Signal, createContext, createEffect, createSignal, splitProps, useContext } from 'solid-js';
 import styles from './SelectList.module.scss';
 
 type SelectListContextHelpers = Signal<number | undefined>;
 const SelectListContext = createContext<SelectListContextHelpers>() as Context<SelectListContextHelpers>;
 
-function SelectListContextProvider(props: ParentProps) {
-	const [selected, setSelected] = createSignal<number>();
+function SelectListContextProvider(props: ParentProps & {
+	onChanged?: ((index: number | undefined) => any) | undefined;
+}) {
+	const [selected, setSelected] = createSignal<number | undefined>();
+
+	createEffect(() => {
+		props.onChanged?.(selected());
+	});
 
 	return (
 		<SelectListContext.Provider value={[selected, setSelected]}>
@@ -19,12 +25,14 @@ function useSelectListContext() {
 	return useContext(SelectListContext);
 }
 
-export type SelectListProps = JSX.HTMLAttributes<HTMLDivElement>;
+export type SelectListProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'> & {
+	onChange?: (index: number | undefined) => any;
+};
 
 function SelectList(props: SelectListProps) {
-	const [split, rest] = splitProps(props, ['class']);
+	const [split, rest] = splitProps(props, ['class', 'onChange']);
 	return (
-		<SelectListContextProvider>
+		<SelectListContextProvider onChanged={props.onChange}>
 			<div {...rest} class={`${styles.select_list} ${split.class || ''}`}>
 				<OverlayScrollbarsComponent class="max-h-full">
 					<div>

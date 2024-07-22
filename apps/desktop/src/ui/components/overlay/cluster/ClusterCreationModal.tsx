@@ -1,4 +1,4 @@
-import { type Accessor, type Context, Index, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
+import { type Accessor, type Context, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import HeaderImage from '../../../../assets/images/header.png';
 import FullscreenOverlay, { type FullscreenOverlayProps } from '../FullscreenOverlay';

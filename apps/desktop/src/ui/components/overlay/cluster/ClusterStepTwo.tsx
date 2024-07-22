@@ -1,5 +1,5 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, type JSX, createEffect, createSignal, on, onMount, splitProps } from 'solid-js';
+import { For, type JSX, createEffect, createSignal, on, splitProps } from 'solid-js';
 import type { ClusterStepProps } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';

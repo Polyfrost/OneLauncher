@@ -1,0 +1,12 @@
+.select_list {
+    @apply bg-component-bg rounded-lg overflow-hidden border border-gray-05;
+
+    .row {
+        @apply min-h-4 py-1 px-2 text-left;
+        @apply [&:nth-child(even)]:bg-white/01 hover:bg-component-bg-hover active:bg-component-bg-pressed;
+
+        &.selected {
+            @apply bg-white/10;
+        }
+    }
+}

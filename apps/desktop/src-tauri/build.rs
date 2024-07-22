@@ -18,6 +18,7 @@ fn main() {
 					"get_settings",
 					"set_settings",
 					"get_program_info",
+                    "get_minecraft_versions"
 				]),
 			),
 	)

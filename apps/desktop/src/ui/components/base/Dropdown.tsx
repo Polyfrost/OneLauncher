@@ -1,4 +1,4 @@
-import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Switch, children, createSignal, splitProps } from 'solid-js';
+import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Show, Switch, children, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../overlay/Popup';
@@ -10,6 +10,7 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 	text?: string;
 	selected?: number;
 	dropdownClass?: string;
+	listToolRow?: () => JSX.Element;
 	component?: (
 		props: {
 			visible: Accessor<boolean>;
@@ -20,7 +21,7 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 };
 
 function Dropdown(props: DropdownProps) {
-	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass']);
+	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass', 'listToolRow']);
 	const [visible, setVisible] = createSignal(false);
 
 	// eslint-disable-next-line solid/reactivity -- todo
@@ -72,18 +73,26 @@ function Dropdown(props: DropdownProps) {
 						ref.classList.add(...split.dropdownClass.split(' '));
 				}}
 			>
-				<OverlayScrollbarsComponent class={`${styles.list} ${visible() ? styles.visible : ''}`}>
-					<Index each={items()}>
-						{(item, index) => (
-							<div onClick={() => select(index)}>
-								<div class="hover:bg-gray-05 p-2 rounded-lg flex flex-row gap-2 justify-between items-center">
-									{item()}
-									<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
+				<div class={`${styles.dropdown_elements_container} ${visible() ? styles.visible : ''}`}>
+					<OverlayScrollbarsComponent class={`${styles.list} ${styles.dropdown_element}`}>
+						{/* TODO(perf): Optimise */}
+						<Index each={items()}>
+							{(item, index) => (
+								<div onClick={() => select(index)}>
+									<div class="hover:bg-gray-05 p-2 rounded-lg flex flex-row gap-2 justify-between items-center">
+										{item()}
+										<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
+									</div>
 								</div>
-							</div>
-						)}
-					</Index>
-				</OverlayScrollbarsComponent>
+							)}
+						</Index>
+					</OverlayScrollbarsComponent>
+					<Show when={split.listToolRow !== undefined}>
+						<div class={styles.dropdown_element}>
+							{split.listToolRow!()}
+						</div>
+					</Show>
+				</div>
 			</Popup>
 		</div>
 	);

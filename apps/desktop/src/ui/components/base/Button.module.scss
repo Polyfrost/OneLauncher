@@ -2,7 +2,7 @@
     @apply py-1.5 px-3 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
     &__primary {
-        @apply text-onbrand hover:text-onbrand-hover active:text-onbrand-pressed disabled:text-onbrand-disabled;
+        @apply text-onbrand hover:text-onbrand-hover  active:text-onbrand-pressed disabled:text-onbrand-disabled;
         @apply bg-brand hover:bg-brand-hover active:bg-brand-pressed disabled:bg-brand-disabled;
     }
 
@@ -17,11 +17,11 @@
     }
 
     &__ghost {
-        @apply hover:bg-gray-05 active:bg-gray-10;
+        @apply hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10;
     }
 
     &__icon, &__iconSecondary {
-        @apply p-1.5 hover:bg-gray-05 active:bg-gray-10 aspect-square box-border w-8 h-8;
+        @apply p-1.5 hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10 aspect-square box-border w-8 h-8;
 
         &.large {
             @apply w-9 h-9;

@@ -86,6 +86,9 @@ importers:
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.18)
+      '@thisbeyond/solid-select':
+        specifier: ^0.15.0
+        version: 0.15.0(solid-js@1.8.18)
       '@unocss/reset':
         specifier: ^0.61.4
         version: 0.61.4
@@ -1025,6 +1028,12 @@ packages:
     engines: {node: '>=18.0.0', pnpm: '>=8.6.0'}
     peerDependencies:
       solid-js: ^1.5
+
+  '@thisbeyond/solid-select@0.15.0':
+    resolution: {integrity: sha512-L3QnA5vm09JWNqLR4QqEIi7cgfs9/1sJbFjyEnPskjKpxEvb4G+Iy5cyd1qhZ2vAIZ9vaLd3udts3kefayPsMg==}
+    engines: {node: '>=18.0.0', pnpm: '>=9.0.0'}
+    peerDependencies:
+      solid-js: ^1.8
 
   '@trysound/sax@0.2.0':
     resolution: {integrity: sha512-L7z9BgrNEcYyUYtF+HaEfiS5ebkh9jXqbszz7pC0hRBPaatV0XjSD3+eHrpqFemQfgwiFF0QPIarnIihIDn7OA==}
@@ -4101,6 +4110,10 @@ snapshots:
       vitest: 2.0.3(@types/node@20.14.11)(@vitest/ui@2.0.3(vitest@2.0.3))(jsdom@24.1.0)(sass@1.77.8)
 
   '@thisbeyond/solid-dnd@0.7.5(solid-js@1.8.18)':
+    dependencies:
+      solid-js: 1.8.18
+
+  '@thisbeyond/solid-select@0.15.0(solid-js@1.8.18)':
     dependencies:
       solid-js: 1.8.18
 

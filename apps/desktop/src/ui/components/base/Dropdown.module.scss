@@ -1,15 +1,22 @@
 .dropdown {
     @apply relative h-full;
 
-    .list {
-        @apply bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30;
-        @apply flex-col gap-2;
-        @apply max-h-46 overflow-auto;
-        @apply hidden;
+    .dropdown_elements_container {
+        @apply flex flex-col gap-1;
+    }
 
-        &.visible {
-            @apply flex;
-        }
+    .dropdown_element {
+        @apply bg-secondary rounded-lg border border-gray-05 p-1 shadow-md shadow-black/30 h-full;
+    }
+
+    .list {
+        @apply max-h-46 overflow-auto;
+        @apply flex-col gap-1;
+        @apply hidden;
+    }
+
+    .visible .list {
+        @apply flex;
     }
 
     .row {

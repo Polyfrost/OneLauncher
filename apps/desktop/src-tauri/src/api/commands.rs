@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use anyhow::anyhow;
 use chrono::DateTime;
+use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{ClusterMeta, Loader, MinecraftCredentials, PackageData, Settings};
 use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
@@ -31,7 +33,8 @@ macro_rules! collect_commands {
 				get_clusters,
 				get_settings,
 				set_settings,
-				get_program_info
+				get_program_info,
+                get_minecraft_versions
 			])
 	}};
 }
@@ -134,14 +137,20 @@ pub async fn get_clusters() -> Result<HashMap<ClusterPath, Cluster>, String> {
 
 #[specta::specta]
 #[tauri::command]
+pub async fn get_minecraft_versions() -> Result<Vec<Version>, String> {
+    Ok(onelauncher::api::metadata::get_minecraft_versions().await?.versions)
+}
+
+#[specta::specta]
+#[tauri::command]
 pub async fn get_settings() -> Result<Settings, String> {
-	settings::get().await.map_err(|err| err.into())
+	Ok(settings::get().await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn set_settings(settings: Settings) -> Result<(), String> {
-	settings::set(settings).await.map_err(|err| err.into())
+	Ok(settings::set(settings).await?)
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -174,19 +183,19 @@ pub fn get_program_info() -> ProgramInfo {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_users() -> Result<Vec<MinecraftCredentials>, String> {
-	minecraft::users().await.map_err(|err| err.into())
+	Ok(minecraft::users().await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
-	minecraft::get_user(uuid).await.map_err(|err| err.into())
+	Ok(minecraft::get_user(uuid).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn begin_msa() -> Result<MinecraftLogin, String> {
-	minecraft::begin().await.map_err(|err| err.into())
+	Ok(minecraft::begin().await?)
 }
 
 #[specta::specta]
@@ -195,13 +204,11 @@ pub async fn finish_msa(
 	code: String,
 	login: MinecraftLogin,
 ) -> Result<MinecraftCredentials, String> {
-	minecraft::finish(code.as_str(), login)
-		.await
-		.map_err(|err| err.into())
+	Ok(minecraft::finish(code.as_str(), login).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
-	minecraft::remove_user(uuid).await.map_err(|err| err.into())
+	Ok(minecraft::remove_user(uuid).await?)
 }

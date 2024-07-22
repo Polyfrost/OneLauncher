@@ -13,5 +13,6 @@ permissions = [
   "allow-get-manifest",
   "allow-get-settings",
   "allow-set-settings",
-  "allow-get-program-info"
+  "allow-get-program-info",
+  "allow-get-minecraft-versions"
 ]

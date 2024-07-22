@@ -17,6 +17,12 @@ export function abbreviateNumber(n: number) {
 	return `${n}`;
 };
 
+export function getEnumMembers(obj: any): string[] {
+	return Object.keys(obj).filter((item) => {
+		return Number.isNaN(Number(item));
+	});
+}
+
 export default {
 	upperFirst,
 	abbreviateNumber,

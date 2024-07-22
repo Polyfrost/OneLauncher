@@ -1,6 +1,5 @@
 import { User03Icon } from '@untitled-theme/icons-solid';
-import { Index, type JSX, createEffect, createSignal } from 'solid-js';
-import { on } from 'solid-js';
+import { Index, type JSX, createEffect, createSignal, on, onMount } from 'solid-js';
 import type { ClusterStepProps } from './ClusterCreationModal';
 import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
@@ -35,11 +34,15 @@ const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
 export default function ClusterStepOne(props: ClusterStepProps) {
 	const [selected, setSelected] = createSignal<number>();
 
-	const check = () => props.setCanGoForward(selected() !== undefined);
+	const check = () => {
+		props.setCanGoForward(selected() !== undefined);
+	};
 
-	// TODO: refactor this so its handled by the modal, I am lazy and running out of time so thisll do
-	createEffect(on(() => props.visible(), check));
 	createEffect(check);
+	createEffect(on(() => props.isVisible(), (curr: boolean) => {
+		if (curr)
+			check();
+	}));
 
 	return (
 		<div class="grid grid-cols-3 gap-2">

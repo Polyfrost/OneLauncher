@@ -1,4 +1,4 @@
-import { type Accessor, type Context, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
+import { type Accessor, type Context, Index, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import HeaderImage from '../../../../assets/images/header.png';
 import FullscreenOverlay, { type FullscreenOverlayProps } from '../FullscreenOverlay';
@@ -49,7 +49,6 @@ export function ClusterModalController(props: ParentProps) {
 	return (
 		<ClusterModalContext.Provider value={stepper}>
 			{props.children}
-
 			{/* Makes sure theres a new instance of the modal */}
 			<Show when={visible()}>
 				<ClusterCreationModal
@@ -69,8 +68,8 @@ export function useClusterModalController() {
 }
 
 export interface ClusterStepProps {
+	isVisible: Accessor<boolean>;
 	setCanGoForward: Setter<boolean>;
-	visible: Accessor<boolean>;
 };
 
 type ClusterCreationModalProps = FullscreenOverlayProps & {
@@ -87,17 +86,15 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 		'Game Setup',
 	];
 
-	createEffect(on(() => props.step(), () => {
-		setCanGoForward(false);
-	}));
-
 	const stepComponents = [
 		ClusterStepOne,
 		ClusterStepTwo,
-	].map((component, index) => component({
-		setCanGoForward,
-		visible: () => props.step() === index,
-	}));
+	].map((Component, index) => (
+		Component({
+			setCanGoForward,
+			isVisible: () => props.visible() && props.step() === index,
+		})
+	));
 
 	const Step = (props: { step: number }) => <>{stepComponents[props.step]}</>;
 

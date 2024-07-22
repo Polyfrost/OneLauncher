@@ -1,5 +1,5 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, type JSX, createEffect, createSignal, on, splitProps } from 'solid-js';
+import { For, type JSX, createEffect, createSignal, on, onMount, splitProps } from 'solid-js';
 import type { ClusterStepProps } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
@@ -39,9 +39,11 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 		props.setCanGoForward(hasName);
 	};
 
-	// TODO: refactor this so its handled by the modal, I am lazy and running out of time so thisll do
-	createEffect(on(() => props.visible(), check));
 	createEffect(check);
+	createEffect(on(() => props.isVisible(), (curr: boolean) => {
+		if (curr)
+			check();
+	}));
 
 	return (
 		<div class="flex flex-col gap-y-4">

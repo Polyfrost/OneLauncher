@@ -4,6 +4,7 @@
 )]
 
 use onelauncher::prelude::*;
+use onelauncher::cluster::create::create_cluster;
 
 pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	println!("a browser will open, follow login flow");
@@ -47,7 +48,6 @@ async fn main() -> onelauncher::Result<()> {
 	state.settings.write().await.max_async_fetches = 100;
 	state.settings.write().await.init_hooks.post =
 		Some("echo this should run after minecraft as a global hook".to_string());
-	// test changing fetch settings and resetting the semaphore
 	state.reset_fetch_semaphore().await;
 
 	println!("clearing clusters");
@@ -63,7 +63,7 @@ async fn main() -> onelauncher::Result<()> {
 	let loader = Loader::Vanilla;
 	let loader_version = "stable".to_string();
 
-	let cluster = create::create_cluster(
+	let cluster = create_cluster(
 		name.clone(),
 		game,
 		loader,

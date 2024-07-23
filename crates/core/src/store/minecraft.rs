@@ -508,7 +508,7 @@ async fn oauth_token(
 	query.insert("scope", SCOPES);
 	let res = auth_retry(|| {
 		crate::utils::http::REQWEST_CLIENT
-			.post(REDIRECT_URL)
+			.post("https://login.live.com/oauth20_token.srf")
 			.header("Accept", "application/json")
 			.form(&query)
 			.send()
@@ -555,7 +555,7 @@ async fn oauth_refresh(
 	query.insert("scope", SCOPES);
 	let res = auth_retry(|| {
 		crate::utils::http::REQWEST_CLIENT
-			.post(REDIRECT_URL)
+			.post("https://login.live.com/oauth20_token.srf")
 			.header("Accept", "application/json")
 			.form(&query)
 			.send()
@@ -657,13 +657,13 @@ async fn xsts_authorize(
 		"/xsts/authorize",
 		json!({
 			"RelyingParty": "rp://api.minecraftservices.com/",
-			"TokenType": "JWT",
-			"Properties": {
-				"SandboxId": "RETAIL",
-				"UserTokens": [authorize.user_token.token],
-				"DeviceTokens": device_token,
-				"TitleToken": authorize.title_token.token,
-			},
+            "TokenType": "JWT",
+            "Properties": {
+                "SandboxId": "RETAIL",
+                "UserTokens": [authorize.user_token.token],
+                "DeviceToken": device_token,
+                "TitleToken": authorize.title_token.token,
+            },
 		}),
 		key,
 		MinecraftAuthStep::XstsAuthorize,
@@ -739,7 +739,7 @@ struct MinecraftProfile {
 async fn minecraft_profile(token: &str) -> Result<MinecraftProfile, MinecraftAuthError> {
 	let res = auth_retry(|| {
 		crate::utils::http::REQWEST_CLIENT
-			.get("https//api.minecraftservices.com/minecraft/profile")
+			.get("https://api.minecraftservices.com/minecraft/profile")
 			.header("Accept", "application/json")
 			.bearer_auth(token)
 			.send()

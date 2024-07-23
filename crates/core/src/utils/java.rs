@@ -266,15 +266,18 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 	}
 
 	let file_path = tempdir.join("JavaInfo.class");
+	tracing::info!("checking java with {}", file_path.to_string_lossy().to_string());
 	io::write(&file_path, bytes).await.ok()?;
 
 	let output = Command::new(&java)
 		.arg("-cp")
 		.arg(file_path.parent().unwrap())
 		.arg("JavaInfo")
+		.env_remove("_JAVA_OPTIONS")
 		.output()
 		.ok()?;
 	let stdout = String::from_utf8_lossy(&output.stdout);
+	tracing::info!("{}", stdout);
 
 	let mut java_version = None;
 	let mut java_arch = None;

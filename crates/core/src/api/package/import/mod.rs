@@ -21,6 +21,7 @@ pub mod technic;
 pub mod tlauncher;
 
 /// List of launcher types we support importing from.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ImportType {
 	/// MultiMC based launchers

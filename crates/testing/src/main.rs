@@ -23,11 +23,12 @@ pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 
 	let parsed = url::Url::parse(input.trim()).expect("idk");
 	let code = if let Some((_, code)) = parsed.query_pairs().find(|x| x.0 == "code") {
-		&code.clone()
+		let code = code.clone();
+        code.to_string()
 	} else {
 		panic!()
 	};
-	let creds = minecraft::finish(code, login).await?;
+	let creds = minecraft::finish(code.as_str(), login).await?;
 
 
 	println!("logged in {}", creds.username);
@@ -53,8 +54,8 @@ async fn main() -> onelauncher::Result<()> {
 	println!("clearing clusters");
 	{
 		let c = cluster::list(None).await?;
-		for (id, _) in c.into_iter() {
-			cluster::remove(&id).await?;
+		for cluster in c.into_iter() {
+			cluster::remove(&cluster.cluster_path()).await?;
 		}
 	}
 

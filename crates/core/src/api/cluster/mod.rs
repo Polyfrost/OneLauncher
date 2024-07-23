@@ -45,7 +45,7 @@ pub async fn get(path: &ClusterPath, clear: Option<bool>) -> crate::Result<Optio
 
 /// get a list of all [`Cluster`]s
 #[tracing::instrument]
-pub async fn list(clear: Option<bool>) -> crate::Result<HashMap<ClusterPath, Cluster>> {
+pub async fn list(clear: Option<bool>) -> crate::Result<Vec<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
 	Ok(clusters
@@ -56,10 +56,17 @@ pub async fn list(clear: Option<bool>) -> crate::Result<HashMap<ClusterPath, Clu
 			if clear.unwrap_or(false) {
 				it.1.packages = HashMap::new();
 			}
-			it
+			it.1
 		})
 		.collect())
 }
+
+// #[tracing::instrument]
+// pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, Cluster>> {
+// 	let clusters = list(clear).await?;
+//     let mut map = HashMap::new();
+    
+// }
 
 /// run a Minecraft [`Cluster`] using the default credentials.
 #[tracing::instrument]

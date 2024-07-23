@@ -16,31 +16,40 @@ function App(props: ParentProps) {
 		});
 
 	return (
-		<ClusterModalController>
-			<SettingsProvider>
-				<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
-					<WindowFrame />
-					<div class="flex flex-col px-8">
-						<Navbar />
-					</div>
+		<GlobalContexts>
+			<main class="flex flex-col bg-primary w-full min-h-screen overflow-hidden h-screen max-h-screen text-fg-primary">
+				<WindowFrame />
+				<div class="flex flex-col px-8">
+					<Navbar />
+				</div>
 
-					<div class="relative h-full w-full overflow-hidden">
-						<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
-							<ErrorBoundary>
-								<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8 pb-8">
-									<AnimatedRoutes>
-										{props.children}
-									</AnimatedRoutes>
-								</OverlayScrollbarsComponent>
-							</ErrorBoundary>
-						</div>
+				<div class="relative h-full w-full overflow-hidden">
+					<div class="absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden">
+						<ErrorBoundary>
+							<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute top-0 left-0 flex flex-col h-full w-full overflow-x-hidden overflow-y-auto px-8 pb-8">
+								<AnimatedRoutes>
+									{props.children}
+								</AnimatedRoutes>
+							</OverlayScrollbarsComponent>
+						</ErrorBoundary>
 					</div>
+				</div>
 
-					<NotificationOverlay />
-				</main>
-			</SettingsProvider>
-		</ClusterModalController>
+				<NotificationOverlay />
+			</main>
+		</GlobalContexts>
 	);
 }
 
 export default App;
+
+function GlobalContexts(props: ParentProps) {
+	// TODO(refactor): Something something lots of nesting will look awful soon
+	return (
+		<SettingsProvider>
+			<ClusterModalController>
+				{props.children}
+			</ClusterModalController>
+		</SettingsProvider>
+	);
+}

@@ -1,13 +1,15 @@
-import { type Accessor, type Context, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, useContext } from 'solid-js';
+import { type Accessor, type Context, Match, type ParentProps, type Setter, Show, Switch, createContext, createEffect, createSignal, untrack, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import HeaderImage from '../../../../assets/images/header.png';
-import FullscreenOverlay, { type FullscreenOverlayProps } from '../FullscreenOverlay';
+import FullscreenOverlay from '../FullscreenOverlay';
 import ClusterStepOne from './ClusterStepOne';
 import { ClusterStepTwo } from './ClusterStepTwo';
 import Button from '~ui/components/base/Button';
 import type { CreateCluster } from '~bindings';
+import { bridge } from '~imports';
 
 type PartialCluster = Partial<CreateCluster>;
+type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => any;
 
 // Why the fuck do I need to use a context for all this???
 // TODO: Rewrite for use with the new Modal stacking system
@@ -16,7 +18,9 @@ interface ClusterModalContextFunc {
 	setStep: Setter<number>;
 	partialCluster: Accessor<PartialCluster>;
 	setPartialCluster: Setter<PartialCluster>;
-	updatePartialCluster: <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => any;
+	updatePartialCluster: PartialClusterUpdateFunc;
+	finish: () => void;
+	visible: Accessor<boolean>;
 	setVisible: Setter<boolean>;
 }
 
@@ -34,19 +38,43 @@ export function ClusterModalController(props: ParentProps) {
 	const [visible, setVisible] = createSignal(false);
 	const [partialCluster, setPartialCluster] = createSignal<PartialCluster>({});
 
+	const updatePartialCluster: PartialClusterUpdateFunc = (key, value) => {
+		setPartialCluster((prev) => {
+			return {
+				...prev,
+				[key]: value,
+			};
+		});
+	};
+
+	const finish = () => {
+		const untracked = untrack(partialCluster);
+
+		if (untracked.name === undefined || untracked.mc_version === undefined || untracked.mod_loader === undefined)
+			throw new Error('Cluster is missing required fields');
+
+		bridge.commands.createCluster({
+			name: untracked.name!,
+			mod_loader: untracked.mod_loader!,
+			mc_version: untracked.mc_version!,
+			// TODO: Implement the rest of the fields
+			icon: null,
+			icon_url: null,
+			loader_version: null,
+			package_data: null,
+			skip: null,
+			skip_watch: null,
+		});
+	};
+
 	const stepper: ClusterModalContextFunc = {
 		step,
 		setStep,
 		partialCluster,
 		setPartialCluster,
-		updatePartialCluster(key, value) {
-			setPartialCluster((prev) => {
-				return {
-					...prev,
-					[key]: value,
-				};
-			});
-		},
+		updatePartialCluster,
+		finish,
+		visible,
 		setVisible,
 	};
 
@@ -60,13 +88,7 @@ export function ClusterModalController(props: ParentProps) {
 			{props.children}
 			{/* Makes sure theres a new instance of the modal */}
 			<Show when={visible()}>
-				<ClusterCreationModal
-					visible={visible}
-					setVisible={setVisible}
-					step={step}
-					setStep={setStep}
-					buttonIsNext={step() !== ((Object.keys(ClusterModalStages).length / 2) - 1)}
-				/>
+				<ClusterCreationModal />
 			</Show>
 		</ClusterModalContext.Provider>
 	);
@@ -81,13 +103,10 @@ export interface ClusterStepProps {
 	setCanGoForward: Setter<boolean>;
 };
 
-type ClusterCreationModalProps = FullscreenOverlayProps & {
-	step: Accessor<number>;
-	setStep: Setter<number>;
-	buttonIsNext: boolean;
-};
+function ClusterCreationModal() {
+	const controller = useClusterModalController();
+	const buttonIsNext = () => controller.step() !== ((Object.keys(ClusterModalStages).length / 2) - 1);
 
-function ClusterCreationModal(props: ClusterCreationModalProps) {
 	const [canGoForward, setCanGoForward] = createSignal(false);
 	// Indexed by the current step
 	const messages: FixedArray<string, ClusterModalStagesLength> = [
@@ -101,18 +120,32 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 	].map((Component, index) => (
 		Component({
 			setCanGoForward,
-			isVisible: () => props.visible() && props.step() === index,
+			isVisible: () => controller.visible() && controller.step() === index,
 		})
 	));
 
 	const Step = (props: { step: number }) => <>{stepComponents[props.step]}</>;
 
+	function cancel() {
+		controller.setVisible(false);
+	}
+
+	function prev() {
+		controller.setStep(prev => prev - 1);
+	}
+
+	function next() {
+		controller.setStep(prev => prev + 1);
+	}
+
+	function finish() {
+		controller.finish();
+	}
+
 	return (
 		<FullscreenOverlay
-			visible={props.visible}
-			setVisible={props.setVisible}
-			mount={props.mount}
-			zIndex={props.zIndex || 1000}
+			visible={controller.visible}
+			setVisible={controller.setVisible}
 		>
 			<div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
 				<div class="bg-primary rounded-lg text-center flex flex-col min-w-sm">
@@ -127,49 +160,50 @@ function ClusterCreationModal(props: ClusterCreationModalProps) {
 							<div class="flex flex-col items-start justify-center">
 								{/** weird positioning?? */}
 								<h1 class="h-10 -mt-2">New Cluster</h1>
-								<span>{messages[props.step()]}</span>
+								<span>{messages[controller.step()]}</span>
 							</div>
 						</div>
 					</div>
 					<div class="flex flex-col border border-white/5 rounded-b-lg">
 						<div class="p-3">
-							<Step step={props.step()} />
+							<Step step={controller.step()} />
 						</div>
 
 						<div class="flex flex-row gap-x-2 justify-end pt-0 p-3">
 							<Switch>
-								<Match when={props.step() === 0}>
+								<Match when={controller.step() === 0}>
 									<Button
 										children="Cancel"
 										buttonStyle="ghost"
-										onClick={() => props.setVisible(false)}
+										onClick={cancel}
 									/>
 								</Match>
-								<Match when={props.step() >= 1}>
+								<Match when={controller.step() >= 1}>
 									<Button
 										children="Previous"
 										buttonStyle="ghost"
-										onClick={() => props.setStep(prev => prev - 1)}
+										onClick={prev}
 									/>
 								</Match>
 							</Switch>
 
 							<Switch>
-								<Match when={props.buttonIsNext === true}>
+								<Match when={buttonIsNext() === true}>
 									<Button
 										children="Next"
 										buttonStyle="primary"
 										disabled={!canGoForward()}
 										iconRight={<ArrowRightIcon />}
-										onClick={() => props.setStep(prev => prev + 1)}
+										onClick={next}
 									/>
 								</Match>
-								<Match when={props.buttonIsNext === false}>
+								<Match when={buttonIsNext() === false}>
 									<Button
 										children="Create"
 										buttonStyle="primary"
 										disabled={!canGoForward()}
 										iconRight={<ArrowRightIcon />}
+										onClick={finish}
 									/>
 								</Match>
 							</Switch>

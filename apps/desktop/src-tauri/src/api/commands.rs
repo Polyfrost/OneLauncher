@@ -1,13 +1,9 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::str::FromStr;
 
-use anyhow::anyhow;
-use chrono::DateTime;
 use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
-use onelauncher::data::{ClusterMeta, Loader, MinecraftCredentials, PackageData, Settings};
-use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
+use onelauncher::data::{Loader, MinecraftCredentials, PackageData, Settings};
+use onelauncher::store::{Cluster, MinecraftLogin};
 use onelauncher::{cluster, minecraft, settings};
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -81,58 +77,56 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 
 // }
 
-fn placeholder_cluster() -> Cluster {
-	let path = ClusterPath("test".into());
-	Cluster {
-		uuid: Uuid::from_str("56d1cbcf-1961-4477-b263-80e3b1c7a9d1").unwrap(),
-		stage: onelauncher::store::ClusterStage::Installed,
-		path: path.0,
-		meta: ClusterMeta {
-			created_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-			modified_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-			group: vec![],
-			icon: None,
-			icon_url: None,
-			loader: Loader::Vanilla,
-			loader_version: None,
-			mc_version: "1.8.9".into(),
-			name: "Test Cluster".into(),
-			overall_played: 58195,
-			recently_played: 0,
-			package_data: None,
-			played_at: None,
-		},
-		memory: None,
-		java: None,
-		resolution: None,
-		force_fullscreen: None,
-		init_hooks: None,
-		packages: HashMap::new(),
-		update: None,
+// fn placeholder_cluster() -> Cluster {
+// 	let path = ClusterPath("test".into());
+// 	Cluster {
+// 		uuid: Uuid::from_str("56d1cbcf-1961-4477-b263-80e3b1c7a9d1").unwrap(),
+// 		stage: onelauncher::store::ClusterStage::Installed,
+// 		path: path.0,
+// 		meta: ClusterMeta {
+// 			created_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
+// 			modified_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
+// 			group: vec![],
+// 			icon: None,
+// 			icon_url: None,
+// 			loader: Loader::Vanilla,
+// 			loader_version: None,
+// 			mc_version: "1.8.9".into(),
+// 			name: "Test Cluster".into(),
+// 			overall_played: 58195,
+// 			recently_played: 0,
+// 			package_data: None,
+// 			played_at: None,
+// 		},
+// 		memory: None,
+// 		java: None,
+// 		resolution: None,
+// 		force_fullscreen: None,
+// 		init_hooks: None,
+// 		packages: HashMap::new(),
+// 		update: None,
+// 	}
+// }
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
+	match cluster::get_by_uuid(uuid, None).await? {
+	    Some(cluster) => Ok(cluster),
+	    None => Err("Cluster does not exist".into())
 	}
 }
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
-	Ok(placeholder_cluster())
+pub async fn get_clusters() -> Result<Vec<Cluster>, String> {
+	// let mut map = HashMap::<ClusterPath, Cluster>::new();
+	// let cluster = placeholder_cluster();
+	// map.insert(cluster.cluster_path(), cluster);
 
-	// match cluster::get_by_uuid(uuid, None).await? {
-	//     Some(cluster) => Ok(cluster),
-	//     None => Err("Cluster does not exist".into())
-	// }
-}
+	// Ok(map)
 
-#[specta::specta]
-#[tauri::command]
-pub async fn get_clusters() -> Result<HashMap<ClusterPath, Cluster>, String> {
-	let mut map = HashMap::<ClusterPath, Cluster>::new();
-	let cluster = placeholder_cluster();
-	map.insert(cluster.cluster_path(), cluster);
-
-	Ok(map)
-
-	// cluster::list(None).await.map_err(|op| op.into())
+	Ok(cluster::list(None).await?)
 }
 
 #[specta::specta]
@@ -212,3 +206,13 @@ pub async fn finish_msa(
 pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 	Ok(minecraft::remove_user(uuid).await?)
 }
+
+// #[specta::specta]
+// #[tauri::command]
+// pub async fn import_instance() -> Result<(), String> {
+//     onelauncher::api::package::import::import_instance()
+// }
+
+// #[specta::specta]
+// #[tauri::command]
+// pub async fn 

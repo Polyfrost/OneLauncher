@@ -107,9 +107,9 @@ pub async fn create_cluster(
 				.await?;
 		}
 
-		if !skip.unwrap_or(false) {
-			crate::game::install_minecraft(&cluster, None, false).await?;
-		}
+		// if !skip.unwrap_or(false) {
+		// 	crate::game::install_minecraft(&cluster, None, false).await?;
+		// }
 
 		State::sync().await?;
 

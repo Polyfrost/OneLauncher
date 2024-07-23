@@ -15,4 +15,4 @@ onelauncher = { path = "../core", features = [ "cli" ] }
 
 tokio = { workspace = true }
 webbrowser = { version = "0.8" }
-url = { version = "2.5" }
+url = { version = "2.5.2" }

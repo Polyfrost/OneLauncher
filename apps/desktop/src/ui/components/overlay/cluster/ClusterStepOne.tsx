@@ -18,16 +18,8 @@ const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
 		icon: <CurseforgeIcon color="#F16436" />,
 	},
 	{
-		name: 'New',
+		name: 'Import',
 		icon: <User03Icon />,
-	},
-	{
-		name: 'Modrinth',
-		icon: <ModrinthIcon color="#1bd96a" />,
-	},
-	{
-		name: 'Curseforge',
-		icon: <CurseforgeIcon color="#F16436" />,
 	},
 ];
 

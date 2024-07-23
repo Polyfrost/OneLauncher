@@ -1,5 +1,5 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, Index, type JSX, type Setter, Show, createEffect, createSignal, on, splitProps, untrack } from 'solid-js';
+import { For, Index, type JSX, Show, createEffect, createSignal, on, onMount, splitProps, untrack } from 'solid-js';
 import { type ClusterStepProps, useClusterModalController } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
@@ -55,7 +55,11 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 
 	const setName = (name: string) => updatePartialCluster('name', name);
 	const setVersion = (version: string) => updatePartialCluster('mc_version', version);
-	const setLoader = (loader: string) => updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+	const setLoader = (loader: Loader | string) => updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+
+	onMount(() => {
+		setLoader('vanilla');
+	});
 
 	return (
 		<div class="flex flex-col gap-y-4">
@@ -101,7 +105,7 @@ function VersionSelector(props: { setVersion: (version: string) => any }) {
 	const [filters, setFilters] = createSignal<VersionReleaseFilters>({
 		old_alpha: false,
 		old_beta: false,
-		release: false,
+		release: true,
 		snapshot: false,
 	});
 
@@ -142,7 +146,7 @@ function VersionSelector(props: { setVersion: (version: string) => any }) {
 			refresh(filters(), list);
 	});
 
-	createEffect(() => {
+	onMount(() => {
 		setFilteredVersions(versions()!);
 	});
 
@@ -164,7 +168,12 @@ function VersionSelector(props: { setVersion: (version: string) => any }) {
 			<div class="bg-component-bg rounded-lg overflow-hidden border border-gray-05 flex-1 p-2 flex flex-col gap-y-2">
 				<For each={Object.keys(filters())}>
 					{name => (
-						<Checkbox onChecked={() => toggleFilter(name)}>{formatVersionRelease(name as VersionType)}</Checkbox>
+						<Checkbox
+							defaultChecked={filters()[name as VersionType]!}
+							onChecked={() => toggleFilter(name)}
+						>
+							{formatVersionRelease(name as VersionType)}
+						</Checkbox>
 					)}
 				</For>
 			</div>

@@ -212,7 +212,7 @@ fn parse_minecraft_argument(
 		.replace("${user_properties}", "{}")
 		.replace("${user_type}", "msa")
 		.replace("${version_name}", version)
-		.replace("${asset_index_name}", asset_index)
+		.replace("${assets_index_name}", asset_index)
 		.replace(
 			"${game_directory}",
 			&dunce::canonicalize(game_directory)

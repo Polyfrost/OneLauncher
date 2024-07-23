@@ -108,12 +108,12 @@ pub async fn create_cluster(
 		}
 
         if !skip.unwrap_or(false) {
-            let clone = cluster.clone();
-            tokio::task::spawn(async move {
-                if let Err(err) = crate::game::install_minecraft(&clone, None, false).await {
+            // let cluster = cluster.clone();
+            // tokio::task::spawn(async move {
+                if let Err(err) = crate::game::install_minecraft(&cluster, None, false).await {
                     tracing::error!("failed to install Minecraft while creating cluster {}: {}", cluster.uuid, err);
                 }
-            });
+            // });
         }
 
 		State::sync().await?;

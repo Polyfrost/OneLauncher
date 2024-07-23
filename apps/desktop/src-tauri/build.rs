@@ -5,21 +5,34 @@ fn main() {
 			.plugin(
 				"onelauncher",
 				tauri_build::InlinedPlugin::new().commands(&[
-					"begin_msa",
-					"finish_msa",
-					"get_users",
-					"get_user",
-					"remove_user",
-					"launch_cluster",
-					"create_cluster",
+                    // User
+                    "begin_msa",
+                    "finish_msa",
+                    "get_users",
+                    "get_user",
+                    "remove_user",
+
+                    // Cluster
+                    "create_cluster",
                     "remove_cluster",
-					"get_clusters",
-					"get_cluster",
-					"get_manifest",
-					"get_settings",
-					"set_settings",
-					"get_program_info",
-                    "get_minecraft_versions"
+                    "get_cluster",
+                    "get_clusters",
+                    "run_cluster",
+                    
+                    // Processor
+                    "get_running_clusters",
+                    "get_processes_by_path",
+                    "kill_process",
+
+                    // Settings
+                    "get_settings",
+                    "set_settings",
+
+                    // Metadata
+                    "get_minecraft_versions",
+                    
+                    // Other
+                    "get_program_info",
 				]),
 			),
 	)

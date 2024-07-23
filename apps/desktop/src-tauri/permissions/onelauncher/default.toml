@@ -1,19 +1,32 @@
 [default]
 description = "Default permissions for the plugin"
 permissions = [
+  # User
   "allow-begin-msa",
   "allow-finish-msa",
   "allow-get-users",
   "allow-get-user",
   "allow-remove-user",
-  "allow-launch-cluster",
+
+  # Cluster
   "allow-create-cluster",
   "allow-remove-cluster",
-  "allow-get-clusters",
   "allow-get-cluster",
-  "allow-get-manifest",
+  "allow-get-clusters",
+  "allow-run-cluster",
+
+  # Processor
+  "allow-get-running-clusters",
+  "allow-get-processes-by-path",
+  "allow-kill-process",
+
+  # Settings
   "allow-get-settings",
   "allow-set-settings",
+
+  # Metadata
+  "allow-get-minecraft-versions",
+
+  # Other
   "allow-get-program-info",
-  "allow-get-minecraft-versions"
 ]

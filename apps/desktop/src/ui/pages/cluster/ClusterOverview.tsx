@@ -100,6 +100,10 @@ function DeleteModal(props: DeleteModalProps) {
 }
 
 function Banner(props: Cluster & { showDeletePrompt: () => void }) {
+	function launch() {
+
+	}
+
 	return (
 		<div class="flex flex-row bg-component-bg rounded-xl p-2.5 gap-x-2.5">
 			<div class="w-48 rounded-lg overflow-hidden border border-gray-10">

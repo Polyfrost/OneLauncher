@@ -27,11 +27,11 @@ function Modal(props: ModalProps) {
 			mount={props.mount}
 			zIndex={props.zIndex || 1000}
 		>
-			<div ref={mergeRefs(props.ref)} class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-				<div class="bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-2 min-w-xs">
-					{props.children}
-				</div>
+			{/* <div ref={mergeRefs(props.ref)} class="absolute top-0 bottom-0 left-1/2 flex items-center"> */}
+			<div ref={mergeRefs(props.ref)} class="bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-2 min-w-xs">
+				{props.children}
 			</div>
+			{/* </div> */}
 		</FullscreenOverlay>
 	);
 }
@@ -56,7 +56,7 @@ Modal.Simple = function (props: ModalSimpleProps) {
 			<div class="flex flex-col">
 				{props.children}
 			</div>
-			<div class="flex flex-row gap-x-4 [&>*]:flex-1">
+			<div class="flex flex-row gap-x-4 [&>*]:flex-1 mt-2">
 				<For each={props.buttons}>
 					{button => (
 						<ModalButton props={button} />
@@ -72,7 +72,7 @@ function ModalButton(button: { props: ModalButtonProps }) {
 		<>
 			{typeof button.props === 'string'
 				? (
-						<Button>
+						<Button buttonStyle="secondary">
 							{button.props}
 						</Button>
 					)

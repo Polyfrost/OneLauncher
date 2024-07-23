@@ -12,6 +12,7 @@ fn main() {
 					"remove_user",
 					"launch_cluster",
 					"create_cluster",
+                    "remove_cluster",
 					"get_clusters",
 					"get_cluster",
 					"get_manifest",

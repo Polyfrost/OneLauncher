@@ -4,11 +4,11 @@ import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, Settings04Icon } from '@
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
-import ClusterOverview from './cluster/ClusterOverview';
-import ClusterLogs from './cluster/ClusterLogs';
-import ClusterMods from './cluster/ClusterMods';
-import ClusterScreenshots from './cluster/ClusterScreenshots';
-import ClusterSettings from './cluster/ClusterSettings';
+import ClusterOverview from './ClusterOverview';
+import ClusterLogs from './ClusterLogs';
+import ClusterMods from './ClusterMods';
+import ClusterScreenshots from './ClusterScreenshots';
+import ClusterSettings from './ClusterSettings';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 
 function ClusterRoutes() {

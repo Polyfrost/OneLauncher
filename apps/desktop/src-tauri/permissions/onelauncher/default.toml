@@ -8,6 +8,7 @@ permissions = [
   "allow-remove-user",
   "allow-launch-cluster",
   "allow-create-cluster",
+  "allow-remove-cluster",
   "allow-get-clusters",
   "allow-get-cluster",
   "allow-get-manifest",

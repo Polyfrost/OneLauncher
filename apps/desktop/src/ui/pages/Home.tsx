@@ -26,7 +26,14 @@ function HomePage() {
 	const controller = useClusterModalController();
 
 	async function newCluster() {
-		controller.setVisible(true);
+		try {
+			await controller.start();
+		}
+		catch (err) {
+			console.error(err);
+		}
+
+		refetch();
 	}
 
 	return (

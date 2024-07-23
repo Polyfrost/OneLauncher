@@ -25,6 +25,7 @@ macro_rules! collect_commands {
 				get_user,
 				remove_user,
 				create_cluster,
+                remove_cluster,
 				get_cluster,
 				get_clusters,
 				get_settings,
@@ -69,6 +70,13 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	} else {
 		Err("Cluster does not exist".to_string())
 	}
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn remove_cluster(uuid: Uuid) -> Result<(), String> {
+    let path = cluster::get_by_uuid(uuid, None).await?.ok_or("Cluster does not exist")?.cluster_path();
+    Ok(cluster::remove(&path).await?)
 }
 
 // #[specta::specta]

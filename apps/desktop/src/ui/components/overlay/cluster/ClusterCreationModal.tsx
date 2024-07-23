@@ -19,6 +19,7 @@ interface ClusterModalContextFunc {
 	partialCluster: Accessor<PartialCluster>;
 	setPartialCluster: Setter<PartialCluster>;
 	updatePartialCluster: PartialClusterUpdateFunc;
+	start: () => Promise<void>; // Returns true if its finished (created) successfully
 	finish: () => void;
 	visible: Accessor<boolean>;
 	setVisible: Setter<boolean>;
@@ -37,6 +38,8 @@ export function ClusterModalController(props: ParentProps) {
 	const [step, setStep] = createSignal<number>(ClusterModalStages.STAGE_1_PROVIDER);
 	const [visible, setVisible] = createSignal(false);
 	const [partialCluster, setPartialCluster] = createSignal<PartialCluster>({});
+	const [inProgress, setInProgress] = createSignal(false);
+	const [error, setError] = createSignal<string | undefined>(undefined);
 
 	const updatePartialCluster: PartialClusterUpdateFunc = (key, value) => {
 		setPartialCluster((prev) => {
@@ -47,24 +50,54 @@ export function ClusterModalController(props: ParentProps) {
 		});
 	};
 
-	const finish = () => {
+	const start = () => {
+		setPartialCluster({});
+		setStep(ClusterModalStages.STAGE_1_PROVIDER);
+		setError(undefined);
+		setInProgress(true);
+		setVisible(true);
+
+		return new Promise<void>((resolve, reject) => {
+			createEffect(() => {
+				const result = error();
+				if (inProgress() === true)
+					return;
+
+				if (result === undefined || result.length === 0)
+					resolve();
+				else
+					reject(result);
+			});
+		});
+	};
+
+	const finish = async () => {
 		const untracked = untrack(partialCluster);
 
 		if (untracked.name === undefined || untracked.mc_version === undefined || untracked.mod_loader === undefined)
 			throw new Error('Cluster is missing required fields');
 
-		bridge.commands.createCluster({
-			name: untracked.name!,
-			mod_loader: untracked.mod_loader!,
-			mc_version: untracked.mc_version!,
-			// TODO: Implement the rest of the fields
-			icon: null,
-			icon_url: null,
-			loader_version: null,
-			package_data: null,
-			skip: null,
-			skip_watch: null,
-		});
+		setVisible(false);
+
+		try {
+			await bridge.commands.createCluster({
+				name: untracked.name!,
+				mod_loader: untracked.mod_loader!,
+				mc_version: untracked.mc_version!,
+				// TODO: Implement the rest of the fields
+				icon: null,
+				icon_url: null,
+				loader_version: null,
+				package_data: null,
+				skip: null,
+				skip_watch: null,
+			});
+		}
+		catch (err) {
+			console.log(err);
+		}
+
+		setInProgress(false);
 	};
 
 	const stepper: ClusterModalContextFunc = {
@@ -73,6 +106,7 @@ export function ClusterModalController(props: ParentProps) {
 		partialCluster,
 		setPartialCluster,
 		updatePartialCluster,
+		start,
 		finish,
 		visible,
 		setVisible,

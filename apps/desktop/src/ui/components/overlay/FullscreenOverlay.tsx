@@ -25,10 +25,8 @@ function FullscreenOverlay(props: FullscreenOverlayProps) {
 				style={{ 'z-index': props.zIndex || 1000 }}
 				class={`fixed top-0 left-0 w-screen h-screen bg-black/60 backdrop-blur-sm backdrop-grayscale transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
 			>
-				{/* New element to prevent from having to call stopPropagation in child elements */}
-				{/* <div class="absolute w-full h-full" onClick={() => onBackdropClick()} /> */}
 
-				<div class="absolute top-0 left-0 w-screen h-screen" onClick={onBackdropClick}>
+				<div class="absolute top-0 left-0 w-screen h-screen flex justify-center items-center" onClick={onBackdropClick}>
 					{props.children}
 				</div>
 

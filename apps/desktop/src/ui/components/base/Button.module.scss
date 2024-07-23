@@ -12,7 +12,7 @@
         @apply bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     }
 
-    &__danger {
+    &__danger, &__iconDanger {
         @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
     }
 
@@ -20,8 +20,8 @@
         @apply hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10;
     }
 
-    &__icon, &__iconSecondary {
-        @apply p-1.5 hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10 aspect-square box-border w-8 h-8;
+    &__icon, &__iconSecondary, &__iconDanger {
+        @apply p-1.5 aspect-square box-border w-8 h-8;
 
         &.large {
             @apply w-9 h-9;
@@ -33,6 +33,10 @@
         & > * {
             @apply w-full h-full stroke-fg-primary;
         }
+    }
+
+    &__icon, &__iconSecondary {
+        @apply hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10;
 
         &:hover > * {
             @apply stroke-fg-primary-hover;

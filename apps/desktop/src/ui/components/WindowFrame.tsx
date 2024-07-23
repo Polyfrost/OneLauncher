@@ -56,6 +56,7 @@ function WindowFrame() {
 				title="Close OneLauncher?"
 				visible={isModalVisible}
 				setVisible={setModalVisible}
+				zIndex={999999}
 				buttons={[
 					<Button buttonStyle="secondary" onClick={() => setModalVisible(false)}>No</Button>,
 					<Button buttonStyle="danger" onClick={() => kill()}>Yes</Button>,

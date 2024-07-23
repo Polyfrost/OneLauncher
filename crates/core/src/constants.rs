@@ -16,7 +16,7 @@ pub const ID: &str = "org.polyfrost.launcher";
 pub const DISCORD_RPC_CLIENT_ID: &str = "1234567890000000";
 
 /// Microsoft client ID.
-pub const MICROSOFT_CLIENT_ID: &str = "";
+pub const MICROSOFT_CLIENT_ID: &str = "00000000402b5328";
 /// Microsoft login redirect URI.
 pub const REDIRECT_URL: &str = "https://login.live.com/oauth20_desktop.srf";
 /// Microsoft login xboxlive scopes to get tokens.

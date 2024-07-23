@@ -5,24 +5,43 @@
 
 use onelauncher::prelude::*;
 
+pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
+	println!("a browser will open, follow login flow");
+	let login = minecraft::begin().await?;
+
+	println!("url is {}", login.redirect_uri.as_str());
+	webbrowser::open(login.redirect_uri.as_str())?;
+
+	println!("enter flow url: ");
+	let mut input = String::new();
+	std::io::stdin()
+		.read_line(&mut input)
+		.expect("unable to read input");
+
+	println!("{}", input.trim());
+
+	let parsed = url::Url::parse(input.trim()).expect("idk");
+	let code = if let Some((_, code)) = parsed.query_pairs().find(|x| x.0 == "code") {
+		&code.clone()
+	} else {
+		panic!()
+	};
+	let creds = minecraft::finish(code, login).await?;
+
+
+	println!("logged in {}", creds.username);
+	Ok(creds)
+
+}
+
 #[tokio::main]
 async fn main() -> onelauncher::Result<()> {
 	let _logger = onelauncher::start_logger();
 	let state = State::get().await?;
 
 	if minecraft::users().await?.is_empty() {
-		println!("logging in");
-		let login = minecraft::begin().await?;
-
-		println!("{}", login.redirect_uri.as_str());
-
-		let mut input = String::new();
-		std::io::stdin()
-			.read_line(&mut input)
-			.expect("unable to read input");
-		println!("{}", input.trim());
-		let credentials = minecraft::finish(&input, login).await?;
-		println!("{}", credentials.username);
+		println!("authenticating");
+		authenticate_mc().await?;
 	}
 
 	state.settings.write().await.max_async_fetches = 100;

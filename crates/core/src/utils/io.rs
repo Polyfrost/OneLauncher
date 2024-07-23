@@ -7,8 +7,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::anyhow;
-use tauri::async_runtime::spawn_blocking;
 use tempfile::NamedTempFile;
+use tokio::task::spawn_blocking;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]

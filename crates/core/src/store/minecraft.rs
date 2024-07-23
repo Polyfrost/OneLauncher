@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
 
-use crate::constants::{MICROSOFT_CLIENT_ID, SCOPES, REDIRECT_URL};
+use crate::constants::{MICROSOFT_CLIENT_ID, REDIRECT_URL, SCOPES};
 
 const AUTH_STORE: &str = "authentication.json";
 
@@ -657,13 +657,13 @@ async fn xsts_authorize(
 		"/xsts/authorize",
 		json!({
 			"RelyingParty": "rp://api.minecraftservices.com/",
-            "TokenType": "JWT",
-            "Properties": {
-                "SandboxId": "RETAIL",
-                "UserTokens": [authorize.user_token.token],
-                "DeviceToken": device_token,
-                "TitleToken": authorize.title_token.token,
-            },
+			"TokenType": "JWT",
+			"Properties": {
+				"SandboxId": "RETAIL",
+				"UserTokens": [authorize.user_token.token],
+				"DeviceToken": device_token,
+				"TitleToken": authorize.title_token.token,
+			},
 		}),
 		key,
 		MinecraftAuthStep::XstsAuthorize,

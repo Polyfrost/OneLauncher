@@ -266,7 +266,10 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 	}
 
 	let file_path = tempdir.join("JavaInfo.class");
-	tracing::info!("checking java with {}", file_path.to_string_lossy().to_string());
+	tracing::info!(
+		"checking java with {}",
+		file_path.to_string_lossy().to_string()
+	);
 	io::write(&file_path, bytes).await.ok()?;
 
 	let output = Command::new(&java)

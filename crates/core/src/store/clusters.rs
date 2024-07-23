@@ -53,9 +53,12 @@ impl ClusterPath {
 		ClusterPath(path.into())
 	}
 
-    pub async fn find_by_uuid(uuid: Uuid) -> crate::Result<Self> {
-        Ok(crate::cluster::get_by_uuid(uuid, None).await?.ok_or(anyhow::anyhow!("Cluster does not exist"))?.cluster_path())
-    }
+	pub async fn find_by_uuid(uuid: Uuid) -> crate::Result<Self> {
+		Ok(crate::cluster::get_by_uuid(uuid, None)
+			.await?
+			.ok_or(anyhow::anyhow!("Cluster does not exist"))?
+			.cluster_path())
+	}
 
 	/// Get the full [`PathBuf`] of the current cluster path.
 	pub async fn full_path(&self) -> crate::Result<PathBuf> {
@@ -322,20 +325,6 @@ impl std::fmt::Display for Loader {
 			Self::Quilt => "Quilt",
 			Self::LegacyFabric => "LegacyFabric",
 		})
-	}
-}
-
-impl Loader {
-	/// Get the loader version to lowercase for metadata fetching.
-	pub(crate) fn as_meta(&self) -> &'static str {
-		match *self {
-			Self::Vanilla => "vanilla",
-			Self::Forge => "forge",
-			Self::Fabric => "fabric",
-			Self::NeoForge => "neoforge",
-			Self::Quilt => "quilt",
-			Self::LegacyFabric => "legacyfabric",
-		}
 	}
 }
 

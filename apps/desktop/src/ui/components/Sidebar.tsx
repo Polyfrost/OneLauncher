@@ -3,13 +3,9 @@ import type { JSX, ParentProps } from 'solid-js';
 import { For, createEffect, splitProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
-	state: {
-		[key: string]: any;
-	};
+	state: Record<string, any>;
 	base: string;
-	links: {
-		[key: string]: ([JSX.Element, string, string] | undefined)[];
-	};
+	links: Record<string, ([JSX.Element, string, string] | undefined)[]>;
 };
 
 function Sidebar(props: SidebarProps) {

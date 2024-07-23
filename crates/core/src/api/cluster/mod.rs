@@ -65,7 +65,7 @@ pub async fn list(clear: Option<bool>) -> crate::Result<Vec<Cluster>> {
 // pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, Cluster>> {
 // 	let clusters = list(clear).await?;
 //     let mut map = HashMap::new();
-    
+
 // }
 
 /// run a Minecraft [`Cluster`] using the default credentials.

@@ -29,7 +29,7 @@ pub async fn generate_context(
 	_fetch_semaphore: &FetchSemaphore,
 	// credentials: &Credentials,
 ) -> crate::Result<HashMap<PackagePath, Package>> {
-	let mut hashes = HashMap::new();
+	let mut handles = vec![];
 
 	for path in paths {
 		if !path.exists() {
@@ -40,22 +40,35 @@ pub async fn generate_context(
 				continue;
 			}
 		}
-		let mut file = tokio::fs::File::open(path.clone())
-			.await
-			.map_err(|e| IOError::with_path(e, &path))?;
-		let mut buffer = [0u8; 4096];
-		let mut sha512 = sha2::Sha512::new();
 
-		loop {
-			let read = file.read(&mut buffer).await.map_err(IOError::from)?;
-			if read == 0 {
-				break;
+		let handle = tokio::spawn(async move {
+			let mut file = tokio::fs::File::open(path.clone())
+				.await
+				.map_err(|e| IOError::with_path(e, &path))?;
+
+			let mut buffer = [0u8; 65536];
+			let mut hasher = sha2::Sha512::new();
+
+			loop {
+				let read = file.read(&mut buffer).await.map_err(IOError::from)?;
+				if read == 0 {
+					break;
+				}
+				hasher.update(&buffer[..read]);
 			}
-			sha512.update(&buffer[..read]);
-		}
 
-		let hash = format!("{:x}", sha512.finalize());
-		hashes.insert(hash, path.clone());
+			let hash = format!("{:x}", hasher.finalize());
+			Ok::<_, crate::Error>((hash, path))
+		});
+
+		handles.push(handle);
+	}
+
+	let mut file_path_hashes = HashMap::new();
+
+	for handle in handles {
+		let (hash, path) = handle.await??;
+		file_path_hashes.insert(hash, path);
 	}
 
 	let result = HashMap::new();

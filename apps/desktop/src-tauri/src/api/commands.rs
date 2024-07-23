@@ -20,32 +20,27 @@ macro_rules! collect_commands {
 			)
 			.commands(tauri_specta::collect_commands![
 				// User
-                begin_msa,
+				begin_msa,
 				finish_msa,
 				get_users,
 				get_user,
 				remove_user,
-
-                // Cluster
+				// Cluster
 				create_cluster,
-                remove_cluster,
+				remove_cluster,
 				get_cluster,
 				get_clusters,
-                run_cluster,
-                
-                // Processor
-                get_running_clusters,
-                get_processes_by_path,
-                kill_process,
-
-                // Settings
+				run_cluster,
+				// Processor
+				get_running_clusters,
+				get_processes_by_path,
+				kill_process,
+				// Settings
 				get_settings,
 				set_settings,
-
-                // Metadata
-                get_minecraft_versions,
-                
-                // Other
+				// Metadata
+				get_minecraft_versions,
+				// Other
 				get_program_info,
 			])
 	}};
@@ -90,41 +85,48 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn remove_cluster(uuid: Uuid) -> Result<(), String> {
-    let path = ClusterPath::find_by_uuid(uuid).await?;
-    Ok(cluster::remove(&path).await?)
+	let path = ClusterPath::find_by_uuid(uuid).await?;
+	Ok(cluster::remove(&path).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
-    let path = ClusterPath::find_by_uuid(uuid).await?;
-    let c_lock = cluster::run(&path).await?;
+	let path = ClusterPath::find_by_uuid(uuid).await?;
+	let c_lock = cluster::run(&path).await?;
 
-    let p_uuid = c_lock.read().await.uuid;
-	let p_pid = c_lock.read().await.current_child.read().await.id().unwrap_or(0);
-    
+	let p_uuid = c_lock.read().await.uuid;
+	let p_pid = c_lock
+		.read()
+		.await
+		.current_child
+		.read()
+		.await
+		.id()
+		.unwrap_or(0);
+
 	// processor::wait_for(&mut proc).await?;
 
-    Ok((p_uuid, p_pid))
+	Ok((p_uuid, p_pid))
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_running_clusters() -> Result<Vec<Cluster>, String> {
-    Ok(processor::get_running_clusters().await?)
+	Ok(processor::get_running_clusters().await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_processes_by_path(path: ClusterPath) -> Result<Vec<Uuid>, String> {
-    Ok(processor::get_uuids_by_cluster_path(path).await?)
+	Ok(processor::get_uuids_by_cluster_path(path).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn kill_process(uuid: Uuid) -> Result<(), String> {
-    processor::kill_by_uuid(uuid).await?;
-    Ok(())
+	processor::kill_by_uuid(uuid).await?;
+	Ok(())
 }
 
 // #[specta::specta]
@@ -168,8 +170,8 @@ pub async fn kill_process(uuid: Uuid) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 	match cluster::get_by_uuid(uuid, None).await? {
-	    Some(cluster) => Ok(cluster),
-	    None => Err("Cluster does not exist".into())
+		Some(cluster) => Ok(cluster),
+		None => Err("Cluster does not exist".into()),
 	}
 }
 
@@ -188,7 +190,9 @@ pub async fn get_clusters() -> Result<Vec<Cluster>, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_minecraft_versions() -> Result<Vec<Version>, String> {
-    Ok(onelauncher::api::metadata::get_minecraft_versions().await?.versions)
+	Ok(onelauncher::api::metadata::get_minecraft_versions()
+		.await?
+		.versions)
 }
 
 #[specta::specta]
@@ -271,4 +275,4 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 
 // #[specta::specta]
 // #[tauri::command]
-// pub async fn 
+// pub async fn

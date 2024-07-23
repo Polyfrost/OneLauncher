@@ -3,8 +3,8 @@
 	windows_subsystem = "windows"
 )]
 
-use onelauncher::prelude::*;
 use onelauncher::cluster::create::create_cluster;
+use onelauncher::prelude::*;
 
 pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	println!("a browser will open, follow login flow");
@@ -24,16 +24,14 @@ pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	let parsed = url::Url::parse(input.trim()).expect("idk");
 	let code = if let Some((_, code)) = parsed.query_pairs().find(|x| x.0 == "code") {
 		let code = code.clone();
-        code.to_string()
+		code.to_string()
 	} else {
 		panic!()
 	};
 	let creds = minecraft::finish(code.as_str(), login).await?;
 
-
 	println!("logged in {}", creds.username);
 	Ok(creds)
-
 }
 
 #[tokio::main]

@@ -22,7 +22,6 @@ tauri = [
 cli = [ "dep:indicatif" ]
 
 [dependencies]
-onelauncher_debug = { path = "../debugger" }
 onelauncher_prisma = { path = "../prisma" }
 
 # GUI-only deps

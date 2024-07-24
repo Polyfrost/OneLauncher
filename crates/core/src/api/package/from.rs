@@ -185,7 +185,6 @@ pub fn get_cluster_from_pack(location: CreatePackLocation) -> CreatePackCluster 
 }
 
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 pub async fn generate_pack_from_version_id(
 	package_id: String,
 	version_id: String,
@@ -295,7 +294,6 @@ pub async fn generate_pack_from_version_id(
 }
 
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 pub async fn generate_pack_from_file(
 	path: PathBuf,
 	cluster_path: ClusterPath,
@@ -316,7 +314,6 @@ pub async fn generate_pack_from_file(
 
 /// Sets generated cluster attributes to the pack attributes (using `cluster::edit`).
 /// This includes the pack name, icon, game version, loader version, and loader.
-#[onelauncher_debug::debugger]
 pub async fn set_cluster_information(
 	cluster_path: ClusterPath,
 	description: &CreatePackDescription,

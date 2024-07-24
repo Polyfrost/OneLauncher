@@ -158,7 +158,8 @@ features = [
   "migrations",
   "specta",
   "sqlite",
-  "sqlite-create-many"
+  "sqlite-create-many",
+  "rspc"
 ]
 default-features = false
 

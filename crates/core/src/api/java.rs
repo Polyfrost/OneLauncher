@@ -27,7 +27,6 @@ pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec
 	})
 }
 
-#[onelauncher_debug::debugger]
 pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 	let state = State::get().await?;
 

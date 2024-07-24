@@ -20,7 +20,6 @@ use super::{Cluster, PackagePath};
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
 /// Paths must be the full paths and not relative paths.
 #[tracing::instrument(skip(paths, _cluster, _io_semaphore, _fetch_semaphore))]
-#[onelauncher_debug::debugger]
 pub async fn generate_context(
 	_cluster: Cluster,
 	paths: Vec<PathBuf>,
@@ -299,7 +298,6 @@ pub enum PackageFile {
 }
 
 #[tracing::instrument(skip(io_semaphore))]
-#[onelauncher_debug::debugger]
 async fn read_icon(
 	icon_path: Option<String>,
 	cache_path: &Path,

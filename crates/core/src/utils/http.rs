@@ -76,7 +76,6 @@ where
 
 /// Advanced HTTP fetch interface with json, sha1 validation, and ingress support.
 #[tracing::instrument(skip(json_body, semaphore))]
-#[onelauncher_debug::debugger]
 pub async fn fetch_advanced(
 	method: Method,
 	url: &str,
@@ -167,7 +166,6 @@ pub async fn fetch_advanced(
 
 /// A utility to fetch from multiple mirrored sources.
 #[tracing::instrument(skip(semaphore))]
-#[onelauncher_debug::debugger]
 pub async fn fetch_from_mirrors(
 	mirrors: &[&str],
 	sha1: Option<&str>,
@@ -189,7 +187,6 @@ pub async fn fetch_from_mirrors(
 
 /// Checks if we are playing offline by contacting a reliable server.
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 pub async fn check_internet_connection(timeout: u64) -> bool {
 	REQWEST_CLIENT
 		.get("https://api.polyfrost.org/")
@@ -201,7 +198,6 @@ pub async fn check_internet_connection(timeout: u64) -> bool {
 
 /// Post JSON to a specified URL (helpful for Microsoft auth)
 #[tracing::instrument(skip(json_body, semaphore))]
-#[onelauncher_debug::debugger]
 pub async fn post_json<T>(
 	url: &str,
 	json_body: serde_json::Value,

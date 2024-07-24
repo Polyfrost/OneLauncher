@@ -36,7 +36,6 @@ macro_rules! data_entry {
 }
 
 #[tracing::instrument(skip(cluster))]
-#[onelauncher_debug::debugger]
 pub async fn install_minecraft(
 	cluster: &Cluster,
 	old_ingress: Option<IngressId>,
@@ -243,7 +242,6 @@ pub async fn install_minecraft(
 }
 
 #[tracing::instrument(skip_all)]
-#[onelauncher_debug::debugger]
 #[allow(clippy::too_many_arguments)]
 pub async fn launch_minecraft(
 	cluster: &Cluster,

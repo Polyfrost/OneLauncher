@@ -45,7 +45,6 @@ macro_rules! ingress_join {
 
 /// TryStreamExt concurrently for Ingress feeds
 #[tracing::instrument(skip(stream, f))]
-#[onelauncher_debug::debugger]
 pub async fn ingress_try_for_each<I, F, Fut, T>(
 	stream: I,
 	limit: Option<usize>,

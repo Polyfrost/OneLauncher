@@ -246,10 +246,6 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 
 // #[specta::specta]
 // #[tauri::command]
-// pub async fn import_instance() -> Result<(), String> {
-//     onelauncher::api::package::import::import_instance()
+// pub async fn searchMods(query: String) -> Result<Vec<ModrinthMod>, String> {
+//     // Ok(onelauncher::api::)
 // }
-
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn

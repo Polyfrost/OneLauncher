@@ -67,14 +67,9 @@ function BrowserMain() {
 			</div>
 
 			<div class="flex flex-col h-full flex-1 gap-4 py-2">
-				{/* eslint-disable-next-line ts/no-use-before-define -- blh */}
 				<For each={_modRowData}>
 					{row => (
-						<>
-							<ModsRow {...row} />
-							<ModsRow {...row} />
-							<ModsRow {...row} />
-						</>
+						<ModsRow {...row} />
 					)}
 				</For>
 			</div>
@@ -83,27 +78,27 @@ function BrowserMain() {
 	);
 }
 
-export const modStore: Mod[] = [
-	{
-		id: '1yIQcc2b',
-		name: 'EvergreenHUD',
-		description: 'Improves your heads up display.',
-		author: 'Polyfrost',
-		icon_url: 'https://cdn.modrinth.com/data/1yIQcc2b/icon.png',
-		page_url: 'https://modrinth.com/mod/evergreenhud',
-		provider: Provider.Modrinth,
-		downloads: 281700,
-		ratings: 220,
-	},
-];
+// export const modStore: Mod[] = [
+// 	{
+// 		id: '1yIQcc2b',
+// 		name: 'EvergreenHUD',
+// 		description: 'Improves your heads up display.',
+// 		author: 'Polyfrost',
+// 		icon_url: 'https://cdn.modrinth.com/data/1yIQcc2b/icon.png',
+// 		page_url: 'https://modrinth.com/mod/evergreenhud',
+// 		provider: Provider.Modrinth,
+// 		downloads: 281700,
+// 		ratings: 220,
+// 	},
+// ];
 
-const _modRowData: ModsRowProps[] = [
-	{
-		header: 'Highly Endorsed',
-		category: 'endorsed',
-		mods: modStore,
-	},
-];
+// const _modRowData: ModsRowProps[] = [
+// 	{
+// 		header: 'Highly Endorsed',
+// 		category: 'endorsed',
+// 		mods: modStore,
+// 	},
+// ];
 
 interface ModsRowProps {
 	header: string;

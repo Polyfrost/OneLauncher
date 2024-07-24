@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2/";
+pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
 pub const CURSEFORGE_API_URL: &str = "https://api.cursefor";
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]

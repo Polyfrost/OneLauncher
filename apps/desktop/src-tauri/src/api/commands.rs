@@ -105,6 +105,14 @@ pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
 		.id()
 		.unwrap_or(0);
 
+    // tokio::task::spawn(async move {
+    //     let mut proc = c_lock.write().await;
+	//     if let Err(err) = processor::wait_for(&mut proc).await {
+    //         tracing::error!("Error waiting for process: {:?}", err);
+    //     };
+    // });
+
+    // let mut proc = c_lock.write().await;
 	// processor::wait_for(&mut proc).await?;
 
 	Ok((p_uuid, p_pid))
@@ -133,37 +141,6 @@ pub async fn kill_process(uuid: Uuid) -> Result<(), String> {
 // #[tauri::command]
 // pub fn update_cluster(cluster: Cluster) -> Result<(), String> {
 
-// }
-
-// fn placeholder_cluster() -> Cluster {
-// 	let path = ClusterPath("test".into());
-// 	Cluster {
-// 		uuid: Uuid::from_str("56d1cbcf-1961-4477-b263-80e3b1c7a9d1").unwrap(),
-// 		stage: onelauncher::store::ClusterStage::Installed,
-// 		path: path.0,
-// 		meta: ClusterMeta {
-// 			created_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-// 			modified_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-// 			group: vec![],
-// 			icon: None,
-// 			icon_url: None,
-// 			loader: Loader::Vanilla,
-// 			loader_version: None,
-// 			mc_version: "1.8.9".into(),
-// 			name: "Test Cluster".into(),
-// 			overall_played: 58195,
-// 			recently_played: 0,
-// 			package_data: None,
-// 			played_at: None,
-// 		},
-// 		memory: None,
-// 		java: None,
-// 		resolution: None,
-// 		force_fullscreen: None,
-// 		init_hooks: None,
-// 		packages: HashMap::new(),
-// 		update: None,
-// 	}
 // }
 
 #[specta::specta]

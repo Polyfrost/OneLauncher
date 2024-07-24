@@ -11,6 +11,7 @@ import { upperFirst } from '~utils/primitives';
 import useClusterContext from '~ui/hooks/useCluster';
 import Modal from '~ui/components/overlay/Modal';
 import { bridge } from '~imports';
+import { tryResult } from '~ui/hooks/useCommand';
 
 function ClusterOverview() {
 	const cluster = useClusterContext();
@@ -100,8 +101,10 @@ function DeleteModal(props: DeleteModalProps) {
 }
 
 function Banner(props: Cluster & { showDeletePrompt: () => void }) {
-	function launch() {
+	async function launch() {
+		const [uuid, pid] = await tryResult(bridge.commands.runCluster, props.uuid);
 
+		console.log(uuid, pid);
 	}
 
 	return (
@@ -123,7 +126,7 @@ function Banner(props: Cluster & { showDeletePrompt: () => void }) {
 				<span class="text-xs text-fg-secondary">
 					Played for
 					{' '}
-					<b>{((props.meta.overall_played || 0n)).toString()}</b>
+					<b>{((props.meta.overall_played || 0 as unknown as bigint)).toString()}</b>
 					{' '}
 					hours
 					{/* TODO: Ask Pauline if this is measured in seconds or milliseconds */}
@@ -147,7 +150,7 @@ function Banner(props: Cluster & { showDeletePrompt: () => void }) {
 					iconLeft={<PlayIcon />}
 					children="Launch"
 					class="!w-auto"
-					onClick={() => {}}
+					onClick={launch}
 				/>
 			</div>
 		</div>

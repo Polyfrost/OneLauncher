@@ -105,14 +105,14 @@ function Banner() {
 			<div class="relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start">
 				<div class="flex flex-col gap-y-2">
 					<h1>Building worlds</h1>
-					<p>A description would go here if I was smart</p>
+					<p>DEV BUILD - NOT FINAL</p>
 				</div>
 				<div class="flex w-full flex-row justify-between items-end">
 					<div class="flex flex-row items-center gap-x-4">
 						<Button
 							buttonStyle="primary"
 							iconLeft={<PlayIcon />}
-							children="Launch 1.19.2"
+							children="Launch 1.20.4"
 						/>
 						<Button
 							buttonStyle="icon"

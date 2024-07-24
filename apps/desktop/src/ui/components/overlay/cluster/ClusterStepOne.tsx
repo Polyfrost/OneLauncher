@@ -1,4 +1,4 @@
-import { User03Icon } from '@untitled-theme/icons-solid';
+import { Upload01Icon, User03Icon } from '@untitled-theme/icons-solid';
 import { Index, type JSX, createEffect, createSignal, on } from 'solid-js';
 import type { ClusterStepProps } from './ClusterCreationModal';
 import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
@@ -19,7 +19,7 @@ const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
 	},
 	{
 		name: 'Import',
-		icon: <User03Icon />,
+		icon: <Upload01Icon />,
 	},
 ];
 

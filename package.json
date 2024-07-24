@@ -23,11 +23,14 @@
 		"client": "pnpm --filter @onelauncher/client --",
 		"tauri": "pnpm gui tauri",
 		"lint": "pnpm eslint . --cache",
-		"format": "pnpm lint --fix",
+		"lint:fix": "pnpm lint --fix",
+		"format": "pnpm lint:fix && pnpm core:prisma format",
 		"prep": "pnpm gen:prisma",
 		"release:node": "pnpm bumpp -r",
-		"gen:prisma": "cd crates/core && cargo prisma generate",
-		"gen:migrations": "cd crates/core && cargo prisma migrate dev"
+		"core": "cd crates/core && cargo",
+		"gen:prisma": "pnpm core prisma generate",
+		"gen:migrations": "pnpm core prisma migrate dev",
+		"gen:code": "pnpm core test gen"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.9.1",

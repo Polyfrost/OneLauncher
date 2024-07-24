@@ -22,16 +22,3 @@ declare namespace globalThis {
 
     // type Result = UnionToArray<keyof typeof Example>['length'] // = 5
 }
-
-// TODO remove in place for specta-generated types
-interface Mod {
-    id: string;
-	name: string;
-	description: string;
-	author: string;
-	icon_url: string;
-	provider: Provider;
-	page_url: string;
-	downloads: number;
-	ratings: number;
-}

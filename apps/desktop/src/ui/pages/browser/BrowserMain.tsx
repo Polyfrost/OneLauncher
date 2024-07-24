@@ -1,10 +1,13 @@
 import { A } from '@solidjs/router';
 import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
-import { For, createSignal } from 'solid-js';
+import { For, createEffect, createSignal, onMount } from 'solid-js';
+import type { ManagedPackage } from '~bindings';
+import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import ModCard, { Provider } from '~ui/components/content/ModCard';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import createSortable from '~utils/sorting';
 
 interface CardProps {
@@ -24,6 +27,36 @@ function BrowserMain() {
 		provider: [Provider.Curseforge],
 	});
 
+	const [modRowData, setModRowData] = createSignal<ModsRowProps[]>([]);
+
+	onMount(() => {
+		Promise.all([
+			tryResult(bridge.commands.randomMods),
+			tryResult(bridge.commands.getMod, 'oneconfig'),
+			tryResult(bridge.commands.getMod, 'chatting'),
+			tryResult(bridge.commands.getMod, 'patcher'),
+		]).then((res) => {
+			const list: ModsRowProps[] = [
+				{
+					header: 'Polyfrost',
+					category: 'polyfrost',
+					packages: [
+						res[1],
+						res[2],
+						res[3],
+					],
+				},
+				{
+					header: 'Random Mods',
+					category: 'random',
+					packages: res[0],
+				},
+			];
+
+			setModRowData(list);
+		});
+	});
+
 	const sortable = createSortable<CardProps>([], {
 		'A-Z': (a, b) => a.name.localeCompare(b.name),
 		'Z-A': (a, b) => b.name.localeCompare(a.name),
@@ -33,7 +66,7 @@ function BrowserMain() {
 
 	return (
 		<div class="flex flex-col flex-1 h-full gap-2 relative">
-			<div class="flex flex-row flex-1 justify-between sticky top-0 z-10 bg-primary">
+			<div class="flex flex-row justify-between sticky top-0 z-10 bg-primary">
 				<div class="flex flex-row gap-2 h-8">
 
 					<TextField
@@ -66,8 +99,8 @@ function BrowserMain() {
 				</div>
 			</div>
 
-			<div class="flex flex-col h-full flex-1 gap-4 py-2">
-				<For each={_modRowData}>
+			<div class="flex flex-col gap-4 py-2">
+				<For each={modRowData()}>
 					{row => (
 						<ModsRow {...row} />
 					)}
@@ -78,32 +111,10 @@ function BrowserMain() {
 	);
 }
 
-// export const modStore: Mod[] = [
-// 	{
-// 		id: '1yIQcc2b',
-// 		name: 'EvergreenHUD',
-// 		description: 'Improves your heads up display.',
-// 		author: 'Polyfrost',
-// 		icon_url: 'https://cdn.modrinth.com/data/1yIQcc2b/icon.png',
-// 		page_url: 'https://modrinth.com/mod/evergreenhud',
-// 		provider: Provider.Modrinth,
-// 		downloads: 281700,
-// 		ratings: 220,
-// 	},
-// ];
-
-// const _modRowData: ModsRowProps[] = [
-// 	{
-// 		header: 'Highly Endorsed',
-// 		category: 'endorsed',
-// 		mods: modStore,
-// 	},
-// ];
-
 interface ModsRowProps {
 	header: string;
 	category: string;
-	mods: Mod[];
+	packages: ManagedPackage[];
 };
 
 function ModsRow(props: ModsRowProps) {
@@ -114,8 +125,8 @@ function ModsRow(props: ModsRowProps) {
 				<A class="text-fg-secondary hover:text-fg-secondary-hover active:text-fg-secondary-pressed" href={`category?category=${props.category}`}>See all</A>
 			</div>
 
-			<div class="flex flex-row gap-2">
-				<For each={props.mods}>
+			<div class="flex flex-row gap-2 max-w-full flex-wrap">
+				<For each={props.packages}>
 					{mod => <ModCard {...mod} />}
 				</For>
 			</div>

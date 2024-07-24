@@ -46,6 +46,7 @@ pub struct ModrinthPackage {
     // pub project_type: String,
     pub downloads: u32,
     #[serde(rename = "icon_url")]
+    #[serde(default)]
     pub icon_url: String,
     // pub color: i64,
     // #[serde(rename = "thread_id")]
@@ -64,9 +65,11 @@ pub struct ModrinthPackage {
     // pub queued: String,
     pub followers: u32,
     // pub license: License,
+    #[serde(default)]
     pub versions: Vec<String>,
     #[serde(rename = "game_versions")]
     pub game_versions: Vec<String>,
+    #[serde(default)]
     pub loaders: Vec<String>,
     // pub gallery: Vec<Gallery>,
 }

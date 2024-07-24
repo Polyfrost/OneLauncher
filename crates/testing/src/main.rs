@@ -57,9 +57,9 @@ async fn main() -> onelauncher::Result<()> {
 		}
 	}
 
-	let name = "examplecluster".to_string();
-	let game = "1.20.4".to_string();
-	let loader = Loader::Vanilla;
+	let name = "Example".to_string();
+	let game = "1.21".to_string();
+	let loader = Loader::Fabric;
 	let loader_version = "stable".to_string();
 
 	let cluster = create_cluster(

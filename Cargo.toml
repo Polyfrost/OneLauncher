@@ -151,6 +151,8 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
+webbrowser = { version = "0.8" }
+url = { version = "2.5.2" }
 
 [patch.crates-io]
 specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }

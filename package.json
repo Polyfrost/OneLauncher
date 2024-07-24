@@ -12,14 +12,22 @@
 	"bugs": {
 		"url": "https://github.com/polyfrost/onelauncher/issues"
 	},
+	"engines": {
+		"pnpm": "9.5.0",
+		"npm": "pnpm",
+		"yarn": "pnpm",
+		"node": ">=18"
+	},
 	"scripts": {
-		"gui": "pnpm --filter @onelauncher/gui",
-		"client": "pnpm --filter @onelauncher/client",
-		"dev": "pnpm gui tauri dev",
-		"build": "pnpm gui tauri build",
+		"gui": "pnpm --filter @onelauncher/gui --",
+		"client": "pnpm --filter @onelauncher/client --",
+		"tauri": "pnpm gui tauri",
 		"lint": "pnpm eslint . --cache",
 		"format": "pnpm lint --fix",
-		"release:node": "pnpm bumpp -r"
+		"prep": "pnpm gen:prisma",
+		"release:node": "pnpm bumpp -r",
+		"gen:prisma": "cd crates/core && cargo prisma generate",
+		"gen:migrations": "cd crates/core && cargo prisma migrate dev"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.9.1",

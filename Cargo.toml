@@ -54,21 +54,6 @@ tauri-specta = { version = "=2.0.0-rc.11", features = [
 # rspc-tauri2 is updated on the main branch
 rspc-tauri2 = { version = "=0.0.1" }
 
-# prisma-client-rust* is updated on the main branch
-prisma-client-rust = { version = "=0.6.8", features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-], default-features = false }
-prisma-client-rust-cli = { version = "=0.6.8", features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-], default-features = false }
-prisma-client-rust-sdk = { version = "=0.6.8", features = [ "sqlite" ], default-features = false }
-
 # interpulse is updated on the main branch
 interpulse = { version = "=1.0.0", features = [ "specta" ] }
 
@@ -154,6 +139,29 @@ objc = { version = "0.2" }
 webbrowser = { version = "0.8" }
 url = { version = "2.5.2" }
 
+[workspace.dependencies.prisma-client-rust]
+git = "https://github.com/brendonovich/prisma-client-rust"
+rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
+features = [
+  "migrations",
+  "specta",
+  "sqlite",
+  "sqlite-create-many",
+  "rspc"
+]
+default-features = false
+
+[workspace.dependencies.prisma-client-rust-cli]
+git = "https://github.com/brendonovich/prisma-client-rust"
+rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
+features = [
+  "migrations",
+  "specta",
+  "sqlite",
+  "sqlite-create-many"
+]
+default-features = false
+
 [patch.crates-io]
 specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
 rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
@@ -161,17 +169,27 @@ tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "
 rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
 interpulse = { git = "https://github.com/pulseflow/workers", rev = "4d247c78545703200435a4a063c3f77fd644370f" }
 
-prisma-client-rust = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
-prisma-client-rust-cli = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
-prisma-client-rust-sdk = { git = "https://github.com/brendonovich/prisma-client-rust", rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab" }
-
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)
 debug = true
+# opt-level = 0
+# strip = "none"
+# incremental = true
+# split-debuginfo = "unpacked"
 lto = false
 codegen-units = 256
 rpath = false
 panic = "unwind"
+
+[profile.dev-debug]
+inherits = "dev"
+split-debuginfo = "none"
+opt-level = 0
+debug = "full"
+strip = "none"
+lto = "off"
+codegen-units = 256
+incremental = true
 
 # Set the settings for build scripts and proc-macros.
 [profile.dev.build-override]
@@ -180,6 +198,13 @@ opt-level = 3
 # Set the default for dependencies, except workspace members.
 [profile.dev.package."*"]
 opt-level = 3
+incremental = false
+
+# Set the default for dependencies, except workspace members.
+[profile.dev-debug.package."*"]
+inherits = "dev"
+opt-level = 3
+debug = "full"
 incremental = false
 
 # optimize for speed and reduce size for release

@@ -4,7 +4,7 @@ repl-result-out*
 .direnv
 
 # Prisma
-crates/prisma/src/prisma.rs
+crates/prisma/src/prisma
 dev.db
 dev.db-journal
 

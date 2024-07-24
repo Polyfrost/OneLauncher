@@ -1,0 +1,28 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.db"
+}
+
+generator client {
+  provider      = "cargo prisma"
+  output        = "../../prisma/src/prisma"
+  module_path   = "prisma"
+  client_format = "folder"
+}
+
+model Settings {
+  id                 Int     @id @default(0)
+  theme              String  @default("dark")
+  hide_close_prompt  Boolean @default(true)
+  disable_animations Boolean @default(false)
+  force_fullscreen   Boolean @default(false)
+  resolution_x       Int     @default(854)
+  resolution_y       Int     @default(480)
+  memory_max         Int     @default(2048)
+  memory_min         Int     @default(1024)
+  hook_pre           String?
+  hook_wrapper       String?
+  hook_post          String?
+
+  @@map("settings")
+}

@@ -15,7 +15,7 @@
 	"types": "./src/index.ts",
 	"dependencies": {
 		"@rspc/client": "^0.2.3",
-		"@rspc/solid-query": "^0.2.3",
+		"@rspc/solid-query": "^0.2.4",
 		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.51.9",

@@ -20,7 +20,7 @@
 		"@leeoniya/ufuzzy": "^1.0.14",
 		"@onelauncher/client": "workspace:*",
 		"@rspc/client": "^0.2.3",
-		"@rspc/solid-query": "^0.2.3",
+		"@rspc/solid-query": "^0.2.4",
 		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/refs": "^1.0.8",
 		"@solidjs/router": "^0.14.1",

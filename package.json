@@ -22,6 +22,7 @@
 		"gui": "pnpm --filter @onelauncher/gui -- ",
 		"client": "pnpm --filter @onelauncher/client --",
 		"tauri": "pnpm gui tauri",
+		"format": "pnpm lint:fix && cargo +nightly fmt",
 		"lint": "pnpm eslint . --cache",
 		"lint:fix": "pnpm lint --fix",
 		"release:node": "pnpm bumpp -r",

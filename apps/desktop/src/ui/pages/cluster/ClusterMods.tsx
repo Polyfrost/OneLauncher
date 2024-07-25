@@ -1,7 +1,7 @@
 import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { For, Match, Switch, createSignal, onMount } from 'solid-js';
 import * as uuid from 'uuid';
-import uFuzzy from '@leeoniya/ufuzzy';
+import UFuzzy from '@leeoniya/ufuzzy';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -40,7 +40,7 @@ function ClusterMods() {
 	// true - `A to Z` & false - `Z to A`
 	const [sortingAtoZ, setSortingAtoZ] = createSignal<boolean>(true);
 
-	const uf = new uFuzzy();
+	const uf = new UFuzzy();
 	const [modsSearchable] = createSignal(() => mods().map(mod => mod.name));
 
 	function search(value: string) {

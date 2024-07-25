@@ -1,13 +1,13 @@
 import { A } from '@solidjs/router';
 import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
-import { For, createEffect, createSignal, onMount } from 'solid-js';
+import { For, createSignal, onMount } from 'solid-js';
 import type { ManagedPackage } from '~bindings';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import ModCard, { Provider } from '~ui/components/content/ModCard';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import { tryResult } from '~ui/hooks/useCommand';
 import createSortable from '~utils/sorting';
 
 interface CardProps {
@@ -23,7 +23,7 @@ interface BrowserFilters {
 }
 
 function BrowserMain() {
-	const [filters, setFilters] = createSignal<BrowserFilters>({
+	const [_filters, _setFilters] = createSignal<BrowserFilters>({
 		provider: [Provider.Curseforge],
 	});
 
@@ -35,7 +35,7 @@ function BrowserMain() {
 			tryResult(bridge.commands.getMod, 'oneconfig'),
 			tryResult(bridge.commands.getMod, 'chatting'),
 			tryResult(bridge.commands.getMod, 'patcher'),
-		]).then((res) => {
+		]).then((res: ManagedPackage[]) => {
 			const list: ModsRowProps[] = [
 				{
 					header: 'Polyfrost',

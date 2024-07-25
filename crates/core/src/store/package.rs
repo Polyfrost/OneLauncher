@@ -246,21 +246,26 @@ pub struct ManagedVersionFile {
 }
 
 impl ManagedVersionFile {
-    #[tracing::instrument]
-    pub async fn download_to_cluster(
-        &self,
-        cluster: &Cluster,
-    ) -> crate::Result<()> {
-        tracing::info!("downloading mod '{}' to cluster '{}'", self.file_name, cluster.meta.name);
-        let path = cluster.get_full_path().await?.join("mods").join(&self.file_name);
-        let state = State::get().await?;
+	#[tracing::instrument]
+	pub async fn download_to_cluster(&self, cluster: &Cluster) -> crate::Result<()> {
+		tracing::info!(
+			"downloading mod '{}' to cluster '{}'",
+			self.file_name,
+			cluster.meta.name
+		);
+		let path = cluster
+			.get_full_path()
+			.await?
+			.join("mods")
+			.join(&self.file_name);
+		let state = State::get().await?;
 
-        // TODO: Implement hashes
-        let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
-        http::write(&path, &bytes, &state.io_semaphore).await?;
+		// TODO: Implement hashes
+		let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
+		http::write(&path, &bytes, &state.io_semaphore).await?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 }
 
 /// Universal interface for managed package dependencies.

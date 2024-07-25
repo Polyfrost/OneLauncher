@@ -102,9 +102,9 @@ function DeleteModal(props: DeleteModalProps) {
 
 function Banner(props: Cluster & { showDeletePrompt: () => void }) {
 	async function launch() {
-		const [uuid, pid] = await tryResult(bridge.commands.runCluster, props.uuid);
+		const [_uuid, _pid] = await tryResult(bridge.commands.runCluster, props.uuid);
 
-		console.log(uuid, pid);
+		// console.log(uuid, pid);
 	}
 
 	return (

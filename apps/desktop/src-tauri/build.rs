@@ -26,10 +26,10 @@ fn main() {
 					"set_settings",
 					// Metadata
 					"get_minecraft_versions",
-                    // Package
-                    "random_mods",
-                    "get_mod",
-                    "download_mod",
+					// Package
+					"random_mods",
+					"get_mod",
+					"download_mod",
 					// Other
 					"get_program_info",
 				]),

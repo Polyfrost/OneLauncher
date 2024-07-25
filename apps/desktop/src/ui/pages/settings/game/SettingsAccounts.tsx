@@ -61,10 +61,10 @@ function SettingsAccounts() {
 							if (data.status === 'ok') {
 								// @ts-expect-error -- aa
 								window.tempData = data.data;
-								console.log('set');
+								// console.log('set');
 							}
 							else {
-								console.log(data.error);
+								// console.log(data.error);
 							}
 						});
 					}}

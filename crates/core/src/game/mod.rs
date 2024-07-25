@@ -366,7 +366,7 @@ pub async fn launch_minecraft(
 		)
 		.current_dir(instance_path.clone());
 
-    println!("command: {:#?}", command);
+	println!("command: {:#?}", command);
 
 	// when cargo makes the DYLD_LIBRARY_PATH it breaks Minecraft
 	#[cfg(target_os = "macos")]

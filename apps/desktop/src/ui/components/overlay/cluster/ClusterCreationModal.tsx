@@ -79,23 +79,18 @@ export function ClusterModalController(props: ParentProps) {
 
 		setVisible(false);
 
-		try {
-			await bridge.commands.createCluster({
-				name: untracked.name!,
-				mod_loader: untracked.mod_loader!,
-				mc_version: untracked.mc_version!,
-				// TODO: Implement the rest of the fields
-				icon: null,
-				icon_url: null,
-				loader_version: null,
-				package_data: null,
-				skip: null,
-				skip_watch: null,
-			});
-		}
-		catch (err) {
-			console.log(err);
-		}
+		await bridge.commands.createCluster({
+			name: untracked.name!,
+			mod_loader: untracked.mod_loader!,
+			mc_version: untracked.mc_version!,
+			// TODO: Implement the rest of the fields
+			icon: null,
+			icon_url: null,
+			loader_version: null,
+			package_data: null,
+			skip: null,
+			skip_watch: null,
+		});
 
 		setInProgress(false);
 	};

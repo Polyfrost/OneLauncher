@@ -139,7 +139,6 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
-
 webbrowser = { version = "1.0" }
 url = { version = "2.5.2" }
 

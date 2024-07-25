@@ -46,8 +46,6 @@ pub use self::package::*;
 mod oneconfig;
 pub use self::oneconfig::*;
 
-mod flags;
-
 /// The static [`OnceCell<RwLock<State>>`] for storing the global runtime launcher state.
 static LAUNCHER_STATE: OnceCell<RwLock<State>> = OnceCell::const_new();
 

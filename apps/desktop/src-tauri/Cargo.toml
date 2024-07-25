@@ -1,7 +1,7 @@
 [package]
 name = "onelauncher_gui"
-version = "1.0.0"
 description = "Next-generation open source Minecraft launcher"
+version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }

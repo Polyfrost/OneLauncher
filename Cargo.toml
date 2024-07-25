@@ -16,6 +16,7 @@ authors = [
   "Polyfrost",
   "Polyfrost Contributors"
 ]
+version = "1.0.0"
 
 [workspace.dependencies]
 # tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
@@ -123,7 +124,7 @@ discord-rich-presence = { version = "0.2" }
 winreg = { version = "0.52" }
 paste = { version = "1.0" }
 dashmap = { version = "6.0", features = [ "serde" ] }
-sha1_smol = { version = "1.0.0", features = [ "std" ] }
+sha1_smol = { version = "1.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
 bytes = { version = "1.6" }
 lazy_static = { version = "1.4" }
@@ -137,7 +138,7 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
-webbrowser = { version = "0.8" }
+webbrowser = { version = "1.0" }
 url = { version = "2.5.2" }
 
 [workspace.dependencies.prisma-client-rust]

@@ -1,7 +1,7 @@
 [package]
 name = "onelauncher"
-version = "0.0.0"
 description = "The core of OneLauncher"
+version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }

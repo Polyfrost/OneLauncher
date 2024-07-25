@@ -6,6 +6,7 @@ if [ "${CI:-}" = "true" ]; then
   set -x
 fi
 
+# displays an error message and exits the script
 err() {
   for _line in "$@"; do
     echo "$_line" >&2
@@ -13,6 +14,7 @@ err() {
   exit 1
 }
 
+# checks if a command/program exists
 has() {
   for prog in "$@"; do
     if ! command -v "$prog" 1>/dev/null 2>&1; then
@@ -21,6 +23,7 @@ has() {
   done
 }
 
+# runs a specified command with sudo
 sudo() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
@@ -29,6 +32,7 @@ sudo() {
   fi
 }
 
+# fails the script at a specific line with an unknown error
 script_failure() {
   if [ -n "${1:-}" ]; then
     _line="on line $1"
@@ -40,9 +44,10 @@ script_failure() {
 
 trap 'script_failure ${LINENO:-}' ERR
 
+# checks if we are running in a windows environment
 case "${OSTYPE:-}" in
   'msys' | 'mingw' | 'cygwin')
-    err 'Bash for Windows is not supported, please use Powershell or CMD'
+    err 'Bash for Windows is not supported, please use Powershell or CMD and run setup.ps1'
     ;;
 esac
 
@@ -53,6 +58,7 @@ if [ "${CI:-}" != "true" ]; then
   echo 'Press Enter to continue'
   read -r
 
+  # checks if pnpm is installed
   if ! has pnpm; then
     err 'pnpm was not found.' \
       "Ensure the 'pnpm' command is in your \$PATH." \
@@ -60,6 +66,7 @@ if [ "${CI:-}" != "true" ]; then
       'https://pnpm.io/installation'
   fi
 
+  # checks if rustc and cargo are installed
   if ! has rustc cargo; then
     err 'Rust was not found.' \
       "Ensure the 'rustc' and 'cargo' binaries are in your \$PATH." \
@@ -69,12 +76,14 @@ if [ "${CI:-}" != "true" ]; then
   echo
 fi
 
-# Install system deps
+# installs system deps
 case "$(uname)" in
   "Darwin")
     if [ "$(uname -m)" = 'x86_64' ] && ! [ "${CI:-}" = "true" ]; then
       brew install nasm
     fi
+
+	echo
     ;;
   "Linux")
     # https://v2.tauri.app/start/prerequisites/
@@ -154,6 +163,7 @@ case "$(uname)" in
     ;;
 esac
 
+# installs cargo-watch for development purposes
 if [ "${CI:-}" != "true" ]; then
   echo "Installing Rust tools..."
 

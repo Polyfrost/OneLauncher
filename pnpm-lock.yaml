@@ -82,7 +82,7 @@ importers:
         version: 2.1.0-beta.5
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.18)
@@ -175,8 +175,8 @@ importers:
   packages/scripts:
     dependencies:
       '@flowr/utils':
-        specifier: ^3.9.1
-        version: 3.9.1
+        specifier: ^3.10.0
+        version: 3.10.0
       '@iarna/toml':
         specifier: ^2.2.5
         version: 2.2.5
@@ -648,8 +648,8 @@ packages:
       vue-eslint-parser:
         optional: true
 
-  '@flowr/utils@3.9.1':
-    resolution: {integrity: sha512-SArBTE/8r9T0y0GPcGMEwtwpDxrJF/qrDRBt2s8XGAgDmj7msLRXe2EX0IsuIw6i3PPSOaTYbEAn8EawHn0MJw==}
+  '@flowr/utils@3.10.0':
+    resolution: {integrity: sha512-tr8c3m0rzBDab1A14yi6y19rapB8isULCYnYvpJacZmbyYaGCx6Ijmu00gtvv+RGkJcIhrJVueqC5B6YZ8KSVA==}
     engines: {node: '>=20'}
 
   '@fontsource/poppins@5.0.14':
@@ -1084,8 +1084,8 @@ packages:
   '@tauri-apps/plugin-clipboard-manager@2.1.0-beta.5':
     resolution: {integrity: sha512-7YQEXRHXn5dIr/YcE7RtkoAhc6XwpqI7Qz0I3FcHn5vMbVvQ5OxKnGqEa8ZGRud6R3G9pNdnEKglLXLgUXK8tA==}
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96}
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
+    resolution: {commit: adb938ddf434547ae35f74dc1a080908da03ea96, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
     version: 2.0.0-beta.8
 
   '@testing-library/dom@10.4.0':
@@ -3850,7 +3850,7 @@ snapshots:
       - typescript
       - vitest
 
-  '@flowr/utils@3.9.1': {}
+  '@flowr/utils@3.10.0': {}
 
   '@fontsource/poppins@5.0.14': {}
 
@@ -4207,7 +4207,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
@@ -5206,7 +5206,7 @@ snapshots:
 
   eslint-plugin-petal@3.9.1(eslint@9.7.0):
     dependencies:
-      '@flowr/utils': 3.9.1
+      '@flowr/utils': 3.10.0
       eslint: 9.7.0
 
   eslint-plugin-regexp@2.6.0(eslint@9.7.0):

@@ -1,7 +1,7 @@
 [package]
 name = "onelauncher"
-version = "0.0.0"
 description = "The core of OneLauncher"
+version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
@@ -22,8 +22,6 @@ tauri = [
 cli = [ "dep:indicatif" ]
 
 [dependencies]
-onelauncher_debug = { path = "../debugger" }
-
 # GUI-only deps
 tauri = { workspace = true, optional = true }
 tauri-specta = { workspace = true, optional = true }

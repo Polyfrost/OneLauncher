@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
     <dict>
-        <!-- registers our uri handler on macos --> 
+        <!-- registers our uri handler on macos -->
         <key>CFBundleURLTypes</key>
         <array>
             <dict>
                 <key>CFBundleURLName</key>
-                <string>org.polyfrost.launcher</string>
+                <string>OneLauncher</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
                     <string>onelauncher</string>

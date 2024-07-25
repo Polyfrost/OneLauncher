@@ -86,7 +86,6 @@ pub async fn run(path: &ClusterPath) -> crate::Result<Arc<RwLock<ProcessorChild>
 /// run a Minecraft [`Cluster`] using [`MinecraftCredentials`] for authentication.
 /// returns an [`Arc`] pointer to [`RwLock`] to [`ProcessorChild`].
 #[tracing::instrument(skip(creds))]
-#[onelauncher_debug::debugger]
 pub async fn run_credentials(
 	path: &ClusterPath,
 	creds: &MinecraftCredentials,
@@ -359,7 +358,6 @@ pub async fn get_optimal_java_version(path: &ClusterPath) -> crate::Result<Optio
 
 /// Try to update a [`Cluster`]'s playtime.
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 	let state = State::get().await?;
 	let cluster = get(path, None)

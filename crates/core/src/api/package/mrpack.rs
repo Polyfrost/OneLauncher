@@ -25,7 +25,6 @@ use super::from::{
 /// Wrapper around [`install_pack_files`] that generates a pack creation description, and
 /// attempts to install the pack files. If it fails, it will remove the cluster (fail safely)
 /// Install a modpack from a mrpack file (a modrinth .zip format)
-#[onelauncher_debug::debugger]
 pub async fn install_zipped_mrpack(
 	location: CreatePackLocation,
 	cluster_path: ClusterPath,
@@ -66,7 +65,6 @@ pub async fn install_zipped_mrpack(
 }
 
 /// Install all pack files from a description. Does not remove the cluster if it fails
-#[onelauncher_debug::debugger]
 pub async fn install_zipped_mrpack_files(
 	create_pack: CreatePack,
 	ignore_lock: bool,
@@ -241,7 +239,6 @@ pub async fn install_zipped_mrpack_files(
 }
 
 #[tracing::instrument(skip(mrpack_file))]
-#[onelauncher_debug::debugger]
 pub async fn remove_all_related_files(
 	cluster_path: ClusterPath,
 	mrpack_file: bytes::Bytes,

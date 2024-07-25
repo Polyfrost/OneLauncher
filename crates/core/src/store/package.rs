@@ -21,7 +21,6 @@ use super::{Cluster, PackagePath};
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
 /// Paths must be the full paths and not relative paths.
 #[tracing::instrument(skip(paths, _cluster, _io_semaphore, _fetch_semaphore))]
-#[onelauncher_debug::debugger]
 pub async fn generate_context(
 	_cluster: Cluster,
 	paths: Vec<PathBuf>,
@@ -255,7 +254,7 @@ impl ManagedVersionFile {
         tracing::info!("downloading mod '{}' to cluster '{}'", self.file_name, cluster.meta.name);
         let path = cluster.get_full_path().await?.join("mods").join(&self.file_name);
         let state = State::get().await?;
-        
+
         // TODO: Implement hashes
         let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
         http::write(&path, &bytes, &state.io_semaphore).await?;
@@ -319,7 +318,6 @@ pub enum PackageFile {
 }
 
 #[tracing::instrument(skip(io_semaphore))]
-#[onelauncher_debug::debugger]
 async fn read_icon(
 	icon_path: Option<String>,
 	cache_path: &Path,

@@ -8,7 +8,7 @@
 	"repository": {
 		"type": "git",
 		"url": "git@github.com:polyfrost/onelauncher",
-		"directory": "client"
+		"directory": "packages/scripts"
 	},
 	"sideEffects": false,
 	"main": "./src/index.ts",
@@ -17,7 +17,7 @@
 		"tauri": "tsx tauri.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.9.1",
+		"@flowr/utils": "^3.10.0",
 		"@iarna/toml": "^2.2.5",
 		"execa": "^9.3.0",
 		"semver": "^7.6.3",

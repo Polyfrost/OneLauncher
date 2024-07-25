@@ -13,7 +13,6 @@ use std::path::PathBuf;
 /// Creates a [`Cluster`] and adds it to the memory [`State`].
 /// Returns a relative filepath ([`ClusterPath`]) which can be used to access the cluster.
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 #[allow(clippy::too_many_arguments)]
 pub async fn create_cluster(
 	mut name: String,
@@ -207,7 +206,6 @@ pub async fn create_cluster_from_duplicate(from: ClusterPath) -> crate::Result<C
 
 /// Get the latest [`LoaderVersion`] from a [`Loader`].
 #[tracing::instrument]
-#[onelauncher_debug::debugger]
 pub(crate) async fn get_loader_version(
 	mc_version: String,
 	loader: Loader,

@@ -50,7 +50,6 @@ pub async fn download_minecraft(
 }
 
 #[tracing::instrument(skip_all, fields(version = version.id.as_str(), loader = ?loader))]
-#[onelauncher_debug::debugger]
 pub async fn download_version_info(
 	st: &State,
 	version: &GameVersion,
@@ -113,7 +112,6 @@ pub async fn fetch_partial_version(
 }
 
 #[tracing::instrument(skip_all)]
-#[onelauncher_debug::debugger]
 pub async fn download_assets_index(
 	st: &State,
 	version: &GameVersionInfo,
@@ -162,7 +160,6 @@ pub async fn fetch_assets_index(
 }
 
 #[tracing::instrument(skip(st, index))]
-#[onelauncher_debug::debugger]
 pub async fn download_assets(
 	st: &State,
 	legacy: bool,
@@ -224,7 +221,6 @@ pub async fn download_assets(
 }
 
 #[tracing::instrument(skip(st, libraries))]
-#[onelauncher_debug::debugger]
 #[allow(clippy::too_many_arguments)]
 pub async fn download_libraries(
 	st: &State,
@@ -319,7 +315,6 @@ pub async fn download_libraries(
 }
 
 #[tracing::instrument(skip_all)]
-#[onelauncher_debug::debugger]
 pub async fn download_client(
 	st: &State,
 	version: &GameVersionInfo,

@@ -1,0 +1,17 @@
+{
+	"name": "@onelauncher/distribution",
+	"type": "module",
+	"version": "1.0.0",
+	"private": true,
+	"description": "distribution files for OneLauncher",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "packages/distribution"
+	},
+	"sideEffects": false,
+	"scripts": {},
+	"dependencies": {},
+	"devDependencies": {}
+}

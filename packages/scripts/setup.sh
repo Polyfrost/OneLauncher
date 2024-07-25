@@ -6,6 +6,7 @@ if [ "${CI:-}" = "true" ]; then
   set -x
 fi
 
+# displays an error message and exits the script
 err() {
   for _line in "$@"; do
     echo "$_line" >&2
@@ -13,6 +14,7 @@ err() {
   exit 1
 }
 
+# checks if a command/program exists
 has() {
   for prog in "$@"; do
     if ! command -v "$prog" 1>/dev/null 2>&1; then
@@ -21,6 +23,7 @@ has() {
   done
 }
 
+# runs a specified command with sudo
 sudo() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
@@ -29,6 +32,7 @@ sudo() {
   fi
 }
 
+# fails the script at a specific line with an unknown error
 script_failure() {
   if [ -n "${1:-}" ]; then
     _line="on line $1"
@@ -40,9 +44,10 @@ script_failure() {
 
 trap 'script_failure ${LINENO:-}' ERR
 
+# checks if we are running in a windows environment
 case "${OSTYPE:-}" in
   'msys' | 'mingw' | 'cygwin')
-    err 'Bash for Windows is not supported, please use Powershell or CMD'
+    err 'Bash for Windows is not supported, please use Powershell or CMD and run setup.ps1'
     ;;
 esac
 
@@ -53,6 +58,7 @@ if [ "${CI:-}" != "true" ]; then
   echo 'Press Enter to continue'
   read -r
 
+  # checks if pnpm is installed
   if ! has pnpm; then
     err 'pnpm was not found.' \
       "Ensure the 'pnpm' command is in your \$PATH." \
@@ -60,6 +66,7 @@ if [ "${CI:-}" != "true" ]; then
       'https://pnpm.io/installation'
   fi
 
+  # checks if rustc and cargo are installed
   if ! has rustc cargo; then
     err 'Rust was not found.' \
       "Ensure the 'rustc' and 'cargo' binaries are in your \$PATH." \
@@ -69,12 +76,14 @@ if [ "${CI:-}" != "true" ]; then
   echo
 fi
 
-# Install system deps
+# installs system deps
 case "$(uname)" in
   "Darwin")
     if [ "$(uname -m)" = 'x86_64' ] && ! [ "${CI:-}" = "true" ]; then
       brew install nasm
     fi
+
+	echo
     ;;
   "Linux")
     # https://v2.tauri.app/start/prerequisites/
@@ -84,7 +93,7 @@ case "$(uname)" in
 
       # Tauri dependencies
       set -- build-essential curl wget file libssl-dev libgtk-3-dev librsvg2-dev \
-        libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libvips42
+        libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libdbus-1-dev libvips42
 
       sudo apt-get -y update
       sudo apt-get -y install "$@"
@@ -93,7 +102,7 @@ case "$(uname)" in
       echo "Installing dependencies with pacman..."
 
       # Tauri dependencies
-      set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator xdotool libvips
+      set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator dbus xdotool libvips
 
       sudo pacman -Sy --needed "$@"
     elif has dnf; then
@@ -107,7 +116,7 @@ case "$(uname)" in
       fi
 
       # Tauri dependencies
-      set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel vips
+      set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus vips
 
       sudo dnf install "$@"
     elif has apk; then
@@ -117,7 +126,7 @@ case "$(uname)" in
 
       # Tauri dependencies
       set -- build-base curl wget file openssl-dev gtk+3.0-dev librsvg-dev \
-        webkit2gtk-4.1-dev libayatana-indicator-dev xdotool vips
+        webkit2gtk-4.1-dev libayatana-indicator-dev xdotool-dev dbus-dev vips
 
       sudo apk add "$@"
     elif has emerge; then
@@ -154,6 +163,7 @@ case "$(uname)" in
     ;;
 esac
 
+# installs cargo-watch for development purposes
 if [ "${CI:-}" != "true" ]; then
   echo "Installing Rust tools..."
 

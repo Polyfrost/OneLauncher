@@ -17,12 +17,12 @@ cask "onelauncher" do
 
     app "OneLauncher.app"
 
-    uninstall quit: "org.polyfrost.launcher"
+    uninstall quit: "OneLauncher"
 
     zap trash: [
-        "~/Library/Application Support/org.polyfrost.launcher",
-        "~/Library/Caches/org.polyfrost.launcher",
-        "~/Library/Saved Application State/org.polyfrost.launcher.savedState",
-        "~/Library/WebKit/org.polyfrost.launcher",
+        "~/Library/Application Support/OneLauncher",
+        "~/Library/Caches/OneLauncher",
+        "~/Library/Saved Application State/OneLauncher.savedState",
+        "~/Library/WebKit/OneLauncher",
     ]
 end

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates/*",
   "apps/desktop/src-tauri",
+  "apps/backend"
 ]
 
 [workspace.package]
@@ -140,6 +141,10 @@ cocoa = { version = "0.25" }
 objc = { version = "0.2" }
 webbrowser = { version = "1.0" }
 url = { version = "2.5.2" }
+
+# backend dependencies
+actix-web = { version = "4.8" }
+roxmltree = { version = "0.20" }
 
 [workspace.dependencies.prisma-client-rust]
 git = "https://github.com/brendonovich/prisma-client-rust"

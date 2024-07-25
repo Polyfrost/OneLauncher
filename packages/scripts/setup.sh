@@ -84,7 +84,7 @@ case "$(uname)" in
 
       # Tauri dependencies
       set -- build-essential curl wget file libssl-dev libgtk-3-dev librsvg2-dev \
-        libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libvips42
+        libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libdbus-1-dev libvips42
 
       sudo apt-get -y update
       sudo apt-get -y install "$@"
@@ -93,7 +93,7 @@ case "$(uname)" in
       echo "Installing dependencies with pacman..."
 
       # Tauri dependencies
-      set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator xdotool libvips
+      set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator dbus xdotool libvips
 
       sudo pacman -Sy --needed "$@"
     elif has dnf; then
@@ -107,7 +107,7 @@ case "$(uname)" in
       fi
 
       # Tauri dependencies
-      set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel vips
+      set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus vips
 
       sudo dnf install "$@"
     elif has apk; then
@@ -117,7 +117,7 @@ case "$(uname)" in
 
       # Tauri dependencies
       set -- build-base curl wget file openssl-dev gtk+3.0-dev librsvg-dev \
-        webkit2gtk-4.1-dev libayatana-indicator-dev xdotool vips
+        webkit2gtk-4.1-dev libayatana-indicator-dev xdotool-dev dbus-dev vips
 
       sudo apk add "$@"
     elif has emerge; then

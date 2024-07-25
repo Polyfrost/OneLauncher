@@ -4,6 +4,7 @@
 )]
 
 use onelauncher::cluster::create::create_cluster;
+use onelauncher::package::content::{self, Providers};
 use onelauncher::prelude::*;
 
 pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
@@ -39,7 +40,49 @@ async fn main() -> onelauncher::Result<()> {
 	let _logger = onelauncher::start_logger();
 	let state = State::get().await?;
 
-	if minecraft::users().await?.is_empty() {
+	modrinth().await?;
+
+	Ok(())
+}
+
+async fn modrinth() -> onelauncher::Result<()> {
+    let state = State::get().await?;
+    
+    let provider = Providers::Modrinth;
+
+    let result = provider.get("oneconfig").await?;
+    println!("{:#?}", result);
+
+    let managed_version = provider.get_version_for_game_version(&result.id, "1.8.9").await?;
+    println!("{:#?}", result);
+
+    let name = "forge 1.8.9 oneconfig".to_string();
+	let game = "1.8.9".to_string();
+	let loader = Loader::Forge;
+
+	let cluster_path = create_cluster(
+		name.clone(),
+		game,
+		loader,
+		None, // latest
+		None,
+		None,
+		None,
+		None,
+		None,
+	)
+	.await?;
+
+    let cluster = cluster::get(&cluster_path, None).await?.expect("couldnt get cluster");
+    managed_version.files.first().expect("no files found").download_to_cluster(&cluster).await?;
+
+    Ok(())
+}
+
+async fn launch_and_authenticate() -> onelauncher::Result<()> {
+    let state = State::get().await?;
+
+    if minecraft::users().await?.is_empty() {
 		println!("authenticating");
 		authenticate_mc().await?;
 	}
@@ -94,5 +137,5 @@ async fn main() -> onelauncher::Result<()> {
 	let mut proc = c_lock.write().await;
 	processor::wait_for(&mut proc).await?;
 
-	Ok(())
+    Ok(())
 }

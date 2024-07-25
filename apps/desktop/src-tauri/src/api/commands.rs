@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
-use onelauncher::data::{Loader, MinecraftCredentials, PackageData, Settings};
+use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
+use onelauncher::package::content;
 use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
 use onelauncher::{cluster, minecraft, processor, settings};
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,10 @@ macro_rules! collect_commands {
 				set_settings,
 				// Metadata
 				get_minecraft_versions,
+                // Package
+                random_mods,
+                get_mod,
+                download_mod,
 				// Other
 				get_program_info,
 			])
@@ -105,6 +110,14 @@ pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
 		.id()
 		.unwrap_or(0);
 
+    // tokio::task::spawn(async move {
+    //     let mut proc = c_lock.write().await;
+	//     if let Err(err) = processor::wait_for(&mut proc).await {
+    //         tracing::error!("Error waiting for process: {:?}", err);
+    //     };
+    // });
+
+    // let mut proc = c_lock.write().await;
 	// processor::wait_for(&mut proc).await?;
 
 	Ok((p_uuid, p_pid))
@@ -133,37 +146,6 @@ pub async fn kill_process(uuid: Uuid) -> Result<(), String> {
 // #[tauri::command]
 // pub fn update_cluster(cluster: Cluster) -> Result<(), String> {
 
-// }
-
-// fn placeholder_cluster() -> Cluster {
-// 	let path = ClusterPath("test".into());
-// 	Cluster {
-// 		uuid: Uuid::from_str("56d1cbcf-1961-4477-b263-80e3b1c7a9d1").unwrap(),
-// 		stage: onelauncher::store::ClusterStage::Installed,
-// 		path: path.0,
-// 		meta: ClusterMeta {
-// 			created_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-// 			modified_at: DateTime::from_timestamp_millis(1718297861712).unwrap(),
-// 			group: vec![],
-// 			icon: None,
-// 			icon_url: None,
-// 			loader: Loader::Vanilla,
-// 			loader_version: None,
-// 			mc_version: "1.8.9".into(),
-// 			name: "Test Cluster".into(),
-// 			overall_played: 58195,
-// 			recently_played: 0,
-// 			package_data: None,
-// 			played_at: None,
-// 		},
-// 		memory: None,
-// 		java: None,
-// 		resolution: None,
-// 		force_fullscreen: None,
-// 		init_hooks: None,
-// 		packages: HashMap::new(),
-// 		update: None,
-// 	}
 // }
 
 #[specta::specta]
@@ -267,12 +249,34 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 	Ok(minecraft::remove_user(uuid).await?)
 }
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn import_instance() -> Result<(), String> {
-//     onelauncher::api::package::import::import_instance()
-// }
+#[specta::specta]
+#[tauri::command]
+pub async fn random_mods() -> Result<Vec<ManagedPackage>, String> {
+    let provider = content::Providers::Modrinth;
+    Ok(provider.list().await?)
+}
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn
+#[specta::specta]
+#[tauri::command]
+pub async fn get_mod(project_id: String) -> Result<ManagedPackage, String> {
+    let provider = content::Providers::Modrinth;
+    Ok(provider.get(&project_id).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn download_mod(cluster_id: Uuid, version_id: String) -> Result<(), String> {
+    let cluster = cluster::get_by_uuid(cluster_id, None).await?.ok_or("cluster not found")?;
+    let provider = content::Providers::Modrinth;
+    let game_version = cluster.meta.mc_version.clone();
+
+    provider.get_version_for_game_version(&version_id, &game_version)
+        .await?
+        .files
+        .first()
+        .ok_or("no files found")?
+        .download_to_cluster(&cluster)
+        .await?;
+
+    Ok(())
+}

@@ -1,6 +1,6 @@
 import { Route, useSearchParams } from '@solidjs/router';
 import type { ParentProps } from 'solid-js';
-import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, Settings04Icon } from '@untitled-theme/icons-solid';
+import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
 import Sidebar from '../../components/Sidebar';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
@@ -56,7 +56,7 @@ function ClusterSidebar() {
 				Cluster: [
 					[<EyeIcon />, 'Overview', '/'],
 					// TODO: Better way of checking mods
-					// (cluster!.meta.loader === 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
+					(cluster!.meta.loader !== 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
 					[<Image03Icon />, 'Screenshots', '/screenshots'],
 					[<Globe04Icon />, 'Worlds', '/worlds'],
 					[<File06Icon />, 'Logs', '/logs'],

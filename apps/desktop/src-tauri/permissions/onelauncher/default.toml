@@ -27,6 +27,11 @@ permissions = [
   # Metadata
   "allow-get-minecraft-versions",
 
+  # Package
+  "allow-random-mods",
+  "allow-get-mod",
+  "allow-download-mod",
+
   # Other
   "allow-get-program-info",
 ]

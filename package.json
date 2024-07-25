@@ -19,7 +19,7 @@
 		"node": ">=18"
 	},
 	"scripts": {
-		"gui": "pnpm --filter @onelauncher/gui --",
+		"gui": "pnpm --filter @onelauncher/gui -- ",
 		"client": "pnpm --filter @onelauncher/client --",
 		"tauri": "pnpm gui tauri",
 		"lint": "pnpm eslint . --cache",
@@ -33,7 +33,7 @@
 		"gen:code": "pnpm core test gen"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.9.1",
+		"@flowr/eslint-config": "^3.10.0",
 		"@types/node": "^20.14.12",
 		"@vitest/ui": "^2.0.4",
 		"bumpp": "^9.4.1",

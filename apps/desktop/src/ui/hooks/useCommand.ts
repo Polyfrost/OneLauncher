@@ -10,12 +10,17 @@ export default function useCommand<R, E, Args extends unknown[]>(
 	cmd: (...args: Args) => Promise<Result<R, E>>,
 	...args: Args
 ): ResourceReturn<R> {
-	return createResource(async () => {
-		const value = await cmd(...args);
+	return createResource(async () => await tryResult(cmd, ...args));
+}
 
-		if (value.status === 'ok')
-			return value.data;
+export async function tryResult<R, E, Args extends unknown[]>(
+	cmd: (...args: Args) => Promise<Result<R, E>>,
+	...args: Args
+): Promise<R> {
+	const value = await cmd(...args);
 
-		throw value.error;
-	});
+	if (value.status === 'ok')
+		return value.data;
+
+	throw value.error;
 }

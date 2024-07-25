@@ -44,9 +44,7 @@ function AccountPopup(props: Popup.PopupProps) {
 
 					<div class="w-full h-px bg-gray-05 rounded-md" />
 
-					<AccountComponent username="Caledonian" uuid="f247be7c5b8241c69148793ded77e71f" />
-					<AccountComponent username="Caledonian" uuid="069a79f4-44e9-4726-a5be-fca90e38aaf5" />
-					<AccountComponent username="Caledonian" uuid="f247be7c5b8241c69148793ded77e71f" />
+					<AccountComponent username="Wyvest" uuid="a5331404-0e77-440e-8bef-24c071dac1ae" />
 
 					<div class="w-full h-px bg-gray-05 rounded-md" />
 

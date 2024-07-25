@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
 
 use crate::prelude::IOError;
-use crate::utils::http::{write_icon, FetchSemaphore, IoSemaphore};
+use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
+use crate::State;
 
 use super::{Cluster, PackagePath};
 
@@ -82,6 +83,7 @@ pub async fn generate_context(
 }
 
 /// Represents types of packages handled by the launcher.
+#[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageType {
@@ -187,7 +189,7 @@ pub struct ManagedPackage {
 	// Core Metadata
 	pub id: String,
 	pub uid: Option<String>,
-	pub package_type: String,
+	pub package_type: PackageType,
 	pub title: String,
 	pub description: String,
 	pub main: String,
@@ -232,7 +234,7 @@ pub struct ManagedVersion {
 
 /// Universal interface for managed package files.
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct ManagedVersionFile {
 	pub url: String,
 	pub file_name: String,
@@ -241,6 +243,24 @@ pub struct ManagedVersionFile {
 	pub size: u32,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
+}
+
+impl ManagedVersionFile {
+    #[tracing::instrument]
+    pub async fn download_to_cluster(
+        &self,
+        cluster: &Cluster,
+    ) -> crate::Result<()> {
+        tracing::info!("downloading mod '{}' to cluster '{}'", self.file_name, cluster.meta.name);
+        let path = cluster.get_full_path().await?.join("mods").join(&self.file_name);
+        let state = State::get().await?;
+
+        // TODO: Implement hashes
+        let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
+        http::write(&path, &bytes, &state.io_semaphore).await?;
+
+        Ok(())
+    }
 }
 
 /// Universal interface for managed package dependencies.
@@ -289,7 +309,7 @@ pub enum PackageSide {
 
 /// The file type of a [`Package`].
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum PackageFile {
 	RequiredPack,

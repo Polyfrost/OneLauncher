@@ -14,5 +14,5 @@ authors = { workspace = true }
 onelauncher = { path = "../core", features = [ "cli" ] }
 
 tokio = { workspace = true }
-webbrowser = { version = "0.8" }
+webbrowser = { version = "1.0" }
 url = { version = "2.5.2" }

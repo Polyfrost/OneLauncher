@@ -42,7 +42,7 @@
 		"@testing-library/jest-dom": "^6.4.6",
 		"@types/uuid": "^9.0.8",
 		"jsdom": "^24.1.0",
-		"sass": "^1.77.6",
+		"sass": "^1.77.8",
 		"unocss": "^0.61.0",
 		"vite-plugin-solid": "^2.10.2",
 		"vite-tsconfig-paths": "^4.3.2"

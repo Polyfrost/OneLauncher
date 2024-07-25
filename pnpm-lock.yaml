@@ -56,6 +56,9 @@ importers:
       '@onelauncher/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@onelauncher/distribution':
+        specifier: workspace:*
+        version: link:../../packages/distribution
       '@rspc/client':
         specifier: ^0.2.3
         version: 0.2.3
@@ -171,6 +174,8 @@ importers:
       zod:
         specifier: ^3.23.8
         version: 3.23.8
+
+  packages/distribution: {}
 
   packages/scripts:
     dependencies:

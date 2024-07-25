@@ -14,7 +14,7 @@
 	"main": "./src/index.ts",
 	"types": "./src/index.ts",
 	"scripts": {
-		"tauri": "tsx tauri.ts"
+		"tauri": "pnpm tsx tauri.ts"
 	},
 	"dependencies": {
 		"@flowr/utils": "^3.10.0",

@@ -41,10 +41,10 @@ macro_rules! collect_commands {
 				set_settings,
 				// Metadata
 				get_minecraft_versions,
-                // Package
-                random_mods,
-                get_mod,
-                download_mod,
+				// Package
+				random_mods,
+				get_mod,
+				download_mod,
 				// Other
 				get_program_info,
 			])
@@ -110,14 +110,14 @@ pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
 		.id()
 		.unwrap_or(0);
 
-    // tokio::task::spawn(async move {
-    //     let mut proc = c_lock.write().await;
+	// tokio::task::spawn(async move {
+	//     let mut proc = c_lock.write().await;
 	//     if let Err(err) = processor::wait_for(&mut proc).await {
-    //         tracing::error!("Error waiting for process: {:?}", err);
-    //     };
-    // });
+	//         tracing::error!("Error waiting for process: {:?}", err);
+	//     };
+	// });
 
-    // let mut proc = c_lock.write().await;
+	// let mut proc = c_lock.write().await;
 	// processor::wait_for(&mut proc).await?;
 
 	Ok((p_uuid, p_pid))
@@ -252,31 +252,34 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn random_mods() -> Result<Vec<ManagedPackage>, String> {
-    let provider = content::Providers::Modrinth;
-    Ok(provider.list().await?)
+	let provider = content::Providers::Modrinth;
+	Ok(provider.list().await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_mod(project_id: String) -> Result<ManagedPackage, String> {
-    let provider = content::Providers::Modrinth;
-    Ok(provider.get(&project_id).await?)
+	let provider = content::Providers::Modrinth;
+	Ok(provider.get(&project_id).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn download_mod(cluster_id: Uuid, version_id: String) -> Result<(), String> {
-    let cluster = cluster::get_by_uuid(cluster_id, None).await?.ok_or("cluster not found")?;
-    let provider = content::Providers::Modrinth;
-    let game_version = cluster.meta.mc_version.clone();
+	let cluster = cluster::get_by_uuid(cluster_id, None)
+		.await?
+		.ok_or("cluster not found")?;
+	let provider = content::Providers::Modrinth;
+	let game_version = cluster.meta.mc_version.clone();
 
-    provider.get_version_for_game_version(&version_id, &game_version)
-        .await?
-        .files
-        .first()
-        .ok_or("no files found")?
-        .download_to_cluster(&cluster)
-        .await?;
+	provider
+		.get_version_for_game_version(&version_id, &game_version)
+		.await?
+		.files
+		.first()
+		.ok_or("no files found")?
+		.download_to_cluster(&cluster)
+		.await?;
 
-    Ok(())
+	Ok(())
 }

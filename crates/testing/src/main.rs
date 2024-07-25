@@ -46,19 +46,19 @@ async fn main() -> onelauncher::Result<()> {
 }
 
 async fn modrinth() -> onelauncher::Result<()> {
-    let state = State::get().await?;
-    
-    let provider = Providers::Modrinth;
+	let state = State::get().await?;
+	let provider = Providers::Modrinth;
+	let result = provider.get("oneconfig").await?;
+	println!("{:#?}", result);
 
-    let result = provider.get("oneconfig").await?;
-    println!("{:#?}", result);
+	let managed_version = provider
+		.get_version_for_game_version(&result.id, "1.8.9")
+		.await?;
+	println!("{:#?}", result);
 
-    let managed_version = provider.get_version_for_game_version(&result.id, "1.8.9").await?;
-    println!("{:#?}", result);
-
-    let name = "forge 1.8.9 oneconfig".to_string();
-	let game = "1.8.9".to_string();
-	let loader = Loader::Forge;
+	let name = "Example".to_string();
+	let game = "1.21".to_string();
+	let loader = Loader::Fabric;
 
 	let cluster_path = create_cluster(
 		name.clone(),
@@ -73,16 +73,23 @@ async fn modrinth() -> onelauncher::Result<()> {
 	)
 	.await?;
 
-    let cluster = cluster::get(&cluster_path, None).await?.expect("couldnt get cluster");
-    managed_version.files.first().expect("no files found").download_to_cluster(&cluster).await?;
+	let cluster = cluster::get(&cluster_path, None)
+		.await?
+		.expect("couldnt get cluster");
+	managed_version
+		.files
+		.first()
+		.expect("no files found")
+		.download_to_cluster(&cluster)
+		.await?;
 
-    Ok(())
+	Ok(())
 }
 
 async fn launch_and_authenticate() -> onelauncher::Result<()> {
-    let state = State::get().await?;
+	let state = State::get().await?;
 
-    if minecraft::users().await?.is_empty() {
+	if minecraft::users().await?.is_empty() {
 		println!("authenticating");
 		authenticate_mc().await?;
 	}
@@ -137,5 +144,5 @@ async fn launch_and_authenticate() -> onelauncher::Result<()> {
 	let mut proc = c_lock.write().await;
 	processor::wait_for(&mut proc).await?;
 
-    Ok(())
+	Ok(())
 }

@@ -166,33 +166,6 @@ features = [
 ]
 default-features = false
 
-webbrowser = { version = "1.0" }
-url = { version = "2.5.2" }
-
-[workspace.dependencies.prisma-client-rust]
-git = "https://github.com/brendonovich/prisma-client-rust"
-rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
-features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-  "rspc"
-]
-default-features = false
-
-[workspace.dependencies.prisma-client-rust-cli]
-git = "https://github.com/brendonovich/prisma-client-rust"
-rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
-features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-  "rspc"
-]
-default-features = false
-
 [patch.crates-io]
 specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
 rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }

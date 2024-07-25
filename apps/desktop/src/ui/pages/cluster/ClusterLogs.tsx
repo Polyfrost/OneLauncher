@@ -4,12 +4,12 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 
 function ClusterLogs() {
 	const [params] = useSearchParams();
-	const [logs] = createResource(params.id, async (uuid: string) => {
+	const [logs] = createResource(params.id, async (_uuid: string) => {
 		return [] as string[];
 	});
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
-	const [log, setLog] = createSignal<string | null>(null);
+	const [log, _setLog] = createSignal<string | null>(null);
 
 	// createEffect(() => {
 	// 	const log = logs()?.[0];

@@ -57,8 +57,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/client
       '@rspc/client':
-        specifier: ^0.2.3
-        version: 0.2.3
+        specifier: ^0.2.4
+        version: 0.2.4
       '@rspc/solid-query':
         specifier: ^0.2.3
         version: 0.2.3(@tanstack/solid-query@5.51.9(solid-js@1.8.18))(solid-js@1.8.18)
@@ -82,7 +82,7 @@ importers:
         version: 2.1.0-beta.5
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.18)
@@ -145,8 +145,8 @@ importers:
   packages/client:
     dependencies:
       '@rspc/client':
-        specifier: ^0.2.3
-        version: 0.2.3
+        specifier: ^0.2.4
+        version: 0.2.4
       '@rspc/solid-query':
         specifier: ^0.2.3
         version: 0.2.3(@tanstack/solid-query@5.51.9(solid-js@1.8.18))(solid-js@1.8.18)
@@ -900,6 +900,9 @@ packages:
   '@rspc/client@0.2.3':
     resolution: {integrity: sha512-1TfoETE2Tt6vHCwcsu1YVNqStq7z0p6mgsMZxardNwMRBDGnpRMdOxU8Aj0ZmIRGEw1R38SXXlxqk5XeHs+mqQ==}
 
+  '@rspc/client@0.2.4':
+    resolution: {integrity: sha512-fpgwPyEiEmJ74ZweBbrLiejezW6m79fUZqeWUTH1c2Q5Tu0Kl1hPJ5N4JP0mHQ7n9FZZWHQETxa9ywzATfQVDw==}
+
   '@rspc/query-core@0.2.3':
     resolution: {integrity: sha512-IvaWGlQNw5gVVTKPz5nhmtzFXA9MpJI7fWZsDSI8o4Z/5zpF1lrUcZIrDloqO1iQPJ76EgmtntUwa52VqvcqrA==}
     peerDependencies:
@@ -1084,8 +1087,8 @@ packages:
   '@tauri-apps/plugin-clipboard-manager@2.1.0-beta.5':
     resolution: {integrity: sha512-7YQEXRHXn5dIr/YcE7RtkoAhc6XwpqI7Qz0I3FcHn5vMbVvQ5OxKnGqEa8ZGRud6R3G9pNdnEKglLXLgUXK8tA==}
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96}
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
+    resolution: {commit: adb938ddf434547ae35f74dc1a080908da03ea96, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
     version: 2.0.0-beta.8
 
   '@testing-library/dom@10.4.0':
@@ -4035,6 +4038,8 @@ snapshots:
 
   '@rspc/client@0.2.3': {}
 
+  '@rspc/client@0.2.4': {}
+
   '@rspc/query-core@0.2.3(@rspc/client@0.2.3)':
     dependencies:
       '@rspc/client': 0.2.3
@@ -4207,7 +4212,7 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 

@@ -4,7 +4,8 @@ import type {
 	Accessor,
 	JSX,
 	ParentProps,
-	Setter } from 'solid-js';
+	Setter,
+} from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 // eslint-disable-next-line ts/no-namespace -- todo

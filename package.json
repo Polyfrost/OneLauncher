@@ -29,7 +29,7 @@
 		"core": "cd crates/core && cargo"
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.10.0",
+		"@flowr/eslint-config": "^3.10.1",
 		"@types/node": "^20.14.12",
 		"@vitest/ui": "^2.0.4",
 		"bumpp": "^9.4.1",
@@ -38,7 +38,7 @@
 		"ts-node": "^10.9.2",
 		"tsx": "^4.16.2",
 		"typescript": "^5.5.4",
-		"vite": "^5.3.4",
+		"vite": "^5.3.5",
 		"vitest": "^2.0.4"
 	},
 	"pnpm": {

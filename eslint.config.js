@@ -24,10 +24,4 @@ export default petal({
 		'**/node_modules',
 		'desktop/src/bindings.ts',
 	],
-}).append([
-	{
-		rules: {
-			'petal/consistent-list-newline': 'off',
-		},
-	},
-]);
+});

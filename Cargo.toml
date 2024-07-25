@@ -122,6 +122,7 @@ open = { version = "5.1" }
 discord-rich-presence = { version = "0.2" }
 winreg = { version = "0.52" }
 paste = { version = "1.0" }
+dashmap = { version = "6.0", features = [ "serde" ] }
 sha1_smol = { version = "1.0.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
 bytes = { version = "1.6" }

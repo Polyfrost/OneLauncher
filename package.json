@@ -2,7 +2,7 @@
 	"name": "@onelauncher/root",
 	"type": "module",
 	"version": "1.0.0",
-	"packageManager": "pnpm@9.5.0",
+	"packageManager": "pnpm@9.6.0",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
 	"repository": {
@@ -13,7 +13,7 @@
 		"url": "https://github.com/polyfrost/onelauncher/issues"
 	},
 	"engines": {
-		"pnpm": "9.5.0",
+		"pnpm": "9.6.0",
 		"npm": "pnpm",
 		"yarn": "pnpm",
 		"node": ">=18"

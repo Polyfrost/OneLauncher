@@ -8,8 +8,6 @@
 pub const NAME: &str = "OneLauncher";
 /// The version of the launcher
 pub const VERSION: &str = "0.1.0"; // todo: env
-/// The ID of the launcher.
-pub const ID: &str = "org.polyfrost.launcher";
 
 // =========== Authentication ===========
 /// The Discord RPC client ID.

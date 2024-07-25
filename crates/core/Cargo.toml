@@ -53,6 +53,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_ini = { workspace = true }
 flate2 = { workspace = true }
+dashmap = { workspace = true }
 paste = { workspace = true }
 futures = { workspace = true }
 tar = { workspace = true }

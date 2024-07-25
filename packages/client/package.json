@@ -16,7 +16,7 @@
 	"dependencies": {
 		"@rspc/client": "^0.2.3",
 		"@rspc/solid-query": "^0.2.3",
-		"@rspc/tauri": "^0.2.0",
+		"@rspc/tauri": "^0.2.4",
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.51.9",
 		"fast-equals": "^5.0.1",

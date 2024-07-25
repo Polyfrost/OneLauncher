@@ -15,14 +15,125 @@ model Settings {
   theme              String  @default("dark")
   hide_close_prompt  Boolean @default(true)
   disable_animations Boolean @default(false)
+  disable_analytics  Boolean @default(false)
+  debug_mode         Boolean @default(false)
+  hide_on_launch     Boolean @default(false)
   force_fullscreen   Boolean @default(false)
-  resolution_x       Int     @default(854)
-  resolution_y       Int     @default(480)
-  memory_max         Int     @default(2048)
-  memory_min         Int     @default(1024)
-  hook_pre           String?
-  hook_wrapper       String?
-  hook_post          String?
+  disable_discord    Boolean @default(false)
+
+  custom_java_args String
+  custom_env_args  String
+
+  max_async_io_operations Int @default(10)
+  max_async_fetches       Int @default(10)
+
+  resolution_x Int @default(854)
+  resolution_y Int @default(480)
+
+  memory_max Int @default(2048)
+  memory_min Int @default(1024)
+
+  hook_pre     String?
+  hook_wrapper String?
+  hook_post    String?
 
   @@map("settings")
+}
+
+model JavaVersion {
+  major_version Int    @id
+  full_version  String
+  architecture  String
+  path          String
+
+  @@map("java_version")
+}
+
+model MinecraftUser {
+  uuid          String  @id
+  active        Boolean @default(false)
+  username      String
+  access_token  String
+  refresh_token String
+  expires       Int
+
+  @@unique([active])
+  @@map("minecraft_user")
+}
+
+model MinecraftDeviceToken {
+  id             Int    @id @default(0)
+  uuid           String
+  private_key    String
+  x              String
+  y              String
+  issue_instant  Int
+  not_after      Int
+  token          String
+  display_claims String
+
+  @@map("minecraft_device_token")
+}
+
+model Cache {
+  id        String   @id
+  data_type String
+  alias     String?
+  data      String?
+  expires   DateTime
+  created   DateTime @default(now())
+
+  @@unique([data_type, alias])
+  @@map("cache")
+}
+
+model Cluster {
+  path      String  @id
+  stage     String
+  name      String
+  icon_path String?
+
+  mc_version     String
+  loader         String  @default("vanilla")
+  loader_version String? @default("stable")
+
+  groups String
+
+  created_at  DateTime  @default(now())
+  modified_at DateTime
+  played_at   DateTime?
+
+  overall_played  Int @default(0)
+  recently_played Int @default(0)
+
+  override_java_path        String?
+  override_custom_java_args String
+  override_custom_env_args  String
+  override_memory_max       Int?
+  override_memory_min       Int?
+  override_force_fullscreen Int?
+  override_resolution_x     Int?
+  override_resolution_y     Int?
+  override_hook_pre         String?
+  override_hook_wrapper     String?
+  override_hook_post        String?
+
+  processes Process[]
+
+  @@map("cluster")
+}
+
+model Process {
+  pid          Int      @id
+  start_time   DateTime @default(now())
+  name         String
+  executable   String
+  cluster_path String
+  post_exit    String?
+
+  cluster Cluster @relation(fields: [cluster_path], references: [path])
+
+  @@unique([pid])
+  @@index([cluster_path])
+  @@map("process")
 }

@@ -1,0 +1,52 @@
+{
+	"name": "@onelauncher/frontend",
+	"type": "module",
+	"version": "1.0.0",
+	"description": "Next-generation open source Minecraft launcher frontend",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "apps/frontend"
+	},
+	"scripts": {
+		"dev": "pnpm vite dev",
+		"build": "pnpm vite build"
+	},
+	"dependencies": {
+		"@fontsource/poppins": "^5.0.14",
+		"@iconify-json/logos": "^1.1.43",
+		"@leeoniya/ufuzzy": "^1.0.14",
+		"@onelauncher/client": "workspace:*",
+		"@rspc/client": "^0.2.3",
+		"@rspc/solid-query": "^0.2.3",
+		"@rspc/tauri": "^0.2.0",
+		"@solid-primitives/refs": "^1.0.8",
+		"@solidjs/router": "^0.14.1",
+		"@tanstack/solid-query": "^5.51.9",
+		"@tauri-apps/api": "^2.0.0-beta.13",
+		"@tauri-apps/plugin-clipboard-manager": "github:tauri-apps/tauri-plugin-clipboard-manager#v2",
+		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
+		"@thisbeyond/solid-dnd": "^0.7.5",
+		"@thisbeyond/solid-select": "^0.15.0",
+		"@unocss/reset": "^0.61.5",
+		"@untitled-theme/icons-solid": "^0.10.5",
+		"overlayscrollbars": "^2.9.2",
+		"overlayscrollbars-solid": "^0.5.5",
+		"solid-js": "^1.8.19",
+		"solid-transition-group": "^0.2.3",
+		"uuid": "^10.0.0"
+	},
+	"devDependencies": {
+		"@solidjs/testing-library": "^0.8.9",
+		"@tauri-apps/cli": "^2.0.0-beta.20",
+		"@testing-library/jest-dom": "^6.4.8",
+		"@types/uuid": "^10.0.0",
+		"jsdom": "^24.1.1",
+		"sass": "^1.77.8",
+		"unocss": "^0.61.5",
+		"vite-plugin-solid": "^2.10.2",
+		"vite-plugin-solid-svg": "^0.8.1",
+		"vite-tsconfig-paths": "^4.3.2"
+	}
+}

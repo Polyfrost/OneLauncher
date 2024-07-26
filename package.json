@@ -19,14 +19,19 @@
 		"node": ">=18"
 	},
 	"scripts": {
-		"gui": "pnpm --filter @onelauncher/gui -- ",
-		"client": "pnpm --filter @onelauncher/client --",
-		"tauri": "pnpm gui tauri",
-		"format": "pnpm lint:fix && cargo +nightly fmt",
-		"lint": "pnpm eslint . --cache",
-		"lint:fix": "pnpm lint --fix",
-		"release:node": "pnpm bumpp -r",
-		"core": "cd crates/core && cargo"
+		"frontend": "pnpm --filter @onelauncher/frontend -- ",
+		"client": "pnpm --filter @onelauncher/client -- ",
+		"core": "cd packages/core && cargo",
+		"testing": "cd apps/testing && cargo",
+		"desktop": "cd apps/desktop && cargo",
+		"format": "pnpm lint:es:fix && pnpm lint:rust:fix",
+		"lint": "pnpm lint:es && pnpm lint:rust",
+
+		"lint:es": "pnpm eslint . --cache",
+		"lint:es:fix": "pnpm lint:es --fix",
+		"lint:rust": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
+		"lint:rust:fix": "cargo +nightly fmt && cargo clippy --fix",
+		"release:node": "pnpm bumpp -r"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.10.1",

@@ -1,7 +1,7 @@
 /// <reference types="vitest/config"/>
 
 import process from 'node:process';
-import type { Plugin, UserConfig } from 'vite';
+import type { UserConfig } from 'vite';
 import { defineConfig, loadEnv } from 'vite';
 
 import solid from 'vite-plugin-solid';
@@ -20,7 +20,6 @@ export default defineConfig(async ({ mode }) => {
 				defaultAsComponent: false,
 			}),
 			paths(),
-			devtools(),
 		],
 
 		envPrefix: ['VITE_', 'TAURI_'],
@@ -51,19 +50,3 @@ export default defineConfig(async ({ mode }) => {
 
 	return config;
 });
-
-function devtools(): Plugin {
-	return {
-		name: 'devtools-plugin',
-		transformIndexHtml(html) {
-			if (process.env.NODE_ENV === 'development') {
-				const devtoolsScript = `<script src ="http://localhost:8087"></script>`;
-				const headTagIndex = html.indexOf('</head>');
-				if (headTagIndex > -1)
-					return html.slice(0, headTagIndex) + devtoolsScript + html.slice(headTagIndex);
-			}
-
-			return html;
-		},
-	};
-}

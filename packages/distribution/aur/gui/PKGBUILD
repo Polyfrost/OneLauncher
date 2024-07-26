@@ -32,7 +32,7 @@ prepare() {
 build() {
     cd "onelauncher-${pkgver}"
     pnpm --filter @onelauncher/gui build
-    export RUSTUP_TOOLCHAIN=stable 
+    export RUSTUP_TOOLCHAIN=stable
     cargo build --frozen --release --all-features
 }
 
@@ -44,7 +44,7 @@ check() {
 
 package() {
     install -Dm755 "$srcdir"/onelauncher-"$pkgver"/target/release/onelauncher_gui "$pkgdir"/usr/bin/onelauncher
-    install -Dm644 "$srcdir"/onelauncher-"$pkgver"/onelauncher_gui/src-tauri/icons/128x128.png "$pkgdir"/usr/share/icons/hicolor/128x128/apps/onelauncher.png
-    install -Dm644 "$srcdir"/onelauncher-"$pkgver"/onelauncher_gui/src-tauri/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/256x256@2/apps/onelauncher.png
-    install -Dm644 onelauncher.desktop "$pkgdir"/usr/share/applications/onelauncher.desktop
+    install -Dm644 "$srcdir"/onelauncher-"$pkgver"/packages/distribution/icons/128x128.png "$pkgdir"/usr/share/icons/hicolor/128x128/apps/OneLauncher.png
+    install -Dm644 "$srcdir"/onelauncher-"$pkgver"/packages/distribution/icons/icon.png "$pkgdir"/usr/share/icons/hicolor/256x256@2/apps/OneLauncher.png
+    install -Dm644 OneLauncher.desktop "$pkgdir"/usr/share/applications/OneLauncher.desktop
 }

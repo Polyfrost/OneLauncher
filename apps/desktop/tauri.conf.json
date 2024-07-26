@@ -1,7 +1,6 @@
 {
 	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/core/tauri-config-schema/schema.json",
 	"productName": "OneLauncher",
-	"version": "../package.json",
 	"identifier": "OneLauncher",
 	"app": {
 		"withGlobalTauri": true,
@@ -18,7 +17,7 @@
 			"pattern": {
 				"use": "isolation",
 				"options": {
-					"dir": "../src-isolation/"
+					"dir": "../frontend/src-isolation/"
 				}
 			},
 			"assetProtocol": {
@@ -56,9 +55,9 @@
 		]
 	},
 	"build": {
-		"beforeDevCommand": "pnpm dev",
-		"beforeBuildCommand": "pnpm build",
-		"frontendDist": "../dist",
+		"beforeDevCommand": "pnpm dev --filter @onelauncher/frontend",
+		"beforeBuildCommand": "pnpm build --filter @onelauncher/frontend",
+		"frontendDist": "../frontend/dist",
 		"devUrl": "http://localhost:8001"
 	},
 	"bundle": {
@@ -66,11 +65,11 @@
 		"targets": "all",
 		"category": "Game",
 		"icon": [
-			"../.icons/32x32.png",
-			"../.icons/128x128.png",
-			"../.icons/128x128@2x.png",
-			"../.icons/icon.icns",
-			"../.icons/icon.ico"
+			"../../packages/distribution/icons/32x32.png",
+			"../../packages/distribution/icons/128x128.png",
+			"../../packages/distribution/icons/128x128@2x.png",
+			"../../packages/distribution/icons/icon.icns",
+			"../../packages/distribution/icons/icon.ico"
 		],
 		"copyright": "Polyfrost",
 		"longDescription": "",
@@ -80,7 +79,7 @@
 		"linux": {
 			"deb": {
 				"depends": [],
-				"desktopTemplate": "../../distribution/linux/org.polyfrost.launcher.desktop.template"
+				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
 			}
 		},
 		"shortDescription": "Next-generation open source Minecraft launcher",

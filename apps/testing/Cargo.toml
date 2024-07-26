@@ -11,7 +11,7 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-onelauncher = { path = "../core", features = [ "cli" ] }
+onelauncher = { workspace = true, features = [ "cli" ] }
 
 tokio = { workspace = true }
 webbrowser = { workspace = true }

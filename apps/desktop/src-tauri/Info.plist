@@ -10,7 +10,7 @@
                 <string>OneLauncher</string>
                 <key>CFBundleURLSchemes</key>
                 <array>
-                    <string>onelauncher</string>
+                    <string>OneLauncher</string>
                 </array>
             </dict>
         </array>

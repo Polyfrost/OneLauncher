@@ -25,8 +25,13 @@
 		"format": "pnpm lint:fix && cargo +nightly fmt",
 		"lint": "pnpm eslint . --cache",
 		"lint:fix": "pnpm lint --fix",
+		"format": "pnpm lint:fix && pnpm core:prisma format",
+		"prep": "pnpm gen:prisma",
 		"release:node": "pnpm bumpp -r",
-		"core": "cd crates/core && cargo"
+		"core": "cd crates/core && cargo",
+		"gen:prisma": "pnpm core prisma generate",
+		"gen:migrations": "pnpm core prisma migrate dev",
+		"gen:code": "pnpm core test gen"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.10.1",

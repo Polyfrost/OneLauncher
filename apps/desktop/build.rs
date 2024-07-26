@@ -11,25 +11,31 @@ fn main() {
 					"get_users",
 					"get_user",
 					"remove_user",
+
 					// Cluster
 					"create_cluster",
 					"remove_cluster",
 					"get_cluster",
 					"get_clusters",
 					"run_cluster",
+
 					// Processor
 					"get_running_clusters",
 					"get_processes_by_path",
 					"kill_process",
+
 					// Settings
 					"get_settings",
 					"set_settings",
+
 					// Metadata
 					"get_minecraft_versions",
+
 					// Package
 					"random_mods",
 					"get_mod",
 					"download_mod",
+
 					// Other
 					"get_program_info",
 				]),

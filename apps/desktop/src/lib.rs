@@ -58,7 +58,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		let builder = collect_commands!();
 
 		#[cfg(debug_assertions)]
-		let builder = builder.path("../../frontend/src/bindings.ts");
+		let builder = builder.path("../frontend/src/bindings.ts");
 
 		builder.build().unwrap()
 	});

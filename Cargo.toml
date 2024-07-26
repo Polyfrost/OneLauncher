@@ -23,17 +23,18 @@ version = "1.0.0"
 onelauncher = { path = "./packages/core" }
 
 # tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
-tauri = { version = "=2.0.0-beta.24", features = [
+tauri = { version = "=2.0.0-beta.23", features = [
   "rustls-tls",
   "tracing",
   "specta",
   "uuid"
 ] }
-tauri-utils = { version = "=2.0.0-beta.19" }
-tauri-build = { version = "=2.0.0-beta.19" }
-tauri-codegen = { version = "=2.0.0-beta.19" }
-tauri-macros = { version = "=2.0.0-beta.19" }
-tauri-plugin = { version = "=2.0.0-beta.19" }
+tauri-utils = { version = "=2.0.0-beta.18" }
+tauri-build = { version = "=2.0.0-beta.18" }
+tauri-codegen = { version = "=2.0.0-beta.18" }
+tauri-macros = { version = "=2.0.0-beta.18" }
+tauri-plugin = { version = "=2.0.0-beta.18" }
+tauri-runtime = { version = "=2.0.0-beta.19" }
 tauri-plugin-authenticator = { version = "2.0.0-beta" }
 tauri-plugin-shell = { version = "2.0.0-beta" }
 tauri-plugin-window-state = { version = "2.0.0-beta" }
@@ -51,7 +52,7 @@ specta = { version = "=2.0.0-rc.12", features = [
   "serde_json",
   "function",
 ] }
-# tauri-specta is updated via crates.io
+# tauri-specta is updated on main branch
 tauri-specta = { version = "=2.0.0-rc.11", features = [
   "javascript",
   "typescript"

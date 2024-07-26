@@ -49,15 +49,15 @@ To make changes locally, follow these steps:
 
 To quickly run only the desktop app after `prep`, you can use:
 
-- `pnpm dev`
+- `pnpm desktop dev`
 
   If necessary, the webview devtools can be opened by pressing `Ctrl + Shift + I` (Linux and Windows) or `Command + Option + I` (macOS) in the desktop app.
 
 If you encounter any issues, ensure that you are using the following versions (or later) of Rust, Node and Pnpm:
 
-- Rust version: **1.79**
-- Node version: **18.18**
-- Pnpm version: **9.4.0**
+- `rustc` version: **1.80**
+- `node` version: **20.15**
+- `pnpm` version: **9.6.0**
 
 After cleaning out your build artifacts using `pnpm clean`, `git clean`, or `cargo clean`, it is necessary to re-run the `setup` script.
 

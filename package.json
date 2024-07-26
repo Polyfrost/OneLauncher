@@ -21,16 +21,18 @@
 	"scripts": {
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
+		"desktop": "pnpm --filter @onelauncher/desktop -- ",
+
 		"core": "cd packages/core && cargo",
 		"testing": "cd apps/testing && cargo",
-		"desktop": "cd apps/desktop && cargo",
-		"format": "pnpm lint:es:fix && pnpm lint:rust:fix",
-		"lint": "pnpm lint:es && pnpm lint:rust",
+		"tauri": "cd apps/desktop && cargo",
+		"format": "pnpm format:es && pnpm format:rs",
+		"lint": "pnpm lint:es && pnpm lint:rs",
 
 		"lint:es": "pnpm eslint . --cache",
-		"lint:es:fix": "pnpm lint:es --fix",
-		"lint:rust": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
-		"lint:rust:fix": "cargo +nightly fmt && cargo clippy --fix",
+		"format:es": "pnpm lint:es --fix",
+		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
+		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
 		"release:node": "pnpm bumpp -r"
 	},
 	"devDependencies": {

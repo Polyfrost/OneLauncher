@@ -10,9 +10,9 @@
 		"directory": "apps/desktop"
 	},
 	"scripts": {
-		"build": "pnpm tauri build",
-		"dev": "pnpm tauri dev",
-		"tauri": "pnpm tauri"
+		"build": "tauri build",
+		"dev": "tauri dev",
+		"tauri": "tauri"
 	},
 	"dependencies": {
 		"@onelauncher/core": "workspace:*",

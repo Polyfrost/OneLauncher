@@ -55,8 +55,8 @@
 		]
 	},
 	"build": {
-		"beforeDevCommand": "pnpm dev --filter @onelauncher/frontend",
-		"beforeBuildCommand": "pnpm build --filter @onelauncher/frontend",
+		"beforeDevCommand": "pnpm --filter @onelauncher/frontend run dev",
+		"beforeBuildCommand": "pnpm --filter @onelauncher/frontend run build",
 		"frontendDist": "../frontend/dist",
 		"devUrl": "http://localhost:8001"
 	},

@@ -10,8 +10,8 @@
 		"directory": "apps/frontend"
 	},
 	"scripts": {
-		"dev": "pnpm vite dev",
-		"build": "pnpm vite build"
+		"dev": "vite dev",
+		"build": "vite build"
 	},
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",

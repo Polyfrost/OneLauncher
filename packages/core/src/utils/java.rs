@@ -183,6 +183,7 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 
 /// Locate JRE's auto-installed by the launcher instance.
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 async fn locate_installed_java() -> Result<HashSet<PathBuf>, JavaError> {
 	Box::pin(async move {
 		let state = State::get().await.map_err(|_| JavaError::MutexError)?;
@@ -244,6 +245,7 @@ pub async fn check_java(paths: HashSet<PathBuf>) -> HashSet<JavaVersion> {
 /// Verifies that a java instance [`Path`] is valid.
 /// java_check from https://github.com/modrinth/theseus/blob/master/theseus/library/JavaInfo.class under MIT
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 	let Ok(path) = io::canonicalize(path) else {
 		return None;

@@ -412,6 +412,7 @@ impl Processor {
 	/// insert a process with a command and [`ClusterPath`].
 	#[tracing::instrument(skip(self, uuid, command, post, censors))]
 	#[tracing::instrument(level = "trace", skip(self))]
+	#[onelauncher_macros::memory]
 	pub async fn insert_process(
 		&mut self,
 		uuid: Uuid,
@@ -455,6 +456,7 @@ impl Processor {
 	/// Insert a cached process with a [`ProcessorCache`].
 	#[tracing::instrument(skip(self, cache))]
 	#[tracing::instrument(level = "trace", skip(self))]
+	#[onelauncher_macros::memory]
 	pub async fn insert_restored(
 		&mut self,
 		cache: ProcessorCache,
@@ -542,6 +544,7 @@ impl Processor {
 
 	/// Get a process manager and runner awaiting for the exit status.
 	#[tracing::instrument(skip(current_child))]
+	#[onelauncher_macros::memory]
 	async fn manager(
 		uuid: Uuid,
 		post: Option<String>,

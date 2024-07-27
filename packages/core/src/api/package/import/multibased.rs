@@ -169,6 +169,7 @@ async fn load_instance_cfg(file_path: &Path) -> crate::Result<MMCInstance> {
 }
 
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn import_mmc(
 	mmc_base_path: PathBuf,
 	instance_folder: String,

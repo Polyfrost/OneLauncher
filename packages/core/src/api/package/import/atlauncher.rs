@@ -113,6 +113,7 @@ pub async fn is_valid_atlauncher(instance_folder: PathBuf) -> bool {
 }
 
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn import_atlauncher(
 	// The path to the base ATLauncher folder.
 	atlauncher_base_path: PathBuf,

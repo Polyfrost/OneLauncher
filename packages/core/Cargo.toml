@@ -23,6 +23,8 @@ specta = [ "dep:specta" ]
 cli = [ "dep:indicatif" ]
 
 [dependencies]
+onelauncher_macros = { workspace = true }
+
 # GUI-only deps
 tauri = { workspace = true, optional = true }
 tauri-specta = { workspace = true, optional = true }

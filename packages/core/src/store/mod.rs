@@ -110,6 +110,7 @@ impl State {
 
 	/// Initializes the core OneLauncher state fully.
 	#[tracing::instrument]
+	#[onelauncher_macros::memory]
 	async fn initialize() -> crate::Result<RwLock<State>> {
 		let ingress =
 			init_ingress_internal(crate::IngressType::Initialize, 100.0, "initializing state")
@@ -202,6 +203,7 @@ impl State {
 
 	/// Synchronizes data that can change outside of our control.
 	#[tracing::instrument]
+	#[onelauncher_macros::memory]
 	pub async fn sync() -> crate::Result<()> {
 		let state = Self::get().await?;
 		let sync_settings = async {

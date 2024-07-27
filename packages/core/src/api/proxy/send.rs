@@ -11,6 +11,7 @@ use crate::api::proxy::{ClusterPayload, IngressPayload, MessagePayload, ProcessP
 #[cfg(feature = "tauri")]
 use tauri::Manager;
 
+#[onelauncher_macros::memory]
 pub async fn init_ingress(
 	ingress_type: IngressType,
 	total: f64,
@@ -24,6 +25,7 @@ pub async fn init_ingress(
 #[cfg(feature = "cli")]
 const CLI_TOTAL_INGRESS: u64 = 1000;
 
+#[onelauncher_macros::memory]
 pub async fn init_ingress_internal(
 	ingress_type: IngressType,
 	total: f64,
@@ -98,6 +100,7 @@ pub async fn edit_ingress(
 
 #[allow(unused_variables)]
 #[tracing::instrument(level = "debug")]
+#[onelauncher_macros::memory]
 pub async fn send_ingress(
 	key: &IngressId,
 	increment: f64,

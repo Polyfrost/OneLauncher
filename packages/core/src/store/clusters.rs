@@ -512,6 +512,7 @@ impl Cluster {
 
 	/// watch the filesystem for changes with [`notify`].
 	#[tracing::instrument(skip(watcher))]
+	#[onelauncher_macros::memory]
 	pub async fn watch(
 		cluster_path: &Path,
 		watcher: &mut Debouncer<RecommendedWatcher>,
@@ -542,6 +543,7 @@ impl Cluster {
 impl Clusters {
 	/// Initialize the cluster manager and HashMap.
 	#[tracing::instrument(skip(watcher))]
+	#[onelauncher_macros::memory]
 	pub async fn initialize(
 		dirs: &Directories,
 		watcher: &mut Debouncer<RecommendedWatcher>,
@@ -578,6 +580,7 @@ impl Clusters {
 
 	/// update registered packages
 	#[tracing::instrument]
+	#[onelauncher_macros::memory]
 	pub async fn update_packages() {
 		let res = async {
 			let state = State::get().await?;
@@ -631,6 +634,7 @@ impl Clusters {
 
 	/// update all available package versions
 	#[tracing::instrument]
+	#[onelauncher_macros::memory]
 	pub async fn update_versions() {
 		let res = async {
 			let state = State::get().await?;
@@ -666,6 +670,7 @@ impl Clusters {
 
 	/// insert a cluster into the HashMap
 	#[tracing::instrument(skip(self, cluster))]
+	#[onelauncher_macros::memory]
 	pub async fn insert(&mut self, cluster: Cluster, dont_watch: bool) -> crate::Result<&Self> {
 		send_cluster(
 			cluster.uuid,

@@ -107,6 +107,7 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 }
 
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn import_instance(
 	cluster_path: ClusterPath,
 	import: ImportType,
@@ -184,6 +185,7 @@ pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 
 /// Checks if a [`PathBuf`] is a valid instance for a given [`ImportType`]
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn is_valid_instance(instance_path: PathBuf, r#type: ImportType) -> bool {
 	match r#type {
 		ImportType::MultiMC | ImportType::PrismLauncher => {
@@ -202,6 +204,7 @@ pub async fn is_valid_instance(instance_path: PathBuf, r#type: ImportType) -> bo
 }
 
 #[tracing::instrument]
+#[onelauncher_macros::memory]
 pub async fn cache_icon(icon_path: PathBuf) -> crate::Result<Option<PathBuf>> {
 	let state = crate::State::get().await?;
 	let bytes = tokio::fs::read(&icon_path).await;
@@ -251,6 +254,7 @@ pub async fn copy_minecraft(
 }
 
 /// recursively get a [`Vec<PathBuf>`] of all subfiles.
+#[onelauncher_macros::memory]
 #[async_recursion::async_recursion]
 #[tracing::instrument]
 pub async fn sub(path: &Path) -> crate::Result<Vec<PathBuf>> {

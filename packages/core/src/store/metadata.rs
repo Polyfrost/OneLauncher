@@ -144,6 +144,7 @@ impl Metadata {
 
 	/// Initialize the core Metadata manager.
 	#[tracing::instrument(skip(io_semaphore, fetch_semaphore))]
+	#[onelauncher_macros::memory]
 	pub async fn initialize(
 		dirs: &Directories,
 		online: bool,

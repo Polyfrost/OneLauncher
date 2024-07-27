@@ -3,7 +3,8 @@ resolver = "2"
 members = [
   "apps/testing",
   "apps/desktop",
-  "packages/core"
+  "packages/core",
+  "packages/macros"
 ]
 
 [workspace.package]
@@ -21,6 +22,7 @@ version = "1.0.0-alpha.1"
 
 [workspace.dependencies]
 onelauncher = { path = "./packages/core" }
+onelauncher_macros = { path = "./packages/macros" }
 
 # tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
 tauri = { version = "=2.0.0-beta.23", features = [

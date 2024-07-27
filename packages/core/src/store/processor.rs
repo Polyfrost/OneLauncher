@@ -10,6 +10,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::api::cluster;
+use crate::constants::PROCESSOR_FILE;
 use crate::proxy::send::send_process;
 use crate::proxy::ProcessPayloadType;
 use crate::utils::http::read_json;
@@ -17,9 +18,6 @@ use crate::utils::io::IOError;
 use crate::State;
 
 use super::{Cluster, ClusterPath};
-
-/// Global processor cache file.
-const PROCESSOR_JSON: &str = "processor.json";
 
 /// Wrapper over a HashMap of PIDs to ProcessorChildren and unified apis
 pub struct Processor(HashMap<Uuid, Arc<RwLock<ProcessorChild>>>);
@@ -168,7 +166,7 @@ impl ChildType {
 			post,
 		};
 
-		let path = state.directories.caches_dir().await.join(PROCESSOR_JSON);
+		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
 		let mut caches = if let Ok(proc_json) =
 			read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore).await
 		{
@@ -187,8 +185,7 @@ impl ChildType {
 	/// Remove a child from the global store of processes.
 	pub async fn remove(&self, uuid: Uuid) -> crate::Result<()> {
 		let state = crate::State::get().await?;
-
-		let path = state.directories.caches_dir().await.join(PROCESSOR_JSON);
+		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
 		let mut caches = if let Ok(proc_json) =
 			read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore).await
 		{
@@ -378,8 +375,7 @@ impl Processor {
 	/// restore processes from the cache.
 	pub async fn restore(&mut self) -> crate::Result<()> {
 		let state = crate::State::get().await?;
-		let processor_path = state.directories.caches_dir().await.join(PROCESSOR_JSON);
-
+		let processor_path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
 		let mut processor_caches = if let Ok(processes_json) =
 			read_json::<HashMap<uuid::Uuid, ProcessorCache>>(&processor_path, &state.io_semaphore)
 				.await

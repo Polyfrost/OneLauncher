@@ -2,6 +2,7 @@
 //!
 //! Async utilities for managing and downloading Java versions.
 
+use crate::constants::JAVA_BIN;
 use crate::State;
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -19,10 +20,12 @@ use winreg::{
 
 use super::io;
 
-/// A struct representing a single version of the Java Runtime Environment
-/// Use [`locate_java`] to get an array of all located java instances on the machine
-/// paths from https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp under GPL 3.0
-/// paths and java_check from https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs under MIT
+/// A struct representing a single version of the Java Runtime Environment.
+/// Use [`locate_java`] to get an array of all located java instances on the machine.
+///
+/// common java paths from https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp under GPL 3.0
+///
+/// java check functionality from https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs under MIT
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct JavaVersion {
@@ -31,7 +34,8 @@ pub struct JavaVersion {
 	pub path: String,
 }
 
-/// JVM Entrypoint (WINDOWS ONLY)
+/// Java entrypoint: Returns all possibly existing java paths on a Linux machine and validates them,
+/// returning a [`Vec<JavaVersion>`] with all valid java installations, their paths, and associated metadata.
 #[cfg(target_os = "windows")]
 #[tracing::instrument]
 pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
@@ -42,7 +46,6 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 		paths.insert(PathBuf::from(java_home));
 	}
 
-	// i hate windows.com
 	let common_java_paths = [
 		r"C:/Program Files/Java",
 		r"C:\Program Files\Eclipse Adoptium",
@@ -76,7 +79,7 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 		r"SOFTWARE\\BellSoft\\Liberica",
 	];
 
-	for key in key_paths {
+	for key in common_key_paths {
 		if let Ok(java_key) = RegKey::predef(HKEY_LOCAL_MACHINE)
 			.open_subkey_with_flags(key, KEY_READ | KEY_WOW64_32KEY)
 		{
@@ -91,9 +94,10 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 
 	let java = check_java(paths).await.into_iter().collect();
 
-	Ok(java);
+	Ok(java)
 }
 
+/// Locates possibly existing java paths on Windows from Registry keys, returning as a [`HashSet<PathBuf>`]
 #[cfg(target_os = "windows")]
 #[tracing::instrument]
 pub fn get_java_paths_from_windows(java_key: RegKey) -> HashSet<PathBuf> {
@@ -113,7 +117,8 @@ pub fn get_java_paths_from_windows(java_key: RegKey) -> HashSet<PathBuf> {
 	paths
 }
 
-/// JVM Entrypoint (MacOS ONLY)
+/// Java entrypoint: Returns all possibly existing java paths on a macOS machine and validates them,
+/// returning a [`Vec<JavaVersion>`] with all valid java installations, their paths, and associated metadata.
 #[cfg(target_os = "macos")]
 #[tracing::instrument]
 pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
@@ -144,7 +149,8 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 	Ok(java)
 }
 
-/// JVM Entrypoint (LINUX ONLY)
+/// Java entrypoint: Returns all possibly existing java paths on a Linux machine and validates them,
+/// returning a [`Vec<JavaVersion>`] with all valid java installations, their paths, and associated metadata.
 #[cfg(target_os = "linux")]
 #[tracing::instrument]
 pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
@@ -181,7 +187,7 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 	Ok(java)
 }
 
-/// Locate JRE's auto-installed by the launcher instance.
+/// Locate Java paths automatically added by the launcher instance.
 #[tracing::instrument]
 #[onelauncher_macros::memory]
 async fn locate_installed_java() -> Result<HashSet<PathBuf>, JavaError> {
@@ -213,20 +219,16 @@ async fn locate_installed_java() -> Result<HashSet<PathBuf>, JavaError> {
 	.await
 }
 
-/// Locate all installed Java instances from the PATH env variable cross-device.
+/// Locates all installed Java instances from the `PATH` env variable, returning a
+/// [`HashSet<PathBuf>`] containing all paths in the `PATH` variable to be sorted into java versions.
 #[tracing::instrument]
 async fn locate_java_path() -> HashSet<PathBuf> {
 	let paths = env::var("PATH").map(|p| env::split_paths(&p).collect::<HashSet<_>>());
 	paths.unwrap_or_else(|_| HashSet::new())
 }
 
-#[cfg(target_os = "windows")]
-pub const JAVA_BIN: &str = "javaw.exe";
-
-#[cfg(not(target_os = "windows"))]
-pub const JAVA_BIN: &str = "java";
-
-/// Verifies that each Java instance is valid from a HashSet of PathBufs
+/// Verifies that each Java instance is valid from a [`HashSet<PathBuf>`], returning a
+/// [`HashSet<JavaVersion>`] for each validated path containing the installation's metadata.
 #[tracing::instrument]
 pub async fn check_java(paths: HashSet<PathBuf>) -> HashSet<JavaVersion> {
 	let java_instances = stream::iter(paths.into_iter())
@@ -242,7 +244,8 @@ pub async fn check_java(paths: HashSet<PathBuf>) -> HashSet<JavaVersion> {
 		.collect()
 }
 
-/// Verifies that a java instance [`Path`] is valid.
+/// Verifies that a java instance [`Path`] is valid, returning a [`JavaVersion`] if the java path
+/// is valid, containing the installation's metadata.
 /// java_check from https://github.com/modrinth/theseus/blob/master/theseus/library/JavaInfo.class under MIT
 #[tracing::instrument]
 #[onelauncher_macros::memory]
@@ -311,7 +314,9 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 	None
 }
 
-/// Get a formatted java version.
+/// Get a formatted java version as `(major: u32, minor: u32)`.
+///
+/// This means 1.8 becomes `(1, 8)`, and 21.0.3 becomes `(21, 0)`.
 pub fn get_java_version(version: &str) -> Result<(u32, u32), JavaError> {
 	let mut split = version.split('.');
 	let major_opt = split.next();

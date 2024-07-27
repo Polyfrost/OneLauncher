@@ -11,9 +11,6 @@ use futures::{SinkExt, StreamExt};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 
-pub const CLUSTERS_PATH: &str = "clusters";
-pub const CRASH_PATH: &str = "crash-reports";
-
 pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>> {
 	let (mut sender, mut rscv) = channel(1);
 	let watcher = new_debouncer(
@@ -56,7 +53,9 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 							formatted.file_name().unwrap_or_default(),
 						));
 
-						if a.path.components().any(|c| c.as_os_str() == CRASH_PATH)
+						if a.path
+							.components()
+							.any(|c| c.as_os_str() == crate::constants::CRASH_PATH)
 							&& a.path.extension().map(|e| e == "txt").unwrap_or(false)
 						{
 							Cluster::handle_crash(cluster_path);

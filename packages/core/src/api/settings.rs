@@ -1,7 +1,7 @@
 //! Settings Management
 
 use crate::proxy::send::{init_ingress, send_ingress};
-use crate::store::{self, Clusters, Directories, Settings};
+use crate::store::{Clusters, Directories, Settings};
 use crate::State;
 use std::path::{Path, PathBuf};
 use tokio::sync::RwLock;
@@ -103,7 +103,9 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	{
 		let epath = e.path();
 		if let Some(file_name) = epath.file_name() {
-			if file_name == store::CLUSTERS_FOLDER || file_name == store::METADATA_FOLDER {
+			if file_name == crate::constants::CLUSTERS_FOLDER
+				|| file_name == crate::constants::METADATA_FOLDER
+			{
 				if across_filesystems {
 					entries.extend(crate::package::import::sub(&epath).await?);
 					cleanable.push(epath.clone());

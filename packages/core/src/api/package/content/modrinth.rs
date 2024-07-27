@@ -1,5 +1,4 @@
 use crate::data::{ManagedPackage, ManagedVersion, PackageType};
-use crate::package::from::MODRINTH_API_URL;
 use crate::store::{ManagedVersionFile, PackageFile, PackageSide};
 use crate::utils::http::fetch;
 use crate::{Result, State};
@@ -127,7 +126,7 @@ pub struct Gallery {
 
 macro_rules! format_url {
     ($($arg:tt)*) => {{
-        format!("{}{}", MODRINTH_API_URL, format!($($arg)*))
+        format!("{}{}", crate::constants::MODRINTH_API_URL, format!($($arg)*))
     }};
 }
 

@@ -18,7 +18,7 @@ use std::path::{Component, PathBuf};
 
 use super::from::{
 	generate_pack_from_file, generate_pack_from_version_id, CreatePack, CreatePackLocation,
-	PackFormat, MODRINTH_API_URL,
+	PackFormat,
 };
 
 /// Install a pack
@@ -280,7 +280,7 @@ pub async fn remove_all_related_files(
 			.filter_map(|f| Some(f.hashes.get(&PackFileHash::Sha512)?.clone()))
 			.collect::<Vec<_>>();
 
-		let files_url = format!("{}version_files", MODRINTH_API_URL);
+		let files_url = format!("{}version_files", crate::constants::MODRINTH_API_URL);
 
 		let hash_packages = fetch_json::<HashMap<String, ManagedVersion>>(
 			Method::POST,

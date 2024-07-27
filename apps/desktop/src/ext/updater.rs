@@ -110,7 +110,7 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
 		})
 		.js_init_script(format!(
 			r#"window.__ONELAUNCHER_VERSION__ = "{}";"#,
-			env!("CARGO_PKG_VERSION")
+			onelauncher::constants::VERSION,
 		))
 		.build()
 }

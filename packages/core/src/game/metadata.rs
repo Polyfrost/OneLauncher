@@ -290,7 +290,7 @@ pub async fn download_libraries(
                         lib.natives.as_ref()?.get(&Os::native_arch(java_arch))?,
                         lib.downloads.as_ref()?.classifiers.as_ref()?
                     ))) {
-                        let parsed = os_key.replace("${arch}", crate::utils::platform::ARCH_WIDTH);
+                        let parsed = os_key.replace("${arch}", crate::constants::ARCH_WIDTH);
                         if let Some(native) = classifiers.get(&parsed) {
                             let data = fetch(&native.url, Some(&native.sha1), &st.fetch_semaphore).await?;
                             let reader = std::io::Cursor::new(&data);

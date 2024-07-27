@@ -13,6 +13,7 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLock, Semaphore};
 
+use crate::constants::FETCH_ATTEMPTS;
 use crate::proxy::send::send_ingress;
 use crate::proxy::IngressId;
 use crate::utils::io;
@@ -31,8 +32,9 @@ lazy_static::lazy_static! {
 	pub static ref REQWEST_CLIENT: reqwest::Client = {
 		let mut headers = reqwest::header::HeaderMap::new();
 		let header = reqwest::header::HeaderValue::from_str(&format!(
-			"onelauncher/{} (polyfrost.org)",
-			env!("CARGO_PKG_VERSION")
+			"{}/{} (https://polyfrost.org)",
+			crate::constants::NAME,
+			crate::constants::VERSION,
 		)).unwrap();
 		headers.insert(reqwest::header::USER_AGENT, header);
 		reqwest::Client::builder()
@@ -42,9 +44,6 @@ lazy_static::lazy_static! {
 			.expect("failed to build reqwest client!")
 	};
 }
-
-/// The amount of attempts to fetch a file before the request fails.
-const FETCH_ATTEMPTS: usize = 3;
 
 /// Basic HTTP fetch interface.
 #[tracing::instrument(skip(semaphore))]

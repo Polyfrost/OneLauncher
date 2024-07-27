@@ -5,15 +5,6 @@ use tokio::sync::RwLock;
 use super::Settings;
 use crate::constants;
 
-/// The public `settings.json` file used to store the [`Settings`] state.
-pub const SETTINGS_FILE: &str = "settings.json";
-/// The constant core caches folder.
-pub const CACHES_FOLDER: &str = "caches";
-/// The constant core clusters folder.
-pub const CLUSTERS_FOLDER: &str = "clusters";
-/// The constant core metadata folder.
-pub const METADATA_FOLDER: &str = "metadata";
-
 /// Directory management and utilities.
 #[derive(Debug)]
 pub struct Directories {
@@ -59,7 +50,10 @@ impl Directories {
 	/// Get the `config_dir/metadata` folder within the core config directory.
 	#[inline]
 	pub async fn metadata_dir(&self) -> PathBuf {
-		self.config_dir.read().await.join(METADATA_FOLDER)
+		self.config_dir
+			.read()
+			.await
+			.join(constants::METADATA_FOLDER)
 	}
 
 	/// Get the `config_dir/metadata/libraries` folder for Minecraft libraries.
@@ -89,7 +83,7 @@ impl Directories {
 	/// Get the `settings_dir/settings.json` file as a [`PathBuf`].
 	#[inline]
 	pub fn settings_file(&self) -> PathBuf {
-		self.settings_dir.join(SETTINGS_FILE)
+		self.settings_dir.join(constants::SETTINGS_FILE)
 	}
 
 	/// Get a [`PathBuf`] from a provided environment variable.

@@ -2,6 +2,8 @@ use super::IngressId;
 use crate::api::proxy::{
 	ClusterPayloadType, Ingress, IngressType, InternetPayload, ProcessPayloadType, ProxyError,
 };
+#[cfg(feature = "cli")]
+use crate::constants::CLI_TOTAL_INGRESS;
 use crate::store::{ClusterPath, IngressProcessType, IngressProcessor};
 use uuid::Uuid;
 
@@ -21,9 +23,6 @@ pub async fn init_ingress(
 	IngressProcessor::add_ingress(IngressProcessType::IngressFeed, key.0).await?;
 	Ok(key)
 }
-
-#[cfg(feature = "cli")]
-const CLI_TOTAL_INGRESS: u64 = 1000;
 
 #[onelauncher_macros::memory]
 pub async fn init_ingress_internal(

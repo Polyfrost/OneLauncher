@@ -4,14 +4,12 @@ use interpulse::api::minecraft::VersionManifest as MinecraftManifest;
 use interpulse::api::modded::Manifest as ModdedManifest;
 use serde::{Deserialize, Serialize};
 
+use crate::constants::METADATA_API_URL;
 use crate::utils::http::{fetch, read_json, write, FetchSemaphore, IoSemaphore};
 use crate::utils::io::copy;
 use crate::State;
 
 use super::Directories;
-
-/// The metadata url.
-const METADATA_URL: &str = "https://meta.polyfrost.org";
 
 /// A structure of manifests and metadata fetching utilities.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -33,7 +31,7 @@ pub struct Metadata {
 impl Metadata {
 	/// Get the formatted manifest for a specific [`Metadata`] type.
 	fn get_manifest(name: &str, version: usize) -> String {
-		format!("{METADATA_URL}/{name}/v{version}/manifest.json")
+		format!("{METADATA_API_URL}/{name}/v{version}/manifest.json")
 	}
 
 	/// Fetch all available metadata types that are currently [`None`] and get a new [`Metadata`] structure.

@@ -9,11 +9,10 @@ use interpulse::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
 use interpulse::api::modded::SidedDataEntry;
 use interpulse::utils::get_path_from_artifact;
 
+use crate::constants::DUMMY_REPLACE_NEWLINE;
 use crate::store::{Memory, MinecraftCredentials, Resolution};
 use crate::utils::io::IOError;
 use crate::utils::platform::classpath_separator;
-
-const DUMMY_REPLACE_NEWLINE: &str = "\n";
 
 #[allow(clippy::too_many_arguments)]
 pub fn java_arguments(
@@ -285,8 +284,8 @@ fn parse_java_argument(
 				.to_string_lossy(),
 		)
 		.replace("${classpath_seperator}", classpath_separator(java_arch))
-		.replace("${launcher_name}", "onelauncher")
-		.replace("${launcher_version}", env!("CARGO_PKG_VERSION"))
+		.replace("${launcher_name}", crate::constants::NAME)
+		.replace("${launcher_version}", crate::constants::VERSION)
 		.replace("${version_name}", version)
 		.replace("${classpath}", classpaths))
 }

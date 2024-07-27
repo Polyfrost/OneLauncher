@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+use crate::constants::CLUSTER_FILE;
 use crate::proxy::send::{send_cluster, send_message};
 use crate::proxy::ClusterPayloadType;
 use crate::utils::http::{write_icon, IoSemaphore};
@@ -18,9 +19,6 @@ use crate::utils::java::JavaVersion;
 use crate::State;
 
 use super::{Directories, InitHooks, Memory, Package, PackageType, Resolution};
-
-/// The public `cluster.json` file used to store the global [`Clusters`] state.
-const CLUSTER_JSON: &str = "cluster.json";
 
 /// Core Cluster state manager with a [`HashMap<ClusterPath, Cluster>`].
 pub(crate) struct Clusters(pub HashMap<ClusterPath, Cluster>);
@@ -712,7 +710,7 @@ impl Clusters {
 			.map(Ok::<_, crate::Error>)
 			.try_for_each_concurrent(None, |(_, cluster)| async move {
 				let json = serde_json::to_vec(&cluster)?;
-				let json_path = cluster.get_full_path().await?.join(CLUSTER_JSON);
+				let json_path = cluster.get_full_path().await?.join(CLUSTER_FILE);
 				io::write(&json_path, &json).await?;
 				Ok::<_, crate::Error>(())
 			})
@@ -723,7 +721,7 @@ impl Clusters {
 
 	/// read a cluster from a directory
 	async fn from_dir(path: &Path, dirs: &Directories) -> crate::Result<Cluster> {
-		let json = io::read(&path.join(CLUSTER_JSON)).await?;
+		let json = io::read(&path.join(CLUSTER_FILE)).await?;
 		let mut cluster = serde_json::from_slice::<Cluster>(&json)?;
 		cluster.path = PathBuf::from(
 			path.strip_prefix(dirs.clusters_dir().await)

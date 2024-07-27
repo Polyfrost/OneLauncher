@@ -13,9 +13,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
 
-use crate::constants::{MINECRAFT_CLIENT_ID, MINECRAFT_REDIRECT_URL, MINECRAFT_SCOPES};
-
-const AUTH_STORE: &str = "authentication.json";
+use crate::constants::{AUTH_FILE, MINECRAFT_CLIENT_ID, MINECRAFT_REDIRECT_URL, MINECRAFT_SCOPES};
 
 /// The core state of Microsoft authentication for the launcher
 #[derive(Serialize, Deserialize, Debug)]
@@ -35,7 +33,7 @@ impl MinecraftState {
 		dirs: &super::Directories,
 		io_semaphore: &crate::utils::http::IoSemaphore,
 	) -> crate::Result<Self> {
-		let path = dirs.caches_dir().await.join(AUTH_STORE);
+		let path = dirs.caches_dir().await.join(AUTH_FILE);
 		let store = crate::utils::http::read_json(&path, io_semaphore)
 			.await
 			.ok();
@@ -55,7 +53,7 @@ impl MinecraftState {
 	#[tracing::instrument(skip(self))]
 	pub async fn save(&self) -> crate::Result<()> {
 		let state = crate::State::get().await?;
-		let path = state.directories.caches_dir().await.join(AUTH_STORE);
+		let path = state.directories.caches_dir().await.join(AUTH_FILE);
 		crate::utils::http::write(&path, &serde_json::to_vec(&self)?, &state.io_semaphore).await?;
 		Ok(())
 	}

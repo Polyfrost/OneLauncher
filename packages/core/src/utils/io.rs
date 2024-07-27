@@ -1,12 +1,8 @@
 //! **IO Utilities**
 //!
-//! Wrapper around [`tokio::io`] for our error system.
+//! Async wrapper around [`tokio::fs`] and [`std::io::Error`] for our error system.
 
-use std::fs::File;
 use std::io::Write;
-use std::path::PathBuf;
-
-use anyhow::anyhow;
 use tempfile::NamedTempFile;
 use tokio::task::spawn_blocking;
 
@@ -183,33 +179,4 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOErro
 			source: e,
 			path: path.to_string_lossy().to_string(),
 		})
-}
-
-/// Extract an archive based on its file extension, supporting ZIP files and GZ files.
-pub fn extract_archive(archive: &PathBuf, dest: &PathBuf) -> crate::Result<()> {
-	let ext = match archive.extension() {
-		Some(ext) => ext.to_str().unwrap(),
-		None => return Err(anyhow!("unsupported operating system").into()),
-	};
-
-	match ext {
-		"zip" => Ok(extract_zip(archive, dest)?),
-		"gz" => Ok(extract_tar_gz(archive, dest)?),
-		_ => Err(anyhow!("unsupported file extension {:?}", ext).into()),
-	}
-}
-
-pub fn extract_zip(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> {
-	let file = File::open(archive).map_err(|err| IOError::with_path(err, archive.as_path()))?;
-	let archive = zip::ZipArchive::new(file).map_err(IOError::from_zip);
-	archive?.extract(dest).map_err(IOError::from_zip)?;
-	Ok(())
-}
-
-pub fn extract_tar_gz(archive: &PathBuf, dest: &PathBuf) -> Result<(), IOError> {
-	let file = File::open(archive).map_err(IOError::from)?;
-	let tar_gz = flate2::read::GzDecoder::new(file);
-	let mut archive = tar::Archive::new(tar_gz);
-	archive.unpack(dest).map_err(IOError::from)?;
-	Ok(())
 }

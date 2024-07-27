@@ -5,11 +5,13 @@
 use interpulse::api::minecraft::{Os, OsRule};
 use regex::Regex;
 
+// todo: add this to interpulse (maybe, generally we keep it unimplemented but these are pretty basic functions).
+
 pub trait OsExt {
-	/// Get the OS of the current system
+	/// Get the [`Os`] of the current system
 	fn native() -> Self;
 
-	/// Gets the OS + Arch of the current system
+	/// Get the [`Os`] of the current system along with it's arch from the `java_arch`.
 	fn native_arch(java_arch: &str) -> Self;
 }
 
@@ -49,13 +51,6 @@ impl OsExt for Os {
 		}
 	}
 }
-
-// Bit width
-#[cfg(target_pointer_width = "64")]
-pub const ARCH_WIDTH: &str = "64";
-
-#[cfg(target_pointer_width = "32")]
-pub const ARCH_WIDTH: &str = "32";
 
 // Platform rule handling
 pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {

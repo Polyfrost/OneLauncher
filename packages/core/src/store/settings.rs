@@ -1,13 +1,10 @@
 //! Handles user-inputted settings and global values
 
 use super::{Directories, JavaVersions};
+use crate::constants::CURRENT_SETTINGS_FORMAT_VERSION;
 use crate::utils::io;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-
-/// The current [`Settings`] format version, changed for breaking changes.
-/// If updated, a config file migration logic **NEEDS** to be implemented.
-const CURRENT_FORMAT_VERSION: u32 = 1;
 
 /// A global settings state for the launcher.
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
@@ -106,7 +103,7 @@ impl Settings {
 				custom_java_args: Vec::new(),
 				max_async_fetches: 10,
 				max_async_io_operations: 10,
-				version: CURRENT_FORMAT_VERSION,
+				version: CURRENT_SETTINGS_FORMAT_VERSION,
 				disable_analytics: false,
 				disable_discord: false,
 				debug_mode: false,

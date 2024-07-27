@@ -13,9 +13,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
-pub const CURSEFORGE_API_URL: &str = "https://api.cursefor";
-
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PackFormat {
@@ -216,7 +213,11 @@ pub async fn generate_pack_from_version_id(
 	send_ingress(&ingress, 0.0, Some("fetching version")).await?;
 	let version: ManagedVersion = fetch_json(
 		Method::GET,
-		&format!("{}version/{}", MODRINTH_API_URL, version_id),
+		&format!(
+			"{}version/{}",
+			crate::constants::MODRINTH_API_URL,
+			version_id
+		),
 		None,
 		None,
 		&state.fetch_semaphore,
@@ -250,7 +251,11 @@ pub async fn generate_pack_from_version_id(
 
 	let pkg: ManagedPackage = fetch_json(
 		Method::GET,
-		&format!("{}project/{}", MODRINTH_API_URL, version.package_id),
+		&format!(
+			"{}project/{}",
+			crate::constants::MODRINTH_API_URL,
+			version.package_id
+		),
 		None,
 		None,
 		&state.fetch_semaphore,

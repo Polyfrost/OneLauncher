@@ -1,7 +1,7 @@
 [package]
 name = "onelauncher_gui"
 description = "Next-generation open source Minecraft launcher"
-version = "1.0.0" # todo: make it so tauri works with the ws
+version = "1.0.0-alpha.1" # todo: make it so tauri works with the ws
 license = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }

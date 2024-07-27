@@ -1,7 +1,8 @@
 {
 	"name": "@onelauncher/desktop",
 	"type": "module",
-	"version": "1.0.0",
+	"version": "1.0.0-alpha.1",
+	"private": true,
 	"description": "Next-generation open source Minecraft launcher",
 	"license": "GPL-3.0-only",
 	"repository": {
@@ -11,8 +12,7 @@
 	},
 	"scripts": {
 		"build": "tauri build",
-		"dev": "tauri dev",
-		"tauri": "tauri"
+		"dev": "tauri dev"
 	},
 	"dependencies": {
 		"@onelauncher/core": "workspace:*",

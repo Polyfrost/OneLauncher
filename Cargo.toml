@@ -17,7 +17,7 @@ authors = [
   "Polyfrost",
   "Polyfrost Contributors"
 ]
-version = "1.0.0"
+version = "1.0.0-alpha.1"
 
 [workspace.dependencies]
 onelauncher = { path = "./packages/core" }

@@ -1,7 +1,8 @@
 {
 	"name": "@onelauncher/frontend",
 	"type": "module",
-	"version": "1.0.0",
+	"version": "1.0.0-alpha.1",
+	"private": true,
 	"description": "Next-generation open source Minecraft launcher frontend",
 	"license": "GPL-3.0-only",
 	"repository": {
@@ -10,7 +11,7 @@
 		"directory": "apps/frontend"
 	},
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "vite",
 		"build": "vite build"
 	},
 	"dependencies": {

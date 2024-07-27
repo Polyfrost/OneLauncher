@@ -1,7 +1,8 @@
 {
 	"name": "@onelauncher/root",
 	"type": "module",
-	"version": "1.0.0",
+	"version": "1.0.0-alpha.1",
+	"private": true,
 	"packageManager": "pnpm@9.6.0",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
@@ -22,18 +23,16 @@
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
-
 		"core": "cd packages/core && cargo",
 		"testing": "cd apps/testing && cargo",
 		"tauri": "cd apps/desktop && cargo",
 		"format": "pnpm format:es && pnpm format:rs",
 		"lint": "pnpm lint:es && pnpm lint:rs",
-
-		"lint:es": "pnpm eslint . --cache",
+		"lint:es": "eslint . --cache",
 		"format:es": "pnpm lint:es --fix",
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
-		"release:node": "pnpm bumpp -r"
+		"release:node": "bumpp -r"
 	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.10.1",

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use uuid::Uuid;
 
-use crate::constants::{MICROSOFT_CLIENT_ID, REDIRECT_URL, SCOPES};
+use crate::constants::{MINECRAFT_CLIENT_ID, MINECRAFT_REDIRECT_URL, MINECRAFT_SCOPES};
 
 const AUTH_STORE: &str = "authentication.json";
 
@@ -447,16 +447,16 @@ async fn sisu_authenticate(
 		"https://sisu.xboxlive.com/authenticate",
 		"/authenticate",
 		json!({
-			"AppId": MICROSOFT_CLIENT_ID,
+			"AppId": MINECRAFT_CLIENT_ID,
 			"DeviceToken": token,
-			"Offers": [SCOPES],
+			"Offers": [MINECRAFT_SCOPES],
 			"Query": {
 				"code_challenge": challenge,
 				"code_challenge_method": "S256",
 				"state": generate_oauth_challenge(),
 				"prompt": "select_account"
 			},
-			"RedirectUri": REDIRECT_URL,
+			"RedirectUri": MINECRAFT_REDIRECT_URL,
 			"Sandbox": "RETAIL",
 			"TokenType": "code",
 			"TitleId": "1794566092"
@@ -500,12 +500,12 @@ async fn oauth_token(
 	verify: &str,
 ) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
-	query.insert("client_id", MICROSOFT_CLIENT_ID);
+	query.insert("client_id", MINECRAFT_CLIENT_ID);
 	query.insert("code", code);
 	query.insert("code_verifier", verify);
 	query.insert("grant_type", "authorization_code");
-	query.insert("redirect_uri", REDIRECT_URL);
-	query.insert("scope", SCOPES);
+	query.insert("redirect_uri", MINECRAFT_REDIRECT_URL);
+	query.insert("scope", MINECRAFT_SCOPES);
 	let res = auth_retry(|| {
 		crate::utils::http::REQWEST_CLIENT
 			.post("https://login.live.com/oauth20_token.srf")
@@ -548,11 +548,11 @@ async fn oauth_refresh(
 	refresh_token: &str,
 ) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
 	let mut query = HashMap::new();
-	query.insert("client_id", MICROSOFT_CLIENT_ID);
+	query.insert("client_id", MINECRAFT_CLIENT_ID);
 	query.insert("refresh_token", refresh_token);
 	query.insert("grant_type", "refresh_token");
-	query.insert("redirect_uri", REDIRECT_URL);
-	query.insert("scope", SCOPES);
+	query.insert("redirect_uri", MINECRAFT_REDIRECT_URL);
+	query.insert("scope", MINECRAFT_SCOPES);
 	let res = auth_retry(|| {
 		crate::utils::http::REQWEST_CLIENT
 			.post("https://login.live.com/oauth20_token.srf")
@@ -615,7 +615,7 @@ async fn sisu_authorize(
 		"/authorize",
 		json!({
 			"AccessToken": format!("t={access_token}"),
-			"AppId": MICROSOFT_CLIENT_ID,
+			"AppId": MINECRAFT_CLIENT_ID,
 			"DeviceToken": device_token,
 			"ProofKey": {
 				// kibty (kty)

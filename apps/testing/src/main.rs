@@ -4,8 +4,18 @@
 )]
 
 use onelauncher::cluster::create::create_cluster;
-use onelauncher::package::content::{self, Providers};
+use onelauncher::package::content::Providers;
 use onelauncher::prelude::*;
+
+#[tokio::main]
+async fn main() -> onelauncher::Result<()> {
+	let _logger = onelauncher::start_logger();
+	let _state = State::get().await?;
+
+	modrinth().await?;
+
+	Ok(())
+}
 
 pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	println!("a browser will open, follow login flow");
@@ -35,18 +45,8 @@ pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	Ok(creds)
 }
 
-#[tokio::main]
-async fn main() -> onelauncher::Result<()> {
-	let _logger = onelauncher::start_logger();
-	let state = State::get().await?;
-
-	modrinth().await?;
-
-	Ok(())
-}
-
 async fn modrinth() -> onelauncher::Result<()> {
-	let state = State::get().await?;
+	let _state = State::get().await?;
 	let provider = Providers::Modrinth;
 	let result = provider.get("oneconfig").await?;
 	println!("{:#?}", result);

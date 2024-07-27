@@ -4,7 +4,6 @@ use crate::store::{ManagedVersionFile, PackageFile, PackageSide};
 use crate::utils::http::fetch;
 use crate::{Result, State};
 
-use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

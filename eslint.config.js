@@ -21,6 +21,6 @@ export default petal({
 		'*.rs',
 		'pnpm-lock.yaml',
 		'**/node_modules',
-		'apps/desktop/src/bindings.ts',
+		'apps/frontend/src/bindings.ts',
 	],
 });

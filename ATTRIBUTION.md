@@ -26,8 +26,8 @@ All rights reserved. Copyright (C) 2022~2024 Polyfrost
 
 This includes, but may not be limited to, the following files:
 
-* [`apps/desktop/.icons/*`](./apps/desktop/.icons/)
-* [`apps/desktop/src/assets/licensed/*`](./apps/desktop/src/assets/licensed/)
+* [`packages/distribution/icons/*`](./packages/distribution/icons/)
+* [`apps/frontend/src/assets/licensed/*`](./apps/frontend/src/assets/licensed/)
 
 ## Additional Libraries
 

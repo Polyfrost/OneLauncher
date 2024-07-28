@@ -4,12 +4,10 @@ use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
-use onelauncher::store::{Cluster, ClusterPath};
+use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
 use onelauncher::{cluster, minecraft, processor, settings};
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
 use uuid::Uuid;
 
 #[macro_export]
@@ -23,7 +21,8 @@ macro_rules! collect_commands {
 			)
 			.commands(tauri_specta::collect_commands![
 				// User
-				msa_auth,
+				begin_msa,
+				finish_msa,
 				get_users,
 				get_user,
 				remove_user,
@@ -215,13 +214,14 @@ pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn msa_auth(handle: AppHandle) -> Result<MinecraftCredentials, String> {
-	let login = minecraft::begin().await?;
-	handle.shell().open(login.redirect_uri.clone(), None).map_err(|err| err.to_string())?;
+pub async fn begin_msa() -> Result<MinecraftLogin, String> {
+	Ok(minecraft::begin().await?)
+}
 
-	Err("not implemented".to_string())
-
-	// Ok(minecraft::finish(code.as_str(), login).await?)
+#[specta::specta]
+#[tauri::command]
+pub async fn finish_msa(code: String, login: MinecraftLogin) -> Result<MinecraftCredentials, String> {
+	Ok(minecraft::finish(code.as_str(), login).await?)
 }
 
 #[specta::specta]

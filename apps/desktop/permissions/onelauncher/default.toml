@@ -2,7 +2,8 @@
 description = "Default permissions for the plugin"
 permissions = [
   # User
-  "allow-msa-auth",
+  "allow-begin-msa",
+  "allow-finish-msa",
   "allow-get-users",
   "allow-get-user",
   "allow-remove-user",

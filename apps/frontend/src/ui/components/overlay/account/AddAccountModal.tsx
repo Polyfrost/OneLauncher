@@ -77,15 +77,13 @@ function AddAccountModal(props: AddAccountModalProps) {
 	function start() {
 		setStage(ModalStage.WaitingForCode);
 
-		// tryResult(bridge.commands.beginMsa).then((res) => {
-		// 	console.log(res);
-		// });
+		tryResult(bridge.commands.authLogin).finally(finish);
 	}
 
-	// function finish() {
-	// 	props.setVisible(false);
-	// 	props.refetch();
-	// }
+	function finish() {
+		props.setVisible(false);
+		props.refetch();
+	}
 
 	return (
 		<Modal.Simple

@@ -4,10 +4,11 @@ use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
-use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
+use onelauncher::store::{Cluster, ClusterPath};
 use onelauncher::{cluster, minecraft, processor, settings};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 #[macro_export]
@@ -21,8 +22,7 @@ macro_rules! collect_commands {
 			)
 			.commands(tauri_specta::collect_commands![
 				// User
-				begin_msa,
-				finish_msa,
+				auth_login,
 				get_users,
 				get_user,
 				remove_user,
@@ -214,14 +214,49 @@ pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn begin_msa() -> Result<MinecraftLogin, String> {
-	Ok(minecraft::begin().await?)
-}
+pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials>, String> {
+	let flow = minecraft::begin().await?;
+	let now = chrono::Utc::now();
 
-#[specta::specta]
-#[tauri::command]
-pub async fn finish_msa(code: String, login: MinecraftLogin) -> Result<MinecraftCredentials, String> {
-	Ok(minecraft::finish(code.as_str(), login).await?)
+	if let Some(win) = handle.get_webview_window("login") {
+		win.close().map_err(|err| err.to_string())?;
+	}
+
+	let win = tauri::WebviewWindowBuilder::new(
+		&handle,
+		"login",
+		tauri::WebviewUrl::External(flow.redirect_uri.parse().map_err(|_|
+			anyhow::anyhow!("failed to parse auth redirect url")
+		).map_err(|err| err.to_string())?),
+	)
+	.title("Log into OneLauncher")
+	.always_on_top(true)
+	.center()
+	.build()
+	.map_err(|err| err.to_string())?;
+
+	win.request_user_attention(Some(tauri::UserAttentionType::Critical)).map_err(|err| err.to_string())?;
+
+	while (chrono::Utc::now() - now) < chrono::Duration::minutes(10) {
+		if win.title().is_err() {
+			return Ok(None);
+		}
+
+		if win.url().map_err(|err| err.to_string())?.as_str().starts_with("https://login.live.com/oauth20_desktop.srf") {
+			if let Some((_, code)) = win.url().map_err(|err| err.to_string())?.query_pairs().find(|x| x.0 == "code") {
+				win.close().map_err(|err| err.to_string())?;
+				let value = minecraft::finish(&code.clone(), flow).await?;
+
+				return Ok(Some(value));
+			}
+		}
+
+		tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+	}
+
+	win.close().map_err(|err| err.to_string())?;
+
+	Ok(None)
 }
 
 #[specta::specta]

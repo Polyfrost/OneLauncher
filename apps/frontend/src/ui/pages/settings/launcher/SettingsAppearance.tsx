@@ -13,7 +13,7 @@ function SettingsAppearance() {
 		<Sidebar.Page>
 			<h1>Appearance</h1>
 			<ScrollableContainer>
-				<div class="flex flex-row items-center flex-1">
+				<div class="flex flex-row items-center">
 					<p>theme placeholder</p>
 				</div>
 

@@ -23,6 +23,8 @@ pub const DUMMY_REPLACE_NEWLINE: &str = "\n";
 pub const DISCORD_RPC_CLIENT_ID: &str = "1234567890000000"; // todo
 /// Our Microsoft client ID.
 pub const MICROSOFT_CLIENT_ID: &str = "9eac3a4e-8cdd-43ef-863e-49cd601b1f03";
+/// The port to run the localhost server on.
+pub const MSA_SERVER_PORT: u16 = 13523;
 /// Mojang/Microsoft client ID.
 pub const MINECRAFT_CLIENT_ID: &str = "00000000402b5328";
 /// Mojang/Microsoft login redirect URI.

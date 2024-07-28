@@ -4,10 +4,12 @@ use interpulse::api::minecraft::Version;
 use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
-use onelauncher::store::{Cluster, ClusterPath, MinecraftLogin};
+use onelauncher::store::{Cluster, ClusterPath};
 use onelauncher::{cluster, minecraft, processor, settings};
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tauri::AppHandle;
+use tauri_plugin_shell::ShellExt;
 use uuid::Uuid;
 
 #[macro_export]
@@ -21,8 +23,7 @@ macro_rules! collect_commands {
 			)
 			.commands(tauri_specta::collect_commands![
 				// User
-				begin_msa,
-				finish_msa,
+				msa_auth,
 				get_users,
 				get_user,
 				remove_user,
@@ -110,16 +111,6 @@ pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
 		.id()
 		.unwrap_or(0);
 
-	// tokio::task::spawn(async move {
-	//     let mut proc = c_lock.write().await;
-	//     if let Err(err) = processor::wait_for(&mut proc).await {
-	//         tracing::error!("Error waiting for process: {:?}", err);
-	//     };
-	// });
-
-	// let mut proc = c_lock.write().await;
-	// processor::wait_for(&mut proc).await?;
-
 	Ok((p_uuid, p_pid))
 }
 
@@ -160,12 +151,6 @@ pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_clusters() -> Result<Vec<Cluster>, String> {
-	// let mut map = HashMap::<ClusterPath, Cluster>::new();
-	// let cluster = placeholder_cluster();
-	// map.insert(cluster.cluster_path(), cluster);
-
-	// Ok(map)
-
 	Ok(cluster::list(None).await?)
 }
 
@@ -230,17 +215,13 @@ pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn begin_msa() -> Result<MinecraftLogin, String> {
-	Ok(minecraft::begin().await?)
-}
+pub async fn msa_auth(handle: AppHandle) -> Result<MinecraftCredentials, String> {
+	let login = minecraft::begin().await?;
+	handle.shell().open(login.redirect_uri.clone(), None).map_err(|err| err.to_string())?;
 
-#[specta::specta]
-#[tauri::command]
-pub async fn finish_msa(
-	code: String,
-	login: MinecraftLogin,
-) -> Result<MinecraftCredentials, String> {
-	Ok(minecraft::finish(code.as_str(), login).await?)
+	Err("not implemented".to_string())
+
+	// Ok(minecraft::finish(code.as_str(), login).await?)
 }
 
 #[specta::specta]

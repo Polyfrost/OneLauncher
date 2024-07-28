@@ -6,8 +6,7 @@ fn main() {
 				"onelauncher",
 				tauri_build::InlinedPlugin::new().commands(&[
 					// User
-					"begin_msa",
-					"finish_msa",
+					"msa_auth",
 					"get_users",
 					"get_user",
 					"remove_user",

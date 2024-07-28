@@ -1,76 +1,149 @@
-import { ChevronRightIcon, InfoCircleIcon, UserPlus02Icon } from '@untitled-theme/icons-solid';
-import { For, Show, createSignal, mergeProps } from 'solid-js';
+import { InfoCircleIcon, LinkExternal01Icon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-solid';
+import { type Accessor, For, Match, type Setter, Show, Switch, createEffect, createSignal, mergeProps } from 'solid-js';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
+import Modal from '~ui/components/overlay/Modal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-
-const Accounts: {
-	username: string;
-	uuid: string;
-}[] = [
-	{
-		username: 'Lynith',
-		uuid: 'f247be7c-5b82-41c6-9148-793ded77e71f',
-	},
-	{
-		username: 'Wyvest',
-		uuid: 'a5331404-0e77-440e-8bef-24c071dac1ae',
-	},
-	{
-		username: 'nextday',
-		uuid: '000646f6-b779-419c-b5d6-2c5ba52419bf',
-	},
-	{
-		username: 'xXfake_playerXx',
-		uuid: '000646f6-b779-419c-b5d6-aaa',
-	},
-];
+import useCommand from '~ui/hooks/useCommand';
 
 function SettingsAccounts() {
 	const [current, setCurrent] = createSignal<string>();
+	const [accounts, { refetch }] = useCommand(bridge.commands.getUsers);
+	const [modalVisible, setModalVisible] = createSignal(false);
+
+	createEffect(() => {
+		const users = accounts();
+		if (users === undefined || users.length < 1 || current() !== undefined)
+			return;
+
+		setCurrent(users[0]!.id);
+	});
+
+	function onDelete(uuid: string) {
+		bridge.commands.removeUser(uuid)
+			.finally(() => {
+				refetch();
+			});
+	}
+
+	function showModal() {
+		setModalVisible(true);
+	}
 
 	return (
 		<Sidebar.Page>
 			<h1>Accounts</h1>
+
 			<ScrollableContainer>
-
-				<For each={Accounts}>
-					{account => (
-						<AccountRow
-							username={account.username}
-							uuid={account.uuid}
-							current={current() === account.uuid}
-							onClick={setCurrent}
-						/>
-					)}
-				</For>
-
+				<Switch>
+					<Match when={accounts()?.length === 0}>
+						<div class="flex flex-col h-full gap-y-4 max-h-64 justify-center items-center">
+							<span class="text-lg font-bold uppercase text-fg-secondary">No accounts added.</span>
+							<span class="text-xl font-bold">Add one with the Add Account button.</span>
+						</div>
+					</Match>
+					<Match when={accounts()?.length !== 0}>
+						<For each={accounts()}>
+							{account => (
+								<AccountRow
+									username={account.username}
+									uuid={account.id}
+									current={current() === account.id}
+									onClick={setCurrent}
+									onDelete={onDelete}
+								/>
+							)}
+						</For>
+					</Match>
+				</Switch>
 			</ScrollableContainer>
+
 			<div class="flex flex-row justify-end items-end mt-2">
 				<Button
 					buttonStyle="primary"
 					iconLeft={<UserPlus02Icon />}
 					children="Add Account"
-					onClick={() => {
-						// @ts-expect-error -- aa
-						window.doTheThing = bridge.comments.finishMsa;
-						bridge.commands.beginMsa().then((data) => {
-							if (data.status === 'ok') {
-								// @ts-expect-error -- aa
-								window.tempData = data.data;
-								// console.log('set');
-							}
-							else {
-								// console.log(data.error);
-							}
-						});
-					}}
+					onClick={showModal}
 				/>
 			</div>
+
+			<AddAccountModal
+				setVisible={setModalVisible}
+				visible={modalVisible}
+				refetch={refetch}
+			/>
+
 		</Sidebar.Page>
+	);
+}
+
+enum ModalStage {
+	Tasks,
+	WaitingForCode,
+	LoggingIn,
+}
+
+interface AddAccountModalProps {
+	visible: Accessor<boolean>;
+	setVisible: Setter<boolean>;
+	refetch: () => any;
+}
+
+function AddAccountModal(props: AddAccountModalProps) {
+	const [stage, setStage] = createSignal(ModalStage.Tasks);
+
+	function start() {
+		setStage(ModalStage.WaitingForCode);
+
+		// tryResult(bridge.commands.beginMsa).then((res) => {
+		// 	console.log(res);
+		// });
+	}
+
+	function finish() {
+		props.setVisible(false);
+		props.refetch();
+	}
+
+	return (
+		<Modal.Simple
+			title="Add Account"
+			visible={props.visible}
+			setVisible={props.setVisible}
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Cancel"
+					onClick={() => props.setVisible(false)}
+				/>,
+				<Button
+					buttonStyle="primary"
+					children="Add"
+					iconLeft={<LinkExternal01Icon />}
+					onClick={start}
+					disabled={stage() !== 0}
+				/>,
+			]}
+		>
+			<div class="flex flex-col gap-y-3 max-w-120 line-height-normal">
+				<Switch>
+					<Match when={stage() !== ModalStage.LoggingIn}>
+						<p>
+							Pressing the "Add" button will open your browser with a Microsoft login page.
+							On this page, you login to your chosen Microsoft account and end up being asked whether you want to add the OneLauncher application.
+						</p>
+					</Match>
+
+					<Match when={stage() === ModalStage.LoggingIn}>
+						<p>Proceeding with Microsoft auth steps...</p>
+					</Match>
+
+				</Switch>
+			</div>
+		</Modal.Simple>
 	);
 }
 
@@ -79,6 +152,7 @@ interface AccountRowProps {
 	uuid: string;
 	current?: boolean;
 	onClick: (uuid: string) => any;
+	onDelete: (uuid: string) => any;
 };
 
 function AccountRow(props: AccountRowProps) {
@@ -114,11 +188,11 @@ function AccountRow(props: AccountRowProps) {
 
 			<div class="">
 				<Button
-					buttonStyle="icon"
-					children={<ChevronRightIcon />}
+					buttonStyle="iconDanger"
+					children={<Trash01Icon />}
 					onClick={(e) => {
 						e.stopPropagation();
-						// TODO: Display fullscreen profile page
+						props.onDelete(props.uuid);
 					}}
 				/>
 			</div>

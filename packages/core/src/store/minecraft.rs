@@ -310,6 +310,89 @@ impl MinecraftState {
 	}
 }
 
+// pub struct LocalServer {
+// 	listener: TcpListener,
+// 	sender: tokio::sync::mpsc::Sender<bool>,
+// 	receiver: tokio::sync::mpsc::Receiver<bool>,
+// }
+
+// impl LocalServer {
+// 	pub async fn new() -> crate::Result<Self> {
+// 		let listener = TcpListener::bind(format!("127.0.0.1:{}", constants::MSA_SERVER_PORT)).await?;
+// 		let (sender, receiver) = tokio::sync::mpsc::channel::<bool>(1);
+
+// 		Ok(Self {
+// 			listener,
+// 			sender,
+// 			receiver,
+// 		})
+// 	}
+
+// 	pub async fn wait_for_code(&self) -> crate::Result<String> {
+
+// 	}
+
+// 	async fn handle_request(&self, stream: &mut TcpStream) -> crate::Result<String> {
+// 		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+// 		let code: Option<String>;
+
+// 		let code_result = {
+// 			let mut buf = vec![0; 1024];
+// 			let size = stream.read(&mut buf).await?;
+// 			if size == 0 {
+// 				return Err(MinecraftAuthError::MSACodeFetchError.into());
+// 			}
+
+// 			let request = String::from_utf8_lossy(&buf[..size]);
+// 			code = Some(
+// 				request
+// 				.split(' ')
+// 				.find(|x| x.starts_with("code="))
+// 				.ok_or(anyhow::anyhow!("No code found"))?
+// 				.split('=')
+// 				.nth(1)
+// 				.ok_or(anyhow::anyhow!("No code found"))?
+// 				.to_string()
+// 			);
+
+// 			Ok::<(), String>(())
+// 		};
+
+// 		let errored = code_result.is_err();
+// 		let html = include_str!("./auth_server.html");
+// 		let result = match code_result {
+// 			Ok(()) => {
+// 				html
+// 					.replace("%TITLE%", "Successfully Authenticated")
+// 					.replace("%CONTENT%", "You can now close this tab.")
+// 			}
+// 			Err(e) => {
+// 				html
+// 					.replace("%TITLE%", "Error")
+// 					.replace("%CONTENT%", &format!("An error has occurred: {}", e.as_str()))
+// 			}
+// 		};
+
+// 		let response = format!(
+// 			"HTTP/1.1 {}\r\nContent-Length: {}\r\n\r\n{}",
+// 			if errored { "400 Bad Request" } else { "200 OK" },
+// 			result.len(),
+// 			result
+// 		);
+
+// 		stream.write_all(response.as_bytes()).await?;
+
+// 		if errored {
+// 			return Err(MinecraftAuthError::MSACodeFetchError.into());
+// 		}
+
+// 		match code {
+// 			Some(code) => Ok(code),
+// 			None => Err(MinecraftAuthError::MSACodeFetchError.into()),
+// 		}
+// 	}
+// }
+
 /// A [`reqwest::Request`] with a [`DateTime<Utc>`] attached to it.
 struct RequestWithDate<T> {
 	pub date: DateTime<Utc>,
@@ -1035,4 +1118,6 @@ pub enum MinecraftAuthError {
 	HashError,
 	#[error("failed to read user xbox session ID")]
 	SessionIdError,
+	#[error("failed to read user MSA code")]
+	MSACodeFetchError,
 }

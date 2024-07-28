@@ -16,6 +16,10 @@
         @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
     }
 
+	&__iconDanger {
+		@apply bg-op-10;
+	}
+
     &__ghost {
         @apply hover:bg-gray-05 [&[aria-checked="true"]]:bg-gray-10 active:bg-gray-10;
     }

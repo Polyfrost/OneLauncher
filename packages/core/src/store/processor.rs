@@ -582,7 +582,9 @@ impl Processor {
 		if let Err(err) = cluster::edit(&cluster_path, |cluster| {
 			cluster.meta.recently_played += update as u64;
 			async { Ok(()) }
-		}).await {
+		})
+		.await
+		{
 			tracing::warn!(
 				"failed to update playtime for cluster {}: {}",
 				&cluster_path,

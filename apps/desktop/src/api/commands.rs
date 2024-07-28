@@ -245,9 +245,12 @@ pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials
 	let win = tauri::WebviewWindowBuilder::new(
 		&handle,
 		"login",
-		tauri::WebviewUrl::External(flow.redirect_uri.parse().map_err(|_|
-			anyhow::anyhow!("failed to parse auth redirect url")
-		).map_err(|err| err.to_string())?),
+		tauri::WebviewUrl::External(
+			flow.redirect_uri
+				.parse()
+				.map_err(|_| anyhow::anyhow!("failed to parse auth redirect url"))
+				.map_err(|err| err.to_string())?,
+		),
 	)
 	.title("Log into OneLauncher")
 	.always_on_top(true)
@@ -255,15 +258,26 @@ pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials
 	.build()
 	.map_err(|err| err.to_string())?;
 
-	win.request_user_attention(Some(tauri::UserAttentionType::Critical)).map_err(|err| err.to_string())?;
+	win.request_user_attention(Some(tauri::UserAttentionType::Critical))
+		.map_err(|err| err.to_string())?;
 
 	while (chrono::Utc::now() - now) < chrono::Duration::minutes(10) {
 		if win.title().is_err() {
 			return Ok(None);
 		}
 
-		if win.url().map_err(|err| err.to_string())?.as_str().starts_with("https://login.live.com/oauth20_desktop.srf") {
-			if let Some((_, code)) = win.url().map_err(|err| err.to_string())?.query_pairs().find(|x| x.0 == "code") {
+		if win
+			.url()
+			.map_err(|err| err.to_string())?
+			.as_str()
+			.starts_with("https://login.live.com/oauth20_desktop.srf")
+		{
+			if let Some((_, code)) = win
+				.url()
+				.map_err(|err| err.to_string())?
+				.query_pairs()
+				.find(|x| x.0 == "code")
+			{
 				win.close().map_err(|err| err.to_string())?;
 				let value = minecraft::finish(&code.clone(), flow).await?;
 

@@ -1034,5 +1034,5 @@ pub enum MinecraftAuthError {
 	#[error("failed to read user hash")]
 	HashError,
 	#[error("failed to read user xbox session ID")]
-	SessionIdError
+	SessionIdError,
 }

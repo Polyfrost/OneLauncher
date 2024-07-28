@@ -167,8 +167,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 
 	tracing::trace!("re-resetting file watching system");
 	let mut file_watcher = crate::utils::watcher::initialize_watcher().await?;
-	state_write.clusters =
-		RwLock::new(Clusters::initialize(&state_write.directories, &mut file_watcher).await?);
+	state_write.clusters = RwLock::new(Clusters::initialize(&state_write.directories, &mut file_watcher).await?);
 	state_write.watcher = RwLock::new(file_watcher);
 	send_ingress(&ingress, 10.0, None).await?;
 

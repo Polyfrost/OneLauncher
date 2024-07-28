@@ -582,9 +582,7 @@ impl Processor {
 		if let Err(err) = cluster::edit(&cluster_path, |cluster| {
 			cluster.meta.recently_played += update as u64;
 			async { Ok(()) }
-		})
-		.await
-		{
+		}).await {
 			tracing::warn!(
 				"failed to update playtime for cluster {}: {}",
 				&cluster_path,
@@ -603,10 +601,16 @@ impl Processor {
 			}
 		});
 
-		{
-			let state = crate::State::get().await?;
+		tokio::spawn(async {
+			let state = match crate::State::get().await {
+				Ok(state) => state,
+				Err(err) => {
+					tracing::warn!("failed to get state: {}", err);
+					return;
+				}
+			};
 			let _ = state.discord_rpc.clear(true).await;
-		}
+		});
 
 		#[cfg(feature = "tauri")]
 		{

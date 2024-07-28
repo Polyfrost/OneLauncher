@@ -7,7 +7,7 @@ use crate::proxy::send::{init_ingress, send_ingress};
 use crate::utils::http::{fetch_advanced, fetch_json};
 use crate::utils::io::{self, IOError};
 use crate::utils::java::{self, get_java_version, JavaVersion};
-use crate::State;
+use crate::{constants, State};
 
 pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec<JavaVersion>> {
 	let java = java::locate_java().await?;
@@ -102,7 +102,7 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 
 		#[cfg(not(target_os = "macos"))]
 		{
-			base_path = base_path.join("bin").join(java::JAVA_BIN)
+			base_path = base_path.join("bin").join(constants::JAVA_BIN)
 		}
 
 		Ok(base_path)

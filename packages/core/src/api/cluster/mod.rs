@@ -376,6 +376,7 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 		cluster.meta.overall_played += recent_playtime;
 		cluster.meta.recently_played = 0;
 	}
+	drop(clusters);
 
 	State::sync().await?;
 

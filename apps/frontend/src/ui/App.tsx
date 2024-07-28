@@ -7,6 +7,7 @@ import AnimatedRoutes from './components/AnimatedRoutes';
 import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
 import { SettingsProvider } from './hooks/useSettings';
 import { ClusterModalController } from './components/overlay/cluster/ClusterCreationModal';
+import { MultiProvider } from './components/MultiProvider';
 import { AppInfo } from '~utils/program-info';
 
 function App(props: ParentProps) {
@@ -44,12 +45,14 @@ function App(props: ParentProps) {
 export default App;
 
 function GlobalContexts(props: ParentProps) {
-	// TODO(refactor): Something something lots of nesting will look awful soon
 	return (
-		<SettingsProvider>
-			<ClusterModalController>
-				{props.children}
-			</ClusterModalController>
-		</SettingsProvider>
+		<MultiProvider
+			values={[
+				SettingsProvider,
+				ClusterModalController,
+			]}
+		>
+			{props.children}
+		</MultiProvider>
 	);
 }

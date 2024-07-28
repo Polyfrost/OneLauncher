@@ -3,13 +3,13 @@ import { createSignal } from 'solid-js';
 import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
 import { WEBSITE } from '@onelauncher/client';
-import useAccount from '../hooks/useAccount';
 import PolyfrostFull from './logos/PolyfrostFull';
-import AccountPopup from './overlay/AccountPopup';
+import AccountPopup from './overlay/account/AccountsPopup';
 import PlayerHead from './game/PlayerHead';
 import Button from './base/Button';
 import NotificationPopup from './overlay/notifications/NotificationPopup';
 import Popup from './overlay/Popup';
+import useAccountController from './overlay/account/AddAccountModal';
 
 interface NavbarLinkProps {
 	path: string;
@@ -33,9 +33,9 @@ function NavbarLink(props: NavbarLinkProps) {
 function Navbar() {
 	const [profileMenuOpen, setProfileMenuOpen] = createSignal(false);
 	const [notificationMenuOpen, setNotificationMenuOpen] = createSignal(false);
-	const navigate = useNavigate();
+	const controller = useAccountController();
 
-	const account = useAccount();
+	const navigate = useNavigate();
 
 	let profileButton!: HTMLButtonElement;
 	let notificationButton!: HTMLButtonElement;
@@ -81,7 +81,7 @@ function Navbar() {
 					ref={profileButton}
 					onClick={() => setProfileMenuOpen(!profileMenuOpen())}
 				>
-					<PlayerHead class="w-[30px] h-[30px] rounded-md hover:opacity-70" uuid={account.uuid} />
+					<PlayerHead class="w-[30px] h-[30px] rounded-md hover:opacity-70" uuid={controller.defaultAccount()?.id} />
 				</button>
 			</div>
 

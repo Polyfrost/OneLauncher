@@ -1,36 +1,25 @@
-import { InfoCircleIcon, LinkExternal01Icon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-solid';
-import { type Accessor, For, Match, type Setter, Show, Switch, createEffect, createSignal, mergeProps } from 'solid-js';
-import { bridge } from '~imports';
+import { InfoCircleIcon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-solid';
+import { For, Match, Show, Switch, createSignal, mergeProps } from 'solid-js';
 import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
-import Modal from '~ui/components/overlay/Modal';
+import useAccountController from '~ui/components/overlay/account/AddAccountModal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-import useCommand from '~ui/hooks/useCommand';
 
 function SettingsAccounts() {
-	const [current, setCurrent] = createSignal<string>();
-	const [accounts, { refetch }] = useCommand(bridge.commands.getUsers);
-	const [modalVisible, setModalVisible] = createSignal(false);
+	const controller = useAccountController();
 
-	createEffect(() => {
-		const users = accounts();
-		if (users === undefined || users.length < 1 || current() !== undefined)
-			return;
-
-		setCurrent(users[0]!.id);
-	});
+	function setCurrent(uuid: string) {
+		controller.setDefaultAccount(uuid);
+	}
 
 	function onDelete(uuid: string) {
-		bridge.commands.removeUser(uuid)
-			.finally(() => {
-				refetch();
-			});
+		controller.removeAccount(uuid);
 	}
 
 	function showModal() {
-		setModalVisible(true);
+		controller.displayAddAccount();
 	}
 
 	return (
@@ -39,19 +28,19 @@ function SettingsAccounts() {
 
 			<ScrollableContainer>
 				<Switch>
-					<Match when={accounts()?.length === 0}>
+					<Match when={controller.accounts()?.length === 0}>
 						<div class="flex flex-col h-full gap-y-4 max-h-64 justify-center items-center">
 							<span class="text-lg font-bold uppercase text-fg-secondary">No accounts added.</span>
 							<span class="text-xl font-bold">Add one with the Add Account button.</span>
 						</div>
 					</Match>
-					<Match when={accounts()?.length !== 0}>
-						<For each={accounts()}>
+					<Match when={controller.accounts()?.length !== 0}>
+						<For each={controller.accounts()}>
 							{account => (
 								<AccountRow
 									username={account.username}
 									uuid={account.id}
-									current={current() === account.id}
+									current={controller.defaultAccount()?.id === account.id}
 									onClick={setCurrent}
 									onDelete={onDelete}
 								/>
@@ -69,81 +58,7 @@ function SettingsAccounts() {
 					onClick={showModal}
 				/>
 			</div>
-
-			<AddAccountModal
-				setVisible={setModalVisible}
-				visible={modalVisible}
-				refetch={refetch}
-			/>
-
 		</Sidebar.Page>
-	);
-}
-
-enum ModalStage {
-	Tasks,
-	WaitingForCode,
-	LoggingIn,
-}
-
-interface AddAccountModalProps {
-	visible: Accessor<boolean>;
-	setVisible: Setter<boolean>;
-	refetch: () => any;
-}
-
-function AddAccountModal(props: AddAccountModalProps) {
-	const [stage, setStage] = createSignal(ModalStage.Tasks);
-
-	function start() {
-		setStage(ModalStage.WaitingForCode);
-
-		// tryResult(bridge.commands.beginMsa).then((res) => {
-		// 	console.log(res);
-		// });
-	}
-
-	function finish() {
-		props.setVisible(false);
-		props.refetch();
-	}
-
-	return (
-		<Modal.Simple
-			title="Add Account"
-			visible={props.visible}
-			setVisible={props.setVisible}
-			buttons={[
-				<Button
-					buttonStyle="secondary"
-					children="Cancel"
-					onClick={() => props.setVisible(false)}
-				/>,
-				<Button
-					buttonStyle="primary"
-					children="Add"
-					iconLeft={<LinkExternal01Icon />}
-					onClick={start}
-					disabled={stage() !== 0}
-				/>,
-			]}
-		>
-			<div class="flex flex-col gap-y-3 max-w-120 line-height-normal">
-				<Switch>
-					<Match when={stage() !== ModalStage.LoggingIn}>
-						<p>
-							Pressing the "Add" button will open your browser with a Microsoft login page.
-							On this page, you login to your chosen Microsoft account and end up being asked whether you want to add the OneLauncher application.
-						</p>
-					</Match>
-
-					<Match when={stage() === ModalStage.LoggingIn}>
-						<p>Proceeding with Microsoft auth steps...</p>
-					</Match>
-
-				</Switch>
-			</div>
-		</Modal.Simple>
 	);
 }
 

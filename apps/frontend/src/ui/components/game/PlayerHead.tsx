@@ -3,7 +3,7 @@ import type { JSX } from 'solid-js';
 import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & {
-	uuid: string;
+	uuid: string | null | undefined;
 	onError?: () => any;
 };
 
@@ -24,13 +24,15 @@ function PlayerHead(props: PlayerHeadProps) {
 					{...rest}
 				/>
 			</Show>
-			<img
-				src={headSrc(split.uuid)}
-				onLoad={() => setLoading(false)}
-				onError={() => props.onError && props.onError()}
-				class={`image-render-pixel ${isLoading() ? 'hidden' : ''} ${split.class}`}
-				{...rest}
-			/>
+			<Show when={props.uuid !== null && props.uuid !== undefined}>
+				<img
+					src={headSrc(split.uuid!)}
+					onLoad={() => setLoading(false)}
+					onError={() => props.onError && props.onError()}
+					class={`image-render-pixel ${isLoading() ? 'hidden' : ''} ${split.class}`}
+					{...rest}
+				/>
+			</Show>
 		</>
 	);
 }

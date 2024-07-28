@@ -6,6 +6,8 @@ permissions = [
   "allow-get-users",
   "allow-get-user",
   "allow-remove-user",
+  "allow-get-default-user",
+  "allow-set-default-user",
 
   # Cluster
   "allow-create-cluster",

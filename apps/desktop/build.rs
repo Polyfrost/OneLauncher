@@ -10,6 +10,8 @@ fn main() {
 					"get_users",
 					"get_user",
 					"remove_user",
+					"get_default_user",
+					"set_default_user",
 					// Cluster
 					"create_cluster",
 					"remove_cluster",

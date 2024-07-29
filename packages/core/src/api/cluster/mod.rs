@@ -108,7 +108,7 @@ pub async fn run_credentials(
 		if let Some(command) = cmd.next() {
 			let full_path = path.full_path().await?;
 			let result = Command::new(command)
-				.args(&cmd.collect::<Vec<&str>>())
+				.args(cmd.collect::<Vec<&str>>())
 				.current_dir(&full_path)
 				.spawn()
 				.map_err(|e| IOError::with_path(e, &full_path))?

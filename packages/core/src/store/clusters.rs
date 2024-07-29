@@ -394,7 +394,8 @@ impl Cluster {
 		file_name: &str,
 	) -> crate::Result<()> {
 		let icon = io::read(icon).await?;
-		self.set_icon_bytes(cache_path, io_semaphore, icon.into(), file_name).await?;
+		self.set_icon_bytes(cache_path, io_semaphore, icon.into(), file_name)
+			.await?;
 		Ok(())
 	}
 

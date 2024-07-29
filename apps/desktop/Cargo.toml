@@ -19,10 +19,7 @@ crate-type = [
 ]
 
 [build-dependencies]
-tauri-build = { workspace = true, features = [
-  "isolation",
-  "codegen",
-] }
+tauri-build = { workspace = true, features = [ "isolation" ] }
 
 [dependencies]
 onelauncher = { workspace = true, features = [ "tauri" ] }

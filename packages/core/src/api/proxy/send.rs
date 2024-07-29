@@ -1,7 +1,8 @@
 use super::IngressId;
-use crate::{api::proxy::{
+use crate::api::proxy::{
 	ClusterPayloadType, Ingress, IngressType, InternetPayload, ProcessPayloadType, ProxyError,
-}, proxy::OfflinePayload};
+};
+use crate::proxy::OfflinePayload;
 use crate::store::{ClusterPath, IngressProcessType, IngressProcessor};
 use uuid::Uuid;
 
@@ -135,7 +136,6 @@ pub async fn send_ingress(
 				.set_position((display * CLI_TOTAL_INGRESS as f64).round() as u64);
 		}
 
-
 		#[cfg(feature = "tauri")]
 		proxy_state
 			.app
@@ -168,7 +168,8 @@ pub async fn send_message(message: &str) -> crate::Result<()> {
 		let proxy_state = crate::ProxyState::get().await?;
 		MessagePayload {
 			message: message.to_string(),
-		}.emit(proxy_state.app.app_handle())?;
+		}
+		.emit(proxy_state.app.app_handle())?;
 	}
 
 	tracing::warn!("{}", message);
@@ -230,7 +231,8 @@ pub async fn send_process(
 			pid,
 			event,
 			message: message.to_string(),
-		}.emit(proxy_state.app.app_handle())?;
+		}
+		.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())
@@ -265,7 +267,8 @@ pub async fn send_cluster(
 			path,
 			name: name.to_string(),
 			event,
-		}.emit(proxy_state.app.app_handle())?;
+		}
+		.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())

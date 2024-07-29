@@ -157,19 +157,19 @@ struct SearchResults {
 	hits: Vec<ModrinthPackage>,
 }
 
-pub async fn search(query: &str) -> Result<Vec<ModrinthPackage>> {
-	// TODO: Fix date_created and date_updated inconsistency (published and updated)
-	let response: SearchResults = serde_json::from_slice(
-		&fetch(
-			format_url!("/search?query={}", query).as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?;
+// pub async fn search(query: &str) -> Result<Vec<ModrinthPackage>> {
+// 	// TODO: Fix date_created and date_updated inconsistency (published and updated)
+// 	let response: SearchResults = serde_json::from_slice(
+// 		&fetch(
+// 			format_url!("/search?query={}", query).as_str(),
+// 			None,
+// 			&State::get().await?.fetch_semaphore,
+// 		)
+// 		.await?,
+// 	)?;
 
-	Ok(response.hits)
-}
+// 	Ok(response.hits)
+// }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

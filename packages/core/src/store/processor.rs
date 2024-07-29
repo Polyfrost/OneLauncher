@@ -641,7 +641,7 @@ impl Processor {
 			let mut cmd = hook.split(' ');
 			if let Some(c) = cmd.next() {
 				let mut c = Command::new(c);
-				c.args(&cmd.collect::<Vec<&str>>())
+				c.args(cmd.collect::<Vec<&str>>())
 					.current_dir(cluster_path.full_path().await?);
 				Some(c)
 			} else {

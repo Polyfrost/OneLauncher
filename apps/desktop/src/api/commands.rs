@@ -15,34 +15,38 @@ use uuid::Uuid;
 macro_rules! collect_commands {
 	() => {{
 		use $crate::api::commands::*;
+		use $crate::ext::updater::*;
 		tauri_specta::collect_commands![
-				// User
-				auth_login,
-				get_users,
-				get_user,
-				get_default_user,
-				set_default_user,
-				remove_user,
-				// Cluster
-				create_cluster,
-				edit_cluster,
-				remove_cluster,
-				get_cluster,
-				get_clusters,
-				run_cluster,
-				// Processor
-				get_running_clusters,
-				get_processes_by_path,
-				kill_process,
-				// Settings
-				get_settings,
-				set_settings,
-				// Metadata
-				get_minecraft_versions,
-				// Package
-				random_mods,
-				get_mod,
-				download_mod,
+			// User
+			auth_login,
+			get_users,
+			get_user,
+			get_default_user,
+			set_default_user,
+			remove_user,
+			// Cluster
+			create_cluster,
+			edit_cluster,
+			remove_cluster,
+			get_cluster,
+			get_clusters,
+			run_cluster,
+			// Processor
+			get_running_clusters,
+			get_processes_by_path,
+			kill_process,
+			// Settings
+			get_settings,
+			set_settings,
+			// Metadata
+			get_minecraft_versions,
+			// Package
+			random_mods,
+			get_mod,
+			download_mod,
+			// Updater
+			check_for_update,
+			install_update,
 		]
 	}};
 }
@@ -90,17 +94,18 @@ pub async fn edit_cluster(
 	name: Option<String>,
 	icon_path: Option<String>,
 ) -> Result<(), String> {
-	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster does not exist")?;
+	let cluster = cluster::get_by_uuid(uuid, None)
+		.await?
+		.ok_or("cluster does not exist")?;
 
 	cluster::edit(&cluster.cluster_path(), move |cluster| {
 		if let Some(name) = name.clone() {
 			cluster.meta.name = name;
 		}
 
-		async move {
-			Ok(())
-		}
-	}).await?;
+		async move { Ok(()) }
+	})
+	.await?;
 
 	let icon_path = icon_path.and_then(|x| PathBuf::from_str(x.as_str()).ok());
 	cluster::edit_icon(&cluster.cluster_path(), icon_path.as_deref()).await?;

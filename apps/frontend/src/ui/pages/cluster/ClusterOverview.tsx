@@ -1,6 +1,5 @@
-import { Edit02Icon, ImagePlusIcon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon, XIcon } from '@untitled-theme/icons-solid';
+import { Edit02Icon, ImagePlusIcon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { Show, createSignal, untrack } from 'solid-js';
-import type { BeforeLeaveEventArgs } from '@solidjs/router';
 import { useBeforeLeave, useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import ClusterCover from '../../components/game/ClusterCover';

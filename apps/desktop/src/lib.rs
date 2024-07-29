@@ -41,12 +41,12 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		let builder = tauri_specta::ts::builder()
 			.config(
 				specta::ts::ExportConfig::default()
-				.bigint(specta::ts::BigIntExportBehavior::BigInt)
+					.bigint(specta::ts::BigIntExportBehavior::BigInt),
 			)
-				.header("// @ts-ignore")
-				.statics(get_static_collection())
-				.commands(collect_commands!())
-				.events(collect_events!());
+			.header("/* eslint-disable -- auto-generated file */")
+			.statics(get_static_collection())
+			.commands(collect_commands!())
+			.events(collect_events!());
 
 		#[cfg(debug_assertions)]
 		let builder = builder.path("../frontend/src/bindings.ts");
@@ -66,6 +66,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
 		.plugin(tauri_plugin_dialog::init())
+		// TODO: add back tauri-plugin-window-state -- it's buggy at the moment
 		// .plugin(tauri_plugin_window_state::Builder::default().build())
 		.plugin(api::init())
 		.menu(tauri::menu::Menu::new)
@@ -77,19 +78,17 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		});
 
 	let app = builder
-		.build(tauri::tauri_build_context!())
+		.build(tauri::generate_context!())
 		.expect("failed to build tauri application");
 
 	if let Err(err) = initialize_state(app.app_handle().clone()).await {
 		tracing::error!("{err}");
 	};
 
-	app.run(|_app_handle, _event| {})
+	app.run(|_, _| {})
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-	// todo setup deep linking once docs are done
-
 	let win = app.get_webview_window("main").unwrap();
 	win.show().unwrap();
 

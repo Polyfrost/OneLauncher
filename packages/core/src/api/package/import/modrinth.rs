@@ -20,8 +20,8 @@ pub async fn is_valid_modrinth(instance_folder: PathBuf) -> bool {
 }
 
 pub async fn import_modrinth(
-	modrinth_instance_folder: PathBuf,
-	cluster_path: ClusterPath,
+	_modrinth_instance_folder: PathBuf,
+	_cluster_path: ClusterPath,
 ) -> crate::Result<()> {
 	Ok(())
 }

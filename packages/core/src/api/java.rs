@@ -7,7 +7,7 @@ use crate::proxy::send::{init_ingress, send_ingress};
 use crate::utils::http::{fetch_advanced, fetch_json};
 use crate::utils::io::{self, IOError};
 use crate::utils::java::{self, get_java_version, JavaVersion};
-use crate::{constants, State};
+use crate::State;
 
 pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec<JavaVersion>> {
 	let java = java::locate_java().await?;

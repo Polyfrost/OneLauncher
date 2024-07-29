@@ -3,7 +3,7 @@ use tauri::{Manager, Runtime};
 use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, specta::Type, serde::Serialize)]
 pub struct Update {
 	pub version: String,
 }
@@ -32,7 +32,7 @@ async fn get_update(app: tauri::AppHandle) -> Result<Option<TauriPluginUpdate>, 
 		.map_err(|e| e.to_string())
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum UpdateEvent {
 	Loading,
@@ -43,6 +43,7 @@ pub enum UpdateEvent {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<Update>, String> {
 	app.emit("updater", UpdateEvent::Loading).ok();
 
@@ -70,6 +71,7 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<Update>, S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn install_update(
 	app: tauri::AppHandle,
 	state: tauri::State<'_, State>,

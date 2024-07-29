@@ -1,12 +1,12 @@
+use onelauncher::constants::*;
 use serde::Serialize;
 use specta::Type;
 use tauri_specta::StaticCollection;
-use onelauncher::constants::*;
 
 pub fn get_static_collection() -> StaticCollection {
 	StaticCollection::default()
 		.register("PROGRAM_INFO", get_program_info())
-        .to_owned()
+		.to_owned()
 }
 
 #[derive(Serialize, Type)]

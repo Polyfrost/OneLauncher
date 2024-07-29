@@ -10,5 +10,5 @@ macro_rules! collect_events {
 			InternetPayload,
 			OfflinePayload,
 		]
-	}}
+	}};
 }

@@ -1,3 +1,4 @@
+use api::statics::get_static_collection;
 use tauri::Manager;
 
 pub mod api;
@@ -36,6 +37,23 @@ pub async fn run() {
 }
 
 pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
+	let (invoke_handler, register_events) = {
+		let builder = tauri_specta::ts::builder()
+			.config(
+				specta::ts::ExportConfig::default()
+				.bigint(specta::ts::BigIntExportBehavior::BigInt)
+			)
+				.header("// @ts-ignore")
+				.statics(get_static_collection())
+				.commands(collect_commands!())
+				.events(collect_events!());
+
+		#[cfg(debug_assertions)]
+		let builder = builder.path("../frontend/src/bindings.ts");
+
+		builder.build().unwrap()
+	};
+
 	let builder = tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -48,20 +66,14 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
 		// .plugin(tauri_plugin_window_state::Builder::default().build())
+		.plugin(api::init())
 		.menu(tauri::menu::Menu::new)
+		.invoke_handler(invoke_handler)
 		.setup(move |app| {
+			register_events(app);
 			setup(app);
 			Ok(())
 		});
-
-	let builder = builder.plugin(api::init()).invoke_handler({
-		let builder = collect_commands!();
-
-		#[cfg(debug_assertions)]
-		let builder = builder.path("../frontend/src/bindings.ts");
-
-		builder.build().unwrap()
-	});
 
 	let app = builder
 		.build(tauri::tauri_build_context!())

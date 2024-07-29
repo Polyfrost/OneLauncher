@@ -13,7 +13,7 @@ import SettingsChangelog from './about/SettingsChangelog';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 import Tooltip from '~ui/components/base/Tooltip';
-import { AppInfo } from '~utils/program-info';
+import { PROGRAM_INFO } from '~bindings';
 
 function SettingsRoutes() {
 	return (
@@ -91,11 +91,11 @@ function Info() {
 					}}
 				>
 					{`
-Launcher Version: ${AppInfo.launcher_version}
-Tauri Version: ${AppInfo.tauri_version}
-Webview Version: ${AppInfo.webview_version} 
-Platform: ${AppInfo.platform} ${AppInfo.arch} bit
-Build: ${AppInfo.dev_build ? 'dev' : 'release'}
+Launcher Version: ${PROGRAM_INFO.launcher_version}
+Tauri Version: ${PROGRAM_INFO.tauri_version}
+Webview Version: ${PROGRAM_INFO.webview_version}
+Platform: ${PROGRAM_INFO.platform} ${PROGRAM_INFO.arch} bit
+Build: ${PROGRAM_INFO.dev_build ? 'dev' : 'release'}
 `.trim()}
 				</div>
 			</Tooltip>

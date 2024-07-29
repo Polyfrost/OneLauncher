@@ -31,8 +31,6 @@ fn main() {
 					"random_mods",
 					"get_mod",
 					"download_mod",
-					// Other
-					"get_program_info",
 				]),
 			),
 	)

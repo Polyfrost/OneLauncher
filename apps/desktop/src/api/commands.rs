@@ -15,12 +15,7 @@ use uuid::Uuid;
 macro_rules! collect_commands {
 	() => {{
 		use $crate::api::commands::*;
-		tauri_specta::ts::builder()
-			.config(
-				specta::ts::ExportConfig::default()
-					.bigint(specta::ts::BigIntExportBehavior::BigInt),
-			)
-			.commands(tauri_specta::collect_commands![
+		tauri_specta::collect_commands![
 				// User
 				auth_login,
 				get_users,
@@ -47,9 +42,7 @@ macro_rules! collect_commands {
 				random_mods,
 				get_mod,
 				download_mod,
-				// Other
-				get_program_info,
-			])
+		]
 	}};
 }
 
@@ -173,33 +166,6 @@ pub async fn get_settings() -> Result<Settings, String> {
 #[tauri::command]
 pub async fn set_settings(settings: Settings) -> Result<(), String> {
 	Ok(settings::set(settings).await?)
-}
-
-#[derive(Serialize, Deserialize, Type)]
-pub struct ProgramInfo {
-	launcher_version: String,
-	webview_version: String,
-	tauri_version: String,
-	dev_build: bool,
-	platform: String,
-	arch: String,
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn get_program_info() -> ProgramInfo {
-	let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
-	let tauri_version = tauri::VERSION;
-	let dev_build = tauri::is_dev();
-
-	ProgramInfo {
-		launcher_version: VERSION.into(),
-		webview_version,
-		tauri_version: tauri_version.into(),
-		dev_build,
-		platform: TARGET_OS.into(),
-		arch: NATIVE_ARCH.into(),
-	}
 }
 
 #[specta::specta]

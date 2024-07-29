@@ -1,11 +1,15 @@
 use super::IngressId;
-use crate::api::proxy::{
+use crate::{api::proxy::{
 	ClusterPayloadType, Ingress, IngressType, InternetPayload, ProcessPayloadType, ProxyError,
-};
-#[cfg(feature = "cli")]
-use crate::constants::CLI_TOTAL_INGRESS;
+}, proxy::OfflinePayload};
 use crate::store::{ClusterPath, IngressProcessType, IngressProcessor};
 use uuid::Uuid;
+
+#[cfg(feature = "cli")]
+use crate::constants::CLI_TOTAL_INGRESS;
+
+#[cfg(feature = "tauri")]
+use tauri_specta::Event;
 
 #[cfg(feature = "tauri")]
 use crate::api::proxy::{ClusterPayload, IngressPayload, MessagePayload, ProcessPayload};
@@ -131,11 +135,12 @@ pub async fn send_ingress(
 				.set_position((display * CLI_TOTAL_INGRESS as f64).round() as u64);
 		}
 
+
 		#[cfg(feature = "tauri")]
 		proxy_state
 			.app
 			.emit(
-				"ingress",
+				IngressPayload::NAME,
 				IngressPayload {
 					fraction: display_conv,
 					message: message.unwrap_or(&ingress.message).to_string(),
@@ -144,6 +149,12 @@ pub async fn send_ingress(
 				},
 			)
 			.map_err(ProxyError::from)?;
+		// let _ = IngressPayload {
+		// 	fraction: display_conv,
+		// 	message: message.unwrap_or(&ingress.message).to_string(),
+		// 	event: ingress.ingress_type.clone(),
+		// 	ingress_uuid: ingress.ingress_uuid,
+		// }.emit(proxy_state.app.app_handle());
 
 		ingress.last_sent = display;
 	}
@@ -155,15 +166,9 @@ pub async fn send_message(message: &str) -> crate::Result<()> {
 	#[cfg(feature = "tauri")]
 	{
 		let proxy_state = crate::ProxyState::get().await?;
-		proxy_state
-			.app
-			.emit(
-				"message",
-				MessagePayload {
-					message: message.to_string(),
-				},
-			)
-			.map_err(ProxyError::from)?;
+		MessagePayload {
+			message: message.to_string(),
+		}.emit(proxy_state.app.app_handle())?;
 	}
 
 	tracing::warn!("{}", message);
@@ -174,10 +179,11 @@ pub async fn send_offline(offline: bool) -> crate::Result<()> {
 	#[cfg(feature = "tauri")]
 	{
 		let proxy_state = crate::ProxyState::get().await?;
-		proxy_state
-			.app
-			.emit("offline", offline)
-			.map_err(ProxyError::from)?;
+		// proxy_state
+		// 	.app
+		// 	.emit("offline", offline)
+		// 	.map_err(ProxyError::from)?;
+		OfflinePayload { offline }.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())
@@ -188,10 +194,11 @@ pub async fn send_internet(internet: InternetPayload) -> crate::Result<()> {
 	#[cfg(feature = "tauri")]
 	{
 		let proxy_state = crate::ProxyState::get().await?;
-		proxy_state
-			.app
-			.emit("internet", internet)
-			.map_err(ProxyError::from)?;
+		// proxy_state
+		// 	.app
+		// 	.emit("internet", internet)
+		// 	.map_err(ProxyError::from)?;
+		internet.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())
@@ -206,18 +213,24 @@ pub async fn send_process(
 	#[cfg(feature = "tauri")]
 	{
 		let proxy_state = crate::ProxyState::get().await?;
-		proxy_state
-			.app
-			.emit(
-				"process",
-				ProcessPayload {
-					uuid,
-					pid,
-					event,
-					message: message.to_string(),
-				},
-			)
-			.map_err(ProxyError::from)?;
+		// proxy_state
+		// 	.app
+		// 	.emit(
+		// 		"process",
+		// 		ProcessPayload {
+		// 			uuid,
+		// 			pid,
+		// 			event,
+		// 			message: message.to_string(),
+		// 		},
+		// 	)
+		// 	.map_err(ProxyError::from)?;
+		ProcessPayload {
+			uuid,
+			pid,
+			event,
+			message: message.to_string(),
+		}.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())
@@ -233,19 +246,26 @@ pub async fn send_cluster(
 	{
 		let path = cluster_path.full_path().await?;
 		let proxy_state = crate::ProxyState::get().await?;
-		proxy_state
-			.app
-			.emit(
-				"cluster",
-				ClusterPayload {
-					uuid,
-					cluster_path: cluster_path.clone(),
-					path,
-					name: name.to_string(),
-					event,
-				},
-			)
-			.map_err(ProxyError::from)?;
+		// proxy_state
+		// 	.app
+		// 	.emit(
+		// 		"cluster",
+		// 		ClusterPayload {
+		// 			uuid,
+		// 			cluster_path: cluster_path.clone(),
+		// 			path,
+		// 			name: name.to_string(),
+		// 			event,
+		// 		},
+		// 	)
+		// 	.map_err(ProxyError::from)?;
+		ClusterPayload {
+			uuid,
+			cluster_path: cluster_path.clone(),
+			path,
+			name: name.to_string(),
+			event,
+		}.emit(proxy_state.app.app_handle())?;
 	}
 
 	Ok(())

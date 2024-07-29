@@ -5,6 +5,8 @@ use tauri::Manager;
 use tokio::sync::Mutex;
 
 pub mod commands;
+pub mod events;
+pub mod statics;
 
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 	tauri::plugin::Builder::new("onelauncher")

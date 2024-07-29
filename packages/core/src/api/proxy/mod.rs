@@ -142,6 +142,7 @@ impl ProxyState {
 	}
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Hash, PartialEq, Eq)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
@@ -184,6 +185,7 @@ pub enum IngressType {
 	},
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 pub struct IngressPayload {
 	pub event: IngressType,
@@ -192,16 +194,19 @@ pub struct IngressPayload {
 	pub message: String,
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 pub struct OfflinePayload {
 	pub offline: bool,
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 pub struct MessagePayload {
 	pub message: String,
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 #[serde(tag = "event")]
 pub enum InternetPayload {
@@ -210,6 +215,7 @@ pub enum InternetPayload {
 	InstallPath { path: PathBuf },
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 pub struct ProcessPayload {
 	pub uuid: Uuid,
@@ -218,6 +224,7 @@ pub struct ProcessPayload {
 	pub message: String,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessPayloadType {
@@ -226,6 +233,7 @@ pub enum ProcessPayloadType {
 	Finished,
 }
 
+#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
 #[derive(Serialize, Clone)]
 pub struct ClusterPayload {
 	pub uuid: Uuid,
@@ -235,6 +243,7 @@ pub struct ClusterPayload {
 	pub event: ClusterPayloadType,
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum ClusterPayloadType {

@@ -10,17 +10,13 @@ import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
 import BrowserRoot from '~ui/pages/browser/BrowserRoot';
-import { initAppInfo } from '~utils/program-info';
 
-(async () => {
-	await initAppInfo();
-	render(() => (
-		<Router root={App}>
-			<Route path="/" component={HomePage} />
-			<Route path="/updates" component={UpdatesPage} />
-			<Route path="/clusters" component={ClusterRoot} children={<ClusterRoot.Routes />} />
-			<Route path="/settings" component={SettingsRoot} children={<SettingsRoot.Routes />} />
-			<Route path="/browser" component={BrowserRoot} children={<BrowserRoot.Routes />} />
-		</Router>
-	), document.getElementById('root') as HTMLElement);
-})();
+render(() => (
+	<Router root={App}>
+		<Route path="/" component={HomePage} />
+		<Route path="/updates" component={UpdatesPage} />
+		<Route path="/clusters" component={ClusterRoot} children={<ClusterRoot.Routes />} />
+		<Route path="/settings" component={SettingsRoot} children={<SettingsRoot.Routes />} />
+		<Route path="/browser" component={BrowserRoot} children={<BrowserRoot.Routes />} />
+	</Router>
+), document.getElementById('root') as HTMLElement);

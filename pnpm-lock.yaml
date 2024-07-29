@@ -95,10 +95,10 @@ importers:
         version: 2.0.0-beta.15
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#d503abbce40595d0af6b36c10439b85c640b4c53
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.19)
@@ -197,8 +197,8 @@ importers:
   packages/scripts:
     dependencies:
       '@flowr/utils':
-        specifier: ^3.10.1
-        version: 3.10.1
+        specifier: ^3.10.2
+        version: 3.10.2
       '@iarna/toml':
         specifier: ^2.2.5
         version: 2.2.5
@@ -672,8 +672,8 @@ packages:
       vue-eslint-parser:
         optional: true
 
-  '@flowr/utils@3.10.1':
-    resolution: {integrity: sha512-kLEMcmDDIw2kOXrAdugrsYPpjI+jHj5jg1VLNDbYET9Qz1neyIAzrFkQGGdCNkqYBmu3PQNy5XXuPkURLMBB6g==}
+  '@flowr/utils@3.10.2':
+    resolution: {integrity: sha512-DYyjxUYRbKZH9YdEEpKol/K/x7v8lTTmL8yLNh2r+nnlIp+/bijgm70W5vZ2k6SM4Y9DSYvsLinQJWyebZPJ8A==}
     engines: {node: '>=20'}
 
   '@fontsource/poppins@5.0.14':
@@ -1101,12 +1101,12 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#d503abbce40595d0af6b36c10439b85c640b4c53':
+    resolution: {commit: d503abbce40595d0af6b36c10439b85c640b4c53, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.1.0-beta.5
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96}
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
+    resolution: {commit: adb938ddf434547ae35f74dc1a080908da03ea96, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
     version: 2.0.0-beta.8
 
   '@testing-library/dom@10.4.0':
@@ -3883,7 +3883,7 @@ snapshots:
       - typescript
       - vitest
 
-  '@flowr/utils@3.10.1': {}
+  '@flowr/utils@3.10.2': {}
 
   '@fontsource/poppins@5.0.14': {}
 
@@ -4229,11 +4229,11 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.20
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.20
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#d503abbce40595d0af6b36c10439b85c640b4c53':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#adb938ddf434547ae35f74dc1a080908da03ea96':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
@@ -5237,7 +5237,7 @@ snapshots:
 
   eslint-plugin-petal@3.10.1(eslint@9.8.0):
     dependencies:
-      '@flowr/utils': 3.10.1
+      '@flowr/utils': 3.10.2
       eslint: 9.8.0
 
   eslint-plugin-regexp@2.6.0(eslint@9.8.0):

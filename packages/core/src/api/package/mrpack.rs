@@ -155,15 +155,10 @@ pub async fn install_zipped_mrpack_files(
 
 					let package_path = pack.path.to_string();
 					let path = std::path::Path::new(&package_path).components().next();
-					if let Some(path) = path {
-						match path {
-							Component::CurDir | Component::Normal(_) => {
-								let path = cluster_path.full_path().await?.join(&package_path);
-								write(&path, &file, &state.io_semaphore).await?;
-							}
-							_ => {}
-						};
-					}
+					if let Some(Component::CurDir | Component::Normal(_)) = path {
+						let path = cluster_path.full_path().await?.join(&package_path);
+						write(&path, &file, &state.io_semaphore).await?;
+					};
 					Ok(())
 				}
 			},

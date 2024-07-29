@@ -37,7 +37,7 @@ tauri-build = { version = "=2.0.0-beta.18" }
 tauri-codegen = { version = "=2.0.0-beta.18" }
 tauri-macros = { version = "=2.0.0-beta.18" }
 tauri-plugin = { version = "=2.0.0-beta.18" }
-tauri-runtime = { version = "=2.0.0-beta.19" }
+tauri-runtime = { version = "=2.0.0-beta.21" }
 
 tauri-plugin-authenticator = { version = "2.0.0-beta" }
 tauri-plugin-shell = { version = "2.0.0-beta" }

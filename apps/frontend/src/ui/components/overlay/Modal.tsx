@@ -5,7 +5,7 @@ import type {
 	Ref,
 	Setter,
 } from 'solid-js';
-import { For } from 'solid-js';
+import { For, createEffect, createSignal, on } from 'solid-js';
 import { mergeRefs } from '@solid-primitives/refs';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
@@ -64,6 +64,110 @@ Modal.Simple = function (props: ModalSimpleProps) {
 				</For>
 			</div>
 		</Modal>
+	);
+};
+
+type ModalDeleteProps = MakeOptional<ModalSimpleProps, 'title'> & {
+	onCancel?: () => void;
+	onDelete?: () => void;
+	timeLeft?: number;
+};
+
+Modal.Delete = function (props: ModalDeleteProps) {
+	const [timeLeft, setTimeLeft] = createSignal(1);
+	const [intervalId, setIntervalId] = createSignal<NodeJS.Timeout | undefined>(undefined);
+
+	createEffect(on(() => props.visible(), (visible) => {
+		startInterval(visible);
+		if (visible !== true)
+			onCancel();
+	}));
+
+	function clearIntervalId() {
+		if (intervalId())
+			clearInterval(intervalId());
+	}
+
+	function startInterval(visible: boolean) {
+		if (visible !== true)
+			return;
+
+		clearIntervalId();
+		setTimeLeft(props.timeLeft || 3);
+
+		const intervalId = setInterval(() => {
+			setTimeLeft((prev) => {
+				const next = prev - 1;
+
+				if (next <= 0)
+					clearIntervalId();
+
+				return next;
+			});
+		}, 1000);
+
+		setIntervalId(intervalId);
+	}
+
+	function onCancel() {
+		if (props.visible() === true)
+			props.setVisible(false);
+
+		if (props.onCancel)
+			props.onCancel();
+	}
+
+	function onDelete() {
+		if (props.visible() === true)
+			props.setVisible(false);
+
+		if (props.onDelete)
+			props.onDelete();
+	}
+
+	return (
+		<Modal.Simple
+			title={props.title || 'Confirm Delete'}
+			ref={props.ref}
+			setVisible={props.setVisible}
+			visible={props.visible}
+			mount={props.mount}
+			zIndex={props.zIndex}
+			buttons={props.buttons || [
+				<Button
+					buttonStyle="secondary"
+					children="Cancel"
+					onClick={onCancel}
+				/>,
+				<Button
+					buttonStyle="danger"
+					children={`Delete${timeLeft() > 0 ? ` (${timeLeft()}s)` : ''}`}
+					disabled={timeLeft() > 0}
+					onClick={onDelete}
+				/>,
+			]}
+		>
+			{props.children || (
+				<>
+					<div class="flex flex-col justify-center items-center gap-y-3">
+						<p>Are you sure you want to delete this item?</p>
+						<p class="text-danger uppercase w-82 line-height-normal">
+							Doing this will
+							{' '}
+							<span class="underline font-bold">delete</span>
+							{' '}
+							your entire
+							{' '}
+							<br />
+							data
+							{' '}
+							<span class="underline font-bold">FOREVER</span>
+							.
+						</p>
+					</div>
+				</>
+			)}
+		</Modal.Simple>
 	);
 };
 

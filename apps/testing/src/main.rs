@@ -12,7 +12,9 @@ async fn main() -> onelauncher::Result<()> {
 	let _logger = onelauncher::start_logger();
 	let _state = State::get().await?;
 
-	modrinth().await?;
+	// modrinth().await?;
+	// launch_and_authenticate().await?;
+	authenticate_mc().await?;
 
 	Ok(())
 }

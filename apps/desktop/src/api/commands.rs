@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use interpulse::api::minecraft::Version;
-use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
 use onelauncher::store::{Cluster, ClusterPath};

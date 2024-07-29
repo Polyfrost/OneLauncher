@@ -305,6 +305,11 @@ impl MinecraftState {
 	#[tracing::instrument(skip(self))]
 	pub async fn remove(&mut self, id: Uuid) -> crate::Result<Option<MinecraftCredentials>> {
 		let val = self.users.remove(&id);
+
+		if self.default_user == Some(id) {
+			self.default_user = None;
+		}
+
 		self.save().await?;
 		Ok(val)
 	}

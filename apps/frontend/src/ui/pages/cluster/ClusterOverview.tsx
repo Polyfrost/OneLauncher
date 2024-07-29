@@ -1,5 +1,5 @@
 import { PlayIcon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
-import { type Accessor, type Setter, createEffect, createSignal, on } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
@@ -30,73 +30,12 @@ function ClusterOverview() {
 				<Banner {...cluster} showDeletePrompt={() => setDeleteVisible(true)} />
 			</ScrollableContainer>
 
-			<DeleteModal
+			<Modal.Delete
 				visible={deleteVisible}
 				setVisible={setDeleteVisible}
-				deleteCluster={deleteCluster}
+				onDelete={deleteCluster}
 			/>
 		</Sidebar.Page>
-	);
-}
-
-interface DeleteModalProps {
-	visible: Accessor<boolean>;
-	setVisible: Setter<boolean>;
-	deleteCluster: () => void;
-};
-function DeleteModal(props: DeleteModalProps) {
-	const [timeLeft, setTimeLeft] = createSignal(3);
-
-	createEffect(on(() => props.visible(), (visible) => {
-		if (visible !== true)
-			return;
-
-		setTimeLeft(3);
-		const interval = setInterval(() => {
-			setTimeLeft((prev) => {
-				const next = prev - 1;
-
-				if (next <= 0)
-					clearInterval(interval);
-
-				return next;
-			});
-		}, 1000);
-	}));
-
-	return (
-		<Modal.Simple
-			visible={props.visible}
-			setVisible={props.setVisible}
-			title="Delete Cluster"
-			buttons={[
-				<Button
-					buttonStyle="secondary"
-					children="Cancel"
-					onClick={() => props.setVisible(false)}
-				/>,
-				<Button
-					buttonStyle="danger"
-					children={`Delete${timeLeft() > 0 ? ` (${timeLeft()}s)` : ''}`}
-					disabled={timeLeft() > 0}
-					onClick={props.deleteCluster}
-				/>,
-			]}
-		>
-			<div class="flex flex-col justify-center items-center gap-y-3">
-				<p>Are you sure you want to delete this cluster?</p>
-				<p class="text-danger uppercase max-w-82 line-height-normal">
-					Doing this will
-					{' '}
-					<span class="underline font-bold">delete</span>
-					{' '}
-					your entire cluster data
-					{' '}
-					<span class="underline font-bold">FOREVER</span>
-					.
-				</p>
-			</div>
-		</Modal.Simple>
 	);
 }
 

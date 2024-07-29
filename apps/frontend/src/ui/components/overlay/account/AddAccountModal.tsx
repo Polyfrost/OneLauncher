@@ -12,7 +12,7 @@ interface AccountControllerContextFunc {
 	accounts: Resource<MinecraftCredentials[]>;
 	defaultAccount: Resource<MinecraftCredentials | null>;
 	setDefaultAccount: (uuid: string) => Promise<void>;
-	removeAccount: (uuid: string) => Promise<void>;
+	removeAccount: (uuid: string, force?: boolean) => Promise<void>;
 }
 
 const AccountControllerContext = createContext<AccountControllerContextFunc>() as Context<AccountControllerContextFunc>;
@@ -21,6 +21,9 @@ export function AccountControllerProvider(props: ParentProps) {
 	const [accounts, { refetch: refetchAccounts }] = useCommand(bridge.commands.getUsers);
 	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser);
 	const [visible, setVisible] = createSignal(false);
+
+	const [deleteModalUuid, setDeleteModalUuid] = createSignal<string>();
+	const deleteModalVisible = () => deleteModalUuid() !== undefined;
 
 	function refetch() {
 		refetchAccounts();
@@ -31,7 +34,17 @@ export function AccountControllerProvider(props: ParentProps) {
 		await tryResult(bridge.commands.setDefaultUser, uuid);
 	}
 
-	async function removeAccount(uuid: string) {
+	async function removeAccount(uuid: string, force?: boolean) {
+		if (force !== true)
+			setDeleteModalUuid(uuid);
+		else
+			await _forceRemoveAccount(uuid);
+	}
+
+	async function _forceRemoveAccount(uuid: string | undefined) {
+		if (uuid === undefined)
+			return;
+
 		await tryResult(bridge.commands.removeUser, uuid);
 		refetch();
 	}
@@ -49,6 +62,12 @@ export function AccountControllerProvider(props: ParentProps) {
 		<AccountControllerContext.Provider value={func}>
 			{props.children}
 			<AddAccountModal visible={visible} setVisible={setVisible} refetch={refetch} />
+
+			<Modal.Delete
+				setVisible={value => setDeleteModalUuid(value ? deleteModalUuid() : undefined)}
+				visible={deleteModalVisible}
+				onDelete={() => _forceRemoveAccount(deleteModalUuid())}
+			/>
 		</AccountControllerContext.Provider>
 	);
 }

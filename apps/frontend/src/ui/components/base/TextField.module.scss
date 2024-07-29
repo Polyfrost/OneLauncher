@@ -1,19 +1,19 @@
 .textfield {
     @apply bg-component-bg [&:not(:focus-within)]:hover:bg-component-bg-hover focus-within:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     @apply border border-gray-05 text-fg-primary fill-fg-primary;
-    @apply rounded-lg px-2.5 py-1.5 max-h-8;
+    @apply rounded-lg px-2.5 py-1.5 min-h-8;
     @apply flex flex-row items-center justify-start gap-x-1.5;
     @apply text-sm;
 
     &.invalid {
         @apply border-danger;
     }
-    
+
     & input {
         &::selection {
             @apply bg-brand/30;
         }
-        
+
         @apply bg-transparent outline-none appearance-none p-0 m-0 box-border w-full;
     }
 

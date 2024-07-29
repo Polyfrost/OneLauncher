@@ -1,5 +1,5 @@
-import type { JSX, ParentProps } from 'solid-js';
-import { createSignal, mergeProps, splitProps } from 'solid-js';
+import type { Accessor, JSX, ParentProps } from 'solid-js';
+import { createEffect, createSignal, mergeProps, on, splitProps, untrack } from 'solid-js';
 import styles from './Button.module.scss';
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & ParentProps & {
@@ -23,13 +23,15 @@ function Button(props: ButtonProps) {
 }
 
 type ButtonToggleProps = ButtonProps & {
-	defaultChecked?: boolean;
+	checked?: Accessor<boolean>;
 	onChecked?: (checked: boolean) => any;
 };
 
 Button.Toggle = (props: ButtonToggleProps) => {
-	const [checked, setChecked] = createSignal(props.defaultChecked || false);
-	const [split, rest] = splitProps(props, ['defaultChecked', 'onChecked', 'onClick', 'class']);
+	const [split, rest] = splitProps(props, ['checked', 'onChecked', 'onClick', 'class']);
+	const [checked, setChecked] = createSignal(untrack(() => split.checked?.()) || false);
+
+	createEffect(on(() => split.checked?.(), newValue => setChecked(newValue || false)));
 
 	function toggle() {
 		const newValue = !checked();

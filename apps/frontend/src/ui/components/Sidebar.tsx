@@ -3,7 +3,6 @@ import type { JSX, ParentProps } from 'solid-js';
 import { For, createEffect, splitProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
-	state: Record<string, any>;
 	base: string;
 	links: Record<string, ([JSX.Element, string, string] | undefined)[]>;
 };
@@ -16,10 +15,6 @@ function Sidebar(props: SidebarProps) {
 	createEffect(() => {
 		if (props.base.endsWith('/'))
 			throw new Error('Base should not end with a slash');
-
-		Object.keys(props.state).forEach((key) => {
-			searchParams.set(key, props.state[key]);
-		});
 	});
 
 	function goto(href: string) {

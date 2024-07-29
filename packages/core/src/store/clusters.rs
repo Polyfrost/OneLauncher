@@ -386,7 +386,21 @@ impl Cluster {
 
 	/// Set the icon [`bytes::Bytes`] for this cluster.
 	#[tracing::instrument(skip(self, io_semaphore, icon))]
-	pub async fn set_icon<'a>(
+	pub async fn set_icon_path<'a>(
+		&'a mut self,
+		cache_path: &Path,
+		io_semaphore: &IoSemaphore,
+		icon: &Path,
+		file_name: &str,
+	) -> crate::Result<()> {
+		let icon = io::read(icon).await?;
+		self.set_icon_bytes(cache_path, io_semaphore, icon.into(), file_name).await?;
+		Ok(())
+	}
+
+	/// Set the icon [`bytes::Bytes`] for this cluster.
+	#[tracing::instrument(skip(self, io_semaphore, icon))]
+	pub async fn set_icon_bytes<'a>(
 		&'a mut self,
 		cache_path: &Path,
 		io_semaphore: &IoSemaphore,

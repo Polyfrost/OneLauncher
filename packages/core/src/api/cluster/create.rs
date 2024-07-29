@@ -71,7 +71,7 @@ pub async fn create_cluster(
 		if let Some(ref icon) = icon {
 			let bytes = io::read(state.directories.caches_dir().await.join(icon)).await?;
 			cluster
-				.set_icon(
+				.set_icon_bytes(
 					&state.directories.caches_dir().await,
 					&state.io_semaphore,
 					bytes::Bytes::from(bytes),

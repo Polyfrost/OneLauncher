@@ -1,10 +1,11 @@
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use interpulse::api::minecraft::Version;
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
 use onelauncher::store::{Cluster, ClusterPath};
-use onelauncher::{cluster, minecraft, processor, settings};
+use onelauncher::{cluster, minecraft, processor, settings, State};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager};
@@ -24,6 +25,7 @@ macro_rules! collect_commands {
 				remove_user,
 				// Cluster
 				create_cluster,
+				edit_cluster,
 				remove_cluster,
 				get_cluster,
 				get_clusters,
@@ -79,6 +81,33 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	} else {
 		Err("Cluster does not exist".to_string())
 	}
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn edit_cluster(
+	uuid: Uuid,
+	name: Option<String>,
+	icon_path: Option<String>,
+) -> Result<(), String> {
+	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster does not exist")?;
+
+	cluster::edit(&cluster.cluster_path(), move |cluster| {
+		if let Some(name) = name.clone() {
+			cluster.meta.name = name;
+		}
+
+		async move {
+			Ok(())
+		}
+	}).await?;
+
+	let icon_path = icon_path.and_then(|x| PathBuf::from_str(x.as_str()).ok());
+	cluster::edit_icon(&cluster.cluster_path(), icon_path.as_deref()).await?;
+
+	State::sync().await?;
+
+	Ok(())
 }
 
 #[specta::specta]

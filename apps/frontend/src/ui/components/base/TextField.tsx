@@ -8,33 +8,34 @@ type TextFieldProps = {
 	inputFilter?: (value: string) => boolean;
 	onValidInput?: (value: string) => any;
 	onValidSubmit?: (value: string) => any;
+	labelClass?: string;
 } & JSX.InputHTMLAttributes<HTMLInputElement>;
 
 function TextField(props: TextFieldProps) {
-	const [fieldProps, rest] = splitProps(props, ['iconLeft', 'iconRight', 'inputFilter', 'onValidInput', 'onValidSubmit']);
+	const [split, rest] = splitProps(props, ['iconLeft', 'iconRight', 'inputFilter', 'onValidInput', 'onValidSubmit', 'labelClass']);
 	const [isValid, setIsValid] = createSignal(true);
 	const id = createUniqueId();
 
 	function validate(e: Event & { currentTarget: HTMLInputElement }) {
-		if (!fieldProps.inputFilter)
+		if (!split.inputFilter)
 			return;
 
 		const value = e.currentTarget.value;
-		const valid = fieldProps.inputFilter(value);
+		const valid = split.inputFilter(value);
 		setIsValid(valid);
 
-		if (valid && fieldProps.onValidInput)
-			fieldProps.onValidInput(value);
+		if (valid && split.onValidInput)
+			split.onValidInput(value);
 	}
 
 	function onSubmit(e: Event & { currentTarget: HTMLInputElement }) {
-		if (isValid() && fieldProps.onValidSubmit)
-			fieldProps.onValidSubmit(e.currentTarget.value);
+		if (isValid() && split.onValidSubmit)
+			split.onValidSubmit(e.currentTarget.value);
 	}
 
 	return (
-		<label for={id} class={`${styles.textfield} ${isValid() ? '' : styles.invalid}`}>
-			{fieldProps.iconLeft && <span class={styles.icon}>{fieldProps.iconLeft}</span>}
+		<label for={id} class={`${styles.textfield} ${isValid() ? '' : styles.invalid} ${split.labelClass || ''}`}>
+			{split.iconLeft && <span class={styles.icon}>{split.iconLeft}</span>}
 			<input
 				id={id}
 				type="text"
@@ -42,7 +43,7 @@ function TextField(props: TextFieldProps) {
 				onChange={onSubmit}
 				{...rest}
 			/>
-			{fieldProps.iconRight && <span class={styles.icon}>{fieldProps.iconRight}</span>}
+			{split.iconRight && <span class={styles.icon}>{split.iconRight}</span>}
 		</label>
 	);
 }

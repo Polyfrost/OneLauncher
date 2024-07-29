@@ -277,7 +277,7 @@ pub async fn edit_icon(path: &ClusterPath, icon_path: Option<&Path>) -> crate::R
 		match clusters.0.get_mut(path) {
 			Some(ref mut cluster) => {
 				cluster
-					.set_icon(
+					.set_icon_bytes(
 						&state.directories.caches_dir().await,
 						&state.io_semaphore,
 						bytes::Bytes::from(bytes),

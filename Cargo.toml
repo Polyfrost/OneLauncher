@@ -29,7 +29,8 @@ tauri = { version = "=2.0.0-beta.23", features = [
   "rustls-tls",
   "tracing",
   "specta",
-  "uuid"
+  "uuid",
+  "protocol-asset"
 ] }
 tauri-utils = { version = "=2.0.0-beta.18" }
 tauri-build = { version = "=2.0.0-beta.18" }
@@ -37,12 +38,14 @@ tauri-codegen = { version = "=2.0.0-beta.18" }
 tauri-macros = { version = "=2.0.0-beta.18" }
 tauri-plugin = { version = "=2.0.0-beta.18" }
 tauri-runtime = { version = "=2.0.0-beta.19" }
+
 tauri-plugin-authenticator = { version = "2.0.0-beta" }
 tauri-plugin-shell = { version = "2.0.0-beta" }
 tauri-plugin-window-state = { version = "2.0.0-beta" }
 tauri-plugin-single-instance = { version = "2.0.0-beta" }
 tauri-plugin-clipboard-manager = { version = "2.1.0-beta" }
 tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
+tauri-plugin-dialog = { version = "2.0.0-beta" }
 
 # rspc is updated on the v0.x branch
 rspc = { version = "=0.2.0", features = [ "specta2" ] }

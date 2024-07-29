@@ -65,6 +65,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
+		.plugin(tauri_plugin_dialog::init())
 		// .plugin(tauri_plugin_window_state::Builder::default().build())
 		.plugin(api::init())
 		.menu(tauri::menu::Menu::new)

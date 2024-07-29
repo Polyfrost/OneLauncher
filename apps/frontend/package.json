@@ -27,6 +27,7 @@
 		"@tanstack/solid-query": "^5.51.15",
 		"@tauri-apps/api": "^2.0.0-beta.13",
 		"@tauri-apps/plugin-clipboard-manager": "github:tauri-apps/tauri-plugin-clipboard-manager#v2",
+		"@tauri-apps/plugin-dialog": "2.0.0-beta.7",
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@thisbeyond/solid-select": "^0.15.0",

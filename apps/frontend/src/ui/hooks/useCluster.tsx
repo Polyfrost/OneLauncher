@@ -1,15 +1,15 @@
-import { type Context, type ParentProps, type Resource, Show, createContext, useContext } from 'solid-js';
+import { type Context, type ParentProps, type ResourceReturn, Show, createContext, useContext } from 'solid-js';
 import useCommand from './useCommand';
 import type { Cluster } from '~bindings';
 import { bridge } from '~imports';
 
-const ClusterContext = createContext<Cluster>() as Context<Cluster>;
+const ClusterContext = createContext() as Context<ResourceReturn<Cluster>>;
 
-export function getCluster(uuid: string | undefined | null): Resource<Cluster> | undefined {
+export function getCluster(uuid: string | undefined | null): ResourceReturn<Cluster> | undefined {
 	if (typeof uuid !== 'string' || uuid.length === 0)
 		return undefined;
 
-	const [resource] = useCommand(bridge.commands.getCluster, uuid);
+	const resource = useCommand(bridge.commands.getCluster, uuid);
 	return resource;
 }
 
@@ -18,8 +18,8 @@ export function ClusterProvider(props: ParentProps & { uuid: string | undefined 
 	const cluster = getCluster(props.uuid);
 
 	return (
-		<Show when={cluster !== undefined && cluster() !== undefined}>
-			<ClusterContext.Provider value={cluster!()!}>
+		<Show when={cluster !== undefined && cluster![0]() !== undefined}>
+			<ClusterContext.Provider value={cluster!}>
 				{props.children}
 			</ClusterContext.Provider>
 		</Show>

@@ -11,6 +11,7 @@ permissions = [
 
   # Cluster
   "allow-create-cluster",
+  "allow-edit-cluster",
   "allow-remove-cluster",
   "allow-get-cluster",
   "allow-get-clusters",

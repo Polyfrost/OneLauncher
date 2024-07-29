@@ -17,6 +17,7 @@
 		"window:allow-internal-toggle-maximize",
 		"event:default",
 		"shell:allow-open",
-		"clipboard-manager:allow-write-text"
+		"clipboard-manager:allow-write-text",
+		"dialog:allow-open"
 	]
 }

@@ -1,6 +1,14 @@
 .button {
     @apply py-1.5 px-3 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
+	&:disabled {
+		@apply bg-opacity-10! text-op-10! pointer-events-none;
+
+		svg {
+			@apply fill-op-10! stroke-op-10!;
+		}
+	}
+
     &__primary {
         @apply text-onbrand hover:text-onbrand-hover  active:text-onbrand-pressed disabled:text-onbrand-disabled;
         @apply bg-brand hover:bg-brand-hover active:bg-brand-pressed disabled:bg-brand-disabled;
@@ -17,7 +25,7 @@
     }
 
 	&__iconDanger {
-		@apply bg-op-10;
+		@apply bg-op-50;
 	}
 
     &__ghost {

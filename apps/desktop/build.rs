@@ -14,6 +14,7 @@ fn main() {
 					"set_default_user",
 					// Cluster
 					"create_cluster",
+					"edit_cluster",
 					"remove_cluster",
 					"get_cluster",
 					"get_clusters",

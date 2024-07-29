@@ -40,12 +40,14 @@ tauri-codegen = { workspace = true }
 tauri-macros = { workspace = true }
 tauri-plugin = { workspace = true }
 tauri-runtime = { workspace = true }
+
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-authenticator = { workspace = true }
 tauri-plugin-clipboard-manager = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 
 tauri-specta = { workspace = true }
 specta = { workspace = true }

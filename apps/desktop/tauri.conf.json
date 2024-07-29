@@ -24,13 +24,11 @@
 				"enable": true,
 				"scope": {
 					"allow": [
-						"$APPDATA/caches/icons/*",
-						"$APPCONFIG/caches/icons/*",
-						"$CONFIG/caches/icons/*",
-						"$APPDATA/db/**",
+						"$DATA/OneLauncher/metadata/caches/icons/*",
+						"$DATA/OneLauncher/db/**",
 						"$RESOURCE/**"
 					],
-					"deny": ["$APPDATA/db/*.stronghold"]
+					"deny": ["$DATA/OneLauncher/db/*.stronghold"]
 				}
 			},
 			"freezePrototype": true,

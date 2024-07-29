@@ -42,6 +42,7 @@ export function AccountControllerProvider(props: ParentProps) {
 	}
 
 	async function _forceRemoveAccount(uuid: string | undefined) {
+		console.log(uuid);
 		if (uuid === undefined)
 			return;
 

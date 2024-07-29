@@ -110,19 +110,19 @@ Modal.Delete = function (props: ModalDeleteProps) {
 	}
 
 	function onCancel() {
-		if (props.visible() === true)
-			props.setVisible(false);
-
 		if (props.onCancel)
 			props.onCancel();
+
+		if (props.visible() === true)
+			props.setVisible(false);
 	}
 
 	function onDelete() {
-		if (props.visible() === true)
-			props.setVisible(false);
-
 		if (props.onDelete)
 			props.onDelete();
+
+		if (props.visible() === true)
+			props.setVisible(false);
 	}
 
 	return (

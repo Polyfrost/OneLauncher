@@ -4,7 +4,7 @@
 //!
 //! - `RUST_LOG=xxx` is a variable which defines tracing configuration (`ERROR > WARN > INFO > DEBUG > TRACE`)
 //! - `RUST_LOG="onelauncher=trace"` will show **all** mesages from OneLauncher and not other dependencies.
-//! - `RUST_LOG="info"` will show info, warn, and error logs.`
+//! - `RUST_LOG="info"` will show info, warn, and error logs.
 //!
 //! Errors returned to [`tauri`] are displayed as tracing error logs.
 //! These errors also include an attached span trace if the error is from a [`tracing_error`] and the level is info, debug, or trace.
@@ -15,7 +15,7 @@
 
 use tracing_appender::non_blocking::WorkerGuard;
 
-/// Start the global [`tracing`] logger in development.
+/// Initialize the global [`tracing`] logger in development.
 #[cfg(debug_assertions)]
 pub fn start_logger() -> Option<WorkerGuard> {
 	use tracing_subscriber::prelude::*;
@@ -34,7 +34,7 @@ pub fn start_logger() -> Option<WorkerGuard> {
 	None
 }
 
-/// Start the global [`tracing`] logger in production.
+/// Initialize the global [`tracing`] logger in production.
 #[cfg(not(debug_assertions))]
 pub fn start_logger() -> Option<WorkerGuard> {
 	use crate::store::Directories;

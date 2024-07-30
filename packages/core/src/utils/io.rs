@@ -9,27 +9,33 @@ use tokio::task::spawn_blocking;
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
 pub enum IOError {
+	/// A wrapped [`std::io::Error`] along with the path involved in the error.
 	#[error("{source}, path: {path}")]
 	IOErrorWrapper {
 		#[source]
 		source: std::io::Error,
 		path: String,
 	},
+	/// A wrapped [`zip::result::ZipError`].
 	#[error(transparent)]
 	ZipError(#[from] zip::result::ZipError),
+	/// A wrapped [`std::io::Error`].
 	#[error(transparent)]
 	IOError(#[from] std::io::Error),
 }
 
 impl IOError {
+	/// Converts a [`std::io::Error`] into an [`IOError`].
 	pub fn from(source: std::io::Error) -> Self {
 		Self::IOError(source)
 	}
 
+	/// Converts a [`zip::result::ZipError`] into an [`IOError`].
 	pub fn from_zip(source: zip::result::ZipError) -> Self {
 		Self::ZipError(source)
 	}
 
+	/// Converts a [`std::io::Error`] and the path involved in the error into an [`IOErrror`].
 	pub fn with_path(source: std::io::Error, path: impl AsRef<std::path::Path>) -> Self {
 		let path = path.as_ref().to_string_lossy().to_string();
 

@@ -1,4 +1,4 @@
-//! **Watcher Utilities*
+//! **Watcher Utilities**
 //!
 //! Async utilities for watching files with [`notify`].
 
@@ -11,6 +11,8 @@ use futures::{SinkExt, StreamExt};
 use notify::RecommendedWatcher;
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 
+/// Creates and initializes an FS watcher for the `clusters` directory, returning
+/// the watcher as a [`Debouncer<RecommendedWatcher>`].
 pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>> {
 	let (mut sender, mut rscv) = channel(1);
 	let watcher = new_debouncer(
@@ -39,13 +41,8 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 
 						for cmp in components.by_ref() {
 							formatted.push(cmp);
-							if matched {
-								break;
-							}
-							// really simple fs watcher to check in any cluster files have been modified by outside forces
-							if cmp.as_os_str() == "clusters" {
-								matched = true;
-							}
+							if matched { break; }
+							if cmp.as_os_str() == "clusters" { matched = true; }
 						}
 
 						let sub = components.next().is_none();

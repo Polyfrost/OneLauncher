@@ -8,15 +8,15 @@ use tracing_error::InstrumentError;
 #[derive(thiserror::Error, Debug)]
 pub enum ErrorKind {
 	/// Wrapper around [`tokio::sync::AcquireError`] to handle sempahore errors.
-	#[error("failed to manage a tokio semaphore: {0}")]
+	#[error("failed to acquire a tokio semaphore: {0}")]
 	AcquireError(#[from] tokio::sync::AcquireError),
 
 	/// Wrapper around [`tokio::sync::oneshot::error::RecvError`] to handle recieve errors.
-	#[error("tokio recieve error: {0}")]
+	#[error("failed to handle async reciever: {0}")]
 	RecvError(#[from] tokio::sync::oneshot::error::RecvError),
 
 	/// Wrapper around [`tokio::task::JoinError`] to handle tokio join handle errors.
-	#[error("tokio join handle error: {0}")]
+	#[error("failed to handle an async task: {0}")]
 	JoinError(#[from] tokio::task::JoinError),
 
 	/// Wrapper around [`flate2::CompressError`] to handle flate compression errors.
@@ -28,11 +28,11 @@ pub enum ErrorKind {
 	DeflateError(#[from] flate2::DecompressError),
 
 	/// Wrapper around [`uuid::Error`] to handle UUID parsing errors.
-	#[error("failed to parse uuids: {0}")]
+	#[error("failed to parse and handle uuids: {0}")]
 	UUIDError(#[from] uuid::Error),
 
 	/// Wrapper around [`interpulse::Error`] to handle interpulse errors.
-	#[error("metadata error: {0}")]
+	#[error("failed to parse and handle metadata: {0}")]
 	MetadataError(#[from] interpulse::Error),
 
 	/// Wrapper around [`serde_json::Error`] to handle Serde JSON parsing errors.
@@ -44,7 +44,7 @@ pub enum ErrorKind {
 	INIError(#[from] serde_ini::de::Error),
 
 	/// Wrapper around [`reqwest::Error`] to handle HTTP errors.
-	#[error("failed to establish a HTTP connection: {0}")]
+	#[error("failed to establish an http connection: {0}")]
 	HTTPError(#[from] reqwest::Error),
 
 	/// Wrapper around [`zip::result::ZipError`] to handle zip errors.
@@ -60,7 +60,7 @@ pub enum ErrorKind {
 	AnyhowError(#[from] anyhow::Error),
 
 	/// Wrapper around [`chrono::ParseError`] to handle date parsing errors.
-	#[error("failed to parse a date: {0}")]
+	#[error("failed to parse and handle datetime: {0}")]
 	ChronoError(#[from] chrono::ParseError),
 
 	/// Wrapper around [`crate::state::DirectoryError`] to handle directory errors.
@@ -104,11 +104,11 @@ pub enum ErrorKind {
 	IOError(#[from] crate::utils::io::IOError),
 
 	/// Wrapper around [`std::io::Error`] to handle non-wrapped std::io errors.
-	#[error("I/O (std) error: {0}")]
+	#[error("error handling standard IO operations: {0}")]
 	StdIOError(#[from] std::io::Error),
 
 	/// Wrapper around [`crate::utils::java::JavaError`] to handle java errors.
-	#[error("there was an error managing java installations: {0}")]
+	#[error("failed to manage java installations: {0}")]
 	JavaError(#[from] crate::utils::java::JavaError),
 
 	/// Wrapper around [`crate::store::StrongholdError`] to handle stronghold errors.
@@ -117,35 +117,43 @@ pub enum ErrorKind {
 
 	/// Wrapper around [`tauri::Error`] to handle Tauri errors when the feature flag is enabled
 	#[cfg(feature = "tauri")]
-	#[error("Tauri error: {0}")]
+	#[error("error handling tauri: {0}")]
 	TauriError(#[from] tauri::Error),
 }
 
+/// A safe, accessible error structure wrapper around [`ErrorKind`] for use with [`tracing_error`].
 #[derive(Debug)]
 pub struct Error {
+	/// The raw, inner [`ErrorKind`], wrapped in an [`Arc`].
 	pub raw: std::sync::Arc<ErrorKind>,
+	/// The traced [`ErrorKind`] ([`tracing_error`]) to be parsed and logged.
 	pub source: tracing_error::TracedError<std::sync::Arc<ErrorKind>>,
 }
 
 impl From<Error> for String {
+	/// Converts an [`Error`] into a [`String`] value.
 	fn from(value: Error) -> Self {
 		value.to_string()
 	}
 }
 
 impl std::error::Error for Error {
+	/// Get the source for the inner traced [`Error`].
 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
 		self.source.source()
 	}
 }
 
 impl std::fmt::Display for Error {
+	/// Format the [`Error`] and output it into the formatter buffer.
 	fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(fmt, "{}", self.source)
 	}
 }
 
 impl<E: Into<ErrorKind>> From<E> for Error {
+	/// Converts an [`ErrorKind`] error into a traced [`Error`].
+	/// Useful for reducing error mapping and standardizing error types.
 	fn from(source: E) -> Self {
 		let error = Into::<ErrorKind>::into(source);
 		let boxed_error = std::sync::Arc::new(error);
@@ -158,6 +166,7 @@ impl<E: Into<ErrorKind>> From<E> for Error {
 }
 
 impl ErrorKind {
+	/// Converts the current [`ErrorKind`] into a traced [`Error`].
 	pub fn as_error(self) -> Error {
 		self.into()
 	}

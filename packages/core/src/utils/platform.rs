@@ -7,6 +7,8 @@ use regex::Regex;
 
 // todo: add this to interpulse (maybe, generally we keep it unimplemented but these are pretty basic functions).
 
+/// An extension of [`Os`] for utilities on converting the current system's operating system
+/// into an [`Os`] structure for simple management.
 pub trait OsExt {
 	/// Get the [`Os`] of the current system
 	fn native() -> Self;
@@ -52,7 +54,7 @@ impl OsExt for Os {
 	}
 }
 
-// Platform rule handling
+/// Handles an os-specific [`OsRule`], returning if the [`Os`] matches the rule.
 pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 	let mut rule_match = true;
 
@@ -77,6 +79,7 @@ pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 	rule_match
 }
 
+/// Gets the seperator between Java classpaths in metadata (`";"` on Windows, `";"` on others).
 pub fn classpath_separator(java_arch: &str) -> &'static str {
 	match Os::native_arch(java_arch) {
 		Os::Osx | Os::OsxArm64 | Os::Linux | Os::LinuxArm32 | Os::LinuxArm64 | Os::Unknown => ":",

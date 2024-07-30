@@ -239,6 +239,37 @@ pub async fn get_mod_path(
 	.into())
 }
 
+/// Get log names for a specific cluster by it's [`ClusterPath`].
+#[tracing::instrument]
+pub async fn get_logs(path: &ClusterPath) -> crate::Result<Vec<String>> {
+	let logs_dir = path.full_path().await?.join("logs");
+	let mut logs = io::read_dir(logs_dir).await?;
+	let mut log_names: Vec<String> = vec![];
+
+	while let Some(log) = logs.next_entry().await? {
+		if log.file_type().await?.is_file() {
+			let file_name = log.file_name().to_string_lossy().to_string();
+
+			if file_name == "latest.log" {
+				log_names.insert(0, file_name);
+				continue;
+			}
+
+			log_names.push(file_name);
+		}
+	}
+
+	Ok(log_names)
+}
+
+/// Get a log for a specific cluster by it's [`ClusterPath`] and log [`PathBuf`].
+#[tracing::instrument]
+pub async fn get_log(path: &ClusterPath, log_name: String) -> crate::Result<String> {
+	let log_path = path.full_path().await?.join("logs").join(log_name);
+	let log = io::read_to_string(&log_path).await?;
+	Ok(log)
+}
+
 /// edit a cluster with an async closure and it's [`ClusterPath`]
 pub async fn edit<FutFn>(
 	path: &ClusterPath,

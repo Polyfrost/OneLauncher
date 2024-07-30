@@ -8,7 +8,6 @@ type SidebarProps = ParentProps & {
 };
 
 function Sidebar(props: SidebarProps) {
-	const searchParams = new URLSearchParams();
 	const navigate = useNavigate();
 	const location = useLocation();
 
@@ -18,7 +17,7 @@ function Sidebar(props: SidebarProps) {
 	});
 
 	function goto(href: string) {
-		const url = `${props.base}${href}?${searchParams.toString()}`;
+		const url = `${props.base}${href}${location.search.toString()}`;
 		navigate(url);
 	}
 

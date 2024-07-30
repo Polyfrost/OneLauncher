@@ -1,6 +1,10 @@
 .dropdown {
     @apply relative h-full;
 
+	&[data-disabled="true"] {
+		@apply pointer-events-none opacity-50;
+	}
+
     .dropdown_elements_container {
         @apply flex flex-col gap-1;
     }
@@ -20,7 +24,7 @@
     }
 
     .row {
-        @apply w-full flex flex-row justify-start items-center gap-1.5 h-4 text-nowrap overflow-hidden;
+        @apply w-full flex flex-row justify-start items-center gap-1.5 h-5 text-nowrap overflow-hidden;
 
         > svg {
             @apply min-w-4 min-h-4 w-4 h-4;

@@ -31,6 +31,8 @@ macro_rules! collect_commands {
 			get_cluster,
 			get_clusters,
 			run_cluster,
+			get_cluster_logs,
+			get_cluster_log,
 			// Processor
 			get_running_clusters,
 			get_processes_by_path,
@@ -173,6 +175,23 @@ pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 		Some(cluster) => Ok(cluster),
 		None => Err("Cluster does not exist".into()),
 	}
+}
+
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster_logs(uuid: Uuid) -> Result<Vec<String>, String> {
+	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
+	let logs = cluster::get_logs(&cluster.cluster_path()).await?;
+	Ok(logs)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster_log(uuid: Uuid, log_name: String) -> Result<String, String> {
+	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
+	let log = cluster::get_log(&cluster.cluster_path(), log_name).await?;
+	Ok(log)
 }
 
 #[specta::specta]

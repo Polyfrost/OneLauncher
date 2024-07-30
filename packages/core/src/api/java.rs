@@ -102,7 +102,7 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 
 		#[cfg(not(target_os = "macos"))]
 		{
-			base_path = base_path.join("bin").join(constants::JAVA_BIN)
+			base_path = base_path.join("bin").join(crate::constants::JAVA_BIN)
 		}
 
 		Ok(base_path)

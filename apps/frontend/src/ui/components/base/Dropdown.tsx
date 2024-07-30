@@ -21,7 +21,7 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 };
 
 function Dropdown(props: DropdownProps) {
-	const [split, rest] = splitProps(props, ['children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass', 'listToolRow']);
+	const [split, rest] = splitProps(props, ['disabled', 'children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass', 'listToolRow']);
 	const [visible, setVisible] = createSignal(false);
 
 	// eslint-disable-next-line solid/reactivity -- todo
@@ -60,7 +60,7 @@ function Dropdown(props: DropdownProps) {
 	);
 
 	return (
-		<div ref={ref} class={`${styles.dropdown} ${split.class || ''}`} {...rest}>
+		<div ref={ref} class={`${styles.dropdown} ${split.class || ''}`} data-disabled={split.disabled || false} {...rest}>
 			<Component />
 
 			<Popup

@@ -177,9 +177,12 @@ default-features = false
 
 [patch.crates-io]
 specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
-rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" }
-rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
+
+# todo
+# rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
+# rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
+
 interpulse = { git = "https://github.com/pulseflow/workers", rev = "4d247c78545703200435a4a063c3f77fd644370f" }
 
 [profile.dev]

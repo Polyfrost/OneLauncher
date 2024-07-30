@@ -37,6 +37,8 @@ pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge";
 /// Our metadata API base url.
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
+/// https://mclo.gs/ API base url.
+pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 
 // =========== Paths ===========
 /// The public `settings.json` file used to store the global [`Settings`] state.

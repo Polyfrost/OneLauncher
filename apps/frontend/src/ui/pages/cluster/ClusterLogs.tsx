@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createSignal, untrack } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
+import { LinkExternal01Icon, Upload01Icon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
@@ -9,6 +9,7 @@ import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
 import useSettingsContext from '~ui/hooks/useSettings';
 import joinPath from '~utils/helpers';
+import FormattedLog from '~ui/components/content/FormattedLog';
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
@@ -16,10 +17,10 @@ function ClusterLogs() {
 	const settings = useSettingsContext();
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
-	const [log, setLog] = createSignal<string | null>(null);
+	const [logContent, setLogContent] = createSignal<string | null>(null);
 
 	function getAndSetLog(log_name: string) {
-		tryResult(bridge.commands.getClusterLog, cluster()!.uuid, log_name).then(setLog);
+		tryResult(bridge.commands.getClusterLog, cluster()!.uuid, log_name).then(setLogContent);
 	}
 
 	function changeLog(index: number) {
@@ -39,6 +40,15 @@ function ClusterLogs() {
 		const dir = joinPath(root, 'clusters', path);
 
 		open(joinPath(dir, 'logs'));
+	}
+
+	async function uploadAndOpenLog() {
+		const log = activeLogFile();
+		if (log === null)
+			return;
+
+		const id = await tryResult(bridge.commands.uploadLog, cluster()!.uuid, log);
+		open(`https://mclo.gs/${id}`);
 	}
 
 	const missingLogs = () => logs() === undefined || logs()?.length === 0 || false;
@@ -61,6 +71,14 @@ function ClusterLogs() {
 				<div class="flex flex-row justify-between items-center gap-x-1 h-10">
 					<h1>Logs</h1>
 					<div class="flex flex-row gap-x-2">
+						<Button
+							buttonStyle="secondary"
+							onClick={uploadAndOpenLog}
+							children="Upload"
+							iconLeft={<Upload01Icon />}
+							disabled={missingLogs()}
+						/>
+
 						<Dropdown
 							onChange={changeLog}
 							class="min-w-50"
@@ -79,6 +97,7 @@ function ClusterLogs() {
 								}}
 							</For>
 						</Dropdown>
+
 						<Button
 							buttonStyle="primary"
 							onClick={openFolder}
@@ -89,10 +108,10 @@ function ClusterLogs() {
 					</div>
 				</div>
 
-				<Show when={log() !== null} fallback={<span>No logs were found.</span>}>
+				<Show when={logContent() !== null} fallback={<span>No logs were found.</span>}>
 					<div class="bg-component-bg flex flex-1 h-full font-mono font-medium overflow-auto p-2 rounded-md mt-2">
 						<OverlayScrollbarsComponent class="flex-1 h-full relative">
-							<code class="whitespace-pre select-text absolute line-height-normal">{log()}</code>
+							<FormattedLog log={logContent()!} />
 						</OverlayScrollbarsComponent>
 					</div>
 				</Show>

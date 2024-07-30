@@ -99,6 +99,14 @@ export default defineConfig({
 				},
 			},
 
+			code: {
+				info: '#61AFEF',
+				warn: '#E5C07B',
+				error: '#BE5046',
+				debug: '#2B4BFF',
+				trace: '#FDFDFD',
+			},
+
 			primary: '#11171C',
 			secondary: '#192026',
 		},

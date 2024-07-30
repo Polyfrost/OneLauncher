@@ -33,6 +33,7 @@ macro_rules! collect_commands {
 			run_cluster,
 			get_cluster_logs,
 			get_cluster_log,
+			upload_log,
 			// Processor
 			get_running_clusters,
 			get_processes_by_path,
@@ -192,6 +193,14 @@ pub async fn get_cluster_log(uuid: Uuid, log_name: String) -> Result<String, Str
 	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
 	let log = cluster::get_log(&cluster.cluster_path(), log_name).await?;
 	Ok(log)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> {
+	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
+	let id = cluster::upload_log(&cluster.cluster_path(), log_name).await?;
+	Ok(id)
 }
 
 #[specta::specta]

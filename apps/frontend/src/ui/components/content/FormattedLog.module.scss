@@ -1,0 +1,51 @@
+.log {
+	@apply whitespace-pre absolute flex flex-col text-md;
+	* {
+		@apply whitespace-pre! select-text!;
+	}
+
+	> span {
+		@apply rounded-md hover:bg-component-bg-hover p-1.5;
+
+		&[data-empty="true"] {
+			@apply hover:bg-none h-6.5;
+		}
+
+		&[data-level="INFO"] {
+			@apply text-code-info;
+		}
+
+		&[data-level="DEBUG"] {
+			@apply text-code-debug;
+		}
+
+		&[data-level="TRACE"] {
+			@apply text-code-trace;
+		}
+
+		&[data-level="WARN"] {
+			@apply text-code-warn;
+		}
+
+		&[data-level="ERROR"] {
+			@apply text-code-error;
+		}
+
+		> span:nth-child(1) {
+			@apply relative text-transparent text-op-0!;
+		}
+
+		> span:nth-child(1):before {
+			content: attr(data-date);
+			@apply absolute w-full text-center z-1 select-text! text-fg-secondary text-op-100!;
+		}
+
+		> span:nth-child(2) {
+			@apply font-bold;
+		}
+
+		&[data-chat="true"] > span:nth-child(3) {
+			@apply text-white;
+		}
+	}
+}

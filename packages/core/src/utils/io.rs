@@ -3,8 +3,9 @@
 //! Async wrapper around [`tokio::fs`] and [`std::io::Error`] for our error system.
 
 use std::io::Write;
+use async_compression::tokio::bufread::GzipDecoder;
 use tempfile::NamedTempFile;
-use tokio::task::spawn_blocking;
+use tokio::{io::AsyncReadExt, task::spawn_blocking};
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
@@ -83,6 +84,19 @@ pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> Result<(), IOE
 			source: e,
 			path: path.to_string_lossy().to_string(),
 		})
+}
+
+/// Creates a future which will open a gzip compressed file for reading and read the entire contents into a string and return said string.
+pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
+	let mut f = tokio::fs::File::open(path).await?;
+	let mut buf = vec![];
+	f.read_to_end(&mut buf).await?;
+
+	let mut decoder = GzipDecoder::new(buf.as_slice());
+	let mut dst = String::new();
+	decoder.read_to_string(&mut dst).await?;
+
+	Ok(dst)
 }
 
 /// Creates a future which will open a file for reading and read the entire contents into a string and return said string.

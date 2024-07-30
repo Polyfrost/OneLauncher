@@ -13,6 +13,7 @@ use crate::prelude::{ClusterPath, JavaVersion, PackagePath};
 use crate::store::MinecraftCredentials;
 pub use crate::store::{Cluster, JavaOptions, State};
 
+use crate::utils::http;
 use crate::utils::io::{self, IOError};
 
 use std::collections::HashMap;
@@ -266,8 +267,62 @@ pub async fn get_logs(path: &ClusterPath) -> crate::Result<Vec<String>> {
 #[tracing::instrument]
 pub async fn get_log(path: &ClusterPath, log_name: String) -> crate::Result<String> {
 	let log_path = path.full_path().await?.join("logs").join(log_name);
+
+	if !log_path.exists() {
+		return Err(anyhow::anyhow!(
+			"failed to get log at path {}",
+			log_path.display()
+		)
+		.into());
+	}
+
+	if let Some(ext) = log_path.extension() {
+		if ext == "gz" {
+			let log = io::read_gz_to_string(&log_path).await?;
+			return Ok(log);
+		}
+	}
+
 	let log = io::read_to_string(&log_path).await?;
 	Ok(log)
+}
+
+/// Upload a log to https://mclo.gs/. If successful, it returns the log id
+#[tracing::instrument]
+pub async fn upload_log(path: &ClusterPath, log_name: String) -> crate::Result<String> {
+	let log = get_log(path, log_name).await?;
+
+	let mut form = HashMap::new();
+	form.insert("content", log);
+
+	#[derive(serde::Deserialize)]
+	struct ResponseBody {
+		pub success: bool,
+		#[serde(default)]
+		pub id: Option<String>,
+		#[serde(default)]
+		pub error: Option<String>
+	}
+
+	let parsed = serde_json::from_slice::<ResponseBody>(
+		&http::REQWEST_CLIENT.post(format!("{}/log", crate::constants::MCLOGS_API_URL))
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.form(&form)
+			.send()
+			.await?
+			.bytes()
+			.await?
+	)?;
+
+	if parsed.success {
+		if let Some(id) = parsed.id {
+			Ok(id)
+		} else {
+			Err(anyhow::anyhow!("failed to get log id from mclo.gs").into())
+		}
+	} else {
+		Err(anyhow::anyhow!("failed to upload log to mclo.gs: {}", parsed.error.unwrap_or_default()).into())
+	}
 }
 
 /// edit a cluster with an async closure and it's [`ClusterPath`]

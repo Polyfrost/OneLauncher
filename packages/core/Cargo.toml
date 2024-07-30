@@ -51,7 +51,6 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_ini = { workspace = true }
-flate2 = { workspace = true }
 paste = { workspace = true }
 futures = { workspace = true }
 tar = { workspace = true }
@@ -82,6 +81,8 @@ rand = { workspace = true }
 p256 = { workspace = true }
 byteorder = { workspace = true }
 base64 = { workspace = true }
+async-compression = { workspace = true }
+flate2 = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }

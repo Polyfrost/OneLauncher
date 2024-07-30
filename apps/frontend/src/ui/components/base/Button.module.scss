@@ -2,7 +2,7 @@
     @apply py-1.5 px-3 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
 	&:disabled {
-		@apply bg-opacity-10! text-op-10! pointer-events-none;
+		@apply border-op-1! bg-opacity-10! text-op-10! pointer-events-none;
 
 		svg {
 			@apply fill-op-10! stroke-op-10!;

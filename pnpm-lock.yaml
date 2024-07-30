@@ -80,7 +80,7 @@ importers:
         version: 0.2.3(@tanstack/solid-query@5.51.15(solid-js@1.8.19))(solid-js@1.8.19)
       '@rspc/tauri':
         specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-beta.15)
+        version: 0.2.0(@tauri-apps/api@2.0.0-beta.16)
       '@solid-primitives/refs':
         specifier: ^1.0.8
         version: 1.0.8(solid-js@1.8.19)
@@ -91,17 +91,17 @@ importers:
         specifier: ^5.51.15
         version: 5.51.15(solid-js@1.8.19)
       '@tauri-apps/api':
-        specifier: ^2.0.0-beta.13
-        version: 2.0.0-beta.15
+        specifier: ^2.0.0-beta.16
+        version: 2.0.0-beta.16
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#c998bb4163eeb91b42f9adf67bc77e1d454542bf
       '@tauri-apps/plugin-dialog':
         specifier: 2.0.0-beta.7
         version: 2.0.0-beta.7
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#79f5da18391b0062db7af6f20f05acb74018be3b
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.19)
@@ -173,7 +173,7 @@ importers:
         version: 0.2.3(@tanstack/solid-query@5.51.15(solid-js@1.8.19))(solid-js@1.8.19)
       '@rspc/tauri':
         specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-beta.15)
+        version: 0.2.0(@tauri-apps/api@2.0.0-beta.16)
       '@solid-primitives/deep':
         specifier: ^0.2.9
         version: 0.2.9(solid-js@1.8.19)
@@ -1183,6 +1183,10 @@ packages:
     resolution: {integrity: sha512-H9w6iISmR+NvH4XuyCZB4zDN10tf9RFt6i/9JHEjaRhAowdAaJ+oiXq/3kedizNClHMtbTQ5j0oqDVPkZDAI8g==}
     engines: {node: '>= 18.18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
 
+  '@tauri-apps/api@2.0.0-beta.16':
+    resolution: {integrity: sha512-YGjkR9HxS/YyIoqoXDkk8o9Yy5NW6u9YxzeqEodwwOUoeS0nac6mzLTW3VYIuSelHmyUQCgbyENVY6e5CJXA4Q==}
+    engines: {node: '>= 18.18', npm: '>= 6.6.0', yarn: '>= 1.19.1'}
+
   '@tauri-apps/cli-darwin-arm64@2.0.0-beta.20':
     resolution: {integrity: sha512-oCJOCib7GuYkwkBXx+ekamR8NZZU+2i3MLP+DHpDxK5gS2uhCE+CBkamJkNt6y1x6xdVnwyqZOm5RvN4SRtyIA==}
     engines: {node: '>= 10'}
@@ -1248,15 +1252,15 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#c998bb4163eeb91b42f9adf67bc77e1d454542bf':
+    resolution: {commit: c998bb4163eeb91b42f9adf67bc77e1d454542bf, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.1.0-beta.5
 
   '@tauri-apps/plugin-dialog@2.0.0-beta.7':
     resolution: {integrity: sha512-myywwpsKbquDDzl5zaOmmLLv5O8EJ/GgHDAoVSPwO97R4iWzkDvj3HFF91tNh7i25Tu/bP6jYPAdZA1NCRxxtg==}
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96}
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#79f5da18391b0062db7af6f20f05acb74018be3b':
+    resolution: {commit: 79f5da18391b0062db7af6f20f05acb74018be3b, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
     version: 2.0.0-beta.8
 
   '@testing-library/dom@10.4.0':
@@ -4356,10 +4360,10 @@ snapshots:
       '@tanstack/solid-query': 5.51.15(solid-js@1.8.19)
       solid-js: 1.8.19
 
-  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.15)':
+  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-beta.16)':
     dependencies:
       '@rspc/client': 0.2.0
-      '@tauri-apps/api': 2.0.0-beta.15
+      '@tauri-apps/api': 2.0.0-beta.16
 
   '@sec-ant/readable-stream@0.4.1': {}
 
@@ -4462,6 +4466,8 @@ snapshots:
 
   '@tauri-apps/api@2.0.0-beta.15': {}
 
+  '@tauri-apps/api@2.0.0-beta.16': {}
+
   '@tauri-apps/cli-darwin-arm64@2.0.0-beta.20':
     optional: true
 
@@ -4505,17 +4511,17 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.20
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.20
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#c998bb4163eeb91b42f9adf67bc77e1d454542bf':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.15
+      '@tauri-apps/api': 2.0.0-beta.16
 
   '@tauri-apps/plugin-dialog@2.0.0-beta.7':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#79f5da18391b0062db7af6f20f05acb74018be3b':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.15
+      '@tauri-apps/api': 2.0.0-beta.16
 
   '@testing-library/dom@10.4.0':
     dependencies:

@@ -235,8 +235,8 @@ pub struct ClusterMeta {
 	pub name: String,
 
 	/// The user-facing group of the cluster stored as a string.
-	#[serde(default)]
-	pub group: Vec<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub group: Option<String>,
 	/// The associated Minecraft version of the cluster as last updated.
 	pub mc_version: String,
 
@@ -355,7 +355,7 @@ impl Cluster {
 			path: PathBuf::new().join(&name),
 			meta: ClusterMeta {
 				name,
-				group: vec![],
+				group: None,
 				mc_version: version,
 				loader: Loader::Vanilla,
 				loader_version: None,

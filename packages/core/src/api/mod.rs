@@ -6,7 +6,6 @@ pub mod cluster;
 pub mod handler;
 pub mod ingress;
 pub mod java;
-pub mod logger;
 pub mod metadata;
 pub mod minecraft;
 pub mod package;

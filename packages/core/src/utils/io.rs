@@ -64,6 +64,21 @@ pub async fn read_dir(path: impl AsRef<std::path::Path>) -> Result<tokio::fs::Re
 		})
 }
 
+/// Creates a directory if they are missing.
+pub async fn create_dir(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
+	let path = path.as_ref();
+	if path.exists() {
+		return Ok(());
+	}
+
+	tokio::fs::create_dir(path)
+		.await
+		.map_err(|e| IOError::IOErrorWrapper {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
+}
+
 /// Recursively creates a directory and all of its parent components if they are missing.
 pub async fn create_dir_all(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
 	let path = path.as_ref();

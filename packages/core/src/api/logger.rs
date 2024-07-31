@@ -2,9 +2,11 @@
 
 use crate::data::{Credentials, Directories, MinecraftCredentials};
 use crate::prelude::ClusterPath;
+use crate::utils::http;
 use crate::utils::io::{self, IOError};
 use futures::TryFutureExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::Read;
 use std::time::SystemTime;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -94,14 +96,12 @@ pub async fn get_logs_by_type(
 
 /// Get all [`LogManager`]s in the global [`State`].
 pub async fn get_logs(
-	cluster_path: ClusterPath,
+	cluster_path: &ClusterPath,
 	clear: Option<bool>,
 ) -> crate::Result<Vec<LogManager>> {
-	let cluster_path = cluster_path.cluster_path().await?;
-
 	let mut logs = Vec::new();
-	get_logs_by_type(&cluster_path, LogType::Info, clear, &mut logs).await?;
-	get_logs_by_type(&cluster_path, LogType::Crash, clear, &mut logs).await?;
+	get_logs_by_type(cluster_path, LogType::Info, clear, &mut logs).await?;
+	get_logs_by_type(cluster_path, LogType::Crash, clear, &mut logs).await?;
 
 	let mut logs = logs
 		.into_iter()
@@ -302,7 +302,7 @@ pub struct LogCursor {
 /// The log output, a wrapper around [`String`], with utilities for parsing and censoring log contents.
 #[derive(Serialize, Debug)]
 #[serde(transparent)]
-pub struct LogOutput(String);
+pub struct LogOutput(pub String);
 
 impl LogOutput {
 	/// Censor user secrets because sometimes mclogs misses them, including username, realname and minecraft credentials.
@@ -326,5 +326,42 @@ impl LogOutput {
 		}
 
 		Self(output)
+	}
+}
+
+/// Upload a log to https://mclo.gs/. If successful, it returns the log id
+#[tracing::instrument]
+pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<String> {
+	let log = log.0;
+	let mut form = HashMap::new();
+	form.insert("content", log);
+
+	#[derive(serde::Deserialize)]
+	struct ResponseBody {
+		pub success: bool,
+		#[serde(default)]
+		pub id: Option<String>,
+		#[serde(default)]
+		pub error: Option<String>
+	}
+
+	let parsed = serde_json::from_slice::<ResponseBody>(
+		&http::REQWEST_CLIENT.post(format!("{}/log", crate::constants::MCLOGS_API_URL))
+			.header("Content-Type", "application/x-www-form-urlencoded")
+			.form(&form)
+			.send()
+			.await?
+			.bytes()
+			.await?
+	)?;
+
+	if parsed.success {
+		if let Some(id) = parsed.id {
+			Ok(id)
+		} else {
+			Err(anyhow::anyhow!("failed to get log id from mclo.gs").into())
+		}
+	} else {
+		Err(anyhow::anyhow!("failed to upload log to mclo.gs: {}", parsed.error.unwrap_or_default()).into())
 	}
 }

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use interpulse::api::minecraft::Version;
+use onelauncher::api::logger;
 use onelauncher::data::{Loader, ManagedPackage, MinecraftCredentials, PackageData, Settings};
 use onelauncher::package::content;
 use onelauncher::store::{Cluster, ClusterPath};
@@ -183,7 +184,11 @@ pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 #[tauri::command]
 pub async fn get_cluster_logs(uuid: Uuid) -> Result<Vec<String>, String> {
 	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
-	let logs = cluster::get_logs(&cluster.cluster_path()).await?;
+	let logs = logger::get_logs(&cluster.cluster_path(), None)
+		.await?
+		.iter()
+		.map(|x| x.log_file.clone())
+		.collect();
 	Ok(logs)
 }
 
@@ -191,15 +196,19 @@ pub async fn get_cluster_logs(uuid: Uuid) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub async fn get_cluster_log(uuid: Uuid, log_name: String) -> Result<String, String> {
 	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
-	let log = cluster::get_log(&cluster.cluster_path(), log_name).await?;
-	Ok(log)
+	let log = logger::get_output_by_file(&cluster.cluster_path(), logger::LogType::Info, &log_name)
+		.await?;
+	Ok(log.0)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> {
 	let cluster = cluster::get_by_uuid(uuid, None).await?.ok_or("cluster not found")?;
-	let id = cluster::upload_log(&cluster.cluster_path(), log_name).await?;
+	let log = logger::get_output_by_file(&cluster.cluster_path(), logger::LogType::Info, &log_name)
+		.await?;
+
+	let id = logger::upload_log(&cluster.cluster_path(), log).await?;
 	Ok(id)
 }
 

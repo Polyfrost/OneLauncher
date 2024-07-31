@@ -69,8 +69,9 @@ function Add-DirectoryToPath($directory) {
 # resets PATH to ensure the script doesn't have stale Path entries
 Reset-Path
 
-# gets project dir (get grandparent dir from script location: <PROJECT_ROOT>\packages\scripts\setup.ps1)
-$projectRoot = Split-Path -Path $PSScriptRoot -Parent
+# gets project dir (get dir from script location: <PROJECT_ROOT>\packages\scripts\setup.ps1)
+$packagesRoot = Split-Path -Path $PSScriptRoot -Parent
+$projectRoot = Split-Path -Path $packagesRoot -Parent
 $packageJson = Get-Content -Raw -Path "$projectRoot\package.json" | ConvertFrom-Json
 
 # valid winget exit statuses

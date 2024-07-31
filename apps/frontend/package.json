@@ -31,7 +31,7 @@
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@thisbeyond/solid-select": "^0.15.0",
-		"@unocss/reset": "^0.61.7",
+		"@unocss/reset": "^0.61.8",
 		"@untitled-theme/icons-solid": "^0.10.5",
 		"overlayscrollbars": "^2.10.0",
 		"overlayscrollbars-solid": "^0.5.5",

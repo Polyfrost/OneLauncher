@@ -95,13 +95,13 @@ importers:
         version: 2.0.0-beta.16
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#0b1afa9eae605b707365ce6d7bbaa2359ed5b3e6
       '@tauri-apps/plugin-dialog':
         specifier: 2.0.0-beta.7
         version: 2.0.0-beta.7
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#f0ebe401a4788d6dbe9087c3898857b4dea9b718
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.19)
@@ -109,8 +109,8 @@ importers:
         specifier: ^0.15.0
         version: 0.15.0(solid-js@1.8.19)
       '@unocss/reset':
-        specifier: ^0.61.7
-        version: 0.61.7
+        specifier: ^0.61.8
+        version: 0.61.8
       '@untitled-theme/icons-solid':
         specifier: ^0.10.5
         version: 0.10.5(solid-js@1.8.19)
@@ -1252,15 +1252,15 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#0b1afa9eae605b707365ce6d7bbaa2359ed5b3e6':
+    resolution: {commit: 0b1afa9eae605b707365ce6d7bbaa2359ed5b3e6, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.1.0-beta.5
 
   '@tauri-apps/plugin-dialog@2.0.0-beta.7':
     resolution: {integrity: sha512-myywwpsKbquDDzl5zaOmmLLv5O8EJ/GgHDAoVSPwO97R4iWzkDvj3HFF91tNh7i25Tu/bP6jYPAdZA1NCRxxtg==}
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96}
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#f0ebe401a4788d6dbe9087c3898857b4dea9b718':
+    resolution: {commit: f0ebe401a4788d6dbe9087c3898857b4dea9b718, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
     version: 2.0.0-beta.8
 
   '@testing-library/dom@10.4.0':
@@ -1577,6 +1577,9 @@ packages:
 
   '@unocss/reset@0.61.7':
     resolution: {integrity: sha512-1I1VbfUkJRlqPfh13iCQY4vH172YbqX2W2EMdnkrprqv/AqNvvTdVtrKwHexUdIpWTpMligFhCJ31ydkw3CwqQ==}
+
+  '@unocss/reset@0.61.8':
+    resolution: {integrity: sha512-tG2FhdT3OXDM+tLZj9vXKlloHYxeXVxLR5TKpNjD/WQr4p6/xUFKGHvNfLHpiz4EsXLugEn0prqTxASB4c5gNg==}
 
   '@unocss/rule-utils@0.61.7':
     resolution: {integrity: sha512-/mxS23jTL6vZcCpShgHU10KPyKhaOByYKWUQH2zHulFFbAZ8bMPhtIDHKbm/7QqV4xDWJuOd9DuJbNjjZJNmgw==}
@@ -4511,17 +4514,17 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-beta.23
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-beta.23
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/d503abbce40595d0af6b36c10439b85c640b4c53':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#0b1afa9eae605b707365ce6d7bbaa2359ed5b3e6':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.15
+      '@tauri-apps/api': 2.0.0-beta.16
 
   '@tauri-apps/plugin-dialog@2.0.0-beta.7':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/adb938ddf434547ae35f74dc1a080908da03ea96':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#f0ebe401a4788d6dbe9087c3898857b4dea9b718':
     dependencies:
-      '@tauri-apps/api': 2.0.0-beta.15
+      '@tauri-apps/api': 2.0.0-beta.16
 
   '@testing-library/dom@10.4.0':
     dependencies:
@@ -4983,6 +4986,8 @@ snapshots:
       '@unocss/rule-utils': 0.61.7
 
   '@unocss/reset@0.61.7': {}
+
+  '@unocss/reset@0.61.8': {}
 
   '@unocss/rule-utils@0.61.7':
     dependencies:

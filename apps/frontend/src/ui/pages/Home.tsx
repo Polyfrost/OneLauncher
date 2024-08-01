@@ -1,5 +1,6 @@
 import {
 	CheckIcon,
+	ChevronRightIcon,
 	DotsVerticalIcon,
 	EyeIcon,
 	PlayIcon,
@@ -7,7 +8,7 @@ import {
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import type { Accessor, Setter } from 'solid-js';
-import { For, Show, createMemo, createSignal } from 'solid-js';
+import { For, Show, createEffect, createMemo, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import {
 	DragDropProvider,
@@ -24,11 +25,12 @@ import ContextMenu from '../components/overlay/ContextMenu';
 import Button from '../components/base/Button';
 import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
+import ClusterRoot from './cluster/ClusterRoot';
 import ClusterCover from '~ui/components/game/ClusterCover';
 import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
-import { upperFirst } from '~utils/primitives';
+import { secondsToWords, upperFirst } from '~utils/primitives';
 import { useClusterModalController } from '~ui/components/overlay/cluster/ClusterCreationModal';
 
 type GroupedClusters = Record<string, Cluster[]>;
@@ -50,71 +52,71 @@ function HomePage() {
 		refetch();
 	}
 
-	function _getContainerByCluster(id: string) {
-		const list = clusters();
+	// function getContainerByCluster(id: string) {
+	// 	const list = clusters();
 
-		if (list === undefined)
-			return undefined;
+	// 	if (list === undefined)
+	// 		return undefined;
 
-		if (list[id] !== undefined)
-			return id;
+	// 	if (list[id] !== undefined)
+	// 		return id;
 
-		for (const [key, value] of Object.entries(list))
-			if (value.find(cluster => cluster.uuid === id))
-				return key;
+	// 	for (const [key, value] of Object.entries(list))
+	// 		if (value.find(cluster => cluster.uuid === id))
+	// 			return key;
 
-		return undefined;
-	}
+	// 	return undefined;
+	// }
 
-	function move(_fromId: string, _toId: string) {
-		// const from = getContainerByCluster(fromId);
-		// const to = getContainerByCluster(toId);
+	// function move(fromId: string, toId: string) {
+	// const from = getContainerByCluster(fromId);
+	// const to = getContainerByCluster(toId);
 
-		// console.log(from, to);
+	// console.log(from, to);
 
-		// if (from === undefined || to === undefined)
-		// 	return;
+	// if (from === undefined || to === undefined)
+	// 	return;
 
-		// if (from === to) {
-		// 	const list = clusters();
-		// 	const fromList = list[from];
-		// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
-		// 	const toIndex = fromList.findIndex(cluster => cluster.uuid === toId);
+	// if (from === to) {
+	// 	const list = clusters();
+	// 	const fromList = list[from];
+	// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
+	// 	const toIndex = fromList.findIndex(cluster => cluster.uuid === toId);
 
-		// 	if (fromIndex === toIndex)
-		// 		return;
+	// 	if (fromIndex === toIndex)
+	// 		return;
 
-		// 	const newList = [...fromList];
-		// 	const [removed] = newList.splice(fromIndex, 1);
-		// 	newList.splice(toIndex, 0, removed);
+	// 	const newList = [...fromList];
+	// 	const [removed] = newList.splice(fromIndex, 1);
+	// 	newList.splice(toIndex, 0, removed);
 
-		// 	mutate({ ...list, [from]: newList });
-		// }
-		// else {
-		// 	const list = clusters();
-		// 	const fromList = list[from];
-		// 	const toList = list[to];
-		// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
-		// 	const toIndex = toList.findIndex(cluster => cluster.uuid === toId);
+	// 	mutate({ ...list, [from]: newList });
+	// }
+	// else {
+	// 	const list = clusters();
+	// 	const fromList = list[from];
+	// 	const toList = list[to];
+	// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
+	// 	const toIndex = toList.findIndex(cluster => cluster.uuid === toId);
 
-		// 	const newListFrom = [...fromList];
-		// 	const newListTo = [...toList];
+	// 	const newListFrom = [...fromList];
+	// 	const newListTo = [...toList];
 
-		// 	const [removed] = newListFrom.splice(fromIndex, 1);
-		// 	newListTo.splice(toIndex, 0, removed);
+	// 	const [removed] = newListFrom.splice(fromIndex, 1);
+	// 	newListTo.splice(toIndex, 0, removed);
 
-		// 	mutate({ ...list, [from]: newListFrom, [to]: newListTo });
-		// }
-	}
+	// 	mutate({ ...list, [from]: newListFrom, [to]: newListTo });
+	// }
+	// }
 
-	const onDragEnd: DragEventHandler = (event) => {
-		if (event.draggable && event.droppable)
-			move(event.draggable.id as string, event.droppable.id as string);
-	};
+	// const onDragEnd: DragEventHandler = (event) => {
+	// 	if (event.draggable && event.droppable)
+	// 		move(event.draggable.id as string, event.droppable.id as string);
+	// };
 
 	return (
 		<div class="flex flex-col h-full gap-y-4 text-fg-primary">
-			<Banner />
+			<Banner clusters={clusters()} />
 
 			<div class="flex flex-row justify-between items-center">
 				<div>
@@ -133,21 +135,21 @@ function HomePage() {
 			<Show
 				when={containerIds(clusters()).length > 0}
 				children={(
-					<DragDropProvider onDragEnd={onDragEnd}>
-						<DragDropSensors />
+					// <DragDropProvider onDragEnd={onDragEnd}>
+					// 	<DragDropSensors />
 
-						<For each={Object.entries(clusters() ?? {})}>
-							{([group, clusters]) => (
-								<ClusterGroup title={group} clusters={clusters} />
-							)}
-						</For>
+					<For each={Object.entries(clusters() ?? {})}>
+						{([group, clusters]) => (
+							<ClusterGroup title={group} clusters={clusters} />
+						)}
+					</For>
 
-						<DragOverlay>
-							{draggable => (
-								draggable?.node.cloneNode(true)
-							)}
-						</DragOverlay>
-					</DragDropProvider>
+					// 	<DragOverlay>
+					// 		{draggable => (
+					// 			draggable?.node.cloneNode(true)
+					// 		)}
+					// 	</DragOverlay>
+					// </DragDropProvider>
 				)}
 				fallback={(
 					<div class="flex flex-col flex-1 gap-y-4 max-h-64 justify-center items-center">
@@ -180,7 +182,11 @@ function OneConfigLogo() {
 	);
 }
 
-function Banner() {
+interface BannerProps {
+	clusters: GroupedClusters | undefined;
+};
+
+function Banner(props: BannerProps) {
 	// TODO: Banner information
 	/**
 	 * If there are any clusters, display the most recent cluster name + some statistics as the "description".
@@ -190,29 +196,89 @@ function Banner() {
 	 *
 	 * If there are no clusters, display a generic background with the button action creating a new cluster.
 	 */
+	const [cluster, setCluster] = createSignal<Cluster>();
+	const navigate = useNavigate();
+
+	createEffect(() => {
+		// eslint-disable-next-line no-undef-init -- This is fine. I love eslint rule clash though
+		let mostRecentCluster: Cluster | undefined = undefined;
+
+		if (props.clusters === undefined)
+			return;
+
+		for (const [_, clusters] of Object.entries(props.clusters))
+			for (const cluster of clusters) {
+				if (mostRecentCluster === undefined) {
+					mostRecentCluster = cluster;
+					continue;
+				}
+
+				if (typeof mostRecentCluster.meta.played_at !== 'string' && typeof cluster.meta.played_at === 'string') {
+					mostRecentCluster = cluster;
+					continue;
+				}
+
+				if (typeof mostRecentCluster.meta.played_at === 'string' && typeof cluster.meta.played_at === 'string') {
+					const playedAt = new Date(mostRecentCluster.meta.played_at);
+					const clusterPlayedAt = new Date(cluster.meta.played_at);
+
+					if (clusterPlayedAt > playedAt)
+						mostRecentCluster = cluster;
+				}
+			}
+
+		setCluster(mostRecentCluster);
+	});
+
 	return (
 		<div class="relative w-full h-52">
 			<img src={image} class="absolute rounded-xl w-full h-52 object-cover" />
 			<div class="relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start">
 				<div class="flex flex-col gap-y-2">
-					<h1>Building worlds</h1>
-					<p>DEV BUILD - NOT FINAL</p>
+					<h1>{cluster()?.meta.name || 'Create a cluster'}</h1>
+					<Show when={cluster() !== undefined}>
+						<p>
+							You've played
+							{' '}
+							<strong>
+								{cluster()!.meta.mc_version}
+								{' '}
+								{upperFirst(cluster()!.meta.loader) || 'Unknown'}
+							</strong>
+							{' '}
+							for
+							{' '}
+							<strong>{secondsToWords((cluster()!.meta.overall_played || 0n))}</strong>
+							.
+						</p>
+					</Show>
 				</div>
 				<div class="flex w-full flex-row justify-between items-end">
 					<div class="flex flex-row items-center gap-x-4">
-						<Button
-							buttonStyle="primary"
-							iconLeft={<PlayIcon />}
-							children="Launch 1.20.4"
-						/>
-						<Button
-							buttonStyle="icon"
-							children={<DotsVerticalIcon />}
+						<Show
+							when={cluster() !== undefined}
+							children={(
+								<>
+									<Button
+										buttonStyle="primary"
+										iconLeft={<PlayIcon />}
+										children={`Launch ${cluster()!.meta.mc_version}`}
+										onClick={() => ClusterRoot.launch(navigate, cluster()!.uuid)}
+									/>
+									<Button
+										buttonStyle="iconSecondary"
+										class="bg-op-10!"
+										children={<ChevronRightIcon />}
+										onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
+									/>
+								</>
+							)}
 						/>
 					</div>
 					<div class="flex flex-row gap-x-2">
-						<Tag iconLeft={<OneConfigLogo />} />
-						<Tag iconLeft={<CheckIcon />}>Verified</Tag>
+						{/* TODO: These tags */}
+						{/* <Tag iconLeft={<OneConfigLogo />} />
+						<Tag iconLeft={<CheckIcon />}>Verified</Tag> */}
 					</div>
 				</div>
 			</div>
@@ -230,10 +296,6 @@ interface ClusterCardContextMenuProps {
 function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 	const navigate = useNavigate();
 
-	function viewCluster() {
-		navigate(`/clusters/?id=${props.id}`);
-	}
-
 	return (
 		<ContextMenu
 			pos={props.pos}
@@ -243,7 +305,7 @@ function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
 			<ContextMenu.Row
 				icon={<EyeIcon />}
 				text="View"
-				onClick={() => viewCluster()}
+				onClick={() => ClusterRoot.open(navigate, props.id)}
 			/>
 
 			<ContextMenu.Seperator />
@@ -261,7 +323,7 @@ function ClusterCard(props: Cluster) {
 	const navigate = useNavigate();
 	const [pos, setPos] = createSignal({ x: 0, y: 0 });
 	const [contextMenuVisible, setContextMenuVisible] = createSignal(false);
-	const sortable = createSortable(props.uuid, props);
+	// const sortable = createSortable(props.uuid, props);
 	let ref!: HTMLDivElement;
 
 	function openClusterPage(_e: MouseEvent) {
@@ -284,7 +346,10 @@ function ClusterCard(props: Cluster) {
 				onClick={e => openClusterPage(e)}
 				onMouseDown={e => onMouseDown(e)}
 				onContextMenu={e => openContextMenu(e)}
-				ref={mergeRefs(ref, sortable)}
+				ref={mergeRefs(
+					ref,
+					// sortable
+				)}
 				class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-05"
 			>
 				<div class="flex-1 relative overflow-hidden rounded-t-xl">
@@ -331,16 +396,19 @@ interface ClusterGroupProps {
 }
 
 function ClusterGroup(props: ClusterGroupProps) {
-	const droppable = createDroppable(props.title);
-	const ids = createMemo(() => props.clusters.map(cluster => cluster.uuid));
+	// const droppable = createDroppable(props.title);
+	// const ids = createMemo(() => props.clusters.map(cluster => cluster.uuid));
 
 	return (
-		<div ref={droppable} class="flex flex-col gap-y-4">
+		<div
+			// ref={droppable}
+			class="flex flex-col gap-y-4"
+		>
 			<h4>{props.title}</h4>
 			<div class="grid grid-cols-4 2xl:grid-cols-6 gap-4 min-h-38">
-				<SortableProvider ids={ids()}>
-					<For each={props.clusters}>{item => <ClusterCard {...item} />}</For>
-				</SortableProvider>
+				{/* <SortableProvider ids={ids()}> */}
+				<For each={props.clusters}>{item => <ClusterCard {...item} />}</For>
+				{/* </SortableProvider> */}
 			</div>
 		</div>
 	);

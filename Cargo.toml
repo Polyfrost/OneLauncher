@@ -147,7 +147,7 @@ async-compression = { version = "0.4.12", features = [
 ] }
 flate2 = { version = "1.0" }
 regex = { version = "1.10" }
-sysinfo = { version = "0.30" }
+sysinfo = { version = "0.31" }
 sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }

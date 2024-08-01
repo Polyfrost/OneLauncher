@@ -1,4 +1,5 @@
-use onelauncher::{processor, store::{Cluster, ClusterPath}};
+use onelauncher::processor;
+use onelauncher::store::{Cluster, ClusterPath};
 use uuid::Uuid;
 
 #[specta::specta]

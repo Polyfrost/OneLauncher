@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
-use crate::{utils::io, Result};
+use crate::utils::io;
+use crate::Result;
 
 use crate::store::ClusterPath;
 

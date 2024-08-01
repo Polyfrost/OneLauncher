@@ -2,10 +2,11 @@
 //!
 //! Async wrapper around [`tokio::fs`] and [`std::io::Error`] for our error system.
 
-use std::io::Write;
 use async_compression::tokio::bufread::GzipDecoder;
+use std::io::Write;
 use tempfile::NamedTempFile;
-use tokio::{io::AsyncReadExt, task::spawn_blocking};
+use tokio::io::AsyncReadExt;
+use tokio::task::spawn_blocking;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]

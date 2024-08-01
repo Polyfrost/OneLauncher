@@ -1,4 +1,5 @@
-use onelauncher::{data::ManagedPackage, package::content};
+use onelauncher::data::ManagedPackage;
+use onelauncher::package::content;
 use uuid::Uuid;
 
 #[specta::specta]

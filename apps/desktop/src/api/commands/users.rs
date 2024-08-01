@@ -1,4 +1,5 @@
-use onelauncher::{data::MinecraftCredentials, minecraft};
+use onelauncher::data::MinecraftCredentials;
+use onelauncher::minecraft;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 

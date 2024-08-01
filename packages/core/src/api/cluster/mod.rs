@@ -6,11 +6,10 @@
 
 use crate::proxy::send::send_cluster;
 
-use crate::proxy::ClusterPayloadType;
-use crate::store::ProcessorChild;
 use crate::prelude::{ClusterPath, JavaVersion, PackagePath};
-use crate::store::MinecraftCredentials;
+use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, JavaOptions, State};
+use crate::store::{MinecraftCredentials, ProcessorChild};
 
 use crate::utils::io::{self, IOError};
 
@@ -23,9 +22,9 @@ use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
+pub mod content;
 pub mod create;
 pub mod update;
-pub mod content;
 
 /// get a cluster by its specified [`ClusterPath`].
 #[tracing::instrument]

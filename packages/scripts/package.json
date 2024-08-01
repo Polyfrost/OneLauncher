@@ -21,7 +21,7 @@
 		"@iarna/toml": "^2.2.5",
 		"execa": "^9.3.0",
 		"semver": "^7.6.3",
-		"undici": "^6.19.4"
+		"undici": "^6.19.5"
 	},
 	"devDependencies": {
 		"@types/iarna__toml": "^2.0.5",

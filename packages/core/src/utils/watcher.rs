@@ -41,8 +41,12 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 
 						for cmp in components.by_ref() {
 							formatted.push(cmp);
-							if matched { break; }
-							if cmp.as_os_str() == "clusters" { matched = true; }
+							if matched {
+								break;
+							}
+							if cmp.as_os_str() == "clusters" {
+								matched = true;
+							}
 						}
 
 						let sub = components.next().is_none();

@@ -342,17 +342,18 @@ pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<Str
 		#[serde(default)]
 		pub id: Option<String>,
 		#[serde(default)]
-		pub error: Option<String>
+		pub error: Option<String>,
 	}
 
 	let parsed = serde_json::from_slice::<ResponseBody>(
-		&http::REQWEST_CLIENT.post(format!("{}/log", crate::constants::MCLOGS_API_URL))
+		&http::REQWEST_CLIENT
+			.post(format!("{}/log", crate::constants::MCLOGS_API_URL))
 			.header("Content-Type", "application/x-www-form-urlencoded")
 			.form(&form)
 			.send()
 			.await?
 			.bytes()
-			.await?
+			.await?,
 	)?;
 
 	if parsed.success {
@@ -362,6 +363,10 @@ pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<Str
 			Err(anyhow::anyhow!("failed to get log id from mclo.gs").into())
 		}
 	} else {
-		Err(anyhow::anyhow!("failed to upload log to mclo.gs: {}", parsed.error.unwrap_or_default()).into())
+		Err(anyhow::anyhow!(
+			"failed to upload log to mclo.gs: {}",
+			parsed.error.unwrap_or_default()
+		)
+		.into())
 	}
 }

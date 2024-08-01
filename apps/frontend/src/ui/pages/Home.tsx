@@ -7,17 +7,14 @@ import {
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import type { Accessor, Setter } from 'solid-js';
-import { For, Show, batch, createMemo, createSignal, untrack } from 'solid-js';
+import { For, Show, createMemo, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import {
 	DragDropProvider,
 	DragDropSensors,
 	type DragEventHandler,
 	DragOverlay,
-	type Draggable,
-	type Droppable,
 	SortableProvider,
-	closestCenter,
 	createDroppable,
 	createSortable,
 } from '@thisbeyond/solid-dnd';
@@ -29,41 +26,18 @@ import Tag from '../components/base/Tag';
 import TextField from '../components/base/TextField';
 import ClusterCover from '~ui/components/game/ClusterCover';
 import type { Cluster } from '~bindings';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import { upperFirst } from '~utils/primitives';
 import { useClusterModalController } from '~ui/components/overlay/cluster/ClusterCreationModal';
 
+type GroupedClusters = Record<string, Cluster[]>;
+
 function HomePage() {
-	const [clusters, { refetch, mutate }] = useCommand(bridge.commands.getClustersGrouped);
+	const [clusters, { refetch }] = useCommand<GroupedClusters>(bridge.commands.getClustersGrouped);
 	const controller = useClusterModalController();
 
-	function setClusters(group: string, clusters: Cluster[]) {
-		mutate((prev) => {
-			if (prev === undefined)
-				prev = {};
-
-			prev[group] = clusters;
-			return prev;
-		});
-	}
-
-	const containerIds = () => Object.keys(clusters);
-
-	const isContainer = (id: string) => containerIds().includes(id);
-
-	function getContainer(id: string) {
-		const list = untrack(() => clusters());
-
-		if (list === undefined)
-			return undefined;
-
-		for (const [key, items] of Object.entries(list))
-			if (items.find(cluster => cluster.uuid === id))
-				return key;
-
-		return undefined;
-	};
+	const containerIds = (list: GroupedClusters | undefined) => Object.keys(list || []);
 
 	async function newCluster() {
 		try {
@@ -76,42 +50,66 @@ function HomePage() {
 		refetch();
 	}
 
-	const move = (draggable: Draggable, droppable: Droppable, onlyWhenChangingContainer: boolean) => {
-		// console.log('Draggable', draggable, 'Droppable', droppable);
-		const draggableContainer = getContainer(draggable.id);
-		const droppableContainer = isContainer(droppable.id)
-		  ? droppable.id
-			: getContainer(droppable.id);
+	function _getContainerByCluster(id: string) {
+		const list = clusters();
 
-		if (
-			draggableContainer != droppableContainer
-			|| !onlyWhenChangingContainer
-		) {
-			const containerItemIds = clusters()![droppableContainer];
-			let index = containerItemIds.indexOf(droppable.id);
-			if (index === -1)
-				index = containerItemIds.length;
+		if (list === undefined)
+			return undefined;
 
-			batch(() => {
-				setClusters(draggableContainer, items =>
-					items.filter(item => item !== draggable.id));
-				setClusters(droppableContainer, items => [
-					...items.slice(0, index),
-					draggable.id,
-					...items.slice(index),
-				]);
-			});
-		}
-	};
+		if (list[id] !== undefined)
+			return id;
+
+		for (const [key, value] of Object.entries(list))
+			if (value.find(cluster => cluster.uuid === id))
+				return key;
+
+		return undefined;
+	}
+
+	function move(_fromId: string, _toId: string) {
+		// const from = getContainerByCluster(fromId);
+		// const to = getContainerByCluster(toId);
+
+		// console.log(from, to);
+
+		// if (from === undefined || to === undefined)
+		// 	return;
+
+		// if (from === to) {
+		// 	const list = clusters();
+		// 	const fromList = list[from];
+		// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
+		// 	const toIndex = fromList.findIndex(cluster => cluster.uuid === toId);
+
+		// 	if (fromIndex === toIndex)
+		// 		return;
+
+		// 	const newList = [...fromList];
+		// 	const [removed] = newList.splice(fromIndex, 1);
+		// 	newList.splice(toIndex, 0, removed);
+
+		// 	mutate({ ...list, [from]: newList });
+		// }
+		// else {
+		// 	const list = clusters();
+		// 	const fromList = list[from];
+		// 	const toList = list[to];
+		// 	const fromIndex = fromList.findIndex(cluster => cluster.uuid === fromId);
+		// 	const toIndex = toList.findIndex(cluster => cluster.uuid === toId);
+
+		// 	const newListFrom = [...fromList];
+		// 	const newListTo = [...toList];
+
+		// 	const [removed] = newListFrom.splice(fromIndex, 1);
+		// 	newListTo.splice(toIndex, 0, removed);
+
+		// 	mutate({ ...list, [from]: newListFrom, [to]: newListTo });
+		// }
+	}
 
 	const onDragEnd: DragEventHandler = (event) => {
 		if (event.draggable && event.droppable)
-			move(event.draggable, event.droppable, false);
-	};
-
-	const onDragOver: DragEventHandler = (event) => {
-		if (event.draggable && event.droppable)
-			move(event.draggable, event.droppable, true);
+			move(event.draggable.id as string, event.droppable.id as string);
 	};
 
 	return (
@@ -132,32 +130,32 @@ function HomePage() {
 				</div>
 			</div>
 
-			<DragDropProvider
-				onDragOver={onDragOver}
-				onDragEnd={onDragEnd}
-			>
-				<DragDropSensors />
-				<Show
-					when={Object.keys(clusters() ?? {}).length === 0}
-					fallback={(
+			<Show
+				when={containerIds(clusters()).length > 0}
+				children={(
+					<DragDropProvider onDragEnd={onDragEnd}>
+						<DragDropSensors />
+
 						<For each={Object.entries(clusters() ?? {})}>
 							{([group, clusters]) => (
 								<ClusterGroup title={group} clusters={clusters} />
 							)}
 						</For>
-					)}
-				>
+
+						<DragOverlay>
+							{draggable => (
+								draggable?.node.cloneNode(true)
+							)}
+						</DragOverlay>
+					</DragDropProvider>
+				)}
+				fallback={(
 					<div class="flex flex-col flex-1 gap-y-4 max-h-64 justify-center items-center">
 						<span class="text-lg font-bold uppercase text-fg-secondary">No clusters were found.</span>
 						<span class="text-xl font-bold">Create one now with the New Cluster button.</span>
 					</div>
-				</Show>
-				<DragOverlay>
-					{draggable => (
-						draggable?.node.cloneNode(true)
-					)}
-				</DragOverlay>
-			</DragDropProvider>
+				)}
+			/>
 		</div>
 	);
 }
@@ -263,7 +261,7 @@ function ClusterCard(props: Cluster) {
 	const navigate = useNavigate();
 	const [pos, setPos] = createSignal({ x: 0, y: 0 });
 	const [contextMenuVisible, setContextMenuVisible] = createSignal(false);
-	const sortable = createSortable(props.uuid);
+	const sortable = createSortable(props.uuid, props);
 	let ref!: HTMLDivElement;
 
 	function openClusterPage(_e: MouseEvent) {
@@ -339,7 +337,7 @@ function ClusterGroup(props: ClusterGroupProps) {
 	return (
 		<div ref={droppable} class="flex flex-col gap-y-4">
 			<h4>{props.title}</h4>
-			<div class="grid grid-cols-4 2xl:grid-cols-6 gap-4">
+			<div class="grid grid-cols-4 2xl:grid-cols-6 gap-4 min-h-38">
 				<SortableProvider ids={ids()}>
 					<For each={props.clusters}>{item => <ClusterCard {...item} />}</For>
 				</SortableProvider>

@@ -6,7 +6,7 @@ import type { Result } from '~bindings';
  * @param cmd The command to call
  * @throws
  */
-export default function useCommand<R, E, Args extends unknown[]>(
+export default function useCommand<R, E = string, Args extends unknown[] = []>(
 	cmd: (...args: Args) => Promise<Result<R, E>>,
 	...args: Args
 ): ResourceReturn<R> {

@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::str::FromStr;
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use onelauncher::cluster::content::logger;
 use onelauncher::cluster::{self};
@@ -23,6 +22,12 @@ pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 #[tauri::command]
 pub async fn get_clusters() -> Result<Vec<Cluster>, String> {
 	Ok(onelauncher::cluster::list(None).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_clusters_grouped() -> Result<HashMap<String, Vec<Cluster>>, String> {
+	Ok(onelauncher::cluster::list_grouped(None).await?)
 }
 
 #[derive(Serialize, Deserialize, Type)]

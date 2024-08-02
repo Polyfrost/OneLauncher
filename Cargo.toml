@@ -65,7 +65,7 @@ tauri-specta = { version = "=2.0.0-rc.12", features = [
   "typescript",
   "derive"
 ] }
-specta-typescript = { version = "=0.0.5" }
+specta-typescript = { version = "=0.0.6" }
 # rspc-tauri2 is updated on the main branch
 rspc-tauri2 = { version = "=0.0.1" }
 

@@ -1,5 +1,5 @@
 import {
-	ChevronRightIcon,
+	DotsVerticalIcon,
 	PlayIcon,
 	PlusIcon,
 	SearchMdIcon,
@@ -8,7 +8,7 @@ import { For, Show, createEffect, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 
 import { mergeRefs } from '@solid-primitives/refs';
-import image from '../../assets/images/header.png';
+import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import TextField from '../components/base/TextField';
 import ClusterRoot from './cluster/ClusterRoot';
@@ -217,8 +217,18 @@ function Banner(props: BannerProps) {
 	});
 
 	return (
-		<div class="relative w-full h-52">
-			<img src={image} class="absolute rounded-xl w-full h-52 object-cover" />
+		<div class="relative w-full h-52 min-h-52 overflow-hidden rounded-xl">
+			<ClusterCover
+				class="absolute rounded-xl w-full h-52 object-cover"
+				linearBlur={{
+					degrees: 270,
+					blur: 30,
+					class: 'after:right-1/3!',
+				}}
+				cluster={cluster()}
+				fallback={BannerBackground}
+			/>
+
 			<div class="relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start">
 				<div class="flex flex-col gap-y-2">
 					<h1>{cluster()?.meta.name || 'Create a cluster'}</h1>
@@ -254,7 +264,7 @@ function Banner(props: BannerProps) {
 									<Button
 										buttonStyle="iconSecondary"
 										class="bg-op-10!"
-										children={<ChevronRightIcon />}
+										children={<DotsVerticalIcon />}
 										onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
 									/>
 								</>

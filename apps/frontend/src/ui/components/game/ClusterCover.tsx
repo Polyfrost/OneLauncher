@@ -1,21 +1,28 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { type JSX, splitProps } from 'solid-js';
+import { type JSX, type ParentProps, Show, splitProps } from 'solid-js';
+import styles from './ClusterCover.module.scss';
 import defaultCover from '~assets/images/default_instance_cover.jpg';
 import type { Cluster } from '~bindings';
 
 type ClusterCoverProps = JSX.HTMLAttributes<HTMLImageElement> & {
 	cluster: Cluster | undefined;
 	override?: string;
+	fallback?: string;
+	linearBlur?: {
+		degrees?: number;
+		blur?: number;
+		class?: string;
+	};
 };
 
 function ClusterCover(props: ClusterCoverProps) {
-	const [split, rest] = splitProps(props, ['cluster', 'override', 'onError']);
+	const [split, rest] = splitProps(props, ['cluster', 'override', 'onError', 'fallback', 'linearBlur', 'class']);
 
 	const image = () => {
 		const url = split.override || split.cluster?.meta.icon_url || split.cluster?.meta.icon;
 
 		if (url === undefined || url === null)
-			return defaultCover;
+			return split.fallback || defaultCover;
 
 		if (url.startsWith('/'))
 			return convertFileSrc(url);
@@ -23,17 +30,33 @@ function ClusterCover(props: ClusterCoverProps) {
 		return url;
 	};
 
+	const Wrapper = (props: ParentProps) => (
+		<Show when={split.linearBlur !== undefined} fallback={<>{props.children}</>}>
+			<div
+				class={`${styles.linearBlur} ${split.linearBlur?.class || ''}`}
+				style={{
+					'--degrees': `${split.linearBlur?.degrees ?? 0}deg`,
+					'--blur': `${split.linearBlur?.blur ?? 0}px`,
+				}}
+				children={props.children}
+			/>
+		</Show>
+	);
+
 	return (
-		<img
-			{...rest}
-			src={image()}
-			onError={(e) => {
-				e.currentTarget.src = split.override ? convertFileSrc(split.override) : defaultCover;
-				if (split.onError)
+		<Wrapper>
+			<img
+				{...rest}
+				class={`${styles.cover} ${split.class || ''}`}
+				src={image()}
+				onError={(e) => {
+					e.currentTarget.src = split.override ? convertFileSrc(split.override) : defaultCover;
+					if (split.onError)
 					// @ts-expect-error -- jsx stuff
-					split.onError!(e);
-			}}
-		/>
+						split.onError!(e);
+				}}
+			/>
+		</Wrapper>
 	);
 }
 

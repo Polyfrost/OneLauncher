@@ -107,7 +107,7 @@ pub async fn remove_cluster(uuid: Uuid) -> Result<(), String> {
 #[tauri::command]
 pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
 	let path = ClusterPath::find_by_uuid(uuid).await?;
-	let c_lock = cluster::run(&path).await?;
+	let c_lock = cluster::run_default(&path).await?;
 
 	let p_uuid = c_lock.read().await.uuid;
 	let p_pid = c_lock

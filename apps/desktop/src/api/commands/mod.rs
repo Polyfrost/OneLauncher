@@ -42,6 +42,8 @@ macro_rules! collect_commands {
 			get_running_clusters,
 			get_processes_by_path,
 			kill_process,
+			is_cluster_running,
+			get_pid_by_uuid,
 			// Settings
 			get_settings,
 			set_settings,

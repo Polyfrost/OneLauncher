@@ -4,7 +4,7 @@ import { For, createEffect, splitProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
 	base: string;
-	links: Record<string, ([JSX.Element, string, string] | undefined)[]>;
+	links: Record<string, ([JSX.Element, string, string, URLSearchParams?] | undefined)[]>;
 };
 
 function Sidebar(props: SidebarProps) {
@@ -16,8 +16,13 @@ function Sidebar(props: SidebarProps) {
 			throw new Error('Base should not end with a slash');
 	});
 
-	function goto(href: string) {
-		const url = `${props.base}${href}${location.search.toString()}`;
+	function goto(href: string, params?: URLSearchParams) {
+		const currParams = new URLSearchParams(location.search);
+		if (params)
+			for (const [key, value] of params)
+				currParams.set(key, value);
+
+		const url = `${props.base}${href}?${currParams.toString()}`;
 		navigate(url);
 	}
 
@@ -40,7 +45,7 @@ function Sidebar(props: SidebarProps) {
 
 										return (
 											<a
-												onClick={() => goto(link[2])}
+												onClick={() => goto(link[2], link[3])}
 												class={
                                                     `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-05' : ''}`
 												}

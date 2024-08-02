@@ -50,6 +50,13 @@ pub async fn get_running_clusters() -> crate::Result<Vec<Cluster>> {
 	processor.running_clusters().await
 }
 
+/// check if a cluster is running by its [`Uuid`].
+#[tracing::instrument]
+pub async fn is_cluster_running(uuid: Uuid) -> crate::Result<bool> {
+	let clusters = get_running_clusters().await?;
+	Ok(clusters.iter().any(|cluster| cluster.uuid == uuid))
+}
+
 /// get all processes by a [`ClusterPath`].
 #[tracing::instrument]
 pub async fn get_uuids_by_cluster_path(cluster_path: ClusterPath) -> crate::Result<Vec<Uuid>> {
@@ -104,4 +111,20 @@ pub async fn wait_for(process: &mut ProcessorChild) -> crate::Result<()> {
 		.map_err(|err| anyhow::anyhow!("failed to run minecraft: {err}"))?;
 
 	Ok(())
+}
+
+///  get process pid by its [`Uuid`].
+#[tracing::instrument]
+pub async fn get_pid_by_uuid(uuid: Uuid) -> crate::Result<u32> {
+	let state = State::get().await?;
+	let processor = state.processor.read().await;
+	Ok(processor.get(uuid)
+		.ok_or(anyhow::anyhow!("process not found"))?
+		.read()
+		.await
+		.current_child
+		.read()
+		.await
+		.id()
+		.ok_or(anyhow::anyhow!("process not found"))?)
 }

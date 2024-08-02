@@ -140,7 +140,7 @@ pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 	State::sync().await?;
 
 	println!("running minecraft");
-	let c_lock = cluster::run(&cluster).await?;
+	let c_lock = cluster::run_default(&cluster).await?;
 	let uuid = c_lock.read().await.uuid;
 	let pid = c_lock.read().await.current_child.read().await.id();
 

@@ -1,5 +1,4 @@
 import { For, Show, createEffect, createSignal, untrack } from 'solid-js';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { LinkExternal01Icon, Upload01Icon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
@@ -109,11 +108,7 @@ function ClusterLogs() {
 				</div>
 
 				<Show when={logContent() !== null} fallback={<span>No logs were found.</span>}>
-					<div class="bg-component-bg flex flex-1 h-full font-mono font-medium overflow-auto p-2 rounded-md mt-2">
-						<OverlayScrollbarsComponent class="flex-1 h-full relative">
-							<FormattedLog log={logContent()!} />
-						</OverlayScrollbarsComponent>
-					</div>
+					<FormattedLog log={logContent()!} />
 				</Show>
 			</div>
 		</div>

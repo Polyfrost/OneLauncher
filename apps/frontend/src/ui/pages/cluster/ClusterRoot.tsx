@@ -11,6 +11,7 @@ import ClusterScreenshots from './ClusterScreenshots';
 import ClusterSettings from './ClusterSettings';
 import ClusterGame from './ClusterGame';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
+import { supportsMods } from '~utils/helpers';
 
 function ClusterRoutes() {
 	return (
@@ -65,8 +66,7 @@ function ClusterSidebar() {
 			links={{
 				Cluster: [
 					[<EyeIcon />, 'Overview', '/'],
-					// TODO: Better way of checking mods
-					(cluster()?.meta.loader !== 'vanilla' ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
+					(supportsMods(cluster()) ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
 					[<Image03Icon />, 'Screenshots', '/screenshots'],
 					[<Globe04Icon />, 'Worlds', '/worlds'],
 					[<File06Icon />, 'Logs', '/logs'],

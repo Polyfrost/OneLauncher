@@ -1,4 +1,4 @@
-import type { VersionType } from '~bindings';
+import type { Cluster, Loader, VersionType } from '~bindings';
 
 export function formatVersionRelease(release: VersionType): string {
 	const mapping: { [key in VersionType]: string } = {
@@ -9,6 +9,16 @@ export function formatVersionRelease(release: VersionType): string {
 	};
 
 	return mapping[release];
+}
+
+export function supportsMods(loader: Cluster | Loader | undefined): boolean {
+	if (loader === undefined)
+		return false;
+
+	if (typeof loader !== 'string')
+		loader = loader.meta.loader;
+
+	return loader !== 'vanilla';
 }
 
 /**

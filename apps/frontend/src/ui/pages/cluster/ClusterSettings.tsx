@@ -5,7 +5,7 @@ import useSettingsContext from '~ui/hooks/useSettings';
 import SettingsMinecraft from '~ui/pages/settings/game/SettingsMinecraft';
 
 function ClusterSettings() {
-	const cluster = useClusterContext();
+	const [cluster] = useClusterContext();
 	const settings = useSettingsContext();
 
 	// TODO: Save cluster settings
@@ -16,14 +16,14 @@ function ClusterSettings() {
 			<ScrollableContainer>
 				<SettingsMinecraft.Settings
 					fullscreen={{
-						get: cluster.force_fullscreen ?? settings.force_fullscreen ?? false,
-						set: value => cluster.force_fullscreen = value,
-						isGlobal: cluster.force_fullscreen === null,
+						get: cluster()?.force_fullscreen ?? settings.force_fullscreen ?? false,
+						set: value => cluster() && (cluster()!.force_fullscreen = value),
+						isGlobal: cluster()?.force_fullscreen === null,
 					}}
 					resolution={{
-						get: cluster.resolution ?? settings.resolution,
-						set: value => cluster.resolution = value,
-						isGlobal: cluster.resolution === undefined || cluster.resolution === null,
+						get: cluster()?.resolution ?? settings.resolution,
+						set: value => cluster() && (cluster()!.resolution = value),
+						isGlobal: cluster()?.resolution === undefined || cluster()?.resolution === null,
 					}}
 				/>
 			</ScrollableContainer>

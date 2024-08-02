@@ -50,7 +50,7 @@ tauri-plugin-dialog = { version = "=2.0.0-beta.12" }
 # rspc is updated on the v0.x branch
 rspc = { version = "=0.2.0", features = [ "specta2" ] }
 # specta is updated on the main branch
-specta = { version = "=2.0.0-rc.18", features = [
+specta = { version = "=2.0.0-rc.19", features = [
   "chrono",
   "uuid",
   "serde",

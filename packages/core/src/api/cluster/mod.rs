@@ -60,6 +60,25 @@ pub async fn list(clear: Option<bool>) -> crate::Result<Vec<Cluster>> {
 		.collect())
 }
 
+/// get a Map of [`Cluster`] group names containing lists of [`Cluster`]s
+#[tracing::instrument]
+pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, Vec<Cluster>>> {
+	// TODO: This can 100% be made better
+	let list = list(clear).await?;
+	let mut map = HashMap::<String, Vec<Cluster>>::new();
+
+	for cluster in list {
+		let group = cluster.meta.group.clone().unwrap_or(String::from("Ungrouped"));
+		if let Some(items) = map.get_mut(&group) {
+			items.push(cluster);
+		} else {
+			map.insert(group, vec![cluster]);
+		}
+	}
+
+	Ok(map)
+}
+
 /// run a Minecraft [`Cluster`] using the default credentials.
 #[tracing::instrument]
 pub async fn run(path: &ClusterPath) -> crate::Result<Arc<RwLock<ProcessorChild>>> {

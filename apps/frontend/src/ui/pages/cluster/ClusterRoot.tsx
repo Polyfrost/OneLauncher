@@ -1,4 +1,4 @@
-import { Route, useSearchParams } from '@solidjs/router';
+import { type Navigator, Route, useSearchParams } from '@solidjs/router';
 import type { ParentProps } from 'solid-js';
 import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
 import Sidebar from '../../components/Sidebar';
@@ -9,6 +9,7 @@ import ClusterLogs from './ClusterLogs';
 import ClusterMods from './ClusterMods';
 import ClusterScreenshots from './ClusterScreenshots';
 import ClusterSettings from './ClusterSettings';
+import ClusterGame from './ClusterGame';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 
 function ClusterRoutes() {
@@ -19,6 +20,7 @@ function ClusterRoutes() {
 			<Route path="/mods" component={ClusterMods} />
 			<Route path="/screenshots" component={ClusterScreenshots} />
 			<Route path="/settings" component={ClusterSettings} />
+			<Route path="/game" component={ClusterGame} />
 		</>
 	);
 }
@@ -45,6 +47,15 @@ function ClusterRoot(props: ParentProps) {
 	);
 }
 
+ClusterRoot.open = function (navigate: Navigator, uuid: string) {
+	navigate(`/clusters/?id=${uuid}`);
+};
+
+ClusterRoot.launch = function (navigate: Navigator, uuid: string) {
+	// TODO: Launch game page
+	navigate(`/clusters/game?id=${uuid}&launch=true`);
+};
+
 function ClusterSidebar() {
 	const [cluster] = useClusterContext();
 
@@ -60,6 +71,7 @@ function ClusterSidebar() {
 					[<Globe04Icon />, 'Worlds', '/worlds'],
 					[<File06Icon />, 'Logs', '/logs'],
 					[<Settings04Icon />, 'Game Settings', '/settings'],
+					// TODO: Add game page CONDITIONALLY
 				],
 			}}
 		/>

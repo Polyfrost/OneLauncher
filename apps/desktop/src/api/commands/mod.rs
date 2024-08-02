@@ -33,6 +33,7 @@ macro_rules! collect_commands {
 			remove_cluster,
 			get_cluster,
 			get_clusters,
+			get_clusters_grouped,
 			run_cluster,
 			get_cluster_logs,
 			get_cluster_log,

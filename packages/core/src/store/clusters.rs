@@ -257,7 +257,7 @@ pub struct ClusterMeta {
 	/// (Defaults to None if the cluster has never been played)
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub played_at: Option<DateTime<Utc>>,
-	/// The overall time played stored as a [`u64`].
+	/// The overall time played in seconds stored as a [`u64`].
 	#[serde(default)]
 	pub overall_played: u64,
 	/// The recent time played stored as a [`u64`].

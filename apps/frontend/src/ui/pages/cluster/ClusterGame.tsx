@@ -3,7 +3,7 @@ import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 
 function ClusterGame() {
-	const cluster = useClusterContext();
+	const _cluster = useClusterContext();
 
 	// TODO: Save cluster settings
 

@@ -206,7 +206,10 @@ impl ChildType {
 			ChildType::ChildProcess(child) => Ok(child.kill().await.map_err(IOError::from)?),
 			ChildType::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
-				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(*pid)])) != 0 {
+				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[
+					sysinfo::Pid::from_u32(*pid),
+				])) != 0
+				{
 					let process = system.process(sysinfo::Pid::from_u32(*pid));
 					if let Some(process) = process {
 						process.kill();
@@ -226,7 +229,10 @@ impl ChildType {
 				.map(|x| x.code().unwrap_or(0))),
 			ChildType::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
-				if !(system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(*pid)])) != 0) {
+				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[
+					sysinfo::Pid::from_u32(*pid),
+				])) == 0
+				{
 					return Ok(Some(0));
 				}
 
@@ -475,7 +481,7 @@ impl Processor {
 				)
 				.into());
 			}
-			if cache.name != process.name().to_string_lossy().to_string() {
+			if cache.name != process.name().to_string_lossy() {
 				return Err(anyhow::anyhow!(
 					"restored process {} has a mismatched name {}",
 					cache.pid,

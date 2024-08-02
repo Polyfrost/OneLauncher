@@ -1,4 +1,6 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::str::FromStr;
 
 use onelauncher::cluster::content::logger;
 use onelauncher::cluster::{self};

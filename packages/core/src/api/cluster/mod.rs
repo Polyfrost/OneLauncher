@@ -68,7 +68,11 @@ pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, 
 	let mut map = HashMap::<String, Vec<Cluster>>::new();
 
 	for cluster in list {
-		let group = cluster.meta.group.clone().unwrap_or(String::from("Ungrouped"));
+		let group = cluster
+			.meta
+			.group
+			.clone()
+			.unwrap_or(String::from("Ungrouped"));
 		if let Some(items) = map.get_mut(&group) {
 			items.push(cluster);
 		} else {

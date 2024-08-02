@@ -1,7 +1,7 @@
 #![recursion_limit = "1024"]
 
-// use api::statics::get_static_collection;
-use tauri::{Manager, Emitter};
+use api::statics::get_program_info;
+use tauri::{Emitter, Manager};
 
 pub mod api;
 pub mod error;
@@ -40,16 +40,16 @@ pub async fn run() {
 
 pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
-		// .header("/* eslint-disable -- auto-generated file */")
-		// .statics(get_static_collection())
 		.commands(collect_commands!())
-		.events(collect_events!());
+		.events(collect_events!())
+		.constant("PROGRAM_INFO", get_program_info());
 
 	#[cfg(debug_assertions)]
 	prebuild
 		.export(
-			specta_typescript::Typescript::default(),
-			"../frontend/src/bindings.ts"
+			specta_typescript::Typescript::default()
+				.bigint(specta_typescript::BigIntExportBehavior::BigInt),
+			"../frontend/src/bindings.ts",
 		)
 		.expect("failed to export debug bindings!");
 

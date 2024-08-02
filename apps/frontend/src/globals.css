@@ -3,17 +3,24 @@ body {
 }
 
 /* start lynith's native experience (tm) */
-* { 
+* {
     -webkit-user-select: none;
     user-select: none;
     -webkit-user-drag: none;
     user-drag: none;
-    cursor: default !important; 
+    cursor: default !important;
     animation-duration: 150ms !important;
 }
 
-*:hover { 
-    cursor: default !important; 
+*:hover {
+    cursor: default !important;
+}
+
+img {
+	user-select: none;
+	-webkit-user-drag: none;
+	user-drag: none;
+	pointer-events: none;
 }
 /* end lynith's native experience (tm) */
 

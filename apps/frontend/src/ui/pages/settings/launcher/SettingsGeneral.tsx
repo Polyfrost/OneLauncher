@@ -52,7 +52,7 @@ function SettingsGeneral() {
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
 
 				<SettingsRow
-					title="Launcher Directory"
+					title="Launcher Folder"
 					description={settings.config_dir || 'UNKNOWN'}
 					icon={<FolderIcon />}
 				>

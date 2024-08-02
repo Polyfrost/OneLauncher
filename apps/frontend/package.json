@@ -24,7 +24,7 @@
 		"@rspc/tauri": "^0.2.0",
 		"@solid-primitives/refs": "^1.0.8",
 		"@solidjs/router": "^0.14.1",
-		"@tanstack/solid-query": "^5.51.16",
+		"@tanstack/solid-query": "^5.51.19",
 		"@tauri-apps/api": "2.0.0-beta.16",
 		"@tauri-apps/plugin-clipboard-manager": "github:tauri-apps/tauri-plugin-clipboard-manager#v2",
 		"@tauri-apps/plugin-dialog": "2.0.0-beta.8",

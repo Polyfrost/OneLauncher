@@ -60,7 +60,7 @@ specta = { version = "=2.0.0-rc.18", features = [
   "time"
 ] }
 # tauri-specta is updated on main branch
-tauri-specta = { version = "=2.0.0-rc.12", features = [
+tauri-specta = { version = "=2.0.0-rc.13", features = [
   "javascript",
   "typescript",
   "derive"

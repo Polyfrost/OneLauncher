@@ -1,5 +1,5 @@
 [toolchain]
-channel = "stable"
+channel = "1.80"
 profile = "minimal"
 components = [
   "cargo",

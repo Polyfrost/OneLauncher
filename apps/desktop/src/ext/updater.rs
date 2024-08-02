@@ -1,5 +1,5 @@
 use tauri::plugin::TauriPlugin;
-use tauri::{Manager, Runtime};
+use tauri::{Emitter, Runtime};
 use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
 use tokio::sync::Mutex;
 

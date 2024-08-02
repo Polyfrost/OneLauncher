@@ -56,7 +56,7 @@ impl Drop for IngressId {
 						let event = ingress.ingress_type.clone();
 						let fraction = ingress.current / ingress.total;
 
-						use tauri::Manager;
+						use tauri::Emitter;
 						let _ = proxy_state.app.emit(
 							"ingress",
 							IngressPayload {

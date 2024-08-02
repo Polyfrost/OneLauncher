@@ -25,48 +25,52 @@ onelauncher = { path = "./packages/core" }
 onelauncher_macros = { path = "./packages/macros" }
 
 # tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
-tauri = { version = "=2.0.0-beta.23", features = [
+tauri = { version = "=2.0.0-beta.25", features = [
   "rustls-tls",
   "tracing",
   "specta",
   "uuid",
   "protocol-asset"
 ] }
-tauri-utils = { version = "=2.0.0-beta.18" }
-tauri-build = { version = "=2.0.0-beta.18" }
-tauri-codegen = { version = "=2.0.0-beta.18" }
-tauri-macros = { version = "=2.0.0-beta.18" }
-tauri-plugin = { version = "=2.0.0-beta.18" }
-tauri-runtime = { version = "=2.0.0-beta.19" }
+tauri-utils = { version = "=2.0.0-beta.19" }
+tauri-build = { version = "=2.0.0-beta.19" }
+tauri-codegen = { version = "=2.0.0-beta.19" }
+tauri-macros = { version = "=2.0.0-beta.19" }
+tauri-plugin = { version = "=2.0.0-beta.19" }
+tauri-runtime = { version = "=2.0.0-beta.21" }
 
-tauri-plugin-authenticator = { version = "2.0.0-beta" }
-tauri-plugin-shell = { version = "2.0.0-beta" }
-tauri-plugin-window-state = { version = "2.0.0-beta" }
-tauri-plugin-single-instance = { version = "2.0.0-beta" }
-tauri-plugin-clipboard-manager = { version = "2.1.0-beta" }
-tauri-plugin-updater = { version = "2.0.0-beta", features = [ "rustls-tls" ] }
-tauri-plugin-dialog = { version = "2.0.0-beta" }
+tauri-plugin-authenticator = { version = "=2.0.0-beta.10" }
+tauri-plugin-shell = { version = "=2.0.0-beta.10" }
+tauri-plugin-window-state = { version = "=2.0.0-beta.12" }
+tauri-plugin-single-instance = { version = "=2.0.0-beta.12" }
+tauri-plugin-clipboard-manager = { version = "=2.1.0-beta.7" }
+tauri-plugin-updater = { version = "=2.0.0-beta.12", features = [ "rustls-tls" ] }
+tauri-plugin-dialog = { version = "=2.0.0-beta.12" }
 
 # rspc is updated on the v0.x branch
 rspc = { version = "=0.2.0", features = [ "specta2" ] }
 # specta is updated on the main branch
-specta = { version = "=2.0.0-rc.12", features = [
+specta = { version = "=2.0.0-rc.18", features = [
   "chrono",
   "uuid",
   "serde",
   "serde_json",
   "function",
+  "derive",
+  "time"
 ] }
 # tauri-specta is updated on main branch
-tauri-specta = { version = "=2.0.0-rc.11", features = [
+tauri-specta = { version = "=2.0.0-rc.12", features = [
   "javascript",
-  "typescript"
+  "typescript",
+  "derive"
 ] }
+specta-typescript = { version = "=0.0.5" }
 # rspc-tauri2 is updated on the main branch
 rspc-tauri2 = { version = "=0.0.1" }
 
 # interpulse is updated on the main branch
-interpulse = { version = "=1.0.0", features = [ "specta" ] }
+interpulse = { version = "1", features = [ "specta" ] }
 
 # all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }
@@ -115,7 +119,6 @@ reqwest = { version = "0.12", default-features = false, features = [
   "brotli"
 ] }
 iota_stronghold = { version = "2.1" }
-iota-crypto = { version = "0.23" }
 zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 quote = { version = "1.0" }
 syn = { version = "2.0", features = [ "full" ] }
@@ -123,12 +126,10 @@ tempfile = { version = "3.10" }
 dunce = { version = "1.0.4" }
 serde_json = { version = "1.0" }
 serde_ini = { version = "0.2" }
-tar = { version = "0.4" }
 zip = { version = "0.6" }
 thiserror = { version = "1.0" }
 anyhow = { version = "1.0" }
 dirs = { version = "5.0" }
-open = { version = "5.1" }
 discord-rich-presence = { version = "0.2" }
 winreg = { version = "0.52" }
 paste = { version = "1.0" }
@@ -147,7 +148,7 @@ async-compression = { version = "0.4.12", features = [
 ] }
 flate2 = { version = "1.0" }
 regex = { version = "1.10" }
-sysinfo = { version = "0.30" }
+sysinfo = { version = "0.31", features = [ "serde" ] }
 sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
@@ -180,14 +181,14 @@ features = [
 default-features = false
 
 [patch.crates-io]
-specta = { git = "https://github.com/oscartbeaumont/specta", rev = "fadef54000e131008ff6e9dd7efe2ba36479c077" }
-tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "a49885967adc01c80e33962e3ecac25fe7497839" }
+# specta = { git = "https://github.com/oscartbeaumont/specta", rev = "c717656b322ae6ff68f1c9fde1fb9ec7173a1bf9" }
+# tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "70a84efe1cc013842f26599f89a7491d6a6ba18d" }
 
 # todo
 # rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 # rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
 
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "4d247c78545703200435a4a063c3f77fd644370f" }
+interpulse = { git = "https://github.com/pulseflow/workers", rev = "2969c74081a81a935ec7ccf76c3a302eae7d0a39" }
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

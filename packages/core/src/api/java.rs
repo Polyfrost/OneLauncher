@@ -132,7 +132,5 @@ pub async fn test_java(path: PathBuf, major: u32) -> crate::Result<bool> {
 }
 
 pub async fn get_max_memory() -> crate::Result<u64> {
-	Ok(sys_info::mem_info()
-		.map_err(|_| anyhow::anyhow!("failed to get computer memory"))?
-		.total)
+	Ok(sysinfo::System::new().total_memory())
 }

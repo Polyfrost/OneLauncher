@@ -44,7 +44,6 @@ tracing-appender = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
 iota_stronghold = { workspace = true }
-iota-crypto = { workspace = true }
 
 zeroize = { workspace = true }
 tokio = { workspace = true }
@@ -53,7 +52,6 @@ serde_json = { workspace = true }
 serde_ini = { workspace = true }
 paste = { workspace = true }
 futures = { workspace = true }
-tar = { workspace = true }
 zip = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
@@ -61,7 +59,6 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 dirs = { workspace = true }
-open = { workspace = true }
 sha1_smol = { workspace = true }
 sha2 = { workspace = true }
 async_zip = { workspace = true }

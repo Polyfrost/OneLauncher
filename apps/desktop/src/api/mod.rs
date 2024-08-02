@@ -63,7 +63,7 @@ macro_rules! impl_serialize_err {
 			where
 				S: Serializer,
 			{
-                use serde::ser::SerializeStruct;
+				use serde::ser::SerializeStruct;
 				match self {
 					OneLauncherError::OneLauncher(onelauncher_error) => {
 						$crate::error::display_tracing_error(onelauncher_error);

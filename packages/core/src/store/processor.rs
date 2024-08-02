@@ -145,12 +145,12 @@ impl ChildType {
 		let state = crate::State::get().await?;
 		let mut system = sysinfo::System::new();
 
-		system.refresh_processes();
+		system.refresh_processes(sysinfo::ProcessesToUpdate::All);
 		let process = system
 			.process(sysinfo::Pid::from_u32(pid))
 			.ok_or_else(|| anyhow::anyhow!("could not find process {}", pid))?;
 		let start_time = process.start_time();
-		let name = process.name().to_string();
+		let name = process.name().to_string_lossy().to_string();
 		let Some(path) = process.exe() else {
 			return Err(anyhow::anyhow!("cached process {} has no path", pid).into());
 		};
@@ -206,7 +206,7 @@ impl ChildType {
 			ChildType::ChildProcess(child) => Ok(child.kill().await.map_err(IOError::from)?),
 			ChildType::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
-				if system.refresh_process(sysinfo::Pid::from_u32(*pid)) {
+				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(*pid)])) != 0 {
 					let process = system.process(sysinfo::Pid::from_u32(*pid));
 					if let Some(process) = process {
 						process.kill();
@@ -226,7 +226,7 @@ impl ChildType {
 				.map(|x| x.code().unwrap_or(0))),
 			ChildType::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
-				if !system.refresh_process(sysinfo::Pid::from_u32(*pid)) {
+				if !(system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(*pid)])) != 0) {
 					return Ok(Some(0));
 				}
 
@@ -462,7 +462,7 @@ impl Processor {
 		// ensure located stray process matches with our pid recorded process
 		{
 			let mut system = sysinfo::System::new();
-			system.refresh_processes();
+			system.refresh_processes(sysinfo::ProcessesToUpdate::All);
 			let process = system
 				.process(sysinfo::Pid::from_u32(cache.pid))
 				.ok_or_else(|| anyhow::anyhow!("could not find pid {}", cache.pid))?;
@@ -475,11 +475,11 @@ impl Processor {
 				)
 				.into());
 			}
-			if cache.name != process.name() {
+			if cache.name != process.name().to_string_lossy().to_string() {
 				return Err(anyhow::anyhow!(
 					"restored process {} has a mismatched name {}",
 					cache.pid,
-					process.name()
+					process.name().to_string_lossy().to_string()
 				)
 				.into());
 			}

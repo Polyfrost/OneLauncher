@@ -48,6 +48,7 @@ tauri-plugin-dialog = { workspace = true }
 
 tauri-specta = { workspace = true }
 specta = { workspace = true }
+specta-typescript = { workspace = true }
 
 interpulse.workspace = true
 

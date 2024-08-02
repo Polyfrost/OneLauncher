@@ -1,5 +1,7 @@
-use api::statics::get_static_collection;
-use tauri::Manager;
+#![recursion_limit = "1024"]
+
+// use api::statics::get_static_collection;
+use tauri::{Manager, Emitter};
 
 pub mod api;
 pub mod error;
@@ -37,22 +39,19 @@ pub async fn run() {
 }
 
 pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
-	let (invoke_handler, register_events) = {
-		let builder = tauri_specta::ts::builder()
-			.config(
-				specta::ts::ExportConfig::default()
-					.bigint(specta::ts::BigIntExportBehavior::BigInt),
-			)
-			.header("/* eslint-disable -- auto-generated file */")
-			.statics(get_static_collection())
-			.commands(collect_commands!())
-			.events(collect_events!());
+	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
+		// .header("/* eslint-disable -- auto-generated file */")
+		// .statics(get_static_collection())
+		.commands(collect_commands!())
+		.events(collect_events!());
 
-		#[cfg(debug_assertions)]
-		let builder = builder.path("../frontend/src/bindings.ts");
-
-		builder.build().unwrap()
-	};
+	#[cfg(debug_assertions)]
+	prebuild
+		.export(
+			specta_typescript::Typescript::default(),
+			"../frontend/src/bindings.ts"
+		)
+		.expect("failed to export debug bindings!");
 
 	let builder = tauri::Builder::default()
 		.plugin(tauri_plugin_shell::init())
@@ -70,9 +69,9 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		// .plugin(tauri_plugin_window_state::Builder::default().build())
 		.plugin(api::init())
 		.menu(tauri::menu::Menu::new)
-		.invoke_handler(invoke_handler)
+		.invoke_handler(prebuild.invoke_handler())
 		.setup(move |app| {
-			register_events(app);
+			prebuild.mount_events(app.handle());
 			setup(app);
 			Ok(())
 		});

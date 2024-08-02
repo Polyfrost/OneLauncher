@@ -57,7 +57,7 @@ pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	Ok(creds)
 }
 
-async fn modrinth() -> onelauncher::Result<()> {
+pub async fn modrinth() -> onelauncher::Result<()> {
 	let _state = State::get().await?;
 	let provider = Providers::Modrinth;
 	let result = provider.get("oneconfig").await?;
@@ -98,7 +98,7 @@ async fn modrinth() -> onelauncher::Result<()> {
 	Ok(())
 }
 
-async fn launch_and_authenticate() -> onelauncher::Result<()> {
+pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 	let state = State::get().await?;
 
 	if minecraft::users().await?.is_empty() {

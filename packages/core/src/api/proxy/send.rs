@@ -137,6 +137,9 @@ pub async fn send_ingress(
 		}
 
 		#[cfg(feature = "tauri")]
+		use tauri::Emitter;
+
+		#[cfg(feature = "tauri")]
 		proxy_state
 			.app
 			.emit(

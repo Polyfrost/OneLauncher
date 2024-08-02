@@ -1,13 +1,13 @@
 use onelauncher::constants::*;
 use serde::Serialize;
 use specta::Type;
-use tauri_specta::StaticCollection;
+// use tauri_specta::StaticCollection;
 
-pub fn get_static_collection() -> StaticCollection {
-	StaticCollection::default()
-		.register("PROGRAM_INFO", get_program_info())
-		.to_owned()
-}
+// pub fn get_static_collection() -> StaticCollection {
+// 	StaticCollection::default()
+// 		.register("PROGRAM_INFO", get_program_info())
+// 		.to_owned()
+// }
 
 #[derive(Serialize, Type)]
 pub struct ProgramInfo {
@@ -19,7 +19,7 @@ pub struct ProgramInfo {
 	arch: String,
 }
 
-fn get_program_info() -> ProgramInfo {
+pub fn get_program_info() -> ProgramInfo {
 	let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
 	let tauri_version = tauri::VERSION;
 	let dev_build = tauri::is_dev();

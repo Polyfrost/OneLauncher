@@ -38,7 +38,7 @@
 		"@flowr/eslint-config": "^3.10.2",
 		"@types/node": "^22.0.2",
 		"@vitest/ui": "^2.0.5",
-		"bumpp": "^9.4.1",
+		"bumpp": "^9.4.2",
 		"eslint": "^9.8.0",
 		"eslint-plugin-solid": "^0.14.1",
 		"ts-node": "^10.9.2",

@@ -1,5 +1,3 @@
-#![recursion_limit = "1024"]
-
 use api::statics::get_program_info;
 use tauri::{Emitter, Manager};
 

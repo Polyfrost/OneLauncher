@@ -47,10 +47,8 @@ tauri-plugin-clipboard-manager = { version = "=2.1.0-beta.7" }
 tauri-plugin-updater = { version = "=2.0.0-beta.12", features = [ "rustls-tls" ] }
 tauri-plugin-dialog = { version = "=2.0.0-beta.12" }
 
-# rspc is updated on the v0.x branch
 rspc = { version = "=0.2.0", features = [ "specta2" ] }
-# specta is updated on the main branch
-specta = { version = "=2.0.0-rc.18", features = [
+specta = { version = "=2.0.0-rc.19", features = [
   "chrono",
   "uuid",
   "serde",
@@ -59,20 +57,17 @@ specta = { version = "=2.0.0-rc.18", features = [
   "derive",
   "time"
 ] }
-# tauri-specta is updated on main branch
-tauri-specta = { version = "=2.0.0-rc.12", features = [
+tauri-specta = { version = "=2.0.0-rc.13", features = [
   "javascript",
   "typescript",
   "derive"
 ] }
-specta-typescript = { version = "=0.0.5" }
-# rspc-tauri2 is updated on the main branch
+specta-typescript = { version = "=0.0.6" }
 rspc-tauri2 = { version = "=0.0.1" }
 
-# interpulse is updated on the main branch
+# all other dependencies are updated to latest crates.io release channel
 interpulse = { version = "1", features = [ "specta" ] }
 
-# all other dependencies are updated to latest crates.io release channel
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
   "chrono",
@@ -181,22 +176,16 @@ features = [
 default-features = false
 
 [patch.crates-io]
-# specta = { git = "https://github.com/oscartbeaumont/specta", rev = "c717656b322ae6ff68f1c9fde1fb9ec7173a1bf9" }
-# tauri-specta = { git = "https://github.com/oscartbeaumont/tauri-specta", rev = "70a84efe1cc013842f26599f89a7491d6a6ba18d" }
-
-# todo
 # rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 # rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
-
-interpulse = { git = "https://github.com/pulseflow/workers", rev = "2969c74081a81a935ec7ccf76c3a302eae7d0a39" }
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)
 debug = true
-# opt-level = 0
-# strip = "none"
-# incremental = true
-# split-debuginfo = "unpacked"
+opt-level = 0
+strip = "none"
+incremental = true
+split-debuginfo = "unpacked"
 lto = false
 codegen-units = 256
 rpath = false

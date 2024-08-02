@@ -53,7 +53,7 @@ macro_rules! collect_commands {
 			download_mod,
 			// Updater
 			check_for_update,
-			install_update,
+			install_update
 		]
 	}};
 }

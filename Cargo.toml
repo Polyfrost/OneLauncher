@@ -21,10 +21,16 @@ authors = [
 version = "1.0.0-alpha.1"
 
 [workspace.dependencies]
+# best practice to define all workspace crates in the root
+# even if they are not use, with no features enabled.
 onelauncher = { path = "./packages/core" }
 onelauncher_macros = { path = "./packages/macros" }
+onelauncher_gui = { path = "./apps/desktop" }
+onelauncher_test = { path = "./apps/testing" }
 
-# tauri uses latest crates.io beta channel (temporarily can use v2 and main branches if necessary)
+# tauri uses latest crates.io beta channel
+# (temporarily can use v2 and main branches if necessary)
+# TODO: release candidate update is blocked by tauri-specta.
 tauri = { version = "=2.0.0-beta.25", features = [
   "rustls-tls",
   "tracing",
@@ -32,6 +38,8 @@ tauri = { version = "=2.0.0-beta.25", features = [
   "uuid",
   "protocol-asset"
 ] }
+
+# TODO: remove locked tauri-* deps once we update to the release candidate.
 tauri-utils = { version = "=2.0.0-beta.19" }
 tauri-build = { version = "=2.0.0-beta.19" }
 tauri-codegen = { version = "=2.0.0-beta.19" }
@@ -39,15 +47,39 @@ tauri-macros = { version = "=2.0.0-beta.19" }
 tauri-plugin = { version = "=2.0.0-beta.19" }
 tauri-runtime = { version = "=2.0.0-beta.21" }
 
-tauri-plugin-authenticator = { version = "=2.0.0-beta.10" }
+# tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "=2.0.0-beta.10" }
+# tauri-plugin-window-state saves the window position and size to be restored.
 tauri-plugin-window-state = { version = "=2.0.0-beta.12" }
+# tauri-plugin-single-instance ensures that only one instance of the app is running.
 tauri-plugin-single-instance = { version = "=2.0.0-beta.12" }
+# tauri-plugin-clipboard-manager adds a bridge for reading/writing to the clipboard.
 tauri-plugin-clipboard-manager = { version = "=2.1.0-beta.7" }
-tauri-plugin-updater = { version = "=2.0.0-beta.12", features = [ "rustls-tls" ] }
+# tauri-plugin-updater allows for us to use it's functionality for in-app updates.
+tauri-plugin-updater = { version = "=2.0.0-beta.12" }
+# tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
 tauri-plugin-dialog = { version = "=2.0.0-beta.12" }
 
-rspc = { version = "=0.2.0", features = [ "specta2" ] }
+# rspc is used as a faster and more intuitive replacement for tauri-specta
+# commands/apis that don't depend on tauri. rather than using the tauri
+# event and invoke apis for handling api calling, it creates a router which
+# we can easily use with tanstack solid query apis.
+# this means we don't have to redefine all our core apis as tauri commands.
+# features: "specta2" is for using the latest v2 rc of specta.
+# TODO: the api migration is blocked until rspc updates to a newer version of tauri v2.
+rspc = { version = "=0.2.0", features = [
+  "specta2",
+  "tracing"
+] }
+
+# specta is used as a peer dependency for tauri-specta and rspc.
+# it generates rust code into other languages, in our case, typescript.
+# v2 is the latest/only version, and it is updated as a release candidate
+# on crates.io almost after every commit, so a git dep isn't necessary.
+# features: "derive" and "function" are core apis of specta we rely on.
+# the remaining features implements the specta::Type trait for their
+# respective dependencies of the same name. if we add a new dependency
+# and run into specta errors, adding the dependency as a feature will usually solve this.
 specta = { version = "=2.0.0-rc.19", features = [
   "chrono",
   "uuid",
@@ -57,15 +89,22 @@ specta = { version = "=2.0.0-rc.19", features = [
   "derive",
   "time"
 ] }
+
+# tauri-specta
 tauri-specta = { version = "=2.0.0-rc.13", features = [
   "javascript",
   "typescript",
   "derive"
 ] }
+
+# specta-typescript is the typescript adapter for specta.
 specta-typescript = { version = "=0.0.6" }
+
+# rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
 
 # all other dependencies are updated to latest crates.io release channel
+
 interpulse = { version = "1", features = [ "specta" ] }
 
 tracing = { version = "0.1" }
@@ -175,7 +214,7 @@ features = [
 ]
 default-features = false
 
-[patch.crates-io]
+[patch.crates-io] # we hack to the high heavens
 # rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 # rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
 
@@ -202,16 +241,16 @@ lto = "off"
 codegen-units = 256
 incremental = true
 
-# Set the settings for build scripts and proc-macros.
+# set the settings for build scripts and proc-macros.
 [profile.dev.build-override]
 opt-level = 3
 
-# Set the default for dependencies, except workspace members.
+# set the default for dependencies, except workspace members.
 [profile.dev.package."*"]
 opt-level = 3
 incremental = false
 
-# sets the default for dependencies, except workspace members.
+# set the default for dependencies, except workspace members.
 [profile.dev-debug.package."*"]
 inherits = "dev"
 opt-level = 3

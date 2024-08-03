@@ -3,16 +3,18 @@
 	"type": "module",
 	"version": "1.0.0-alpha.1",
 	"private": true,
+	"engineStrict": true,
 	"packageManager": "pnpm@9.6.0",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
+	"homepage": "https://polyfrost.org",
 	"repository": {
 		"type": "git",
-		"url": "git@github.com:polyfrost/onelauncher"
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "/"
 	},
-	"bugs": {
-		"url": "https://github.com/polyfrost/onelauncher/issues"
-	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
 	"engines": {
 		"pnpm": "9.6.0",
 		"npm": "pnpm",
@@ -20,29 +22,44 @@
 		"node": ">=18"
 	},
 	"scripts": {
+		"build": "pnpm --filter=./* run build",
+		"dev": "pnpm --filter=./* run dev",
+		"start": "pnpm --filter=./* run start",
+		"test": "pnpm test:vi && pnpm --filter=./* run test",
+		"format": "pnpm format:es && pnpm format:rs",
+		"lint": "pnpm lint:es && pnpm lint:rs",
+
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
 		"core": "cd packages/core && cargo",
 		"testing": "cd apps/testing && cargo",
 		"tauri": "cd apps/desktop && cargo",
-		"format": "pnpm format:es && pnpm format:rs",
-		"lint": "pnpm lint:es && pnpm lint:rs",
+
+		"test:vi": "pnpm vitest run",
+		"test:update": "pnpm vitest -u",
+		"test:ui": "pnpm vitest --ui",
 		"lint:es": "eslint . --cache",
 		"format:es": "pnpm lint:es --fix",
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
 		"release:node": "bumpp -r"
 	},
+	"workspaces": {
+		"packages": [
+			"packages/*",
+			"apps/*"
+		]
+	},
 	"devDependencies": {
 		"@flowr/eslint-config": "^3.10.2",
-		"@types/node": "^22.0.2",
+		"@types/node": "^22.1.0",
 		"@vitest/ui": "^2.0.5",
-		"bumpp": "^9.4.1",
+		"bumpp": "^9.4.2",
 		"eslint": "^9.8.0",
 		"eslint-plugin-solid": "^0.14.1",
 		"ts-node": "^10.9.2",
-		"tsx": "^4.16.4",
+		"tsx": "~4.16.5",
 		"typescript": "^5.5.4",
 		"vite": "^5.3.5",
 		"vitest": "^2.0.5"

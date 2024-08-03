@@ -35,8 +35,6 @@
 	"include": [
 		"./src/**/*.ts",
 		"./src/**/*.d.ts",
-		"./src/**/*.tsx",
-		"./src-isolation/**/*.ts",
-		"./*.ts"
+		"./src/**/*.tsx"
 	]
 }

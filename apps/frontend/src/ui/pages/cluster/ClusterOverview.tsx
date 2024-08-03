@@ -8,7 +8,7 @@ import Button from '../../components/base/Button';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
-import { upperFirst } from '~utils/primitives';
+import { upperFirst } from '~utils';
 import useClusterContext from '~ui/hooks/useCluster';
 import Modal from '~ui/components/overlay/Modal';
 import { bridge } from '~imports';

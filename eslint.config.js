@@ -10,6 +10,7 @@ export default petal({
 			'toml/padding-line-between-pairs': 'off',
 		},
 	},
+	gitignore: true,
 	ignores: [
 		'**/target',
 		'**/dist',

@@ -1,5 +1,3 @@
-/// <reference types="vitest/config"/>
-
 import process from 'node:process';
 import type { UserConfig } from 'vite';
 import { defineConfig, loadEnv } from 'vite';
@@ -40,11 +38,6 @@ export default defineConfig(async ({ mode }) => {
 			watch: {
 				ignored: ['**/src-tauri/**'],
 			},
-		},
-
-		test: {
-			globals: true,
-			reporters: ['dot'],
 		},
 	};
 

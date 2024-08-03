@@ -12,7 +12,7 @@ import { bridge } from '~imports';
 import SelectList from '~ui/components/base/SelectList';
 import Checkbox from '~ui/components/base/Checkbox';
 import type { Loader, VersionType } from '~bindings';
-import { formatVersionRelease } from '~utils/helpers';
+import { formatVersionRelease } from '~utils';
 
 const loaders: {
 	name: string;

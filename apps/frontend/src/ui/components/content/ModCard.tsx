@@ -1,6 +1,6 @@
 import { Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
-import { abbreviateNumber } from '../../../utils/primitives';
+import { abbreviateNumber } from '~utils';
 import BrowserMod from '~ui/pages/browser/BrowserMod';
 import type { ManagedPackage } from '~bindings';
 

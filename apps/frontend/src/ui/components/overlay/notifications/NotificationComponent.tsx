@@ -1,7 +1,7 @@
 import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
 import { InfoCircleIcon } from '@untitled-theme/icons-solid';
 import TimeAgo from '../../TimeAgo';
-import { PausableTimer } from '~utils/PausableTimer';
+import { PausableTimer } from '~utils';
 
 type NotificationComponentProps = Core.Notification & {
 	overlay: boolean;

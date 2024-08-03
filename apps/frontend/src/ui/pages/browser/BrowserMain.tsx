@@ -8,7 +8,7 @@ import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import ModCard, { Provider } from '~ui/components/content/ModCard';
 import { tryResult } from '~ui/hooks/useCommand';
-import createSortable from '~utils/sorting';
+import { createSortable } from '~utils';
 
 interface CardProps {
 	id: string;
@@ -35,21 +35,21 @@ function BrowserMain() {
 			tryResult(bridge.commands.getMod, 'oneconfig'),
 			tryResult(bridge.commands.getMod, 'chatting'),
 			tryResult(bridge.commands.getMod, 'patcher'),
-		]).then((res: ManagedPackage[]) => {
+		]).then((pkgs) => {
 			const list: ModsRowProps[] = [
 				{
 					header: 'Polyfrost',
 					category: 'polyfrost',
 					packages: [
-						res[1],
-						res[2],
-						res[3],
+						pkgs[1],
+						pkgs[2],
+						pkgs[3],
 					],
 				},
 				{
 					header: 'Random Mods',
 					category: 'random',
-					packages: res[0],
+					packages: pkgs[0],
 				},
 			];
 

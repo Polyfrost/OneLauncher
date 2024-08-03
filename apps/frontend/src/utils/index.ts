@@ -1,3 +1,19 @@
+import type { VersionType } from '~bindings';
+
+export * from './PausableTimer';
+export * from './sorting';
+
+export function formatVersionRelease(release: VersionType): string {
+	const mapping: { [key in VersionType]: string } = {
+		old_alpha: 'Alpha',
+		old_beta: 'Beta',
+		release: 'Release',
+		snapshot: 'Snapshot',
+	};
+
+	return mapping[release];
+}
+
 export function upperFirst(object: any): string {
 	const str = object.toString();
 	return str.charAt(0).toUpperCase() + str.slice(1);
@@ -16,12 +32,6 @@ export function abbreviateNumber(n: number) {
 		return `${+(n / 1e12).toFixed(1)}T`;
 	return `${n}`;
 };
-
-export function getEnumMembers(obj: any): string[] {
-	return Object.keys(obj).filter((item) => {
-		return Number.isNaN(Number(item));
-	});
-}
 
 export function secondsToWords(seconds: number | bigint): string {
 	const n = Number(seconds);
@@ -43,8 +53,3 @@ export function secondsToWords(seconds: number | bigint): string {
 
 	return `${n} seconds`; // Hmmmmmm
 }
-
-export default {
-	upperFirst,
-	abbreviateNumber,
-};

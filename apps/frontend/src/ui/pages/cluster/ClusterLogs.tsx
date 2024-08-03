@@ -2,13 +2,13 @@ import { For, Show, createEffect, createSignal, untrack } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { LinkExternal01Icon, Upload01Icon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
+import { join } from 'pathe';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import useClusterContext from '~ui/hooks/useCluster';
 import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
 import useSettingsContext from '~ui/hooks/useSettings';
-import joinPath from '~utils/helpers';
 import FormattedLog from '~ui/components/content/FormattedLog';
 
 function ClusterLogs() {
@@ -37,9 +37,8 @@ function ClusterLogs() {
 		if (root === null || root === undefined || path === null || path === undefined)
 			return;
 
-		const dir = joinPath(root, 'clusters', path);
-
-		open(joinPath(dir, 'logs'));
+		const dir = join(root, 'clusters', path);
+		open(join(dir, 'logs'));
 	}
 
 	async function uploadAndOpenLog() {

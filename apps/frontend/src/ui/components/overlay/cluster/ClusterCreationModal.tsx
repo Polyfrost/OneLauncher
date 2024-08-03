@@ -7,6 +7,7 @@ import { ClusterStepTwo } from './ClusterStepTwo';
 import Button from '~ui/components/base/Button';
 import type { CreateCluster } from '~bindings';
 import { bridge } from '~imports';
+import type { FixedArray, UnionToArray } from '~types.ts';
 
 type PartialCluster = Partial<CreateCluster>;
 type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => any;

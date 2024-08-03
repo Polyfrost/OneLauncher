@@ -24,13 +24,6 @@ tauri-build = { workspace = true, features = [ "isolation" ] }
 [dependencies]
 onelauncher = { workspace = true, features = [ "tauri" ] }
 
-tauri = { workspace = true, features = [
-  "isolation",
-  "macos-private-api",
-  "image-ico",
-  "image-png",
-  "protocol-asset"
-] }
 tauri-utils = { workspace = true }
 tauri-build = { workspace = true }
 tauri-codegen = { workspace = true }
@@ -42,7 +35,6 @@ tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
-tauri-plugin-authenticator = { workspace = true }
 tauri-plugin-clipboard-manager = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 
@@ -62,6 +54,20 @@ uuid = { workspace = true }
 
 tracing = { workspace = true }
 tracing-error = { workspace = true }
+
+[dependencies.tauri]
+workspace = true
+features = [
+  "isolation",
+  "macos-private-api",
+  "image-ico",
+  "image-png",
+  "protocol-asset"
+]
+
+[dev-dependencies.tauri]
+workspace = true
+features = [ "test" ]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa.workspace = true

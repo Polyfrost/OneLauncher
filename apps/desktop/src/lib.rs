@@ -6,17 +6,16 @@ pub mod error;
 pub mod ext;
 
 #[derive(Clone, serde::Serialize)]
-struct SingleInstancePayload {
+pub struct SingleInstancePayload {
 	args: Vec<String>,
 	cwd: String,
 }
 
 #[tracing::instrument(skip_all)]
-async fn initialize_state(app: tauri::AppHandle) -> api::Result<()> {
-	onelauncher::ProxyState::initialize(app).await?;
+async fn initialize_state(handle: &tauri::AppHandle) -> api::Result<()> {
+	onelauncher::ProxyState::initialize(handle).await?;
 	let s = onelauncher::State::get().await?;
 	onelauncher::State::update();
-
 	s.processor.write().await.restore().await?;
 	Ok(())
 }
@@ -26,9 +25,9 @@ pub async fn run() {
 	// we panic because nothing else can be debugged once the logger fails.
 	// the only thing that can fail before the logger should be our `tokio::main` loop.
 	let _log_guard = onelauncher::start_logger();
-	tracing::info!("initialized tracing subscriber. loading onelauncher...");
+	tracing::info!("initialized logger. loading onelauncher/tauri...");
 
-	run_app(|app| {
+	run_app(tauri::Builder::default(), |app| {
 		if let Err(err) = setup(app) {
 			tracing::error!("failed to setup app: {:?}", err);
 		}
@@ -36,7 +35,10 @@ pub async fn run() {
 	.await;
 }
 
-pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
+pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
+	builder: tauri::Builder<tauri::Wry>,
+	setup: F,
+) {
 	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
 		.commands(collect_commands!())
 		.events(collect_events!())
@@ -51,7 +53,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		)
 		.expect("failed to export debug bindings!");
 
-	let builder = tauri::Builder::default()
+	let builder = builder
 		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
@@ -70,7 +72,7 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.invoke_handler(prebuild.invoke_handler())
 		.setup(move |app| {
 			prebuild.mount_events(app.handle());
-			setup(app);
+			setup(app.handle());
 			Ok(())
 		});
 
@@ -78,15 +80,15 @@ pub async fn run_app<F: FnOnce(&mut tauri::App) + Send + 'static>(setup: F) {
 		.build(tauri::generate_context!())
 		.expect("failed to build tauri application");
 
-	if let Err(err) = initialize_state(app.app_handle().clone()).await {
+	if let Err(err) = initialize_state(app.handle()).await {
 		tracing::error!("{err}");
 	};
 
 	app.run(|_, _| {})
 }
 
-fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-	let win = app.get_webview_window("main").unwrap();
+fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+	let win = handle.get_webview_window("main").unwrap();
 	win.show().unwrap();
 
 	Ok(())

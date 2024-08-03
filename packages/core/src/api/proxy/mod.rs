@@ -15,7 +15,7 @@ pub use utils::*;
 static PROXY_STATE: OnceCell<Arc<ProxyState>> = OnceCell::const_new();
 pub struct ProxyState {
 	#[cfg(feature = "tauri")]
-	pub app: tauri::AppHandle,
+	pub app: tauri::AppHandle<tauri::Wry>,
 	pub ingress_feeds: RwLock<HashMap<Uuid, Ingress>>,
 }
 
@@ -88,11 +88,11 @@ impl Drop for IngressId {
 
 impl ProxyState {
 	#[cfg(feature = "tauri")]
-	pub async fn initialize(app: tauri::AppHandle) -> crate::Result<Arc<Self>> {
+	pub async fn initialize(handle: &tauri::AppHandle<tauri::Wry>) -> crate::Result<Arc<Self>> {
 		PROXY_STATE
 			.get_or_try_init(|| async {
 				Ok(Arc::new(Self {
-					app,
+					app: handle.clone(),
 					ingress_feeds: RwLock::new(HashMap::new()),
 				}))
 			})

@@ -9,6 +9,7 @@ import { For, createEffect, createSignal, on } from 'solid-js';
 import { mergeRefs } from '@solid-primitives/refs';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
+import type { MakeOptional } from '~types.ts';
 
 export type ModalProps = {
 	visible: Accessor<boolean>;

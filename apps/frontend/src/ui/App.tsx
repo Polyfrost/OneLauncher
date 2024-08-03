@@ -13,9 +13,7 @@ import { PROGRAM_INFO } from '~bindings';
 
 function App(props: ParentProps) {
 	if (PROGRAM_INFO.dev_build !== true)
-		document.addEventListener('contextmenu', (event) => {
-			event.preventDefault();
-		});
+		document.addEventListener('contextmenu', e => e.preventDefault());
 
 	return (
 		<GlobalContexts>

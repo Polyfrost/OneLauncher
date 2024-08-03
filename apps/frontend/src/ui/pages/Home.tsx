@@ -20,7 +20,7 @@ import ClusterCover from '~ui/components/game/ClusterCover';
 import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
-import { secondsToWords, upperFirst } from '~utils/primitives';
+import { secondsToWords, upperFirst } from '~utils';
 import { useClusterModalController } from '~ui/components/overlay/cluster/ClusterCreationModal';
 
 type GroupedClusters = Record<string, Cluster[]>;

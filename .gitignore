@@ -3,6 +3,10 @@ result*
 repl-result-out*
 .direnv
 
+# auto-generated files
+apps/frontend/src/bindings.ts
+apps/frontend/ipc
+
 # Prisma
 crates/prisma/src/prisma.rs
 dev.db

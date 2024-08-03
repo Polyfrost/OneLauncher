@@ -4,4 +4,4 @@ rustflags = [
   "link-args=/STACK:16777220"
 ]
 
-[alias]
+[env]

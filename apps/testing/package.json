@@ -9,5 +9,7 @@
 		"url": "git@github.com:polyfrost/onelauncher",
 		"directory": "apps/testing"
 	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
 	"scripts": {}
 }

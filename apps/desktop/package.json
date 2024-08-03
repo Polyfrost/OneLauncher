@@ -10,6 +10,8 @@
 		"url": "git@github.com:polyfrost/onelauncher",
 		"directory": "apps/desktop"
 	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
 	"scripts": {
 		"build": "tauri build",
 		"dev": "tauri dev",
@@ -21,6 +23,6 @@
 		"@onelauncher/frontend": "workspace:*"
 	},
 	"devDependencies": {
-		"@tauri-apps/cli": "2.0.0-beta.23"
+		"@tauri-apps/cli": "2.0.0-rc.0"
 	}
 }

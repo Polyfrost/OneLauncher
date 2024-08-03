@@ -92,7 +92,7 @@ impl Settings {
 		} else {
 			let settings = Self {
 				theme: Theme::Dark,
-				hide_close_prompt: false,
+				hide_close_prompt: true,
 				disable_animations: false,
 				force_fullscreen: false,
 				resolution: Resolution::default(),

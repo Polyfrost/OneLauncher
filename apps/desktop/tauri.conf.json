@@ -104,17 +104,19 @@
 			"../../packages/distribution/icons/icon.ico"
 		],
 		"copyright": "Polyfrost",
-		"longDescription": "",
+		"publisher": "Polyfrost",
+		"license": "GPL-3.0-only",
+		"homepage": "https://polyfrost.org/",
+		"longDescription": "Next-generation open source Minecraft launcher",
 		"resources": [],
 		"externalBin": [],
-		"publisher": "Polyfrost",
 		"linux": {
 			"deb": {
 				"depends": [],
 				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
 			}
 		},
-		"shortDescription": "Next-generation open source Minecraft launcher",
+		"shortDescription": "OneLauncher",
 		"macOS": {
 			"entitlements": "App.entitlements",
 			"exceptionDomain": null,
@@ -138,7 +140,10 @@
 			"active": true,
 			"dialog": false,
 			"pubkey": "",
-			"endpoints": ["https://polyfrost.org/releases/update/{{version}}/{{target}}/{{arch}}"]
+			"endpoints": ["https://polyfrost.org/releases/tauri/{{version}}/{{target}}/{{arch}}"]
+		},
+		"deep-link": {
+			"desktop": ["onelauncher"]
 		}
 	}
 }

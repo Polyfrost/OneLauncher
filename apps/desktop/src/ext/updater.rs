@@ -55,14 +55,14 @@ pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<Update>, S
 		}
 	};
 
-	let update = update.map(|update| Update::new(&update));
+	let update = update.map(|u| Update::new(&u));
 
 	app.emit(
 		"updater",
 		update
 			.clone()
-			.map_or(UpdateEvent::NoUpdateAvailable, |update| {
-				UpdateEvent::UpdateAvailable { update }
+			.map_or(UpdateEvent::NoUpdateAvailable, |u| {
+				UpdateEvent::UpdateAvailable { update: u }
 			}),
 	)
 	.ok();

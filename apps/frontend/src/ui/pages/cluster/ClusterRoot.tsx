@@ -12,7 +12,7 @@ import ClusterScreenshots from './ClusterScreenshots';
 import ClusterSettings from './ClusterSettings';
 import ClusterGame from './ClusterGame';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
-import { supportsMods } from '~utils/helpers';
+import { supportsMods } from '~utils';
 import { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import PlayerHead from '~ui/components/game/PlayerHead';

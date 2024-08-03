@@ -1,7 +1,17 @@
-import type { VersionType } from '~bindings';
+import type { Cluster, Loader, VersionType } from '~bindings';
 
 export * from './PausableTimer';
 export * from './sorting';
+
+export function supportsMods(loader?: Cluster | Loader): boolean {
+	if (loader === undefined)
+		return false;
+
+	if (typeof loader !== 'string')
+		loader = loader.meta.loader;
+
+	return loader !== 'vanilla';
+}
 
 export function formatVersionRelease(release: VersionType): string {
 	const mapping: { [key in VersionType]: string } = {

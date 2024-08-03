@@ -1,4 +1,6 @@
 import { ColorsIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
+import { useBeforeLeave } from '@solidjs/router';
+import { createSignal } from 'solid-js';
 import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
@@ -8,6 +10,15 @@ import useSettingsContext from '~ui/hooks/useSettings';
 
 function SettingsAppearance() {
 	const settings = useSettingsContext();
+	const [shouldReload, setShouldReload] = createSignal(false);
+
+	useBeforeLeave((e) => {
+		if (shouldReload()) {
+			e.preventDefault();
+			setShouldReload(false);
+			location.reload();
+		}
+	});
 
 	return (
 		<Sidebar.Page>
@@ -32,7 +43,10 @@ function SettingsAppearance() {
 				>
 					<Toggle
 						defaultChecked={settings.disable_animations ?? false}
-						onChecked={value => settings.disable_animations = value}
+						onChecked={(value) => {
+							settings.disable_animations = value;
+							setShouldReload(true);
+						}}
 					/>
 				</SettingsRow>
 			</ScrollableContainer>

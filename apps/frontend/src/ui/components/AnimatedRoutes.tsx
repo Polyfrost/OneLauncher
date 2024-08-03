@@ -1,7 +1,10 @@
-import { type ParentProps, mergeProps, splitProps } from 'solid-js';
+import { type ParentProps, Show, mergeProps, splitProps } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
+import useSettingsContext from '~ui/hooks/useSettings';
 
 function AnimatedRoutes(props: TransitionProps & ParentProps) {
+	const settings = useSettingsContext();
+
 	const defaultProps: TransitionProps = {
 		mode: 'outin',
 		enterClass: 'page-animation-enter',
@@ -16,9 +19,17 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 	const merged = mergeProps(defaultProps, rest);
 
 	return (
-		<Transition {...merged}>
-			{split.children}
-		</Transition>
+		<Show
+			when={settings.disable_animations !== true}
+			fallback={(
+				<>{split.children}</>
+			)}
+			children={(
+				<Transition {...merged}>
+					{split.children}
+				</Transition>
+			)}
+		/>
 	);
 }
 

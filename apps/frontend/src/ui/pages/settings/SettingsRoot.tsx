@@ -40,7 +40,6 @@ function SettingsRoot(props: ParentProps) {
 			<div class="mt-8 flex flex-col justify-between">
 				<Sidebar
 					base="/settings"
-					state={{}}
 					links={{
 						'Launcher Settings': [
 							[<Rocket02Icon />, 'General', '/'],

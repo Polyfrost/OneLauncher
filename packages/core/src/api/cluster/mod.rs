@@ -85,7 +85,7 @@ pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, 
 
 /// run a Minecraft [`Cluster`] using the default credentials.
 #[tracing::instrument]
-pub async fn run(path: &ClusterPath) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
+pub async fn run_default(path: &ClusterPath) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
 	let state = State::get().await?;
 	let default = {
 		let mut users = state.users.write().await;
@@ -96,6 +96,21 @@ pub async fn run(path: &ClusterPath) -> crate::Result<Arc<RwLock<ProcessorChild>
 	};
 
 	run_credentials(path, &default).await
+}
+
+/// run a Minecraft [`Cluster`] using [`MinecraftCredentials`] for authentication.
+/// returns an [`Arc`] pointer to [`RwLock`] to [`ProcessorChild`].
+#[tracing::instrument(skip(creds))]
+#[onelauncher_macros::memory]
+pub async fn run(
+	path: &ClusterPath,
+	creds: Option<&MinecraftCredentials>
+) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
+	if let Some(creds) = creds {
+		run_credentials(path, creds).await
+	} else {
+		run_default(path).await
+	}
 }
 
 /// run a Minecraft [`Cluster`] using [`MinecraftCredentials`] for authentication.

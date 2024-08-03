@@ -1,18 +1,14 @@
 import {
-	ChevronRightIcon,
 	DotsVerticalIcon,
-	EyeIcon,
 	PlayIcon,
 	PlusIcon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import type { Accessor, Setter } from 'solid-js';
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 
 import { mergeRefs } from '@solid-primitives/refs';
-import image from '../../assets/images/header.png';
-import ContextMenu from '../components/overlay/ContextMenu';
+import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import TextField from '../components/base/TextField';
 import ClusterRoot from './cluster/ClusterRoot';
@@ -221,8 +217,18 @@ function Banner(props: BannerProps) {
 	});
 
 	return (
-		<div class="relative w-full h-52">
-			<img src={image} class="absolute rounded-xl w-full h-52 object-cover" />
+		<div class="relative w-full h-52 min-h-52 overflow-hidden rounded-xl">
+			<ClusterCover
+				class="absolute rounded-xl w-full h-52 object-cover"
+				linearBlur={{
+					degrees: 270,
+					blur: 30,
+					class: 'after:right-1/3!',
+				}}
+				cluster={cluster()}
+				fallback={BannerBackground}
+			/>
+
 			<div class="relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start">
 				<div class="flex flex-col gap-y-2">
 					<h1>{cluster()?.meta.name || 'Create a cluster'}</h1>
@@ -258,7 +264,7 @@ function Banner(props: BannerProps) {
 									<Button
 										buttonStyle="iconSecondary"
 										class="bg-op-10!"
-										children={<ChevronRightIcon />}
+										children={<DotsVerticalIcon />}
 										onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
 									/>
 								</>
@@ -276,43 +282,8 @@ function Banner(props: BannerProps) {
 	);
 }
 
-interface ClusterCardContextMenuProps {
-	pos: Accessor<{ x: number; y: number }>;
-	contextMenuVisible: Accessor<boolean>;
-	setContextMenuVisible: Setter<boolean>;
-	id: string;
-}
-
-function ClusterCardContextMenu(props: ClusterCardContextMenuProps) {
-	const navigate = useNavigate();
-
-	return (
-		<ContextMenu
-			pos={props.pos}
-			visible={props.contextMenuVisible}
-			setVisible={props.setContextMenuVisible}
-		>
-			<ContextMenu.Row
-				icon={<EyeIcon />}
-				text="View"
-				onClick={() => ClusterRoot.open(navigate, props.id)}
-			/>
-
-			<ContextMenu.Seperator />
-
-			<ContextMenu.Row
-				icon={<PlayIcon />}
-				text="Launch"
-				onClick={() => {}}
-			/>
-		</ContextMenu>
-	);
-}
-
 function ClusterCard(props: Cluster) {
 	const navigate = useNavigate();
-	const [pos, setPos] = createSignal({ x: 0, y: 0 });
-	const [contextMenuVisible, setContextMenuVisible] = createSignal(false);
 	// const sortable = createSortable(props.uuid, props);
 	let ref!: HTMLDivElement;
 
@@ -320,22 +291,10 @@ function ClusterCard(props: Cluster) {
 		navigate(`/clusters/?id=${props.uuid}`);
 	}
 
-	function openContextMenu(e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		setContextMenuVisible(!contextMenuVisible());
-	}
-
-	function onMouseDown(e: MouseEvent) {
-		setPos({ x: e.clientX, y: e.clientY });
-	}
-
 	return (
 		<>
 			<div
 				onClick={e => openClusterPage(e)}
-				onMouseDown={e => onMouseDown(e)}
-				onContextMenu={e => openContextMenu(e)}
 				ref={mergeRefs(
 					ref,
 					// sortable
@@ -353,9 +312,9 @@ function ClusterCard(props: Cluster) {
 						/>
 					</div>
 				</div>
-				<div class="z-10 p-3 flex flex-row items-center justify-between">
-					<div class="flex flex-col gap-1.5">
-						<p class="h-4 font-medium">{props.meta.name}</p>
+				<div class="z-10 p-3 flex flex-row gap-x-3 items-center justify-between">
+					<div class="flex flex-col gap-1.5 overflow-hidden h-8">
+						<p class="h-4 font-medium text-ellipsis whitespace-nowrap">{props.meta.name}</p>
 						<p class="h-4 text-xs">
 							{upperFirst(props.meta.loader)}
 							{' '}
@@ -364,18 +323,18 @@ function ClusterCard(props: Cluster) {
 							{props.instance.mods && `• ${props.mods} mods`} */}
 						</p>
 					</div>
-					<Button onClick={e => openContextMenu(e)} buttonStyle="icon" class="w-8 h-8">
-						<DotsVerticalIcon />
+					<Button
+						buttonStyle="iconSecondary"
+						onClick={(e) => {
+							e.preventDefault();
+							e.stopImmediatePropagation();
+							ClusterRoot.launch(navigate, props.uuid);
+						}}
+					>
+						<PlayIcon class="w-4! h-4!" />
 					</Button>
 				</div>
 			</div>
-
-			<ClusterCardContextMenu
-				contextMenuVisible={contextMenuVisible}
-				setContextMenuVisible={setContextMenuVisible}
-				pos={pos}
-				id={props.uuid}
-			/>
 		</>
 	);
 }

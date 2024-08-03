@@ -1,0 +1,15 @@
+.linearBlur::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	-webkit-backdrop-filter: blur(var(--blur));
+	backdrop-filter: blur(var(--blur));
+
+	-webkit-mask: linear-gradient(var(--degrees), transparent, black 50%);
+	mask: linear-gradient(var(--degrees), transparent, black 50%);
+
+	background: linear-gradient(var(--degrees), transparent, rgba(0, 0, 0, 0.4) 50%);
+}

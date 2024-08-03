@@ -1,4 +1,5 @@
 import { For, createMemo } from 'solid-js';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import styles from './FormattedLog.module.scss';
 
 interface FormattedLogProps {
@@ -9,11 +10,15 @@ function FormattedLog(props: FormattedLogProps) {
 	const lines = createMemo(() => props.log.split('\n'));
 
 	return (
-		<code class={styles.log}>
-			<For each={lines()}>
-				{line => <Line line={line} />}
-			</For>
-		</code>
+		<div class="bg-component-bg flex flex-1 h-full font-mono font-medium overflow-auto p-2 rounded-md mt-2">
+			<OverlayScrollbarsComponent class="flex-1 h-full relative">
+				<code class={styles.log}>
+					<For each={lines()}>
+						{line => <Line line={line} />}
+					</For>
+				</code>
+			</OverlayScrollbarsComponent>
+		</div>
 	);
 }
 

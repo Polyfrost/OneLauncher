@@ -1,26 +1,19 @@
 .button {
     @apply py-1.5 px-3 rounded-lg flex flex-row justify-center items-center gap-x-2.5;
 
-	&:disabled {
-		@apply border-op-1! bg-opacity-10! text-op-10! pointer-events-none;
-
-		svg {
-			@apply fill-op-10! stroke-op-10!;
-		}
-	}
-
     &__primary {
         @apply text-onbrand hover:text-onbrand-hover  active:text-onbrand-pressed disabled:text-onbrand-disabled;
         @apply bg-brand hover:bg-brand-hover active:bg-brand-pressed disabled:bg-brand-disabled;
     }
 
     &__secondary, &__iconSecondary {
-        @apply border border-gray-05;
+        @apply border box-border border-gray-05;
         @apply text-fg-primary hover:text-fg-primary-hover active:text-fg-primary-pressed disabled:text-fg-primary-disabled;
         @apply bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled;
     }
 
     &__danger, &__iconDanger {
+		@apply text-onbrand hover:text-onbrand-hover  active:text-onbrand-pressed disabled:text-onbrand-disabled;
         @apply bg-danger hover:bg-danger-hover active:bg-danger-pressed disabled:bg-danger-disabled;
     }
 
@@ -62,6 +55,14 @@
             @apply stroke-fg-primary-disabled;
         }
     }
+
+	&:disabled {
+		@apply border-opacity-1! bg-opacity-10! text-opacity-10! pointer-events-none;
+
+		svg {
+			@apply fill-opacity-10! stroke-opacity-10!;
+		}
+	}
 }
 
 .icon > * {

@@ -50,10 +50,9 @@ function SettingsGeneral() {
 				</SettingsRow>
 
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
-
 				<SettingsRow
 					title="Launcher Folder"
-					description={settings.config_dir || 'UNKNOWN'}
+					description={settings.config_dir || 'Unknown'}
 					icon={<FolderIcon />}
 				>
 					<Button

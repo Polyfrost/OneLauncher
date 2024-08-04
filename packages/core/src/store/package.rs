@@ -9,11 +9,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
 
+use crate::package::content::Providers;
 use crate::prelude::IOError;
-use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
-use crate::State;
+use crate::utils::http::{write_icon, FetchSemaphore, IoSemaphore};
 
-use super::{Cluster, PackagePath};
+use crate::store::{Cluster, Loader, PackagePath};
 
 // TODO: move all of this to prisma, it would be perfect for it
 // TODO: Curseforge, Modrinth, SkyClient integration
@@ -188,6 +188,7 @@ pub enum PackageMetadata {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedPackage {
 	// Core Metadata
+	pub provider: Providers,
 	pub id: String,
 	pub uid: Option<String>,
 	pub package_type: PackageType,
@@ -196,7 +197,7 @@ pub struct ManagedPackage {
 	pub main: String,
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
-	pub loaders: Vec<String>,
+	pub loaders: Vec<Loader>,
 	pub icon_url: Option<String>,
 
 	pub created: DateTime<Utc>,
@@ -230,7 +231,13 @@ pub struct ManagedVersion {
 	pub files: Vec<ManagedVersionFile>,
 	pub deps: Vec<ManagedDependency>,
 	pub game_versions: Vec<String>,
-	pub loaders: Vec<String>,
+	pub loaders: Vec<Loader>,
+}
+
+impl ManagedVersion {
+	pub fn get_primary_file(&self) -> Option<&ManagedVersionFile> {
+		self.files.iter().find(|f| f.primary == true)
+	}
 }
 
 /// Universal interface for managed package files.
@@ -244,29 +251,6 @@ pub struct ManagedVersionFile {
 	pub size: u32,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
-}
-
-impl ManagedVersionFile {
-	#[tracing::instrument]
-	pub async fn download_to_cluster(&self, cluster: &Cluster) -> crate::Result<()> {
-		tracing::info!(
-			"downloading mod '{}' to cluster '{}'",
-			self.file_name,
-			cluster.meta.name
-		);
-		let path = cluster
-			.get_full_path()
-			.await?
-			.join("mods")
-			.join(&self.file_name);
-		let state = State::get().await?;
-
-		// TODO: Implement hashes
-		let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
-		http::write(&path, &bytes, &state.io_semaphore).await?;
-
-		Ok(())
-	}
 }
 
 /// Universal interface for managed package dependencies.

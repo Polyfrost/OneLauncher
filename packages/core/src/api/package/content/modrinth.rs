@@ -1,4 +1,4 @@
-use crate::data::{ManagedPackage, ManagedVersion, PackageType};
+use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::store::{ManagedVersionFile, PackageFile, PackageSide};
 use crate::utils::http::fetch;
 use crate::{Result, State};
@@ -75,13 +75,14 @@ pub struct ModrinthPackage {
 impl From<ModrinthPackage> for ManagedPackage {
 	fn from(value: ModrinthPackage) -> ManagedPackage {
 		ManagedPackage {
+			provider: super::Providers::Modrinth,
 			id: value.id,
 			title: value.title,
 			description: value.description,
 			main: value.slug,
 			versions: value.versions,
 			game_versions: value.game_versions,
-			loaders: value.loaders,
+			loaders: value.loaders.into_iter().map(Loader::from).collect(),
 			icon_url: Some(value.icon_url),
 			created: value.published,
 			updated: value.updated,
@@ -124,52 +125,10 @@ pub struct Gallery {
 	pub ordering: i64,
 }
 
-macro_rules! format_url {
-    ($($arg:tt)*) => {{
-        format!("{}{}", crate::constants::MODRINTH_API_URL, format!($($arg)*))
-    }};
-}
-
-pub async fn list() -> Result<Vec<ModrinthPackage>> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			format_url!("/projects_random?count=10").as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?)
-}
-
-pub async fn get(id: &str) -> Result<ModrinthPackage> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			format_url!("/project/{}", id).as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?)
-}
-
 #[derive(Serialize, Deserialize)]
 struct SearchResults {
 	hits: Vec<ModrinthPackage>,
 }
-
-// pub async fn search(query: &str) -> Result<Vec<ModrinthPackage>> {
-// 	// TODO: Fix date_created and date_updated inconsistency (published and updated)
-// 	let response: SearchResults = serde_json::from_slice(
-// 		&fetch(
-// 			format_url!("/search?query={}", query).as_str(),
-// 			None,
-// 			&State::get().await?.fetch_semaphore,
-// 		)
-// 		.await?,
-// 	)?;
-
-// 	Ok(response.hits)
-// }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -245,9 +204,37 @@ impl From<ModrinthVersion> for ManagedVersion {
 			files: value.files.into_iter().map(|f| f.into()).collect(),
 			deps: vec![], // TODO [`ManagedDependency`]?
 			game_versions: value.game_versions,
-			loaders: value.loaders,
+			loaders: value.loaders.into_iter().map(Loader::from).collect(),
 		}
 	}
+}
+
+macro_rules! format_url {
+    ($($arg:tt)*) => {{
+        format!("{}{}", crate::constants::MODRINTH_API_URL, format!($($arg)*))
+    }};
+}
+
+pub async fn list() -> Result<Vec<ModrinthPackage>> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!("/projects_random?count=10").as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
+}
+
+pub async fn get(id: &str) -> Result<ModrinthPackage> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!("/project/{}", id).as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
 }
 
 pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>> {

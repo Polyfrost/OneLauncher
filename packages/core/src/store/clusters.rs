@@ -313,6 +313,29 @@ pub enum Loader {
 	LegacyFabric,
 }
 
+impl Loader {
+	pub fn supports_mods(&self) -> bool {
+		match self {
+			Self::Vanilla => false,
+			_ => true,
+		}
+	}
+}
+
+impl From<String> for Loader {
+	fn from(value: String) -> Self {
+		match value.to_lowercase().as_str() {
+			"vanilla" => Self::Vanilla,
+			"forge" => Self::Forge,
+			"fabric" => Self::Fabric,
+			"neoforge" => Self::NeoForge,
+			"quilt" => Self::Quilt,
+			"legacyfabric" | "legacy_fabric" => Self::LegacyFabric,
+			_ => Self::Vanilla,
+		}
+	}
+}
+
 impl std::fmt::Display for Loader {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(match *self {

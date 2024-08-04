@@ -42,7 +42,7 @@ jobs:
     permissions: {}
     timeout-minutes: 150
     steps:
-      - name: Maximize build space
+      - name: (Linux) Maximize build space
         if: ${{ runner.os == 'Linux' }}
         uses: easimon/maximize-build-space@fc881a613ad2a34aca9c9624518214ebc21dfc0c
         with:
@@ -56,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
-      - name: (windows) - Setup Target
+      - name: (Windows) Setup Target
         if: ${{ runner.os == 'Windows' }}
         shell: powershell
         run: |
@@ -70,17 +70,17 @@ jobs:
           target: ${{ matrix.settings.target }}
           save-cache: 'true'
 
-      - name: (debug) - Test
+      - name: (Debug) Test
         run: cargo test --workspace --all-features --no-run --locked --target ${{ matrix.settings.target }}
 
-      - name: (release) - Test
+      - name: (Release) Test
         run: cargo test --workspace --all-features --no-run --locked --release --target ${{ matrix.settings.target }}
 
-      - name: (debug) - Build
+      - name: (Debug) Build
         run: cargo build --quiet --workspace --all-features --target ${{ matrix.settings.target }}
 
-      - name: (release) - Build
+      - name: (Release) Build
         run: cargo build --quiet --workspace --all-features --release --target ${{ matrix.settings.target }}
 
-      - name: (debug) - Clippy
+      - name: (Debug) Clippy
         run: cargo clippy --workspace --all-features --target ${{ matrix.settings.target }}

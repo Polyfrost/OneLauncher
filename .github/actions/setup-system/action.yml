@@ -19,19 +19,19 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: (macOS) - Install bash@latest
+    - name: (macOS) Install bash@latest
       shell: bash
       if: ${{ runner.os == 'macOS' }}
       run: brew install bash
 
-    - name: (linux) - Install mold@latest
+    - name: (Linux) Install mold@latest
       shell: bash
       if: ${{ runner.os == 'Linux' }}
       run: |
         curl -L# 'https://github.com/rui314/mold/releases/download/v2.32.1/mold-2.32.1-x86_64-linux.tar.gz' \
         | sudo tar -xzf- -C /usr/local
 
-    - name: (linux) - Cleanup Runner
+    - name: (Linux) Cleanup Runner
       shell: bash
       if: ${{ runner.os == 'Linux' }}
       run: |
@@ -49,12 +49,13 @@ runs:
         target: ${{ inputs.target }}
         save-cache: ${{ inputs.save-cache }}
 
-    - name: (linux/macOS) - Setup System
+    - name: (Linux/macOS) - Setup System
       shell: bash
       if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
       run: ./packages/scripts/setup.sh ${{ inputs.setup-arg }}
 
-    - name: (windows) - Setup System
+    - name: (Windows) - Setup System
+      if: ${{ runner.os == 'Windows' }}
       shell: powershell
       run: ./packages/scripts/setup.ps1
 

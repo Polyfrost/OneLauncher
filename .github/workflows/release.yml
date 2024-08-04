@@ -39,7 +39,7 @@ jobs:
     name: Desktop (${{ matrix.settings.target }})
     runs-on: ${{ matrix.settings.host }}
     steps:
-      - name: Maximize build space
+      - name: (Linux) Maximize build space
         if: ${{ runner.os == 'Linux' }}
         uses: easimon/maximize-build-space@fc881a613ad2a34aca9c9624518214ebc21dfc0c
         with:
@@ -53,7 +53,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
-      - name: (windows) - Setup Target
+      - name: (Windows) Setup Target
         if: ${{ runner.os == 'Windows' }}
         shell: powershell
         run: |
@@ -103,7 +103,7 @@ jobs:
         # APPLE_API_KEY: $ {{ secrets.APPLE_API_KEY }}
         # SENTRY_AUTH_TOKEN: $ {{ secrets.SENTRY_AUTH_TOKEN }}
 
-      - name: (linux) - Build Frontend
+      - name: (Linux) Build Frontend
         if: ${{ runner.os == 'Linux' }}
         run: |
           set -eux

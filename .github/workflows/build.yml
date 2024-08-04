@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Maximize build space
+      - name: (Linux) Maximize build space
         if: ${{ runner.os == 'Linux' }}
         uses: easimon/maximize-build-space@fc881a613ad2a34aca9c9624518214ebc21dfc0c
         with:
@@ -60,7 +60,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
-      - name: (windows) - Setup Target
+      - name: (Windows) Setup Target
         if: ${{ runner.os == 'Windows' }}
         shell: powershell
         run: |
@@ -114,7 +114,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Maximize build space
+      - name: (Linux) Maximize build space
         if: ${{ runner.os == 'Linux' }}
         uses: easimon/maximize-build-space@fc881a613ad2a34aca9c9624518214ebc21dfc0c
         with:
@@ -128,7 +128,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
-      - name: (windows) - Setup Target
+      - name: (Windows) Setup Target
         if: ${{ runner.os == 'Windows' }}
         shell: powershell
         run: |

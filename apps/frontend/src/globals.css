@@ -83,6 +83,21 @@ h4 { @apply text-lg font-medium; }
     transform: translateX(0);
 }
 
+.modal-animation-enter-active, .modal-animation-leave-active {
+    transition: opacity 160ms, transform 175ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-animation-enter, .modal-animation-leave-to {
+    opacity: 0;
+    transform: scale(0);
+}
+
+.modal-animation-enter-to, .modal-animation-leave {
+    opacity: 1;
+    transform: scale(1);
+}
+
 body.reduce-motion *, body.reduce-motion *::after, body.reduce-motion *::before {
     transition-duration: 0.00001ms !important;
     animation-duration: 0.00001ms !important;

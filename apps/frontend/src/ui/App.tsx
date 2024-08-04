@@ -9,6 +9,7 @@ import { SettingsProvider } from './hooks/useSettings';
 import { ClusterModalController } from './components/overlay/cluster/ClusterCreationModal';
 import { MultiProvider } from './components/MultiProvider';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
+import { ModalProvider } from './components/overlay/Modal';
 import { PROGRAM_INFO } from '~bindings';
 
 function App(props: ParentProps) {
@@ -47,9 +48,10 @@ function GlobalContexts(props: ParentProps) {
 	return (
 		<MultiProvider
 			values={[
+				ModalProvider,
 				SettingsProvider,
-				ClusterModalController,
 				AccountControllerProvider,
+				ClusterModalController,
 			]}
 		>
 			{props.children}

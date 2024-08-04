@@ -1,8 +1,8 @@
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import type { JSX } from 'solid-js';
-import { createSignal, onMount } from 'solid-js';
-import Modal from './overlay/Modal';
+import { onMount } from 'solid-js';
+import Modal, { createModal } from './overlay/Modal';
 import Button from './base/Button';
 import useSettingsContext from '~ui/hooks/useSettings';
 
@@ -23,7 +23,6 @@ function TitlebarButton(props: TitlebarButtonProps) {
 }
 
 function WindowFrame() {
-	const [isModalVisible, setModalVisible] = createSignal(false);
 	const settings = useSettingsContext();
 
 	const maximize = () => Window.getCurrent().toggleMaximize();
@@ -31,11 +30,22 @@ function WindowFrame() {
 	const quit = () => Window.getCurrent().close();
 	const kill = () => Window.getCurrent().destroy();
 
+	const modal = createModal(props => (
+		<Modal.Simple
+			{...props}
+			title="Close OneLauncher?"
+			buttons={[
+				<Button buttonStyle="secondary" onClick={() => props.hide()}>No</Button>,
+				<Button buttonStyle="danger" onClick={() => kill()}>Yes</Button>,
+			]}
+		/>
+	));
+
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
 			if (settings.hide_close_prompt !== true) {
 				event.preventDefault();
-				setModalVisible(true);
+				modal.show();
 			}
 		});
 	});
@@ -51,17 +61,6 @@ function WindowFrame() {
 				<TitlebarButton icon={Maximize02Icon} onClick={() => maximize()} />
 				<TitlebarButton icon={XCloseIcon} onClick={() => quit()} danger />
 			</div>
-
-			<Modal.Simple
-				title="Close OneLauncher?"
-				visible={isModalVisible}
-				setVisible={setModalVisible}
-				zIndex={999999}
-				buttons={[
-					<Button buttonStyle="secondary" onClick={() => setModalVisible(false)}>No</Button>,
-					<Button buttonStyle="danger" onClick={() => kill()}>Yes</Button>,
-				]}
-			/>
 		</div>
 	);
 }

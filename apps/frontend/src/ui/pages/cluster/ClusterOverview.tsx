@@ -3,6 +3,7 @@ import { type Accessor, type Setter, Show, createSignal, untrack } from 'solid-j
 import { useBeforeLeave, useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
+import { join } from 'pathe';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
@@ -12,18 +13,16 @@ import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
 import { secondsToWords, upperFirst } from '~utils';
 import useClusterContext from '~ui/hooks/useCluster';
-import Modal from '~ui/components/overlay/Modal';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
 import useSettingsContext from '~ui/hooks/useSettings';
-import { join } from 'pathe';
+import type { ModalProps } from '~ui/components/overlay/Modal';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
 
 function ClusterOverview() {
 	const settings = useSettingsContext();
 	const [cluster, { refetch }] = useClusterContext();
-	const [deleteVisible, setDeleteVisible] = createSignal(false);
-	const [saveVisible, setSaveVisible] = createSignal(false);
 
 	const [editMode, setEditMode] = createSignal(false);
 	const [newName, setNewName] = createSignal('');
@@ -31,10 +30,18 @@ function ClusterOverview() {
 
 	const navigate = useNavigate();
 
+	const saveModal = createModal(props => (
+		<SaveModal {...props} save={save} dontSave={dontSave} />
+	));
+
+	const deleteModal = createModal(props => (
+		<Modal.Delete {...props} onDelete={deleteCluster} />
+	));
+
 	useBeforeLeave((e) => {
 		if (editMode() && madeChanges()) {
 			e.preventDefault();
-			setSaveVisible(true);
+			saveModal.show();
 		}
 	});
 
@@ -75,7 +82,7 @@ function ClusterOverview() {
 		const next = !untrack(() => editMode());
 
 		if (next === false && madeChanges()) {
-			setSaveVisible(true);
+			saveModal.show();
 			return;
 		}
 
@@ -98,13 +105,13 @@ function ClusterOverview() {
 	}
 
 	function dontSave() {
-		setSaveVisible(false);
+		saveModal.hide();
 		setEditMode(false);
 	}
 
 	function save() {
 		pushEdits();
-		setSaveVisible(false);
+		saveModal.hide();
 		setEditMode(false);
 	}
 
@@ -115,9 +122,6 @@ function ClusterOverview() {
 				<Banner
 					cluster={cluster()!}
 					refetch={refetch}
-
-					saveVisible={saveVisible}
-					setSaveVisible={setSaveVisible}
 
 					editMode={editMode}
 					newName={newName}
@@ -174,50 +178,52 @@ function ClusterOverview() {
 							buttonStyle="danger"
 							children="Delete"
 							iconLeft={<Trash01Icon />}
-							onClick={() => setDeleteVisible(true)}
+							onClick={() => deleteModal.show()}
 							disabled={editMode()}
 						/>
 					)}
 				/>
 			</ScrollableContainer>
-
-			<Modal.Delete
-				visible={deleteVisible}
-				setVisible={setDeleteVisible}
-				onDelete={deleteCluster}
-			/>
-
-			<Modal.Simple
-				title="Save Changes?"
-				visible={saveVisible}
-				setVisible={setSaveVisible}
-				children="Do you want to save your changes?"
-				buttons={[
-					<Button
-						buttonStyle="secondary"
-						children="Cancel"
-						onClick={() => setSaveVisible(false)}
-					/>,
-					<Button
-						buttonStyle="danger"
-						children="No"
-						onClick={dontSave}
-					/>,
-					<Button
-						buttonStyle="primary"
-						children="Yes"
-						onClick={save}
-					/>,
-				]}
-			/>
 		</Sidebar.Page>
+	);
+}
+
+interface SaveModalProps extends ModalProps {
+	save: () => any;
+	dontSave: () => any;
+}
+
+function SaveModal(p: SaveModalProps) {
+	const [modalProps, props] = Modal.SplitProps(p);
+
+	return (
+		<Modal.Simple
+			{...modalProps}
+			title="Save Changes?"
+			children="Do you want to save your changes?"
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Cancel"
+					onClick={() => modalProps.hide()}
+				/>,
+				<Button
+					buttonStyle="danger"
+					children="No"
+					onClick={props.dontSave}
+				/>,
+				<Button
+					buttonStyle="primary"
+					children="Yes"
+					onClick={props.save}
+				/>,
+			]}
+		/>
 	);
 }
 
 interface BannerProps {
 	cluster: Cluster;
-	saveVisible: Accessor<boolean>;
-	setSaveVisible: Setter<boolean>;
 	editMode: Accessor<boolean>;
 	newName: Accessor<string>;
 	setNewName: Setter<string>;

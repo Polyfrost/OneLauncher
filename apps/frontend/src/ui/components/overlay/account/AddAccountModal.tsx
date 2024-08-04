@@ -1,6 +1,6 @@
-import { type Accessor, type Context, Match, type ParentProps, type Resource, type Setter, Switch, createContext, createSignal, useContext } from 'solid-js';
+import { type Context, Match, type ParentProps, type Resource, Switch, createContext, createSignal, useContext } from 'solid-js';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import Modal from '../Modal';
+import Modal, { type ModalProps, createModal } from '../Modal';
 import type { MinecraftCredentials } from '~bindings';
 import { bridge } from '~imports';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
@@ -20,10 +20,16 @@ const AccountControllerContext = createContext<AccountControllerContextFunc>() a
 export function AccountControllerProvider(props: ParentProps) {
 	const [accounts, { refetch: refetchAccounts }] = useCommand(bridge.commands.getUsers);
 	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser);
-	const [visible, setVisible] = createSignal(false);
 
 	const [deleteModalUuid, setDeleteModalUuid] = createSignal<string>();
-	const deleteModalVisible = () => deleteModalUuid() !== undefined;
+
+	const addAccountModal = createModal(props => (
+		<AddAccountModal {...props} refetch={refetch} />
+	));
+
+	const deleteAccountModal = createModal(props => (
+		<Modal.Delete {...props} onDelete={() => _forceRemoveAccount(deleteModalUuid())} />
+	));
 
 	function refetch() {
 		refetchAccounts();
@@ -35,10 +41,11 @@ export function AccountControllerProvider(props: ParentProps) {
 	}
 
 	async function removeAccount(uuid: string, force?: boolean) {
-		if (force !== true)
+		if (force !== true) {
 			setDeleteModalUuid(uuid);
-		else
-			await _forceRemoveAccount(uuid);
+			deleteAccountModal.show();
+		}
+		else { await _forceRemoveAccount(uuid); }
 	}
 
 	async function _forceRemoveAccount(uuid: string | undefined) {
@@ -50,7 +57,7 @@ export function AccountControllerProvider(props: ParentProps) {
 	}
 
 	const func: AccountControllerContextFunc = {
-		displayAddAccount: () => setVisible(true),
+		displayAddAccount: () => addAccountModal.show(),
 		refetch,
 		accounts,
 		defaultAccount,
@@ -61,13 +68,6 @@ export function AccountControllerProvider(props: ParentProps) {
 	return (
 		<AccountControllerContext.Provider value={func}>
 			{props.children}
-			<AddAccountModal visible={visible} setVisible={setVisible} refetch={refetch} />
-
-			<Modal.Delete
-				setVisible={value => setDeleteModalUuid(value ? deleteModalUuid() : undefined)}
-				visible={deleteModalVisible}
-				onDelete={() => _forceRemoveAccount(deleteModalUuid())}
-			/>
 		</AccountControllerContext.Provider>
 	);
 }
@@ -84,13 +84,12 @@ enum ModalStage {
 	LoggingIn,
 }
 
-interface AddAccountModalProps {
-	visible: Accessor<boolean>;
-	setVisible: Setter<boolean>;
+interface AddAccountModalProps extends ModalProps {
 	refetch: () => any;
 }
 
-function AddAccountModal(props: AddAccountModalProps) {
+function AddAccountModal(p: AddAccountModalProps) {
+	const [modalProps, props] = Modal.SplitProps(p);
 	const [stage, setStage] = createSignal(ModalStage.Tasks);
 
 	function start() {
@@ -100,20 +99,19 @@ function AddAccountModal(props: AddAccountModalProps) {
 	}
 
 	function finish() {
-		props.setVisible(false);
+		modalProps.hide();
 		props.refetch();
 	}
 
 	return (
 		<Modal.Simple
+			{...modalProps}
 			title="Add Account"
-			visible={props.visible}
-			setVisible={props.setVisible}
 			buttons={[
 				<Button
 					buttonStyle="secondary"
 					children="Cancel"
-					onClick={() => props.setVisible(false)}
+					onClick={() => modalProps.hide()}
 				/>,
 				<Button
 					buttonStyle="primary"
@@ -141,4 +139,4 @@ function AddAccountModal(props: AddAccountModalProps) {
 			</div>
 		</Modal.Simple>
 	);
-}
+};

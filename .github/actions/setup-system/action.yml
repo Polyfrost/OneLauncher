@@ -61,7 +61,7 @@ runs:
     - name: Setup Pnpm
       uses: ./.github/actions/setup-pnpm
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ github.token }}
 
     - name: Setup Shared Libraries
       shell: bash

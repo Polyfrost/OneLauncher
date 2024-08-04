@@ -1,6 +1,6 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
 import { For, Index, type JSX, Show, createEffect, createSignal, on, onMount, splitProps, untrack } from 'solid-js';
-import { type ClusterStepProps, useClusterModalController } from './ClusterCreationModal';
+import type { ClusterStepProps } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import VanillaImage from '~assets/logos/vanilla.png';
@@ -37,12 +37,10 @@ const loaders: {
 ];
 
 export function ClusterStepTwo(props: ClusterStepProps) {
-	const { partialCluster, updatePartialCluster } = useClusterModalController();
-
 	const check = () => {
-		const hasName = (partialCluster().name?.length ?? 0) > 0;
-		const hasVersion = (partialCluster().mc_version?.length ?? 0) > 0;
-		const hasLoader = (partialCluster().mod_loader?.length ?? 0) > 0;
+		const hasName = (props.controller().partialCluster().name?.length ?? 0) > 0;
+		const hasVersion = (props.controller().partialCluster().mc_version?.length ?? 0) > 0;
+		const hasLoader = (props.controller().partialCluster().mod_loader?.length ?? 0) > 0;
 
 		props.setCanGoForward(hasName && hasVersion && hasLoader);
 	};
@@ -53,9 +51,9 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 			check();
 	}));
 
-	const setName = (name: string) => updatePartialCluster('name', name);
-	const setVersion = (version: string) => updatePartialCluster('mc_version', version);
-	const setLoader = (loader: Loader | string) => updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+	const setName = (name: string) => props.controller().updatePartialCluster('name', name);
+	const setVersion = (version: string) => props.controller().updatePartialCluster('mc_version', version);
+	const setLoader = (loader: Loader | string) => props.controller().updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
 
 	onMount(() => {
 		setLoader('vanilla');

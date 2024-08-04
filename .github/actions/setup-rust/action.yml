@@ -1,0 +1,34 @@
+name: Setup Rust
+description: Setup Rust
+inputs:
+  target:
+    description: Toolchain target triple
+    required: false
+  save-cache:
+    description: Whether or not to save the rust cache
+    required: false
+    default: 'false'
+  restore-cache:
+    description: Whether or not to restore the rust cache
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install Rust
+      uses: IronCoreLabs/rust-toolchain@v1
+      with:
+        target: ${{ inputs.target }}
+        components: clippy, rustfmt
+
+    - name: Cache Rust
+      if: ${{ inputs.restore-cache == 'true' }}
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.target }}
+        save-if: ${{ inputs.save-cache }}
+        shared-key: stable-cache
+
+    - name: Prepare Cargo
+      shell: bash
+      run: echo '{}' | pnpm dlx -y mustache - .cargo/config.toml.mustache .cargo/config.toml

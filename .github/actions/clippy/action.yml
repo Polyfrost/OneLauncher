@@ -1,0 +1,46 @@
+name: Run Clippy
+description: Run Clippy
+inputs:
+  github_token:
+    description: GitHub token
+    required: false
+    default: ${{ github.token }}
+  clippy_flags:
+    description: clippy flags
+    required: false
+    default: ''
+  tool_name:
+    description: tool name to use for reviewdog reporter
+    required: false
+    default: Clippy
+  level:
+    description: 'report level for reviewdog [info,warning,error]'
+    required: false
+    default: error
+  reporter:
+    description: 'reporter of reviewdog command [github-pr-check,github-pr-review,github-check].'
+    required: false
+    default: github-pr-check
+  filter_mode:
+    description: filtering for the reviewdog command [added,diff_context,file,nofilter].
+    required: false
+    default: added
+  fail_on_error:
+    description: exit code for reviewdog when errors are found [true,false]
+    required: false
+    default: 'false'
+  reviewdog_flags:
+    description: additional reviewdog flags
+    required: false
+    default: ''
+  workdir:
+    description: working directory relative to the root directory
+    required: false
+    default: .
+  reviewdog_version:
+    description: the version of reviewdog
+    required: false
+    default: latest
+runs:
+  using: node20
+  main: dist/index.js

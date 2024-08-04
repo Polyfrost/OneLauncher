@@ -1,0 +1,5 @@
+* text=auto eol=lf
+Cargo.lock -diff linguist-generated
+pnpm-lock.yaml -diff linguist-generated
+.github/actions/publish-artifacts/dist/index.js -diff linguist-generated=true
+.github/actions/clippy/dist/index.js -diff linguist-generated=true

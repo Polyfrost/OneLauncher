@@ -1,0 +1,9 @@
+{
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": {
+		"allowImportingTsExtensions": false,
+		"noEmit": true,
+		"skipLibCheck": true
+	},
+	"exclude": ["**/dist/**"]
+}

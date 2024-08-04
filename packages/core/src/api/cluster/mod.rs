@@ -104,7 +104,7 @@ pub async fn run_default(path: &ClusterPath) -> crate::Result<Arc<RwLock<Process
 #[onelauncher_macros::memory]
 pub async fn run(
 	path: &ClusterPath,
-	creds: Option<&MinecraftCredentials>
+	creds: Option<&MinecraftCredentials>,
 ) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
 	if let Some(creds) = creds {
 		run_credentials(path, creds).await

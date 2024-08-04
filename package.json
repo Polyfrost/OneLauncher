@@ -28,14 +28,12 @@
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
 		"format": "pnpm format:es && pnpm format:rs",
 		"lint": "pnpm lint:es && pnpm lint:rs",
-
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
 		"core": "cd packages/core && cargo",
 		"testing": "cd apps/testing && cargo",
 		"tauri": "cd apps/desktop && cargo",
-
 		"test:vi": "pnpm vitest run",
 		"test:update": "pnpm vitest -u",
 		"test:ui": "pnpm vitest --ui",
@@ -52,12 +50,14 @@
 		]
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.10.2",
+		"@flowr/eslint-config": "^3.10.4",
 		"@types/node": "^22.1.0",
 		"@vitest/ui": "^2.0.5",
 		"bumpp": "^9.4.2",
-		"eslint": "^9.8.0",
+		"changelogen": "^0.5.5",
+		"eslint": "npm:eslint-ts-patch@9.8.0-1",
 		"eslint-plugin-solid": "^0.14.1",
+		"eslint-ts-patch": "9.8.0-1",
 		"ts-node": "^10.9.2",
 		"tsx": "~4.16.5",
 		"typescript": "^5.5.4",

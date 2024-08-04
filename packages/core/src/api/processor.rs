@@ -118,7 +118,8 @@ pub async fn wait_for(process: &mut ProcessorChild) -> crate::Result<()> {
 pub async fn get_pid_by_uuid(uuid: Uuid) -> crate::Result<u32> {
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
-	Ok(processor.get(uuid)
+	Ok(processor
+		.get(uuid)
 		.ok_or(anyhow::anyhow!("process not found"))?
 		.read()
 		.await

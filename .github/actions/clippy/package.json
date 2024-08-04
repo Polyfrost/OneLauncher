@@ -1,0 +1,28 @@
+{
+	"name": "@onelauncher/action-clippy",
+	"version": "1.0.0-alpha.1",
+	"private": true,
+	"description": "Next-generation open source Minecraft launcher",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": ".github/actions/clippy"
+	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
+	"scripts": {
+		"build": "ncc build src/index.ts --minify"
+	},
+	"dependencies": {
+		"@actions/core": "^1.10.1",
+		"@actions/exec": "^1.1.1",
+		"@actions/http-client": "^2.2.1",
+		"@actions/io": "^1.1.3",
+		"@actions/tool-cache": "^2.0.1",
+		"pathe": "^1.1.2"
+	},
+	"devDependencies": {
+		"@vercel/ncc": "^0.38.1"
+	}
+}

@@ -1,5 +1,3 @@
-// define the `changelogithub` configuration so we can automatically generate
-// changelogs with github actions upon each `pnpm release`.
 export default {
 	types: {
 		chore: { title: '🔨 Chores' },
@@ -14,5 +12,4 @@ export default {
 		deploy: { title: '🚀 Deployments' },
 		wip: { title: '🚧 Experiments' },
 	},
-	capitalize: false,
 };

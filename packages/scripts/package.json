@@ -18,7 +18,7 @@
 		"tauri": "pnpm tsx tauri.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.10.2",
+		"@flowr/utils": "^3.10.4",
 		"execa": "^9.3.0",
 		"pathe": "^1.1.2",
 		"semver": "^7.6.3",

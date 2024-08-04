@@ -1,15 +1,15 @@
 [workspace]
-resolver = "2"
+resolver = "2" # virtual workspace resolver so we don't need a root package
 members = [
-  "apps/testing",
-  "apps/desktop",
-  "packages/core",
-  "packages/macros"
+  "apps/testing", # onelauncher_test -- test the core crate in a cli setting
+  "apps/desktop", # onelauncher_gui -- the rust code for our tauri app
+  "packages/core", # onelauncher -- the rust core for onelauncher
+  "packages/macros" # onelauncher_macros -- utility procedural macros for onelauncher
 ]
 
-[workspace.package]
+[workspace.package] # sets default [package] settings for workspace members
 license = "GPL-3.0-only"
-edition = "2021"
+edition = "2021" # latest rust edition
 repository = "https://github.com/Polyfrost/OneLauncher"
 documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
@@ -18,9 +18,10 @@ authors = [
   "Polyfrost",
   "Polyfrost Contributors"
 ]
-version = "1.0.0-alpha.1"
+version = "1.0.0-alpha.1" # bump this manually for now
 
 [workspace.dependencies]
+# # ============= WORKSPACE ============= # #
 # best practice to define all workspace crates in the root
 # even if they are not use, with no features enabled.
 onelauncher = { path = "./packages/core" }
@@ -28,7 +29,8 @@ onelauncher_macros = { path = "./packages/macros" }
 onelauncher_gui = { path = "./apps/desktop" }
 onelauncher_test = { path = "./apps/testing" }
 
-# tauri uses latest crates.io beta channel
+# # ============= TAURI ============= # #
+# tauri uses latest crates.io rc channel
 # (temporarily can use v2 and main branches if necessary)
 tauri = { version = "=2.0.0-rc.0", features = [
   "rustls-tls",
@@ -38,8 +40,8 @@ tauri = { version = "=2.0.0-rc.0", features = [
   "protocol-asset"
 ] }
 
+# tauri-build is the codegen utility for our tauri buildscript.
 tauri-build = { version = "=2.0.0-rc.0" }
-
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "=2.0.0-rc.0" }
 # tauri-plugin-window-state saves the window position and size to be restored.
@@ -53,6 +55,7 @@ tauri-plugin-updater = { version = "=2.0.0-rc.0" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
 tauri-plugin-dialog = { version = "=2.0.0-rc.0" }
 
+# # ============= CORE ============= # #
 # rspc is used as a faster and more intuitive replacement for tauri-specta
 # commands/apis that don't depend on tauri. rather than using the tauri
 # event and invoke apis for handling api calling, it creates a router which
@@ -83,7 +86,7 @@ specta = { version = "=2.0.0-rc.19", features = [
   "time"
 ] }
 
-# tauri-specta
+# tauri-specta is the tauri adapter for specta.
 tauri-specta = { version = "=2.0.0-rc.14", features = [
   "javascript",
   "typescript",
@@ -96,10 +99,13 @@ specta-typescript = { version = "=0.0.6" }
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
 
-# all other dependencies are updated to latest crates.io release channel
-
+# # ============= MINECRAFT ============= # #
+# core utilities for minecraft and mod management with pulseflow apis
 interpulse = { version = "1", features = [ "specta" ] }
 
+# # ============= SECURITY ============= # #
+thiserror = { version = "1.0" }
+anyhow = { version = "1.0" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [
   "chrono",
@@ -115,28 +121,28 @@ sentry = { version = "0.34", default-features = false, features = [
   "anyhow",
   "debug-images"
 ] }
+iota_stronghold = { version = "2.1" }
+zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 
-notify = { version = "6.1", default-features = false }
-notify-debouncer-mini = { version = "0.4", default-features = false }
-
-uuid = { version = "1.8", features = [
-  "serde",
-  "v4"
-] }
-tokio = { version = "1.38", features = [ "full" ] }
-async-tungstenite = { version = "0.26", features = [
-  "tokio-runtime",
-  "tokio-rustls-native-certs"
-] }
-strum = { version = "0.23", features = [ "derive" ] }
-once_cell = { version = "1.19" }
-tokio-stream = { version = "0.1.15", features = [ "fs" ] }
+# # ============= SERIALIZATION ============= # #
 serde = { version = "1.0", features = [ "derive" ] }
+serde_json = { version = "1.0" }
+serde_ini = { version = "0.2" }
+regex = { version = "1.10" }
+url = { version = "2.5.2" }
+strum = { version = "0.23", features = [ "derive" ] }
 chrono = { version = "0.4", features = [ "serde" ] }
 rand = { version = "0.8.5" }
 byteorder = { version = "1.5.0" }
 base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
+
+uuid = { version = "1.8", features = [
+  "serde",
+  "v4"
+] }
+
+# # ============= NETWORK ============= # #
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "stream",
@@ -147,43 +153,49 @@ reqwest = { version = "0.12", default-features = false, features = [
   "gzip",
   "brotli"
 ] }
-iota_stronghold = { version = "2.1" }
-zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
-quote = { version = "1.0" }
-syn = { version = "2.0", features = [ "full" ] }
+async-tungstenite = { version = "0.26", features = [
+  "tokio-runtime",
+  "tokio-rustls-native-certs"
+] }
+webbrowser = { version = "1.0" }
+
+# # ============= SYSTEM ============= # #
+tokio = { version = "1.38", features = [ "full" ] }
+tokio-stream = { version = "0.1.15", features = [ "fs" ] }
+notify = { version = "6.1", default-features = false }
+notify-debouncer-mini = { version = "0.4", default-features = false }
+
 tempfile = { version = "3.10" }
 dunce = { version = "1.0.4" }
-serde_json = { version = "1.0" }
-serde_ini = { version = "0.2" }
 zip = { version = "0.6" }
-thiserror = { version = "1.0" }
-anyhow = { version = "1.0" }
 dirs = { version = "5.0" }
-discord-rich-presence = { version = "0.2" }
-winreg = { version = "0.52" }
-paste = { version = "1.0" }
-dashmap = { version = "6.0", features = [ "serde" ] }
-sha1_smol = { version = "1.0", features = [ "std" ] }
-sha2 = { version = "0.10" }
-bytes = { version = "1.6" }
-lazy_static = { version = "1.4" }
-indicatif = { version = "0.17" }
-futures = { version = "0.3" }
-async-recursion = { version = "1.1" }
 async_zip = { version = "0.0.17", features = [ "full" ] }
 async-compression = { version = "0.4.12", features = [
   "flate2",
   "tokio"
 ] }
 flate2 = { version = "1.0" }
-regex = { version = "1.10" }
+sha1_smol = { version = "1.0", features = [ "std" ] }
+sha2 = { version = "0.10" }
+bytes = { version = "1.6" }
+
+# # ============= UTILITY ============= # #
+once_cell = { version = "1.19" }
+quote = { version = "1.0" }
+syn = { version = "2.0", features = [ "full" ] }
+discord-rich-presence = { version = "0.2" }
+winreg = { version = "0.52" }
+paste = { version = "1.0" }
+dashmap = { version = "6.0", features = [ "serde" ] }
+lazy_static = { version = "1.4" }
+indicatif = { version = "0.17" }
+futures = { version = "0.3" }
+async-recursion = { version = "1.1" }
 sysinfo = { version = "0.31", features = [ "serde" ] }
 sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.25" }
 objc = { version = "0.2" }
-webbrowser = { version = "1.0" }
-url = { version = "2.5.2" }
 
 [workspace.dependencies.prisma-client-rust]
 git = "https://github.com/brendonovich/prisma-client-rust"
@@ -215,47 +227,47 @@ default-features = false
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)
-debug = true
-opt-level = 0
-strip = "none"
-incremental = true
-split-debuginfo = "unpacked"
-lto = false
-codegen-units = 256
-rpath = false
-panic = "unwind"
+debug = true # add debug info
+opt-level = 0 # reduce optimizations
+strip = "none" # don't remove debug symbols
+incremental = true # enable incremental compilation
+split-debuginfo = "unpacked" # unpack debug info
+lto = false # disable link time optimizations, reduce compile time
+codegen-units = 256 # make parallel incremental builds faster
+rpath = false # disable rpath
+panic = "unwind" # add unwind panic logic because some deps require it
 
 # add debug symbols/logic and optimize for reduced build time (parallel)
 [profile.dev-debug]
-inherits = "dev"
-split-debuginfo = "none"
-opt-level = 0
-debug = "full"
-strip = "none"
-lto = "off"
-codegen-units = 256
-incremental = true
+inherits = "dev" # extend the dev profile
+split-debuginfo = "none" # don't split debug info
+opt-level = 0 # reduce optimizations
+debug = "full" # add full debug info
+strip = "none" # don't remove debug symbols
+lto = "off" # disable link time optimizations, reduce compile time
+codegen-units = 256 # make parallel incremental builds faster
+incremental = true # enable incremental compilation
 
 # set the settings for build scripts and proc-macros.
 [profile.dev.build-override]
-opt-level = 3
+opt-level = 3 # optimize build
 
 # set the default for dependencies, except workspace members.
 [profile.dev.package."*"]
-opt-level = 3
-incremental = false
+opt-level = 3 # optimize build
+incremental = false # disable incremental compilation
 
 # set the default for dependencies, except workspace members.
 [profile.dev-debug.package."*"]
-inherits = "dev"
-opt-level = 3
-debug = "full"
-incremental = false
+inherits = "dev" # extend the dev profile
+opt-level = 3 # optimize build
+debug = "full" # add full debug info
+incremental = false # disable incremental compilation
 
 # optimize for speed and reduce size for release
 [profile.release]
 panic = "abort" # strip panic cleanup logic
 codegen-units = 1 # compile crate one after another for better optimization
-lto = true
+lto = true # enable link time optimization
 opt-level = "s" # optimize binary
 strip = true # remove debug symbols

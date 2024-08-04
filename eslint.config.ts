@@ -1,7 +1,6 @@
-// @ts-check
-import petal from '@flowr/eslint-config';
+import { defineConfig } from '@flowr/eslint-config';
 
-export default petal({
+export default defineConfig({
 	typescript: true,
 	solid: true,
 	unocss: false,

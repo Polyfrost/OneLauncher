@@ -1,0 +1,14 @@
+name: Publish Artifacts
+description: Publish Artifacts
+inputs:
+  target:
+    description: Target triples for build artifact
+  profile:
+    description: '''debug'' or ''release'''
+  os:
+    description: '''darwin'', ''windows'', or ''linux'''
+  arch:
+    description: '''x86_64'' or ''aarch64'''
+runs:
+  using: node20
+  main: dist/index.js

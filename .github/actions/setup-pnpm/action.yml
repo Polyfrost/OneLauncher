@@ -1,0 +1,26 @@
+name: Setup Pnpm
+description: Setup Pnpm
+inputs:
+  token:
+    description: GitHub token
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        token: ${{ input.token }}
+        check-latest: true
+        node-version-file: .nvmrc
+
+    - name: Install dependencies
+      shell: ${{ runner.os == 'Windows' && 'powershell' || 'bash' }}
+      env:
+        NODE_ENV: debug
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: pnpm install --frozen-lockfile

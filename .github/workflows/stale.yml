@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Stale
-        uses: actions/stale@v9
+        uses: actions/stale@3f3b0175e8c66fb49b9a6d5a0cd1f8436d4c3ab6
         with:
           close-issue-message: >
             This issue was closed because it has been stale for 10 days with no activity.

@@ -1,0 +1,68 @@
+name: Setup System and Rust
+description: Setup System and Rust
+inputs:
+  token:
+    description: GitHub token
+    required: false
+    default: ''
+  target:
+    description: Toolchain target triple
+    required: false
+  setup-arg:
+    description: Argument for the system setup script
+    required: false
+    default: ''
+  save-cache:
+    description: Whether or not to save the system cache
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: (macOS) - Install bash@latest
+      shell: bash
+      if: ${{ runner.os == 'macOS' }}
+      run: brew install bash
+
+    - name: (linux) - Install mold@latest
+      shell: bash
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        curl -L# 'https://github.com/rui314/mold/releases/download/v2.32.1/mold-2.32.1-x86_64-linux.tar.gz' \
+        | sudo tar -xzf- -C /usr/local
+
+    - name: (linux) - Cleanup Runner
+      shell: bash
+      if: ${{ runner.os == 'Linux' }}
+      run: |
+        set -eux
+        if dpkg -l | grep i386; then
+          sudo apt-get purge --allow-remove-essential libc6-i386 ".*:i386" || true
+          sudo dpkg --remove-architecture i386 || true
+        fi
+
+        sudo apt-get remove libunwind-* || true
+
+    - name: Setup Rust and Dependencies
+      uses: ./.github/actions/setup-rust
+      with:
+        target: ${{ inputs.target }}
+        save-cache: ${{ inputs.save-cache }}
+
+    - name: (linux/macOS) - Setup System
+      shell: bash
+      if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
+      run: ./packages/scripts/setup.sh ${{ inputs.setup-arg }}
+
+    - name: (windows) - Setup System
+      shell: powershell
+      run: ./packages/scripts/setup.ps1
+
+    - name: Setup Shared Libraries
+      shell: bash
+      env:
+        TARGET_TRIPLE: ${{ inputs.triple }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      run: |
+        pnpm install
+        env NODE_ENV=debug pnpm prepare

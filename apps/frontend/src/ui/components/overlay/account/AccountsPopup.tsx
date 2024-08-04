@@ -55,8 +55,8 @@ function AccountPopup(props: Popup.PopupProps) {
 								<AccountComponent account={account} />
 							)}
 						</For>
-						<div class="w-full h-px bg-gray-05 rounded-md" />
 					</Show>
+					<div class="w-full h-px bg-gray-05 rounded-md" />
 
 					<div class="flex flex-row justify-between">
 						<div>

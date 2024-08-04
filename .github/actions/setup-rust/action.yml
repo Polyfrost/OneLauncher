@@ -29,6 +29,6 @@ runs:
         save-if: ${{ inputs.save-cache }}
         shared-key: stable-cache
 
-    - name: Prepare Cargo
-      shell: bash
-      run: echo '{}' | pnpm dlx -y mustache - .cargo/config.toml.mustache .cargo/config.toml
+    # - name: Prepare Cargo
+    #   shell: bash
+    #   run: echo '{}' | pnpm dlx -y mustache - .cargo/config.toml.mustache .cargo/config.toml

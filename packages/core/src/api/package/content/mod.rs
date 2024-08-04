@@ -48,7 +48,7 @@ impl Providers {
 		.collect())
 	}
 
-	pub async fn get(&self, slug_or_id: &str) -> Result<Package> {
+	pub async fn get(&self, slug_or_id: &str) -> Result<ManagedPackage> {
 		Ok(match self {
 			Providers::Modrinth => modrinth::get(slug_or_id),
 		}

@@ -51,8 +51,8 @@ macro_rules! collect_commands {
 			get_minecraft_versions,
 			// Package
 			random_mods,
-			get_mod,
-			download_mod,
+			get_package,
+			download_package,
 			// Updater
 			check_for_update,
 			install_update

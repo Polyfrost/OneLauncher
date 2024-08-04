@@ -1,6 +1,7 @@
 import { type Params, useSearchParams } from '@solidjs/router';
 import { Download01Icon } from '@untitled-theme/icons-solid';
 import { For, createSignal, onMount } from 'solid-js';
+import type { Providers } from '~bindings';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
@@ -10,17 +11,17 @@ import useCommand, { tryResult } from '~ui/hooks/useCommand';
 
 interface BrowserModParams extends Params {
 	id: string;
-	provider: string;
+	provider: Providers;
 }
 
 // TODO: Refactor the entire browser page and subpages
-function BrowserMod() {
+function BrowserPackage() {
 	const [params] = useSearchParams<BrowserModParams>();
 	const _isInvalid = !params.id || !params.provider;
 	const [visible, setVisible] = createSignal(false);
 	const [cluster, setCluster] = createSignal<string>();
 	const [clusters, setClusters] = createSignal<[string, string][]>();
-	const [pkg] = useCommand(bridge.commands.getMod, params.id!);
+	const [pkg] = useCommand(bridge.commands.getPackage, params.id!);
 
 	function installTo() {
 		setVisible(true);
@@ -28,7 +29,7 @@ function BrowserMod() {
 
 	function download() {
 		setVisible(false);
-		tryResult(bridge.commands.downloadMod, cluster()!, params.id!).then().catch(err => console.error(err));
+		tryResult(bridge.commands.downloadPackage, cluster()!, params.id!).then().catch(err => console.error(err));
 	}
 
 	function onChange(selected: number) {
@@ -91,8 +92,8 @@ function BrowserMod() {
 	);
 }
 
-BrowserMod.getUrl = function (params: BrowserModParams): string {
-	return `/browser/mod?id=${params.id}&provider=${params.provider}`;
+BrowserPackage.buildUrl = function (params: BrowserModParams): string {
+	return `/browser/package?id=${params.id}&provider=${params.provider}`;
 };
 
-export default BrowserMod;
+export default BrowserPackage;

@@ -1,12 +1,12 @@
 import { A } from '@solidjs/router';
 import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
 import { For, createSignal, onMount } from 'solid-js';
-import type { ManagedPackage } from '~bindings';
+import type { ManagedPackage, Providers } from '~bindings';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
-import ModCard, { Provider } from '~ui/components/content/ModCard';
+import ModCard from '~ui/components/content/ModCard';
 import { tryResult } from '~ui/hooks/useCommand';
 import { createSortable } from '~utils';
 
@@ -15,42 +15,42 @@ interface CardProps {
 	name: string;
 	date_added: number;
 	date_updated: number;
-	provider: Provider;
+	provider: Providers;
 };
 
 interface BrowserFilters {
-	provider: Provider[]; // TODO: Change with Provider types from Rust
+	provider: Providers[];
 }
 
 function BrowserMain() {
 	const [_filters, _setFilters] = createSignal<BrowserFilters>({
-		provider: [Provider.Curseforge],
+		provider: ["Modrinth"],
 	});
 
 	const [modRowData, setModRowData] = createSignal<ModsRowProps[]>([]);
 
 	onMount(() => {
 		Promise.all([
-			tryResult(bridge.commands.randomMods),
-			tryResult(bridge.commands.getMod, 'oneconfig'),
-			tryResult(bridge.commands.getMod, 'chatting'),
-			tryResult(bridge.commands.getMod, 'patcher'),
+			tryResult(bridge.commands.getPackage, 'oneconfig'),
+			tryResult(bridge.commands.getPackage, 'chatting'),
+			tryResult(bridge.commands.getPackage, 'patcher'),
+			// tryResult(bridge.commands.randomMods),
 		]).then((pkgs) => {
 			const list: ModsRowProps[] = [
 				{
 					header: 'Polyfrost',
 					category: 'polyfrost',
 					packages: [
+						pkgs[0],
 						pkgs[1],
 						pkgs[2],
-						pkgs[3],
 					],
 				},
-				{
-					header: 'Random Mods',
-					category: 'random',
-					packages: pkgs[0],
-				},
+				// {
+				// 	header: 'Random Mods',
+				// 	category: 'random',
+				// 	packages: pkgs[3],
+				// },
 			];
 
 			setModRowData(list);

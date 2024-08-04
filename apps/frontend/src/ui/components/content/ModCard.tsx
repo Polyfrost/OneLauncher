@@ -1,25 +1,15 @@
 import { Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
 import { abbreviateNumber } from '~utils';
-import BrowserMod from '~ui/pages/browser/BrowserMod';
+import BrowserPackage from '~ui/pages/browser/BrowserPackage';
 import type { ManagedPackage } from '~bindings';
-
-// TODO: Remove in place for specta generated types
-export enum Provider {
-	Curseforge,
-	Modrinth,
-	Polyfrost,
-	Skyclient,
-}
+import { useBrowserController } from '~ui/pages/browser/BrowserRoot';
 
 function ModCard(props: ManagedPackage) {
-	const navigate = useNavigate();
+	const controller = useBrowserController();
 
 	function redirect() {
-		navigate(BrowserMod.getUrl({
-			id: props.id,
-			provider: 'modrinth',
-		}));
+		controller.displayPackage(props.id, props.provider);
 	}
 
 	return (

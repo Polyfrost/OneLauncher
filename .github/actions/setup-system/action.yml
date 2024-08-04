@@ -58,11 +58,15 @@ runs:
       shell: powershell
       run: ./packages/scripts/setup.ps1
 
+    - name: Setup Pnpm
+      uses: ./.github/actions/setup-pnpm
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Setup Shared Libraries
       shell: bash
       env:
         TARGET_TRIPLE: ${{ inputs.triple }}
         GITHUB_TOKEN: ${{ inputs.token }}
-      run: |
-        pnpm install
-        env NODE_ENV=debug pnpm prepare
+        NODE_ENV: debug
+      run: pnpm prepare

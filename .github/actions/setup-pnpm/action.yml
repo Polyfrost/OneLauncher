@@ -14,7 +14,7 @@ runs:
     - name: Install Node.js
       uses: actions/setup-node@v4
       with:
-        token: ${{ input.token }}
+        token: ${{ inputs.token }}
         check-latest: true
         node-version-file: .nvmrc
 

@@ -17,7 +17,7 @@ import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
 import useSettingsContext from '~ui/hooks/useSettings';
-import joinPath from '~utils/helpers';
+import { join } from 'pathe';
 
 function ClusterOverview() {
 	const settings = useSettingsContext();
@@ -45,7 +45,7 @@ function ClusterOverview() {
 		if (typeof clusterPath !== 'string' || typeof configDir !== 'string')
 			return '';
 
-		return joinPath(configDir, 'clusters', clusterPath);
+		return join(configDir, 'clusters', clusterPath);
 	}
 
 	function openPath() {

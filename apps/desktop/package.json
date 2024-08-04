@@ -23,6 +23,6 @@
 		"@onelauncher/frontend": "workspace:*"
 	},
 	"devDependencies": {
-		"@tauri-apps/cli": "2.0.0-rc.0"
+		"@tauri-apps/cli": "2.0.0-rc.1"
 	}
 }

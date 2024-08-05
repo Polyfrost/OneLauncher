@@ -18,7 +18,7 @@
 	},
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",
-		"@iconify-json/logos": "^1.1.43",
+		"@iconify-json/logos": "^1.1.44",
 		"@leeoniya/ufuzzy": "^1.0.14",
 		"@onelauncher/client": "workspace:*",
 		"@rspc/client": "^0.2.3",

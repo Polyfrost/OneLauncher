@@ -1,4 +1,6 @@
-export default {
+import type { ChangelogConfig } from 'changelogen';
+
+const config: Partial<ChangelogConfig> = {
 	types: {
 		chore: { title: '🔨 Chores' },
 		feature: { title: '✨ Features' },
@@ -13,3 +15,5 @@ export default {
 		wip: { title: '🚧 Experiments' },
 	},
 };
+
+export default config;

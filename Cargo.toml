@@ -76,7 +76,7 @@ rspc = { version = "=0.2.0", features = [
 # the remaining features implements the specta::Type trait for their
 # respective dependencies of the same name. if we add a new dependency
 # and run into specta errors, adding the dependency as a feature will usually solve this.
-specta = { version = "=2.0.0-rc.19", features = [
+specta = { version = "=2.0.0-rc.20", features = [
   "chrono",
   "uuid",
   "serde",
@@ -87,14 +87,14 @@ specta = { version = "=2.0.0-rc.19", features = [
 ] }
 
 # tauri-specta is the tauri adapter for specta.
-tauri-specta = { version = "=2.0.0-rc.14", features = [
+tauri-specta = { version = "=2.0.0-rc.15", features = [
   "javascript",
   "typescript",
   "derive"
 ] }
 
 # specta-typescript is the typescript adapter for specta.
-specta-typescript = { version = "=0.0.6" }
+specta-typescript = { version = "=0.0.7" }
 
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }

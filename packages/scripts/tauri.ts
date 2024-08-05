@@ -1,7 +1,5 @@
-#!/usr/bin/env node
-
 import process from 'node:process';
-import * as fs from 'node:fs/promises';
+import fs from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import pathe from 'pathe';
 import { execa } from 'execa';

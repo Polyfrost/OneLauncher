@@ -144,7 +144,7 @@ jobs:
       - name: Prepare Target
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         continue-on-error: true
-        id: filter
+        id: preparation
         with:
           filters: |
             changes:
@@ -160,13 +160,13 @@ jobs:
               - '.github/workflows/build.yml'
 
       - name: Setup System
-        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        if: steps.preparation.outcome != 'success' || steps.preparation.outputs.changes == 'true'
         uses: ./.github/actions/setup-system
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Clippy
-        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        if: steps.preparation.outcome != 'success' || steps.preparation.outputs.changes == 'true'
         uses: ./.github/actions/clippy
         with:
           reporter: github-pr-review

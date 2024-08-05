@@ -39,6 +39,11 @@
 		".crates"
 	],
 	"rust-analyzer.procMacro.enable": true,
+	"rust-analyzer.diagnostics.experimental.enable": false,
+	"rust-analyzer.linkedProjects": [],
+	"rust-analyzer.cargo.extraEnv": {},
+	"rust-analyzer.check.targets": null,
+	"rust-analyzer.showUnlinkedFileNotification": false,
 	"search.exclude": {
 		"**/node_modules": true,
 		"**/bower_components": true,

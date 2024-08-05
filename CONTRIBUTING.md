@@ -45,6 +45,7 @@ To make changes locally, follow these steps:
    3. For Windows users, run in PowerShell: `.\packages\scripts\setup.ps1`
       > The [Unix script] will install pnpm, LLVM, C++ build tools, NASM, Rust + Cargo, Rust tools, Edge Webview 2, [Tauri essentials] and any other required dependencies for OneLauncher to build.
 4. Install dependencies: `pnpm i`
+5. Prepare your cargo installation: `pnpm prep`
 
 To quickly run only the desktop app after `prep`, you can use:
 

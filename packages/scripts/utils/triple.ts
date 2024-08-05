@@ -1,5 +1,5 @@
 import { env } from 'node:process';
-import * as os from 'node:os';
+import { machine, type } from 'node:os';
 import { execaCommand } from 'execa';
 
 const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
@@ -7,7 +7,7 @@ const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 	libc: 'glibc',
 };
 
-if (os.type() === 'Linux')
+if (type() === 'Linux')
 	try {
 		const lldResult = await execaCommand('ldd /bin/ls');
 		if (lldResult.stdout.includes('msl'))
@@ -47,8 +47,8 @@ export function getTriple(): TripleID {
 			tripleState._libc = target[3]?.includes('musl') ? 'musl' : 'glibc';
 	}
 	else {
-		tripleState._os = os.type();
-		tripleState._arch = os.machine();
+		tripleState._os = type();
+		tripleState._arch = machine();
 		if (tripleState._arch === 'arm64')
 			tripleState._arch = 'aarch64';
 	}

@@ -20,7 +20,7 @@ export function checkEnvironment(meta: ImportMeta) {
 	const __debug = process.env.NODE_ENV === 'debug';
 	const __root = resolve(join(__dirname, '..', '..'));
 
-	return { __filename, __dirname, __debug, __root };
+	return { __filename, __dirname, __debug, __root, __exit: process.exit };
 }
 
 async function where(cmd: string): Promise<boolean> {

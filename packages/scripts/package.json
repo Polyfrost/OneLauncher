@@ -15,17 +15,20 @@
 	"main": "./src/index.ts",
 	"types": "./src/index.ts",
 	"scripts": {
-		"tauri": "pnpm tsx tauri.ts"
+		"tauri": "pnpm tsx tauri.ts",
+		"int:prepare": "pnpm tsx prepare.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.10.4",
+		"@flowr/utils": "^3.10.5",
 		"execa": "^9.3.0",
+		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",
 		"semver": "^7.6.3",
 		"undici": "^6.19.5"
 	},
 	"devDependencies": {
 		"@types/iarna__toml": "^2.0.5",
+		"@types/mustache": "^4.2.5",
 		"@types/semver": "^7.5.8"
 	}
 }

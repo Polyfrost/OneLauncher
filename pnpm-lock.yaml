@@ -50,12 +50,18 @@ importers:
 
   .github/actions/clippy:
     dependencies:
+      '@actions/artifact':
+        specifier: ^2.1.9
+        version: 2.1.9
       '@actions/core':
         specifier: ^1.10.1
         version: 1.10.1
       '@actions/exec':
         specifier: ^1.1.1
         version: 1.1.1
+      '@actions/glob':
+        specifier: ^0.4.0
+        version: 0.4.0
       '@actions/http-client':
         specifier: ^2.2.1
         version: 2.2.1

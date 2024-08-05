@@ -1,6 +1,5 @@
-import process from 'node:process';
+import { arch as getArch, platform as getPlatform } from 'node:process';
 import { join } from 'pathe';
-import { error } from '@actions/core';
 import { Headers, HttpClient, HttpCodes } from '@actions/http-client';
 import { downloadTool, extractTar } from '@actions/tool-cache';
 
@@ -12,19 +11,19 @@ interface Release {
 
 export async function installReviewdog(tag: string, directory: string): Promise<string> {
 	const version = await tagToVersion(tag, 'reviewdog', 'reviewdog');
-	const platform = process.platform === 'darwin' ? 'Darwin' : process.platform === 'linux' ? 'Linux' : process.platform === 'win32' ? 'Windows' : '';
-	const arch = process.arch === 'x64' ? 'x86_64' : process.arch === 'arm64' ? process.arch : '';
+	const platform = getPlatform === 'darwin' ? 'Darwin' : getPlatform === 'linux' ? 'Linux' : getPlatform === 'win32' ? 'Windows' : '';
+	const arch = getArch === 'x64' ? 'x86_64' : getArch === 'arm64' ? getArch : '';
 
 	if (platform === '')
-		throw new Error(`unsupported platform ${process.platform}!`);
+		throw new Error(`unsupported platform ${getPlatform}!`);
 
 	if (arch === '')
-		throw new Error(`unsupported architecture: ${process.arch}!`);
+		throw new Error(`unsupported architecture: ${getArch}!`);
 
 	const url = getUrl(version, platform, arch);
 	const archivePath = await downloadTool(url);
 	const extractedDir = await extractTar(archivePath, directory);
-	const executablePath = `reviewdog${process.platform === 'win32' ? '.exe' : ''}`;
+	const executablePath = `reviewdog${getPlatform === 'win32' ? '.exe' : ''}`;
 	return join(extractedDir, executablePath);
 }
 
@@ -35,7 +34,7 @@ async function tagToVersion(tag: string, owner: string, repo: string): Promise<s
 	const response = await client.getJson<Release>(url, headers);
 
 	if (response.statusCode !== HttpCodes.OK)
-		error(`${url} returned unexpected HTTP status code: ${response.statusCode}`);
+		throw new Error(`${url} returned unexpected HTTP status code: ${response.statusCode}`);
 
 	if (!response.result)
 		throw new Error(`unable to find '${tag}' - use 'latest' or see https://github.com/${owner}/${repo}/releases for details`);

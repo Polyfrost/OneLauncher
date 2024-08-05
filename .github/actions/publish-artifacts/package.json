@@ -12,7 +12,7 @@
 	"bugs": "https://github.com/polyfrost/onelauncher/issues",
 	"sideEffects": false,
 	"scripts": {
-		"build": "ncc build src/index.ts --minify"
+		"build": "ncc build src/index.ts"
 	},
 	"dependencies": {
 		"@actions/artifact": "^2.1.9",

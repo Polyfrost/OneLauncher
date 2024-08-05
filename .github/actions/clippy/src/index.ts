@@ -5,7 +5,7 @@ import { Buffer } from 'node:buffer';
 import { join, relative } from 'pathe';
 import { rmRF } from '@actions/io';
 import { exec } from '@actions/exec';
-import { getInput as getCoreInput, group, info } from '@actions/core';
+import { getInput as getCoreInput, group } from '@actions/core';
 import { installReviewdog } from './installer';
 
 async function run(): Promise<void> {

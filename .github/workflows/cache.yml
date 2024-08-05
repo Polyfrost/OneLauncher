@@ -4,6 +4,20 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - README.md
+      - CHANGELOG.md
+      - package.json
+      - LICENSE
+      - CONTRIBUTING.md
+      - TODO.md
+      - .editorconfig
+      - .vscode/*
+      - apps/frontend/*
+      - packages/distribution/*
+      - packages/client/*
+      - packages/patches/*
+      - packages/scripts/*
   schedule:
     - cron: '0 0 * * *'
   pull_request:

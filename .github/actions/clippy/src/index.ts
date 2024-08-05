@@ -98,11 +98,11 @@ async function run(): Promise<void> {
 		);
 
 		if (code !== 0)
-			core.setFailed(`reviewdog exited with status code: ${code}`);
+			throw new Error(`reviewdog exited with status code: ${code}`);
 	}
 	catch (error) {
 		if (error instanceof Error)
-			core.setFailed(error.message);
+			throw error;
 	}
 	finally {
 		try {

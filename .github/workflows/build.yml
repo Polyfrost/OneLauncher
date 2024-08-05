@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: ['main']
+    branches: [main]
   pull_request:
     types: [opened, synchronize]
   merge_group:
@@ -46,7 +46,7 @@ jobs:
       #   run: pnpm test:es
 
   rust:
-    name: Rust Checks
+    name: Rustfmt
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:

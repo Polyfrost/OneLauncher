@@ -1,6 +1,12 @@
 name: Build
 
-on: [pull_request, merge_group]
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    types: [opened, synchronize]
+  merge_group:
+    types: [checks_requested]
 
 env:
   ONELAUNCHER_CUSTOM_APT_FLAGS: --no-install-recommends

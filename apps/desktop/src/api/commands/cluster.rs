@@ -68,9 +68,31 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	}
 }
 
+/// Updates the cluster with the given UUID. The cluster only updates game setting fields
 #[specta::specta]
 #[tauri::command]
-pub async fn edit_cluster(
+pub async fn edit_game_settings(uuid: Uuid, new_cluster: Cluster) -> Result<(), String> {
+	let cluster_path = ClusterPath::find_by_uuid(uuid).await?;
+
+	cluster::edit(&cluster_path, |old| {
+		// Game
+		old.force_fullscreen = new_cluster.force_fullscreen;
+		old.resolution = new_cluster.resolution;
+		old.memory = new_cluster.memory;
+
+		// Process
+
+		async move { Ok(()) }
+	}).await?;
+
+	State::sync().await?;
+
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn edit_cluster_meta(
 	uuid: Uuid,
 	name: Option<String>,
 	icon_path: Option<String>,

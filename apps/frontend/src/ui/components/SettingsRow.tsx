@@ -1,6 +1,6 @@
 import type { JSX, ParentProps } from 'solid-js';
 
-type SettingsRowProps = ParentProps & {
+export type SettingsRowProps = ParentProps & {
 	title: JSX.Element;
 	description: JSX.Element;
 	icon: JSX.Element;

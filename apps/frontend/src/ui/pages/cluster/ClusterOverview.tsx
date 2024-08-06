@@ -21,7 +21,7 @@ import type { ModalProps } from '~ui/components/overlay/Modal';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 
 function ClusterOverview() {
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 	const [cluster, { refetch }] = useClusterContext();
 
 	const [editMode, setEditMode] = createSignal(false);
@@ -47,7 +47,7 @@ function ClusterOverview() {
 
 	function getPath() {
 		const clusterPath = cluster()?.path;
-		const configDir = settings.config_dir;
+		const configDir = settings().config_dir;
 
 		if (typeof clusterPath !== 'string' || typeof configDir !== 'string')
 			return '';
@@ -95,7 +95,7 @@ function ClusterOverview() {
 		if (!c)
 			return;
 
-		await bridge.commands.editCluster(
+		await bridge.commands.editClusterMeta(
 			c.uuid,
 			newName().length > 0 ? newName() : null,
 			newCover().length > 0 ? newCover() : c.meta.icon_url || c.meta.icon || null,

@@ -80,3 +80,19 @@ export function secondsToWords(seconds: number | bigint, plural: boolean = true)
 
 	return str;
 }
+
+export function asEnvVariables(str: string): [string, string][] {
+	return str
+		.split(' ')
+		.map((pair) => {
+			const split = pair.split('=', 1);
+
+			if (split.length === 0)
+				return null;
+			else if (split.length === 1)
+				return [split[0]!, ''] as [string, string];
+			else
+				return [split[0]!, split[1]!] as [string, string];
+		})
+		.filter(pair => pair !== null);
+}

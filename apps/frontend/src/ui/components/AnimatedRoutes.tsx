@@ -3,7 +3,7 @@ import { Transition, type TransitionProps } from 'solid-transition-group';
 import useSettingsContext from '~ui/hooks/useSettings';
 
 function AnimatedRoutes(props: TransitionProps & ParentProps) {
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 
 	const defaultProps: TransitionProps = {
 		mode: 'outin',
@@ -20,7 +20,7 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 
 	return (
 		<Show
-			when={settings.disable_animations !== true}
+			when={settings().disable_animations !== true}
 			fallback={(
 				<>{split.children}</>
 			)}

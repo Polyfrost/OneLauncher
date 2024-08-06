@@ -1,13 +1,20 @@
-import { type JSX, createSignal, splitProps } from 'solid-js';
+import { type Accessor, type JSX, createEffect, createSignal, splitProps } from 'solid-js';
 
 type ToggleProps = JSX.HTMLAttributes<HTMLDivElement> & {
-	defaultChecked?: boolean;
+	checked?: Accessor<boolean>;
 	onChecked?: (checked: boolean) => void;
 };
 
 function Toggle(props: ToggleProps) {
-	const [checked, setChecked] = createSignal(props.defaultChecked || false);
-	const [split, rest] = splitProps(props, ['class', 'defaultChecked', 'onChecked', 'text']);
+	// eslint-disable-next-line solid/reactivity -- ok
+	const [checked, setChecked] = createSignal(props.checked?.());
+	const [split, rest] = splitProps(props, ['class', 'checked', 'onChecked', 'text']);
+
+	// eslint-disable-next-line solid/reactivity -- i hate mylife
+	if (props.checked)
+		createEffect(() => {
+			setChecked(props.checked!());
+		});
 
 	function toggle() {
 		const newValue = !checked();

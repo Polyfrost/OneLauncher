@@ -23,7 +23,7 @@ function TitlebarButton(props: TitlebarButtonProps) {
 }
 
 function WindowFrame() {
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 
 	const maximize = () => Window.getCurrent().toggleMaximize();
 	const minimize = () => Window.getCurrent().minimize();
@@ -43,7 +43,7 @@ function WindowFrame() {
 
 	onMount(() => {
 		Window.getCurrent().onCloseRequested((event) => {
-			if (settings.hide_close_prompt !== true) {
+			if (settings().hide_close_prompt !== true) {
 				event.preventDefault();
 				modal.show();
 			}

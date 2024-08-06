@@ -29,7 +29,8 @@ macro_rules! collect_commands {
 			remove_user,
 			// Cluster
 			create_cluster,
-			edit_cluster,
+			edit_game_settings,
+			edit_cluster_meta,
 			remove_cluster,
 			get_cluster,
 			get_clusters,

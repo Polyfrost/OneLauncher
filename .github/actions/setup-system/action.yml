@@ -64,10 +64,10 @@ runs:
       with:
         token: ${{ github.token }}
 
-    # - name: Setup Shared Libraries
-    #   shell: bash
-    #   env:
-    #     TARGET_TRIPLE: ${{ inputs.triple }}
-    #     GITHUB_TOKEN: ${{ inputs.token }}
-    #     NODE_ENV: debug
-    #   run: pnpm prepare
+    - name: Setup Shared Libraries
+      shell: bash
+      env:
+        TARGET_TRIPLE: ${{ inputs.triple }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        NODE_ENV: debug
+      run: pnpm prep

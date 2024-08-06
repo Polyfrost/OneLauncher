@@ -4,8 +4,10 @@ import { setTimeout } from 'node:timers/promises';
 import pathe from 'pathe';
 import { execa } from 'execa';
 import { awaitLock, checkEnvironment } from './utils';
+import { patchTauri } from './utils/patch';
 
-const { __dirname, __root } = checkEnvironment(import.meta);
+const env = checkEnvironment(import.meta);
+const { __dirname, __root, __exit } = env;
 const [_, __, ...args] = process.argv;
 const __distribution = pathe.join(__root, 'packages', 'distribution');
 const __desktop = pathe.join(__root, 'apps', 'desktop');
@@ -36,7 +38,7 @@ const store = { code: 0 };
 try {
 	switch (args[0]) {
 		case 'dev': {
-			__cleanup.push(...([]));
+			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
 			switch (process.platform) {
 				case 'linux':
 				case 'darwin':
@@ -52,7 +54,7 @@ try {
 				process.env.NODE_OPTIONS = `--max_old_space_size=4096 ${process.env.NODE_OPTIONS ?? ''}`;
 
 			process.env.GENERATE_SOURCEMAP = 'false';
-			__cleanup.push(...([]));
+			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
 
 			if (process.platform === 'darwin') {
 				process.env.BACKGROUND_FILE = pathe.resolve(__distribution, 'macos', 'dmg.png');
@@ -95,5 +97,5 @@ catch (error: any) {
 }
 finally {
 	cleanup();
-	process.exit(store.code);
+	__exit(store.code);
 }

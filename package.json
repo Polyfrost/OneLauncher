@@ -64,10 +64,5 @@
 		"typescript": "^5.5.4",
 		"vite": "^5.3.5",
 		"vitest": "^2.0.5"
-	},
-	"pnpm": {
-		"patchDependencies": {
-			"@rspc/tauri@0.2.0": "packages/patches/@rspc__tauri@0.2.0.patch"
-		}
 	}
 }

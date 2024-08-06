@@ -125,15 +125,6 @@ importers:
       '@onelauncher/client':
         specifier: workspace:*
         version: link:../../packages/client
-      '@rspc/client':
-        specifier: ^0.2.3
-        version: 0.2.3
-      '@rspc/solid-query':
-        specifier: ^0.2.3
-        version: 0.2.3(@tanstack/solid-query@5.51.21(solid-js@1.8.19))(solid-js@1.8.19)
-      '@rspc/tauri':
-        specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-rc.0)
       '@solid-primitives/refs':
         specifier: ^1.0.8
         version: 1.0.8(solid-js@1.8.19)
@@ -221,15 +212,6 @@ importers:
 
   packages/client:
     dependencies:
-      '@rspc/client':
-        specifier: ^0.2.3
-        version: 0.2.3
-      '@rspc/solid-query':
-        specifier: ^0.2.3
-        version: 0.2.3(@tanstack/solid-query@5.51.21(solid-js@1.8.19))(solid-js@1.8.19)
-      '@rspc/tauri':
-        specifier: ^0.2.0
-        version: 0.2.0(@tauri-apps/api@2.0.0-rc.0)
       '@solid-primitives/deep':
         specifier: ^0.2.9
         version: 0.2.9(solid-js@1.8.19)
@@ -1299,28 +1281,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@rspc/client@0.2.0':
-    resolution: {integrity: sha512-IIOfAk4g+bzbfr3cmvm42EocsjtzMO9CRCc95ZMx9mFh5ixHzP4Na1lun+KipGzsFV1QsmV6uYSBg/4Kpnu9iA==}
-
-  '@rspc/client@0.2.3':
-    resolution: {integrity: sha512-1TfoETE2Tt6vHCwcsu1YVNqStq7z0p6mgsMZxardNwMRBDGnpRMdOxU8Aj0ZmIRGEw1R38SXXlxqk5XeHs+mqQ==}
-
-  '@rspc/query-core@0.2.3':
-    resolution: {integrity: sha512-IvaWGlQNw5gVVTKPz5nhmtzFXA9MpJI7fWZsDSI8o4Z/5zpF1lrUcZIrDloqO1iQPJ76EgmtntUwa52VqvcqrA==}
-    peerDependencies:
-      '@rspc/client': 0.2.3
-
-  '@rspc/solid-query@0.2.3':
-    resolution: {integrity: sha512-S+UFwTf5BTeJgWLmiifQLDfVauIGRlTbk7tipd4knuDxrUXPTIyUHVUrPlZMdPTU+HLF4UZBe726jdhh6Q+Mug==}
-    peerDependencies:
-      '@tanstack/solid-query': ^5.0.0
-      solid-js: ^1.0.0
-
-  '@rspc/tauri@0.2.0':
-    resolution: {integrity: sha512-YULpKSCV/YZLtDRs/poiq3PVW54vMJjIbFZ8PgG+sdyZcujRudpza7xaLrfAHfbo61XdQYz/HP5j/9s5uqXQrA==}
-    peerDependencies:
-      '@tauri-apps/api': ^1.2.0
-
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
@@ -1401,9 +1361,6 @@ packages:
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
     peerDependencies:
       eslint: '>=8.40.0'
-
-  '@tanstack/query-core@5.51.1':
-    resolution: {integrity: sha512-fJBMQMpo8/KSsWW5ratJR5+IFr7YNJ3K2kfP9l5XObYHsgfVy1w3FJUWU4FT2fj7+JMaEg33zOcNDBo0LMwHnw==}
 
   '@tanstack/query-core@5.51.21':
     resolution: {integrity: sha512-POQxm42IUp6n89kKWF4IZi18v3fxQWFRolvBA6phNVmA8psdfB1MvDnGacCJdS+EOX12w/CyHM62z//rHmYmvw==}
@@ -5273,27 +5230,6 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.20.0':
     optional: true
 
-  '@rspc/client@0.2.0': {}
-
-  '@rspc/client@0.2.3': {}
-
-  '@rspc/query-core@0.2.3(@rspc/client@0.2.3)':
-    dependencies:
-      '@rspc/client': 0.2.3
-      '@tanstack/query-core': 5.51.1
-
-  '@rspc/solid-query@0.2.3(@tanstack/solid-query@5.51.21(solid-js@1.8.19))(solid-js@1.8.19)':
-    dependencies:
-      '@rspc/client': 0.2.3
-      '@rspc/query-core': 0.2.3(@rspc/client@0.2.3)
-      '@tanstack/solid-query': 5.51.21(solid-js@1.8.19)
-      solid-js: 1.8.19
-
-  '@rspc/tauri@0.2.0(@tauri-apps/api@2.0.0-rc.0)':
-    dependencies:
-      '@rspc/client': 0.2.0
-      '@tauri-apps/api': 2.0.0-rc.0
-
   '@sec-ant/readable-stream@0.4.1': {}
 
   '@sindresorhus/merge-streams@4.0.0': {}
@@ -5383,8 +5319,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
       - typescript
-
-  '@tanstack/query-core@5.51.1': {}
 
   '@tanstack/query-core@5.51.21': {}
 

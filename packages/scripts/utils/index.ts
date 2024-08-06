@@ -7,6 +7,8 @@ import fs from 'node:fs/promises';
 import { dirname, join, resolve } from 'pathe';
 import { execa } from 'execa';
 
+export type CheckedEnvironment = ReturnType<typeof checkEnvironment>;
+
 export function checkEnvironment(meta: ImportMeta) {
 	if (/^(?:msys|mingw|cygwin)$/i.test(process.env.OSTYPE ?? '')) {
 		console.error('bash for windows is not supported. please use powershell or cmd');

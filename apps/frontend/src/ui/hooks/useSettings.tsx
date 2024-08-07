@@ -38,6 +38,7 @@ export function SettingsProvider(props: ParentProps) {
 			});
 		},
 		save: (settings) => {
+			console.log('saving settings');
 			bridge.commands.setSettings(settings).then(() => {
 				syncSettings(settings);
 				refetch();

@@ -9,7 +9,13 @@ import Button from '~ui/components/base/Button';
 import DiscordIcon from '~assets/logos/discord.svg?component-solid';
 
 function SettingsGeneral() {
-	const settings = useSettingsContext();
+	const { settings, saveOnLeave } = useSettingsContext();
+
+	saveOnLeave(() => ({
+		disable_discord: settings().disable_discord!,
+		hide_close_prompt: settings().hide_close_prompt!,
+		disable_analytics: settings().disable_analytics!,
+	}));
 
 	return (
 		<Sidebar.Page>
@@ -22,8 +28,8 @@ function SettingsGeneral() {
 					icon={<DiscordIcon class="w-6" />}
 				>
 					<Toggle
-						defaultChecked={!(settings.disable_discord ?? false)}
-						onChecked={value => settings.disable_discord = !value}
+						checked={() => !(settings().disable_discord ?? false)}
+						onChecked={value => settings().disable_discord = !value}
 					/>
 				</SettingsRow>
 
@@ -33,8 +39,8 @@ function SettingsGeneral() {
 					icon={<XIcon />}
 				>
 					<Toggle
-						defaultChecked={settings.hide_close_prompt ?? true}
-						onChecked={value => settings.hide_close_prompt = value}
+						checked={() => settings().hide_close_prompt ?? true}
+						onChecked={value => settings().hide_close_prompt = value}
 					/>
 				</SettingsRow>
 
@@ -44,8 +50,8 @@ function SettingsGeneral() {
 					icon={<AlertSquareIcon />}
 				>
 					<Toggle
-						defaultChecked={!(settings.disable_analytics ?? false)}
-						onChecked={value => settings.disable_analytics = !value}
+						checked={() => !(settings().disable_analytics ?? false)}
+						onChecked={value => settings().disable_analytics = !value}
 					/>
 				</SettingsRow>
 
@@ -53,15 +59,15 @@ function SettingsGeneral() {
 
 				<SettingsRow
 					title="Launcher Folder"
-					description={settings.config_dir || 'UNKNOWN'}
+					description={settings().config_dir || 'Unknown'}
 					icon={<FolderIcon />}
 				>
 					<Button
 						iconLeft={<LinkExternal01Icon />}
 						children="Open"
 						onClick={() => {
-							if (settings.config_dir)
-								open(settings.config_dir);
+							if (settings().config_dir)
+								open(settings().config_dir!);
 						}}
 					/>
 				</SettingsRow>

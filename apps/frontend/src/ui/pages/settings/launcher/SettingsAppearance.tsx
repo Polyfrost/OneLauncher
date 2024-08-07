@@ -9,7 +9,7 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettingsContext from '~ui/hooks/useSettings';
 
 function SettingsAppearance() {
-	const settings = useSettingsContext();
+	const { settings, saveOnLeave } = useSettingsContext();
 	const [shouldReload, setShouldReload] = createSignal(false);
 
 	useBeforeLeave((e) => {
@@ -19,6 +19,10 @@ function SettingsAppearance() {
 			location.reload();
 		}
 	});
+
+	saveOnLeave(() => ({
+		disable_animations: settings().disable_animations!,
+	}));
 
 	return (
 		<Sidebar.Page>
@@ -42,9 +46,9 @@ function SettingsAppearance() {
 					icon={<Speedometer04Icon />}
 				>
 					<Toggle
-						defaultChecked={settings.disable_animations ?? false}
+						checked={() => settings().disable_animations ?? false}
 						onChecked={(value) => {
-							settings.disable_animations = value;
+							settings().disable_animations = value;
 							setShouldReload(true);
 						}}
 					/>

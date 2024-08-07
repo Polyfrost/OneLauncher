@@ -1,6 +1,6 @@
 import { useBeforeLeave } from '@solidjs/router';
-import { type Accessor, type Setter, Show, createEffect, createSignal, splitProps, untrack } from 'solid-js';
-import { CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
+import { type Accessor, Show, splitProps } from 'solid-js';
+import { CpuChip01Icon, Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
 import { createSetting } from '../settings/game/SettingsMinecraft';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import type { SettingsRowProps } from '~ui/components/SettingsRow';

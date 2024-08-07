@@ -83,7 +83,8 @@ pub async fn edit_game_settings(uuid: Uuid, new_cluster: Cluster) -> Result<(), 
 		// Process
 
 		async move { Ok(()) }
-	}).await?;
+	})
+	.await?;
 
 	State::sync().await?;
 

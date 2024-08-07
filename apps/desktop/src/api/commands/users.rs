@@ -43,10 +43,6 @@ pub async fn set_default_user(uuid: Uuid) -> Result<(), String> {
 #[tauri::command]
 pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials>, String> {
 	let flow = minecraft::begin().await?;
-
-	// let result = (*(tokio::spawn(async {
-	// 	Box::pin(spawn_webview(handle, flow).await)
-	// }).await.map_err(|err| err.to_string())?)).clone()?;
 	let result = spawn_webview(handle, flow).await?;
 
 	Ok(result)

@@ -48,26 +48,6 @@ h4 { @apply text-lg font-medium; }
     display: none;
 }
 
-.page-animation-enter-active, .page-animation-leave-active {
-    transition: opacity 130ms, transform 155ms;
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.page-animation-enter {
-    opacity: 0.1;
-    transform: translateX(-75px);
-}
-
-.page-animation-enter-to, .page-animation-leave {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.page-animation-leave-to {
-    opacity: 0;
-    transform: translateX(75px);
-}
-
 .noti-animation-enter-active, .noti-animation-leave-active {
     transition: opacity 160ms, transform 175ms;
     transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);

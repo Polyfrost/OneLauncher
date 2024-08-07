@@ -1,32 +1,63 @@
-import { type ParentProps, Show, mergeProps, splitProps } from 'solid-js';
+import { type ParentProps, Show } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
 import useSettingsContext from '~ui/hooks/useSettings';
 
 function AnimatedRoutes(props: TransitionProps & ParentProps) {
 	const { settings } = useSettingsContext();
 
-	const defaultProps: TransitionProps = {
-		mode: 'outin',
-		enterClass: 'page-animation-enter',
-		enterActiveClass: 'page-animation-enter-active',
-		enterToClass: 'page-animation-enter-to',
-		exitClass: 'page-animation-leave',
-		exitActiveClass: 'page-animation-leave-active',
-		exitToClass: 'page-animation-leave-to',
+	const before: Keyframe = {
+		transform: 'translateX(-85px)',
+		opacity: 0,
 	};
 
-	const [split, rest] = splitProps(props, ['children']);
-	const merged = mergeProps(defaultProps, rest);
+	const after: Keyframe = {
+		transform: 'translateX(0)',
+		opacity: 1,
+	};
 
 	return (
 		<Show
 			when={settings().disable_animations !== true}
 			fallback={(
-				<>{split.children}</>
+				<>{props.children}</>
 			)}
 			children={(
-				<Transition {...merged}>
-					{split.children}
+				<Transition
+					mode="outin"
+					onEnter={(el, done) => {
+						if (settings().disable_animations === true) {
+							done();
+							return;
+						}
+
+						el.animate([
+							before,
+							after,
+						], {
+							duration: 90,
+							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+						}).onfinish = () => {
+							done();
+						};
+					}}
+					onExit={(el, done) => {
+						if (settings().disable_animations === true) {
+							done();
+							return;
+						}
+
+						el.animate([
+							after,
+							before,
+						], {
+							duration: 95,
+							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+						}).onfinish = () => {
+							done();
+						};
+					}}
+				>
+					{props.children}
 				</Transition>
 			)}
 		/>

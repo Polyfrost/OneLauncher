@@ -3493,6 +3493,7 @@ dependencies = [
  "objc",
  "once_cell",
  "onelauncher",
+ "onelauncher_macros",
  "serde",
  "serde_json",
  "specta",

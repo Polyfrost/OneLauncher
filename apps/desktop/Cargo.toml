@@ -24,6 +24,7 @@ tauri-build = { workspace = true, features = [ "isolation" ] }
 
 [dependencies]
 onelauncher = { workspace = true, features = [ "tauri" ] }
+onelauncher_macros = { workspace = true }
 
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }

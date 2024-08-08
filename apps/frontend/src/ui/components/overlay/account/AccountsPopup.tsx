@@ -1,5 +1,5 @@
 import { For, Show } from 'solid-js';
-import { LogOut01Icon, PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
+import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
 import Button from '../../base/Button';
 import PlayerHead from '../../game/PlayerHead';
@@ -13,9 +13,22 @@ interface AccountComponentProps {
 }
 
 function AccountComponent(props: AccountComponentProps) {
+	const controller = useAccountController();
+
+	function login() {
+		if (props.loggedIn === true)
+			return;
+
+		if (props.account)
+			controller.setDefaultAccount(props.account.id);
+	}
+
 	return (
 		<Show when={props.account}>
-			<div class={`flex flex-row justify-between p-2 rounded-lg ${!props.loggedIn && 'hover:bg-gray-05 active:bg-gray-10 hover:text-fg-primary-hover'}`}>
+			<div
+				onClick={login}
+				class={`flex flex-row justify-between p-2 rounded-lg ${props.loggedIn !== true && 'hover:bg-gray-05 active:bg-gray-10 hover:text-fg-primary-hover'}`}
+			>
 				<div class="flex flex-row justify-start flex-1 gap-x-3">
 					<PlayerHead class="w-8 h-8 rounded-md" uuid={props.account!.id} />
 					<div class="flex flex-col items-center justify-center">
@@ -25,11 +38,14 @@ function AccountComponent(props: AccountComponentProps) {
 						</div>
 					</div>
 				</div>
-				{props.loggedIn && (
-					<Button buttonStyle="icon">
-						<LogOut01Icon class=" stroke-danger" />
-					</Button>
-				)}
+
+				{/* <Show when={props.loggedIn}>
+					<Button
+						buttonStyle="icon"
+						onClick={() => controller.setDefaultAccount(null)}
+						children={<LogOut01Icon class=" stroke-danger" />}
+					/>
+				</Show> */}
 			</div>
 		</Show>
 	);
@@ -46,10 +62,14 @@ function AccountPopup(props: Popup.PopupProps) {
 		<Popup {...props}>
 			<div class="bg-secondary rounded-xl border border-gray-10 w-72 p-2 shadow-md shadow-black/30">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
-					<AccountComponent account={controller.defaultAccount()} loggedIn />
+					<Show when={controller.defaultAccount() !== null || controller.defaultAccount() !== undefined}>
+						<AccountComponent
+							account={controller.defaultAccount()}
+							loggedIn
+						/>
+					</Show>
 
 					<Show when={filteredAccounts().length !== 0}>
-						<div class="w-full h-px bg-gray-05 rounded-md" />
 						<For each={filteredAccounts()}>
 							{account => (
 								<AccountComponent account={account} />

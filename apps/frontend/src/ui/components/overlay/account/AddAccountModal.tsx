@@ -11,7 +11,7 @@ interface AccountControllerContextFunc {
 	refetch: () => void;
 	accounts: Resource<MinecraftCredentials[]>;
 	defaultAccount: Resource<MinecraftCredentials | null>;
-	setDefaultAccount: (uuid: string) => Promise<void>;
+	setDefaultAccount: (uuid: string | null) => Promise<void>;
 	removeAccount: (uuid: string, force?: boolean) => Promise<void>;
 }
 
@@ -19,7 +19,7 @@ const AccountControllerContext = createContext<AccountControllerContextFunc>() a
 
 export function AccountControllerProvider(props: ParentProps) {
 	const [accounts, { refetch: refetchAccounts }] = useCommand(bridge.commands.getUsers);
-	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser);
+	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser, true);
 
 	const [deleteModalUuid, setDeleteModalUuid] = createSignal<string>();
 
@@ -36,8 +36,8 @@ export function AccountControllerProvider(props: ParentProps) {
 		refetchDefaultAccount();
 	}
 
-	async function setDefaultAccount(uuid: string) {
-		await tryResult(bridge.commands.setDefaultUser, uuid);
+	async function setDefaultAccount(uuid: string | null) {
+		await tryResult(bridge.commands.setDefaultUser, uuid).then(refetch);
 	}
 
 	async function removeAccount(uuid: string, force?: boolean) {

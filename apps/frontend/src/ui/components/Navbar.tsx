@@ -82,7 +82,7 @@ function Navbar() {
 					onClick={() => setProfileMenuOpen(!profileMenuOpen())}
 					class="hover:opacity-70"
 				>
-					<PlayerHead class="w-[32px] h-[32px] rounded-md" uuid={controller.defaultAccount()?.id} />
+					<PlayerHead class="min-w-8 min-h-8 w-8 h-8 max-w-8 max-h-8 rounded-md" uuid={controller.defaultAccount()?.id} />
 				</button>
 			</div>
 

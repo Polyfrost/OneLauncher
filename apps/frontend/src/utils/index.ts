@@ -54,21 +54,21 @@ export function secondsToWords(seconds: number | bigint, plural: boolean = true)
 
 	const func = (n: number) => {
 		if (n < 60)
-			return `${n} seconds`;
+			return `${n} second`;
 		else if (n < (60 * 60))
-			return `${Math.floor(n / 60)} minutes`;
+			return `${Math.floor(n / 60)} minute`;
 		else if (n < (60 * 60 * 24))
-			return `${Math.floor(n / (60 * 60))} hours`;
+			return `${Math.floor(n / (60 * 60))} hour`;
 		else if (n < (60 * 60 * 24 * 7))
-			return `${Math.floor(n / (60 * 60 * 24))} days`;
+			return `${Math.floor(n / (60 * 60 * 24))} day`;
 		else if (n < (60 * 60 * 24 * 30))
-			return `${Math.floor(n / (60 * 60 * 24 * 7))} weeks`;
+			return `${Math.floor(n / (60 * 60 * 24 * 7))} week`;
 		else if (n < (60 * 60 * 24 * 365))
-			return `${Math.floor(n / (60 * 60 * 24 * 30))} months`;
+			return `${Math.floor(n / (60 * 60 * 24 * 30))} month`;
 		else if (n < (60 * 60 * 24 * 365 * 10))
-			return `${Math.floor(n / (60 * 60 * 24 * 365))} years`;
+			return `${Math.floor(n / (60 * 60 * 24 * 365))} year`;
 
-		return `${n} seconds`; // Hmmmmmm
+		return `${n} second`; // Hmmmmmm
 	};
 
 	const str = func(n);

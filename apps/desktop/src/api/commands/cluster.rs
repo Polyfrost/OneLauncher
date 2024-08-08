@@ -182,3 +182,16 @@ pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> 
 	let id = logger::upload_log(&cluster.cluster_path(), log).await?;
 	Ok(id)
 }
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
+	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+		.await?
+		.ok_or("cluster not found")?;
+
+	let screenshots = cluster::content::screenshots::get_screenshots(&cluster.cluster_path())
+		.await?;
+
+	Ok(screenshots)
+}

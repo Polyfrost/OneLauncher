@@ -39,6 +39,7 @@ macro_rules! collect_commands {
 			get_cluster_logs,
 			get_cluster_log,
 			upload_log,
+			get_screenshots,
 			// Processor
 			get_running_clusters,
 			get_processes_by_path,

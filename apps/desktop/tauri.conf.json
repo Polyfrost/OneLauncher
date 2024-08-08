@@ -58,8 +58,7 @@
 				"enable": true,
 				"scope": {
 					"allow": [
-						"$DATA/OneLauncher/metadata/caches/icons/*",
-						"$DATA/OneLauncher/db/**",
+						"$DATA/OneLauncher/**",
 						"$RESOURCE/**"
 					],
 					"deny": ["$DATA/OneLauncher/db/*.stronghold"]

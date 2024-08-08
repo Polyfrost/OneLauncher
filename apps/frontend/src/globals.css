@@ -24,6 +24,14 @@ img {
 }
 /* end lynith's native experience (tm) */
 
+/* lynith's epic webkit gtk <=2.44 fixer */
+body[data-platform="linux"] img {
+	/* Forces webkit gtk to use the GPU for image rendering, should speed up loading of some pages. Temporary until Tauri updates to at least 2.45
+	2.45 is the first version to use Skia for rendering, which prioritises the GPU over the CPU unlike Cairo */
+	@apply transform-gpu;
+}
+/* end lynith's epic webkit gtk <=2.44 fixer */
+
 h1 { @apply text-2xl font-semibold; line-height: 1.5 !important; }
 h2 { @apply text-xxl font-semibold; line-height: 1.25 !important; }
 h3 { @apply text-xl font-medium; }

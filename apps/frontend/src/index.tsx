@@ -1,15 +1,17 @@
 /* @refresh reload */
 import { render } from 'solid-js/web';
 
-import './imports';
-
 import { Route, Router } from '@solidjs/router';
+import { bridge } from './imports';
+
 import App from './ui/App';
 import HomePage from './ui/pages/Home';
 import UpdatesPage from './ui/pages/Updates';
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
 import BrowserRoot from '~ui/pages/browser/BrowserRoot';
+
+document.body.setAttribute('data-platform', bridge.PROGRAM_INFO.platform);
 
 render(() => (
 	<Router root={App}>

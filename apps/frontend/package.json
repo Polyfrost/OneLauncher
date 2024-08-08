@@ -41,7 +41,7 @@
 	},
 	"devDependencies": {
 		"@solidjs/testing-library": "^0.8.9",
-		"@tauri-apps/cli": "2.0.0-rc.0",
+		"@tauri-apps/cli": "2.0.0-rc.2",
 		"@testing-library/jest-dom": "^6.4.8",
 		"@types/uuid": "^10.0.0",
 		"jsdom": "^24.1.1",

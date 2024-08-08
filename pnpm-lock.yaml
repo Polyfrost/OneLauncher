@@ -139,13 +139,13 @@ importers:
         version: 2.0.0-rc.0
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8
       '@tauri-apps/plugin-dialog':
         specifier: github:tauri-apps/tauri-plugin-dialog#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.19)
@@ -205,8 +205,8 @@ importers:
         specifier: ^0.8.1
         version: 0.8.1(solid-js@1.8.19)(vite@5.3.5(@types/node@22.1.0)(sass@1.77.8))
       vite-tsconfig-paths:
-        specifier: ^4.3.2
-        version: 4.3.2(typescript@5.5.4)(vite@5.3.5(@types/node@22.1.0)(sass@1.77.8))
+        specifier: ^5.0.0
+        version: 5.0.0(typescript@5.5.4)(vite@5.3.5(@types/node@22.1.0)(sass@1.77.8))
 
   apps/testing: {}
 
@@ -1439,17 +1439,17 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0}
-    version: 2.1.0-beta.6
-
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8':
+    resolution: {commit: bb6d2ece43449253a98bdd562ffa4ab7437b7ed8, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311}
-    version: 2.0.0-beta.9
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768':
+    resolution: {commit: f83833c5445948c1b2f022e3c530ca48be9f8768, repo: git@github.com:tauri-apps/tauri-plugin-dialog.git, type: git}
+    version: 2.0.0-rc.0
+
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7':
+    resolution: {commit: 9b975b74a0147b9f5ae8c4dad3449773e90d21a7, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-rc.0
 
   '@testing-library/dom@10.4.0':
     resolution: {integrity: sha512-pemlzrSESWbdAloYml3bAJMEfNh1Z7EduzqPKprCH5S341frlpYnUEW0H72dLxa6IsYr+mPno20GiSm+h9dEdQ==}
@@ -2168,15 +2168,6 @@ packages:
 
   debug@3.2.7:
     resolution: {integrity: sha512-CFjzYYAi4ThfiQvizrFQevTTXHtnCqWfe7x1AhgEscTz6ZbLbfoLRLPugTQyBth6f8ZERVUSyWHFD/7Wu4t1XQ==}
-    peerDependencies:
-      supports-color: '*'
-    peerDependenciesMeta:
-      supports-color:
-        optional: true
-
-  debug@4.3.5:
-    resolution: {integrity: sha512-pt0bNEmneDIvdL1Xsd9oDQ/wrQRkXDT4AUWlNZNPKvW5x/jyO9VFXkJUP07vQ2upmw5PlaITaPKc31jK13V+jg==}
-    engines: {node: '>=6.0'}
     peerDependencies:
       supports-color: '*'
     peerDependenciesMeta:
@@ -3999,8 +3990,8 @@ packages:
       '@testing-library/jest-dom':
         optional: true
 
-  vite-tsconfig-paths@4.3.2:
-    resolution: {integrity: sha512-0Vd/a6po6Q+86rPlntHye7F31zA2URZMbH8M3saAZ/xR9QoGN/L21bxEGfXdWmFdNkqPpRdxFT7nmNe12e9/uA==}
+  vite-tsconfig-paths@5.0.0:
+    resolution: {integrity: sha512-sCdKc6uC7ir102lW8deBiMnS0NGEs0100OJX8WZQmf3Uf7tJ/T3uQnzznq/tZWph7tkG+44JYOsKE7YTZjDn+Q==}
     peerDependencies:
       vite: '*'
     peerDependenciesMeta:
@@ -4386,7 +4377,7 @@ snapshots:
       '@babel/traverse': 7.24.8
       '@babel/types': 7.24.9
       convert-source-map: 2.0.0
-      debug: 4.3.5
+      debug: 4.3.6
       gensync: 1.0.0-beta.2
       json5: 2.2.3
       semver: 6.3.1
@@ -4648,7 +4639,7 @@ snapshots:
       '@babel/helper-split-export-declaration': 7.24.7
       '@babel/parser': 7.24.8
       '@babel/types': 7.24.9
-      debug: 4.3.5
+      debug: 4.3.6
       globals: 11.12.0
     transitivePeerDependencies:
       - supports-color
@@ -5372,15 +5363,15 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-rc.0
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
@@ -5555,7 +5546,7 @@ snapshots:
     dependencies:
       '@typescript-eslint/types': 7.16.0
       '@typescript-eslint/visitor-keys': 7.16.0
-      debug: 4.3.5
+      debug: 4.3.6
       globby: 11.1.0
       is-glob: 4.0.3
       minimatch: 9.0.5
@@ -5883,7 +5874,7 @@ snapshots:
 
   agent-base@7.1.1:
     dependencies:
-      debug: 4.3.5
+      debug: 4.3.6
     transitivePeerDependencies:
       - supports-color
 
@@ -6277,10 +6268,6 @@ snapshots:
   debug@3.2.7:
     dependencies:
       ms: 2.1.3
-
-  debug@4.3.5:
-    dependencies:
-      ms: 2.1.2
 
   debug@4.3.6:
     dependencies:
@@ -6993,14 +6980,14 @@ snapshots:
   http-proxy-agent@7.0.2:
     dependencies:
       agent-base: 7.1.1
-      debug: 4.3.5
+      debug: 4.3.6
     transitivePeerDependencies:
       - supports-color
 
   https-proxy-agent@7.0.5:
     dependencies:
       agent-base: 7.1.1
-      debug: 4.3.5
+      debug: 4.3.6
     transitivePeerDependencies:
       - supports-color
 
@@ -8223,9 +8210,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  vite-tsconfig-paths@4.3.2(typescript@5.5.4)(vite@5.3.5(@types/node@22.1.0)(sass@1.77.8)):
+  vite-tsconfig-paths@5.0.0(typescript@5.5.4)(vite@5.3.5(@types/node@22.1.0)(sass@1.77.8)):
     dependencies:
-      debug: 4.3.5
+      debug: 4.3.6
       globrex: 0.1.2
       tsconfck: 3.0.3(typescript@5.5.4)
     optionalDependencies:

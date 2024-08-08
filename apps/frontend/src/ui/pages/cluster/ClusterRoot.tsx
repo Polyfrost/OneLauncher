@@ -11,6 +11,7 @@ import ClusterMods from './ClusterMods';
 import ClusterScreenshots from './ClusterScreenshots';
 import ClusterSettings from './ClusterSettings';
 import ClusterGame from './ClusterGame';
+import ClusterWorlds from './ClusterWorlds';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 import { supportsMods } from '~utils';
 import { tryResult } from '~ui/hooks/useCommand';
@@ -24,6 +25,7 @@ function ClusterRoutes() {
 			<Route path="/logs" component={ClusterLogs} />
 			<Route path="/mods" component={ClusterMods} />
 			<Route path="/screenshots" component={ClusterScreenshots} />
+			<Route path="/worlds" component={ClusterWorlds} />
 			<Route path="/settings" component={ClusterSettings} />
 			<Route path="/game" component={ClusterGame} />
 		</>

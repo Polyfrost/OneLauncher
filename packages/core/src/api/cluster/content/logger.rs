@@ -99,6 +99,12 @@ pub async fn get_logs(
 	cluster_path: &ClusterPath,
 	clear: Option<bool>,
 ) -> crate::Result<Vec<LogManager>> {
+	let dir = Directories::cluster_logs_dir(cluster_path).await?;
+	if !dir.exists() {
+		io::create_dir(dir).await?;
+		return Ok(vec![]);
+	}
+
 	let mut logs = Vec::new();
 	get_logs_by_type(cluster_path, LogType::Info, clear, &mut logs).await?;
 	get_logs_by_type(cluster_path, LogType::Crash, clear, &mut logs).await?;

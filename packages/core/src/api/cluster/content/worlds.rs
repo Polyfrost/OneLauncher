@@ -5,8 +5,8 @@ use crate::store::ClusterPath;
 
 /// Gets a list of screenshot file names from the [`ClusterPath`]
 #[tracing::instrument]
-pub async fn get_screenshots(cluster: &ClusterPath) -> Result<Vec<String>> {
-	let dir = cluster.full_path().await?.join("screenshots");
+pub async fn get_worlds(cluster: &ClusterPath) -> Result<Vec<String>> {
+	let dir = cluster.full_path().await?.join("saves");
 
 	if !dir.exists() {
 		io::create_dir(dir).await?;

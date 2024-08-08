@@ -101,7 +101,6 @@ function ClusterLogs() {
 							onClick={openFolder}
 							children="Open Folder"
 							iconLeft={<LinkExternal01Icon />}
-							disabled={missingLogs()}
 						/>
 					</div>
 				</div>

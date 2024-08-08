@@ -81,6 +81,10 @@ pub async fn edit_game_settings(uuid: Uuid, new_cluster: Cluster) -> Result<(), 
 		old.memory = new_cluster.memory;
 
 		// Process
+		old.init_hooks = new_cluster.init_hooks.clone();
+
+		// Java
+		old.java = new_cluster.java.clone();
 
 		async move { Ok(()) }
 	})
@@ -191,6 +195,19 @@ pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
 		.ok_or("cluster not found")?;
 
 	let screenshots = cluster::content::screenshots::get_screenshots(&cluster.cluster_path())
+		.await?;
+
+	Ok(screenshots)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
+	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+		.await?
+		.ok_or("cluster not found")?;
+
+	let screenshots = cluster::content::worlds::get_worlds(&cluster.cluster_path())
 		.await?;
 
 	Ok(screenshots)

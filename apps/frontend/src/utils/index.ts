@@ -96,3 +96,7 @@ export function asEnvVariables(str: string): [string, string][] {
 		})
 		.filter(pair => pair !== null);
 }
+
+export function getLoaders(): Loader[] {
+	return ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'];
+}

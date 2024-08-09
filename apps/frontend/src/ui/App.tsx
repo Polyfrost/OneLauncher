@@ -6,10 +6,10 @@ import ErrorBoundary from './components/ErrorBoundary';
 import AnimatedRoutes from './components/AnimatedRoutes';
 import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
 import { SettingsProvider } from './hooks/useSettings';
-import { ClusterModalController } from './components/overlay/cluster/ClusterCreationModal';
+import { ClusterModalControllerProvider } from './components/overlay/cluster/ClusterCreationModal';
 import { MultiProvider } from './components/MultiProvider';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
-import { ModalProvider } from './components/overlay/Modal';
+import { ModalProvider, ModalRenderer } from './components/overlay/Modal';
 import { PROGRAM_INFO } from '~bindings';
 
 function App(props: ParentProps) {
@@ -37,6 +37,7 @@ function App(props: ParentProps) {
 				</div>
 
 				<NotificationOverlay />
+				<ModalRenderer />
 			</main>
 		</GlobalContexts>
 	);
@@ -51,7 +52,7 @@ function GlobalContexts(props: ParentProps) {
 				ModalProvider,
 				SettingsProvider,
 				AccountControllerProvider,
-				ClusterModalController,
+				ClusterModalControllerProvider,
 			]}
 		>
 			{props.children}

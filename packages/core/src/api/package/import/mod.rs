@@ -111,33 +111,33 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 pub async fn import_instance(
 	cluster_path: ClusterPath,
 	import: ImportType,
-	path: PathBuf,
+	base_path: PathBuf,
 	instance_path: String,
 ) -> crate::Result<()> {
 	tracing::debug!("importing instance from {instance_path}");
 
 	let result = match import {
 		ImportType::MultiMC | ImportType::PrismLauncher => {
-			multibased::import_mmc(path, instance_path, cluster_path.clone()).await
+			multibased::import_mmc(base_path, instance_path, cluster_path.clone()).await
 		}
 		ImportType::ATLauncher => {
-			atlauncher::import_atlauncher(path, instance_path, cluster_path.clone()).await
+			atlauncher::import_atlauncher(base_path, instance_path, cluster_path.clone()).await
 		}
 		ImportType::GDLauncher => {
 			gdlauncher::import_gdlauncher(
-				path.join("instances").join(instance_path),
+				base_path.join("instances").join(instance_path),
 				cluster_path.clone(),
 			)
 			.await
 		}
 		ImportType::Curseforge => {
 			curseforge::import_curseforge(
-				path.join("Instances").join(instance_path),
+				base_path.join("Instances").join(instance_path),
 				cluster_path.clone(),
 			)
 			.await
 		}
-		// ImportType::Modrinth => modrinth::import_modrinth(path.join("profiles").join(instance_path), cluster_path.clone()).await,
+		ImportType::Modrinth => modrinth::import_modrinth(base_path.join("profiles").join(instance_path), cluster_path.clone()).await,
 		// ImportType::TLauncher => tlauncher::import_tlauncher(path.join("instances").join(instance_path), cluster_path.clone()).await,
 		// ImportType::Technic => technic::import_technic(path.join("instances").join(instance_path), cluster_path.clone()).await,
 		// ImportType::FTBLauncher => ftb::import_ftb(path.join("instances").join(instance_path), cluster_path.clone()).await,

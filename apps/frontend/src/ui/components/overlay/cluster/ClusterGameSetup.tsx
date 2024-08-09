@@ -1,59 +1,40 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, Index, type JSX, Show, createEffect, createSignal, on, onMount, splitProps, untrack } from 'solid-js';
-import type { ClusterStepProps } from './ClusterCreationModal';
+import { For, Index, type JSX, Show, createEffect, createSignal, onMount, splitProps, untrack } from 'solid-js';
+import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
-import VanillaImage from '~assets/logos/vanilla.png';
-import FabricImage from '~assets/logos/fabric.png';
-import ForgeImage from '~assets/logos/forge.png';
-import QuiltImage from '~assets/logos/quilt.png';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import SelectList from '~ui/components/base/SelectList';
 import Checkbox from '~ui/components/base/Checkbox';
 import type { Loader, VersionType } from '~bindings';
-import { formatVersionRelease } from '~utils';
+import { formatVersionRelease, getLoaders } from '~utils';
+import LoaderIcon from '~ui/components/game/LoaderIcon';
 
-const loaders: {
-	name: string;
-	icon: () => JSX.Element;
-}[] = [
-	{
-		name: 'Vanilla',
-		icon: () => <img src={VanillaImage} />,
-	},
-	{
-		name: 'Fabric',
-		icon: () => <img src={FabricImage} />,
-	},
-	{
-		name: 'Forge',
-		icon: () => <img src={ForgeImage} />,
-	},
-	{
-		name: 'Quilt',
-		icon: () => <img src={QuiltImage} />,
-	},
-];
+export default createClusterStep({
+	message: 'Game Setup',
+	buttonType: 'create',
+	Component: ClusterGameSetup,
+});
 
-export function ClusterStepTwo(props: ClusterStepProps) {
-	const check = () => {
-		const hasName = (props.controller().partialCluster().name?.length ?? 0) > 0;
-		const hasVersion = (props.controller().partialCluster().mc_version?.length ?? 0) > 0;
-		const hasLoader = (props.controller().partialCluster().mod_loader?.length ?? 0) > 0;
+function ClusterGameSetup(props: ClusterStepProps) {
+	// const check = () => {
+	// 	const hasName = (props.controller().partialCluster().name?.length ?? 0) > 0;
+	// 	const hasVersion = (props.controller().partialCluster().mc_version?.length ?? 0) > 0;
+	// 	const hasLoader = (props.controller().partialCluster().mod_loader?.length ?? 0) > 0;
 
-		props.setCanGoForward(hasName && hasVersion && hasLoader);
-	};
+	// 	props.setCanGoForward(hasName && hasVersion && hasLoader);
+	// };
 
-	createEffect(check);
-	createEffect(on(() => props.isVisible(), (curr: boolean) => {
-		if (curr)
-			check();
-	}));
+	// createEffect(check);
+	// createEffect(on(() => props.isVisible(), (curr: boolean) => {
+	// 	if (curr)
+	// 		check();
+	// }));
 
-	const setName = (name: string) => props.controller().updatePartialCluster('name', name);
-	const setVersion = (version: string) => props.controller().updatePartialCluster('mc_version', version);
-	const setLoader = (loader: Loader | string) => props.controller().updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+	const setName = (name: string) => props.controller.updatePartialCluster('name', name);
+	const setVersion = (version: string) => props.controller.updatePartialCluster('mc_version', version);
+	const setLoader = (loader: Loader | string) => props.controller.updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
 
 	onMount(() => {
 		setLoader('vanilla');
@@ -74,15 +55,15 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown onChange={index => setLoader(loaders[index]?.name || 'vanilla')}>
-					<For each={loaders}>
+				<Dropdown onChange={index => setLoader(getLoaders()[index] || 'vanilla')}>
+					<For each={getLoaders()}>
 						{loader => (
 							<Dropdown.Row>
 								<div class="flex flex-row gap-x-2">
 									<div class="w-4 h-4">
-										<loader.icon />
+										<LoaderIcon loader={loader} />
 									</div>
-									{loader.name}
+									{loader}
 								</div>
 							</Dropdown.Row>
 						)}

@@ -4,7 +4,7 @@ import type {
 	ParentProps,
 	Ref,
 } from 'solid-js';
-import { For, createContext, createSignal, onCleanup, onMount, splitProps, useContext } from 'solid-js';
+import { For, Show, createContext, createSignal, onCleanup, onMount, splitProps, useContext } from 'solid-js';
 import { mergeRefs } from '@solid-primitives/refs';
 import { createStore } from 'solid-js/store';
 import { Transition } from 'solid-transition-group';
@@ -12,18 +12,23 @@ import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
 import type { MakeOptional } from '~types.ts';
 
+type ModalsList = (() => JSX.Element)[];
+
 interface ModalContextType {
+	modals: () => ModalsList;
 	displayModal: (modal: () => JSX.Element) => number;
 	closeModal: (index?: number) => void;
+	isVisible: (index: number) => boolean;
 };
 
 const ModalContext = createContext() as Context<ModalContextType>;
-type ModalsList = (() => JSX.Element)[];
 
 export function ModalProvider(props: ParentProps) {
 	const [modals, setModals] = createStore<ModalsList>([]);
 
 	const context: ModalContextType = {
+		modals: () => modals,
+
 		displayModal: (modal) => {
 			setModals(prev => [...prev, modal]);
 			return modals.length - 1;
@@ -40,31 +45,44 @@ export function ModalProvider(props: ParentProps) {
 
 			setModals(prev => prev.slice(0, -1));
 		},
+
+		isVisible: (index) => {
+			return modals.length > index;
+		},
 	};
 
 	return (
 		<ModalContext.Provider value={context}>
 			{props.children}
-			<FullscreenOverlay
-				visible={() => modals.length > 0}
-				setVisible={(value) => {
-					if (value === false)
-						context.closeModal();
-				}}
-			>
-				<Transition
-					mode="outin"
-					enterClass="modal-animation-enter"
-					enterActiveClass="modal-animation-enter-active"
-					enterToClass="modal-animation-enter-to"
-					exitClass="modal-animation-leave"
-					exitActiveClass="modal-animation-leave-active"
-					exitToClass="modal-animation-leave-to"
-				>
-					<>{modals.length > 0 && modals[modals.length - 1]!()}</>
-				</Transition>
-			</FullscreenOverlay>
 		</ModalContext.Provider>
+	);
+}
+
+export function ModalRenderer() {
+	const controller = useModalController();
+
+	return (
+		<FullscreenOverlay
+			visible={() => controller.modals().length > 0}
+			setVisible={(value) => {
+				if (value === false)
+					controller.closeModal();
+			}}
+		>
+			<Transition
+				mode="outin"
+				enterClass="modal-animation-enter"
+				enterActiveClass="modal-animation-enter-active"
+				enterToClass="modal-animation-enter-to"
+				exitClass="modal-animation-leave"
+				exitActiveClass="modal-animation-leave-active"
+				exitToClass="modal-animation-leave-to"
+			>
+				<Show when={controller.modals().length > 0}>
+					{controller.modals()[controller.modals().length - 1]!()}
+				</Show>
+			</Transition>
+		</FullscreenOverlay>
 	);
 }
 
@@ -77,16 +95,16 @@ export function useModalController() {
 	return context;
 }
 
-interface CreateModal {
+export interface ModalController {
 	show: () => void;
 	hide: () => void;
 };
 
-export function createModal(el: (props: CreateModal) => JSX.Element): CreateModal {
+export function createModal(el: (props: ModalController) => JSX.Element): ModalController {
 	const controller = useModalController();
 	const [index, setIndex] = createSignal<number>();
 
-	const ctx: CreateModal = {
+	const ctx: ModalController = {
 		show: () => {
 			setIndex(controller.displayModal(() => el(ctx)));
 		},
@@ -100,7 +118,7 @@ export function createModal(el: (props: CreateModal) => JSX.Element): CreateModa
 
 export type ModalProps = {
 	ref?: Ref<HTMLDivElement> | undefined;
-} & ParentProps & CreateModal;
+} & ParentProps & ModalController;
 
 function Modal(props: ModalProps) {
 	return (
@@ -110,7 +128,7 @@ function Modal(props: ModalProps) {
 	);
 }
 
-Modal.SplitProps = function <T extends CreateModal>(props: T) {
+Modal.SplitProps = function <T extends ModalController>(props: T) {
 	return splitProps(props, ['hide', 'show']);
 };
 

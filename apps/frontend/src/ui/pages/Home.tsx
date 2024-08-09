@@ -17,13 +17,13 @@ import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import { secondsToWords, upperFirst } from '~utils';
-import { useClusterModalController } from '~ui/components/overlay/cluster/ClusterCreationModal';
+import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
 
 type GroupedClusters = Record<string, Cluster[]>;
 
 function HomePage() {
 	const [clusters, { refetch }] = useCommand<GroupedClusters>(bridge.commands.getClustersGrouped);
-	const controller = useClusterModalController();
+	const controller = useClusterCreator();
 
 	const containerIds = (list: GroupedClusters | undefined) => Object.keys(list || []);
 

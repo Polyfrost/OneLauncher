@@ -35,7 +35,7 @@
 		"overlayscrollbars": "^2.10.0",
 		"overlayscrollbars-solid": "^0.5.5",
 		"pathe": "^1.1.2",
-		"solid-js": "^1.8.19",
+		"solid-js": "^1.8.20",
 		"solid-transition-group": "^0.2.3",
 		"uuid": "^10.0.0"
 	},

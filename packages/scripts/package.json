@@ -19,7 +19,7 @@
 		"int:prepare": "pnpm tsx prepare.ts"
 	},
 	"dependencies": {
-		"@flowr/utils": "^3.10.5",
+		"@flowr/utils": "^3.11.0",
 		"execa": "^9.3.0",
 		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",

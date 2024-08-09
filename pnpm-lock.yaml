@@ -139,13 +139,13 @@ importers:
         version: 2.0.0-rc.0
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8
       '@tauri-apps/plugin-dialog':
         specifier: github:tauri-apps/tauri-plugin-dialog#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.19)
@@ -240,8 +240,8 @@ importers:
   packages/scripts:
     dependencies:
       '@flowr/utils':
-        specifier: ^3.10.5
-        version: 3.10.5
+        specifier: ^3.11.0
+        version: 3.11.0
       execa:
         specifier: ^9.3.0
         version: 9.3.0
@@ -961,8 +961,8 @@ packages:
       vue-eslint-parser:
         optional: true
 
-  '@flowr/utils@3.10.5':
-    resolution: {integrity: sha512-PvBEt/brZO1RRPCHihcXj6WmFRle5uJhtrrG3/Bnsv1SQe9d35sYUxUPuyp38kgtsKcQeKIKyMyYd7YPzHvBrg==}
+  '@flowr/utils@3.11.0':
+    resolution: {integrity: sha512-PzwgN/v4dQg6fcAE3PLUCEXNPjxWJbJEL4rYuWHz+Il4ZYmL/GzqiLuCyA5Gy5UgqXRFTl3C/GSSz2dGG70X7g==}
     engines: {node: '>=20'}
 
   '@fontsource/poppins@5.0.14':
@@ -1439,17 +1439,17 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0}
-    version: 2.1.0-beta.6
-
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8':
+    resolution: {commit: bb6d2ece43449253a98bdd562ffa4ab7437b7ed8, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311}
-    version: 2.0.0-beta.9
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768':
+    resolution: {commit: f83833c5445948c1b2f022e3c530ca48be9f8768, repo: git@github.com:tauri-apps/tauri-plugin-dialog.git, type: git}
+    version: 2.0.0-rc.0
+
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7':
+    resolution: {commit: 9b975b74a0147b9f5ae8c4dad3449773e90d21a7, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-rc.0
 
   '@testing-library/dom@10.4.0':
     resolution: {integrity: sha512-pemlzrSESWbdAloYml3bAJMEfNh1Z7EduzqPKprCH5S341frlpYnUEW0H72dLxa6IsYr+mPno20GiSm+h9dEdQ==}
@@ -4933,7 +4933,7 @@ snapshots:
       - typescript
       - vitest
 
-  '@flowr/utils@3.10.5': {}
+  '@flowr/utils@3.11.0': {}
 
   '@fontsource/poppins@5.0.14': {}
 
@@ -5372,15 +5372,15 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-rc.0
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#bb6d2ece43449253a98bdd562ffa4ab7437b7ed8':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#f83833c5445948c1b2f022e3c530ca48be9f8768':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#9b975b74a0147b9f5ae8c4dad3449773e90d21a7':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
@@ -6552,7 +6552,7 @@ snapshots:
 
   eslint-plugin-petal@3.10.5(eslint@9.8.0):
     dependencies:
-      '@flowr/utils': 3.10.5
+      '@flowr/utils': 3.11.0
       eslint: 9.8.0
 
   eslint-plugin-regexp@2.6.0(eslint@9.8.0):

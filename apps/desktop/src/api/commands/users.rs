@@ -1,5 +1,6 @@
-use onelauncher::{data::MinecraftCredentials, store::MinecraftLogin};
+use onelauncher::data::MinecraftCredentials;
 use onelauncher::minecraft;
+use onelauncher::store::MinecraftLogin;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -23,7 +24,9 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_default_user(fallback: Option<bool>) -> Result<Option<MinecraftCredentials>, String> {
+pub async fn get_default_user(
+	fallback: Option<bool>,
+) -> Result<Option<MinecraftCredentials>, String> {
 	let uuid = minecraft::get_default_user().await?;
 
 	if let Some(fallback) = fallback {
@@ -54,7 +57,10 @@ pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials
 	Ok(result)
 }
 
-async fn spawn_webview(handle: AppHandle, flow: MinecraftLogin) -> Result<Option<MinecraftCredentials>, String> {
+async fn spawn_webview(
+	handle: AppHandle,
+	flow: MinecraftLogin,
+) -> Result<Option<MinecraftCredentials>, String> {
 	let now = chrono::Utc::now();
 
 	if let Some(win) = handle.get_webview_window("login") {
@@ -71,11 +77,11 @@ async fn spawn_webview(handle: AppHandle, flow: MinecraftLogin) -> Result<Option
 				.map_err(|err| err.to_string())?,
 		),
 	)
-		.title("Log into OneLauncher")
-		.always_on_top(true)
-		.center()
-		.build()
-		.map_err(|err| err.to_string())?;
+	.title("Log into OneLauncher")
+	.always_on_top(true)
+	.center()
+	.build()
+	.map_err(|err| err.to_string())?;
 
 	win.request_user_attention(Some(tauri::UserAttentionType::Critical))
 		.map_err(|err| err.to_string())?;

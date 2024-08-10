@@ -194,8 +194,8 @@ pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
 		.await?
 		.ok_or("cluster not found")?;
 
-	let screenshots = cluster::content::screenshots::get_screenshots(&cluster.cluster_path())
-		.await?;
+	let screenshots =
+		cluster::content::screenshots::get_screenshots(&cluster.cluster_path()).await?;
 
 	Ok(screenshots)
 }
@@ -207,8 +207,7 @@ pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
 		.await?
 		.ok_or("cluster not found")?;
 
-	let screenshots = cluster::content::worlds::get_worlds(&cluster.cluster_path())
-		.await?;
+	let screenshots = cluster::content::worlds::get_worlds(&cluster.cluster_path()).await?;
 
 	Ok(screenshots)
 }

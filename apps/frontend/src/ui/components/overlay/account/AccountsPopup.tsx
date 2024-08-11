@@ -29,11 +29,11 @@ function AccountComponent(props: AccountComponentProps) {
 				onClick={login}
 				class={`flex flex-row justify-between p-2 rounded-lg ${props.loggedIn !== true && 'hover:bg-gray-05 active:bg-gray-10 hover:text-fg-primary-hover'}`}
 			>
-				<div class="flex flex-row justify-start flex-1 gap-x-3">
-					<PlayerHead class="w-8 h-8 rounded-md" uuid={props.account!.id} />
+				<div class="flex flex-1 flex-row justify-start gap-x-3">
+					<PlayerHead class="h-8 w-8 rounded-md" uuid={props.account!.id} />
 					<div class="flex flex-col items-center justify-center">
 						<div class="flex flex-col items-start justify-between">
-							<p class="font-semibold h-[18px]">{props.account!.username}</p>
+							<p class="h-[18px] font-semibold">{props.account!.username}</p>
 							{props.loggedIn && <p class="text-xs">Logged in</p>}
 						</div>
 					</div>
@@ -60,7 +60,7 @@ function AccountPopup(props: Popup.PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="bg-secondary rounded-xl border border-gray-10 w-72 p-2 shadow-md shadow-black/30">
+			<div class="w-72 border border-gray-10 rounded-xl bg-secondary p-2 shadow-black/30 shadow-md">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
 					<Show when={controller.defaultAccount() !== null || controller.defaultAccount() !== undefined}>
 						<AccountComponent
@@ -76,7 +76,7 @@ function AccountPopup(props: Popup.PopupProps) {
 							)}
 						</For>
 					</Show>
-					<div class="w-full h-px bg-gray-05 rounded-md" />
+					<div class="h-px w-full rounded-md bg-gray-05" />
 
 					<div class="flex flex-row justify-between">
 						<div>

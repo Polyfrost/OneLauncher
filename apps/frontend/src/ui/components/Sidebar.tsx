@@ -31,12 +31,12 @@ function Sidebar(props: SidebarProps) {
 	}
 
 	return (
-		<div class="flex flex-col w-52">
+		<div class="w-52 flex flex-col">
 			<For each={Object.keys(props.links)}>
 				{section => (
 					<div class="flex flex-col gap-y-2">
 						<div>
-							<h3 class="text-fg-secondary text-xs font-medium m-1.5 mt-5">{section.toUpperCase()}</h3>
+							<h3 class="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</h3>
 							<div class="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
 								<For each={props.links[section]}>
 									{(link) => {

@@ -26,7 +26,7 @@ function FullscreenOverlay(props: FullscreenOverlayProps) {
 				class={`fixed top-0 left-0 w-screen h-screen bg-black/60 backdrop-blur-sm backdrop-grayscale transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
 			>
 
-				<div class="absolute top-0 left-0 w-screen h-screen flex justify-center items-center" onClick={onBackdropClick}>
+				<div class="absolute left-0 top-0 h-screen w-screen flex items-center justify-center" onClick={onBackdropClick}>
 					{props.children}
 				</div>
 

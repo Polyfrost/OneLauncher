@@ -104,7 +104,7 @@ export type ModalProps = {
 
 function Modal(props: ModalProps) {
 	return (
-		<div ref={mergeRefs(props.ref)} class="bg-primary border border-white/5 p-4 rounded-lg text-center flex flex-col gap-y-2 min-w-xs">
+		<div ref={mergeRefs(props.ref)} class="min-w-xs flex flex-col gap-y-2 border border-white/5 rounded-lg bg-primary p-4 text-center">
 			{props.children}
 		</div>
 	);
@@ -130,7 +130,7 @@ Modal.Simple = function (props: ModalSimpleProps) {
 			<div class="flex flex-col">
 				{split.children}
 			</div>
-			<div class="flex flex-row gap-x-4 [&>*]:flex-1 mt-2">
+			<div class="mt-2 flex flex-row gap-x-4 [&>*]:flex-1">
 				<For each={split.buttons}>
 					{button => (
 						<ModalButton props={button} />
@@ -220,19 +220,19 @@ Modal.Delete = function (props: ModalDeleteProps) {
 		>
 			{split.children || (
 				<>
-					<div class="flex flex-col justify-center items-center gap-y-3">
+					<div class="flex flex-col items-center justify-center gap-y-3">
 						<p>Are you sure you want to delete this item?</p>
-						<p class="text-danger uppercase w-82 line-height-normal">
+						<p class="w-82 text-danger line-height-normal uppercase">
 							Doing this will
 							{' '}
-							<span class="underline font-bold">delete</span>
+							<span class="font-bold underline">delete</span>
 							{' '}
 							your entire
 							{' '}
 							<br />
 							data
 							{' '}
-							<span class="underline font-bold">FOREVER</span>
+							<span class="font-bold underline">FOREVER</span>
 							.
 						</p>
 					</div>

@@ -101,17 +101,17 @@ function HomePage() {
 	// };
 
 	return (
-		<div class="flex flex-col h-full gap-y-4 text-fg-primary">
+		<div class="h-full flex flex-col gap-y-4 text-fg-primary">
 			<Banner clusters={clusters()} />
 
-			<div class="flex flex-row justify-between items-center">
+			<div class="flex flex-row items-center justify-between">
 				<div>
 					<TextField iconLeft={<SearchMdIcon />} placeholder="Search for clusters..." />
 				</div>
 				<div class="flex flex-row gap-x-4">
 					<Button
 						buttonStyle="primary"
-						iconLeft={<PlusIcon class="!w-5 stroke-[2.2]" />}
+						iconLeft={<PlusIcon class="stroke-[2.2] !w-5" />}
 						children="New Cluster"
 						onClick={newCluster}
 					/>
@@ -138,8 +138,8 @@ function HomePage() {
 					// </DragDropProvider>
 				)}
 				fallback={(
-					<div class="flex flex-col flex-1 gap-y-4 max-h-64 justify-center items-center">
-						<span class="text-lg font-bold uppercase text-fg-secondary">No clusters were found.</span>
+					<div class="max-h-64 flex flex-1 flex-col items-center justify-center gap-y-4">
+						<span class="text-lg text-fg-secondary font-bold uppercase">No clusters were found.</span>
 						<span class="text-xl font-bold">Create one now with the New Cluster button.</span>
 					</div>
 				)}
@@ -217,9 +217,9 @@ function Banner(props: BannerProps) {
 	});
 
 	return (
-		<div class="relative w-full h-52 min-h-52 overflow-hidden rounded-xl">
+		<div class="relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
 			<ClusterCover
-				class="absolute rounded-xl w-full h-52 object-cover"
+				class="absolute h-52 w-full rounded-xl object-cover"
 				linearBlur={{
 					degrees: 270,
 					blur: 30,
@@ -229,7 +229,7 @@ function Banner(props: BannerProps) {
 				fallback={BannerBackground}
 			/>
 
-			<div class="relative z-10 h-full px-8 py-6 text-fg-primary flex flex-col justify-between items-start">
+			<div class="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6 text-fg-primary">
 				<div class="flex flex-col gap-y-2">
 					<h1>{cluster()?.meta.name || 'Create a cluster'}</h1>
 					<Show when={cluster() !== undefined}>
@@ -249,7 +249,7 @@ function Banner(props: BannerProps) {
 						</p>
 					</Show>
 				</div>
-				<div class="flex w-full flex-row justify-between items-end">
+				<div class="w-full flex flex-row items-end justify-between">
 					<div class="flex flex-row items-center gap-x-4">
 						<Show
 							when={cluster() !== undefined}
@@ -299,22 +299,22 @@ function ClusterCard(props: Cluster) {
 					ref,
 					// sortable
 				)}
-				class="relative h-[152px] group flex flex-col rounded-xl bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-gray-05"
+				class="group relative h-[152px] flex flex-col border border-gray-05 rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			>
-				<div class="flex-1 relative overflow-hidden rounded-t-xl">
+				<div class="relative flex-1 overflow-hidden rounded-t-xl">
 					<div
-						class="absolute h-full w-full group-hover:!scale-110 transition-transform"
+						class="absolute h-full w-full transition-transform group-hover:!scale-110"
 						style={{ '-webkit-transform': 'translateZ(0)' }}
 					>
 						<ClusterCover
 							cluster={props}
-							class="object-cover h-full w-full"
+							class="h-full w-full object-cover"
 						/>
 					</div>
 				</div>
-				<div class="z-10 p-3 flex flex-row gap-x-3 items-center justify-between">
-					<div class="flex flex-col gap-1.5 overflow-hidden h-8">
-						<p class="h-4 font-medium text-ellipsis whitespace-nowrap">{props.meta.name}</p>
+				<div class="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+					<div class="h-8 flex flex-col gap-1.5 overflow-hidden">
+						<p class="h-4 text-ellipsis whitespace-nowrap font-medium">{props.meta.name}</p>
 						<p class="h-4 text-xs">
 							{upperFirst(props.meta.loader)}
 							{' '}
@@ -331,7 +331,7 @@ function ClusterCard(props: Cluster) {
 							ClusterRoot.launch(navigate, props.uuid);
 						}}
 					>
-						<PlayIcon class="w-4! h-4!" />
+						<PlayIcon class="h-4! w-4!" />
 					</Button>
 				</div>
 			</div>
@@ -354,7 +354,7 @@ function ClusterGroup(props: ClusterGroupProps) {
 			class="flex flex-col gap-y-4"
 		>
 			<h4>{props.title}</h4>
-			<div class="grid grid-cols-4 2xl:grid-cols-6 gap-4 min-h-38">
+			<div class="grid grid-cols-4 min-h-38 gap-4 2xl:grid-cols-6">
 				{/* <SortableProvider ids={ids()}> */}
 				<For each={props.clusters}>{item => <ClusterCard {...item} />}</For>
 				{/* </SortableProvider> */}

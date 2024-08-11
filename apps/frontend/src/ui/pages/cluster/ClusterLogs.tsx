@@ -64,9 +64,9 @@ function ClusterLogs() {
 	});
 
 	return (
-		<div class="flex flex-col flex-1">
-			<div class="flex flex-col flex-1 gap-y-2">
-				<div class="flex flex-row justify-between items-center gap-x-1 h-10">
+		<div class="flex flex-1 flex-col">
+			<div class="flex flex-1 flex-col gap-y-2">
+				<div class="h-10 flex flex-row items-center justify-between gap-x-1">
 					<h1>Logs</h1>
 					<div class="flex flex-row gap-x-2">
 						<Button

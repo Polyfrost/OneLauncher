@@ -172,15 +172,15 @@ function ClusterCreationModal(props: { controller: ClusterModalContextFunc }) {
 	}
 
 	return (
-		<div class="bg-primary rounded-lg text-center flex flex-col min-w-sm">
-			<div class="flex relative h-25">
-				<div class="absolute top-0 left-0 w-full h-full">
+		<div class="min-w-sm flex flex-col rounded-lg bg-primary text-center">
+			<div class="relative h-25 flex">
+				<div class="absolute left-0 top-0 h-full w-full">
 					<img class="h-full w-full rounded-t-lg" src={HeaderImage} alt="Header Image" />
 				</div>
 				<div
-					class="absolute top-0 left-0 px-10 h-full flex flex-row justify-start items-center gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)]"
+					class="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
 				>
-					<Server01Icon class="w-8 h-8" />
+					<Server01Icon class="h-8 w-8" />
 					<div class="flex flex-col items-start justify-center">
 						{/** weird positioning?? */}
 						<h1 class="h-10 -mt-2">New Cluster</h1>
@@ -193,7 +193,7 @@ function ClusterCreationModal(props: { controller: ClusterModalContextFunc }) {
 					<Step step={props.controller.step()} />
 				</div>
 
-				<div class="flex flex-row gap-x-2 justify-end pt-0 p-3">
+				<div class="flex flex-row justify-end gap-x-2 p-3 pt-0">
 					<Switch>
 						<Match when={props.controller.step() === 0}>
 							<Button

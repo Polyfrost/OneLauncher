@@ -3,7 +3,7 @@ import { defineConfig } from '@flowr/eslint-config';
 export default defineConfig({
 	typescript: true,
 	solid: true,
-	unocss: false,
+	unocss: true,
 	toml: true,
 	gitignore: true,
 	ignores: [

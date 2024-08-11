@@ -263,26 +263,26 @@ function Banner(props: BannerProps) {
 	}
 
 	return (
-		<div class="flex flex-row bg-component-bg rounded-xl p-2.5 gap-x-2.5 h-37">
-			<div class="rounded-lg overflow-hidden border border-gray-10 relative h-full w-57 min-w-57 aspect-ratio-video">
+		<div class="h-37 flex flex-row gap-x-2.5 rounded-xl bg-component-bg p-2.5">
+			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-gray-10 rounded-lg">
 				<Show when={props.editMode()}>
 					<div
 						onClick={launchFilePicker}
-						class="bg-black/50 opacity-50 hover:opacity-100 w-full h-full absolute flex justify-center items-center"
+						class="absolute h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
 					>
-						<ImagePlusIcon class="w-12 h-12" />
+						<ImagePlusIcon class="h-12 w-12" />
 					</div>
 				</Show>
 
 				<ClusterCover override={props.newCover()} cluster={props.cluster} class="h-full w-full object-cover" />
 			</div>
 
-			<div class="flex flex-col w-full overflow-hidden gap-y-.5 justify-between text-fg-primary">
+			<div class="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
 				<div>
 					<Show
 						when={props.editMode()}
 						fallback={
-							<h2 class="text-2xl break-words text-wrap">{props.cluster.meta.name}</h2>
+							<h2 class="break-words text-wrap text-2xl">{props.cluster.meta.name}</h2>
 						}
 					>
 						<TextField
@@ -296,7 +296,7 @@ function Banner(props: BannerProps) {
 
 				<div class="flex flex-1 flex-row">
 					<div
-						class="flex flex-1 flex-col justify-between items-start"
+						class="flex flex-1 flex-col items-start justify-between"
 						classList={{
 							'text-fg-primary-disabled': props.editMode(),
 						}}

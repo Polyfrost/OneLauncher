@@ -122,7 +122,7 @@ function AddAccountModal(p: AddAccountModalProps) {
 				/>,
 			]}
 		>
-			<div class="flex flex-col gap-y-3 max-w-120 line-height-normal">
+			<div class="max-w-120 flex flex-col gap-y-3 line-height-normal">
 				<Switch>
 					<Match when={stage() !== ModalStage.LoggingIn}>
 						<p>

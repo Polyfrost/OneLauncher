@@ -79,7 +79,7 @@ export function ClusterStepTwo(props: ClusterStepProps) {
 						{loader => (
 							<Dropdown.Row>
 								<div class="flex flex-row gap-x-2">
-									<div class="w-4 h-4">
+									<div class="h-4 w-4">
 										<loader.icon />
 									</div>
 									{loader.name}
@@ -149,7 +149,7 @@ function VersionSelector(props: { setVersion: (version: string) => any }) {
 	});
 
 	return (
-		<div class="flex flex-row flex-1 gap-2">
+		<div class="flex flex-1 flex-row gap-2">
 			<SelectList
 				class="max-h-40 min-w-3/5"
 				onChange={setVersion}
@@ -163,7 +163,7 @@ function VersionSelector(props: { setVersion: (version: string) => any }) {
 				</Show>
 			</SelectList>
 
-			<div class="bg-component-bg rounded-lg overflow-hidden border border-gray-05 flex-1 p-2 flex flex-col gap-y-2">
+			<div class="flex flex-1 flex-col gap-y-2 overflow-hidden border border-gray-05 rounded-lg bg-component-bg p-2">
 				<For each={Object.keys(filters())}>
 					{name => (
 						<Checkbox
@@ -188,7 +188,7 @@ function Option(props: OptionProps) {
 
 	return (
 		<div {...rest} class={`flex flex-col gap-y-2 items-stretch ${split.class || ''}`}>
-			<h3 class="text-md font-semibold uppercase text-fg-secondary text-left">{props.header}</h3>
+			<h3 class="text-left text-md text-fg-secondary font-semibold uppercase">{props.header}</h3>
 			{/* <div class="max-h-8"> */}
 			{props.children}
 			{/* </div> */}

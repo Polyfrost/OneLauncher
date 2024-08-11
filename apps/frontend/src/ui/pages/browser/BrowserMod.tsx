@@ -44,8 +44,8 @@ function BrowserMod() {
 		<>
 			<div class="flex flex-row gap-x-12">
 				<ModCard {...pkg()!} />
-				<div class="flex flex-1 flex-col justify-between items-start bg-component-bg rounded-lg p-4 px-6">
-					<div class="flex w-full flex-row justify-between items-center">
+				<div class="flex flex-1 flex-col items-start justify-between rounded-lg bg-component-bg p-4 px-6">
+					<div class="w-full flex flex-row items-center justify-between">
 						<h1>{pkg()?.title}</h1>
 						<Button
 							buttonStyle="primary"

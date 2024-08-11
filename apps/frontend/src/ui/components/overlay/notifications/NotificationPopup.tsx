@@ -35,19 +35,19 @@ function NotificationPopup(props: Popup.PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="bg-secondary rounded-xl border border-gray-10 w-96 p-2 shadow-md shadow-black/30">
+			<div class="w-96 border border-gray-10 rounded-xl bg-secondary p-2 shadow-black/30 shadow-md">
 				<div class="overflow-hidden transition-height" ref={parent}>
-					<div class="flex flex-col justify-start items-stretch text-start gap-2" ref={inner}>
-						<p class="text-2lg px-2 pt-1">Notifications</p>
+					<div class="flex flex-col items-stretch justify-start gap-2 text-start" ref={inner}>
+						<p class="px-2 pt-1 text-2lg">Notifications</p>
 						<Switch>
 							<Match when={notifications().length > 0}>
 								<OverlayScrollbarsComponent class="max-h-[min(500px,60vh)] overflow-auto">
-									<div class="flex flex-col-reverse justify-center items-stretch ">
+									<div class="flex flex-col-reverse items-stretch justify-center">
 										<For each={notifications()}>
 											{noti => (
-												<div class="flex flex-col w-full">
+												<div class="w-full flex flex-col">
 													<NotificationComponent {...noti} overlay={false} />
-													<span class="bg-gray-05 h-px w-full" />
+													<span class="h-px w-full bg-gray-05" />
 												</div>
 											)}
 										</For>
@@ -56,11 +56,11 @@ function NotificationPopup(props: Popup.PopupProps) {
 							</Match>
 							<Match when={notifications().length === 0}>
 								<span class="px-2">You have no notifications</span>
-								<span class="bg-gray-05 h-px" />
+								<span class="h-px bg-gray-05" />
 							</Match>
 						</Switch>
 
-						<div class="flex flex-row justify-between items-end">
+						<div class="flex flex-row items-end justify-between">
 							<Button onClick={() => {}} buttonStyle="ghost" iconLeft={<Trash01Icon />}>
 								Clear Notifications
 							</Button>

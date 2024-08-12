@@ -7,6 +7,7 @@ on:
     types: [opened, synchronize]
   merge_group:
     types: [checks_requested]
+  workflow_dispatch:
 
 env:
   ONELAUNCHER_CUSTOM_APT_FLAGS: --no-install-recommends

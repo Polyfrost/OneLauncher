@@ -35,15 +35,21 @@ export function ModalProvider(props: ParentProps) {
 		},
 
 		closeModal: (index?: number) => {
-			if (modals.length === 0 || modals.length <= (index || 0))
+			console.log('closeModal', index, modals.length);
+			if (modals.length === 0 || modals.length < (index || 0))
 				return;
 
-			if (index !== undefined) {
-				setModals(prev => prev.filter((_, i) => i !== index));
-				return;
-			}
+			setModals((prev) => {
+				if (index === undefined) {
+					const next = [...prev];
+					next.pop();
 
-			setModals(prev => prev.slice(0, -1));
+					return next;
+				}
+				else {
+					return prev.filter((_, i) => i !== index);
+				}
+			});
 		},
 
 		isVisible: (index) => {

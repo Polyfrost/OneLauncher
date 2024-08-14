@@ -1,6 +1,6 @@
 import { Upload01Icon, User03Icon } from '@untitled-theme/icons-solid';
-import { Index, type JSX, createSignal } from 'solid-js';
-import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
+import { Index, type JSX, createEffect, createSignal } from 'solid-js';
+import { type ClusterStepProps, CreationStage, createClusterStep } from './ClusterCreationModal';
 import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
 
@@ -29,18 +29,21 @@ export default createClusterStep({
 	Component: ClusterProviderSelection,
 });
 
-function ClusterProviderSelection(_props: ClusterStepProps) {
+function ClusterProviderSelection(props: ClusterStepProps) {
 	const [selected, setSelected] = createSignal<number>();
 
-	// const check = () => {
-	// 	props.setCanGoForward(selected() !== undefined);
-	// };
+	const check = () => {
+		props.setCanGoForward(() => {
+			const isTrue = selected() !== undefined;
 
-	// createEffect(check);
-	// createEffect(on(() => props.isVisible(), (curr: boolean) => {
-	// 	if (curr)
-	// 		check();
-	// }));
+			if (isTrue)
+				props.setNextStage(CreationStage.GAME_SETUP);
+
+			return isTrue;
+		});
+	};
+
+	createEffect(check);
 
 	return (
 		<div class="grid grid-cols-3 gap-2">

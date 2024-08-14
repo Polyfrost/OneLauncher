@@ -1,4 +1,4 @@
-import { type Accessor, type Context, type JSX, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
+import { type Accessor, type Context, type JSX, type ParentProps, type Setter, Show, createContext, createSignal, untrack, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import { createStore } from 'solid-js/store';
 import HeaderImage from '../../../../assets/images/header.png';
@@ -19,7 +19,7 @@ type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: 
 
 interface ClusterModalController {
 	step: Accessor<CreationStage | undefined>;
-	setStep: (step: CreationStage | undefined) => void;
+	setStep: (step: CreationStage | number | undefined) => void;
 
 	partialCluster: Accessor<PartialCluster>;
 	setPartialCluster: Setter<PartialCluster>;
@@ -51,7 +51,13 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 		setStep: (stage) => {
 			setSteps((prev) => {
 				if (stage === undefined)
-					return prev.slice(0, -1);
+					return [];
+
+				if (stage < 0) {
+					const next = [...prev];
+					next.pop();
+					return next;
+				}
 
 				return [...prev, stage];
 			});
@@ -71,14 +77,18 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 		async start() {
 			setPartialCluster({});
 			controller.setStep(CreationStage.PROVIDER_SELECTION);
+			// eslint-disable-next-line ts/no-use-before-define -- It should still work
+			modal.show();
 		},
 
 		previous() {
-			controller.setStep(undefined);
+			controller.setStep(-1);
 		},
 
 		cancel() {
-			setSteps([]);
+			controller.setStep(undefined);
+			// eslint-disable-next-line ts/no-use-before-define -- It should still work
+			modal.hide();
 		},
 
 		async finish() {
@@ -102,15 +112,10 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 	};
 
 	const modal = createModal(() => (
-		<>{stepComponents[controller.step()!]()}</>
+		<Show when={controller.step() !== undefined}>
+			<>{stepComponents[controller.step()!]()}</>
+		</Show>
 	));
-
-	createEffect(() => {
-		if (steps().length > 0)
-			modal.show();
-		else
-			modal.hide();
-	});
 
 	return (
 		<ClusterModalContext.Provider value={controller}>

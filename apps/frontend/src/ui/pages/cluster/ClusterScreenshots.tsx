@@ -28,7 +28,7 @@ function ClusterScreenshots() {
 					fallback={<div class="text-gray-400">No screenshots found. Press F2 in game to take a screenshot!</div>}
 					when={list() !== undefined && list()!.length > 0}
 				>
-					<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full gap-2 transform-gpu">
+					<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full transform-gpu gap-2">
 						<For each={list()!}>
 							{screenshot => (
 								<ScreenshotEntry path={screenshot} cluster_path={cluster()?.path || ''} />
@@ -38,7 +38,7 @@ function ClusterScreenshots() {
 				</Show>
 			</ScrollableContainer>
 
-			<div class="flex flex-row justify-end items-end mt-2">
+			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
 					iconLeft={<LinkExternal01Icon />}
@@ -65,7 +65,7 @@ function ScreenshotEntry(props: { path: string; cluster_path: string }) {
 
 	return (
 		<div
-			class="bg-component-bg hover:bg-component-bg-hover hover:opacity-80 active:bg-component-bg-pressed p-3 gap-3 rounded-xl flex flex-col items-center"
+			class="flex flex-col items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover hover:opacity-80"
 			onClick={onClick}
 		>
 			<img src={pathSrc()} alt={props.path} class="aspect-ratio-video w-full rounded-lg" />

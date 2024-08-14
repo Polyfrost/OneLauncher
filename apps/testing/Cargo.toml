@@ -12,7 +12,6 @@ authors = { workspace = true }
 
 [dependencies]
 onelauncher = { workspace = true, features = [ "cli" ] }
-
 tokio = { workspace = true }
 webbrowser = { workspace = true }
 url = { workspace = true }

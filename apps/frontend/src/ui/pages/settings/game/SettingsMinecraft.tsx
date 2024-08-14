@@ -89,7 +89,7 @@ function SettingsRow(props: SettingsRowProps & {
 		<BaseSettingsRow {...rest}>
 			<Show when={split.isGlobal() === false}>
 				<div
-					class="px-2 py-1 text-xs text-white bg-brand hover:bg-brand-hover active:bg-brand-pressed rounded-md font-italic font-medium"
+					class="rounded-md bg-brand px-2 py-1 text-xs text-white font-medium font-italic active:bg-brand-pressed hover:bg-brand-hover"
 					onClick={() => split.reset()}
 				>
 					Reset
@@ -130,7 +130,7 @@ export function GameSettings(props: {
 				isGlobal={props.resolution.isGlobal}
 				reset={props.resolution.resetToFallback}
 			>
-				<div class="grid grid-justify-center grid-items-center gap-2 grid-cols-[70px_16px_70px]">
+				<div class="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField.Number
 						class="text-center"
 						value={props.resolution.get()[0]}
@@ -138,7 +138,7 @@ export function GameSettings(props: {
 							props.resolution.set([Number.parseInt(value), props.resolution.get()[1]]);
 						}}
 					/>
-					<XIcon class="w-4 h-4" />
+					<XIcon class="h-4 w-4" />
 					<TextField.Number
 						class="text-center"
 						value={props.resolution.get()[1]}
@@ -156,7 +156,7 @@ export function GameSettings(props: {
 				isGlobal={props.memory.isGlobal}
 				reset={props.memory.resetToFallback}
 			>
-				<div class="flex flex-justify-center items-center gap-x-4">
+				<div class="flex items-center gap-x-4 flex-justify-center">
 					<div class="flex flex-row items-center gap-x-2">
 						<span>Min:</span>
 						<TextField.Number

@@ -39,7 +39,7 @@ function ClusterWorlds() {
 				</Show>
 			</ScrollableContainer>
 
-			<div class="flex flex-row justify-end items-end mt-2">
+			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
 					iconLeft={<LinkExternal01Icon />}
@@ -83,18 +83,18 @@ function WorldEntry(props: { name: string; cluster_path: string }) {
 
 	return (
 		<div
-			class="bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed p-3 gap-3 rounded-xl flex flex-row justify-between items-center"
+			class="flex flex-row items-center justify-between gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			onClick={onClick}
 		>
 			<div class="flex flex-row items-center gap-x-3">
-				<WorldIcon cluster_name={props.cluster_path} world_name={props.name} class="w-16 h-16 aspect-ratio-square" />
+				<WorldIcon cluster_name={props.cluster_path} world_name={props.name} class="aspect-ratio-square h-16 w-16" />
 				<div class="flex flex-col gap-y-2">
 					<h3>{props.name}</h3>
 					<p>Todo</p>
 				</div>
 			</div>
 
-			<div class="flex flex-row justify-end items-center gap-x-3">
+			<div class="flex flex-row items-center justify-end gap-x-3">
 				<Button
 					buttonStyle="iconDanger"
 					children={<Trash01Icon />}

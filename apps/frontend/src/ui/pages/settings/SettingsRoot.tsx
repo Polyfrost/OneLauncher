@@ -36,7 +36,7 @@ function SettingsRoutes() {
 
 function SettingsRoot(props: ParentProps) {
 	return (
-		<div class="flex flex-row flex-1 h-full gap-x-7">
+		<div class="h-full flex flex-1 flex-row gap-x-7">
 			<div class="mt-8 flex flex-col justify-between">
 				<Sidebar
 					base="/settings"
@@ -61,7 +61,7 @@ function SettingsRoot(props: ParentProps) {
 				<Info />
 			</div>
 
-			<div class="flex flex-col w-full h-full">
+			<div class="h-full w-full flex flex-col">
 				<AnimatedRoutes>
 					<ErrorBoundary>
 						{props.children}
@@ -76,10 +76,10 @@ function Info() {
 	const [copied, setCopied] = createSignal(false);
 
 	return (
-		<div class="mx-1 my-2 flex flex-col justify-center items-center relative">
+		<div class="relative mx-1 my-2 flex flex-col items-center justify-center">
 			<Tooltip text={copied() ? 'Copied to clipboard!' : 'Copy to clipboard'}>
 				<div
-					class="whitespace-pre-line line-height-normal text-sm text-fg-secondary"
+					class="whitespace-pre-line text-sm text-fg-secondary line-height-normal"
 					onClick={(e) => {
 						const info = e.target.innerHTML;
 						writeText(info)

@@ -10,22 +10,22 @@ export type SettingsRowProps = ParentProps & {
 function SettingsRow(props: SettingsRowProps) {
 	return (
 		<div
-			class="flex flex-row bg-component-bg rounded-xl gap-3.5 p-4 items-center"
+			class="flex flex-row items-center gap-3.5 rounded-xl bg-component-bg p-4"
 			classList={{
 				'bg-component-bg-disabled': props.disabled,
 				'text-fg-primary-disabled': props.disabled,
 			}}
 		>
-			<div class="flex justify-center items-center h-8 w-8">
+			<div class="h-8 w-8 flex items-center justify-center">
 				{props.icon}
 			</div>
 
-			<div class="flex flex-col gap-2 flex-1">
+			<div class="flex flex-1 flex-col gap-2">
 				<h3 class="text-lg">{props.title}</h3>
 				<p class="text-wrap text-sm">{props.description}</p>
 			</div>
 
-			<div class="flex h-9 flex-row justify-center items-center gap-2">
+			<div class="h-9 flex flex-row items-center justify-center gap-2">
 				{props.children}
 			</div>
 		</div>

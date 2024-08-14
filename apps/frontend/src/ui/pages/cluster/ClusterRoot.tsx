@@ -37,12 +37,12 @@ function ClusterRoot(props: ParentProps) {
 
 	return (
 		<ClusterProvider uuid={searchParams.id}>
-			<div class="flex flex-row flex-1 h-full gap-x-7">
+			<div class="h-full flex flex-1 flex-row gap-x-7">
 				<div class="mt-8">
 					<ClusterSidebar />
 				</div>
 
-				<div class="flex flex-col w-full h-full">
+				<div class="h-full w-full flex flex-col">
 					<AnimatedRoutes>
 						<ErrorBoundary>
 							{props.children}

@@ -33,6 +33,8 @@ function ClusterProviderSelection(props: ClusterStepProps) {
 	const [selected, setSelected] = createSignal<number>();
 
 	const check = () => {
+		// TODO: Add more stages
+		// eslint-disable-next-line solid/reactivity -- It's fine
 		props.setCanGoForward(() => {
 			const isTrue = selected() !== undefined;
 
@@ -73,7 +75,7 @@ function ProviderCard(props: ProviderCardProps) {
 			onClick={() => props.setSelected()}
 			class={`flex flex-col justify-center items-center gap-y-2 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg ${props.selected ? 'bg-component-bg' : ''}`}
 		>
-			<div class="[&>svg]:(w-8 h-8)">
+			<div class="[&>svg]:(h-8 w-8)">
 				{props.icon}
 			</div>
 			<span>{props.name}</span>

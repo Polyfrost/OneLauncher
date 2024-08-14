@@ -20,7 +20,7 @@ function NavbarLink(props: NavbarLinkProps) {
 	return (
 		<A
 			href={props.path}
-			class="text-lg px-4 py-2 hover:bg-component-bg-hover rounded-lg hover:text-fg-primary-hover"
+			class="rounded-lg px-4 py-2 text-lg hover:bg-component-bg-hover hover:text-fg-primary-hover"
 			inactiveClass="text-fg-secondary"
 			activeClass="text-fg-primary"
 			end
@@ -41,9 +41,9 @@ function Navbar() {
 	let notificationButton!: HTMLButtonElement;
 
 	return (
-		<div class="flex flex-row *:flex-1 items-center min-h-[60px] h-15">
+		<div class="h-15 min-h-[60px] flex flex-row items-center *:flex-1">
 			<div>
-				<div onClick={() => open(WEBSITE)} class="flex items-center justify-center active:scale-90 transition-transform w-min">
+				<div onClick={() => open(WEBSITE)} class="w-min flex items-center justify-center transition-transform active:scale-90">
 					<PolyfrostFull />
 				</div>
 			</div>
@@ -52,7 +52,7 @@ function Navbar() {
 				<NavbarLink path="/browser" label="Browser" />
 				<NavbarLink path="/updates" label="Updates" />
 			</div>
-			<div class="flex flex-row justify-end items-center gap-x-2 relative">
+			<div class="relative flex flex-row items-center justify-end gap-x-2">
 				<Button buttonStyle="icon">
 					<TerminalBrowserIcon />
 				</Button>
@@ -65,7 +65,7 @@ function Navbar() {
 				<Button
 					buttonStyle="icon"
 					ref={notificationButton}
-					class="[&>div]:absolute relative"
+					class="relative [&>div]:absolute"
 					onClick={() => setNotificationMenuOpen(!notificationMenuOpen())}
 				>
 					<Bell01Icon />
@@ -82,7 +82,7 @@ function Navbar() {
 					onClick={() => setProfileMenuOpen(!profileMenuOpen())}
 					class="hover:opacity-70"
 				>
-					<PlayerHead class="min-w-8 min-h-8 w-8 h-8 max-w-8 max-h-8 rounded-md" uuid={controller.defaultAccount()?.id} />
+					<PlayerHead class="h-8 max-h-8 max-w-8 min-h-8 min-w-8 w-8 rounded-md" uuid={controller.defaultAccount()?.id} />
 				</button>
 			</div>
 

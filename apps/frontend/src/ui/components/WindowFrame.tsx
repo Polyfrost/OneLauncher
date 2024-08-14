@@ -14,8 +14,8 @@ interface TitlebarButtonProps {
 
 function TitlebarButton(props: TitlebarButtonProps) {
 	return (
-		<button class="flex items-center justify-center w-8 h-8 group" onClick={e => props.onClick(e)}>
-			<div class="rounded-lg group-hover:bg-primary p-1">
+		<button class="group h-8 w-8 flex items-center justify-center" onClick={e => props.onClick(e)}>
+			<div class="rounded-lg p-1 group-hover:bg-primary">
 				<props.icon class={`w-[18px] h-[18px] stroke-slate ${props.danger ? 'group-hover:stroke-danger' : 'group-hover:stroke-white'}`} />
 			</div>
 		</button>
@@ -51,7 +51,7 @@ function WindowFrame() {
 	});
 
 	return (
-		<div data-tauri-drag-region class="z-[99999] flex flex-row justify-between items-center w-screen h-8 bg-secondary gap-0.5 pr-0.5">
+		<div data-tauri-drag-region class="z-[99999] h-8 w-screen flex flex-row items-center justify-between gap-0.5 bg-secondary pr-0.5">
 			<div class="flex flex-row items-center">
 				<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
 			</div>

@@ -32,9 +32,7 @@ specta = { workspace = true, optional = true }
 
 # CLI-only deps
 indicatif = { workspace = true, optional = true }
-
 interpulse = { workspace = true }
-
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-error = { workspace = true }
@@ -44,7 +42,6 @@ tracing-appender = { workspace = true }
 notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
 iota_stronghold = { workspace = true }
-
 zeroize = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }

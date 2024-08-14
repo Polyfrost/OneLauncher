@@ -122,12 +122,12 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 				</div>
 
 				<Show when={disappearing() === true && props.progress === undefined}>
-					<div class="w-full h-1.5 bg-brand-disabled">
+					<div class="h-1.5 w-full bg-brand-disabled">
 						<div
 							style={{
 								width: `${(secondsLeft() / TOTAL_SECONDS) * 100}%`,
 							}}
-							class="transition-width h-1.5 bg-brand rounded-lg"
+							class="h-1.5 rounded-lg bg-brand transition-width"
 						/>
 					</div>
 				</Show>
@@ -139,31 +139,31 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 
 function NotificationPopupComponent(props: NotificationComponentProps) {
 	return (
-		<div class="p-2 flex flex-col gap-y-1">
-			<div class="min-h-10 grid place-items-center grid-cols-[24px_1fr_auto] gap-3">
+		<div class="flex flex-col gap-y-1 p-2">
+			<div class="grid grid-cols-[24px_1fr_auto] min-h-10 place-items-center gap-3">
 				{IconFromNotificationType(props.notification_type)({
 					class: `w-6 h-6 ${ColorFromNotificationType(props.notification_type)}`,
 				})}
 
-				<div class="flex flex-col w-full">
+				<div class="w-full flex flex-col">
 					<span class={`font-medium ${ColorFromNotificationType(props.notification_type)}`}>{props.title}</span>
 					<span class="text-sm text-white/60">{props.message}</span>
 				</div>
 
 				<Show when={props.overlay !== true}>
-					<div class="flex flex-row justify-end items-center gap-1">
+					<div class="flex flex-row items-center justify-end gap-1">
 						<span class="text-sm text-white/40">
 							<TimeAgo timestamp={props.created_at * 1000} />
 						</span>
-						<span class="w-1.5 h-1.5 rounded-full bg-brand" />
+						<span class="h-1.5 w-1.5 rounded-full bg-brand" />
 					</div>
 				</Show>
 			</div>
 
 			<Show when={props.progress !== undefined}>
-				<div class="rounded-full overflow-hidden h-1.5 bg-brand-disabled w-full">
+				<div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled">
 					<div
-						class="rounded-full h-full min-w-0 max-w-full bg-brand transition-width"
+						class="h-full max-w-full min-w-0 rounded-full bg-brand transition-width"
 						style={{
 							width: `${Math.floor(props.progress! * 100)}%`,
 						}}

@@ -26,7 +26,7 @@ linker = "clang"
 rustflags = ["-C", "link-args=-fuse-ld={{{linker}}}"]
 {{/hasLLD}}
 
-[[target.aarch64-unknown-linux-gnu]]
+[target.aarch64-unknown-linux-gnu]
 {{#hasLLD}}
 linker = "clang"
 rustflags = ["-C", "link-args=-fus-ld={{{linker}}}"]

@@ -60,7 +60,7 @@ function ClusterGameSetup(props: ClusterStepProps) {
 						{loader => (
 							<Dropdown.Row>
 								<div class="flex flex-row gap-x-2">
-									<div class="w-4 h-4">
+									<div class="h-4 w-4">
 										<LoaderIcon loader={loader} />
 									</div>
 									{loader}

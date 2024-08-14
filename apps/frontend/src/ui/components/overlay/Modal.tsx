@@ -35,7 +35,6 @@ export function ModalProvider(props: ParentProps) {
 		},
 
 		closeModal: (index?: number) => {
-			console.log('closeModal', index, modals.length);
 			if (modals.length === 0 || modals.length < (index || 0))
 				return;
 

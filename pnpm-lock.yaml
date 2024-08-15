@@ -142,13 +142,13 @@ importers:
         version: 2.0.0-rc.0
       '@tauri-apps/plugin-clipboard-manager':
         specifier: github:tauri-apps/tauri-plugin-clipboard-manager#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#73cf4082c4cd976fbd557467e9a3951c3478c25b
       '@tauri-apps/plugin-dialog':
         specifier: github:tauri-apps/tauri-plugin-dialog#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#4a21bb3f43df12da052428cfe2644b370e5097bc
       '@tauri-apps/plugin-shell':
         specifier: github:tauri-apps/tauri-plugin-shell#v2
-        version: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311
+        version: git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#95c4874cdb0db130658538a8efdfc30f22bf7be2
       '@thisbeyond/solid-dnd':
         specifier: ^0.7.5
         version: 0.7.5(solid-js@1.8.20)
@@ -246,8 +246,8 @@ importers:
         specifier: ^3.11.3
         version: 3.11.3
       execa:
-        specifier: ^9.3.0
-        version: 9.3.0
+        specifier: ^9.3.1
+        version: 9.3.1
       mustache:
         specifier: ^4.2.0
         version: 4.2.0
@@ -1362,17 +1362,17 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0}
-    version: 2.1.0-beta.6
-
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768}
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#73cf4082c4cd976fbd557467e9a3951c3478c25b':
+    resolution: {commit: 73cf4082c4cd976fbd557467e9a3951c3478c25b, repo: git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git, type: git}
     version: 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
-    resolution: {tarball: https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311}
-    version: 2.0.0-beta.9
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#4a21bb3f43df12da052428cfe2644b370e5097bc':
+    resolution: {commit: 4a21bb3f43df12da052428cfe2644b370e5097bc, repo: git@github.com:tauri-apps/tauri-plugin-dialog.git, type: git}
+    version: 2.0.0-rc.0
+
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#95c4874cdb0db130658538a8efdfc30f22bf7be2':
+    resolution: {commit: 95c4874cdb0db130658538a8efdfc30f22bf7be2, repo: git@github.com:tauri-apps/tauri-plugin-shell.git, type: git}
+    version: 2.0.0-rc.0
 
   '@testing-library/dom@10.4.0':
     resolution: {integrity: sha512-pemlzrSESWbdAloYml3bAJMEfNh1Z7EduzqPKprCH5S341frlpYnUEW0H72dLxa6IsYr+mPno20GiSm+h9dEdQ==}
@@ -2456,8 +2456,8 @@ packages:
     resolution: {integrity: sha512-VyhnebXciFV2DESc+p6B+y0LjSm0krU4OgJN44qFAhBY0TJ+1V61tYD2+wHusZ6F9n5K+vl8k0sTy7PEfV4qpg==}
     engines: {node: '>=16.17'}
 
-  execa@9.3.0:
-    resolution: {integrity: sha512-l6JFbqnHEadBoVAVpN5dl2yCyfX28WoBAGaoQcNmLLSedOxTxcn2Qa83s8I/PA5i56vWru2OHOtrwF7Om2vqlg==}
+  execa@9.3.1:
+    resolution: {integrity: sha512-gdhefCCNy/8tpH/2+ajP9IQc14vXchNdd0weyzSJEFURhRMGncQ+zKFxwjAufIewPEJm9BPOaJnvg2UtlH2gPQ==}
     engines: {node: ^18.19.0 || >=20.5.0}
 
   fast-deep-equal@3.1.3:
@@ -2665,8 +2665,8 @@ packages:
     resolution: {integrity: sha512-AXcZb6vzzrFAUE61HnN4mpLqd/cSIwNQjtNWR0euPm6y0iqx3G4gOXaIDdtdDwZmhwe82LA6+zinmW4UBWVePQ==}
     engines: {node: '>=16.17.0'}
 
-  human-signals@7.0.0:
-    resolution: {integrity: sha512-74kytxOUSvNbjrT9KisAbaTZ/eJwD/LrbM/kh5j0IhPuJzwuA19dWvniFGwBzN9rVjg+O/e+F310PjObDXS+9Q==}
+  human-signals@8.0.0:
+    resolution: {integrity: sha512-/1/GPCpDUCCYwlERiYjxoczfP0zfvZMU/OWgQPMya9AbAE24vseigFdhAMObpc8Q4lc/kjutPfUddDYyAmejnA==}
     engines: {node: '>=18.18.0'}
 
   iconv-lite@0.6.3:
@@ -5190,15 +5190,15 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-rc.3
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-rc.3
 
-  '@tauri-apps/plugin-clipboard-manager@https://codeload.github.com/tauri-apps/tauri-plugin-clipboard-manager/tar.gz/20e84cfbdebcd86bb1854846feb0aaff4481fbd0':
+  '@tauri-apps/plugin-clipboard-manager@git+https://git@github.com:tauri-apps/tauri-plugin-clipboard-manager.git#73cf4082c4cd976fbd557467e9a3951c3478c25b':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-dialog@https://codeload.github.com/tauri-apps/tauri-plugin-dialog/tar.gz/f83833c5445948c1b2f022e3c530ca48be9f8768':
+  '@tauri-apps/plugin-dialog@git+https://git@github.com:tauri-apps/tauri-plugin-dialog.git#4a21bb3f43df12da052428cfe2644b370e5097bc':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-shell@https://codeload.github.com/tauri-apps/tauri-plugin-shell/tar.gz/5cc36dadeaad0520111c6f5e32ecdbbae7cb1311':
+  '@tauri-apps/plugin-shell@git+https://git@github.com:tauri-apps/tauri-plugin-shell.git#95c4874cdb0db130658538a8efdfc30f22bf7be2':
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
@@ -6580,13 +6580,13 @@ snapshots:
       signal-exit: 4.1.0
       strip-final-newline: 3.0.0
 
-  execa@9.3.0:
+  execa@9.3.1:
     dependencies:
       '@sindresorhus/merge-streams': 4.0.0
       cross-spawn: 7.0.3
       figures: 6.1.0
       get-stream: 9.0.1
-      human-signals: 7.0.0
+      human-signals: 8.0.0
       is-plain-obj: 4.1.0
       is-stream: 4.0.1
       npm-run-path: 5.3.0
@@ -6804,7 +6804,7 @@ snapshots:
 
   human-signals@5.0.0: {}
 
-  human-signals@7.0.0: {}
+  human-signals@8.0.0: {}
 
   iconv-lite@0.6.3:
     dependencies:

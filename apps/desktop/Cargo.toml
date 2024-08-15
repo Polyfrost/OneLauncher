@@ -13,11 +13,7 @@ authors = { workspace = true }
 
 [lib]
 name = "onelauncher_gui"
-crate-type = [
-  "staticlib",
-  "cdylib",
-  "lib"
-]
+crate-type = [ "staticlib", "cdylib", "lib" ]
 
 [build-dependencies]
 tauri-build = { workspace = true, features = [ "isolation" ] }
@@ -52,12 +48,12 @@ tracing-error = { workspace = true }
 [dependencies.tauri]
 workspace = true
 features = [
-  "isolation",
-  "macos-private-api",
-  "image-ico",
-  "image-png",
-  "protocol-asset",
-  "specta"
+	"isolation",
+	"macos-private-api",
+	"image-ico",
+	"image-png",
+	"protocol-asset",
+	"specta"
 ]
 
 [dev-dependencies.tauri]

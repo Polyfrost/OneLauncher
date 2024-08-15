@@ -11,7 +11,7 @@ export type CheckedEnvironment = ReturnType<typeof checkEnvironment>;
 
 export function checkEnvironment(meta: ImportMeta) {
 	if (/^(?:msys|mingw|cygwin)$/i.test(process.env.OSTYPE ?? '')) {
-		console.error('bash for windows is not supported. please use powershell or cmd');
+		console.error('bash for windows is not supported. please use Powershell or cmd');
 		process.exit(255);
 	}
 

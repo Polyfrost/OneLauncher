@@ -6,6 +6,7 @@ export default defineConfig({
 	unocss: true,
 	toml: true,
 	gitignore: true,
+	schema: false,
 	ignores: [
 		'**/types',
 		'**/cache',

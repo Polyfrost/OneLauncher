@@ -11,9 +11,6 @@ importers:
       '@flowr/eslint-config':
         specifier: ^3.11.5
         version: 3.11.5(@typescript-eslint/utils@8.1.0(eslint@9.9.0(jiti@1.21.6))(typescript@5.5.4))(@unocss/eslint-plugin@0.62.1(eslint@9.9.0(jiti@1.21.6))(typescript@5.5.4))(eslint-plugin-solid@0.14.1(eslint@9.9.0(jiti@1.21.6))(typescript@5.5.4))(eslint-plugin-vue@9.27.0(eslint@9.9.0(jiti@1.21.6)))(eslint-processor-vue-blocks@0.1.2(@vue/compiler-sfc@3.4.38)(eslint@9.9.0(jiti@1.21.6)))(eslint@9.9.0(jiti@1.21.6))(typescript@5.5.4)(vitest@2.0.5(@types/node@22.3.0)(@vitest/ui@2.0.5)(jsdom@24.1.1)(sass@1.77.8))(vue-eslint-parser@9.4.3(eslint@9.9.0(jiti@1.21.6)))
-      '@taplo/cli':
-        specifier: ^0.7.0
-        version: 0.7.0
       '@types/node':
         specifier: ^22.3.0
         version: 22.3.0
@@ -1374,10 +1371,6 @@ packages:
     resolution: {integrity: sha512-ZwiTMpownN5qwEZE7UB7ccfGkbzSECkZOv/P1+SQ+dKchNtkF9sA0Zz8IVnr6lgqumkCwS8M65ciBdzI0JfTAQ==}
     peerDependencies:
       solid-js: ^1.6.0
-
-  '@taplo/cli@0.7.0':
-    resolution: {integrity: sha512-Ck3zFhQhIhi02Hl6T4ZmJsXdnJE+wXcJz5f8klxd4keRYgenMnip3JDPMGDRLbnC/2iGd8P0sBIQqI3KxfVjBg==}
-    hasBin: true
 
   '@tauri-apps/api@2.0.0-rc.0':
     resolution: {integrity: sha512-v454Qs3REHc3Za59U+/eSmBsdmF+3NE5+76+lFDaitVqN4ZglDHENDaMARYKGJVZuxiSkzyqG0SeG7lLQjVkPA==}
@@ -5359,8 +5352,6 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.51.21
       solid-js: 1.8.21
-
-  '@taplo/cli@0.7.0': {}
 
   '@tauri-apps/api@2.0.0-rc.0': {}
 

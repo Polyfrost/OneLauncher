@@ -1,6 +1,4 @@
-import type { ChangelogConfig } from 'changelogen';
-
-const config: Partial<ChangelogConfig> = {
+const config = {
 	types: {
 		chore: { title: '🔨 Chores' },
 		feature: { title: '✨ Features' },

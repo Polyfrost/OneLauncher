@@ -14,11 +14,7 @@ authors = { workspace = true }
 default = []
 # feature flag allowing us to interact with tauri (for loading animations, errors showing on gui, etc)
 # also allows us to compile onelauncher core without tauri
-tauri = [
-  "dep:tauri",
-  "dep:tauri-specta",
-  "specta"
-]
+tauri = [ "dep:tauri", "dep:tauri-specta", "specta" ]
 specta = [ "dep:specta" ]
 cli = [ "dep:indicatif" ]
 

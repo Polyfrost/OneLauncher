@@ -8,17 +8,18 @@ declare global {
 	}
 }
 
-export type Update = { version: string };
+export interface Update { version: string }
 export type UpdateStore =
-| { status: 'idle' }
-| { status: 'loading' }
-| { status: 'error' }
-| { status: 'updateAvailable'; update: Update }
-| { status: 'noUpdateAvailable' }
-| { status: 'installing' };
+	| { status: 'idle' }
+	| { status: 'loading' }
+	| { status: 'error' }
+	| { status: 'updateAvailable'; update: Update }
+	| { status: 'noUpdateAvailable' }
+	| { status: 'installing' };
 
 export function createUpdater() {
-	if (!window.__LAUNCHER_UPDATER__) return;
+	if (!window.__LAUNCHER_UPDATER__)
+		return;
 
 	const updateStore: UpdateStore = { status: 'idle' };
 	listen<UpdateStore>('updater', e => Object.assign(updateStore, e.payload));
@@ -53,7 +54,8 @@ export function createUpdater() {
 		const lastVersion = localStorage.getItem(ONELAUNCHER_VERSION_LOCALSTORAGE);
 		const updaterStore = { tagline: null };
 
-		if (!lastVersion) return;
+		if (!lastVersion)
+			return;
 
 		if (lastVersion !== version) {
 			localStorage.setItem(ONELAUNCHER_VERSION_LOCALSTORAGE, version);
@@ -62,7 +64,8 @@ export function createUpdater() {
 				const req = await fetch(`${import.meta.env.VITE_LANDING_ORIGIN}/api/releases/${version}`);
 				const { frontmatter } = await req.json();
 				updaterStore.tagline = frontmatter?.tagline;
-			} catch (error) {
+			}
+			catch (error) {
 				console.warn('[updater]: failed to fetch release info');
 				console.error('[updater]: ', error);
 			}

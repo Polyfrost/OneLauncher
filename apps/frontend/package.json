@@ -32,7 +32,7 @@
 		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@thisbeyond/solid-select": "^0.15.0",
-		"@unocss/reset": "^0.62.1",
+		"@unocss/reset": "^0.62.2",
 		"@untitled-theme/icons-solid": "^0.10.5",
 		"overlayscrollbars": "^2.10.0",
 		"overlayscrollbars-solid": "^0.5.5",
@@ -50,7 +50,7 @@
 		"@types/uuid": "^10.0.0",
 		"jsdom": "^24.1.1",
 		"sass": "^1.77.8",
-		"unocss": "^0.62.1",
+		"unocss": "^0.62.2",
 		"vite-plugin-solid": "^2.10.2",
 		"vite-plugin-solid-svg": "^0.8.1",
 		"vite-tsconfig-paths": "^5.0.1"

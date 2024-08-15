@@ -1,22 +1,6 @@
-# Nix
-result*
-repl-result-out*
-.direnv
-
-# auto-generated files
-apps/frontend/src/bindings.ts
-apps/frontend/ipc
-
-# Prisma
 crates/prisma/src/prisma.rs
 dev.db
 dev.db-journal
-
-# Vendor
-.eslintcache
-# .env*
-vendor/
-vender/
 .cargo/config.toml
 
 # Created by https://www.toptal.com/developers/gitignore/api/git,node,rust,yarn,linux,macos,windows,rust-analyzer,visualstudiocode,intellij+all

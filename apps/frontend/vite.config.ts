@@ -6,6 +6,7 @@ import solid from 'vite-plugin-solid';
 import solidSvg from 'vite-plugin-solid-svg';
 import paths from 'vite-tsconfig-paths';
 import unocss from 'unocss/vite';
+import sentry from '@sentry/vite-plugin';
 
 export default defineConfig(async ({ mode }) => {
 	process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
@@ -35,11 +36,15 @@ export default defineConfig(async ({ mode }) => {
 		server: {
 			port: 8001,
 			strictPort: true,
-			watch: {
-				ignored: ['**/src-tauri/**'],
-			},
 		},
 	};
+
+	if (process.env.SENTRY_AUTH_TOKEN)
+		config.plugins.push(sentry.sentryVitePlugin({
+			authToken: process.env.SENTRY_AUTH_TOKEN,
+			org: 'polyfrost',
+			project: 'onelauncher_frontend',
+		}));
 
 	return config;
 });

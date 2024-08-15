@@ -10,7 +10,7 @@ import { createStore } from 'solid-js/store';
 import { Transition } from 'solid-transition-group';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
-import type { MakeOptional } from '~types.ts';
+import type { MakeOptional } from '~types';
 
 type ModalsList = (() => JSX.Element)[];
 

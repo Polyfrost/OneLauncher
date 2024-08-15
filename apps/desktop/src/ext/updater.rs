@@ -16,6 +16,7 @@ impl Update {
 	}
 }
 
+// TODO: tauri-specta event?
 #[derive(Default)]
 pub struct State {
 	install_lock: Mutex<()>,

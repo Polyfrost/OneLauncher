@@ -1,6 +1,6 @@
 import type { Cluster, Loader, VersionType } from '~bindings';
 
-export * from './PausableTimer';
+export * from './timer';
 export * from './sorting';
 
 export function supportsMods(loader?: Cluster | Loader): boolean {

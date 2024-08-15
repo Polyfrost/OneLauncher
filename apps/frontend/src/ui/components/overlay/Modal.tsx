@@ -164,14 +164,48 @@ Modal.Simple = function (props: ModalSimpleProps) {
 	);
 };
 
+type ModalErrorProps = MakeOptional<ModalSimpleProps, 'title'> & {
+	message?: string | undefined;
+};
+
+Modal.Error = function (props: ModalErrorProps) {
+	const [split, rest] = splitProps(props, ['message', 'title', 'buttons', 'children']);
+
+	return (
+		<Modal.Simple
+			{...rest}
+			title={split.title || 'Error'}
+			buttons={split.buttons || [
+				<Button
+					buttonStyle="secondary"
+					children="Close"
+					onClick={props.hide}
+				/>,
+			]}
+		>
+			<div class="max-w-84 flex flex-col items-center gap-y-2">
+				{split.children || (
+					<span>Something went wrong.</span>
+				)}
+				{split.message && (
+					<code class="rounded-md bg-component-bg p-2 text-left">
+						{split.message}
+					</code>
+				)}
+			</div>
+		</Modal.Simple>
+	);
+};
+
 type ModalDeleteProps = MakeOptional<ModalSimpleProps, 'title'> & {
 	onCancel?: () => void;
 	onDelete?: () => void;
 	timeLeft?: number;
+	deleteBtnText?: string;
 };
 
 Modal.Delete = function (props: ModalDeleteProps) {
-	const [split, rest] = splitProps(props, ['title', 'buttons', 'onCancel', 'onDelete', 'timeLeft', 'children']);
+	const [split, rest] = splitProps(props, ['title', 'buttons', 'onCancel', 'onDelete', 'timeLeft', 'children', 'deleteBtnText']);
 	const [timeLeft, setTimeLeft] = createSignal(1);
 	const [intervalId, setIntervalId] = createSignal<NodeJS.Timeout | undefined>(undefined);
 
@@ -235,7 +269,7 @@ Modal.Delete = function (props: ModalDeleteProps) {
 				/>,
 				<Button
 					buttonStyle="danger"
-					children={`Delete${timeLeft() > 0 ? ` (${timeLeft()}s)` : ''}`}
+					children={(props.deleteBtnText || 'Delete $1').replace('$1', timeLeft() > 0 ? `(${timeLeft()}s)` : '')}
 					disabled={timeLeft() > 0}
 					onClick={onDelete}
 				/>,

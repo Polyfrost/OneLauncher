@@ -1,17 +1,23 @@
 import { type Params, useNavigate, useSearchParams } from '@solidjs/router';
-import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
+import { createSignal, onCleanup, onMount } from 'solid-js';
 import type { UnlistenFn } from '@tauri-apps/api/event';
+import { SlashOctagonIcon } from '@untitled-theme/icons-solid';
 import ClusterRoot from './ClusterRoot';
 import { bridge } from '~imports';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import { TimeAgo } from '~ui/components/DynamicTime';
 import Tooltip from '~ui/components/base/Tooltip';
-import useCommand from '~ui/hooks/useCommand';
 import FormattedLog from '~ui/components/content/FormattedLog';
+import Button from '~ui/components/base/Button';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
+import type { DetailedProcess } from '~bindings';
 
 interface ClusterGameParams extends Params {
 	process_uuid: string;
+	started_at: string;
+	pid: string;
+	user: string;
 };
 
 function ClusterGame() {
@@ -20,22 +26,6 @@ function ClusterGame() {
 	const navigate = useNavigate();
 
 	const [unlisten, setUnlisten] = createSignal<UnlistenFn>();
-	const [startedAt, setStartedAt] = createSignal<number>();
-	const [pid] = useCommand(bridge.commands.getPidByUuid, params.process_uuid || '');
-
-	createEffect(() => {
-		if (params.process_uuid === undefined)
-			throw new Error('process_uuid is required');
-
-		const c = cluster();
-		if (c === undefined)
-			throw new Error('Cluster not found');
-
-		if (typeof c.meta.played_at !== 'string')
-			setStartedAt(Date.now());
-		else
-			setStartedAt(new Date(c.meta.played_at).getTime());
-	});
 
 	onMount(async () => {
 		const unlisten = await bridge.events.processPayload.listen(({ payload }) => {
@@ -50,39 +40,77 @@ function ClusterGame() {
 		unlisten()?.();
 	});
 
-	const startedAtFormatted = (startedAt: number) => {
-		const date = new Date(startedAt);
+	const startedAtFormatted = () => {
+		const date = new Date(params.started_at!);
 		return date.toLocaleString();
 	};
+
+	const killModal = createModal(props => (
+		<Modal.Delete
+			{...props}
+			title="Kill Game"
+			children="Are you sure you want to kill the game?"
+			onDelete={() => killProcess(true)}
+			deleteBtnText="Kill $1"
+		/>
+	));
+
+	function killProcess(force: boolean = false) {
+		if (params.process_uuid !== undefined) {
+			if (force === true) {
+				bridge.commands.killProcess(params.process_uuid);
+				return;
+			}
+
+			killModal.show();
+		}
+	}
 
 	return (
 		<Sidebar.Page>
 			<h1>Game Running</h1>
-			<div class="flex flex-col gap-y-2">
-				<div class="flex flex-row">
-					<Tooltip text={startedAtFormatted(startedAt() || 0)}>
-						Started:
+			<div class="flex flex-1 flex-col gap-y-4">
+				<div class="flex flex-col gap-y-2">
+					<div class="flex flex-row">
+						<Tooltip text={startedAtFormatted()}>
+							Started:
+							{' '}
+							<strong>
+								<TimeAgo timestamp={new Date(params.started_at!).getTime()} />
+							</strong>
+						</Tooltip>
+					</div>
+
+					<p>
+						PID:
 						{' '}
-						<strong>
-							<TimeAgo timestamp={startedAt() || 0} />
-						</strong>
-					</Tooltip>
+						<strong>{params.pid || 0}</strong>
+					</p>
 				</div>
 
-				<p>
-					PID:
-					{' '}
-					<strong>{pid() || 0}</strong>
-				</p>
-			</div>
+				<FormattedLog log="aaa" />
 
-			<FormattedLog log="aaa" />
+				<div class="flex flex-row items-center justify-end gap-x-2">
+					<Button
+						buttonStyle="danger"
+						children="Kill"
+						iconLeft={<SlashOctagonIcon />}
+						onClick={() => killProcess(false)}
+					/>
+				</div>
+			</div>
 		</Sidebar.Page>
 	);
 }
 
-ClusterGame.buildUrl = function (uuid: string, process_uuid: string): URLSearchParams {
-	return new URLSearchParams({ id: uuid, process_uuid });
+ClusterGame.buildUrl = function (cluster_id: string, detailed: DetailedProcess): URLSearchParams {
+	return new URLSearchParams({
+		id: cluster_id,
+		process_uuid: detailed.uuid,
+		started_at: detailed.started_at,
+		pid: detailed.pid.toString(),
+		...(detailed.user ? { user: detailed.user } : {}),
+	});
 };
 
 export default ClusterGame;

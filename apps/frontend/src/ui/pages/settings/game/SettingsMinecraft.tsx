@@ -1,4 +1,4 @@
-import { CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
+import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
 import { type Accessor, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
 import type { Memory, Resolution } from '~bindings';
 import TextField from '~ui/components/base/TextField';
@@ -192,12 +192,17 @@ export function GameSettings(props: {
 
 export function LauncherSettings(props: {
 	hideOnLaunch: CreateSetting<boolean> | undefined;
+	allowParallelClusters: CreateSetting<boolean> | undefined;
 }) {
+	const shouldShowHeader = () => Object.values(props).some(setting => setting !== undefined);
+
 	return (
 		<>
-			<Show when={props.hideOnLaunch !== undefined}>
+			<Show when={shouldShowHeader()}>
 				<BaseSettingsRow.Header>Launcher</BaseSettingsRow.Header>
+			</Show>
 
+			<Show when={props.hideOnLaunch !== undefined}>
 				<SettingsRow
 					title="Hide On Launch"
 					description="Hide the launcher whenever you start a game."
@@ -208,6 +213,21 @@ export function LauncherSettings(props: {
 					<Toggle
 						checked={props.hideOnLaunch!.get}
 						onChecked={props.hideOnLaunch!.set}
+					/>
+				</SettingsRow>
+			</Show>
+
+			<Show when={props.allowParallelClusters !== undefined}>
+				<SettingsRow
+					title="Allow Parallel Clusters"
+					description="Allow running the same cluster with the same account."
+					icon={<ActivityIcon />}
+					isGlobal={props.allowParallelClusters!.isGlobal}
+					reset={props.allowParallelClusters!.resetToFallback}
+				>
+					<Toggle
+						checked={props.allowParallelClusters!.get}
+						onChecked={props.allowParallelClusters!.set}
 					/>
 				</SettingsRow>
 			</Show>
@@ -335,6 +355,7 @@ function PageSettings() {
 
 	// Launcher
 	const hideOnLaunch = createSetting(settings().hide_on_launch ?? false);
+	const allowParallelClusters = createSetting(settings().allow_parallel_running_clusters ?? false);
 
 	// Process
 	const preCommand = createSetting(settings().init_hooks.pre ?? '');
@@ -353,6 +374,7 @@ function PageSettings() {
 
 		// Launcher
 		hide_on_launch: hideOnLaunch.get(),
+		allow_parallel_running_clusters: allowParallelClusters.get(),
 
 		// Process
 		init_hooks: {
@@ -368,10 +390,35 @@ function PageSettings() {
 
 	return (
 		<>
-			<GameSettings {...{ fullscreen, memory, resolution }} />
-			<LauncherSettings {...{ hideOnLaunch }} />
-			<ProcessSettings {...{ preCommand, wrapperCommand, postCommand }} />
-			<JvmSettings {...{ javaArgs, envVars }} />
+			<GameSettings
+				{...{
+					fullscreen,
+					memory,
+					resolution,
+				}}
+			/>
+
+			<LauncherSettings
+				{...{
+					hideOnLaunch,
+					allowParallelClusters,
+				}}
+			/>
+
+			<ProcessSettings
+				{...{
+					preCommand,
+					wrapperCommand,
+					postCommand,
+				}}
+			/>
+
+			<JvmSettings
+				{...{
+					javaArgs,
+					envVars,
+				}}
+			/>
 		</>
 	);
 }

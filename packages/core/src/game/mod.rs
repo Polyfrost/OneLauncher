@@ -317,13 +317,15 @@ pub async fn launch_minecraft(
 		None => Command::new(&java_version.path),
 	};
 	let env_args = Vec::from(env_args);
-	let existing = processor::get_uuids_by_cluster_path(cluster.cluster_path()).await?;
-	if let Some(uuid) = existing.first() {
-		return Err(anyhow::anyhow!(
-			"cluster {} is already running ({uuid})",
-			cluster.cluster_path()
-		)
-		.into());
+	if !state.settings.read().await.allow_parallel_running_clusters {
+		let existing = processor::get_uuids_by_cluster_path(cluster.cluster_path()).await?;
+		if let Some(uuid) = existing.first() {
+			return Err(anyhow::anyhow!(
+				"cluster {} is already running ({uuid})",
+				cluster.cluster_path()
+			)
+			.into());
+		}
 	}
 
 	command
@@ -462,6 +464,7 @@ pub async fn launch_minecraft(
 			command,
 			post_hook,
 			censors,
+			Some(credentials.id)
 		)
 		.await
 }

@@ -10,7 +10,7 @@ function FormattedLog(props: FormattedLogProps) {
 	const lines = createMemo(() => props.log.split('\n'));
 
 	return (
-		<div class="mt-2 h-full flex flex-1 overflow-auto rounded-md bg-component-bg p-2 font-medium font-mono">
+		<div class="h-full flex flex-1 overflow-auto rounded-md bg-component-bg p-2 font-medium font-mono">
 			<OverlayScrollbarsComponent class="relative h-full flex-1">
 				<code class={styles.log}>
 					<For each={lines()}>

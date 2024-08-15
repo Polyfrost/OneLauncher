@@ -7,12 +7,11 @@ import { join } from 'pathe';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
-import ClusterRoot from './ClusterRoot';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
 import { secondsToWords, upperFirst } from '~utils';
-import useClusterContext from '~ui/hooks/useCluster';
+import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
@@ -233,11 +232,7 @@ interface BannerProps {
 }
 
 function Banner(props: BannerProps) {
-	const navigate = useNavigate();
-
-	async function launch() {
-		ClusterRoot.launch(navigate, props.cluster.uuid);
-	}
+	const launch = useLaunchCluster(() => props.cluster.uuid);
 
 	async function launchFilePicker() {
 		const selected = await dialog.open({

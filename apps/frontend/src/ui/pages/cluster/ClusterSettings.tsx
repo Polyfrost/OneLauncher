@@ -69,10 +69,35 @@ function PageSettings(cluster: Accessor<Cluster>) {
 
 	return (
 		<>
-			<GameSettings {...{ fullscreen, memory, resolution }} />
-			<LauncherSettings {...{ hideOnLaunch: undefined }} />
-			<ProcessSettings {...{ preCommand, wrapperCommand, postCommand }} />
-			<JvmSettings {...{ javaArgs, envVars }} />
+			<GameSettings
+				{...{
+					fullscreen,
+					memory,
+					resolution,
+				}}
+			/>
+
+			<LauncherSettings
+				{...{
+					hideOnLaunch: undefined,
+					allowParallelClusters: undefined,
+				}}
+			/>
+
+			<ProcessSettings
+				{...{
+					preCommand,
+					wrapperCommand,
+					postCommand,
+				}}
+			/>
+
+			<JvmSettings
+				{...{
+					javaArgs,
+					envVars,
+				}}
+			/>
 		</>
 	);
 }

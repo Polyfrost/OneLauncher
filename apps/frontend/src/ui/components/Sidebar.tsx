@@ -26,8 +26,10 @@ function Sidebar(props: SidebarProps) {
 		navigate(url);
 	}
 
-	function isActive(link: string) {
-		return location.pathname === `${props.base}${link}` || `${location.pathname}/` === `${props.base}${link}`;
+	function isActive(link: string, params: URLSearchParams | undefined) {
+		const pathnameMatch = location.pathname === `${props.base}${link}` || `${location.pathname}/` === `${props.base}${link}`;
+		const paramsMatch = params ? location.search.endsWith(params.toString()) : true;
+		return pathnameMatch && paramsMatch;
 	}
 
 	return (
@@ -47,7 +49,7 @@ function Sidebar(props: SidebarProps) {
 											<a
 												onClick={() => goto(link[2], link[3])}
 												class={
-                                                    `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-component-bg' : ''}`
+                                                    `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg' : ''}`
 												}
 											>
 												<span class="flex flex-row items-center gap-x-3 *:w-5">

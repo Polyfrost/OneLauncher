@@ -1,7 +1,10 @@
-import { type Context, type ParentProps, type ResourceReturn, Show, createContext, useContext } from 'solid-js';
-import useCommand from './useCommand';
+import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createSignal, useContext } from 'solid-js';
+import { useNavigate } from '@solidjs/router';
+import useCommand, { tryResult } from './useCommand';
 import type { Cluster } from '~bindings';
 import { bridge } from '~imports';
+import ClusterGame from '~ui/pages/cluster/ClusterGame';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
 
 const ClusterContext = createContext() as Context<ResourceReturn<Cluster>>;
 
@@ -33,6 +36,34 @@ export function useClusterContext() {
 		throw new Error('useClusterContext should be called inside its ClusterProvider');
 
 	return context;
+}
+
+export function useLaunchCluster(uuid: string | Accessor<string | undefined> | (() => string | undefined) | undefined) {
+	const navigate = useNavigate();
+	const [error, setError] = createSignal<string | undefined>(undefined);
+
+	const getUuid = () => typeof uuid === 'function' ? uuid() : uuid;
+
+	const modal = createModal(props => (
+		<Modal.Error
+			{...props}
+			message={error()}
+		/>
+	));
+
+	return () => {
+		const uuid = getUuid();
+
+		if (uuid === undefined)
+			return;
+
+		tryResult(bridge.commands.runCluster, uuid).then((details) => {
+			navigate(`/clusters/game?${ClusterGame.buildUrl(uuid, details).toString()}`);
+		}).catch((err) => {
+			setError(err);
+			modal.show();
+		});
+	};
 }
 
 export default useClusterContext;

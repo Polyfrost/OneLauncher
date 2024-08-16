@@ -28,7 +28,7 @@ type ButtonToggleProps = ButtonProps & {
 };
 
 Button.Toggle = (props: ButtonToggleProps) => {
-	const [split, rest] = splitProps(props, ['checked', 'onChecked', 'onClick', 'class']);
+	const [split, rest] = splitProps(props, ['checked', 'onChecked', 'onClick']);
 	const [checked, setChecked] = createSignal(untrack(() => split.checked?.()) || false);
 
 	createEffect(on(() => split.checked?.(), newValue => setChecked(newValue || false)));
@@ -43,7 +43,7 @@ Button.Toggle = (props: ButtonToggleProps) => {
 		<Button
 			onClick={(e) => {
 				toggle();
-				// @ts-expect-error -- type error which i cba to resolve
+				// @ts-expect-error -- JSX doesn't seem to use the same type
 				split.onClick?.(e);
 			}}
 			aria-checked={checked()}

@@ -48,12 +48,10 @@ export function createSetting<T>(initial: T | undefined | null, fallback?: T): C
 		checkGlobal();
 	});
 
-	// @ts-expect-error -- aaa
+	// @ts-expect-error -- Can't be bothered to fix this type issue
 	const set: Setter<T> = (value) => {
-		// @ts-expect-error -- aaa
-		setRaw(value);
-		// @ts-expect-error -- aaa
-		setValue(value);
+		setRaw(value!);
+		setValue(value!);
 
 		checkGlobal();
 	};
@@ -64,8 +62,7 @@ export function createSetting<T>(initial: T | undefined | null, fallback?: T): C
 
 		setValue(() => fallback);
 
-		// @ts-expect-error -- aaa
-		setRaw(() => (raw || null));
+		setRaw(() => (raw || null)!);
 
 		checkGlobal();
 	};

@@ -1,17 +1,18 @@
-import { type Params, useNavigate, useSearchParams } from '@solidjs/router';
+import { type Params, useSearchParams } from '@solidjs/router';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { SlashOctagonIcon } from '@untitled-theme/icons-solid';
-import ClusterRoot from './ClusterRoot';
+import { render } from 'solid-js/web';
 import { bridge } from '~imports';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import { TimeAgo } from '~ui/components/DynamicTime';
 import Tooltip from '~ui/components/base/Tooltip';
-import FormattedLog from '~ui/components/content/FormattedLog';
+import FormattedLog, { Line } from '~ui/components/content/FormattedLog';
 import Button from '~ui/components/base/Button';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 import type { DetailedProcess } from '~bindings';
+import useCommand from '~ui/hooks/useCommand';
 
 interface ClusterGameParams extends Params {
 	process_uuid: string;
@@ -23,14 +24,19 @@ interface ClusterGameParams extends Params {
 function ClusterGame() {
 	const [cluster] = useClusterContext();
 	const [params] = useSearchParams<ClusterGameParams>();
-	const navigate = useNavigate();
+	const [log] = useCommand(bridge.commands.getClusterLog, cluster()!.uuid, 'latest.log');
+	const [isRunning, setIsRunning] = createSignal(true);
 
 	const [unlisten, setUnlisten] = createSignal<UnlistenFn>();
+	let codeRef!: HTMLElement;
 
 	onMount(async () => {
-		const unlisten = await bridge.events.processPayload.listen(({ payload }) => {
-			if (payload.event === 'finished' && payload.uuid === params.process_uuid && cluster() !== undefined)
-				ClusterRoot.open(navigate, cluster()!.uuid);
+		const unlisten = await bridge.events.processPayload.listen((event) => {
+			if (event.payload.event === 'logging' && event.payload.uuid === params.process_uuid)
+				render(() => <Line line={event.payload.message} />, codeRef);
+
+			if (event.payload.event === 'finished' && event.payload.uuid === params.process_uuid && cluster() !== undefined)
+				setIsRunning(false);
 		});
 
 		setUnlisten(() => unlisten);
@@ -40,11 +46,6 @@ function ClusterGame() {
 		unlisten()?.();
 	});
 
-	const startedAtFormatted = () => {
-		const date = new Date(params.started_at!);
-		return date.toLocaleString();
-	};
-
 	const killModal = createModal(props => (
 		<Modal.Delete
 			{...props}
@@ -52,6 +53,7 @@ function ClusterGame() {
 			children="Are you sure you want to kill the game?"
 			onDelete={() => killProcess(true)}
 			deleteBtnText="Kill $1"
+			timeLeft={1}
 		/>
 	));
 
@@ -66,19 +68,23 @@ function ClusterGame() {
 		}
 	}
 
+	const date = new Date(params.started_at!);
+
 	return (
 		<Sidebar.Page>
-			<h1>Game Running</h1>
+			<h1>{isRunning() ? 'Game Running' : 'Game Stopped'}</h1>
 			<div class="flex flex-1 flex-col gap-y-4">
 				<div class="flex flex-col gap-y-2">
 					<div class="flex flex-row">
-						<Tooltip text={startedAtFormatted()}>
-							Started:
-							{' '}
-							<strong>
-								<TimeAgo timestamp={new Date(params.started_at!).getTime()} />
-							</strong>
-						</Tooltip>
+						<div>
+							<Tooltip text={date.toLocaleString()}>
+								Started:
+								{' '}
+								<strong>
+									<TimeAgo timestamp={date.getTime()} />
+								</strong>
+							</Tooltip>
+						</div>
 					</div>
 
 					<p>
@@ -88,7 +94,11 @@ function ClusterGame() {
 					</p>
 				</div>
 
-				<FormattedLog log="aaa" />
+				<FormattedLog
+					codeRef={el => codeRef = el}
+					log={log()?.trim()}
+					enableAutoScroll={true}
+				/>
 
 				<div class="flex flex-row items-center justify-end gap-x-2">
 					<Button
@@ -96,6 +106,7 @@ function ClusterGame() {
 						children="Kill"
 						iconLeft={<SlashOctagonIcon />}
 						onClick={() => killProcess(false)}
+						disabled={!isRunning()}
 					/>
 				</div>
 			</div>

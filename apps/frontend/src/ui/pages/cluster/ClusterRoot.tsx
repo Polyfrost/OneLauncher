@@ -88,8 +88,9 @@ function ClusterSidebar() {
 	});
 
 	onMount(async () => {
-		const unlisten = await bridge.events.processPayload.listen(() => {
-			refetchProcesses();
+		const unlisten = await bridge.events.processPayload.listen(({ payload }) => {
+			if (payload.event === 'started' || payload.event === 'finished')
+				refetchProcesses();
 		});
 
 		setListener(() => unlisten);

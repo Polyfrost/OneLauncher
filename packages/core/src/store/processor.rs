@@ -2,7 +2,9 @@
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use std::collections::HashMap;
+use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
@@ -433,11 +435,43 @@ impl Processor {
 		censors: HashMap<String, String>,
 		user: Option<Uuid>,
 	) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
-		let proc = command.spawn().map_err(IOError::from)?;
-		let process = ChildType::ChildProcess(proc);
-		let pid = process
+		command
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.stdin(Stdio::null());
+
+		let mut proc = command.spawn().map_err(IOError::from)?;
+
+		let pid = proc
 			.id()
 			.ok_or_else(|| anyhow::anyhow!("process failed, couldn't get pid"))?;
+
+		let stdout = proc.stdout.take().unwrap();
+		let stderr = proc.stderr.take().unwrap();
+
+		tokio::spawn(async move {
+			let mut stdout = BufReader::new(stdout).lines();
+			let mut stderr = BufReader::new(stderr).lines();
+
+			while let Ok(line) = tokio::select! {
+				line = stdout.next_line() => line,
+				line = stderr.next_line() => line,
+			} {
+				if let Some(line) = line {
+					let mut censored = line.clone();
+					for (key, value) in censors.iter() {
+						censored = censored.replace(key, value);
+					}
+
+					if let Err(err) = send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await {
+						tracing::warn!("failed to send process log: {}", err);
+					};
+				}
+			}
+		});
+
+		let process = ChildType::ChildProcess(proc);
+
 		process
 			.cache(uuid, cluster_path.clone(), post.clone(), user)
 			.await?;

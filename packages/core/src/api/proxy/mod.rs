@@ -231,6 +231,7 @@ pub enum ProcessPayloadType {
 	Started,
 	Modified,
 	Finished,
+	Logging,
 }
 
 #[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]

@@ -40,7 +40,7 @@ function FormattedLog(props: FormattedLogProps) {
 	return (
 		<div class="relative h-full flex flex-1 flex-col rounded-md bg-component-bg p-2">
 			<Show when={props.enableAutoScroll === true}>
-				<div class="absolute right-0 top-0 z-1 h-6 w-full flex flex-row justify-end border border-gray-05 rounded-t-md bg-primary p-px">
+				<div class="absolute right-0 top-0 z-1 h-6 w-full flex flex-row justify-end border border-gray-05 rounded-t-md bg-page p-px">
 					<Button.Toggle
 						buttonStyle="icon"
 						children={<AlignBottom01Icon />}

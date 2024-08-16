@@ -258,7 +258,7 @@ function Banner(props: BannerProps) {
 	}
 
 	return (
-		<div class="h-37 flex flex-row gap-x-2.5 rounded-xl bg-component-bg p-2.5">
+		<div class="bg-page-elevated h-37 flex flex-row gap-x-2.5 rounded-xl p-2.5">
 			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-gray-10 rounded-lg">
 				<Show when={props.editMode()}>
 					<div

@@ -66,7 +66,7 @@ function BrowserMain() {
 
 	return (
 		<div class="relative h-full flex flex-1 flex-col gap-2">
-			<div class="sticky top-0 z-10 flex flex-row justify-between bg-primary">
+			<div class="sticky top-0 z-10 flex flex-row justify-between bg-page">
 				<div class="h-8 flex flex-row gap-2">
 
 					<TextField

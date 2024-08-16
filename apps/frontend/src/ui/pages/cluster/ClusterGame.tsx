@@ -32,10 +32,12 @@ function ClusterGame() {
 
 	onMount(async () => {
 		const unlisten = await bridge.events.processPayload.listen((event) => {
-			if (event.payload.event === 'logging' && event.payload.uuid === params.process_uuid)
-				render(() => <Line line={event.payload.message} />, codeRef);
+			if (event.payload.uuid !== params.process_uuid)
+				return;
 
-			if (event.payload.event === 'finished' && event.payload.uuid === params.process_uuid && cluster() !== undefined)
+			if (event.payload.event === 'logging')
+				render(() => <Line line={event.payload.message} />, codeRef);
+			else if (event.payload.event === 'finished')
 				setIsRunning(false);
 		});
 

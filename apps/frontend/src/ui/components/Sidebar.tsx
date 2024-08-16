@@ -33,7 +33,7 @@ function Sidebar(props: SidebarProps) {
 	}
 
 	return (
-		<div class="w-52 flex flex-col">
+		<div class="w-56 flex flex-col pr-2">
 			<For each={Object.keys(props.links)}>
 				{section => (
 					<div class="flex flex-col gap-y-2">
@@ -49,7 +49,7 @@ function Sidebar(props: SidebarProps) {
 											<a
 												onClick={() => goto(link[2], link[3])}
 												class={
-                                                    `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg' : ''}`
+                                                    `px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-gray-05' : 'border-transparent'}`
 												}
 											>
 												<span class="flex flex-row items-center gap-x-3 *:w-5">

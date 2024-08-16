@@ -10,7 +10,7 @@ export type SettingsRowProps = ParentProps & {
 function SettingsRow(props: SettingsRowProps) {
 	return (
 		<div
-			class="flex flex-row items-center gap-3.5 rounded-xl bg-component-bg p-4"
+			class="bg-page-elevated flex flex-row items-center gap-3.5 rounded-xl p-4"
 			classList={{
 				'bg-component-bg-disabled': props.disabled,
 				'text-fg-primary-disabled': props.disabled,

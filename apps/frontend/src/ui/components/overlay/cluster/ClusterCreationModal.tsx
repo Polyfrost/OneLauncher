@@ -180,7 +180,7 @@ export function createClusterStep(props: CreateClusterStepType): () => JSX.Eleme
 		}
 
 		return (
-			<div class="min-w-sm flex flex-col rounded-lg bg-primary text-center">
+			<div class="min-w-sm flex flex-col rounded-lg bg-page text-center">
 				<div class="relative h-25 flex">
 					<div class="absolute left-0 top-0 h-full w-full">
 						<img class="h-full w-full rounded-t-lg" src={HeaderImage} alt="Header Image" />

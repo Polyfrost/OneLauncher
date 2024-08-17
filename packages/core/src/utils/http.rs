@@ -9,7 +9,6 @@ use std::time::Duration;
 use bytes::Bytes;
 use reqwest::Method;
 use serde::de::DeserializeOwned;
-use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLock, Semaphore};
 
@@ -244,7 +243,7 @@ pub async fn write<'a>(path: &Path, bytes: &[u8], semaphore: &IoSemaphore) -> cr
 		io::create_dir_all(parent).await?;
 	}
 
-	let mut file = File::create(path)
+	let mut file = tokio::fs::File::create(path)
 		.await
 		.map_err(|e| IOError::with_path(e, path))?;
 	file.write_all(bytes)

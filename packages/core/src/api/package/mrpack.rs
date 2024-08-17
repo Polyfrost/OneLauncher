@@ -292,12 +292,9 @@ pub async fn remove_all_related_files(
 			.into_values()
 			.map(|p| p.package_id)
 			.collect::<Vec<_>>();
-		let cluster = cluster::get(&cluster_path, None).await?.ok_or_else(||
-			anyhow::anyhow!(
-				"{} is an unmanaged cluster!",
-				cluster_path.to_string()
-			)
-		)?;
+		let cluster = cluster::get(&cluster_path, None).await?.ok_or_else(|| {
+			anyhow::anyhow!("{} is an unmanaged cluster!", cluster_path.to_string())
+		})?;
 		for (package_id, package) in &cluster.packages {
 			if let PackageMetadata::Managed { package, .. } = &package.meta {
 				if to_remove.contains(&package.id) {

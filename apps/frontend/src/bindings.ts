@@ -319,7 +319,7 @@ processPayload: "process-payload"
 
 /** user-defined constants **/
 
-export const PROGRAM_INFO = {"arch":"64","dev_build":true,"launcher_version":"1.0.0-alpha.1","platform":"linux","tauri_version":"2.0.0-rc.0","webview_version":"2.44.2"} as const;
+export const PROGRAM_INFO = {"arch":"64","dev_build":true,"launcher_version":"1.0.0-alpha.1","platform":"linux","tauri_version":"2.0.0-rc.2","webview_version":"2.44.2"} as const;
 
 /** user-defined types **/
 

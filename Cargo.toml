@@ -28,8 +28,7 @@ onelauncher_test = { path = "./apps/testing" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel
-# (temporarily can use v2 and main branches if necessary)
-tauri = { version = "=2.0.0-rc.0", features = [
+tauri = { version = "=2.0.0-rc.2", features = [
 	"rustls-tls",
 	"tracing",
 	"specta",
@@ -38,7 +37,7 @@ tauri = { version = "=2.0.0-rc.0", features = [
 ] }
 
 # tauri-build is the codegen utility for our tauri buildscript.
-tauri-build = { version = "=2.0.0-rc.0" }
+tauri-build = { version = "=2.0.0-rc.2" }
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "=2.0.0-rc.0" }
 # tauri-plugin-window-state saves the window position and size to be restored.
@@ -51,6 +50,8 @@ tauri-plugin-clipboard-manager = { version = "=2.0.0-rc.0" }
 tauri-plugin-updater = { version = "=2.0.0-rc.0" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
 tauri-plugin-dialog = { version = "=2.0.0-rc.0" }
+# tauri-plugin-deep-link adds a way to handle custom uri schemes (onelauncher://)
+tauri-plugin-deep-link = { version = "=2.0.0-rc.0" }
 
 # # ============= CORE ============= # #
 # rspc is used as a faster and more intuitive replacement for tauri-specta
@@ -81,7 +82,7 @@ specta = { version = "=2.0.0-rc.20", features = [
 ] }
 
 # tauri-specta is the tauri adapter for specta.
-tauri-specta = { version = "=2.0.0-rc.15", features = [ "javascript", "typescript", "derive" ] }
+tauri-specta = { version = "=2.0.0-rc.16", features = [ "javascript", "typescript", "derive" ] }
 
 # specta-typescript is the typescript adapter for specta.
 specta-typescript = { version = "=0.0.7" }

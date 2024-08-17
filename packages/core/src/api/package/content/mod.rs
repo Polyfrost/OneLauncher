@@ -84,7 +84,8 @@ impl Providers {
 		Ok(versions
 			.into_iter()
 			.find(|v| v.game_versions.contains(&game_version.to_string()))
-			.ok_or(anyhow!("no game version found"))?) // TODO: error handling
+			.ok_or(anyhow!("no game version found"))?
+		) // TODO: error handling
 	}
 
 	// pub async fn search(&self, query: &str) -> Result<Vec<ManagedPackage>> {

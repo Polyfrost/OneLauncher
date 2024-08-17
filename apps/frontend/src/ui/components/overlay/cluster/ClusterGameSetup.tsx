@@ -8,7 +8,7 @@ import { bridge } from '~imports';
 import SelectList from '~ui/components/base/SelectList';
 import Checkbox from '~ui/components/base/Checkbox';
 import type { Loader, VersionType } from '~bindings';
-import { formatVersionRelease, getLoaders } from '~utils';
+import { LOADERS, formatVersionRelease } from '~utils';
 import LoaderIcon from '~ui/components/game/LoaderIcon';
 
 export default createClusterStep({
@@ -55,8 +55,8 @@ function ClusterGameSetup(props: ClusterStepProps) {
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown onChange={index => setLoader(getLoaders()[index] || 'vanilla')}>
-					<For each={getLoaders()}>
+				<Dropdown onChange={index => setLoader(LOADERS[index] || 'vanilla')}>
+					<For each={LOADERS}>
 						{loader => (
 							<Dropdown.Row>
 								<div class="flex flex-row gap-x-2">

@@ -31,7 +31,7 @@ function targetFilter(filter: 'b' | 't') {
 }
 
 const targets = args.filter(targetFilter('t')).flatMap(t => t.split(','));
-const bundles = args.filter(targetFilter('b')).flatMap(t => t.split(','));
+const bundles = args.filter(targetFilter('b')).flatMap(b => b.split(','));
 
 const store = { code: 0 };
 

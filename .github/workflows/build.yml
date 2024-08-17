@@ -82,14 +82,16 @@ jobs:
             changes:
               - ${{ runner.os == 'Windows' && 'packages/scripts/setup.ps1' || 'packages/scripts/setup.sh' }}
               - 'packages/scripts/prepare.ts'
-              - 'apps/cli/*/**'
-              - 'apps/desktop/*/**'
-              - 'apps/testing/*/**'
+              - 'apps/cli/**'
+              - 'apps/desktop/**'
+              - 'apps/testing/**'
               - 'packages/core/**'
               - 'packages/macros/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/build.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
 
       - name: Setup System
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
@@ -150,14 +152,16 @@ jobs:
             changes:
               - ${{ runner.os == 'Windows' && 'packages/scripts/setup.ps1' || 'packages/scripts/setup.sh' }}
               - 'packages/scripts/prepare.ts'
-              - 'apps/cli/*/**'
-              - 'apps/desktop/*/**'
-              - 'apps/testing/*/**'
+              - 'apps/cli/**'
+              - 'apps/desktop/**'
+              - 'apps/testing/**'
               - 'packages/core/**'
               - 'packages/macros/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/build.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
 
       - name: Setup System
         if: steps.preparation.outcome != 'success' || steps.preparation.outputs.changes == 'true'

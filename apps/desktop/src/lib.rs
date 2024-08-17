@@ -66,6 +66,7 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		.plugin(ext::updater::plugin())
 		.manage(ext::updater::State::default())
 		.plugin(tauri_plugin_dialog::init())
+		.plugin(tauri_plugin_deep_link::init())
 		// TODO: add back tauri-plugin-window-state -- it's buggy at the moment
 		// .plugin(tauri_plugin_window_state::Builder::default().build())
 		.plugin(api::init())

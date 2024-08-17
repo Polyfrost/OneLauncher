@@ -158,7 +158,6 @@ struct SearchResults {
 }
 
 // pub async fn search(query: &str) -> Result<Vec<ModrinthPackage>> {
-// 	// TODO: Fix date_created and date_updated inconsistency (published and updated)
 // 	let response: SearchResults = serde_json::from_slice(
 // 		&fetch(
 // 			format_url!("/search?query={}", query).as_str(),

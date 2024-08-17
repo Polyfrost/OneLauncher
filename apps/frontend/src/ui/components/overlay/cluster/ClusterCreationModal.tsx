@@ -31,7 +31,7 @@ interface ClusterModalController {
 	finish: () => void;
 }
 
-const ClusterModalContext = createContext() as Context<ClusterModalController>;
+const ClusterModalContext = createContext<ClusterModalController>() as Context<ClusterModalController>;
 
 export function ClusterModalControllerProvider(props: ParentProps) {
 	const [partialCluster, setPartialCluster] = createSignal<PartialCluster>({});
@@ -65,14 +65,7 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 
 		partialCluster,
 		setPartialCluster,
-		updatePartialCluster: (key, value) => {
-			setPartialCluster((prev) => {
-				return {
-					...prev,
-					[key]: value,
-				};
-			});
-		},
+		updatePartialCluster: (key, value) => setPartialCluster(prev => ({ ...prev, [key]: value })),
 
 		async start() {
 			setPartialCluster({});

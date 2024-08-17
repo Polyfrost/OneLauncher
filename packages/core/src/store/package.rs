@@ -15,7 +15,6 @@ use crate::State;
 
 use super::{Cluster, PackagePath};
 
-// TODO: move all of this to prisma, it would be perfect for it
 // TODO: Curseforge, Modrinth, SkyClient integration
 
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
@@ -260,8 +259,6 @@ impl ManagedVersionFile {
 			.join("mods")
 			.join(&self.file_name);
 		let state = State::get().await?;
-
-		// TODO: Implement hashes
 		let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
 		http::write(&path, &bytes, &state.io_semaphore).await?;
 

@@ -15,20 +15,28 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install Rust
-      uses: IronCoreLabs/rust-toolchain@v1
+    - name: Install Rust Stable
+      uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
       with:
-        target: ${{ inputs.target }}
+        toolchain: stable
+        targets: ${{ inputs.target }}
+        components: clippy, rustfmt
+
+    - name: Install Rust Nightly
+      uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
+      with:
+        toolchain: nightly
+        targets: ${{ inputs.target }}
         components: clippy, rustfmt
 
     - name: Cache Rust
       if: ${{ inputs.restore-cache == 'true' }}
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@9bdad043e88c75890e36ad3bbc8d27f0090dd609
       with:
         key: ${{ inputs.target }}
         save-if: ${{ inputs.save-cache }}
         shared-key: stable-cache
 
-    # - name: Prepare Cargo
-    #   shell: bash
-    #   run: echo '{}' | pnpm dlx -y mustache - .cargo/config.toml.mustache .cargo/config.toml
+    - name: Prepare Cargo
+      shell: bash
+      run: echo '{}' | npx -y mustache - .cargo/config.toml.mustache .cargo/config.toml

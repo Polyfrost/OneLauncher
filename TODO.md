@@ -2,6 +2,9 @@
 
 - migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 - migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
- - waiting on `rspc` to update to the latest version (hopefully before tauri comes out of beta)
+ - waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
 - bump `tauri` to stable v2 when it releases.
 - test all major version/loader combos launching and mod loading.
+- legacy fabric, babric, nilloader, java agent support
+ - nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
+- shared cluster resources and options (<https://github.com/enjarai/shared-resources>)

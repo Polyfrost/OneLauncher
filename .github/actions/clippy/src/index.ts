@@ -30,6 +30,7 @@ async function run(): Promise<void> {
 	await exec(
 		'cargo',
 		[
+			'+nightly',
 			'clippy',
 			'--color',
 			'never',
@@ -74,12 +75,12 @@ async function run(): Promise<void> {
 			'-efm=%C%m</code></pre>',
 			'-efm=%C%m',
 			'-efm=%C',
-						`-name=${toolName}`,
-						`-reporter=${reporter}`,
-						`-filter-mode=${filterMode}`,
-						`-fail-on-error=${failOnError}`,
-						`-level=${level}`,
-						...parse(reviewdogFlags),
+			`-name=${toolName}`,
+			`-reporter=${reporter}`,
+			`-filter-mode=${filterMode}`,
+			`-fail-on-error=${failOnError}`,
+			`-level=${level}`,
+			...parse(reviewdogFlags),
 		],
 		{
 			cwd,

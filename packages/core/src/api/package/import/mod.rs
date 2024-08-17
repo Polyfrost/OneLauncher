@@ -137,7 +137,13 @@ pub async fn import_instance(
 			)
 			.await
 		}
-		ImportType::Modrinth => modrinth::import_modrinth(base_path.join("profiles").join(instance_path), cluster_path.clone()).await,
+		ImportType::Modrinth => {
+			modrinth::import_modrinth(
+				base_path.join("profiles").join(instance_path),
+				cluster_path.clone(),
+			)
+			.await
+		}
 		// ImportType::TLauncher => tlauncher::import_tlauncher(path.join("instances").join(instance_path), cluster_path.clone()).await,
 		// ImportType::Technic => technic::import_technic(path.join("instances").join(instance_path), cluster_path.clone()).await,
 		// ImportType::FTBLauncher => ftb::import_ftb(path.join("instances").join(instance_path), cluster_path.clone()).await,

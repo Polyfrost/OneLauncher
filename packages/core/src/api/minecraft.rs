@@ -61,7 +61,6 @@ pub async fn remove_user(user: uuid::Uuid) -> crate::Result<()> {
 	Ok(())
 }
 
-// TODO: Store this securely in stronghold
 /// Get a list of user [`MinecraftCredentials`].
 #[tracing::instrument]
 pub async fn users() -> crate::Result<Vec<MinecraftCredentials>> {

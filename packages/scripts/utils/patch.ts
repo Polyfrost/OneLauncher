@@ -93,6 +93,7 @@ export async function patchTauri(
 				if (pubKey != null)
 					tauriPatch.plugins.updater.pubkey = pubKey;
 			}
+			// tauriPatch.build.features.push('devtools');
 			break;
 	}
 

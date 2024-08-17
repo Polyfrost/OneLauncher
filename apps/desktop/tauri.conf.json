@@ -142,7 +142,10 @@
 			"endpoints": ["https://polyfrost.org/releases/tauri/{{version}}/{{target}}/{{arch}}"]
 		},
 		"deep-link": {
-			"desktop": ["onelauncher"]
+			"mobile": [],
+			"desktop": {
+				"schemes": ["onelauncher"]
+			}
 		}
 	}
 }

@@ -192,12 +192,12 @@ pub async fn install_minecraft(
 							false,
 						)?)
 						.await?
-						.ok_or_else(|| {
+						.ok_or_else(||
 							anyhow::anyhow!(
 								"failed to find processor main class for {}",
 								processor.jar
 							)
-						})?,
+						)?,
 					)
 					.args(arguments::processor_arguments(
 						&libraries,

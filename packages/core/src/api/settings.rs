@@ -20,7 +20,7 @@ pub async fn set(settings: Settings) -> crate::Result<()> {
 	let state = State::get().await?;
 
 	if settings.config_dir != state.settings.read().await.config_dir {
-		return Err(anyhow::anyhow!("ccannot change config directory as a setting").into());
+		return Err(anyhow::anyhow!("cannot change config directory as a setting").into());
 	}
 
 	let (io, fetch) = async {

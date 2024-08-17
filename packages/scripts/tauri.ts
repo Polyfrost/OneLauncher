@@ -14,7 +14,6 @@ const __desktop = pathe.join(__root, 'apps', 'desktop');
 const __cleanup: string[] = [];
 
 const cleanup = () => Promise.all(__cleanup.map(f => fs.unlink(f).catch((_) => {})));
-const exists = (path: string) => fs.access(path, fs.constants.R_OK).then(_ => true).catch(_ => false);
 
 process.on('SIGINT', cleanup);
 if (args.length === 0)
@@ -38,7 +37,7 @@ const store = { code: 0 };
 try {
 	switch (args[0]) {
 		case 'dev': {
-			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
+			__cleanup.push(...(await patchTauri(env, targets, args)));
 			switch (process.platform) {
 				case 'linux':
 				case 'darwin':
@@ -54,18 +53,7 @@ try {
 				process.env.NODE_OPTIONS = `--max_old_space_size=4096 ${process.env.NODE_OPTIONS ?? ''}`;
 
 			process.env.GENERATE_SOURCEMAP = 'false';
-			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
-
-			if (process.platform === 'darwin') {
-				process.env.BACKGROUND_FILE = pathe.resolve(__distribution, 'macos', 'dmg.png');
-				process.env.BACKGROUND_FILE_NAME = pathe.basename(process.env.BACKGROUND_FILE);
-				process.env.BACKGROUND_CLAUSE = `set background picture of opts to file ".background:${process.env.BACKGROUND_FILE_NAME}"`;
-
-				if (!(await exists(process.env.BACKGROUND_FILE)))
-					console.warn(`dmg background file not found at ${process.env.BACKGROUND_FILE}`);
-
-				break;
-			}
+			__cleanup.push(...(await patchTauri(env, targets, args)));
 		}
 	}
 

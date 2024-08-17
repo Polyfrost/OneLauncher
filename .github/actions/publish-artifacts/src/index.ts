@@ -1,3 +1,4 @@
+import process from 'node:process';
 import client from '@actions/artifact';
 import core from '@actions/core';
 import glob from '@actions/glob';
@@ -7,6 +8,7 @@ import { exists } from '@actions/io/lib/io-util';
 type OS = 'darwin' | 'windows' | 'linux';
 type Arch = 'x64' | 'arm64';
 type Profile = 'debug' | 'release' | 'dev' | 'dev-debug';
+
 interface Updater {
 	bundle: string;
 	bundleExt: string;
@@ -18,7 +20,7 @@ interface TargetConfig {
 }
 interface BuildTarget {
 	updater: false | Updater;
-	standalone: Array<TargetConfig>;
+	standalone: TargetConfig[];
 }
 
 const osTargets = {
@@ -71,7 +73,11 @@ async function uploadFrontend() {
 		return;
 	}
 
-	await client.uploadArtifact(frontendName, [frontendBundle], 'apps/frontend');
+	const artifactName = `${frontendName}.tar.xz`;
+	const artifactPath = `${artifactsDir}/${artifactName}`;
+
+	await io.cp(frontendBundle, artifactPath);
+	await client.uploadArtifact(artifactName, [artifactPath], artifactsDir);
 }
 
 async function uploadUpdater(updater: BuildTarget['updater']) {
@@ -84,7 +90,7 @@ async function uploadUpdater(updater: BuildTarget['updater']) {
 	const updaterPath = files.find(f => f.endsWith(fullExt));
 
 	if (!updaterPath)
-		throw new Error(`failed to find updater path in ${files}`);
+		throw new Error(`failed to find updater path in ${files.join(',')}`);
 
 	const artifactPath = `${artifactsDir}/${updaterName}.${archiveExt}`;
 	await io.cp(updaterPath, artifactPath);
@@ -97,7 +103,7 @@ async function uploadStandalone({ bundle, ext }: TargetConfig) {
 	const standalonePath = files.find(f => f.endsWith(ext));
 
 	if (!standalonePath)
-		throw new Error(`failed to find standalone path in ${files}`);
+		throw new Error(`failed to find standalone path in ${files.join(',')}`);
 
 	const artifactName = `${artifactBase}.${ext}`;
 	const artifactPath = `${artifactsDir}/${artifactName}`;
@@ -116,4 +122,7 @@ async function run() {
 	]);
 }
 
-run();
+run().catch((error) => {
+	console.error(error);
+	process.exit(1);
+});

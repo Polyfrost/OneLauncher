@@ -6,7 +6,7 @@ import solid from 'vite-plugin-solid';
 import solidSvg from 'vite-plugin-solid-svg';
 import paths from 'vite-tsconfig-paths';
 import unocss from 'unocss/vite';
-import sentry from '@sentry/vite-plugin';
+import * as sentry from '@sentry/vite-plugin';
 
 export default defineConfig(async ({ mode }) => {
 	process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };

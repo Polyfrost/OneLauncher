@@ -18,19 +18,15 @@ export default createClusterStep({
 });
 
 function ClusterGameSetup(props: ClusterStepProps) {
-	// const check = () => {
-	// 	const hasName = (props.controller().partialCluster().name?.length ?? 0) > 0;
-	// 	const hasVersion = (props.controller().partialCluster().mc_version?.length ?? 0) > 0;
-	// 	const hasLoader = (props.controller().partialCluster().mod_loader?.length ?? 0) > 0;
+	const check = () => {
+		const hasName = (props.controller.partialCluster().name?.length ?? 0) > 0;
+		const hasVersion = (props.controller.partialCluster().mc_version?.length ?? 0) > 0;
+		const hasLoader = (props.controller.partialCluster().mod_loader?.length ?? 0) > 0;
 
-	// 	props.setCanGoForward(hasName && hasVersion && hasLoader);
-	// };
+		props.setCanGoForward(hasName && hasVersion && hasLoader);
+	};
 
-	// createEffect(check);
-	// createEffect(on(() => props.isVisible(), (curr: boolean) => {
-	// 	if (curr)
-	// 		check();
-	// }));
+	createEffect(check);
 
 	const setName = (name: string) => props.controller.updatePartialCluster('name', name);
 	const setVersion = (version: string) => props.controller.updatePartialCluster('mc_version', version);
@@ -63,7 +59,7 @@ function ClusterGameSetup(props: ClusterStepProps) {
 									<div class="h-4 w-4">
 										<LoaderIcon loader={loader} />
 									</div>
-									{loader}
+									<span class="capitalize">{loader}</span>
 								</div>
 							</Dropdown.Row>
 						)}

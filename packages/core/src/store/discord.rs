@@ -2,7 +2,7 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use discord_rich_presence::activity::{Activity, Assets};
+use discord_rich_presence::activity::{Activity, Assets, Button};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use tokio::sync::RwLock;
 
@@ -59,11 +59,16 @@ impl DiscordRPC {
 			return Ok(());
 		}
 
-		let activity = Activity::new().state(msg).assets(
-			Assets::new()
-				.large_image("polyfrost")
-				.large_text("Polyfrost Logo"),
-		);
+		let activity = Activity::new()
+			.state(msg)
+			.buttons(vec![
+				Button::new("Download", "https://polyfrost.org/"),
+			])
+			.assets(
+				Assets::new()
+					.large_image("polyfrost_logo_512")
+					.large_text("Polyfrost Logo"),
+			);
 
 		let mut client: tokio::sync::RwLockWriteGuard<'_, DiscordIpcClient> =
 			self.client.write().await;

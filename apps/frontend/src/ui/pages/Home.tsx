@@ -18,6 +18,7 @@ import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import { secondsToWords, upperFirst } from '~utils';
 import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
+import { useLaunchCluster } from '~ui/hooks/useCluster';
 
 type GroupedClusters = Record<string, Cluster[]>;
 
@@ -183,6 +184,7 @@ function Banner(props: BannerProps) {
 	 * If there are no clusters, display a generic background with the button action creating a new cluster.
 	 */
 	const [cluster, setCluster] = createSignal<Cluster>();
+	const launch = useLaunchCluster(() => cluster()?.uuid);
 	const navigate = useNavigate();
 
 	createEffect(() => {
@@ -259,7 +261,7 @@ function Banner(props: BannerProps) {
 										buttonStyle="primary"
 										iconLeft={<PlayIcon />}
 										children={`Launch ${cluster()!.meta.mc_version}`}
-										onClick={() => ClusterRoot.launch(navigate, cluster()!.uuid)}
+										onClick={launch}
 									/>
 									<Button
 										buttonStyle="iconSecondary"
@@ -290,6 +292,8 @@ function ClusterCard(props: Cluster) {
 	function openClusterPage(_e: MouseEvent) {
 		navigate(`/clusters/?id=${props.uuid}`);
 	}
+
+	const launch = useLaunchCluster(() => props.uuid);
 
 	return (
 		<>
@@ -328,7 +332,7 @@ function ClusterCard(props: Cluster) {
 						onClick={(e) => {
 							e.preventDefault();
 							e.stopImmediatePropagation();
-							ClusterRoot.launch(navigate, props.uuid);
+							launch();
 						}}
 					>
 						<PlayIcon class="h-4! w-4!" />

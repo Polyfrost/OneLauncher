@@ -60,7 +60,7 @@ function AccountPopup(props: Popup.PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="w-72 border border-gray-10 rounded-xl bg-secondary p-2 shadow-black/30 shadow-md">
+			<div class="w-72 border border-gray-10 rounded-xl bg-page-elevated p-2 shadow-black/30 shadow-md">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
 					<Show when={controller.defaultAccount() !== null || controller.defaultAccount() !== undefined}>
 						<AccountComponent

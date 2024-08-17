@@ -20,7 +20,7 @@ pub const DUMMY_REPLACE_NEWLINE: &str = "\n";
 
 // =========== Authentication ===========
 /// Our Discord RPC client ID.
-pub const DISCORD_RPC_CLIENT_ID: &str = "1234567890000000"; // todo
+pub const DISCORD_RPC_CLIENT_ID: &str = "1274084193193955408";
 /// Our Microsoft client ID.
 pub const MICROSOFT_CLIENT_ID: &str = "9eac3a4e-8cdd-43ef-863e-49cd601b1f03";
 /// Mojang/Microsoft client ID.

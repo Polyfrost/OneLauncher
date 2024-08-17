@@ -2,12 +2,96 @@
 
 pub use crate::store::{Cluster, InitHooks, JavaOptions, Memory, Resolution, Settings, State};
 use crate::store::{ClusterPath, ProcessorChild};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+#[derive(specta::Type, serde::Serialize)]
+pub struct DetailedProcess {
+	pub uuid: Uuid,
+	pub user: Option<Uuid>,
+	pub started_at: DateTime<Utc>,
+	pub pid: u32,
+}
+
+impl DetailedProcess {
+	pub async fn from_processor_child(process: &ProcessorChild) -> Self {
+		let pid = process.current_child.read().await.id().unwrap_or(0);
+		Self {
+			uuid: process.uuid,
+			user: process.user,
+			started_at: process.started_at,
+			pid,
+		}
+	}
+}
+
+/// get detailed processes by a [`ClusterPath`].
+#[tracing::instrument]
+pub async fn get_process_detailed_by_id(uuid: Uuid) -> crate::Result<DetailedProcess> {
+	let state = State::get().await?;
+	let processor = state.processor.read().await;
+
+	let child = processor.get(uuid).ok_or(anyhow::anyhow!("process not found"))?;
+	let child = child.read().await;
+	let pid = child.current_child.read().await.id().ok_or(anyhow::anyhow!("process not found"))?;
+	Ok(DetailedProcess {
+		uuid,
+		user: child.user,
+		started_at: child.started_at,
+		pid,
+	})
+}
+
+/// get detailed processes by a [`ClusterPath`].
+#[tracing::instrument]
+pub async fn get_processes_detailed_by_path(path: ClusterPath) -> crate::Result<Vec<DetailedProcess>> {
+	let state = State::get().await?;
+	let processor = state.processor.read().await;
+
+	let uuids = processor.running_cluster(path).await?;
+	let mut processes = Vec::new();
+	for uuid in uuids {
+		let child = processor.get(uuid).ok_or(anyhow::anyhow!("process not found"))?;
+		let child = child.read().await;
+		let pid = child.current_child.read().await.id().ok_or(anyhow::anyhow!("process not found"))?;
+		processes.push(DetailedProcess {
+			uuid,
+			user: child.user,
+			started_at: child.started_at,
+			pid,
+		});
+	}
+	Ok(processes)
+}
 
 /// check whether or not a process has completed by its [`Uuid`].
 #[tracing::instrument]
 pub async fn uuid_is_finished(uuid: Uuid) -> crate::Result<bool> {
 	Ok(uuid_exit_status(uuid).await?.is_some())
+}
+
+/// get the user from a processor by its [`Uuid`].
+#[tracing::instrument]
+pub async fn get_user_by_process(uuid: Uuid) -> crate::Result<Option<Uuid>> {
+	let state = State::get().await?;
+	let processor = state.processor.read().await;
+	if let Some(processor) = processor.get(uuid) {
+		Ok(processor.read().await.user)
+	} else {
+		Err(anyhow::anyhow!("process not found").into())
+	}
+}
+
+/// get the user from a processor by its [`Uuid`].
+#[tracing::instrument]
+pub async fn get_process_started_at(uuid: Uuid) -> crate::Result<DateTime<Utc>> {
+	let state = State::get().await?;
+	let processor = state.processor.read().await;
+	if let Some(processor) = processor.get(uuid) {
+		Ok(processor.read().await.started_at)
+	} else {
+		Err(anyhow::anyhow!("process not found").into())
+	}
 }
 
 /// check the exit status of a process by its [`Uuid`].

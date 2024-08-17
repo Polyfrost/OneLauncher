@@ -5,6 +5,7 @@ use std::str::FromStr;
 use onelauncher::cluster::content::logger;
 use onelauncher::cluster::{self};
 use onelauncher::data::{Loader, PackageData};
+use onelauncher::processor::DetailedProcess;
 use onelauncher::store::{Cluster, ClusterPath};
 use onelauncher::State;
 use serde::{Deserialize, Serialize};
@@ -132,21 +133,12 @@ pub async fn remove_cluster(uuid: Uuid) -> Result<(), String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
+pub async fn run_cluster(uuid: Uuid) -> Result<DetailedProcess, String> {
 	let path = ClusterPath::find_by_uuid(uuid).await?;
 	let c_lock = cluster::run_default(&path).await?;
+	let child = &*c_lock.read().await;
 
-	let p_uuid = c_lock.read().await.uuid;
-	let p_pid = c_lock
-		.read()
-		.await
-		.current_child
-		.read()
-		.await
-		.id()
-		.unwrap_or(0);
-
-	Ok((p_uuid, p_pid))
+	Ok(DetailedProcess::from_processor_child(child).await)
 }
 
 #[specta::specta]

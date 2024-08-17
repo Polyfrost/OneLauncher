@@ -18,7 +18,7 @@ function App(props: ParentProps) {
 
 	return (
 		<GlobalContexts>
-			<main class="h-screen max-h-screen min-h-screen w-full flex flex-col overflow-hidden bg-primary text-fg-primary">
+			<main class="h-screen max-h-screen min-h-screen w-full flex flex-col overflow-hidden bg-page text-fg-primary">
 				<WindowFrame />
 				<div class="flex flex-col px-8">
 					<Navbar />

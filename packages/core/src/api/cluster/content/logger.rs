@@ -238,18 +238,26 @@ pub async fn delete_logs_by_file(
 
 pub async fn read_log_to_string(path: &std::path::PathBuf) -> crate::Result<String> {
 	if let Some(ext) = path.extension() {
-		let mut file = std::fs::File::open(&path).map_err(|e| IOError::with_path(e, &path))?;
+		let mut file = std::fs::File::open(path).map_err(|e| IOError::with_path(e, path))?;
 		let mut contents = [0; 1024];
 		let mut result = String::new();
 
 		if ext == "gz" {
 			let mut gz = flate2::read::GzDecoder::new(std::io::BufReader::new(file));
-			while gz.read(&mut contents).map_err(|e| IOError::with_path(e, &path))? > 0 {
+			while gz
+				.read(&mut contents)
+				.map_err(|e| IOError::with_path(e, path))?
+				> 0
+			{
 				result.push_str(&String::from_utf8_lossy(&contents));
 				contents = [0; 1024];
 			}
 		} else if ext == "log" || ext == "txt" {
-			while file.read(&mut contents).map_err(|e| IOError::with_path(e, &path))? > 0 {
+			while file
+				.read(&mut contents)
+				.map_err(|e| IOError::with_path(e, path))?
+				> 0
+			{
 				result.push_str(&String::from_utf8_lossy(&contents));
 				contents = [0; 1024];
 			}

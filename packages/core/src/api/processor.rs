@@ -31,9 +31,16 @@ pub async fn get_process_detailed_by_id(uuid: Uuid) -> crate::Result<DetailedPro
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
 
-	let child = processor.get(uuid).ok_or(anyhow::anyhow!("process not found"))?;
+	let child = processor
+		.get(uuid)
+		.ok_or(anyhow::anyhow!("process not found"))?;
 	let child = child.read().await;
-	let pid = child.current_child.read().await.id().ok_or(anyhow::anyhow!("process not found"))?;
+	let pid = child
+		.current_child
+		.read()
+		.await
+		.id()
+		.ok_or(anyhow::anyhow!("process not found"))?;
 	Ok(DetailedProcess {
 		uuid,
 		user: child.user,
@@ -44,16 +51,25 @@ pub async fn get_process_detailed_by_id(uuid: Uuid) -> crate::Result<DetailedPro
 
 /// get detailed processes by a [`ClusterPath`].
 #[tracing::instrument]
-pub async fn get_processes_detailed_by_path(path: ClusterPath) -> crate::Result<Vec<DetailedProcess>> {
+pub async fn get_processes_detailed_by_path(
+	path: ClusterPath,
+) -> crate::Result<Vec<DetailedProcess>> {
 	let state = State::get().await?;
 	let processor = state.processor.read().await;
 
 	let uuids = processor.running_cluster(path).await?;
 	let mut processes = Vec::new();
 	for uuid in uuids {
-		let child = processor.get(uuid).ok_or(anyhow::anyhow!("process not found"))?;
+		let child = processor
+			.get(uuid)
+			.ok_or(anyhow::anyhow!("process not found"))?;
 		let child = child.read().await;
-		let pid = child.current_child.read().await.id().ok_or(anyhow::anyhow!("process not found"))?;
+		let pid = child
+			.current_child
+			.read()
+			.await
+			.id()
+			.ok_or(anyhow::anyhow!("process not found"))?;
 		processes.push(DetailedProcess {
 			uuid,
 			user: child.user,

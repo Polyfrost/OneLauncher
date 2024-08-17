@@ -11,7 +11,7 @@ use crate::Result;
 mod modrinth;
 
 /// Providers for content packages
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum Providers {
 	// Curseforge,
@@ -84,8 +84,7 @@ impl Providers {
 		Ok(versions
 			.into_iter()
 			.find(|v| v.game_versions.contains(&game_version.to_string()))
-			.ok_or(anyhow!("no game version found"))?
-		) // TODO: error handling
+			.ok_or(anyhow!("no game version found"))?) // TODO: error handling
 	}
 
 	// pub async fn search(&self, query: &str) -> Result<Vec<ManagedPackage>> {

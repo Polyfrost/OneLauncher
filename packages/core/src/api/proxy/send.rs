@@ -182,12 +182,7 @@ pub async fn send_offline(offline: bool) -> crate::Result<()> {
 		let proxy_state = crate::ProxyState::get().await?;
 		proxy_state
 			.app
-			.emit(
-				OfflinePayload::NAME,
-				OfflinePayload {
-					offline,
-				},
-			)
+			.emit(OfflinePayload::NAME, OfflinePayload { offline })
 			.map_err(ProxyError::from)?;
 	}
 
@@ -201,10 +196,7 @@ pub async fn send_internet(internet: InternetPayload) -> crate::Result<()> {
 		let proxy_state = crate::ProxyState::get().await?;
 		proxy_state
 			.app
-			.emit(
-				InternetPayload::NAME,
-				internet
-			)
+			.emit(InternetPayload::NAME, internet)
 			.map_err(ProxyError::from)?;
 	}
 

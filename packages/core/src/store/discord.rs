@@ -61,9 +61,7 @@ impl DiscordRPC {
 
 		let activity = Activity::new()
 			.state(msg)
-			.buttons(vec![
-				Button::new("Download", "https://polyfrost.org/"),
-			])
+			.buttons(vec![Button::new("Download", "https://polyfrost.org/")])
 			.assets(
 				Assets::new()
 					.large_image("polyfrost_logo_512")

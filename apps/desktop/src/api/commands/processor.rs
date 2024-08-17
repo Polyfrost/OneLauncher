@@ -23,7 +23,9 @@ pub async fn get_processes_by_path(path: ClusterPath) -> Result<Vec<Uuid>, Strin
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_processes_detailed_by_path(path: ClusterPath) -> Result<Vec<DetailedProcess>, String> {
+pub async fn get_processes_detailed_by_path(
+	path: ClusterPath,
+) -> Result<Vec<DetailedProcess>, String> {
 	Ok(processor::get_processes_detailed_by_path(path).await?)
 }
 

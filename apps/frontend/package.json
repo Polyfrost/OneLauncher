@@ -14,44 +14,47 @@
 	"sideEffects": false,
 	"scripts": {
 		"dev": "vite",
-		"build": "vite build"
+		"build": "vite build",
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@fontsource/poppins": "^5.0.14",
-		"@iconify-json/logos": "^1.1.43",
+		"@formatjs/intl-durationformat": "^0.2.4",
+		"@iconify-json/logos": "^1.1.44",
 		"@leeoniya/ufuzzy": "^1.0.14",
 		"@onelauncher/client": "workspace:*",
-		"@rspc/client": "^0.2.3",
-		"@rspc/solid-query": "^0.2.3",
-		"@rspc/tauri": "^0.2.0",
+		"@solid-primitives/i18n": "^2.1.1",
 		"@solid-primitives/refs": "^1.0.8",
-		"@solidjs/router": "^0.14.1",
+		"@solidjs/router": "^0.14.3",
+		"@t3-oss/env-core": "^0.11.0",
 		"@tanstack/solid-query": "^5.51.21",
-		"@tauri-apps/api": "2.0.0-rc.0",
-		"@tauri-apps/plugin-clipboard-manager": "github:tauri-apps/tauri-plugin-clipboard-manager#v2",
-		"@tauri-apps/plugin-dialog": "github:tauri-apps/tauri-plugin-dialog#v2",
-		"@tauri-apps/plugin-shell": "github:tauri-apps/tauri-plugin-shell#v2",
+		"@tauri-apps/api": "=2.0.0-rc.0",
+		"@tauri-apps/plugin-clipboard-manager": "=2.0.0-rc.0",
+		"@tauri-apps/plugin-dialog": "=2.0.0-rc.0",
+		"@tauri-apps/plugin-shell": "=2.0.0-rc.0",
 		"@thisbeyond/solid-dnd": "^0.7.5",
 		"@thisbeyond/solid-select": "^0.15.0",
-		"@unocss/reset": "^0.61.9",
+		"@unocss/reset": "^0.62.2",
 		"@untitled-theme/icons-solid": "^0.10.5",
 		"overlayscrollbars": "^2.10.0",
 		"overlayscrollbars-solid": "^0.5.5",
 		"pathe": "^1.1.2",
-		"solid-js": "^1.8.19",
+		"solid-js": "^1.8.21",
 		"solid-transition-group": "^0.2.3",
-		"uuid": "^10.0.0"
+		"uuid": "^10.0.0",
+		"zod": "^3.23.8"
 	},
 	"devDependencies": {
+		"@sentry/vite-plugin": "^2.22.2",
 		"@solidjs/testing-library": "^0.8.9",
-		"@tauri-apps/cli": "2.0.0-rc.0",
+		"@tauri-apps/cli": "=2.0.0-rc.3",
 		"@testing-library/jest-dom": "^6.4.8",
 		"@types/uuid": "^10.0.0",
 		"jsdom": "^24.1.1",
 		"sass": "^1.77.8",
-		"unocss": "^0.61.9",
+		"unocss": "^0.62.2",
 		"vite-plugin-solid": "^2.10.2",
 		"vite-plugin-solid-svg": "^0.8.1",
-		"vite-tsconfig-paths": "^4.3.2"
+		"vite-tsconfig-paths": "^5.0.1"
 	}
 }

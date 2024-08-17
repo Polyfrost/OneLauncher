@@ -1,0 +1,38 @@
+{{#isMacOS}}
+[target.x86_64-apple-darwin]
+rustflags = ["-Csplit-debuginfo=unpacked"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-Csplit-debuginfo=unpacked"]
+{{/isMacOS}}
+
+{{#isWin}}
+[target.'cfg(windows)']
+rustflags = [
+  "-C",
+  "link-args=/STACK:16777220"
+]
+
+[target.x86_64-pc-windows-msvc]
+{{#hasLLD}}
+linker = "lld-link.exe"
+{{/hasLLD}}
+{{/isWin}}
+
+{{#isLinux}}
+[target.x86_64-unknown-linux-gnu]
+{{#hasLLD}}
+linker = "clang"
+rustflags = ["-C", "link-args=-fuse-ld={{{linker}}}"]
+{{/hasLLD}}
+
+[target.aarch64-unknown-linux-gnu]
+{{#hasLLD}}
+linker = "clang"
+rustflags = ["-C", "link-args=-fus-ld={{{linker}}}"]
+{{/hasLLD}}
+{{/isLinux}}
+
+{{#hasAlias}}
+prisma = "run -p prisma-cli --bin prisma --"
+{{/hasAlias}}

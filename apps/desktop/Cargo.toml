@@ -13,25 +13,21 @@ authors = { workspace = true }
 
 [lib]
 name = "onelauncher_gui"
-crate-type = [
-  "staticlib",
-  "cdylib",
-  "lib"
-]
+crate-type = [ "staticlib", "cdylib", "lib" ]
 
 [build-dependencies]
 tauri-build = { workspace = true, features = [ "isolation" ] }
 
 [dependencies]
 onelauncher = { workspace = true, features = [ "tauri" ] }
-
+onelauncher_macros = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-plugin-window-state = { workspace = true }
 tauri-plugin-single-instance = { workspace = true }
 tauri-plugin-updater = { workspace = true }
 tauri-plugin-clipboard-manager = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
-
+tauri-plugin-deep-link = { workspace = true }
 tauri-specta = { workspace = true }
 specta = { workspace = true }
 specta-typescript = { workspace = true }
@@ -47,19 +43,18 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
-
 tracing = { workspace = true }
 tracing-error = { workspace = true }
 
 [dependencies.tauri]
 workspace = true
 features = [
-  "isolation",
-  "macos-private-api",
-  "image-ico",
-  "image-png",
-  "protocol-asset",
-  "specta"
+	"isolation",
+	"macos-private-api",
+	"image-ico",
+	"image-png",
+	"protocol-asset",
+	"specta"
 ]
 
 [dev-dependencies.tauri]
@@ -68,6 +63,7 @@ features = [ "test" ]
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa.workspace = true
+
 objc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]

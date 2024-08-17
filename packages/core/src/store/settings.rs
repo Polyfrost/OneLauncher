@@ -21,6 +21,9 @@ pub struct Settings {
 	/// A global fullscreen Minecraft state.
 	#[serde(default)]
 	pub force_fullscreen: bool,
+	/// Whether to allow launching the same cluster under the same account.
+	#[serde(default)]
+	pub allow_parallel_running_clusters: bool,
 	/// A global default [`Resolution`] for Minecraft.
 	pub resolution: Resolution,
 	/// A global [`JavaVersions`] list and default version.
@@ -95,6 +98,7 @@ impl Settings {
 				hide_close_prompt: true,
 				disable_animations: false,
 				force_fullscreen: false,
+				allow_parallel_running_clusters: false,
 				resolution: Resolution::default(),
 				java_versions: JavaVersions::new(),
 				memory: Memory::default(),

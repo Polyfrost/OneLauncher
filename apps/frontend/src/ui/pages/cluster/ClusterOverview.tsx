@@ -7,23 +7,20 @@ import { join } from 'pathe';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
-import ClusterRoot from './ClusterRoot';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
 import { secondsToWords, upperFirst } from '~utils';
-import useClusterContext from '~ui/hooks/useCluster';
-import Modal from '~ui/components/overlay/Modal';
+import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
 import useSettingsContext from '~ui/hooks/useSettings';
+import Modal, { type ModalProps, createModal } from '~ui/components/overlay/Modal';
 
 function ClusterOverview() {
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 	const [cluster, { refetch }] = useClusterContext();
-	const [deleteVisible, setDeleteVisible] = createSignal(false);
-	const [saveVisible, setSaveVisible] = createSignal(false);
 
 	const [editMode, setEditMode] = createSignal(false);
 	const [newName, setNewName] = createSignal('');
@@ -31,16 +28,24 @@ function ClusterOverview() {
 
 	const navigate = useNavigate();
 
+	const saveModal = createModal(props => (
+		<SaveModal {...props} save={save} dontSave={dontSave} />
+	));
+
+	const deleteModal = createModal(props => (
+		<Modal.Delete {...props} onDelete={deleteCluster} />
+	));
+
 	useBeforeLeave((e) => {
 		if (editMode() && madeChanges()) {
 			e.preventDefault();
-			setSaveVisible(true);
+			saveModal.show();
 		}
 	});
 
 	function getPath() {
 		const clusterPath = cluster()?.path;
-		const configDir = settings.config_dir;
+		const configDir = settings().config_dir;
 
 		if (typeof clusterPath !== 'string' || typeof configDir !== 'string')
 			return '';
@@ -75,7 +80,7 @@ function ClusterOverview() {
 		const next = !untrack(() => editMode());
 
 		if (next === false && madeChanges()) {
-			setSaveVisible(true);
+			saveModal.show();
 			return;
 		}
 
@@ -88,7 +93,7 @@ function ClusterOverview() {
 		if (!c)
 			return;
 
-		await bridge.commands.editCluster(
+		await bridge.commands.editClusterMeta(
 			c.uuid,
 			newName().length > 0 ? newName() : null,
 			newCover().length > 0 ? newCover() : c.meta.icon_url || c.meta.icon || null,
@@ -98,13 +103,13 @@ function ClusterOverview() {
 	}
 
 	function dontSave() {
-		setSaveVisible(false);
+		saveModal.hide();
 		setEditMode(false);
 	}
 
 	function save() {
 		pushEdits();
-		setSaveVisible(false);
+		saveModal.hide();
 		setEditMode(false);
 	}
 
@@ -115,9 +120,6 @@ function ClusterOverview() {
 				<Banner
 					cluster={cluster()!}
 					refetch={refetch}
-
-					saveVisible={saveVisible}
-					setSaveVisible={setSaveVisible}
 
 					editMode={editMode}
 					newName={newName}
@@ -174,50 +176,52 @@ function ClusterOverview() {
 							buttonStyle="danger"
 							children="Delete"
 							iconLeft={<Trash01Icon />}
-							onClick={() => setDeleteVisible(true)}
+							onClick={() => deleteModal.show()}
 							disabled={editMode()}
 						/>
 					)}
 				/>
 			</ScrollableContainer>
-
-			<Modal.Delete
-				visible={deleteVisible}
-				setVisible={setDeleteVisible}
-				onDelete={deleteCluster}
-			/>
-
-			<Modal.Simple
-				title="Save Changes?"
-				visible={saveVisible}
-				setVisible={setSaveVisible}
-				children="Do you want to save your changes?"
-				buttons={[
-					<Button
-						buttonStyle="secondary"
-						children="Cancel"
-						onClick={() => setSaveVisible(false)}
-					/>,
-					<Button
-						buttonStyle="danger"
-						children="No"
-						onClick={dontSave}
-					/>,
-					<Button
-						buttonStyle="primary"
-						children="Yes"
-						onClick={save}
-					/>,
-				]}
-			/>
 		</Sidebar.Page>
+	);
+}
+
+interface SaveModalProps extends ModalProps {
+	save: () => any;
+	dontSave: () => any;
+}
+
+function SaveModal(p: SaveModalProps) {
+	const [modalProps, props] = Modal.SplitProps(p);
+
+	return (
+		<Modal.Simple
+			{...modalProps}
+			title="Save Changes?"
+			children="Do you want to save your changes?"
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Cancel"
+					onClick={() => modalProps.hide()}
+				/>,
+				<Button
+					buttonStyle="danger"
+					children="No"
+					onClick={props.dontSave}
+				/>,
+				<Button
+					buttonStyle="primary"
+					children="Yes"
+					onClick={props.save}
+				/>,
+			]}
+		/>
 	);
 }
 
 interface BannerProps {
 	cluster: Cluster;
-	saveVisible: Accessor<boolean>;
-	setSaveVisible: Setter<boolean>;
 	editMode: Accessor<boolean>;
 	newName: Accessor<string>;
 	setNewName: Setter<string>;
@@ -227,11 +231,7 @@ interface BannerProps {
 }
 
 function Banner(props: BannerProps) {
-	const navigate = useNavigate();
-
-	async function launch() {
-		ClusterRoot.launch(navigate, props.cluster.uuid);
-	}
+	const launch = useLaunchCluster(() => props.cluster.uuid);
 
 	async function launchFilePicker() {
 		const selected = await dialog.open({
@@ -257,26 +257,26 @@ function Banner(props: BannerProps) {
 	}
 
 	return (
-		<div class="flex flex-row bg-component-bg rounded-xl p-2.5 gap-x-2.5 h-37">
-			<div class="rounded-lg overflow-hidden border border-gray-10 relative h-full w-57 min-w-57 aspect-ratio-video">
+		<div class="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
+			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-gray-10 rounded-lg">
 				<Show when={props.editMode()}>
 					<div
 						onClick={launchFilePicker}
-						class="bg-black/50 opacity-50 hover:opacity-100 w-full h-full absolute flex justify-center items-center"
+						class="absolute h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
 					>
-						<ImagePlusIcon class="w-12 h-12" />
+						<ImagePlusIcon class="h-12 w-12" />
 					</div>
 				</Show>
 
 				<ClusterCover override={props.newCover()} cluster={props.cluster} class="h-full w-full object-cover" />
 			</div>
 
-			<div class="flex flex-col w-full overflow-hidden gap-y-.5 justify-between text-fg-primary">
+			<div class="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
 				<div>
 					<Show
 						when={props.editMode()}
 						fallback={
-							<h2 class="text-2xl break-words text-wrap">{props.cluster.meta.name}</h2>
+							<h2 class="break-words text-wrap text-2xl">{props.cluster.meta.name}</h2>
 						}
 					>
 						<TextField
@@ -290,7 +290,7 @@ function Banner(props: BannerProps) {
 
 				<div class="flex flex-1 flex-row">
 					<div
-						class="flex flex-1 flex-col justify-between items-start"
+						class="flex flex-1 flex-col items-start justify-between"
 						classList={{
 							'text-fg-primary-disabled': props.editMode(),
 						}}

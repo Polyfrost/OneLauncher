@@ -1,11 +1,11 @@
 [toolchain]
-channel = "1.80"
+channel = "1.80.1"
 profile = "minimal"
 components = [
-  "cargo",
-  "clippy",
-  "llvm-tools-preview",
-  "rustc",
-  "rust-src",
-  "rustfmt",
+	"cargo",
+	"clippy",
+	"llvm-tools-preview",
+	"rustc",
+	"rust-src",
+	"rustfmt",
 ]

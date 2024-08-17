@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2" # virtual workspace resolver so we don't need a root package
 members = [
-  "apps/testing", # onelauncher_test -- test the core crate in a cli setting
-  "apps/desktop", # onelauncher_gui -- the rust code for our tauri app
-  "packages/core", # onelauncher -- the rust core for onelauncher
-  "packages/macros" # onelauncher_macros -- utility procedural macros for onelauncher
+	"apps/testing", # onelauncher_test -- test the core crate in a cli setting
+	"apps/desktop", # onelauncher_gui -- the rust code for our tauri app
+	"packages/core", # onelauncher -- the rust core for onelauncher
+	"packages/macros" # onelauncher_macros -- utility procedural macros for onelauncher
 ]
 
 [workspace.package] # sets default [package] settings for workspace members
@@ -14,10 +14,7 @@ repository = "https://github.com/Polyfrost/OneLauncher"
 documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
 homepage = "https://polyfrost.org/projects/onelauncher"
-authors = [
-  "Polyfrost",
-  "Polyfrost Contributors"
-]
+authors = [ "Polyfrost", "Polyfrost Contributors" ]
 version = "1.0.0-alpha.1" # bump this manually for now
 
 [workspace.dependencies]
@@ -31,17 +28,16 @@ onelauncher_test = { path = "./apps/testing" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel
-# (temporarily can use v2 and main branches if necessary)
-tauri = { version = "=2.0.0-rc.0", features = [
-  "rustls-tls",
-  "tracing",
-  "specta",
-  "uuid",
-  "protocol-asset"
+tauri = { version = "=2.0.0-rc.2", features = [
+	"rustls-tls",
+	"tracing",
+	"specta",
+	"uuid",
+	"protocol-asset"
 ] }
 
 # tauri-build is the codegen utility for our tauri buildscript.
-tauri-build = { version = "=2.0.0-rc.0" }
+tauri-build = { version = "=2.0.0-rc.2" }
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "=2.0.0-rc.0" }
 # tauri-plugin-window-state saves the window position and size to be restored.
@@ -54,6 +50,8 @@ tauri-plugin-clipboard-manager = { version = "=2.0.0-rc.0" }
 tauri-plugin-updater = { version = "=2.0.0-rc.0" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
 tauri-plugin-dialog = { version = "=2.0.0-rc.0" }
+# tauri-plugin-deep-link adds a way to handle custom uri schemes (onelauncher://)
+tauri-plugin-deep-link = { version = "=2.0.0-rc.0" }
 
 # # ============= CORE ============= # #
 # rspc is used as a faster and more intuitive replacement for tauri-specta
@@ -63,10 +61,7 @@ tauri-plugin-dialog = { version = "=2.0.0-rc.0" }
 # this means we don't have to redefine all our core apis as tauri commands.
 # features: "specta2" is for using the latest v2 rc of specta.
 # TODO: the api migration is blocked until rspc updates to a newer version of tauri v2.
-rspc = { version = "=0.2.0", features = [
-  "specta2",
-  "tracing"
-] }
+rspc = { version = "=0.2.0", features = [ "specta2", "tracing" ] }
 
 # specta is used as a peer dependency for tauri-specta and rspc.
 # it generates rust code into other languages, in our case, typescript.
@@ -76,25 +71,21 @@ rspc = { version = "=0.2.0", features = [
 # the remaining features implements the specta::Type trait for their
 # respective dependencies of the same name. if we add a new dependency
 # and run into specta errors, adding the dependency as a feature will usually solve this.
-specta = { version = "=2.0.0-rc.19", features = [
-  "chrono",
-  "uuid",
-  "serde",
-  "serde_json",
-  "function",
-  "derive",
-  "time"
+specta = { version = "=2.0.0-rc.20", features = [
+	"chrono",
+	"uuid",
+	"serde",
+	"serde_json",
+	"function",
+	"derive",
+	"time"
 ] }
 
 # tauri-specta is the tauri adapter for specta.
-tauri-specta = { version = "=2.0.0-rc.14", features = [
-  "javascript",
-  "typescript",
-  "derive"
-] }
+tauri-specta = { version = "=2.0.0-rc.16", features = [ "javascript", "typescript", "derive" ] }
 
 # specta-typescript is the typescript adapter for specta.
-specta-typescript = { version = "=0.0.6" }
+specta-typescript = { version = "=0.0.7" }
 
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
@@ -107,19 +98,16 @@ interpulse = { version = "1", features = [ "specta" ] }
 thiserror = { version = "1.0" }
 anyhow = { version = "1.0" }
 tracing = { version = "0.1" }
-tracing-subscriber = { version = "0.3", features = [
-  "chrono",
-  "env-filter"
-] }
+tracing-subscriber = { version = "0.3", features = [ "chrono", "env-filter" ] }
 tracing-error = { version = "0.2" }
 tracing-appender = { version = "0.2" }
 sentry = { version = "0.34", default-features = false, features = [
-  "rustls",
-  "reqwest",
-  "backtrace",
-  "panic",
-  "anyhow",
-  "debug-images"
+	"rustls",
+	"reqwest",
+	"backtrace",
+	"panic",
+	"anyhow",
+	"debug-images"
 ] }
 iota_stronghold = { version = "2.1" }
 zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
@@ -136,27 +124,20 @@ rand = { version = "0.8.5" }
 byteorder = { version = "1.5.0" }
 base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
-
-uuid = { version = "1.8", features = [
-  "serde",
-  "v4"
-] }
+uuid = { version = "1.8", features = [ "serde", "v4" ] }
 
 # # ============= NETWORK ============= # #
 reqwest = { version = "0.12", default-features = false, features = [
-  "json",
-  "stream",
-  "multipart",
-  "blocking",
-  "rustls-tls-native-roots",
-  "deflate",
-  "gzip",
-  "brotli"
+	"json",
+	"stream",
+	"multipart",
+	"blocking",
+	"rustls-tls-native-roots",
+	"deflate",
+	"gzip",
+	"brotli"
 ] }
-async-tungstenite = { version = "0.26", features = [
-  "tokio-runtime",
-  "tokio-rustls-native-certs"
-] }
+async-tungstenite = { version = "0.26", features = [ "tokio-runtime", "tokio-rustls-native-certs" ] }
 webbrowser = { version = "1.0" }
 
 # # ============= SYSTEM ============= # #
@@ -164,16 +145,12 @@ tokio = { version = "1.38", features = [ "full" ] }
 tokio-stream = { version = "0.1.15", features = [ "fs" ] }
 notify = { version = "6.1", default-features = false }
 notify-debouncer-mini = { version = "0.4", default-features = false }
-
 tempfile = { version = "3.10" }
 dunce = { version = "1.0.4" }
-zip = { version = "0.6" }
+zip = { version = "2.1.6" }
 dirs = { version = "5.0" }
 async_zip = { version = "0.0.17", features = [ "full" ] }
-async-compression = { version = "0.4.12", features = [
-  "flate2",
-  "tokio"
-] }
+async-compression = { version = "0.4.12", features = [ "flate2", "tokio" ] }
 flate2 = { version = "1.0" }
 sha1_smol = { version = "1.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
@@ -201,11 +178,11 @@ objc = { version = "0.2" }
 git = "https://github.com/brendonovich/prisma-client-rust"
 rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
 features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-  "rspc"
+	"migrations",
+	"specta",
+	"sqlite",
+	"sqlite-create-many",
+	"rspc"
 ]
 default-features = false
 
@@ -213,11 +190,11 @@ default-features = false
 git = "https://github.com/brendonovich/prisma-client-rust"
 rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
 features = [
-  "migrations",
-  "specta",
-  "sqlite",
-  "sqlite-create-many",
-  "rspc"
+	"migrations",
+	"specta",
+	"sqlite",
+	"sqlite-create-many",
+	"rspc"
 ]
 default-features = false
 

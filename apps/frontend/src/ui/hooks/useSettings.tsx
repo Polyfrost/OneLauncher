@@ -1,9 +1,8 @@
-import { type Context, type ParentProps, type Resource, Show, createContext, createEffect, useContext } from 'solid-js';
+import { type Context, type ParentProps, Show, createContext, createEffect, useContext } from 'solid-js';
+import { useBeforeLeave } from '@solidjs/router';
 import useCommand from './useCommand';
 import type { Settings } from '~bindings';
 import { bridge } from '~imports';
-
-const SettingsContext = createContext<Settings>() as Context<Settings>;
 
 /**
  * Sync the launcher state (CSS, text etc) with the current settings
@@ -12,22 +11,43 @@ export function syncSettings(settings: Settings) {
 	document.body.classList.toggle('reduce-motion', settings.disable_animations);
 }
 
-export function getSettings(): Resource<Settings> | undefined {
-	const [resource] = useCommand(bridge.commands.getSettings);
-	return resource;
+interface SettingsControllerType {
+	settings: () => Settings;
+	saveOnLeave: (settings: () => Partial<Settings>) => void;
+	save: (settings: Settings) => void;
 }
 
+const SettingsContext = createContext() as Context<SettingsControllerType>;
+
 export function SettingsProvider(props: ParentProps) {
-	const settings = getSettings();
+	const [settings, { refetch }] = useCommand(bridge.commands.getSettings);
 
 	createEffect(() => {
 		if (settings !== undefined && settings() !== undefined)
 			syncSettings(settings!()!);
 	});
 
+	const controller: SettingsControllerType = {
+		settings: () => settings!()!,
+		saveOnLeave: (settings) => {
+			useBeforeLeave(() => {
+				controller.save({
+					...controller.settings(),
+					...settings(),
+				});
+			});
+		},
+		save: (settings) => {
+			bridge.commands.setSettings(settings).then(() => {
+				syncSettings(settings);
+				refetch();
+			});
+		},
+	};
+
 	return (
 		<Show when={settings !== undefined && settings() !== undefined}>
-			<SettingsContext.Provider value={settings!()!}>
+			<SettingsContext.Provider value={controller}>
 				{props.children}
 			</SettingsContext.Provider>
 		</Show>
@@ -40,21 +60,7 @@ export function useSettingsContext() {
 	if (!context)
 		throw new Error('useSettingsContext should be called inside its SettingsProvider');
 
-	const contextProxy = new Proxy(context, {
-		set(target, key, value) {
-			// @ts-expect-error typescript
-			target[key] = value;
-			save(target); // TODO: Possibly make a "Save confirmation" instead of writing to the settings file every time?
-			return true;
-		},
-	});
-
-	return contextProxy;
-}
-
-function save(settings: Settings) {
-	bridge.commands.setSettings(settings);
-	syncSettings(settings);
+	return context;
 }
 
 export default useSettingsContext;

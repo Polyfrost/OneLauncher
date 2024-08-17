@@ -83,9 +83,9 @@ function ClusterMods() {
 
 	return (
 		<Sidebar.Page>
-			<div class="flex flex-row justify-between w-full">
+			<div class="w-full flex flex-row justify-between">
 				<h1>Mods</h1>
-				<div class="flex flex-row justify-end items-center gap-x-2">
+				<div class="flex flex-row items-center justify-end gap-x-2">
 					<Button
 						buttonStyle="secondary"
 						iconLeft={sortingAtoZ() ? <ChevronUpIcon /> : <ChevronDownIcon />}
@@ -108,7 +108,7 @@ function ClusterMods() {
 					</Match>
 
 					<Match when={displayedMods().length === 0}>
-						<p class="text-2lg text-center my-4">No mods were found</p>
+						<p class="my-4 text-center text-2lg">No mods were found</p>
 					</Match>
 				</Switch>
 			</ScrollableContainer>
@@ -131,16 +131,16 @@ interface ModEntryProps {
 
 function ModEntry(props: ModEntryProps) {
 	return (
-		<div class="bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed p-3 gap-3 rounded-xl flex flex-row items-center">
+		<div class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover">
 			<div>
 				<img src={props.thumbnail} alt={props.name} class="aspect-ratio-square h-10 rounded-lg" />
 			</div>
-			<div class="flex flex-col flex-1">
-				<div class="flex flex-row justify-between items-center">
+			<div class="flex flex-1 flex-col">
+				<div class="flex flex-row items-center justify-between">
 					<div class="flex flex-col items-start justify-center">
 						<div class="flex flex-col items-start justify-center gap-y-2">
 							<h4>{props.name}</h4>
-							<span class="h-2 flex flex-row items-center justify-start text-xs font-600 text-fg-secondary/50">
+							<span class="h-2 flex flex-row items-center justify-start text-xs text-fg-secondary/50 font-600">
 								{props.version}
 								{/* TODO: Add version checker */}
 								{/* <Show when={props.version.includes()}> */}
@@ -151,7 +151,7 @@ function ModEntry(props: ModEntryProps) {
 						</div>
 					</div>
 
-					<div class="flex flex-row gap-2 items-end justify-center">
+					<div class="flex flex-row items-end justify-center gap-2">
 						<Button buttonStyle="iconSecondary">
 							<Edit02Icon />
 						</Button>

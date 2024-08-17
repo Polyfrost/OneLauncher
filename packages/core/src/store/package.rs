@@ -11,11 +11,11 @@ use tokio::io::AsyncReadExt;
 
 use crate::package::content::Providers;
 use crate::prelude::IOError;
-use crate::utils::http::{write_icon, FetchSemaphore, IoSemaphore};
+use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
 
 use crate::store::{Cluster, Loader, PackagePath};
+use crate::State;
 
-// TODO: move all of this to prisma, it would be perfect for it
 // TODO: Curseforge, Modrinth, SkyClient integration
 
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
@@ -236,7 +236,7 @@ pub struct ManagedVersion {
 
 impl ManagedVersion {
 	pub fn get_primary_file(&self) -> Option<&ManagedVersionFile> {
-		self.files.iter().find(|f| f.primary == true)
+		self.files.iter().find(|f| f.primary)
 	}
 }
 
@@ -251,6 +251,27 @@ pub struct ManagedVersionFile {
 	pub size: u32,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
+}
+
+impl ManagedVersionFile {
+	#[tracing::instrument]
+	pub async fn download_to_cluster(&self, cluster: &Cluster) -> crate::Result<()> {
+		tracing::info!(
+			"downloading mod '{}' to cluster '{}'",
+			self.file_name,
+			cluster.meta.name
+		);
+		let path = cluster
+			.get_full_path()
+			.await?
+			.join("mods")
+			.join(&self.file_name);
+		let state = State::get().await?;
+		let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
+		http::write(&path, &bytes, &state.io_semaphore).await?;
+
+		Ok(())
+	}
 }
 
 /// Universal interface for managed package dependencies.

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::utils::io;
 use crate::Result;
 
@@ -22,10 +20,4 @@ pub async fn get_screenshots(cluster: &ClusterPath) -> Result<Vec<String>> {
 	}
 
 	Ok(list)
-}
-
-#[tracing::instrument]
-pub async fn get_screenshot_path(cluster: &ClusterPath, file_name: String) -> Result<PathBuf> {
-	let dir = cluster.full_path().await?.join("screenshots");
-	Ok(dir.join(file_name))
 }

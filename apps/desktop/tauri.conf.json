@@ -58,8 +58,7 @@
 				"enable": true,
 				"scope": {
 					"allow": [
-						"$DATA/OneLauncher/metadata/caches/icons/*",
-						"$DATA/OneLauncher/db/**",
+						"$DATA/OneLauncher/**",
 						"$RESOURCE/**"
 					],
 					"deny": ["$DATA/OneLauncher/db/*.stronghold"]
@@ -143,7 +142,10 @@
 			"endpoints": ["https://polyfrost.org/releases/tauri/{{version}}/{{target}}/{{arch}}"]
 		},
 		"deep-link": {
-			"desktop": ["onelauncher"]
+			"mobile": [],
+			"desktop": {
+				"schemes": ["onelauncher"]
+			}
 		}
 	}
 }

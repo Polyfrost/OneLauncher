@@ -28,7 +28,7 @@ runs:
       shell: bash
       if: ${{ runner.os == 'Linux' }}
       run: |
-        curl -L# 'https://github.com/rui314/mold/releases/download/v2.32.1/mold-2.32.1-x86_64-linux.tar.gz' \
+        curl -L# 'https://github.com/rui314/mold/releases/download/v2.33.0/mold-2.33.0-x86_64-linux.tar.gz' \
         | sudo tar -xzf- -C /usr/local
 
     - name: (Linux) Cleanup Runner
@@ -59,15 +59,15 @@ runs:
       shell: powershell
       run: ./packages/scripts/setup.ps1
 
-    - name: Setup Pnpm
+    - name: Setup pnpm
       uses: ./.github/actions/setup-pnpm
       with:
         token: ${{ github.token }}
 
-    # - name: Setup Shared Libraries
-    #   shell: bash
-    #   env:
-    #     TARGET_TRIPLE: ${{ inputs.triple }}
-    #     GITHUB_TOKEN: ${{ inputs.token }}
-    #     NODE_ENV: debug
-    #   run: pnpm prepare
+    - name: Setup Shared Libraries
+      shell: bash
+      env:
+        TARGET_TRIPLE: ${{ inputs.triple }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        NODE_ENV: debug
+      run: pnpm prep

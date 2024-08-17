@@ -5,7 +5,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::data::{ManagedPackage, ManagedVersion};
-use crate::store::Package;
 use crate::Result;
 
 mod modrinth;

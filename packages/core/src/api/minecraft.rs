@@ -31,12 +31,16 @@ pub async fn get_default_user() -> crate::Result<Option<uuid::Uuid>> {
 
 /// Set the current default user by [`uuid::Uuid`].
 #[tracing::instrument]
-pub async fn set_default_user(user: uuid::Uuid) -> crate::Result<()> {
-	let user = get_user(user).await?;
+pub async fn set_default_user(user: Option<uuid::Uuid>) -> crate::Result<()> {
+	let user = match user {
+		Some(user) => Some(get_user(user).await?.id),
+		None => None,
+	};
+
 	let state = State::get().await?;
 	let mut users = state.users.write().await;
 
-	users.default_user = Some(user.id);
+	users.default_user = user;
 	users.save().await?;
 
 	Ok(())
@@ -50,10 +54,13 @@ pub async fn remove_user(user: uuid::Uuid) -> crate::Result<()> {
 
 	users.remove(user).await?;
 
+	if users.default_user == Some(user) {
+		set_default_user(Some(user)).await?;
+	}
+
 	Ok(())
 }
 
-// TODO: Store this securely in stronghold
 /// Get a list of user [`MinecraftCredentials`].
 #[tracing::instrument]
 pub async fn users() -> crate::Result<Vec<MinecraftCredentials>> {

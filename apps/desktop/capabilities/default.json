@@ -28,6 +28,7 @@
 		"clipboard-manager:allow-write-text",
 		"dialog:allow-open",
 		"dialog:allow-save",
-		"dialog:allow-confirm"
+		"dialog:allow-confirm",
+		"deep-link:default"
 	]
 }

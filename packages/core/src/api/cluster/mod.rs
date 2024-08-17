@@ -131,7 +131,16 @@ pub async fn run_credentials(
 		.init_hooks
 		.as_ref()
 		.unwrap_or(&settings.init_hooks)
-		.pre;
+		.pre
+		.as_ref()
+		.and_then(|it| {
+			if it.is_empty() {
+				None
+			} else {
+				Some(it.clone())
+			}
+		});
+
 	if let Some(hook) = pre {
 		// TODO: hook parameters
 		let mut cmd = hook.split(' ');
@@ -161,10 +170,20 @@ pub async fn run_credentials(
 		.as_ref()
 		.and_then(|it| it.custom_arguments.as_ref())
 		.unwrap_or(&settings.custom_java_args);
+
 	let wrapper = cluster
 		.init_hooks
 		.as_ref()
-		.map_or(&settings.init_hooks.wrapper, |it| &it.wrapper);
+		.map_or(&settings.init_hooks.wrapper, |it| &it.wrapper)
+		.as_ref()
+		.and_then(|it| {
+			if it.is_empty() {
+				None
+			} else {
+				Some(it.clone())
+			}
+		});
+
 	let memory = cluster.memory.unwrap_or(settings.memory);
 	let resolution = cluster.resolution.unwrap_or(settings.resolution);
 	let env_args = cluster
@@ -194,7 +213,7 @@ pub async fn run_credentials(
 		creds,
 		&resolution,
 		&memory,
-		wrapper,
+		&wrapper,
 	)
 	.await?;
 

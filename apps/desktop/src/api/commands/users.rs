@@ -1,5 +1,6 @@
 use onelauncher::data::MinecraftCredentials;
 use onelauncher::minecraft;
+use onelauncher::store::MinecraftLogin;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -23,8 +24,16 @@ pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_default_user() -> Result<Option<MinecraftCredentials>, String> {
+pub async fn get_default_user(
+	fallback: Option<bool>,
+) -> Result<Option<MinecraftCredentials>, String> {
 	let uuid = minecraft::get_default_user().await?;
+
+	if let Some(fallback) = fallback {
+		if fallback && uuid.is_none() {
+			return Ok(minecraft::users().await?.first().cloned());
+		}
+	}
 
 	match uuid {
 		Some(uuid) => Ok(Some(minecraft::get_user(uuid).await?)),
@@ -34,7 +43,7 @@ pub async fn get_default_user() -> Result<Option<MinecraftCredentials>, String> 
 
 #[specta::specta]
 #[tauri::command]
-pub async fn set_default_user(uuid: Uuid) -> Result<(), String> {
+pub async fn set_default_user(uuid: Option<Uuid>) -> Result<(), String> {
 	minecraft::set_default_user(uuid).await?;
 	Ok(())
 }
@@ -43,6 +52,15 @@ pub async fn set_default_user(uuid: Uuid) -> Result<(), String> {
 #[tauri::command]
 pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials>, String> {
 	let flow = minecraft::begin().await?;
+	let result = spawn_webview(handle, flow).await?;
+
+	Ok(result)
+}
+
+async fn spawn_webview(
+	handle: AppHandle,
+	flow: MinecraftLogin,
+) -> Result<Option<MinecraftCredentials>, String> {
 	let now = chrono::Utc::now();
 
 	if let Some(win) = handle.get_webview_window("login") {

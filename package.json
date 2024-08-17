@@ -4,7 +4,7 @@
 	"version": "1.0.0-alpha.1",
 	"private": true,
 	"engineStrict": true,
-	"packageManager": "pnpm@9.6.0",
+	"packageManager": "pnpm@9.7.1",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
 	"homepage": "https://polyfrost.org",
@@ -16,15 +16,19 @@
 	"bugs": "https://github.com/polyfrost/onelauncher/issues",
 	"sideEffects": false,
 	"engines": {
-		"pnpm": "9.6.0",
+		"pnpm": "9.7.1",
 		"npm": "pnpm",
 		"yarn": "pnpm",
 		"node": ">=18"
 	},
 	"scripts": {
+		"prep": "pnpm --filter=@onelauncher/scripts -- int:prepare",
 		"build": "pnpm --filter=./* run build",
 		"dev": "pnpm --filter=./* run dev",
 		"start": "pnpm --filter=./* run start",
+		"typecheck": "pnpm -r typecheck",
+		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
+		"autoformat": "./packages/scripts/format.sh",
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
 		"format": "pnpm format:es && pnpm format:rs",
 		"lint": "pnpm lint:es && pnpm lint:rs",
@@ -34,10 +38,11 @@
 		"core": "cd packages/core && cargo",
 		"testing": "cd apps/testing && cargo",
 		"tauri": "cd apps/desktop && cargo",
+		"postupdate": "cargo update",
 		"test:vi": "pnpm vitest run",
 		"test:update": "pnpm vitest -u",
 		"test:ui": "pnpm vitest --ui",
-		"lint:es": "eslint . --cache",
+		"lint:es": "eslint . --cache --flag unstable_ts_config",
 		"format:es": "pnpm lint:es --fix",
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
@@ -50,23 +55,18 @@
 		]
 	},
 	"devDependencies": {
-		"@flowr/eslint-config": "^3.10.4",
-		"@types/node": "^22.1.0",
+		"@flowr/eslint-config": "^3.12.0",
+		"@types/node": "^22.4.0",
+		"@unocss/eslint-plugin": "^0.62.2",
 		"@vitest/ui": "^2.0.5",
-		"bumpp": "^9.4.2",
-		"changelogen": "^0.5.5",
-		"eslint": "npm:eslint-ts-patch@9.8.0-1",
+		"bumpp": "^9.5.1",
+		"eslint": "^9.9.0",
 		"eslint-plugin-solid": "^0.14.1",
-		"eslint-ts-patch": "9.8.0-1",
+		"jiti": "^1.21.6",
 		"ts-node": "^10.9.2",
-		"tsx": "~4.16.5",
+		"tsx": "^4.17.0",
 		"typescript": "^5.5.4",
-		"vite": "^5.3.5",
+		"vite": "^5.4.1",
 		"vitest": "^2.0.5"
-	},
-	"pnpm": {
-		"patchDependencies": {
-			"@rspc/tauri@0.2.0": "packages/patches/@rspc__tauri@0.2.0.patch"
-		}
 	}
 }

@@ -7,9 +7,11 @@ import fs from 'node:fs/promises';
 import { dirname, join, resolve } from 'pathe';
 import { execa } from 'execa';
 
+export type CheckedEnvironment = ReturnType<typeof checkEnvironment>;
+
 export function checkEnvironment(meta: ImportMeta) {
 	if (/^(?:msys|mingw|cygwin)$/i.test(process.env.OSTYPE ?? '')) {
-		console.error('bash for windows is not supported. please use powershell or cmd');
+		console.error('bash for windows is not supported. please use Powershell or cmd');
 		process.exit(255);
 	}
 
@@ -20,7 +22,7 @@ export function checkEnvironment(meta: ImportMeta) {
 	const __debug = process.env.NODE_ENV === 'debug';
 	const __root = resolve(join(__dirname, '..', '..'));
 
-	return { __filename, __dirname, __debug, __root };
+	return { __filename, __dirname, __debug, __root, __exit: process.exit };
 }
 
 async function where(cmd: string): Promise<boolean> {

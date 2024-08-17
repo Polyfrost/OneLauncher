@@ -1,13 +1,13 @@
-#!/usr/bin/env node
-
 import process from 'node:process';
-import * as fs from 'node:fs/promises';
+import fs from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import pathe from 'pathe';
 import { execa } from 'execa';
 import { awaitLock, checkEnvironment } from './utils';
+import { patchTauri } from './utils/patch';
 
-const { __dirname, __root } = checkEnvironment(import.meta);
+const env = checkEnvironment(import.meta);
+const { __dirname, __root, __exit } = env;
 const [_, __, ...args] = process.argv;
 const __distribution = pathe.join(__root, 'packages', 'distribution');
 const __desktop = pathe.join(__root, 'apps', 'desktop');
@@ -31,14 +31,14 @@ function targetFilter(filter: 'b' | 't') {
 }
 
 const targets = args.filter(targetFilter('t')).flatMap(t => t.split(','));
-const bundles = args.filter(targetFilter('b')).flatMap(t => t.split(','));
+const bundles = args.filter(targetFilter('b')).flatMap(b => b.split(','));
 
 const store = { code: 0 };
 
 try {
 	switch (args[0]) {
 		case 'dev': {
-			__cleanup.push(...([]));
+			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
 			switch (process.platform) {
 				case 'linux':
 				case 'darwin':
@@ -54,7 +54,7 @@ try {
 				process.env.NODE_OPTIONS = `--max_old_space_size=4096 ${process.env.NODE_OPTIONS ?? ''}`;
 
 			process.env.GENERATE_SOURCEMAP = 'false';
-			__cleanup.push(...([]));
+			__cleanup.push(...(await patchTauri(env, targets, bundles, args)));
 
 			if (process.platform === 'darwin') {
 				process.env.BACKGROUND_FILE = pathe.resolve(__distribution, 'macos', 'dmg.png');
@@ -97,5 +97,5 @@ catch (error: any) {
 }
 finally {
 	cleanup();
-	process.exit(store.code);
+	__exit(store.code);
 }

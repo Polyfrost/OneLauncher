@@ -4,20 +4,80 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"label": "desktop:frontend:dev",
-			"type": "shell",
-			"isBackground": true,
-			"command": "pnpm",
-			"args": ["frontend", "dev"],
-			// todo: problemMatcher
-			"group": "build"
+			"type": "cargo",
+			"command": "clippy",
+			"problemMatcher": ["$rustc"],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"label": "rust:clippy",
+			"args": ["--all-targets", "--all-features", "--all"]
 		},
 		{
-			"label": "desktop:frontend:build",
+			"type": "npm",
+			"script": "prepare",
+			"label": "pnpm:prep",
+			"group": "none",
+			"problemMatcher": ["$rustc"]
+		},
+		{
 			"type": "shell",
+			"label": "start",
+			"command": "sh",
+			"args": ["-c", "'pnpm i && pnpm prepare'"],
+			"problemMatcher": ["$tsc-watch", "$rustc"]
+		},
+		{
+			"type": "shell",
+			"label": "frontend:dev",
+			"problemMatcher": {
+				"base": "$tsc-watch",
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "VITE v",
+					"endsPattern": "http://localhost:8001/"
+				}
+			},
+			"isBackground": true,
 			"command": "pnpm",
-			"args": ["frontend", "build"],
-			"group": "build"
+			"args": ["frontend", "dev", "--mode=development"],
+			"runOptions": {
+				"instanceLimit": 1
+			}
+		},
+		{
+			"type": "shell",
+			"label": "frontend:build",
+			"problemMatcher": "$tsc",
+			"command": "pnpm",
+			"args": ["frontend", "build"]
+		},
+		{
+			"type": "cargo",
+			"command": "run",
+			"args": ["--manifest-path=./apps/desktop/Cargo.toml", "--no-default-features"],
+			"env": {
+				"RUST_BACKTRACE": "short"
+				// "RUST_LOG": "onelauncher=trace"
+			},
+			"problemMatcher": ["$rustc"],
+			"group": "build",
+			"label": "rust:run",
+			"dependsOn": ["frontend:dev"]
+		},
+		{
+			"type": "cargo",
+			"command": "run",
+			"args": ["--manifest-path=./apps/desktop/Cargo.toml", "--release"],
+			"env": {
+				"RUST_BACKTRACE": "short"
+				// "RUST_LOG": "onelauncher=trace"
+			},
+			"problemMatcher": ["$rustc"],
+			"group": "build",
+			"label": "rust:run release",
+			"dependsOn": ["frontend:build"]
 		}
 	]
 }

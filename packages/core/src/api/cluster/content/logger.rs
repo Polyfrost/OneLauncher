@@ -99,6 +99,12 @@ pub async fn get_logs(
 	cluster_path: &ClusterPath,
 	clear: Option<bool>,
 ) -> crate::Result<Vec<LogManager>> {
+	let dir = Directories::cluster_logs_dir(cluster_path).await?;
+	if !dir.exists() {
+		io::create_dir(dir).await?;
+		return Ok(vec![]);
+	}
+
 	let mut logs = Vec::new();
 	get_logs_by_type(cluster_path, LogType::Info, clear, &mut logs).await?;
 	get_logs_by_type(cluster_path, LogType::Crash, clear, &mut logs).await?;
@@ -230,6 +236,31 @@ pub async fn delete_logs_by_file(
 	Ok(())
 }
 
+pub async fn read_log_to_string(path: &std::path::PathBuf) -> crate::Result<String> {
+	if let Some(ext) = path.extension() {
+		let mut file = std::fs::File::open(path).map_err(|e| IOError::with_path(e, path))?;
+		let mut contents = [0; 1024];
+		let mut result = String::new();
+
+		if ext == "gz" {
+			let mut gz = flate2::read::GzDecoder::new(std::io::BufReader::new(file));
+			while gz.read(&mut contents).map_err(|e| IOError::with_path(e, path))? > 0 {
+				result.push_str(&String::from_utf8_lossy(&contents));
+				contents = [0; 1024];
+			}
+		} else if ext == "log" || ext == "txt" {
+			while file.read(&mut contents).map_err(|e| IOError::with_path(e, path))? > 0 {
+				result.push_str(&String::from_utf8_lossy(&contents));
+				contents = [0; 1024];
+			}
+		}
+
+		return Ok(result);
+	}
+
+	Err(anyhow::anyhow!("log file extension {} not supported", path.display()).into())
+}
+
 /// Get a specific [`ClusterPath`] log file's [`LogOutput`].
 #[tracing::instrument]
 pub async fn get_output_by_file(
@@ -252,40 +283,9 @@ pub async fn get_output_by_file(
 		.into_values()
 		.collect();
 
-	// todo: make this a utility function
-	if let Some(ext) = path.extension() {
-		let mut file = std::fs::File::open(&path).map_err(|e| IOError::with_path(e, &path))?;
-		let mut contents = [0; 1024];
-		let mut result = String::new();
+	let result = read_log_to_string(&path).await?;
 
-		if ext == "gz" {
-			let mut gz = flate2::read::GzDecoder::new(std::io::BufReader::new(file));
-
-			while gz
-				.read(&mut contents)
-				.map_err(|e| IOError::with_path(e, &path))?
-				> 0
-			{
-				result.push_str(&String::from_utf8_lossy(&contents));
-				contents = [0; 1024];
-			}
-
-			return Ok(LogOutput::censor_secrets(result, &credentials, None));
-		} else if ext == "log" || ext == "txt" {
-			while file
-				.read(&mut contents)
-				.map_err(|e| IOError::with_path(e, &path))?
-				> 0
-			{
-				result.push_str(&String::from_utf8_lossy(&contents));
-				contents = [0; 1024];
-			}
-
-			return Ok(LogOutput::censor_secrets(result, &credentials, None));
-		}
-	}
-
-	Err(anyhow::anyhow!("log file extension {} not supported", path.display()).into())
+	return Ok(LogOutput::censor_secrets(result, &credentials, None));
 }
 
 /// The log cursor used to parse logs passed into [`LogManager`].

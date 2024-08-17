@@ -18,12 +18,12 @@ pub async fn get_package(project_id: String) -> Result<ManagedPackage, String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn download_package(cluster_id: Uuid, version_id: String) -> Result<(), String> {
-	let cluster = onelauncher::cluster::get_by_uuid(cluster_id, None)
-		.await?
-		.ok_or("cluster not found")?;
-	let provider = content::Providers::Modrinth;
-	let game_version = cluster.meta.mc_version.clone();
+pub async fn download_package(_cluster_id: Uuid, _version_id: String) -> Result<(), String> {
+	// let cluster = onelauncher::cluster::get_by_uuid(cluster_id, None)
+	// 	.await?
+	// 	.ok_or("cluster not found")?;
+	// let provider = content::Providers::Modrinth;
+	// let game_version = cluster.meta.mc_version.clone();
 
 	// onelauncher::cluster::content::package::download_package(package, cluster, game_version, loader, package_version)
 

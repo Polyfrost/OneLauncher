@@ -26,17 +26,19 @@ function Sidebar(props: SidebarProps) {
 		navigate(url);
 	}
 
-	function isActive(link: string) {
-		return location.pathname === `${props.base}${link}` || `${location.pathname}/` === `${props.base}${link}`;
+	function isActive(link: string, params: URLSearchParams | undefined) {
+		const pathnameMatch = location.pathname === `${props.base}${link}` || `${location.pathname}/` === `${props.base}${link}`;
+		const paramsMatch = params ? location.search.endsWith(params.toString()) : true;
+		return pathnameMatch && paramsMatch;
 	}
 
 	return (
-		<div class="flex flex-col w-52">
+		<div class="w-56 flex flex-col pr-2">
 			<For each={Object.keys(props.links)}>
 				{section => (
 					<div class="flex flex-col gap-y-2">
 						<div>
-							<h3 class="text-fg-secondary text-xs font-medium m-1.5 mt-5">{section.toUpperCase()}</h3>
+							<h3 class="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</h3>
 							<div class="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
 								<For each={props.links[section]}>
 									{(link) => {
@@ -47,7 +49,7 @@ function Sidebar(props: SidebarProps) {
 											<a
 												onClick={() => goto(link[2], link[3])}
 												class={
-                                                    `px-3 py-1 rounded-md text-md hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2]) ? 'bg-gray-05' : ''}`
+													`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-gray-05' : 'border-transparent'}`
 												}
 											>
 												<span class="flex flex-row items-center gap-x-3 *:w-5">

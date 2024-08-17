@@ -65,9 +65,9 @@ function BrowserMain() {
 	});
 
 	return (
-		<div class="flex flex-col flex-1 h-full gap-2 relative">
-			<div class="flex flex-row justify-between sticky top-0 z-10 bg-primary">
-				<div class="flex flex-row gap-2 h-8">
+		<div class="relative h-full flex flex-1 flex-col gap-2">
+			<div class="sticky top-0 z-10 flex flex-row justify-between bg-page">
+				<div class="h-8 flex flex-row gap-2">
 
 					<TextField
 						iconLeft={<SearchMdIcon />}
@@ -86,7 +86,7 @@ function BrowserMain() {
 					</Dropdown.Minimal>
 
 				</div>
-				<div class="flex flex-row gap-2 justify-end">
+				<div class="flex flex-row justify-end gap-2">
 					<Button
 						iconLeft={<Download01Icon />}
 						children="From URL"
@@ -119,13 +119,13 @@ interface ModsRowProps {
 
 function ModsRow(props: ModsRowProps) {
 	return (
-		<div class="flex flex-col flex-1 gap-3">
-			<div class="flex flex-row flex-1 justify-between">
+		<div class="flex flex-1 flex-col gap-3">
+			<div class="flex flex-1 flex-row justify-between">
 				<h4>{props.header}</h4>
-				<A class="text-fg-secondary hover:text-fg-secondary-hover active:text-fg-secondary-pressed" href={`category?category=${props.category}`}>See all</A>
+				<A class="text-fg-secondary active:text-fg-secondary-pressed hover:text-fg-secondary-hover" href={`category?category=${props.category}`}>See all</A>
 			</div>
 
-			<div class="flex flex-row gap-2 max-w-full flex-wrap">
+			<div class="max-w-full flex flex-row flex-wrap gap-2">
 				<For each={props.packages}>
 					{mod => <ModCard {...mod} />}
 				</For>

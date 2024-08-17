@@ -5,8 +5,6 @@
 use interpulse::api::minecraft::{Os, OsRule};
 use regex::Regex;
 
-// todo: add this to interpulse (maybe, generally we keep it unimplemented but these are pretty basic functions).
-
 /// An extension of [`Os`] for utilities on converting the current system's operating system
 /// into an [`Os`] structure for simple management.
 pub trait OsExt {

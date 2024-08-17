@@ -50,7 +50,7 @@ function Dropdown(props: DropdownProps) {
 						iconRight={<ChevronDownIcon />}
 					>
 						<div
-							class="flex-1 flex flex-row items-center text-nowrap gap-1 h-full overflow-hidden"
+							class="h-full flex flex-1 flex-row items-center gap-1 overflow-hidden text-nowrap"
 						>
 							<span>{split.text}</span>
 							{items()[selected()]}
@@ -79,7 +79,7 @@ function Dropdown(props: DropdownProps) {
 						<Index each={items()}>
 							{(item, index) => (
 								<div onClick={() => select(index)}>
-									<div class="hover:bg-gray-05 p-2 rounded-lg flex flex-row gap-2 justify-between items-center">
+									<div class="flex flex-row items-center justify-between gap-2 rounded-lg p-2 hover:bg-gray-05">
 										{item()}
 										<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
 									</div>

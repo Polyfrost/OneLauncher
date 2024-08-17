@@ -1,8 +1,10 @@
 //! Handles child processes in a unified API
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use std::collections::HashMap;
+use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
@@ -119,6 +121,9 @@ pub struct ProcessorCache {
 	pub cluster_path: ClusterPath,
 	/// A post hook to be run once a process has completed.
 	pub post: Option<String>,
+	/// The [`Uuid`] of the Minecraft account it was started by.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub user: Option<Uuid>,
 }
 
 impl ChildType {
@@ -136,6 +141,7 @@ impl ChildType {
 		uuid: Uuid,
 		cluster_path: ClusterPath,
 		post: Option<String>,
+		user: Option<Uuid>,
 	) -> crate::Result<()> {
 		let pid = match self {
 			ChildType::ChildProcess(child) => child.id().unwrap_or(0),
@@ -164,6 +170,7 @@ impl ChildType {
 			exe,
 			cluster_path,
 			post,
+			user
 		};
 
 		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
@@ -264,6 +271,10 @@ pub struct ProcessorChild {
 	pub current_child: Arc<RwLock<ChildType>>,
 	/// When this process was last updated in [`Utc`].
 	pub last_updated: DateTime<Utc>,
+	/// When this process was last updated in [`Utc`].
+	pub started_at: DateTime<Utc>,
+	/// What [`Uuid`] this process is running under.
+	pub user: Option<Uuid>,
 }
 
 impl Processor {
@@ -422,14 +433,47 @@ impl Processor {
 		mut command: Command,
 		post: Option<String>,
 		censors: HashMap<String, String>,
+		user: Option<Uuid>,
 	) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
-		let proc = command.spawn().map_err(IOError::from)?;
-		let process = ChildType::ChildProcess(proc);
-		let pid = process
+		command
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.stdin(Stdio::null());
+
+		let mut proc = command.spawn().map_err(IOError::from)?;
+
+		let pid = proc
 			.id()
 			.ok_or_else(|| anyhow::anyhow!("process failed, couldn't get pid"))?;
+
+		let stdout = proc.stdout.take().unwrap();
+		let stderr = proc.stderr.take().unwrap();
+
+		tokio::spawn(async move {
+			let mut stdout = BufReader::new(stdout).lines();
+			let mut stderr = BufReader::new(stderr).lines();
+
+			while let Ok(line) = tokio::select! {
+				line = stdout.next_line() => line,
+				line = stderr.next_line() => line,
+			} {
+				if let Some(line) = line {
+					let mut censored = line.clone();
+					for (key, value) in censors.iter() {
+						censored = censored.replace(key, value);
+					}
+
+					if let Err(err) = send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await {
+						tracing::warn!("failed to send process log: {}", err);
+					};
+				}
+			}
+		});
+
+		let process = ChildType::ChildProcess(proc);
+
 		process
-			.cache(uuid, cluster_path.clone(), post.clone())
+			.cache(uuid, cluster_path.clone(), post.clone(), user)
 			.await?;
 
 		let current_child = Arc::new(RwLock::new(process));
@@ -449,6 +493,8 @@ impl Processor {
 			current_child,
 			manager,
 			last_updated,
+			started_at: Utc::now(),
+			user,
 		};
 		let child = Arc::new(RwLock::new(child));
 		self.0.insert(uuid, child.clone());
@@ -511,7 +557,7 @@ impl Processor {
 			.id()
 			.ok_or_else(|| anyhow::anyhow!("process failed, couldnt get pid"))?;
 		process
-			.cache(cache.uuid, cache.cluster_path.clone(), cache.post.clone())
+			.cache(cache.uuid, cache.cluster_path.clone(), cache.post.clone(), cache.user)
 			.await?;
 		let current_child = Arc::new(RwLock::new(process));
 		let manager = Some(tokio::spawn(Self::manager(
@@ -534,9 +580,11 @@ impl Processor {
 		let child = ProcessorChild {
 			uuid: cache.uuid,
 			cluster_path: cache.cluster_path,
+			started_at: Utc.timestamp_opt(cache.start_time as i64, 0).single().ok_or(anyhow::anyhow!("couldn't convert processor cache timestamp to Utc"))?, // TODO: Look into this
 			current_child,
 			manager,
 			last_updated,
+			user: cache.user,
 		};
 
 		let child = Arc::new(RwLock::new(child));

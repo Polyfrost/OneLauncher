@@ -32,7 +32,8 @@ async fn get_update(app: tauri::AppHandle) -> Result<Option<TauriPluginUpdate>, 
 		.map_err(|e| e.to_string())
 }
 
-#[derive(Clone, serde::Serialize, specta::Type)]
+// TODO: this should be a specta event
+#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum UpdateEvent {
 	Loading,

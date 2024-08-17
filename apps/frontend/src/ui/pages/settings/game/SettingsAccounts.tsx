@@ -29,8 +29,8 @@ function SettingsAccounts() {
 			<ScrollableContainer>
 				<Switch>
 					<Match when={controller.accounts()?.length === 0}>
-						<div class="flex flex-col h-full gap-y-4 max-h-64 justify-center items-center">
-							<span class="text-lg font-bold uppercase text-fg-secondary">No accounts added.</span>
+						<div class="h-full max-h-64 flex flex-col items-center justify-center gap-y-4">
+							<span class="text-lg text-fg-secondary font-bold uppercase">No accounts added.</span>
 							<span class="text-xl font-bold">Add one with the Add Account button.</span>
 						</div>
 					</Match>
@@ -50,7 +50,7 @@ function SettingsAccounts() {
 				</Switch>
 			</ScrollableContainer>
 
-			<div class="flex flex-row justify-end items-end mt-2">
+			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
 					iconLeft={<UserPlus02Icon />}
@@ -79,9 +79,9 @@ function AccountRow(props: AccountRowProps) {
 			onClick={() => props.onClick(props.uuid)}
 			class={`flex flex-row bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-xl gap-3.5 p-4 items-center box-border border ${defaultProps.current ? 'border-brand' : 'border-transparent'}`}
 		>
-			<div class="flex justify-center items-center h-12 w-12">
+			<div class="h-12 w-12 flex items-center justify-center">
 				<PlayerHead
-					class="w-12 h-12 rounded-md"
+					class="h-12 w-12 rounded-md"
 					uuid={props.uuid}
 					onError={() => setErrored(true)}
 				/>
@@ -94,7 +94,7 @@ function AccountRow(props: AccountRowProps) {
 						<Tooltip
 							text="Could not fetch this account's game profile"
 						>
-							<InfoCircleIcon class="w-4 h-4" />
+							<InfoCircleIcon class="h-4 w-4" />
 						</Tooltip>
 					</Show>
 				</div>

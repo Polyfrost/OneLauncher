@@ -24,6 +24,10 @@ export default defineConfig({
 			sans: 'Poppins',
 		},
 
+		borderRadius: {
+			md: '0.438rem', // 7px
+		},
+
 		fontSize: {
 			// Based off 16px
 			'xs': '0.688rem',
@@ -107,7 +111,12 @@ export default defineConfig({
 				trace: '#FDFDFD',
 			},
 
-			primary: '#11171C',
+			page: {
+				DEFAULT: '#11171c',
+				elevated: '#151c22',
+				pressed: '#0e1317',
+			},
+
 			secondary: '#192026',
 		},
 		extend: {
@@ -121,10 +130,6 @@ export default defineConfig({
 
 			backgroundColor: {
 				transparent: 'transparent',
-			},
-
-			borderRadius: {
-				mdlg: '0.438rem',
 			},
 
 			// animation: {

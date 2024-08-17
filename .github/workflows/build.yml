@@ -1,6 +1,12 @@
 name: Build
 
-on: [pull_request, merge_group]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize]
+  merge_group:
+  workflow_dispatch:
 
 env:
   ONELAUNCHER_CUSTOM_APT_FLAGS: --no-install-recommends
@@ -40,7 +46,7 @@ jobs:
       #   run: pnpm test:es
 
   rust:
-    name: Rust Checks
+    name: Rustfmt
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
@@ -76,14 +82,16 @@ jobs:
             changes:
               - ${{ runner.os == 'Windows' && 'packages/scripts/setup.ps1' || 'packages/scripts/setup.sh' }}
               - 'packages/scripts/prepare.ts'
-              - 'apps/cli/*/**'
-              - 'apps/desktop/*/**'
-              - 'apps/testing/*/**'
+              - 'apps/cli/**'
+              - 'apps/desktop/**'
+              - 'apps/testing/**'
               - 'packages/core/**'
               - 'packages/macros/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/build.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
 
       - name: Setup System
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
@@ -138,29 +146,31 @@ jobs:
       - name: Prepare Target
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         continue-on-error: true
-        id: filter
+        id: preparation
         with:
           filters: |
             changes:
               - ${{ runner.os == 'Windows' && 'packages/scripts/setup.ps1' || 'packages/scripts/setup.sh' }}
               - 'packages/scripts/prepare.ts'
-              - 'apps/cli/*/**'
-              - 'apps/desktop/*/**'
-              - 'apps/testing/*/**'
+              - 'apps/cli/**'
+              - 'apps/desktop/**'
+              - 'apps/testing/**'
               - 'packages/core/**'
               - 'packages/macros/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '.github/workflows/build.yml'
+              - '.github/actions/setup-rust/**'
+              - '.github/actions/setup-system/**'
 
       - name: Setup System
-        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        if: steps.preparation.outcome != 'success' || steps.preparation.outputs.changes == 'true'
         uses: ./.github/actions/setup-system
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Clippy
-        if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
+        if: steps.preparation.outcome != 'success' || steps.preparation.outputs.changes == 'true'
         uses: ./.github/actions/clippy
         with:
           reporter: github-pr-review

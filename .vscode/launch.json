@@ -9,18 +9,49 @@
 			"request": "launch",
 			"name": "Tauri Development",
 			"cargo": {
-				"args": ["build", "--package onelauncher_gui"]
+				"args": [
+					"build",
+					"--profile=dev-debug",
+					"--manifest-path=./apps/desktop/Cargo.toml",
+					"--no-default-features"
+				],
+				"problemMatcher": "$rustc"
 			},
-			"preLaunchTask": "desktop:frontend:dev"
+			"env": {
+				"RUST_BACKTRACE": "short"
+				// "RUST_LOG": "onelauncher=trace"
+			},
+			"sourceLanguages": ["rust"],
+			"preLaunchTask": "frontend:dev"
 		},
 		{
 			"type": "lldb",
 			"request": "launch",
 			"name": "Tauri Production",
 			"cargo": {
-				"args": ["build", "--package onelauncher_gui", "--release"]
+				"args": [
+					"build",
+					"--release",
+					"--manifest-path=./apps/desktop/Cargo.toml"
+				],
+				"problemMatcher": "$rustc"
 			},
-			"preLaunchTask": "desktop:frontend:build"
+			"sourceLanguages": ["rust"],
+			"preLaunchTask": "frontend:build"
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Debug Core",
+			"cargo": {
+				"args": ["test", "--no-run", "--lib", "--package=onelauncher"],
+				"filter": {
+					"name": "onelauncher",
+					"kind": "lib"
+				}
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
 		}
 	]
 }

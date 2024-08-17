@@ -1,4 +1,4 @@
-export default {
+const config = {
 	types: {
 		chore: { title: '🔨 Chores' },
 		feature: { title: '✨ Features' },
@@ -13,3 +13,5 @@ export default {
 		wip: { title: '🚧 Experiments' },
 	},
 };
+
+export default config;

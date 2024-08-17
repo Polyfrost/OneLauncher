@@ -1,33 +1,104 @@
+import { useBeforeLeave } from '@solidjs/router';
+import { type Accessor, Show } from 'solid-js';
+import { GameSettings, JvmSettings, LauncherSettings, ProcessSettings, createSetting } from '../settings/game/SettingsMinecraft';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
+import type { Cluster } from '~bindings';
 import useSettingsContext from '~ui/hooks/useSettings';
-import SettingsMinecraft from '~ui/pages/settings/game/SettingsMinecraft';
+import { tryResult } from '~ui/hooks/useCommand';
+import { bridge } from '~imports';
 
 function ClusterSettings() {
 	const [cluster] = useClusterContext();
-	const settings = useSettingsContext();
-
-	// TODO: Save cluster settings
 
 	return (
 		<Sidebar.Page>
-			<h1>Overview</h1>
+			<h1>Game Settings</h1>
 			<ScrollableContainer>
-				<SettingsMinecraft.Settings
-					fullscreen={{
-						get: cluster()?.force_fullscreen ?? settings.force_fullscreen ?? false,
-						set: value => cluster() && (cluster()!.force_fullscreen = value),
-						isGlobal: cluster()?.force_fullscreen === null,
-					}}
-					resolution={{
-						get: cluster()?.resolution ?? settings.resolution,
-						set: value => cluster() && (cluster()!.resolution = value),
-						isGlobal: cluster()?.resolution === undefined || cluster()?.resolution === null,
-					}}
-				/>
+				<Show when={cluster() !== undefined}>
+					{PageSettings(() => cluster()!)}
+				</Show>
 			</ScrollableContainer>
 		</Sidebar.Page>
+	);
+}
+
+function PageSettings(cluster: Accessor<Cluster>) {
+	const { settings } = useSettingsContext();
+
+	// Game
+	const fullscreen = createSetting(cluster().force_fullscreen, settings().force_fullscreen ?? false);
+	const resolution = createSetting(cluster().resolution, settings().resolution);
+	const memory = createSetting(cluster().memory, settings().memory);
+
+	// Launcher
+
+	// Process
+	const preCommand = createSetting(cluster().init_hooks?.pre, settings().init_hooks.pre ?? '');
+	const wrapperCommand = createSetting(cluster().init_hooks?.wrapper, settings().init_hooks.wrapper ?? '');
+	const postCommand = createSetting(cluster().init_hooks?.post, settings().init_hooks.post ?? '');
+
+	// JVM
+	const javaArgs = createSetting(cluster().java?.custom_arguments, settings().custom_java_args);
+	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
+
+	useBeforeLeave(() => {
+		tryResult(bridge.commands.editGameSettings, cluster().uuid, {
+			...cluster(),
+
+			// Game
+			force_fullscreen: fullscreen.getRaw(),
+			resolution: resolution.getRaw(),
+			memory: memory.getRaw(),
+
+			// Process
+			init_hooks: {
+				pre: preCommand.getRaw(),
+				wrapper: wrapperCommand.getRaw(),
+				post: postCommand.getRaw(),
+			},
+
+			// JVM
+			java: {
+				custom_arguments: javaArgs.getRaw(),
+				custom_env_arguments: envVars.getRaw(),
+			},
+		});
+	});
+
+	return (
+		<>
+			<GameSettings
+				{...{
+					fullscreen,
+					memory,
+					resolution,
+				}}
+			/>
+
+			<LauncherSettings
+				{...{
+					hideOnLaunch: undefined,
+					allowParallelClusters: undefined,
+				}}
+			/>
+
+			<ProcessSettings
+				{...{
+					preCommand,
+					wrapperCommand,
+					postCommand,
+				}}
+			/>
+
+			<JvmSettings
+				{...{
+					javaArgs,
+					envVars,
+				}}
+			/>
+		</>
 	);
 }
 

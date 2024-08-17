@@ -24,6 +24,14 @@ img {
 }
 /* end lynith's native experience (tm) */
 
+/* lynith's epic webkit gtk <=2.44 fixer */
+body[data-platform="linux"] img {
+	/* Forces webkit gtk to use the GPU for image rendering, should speed up loading of some pages. Temporary until Tauri updates to at least 2.45
+	2.45 is the first version to use Skia for rendering, which prioritises the GPU over the CPU unlike Cairo */
+	@apply transform-gpu;
+}
+/* end lynith's epic webkit gtk <=2.44 fixer */
+
 h1 { @apply text-2xl font-semibold; line-height: 1.5 !important; }
 h2 { @apply text-xxl font-semibold; line-height: 1.25 !important; }
 h3 { @apply text-xl font-medium; }
@@ -48,26 +56,6 @@ h4 { @apply text-lg font-medium; }
     display: none;
 }
 
-.page-animation-enter-active, .page-animation-leave-active {
-    transition: opacity 130ms, transform 155ms;
-    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.page-animation-enter {
-    opacity: 0.1;
-    transform: translateX(-75px);
-}
-
-.page-animation-enter-to, .page-animation-leave {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-.page-animation-leave-to {
-    opacity: 0;
-    transform: translateX(75px);
-}
-
 .noti-animation-enter-active, .noti-animation-leave-active {
     transition: opacity 160ms, transform 175ms;
     transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
@@ -81,6 +69,21 @@ h4 { @apply text-lg font-medium; }
 .noti-animation-enter-to, .noti-animation-leave {
     opacity: 1;
     transform: translateX(0);
+}
+
+.modal-animation-enter-active, .modal-animation-leave-active {
+    transition: opacity 160ms, transform 175ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-animation-enter, .modal-animation-leave-to {
+    opacity: 0;
+    transform: scale(0);
+}
+
+.modal-animation-enter-to, .modal-animation-leave {
+    opacity: 1;
+    transform: scale(1);
 }
 
 body.reduce-motion *, body.reduce-motion *::after, body.reduce-motion *::before {

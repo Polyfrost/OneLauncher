@@ -13,15 +13,15 @@ function ModCard(props: ManagedPackage) {
 	}
 
 	return (
-		<div onClick={redirect} class="flex flex-col overflow-hidden rounded-lg bg-component-bg max-w-53 min-w-53 w-full max-h-68 min-h-68 h-full">
-			<div class="relative h-28 overflow-hidden flex justify-center items-center">
-				<img class="absolute filter-blur-xl z-0 max-w-none w-7/6" src={props.icon_url || ''} alt={`Icon for ${props.title}`} />
-				<img class="relative w-2/5 aspect-ratio-square z-1 rounded-md image-render-auto" src={props.icon_url || ''} alt={`Icon for ${props.title}`} />
+		<div onClick={redirect} class="h-full max-h-68 max-w-53 min-h-68 min-w-53 w-full flex flex-col overflow-hidden rounded-lg bg-component-bg">
+			<div class="relative h-28 flex items-center justify-center overflow-hidden">
+				<img class="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={props.icon_url || ''} alt={`Icon for ${props.title}`} />
+				<img class="relative z-1 aspect-ratio-square w-2/5 rounded-md image-render-auto" src={props.icon_url || ''} alt={`Icon for ${props.title}`} />
 			</div>
-			<div class="flex flex-col flex-1 p-3 gap-4">
+			<div class="flex flex-1 flex-col gap-4 p-3">
 				<div class="flex flex-col gap-2">
-					<h5 class="font-medium text-fg-primary">{props.title}</h5>
-					<p class="text-fg-secondary text-xs">
+					<h5 class="text-fg-primary font-medium">{props.title}</h5>
+					<p class="text-xs text-fg-secondary">
 						By
 						{' '}
 						<span class="text-fg-primary">Author TODO</span>
@@ -32,16 +32,16 @@ function ModCard(props: ManagedPackage) {
 					</p>
 				</div>
 
-				<p class="text-fg-secondary text-sm flex-1 max-h-13 overflow-hidden line-height-snug">{props.description}</p>
+				<p class="max-h-13 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{props.description}</p>
 
 				<div class="flex flex-row gap-4 text-xs">
 					<div class="flex flex-row items-center gap-2">
-						<Download01Icon class="w-4 h-4" />
+						<Download01Icon class="h-4 w-4" />
 						{abbreviateNumber(props.downloads)}
 					</div>
 
 					<div class="flex flex-row items-center gap-2">
-						<HeartIcon class="w-4 h-4" />
+						<HeartIcon class="h-4 w-4" />
 						{abbreviateNumber(props.followers)}
 					</div>
 				</div>

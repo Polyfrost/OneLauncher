@@ -9,14 +9,15 @@ runs:
   using: composite
   steps:
     - name: Install pnpm
-      uses: pnpm/action-setup@v4
+      uses: pnpm/action-setup@ac5bf11548bf5e19b8aadb8182072616590fa4a6
 
     - name: Install Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@26961cf329f22f6837d5f54c3efd76b480300ace
       with:
         token: ${{ inputs.token }}
         check-latest: true
         node-version-file: .nvmrc
+        cache: pnpm
 
     - name: Install dependencies
       shell: ${{ runner.os == 'Windows' && 'powershell' || 'bash' }}

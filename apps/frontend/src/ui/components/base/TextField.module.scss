@@ -14,7 +14,11 @@
             @apply bg-brand/30;
         }
 
-        @apply bg-transparent outline-none appearance-none p-0 m-0 box-border w-full;
+        @apply bg-transparent outline-none appearance-none p-0 m-0 box-border w-full font-medium;
+
+		&::placeholder {
+			@apply text-fg-secondary/40 font-normal;
+		}
     }
 
     & span {

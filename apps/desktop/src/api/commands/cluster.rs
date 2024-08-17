@@ -5,6 +5,7 @@ use std::str::FromStr;
 use onelauncher::cluster::content::logger;
 use onelauncher::cluster::{self};
 use onelauncher::data::{Loader, PackageData};
+use onelauncher::processor::DetailedProcess;
 use onelauncher::store::{Cluster, ClusterPath};
 use onelauncher::State;
 use serde::{Deserialize, Serialize};
@@ -68,9 +69,36 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	}
 }
 
+/// Updates the cluster with the given UUID. The cluster only updates game setting fields
 #[specta::specta]
 #[tauri::command]
-pub async fn edit_cluster(
+pub async fn edit_game_settings(uuid: Uuid, new_cluster: Cluster) -> Result<(), String> {
+	let cluster_path = ClusterPath::find_by_uuid(uuid).await?;
+
+	cluster::edit(&cluster_path, |old| {
+		// Game
+		old.force_fullscreen = new_cluster.force_fullscreen;
+		old.resolution = new_cluster.resolution;
+		old.memory = new_cluster.memory;
+
+		// Process
+		old.init_hooks = new_cluster.init_hooks.clone();
+
+		// Java
+		old.java = new_cluster.java.clone();
+
+		async move { Ok(()) }
+	})
+	.await?;
+
+	State::sync().await?;
+
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn edit_cluster_meta(
 	uuid: Uuid,
 	name: Option<String>,
 	icon_path: Option<String>,
@@ -105,21 +133,12 @@ pub async fn remove_cluster(uuid: Uuid) -> Result<(), String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn run_cluster(uuid: Uuid) -> Result<(Uuid, u32), String> {
+pub async fn run_cluster(uuid: Uuid) -> Result<DetailedProcess, String> {
 	let path = ClusterPath::find_by_uuid(uuid).await?;
 	let c_lock = cluster::run_default(&path).await?;
+	let child = &*c_lock.read().await;
 
-	let p_uuid = c_lock.read().await.uuid;
-	let p_pid = c_lock
-		.read()
-		.await
-		.current_child
-		.read()
-		.await
-		.id()
-		.unwrap_or(0);
-
-	Ok((p_uuid, p_pid))
+	Ok(DetailedProcess::from_processor_child(child).await)
 }
 
 #[specta::specta]
@@ -158,4 +177,29 @@ pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> 
 
 	let id = logger::upload_log(&cluster.cluster_path(), log).await?;
 	Ok(id)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
+	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+		.await?
+		.ok_or("cluster not found")?;
+
+	let screenshots =
+		cluster::content::screenshots::get_screenshots(&cluster.cluster_path()).await?;
+
+	Ok(screenshots)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
+	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+		.await?
+		.ok_or("cluster not found")?;
+
+	let screenshots = cluster::content::worlds::get_worlds(&cluster.cluster_path()).await?;
+
+	Ok(screenshots)
 }

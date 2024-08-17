@@ -1,5 +1,5 @@
 import type { JSX } from 'solid-js';
-import { createSignal, createUniqueId, splitProps } from 'solid-js';
+import { createSignal, createUniqueId, onMount, splitProps } from 'solid-js';
 import styles from './TextField.module.scss';
 
 type TextFieldProps = {
@@ -16,11 +16,13 @@ function TextField(props: TextFieldProps) {
 	const [isValid, setIsValid] = createSignal(true);
 	const id = createUniqueId();
 
-	function validate(e: Event & { currentTarget: HTMLInputElement }) {
+	let ref!: HTMLInputElement;
+
+	function validate() {
 		if (!split.inputFilter)
 			return;
 
-		const value = e.currentTarget.value;
+		const value = ref.value;
 		const valid = split.inputFilter(value);
 		setIsValid(valid);
 
@@ -28,10 +30,14 @@ function TextField(props: TextFieldProps) {
 			split.onValidInput(value);
 	}
 
-	function onSubmit(e: Event & { currentTarget: HTMLInputElement }) {
+	function onSubmit() {
 		if (isValid() && split.onValidSubmit)
-			split.onValidSubmit(e.currentTarget.value);
+			split.onValidSubmit(ref.value);
 	}
+
+	onMount(() => {
+		validate();
+	});
 
 	return (
 		<label for={id} class={`${styles.textfield} ${isValid() ? '' : styles.invalid} ${split.labelClass || ''}`}>
@@ -39,6 +45,7 @@ function TextField(props: TextFieldProps) {
 			<input
 				id={id}
 				type="text"
+				ref={ref}
 				onInput={validate}
 				onChange={onSubmit}
 				{...rest}
@@ -48,11 +55,35 @@ function TextField(props: TextFieldProps) {
 	);
 }
 
-TextField.Number = (props: TextFieldProps) => (
-	<TextField
-		inputFilter={value => /^\d*$/.test(value)}
-		{...props}
-	/>
-);
+type NumberTextFieldProps = TextFieldProps & {
+	min?: number;
+	max?: number;
+};
+
+TextField.Number = (props: NumberTextFieldProps) => {
+	const [split, rest] = splitProps(props, ['min', 'max', 'inputFilter']);
+
+	return (
+		<TextField
+			{...rest}
+			inputFilter={(value) => {
+				const check_pattern = /^\d*$/.test(value);
+				if (!check_pattern)
+					return false;
+
+				const check_min = split.min === undefined || Number(value) >= split.min;
+				const check_max = split.max === undefined || Number(value) <= split.max;
+
+				if (!check_min || !check_max)
+					return false;
+
+				if (split.inputFilter)
+					return split.inputFilter(value);
+
+				return true;
+			}}
+		/>
+	);
+};
 
 export default TextField;

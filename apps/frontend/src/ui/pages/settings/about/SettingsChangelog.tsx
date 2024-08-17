@@ -17,7 +17,7 @@ function SettingsChangelog() {
 // TODO: Implement markdown support?
 function UpdatePost() {
 	return (
-		<div class="bg-component-bg p-4 rounded-xl flex-1 flex flex-col gap-2 line-height-relaxed whitespace-pre-line">
+		<div class="flex flex-1 flex-col gap-2 whitespace-pre-line rounded-xl bg-component-bg p-4 line-height-relaxed">
 			<h2>New Feature</h2>
 			<p class="">
 				{`

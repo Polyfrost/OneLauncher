@@ -29,7 +29,8 @@ macro_rules! collect_commands {
 			remove_user,
 			// Cluster
 			create_cluster,
-			edit_cluster,
+			edit_game_settings,
+			edit_cluster_meta,
 			remove_cluster,
 			get_cluster,
 			get_clusters,
@@ -38,12 +39,18 @@ macro_rules! collect_commands {
 			get_cluster_logs,
 			get_cluster_log,
 			upload_log,
+			get_screenshots,
+			get_worlds,
 			// Processor
 			get_running_clusters,
 			get_processes_by_path,
 			kill_process,
 			is_cluster_running,
 			get_pid_by_uuid,
+			get_user_by_process,
+			get_process_started_at,
+			get_processes_detailed_by_path,
+			get_process_detailed_by_id,
 			// Settings
 			get_settings,
 			set_settings,

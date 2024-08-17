@@ -51,9 +51,8 @@ function ClusterCover(props: ClusterCoverProps) {
 				src={image()}
 				onError={(e) => {
 					e.currentTarget.src = split.override ? convertFileSrc(split.override) : defaultCover;
-					if (split.onError)
-					// @ts-expect-error -- jsx stuff
-						split.onError!(e);
+					// @ts-expect-error -- JSX doesn't seem to use the same type
+					split.onError?.(e);
 				}}
 			/>
 		</Wrapper>

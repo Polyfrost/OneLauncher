@@ -7,7 +7,7 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettingsContext from '~ui/hooks/useSettings';
 
 function SettingsDeveloper() {
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 
 	return (
 		<Sidebar.Page>
@@ -31,8 +31,8 @@ function SettingsDeveloper() {
 					icon={<GitMergeIcon />}
 				>
 					<Toggle
-						defaultChecked={settings.debug_mode ?? false}
-						onChecked={value => settings.debug_mode = value}
+						checked={() => settings().debug_mode ?? false}
+						onChecked={value => settings().debug_mode = value}
 					/>
 				</SettingsRow>
 

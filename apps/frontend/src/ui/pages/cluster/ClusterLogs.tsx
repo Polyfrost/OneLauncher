@@ -13,7 +13,7 @@ import FormattedLog from '~ui/components/content/FormattedLog';
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
 	const [logs] = useCommand(bridge.commands.getClusterLogs, cluster()!.uuid);
-	const settings = useSettingsContext();
+	const { settings } = useSettingsContext();
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
 	const [logContent, setLogContent] = createSignal<string | null>(null);
@@ -31,7 +31,7 @@ function ClusterLogs() {
 	}
 
 	async function openFolder() {
-		const root = settings.config_dir;
+		const root = settings().config_dir;
 		const path = cluster()!.path;
 		if (root === null || root === undefined || path === null || path === undefined)
 			return;
@@ -64,9 +64,9 @@ function ClusterLogs() {
 	});
 
 	return (
-		<div class="flex flex-col flex-1">
-			<div class="flex flex-col flex-1 gap-y-2">
-				<div class="flex flex-row justify-between items-center gap-x-1 h-10">
+		<div class="flex flex-1 flex-col">
+			<div class="flex flex-1 flex-col gap-y-2">
+				<div class="h-10 flex flex-row items-center justify-between gap-x-1">
 					<h1>Logs</h1>
 					<div class="flex flex-row gap-x-2">
 						<Button
@@ -101,7 +101,6 @@ function ClusterLogs() {
 							onClick={openFolder}
 							children="Open Folder"
 							iconLeft={<LinkExternal01Icon />}
-							disabled={missingLogs()}
 						/>
 					</div>
 				</div>

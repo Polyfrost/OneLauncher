@@ -101,14 +101,6 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [ "chrono", "env-filter" ] }
 tracing-error = { version = "0.2" }
 tracing-appender = { version = "0.2" }
-sentry = { version = "0.34", default-features = false, features = [
-	"rustls",
-	"reqwest",
-	"backtrace",
-	"panic",
-	"anyhow",
-	"debug-images"
-] }
 iota_stronghold = { version = "2.1" }
 zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 
@@ -132,12 +124,15 @@ reqwest = { version = "0.12", default-features = false, features = [
 	"stream",
 	"multipart",
 	"blocking",
-	"rustls-tls-native-roots",
+	"rustls-tls",
+	"charset",
+	"http2",
+	"macos-system-configuration",
 	"deflate",
 	"gzip",
 	"brotli"
 ] }
-async-tungstenite = { version = "0.26", features = [ "tokio-runtime", "tokio-rustls-native-certs" ] }
+async-tungstenite = { version = "0.27", features = [ "tokio-runtime", "tokio-rustls-webpki-roots" ] }
 webbrowser = { version = "1.0" }
 
 # # ============= SYSTEM ============= # #

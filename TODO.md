@@ -8,3 +8,10 @@
 - legacy fabric, babric, nilloader, java agent support
  - nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
 - shared cluster resources and options (<https://github.com/enjarai/shared-resources>)
+- ftb, technic, and tlauncher importing
+- better debug logging and mc logging, for the launcher and spawn
+- implement forgewrapper instead of processing ourselves
+- allow per-cluster sandboxing
+- implement gamemode
+- better toml support
+- make all tauri events into tauri_specta events

@@ -6,7 +6,7 @@ The source code of this repository is licensed under the GNU General Public Lice
 
 ```txt
 OneLauncher - Open source Rust-based Minecraft Launcher
-Copyright (C) 2023~2024  Polyfrost and Contributors
+Copyright (C) 2023~CURRENT  Polyfrost and Contributors
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3 of the License.
 
@@ -88,7 +88,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
-## Gamemode
+## [Gamemode]
 
 ```txt
 Copyright (c) 2017-2022, Feral Interactive
@@ -118,3 +118,34 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## [Rust Gamemode Internal Linking]
+
+```txt
+MIT License
+
+Copyright (c) 2024 Sophie Leochina
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+[Prism Launcher]: https://github.com/PrismLauncher/PrismLauncher
+[Modrinth App]: https://github.com/modrinth/code
+[Gamemode]: https://github.com/FeralInteractive/gamemode
+[Rust Gamemode Internal Linking]: https://github.com/SophieSilver/linking-gamemode

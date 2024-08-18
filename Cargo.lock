@@ -3568,6 +3568,7 @@ dependencies = [
  "lazy_static",
  "notify",
  "notify-debouncer-mini",
+ "onelauncher_gamemode",
  "onelauncher_macros",
  "p256",
  "paste",
@@ -3597,6 +3598,14 @@ dependencies = [
  "winreg",
  "zeroize",
  "zip",
+]
+
+[[package]]
+name = "onelauncher_gamemode"
+version = "1.0.0-alpha.1"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]

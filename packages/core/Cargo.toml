@@ -76,3 +76,6 @@ flate2 = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }
+
+[target.'cfg(linux)'.dependencies]
+onelauncher_gamemode = { workspace = true }

@@ -4,7 +4,8 @@ members = [
 	"apps/testing", # onelauncher_test -- test the core crate in a cli setting
 	"apps/desktop", # onelauncher_gui -- the rust code for our tauri app
 	"packages/core", # onelauncher -- the rust core for onelauncher
-	"packages/macros" # onelauncher_macros -- utility procedural macros for onelauncher
+	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
+	"packages/gamemode" # onelauncher_gamemode -- rust wrapper for feral gamemode
 ]
 
 [workspace.package] # sets default [package] settings for workspace members
@@ -25,6 +26,7 @@ onelauncher = { path = "./packages/core" }
 onelauncher_macros = { path = "./packages/macros" }
 onelauncher_gui = { path = "./apps/desktop" }
 onelauncher_test = { path = "./apps/testing" }
+onelauncher_gamemode = { path = "./packages/gamemode" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel

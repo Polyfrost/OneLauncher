@@ -29,6 +29,7 @@
 		"dialog:allow-open",
 		"dialog:allow-save",
 		"dialog:allow-confirm",
-		"deep-link:default"
+		"deep-link:default",
+		"updater:default"
 	]
 }

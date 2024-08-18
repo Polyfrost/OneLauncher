@@ -449,6 +449,11 @@ impl Processor {
 		let stdout = proc.stdout.take().unwrap();
 		let stderr = proc.stderr.take().unwrap();
 
+		// #[cfg(target_os = "linux")]
+		// {
+		// 	onelauncher_gamemode::
+		// }
+
 		tokio::spawn(async move {
 			let mut stdout = BufReader::new(stdout).lines();
 			let mut stderr = BufReader::new(stderr).lines();

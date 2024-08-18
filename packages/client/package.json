@@ -16,7 +16,7 @@
 	"types": "./src/index.ts",
 	"scripts": {},
 	"dependencies": {
-		"@flowr/utils": "^3.12.0",
+		"@flowr/utils": "^3.12.1",
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.51.21",
 		"fast-equals": "^5.0.1",

@@ -1,47 +1,38 @@
 import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Switch, createSignal, onMount } from 'solid-js';
-import * as uuid from 'uuid';
+import { For, Match, Switch, createMemo, createSignal, onMount } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-
-const randomModNames = [
-	'Sodium',
-	'Nvidium',
-	'Iris Shaders',
-	'Create',
-	'Fabric API',
-	'Create: Estrogen',
-	'OneConfig',
-	'PolySprint',
-	'PolyEffects',
-];
-
-const _mods: readonly ModEntryProps[] = Array(randomModNames.length).fill(undefined).map((_, index) => ({
-	id: uuid.v4(),
-	name: randomModNames[index] || 'Unknown',
-	author: 'Author Name',
-	version: '1.0.0',
-	description: 'This is a mod description',
-	provider: 'curseforge',
-	thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
-}));
+import useClusterContext from '~ui/hooks/useCluster';
+import type { Package } from '~bindings';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
+	const [cluster] = useClusterContext();
+
 	// Initial mods for this cluster
-	const [mods] = createSignal<ModEntryProps[]>([..._mods]); // TODO: Replace with hook
+	const mods = createMemo(() => {
+		return Object.values(cluster()?.packages || {})
+			.filter(pkg => (pkg.meta.type === 'managed' || pkg.meta.type === 'mapped') && pkg.meta.package_type === 'mod');
+	});
 
 	// Mods to display, should be a clone of the mods array but sorted
-	const [displayedMods, setDisplayedMods] = createSignal<ModEntryProps[]>([]);
+	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
 
 	// true - `A to Z` & false - `Z to A`
 	const [sortingAtoZ, setSortingAtoZ] = createSignal<boolean>(true);
 
+	function getModName(mod: Package) {
+		if (mod.meta.type === 'unknown')
+			return mod.file_name;
+
+		return mod.meta.title || mod.file_name;
+	}
+
 	const uf = new UFuzzy();
-	const [modsSearchable] = createSignal(() => mods().map(mod => mod.name));
+	const [modsSearchable] = createSignal(() => mods().map(getModName) || []);
 
 	function search(value: string) {
 		if (value === '' || value === undefined) {
@@ -61,11 +52,11 @@ function ClusterMods() {
 		setDisplayedMods(sortListByName(filtered));
 	}
 
-	function sortListByName(list: ModEntryProps[]): ModEntryProps[] {
+	function sortListByName(list: Package[]): Package[] {
 		if (sortingAtoZ())
-			return list.sort((a, b) => a.name.localeCompare(b.name));
+			return list.sort((a, b) => getModName(a).localeCompare(getModName(b)));
 		else
-			return list.sort((a, b) => b.name.localeCompare(a.name));
+			return list.sort((a, b) => getModName(b).localeCompare(getModName(a)));
 	}
 
 	function toggleNameSort() {

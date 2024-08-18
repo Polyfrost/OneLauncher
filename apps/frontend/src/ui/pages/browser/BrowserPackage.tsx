@@ -20,6 +20,23 @@ function BrowserPackage() {
 
 	});
 
+	function testDownload() {
+		const packag = pkg();
+		if (!packag)
+			return;
+
+		bridge.commands.downloadPackage(
+			packag.id,
+			packag.provider,
+			'33f4cd3a-ff62-48bf-a777-fdbf35699cf5',
+			null,
+			null,
+			null,
+		).then(() => {
+			console.log('Downloaded');
+		});
+	}
+
 	return (
 		<>
 			<div class="flex flex-row gap-x-12">
@@ -30,6 +47,7 @@ function BrowserPackage() {
 						<Button
 							buttonStyle="primary"
 							iconLeft={<Download01Icon />}
+							onClick={testDownload}
 							children="Install to..."
 						/>
 					</div>

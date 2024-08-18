@@ -1,13 +1,11 @@
 import { Route, useNavigate } from '@solidjs/router';
-import { createContext, createMemo, createResource, createSignal, useContext, type Accessor, type Context, type ParentProps, type Setter } from 'solid-js';
+import { type Accessor, type Context, type ParentProps, type Setter, createContext, createSignal, useContext } from 'solid-js';
 import BrowserMain from './BrowserMain';
 import BrowserCategory from './BrowserCategory';
 import BrowserPackage from './BrowserPackage';
 import type { Cluster, ManagedPackage, Providers } from '~bindings';
-import { tryResult } from '~ui/hooks/useCommand';
-import { bridge } from '~imports';
 
-type BrowserControllerType = {
+interface BrowserControllerType {
 	cluster: Accessor<Cluster | undefined>;
 	setCluster: Setter<Cluster | undefined>;
 
@@ -15,8 +13,8 @@ type BrowserControllerType = {
 	displayPackage: (id: string, provider: Providers) => void;
 	displayCategory: (category: string) => void;
 
-	// fetchPackages: (provider: Providers) => ManagedPackage[];
-}
+	fetchPackages: (provider: Providers) => ManagedPackage[];
+};
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
 
@@ -33,7 +31,7 @@ function BrowserProvider(props: ParentProps) {
 		},
 
 		displayPackage(id: string, provider: Providers) {
-			navigate(BrowserPackage.buildUrl({ id, provider }))
+			navigate(BrowserPackage.buildUrl({ id, provider }));
 		},
 
 		displayCategory(category: string) {

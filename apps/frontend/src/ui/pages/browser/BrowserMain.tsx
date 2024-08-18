@@ -8,7 +8,7 @@ import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import ModCard from '~ui/components/content/ModCard';
 import { tryResult } from '~ui/hooks/useCommand';
-import { createSortable } from '~utils';
+import { PROVIDERS, createSortable } from '~utils';
 
 interface CardProps {
 	id: string;
@@ -24,36 +24,15 @@ interface BrowserFilters {
 
 function BrowserMain() {
 	const [_filters, _setFilters] = createSignal<BrowserFilters>({
-		provider: ["Modrinth"],
+		provider: PROVIDERS,
 	});
 
-	const [modRowData, setModRowData] = createSignal<ModsRowProps[]>([]);
+	const [mods, setMods] = createSignal<ManagedPackage[]>([]);
 
 	onMount(() => {
-		Promise.all([
-			tryResult(bridge.commands.getPackage, 'oneconfig'),
-			tryResult(bridge.commands.getPackage, 'chatting'),
-			tryResult(bridge.commands.getPackage, 'patcher'),
-			// tryResult(bridge.commands.randomMods),
-		]).then((pkgs) => {
-			const list: ModsRowProps[] = [
-				{
-					header: 'Polyfrost',
-					category: 'polyfrost',
-					packages: [
-						pkgs[0],
-						pkgs[1],
-						pkgs[2],
-					],
-				},
-				// {
-				// 	header: 'Random Mods',
-				// 	category: 'random',
-				// 	packages: pkgs[3],
-				// },
-			];
-
-			setModRowData(list);
+		tryResult(bridge.commands.getPackage, 'chatting').then((res) => {
+			console.log(res);
+			setMods([res]);
 		});
 	});
 
@@ -100,11 +79,12 @@ function BrowserMain() {
 			</div>
 
 			<div class="flex flex-col gap-4 py-2">
-				<For each={modRowData()}>
+				<ModsRow header="test" category="test" packages={mods()} />
+				{/* <For each={}>
 					{row => (
 						<ModsRow {...row} />
 					)}
-				</For>
+				</For> */}
 			</div>
 
 		</div>

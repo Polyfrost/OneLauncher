@@ -1,5 +1,5 @@
 import { DurationFormat } from '@formatjs/intl-durationformat';
-import type { Cluster, Loader, VersionType } from '~bindings';
+import type { Cluster, Loader, Providers, VersionType } from '~bindings';
 
 export * from './timer';
 export * from './sorting';
@@ -73,3 +73,4 @@ export function asEnvVariables(str: string): [string, string][] {
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
+export const PROVIDERS: Providers[] = ['Modrinth'] as const;

@@ -298,10 +298,10 @@ pub async fn remove_all_related_files(
 				cluster_path.to_string()
 			))
 		})?;
-		for (package_id, package) in &cluster.packages {
-			if let PackageMetadata::Managed { package, .. } = &package.meta {
-				if to_remove.contains(&package.id) {
-					let path = cluster.get_full_path().await?.join(package_id.0.clone());
+		for (package_path, package) in &cluster.packages {
+			if let PackageMetadata::Managed { package_id, .. } = &package.meta {
+				if to_remove.contains(package_id) {
+					let path = cluster.get_full_path().await?.join(package_path.0.clone());
 					if path.exists() {
 						io::remove_file(&path).await?;
 					}

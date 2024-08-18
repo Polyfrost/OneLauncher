@@ -5,6 +5,7 @@ use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use tokio_stream::StreamExt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncReadExt;
@@ -20,63 +21,62 @@ use crate::State;
 
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
 /// Paths must be the full paths and not relative paths.
-#[tracing::instrument(skip(paths, _cluster, _io_semaphore, _fetch_semaphore))]
+#[tracing::instrument(skip(paths, cluster, io_semaphore, fetch_semaphore))]
 #[onelauncher_macros::memory]
 pub async fn generate_context(
-	_cluster: Cluster,
+	cluster: Cluster,
 	paths: Vec<PathBuf>,
-	_cache_path: PathBuf,
-	_io_semaphore: &IoSemaphore,
-	_fetch_semaphore: &FetchSemaphore,
-	// credentials: &Credentials,
+	cache_path: PathBuf,
+	io_semaphore: &IoSemaphore,
+	fetch_semaphore: &FetchSemaphore,
 ) -> crate::Result<HashMap<PackagePath, Package>> {
-	let mut handles = vec![];
+	// let mut handles = vec![];
 
-	for path in paths {
-		if !path.exists() {
-			continue;
-		}
-		if let Some(ext) = path.extension() {
-			if ext == "txt" {
-				continue;
-			}
-		}
+	// for path in paths {
+	// 	if !path.exists() {
+	// 		continue;
+	// 	}
+	// 	if let Some(ext) = path.extension() {
+	// 		if ext == "txt" {
+	// 			continue;
+	// 		}
+	// 	}
 
-		let handle = tokio::spawn(async move {
-			let mut file = tokio::fs::File::open(path.clone())
-				.await
-				.map_err(|e| IOError::with_path(e, &path))?;
+	// 	let handle = tokio::spawn(async move {
+	// 		let mut file = tokio::fs::File::open(path.clone())
+	// 			.await
+	// 			.map_err(|e| IOError::with_path(e, &path))?;
 
-			let mut buffer = [0u8; 65536];
-			let mut hasher = sha2::Sha512::new();
+	// 		let mut buffer = [0u8; 65536];
+	// 		let mut hasher = sha2::Sha512::new();
 
-			loop {
-				let read = file.read(&mut buffer).await.map_err(IOError::from)?;
-				if read == 0 {
-					break;
-				}
-				hasher.update(&buffer[..read]);
-			}
+	// 		loop {
+	// 			let read = file.read(&mut buffer).await.map_err(IOError::from)?;
+	// 			if read == 0 {
+	// 				break;
+	// 			}
+	// 			hasher.update(&buffer[..read]);
+	// 		}
 
-			let hash = format!("{:x}", hasher.finalize());
-			Ok::<_, crate::Error>((hash, path))
-		});
+	// 		let hash = format!("{:x}", hasher.finalize());
+	// 		Ok::<_, crate::Error>((hash, path))
+	// 	});
 
-		handles.push(handle);
-	}
+	// 	handles.push(handle);
+	// }
 
-	let mut file_path_hashes = HashMap::new();
+	// let mut file_path_hashes = HashMap::new();
 
-	for handle in handles {
-		let (hash, path) = handle.await??;
-		file_path_hashes.insert(hash, path);
-	}
+	// for handle in handles {
+	// 	let (hash, path) = handle.await??;
+	// 	file_path_hashes.insert(hash, path);
+	// }
 
 	let result = HashMap::new();
-	// TODO(pauline): Finish this
-	// let mut stream = tokio_stream::iter(result_packages);
+	// let mut stream = tokio_stream::iter(file_path_hashes);
 	// while let Some((k, v)) = stream.next().await {
-	// 	let k = PackagePath::from_path(k).await?;
+	// 	let k = PackagePath::from_path(&v).await?;
+	// 	let pkg = k.
 	// 	result.insert(k, v);
 	// }
 
@@ -154,7 +154,7 @@ impl PackageType {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(feature = "tauri", derive(specta::Type))]
 pub struct Package {
-	pub sha512: String,
+	pub sha1: String,
 	pub meta: PackageMetadata,
 	pub file_name: String,
 	pub disabled: bool,
@@ -166,11 +166,12 @@ pub struct Package {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PackageMetadata {
 	Managed {
-		package: Box<ManagedPackage>,
-		version: Box<ManagedVersion>,
-		users: Box<ManagedUser>,
-		update: Option<Box<ManagedVersion>>,
-		incompatible: bool,
+		package_id: String,
+		provider: Providers,
+		package_type: PackageType,
+		title: String,
+		version_id: String,
+		version_formatted: String,
 	},
 	Mapped {
 		title: Option<String>,
@@ -178,9 +179,24 @@ pub enum PackageMetadata {
 		authors: Vec<String>,
 		version: Option<String>,
 		icon: Option<PathBuf>,
-		package_type: Option<String>,
+		package_type: Option<PackageType>,
 	},
 	Unknown,
+}
+
+impl PackageMetadata {
+
+	pub fn from_managed_package(package: ManagedPackage, version: ManagedVersion) -> Self {
+		Self::Managed {
+			package_id: package.id,
+			version_id: version.id,
+			version_formatted: version.version_id,
+			title: package.title,
+			provider: package.provider,
+			package_type: package.package_type
+		}
+	}
+
 }
 
 /// Universal metadata for any managed package from a Mod distribution platform.

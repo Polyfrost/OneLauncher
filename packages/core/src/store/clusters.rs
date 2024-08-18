@@ -315,10 +315,7 @@ pub enum Loader {
 
 impl Loader {
 	pub fn supports_mods(&self) -> bool {
-		match self {
-			Self::Vanilla => false,
-			_ => true,
-		}
+		!matches!(self, Self::Vanilla)
 	}
 }
 
@@ -768,10 +765,10 @@ impl Clusters {
 		Ok(cluster)
 	}
 
-	/// sync all available clusters
-	pub fn sync_clusters(cluster_path: ClusterPath) {
+	/// sync a cluster
+	pub fn sync_cluster(cluster_path: ClusterPath) {
 		tokio::task::spawn(async move {
-			let span = tracing::span!(tracing::Level::INFO, "sync_clusters");
+			let span = tracing::span!(tracing::Level::INFO, "sync_cluster");
 			let res = async {
 				let _span = span.enter();
 				let state = State::get().await?;
@@ -784,7 +781,7 @@ impl Clusters {
 							cluster.uuid,
 							&cluster_path,
 							&cluster.meta.name,
-							crate::proxy::ClusterPayloadType::Deleted,
+							ClusterPayloadType::Deleted,
 						)
 						.await?;
 						tracing::debug!("removed non-existant fs cluster!");

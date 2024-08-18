@@ -65,7 +65,7 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 								Cluster::sync_packages(cluster_path, false);
 								paths.push(formatted);
 							} else {
-								Clusters::sync_clusters(cluster_path);
+								Clusters::sync_cluster(cluster_path);
 							}
 						}
 					});

@@ -26,7 +26,7 @@ use super::io;
 /// common java paths from https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp under GPL 3.0
 ///
 /// java check functionality from https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs under MIT
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct JavaVersion {
 	pub version: String,

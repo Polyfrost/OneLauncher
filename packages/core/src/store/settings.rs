@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// A global settings state for the launcher.
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
 	/// A OneLauncher [`Theme`] managed by the core GUI.
@@ -133,7 +133,7 @@ impl Settings {
 }
 
 /// A OneLauncher theme managed by the GUI.
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -149,7 +149,7 @@ pub enum Theme {
 
 /// Global memory settings across all clusters.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Memory {
 	/// Maximum amount of Java memory available globally.
 	pub maximum: u32,
@@ -168,7 +168,7 @@ impl Default for Memory {
 
 /// Global Minecraft resolution.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Resolution(pub u16, pub u16);
 
 impl Default for Resolution {
@@ -180,7 +180,7 @@ impl Default for Resolution {
 /// Global initialization hooks for all Minecraft clusters.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[serde(default)]
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct InitHooks {
 	/// Pre-launch hook.
 	#[serde(skip_serializing_if = "Option::is_none")]

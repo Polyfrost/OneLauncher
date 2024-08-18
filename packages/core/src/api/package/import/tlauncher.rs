@@ -1,2 +1,2 @@
-//! Launcher Import: Technic Launcher
+//! Launcher Import: TLauncher
 //! Closed source (technically) ;3

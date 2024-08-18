@@ -2,10 +2,10 @@
 
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -170,7 +170,7 @@ impl ChildType {
 			exe,
 			cluster_path,
 			post,
-			user
+			user,
 		};
 
 		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
@@ -463,7 +463,9 @@ impl Processor {
 						censored = censored.replace(key, value);
 					}
 
-					if let Err(err) = send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await {
+					if let Err(err) =
+						send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await
+					{
 						tracing::warn!("failed to send process log: {}", err);
 					};
 				}
@@ -557,7 +559,12 @@ impl Processor {
 			.id()
 			.ok_or_else(|| anyhow::anyhow!("process failed, couldnt get pid"))?;
 		process
-			.cache(cache.uuid, cache.cluster_path.clone(), cache.post.clone(), cache.user)
+			.cache(
+				cache.uuid,
+				cache.cluster_path.clone(),
+				cache.post.clone(),
+				cache.user,
+			)
 			.await?;
 		let current_child = Arc::new(RwLock::new(process));
 		let manager = Some(tokio::spawn(Self::manager(
@@ -580,7 +587,12 @@ impl Processor {
 		let child = ProcessorChild {
 			uuid: cache.uuid,
 			cluster_path: cache.cluster_path,
-			started_at: Utc.timestamp_opt(cache.start_time as i64, 0).single().ok_or(anyhow::anyhow!("couldn't convert processor cache timestamp to Utc"))?, // TODO: Look into this
+			started_at: Utc
+				.timestamp_opt(cache.start_time as i64, 0)
+				.single()
+				.ok_or(anyhow::anyhow!(
+					"couldn't convert processor cache timestamp to Utc"
+				))?, // TODO: Look into this
 			current_child,
 			manager,
 			last_updated,

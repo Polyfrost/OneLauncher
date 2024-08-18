@@ -464,7 +464,7 @@ pub async fn launch_minecraft(
 			command,
 			post_hook,
 			censors,
-			Some(credentials.id)
+			Some(credentials.id),
 		)
 		.await
 }

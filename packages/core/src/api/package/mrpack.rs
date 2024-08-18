@@ -96,7 +96,7 @@ pub async fn install_zipped_mrpack_files(
 		let pack: PackFormat = serde_json::from_str(&manifest)?;
 
 		if &*pack.game != "minecraft" {
-			return Err(anyhow::anyhow!("pack doesn't support minecraft").into());
+			return Err(anyhow::anyhow!("pack doesn't support Minecraft").into());
 		}
 
 		set_cluster_information(
@@ -231,7 +231,7 @@ pub async fn install_zipped_mrpack_files(
 
 		Ok::<ClusterPath, crate::Error>(cluster_path.clone())
 	} else {
-		Err(anyhow::anyhow!("No pack manifest found in mrpack").into())
+		Err(anyhow::anyhow!("no pack manifest found in mrpack").into())
 	}
 }
 
@@ -259,7 +259,7 @@ pub async fn remove_all_related_files(
 		let pack: PackFormat = serde_json::from_str(&manifest)?;
 
 		if &*pack.game != "minecraft" {
-			return Err(anyhow::anyhow!("package doesn't support Minecraft").into());
+			return Err(anyhow::anyhow!("pack doesn't support Minecraft").into());
 		}
 
 		crate::api::cluster::edit(&cluster_path, |cl| {
@@ -293,10 +293,7 @@ pub async fn remove_all_related_files(
 			.map(|p| p.package_id)
 			.collect::<Vec<_>>();
 		let cluster = cluster::get(&cluster_path, None).await?.ok_or_else(|| {
-			crate::ErrorKind::AnyhowError(anyhow::anyhow!(
-				"{} is an unmanaged cluster!",
-				cluster_path.to_string()
-			))
+			anyhow::anyhow!("{} is an unmanaged cluster!", cluster_path.to_string())
 		})?;
 		for (package_path, package) in &cluster.packages {
 			if let PackageMetadata::Managed { package_id, .. } = &package.meta {
@@ -338,6 +335,6 @@ pub async fn remove_all_related_files(
 		}
 		Ok(())
 	} else {
-		Err(anyhow::anyhow!("No pack manifest found in mrpack").into())
+		Err(anyhow::anyhow!("no pack manifest found in mrpack").into())
 	}
 }

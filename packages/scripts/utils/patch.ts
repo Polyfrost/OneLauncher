@@ -41,12 +41,7 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	return keys.publicKey;
 }
 
-export async function patchTauri(
-	env: CheckedEnvironment,
-	targets: string[],
-	bundles: string[],
-	args: string[],
-): Promise<string[]> {
+export async function patchTauri(env: CheckedEnvironment, targets: string[], args: string[]): Promise<string[]> {
 	if (args.findIndex(a => ['-c', '--config'].includes(a)) !== -1)
 		throw new Error('custom tauri build configuration is not supported!');
 
@@ -75,31 +70,23 @@ export async function patchTauri(
 
 	const tauriRoot = join(env.__root, 'apps', 'desktop');
 	const tauriConfig = JSON.parse(await fs.readFile(join(tauriRoot, 'tauri.conf.json'), 'utf-8'));
-	if (bundles.length === 0) {
-		const defaultBundles = tauriConfig?.bundle?.targets;
-		if (Array.isArray(defaultBundles))
-			bundles.push(...defaultBundles);
-		if (bundles.length === 0)
-			bundles.push('all');
-	}
 
 	switch (args[0]) {
 		case 'dev':
 			tauriPatch.build.features.push('devtools');
 			break;
 		case 'build':
-			if (tauriConfig.plugins?.updater?.active) {
+			if (tauriConfig.bundle?.createUpdaterArtifacts !== false) {
 				const pubKey = await tauriUpdateKey(env);
 				if (pubKey != null)
 					tauriPatch.plugins.updater.pubkey = pubKey;
 			}
-			// tauriPatch.build.features.push('devtools');
 			break;
 	}
 
 	if (osType === 'Darwin') {
 		const macOSStore = {
-			defaultArm64: '11.0',
+			defaultArm64: '11.0', // arm64 support was added in macOS 11.0
 			minimumVersion: tauriConfig?.bundle?.macOS?.minimumSystemVersion,
 		};
 

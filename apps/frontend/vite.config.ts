@@ -44,6 +44,8 @@ export default defineConfig(async ({ mode }) => {
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			org: 'polyfrost',
 			project: 'onelauncher_frontend',
+			url: 'https://sentry.polyfrost.org',
+			telemetry: false,
 		}));
 
 	return config;

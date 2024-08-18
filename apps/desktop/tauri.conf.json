@@ -107,6 +107,7 @@
 		"license": "GPL-3.0-only",
 		"homepage": "https://polyfrost.org/",
 		"longDescription": "Next-generation open source Minecraft launcher",
+		"createUpdaterArtifacts": true,
 		"resources": [],
 		"externalBin": [],
 		"linux": {
@@ -120,6 +121,17 @@
 			"entitlements": "App.entitlements",
 			"exceptionDomain": null,
 			"frameworks": [],
+			"dmg": {
+				"background": "../../packages/distribution/macos/dmg-background.png",
+				"appPosition": {
+					"x": 190,
+					"y": 190
+				},
+				"applicationFolderPosition": {
+					"x": 470,
+					"y": 190
+				}
+			},
 			"providerShortName": null,
 			"signingIdentity": null,
 			"minimumSystemVersion": "10.15"
@@ -136,8 +148,6 @@
 	},
 	"plugins": {
 		"updater": {
-			"active": true,
-			"dialog": false,
 			"pubkey": "",
 			"endpoints": ["https://polyfrost.org/releases/tauri/{{version}}/{{target}}/{{arch}}"]
 		},

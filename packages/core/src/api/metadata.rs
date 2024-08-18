@@ -4,6 +4,8 @@ use crate::State;
 pub use interpulse::api::minecraft::VersionManifest;
 pub use interpulse::api::modded::Manifest;
 
+// TODO: better error handling (prisma?)
+
 /// Get a [`VersionManifest`] for all available Minecraft versions.
 #[tracing::instrument]
 pub async fn get_minecraft_versions() -> crate::Result<VersionManifest> {

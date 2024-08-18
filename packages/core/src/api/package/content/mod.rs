@@ -10,7 +10,7 @@ use crate::Result;
 mod modrinth;
 
 /// Providers for content packages
-#[cfg_attr(feature = "tauri", derive(specta::Type))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum Providers {
 	Modrinth,

@@ -101,7 +101,7 @@ jobs:
 
       - name: Run Rustfmt
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
-        run: cargo fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
 
   clippy:
     strategy:

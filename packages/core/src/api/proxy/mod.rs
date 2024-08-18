@@ -185,7 +185,8 @@ pub enum IngressType {
 	},
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 pub struct IngressPayload {
 	pub event: IngressType,
@@ -194,19 +195,22 @@ pub struct IngressPayload {
 	pub message: String,
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 pub struct OfflinePayload {
 	pub offline: bool,
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 pub struct MessagePayload {
 	pub message: String,
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 #[serde(tag = "event")]
 pub enum InternetPayload {
@@ -215,7 +219,8 @@ pub enum InternetPayload {
 	InstallPath { path: PathBuf },
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 pub struct ProcessPayload {
 	pub uuid: Uuid,
@@ -234,7 +239,8 @@ pub enum ProcessPayloadType {
 	Logging,
 }
 
-#[cfg_attr(feature = "tauri", derive(specta::Type, tauri_specta::Event))]
+#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Clone)]
 pub struct ClusterPayload {
 	pub uuid: Uuid,

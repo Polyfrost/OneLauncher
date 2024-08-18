@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - .github/actions/publish-artifacts/**
   workflow_dispatch:
 
 env:
@@ -18,12 +19,12 @@ jobs:
         settings:
           - host: macos-13
             target: x86_64-apple-darwin
-            bundles: app,dmg
+            bundles: dmg,app
             os: darwin
             arch: x86_64
           - host: macos-14
             target: aarch64-apple-darwin
-            bundles: app,dmg
+            bundles: dmg,app
             os: darwin
             arch: aarch64
           - host: windows-latest
@@ -90,7 +91,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build
-        run: pnpm desktop build --ci -v --target ${{ matrix.settings.target }} --bundles ${{ matrix.settings.bundles }},updater
+        run: pnpm desktop build --ci -v --target ${{ matrix.settings.target }} --bundles ${{ matrix.settings.bundles }}
         # env:
         # TAURI_SIGNING_PRIVATE_KEY: $ {{ secrets.TAURI_PRIVATE_KEY }}
         # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: $ {{ secrets.TAURI_KEY_PASSWORD }}

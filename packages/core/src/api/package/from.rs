@@ -233,9 +233,7 @@ pub async fn generate_pack_from_version_id(
 			.first()
 			.map(|file| (file.url.clone(), file.hashes.get("sha1")))
 	}
-	.ok_or_else(|| {
-		crate::ErrorKind::AnyhowError(anyhow::anyhow!("specified version has no files"))
-	})?;
+	.ok_or_else(|| anyhow::anyhow!("specified version has no files"))?;
 
 	let file = fetch_advanced(
 		Method::GET,

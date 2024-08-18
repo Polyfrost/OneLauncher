@@ -1,89 +1,12 @@
-import { Route, useNavigate } from '@solidjs/router';
-import { type Accessor, type Context, type ParentProps, type Setter, createContext, createSignal, onMount, useContext } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { Route } from '@solidjs/router';
+import type { ParentProps } from 'solid-js';
+import { Download01Icon, FileCode01Icon, SearchMdIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import BrowserMain from './BrowserMain';
 import BrowserCategory from './BrowserCategory';
 import BrowserPackage from './BrowserPackage';
-import type { Cluster, ManagedPackage, Package, PackageType, Providers } from '~bindings';
-import { tryResult } from '~ui/hooks/useCommand';
-import { bridge } from '~imports';
-
-interface BrowserControllerType {
-	cluster: Accessor<Cluster | undefined>;
-	setCluster: Setter<Cluster | undefined>;
-
-	displayBrowser: (cluster?: Cluster | undefined) => void;
-	displayPackage: (id: string, provider: Providers) => void;
-	displayCategory: (category: string) => void;
-
-	refreshCache: () => void;
-	cache: () => PackageCacheType;
-};
-
-const BrowserContext = createContext() as Context<BrowserControllerType>;
-
-type PackageCacheType = Partial<{
-	[key in PackageType]: ManagedPackage[];
-}>;
-
-// Used to cache packages for use on the main browser page.
-const [packageCache, setPackageCache] = createStore<PackageCacheType>({});
-
-function BrowserProvider(props: ParentProps) {
-	const [cluster, setCluster] = createSignal<Cluster>();
-	const navigate = useNavigate();
-
-	const controller: BrowserControllerType = {
-		cluster,
-		setCluster,
-
-		displayBrowser(cluster?: Cluster) {
-			setCluster(cluster);
-		},
-
-		displayPackage(id: string, provider: Providers) {
-			navigate(BrowserPackage.buildUrl({ id, provider }));
-		},
-
-		displayCategory(_category: string) {
-
-		},
-
-		refreshCache() {
-			tryResult(bridge.commands.searchPackages, 'Modrinth', null, null, null, null, null).then((res) => {
-				console.log(res);
-				setPackageCache((prev) => {
-					prev.mod = res;
-					return prev;
-				});
-			});
-		},
-
-		cache() {
-			return packageCache;
-		},
-	};
-
-	onMount(() => {
-		if (packageCache.mod === undefined)
-			controller.refreshCache();
-	});
-
-	return (
-		<BrowserContext.Provider value={controller}>
-			{props.children}
-		</BrowserContext.Provider>
-	);
-}
-
-export function useBrowserController() {
-	const controller = useContext(BrowserContext);
-
-	if (!controller)
-		throw new Error('useBrowserController should be called inside its BrowserProvider');
-
-	return controller;
-}
+import Button from '~ui/components/base/Button';
+import TextField from '~ui/components/base/TextField';
+import useBrowser from '~ui/hooks/useBrowser';
 
 function BrowserRoutes() {
 	return (
@@ -97,9 +20,53 @@ function BrowserRoutes() {
 
 function BrowserRoot(props: ParentProps) {
 	return (
-		<BrowserProvider>
-			{props.children}
-		</BrowserProvider>
+		<>{props.children}</>
+	);
+}
+
+export function BrowserToolbar() {
+	const controller = useBrowser();
+
+	return (
+		<div class="sticky top-0 z-10 flex flex-row justify-between bg-page">
+			<div class="flex flex-row gap-2">
+
+				<TextField
+					iconLeft={<SearchMdIcon />}
+					placeholder="Search for content"
+				/>
+
+				<Button
+					children={controller.cluster()?.meta.name || 'None'}
+					iconLeft={<Settings01Icon />}
+					onClick={controller.displayClusterSelector}
+				/>
+
+				{/* <Dropdown.Minimal
+					onChange={sortable.setKey}
+					icon={<FilterLinesIcon />}
+				>
+					<For each={Object.keys(sortable.sortables)}>
+						{sortable => (
+							<Dropdown.Row>{sortable}</Dropdown.Row>
+						)}
+					</For>
+				</Dropdown.Minimal> */}
+
+			</div>
+			<div class="flex flex-row justify-end gap-2">
+				<Button
+					iconLeft={<Download01Icon />}
+					children="From URL"
+					buttonStyle="secondary"
+				/>
+				<Button
+					iconLeft={<FileCode01Icon />}
+					children="From File"
+					buttonStyle="secondary"
+				/>
+			</div>
+		</div>
 	);
 }
 

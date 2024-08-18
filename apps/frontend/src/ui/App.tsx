@@ -10,6 +10,7 @@ import { ClusterModalControllerProvider } from './components/overlay/cluster/Clu
 import { MultiProvider } from './components/MultiProvider';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
 import { ModalProvider, ModalRenderer } from './components/overlay/Modal';
+import { BrowserProvider } from './hooks/useBrowser';
 import { PROGRAM_INFO } from '~bindings';
 
 function App(props: ParentProps) {
@@ -53,6 +54,7 @@ function GlobalContexts(props: ParentProps) {
 				SettingsProvider,
 				AccountControllerProvider,
 				ClusterModalControllerProvider,
+				BrowserProvider,
 			]}
 		>
 			{props.children}

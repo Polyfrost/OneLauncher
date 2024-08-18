@@ -344,9 +344,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async searchPackages(provider: Providers, query: string | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null): Promise<Result<ManagedPackage[], string>> {
+	async searchPackages(provider: Providers, query: string | null, limit: number | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null): Promise<Result<ProviderSearchResults, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('search_packages', { provider, query, gameVersions, categories, loaders, openSource }) };
+			return { status: 'ok', data: await TAURI_INVOKE('search_packages', { provider, query, limit, gameVersions, categories, loaders, openSource }) };
 		}
 		catch (e) {
 			if (e instanceof Error)
@@ -731,6 +731,7 @@ export type PackageType =
 	'shader';
 export interface ProcessPayload { uuid: string; pid: number; event: ProcessPayloadType; message: string };
 export type ProcessPayloadType = 'started' | 'modified' | 'finished' | 'logging';
+export interface ProviderSearchResults { provider: Providers; results: SearchResult[] };
 /**
  * Providers for content packages
  */
@@ -739,6 +740,7 @@ export type Providers = 'Modrinth';
  * Global Minecraft resolution.
  */
 export type Resolution = [number, number];
+export interface SearchResult { slug: string; title: string; description: string; categories?: string[]; client_side: PackageSide; server_side: PackageSide; project_type: PackageType; downloads: number; icon_url?: string; project_id: string; author: string; display_categories?: string[]; versions: string[]; follows: number; date_created: string; date_modified: string };
 /**
  * A global settings state for the launcher.
  */

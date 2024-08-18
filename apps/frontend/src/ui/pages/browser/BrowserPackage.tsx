@@ -1,6 +1,5 @@
 import { type Params, useSearchParams } from '@solidjs/router';
 import { Download01Icon } from '@untitled-theme/icons-solid';
-import { onMount } from 'solid-js';
 import type { Providers } from '~bindings';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
@@ -14,11 +13,7 @@ interface BrowserModParams extends Params {
 
 function BrowserPackage() {
 	const [params] = useSearchParams<BrowserModParams>();
-	const [pkg] = useCommand(bridge.commands.getPackage, params.id!);
-
-	onMount(() => {
-
-	});
+	const [pkg] = useCommand(bridge.commands.getPackage, params.provider || 'Modrinth', params.id!);
 
 	function testDownload() {
 		const packag = pkg();
@@ -26,8 +21,8 @@ function BrowserPackage() {
 			return;
 
 		bridge.commands.downloadPackage(
-			packag.id,
 			packag.provider,
+			packag.id,
 			'33f4cd3a-ff62-48bf-a777-fdbf35699cf5',
 			null,
 			null,

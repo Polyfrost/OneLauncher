@@ -146,6 +146,37 @@ impl PackageType {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct SearchResult {
+	pub slug: String,
+	pub title: String,
+	pub description: String,
+	#[serde(default)]
+	pub categories: Vec<String>,
+	pub client_side: PackageSide,
+	pub server_side: PackageSide,
+	pub project_type: PackageType,
+	pub downloads: u32,
+	#[serde(default)]
+	pub icon_url: String,
+	pub project_id: String,
+	pub author: String,
+	#[serde(default)]
+	pub display_categories: Vec<String>,
+	pub versions: Vec<String>,
+	pub follows: u32,
+	pub date_created: DateTime<Utc>,
+	pub date_modified: DateTime<Utc>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct ProviderSearchResults {
+	pub provider: Providers,
+	pub results: Vec<SearchResult>,
+}
+
 /// A struct that represents a Package.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]

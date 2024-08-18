@@ -1,6 +1,7 @@
 use onelauncher::cluster::content::package;
 use onelauncher::data::{Loader, ManagedPackage};
 use onelauncher::package::content::Providers;
+use onelauncher::store::ProviderSearchResults;
 use uuid::Uuid;
 
 #[specta::specta]
@@ -26,12 +27,13 @@ pub async fn get_packages(
 pub async fn search_packages(
 	provider: Providers,
 	query: Option<String>,
+	limit: Option<u8>,
 	game_versions: Option<Vec<String>>,
 	categories: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
 	open_source: Option<bool>,
-) -> Result<Vec<ManagedPackage>, String> {
-	Ok(provider.search(query, game_versions, categories, loaders, open_source).await?)
+) -> Result<ProviderSearchResults, String> {
+	Ok(provider.search(query, limit, game_versions, categories, loaders, open_source).await?)
 }
 
 #[specta::specta]

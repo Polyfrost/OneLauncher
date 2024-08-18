@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::{Loader, ManagedPackage, ManagedVersion};
 use crate::package::content::modrinth::FacetBuilder;
+use crate::store::ProviderSearchResults;
 use crate::Result;
 
 mod modrinth;
@@ -42,14 +43,16 @@ impl Providers {
 	pub async fn search(
 		&self,
 		query: Option<String>,
+		limit: Option<u8>,
 		game_versions: Option<Vec<String>>,
 		categories: Option<Vec<String>>,
 		loaders: Option<Vec<Loader>>,
 		open_source: Option<bool>,
-	) -> Result<Vec<ManagedPackage>> {
-		Ok(match self {
+	) -> Result<ProviderSearchResults> {
+		match self {
 			Providers::Modrinth => modrinth::search(
 				query,
+				limit,
 				Some(|mut builder: FacetBuilder| {
 					if let Some(game_versions) = game_versions {
 						for version in game_versions {
@@ -79,10 +82,7 @@ impl Providers {
 				})
 			)
 		}
-		.await?
-		.into_iter()
-		.map(|p| p.into())
-		.collect())
+		.await
 	}
 
 	pub async fn list(&self) -> Result<Vec<ManagedPackage>> {

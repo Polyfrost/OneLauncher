@@ -1,13 +1,15 @@
 use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
-use crate::store::{ManagedVersionFile, PackageFile, PackageSide};
+use crate::store::{ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult};
 use crate::utils::http::fetch;
 use crate::{Result, State};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use super::Providers;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModrinthPackage {
@@ -19,59 +21,35 @@ pub struct ModrinthPackage {
 	pub categories: Vec<String>,
 	pub client_side: PackageSide,
 	pub server_side: PackageSide,
-	// #[serde(default)]
-	// pub body: String,
-	// #[serde(default)]
-	// pub status: String,
-	// #[serde(default)]
-	// #[serde(rename = "requested_status")]
-	// pub requested_status: String,
+	#[serde(default)]
+	pub body: String,
 	#[serde(default)]
 	#[serde(alias = "display_categories")]
 	pub additional_categories: Vec<String>,
-	// #[serde(rename = "issues_url")]
 	// pub issues_url: String,
-	// #[serde(rename = "source_url")]
 	// pub source_url: String,
-	// #[serde(rename = "wiki_url")]
 	// pub wiki_url: String,
-	// #[serde(rename = "discord_url")]
 	// pub discord_url: String,
-	// #[serde(rename = "donation_urls")]
 	// pub donation_urls: Vec<DonationUrl>,
-	// #[serde(rename = "project_type")]
-	// pub project_type: String,
+	pub project_type: PackageType,
 	pub downloads: u32,
 	#[serde(default)]
 	pub icon_url: String,
-	// pub color: i64,
-	// #[serde(rename = "thread_id")]
-	// pub thread_id: String,
-	// #[serde(rename = "monetization_status")]
-	// pub monetization_status: String,
 	#[serde(alias = "project_id")]
 	pub id: String,
-	// pub team: String,
-	// #[serde(rename = "body_url")]
-	// pub body_url: Value,
-	// #[serde(rename = "moderator_message")]
-	// pub moderator_message: Value,
+	pub team: String,
 	#[serde(alias = "date_created")]
 	pub published: DateTime<Utc>,
 	#[serde(alias = "date_modified")]
 	pub updated: DateTime<Utc>,
-	// pub approved: DateTime<Utc>,
-	// pub queued: String,
-	#[serde(alias = "follows")]
 	pub followers: u32,
-	// pub license: License,
 	#[serde(default)]
 	pub versions: Vec<String>,
-	#[serde(rename = "game_versions")]
 	pub game_versions: Vec<String>,
 	#[serde(default)]
-	pub loaders: Vec<String>,
-	// pub gallery: Vec<Gallery>,
+	pub loaders: Vec<Loader>,
+	#[serde(default)]
+	pub gallery: Vec<Gallery>,
 }
 
 impl From<ModrinthPackage> for ManagedPackage {
@@ -84,7 +62,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			main: value.slug,
 			versions: value.versions,
 			game_versions: value.game_versions,
-			loaders: value.loaders.into_iter().filter_map(|loader| Loader::try_from(loader).ok()).collect(),
+			loaders: value.loaders,
 			icon_url: Some(value.icon_url),
 			created: value.published,
 			updated: value.updated,
@@ -124,61 +102,7 @@ pub struct Gallery {
 	pub ordering: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct SearchResult {
-	pub slug: String,
-	pub title: String,
-	pub description: String,
-	#[serde(default)]
-	pub categories: Vec<String>,
-	pub client_side: PackageSide,
-	pub server_side: PackageSide,
-	pub project_type: PackageType,
-	pub downloads: u32,
-	#[serde(default)]
-	pub icon_url: String,
-	pub project_id: String,
-	pub author: String,
-	#[serde(default)]
-	pub display_categories: Vec<String>,
-	pub versions: Vec<String>,
-	pub follows: u32,
-	pub date_created: DateTime<Utc>,
-	pub date_modified: DateTime<Utc>,
-}
-
-impl From<SearchResult> for ModrinthPackage {
-	fn from(value: SearchResult) -> Self {
-		let categories = value.categories;
-		let loaders = categories
-			.clone()
-			.into_iter()
-			.filter(|category| Loader::try_from(category.clone()).is_ok())
-			.map(|category| category.to_string())
-			.collect();
-
-		ModrinthPackage {
-			slug: value.slug,
-			title: value.title,
-			description: value.description,
-			categories,
-			client_side: value.client_side,
-			server_side: value.server_side,
-			additional_categories: value.display_categories,
-			downloads: value.downloads,
-			icon_url: value.icon_url,
-			id: value.project_id,
-			published: value.date_created,
-			updated: value.date_modified,
-			followers: value.follows,
-			versions: vec![],
-			game_versions: value.versions,
-			loaders,
-		}
-	}
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct SearchResults {
 	hits: Vec<SearchResult>,
 }
@@ -268,29 +192,31 @@ pub async fn list() -> Result<Vec<ModrinthPackage>> {
 	)?)
 }
 
-pub async fn search<F>(query: Option<String>, facets: Option<F>) -> Result<Vec<ModrinthPackage>>
+pub async fn search<F>(query: Option<String>, limit: Option<u8>, facets: Option<F>) -> Result<ProviderSearchResults>
 where
 	F: FnOnce(FacetBuilder) -> String,
 {
 	let facets = facets.map_or(String::new(), |func| func(FacetBuilder::builder()));
 
-	Ok(serde_json::from_slice(
+	let results: SearchResults = serde_json::from_slice(
 		&fetch(
 			format_url!(
-				"/search?query={}{}",
+				"/search?query={}&limit={}{}",
 				query.unwrap_or_default(),
-				if facets.is_empty() {
-					"".to_string()
-				} else {
-					format!("&facets={}", facets)
-				}
+				limit.unwrap_or(10),
+				if facets.is_empty() { "".to_string() } else { format!("&facets={}", facets) }
 			)
 			.as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)
 		.await?,
-	)?)
+	)?;
+
+    Ok(ProviderSearchResults {
+		provider: Providers::Modrinth,
+		results: results.hits,
+	})
 }
 
 #[allow(dead_code)]

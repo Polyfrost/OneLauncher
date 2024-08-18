@@ -1,98 +1,38 @@
 import { A } from '@solidjs/router';
-import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
-import { For, createSignal, onMount } from 'solid-js';
-import { useBrowserController } from './BrowserRoot';
-import type { ManagedPackage, Providers } from '~bindings';
-import { bridge } from '~imports';
-import Button from '~ui/components/base/Button';
-import Dropdown from '~ui/components/base/Dropdown';
-import TextField from '~ui/components/base/TextField';
+import { ChevronRightIcon } from '@untitled-theme/icons-solid';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import { For, Show } from 'solid-js';
+import { BrowserToolbar } from './BrowserRoot';
+import type { ProviderSearchResults } from '~bindings';
 import ModCard from '~ui/components/content/ModCard';
-import { tryResult } from '~ui/hooks/useCommand';
-import { PROVIDERS, createSortable } from '~utils';
-
-interface CardProps {
-	id: string;
-	name: string;
-	date_added: number;
-	date_updated: number;
-	provider: Providers;
-};
-
-interface BrowserFilters {
-	provider: Providers[];
-}
+import ScrollableContainer from '~ui/components/ScrollableContainer';
+import useBrowser from '~ui/hooks/useBrowser';
 
 function BrowserMain() {
-	const controller = useBrowserController();
-	const [_filters, _setFilters] = createSignal<BrowserFilters>({
-		provider: PROVIDERS,
-	});
-
-	// TODO remove this
-	const [mods, setMods] = createSignal<ManagedPackage[]>([]);
-
-	onMount(() => {
-		tryResult(bridge.commands.getPackage, 'Modrinth', 'chatting').then((res) => {
-			setMods([res]);
-		});
-	});
-
-	const sortable = createSortable<CardProps>([], {
-		'A-Z': (a, b) => a.name.localeCompare(b.name),
-		'Z-A': (a, b) => b.name.localeCompare(a.name),
-		'Last Updated': (a, b) => a.date_updated - b.date_updated,
-		'New': (a, b) => b.date_added - a.date_added,
-	});
+	const browser = useBrowser();
 
 	return (
 		<div class="relative h-full flex flex-1 flex-col gap-2">
-			<div class="sticky top-0 z-10 flex flex-row justify-between bg-page">
-				<div class="h-8 flex flex-row gap-2">
+			<BrowserToolbar />
 
-					<TextField
-						iconLeft={<SearchMdIcon />}
-						placeholder="Search for content"
-					/>
-
-					<Dropdown.Minimal
-						onChange={sortable.setKey}
-						icon={<FilterLinesIcon />}
-					>
-						<For each={Object.keys(sortable.sortables)}>
-							{sortable => (
-								<Dropdown.Row>{sortable}</Dropdown.Row>
-							)}
-						</For>
-					</Dropdown.Minimal>
-
+			<ScrollableContainer>
+				<div class="flex flex-col gap-4 py-2">
+					<Show when={browser.cache() !== undefined}>
+						<ModsRow header="Modrinth" category="modrinth" {...browser.cache()!} />
+						<ModsRow header="Curseforge" category="curseforge" {...browser.cache()!} />
+						<ModsRow header="Polyfrost" category="polyfrost" {...browser.cache()!} />
+						<ModsRow header="Skyclient" category="skyclient" {...browser.cache()!} />
+					</Show>
 				</div>
-				<div class="flex flex-row justify-end gap-2">
-					<Button
-						iconLeft={<Download01Icon />}
-						children="From URL"
-					/>
-					<Button
-						iconLeft={<FileCode01Icon />}
-						children="From File"
-						buttonStyle="secondary"
-					/>
-				</div>
-			</div>
-
-			<div class="flex flex-col gap-4 py-2">
-				<ModsRow header="test" category="Polyfrost" packages={mods()} />
-				<ModsRow header="Modrinth" category="modrinth" packages={controller.cache().mod || []} />
-			</div>
+			</ScrollableContainer>
 
 		</div>
 	);
 }
 
-interface ModsRowProps {
+type ModsRowProps = ProviderSearchResults & {
 	header: string;
 	category: string;
-	packages: ManagedPackage[];
 };
 
 function ModsRow(props: ModsRowProps) {
@@ -100,14 +40,32 @@ function ModsRow(props: ModsRowProps) {
 		<div class="flex flex-1 flex-col gap-3">
 			<div class="flex flex-1 flex-row justify-between">
 				<h4>{props.header}</h4>
-				<A class="text-fg-secondary active:text-fg-secondary-pressed hover:text-fg-secondary-hover" href={`category?category=${props.category}`}>See all</A>
 			</div>
 
-			<div class="max-w-full flex flex-row flex-wrap gap-2">
-				<For each={props.packages}>
-					{mod => <ModCard {...mod} />}
-				</For>
-			</div>
+			<OverlayScrollbarsComponent options={{ scrollbars: { autoHide: 'leave', autoHideDelay: 200 } }} class="max-w-full w-full overflow-hidden">
+				<div class="flex flex-row gap-2">
+					<For each={props.results}>
+						{mod => (
+							<ModCard
+								title={mod.title}
+								author={mod.author}
+								description={mod.description}
+								icon_url={mod.icon_url || ''}
+								id={mod.project_id}
+								provider={props.provider}
+								downloads={mod.downloads}
+								followers={mod.follows}
+							/>
+						)}
+					</For>
+
+					<div class="flex flex-col items-center justify-center px-6">
+						<A class="whitespace-nowrap rounded-md px-4 py-2 text-lg text-fg-secondary hover:bg-gray-05 active:text-fg-secondary-pressed hover:text-fg-primary-hover" href={`category?category=${props.category}`}>
+							<ChevronRightIcon class="" />
+						</A>
+					</div>
+				</div>
+			</OverlayScrollbarsComponent>
 
 		</div>
 	);

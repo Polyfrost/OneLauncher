@@ -324,9 +324,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async getPackage(projectId: string): Promise<Result<ManagedPackage, string>> {
+	async getPackage(provider: Providers, projectId: string): Promise<Result<ManagedPackage, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_package', { projectId }) };
+			return { status: 'ok', data: await TAURI_INVOKE('get_package', { provider, projectId }) };
 		}
 		catch (e) {
 			if (e instanceof Error)
@@ -334,9 +334,29 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async downloadPackage(packageId: string, provider: Providers, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null): Promise<Result<null, string>> {
+	async getPackages(provider: Providers, projectIds: string[]): Promise<Result<ManagedPackage[], string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('download_package', { packageId, provider, clusterId, gameVersion, loader, packageVersion }) };
+			return { status: 'ok', data: await TAURI_INVOKE('get_packages', { provider, projectIds }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async searchPackages(provider: Providers, query: string | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null): Promise<Result<ManagedPackage[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('search_packages', { provider, query, gameVersions, categories, loaders, openSource }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async downloadPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('download_package', { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
 		}
 		catch (e) {
 			if (e instanceof Error)

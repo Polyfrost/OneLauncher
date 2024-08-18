@@ -1,6 +1,7 @@
 import { A } from '@solidjs/router';
 import { Download01Icon, FileCode01Icon, FilterLinesIcon, SearchMdIcon } from '@untitled-theme/icons-solid';
 import { For, createSignal, onMount } from 'solid-js';
+import { useBrowserController } from './BrowserRoot';
 import type { ManagedPackage, Providers } from '~bindings';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
@@ -23,14 +24,16 @@ interface BrowserFilters {
 }
 
 function BrowserMain() {
+	const controller = useBrowserController();
 	const [_filters, _setFilters] = createSignal<BrowserFilters>({
 		provider: PROVIDERS,
 	});
 
+	// TODO remove this
 	const [mods, setMods] = createSignal<ManagedPackage[]>([]);
 
 	onMount(() => {
-		tryResult(bridge.commands.getPackage, 'chatting').then((res) => {
+		tryResult(bridge.commands.getPackage, 'Modrinth', 'chatting').then((res) => {
 			setMods([res]);
 		});
 	});
@@ -78,12 +81,8 @@ function BrowserMain() {
 			</div>
 
 			<div class="flex flex-col gap-4 py-2">
-				<ModsRow header="test" category="test" packages={mods()} />
-				{/* <For each={}>
-					{row => (
-						<ModsRow {...row} />
-					)}
-				</For> */}
+				<ModsRow header="test" category="Polyfrost" packages={mods()} />
+				<ModsRow header="Modrinth" category="modrinth" packages={controller.cache().mod || []} />
 			</div>
 
 		</div>

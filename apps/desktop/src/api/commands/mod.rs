@@ -58,6 +58,8 @@ macro_rules! collect_commands {
 			get_minecraft_versions,
 			// Package
 			get_package,
+			get_packages,
+			search_packages,
 			download_package,
 			// Updater
 			check_for_update,

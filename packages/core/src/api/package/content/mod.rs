@@ -2,9 +2,11 @@
 //!
 //! Utilities for searching and downloading content packages to OneLauncher.
 
+use modrinth::{Facet, FacetOperation};
 use serde::{Deserialize, Serialize};
 
-use crate::data::{ManagedPackage, ManagedVersion};
+use crate::data::{Loader, ManagedPackage, ManagedVersion};
+use crate::package::content::modrinth::FacetBuilder;
 use crate::Result;
 
 mod modrinth;
@@ -37,6 +39,52 @@ impl Providers {
 		}
 	}
 
+	pub async fn search(
+		&self,
+		query: Option<String>,
+		game_versions: Option<Vec<String>>,
+		categories: Option<Vec<String>>,
+		loaders: Option<Vec<Loader>>,
+		open_source: Option<bool>,
+	) -> Result<Vec<ManagedPackage>> {
+		Ok(match self {
+			Providers::Modrinth => modrinth::search(
+				query,
+				Some(|mut builder: FacetBuilder| {
+					if let Some(game_versions) = game_versions {
+						for version in game_versions {
+							builder.and(Facet("versions".to_string(), FacetOperation::Eq, version));
+						}
+					}
+
+					if let Some(categories) = categories {
+						for category in categories {
+							builder.or(Facet("categories".to_string(), FacetOperation::Eq, category));
+						}
+					}
+
+					if let Some(loaders) = loaders {
+						for loader in loaders {
+							builder.or(Facet("categories".to_string(), FacetOperation::Eq, loader.to_string()));
+						}
+					}
+
+					if let Some(open_source) = open_source {
+						builder.and(Facet("open_source".to_string(), FacetOperation::Eq, open_source.to_string()));
+					}
+
+					// builder.and(Facet("client_side".to_string(), FacetOperation::Eq, "")) // TODO: Possibly make this client_side = required
+
+					builder.build()
+				})
+			)
+		}
+		.await?
+		.into_iter()
+		.map(|p| p.into())
+		.collect())
+	}
+
 	pub async fn list(&self) -> Result<Vec<ManagedPackage>> {
 		Ok(match self {
 			Providers::Modrinth => modrinth::list(),
@@ -53,6 +101,16 @@ impl Providers {
 		}
 		.await?
 		.into())
+	}
+
+	pub async fn get_multiple(&self, slug_or_ids: &[String]) -> Result<Vec<ManagedPackage>> {
+		Ok(match self {
+			Providers::Modrinth => modrinth::get_multiple(slug_or_ids),
+		}
+		.await?
+		.into_iter()
+		.map(|p| p.into())
+		.collect())
 	}
 
 	pub async fn get_versions(&self, project_id: &str) -> Result<Vec<ManagedVersion>> {

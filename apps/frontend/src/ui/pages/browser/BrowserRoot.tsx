@@ -1,9 +1,12 @@
 import { Route, useNavigate } from '@solidjs/router';
-import { type Accessor, type Context, type ParentProps, type Setter, createContext, createSignal, useContext } from 'solid-js';
+import { type Accessor, type Context, type ParentProps, type Setter, createContext, createSignal, onMount, useContext } from 'solid-js';
+import { createStore } from 'solid-js/store';
 import BrowserMain from './BrowserMain';
 import BrowserCategory from './BrowserCategory';
 import BrowserPackage from './BrowserPackage';
-import type { Cluster, ManagedPackage, Providers } from '~bindings';
+import type { Cluster, ManagedPackage, Package, PackageType, Providers } from '~bindings';
+import { tryResult } from '~ui/hooks/useCommand';
+import { bridge } from '~imports';
 
 interface BrowserControllerType {
 	cluster: Accessor<Cluster | undefined>;
@@ -13,10 +16,18 @@ interface BrowserControllerType {
 	displayPackage: (id: string, provider: Providers) => void;
 	displayCategory: (category: string) => void;
 
-	fetchPackages: (provider: Providers) => ManagedPackage[];
+	refreshCache: () => void;
+	cache: () => PackageCacheType;
 };
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
+
+type PackageCacheType = Partial<{
+	[key in PackageType]: ManagedPackage[];
+}>;
+
+// Used to cache packages for use on the main browser page.
+const [packageCache, setPackageCache] = createStore<PackageCacheType>({});
 
 function BrowserProvider(props: ParentProps) {
 	const [cluster, setCluster] = createSignal<Cluster>();
@@ -38,10 +49,25 @@ function BrowserProvider(props: ParentProps) {
 
 		},
 
-		fetchPackages(_provider: Providers) {
-			return [];
+		refreshCache() {
+			tryResult(bridge.commands.searchPackages, 'Modrinth', null, null, null, null, null).then((res) => {
+				console.log(res);
+				setPackageCache((prev) => {
+					prev.mod = res;
+					return prev;
+				});
+			});
+		},
+
+		cache() {
+			return packageCache;
 		},
 	};
+
+	onMount(() => {
+		if (packageCache.mod === undefined)
+			controller.refreshCache();
+	});
 
 	return (
 		<BrowserContext.Provider value={controller}>

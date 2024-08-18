@@ -319,17 +319,19 @@ impl Loader {
 	}
 }
 
-impl From<String> for Loader {
-	fn from(value: String) -> Self {
-		match value.to_lowercase().as_str() {
+impl TryFrom<String> for Loader {
+	type Error = crate::ErrorKind;
+
+	fn try_from(value: String) -> Result<Self, Self::Error> {
+		Ok(match value.to_lowercase().as_str() {
 			"vanilla" => Self::Vanilla,
 			"forge" => Self::Forge,
 			"fabric" => Self::Fabric,
 			"neoforge" => Self::NeoForge,
 			"quilt" => Self::Quilt,
 			"legacyfabric" | "legacy_fabric" => Self::LegacyFabric,
-			_ => Self::Vanilla,
-		}
+			_ => return Err(anyhow::anyhow!("invalid loader type").into()),
+		})
 	}
 }
 

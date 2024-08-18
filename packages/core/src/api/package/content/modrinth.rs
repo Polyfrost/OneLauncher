@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::store::{ManagedVersionFile, PackageFile, PackageSide};
 use crate::utils::http::fetch;
@@ -8,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModrinthPackage {
 	pub slug: String,
 	pub title: String,
@@ -16,9 +17,7 @@ pub struct ModrinthPackage {
 	pub description: String,
 	#[serde(default)]
 	pub categories: Vec<String>,
-	#[serde(rename = "client_side")]
 	pub client_side: PackageSide,
-	#[serde(rename = "server_side")]
 	pub server_side: PackageSide,
 	// #[serde(default)]
 	// pub body: String,
@@ -28,7 +27,7 @@ pub struct ModrinthPackage {
 	// #[serde(rename = "requested_status")]
 	// pub requested_status: String,
 	#[serde(default)]
-	#[serde(rename = "additional_categories")]
+	#[serde(alias = "display_categories")]
 	pub additional_categories: Vec<String>,
 	// #[serde(rename = "issues_url")]
 	// pub issues_url: String,
@@ -43,7 +42,6 @@ pub struct ModrinthPackage {
 	// #[serde(rename = "project_type")]
 	// pub project_type: String,
 	pub downloads: u32,
-	#[serde(rename = "icon_url")]
 	#[serde(default)]
 	pub icon_url: String,
 	// pub color: i64,
@@ -51,16 +49,20 @@ pub struct ModrinthPackage {
 	// pub thread_id: String,
 	// #[serde(rename = "monetization_status")]
 	// pub monetization_status: String,
+	#[serde(alias = "project_id")]
 	pub id: String,
 	// pub team: String,
 	// #[serde(rename = "body_url")]
 	// pub body_url: Value,
 	// #[serde(rename = "moderator_message")]
 	// pub moderator_message: Value,
+	#[serde(alias = "date_created")]
 	pub published: DateTime<Utc>,
+	#[serde(alias = "date_modified")]
 	pub updated: DateTime<Utc>,
 	// pub approved: DateTime<Utc>,
 	// pub queued: String,
+	#[serde(alias = "follows")]
 	pub followers: u32,
 	// pub license: License,
 	#[serde(default)]
@@ -82,7 +84,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			main: value.slug,
 			versions: value.versions,
 			game_versions: value.game_versions,
-			loaders: value.loaders.into_iter().map(Loader::from).collect(),
+			loaders: value.loaders.into_iter().filter_map(|loader| Loader::try_from(loader).ok()).collect(),
 			icon_url: Some(value.icon_url),
 			created: value.published,
 			updated: value.updated,
@@ -99,7 +101,6 @@ impl From<ModrinthPackage> for ManagedPackage {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DonationUrl {
 	pub id: String,
 	pub platform: String,
@@ -107,7 +108,6 @@ pub struct DonationUrl {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct License {
 	pub id: String,
 	pub name: String,
@@ -115,7 +115,6 @@ pub struct License {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Gallery {
 	pub url: String,
 	pub featured: bool,
@@ -125,49 +124,92 @@ pub struct Gallery {
 	pub ordering: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct SearchResult {
+	pub slug: String,
+	pub title: String,
+	pub description: String,
+	#[serde(default)]
+	pub categories: Vec<String>,
+	pub client_side: PackageSide,
+	pub server_side: PackageSide,
+	pub project_type: PackageType,
+	pub downloads: u32,
+	#[serde(default)]
+	pub icon_url: String,
+	pub project_id: String,
+	pub author: String,
+	#[serde(default)]
+	pub display_categories: Vec<String>,
+	pub versions: Vec<String>,
+	pub follows: u32,
+	pub date_created: DateTime<Utc>,
+	pub date_modified: DateTime<Utc>,
+}
+
+impl From<SearchResult> for ModrinthPackage {
+	fn from(value: SearchResult) -> Self {
+		let categories = value.categories;
+		let loaders = categories
+			.clone()
+			.into_iter()
+			.filter(|category| Loader::try_from(category.clone()).is_ok())
+			.map(|category| category.to_string())
+			.collect();
+
+		ModrinthPackage {
+			slug: value.slug,
+			title: value.title,
+			description: value.description,
+			categories,
+			client_side: value.client_side,
+			server_side: value.server_side,
+			additional_categories: value.display_categories,
+			downloads: value.downloads,
+			icon_url: value.icon_url,
+			id: value.project_id,
+			published: value.date_created,
+			updated: value.date_modified,
+			followers: value.follows,
+			versions: vec![],
+			game_versions: value.versions,
+			loaders,
+		}
+	}
+}
+
 #[derive(Serialize, Deserialize)]
 struct SearchResults {
-	hits: Vec<ModrinthPackage>,
+	hits: Vec<SearchResult>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModrinthVersion {
-	#[serde(rename = "game_versions")]
 	pub game_versions: Vec<String>,
 	pub loaders: Vec<String>,
 	pub id: String,
-	#[serde(rename = "project_id")]
 	pub project_id: String,
-	#[serde(rename = "author_id")]
 	pub author_id: String,
 	pub featured: bool,
 	pub name: String,
-	#[serde(rename = "version_number")]
 	pub version_number: String,
 	pub changelog: String,
-	#[serde(rename = "changelog_url")]
 	pub changelog_url: Option<String>,
-	#[serde(rename = "date_published")]
 	pub date_published: DateTime<Utc>,
 	pub downloads: u32,
-	#[serde(rename = "version_type")]
 	pub version_type: String,
 	pub status: String,
-	#[serde(rename = "requested_status")]
 	pub requested_status: Value,
 	pub files: Vec<File>,
 	pub dependencies: Vec<Value>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct File {
 	pub url: String,
 	pub filename: String,
 	pub primary: bool,
 	pub size: u32,
-	#[serde(rename = "file_type")]
 	pub file_type: Option<PackageFile>,
 }
 
@@ -204,7 +246,7 @@ impl From<ModrinthVersion> for ManagedVersion {
 			files: value.files.into_iter().map(|f| f.into()).collect(),
 			deps: vec![], // TODO [`ManagedDependency`]?
 			game_versions: value.game_versions,
-			loaders: value.loaders.into_iter().map(Loader::from).collect(),
+			loaders: value.loaders.into_iter().filter_map(|loader| Loader::try_from(loader).ok()).collect(),
 		}
 	}
 }
@@ -226,6 +268,101 @@ pub async fn list() -> Result<Vec<ModrinthPackage>> {
 	)?)
 }
 
+pub async fn search<F>(query: Option<String>, facets: Option<F>) -> Result<Vec<ModrinthPackage>>
+where
+	F: FnOnce(FacetBuilder) -> String,
+{
+	let facets = facets.map_or(String::new(), |func| func(FacetBuilder::builder()));
+
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!(
+				"/search?query={}{}",
+				query.unwrap_or_default(),
+				if facets.is_empty() {
+					"".to_string()
+				} else {
+					format!("&facets={}", facets)
+				}
+			)
+			.as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
+}
+
+#[allow(dead_code)]
+pub enum FacetOperation {
+	NotEq,
+	LargeEq,
+	Large,
+	SmallEq,
+	Small,
+	Eq,
+}
+
+impl Display for FacetOperation {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			FacetOperation::NotEq => "!=",
+			FacetOperation::LargeEq => ">=",
+			FacetOperation::Large => ">",
+			FacetOperation::SmallEq => "<=",
+			FacetOperation::Small => "<",
+			FacetOperation::Eq => "=",
+		})
+	}
+}
+
+pub struct Facet(pub String, pub FacetOperation, pub String);
+
+impl Display for Facet {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(format!("{}{}{}", self.0, self.1, self.2).as_str())
+	}
+}
+
+pub struct FacetBuilder {
+	pub facets: Vec<Vec<Facet>>,
+}
+
+impl FacetBuilder {
+	pub fn builder() -> Self {
+		FacetBuilder { facets: vec![] }
+	}
+
+	pub fn and(&mut self, facet: Facet) -> &Self {
+		self.facets.push(vec![facet]);
+		self
+	}
+
+	pub fn or(&mut self, facet: Facet) -> &Self {
+		let mut last_facet = self.facets.pop().unwrap_or_default();
+		last_facet.push(facet);
+		self.facets.push(last_facet);
+		self
+	}
+
+	pub fn build(&self) -> String {
+		let mut builder = String::new();
+
+		for facet in &self.facets {
+			builder.push('[');
+			for (i, f) in facet.iter().enumerate() {
+				if i != 0 {
+					builder.push(',');
+				}
+				builder.push_str(f.to_string().as_str());
+			}
+			builder.push(']');
+		}
+
+		builder
+	}
+}
+
 pub async fn get(id: &str) -> Result<ModrinthPackage> {
 	Ok(serde_json::from_slice(
 		&fetch(
@@ -236,6 +373,20 @@ pub async fn get(id: &str) -> Result<ModrinthPackage> {
 		.await?,
 	)?)
 }
+
+pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!("/projects?ids=[{}]", ids.join(",")).as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
+}
+
+// TODO: modrinth api v3
+// pub async fn get_org_projects(organization: &str) -> Result<>
 
 pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>> {
 	Ok(serde_json::from_slice(

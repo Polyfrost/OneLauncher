@@ -81,7 +81,7 @@ pub async fn generate_context(
 
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageType {
 	/// represents a mod jarfile

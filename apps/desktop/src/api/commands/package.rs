@@ -18,7 +18,7 @@ pub async fn download_package(
 	cluster_id: Uuid,
 	game_version: Option<String>,
 	loader: Option<Loader>,
-	package_version: Option<String>
+	package_version: Option<String>,
 ) -> Result<(), String> {
 	let mut cluster = onelauncher::cluster::get_by_uuid(cluster_id, None)
 		.await?

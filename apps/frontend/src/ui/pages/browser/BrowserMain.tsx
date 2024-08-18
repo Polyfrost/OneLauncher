@@ -31,7 +31,6 @@ function BrowserMain() {
 
 	onMount(() => {
 		tryResult(bridge.commands.getPackage, 'chatting').then((res) => {
-			console.log(res);
 			setMods([res]);
 		});
 	});

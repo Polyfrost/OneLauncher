@@ -4,14 +4,10 @@
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
-use tokio_stream::StreamExt;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use tokio::io::AsyncReadExt;
 
 use crate::package::content::Providers;
-use crate::prelude::IOError;
 use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
 
 use crate::store::{Cluster, Loader, PackagePath};
@@ -21,14 +17,14 @@ use crate::State;
 
 /// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
 /// Paths must be the full paths and not relative paths.
-#[tracing::instrument(skip(paths, cluster, io_semaphore, fetch_semaphore))]
+#[tracing::instrument(skip(_paths, _cluster, _io_semaphore, _fetch_semaphore))]
 #[onelauncher_macros::memory]
 pub async fn generate_context(
-	cluster: Cluster,
-	paths: Vec<PathBuf>,
+	_cluster: Cluster,
+	_paths: Vec<PathBuf>,
 	cache_path: PathBuf,
-	io_semaphore: &IoSemaphore,
-	fetch_semaphore: &FetchSemaphore,
+	_io_semaphore: &IoSemaphore,
+	_fetch_semaphore: &FetchSemaphore,
 ) -> crate::Result<HashMap<PackagePath, Package>> {
 	// let mut handles = vec![];
 
@@ -185,7 +181,6 @@ pub enum PackageMetadata {
 }
 
 impl PackageMetadata {
-
 	pub fn from_managed_package(package: ManagedPackage, version: ManagedVersion) -> Self {
 		Self::Managed {
 			package_id: package.id,
@@ -193,10 +188,9 @@ impl PackageMetadata {
 			version_formatted: version.version_id,
 			title: package.title,
 			provider: package.provider,
-			package_type: package.package_type
+			package_type: package.package_type,
 		}
 	}
-
 }
 
 /// Universal metadata for any managed package from a Mod distribution platform.

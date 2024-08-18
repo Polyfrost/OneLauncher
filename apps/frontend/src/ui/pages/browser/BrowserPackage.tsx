@@ -32,9 +32,7 @@ function BrowserPackage() {
 			null,
 			null,
 			null,
-		).then(() => {
-			console.log('Downloaded');
-		});
+		);
 	}
 
 	return (

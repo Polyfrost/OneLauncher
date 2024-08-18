@@ -34,8 +34,12 @@ function BrowserProvider(props: ParentProps) {
 			navigate(BrowserPackage.buildUrl({ id, provider }));
 		},
 
-		displayCategory(category: string) {
+		displayCategory(_category: string) {
 
+		},
+
+		fetchPackages(_provider: Providers) {
+			return [];
 		},
 	};
 

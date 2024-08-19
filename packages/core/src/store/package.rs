@@ -1,12 +1,12 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
+use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
+use crate::State;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
-use crate::State;
 
 use super::{Cluster, PackagePath};
 

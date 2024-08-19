@@ -1,5 +1,6 @@
 import { DurationFormat } from '@formatjs/intl-durationformat';
-import type { Cluster, Loader, Providers, VersionType } from '~bindings';
+import { open } from '@tauri-apps/plugin-shell';
+import type { Cluster, License, Loader, Providers, VersionType } from '~bindings';
 
 export * from './timer';
 export * from './sorting';
@@ -44,15 +45,21 @@ export function pluralize(n: number, word: string, locale: string = 'en'): strin
 	return pluralForm === 'one' ? word : `${word}s`;
 }
 
-export function secondsToWords(
-	seconds: number | bigint,
+export function formatAsDuration(
+	seconds: number | bigint | Date,
 	locale: string = 'en',
 	style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
 ): string {
-	const n = Number(seconds);
+	let n: number | undefined;
+
+	if (seconds instanceof Date)
+		n = seconds.getTime();
+	else
+		n = Number(seconds);
+
 	const formatter = new DurationFormat(locale, { style });
 	return formatter.format({
-		seconds: n % 60,
+		seconds: Math.floor(n % 60),
 		minutes: Math.floor(n / 60) % 60,
 		hours: Math.floor(n / (60 * 60)) % 24,
 		days: Math.floor(n / (60 * 60 * 24)) % 7,
@@ -60,6 +67,38 @@ export function secondsToWords(
 		months: Math.floor(n / (60 * 60 * 24 * 30)) % 12,
 		years: Math.floor(n / (60 * 60 * 24 * 365)),
 	});
+}
+
+export function formatAsRelative(
+	seconds: number | bigint | Date,
+	locale: string = 'en',
+	style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
+): string {
+	let elapsed: number | undefined;
+
+	if (seconds instanceof Date)
+		elapsed = seconds.getTime();
+	else
+		elapsed = Number(seconds);
+
+	elapsed -= Date.now();
+
+	const units = {
+		year: 31536000000,
+		month: 2592000000,
+		week: 604800000,
+		day: 86400000,
+		hour: 3600000,
+		minute: 60000,
+		second: 1000,
+	};
+
+	const formatter = new Intl.RelativeTimeFormat(locale, { style: style as Intl.RelativeTimeFormatStyle });
+	for (const [unit, ms] of Object.entries(units))
+		if (Math.abs(elapsed) > ms || unit === 'second')
+			return formatter.format(Math.round(elapsed / ms), unit as Intl.RelativeTimeFormatUnit);
+
+	return 'now';
 }
 
 export function asEnvVariables(str: string): [string, string][] {
@@ -70,6 +109,27 @@ export function asEnvVariables(str: string): [string, string][] {
 			return key ? [key, value] as [string, string] : null;
 		})
 		.filter(pair => pair !== null);
+}
+
+export function openLicense(licenseId: string | License | null | undefined) {
+	if (licenseId === null || licenseId === undefined)
+		return;
+
+	let id: string | undefined;
+
+	if (typeof licenseId !== 'string') {
+		if (licenseId.url !== null && licenseId.url !== undefined) {
+			open(licenseId.url);
+			return;
+		}
+
+		id = licenseId.id || licenseId.name;
+	}
+	else {
+		id = licenseId;
+	}
+
+	open(`https://spdx.org/licenses/${id}.html`);
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;

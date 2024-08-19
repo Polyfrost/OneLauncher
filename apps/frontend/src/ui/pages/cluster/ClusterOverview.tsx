@@ -10,7 +10,7 @@ import Button from '../../components/base/Button';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import type { Cluster } from '~bindings';
-import { secondsToWords, upperFirst } from '~utils';
+import { formatAsDuration, upperFirst } from '~utils';
 import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
@@ -315,7 +315,7 @@ function Banner(props: BannerProps) {
 						>
 							Played for
 							{' '}
-							<b>{secondsToWords((props.cluster.meta.overall_played || 0n))}</b>
+							<b>{formatAsDuration((props.cluster.meta.overall_played || 0n))}</b>
 							.
 						</span>
 					</div>

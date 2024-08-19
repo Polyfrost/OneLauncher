@@ -168,6 +168,8 @@ pub struct SearchResult {
 	pub follows: u32,
 	pub date_created: DateTime<Utc>,
 	pub date_modified: DateTime<Utc>,
+	#[serde(default)]
+	pub license: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -235,6 +237,7 @@ pub struct ManagedPackage {
 	pub package_type: PackageType,
 	pub title: String,
 	pub description: String,
+	pub body: String,
 	pub main: String,
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
@@ -249,6 +252,18 @@ pub struct ManagedPackage {
 	pub followers: u32,
 	pub categories: Vec<String>,
 	pub optional_categories: Option<Vec<String>>,
+	pub license: Option<License>,
+}
+
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct License {
+	#[serde(default)]
+	pub id: String,
+	#[serde(default)]
+	pub name: String,
+	#[serde(default)]
+	pub url: Option<String>,
 }
 
 /// Universal managed package version of a package.

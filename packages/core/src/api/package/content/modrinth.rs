@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
-use crate::store::{ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult};
+use crate::store::{License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult};
 use crate::utils::http::fetch;
 use crate::{Result, State};
 
@@ -49,7 +49,9 @@ pub struct ModrinthPackage {
 	#[serde(default)]
 	pub loaders: Vec<Loader>,
 	#[serde(default)]
-	pub gallery: Vec<Gallery>,
+	pub license: Option<License>,
+	// #[serde(default)]
+	// pub gallery: Vec<Gallery>,
 }
 
 impl From<ModrinthPackage> for ManagedPackage {
@@ -59,6 +61,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			id: value.id,
 			title: value.title,
 			description: value.description,
+			body: value.body,
 			main: value.slug,
 			versions: value.versions,
 			game_versions: value.game_versions,
@@ -74,6 +77,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			optional_categories: Some(value.additional_categories),
 			uid: None,
 			package_type: PackageType::Mod,
+			license: value.license,
 		}
 	}
 }
@@ -86,19 +90,15 @@ pub struct DonationUrl {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct License {
-	pub id: String,
-	pub name: String,
-	pub url: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gallery {
 	pub url: String,
 	pub featured: bool,
+	#[serde(default)]
 	pub title: String,
+	#[serde(default)]
 	pub description: String,
-	pub created: String,
+	pub created: DateTime<Utc>,
+	#[serde(default)]
 	pub ordering: i64,
 }
 

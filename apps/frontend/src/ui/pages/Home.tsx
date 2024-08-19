@@ -4,7 +4,7 @@ import {
 	PlusIcon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, Show, createEffect, createSignal } from 'solid-js';
+import { For, Show } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 
 import { mergeRefs } from '@solid-primitives/refs';
@@ -16,9 +16,9 @@ import ClusterCover from '~ui/components/game/ClusterCover';
 import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
-import { secondsToWords, upperFirst } from '~utils';
+import { formatAsDuration, upperFirst } from '~utils';
 import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
-import { useLaunchCluster } from '~ui/hooks/useCluster';
+import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 
 type GroupedClusters = Record<string, Cluster[]>;
 
@@ -103,7 +103,7 @@ function HomePage() {
 
 	return (
 		<div class="h-full flex flex-col gap-y-4 text-fg-primary">
-			<Banner clusters={clusters()} />
+			<Banner />
 
 			<div class="flex flex-row items-center justify-between">
 				<div>
@@ -169,11 +169,7 @@ export default HomePage;
 // 	);
 // }
 
-interface BannerProps {
-	clusters: GroupedClusters | undefined;
-};
-
-function Banner(props: BannerProps) {
+function Banner() {
 	// TODO: Banner information
 	/**
 	 * If there are any clusters, display the most recent cluster name + some statistics as the "description".
@@ -183,40 +179,9 @@ function Banner(props: BannerProps) {
 	 *
 	 * If there are no clusters, display a generic background with the button action creating a new cluster.
 	 */
-	const [cluster, setCluster] = createSignal<Cluster>();
+	const cluster = useRecentCluster();
 	const launch = useLaunchCluster(() => cluster()?.uuid);
 	const navigate = useNavigate();
-
-	createEffect(() => {
-		// eslint-disable-next-line no-undef-init -- This is fine. I love eslint rule clash though
-		let mostRecentCluster: Cluster | undefined = undefined;
-
-		if (props.clusters === undefined)
-			return;
-
-		for (const [_, clusters] of Object.entries(props.clusters))
-			for (const cluster of clusters) {
-				if (mostRecentCluster === undefined) {
-					mostRecentCluster = cluster;
-					continue;
-				}
-
-				if (typeof mostRecentCluster.meta.played_at !== 'string' && typeof cluster.meta.played_at === 'string') {
-					mostRecentCluster = cluster;
-					continue;
-				}
-
-				if (typeof mostRecentCluster.meta.played_at === 'string' && typeof cluster.meta.played_at === 'string') {
-					const playedAt = new Date(mostRecentCluster.meta.played_at);
-					const clusterPlayedAt = new Date(cluster.meta.played_at);
-
-					if (clusterPlayedAt > playedAt)
-						mostRecentCluster = cluster;
-				}
-			}
-
-		setCluster(mostRecentCluster);
-	});
 
 	return (
 		<div class="relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
@@ -246,7 +211,7 @@ function Banner(props: BannerProps) {
 							{' '}
 							for
 							{' '}
-							<strong>{secondsToWords((cluster()!.meta.overall_played || 0n))}</strong>
+							<strong>{formatAsDuration((cluster()!.meta.overall_played || 0n))}</strong>
 							.
 						</p>
 					</Show>

@@ -587,6 +587,7 @@ export interface JavaVersion { version: string; arch: string; path: string };
  * A HashMap of all located and installed available Java versions
  */
 export type JavaVersions = { [key in string]: JavaVersion };
+export interface License { id?: string; name?: string; url?: string | null };
 /**
  * Available mod loaders to be used for a cluster.
  */
@@ -635,7 +636,7 @@ export interface LoaderVersion {
 /**
  * Universal metadata for any managed package from a Mod distribution platform.
  */
-export interface ManagedPackage { provider: Providers; id: string; uid: string | null; package_type: PackageType; title: string; description: string; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; downloads: number; followers: number; categories: string[]; optional_categories: string[] | null };
+export interface ManagedPackage { provider: Providers; id: string; uid: string | null; package_type: PackageType; title: string; description: string; body: string; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; downloads: number; followers: number; categories: string[]; optional_categories: string[] | null; license: License | null };
 /**
  * Global memory settings across all clusters.
  */
@@ -740,7 +741,7 @@ export type Providers = 'Modrinth';
  * Global Minecraft resolution.
  */
 export type Resolution = [number, number];
-export interface SearchResult { slug: string; title: string; description: string; categories?: string[]; client_side: PackageSide; server_side: PackageSide; project_type: PackageType; downloads: number; icon_url?: string; project_id: string; author: string; display_categories?: string[]; versions: string[]; follows: number; date_created: string; date_modified: string };
+export interface SearchResult { slug: string; title: string; description: string; categories?: string[]; client_side: PackageSide; server_side: PackageSide; project_type: PackageType; downloads: number; icon_url?: string; project_id: string; author: string; display_categories?: string[]; versions: string[]; follows: number; date_created: string; date_modified: string; license?: string | null };
 /**
  * A global settings state for the launcher.
  */

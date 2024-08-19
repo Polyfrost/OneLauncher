@@ -1,6 +1,7 @@
 import { useNavigate } from '@solidjs/router';
-import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createSignal, onMount, untrack, useContext } from 'solid-js';
+import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
 import useCommand, { tryResult } from './useCommand';
+import { useRecentCluster } from './useCluster';
 import type { Cluster, ProviderSearchResults, Providers } from '~bindings';
 import { bridge } from '~imports';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
@@ -28,6 +29,7 @@ export function BrowserProvider(props: ParentProps) {
 	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
 
 	const [cluster, setCluster] = createSignal<Cluster>();
+	const recentCluster = useRecentCluster();
 	const navigate = useNavigate();
 
 	const modal = createModal(props => (
@@ -70,6 +72,10 @@ export function BrowserProvider(props: ParentProps) {
 			controller.refreshCache();
 	});
 
+	createEffect(() => {
+		setCluster(recentCluster());
+	});
+
 	return (
 		<BrowserContext.Provider value={controller}>
 			{props.children}
@@ -87,26 +93,29 @@ export default function useBrowser() {
 }
 
 function ChooseClusterModal(props: ModalProps) {
-	const [selected, setSelected] = createSignal<number | undefined>();
+	const [selected, setSelected] = createSignal<number>(0);
 	const [clusters] = useCommand(bridge.commands.getClusters);
 	const controller = useBrowser();
 
-	const currentlySelectedCluster = () => {
+	const currentlySelectedCluster = (list: Cluster[]) => {
 		const cluster = controller.cluster();
+
 		if (cluster === undefined)
 			return 0;
 
-		// TODO: FIx this
-		console.log(clusters());
-		const index = clusters()?.findIndex((c) => {
-			console.log(c.uuid, cluster.uuid, c.uuid === cluster.uuid);
-			return c.uuid === cluster.uuid;
-		}) || 0;
+		if (list === undefined)
+			return 0;
+
+		const index = list.findIndex(c => c.uuid === cluster.uuid) || 0;
 		if (index === -1)
 			return 0;
 
 		return index;
 	};
+
+	createEffect(() => {
+		setSelected(currentlySelectedCluster(clusters() || []));
+	});
 
 	function chooseCluster() {
 		const index = untrack(selected);
@@ -122,21 +131,21 @@ function ChooseClusterModal(props: ModalProps) {
 			{...props}
 			title="Choose a cluster"
 			children={(
-				<Dropdown
-					onChange={setSelected}
-					selected={currentlySelectedCluster()}
+				<Show
+					when={clusters !== undefined}
+					fallback={<div>Loading...</div>}
 				>
-					<Show
-						when={clusters !== undefined}
-						fallback={<div>Loading...</div>}
+					<Dropdown
+						onChange={setSelected}
+						selected={selected}
 					>
 						<For each={clusters()!}>
 							{cluster => (
 								<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
 							)}
 						</For>
-					</Show>
-				</Dropdown>
+					</Dropdown>
+				</Show>
 			)}
 			buttons={[
 				<Button

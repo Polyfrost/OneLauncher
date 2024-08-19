@@ -1,4 +1,4 @@
-import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createSignal, useContext } from 'solid-js';
+import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createEffect, createSignal, useContext } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import useCommand, { tryResult } from './useCommand';
 import type { Cluster } from '~bindings';
@@ -64,6 +64,44 @@ export function useLaunchCluster(uuid: string | Accessor<string | undefined> | (
 			modal.show();
 		});
 	};
+}
+
+export function useRecentCluster() {
+	const [clusters] = useCommand(bridge.commands.getClusters);
+	const [cluster, setCluster] = createSignal<Cluster>();
+
+	createEffect(() => {
+		// eslint-disable-next-line no-undef-init -- This is fine. I love eslint rule clash though
+		let mostRecentCluster: Cluster | undefined = undefined;
+		const list = clusters();
+
+		if (list === undefined)
+			return;
+
+		for (const cluster of list) {
+			if (mostRecentCluster === undefined) {
+				mostRecentCluster = cluster;
+				continue;
+			}
+
+			if (typeof mostRecentCluster.meta.played_at !== 'string' && typeof cluster.meta.played_at === 'string') {
+				mostRecentCluster = cluster;
+				continue;
+			}
+
+			if (typeof mostRecentCluster.meta.played_at === 'string' && typeof cluster.meta.played_at === 'string') {
+				const playedAt = new Date(mostRecentCluster.meta.played_at);
+				const clusterPlayedAt = new Date(cluster.meta.played_at);
+
+				if (clusterPlayedAt > playedAt)
+					mostRecentCluster = cluster;
+			}
+		}
+
+		setCluster(mostRecentCluster);
+	});
+
+	return cluster;
 }
 
 export default useClusterContext;

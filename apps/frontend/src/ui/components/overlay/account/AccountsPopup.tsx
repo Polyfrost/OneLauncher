@@ -3,7 +3,7 @@ import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
 import Button from '../../base/Button';
 import PlayerHead from '../../game/PlayerHead';
-import Popup from '../Popup';
+import Popup, { type PopupProps } from '../Popup';
 import useAccountController from './AddAccountModal';
 import type { MinecraftCredentials } from '~bindings';
 
@@ -51,7 +51,7 @@ function AccountComponent(props: AccountComponentProps) {
 	);
 }
 
-function AccountPopup(props: Popup.PopupProps) {
+function AccountPopup(props: PopupProps) {
 	const controller = useAccountController();
 
 	const filteredAccounts = () => controller.accounts()?.filter(account => account.id !== controller.defaultAccount()?.id) ?? [];

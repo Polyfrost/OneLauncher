@@ -8,18 +8,15 @@ import type {
 } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
-// eslint-disable-next-line ts/no-namespace -- todo
-declare namespace Popup {
-	type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
-		visible: Accessor<boolean>;
-		setVisible: Setter<boolean>;
-		class?: string;
-		style?: JSX.CSSProperties | string;
-		mount?: Node;
-	};
-}
+export type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
+	visible: Accessor<boolean>;
+	setVisible: Setter<boolean>;
+	class?: string;
+	style?: JSX.CSSProperties | string;
+	mount?: Node;
+};
 
-function Popup(props: Popup.PopupProps) {
+function Popup(props: PopupProps) {
 	let popupRef!: HTMLDivElement;
 
 	function onMouseDown(e: MouseEvent) {

@@ -1,12 +1,12 @@
 import { For, Match, Switch } from 'solid-js';
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import Popup from '../Popup';
+import Popup, { type PopupProps } from '../Popup';
 import Button from '../../base/Button';
 import NotificationComponent from './NotificationComponent';
 import useNotifications from '~ui/hooks/useNotifications';
 
-function NotificationPopup(props: Popup.PopupProps) {
+function NotificationPopup(props: PopupProps) {
 	const [notifications] = useNotifications(updateSize);
 
 	let inner!: HTMLDivElement;

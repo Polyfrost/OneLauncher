@@ -426,6 +426,7 @@ impl Processor {
 	#[tracing::instrument(skip(self, uuid, command, post, censors))]
 	#[tracing::instrument(level = "trace", skip(self))]
 	#[onelauncher_macros::memory]
+	#[allow(clippy::too_many_arguments)]
 	pub async fn insert_process(
 		&mut self,
 		uuid: Uuid,
@@ -434,6 +435,7 @@ impl Processor {
 		post: Option<String>,
 		censors: HashMap<String, String>,
 		user: Option<Uuid>,
+		enable_gamemode: Option<bool>,
 	) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
 		command
 			.stdout(Stdio::piped())
@@ -448,6 +450,15 @@ impl Processor {
 
 		let stdout = proc.stdout.take().unwrap();
 		let stderr = proc.stderr.take().unwrap();
+
+		#[cfg(target_os = "linux")]
+		{
+			if enable_gamemode.is_some_and(|x| x == true) {
+				// TODO: maybe just ignore the error...?
+				onelauncher_gamemode::request_start_for_wrapper(pid)
+					.map_err(|e| anyhow::anyhow!("failed to enable gamemode: {e}"))?;
+			}
+		}
 
 		tokio::spawn(async move {
 			let mut stdout = BufReader::new(stdout).lines();

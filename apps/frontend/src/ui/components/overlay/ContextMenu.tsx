@@ -1,9 +1,9 @@
 import { type Accessor, type JSX, createEffect, createSignal } from 'solid-js';
-import Popup from './Popup';
+import Popup, { type PopupProps } from './Popup';
 
 type ContextMenuProps = {
 	pos: Accessor<{ x: number; y: number }>;
-} & Popup.PopupProps;
+} & PopupProps;
 
 function ContextMenu(props: ContextMenuProps) {
 	const [pos, setPos] = createSignal({ x: 0, y: 0 });

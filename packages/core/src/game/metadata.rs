@@ -244,6 +244,7 @@ pub async fn download_libraries(
 	}?;
 
 	let num_files = libraries.len();
+	// TODO: figure out why rustfmt won't format this (it's not a macro...)
 	ingress_try_for_each(
         stream::iter(libraries.iter())
             .map(Ok::<&Library, crate::Error>),

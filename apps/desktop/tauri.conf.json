@@ -149,7 +149,7 @@
 	"plugins": {
 		"updater": {
 			"pubkey": "",
-			"endpoints": ["https://polyfrost.org/releases/tauri/{{version}}/{{target}}/{{arch}}"]
+			"endpoints": ["https://polyfrost.org/releases/tauri/{{current_version}}/{{target}}/{{arch}}"]
 		},
 		"deep-link": {
 			"mobile": [],

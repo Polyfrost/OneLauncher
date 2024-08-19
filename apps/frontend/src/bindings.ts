@@ -406,7 +406,7 @@ export const events = __makeEvents__<{
 
 /** user-defined constants */
 
-export const PROGRAM_INFO = { arch: '64', dev_build: true, launcher_version: '1.0.0-alpha.1', platform: 'linux', tauri_version: '2.0.0-rc.2', webview_version: '2.44.2' } as const;
+export const PROGRAM_INFO = { arch: '64', dev_build: true, launcher_version: '1.0.0-alpha.1', platform: 'linux', tauri_version: '2.0.0-rc.3', webview_version: '2.44.2' } as const;
 
 /** user-defined types */
 
@@ -765,6 +765,10 @@ export interface Settings {
 	 * Whether to allow launching the same cluster under the same account.
 	 */
 	allow_parallel_running_clusters?: boolean;
+	/**
+	 * Whether to launch Feral Gamemode on Linux systems.
+	 */
+	enable_gamemode?: boolean;
 	/**
 	 * A global default [`Resolution`] for Minecraft.
 	 */

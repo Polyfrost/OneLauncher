@@ -283,7 +283,7 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 		.output()
 		.ok()?;
 	let stdout = String::from_utf8_lossy(&output.stdout);
-	tracing::info!("{}", stdout);
+	tracing::debug!("{stdout}");
 
 	let mut java_version = None;
 	let mut java_arch = None;

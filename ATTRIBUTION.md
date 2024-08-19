@@ -21,7 +21,7 @@ You should have received a copy of the GNU General Public License along with thi
 Any files depicting [Polyfrost branding](https://polyfrost.org/legal/branding), including the Polyfrost logo, any landing and background images, the OneConfig logo, the OneLauncher logo, and variations thereof, are licensed under the following:
 
 ```txt
-All rights reserved. Copyright (C) 2022~2024 Polyfrost
+All rights reserved. Copyright (C) 2022~CURRENT Polyfrost
 ```
 
 This includes, but may not be limited to, the following files:
@@ -31,9 +31,9 @@ This includes, but may not be limited to, the following files:
 
 ## Additional Libraries
 
-The following are libraries, projects, and codebases which we (Polyfrost and Contributors) copied or modified from, with additional attribution inline (THIS IS A NON-EXHAUSTIVE LIST, IF WE ARE MISSING A LICENSE, PLEASE CHECK OUR [attributions page](https://polyfrost.org/attributions), OR LEAVE A TICKET IN [our Discord server](https://polyfrost.org/discord)):
+The following are libraries, projects, and codebases which we (Polyfrost and Contributors) copied or modified, with additional attribution inline (THIS IS A NON-EXHAUSTIVE LIST, IF WE ARE MISSING A LICENSE, PLEASE CHECK OUR [attributions page](https://polyfrost.org/attributions), OR LEAVE A TICKET IN [our Discord server](https://polyfrost.org/discord)):
 
-## Prism Launcher
+## [Prism Launcher]
 
 ```txt
 Prism Launcher - Minecraft Launcher
@@ -69,7 +69,7 @@ permission notice:
     limitations under the License.
 ```
 
-## Modrinth App
+## [Modrinth App]
 
 ```txt
 Modrinth App

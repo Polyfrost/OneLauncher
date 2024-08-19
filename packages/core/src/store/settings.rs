@@ -24,6 +24,9 @@ pub struct Settings {
 	/// Whether to allow launching the same cluster under the same account.
 	#[serde(default)]
 	pub allow_parallel_running_clusters: bool,
+	/// Whether to launch Feral Gamemode on Linux systems.
+	#[serde(default)]
+	pub enable_gamemode: bool,
 	/// A global default [`Resolution`] for Minecraft.
 	pub resolution: Resolution,
 	/// A global [`JavaVersions`] list and default version.
@@ -99,6 +102,10 @@ impl Settings {
 				disable_animations: false,
 				force_fullscreen: false,
 				allow_parallel_running_clusters: false,
+				#[cfg(target_os = "linux")]
+				enable_gamemode: true,
+				#[cfg(not(target_os = "linux"))]
+				enable_gamemode: false,
 				resolution: Resolution::default(),
 				java_versions: JavaVersions::new(),
 				memory: Memory::default(),

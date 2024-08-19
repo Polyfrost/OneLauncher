@@ -370,19 +370,17 @@ pub async fn launch_minecraft(
 		)
 		.current_dir(instance_path.clone());
 
-	// when cargo makes the DYLD_LIBRARY_PATH it breaks Minecraft
+	// when cargo sets the `DYLD_LIBRARY_PATH`` it breaks Minecraft
 	#[cfg(target_os = "macos")]
 	if std::env::var("CARGO").is_ok() {
 		command.env_remove("DYLD_FALLBACK_LIBRARY_PATH");
 	}
 
-	// remove preexisting Java options, as they should be set in the cluster settings.
+	// remove pre-existing java options, as they should be set in the cluster settings.
 	command.env_remove("_JAVA_OPTIONS");
 	command.envs(env_args);
 
 	// overrides `options.txt` with our settings: i can't believe it's not yaml
-	use regex::Regex;
-
 	if !mc_options.is_empty() {
 		let options_path = instance_path.join("options.txt");
 		let mut options_string = String::new();
@@ -390,7 +388,7 @@ pub async fn launch_minecraft(
 			options_string = io::read_to_string(&options_path).await?;
 		}
 		for (key, value) in mc_options {
-			let re = Regex::new(&format!(r"(?m)^{}:.*$", regex::escape(key)))?;
+			let re = regex::Regex::new(&format!(r"(?m)^{}:.*$", regex::escape(key)))?;
 			if !re.is_match(&options_string) {
 				options_string.push_str(&format!("\n{}:{}", key, value));
 			} else {
@@ -456,6 +454,7 @@ pub async fn launch_minecraft(
 			.await;
 	}
 
+	let enable_gamemode = state.settings.read().await.enable_gamemode;
 	let mut state_processor = state.processor.write().await;
 	state_processor
 		.insert_process(
@@ -465,6 +464,7 @@ pub async fn launch_minecraft(
 			post_hook,
 			censors,
 			Some(credentials.id),
+			Some(enable_gamemode),
 		)
 		.await
 }

@@ -4,6 +4,7 @@
 - [ ] migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
  - waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
 - [ ] bump `tauri` to stable v2 when it releases.
+ - [x] bump `tauri` to latest rc v2.
 - [ ] test all major version/loader combos launching and mod loading.
 - legacy fabric, babric, nilloader, java agent support
  - nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
@@ -12,7 +13,7 @@
 - [ ] better debug logging and mc logging, for the launcher and spawn
 - [ ] implement forgewrapper instead of processing ourselves
 - [ ] allow per-cluster sandboxing
-- [ ] implement gamemode
+- [x] implement gamemode
 - [ ] better toml support
 - [ ] make all tauri events into tauri_specta events
 - [ ] apple and windows signing

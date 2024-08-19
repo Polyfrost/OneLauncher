@@ -164,7 +164,7 @@ async-recursion = { version = "1.1" }
 sysinfo = { version = "0.31", features = [ "serde" ] }
 sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
-cocoa = { version = "0.25" }
+cocoa = { version = "0.26" }
 objc = { version = "0.2" }
 
 [workspace.dependencies.prisma-client-rust]

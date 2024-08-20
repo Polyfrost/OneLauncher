@@ -79,15 +79,15 @@ pub async fn download_package(
 	);
 
 	let package_path = download_file(file, &package.package_type, cluster).await?;
-	let sha1 = file
+	let sha512 = file
 		.hashes
-		.get("sha1")
+		.get("sha512")
 		.unwrap_or(&"unknown".to_string())
 		.to_owned(); // TODO: Figure out sha1
 
 	let package = Package {
 		file_name: file.file_name.clone(),
-		sha1,
+		sha512,
 		meta: PackageMetadata::from_managed_package(package.clone(), managed_version),
 		disabled: false,
 	};

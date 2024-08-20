@@ -19,13 +19,18 @@
 		"@flowr/utils": "^3.12.1",
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.51.24",
+		"dayjs": "^1.11.12",
 		"fast-equals": "^5.0.1",
+		"highlight.js": "^11.10.0",
+		"markdown-it": "^14.1.0",
 		"plausible-tracker": "^0.3.9",
 		"react": "^18.3.1",
 		"solid-js": "^1.8.21",
+		"xss": "^1.0.15",
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {
+		"@types/markdown-it": "^14.1.2",
 		"@types/react": "^18.3.3"
 	}
 }

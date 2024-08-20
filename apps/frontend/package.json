@@ -40,7 +40,6 @@
 		"overlayscrollbars-solid": "^0.5.5",
 		"pathe": "^1.1.2",
 		"solid-js": "^1.8.21",
-		"solid-markdown": "^2.0.13",
 		"solid-transition-group": "^0.2.3",
 		"uuid": "^10.0.0",
 		"zod": "^3.23.8"

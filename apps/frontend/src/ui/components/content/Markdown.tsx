@@ -1,27 +1,17 @@
-import { type ParentProps, mergeProps, splitProps } from 'solid-js';
-import { SolidMarkdown, type SolidMarkdownOptions } from 'solid-markdown';
-import Link from '../base/Link';
+import type { ParentProps } from 'solid-js';
+import { renderHighlightedString } from '@onelauncher/client';
 import styles from './Markdown.module.scss';
+import type { Package } from '~bindings';
 
-export type MarkdownProps = ParentProps & Partial<SolidMarkdownOptions>;
+export type MarkdownProps = ParentProps & {
+	package: Package;
+};
 
 function Markdown(props: MarkdownProps) {
-	const [split, rest] = splitProps(props, ['class']);
-
-	const defaultOpts: MarkdownProps = {
-		renderingStrategy: 'memo',
-		components: {
-			a: Link,
-		},
-	};
-
-	const merged = mergeProps(defaultOpts, rest);
-
 	return (
-		<SolidMarkdown
-			class={`${styles.markdown} ${split.class || ''}`}
-			{...merged}
-		/>
+		<div class={styles.markdown}>
+			{renderHighlightedString(props.package.meta.body)}
+		</div>
 	);
 }
 

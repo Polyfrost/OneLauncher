@@ -3560,6 +3560,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
+ "toml 0.8.2",
  "tracing",
  "tracing-appender",
  "tracing-error",

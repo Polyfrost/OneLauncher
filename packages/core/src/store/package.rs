@@ -134,7 +134,7 @@ pub struct ProviderSearchResults {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Package {
-	pub sha1: String,
+	pub sha512: String,
 	pub meta: PackageMetadata,
 	pub file_name: String,
 	pub disabled: bool,
@@ -337,7 +337,7 @@ pub enum PackageFile {
 
 #[tracing::instrument(skip(io_semaphore))]
 #[onelauncher_macros::memory]
-async fn read_icon(
+pub async fn read_icon(
 	icon_path: Option<String>,
 	cache_path: &Path,
 	path: &PathBuf,

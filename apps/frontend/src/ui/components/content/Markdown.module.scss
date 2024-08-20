@@ -1,3 +1,22 @@
 .markdown {
 	@apply line-height-relaxed flex flex-col gap-y-2;
 }
+
+/*
+.markdown-body {
+  :deep(table) {
+    width: auto;
+  }
+
+  :deep(hr),
+  :deep(h1),
+  :deep(h2) {
+    max-width: max(60rem, 90%);
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    margin-left: 2rem;
+  }
+}
+*/

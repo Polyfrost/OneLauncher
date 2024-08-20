@@ -55,9 +55,7 @@ function BrowserPackage() {
 								</div> */}
 
 								<div class="flex-1">
-									<Markdown>
-										{pkg()!.body}
-									</Markdown>
+									<Markdown package={pkg()!} />
 								</div>
 
 							</div>

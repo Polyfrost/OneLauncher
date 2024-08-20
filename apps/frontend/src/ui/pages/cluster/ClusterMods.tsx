@@ -1,12 +1,12 @@
 import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { For, Match, Switch, createMemo, createSignal, onMount } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
+import type { Package } from '@onelauncher/client/bindings';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import type { Package } from '~bindings';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {

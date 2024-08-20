@@ -1,7 +1,7 @@
 import { type Context, type ParentProps, Show, createContext, createEffect, useContext } from 'solid-js';
 import { useBeforeLeave } from '@solidjs/router';
+import type { Settings } from '@onelauncher/client/bindings';
 import useCommand from './useCommand';
-import type { Settings } from '~bindings';
 import { bridge } from '~imports';
 
 /**

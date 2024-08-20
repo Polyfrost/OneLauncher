@@ -2,6 +2,9 @@
 	"[rust]": {
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
+	"files.readonlyInclude": {
+		"**/node_modules/**": true
+	},
 	"files.watcherExclude": {
 		"**/_build": true,
 		"**/.classpath": true,

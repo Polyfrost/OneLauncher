@@ -1,10 +1,10 @@
 import { useBeforeLeave } from '@solidjs/router';
 import { type Accessor, Show } from 'solid-js';
+import type { Cluster } from '@onelauncher/client/bindings';
 import { GameSettings, JvmSettings, LauncherSettings, ProcessSettings, createSetting } from '../settings/game/SettingsMinecraft';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import type { Cluster } from '~bindings';
 import useSettingsContext from '~ui/hooks/useSettings';
 import { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';

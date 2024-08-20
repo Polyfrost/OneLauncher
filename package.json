@@ -36,7 +36,6 @@
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
 		"tauri": "pnpm desktop tauri-ext",
-
 		"postupdate": "cargo update",
 		"test:vi": "pnpm vitest run",
 		"test:update": "pnpm vitest -u",
@@ -65,7 +64,7 @@
 		"ts-node": "^10.9.2",
 		"tsx": "^4.17.0",
 		"typescript": "^5.5.4",
-		"vite": "^5.4.1",
+		"vite": "^5.4.2",
 		"vitest": "^2.0.5"
 	}
 }

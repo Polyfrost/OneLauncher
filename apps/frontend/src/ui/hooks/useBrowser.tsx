@@ -1,8 +1,8 @@
 import { useNavigate } from '@solidjs/router';
 import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
+import type { Cluster, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 import { useRecentCluster } from './useCluster';
-import type { Cluster, ProviderSearchResults, Providers } from '~bindings';
 import { bridge } from '~imports';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
 import type { ModalProps } from '~ui/components/overlay/Modal';

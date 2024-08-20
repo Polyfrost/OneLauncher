@@ -1,7 +1,7 @@
 import type { ParentProps } from 'solid-js';
 import { renderHighlightedString } from '@onelauncher/client';
+import type { Package } from '@onelauncher/client/bindings';
 import styles from './Markdown.module.scss';
-import type { Package } from '~bindings';
 
 export type MarkdownProps = ParentProps & {
 	package: Package;

@@ -8,4 +8,4 @@ import 'virtual:uno.css';
 import './globals.css';
 import '~utils/patches';
 
-export * as bridge from './bindings';
+export * as bridge from '@onelauncher/client/bindings';

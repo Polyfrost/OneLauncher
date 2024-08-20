@@ -32,7 +32,7 @@ pub async fn generate_context(
 
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageType {
 	/// represents a mod jarfile
@@ -94,6 +94,17 @@ impl PackageType {
 			PackageType::ResourcePack => "resourcepacks",
 			PackageType::ShaderPack => "shaderpacks",
 		}
+	}
+
+	pub fn iterator() -> impl Iterator<Item = PackageType> {
+		[
+			PackageType::Mod,
+			PackageType::DataPack,
+			PackageType::ResourcePack,
+			PackageType::ShaderPack,
+		]
+		.iter()
+		.copied()
 	}
 }
 
@@ -339,7 +350,7 @@ pub enum PackageFile {
 #[onelauncher_macros::memory]
 pub async fn read_icon(
 	icon_path: Option<String>,
-	cache_path: &Path,
+	cache_dir: &Path,
 	path: &PathBuf,
 	io_semaphore: &IoSemaphore,
 ) -> crate::Result<Option<PathBuf>> {
@@ -362,7 +373,7 @@ pub async fn read_icon(
 					.is_ok()
 				{
 					let bytes = bytes::Bytes::from(bytes);
-					let path = write_icon(&icon_path, cache_path, bytes, io_semaphore).await?;
+					let path = write_icon(&icon_path, cache_dir, bytes, io_semaphore).await?;
 
 					return Ok(Some(path));
 				}

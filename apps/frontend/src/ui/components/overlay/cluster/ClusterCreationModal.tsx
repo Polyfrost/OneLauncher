@@ -1,12 +1,12 @@
 import { type Accessor, type Context, type JSX, type ParentProps, type Setter, Show, createContext, createSignal, untrack, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import { createStore } from 'solid-js/store';
+import type { CreateCluster } from '@onelauncher/client/bindings';
 import HeaderImage from '../../../../assets/images/header.png';
 import { createModal } from '../Modal';
 import ClusterGameSetup from './ClusterGameSetup';
 import ClusterProviderSelection from './ClusterProviderSelection';
 import Button from '~ui/components/base/Button';
-import type { CreateCluster } from '~bindings';
 import { bridge } from '~imports';
 
 export enum CreationStage {

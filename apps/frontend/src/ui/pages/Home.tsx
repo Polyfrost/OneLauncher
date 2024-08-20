@@ -8,12 +8,12 @@ import { For, Show, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 
 import { mergeRefs } from '@solid-primitives/refs';
+import type { Cluster } from '@onelauncher/client/bindings';
 import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import TextField from '../components/base/TextField';
 import ClusterRoot from './cluster/ClusterRoot';
 import ClusterCover from '~ui/components/game/ClusterCover';
-import type { Cluster } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import { formatAsDuration, upperFirst } from '~utils';

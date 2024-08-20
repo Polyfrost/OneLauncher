@@ -1,5 +1,5 @@
 import { type ResourceReturn, createResource } from 'solid-js';
-import type { Result } from '~bindings';
+import type { Result } from '@onelauncher/client/bindings';
 
 /**
  * A helper function which handles a Rust Result properly

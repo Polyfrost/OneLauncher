@@ -1,5 +1,6 @@
 import type { ParentProps } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import { PROGRAM_INFO } from '@onelauncher/client/bindings';
 import WindowFrame from './components/WindowFrame';
 import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -11,7 +12,6 @@ import { MultiProvider } from './components/MultiProvider';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
 import { ModalProvider, ModalRenderer } from './components/overlay/Modal';
 import { BrowserProvider } from './hooks/useBrowser';
-import { PROGRAM_INFO } from '~bindings';
 
 function App(props: ParentProps) {
 	if (PROGRAM_INFO.dev_build !== true)

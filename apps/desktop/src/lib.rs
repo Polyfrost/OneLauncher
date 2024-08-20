@@ -50,7 +50,7 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
 				.formatter(crate::ext::specta::formatter),
-			"../frontend/src/bindings.ts",
+			"../../packages/client/src/bindings.ts",
 		)
 		.expect("failed to export debug bindings!");
 

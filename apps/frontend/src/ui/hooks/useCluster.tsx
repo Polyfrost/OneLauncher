@@ -1,7 +1,7 @@
 import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createEffect, createSignal, useContext } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
+import type { Cluster } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
-import type { Cluster } from '~bindings';
 import { bridge } from '~imports';
 import ClusterGame from '~ui/pages/cluster/ClusterGame';
 import Modal, { createModal } from '~ui/components/overlay/Modal';

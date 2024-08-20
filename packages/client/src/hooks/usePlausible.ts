@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { createMutable } from 'solid-js/store';
 import { createPersistedMutable, useSolidStore } from '../library';
-import { PROGRAM_INFO, type ProgramInfo } from '../constants';
+import type { ProgramInfo } from '../types';
+import { PROGRAM_INFO } from '../bindings';
 import { useDebugState } from './useDebug';
 
 /**

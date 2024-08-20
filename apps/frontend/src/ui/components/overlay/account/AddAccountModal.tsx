@@ -1,7 +1,7 @@
 import { type Context, Match, type ParentProps, type Resource, Switch, createContext, createSignal, useContext } from 'solid-js';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Modal, { type ModalProps, createModal } from '../Modal';
-import type { MinecraftCredentials } from '~bindings';
 import { bridge } from '~imports';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import Button from '~ui/components/base/Button';

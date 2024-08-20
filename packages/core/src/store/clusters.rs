@@ -39,6 +39,27 @@ pub enum ClusterStage {
 	NotInstalled,
 }
 
+impl ClusterStage {
+	pub fn as_str(&self) -> &'static str {
+		match *self {
+			Self::Installed => "installed",
+			Self::Downloading => "downloading",
+			Self::PackDownloading => "pack_downloading",
+			Self::NotInstalled => "not_installed",
+		}
+	}
+
+	pub fn from_str(val: &str) -> Self {
+		match val {
+			"installed" => Self::Installed,
+			"downloading" => Self::Downloading,
+			"pack_downloading" => Self::PackDownloading,
+			"not_installed" => Self::NotInstalled,
+			_ => Self::NotInstalled,
+		}
+	}
+}
+
 /// Relative Path wrapper to be used as an identifer for a cluster path.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
@@ -314,6 +335,39 @@ pub enum Loader {
 }
 
 impl Loader {
+	pub fn as_str(&self) -> &'static str {
+		match *self {
+			Self::Vanilla => "vanilla",
+			Self::Forge => "forge",
+			Self::Fabric => "fabric",
+			Self::Quilt => "quilt",
+			Self::NeoForge => "neoforge",
+			Self::LegacyFabric => "legacyfabric",
+		}
+	}
+
+	pub fn as_meta_str(&self) -> &'static str {
+		match *self {
+			Self::Vanilla => "vanilla",
+			Self::Forge => "forge",
+			Self::Fabric => "fabric",
+			Self::Quilt => "quilt",
+			Self::NeoForge => "neo",
+			Self::LegacyFabric => "legacyfabric",
+		}
+	}
+
+	pub fn from_string(val: &str) -> Self {
+		match val {
+			"vanilla" => Self::Vanilla,
+			"forge" => Self::Forge,
+			"fabric" => Self::Fabric,
+			"quilt" => Self::Quilt,
+			"neoforge" => Self::NeoForge,
+			_ => Self::Vanilla,
+		}
+	}
+
 	pub fn supports_mods(&self) -> bool {
 		!matches!(self, Self::Vanilla)
 	}
@@ -404,6 +458,20 @@ impl Cluster {
 	#[inline]
 	pub fn cluster_path(&self) -> ClusterPath {
 		ClusterPath::new(&self.path)
+	}
+
+	/// Set the icon path for this [`Cluster`].
+	pub async fn set_icon<'a>(
+		&'a mut self,
+		cache_dir: &Path,
+		semaphore: &IoSemaphore,
+		icon: bytes::Bytes,
+		file_name: &str,
+	) -> crate::Result<()> {
+		let file = write_icon(icon, cache_dir, icon, semaphore).await?;
+		self.meta.icon = Some(file);
+		self.meta.modified_at = Utc::now();
+		Ok(())
 	}
 
 	/// Set the icon [`bytes::Bytes`] for this cluster.
@@ -567,7 +635,12 @@ impl Cluster {
 
 		watch_path(cluster_path, watcher, PackageType::Mod.get_folder()).await?;
 		watch_path(cluster_path, watcher, PackageType::ShaderPack.get_folder()).await?;
-		watch_path(cluster_path, watcher, PackageType::ResourcePack.get_folder()).await?;
+		watch_path(
+			cluster_path,
+			watcher,
+			PackageType::ResourcePack.get_folder(),
+		)
+		.await?;
 		watch_path(cluster_path, watcher, PackageType::DataPack.get_folder()).await?;
 		watch_path(cluster_path, watcher, "crash-reports").await?;
 

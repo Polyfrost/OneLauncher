@@ -1,5 +1,6 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
 import { For, Index, type JSX, Show, createEffect, createSignal, onMount, splitProps, untrack } from 'solid-js';
+import type { Loader, VersionType } from '@onelauncher/client/bindings';
 import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
@@ -7,7 +8,6 @@ import useCommand from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import SelectList from '~ui/components/base/SelectList';
 import Checkbox from '~ui/components/base/Checkbox';
-import type { Loader, VersionType } from '~bindings';
 import { LOADERS, formatVersionRelease } from '~utils';
 import LoaderIcon from '~ui/components/game/LoaderIcon';
 

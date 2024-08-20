@@ -1,6 +1,6 @@
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
-import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '~bindings';
+import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
 export * from './timer';
 export * from './sorting';

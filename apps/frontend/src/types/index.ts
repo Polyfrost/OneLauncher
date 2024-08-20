@@ -1,4 +1,4 @@
-import type { PROGRAM_INFO } from '~bindings';
+import type { PROGRAM_INFO } from '@onelauncher/client/bindings';
 
 export type ProgramInfo = typeof PROGRAM_INFO;
 

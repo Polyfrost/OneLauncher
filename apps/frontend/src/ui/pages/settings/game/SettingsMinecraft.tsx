@@ -1,6 +1,6 @@
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
 import { type Accessor, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
-import type { Memory, Resolution } from '~bindings';
+import type { Memory, Resolution } from '@onelauncher/client/bindings';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';

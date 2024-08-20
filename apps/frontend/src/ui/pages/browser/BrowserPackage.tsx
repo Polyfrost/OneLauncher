@@ -1,8 +1,8 @@
 import { For, Show, createEffect, createSignal } from 'solid-js';
 import { type Params, useSearchParams } from '@solidjs/router';
 import { ChevronDownIcon, Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
+import type { Cluster, ManagedPackage, Providers } from '@onelauncher/client/bindings';
 import { getLicenseUrl, getPackageUrl } from '../../../utils';
-import type { Cluster, ManagedPackage, Providers } from '~bindings';
 import { bridge } from '~imports';
 import useCommand from '~ui/hooks/useCommand';
 import { abbreviateNumber, formatAsRelative } from '~utils';

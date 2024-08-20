@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[tauri::command]
 pub async fn get_package(
 	provider: Providers,
-	project_id: String
+	project_id: String,
 ) -> Result<ManagedPackage, String> {
 	Ok(provider.get(&project_id).await?)
 }
@@ -17,7 +17,7 @@ pub async fn get_package(
 #[tauri::command]
 pub async fn get_packages(
 	provider: Providers,
-	project_ids: Vec<String>
+	project_ids: Vec<String>,
 ) -> Result<Vec<ManagedPackage>, String> {
 	Ok(provider.get_multiple(&project_ids).await?)
 }
@@ -33,7 +33,16 @@ pub async fn search_packages(
 	loaders: Option<Vec<Loader>>,
 	open_source: Option<bool>,
 ) -> Result<ProviderSearchResults, String> {
-	Ok(provider.search(query, limit, game_versions, categories, loaders, open_source).await?)
+	Ok(provider
+		.search(
+			query,
+			limit,
+			game_versions,
+			categories,
+			loaders,
+			open_source,
+		)
+		.await?)
 }
 
 #[specta::specta]

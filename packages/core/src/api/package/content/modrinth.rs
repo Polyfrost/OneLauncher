@@ -1,7 +1,9 @@
 use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
-use crate::store::{License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult};
+use crate::store::{
+	License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult,
+};
 use crate::utils::http::fetch;
 use crate::{Result, State};
 
@@ -170,7 +172,11 @@ impl From<ModrinthVersion> for ManagedVersion {
 			files: value.files.into_iter().map(|f| f.into()).collect(),
 			deps: vec![], // TODO [`ManagedDependency`]?
 			game_versions: value.game_versions,
-			loaders: value.loaders.into_iter().filter_map(|loader| Loader::try_from(loader).ok()).collect(),
+			loaders: value
+				.loaders
+				.into_iter()
+				.filter_map(|loader| Loader::try_from(loader).ok())
+				.collect(),
 		}
 	}
 }
@@ -192,7 +198,11 @@ pub async fn list() -> Result<Vec<ModrinthPackage>> {
 	)?)
 }
 
-pub async fn search<F>(query: Option<String>, limit: Option<u8>, facets: Option<F>) -> Result<ProviderSearchResults>
+pub async fn search<F>(
+	query: Option<String>,
+	limit: Option<u8>,
+	facets: Option<F>,
+) -> Result<ProviderSearchResults>
 where
 	F: FnOnce(FacetBuilder) -> String,
 {
@@ -204,7 +214,11 @@ where
 				"/search?query={}&limit={}{}",
 				query.unwrap_or_default(),
 				limit.unwrap_or(10),
-				if facets.is_empty() { "".to_string() } else { format!("&facets={}", facets) }
+				if facets.is_empty() {
+					"".to_string()
+				} else {
+					format!("&facets={}", facets)
+				}
 			)
 			.as_str(),
 			None,
@@ -213,7 +227,7 @@ where
 		.await?,
 	)?;
 
-    Ok(ProviderSearchResults {
+	Ok(ProviderSearchResults {
 		provider: Providers::Modrinth,
 		results: results.hits,
 	})

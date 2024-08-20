@@ -1,5 +1,7 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
+use crate::package::content::Providers;
+use crate::store::Loader;
 use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
 use crate::State;
 use async_zip::tokio::read::fs::ZipFileReader;

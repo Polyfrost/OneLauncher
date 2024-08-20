@@ -5514,9 +5514,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea061e6be9b37ab455eadc189f45617deafc85c94f78f9cd584862a6deaa83d1"
+checksum = "175a0cc0f11d4278123144daa571bb72be333376b8f4ca52ce6b9504e43caafc"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -5541,9 +5541,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-macros"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e20d6f6f96f55a43339c465b3c8205d71940372d54d7c665c5329e8e4ba35d0"
+checksum = "cfa65710d73b174d152a3bd48ab6e9e994ea32cd052473c223325ea10ca229b4"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -5555,9 +5555,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec01af01098a286d3e430c1fa947bfd77bc8011ecb209438af4444b02d82b29e"
+checksum = "e9997e2801118206cd344e30b8b837ba8668aa52c4cdc3a14c1d44560dcce540"
 dependencies = [
  "anyhow",
  "glob",
@@ -5725,9 +5725,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4e736d3293f8347e5d2c5b250fe0e5b873499f5483578b139445dbbf802e2e5"
+checksum = "ef9dcd87245b84eb27724de1108c0a1a19e826dae36a2f86c9efe94963b3cc3c"
 dependencies = [
  "dpi",
  "gtk",
@@ -5744,9 +5744,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fead81c1bd0205d5f02580e64f522704618274e784c2d1c127e4ba19acd0b79"
+checksum = "02a73e75d1d0204f69efff29ade79299623eb140e0266856c68b880dad632457"
 dependencies = [
  "cocoa",
  "gtk",

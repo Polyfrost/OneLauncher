@@ -62,25 +62,37 @@ impl Providers {
 
 					if let Some(categories) = categories {
 						for category in categories {
-							builder.or(Facet("categories".to_string(), FacetOperation::Eq, category));
+							builder.or(Facet(
+								"categories".to_string(),
+								FacetOperation::Eq,
+								category,
+							));
 						}
 					}
 
 					if let Some(loaders) = loaders {
 						for loader in loaders {
-							builder.or(Facet("categories".to_string(), FacetOperation::Eq, loader.to_string()));
+							builder.or(Facet(
+								"categories".to_string(),
+								FacetOperation::Eq,
+								loader.to_string(),
+							));
 						}
 					}
 
 					if let Some(open_source) = open_source {
-						builder.and(Facet("open_source".to_string(), FacetOperation::Eq, open_source.to_string()));
+						builder.and(Facet(
+							"open_source".to_string(),
+							FacetOperation::Eq,
+							open_source.to_string(),
+						));
 					}
 
 					// builder.and(Facet("client_side".to_string(), FacetOperation::Eq, "")) // TODO: Possibly make this client_side = required
 
 					builder.build()
-				})
-			)
+				}),
+			),
 		}
 		.await
 	}

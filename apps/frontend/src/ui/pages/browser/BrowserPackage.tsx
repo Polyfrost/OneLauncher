@@ -130,7 +130,7 @@ function BrowserSidebar(props: ManagedPackage) {
 					<div class="flex flex-row items-start gap-x-1">
 						License
 						<div
-							class="text-link hover:text-link-hover flex flex-1 flex-row items-start gap-x-1 font-bold"
+							class="flex flex-1 flex-row items-start gap-x-1 text-link font-bold hover:text-link-hover"
 							onClick={() => openLicense(props.license)}
 						>
 							{props.license?.name || props.license?.id || 'Unknown'}

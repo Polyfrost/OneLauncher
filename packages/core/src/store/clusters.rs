@@ -538,8 +538,8 @@ impl Cluster {
 		};
 
 		paths(PackageType::Mod.get_folder())?;
-		paths(PackageType::Shader.get_folder())?;
-		paths(PackageType::Resource.get_folder())?;
+		paths(PackageType::ShaderPack.get_folder())?;
+		paths(PackageType::ResourcePack.get_folder())?;
 		paths(PackageType::DataPack.get_folder())?;
 
 		Ok(files)
@@ -566,8 +566,8 @@ impl Cluster {
 		}
 
 		watch_path(cluster_path, watcher, PackageType::Mod.get_folder()).await?;
-		watch_path(cluster_path, watcher, PackageType::Shader.get_folder()).await?;
-		watch_path(cluster_path, watcher, PackageType::Resource.get_folder()).await?;
+		watch_path(cluster_path, watcher, PackageType::ShaderPack.get_folder()).await?;
+		watch_path(cluster_path, watcher, PackageType::ResourcePack.get_folder()).await?;
 		watch_path(cluster_path, watcher, PackageType::DataPack.get_folder()).await?;
 		watch_path(cluster_path, watcher, "crash-reports").await?;
 

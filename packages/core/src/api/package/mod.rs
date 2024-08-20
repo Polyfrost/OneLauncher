@@ -7,3 +7,4 @@ pub mod from;
 pub mod import;
 pub mod mrpack;
 pub mod zip;
+pub mod infer;

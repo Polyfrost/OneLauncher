@@ -40,9 +40,9 @@ pub enum PackageType {
 	/// represents a datapack file
 	DataPack,
 	/// represents a resourcepack file
-	Resource,
+	ResourcePack,
 	/// represents a shaderpack file
-	Shader,
+	ShaderPack,
 }
 
 impl PackageType {
@@ -56,12 +56,12 @@ impl PackageType {
 		} else if loaders.iter().any(|x| x == "datapack") {
 			Some(PackageType::DataPack)
 		} else if loaders.iter().any(|x| ["iris", "optifine"].contains(&&**x)) {
-			Some(PackageType::Shader)
+			Some(PackageType::ShaderPack)
 		} else if loaders
 			.iter()
 			.any(|x| ["vanilla", "canvas", "minecraft"].contains(&&**x))
 		{
-			Some(PackageType::Resource)
+			Some(PackageType::ResourcePack)
 		} else {
 			None
 		}
@@ -72,8 +72,8 @@ impl PackageType {
 		match path.to_str()? {
 			"mods" => Some(PackageType::Mod),
 			"datapacks" => Some(PackageType::DataPack),
-			"resourcepacks" => Some(PackageType::Resource),
-			"shaderpacks" => Some(PackageType::Shader),
+			"resourcepacks" => Some(PackageType::ResourcePack),
+			"shaderpacks" => Some(PackageType::ShaderPack),
 			_ => None,
 		}
 	}
@@ -82,8 +82,8 @@ impl PackageType {
 		match self {
 			PackageType::Mod => "mod",
 			PackageType::DataPack => "datapack",
-			PackageType::Resource => "resourcepack",
-			PackageType::Shader => "shaderpack",
+			PackageType::ResourcePack => "resourcepack",
+			PackageType::ShaderPack => "shaderpack",
 		}
 	}
 
@@ -91,8 +91,8 @@ impl PackageType {
 		match self {
 			PackageType::Mod => "mods",
 			PackageType::DataPack => "datapacks",
-			PackageType::Resource => "resourcepacks",
-			PackageType::Shader => "shaderpacks",
+			PackageType::ResourcePack => "resourcepacks",
+			PackageType::ShaderPack => "shaderpacks",
 		}
 	}
 }

@@ -2,7 +2,7 @@
 name = "onelauncher_gui"
 default-run = "onelauncher_gui"
 description = "Next-generation open source Minecraft launcher"
-version = "1.0.0-alpha.1" # todo: make it so tauri works with the ws
+version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
@@ -31,9 +31,7 @@ tauri-plugin-deep-link = { workspace = true }
 tauri-specta = { workspace = true }
 specta = { workspace = true }
 specta-typescript = { workspace = true }
-
-interpulse.workspace = true
-
+interpulse = { workspace = true }
 strum = { workspace = true }
 once_cell = { workspace = true }
 tokio = { workspace = true }
@@ -62,16 +60,13 @@ workspace = true
 features = [ "test" ]
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cocoa.workspace = true
-
-objc.workspace = true
+cocoa = { workspace = true }
+objc = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# https://github.com/tauri-apps/tauri/blob/tauri-v2.0.0-rc.0/core/tauri/Cargo.toml#L86
-webkit2gtk = { version = "=2.0.1", features = [ "v2_38" ] }
+webkit2gtk = { workspace = true }
 
 [features]
 default = [ "custom-protocol" ]
 devtools = [ "tauri/devtools" ]
-# This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = [ "tauri/custom-protocol" ]

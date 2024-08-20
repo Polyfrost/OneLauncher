@@ -35,9 +35,8 @@
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
-		"core": "cd packages/core && cargo",
-		"testing": "cd apps/testing && cargo",
-		"tauri": "cd apps/desktop && cargo",
+		"tauri": "pnpm desktop tauri-ext",
+
 		"postupdate": "cargo update",
 		"test:vi": "pnpm vitest run",
 		"test:update": "pnpm vitest -u",

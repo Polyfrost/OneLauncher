@@ -2,12 +2,12 @@
 
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 - [ ] migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
- - waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
+	- waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
 - [ ] bump `tauri` to stable v2 when it releases.
- - [x] bump `tauri` to latest rc v2.
+	- [x] bump `tauri` to latest rc v2.
 - [ ] test all major version/loader combos launching and mod loading.
 - legacy fabric, babric, nilloader, java agent support
- - nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
+	- nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
 - [ ] shared cluster resources and options (<https://github.com/enjarai/shared-resources>)
 - [ ] ftb, technic, and tlauncher importing
 - [ ] better debug logging and mc logging, for the launcher and spawn
@@ -36,3 +36,9 @@
 - [x] authentication
 - [x] manifest fetching
 - [ ] fix old intel gpus <https://github.com/MultiMC/Launcher/issues/1276#issuecomment-774541617>
+- [ ] fix cmd+a on macos not selecting all text
+- [ ] fix cmd+c on macos not pasting in oauth and entire launcher
+- [ ] hotfix some webkitgtk problems if possible
+- [ ] fetching from screenshots
+- [ ] feature parity with prism:
+	- [ ] h

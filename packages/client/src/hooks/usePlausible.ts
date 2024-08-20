@@ -249,7 +249,7 @@ export interface PlausibleMonitorProps {
 }
 
 /**
- * Submits a Plausible Analytics `pageview` event with a hook.
+ * Submits a Plausible Analytics `'pageview'` event with a hook.
  *
  * This should watch the Solid router's current path, and send an event if the path is changed.
  *
@@ -274,7 +274,7 @@ export function usePlausiblePageview({ currentPath }: PlausibleMonitorProps): vo
 }
 
 /**
- * Submits a Plausible Analytics `ping` event with a hook.
+ * Submits a Plausible Analytics `'ping'` event with a hook.
  *
  * This should watch the Solid router's current path, and send an event if the path is changed.
  *

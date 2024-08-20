@@ -1,17 +1,14 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
-#[allow(clippy::all)]
+use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
+use crate::State;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::package::content::Providers;
-use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
-
-use crate::store::{Cluster, Loader, PackagePath};
-use crate::State;
+use super::{Cluster, PackagePath};
 
 // TODO: Curseforge, Modrinth, SkyClient integration
 
@@ -22,59 +19,11 @@ use crate::State;
 pub async fn generate_context(
 	_cluster: Cluster,
 	_paths: Vec<PathBuf>,
-	cache_path: PathBuf,
+	_cache_path: PathBuf,
 	_io_semaphore: &IoSemaphore,
 	_fetch_semaphore: &FetchSemaphore,
 ) -> crate::Result<HashMap<PackagePath, Package>> {
-	// let mut handles = vec![];
-
-	// for path in paths {
-	// 	if !path.exists() {
-	// 		continue;
-	// 	}
-	// 	if let Some(ext) = path.extension() {
-	// 		if ext == "txt" {
-	// 			continue;
-	// 		}
-	// 	}
-
-	// 	let handle = tokio::spawn(async move {
-	// 		let mut file = tokio::fs::File::open(path.clone())
-	// 			.await
-	// 			.map_err(|e| IOError::with_path(e, &path))?;
-
-	// 		let mut buffer = [0u8; 65536];
-	// 		let mut hasher = sha2::Sha512::new();
-
-	// 		loop {
-	// 			let read = file.read(&mut buffer).await.map_err(IOError::from)?;
-	// 			if read == 0 {
-	// 				break;
-	// 			}
-	// 			hasher.update(&buffer[..read]);
-	// 		}
-
-	// 		let hash = format!("{:x}", hasher.finalize());
-	// 		Ok::<_, crate::Error>((hash, path))
-	// 	});
-
-	// 	handles.push(handle);
-	// }
-
-	// let mut file_path_hashes = HashMap::new();
-
-	// for handle in handles {
-	// 	let (hash, path) = handle.await??;
-	// 	file_path_hashes.insert(hash, path);
-	// }
-
 	let result = HashMap::new();
-	// let mut stream = tokio_stream::iter(file_path_hashes);
-	// while let Some((k, v)) = stream.next().await {
-	// 	let k = PackagePath::from_path(&v).await?;
-	// 	let pkg = k.
-	// 	result.insert(k, v);
-	// }
 
 	Ok(result)
 }

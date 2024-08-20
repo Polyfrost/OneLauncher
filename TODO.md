@@ -1,5 +1,6 @@
 # todo list
 
+- [ ] fix missing jars and libraries when launching clusters
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 - [ ] migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
 	- waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
@@ -23,10 +24,10 @@
 - [x] modal stacking
 - [x] popup visibility toggled
 - [x] smooth animations/animation accessibility
-- [ ] cluster grouping
+- [x] cluster grouping
 - [ ] cluster reorganizing (drag n drop)
-- [ ] different cluster views
-- [ ] settings tsx
+- [x] different cluster views
+- [x] settings tsx
 - [ ] packages api
 - [ ] browser tsx
 - [ ] importing tsx
@@ -39,6 +40,6 @@
 - [ ] fix cmd+a on macos not selecting all text
 - [ ] fix cmd+c on macos not pasting in oauth and entire launcher
 - [ ] hotfix some webkitgtk problems if possible
-- [ ] fetching from screenshots
+- [x] fetching from screenshots
 - [ ] feature parity with prism:
 	- [ ] h

@@ -37,6 +37,10 @@ h2 { @apply text-xxl font-semibold; line-height: 1.25 !important; }
 h3 { @apply text-xl font-medium; }
 h4 { @apply text-lg font-medium; }
 
+code {
+	@apply rounded-md bg-component-bg p-2 text-left;
+}
+
 .os-scrollbar {
     --os-size: 10px;
     --os-track-border-radius: theme(borderRadius.lg);

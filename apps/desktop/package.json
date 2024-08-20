@@ -15,7 +15,8 @@
 	"scripts": {
 		"build": "tauri build",
 		"dev": "tauri dev",
-		"tauri": "tauri"
+		"tauri": "tauri",
+		"tauri-ext": "pnpm --filter @onelauncher/scripts -- tauri"
 	},
 	"dependencies": {
 		"@onelauncher/core": "workspace:*",

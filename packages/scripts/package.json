@@ -24,7 +24,7 @@
 		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",
 		"semver": "^7.6.3",
-		"undici": "^6.19.7"
+		"undici": "^6.19.8"
 	},
 	"devDependencies": {
 		"@types/iarna__toml": "^2.0.5",

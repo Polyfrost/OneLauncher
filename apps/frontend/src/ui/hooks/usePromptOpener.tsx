@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { createSignal } from 'solid-js';
 import Button from '~ui/components/base/Button';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
@@ -11,7 +12,15 @@ function usePromptOpener() {
 			{...props}
 			title="Third Party Link"
 			children={(
-				<span class="m-auto max-w-60">You are about to visit an external website. Are you sure you want to continue?</span>
+				<div class="flex flex-col items-center gap-y-4">
+					<span class="max-w-58">You are about to visit an external website that may malicious.</span>
+					<OverlayScrollbarsComponent class="max-w-100">
+						<div class="h-8 flex flex-row">
+							<code>{url()}</code>
+						</div>
+					</OverlayScrollbarsComponent>
+					<span>Do you wish to proceed?</span>
+				</div>
 			)}
 			buttons={[
 				<Button

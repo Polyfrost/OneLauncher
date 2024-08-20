@@ -13,4 +13,7 @@ export default defineConfig({
 		'**/gen',
 		'*.rs',
 	],
+	rules: {
+		'ts/no-use-before-define': 'off',
+	},
 });

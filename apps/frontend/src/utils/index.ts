@@ -1,6 +1,6 @@
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
-import type { Cluster, License, Loader, Providers, VersionType } from '~bindings';
+import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '~bindings';
 
 export * from './timer';
 export * from './sorting';
@@ -58,7 +58,7 @@ export function formatAsDuration(
 		n = Number(seconds);
 
 	const formatter = new DurationFormat(locale, { style });
-	return formatter.format({
+	const duration = formatter.format({
 		seconds: Math.floor(n % 60),
 		minutes: Math.floor(n / 60) % 60,
 		hours: Math.floor(n / (60 * 60)) % 24,
@@ -67,6 +67,11 @@ export function formatAsDuration(
 		months: Math.floor(n / (60 * 60 * 24 * 30)) % 12,
 		years: Math.floor(n / (60 * 60 * 24 * 365)),
 	});
+
+	if (duration.length === 0)
+		return 'never';
+
+	return duration;
 }
 
 export function formatAsRelative(
@@ -111,7 +116,7 @@ export function asEnvVariables(str: string): [string, string][] {
 		.filter(pair => pair !== null);
 }
 
-export function openLicense(licenseId: string | License | null | undefined) {
+export function getLicenseUrl(licenseId: string | License | null | undefined) {
 	if (licenseId === null || licenseId === undefined)
 		return;
 
@@ -129,7 +134,15 @@ export function openLicense(licenseId: string | License | null | undefined) {
 		id = licenseId;
 	}
 
-	open(`https://spdx.org/licenses/${id}.html`);
+	return `https://spdx.org/licenses/${id}.html`;
+}
+
+export function getPackageUrl(provider: Providers, id: string, package_type: PackageType = 'mod') {
+	const mapping: Record<Providers, string> = {
+		Modrinth: `https://modrinth.com/${package_type}/${id}`,
+	};
+
+	return mapping[provider];
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;

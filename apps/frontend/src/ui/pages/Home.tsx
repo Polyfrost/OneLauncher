@@ -4,7 +4,7 @@ import {
 	PlusIcon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, Show } from 'solid-js';
+import { For, Show, onMount } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 
 import { mergeRefs } from '@solid-primitives/refs';
@@ -27,6 +27,13 @@ function HomePage() {
 	const controller = useClusterCreator();
 
 	const containerIds = (list: GroupedClusters | undefined) => Object.keys(list || []);
+
+	onMount(() => {
+		bridge.events.clusterPayload.listen(({ payload }) => {
+			if (payload.event === 'created' || payload.event === 'deleted')
+				refetch();
+		});
+	});
 
 	async function newCluster() {
 		try {

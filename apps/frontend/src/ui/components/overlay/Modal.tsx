@@ -183,12 +183,17 @@ Modal.Error = function (props: ModalErrorProps) {
 				/>,
 			]}
 		>
-			<div class="max-w-84 flex flex-col items-center gap-y-2">
+			<div class="flex flex-col items-center gap-y-2">
 				{split.children || (
 					<span>Something went wrong.</span>
 				)}
 				{split.message && (
-					<code class="rounded-md bg-component-bg p-2 text-left">
+					// <OverlayScrollbarsComponent class="max-w-84 rounded-md bg-component-bg p-2">
+					// 	<code class="bg-transparent text-left!">
+					// 		{split.message}
+					// 	</code>
+					// </OverlayScrollbarsComponent>
+					<code class="max-w-120 break-all">
 						{split.message}
 					</code>
 				)}

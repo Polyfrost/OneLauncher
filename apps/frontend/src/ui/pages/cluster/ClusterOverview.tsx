@@ -303,9 +303,9 @@ function Banner(props: BannerProps) {
 									'opacity-50': props.editMode(),
 								}}
 							/>
+							<span>{props.cluster.meta.mc_version}</span>
 							<span>{upperFirst(props.cluster.meta.loader || 'unknown')}</span>
 							{props.cluster.meta.loader_version && <span>{props.cluster.meta.loader_version.id}</span>}
-							<span>{props.cluster.meta.mc_version}</span>
 						</span>
 						<span
 							class="text-xs text-fg-secondary"

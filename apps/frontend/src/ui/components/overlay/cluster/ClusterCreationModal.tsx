@@ -7,6 +7,7 @@ import ClusterGameSetup from './ClusterGameSetup';
 import ClusterProviderSelection from './ClusterProviderSelection';
 import Button from '~ui/components/base/Button';
 import type { CreateCluster } from '~bindings';
+import { bridge } from '~imports';
 
 export enum CreationStage {
 	PROVIDER_SELECTION = 0,
@@ -70,7 +71,6 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 		async start() {
 			setPartialCluster({});
 			controller.setStep(CreationStage.PROVIDER_SELECTION);
-			// eslint-disable-next-line ts/no-use-before-define -- It should still work
 			modal.show();
 		},
 
@@ -80,7 +80,6 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 
 		cancel() {
 			controller.setStep(undefined);
-			// eslint-disable-next-line ts/no-use-before-define -- It should still work
 			modal.hide();
 		},
 
@@ -91,7 +90,8 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 				if (!untracked[prop])
 					throw new Error(`Missing required property ${prop}`);
 
-			// @ts-expect-error -- TODO: Do this properly
+			modal.hide();
+
 			await bridge.commands.createCluster({
 				icon: null,
 				icon_url: null,
@@ -100,7 +100,7 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 				skip: null,
 				skip_watch: null,
 				...untracked,
-			});
+			} as CreateCluster);
 		},
 	};
 

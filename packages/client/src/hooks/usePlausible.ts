@@ -1,8 +1,8 @@
 import type { PlausibleOptions as PlausibleTrackerOptions } from 'plausible-tracker';
 import Plausible from 'plausible-tracker';
-import { useCallback, useEffect, useRef } from 'react';
 
 import { createMutable } from 'solid-js/store';
+import { createEffect, createSignal } from 'solid-js';
 import { createPersistedMutable, useSolidStore } from '../library';
 import type { ProgramInfo } from '../types';
 import { PROGRAM_INFO } from '../bindings';
@@ -227,21 +227,21 @@ interface EventSubmissionCallbackProps {
 export function usePlausibleEvent(): (props: EventSubmissionCallbackProps) => Promise<void> {
 	const debugState = useDebugState();
 	const plausibleState = usePlausibleState();
-	const previousEvent = useRef({} as BasePlausibleEvent<string>);
+	const [previousEvent, setPreviousEvent] = createSignal<BasePlausibleEvent<string> | null>(null);
 
-	return useCallback(async (props: EventSubmissionCallbackProps) => {
-		if (previousEvent.current === props.event)
+	return async (props: EventSubmissionCallbackProps) => {
+		if (previousEvent() === props.event)
 			return;
-		else previousEvent.current = props.event;
+		setPreviousEvent(props.event);
 
-		submitPlausibleEvent({
+		await submitPlausibleEvent({
 			debugState,
 			shareFullTelemetry: plausibleState.shareFullTelemetry,
 			platformType: plausibleState.platform,
 			programInfo: plausibleState.programInfo,
 			...props,
 		});
-	}, [debugState, plausibleState]);
+	};
 }
 
 export interface PlausibleMonitorProps {
@@ -264,14 +264,14 @@ export interface PlausibleMonitorProps {
 export function usePlausiblePageview({ currentPath }: PlausibleMonitorProps): void {
 	const plausibleEvent = usePlausibleEvent();
 
-	useEffect(() => {
+	createEffect(() => {
 		plausibleEvent({
 			event: {
 				type: 'pageview',
 				plausibleOptions: { url: currentPath },
 			},
 		});
-	}, [currentPath, plausibleEvent]);
+	});
 }
 
 /**
@@ -286,16 +286,16 @@ export function usePlausiblePageview({ currentPath }: PlausibleMonitorProps): vo
  * - A telemetry override is present and is not true.
  * - No telemetry override is present, and telemetry sharing is not true.
  */
-export function usePlausiblePing({ currentPath }: PlausibleMonitorProps) {
+export function usePlausiblePing() {
 	const plausibleEvent = usePlausibleEvent();
 
-	useEffect(() => {
+	createEffect(() => {
 		plausibleEvent({
 			event: {
 				type: 'ping',
 			},
 		});
-	}, [currentPath, plausibleEvent]);
+	});
 }
 
 export interface PlausibleInitProps {

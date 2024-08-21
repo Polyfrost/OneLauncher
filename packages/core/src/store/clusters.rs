@@ -460,20 +460,6 @@ impl Cluster {
 		ClusterPath::new(&self.path)
 	}
 
-	/// Set the icon path for this [`Cluster`].
-	pub async fn set_icon<'a>(
-		&'a mut self,
-		cache_dir: &Path,
-		semaphore: &IoSemaphore,
-		icon: bytes::Bytes,
-		file_name: &str,
-	) -> crate::Result<()> {
-		let file = write_icon(icon, cache_dir, icon, semaphore).await?;
-		self.meta.icon = Some(file);
-		self.meta.modified_at = Utc::now();
-		Ok(())
-	}
-
 	/// Set the icon [`bytes::Bytes`] for this cluster.
 	#[tracing::instrument(skip(self, io_semaphore, icon))]
 	pub async fn set_icon_path<'a>(

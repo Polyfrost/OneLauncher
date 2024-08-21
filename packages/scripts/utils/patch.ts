@@ -10,8 +10,8 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	if (process.env.TAURI_SIGNING_PRIVATE_KEY)
 		return;
 
-	const privateKeyPath = join(env.__root, '.keys', 'tauri.key');
-	const publicKeyPath = join(env.__root, '.keys', 'tauri.key.pub');
+	const privateKeyPath = join(env.__root, '..', '.keys', 'tauri.key');
+	const publicKeyPath = join(env.__root, '..', '.keys', 'tauri.key.pub');
 	const readKeys = () => Promise.all([
 		fs.readFile(publicKeyPath, 'utf-8'),
 		fs.readFile(privateKeyPath, 'utf-8'),
@@ -30,7 +30,7 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 		}
 
 		const quote = type() === 'Windows_NT' ? '"' : '\'';
-		await execa`pnpm desktop tauri signer generate --ci -w ${quote}${privateKeyPath}${quote}`;
+		await execa`pnpm exec tauri signer generate --ci -w ${quote}${privateKeyPath}${quote}`;
 		[keys.publicKey, keys.privateKey] = await readKeys();
 		if (keys.privateKey === '' || keys.publicKey === '')
 			throw new Error(`empty keys`);

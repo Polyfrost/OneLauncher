@@ -218,7 +218,7 @@ function Banner() {
 							{' '}
 							for
 							{' '}
-							<strong>{formatAsDuration((cluster()!.meta.overall_played || 0n))}</strong>
+							<strong>{formatAsDuration((cluster()!.meta.overall_played || 0))}</strong>
 							.
 						</p>
 					</Show>

@@ -18,7 +18,9 @@
 					"https://polyfrost.org",
 					"https://*.polyfrost.org",
 					"https://*.cloudflare.com",
-					"https://api.mclo.gs"
+					"https://api.mclo.gs",
+					"ipc:",
+					"http://ipc.localhost"
 				],
 				"img-src": [
 					"'self'",

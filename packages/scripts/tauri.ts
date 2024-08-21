@@ -57,7 +57,7 @@ try {
 		}
 	}
 
-	await execa('pnpm', ['desktop', 'tauri', ...args], { cwd: __desktop });
+	await execa('pnpm', ['exec', 'tauri', ...args], { cwd: __desktop });
 
 	if (args[0] === 'build' && bundles.some(b => b === 'deb' || b === 'all')) {
 		const linuxTargets = targets.filter(t => t.includes('-linux-'));

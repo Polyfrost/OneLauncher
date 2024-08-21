@@ -315,7 +315,7 @@ function Banner(props: BannerProps) {
 						>
 							Played for
 							{' '}
-							<b>{formatAsDuration((props.cluster.meta.overall_played || 0n))}</b>
+							<b>{formatAsDuration((props.cluster.meta.overall_played || 0))}</b>
 							.
 						</span>
 					</div>

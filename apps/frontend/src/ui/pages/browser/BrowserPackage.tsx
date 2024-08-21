@@ -35,7 +35,7 @@ function BrowserPackage() {
 
 							<div class="flex flex-1 flex-col items-start justify-between gap-y-4 rounded-lg bg-component-bg p-4 px-6">
 								<div class="flex-1">
-									<Markdown package={pkg()!} />
+									<Markdown body={pkg()!.body} />
 								</div>
 							</div>
 						</>

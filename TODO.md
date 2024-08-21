@@ -41,5 +41,7 @@
 - [ ] fix cmd+c on macos not pasting in oauth and entire launcher
 - [ ] hotfix some webkitgtk problems if possible
 - [x] fetching from screenshots
+- [ ] inferring metadata from zip
+- [ ] inferring metadata from modrinth api
 - [ ] feature parity with prism:
 	- [ ] h

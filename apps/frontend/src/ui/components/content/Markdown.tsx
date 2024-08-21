@@ -1,18 +1,12 @@
 import type { ParentProps } from 'solid-js';
 import { renderHighlightedString } from '@onelauncher/client';
-import type { Package } from '@onelauncher/client/bindings';
 import styles from './Markdown.module.scss';
 
 export type MarkdownProps = ParentProps & {
-	package: Package;
+	body: string;
 };
 
-function Markdown(props: MarkdownProps) {
-	return (
-		<div class={styles.markdown}>
-			{renderHighlightedString(props.package.meta.body)}
-		</div>
-	);
-}
+// eslint-disable-next-line solid/no-innerhtml -- we use xss to ensure there is not any issues
+const Markdown = (props: MarkdownProps) => <div class={styles.markdown} innerHTML={renderHighlightedString(props.body)} />;
 
 export default Markdown;

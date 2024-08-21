@@ -88,7 +88,7 @@ pub struct QuiltMetadata {
 pub struct QuiltMod {
 	id: String,
 	version: String,
-	metadata: Option<QuiltMetadata>
+	metadata: Option<QuiltMetadata>,
 }
 
 #[derive(Deserialize)]
@@ -157,7 +157,11 @@ pub async fn infer(
 	io_semaphore: &IoSemaphore,
 	fetch_semaphore: &FetchSemaphore,
 ) -> crate::Result<Package> {
-	let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+	let file_name = path
+		.file_name()
+		.unwrap_or_default()
+		.to_string_lossy()
+		.to_string();
 	let disabled = file_name.ends_with(".disabled");
 	let zipfr = match ZipFileReader::new(path.clone()).await {
 		Ok(zipfr) => zipfr,

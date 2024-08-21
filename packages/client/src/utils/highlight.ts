@@ -22,7 +22,7 @@ hljs.registerAliases(['toml'], { languageName: 'ini' });
 hljs.registerAliases(['yml'], { languageName: 'yaml' });
 hljs.registerAliases(['html', 'htm', 'xhtml', 'mcui', 'fxml'], { languageName: 'xml' });
 
-export function renderHighlightedString(src: string) {
+export function renderHighlightedString(src: string): string {
 	return configuredXss.process(
 		md({
 			highlight(str, lang) {

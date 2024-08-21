@@ -43,9 +43,11 @@
 					"https://www.youtube-nocookie.com",
 					"https://discord.com",
 					"https://*.githubusercontent.com",
-					"'self'"
+					"'self'",
+					"'unsafe-inline'"
 				],
 				"style-src": [
+					"'unsafe-inline'",
 					"unsafe-inline",
 					"'self'"
 				]
@@ -109,7 +111,7 @@
 		"license": "GPL-3.0-only",
 		"homepage": "https://polyfrost.org/",
 		"longDescription": "Next-generation open source Minecraft launcher",
-		"createUpdaterArtifacts": true,
+		"createUpdaterArtifacts": "v1Compatible",
 		"resources": [],
 		"externalBin": [],
 		"linux": {

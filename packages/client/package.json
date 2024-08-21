@@ -27,7 +27,7 @@
 	"types": "./src/index.ts",
 	"scripts": {},
 	"dependencies": {
-		"@flowr/utils": "^3.12.1",
+		"@flowr/utils": "^3.13.0",
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.52.0",
 		"@tauri-apps/api": "=2.0.0-rc.1",

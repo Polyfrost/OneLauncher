@@ -47,7 +47,7 @@ function ClusterCover(props: ClusterCoverProps) {
 		<Wrapper>
 			<img
 				{...rest}
-				class={`${styles.cover} ${split.class || ''}`}
+				class={`${split.class || ''}`}
 				src={image()}
 				onError={(e) => {
 					e.currentTarget.src = split.override ? convertFileSrc(split.override) : defaultCover;

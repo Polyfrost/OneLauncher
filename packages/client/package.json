@@ -31,12 +31,11 @@
 		"@solid-primitives/deep": "^0.2.9",
 		"@tanstack/solid-query": "^5.52.0",
 		"@tauri-apps/api": "=2.0.0-rc.1",
-		"dayjs": "^1.11.13",
+		"highlight.js": "^11.10.0",
 		"markdown-it": "^14.1.0",
 		"plausible-tracker": "^0.3.9",
 		"solid-js": "^1.8.21",
-		"xss": "^1.0.15",
-		"zod": "^3.23.8"
+		"xss": "^1.0.15"
 	},
 	"devDependencies": {
 		"@types/markdown-it": "^14.1.2",

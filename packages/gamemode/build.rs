@@ -1,15 +1,16 @@
 fn main() {
-	if std::env::var_os("CARGO_CFG_LINUX").is_some() {
-		cc::Build::new()
-			.include("include")
-			.file("stub/stub.c")
-			.opt_level(3)
-			.debug(false)
-			.warnings(true)
-			.compile("stub");
+	build_stub();
+}
 
-		println!("cargo:rerun-if-changed=stub.c");
-	} else {
-		println!("cargo:rerun-if-changed=build.rs");
-	}
+#[cfg(target_os = "linux")]
+fn build_stub() {
+	cc::Build::new()
+		.include("include")
+		.file("stub/stub.c")
+		.opt_level(3)
+		.debug(false)
+		.warnings(true)
+		.compile("stub");
+
+	println!("cargo:rerun-if-changed=stub.c");
 }

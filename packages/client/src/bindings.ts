@@ -4,7 +4,9 @@
 
 /** tauri-specta globals */
 
-import { invoke as TAURI_INVOKE } from '@tauri-apps/api/core';
+import {
+	invoke as TAURI_INVOKE,
+} from '@tauri-apps/api/core';
 import * as TAURI_API_EVENT from '@tauri-apps/api/event';
 import type { WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
 
@@ -678,7 +680,7 @@ export interface OfflinePayload { offline: boolean };
 /**
  * A struct that represents a Package.
  */
-export interface Package { sha1: string; meta: PackageMetadata; file_name: string; disabled: boolean };
+export interface Package { sha512: string; meta: PackageMetadata; file_name: string; disabled: boolean };
 /**
  * Optional data used to link a specific cluster to a package project.
  */
@@ -713,19 +715,19 @@ export type PackageSide = 'required' | 'optional' | 'unsupported' | 'unknown';
  */
 export type PackageType =
 /**
- * represents a mod jarfile
+ * Represents a mod jarfile
  */
 	'mod' |
 /**
- * represents a datapack file
+ * Represents a datapack file
  */
 	'datapack' |
 /**
- * represents a resourcepack file
+ * Represents a resourcepack file
  */
 	'resourcepack' |
 /**
- * represents a shaderpack file
+ * Represents a shaderpack file
  */
 	'shaderpack';
 export interface ProcessPayload { uuid: string; pid: number; event: ProcessPayloadType; message: string };

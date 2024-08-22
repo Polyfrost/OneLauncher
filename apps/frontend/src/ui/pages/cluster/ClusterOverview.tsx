@@ -1,6 +1,6 @@
 import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { type Accessor, type Setter, Show, createSignal, untrack } from 'solid-js';
-import { useBeforeLeave, useNavigate } from '@solidjs/router';
+import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
 import { join } from 'pathe';
@@ -17,6 +17,7 @@ import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
 import useSettingsContext from '~ui/hooks/useSettings';
 import Modal, { type ModalProps, createModal } from '~ui/components/overlay/Modal';
+import usePreventLeave from '~ui/hooks/usePreventLeave';
 
 function ClusterOverview() {
 	const { settings } = useSettingsContext();
@@ -29,19 +30,19 @@ function ClusterOverview() {
 	const navigate = useNavigate();
 
 	const saveModal = createModal(props => (
-		<SaveModal {...props} save={save} dontSave={dontSave} />
+		<SaveModal
+			{...props}
+			save={save}
+			dontSave={dontSave}
+		/>
 	));
 
 	const deleteModal = createModal(props => (
-		<Modal.Delete {...props} onDelete={deleteCluster} />
+		<Modal.Delete
+			{...props}
+			onDelete={deleteCluster}
+		/>
 	));
-
-	useBeforeLeave((e) => {
-		if (editMode() && madeChanges()) {
-			e.preventDefault();
-			saveModal.show();
-		}
-	});
 
 	function getPath() {
 		const clusterPath = cluster()?.path;
@@ -102,15 +103,28 @@ function ClusterOverview() {
 		refetch();
 	}
 
-	function dontSave() {
+	const preventLeave = usePreventLeave((ctx) => {
+		if (editMode() && madeChanges()) {
+			ctx.preventNavigation();
+			saveModal.show();
+		}
+	});
+
+	async function dontSave() {
 		saveModal.hide();
 		setEditMode(false);
+
+		if (preventLeave.triedNavigating())
+			preventLeave.continue();
 	}
 
-	function save() {
-		pushEdits();
+	async function save() {
+		await pushEdits();
 		saveModal.hide();
 		setEditMode(false);
+
+		if (preventLeave.triedNavigating())
+			preventLeave.continue();
 	}
 
 	return (
@@ -262,7 +276,7 @@ function Banner(props: BannerProps) {
 				<Show when={props.editMode()}>
 					<div
 						onClick={launchFilePicker}
-						class="absolute h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
+						class="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
 					>
 						<ImagePlusIcon class="h-12 w-12" />
 					</div>

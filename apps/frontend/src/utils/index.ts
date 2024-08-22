@@ -1,5 +1,6 @@
 import { open } from '@tauri-apps/plugin-shell';
 import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
+import { DurationFormat } from '@formatjs/intl-durationformat';
 
 export * from './timer';
 export * from './sorting';
@@ -53,32 +54,32 @@ export function pluralize(n: number, word: string, locale: string = 'en'): strin
 }
 
 export function formatAsDuration(
-	_seconds: number | bigint | Date,
-	_locale: string = 'en',
-	_style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
+	seconds: number | bigint | Date,
+	locale: string = 'en',
+	style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
 ): string {
-	// let n: number | undefined;
+	let n: number | undefined;
 
-	// if (seconds instanceof Date)
-	// 	n = seconds.getTime();
-	// else
-	// 	n = Number(seconds);
+	if (seconds instanceof Date)
+		n = seconds.getTime();
+	else
+		n = Number(seconds);
 
-	// const formatter = new DurationFormat(locale, { style });
-	// const duration = formatter.format({
-	// 	seconds: Math.floor(n % 60),
-	// 	minutes: Math.floor(n / 60) % 60,
-	// 	hours: Math.floor(n / (60 * 60)) % 24,
-	// 	days: Math.floor(n / (60 * 60 * 24)) % 7,
-	// 	weeks: Math.floor(n / (60 * 60 * 24 * 7)) % 4,
-	// 	months: Math.floor(n / (60 * 60 * 24 * 30)) % 12,
-	// 	years: Math.floor(n / (60 * 60 * 24 * 365)),
-	// });
+	const formatter = new DurationFormat(locale, { style });
+	const duration = formatter.format({
+		seconds: Math.floor(n % 60),
+		minutes: Math.floor(n / 60) % 60,
+		hours: Math.floor(n / (60 * 60)) % 24,
+		days: Math.floor(n / (60 * 60 * 24)) % 7,
+		weeks: Math.floor(n / (60 * 60 * 24 * 7)) % 4,
+		months: Math.floor(n / (60 * 60 * 24 * 30)) % 12,
+		years: Math.floor(n / (60 * 60 * 24 * 365)),
+	});
 
-	// if (duration.length === 0)
-	// 	return 'never';
+	if (duration.length === 0)
+		return 'never';
 
-	return 'duration';
+	return duration;
 }
 
 export function formatAsRelative(

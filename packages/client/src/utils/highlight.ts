@@ -1,9 +1,10 @@
 import hljs from 'highlight.js/lib/core';
 import { configuredXss, md, noop } from './markdown';
 
-['javascript', 'python', 'lua', 'java', 'kotlin', 'scala', 'groovy', 'gradle', 'json', 'ini', 'yaml', 'xml', 'properties'].forEach(async (name) => {
-	hljs.registerLanguage(name, (await import(`highlight.js/lib/languages/${name}`)).default);
-});
+// TODO: This errors
+// ['javascript', 'python', 'lua', 'java', 'kotlin', 'scala', 'groovy', 'gradle', 'json', 'ini', 'yaml', 'xml', 'properties'].forEach(async (name) => {
+// 	hljs.registerLanguage(name, (await import(`highlight.js/lib/languages/${name}`)).default);
+// });
 
 hljs.registerAliases(['js'], { languageName: 'javascript' });
 hljs.registerAliases(['py'], { languageName: 'python' });

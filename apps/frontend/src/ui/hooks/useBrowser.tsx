@@ -59,7 +59,7 @@ export function BrowserProvider(props: ParentProps) {
 		},
 
 		async refreshCache() {
-			const res = await tryResult(bridge.commands.searchPackages, 'Modrinth', null, 10, null, null, null, null);
+			const res = await tryResult(() => bridge.commands.searchPackages('Modrinth', null, 10, null, null, null, null));
 
 			setMainPageCache(res);
 		},
@@ -94,7 +94,7 @@ export default function useBrowser() {
 
 function ChooseClusterModal(props: ModalProps) {
 	const [selected, setSelected] = createSignal<number>(0);
-	const [clusters] = useCommand(bridge.commands.getClusters);
+	const [clusters] = useCommand(() => bridge.commands.getClusters());
 	const controller = useBrowser();
 
 	const currentlySelectedCluster = (list: Cluster[]) => {

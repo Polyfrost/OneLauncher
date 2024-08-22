@@ -12,14 +12,14 @@ import FormattedLog from '~ui/components/content/FormattedLog';
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
-	const [logs] = useCommand(bridge.commands.getClusterLogs, cluster()!.uuid);
+	const [logs] = useCommand(() => bridge.commands.getClusterLogs(cluster()!.uuid));
 	const { settings } = useSettingsContext();
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
 	const [logContent, setLogContent] = createSignal<string | null>(null);
 
 	function getAndSetLog(log_name: string) {
-		tryResult(bridge.commands.getClusterLog, cluster()!.uuid, log_name).then(setLogContent);
+		tryResult(() => bridge.commands.getClusterLog(cluster()!.uuid, log_name)).then(setLogContent);
 	}
 
 	function changeLog(index: number) {
@@ -45,7 +45,7 @@ function ClusterLogs() {
 		if (log === null)
 			return;
 
-		const id = await tryResult(bridge.commands.uploadLog, cluster()!.uuid, log);
+		const id = await tryResult(() => bridge.commands.uploadLog(cluster()!.uuid, log));
 		open(`https://mclo.gs/${id}`);
 	}
 

@@ -12,7 +12,7 @@ export function getCluster(uuid: string | undefined | null): ResourceReturn<Clus
 	if (typeof uuid !== 'string' || uuid.length === 0)
 		return undefined;
 
-	const resource = useCommand(bridge.commands.getCluster, uuid);
+	const resource = useCommand(() => bridge.commands.getCluster(uuid));
 	return resource;
 }
 
@@ -57,7 +57,7 @@ export function useLaunchCluster(uuid: string | Accessor<string | undefined> | (
 		if (uuid === undefined)
 			return;
 
-		tryResult(bridge.commands.runCluster, uuid).then((details) => {
+		tryResult(() => bridge.commands.runCluster(uuid)).then((details) => {
 			navigate(`/clusters/game?${ClusterGame.buildUrl(uuid, details).toString()}`);
 		}).catch((err) => {
 			setError(err);
@@ -67,7 +67,7 @@ export function useLaunchCluster(uuid: string | Accessor<string | undefined> | (
 }
 
 export function useRecentCluster() {
-	const [clusters] = useCommand(bridge.commands.getClusters);
+	const [clusters] = useCommand(() => bridge.commands.getClusters());
 	const [cluster, setCluster] = createSignal<Cluster>();
 
 	createEffect(() => {

@@ -5,9 +5,9 @@
 use modrinth::{Facet, FacetOperation};
 use serde::{Deserialize, Serialize};
 
-use crate::data::{Loader, ManagedPackage, ManagedVersion};
+use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion};
 use crate::package::content::modrinth::FacetBuilder;
-use crate::store::ProviderSearchResults;
+use crate::store::{Author, ProviderSearchResults};
 use crate::Result;
 
 mod modrinth;
@@ -142,4 +142,11 @@ impl Providers {
 		.await?
 		.into())
 	}
+
+	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
+		Ok(match self {
+			Providers::Modrinth => modrinth::get_authors(author),
+		}.await?)
+	}
+
 }

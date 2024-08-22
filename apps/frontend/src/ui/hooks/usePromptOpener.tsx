@@ -14,12 +14,12 @@ function usePromptOpener() {
 			children={(
 				<div class="flex flex-col items-center gap-y-4">
 					<span class="max-w-58">You are about to visit an external website that may malicious.</span>
+					<span>Do you wish to proceed?</span>
 					<OverlayScrollbarsComponent class="max-w-100">
 						<div class="h-8 flex flex-row">
 							<code>{url()}</code>
 						</div>
 					</OverlayScrollbarsComponent>
-					<span>Do you wish to proceed?</span>
 				</div>
 			)}
 			buttons={[
@@ -48,8 +48,8 @@ function usePromptOpener() {
 			open(url()!);
 	}
 
-	return (url: string | undefined, force: boolean = false) => {
-		if (url === undefined)
+	return (url: string | undefined | null, force: boolean = false) => {
+		if (url === undefined || url === null)
 			return;
 
 		if (force) {

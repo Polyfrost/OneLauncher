@@ -33,8 +33,10 @@ pub const MINECRAFT_SCOPES: &str = "service::user.auth.xboxlive.com::MBI_SSL";
 // =========== API ===========
 /// The Modrinth API base url.
 pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
+/// The Modrinth V3 API base url. Used for things like fetching information about organizations.
+pub const MODRINTH_V3_API_URL: &str = "https://api.modrinth.com/v3";
 /// The Curseforge API base url.
-pub const CURSEFORGE_API_URL: &str = "https://api.curseforge";
+pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/";
 /// Our metadata API base url.
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
 /// https://mclo.gs/ API base url.

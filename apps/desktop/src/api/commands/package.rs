@@ -1,7 +1,7 @@
 use onelauncher::cluster::content::package;
-use onelauncher::data::{Loader, ManagedPackage};
+use onelauncher::data::{Loader, ManagedPackage, ManagedUser};
 use onelauncher::package::content::Providers;
-use onelauncher::store::ProviderSearchResults;
+use onelauncher::store::{Author, ProviderSearchResults};
 use uuid::Uuid;
 
 #[specta::specta]
@@ -43,6 +43,15 @@ pub async fn search_packages(
 			open_source,
 		)
 		.await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_authors(
+	provider: Providers,
+	author: Author,
+) -> Result<Vec<ManagedUser>, String> {
+	Ok(provider.get_authors(&author).await?)
 }
 
 #[specta::specta]

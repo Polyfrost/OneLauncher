@@ -15,7 +15,7 @@ import useSettingsContext from '~ui/hooks/useSettings';
 function ClusterWorlds() {
 	const { settings } = useSettingsContext();
 	const [cluster] = useClusterContext();
-	const [list] = useCommand(bridge.commands.getWorlds, cluster()!.uuid!);
+	const [list] = useCommand(() => bridge.commands.getWorlds(cluster()!.uuid));
 
 	function openFolder() {
 		open(join(settings().config_dir || '', 'clusters', cluster()?.path || '', 'saves'));

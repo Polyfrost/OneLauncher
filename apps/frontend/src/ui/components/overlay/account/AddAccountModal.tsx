@@ -18,8 +18,8 @@ interface AccountControllerContextFunc {
 const AccountControllerContext = createContext<AccountControllerContextFunc>() as Context<AccountControllerContextFunc>;
 
 export function AccountControllerProvider(props: ParentProps) {
-	const [accounts, { refetch: refetchAccounts }] = useCommand(bridge.commands.getUsers);
-	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser, true);
+	const [accounts, { refetch: refetchAccounts }] = useCommand(() => bridge.commands.getUsers());
+	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(() => bridge.commands.getDefaultUser(true));
 
 	const [deleteModalUuid, setDeleteModalUuid] = createSignal<string>();
 
@@ -37,7 +37,7 @@ export function AccountControllerProvider(props: ParentProps) {
 	}
 
 	async function setDefaultAccount(uuid: string | null) {
-		await tryResult(bridge.commands.setDefaultUser, uuid).then(refetch);
+		await tryResult(() => bridge.commands.setDefaultUser(uuid)).then(refetch);
 	}
 
 	async function removeAccount(uuid: string, force?: boolean) {
@@ -52,7 +52,7 @@ export function AccountControllerProvider(props: ParentProps) {
 		if (uuid === undefined)
 			return;
 
-		await tryResult(bridge.commands.removeUser, uuid);
+		await tryResult(() => bridge.commands.removeUser(uuid));
 		refetch();
 	}
 

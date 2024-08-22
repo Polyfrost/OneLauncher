@@ -60,6 +60,7 @@ macro_rules! collect_commands {
 			get_package,
 			get_packages,
 			search_packages,
+			get_authors,
 			download_package,
 			// Updater
 			check_for_update,

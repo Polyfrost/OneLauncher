@@ -14,7 +14,7 @@ import useSettingsContext from '~ui/hooks/useSettings';
 function ClusterScreenshots() {
 	const { settings } = useSettingsContext();
 	const [cluster] = useClusterContext();
-	const [list] = useCommand(bridge.commands.getScreenshots, cluster()!.uuid!);
+	const [list] = useCommand(() => bridge.commands.getScreenshots(cluster()!.uuid!));
 
 	function openFolder() {
 		open(join(settings().config_dir || '', 'clusters', cluster()?.path || '', 'screenshots'));

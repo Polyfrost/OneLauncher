@@ -188,6 +188,30 @@ impl PackageMetadata {
 	}
 }
 
+/// Universal metadata for any managed user from a Mod distribution platform.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ManagedUser {
+	pub id: String,
+	pub username: String,
+	#[serde(default)]
+	pub url: Option<String>,
+	#[serde(default)]
+	pub avatar_url: Option<String>,
+	#[serde(default)]
+	pub bio: Option<String>,
+}
+
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum Author {
+	Team {
+		team: String,
+		organization: Option<String>,
+	},
+	Users(Vec<ManagedUser>),
+}
+
 /// Universal metadata for any managed package from a Mod distribution platform.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -215,6 +239,8 @@ pub struct ManagedPackage {
 	pub categories: Vec<String>,
 	pub optional_categories: Option<Vec<String>>,
 	pub license: Option<License>,
+
+	pub author: Author,
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -300,19 +326,6 @@ pub struct ManagedDependency {
 	pub package_id: Option<String>,
 	pub file_name: Option<String>,
 	pub dependency_type: PackageDependency,
-}
-
-/// Universal interface for managed package authors and users.
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ManagedUser {
-	pub id: String,
-	pub role: String,
-	pub username: String,
-	pub name: Option<String>,
-	pub avatar: Option<String>,
-	pub description: Option<String>,
-	pub created: DateTime<Utc>,
 }
 
 /// The type of a [`ManagedDependency`].

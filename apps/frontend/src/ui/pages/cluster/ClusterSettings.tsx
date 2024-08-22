@@ -44,7 +44,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
 
 	useBeforeLeave(() => {
-		tryResult(bridge.commands.editGameSettings, cluster().uuid, {
+		tryResult(() => bridge.commands.editGameSettings(cluster().uuid, {
 			...cluster(),
 
 			// Game
@@ -64,7 +64,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 				custom_arguments: javaArgs.getRaw(),
 				custom_env_arguments: envVars.getRaw(),
 			},
-		});
+		}));
 	});
 
 	return (

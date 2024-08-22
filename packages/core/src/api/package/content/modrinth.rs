@@ -1,8 +1,8 @@
 use std::fmt::{Display, Formatter};
 
-use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
+use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::store::{
-	License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult,
+	Author, License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult
 };
 use crate::utils::http::fetch;
 use crate::{Result, State};
@@ -40,6 +40,8 @@ pub struct ModrinthPackage {
 	#[serde(alias = "project_id")]
 	pub id: String,
 	pub team: String,
+	#[serde(default)]
+	pub organization: Option<String>,
 	#[serde(alias = "date_created")]
 	pub published: DateTime<Utc>,
 	#[serde(alias = "date_modified")]
@@ -80,6 +82,10 @@ impl From<ModrinthPackage> for ManagedPackage {
 			uid: None,
 			package_type: PackageType::Mod,
 			license: value.license,
+			author: Author::Team {
+				team: value.team,
+				organization: value.organization
+			},
 		}
 	}
 }
@@ -181,58 +187,6 @@ impl From<ModrinthVersion> for ManagedVersion {
 	}
 }
 
-macro_rules! format_url {
-    ($($arg:tt)*) => {{
-        format!("{}{}", crate::constants::MODRINTH_API_URL, format!($($arg)*))
-    }};
-}
-
-pub async fn list() -> Result<Vec<ModrinthPackage>> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			format_url!("/projects_random?count=10").as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?)
-}
-
-pub async fn search<F>(
-	query: Option<String>,
-	limit: Option<u8>,
-	facets: Option<F>,
-) -> Result<ProviderSearchResults>
-where
-	F: FnOnce(FacetBuilder) -> String,
-{
-	let facets = facets.map_or(String::new(), |func| func(FacetBuilder::builder()));
-
-	let results: SearchResults = serde_json::from_slice(
-		&fetch(
-			format_url!(
-				"/search?query={}&limit={}{}",
-				query.unwrap_or_default(),
-				limit.unwrap_or(10),
-				if facets.is_empty() {
-					"".to_string()
-				} else {
-					format!("&facets={}", facets)
-				}
-			)
-			.as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?;
-
-	Ok(ProviderSearchResults {
-		provider: Providers::Modrinth,
-		results: results.hits,
-	})
-}
-
 #[allow(dead_code)]
 pub enum FacetOperation {
 	NotEq,
@@ -303,6 +257,18 @@ impl FacetBuilder {
 	}
 }
 
+macro_rules! format_url {
+    ($($arg:tt)*) => {{
+        format!("{}{}", crate::constants::MODRINTH_API_URL, format!($($arg)*))
+    }};
+}
+
+macro_rules! format_url_v3 {
+    ($($arg:tt)*) => {{
+        format!("{}{}", crate::constants::MODRINTH_V3_API_URL, format!($($arg)*))
+    }};
+}
+
 pub async fn get(id: &str) -> Result<ModrinthPackage> {
 	Ok(serde_json::from_slice(
 		&fetch(
@@ -323,6 +289,99 @@ pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
 		)
 		.await?,
 	)?)
+}
+
+pub async fn list() -> Result<Vec<ModrinthPackage>> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!("/projects_random?count=10").as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
+}
+
+pub async fn search<F>(
+	query: Option<String>,
+	limit: Option<u8>,
+	facets: Option<F>,
+) -> Result<ProviderSearchResults>
+where
+	F: FnOnce(FacetBuilder) -> String,
+{
+	let facets = facets.map_or(String::new(), |func| func(FacetBuilder::builder()));
+
+	let results: SearchResults = serde_json::from_slice(
+		&fetch(
+			format_url!(
+				"/search?query={}&limit={}{}",
+				query.unwrap_or_default(),
+				limit.unwrap_or(10),
+				if facets.is_empty() {
+					"".to_string()
+				} else {
+					format!("&facets={}", facets)
+				}
+			)
+			.as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?;
+
+	Ok(ProviderSearchResults {
+		provider: Providers::Modrinth,
+		results: results.hits,
+	})
+}
+
+pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
+	match author {
+		Author::Users(users) => Ok(users.clone()),
+		Author::Team { team, organization } => {
+			if let Some(organization) = organization {
+				let mut organization_user: ManagedUser = serde_json::from_slice(
+					&fetch(
+						format_url_v3!("/organization/{}", organization).as_str(),
+						None,
+						&State::get().await?.fetch_semaphore,
+					)
+					.await?,
+				)?;
+
+				organization_user.url = Some(format!("https://modrinth.com/organization/{}", organization_user.id));
+
+				Ok(vec![organization_user])
+			} else {
+				#[derive(Deserialize)]
+				struct TeamMember {
+					pub user: ManagedUser,
+				}
+
+				let authors: Vec<TeamMember> = serde_json::from_slice(
+					&fetch(
+						format_url_v3!("/team/{}/members", team).as_str(),
+						None,
+						&State::get().await?.fetch_semaphore,
+					)
+					.await?,
+				)?;
+
+				Ok(authors
+					.into_iter()
+					.map(|member| {
+						let mut user = member.user;
+						user.url = Some(format!("https://modrinth.com/user/{}", user.id));
+						user
+					})
+					.collect()
+				)
+			}
+		}
+	}
+
 }
 
 // TODO: modrinth api v3

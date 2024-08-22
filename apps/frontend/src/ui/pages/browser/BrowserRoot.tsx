@@ -13,7 +13,7 @@ function BrowserRoutes() {
 		<>
 			<Route path="/" component={BrowserMain} />
 			<Route path="/category" component={BrowserCategory} />
-			<Route path="/package" component={BrowserPackage} />
+			<Route path="/package" component={BrowserPackage} children={<BrowserPackage.Routes />} />
 		</>
 	);
 }

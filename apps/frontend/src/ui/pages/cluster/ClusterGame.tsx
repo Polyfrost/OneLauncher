@@ -24,7 +24,7 @@ interface ClusterGameParams extends Params {
 function ClusterGame() {
 	const [cluster] = useClusterContext();
 	const [params] = useSearchParams<ClusterGameParams>();
-	const [log] = useCommand(bridge.commands.getClusterLog, cluster()!.uuid, 'latest.log');
+	const [log] = useCommand(() => bridge.commands.getClusterLog(cluster()!.uuid, 'latest.log'));
 	const [isRunning, setIsRunning] = createSignal(true);
 
 	const [unlisten, setUnlisten] = createSignal<UnlistenFn>();

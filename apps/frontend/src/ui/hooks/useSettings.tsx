@@ -20,7 +20,7 @@ interface SettingsControllerType {
 const SettingsContext = createContext() as Context<SettingsControllerType>;
 
 export function SettingsProvider(props: ParentProps) {
-	const [settings, { refetch }] = useCommand(bridge.commands.getSettings);
+	const [settings, { refetch }] = useCommand(() => bridge.commands.getSettings());
 
 	createEffect(() => {
 		if (settings !== undefined && settings() !== undefined)

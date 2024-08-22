@@ -354,6 +354,16 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async getAuthors(provider: Providers, author: Author): Promise<Result<ManagedUser[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_authors', { provider, author }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async downloadPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null): Promise<Result<null, string>> {
 		try {
 			return { status: 'ok', data: await TAURI_INVOKE('download_package', { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
@@ -410,6 +420,7 @@ export const PROGRAM_INFO = { arch: '64', dev_build: true, launcher_version: '1.
 
 /** user-defined types */
 
+export type Author = { Team: { team: string; organization: string | null } } | { Users: ManagedUser[] };
 /**
  * Represents a single Instance and installation of Minecraft
  * Contains settings and identifiers on a per-Cluster basis, falling back to default settings for Options<>
@@ -636,7 +647,11 @@ export interface LoaderVersion {
 /**
  * Universal metadata for any managed package from a Mod distribution platform.
  */
-export interface ManagedPackage { provider: Providers; id: string; uid: string | null; package_type: PackageType; title: string; description: string; body: string; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; downloads: number; followers: number; categories: string[]; optional_categories: string[] | null; license: License | null };
+export interface ManagedPackage { provider: Providers; id: string; uid: string | null; package_type: PackageType; title: string; description: string; body: string; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; downloads: number; followers: number; categories: string[]; optional_categories: string[] | null; license: License | null; author: Author };
+/**
+ * Universal metadata for any managed user from a Mod distribution platform.
+ */
+export interface ManagedUser { id: string; username: string; url?: string | null; avatar_url?: string | null; bio?: string | null };
 /**
  * Global memory settings across all clusters.
  */

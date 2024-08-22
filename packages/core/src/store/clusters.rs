@@ -48,16 +48,20 @@ impl ClusterStage {
 			Self::NotInstalled => "not_installed",
 		}
 	}
+}
 
-	pub fn from_str(val: &str) -> Self {
-		match val {
+impl std::str::FromStr for ClusterStage {
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(match s {
 			"installed" => Self::Installed,
 			"downloading" => Self::Downloading,
 			"pack_downloading" => Self::PackDownloading,
 			"not_installed" => Self::NotInstalled,
 			_ => Self::NotInstalled,
-		}
+		})
 	}
+
+	type Err = crate::Error;
 }
 
 /// Relative Path wrapper to be used as an identifer for a cluster path.

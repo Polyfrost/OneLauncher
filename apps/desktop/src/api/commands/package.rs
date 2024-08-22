@@ -47,10 +47,7 @@ pub async fn search_packages(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_authors(
-	provider: Providers,
-	author: Author,
-) -> Result<Vec<ManagedUser>, String> {
+pub async fn get_authors(provider: Providers, author: Author) -> Result<Vec<ManagedUser>, String> {
 	Ok(provider.get_authors(&author).await?)
 }
 

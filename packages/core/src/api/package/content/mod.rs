@@ -144,9 +144,9 @@ impl Providers {
 	}
 
 	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
-		Ok(match self {
+		match self {
 			Providers::Modrinth => modrinth::get_authors(author),
-		}.await?)
+		}
+		.await
 	}
-
 }

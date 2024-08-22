@@ -1,4 +1,5 @@
 fn main() {
+	#[cfg(target_os = "linux")]
 	build_stub();
 }
 

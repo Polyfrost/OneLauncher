@@ -2,7 +2,8 @@ use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::store::{
-	Author, License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults, SearchResult
+	Author, License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults,
+	SearchResult,
 };
 use crate::utils::http::fetch;
 use crate::{Result, State};
@@ -84,7 +85,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			license: value.license,
 			author: Author::Team {
 				team: value.team,
-				organization: value.organization
+				organization: value.organization,
 			},
 		}
 	}
@@ -351,7 +352,10 @@ pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 					.await?,
 				)?;
 
-				organization_user.url = Some(format!("https://modrinth.com/organization/{}", organization_user.id));
+				organization_user.url = Some(format!(
+					"https://modrinth.com/organization/{}",
+					organization_user.id
+				));
 
 				Ok(vec![organization_user])
 			} else {
@@ -376,12 +380,10 @@ pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 						user.url = Some(format!("https://modrinth.com/user/{}", user.id));
 						user
 					})
-					.collect()
-				)
+					.collect())
 			}
 		}
 	}
-
 }
 
 // TODO: modrinth api v3

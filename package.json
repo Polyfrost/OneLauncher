@@ -22,7 +22,7 @@
 		"node": ">=18"
 	},
 	"scripts": {
-		"prep": "pnpm --filter=@onelauncher/scripts -- int:prepare",
+		"prep": "pnpm scripts prep",
 		"typecheck": "pnpm -r typecheck",
 		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
 		"autoformat": "./packages/scripts/format.sh",
@@ -32,6 +32,7 @@
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
+		"scripts": "pnpm --filter @onelauncher/scripts -- ",
 		"tauri": "pnpm desktop tauri-ext",
 		"postupdate": "cargo update",
 		"test:vi": "pnpm vitest run",

@@ -2,6 +2,7 @@ import {
 	DotsVerticalIcon,
 	PlayIcon,
 	PlusIcon,
+	RefreshCw01Icon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
 import { For, Show, onMount } from 'solid-js';
@@ -116,7 +117,13 @@ function HomePage() {
 				<div>
 					<TextField iconLeft={<SearchMdIcon />} placeholder="Search for clusters..." />
 				</div>
-				<div class="flex flex-row gap-x-4">
+				<div class="flex flex-row items-center gap-x-2">
+					<Button
+						buttonStyle="icon"
+						children={<RefreshCw01Icon />}
+						onClick={refetch}
+					/>
+
 					<Button
 						buttonStyle="primary"
 						iconLeft={<PlusIcon class="stroke-[2.2] !w-5" />}
@@ -213,7 +220,7 @@ function Banner() {
 							<strong>
 								{cluster()!.meta.mc_version}
 								{' '}
-								{upperFirst(cluster()!.meta.loader) || 'Unknown'}
+								{upperFirst(cluster()!.meta.loader || 'Unknown')}
 							</strong>
 							{' '}
 							for
@@ -292,7 +299,7 @@ function ClusterCard(props: Cluster) {
 					<div class="h-8 flex flex-col gap-1.5 overflow-hidden">
 						<p class="h-4 text-ellipsis whitespace-nowrap font-medium">{props.meta.name}</p>
 						<p class="h-4 text-xs">
-							{upperFirst(props.meta.loader)}
+							{upperFirst(props.meta.loader || 'Unknown')}
 							{' '}
 							{props.meta.mc_version}
 							{/* {' '}

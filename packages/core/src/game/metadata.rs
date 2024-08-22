@@ -75,10 +75,24 @@ pub async fn download_version_info(
 			"downloading minecraft version info for minecraft version {}",
 			&version_id
 		);
-		let mut info = fetch_version_info(version, &st.fetch_semaphore).await?;
+		let mut info = fetch_json(
+			reqwest::Method::GET,
+			&version.url,
+			None,
+			None,
+			&st.fetch_semaphore,
+		)
+		.await?;
 
 		if let Some(loader) = loader {
-			let partial = fetch_partial_version(&loader.url, &st.fetch_semaphore).await?;
+			let partial: ip::api::modded::PartialVersionInfo = fetch_json(
+				reqwest::Method::GET,
+				&loader.url,
+				None,
+				None,
+				&st.fetch_semaphore,
+			)
+			.await?;
 			info = ip::api::modded::merge_partial_version(partial, info);
 		}
 
@@ -94,22 +108,6 @@ pub async fn download_version_info(
 
 	tracing::debug!("loaded minecraft version info for minecraft version {version_id}");
 	Ok(result)
-}
-
-pub async fn fetch_version_info(
-	version: &ip::api::minecraft::Version,
-	semaphore: &FetchSemaphore,
-) -> crate::Result<ip::api::minecraft::VersionInfo> {
-	Ok(serde_json::from_slice(
-		&fetch(&version.url, Some(&version.sha1), semaphore).await?,
-	)?)
-}
-
-pub async fn fetch_partial_version(
-	url: &str,
-	semaphore: &FetchSemaphore,
-) -> crate::Result<ip::api::modded::PartialVersionInfo> {
-	Ok(serde_json::from_slice(&fetch(url, None, semaphore).await?)?)
 }
 
 #[tracing::instrument(skip_all)]
@@ -133,7 +131,14 @@ pub async fn download_assets_index(
 			.await
 			.and_then(|ref it| Ok(serde_json::from_slice(it)?))
 	} else {
-		let index = fetch_assets_index(version, &st.fetch_semaphore).await?;
+		let index = fetch_json(
+			reqwest::Method::GET,
+			&version.asset_index.url,
+			None,
+			None,
+			&st.fetch_semaphore,
+		)
+		.await?;
 		write(&path, &serde_json::to_vec(&index)?, &st.io_semaphore).await?;
 		tracing::info!("downloaded assets index");
 		Ok(index)
@@ -145,20 +150,6 @@ pub async fn download_assets_index(
 
 	tracing::debug!("loaded assets index");
 	Ok(result)
-}
-
-pub async fn fetch_assets_index(
-	version: &ip::api::minecraft::VersionInfo,
-	semaphore: &FetchSemaphore,
-) -> crate::Result<AssetsIndex> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			&version.asset_index.url,
-			Some(&version.asset_index.sha1),
-			semaphore,
-		)
-		.await?,
-	)?)
 }
 
 #[tracing::instrument(skip(st, index))]
@@ -261,30 +252,36 @@ pub async fn download_libraries(
                 }
             }
 
+			if !lib.downloadable {
+				tracing::trace!("skipped non-downloadable library {}", &lib.name);
+				return Ok(());
+			}
+
             tokio::try_join! {
                 async {
                     let artifact_path = ip::utils::get_path_from_artifact(&lib.name)?;
                     let path = st.directories.libraries_dir().await.join(&artifact_path);
 
-                    match lib.downloads {
-                        _ if path.exists() && !force => Ok(()),
-                        Some(ip::api::minecraft::LibraryDownloads {
-                            artifact: Some(ref artifact),
-                            ..
-                        }) => {
-                            let bytes = fetch(&artifact.url, Some(&artifact.sha1), &st.fetch_semaphore).await?;
-                            write(&path, &bytes, &st.io_semaphore).await?;
-                            tracing::trace!("downloaded library {} into path {:?}", &lib.name, &path);
-                            Ok::<_, crate::Error>(())
-                        }
-                        _ => {
-                            let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
-                            let bytes = fetch(&url, None, &st.fetch_semaphore).await?;
-                            write(&path, &bytes, &st.io_semaphore).await?;
-                            tracing::trace!("downloaded library {} into path {:?}", &lib.name, &path);
-                            Ok::<_, crate::Error>(())
-                        }
-                    }
+					if path.exists() && !force {
+						return Ok(());
+					}
+
+					if let Some(ip::api::minecraft::LibraryDownloads {
+						artifact: Some(ref artifact), ..
+					}) = lib.downloads {
+						if !artifact.url.is_empty() {
+							let bytes = fetch(&artifact.url, Some(&artifact.sha1), &st.fetch_semaphore).await?;
+							write(&path, &bytes, &st.io_semaphore).await?;
+							tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
+							return Ok::<_, crate::Error>(());
+						}
+					}
+
+					let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
+					let bytes = fetch(&url, None, &st.fetch_semaphore).await?;
+					write(&path, &bytes, &st.io_semaphore).await?;
+					tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
+					Ok::<_, crate::Error>(())
                 },
                 async {
                     if let Some((os_key, classifiers)) = None.or_else(|| Some((

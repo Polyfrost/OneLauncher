@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 use libc::pid_t;
 use std::ffi::c_int;
 

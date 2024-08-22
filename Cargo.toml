@@ -90,7 +90,7 @@ specta-typescript = { version = "=0.0.7" }
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
 # core utilities for minecraft and mod management with pulseflow apis
-interpulse = { version = "1", features = [ "specta" ] }
+interpulse = { version = "1.1.0", features = [ "specta" ] }
 
 # # ============= SECURITY ============= # #
 thiserror = { version = "1.0" }

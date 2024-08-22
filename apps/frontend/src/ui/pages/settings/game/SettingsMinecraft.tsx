@@ -146,6 +146,7 @@ export function GameSettings(props: {
 				</div>
 			</SettingsRow>
 
+			{/* TODO: make this a memory slider */}
 			<SettingsRow
 				title="Memory"
 				description="The amount of memory in megabytes allocated for the game."

@@ -46,10 +46,13 @@
 - [ ] inferring metadata from modrinth api
 - [ ] feature parity with prism:
 	- [ ]
+- [ ] feature parity with modrinth app:
+	- [ ]
 - [ ] reduce bundle size (<https://bundlephobia.com>):
 	- [ ] markdown-it (157kb) - lots of alternatives
-	- [ ] highlight.js (143kb) - not many alternatives but it adds a lot
+	- [ ] highlight.js (143kb) - shiki is a good alternative i think
 	- [ ] uFuzzy (24kb) - lots of alternatives, but its one of the best fuzzy searching libs
 	- [ ] overlayscrollbars (60kb) - not sure
-	- [ ] assets (63kb in icons and a lot more in .pngs) - we need to optimize our own assets, the ones from libs are negligable
-- [ ] reduce app size (release binary) including in appimage
+	- [ ] assets (63kb in icons and a lot more in .pngs) - we need to optimize our own assets, the ones from libs are negligable (default_instance_cover_ and header jpgs specifically)
+- [ ] reduce app size (release binary) including in appimage (10mb right now, aiming for less than 14mb total release)
+- [ ] drag and drop files into the launcher window (mods and modpack files)

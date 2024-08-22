@@ -24,6 +24,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
+name = "adler2"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
+
+[[package]]
 name = "adler32"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -425,7 +431,7 @@ dependencies = [
  "cc",
  "cfg-if",
  "libc",
- "miniz_oxide",
+ "miniz_oxide 0.7.4",
  "object",
  "rustc-demangle",
 ]
@@ -1640,7 +1646,7 @@ dependencies = [
  "flume",
  "half",
  "lebe",
- "miniz_oxide",
+ "miniz_oxide 0.7.4",
  "rayon-core",
  "smallvec",
  "zune-inflate",
@@ -1701,12 +1707,12 @@ dependencies = [
 
 [[package]]
 name = "flate2"
-version = "1.0.31"
+version = "1.0.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f211bbe8e69bbd0cfdea405084f128ae8b4aaa6b0b522fc8f2b009084797920"
+checksum = "9c0596c1eac1f9e04ed902702e9878208b336edc9d6fddc8a48387349bab3666"
 dependencies = [
  "crc32fast",
- "miniz_oxide",
+ "miniz_oxide 0.8.0",
 ]
 
 [[package]]
@@ -2635,9 +2641,9 @@ dependencies = [
 
 [[package]]
 name = "interpulse"
-version = "1.0.2"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3129fe712a56a77f57b0fb3ef08c040043dbfbf3b4ca97a4ad6704159b60b36a"
+checksum = "51599731e6137af5181f91ab937a9a3cc5e7a621e19ce7c3bbca182ec2a95992"
 dependencies = [
  "bytes",
  "chrono",
@@ -3160,6 +3166,15 @@ checksum = "b8a240ddb74feaf34a79a7add65a741f3167852fba007066dcac1ca548d89c08"
 dependencies = [
  "adler",
  "simd-adler32",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2d80299ef12ff69b16a84bb182e3b9df68b5a91574d3d4fa6e41b65deec4df1"
+dependencies = [
+ "adler2",
 ]
 
 [[package]]
@@ -4011,7 +4026,7 @@ dependencies = [
  "crc32fast",
  "fdeflate",
  "flate2",
- "miniz_oxide",
+ "miniz_oxide 0.7.4",
 ]
 
 [[package]]
@@ -5371,9 +5386,9 @@ dependencies = [
 
 [[package]]
 name = "tao"
-version = "0.29.0"
+version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6775bcf3c1da33f848ede9cff5883ed1e45a29f66533ce42ad06c93ae514ed59"
+checksum = "d3a97abbc7d6cfd0720da3e06fcb1cf2ac87cbfdb5bbbce103a1279a211c4d81"
 dependencies = [
  "bitflags 2.6.0",
  "cocoa",
@@ -5410,13 +5425,13 @@ dependencies = [
 
 [[package]]
 name = "tao-macros"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec114582505d158b669b136e6851f85840c109819d77c42bb7c0709f727d18c2"
+checksum = "f4e16beb8b2ac17db28eab8bca40e62dbfbb34c0fcdc6d9826b11b7b5d047dfd"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.75",
 ]
 
 [[package]]
@@ -5515,9 +5530,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "175a0cc0f11d4278123144daa571bb72be333376b8f4ca52ce6b9504e43caafc"
+checksum = "5ce4e521130c5d7b377ddfdc43310ece626b67ec07ae74174407ad7e6cd17d20"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -5542,9 +5557,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-macros"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfa65710d73b174d152a3bd48ab6e9e994ea32cd052473c223325ea10ca229b4"
+checksum = "a5995206394cd30411fc5c8ae195e498357f63e11ed960ea32b53512dcb2a5a5"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -5556,9 +5571,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9997e2801118206cd344e30b8b837ba8668aa52c4cdc3a14c1d44560dcce540"
+checksum = "0ebbdbf4e6d7328e0c0f2427b4f56d792ee1ae84ab4fb0286b81a2e408836046"
 dependencies = [
  "anyhow",
  "glob",
@@ -5726,9 +5741,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef9dcd87245b84eb27724de1108c0a1a19e826dae36a2f86c9efe94963b3cc3c"
+checksum = "6e49398fb1d7736e41099aa7efaf45d599e480a36b3e7f88977b547b662d7253"
 dependencies = [
  "dpi",
  "gtk",
@@ -5745,9 +5760,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-runtime-wry"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02a73e75d1d0204f69efff29ade79299623eb140e0266856c68b880dad632457"
+checksum = "8b2ce1dca90243bd4a77a1020847688590e1ded2f6d190d5a96877b0039f0500"
 dependencies = [
  "cocoa",
  "gtk",
@@ -5799,9 +5814,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.0.0-rc.4"
+version = "2.0.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e4c7855f6d4270361dd55edd92ccaa91e17c4d08aae30b1fedeb8a155b8b3c"
+checksum = "2d702b62eed4cf89034926cb1834e2d13a7d745ea08a457fd336f94cde48f2fb"
 dependencies = [
  "aes-gcm",
  "brotli",

@@ -35,13 +35,13 @@ pub async fn generate_context(
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageType {
-	/// represents a mod jarfile
+	/// Represents a mod jarfile
 	Mod,
-	/// represents a datapack file
+	/// Represents a datapack file
 	DataPack,
-	/// represents a resourcepack file
+	/// Represents a resourcepack file
 	ResourcePack,
-	/// represents a shaderpack file
+	/// Represents a shaderpack file
 	ShaderPack,
 }
 

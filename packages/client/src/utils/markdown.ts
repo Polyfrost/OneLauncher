@@ -2,7 +2,7 @@ import MarkdownIt, { type Options as MarkdownOptions } from 'markdown-it';
 import { FilterXSS, escapeAttrValue, safeAttrValue, whiteList } from 'xss';
 
 // from https://github.com/modrinth/code/blob/main/packages/utils/parse.ts for parsing modrinth style markdown
-export const configuredXss = new FilterXSS({
+export const configuredXss: FilterXSS = new FilterXSS({
 	whiteList: {
 		...whiteList,
 		summary: [],
@@ -116,7 +116,7 @@ export const configuredXss = new FilterXSS({
 	},
 });
 
-export function md(options: MarkdownOptions = {}) {
+export function md(options: MarkdownOptions = {}): MarkdownIt {
 	const md = new MarkdownIt('default', {
 		html: true,
 		linkify: true,
@@ -152,6 +152,6 @@ export function md(options: MarkdownOptions = {}) {
 	return md;
 }
 
-export const renderString = (src: string) => configuredXss.process(md().render(src));
+export const renderString = (src: string): string => configuredXss.process(md().render(src));
 
 export function noop(_t: any) {}

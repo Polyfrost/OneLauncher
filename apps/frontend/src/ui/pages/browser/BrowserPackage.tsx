@@ -310,12 +310,19 @@ function InstallButton(props: ManagedPackage) {
 
 // Sub pages
 
+const testing = `
+\`\`\`ts
+const h: string = 'h';
+\`\`\`
+`;
+
 function BrowserPackageBody() {
 	const context = useContext(BrowserPackageContext);
 
 	return (
 		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
 			<Markdown body={context?.body || ''} />
+			<Markdown body={testing} />
 		</div>
 	);
 }

@@ -78,8 +78,6 @@ export const configuredXss: FilterXSS = new FilterXSS({
 				if (url.hostname.includes('wsrv.nl'))
 					url.searchParams.delete('errorredirect');
 
-				// TODO: do we need all this lol...
-				// TODO: add cloudflare stuff if needed
 				const allowed = [
 					'imgur.com',
 					'i.imgur.com',
@@ -90,7 +88,6 @@ export const configuredXss: FilterXSS = new FilterXSS({
 					'github.com',
 					'raw.githubusercontent.com',
 					'img.shields.io',
-					'i.postimg.cc',
 					'wsrv.nl',
 					'cf.way2muchnoise.eu',
 					'bstats.org',
@@ -117,15 +114,9 @@ export const configuredXss: FilterXSS = new FilterXSS({
 });
 
 export function md(options: MarkdownOptions = {}): MarkdownIt {
-	const md = new MarkdownIt('default', {
-		html: true,
-		linkify: true,
-		breaks: false,
-		...options,
-	});
+	const md = new MarkdownIt('default', { html: true, linkify: true, ...options });
 
-	const defaultLinkOpenRenderer
-		= md.renderer.rules.link_open || ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+	const defaultLinkOpenRenderer = md.renderer.rules.link_open || md.renderer.renderToken;
 
 	md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 		const token = tokens[idx]!;

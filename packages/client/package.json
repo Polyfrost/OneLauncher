@@ -39,7 +39,6 @@
 		"xss": "^1.0.15"
 	},
 	"devDependencies": {
-		"@types/markdown-it": "^14.1.2",
-		"shiki": "^1.14.1"
+		"@types/markdown-it": "^14.1.2"
 	}
 }

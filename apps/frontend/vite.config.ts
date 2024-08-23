@@ -6,7 +6,6 @@ import solid from 'vite-plugin-solid';
 import solidSvg from 'vite-plugin-solid-svg';
 import paths from 'vite-tsconfig-paths';
 import unocss from 'unocss/vite';
-import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin as sentry } from '@sentry/vite-plugin';
 
 export default defineConfig(async ({ mode }) => {
@@ -20,10 +19,6 @@ export default defineConfig(async ({ mode }) => {
 				defaultAsComponent: false,
 			}),
 			paths(),
-			visualizer({
-				emitFile: true,
-				filename: 'stats.html',
-			}),
 		],
 
 		envPrefix: ['VITE_', 'TAURI_'],

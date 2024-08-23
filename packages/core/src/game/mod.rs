@@ -469,6 +469,7 @@ pub async fn launch_minecraft(
 		.await
 }
 
+/// Parses an array of Minecraft library feature or OS rules.
 #[tracing::instrument]
 pub fn rules(rules: &[ip::api::minecraft::Rule], java_version: &str, updated: bool) -> bool {
 	let mut rule = rules
@@ -485,6 +486,10 @@ pub fn rules(rules: &[ip::api::minecraft::Rule], java_version: &str, updated: bo
 	!(rule.iter().any(|r| r == &Some(false)) || rule.iter().all(|r| r.is_none()))
 }
 
+/// Parses a Minecraft library feature or OS rule.
+/// Is disallowed -> Don't include it
+/// Is not allowed -> Don't include it
+/// Is allowed -> Include it
 #[tracing::instrument]
 pub fn rule(rule: &ip::api::minecraft::Rule, java_version: &str, updated: bool) -> Option<bool> {
 	use ip::api::minecraft::{Rule, RuleAction};
@@ -512,7 +517,7 @@ pub fn rule(rule: &ip::api::minecraft::Rule, java_version: &str, updated: bool) 
 			if result {
 				Some(true)
 			} else {
-				None
+				Some(false)
 			}
 		}
 		RuleAction::Disallow => {

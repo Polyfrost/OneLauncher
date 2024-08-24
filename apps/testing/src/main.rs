@@ -113,7 +113,7 @@ pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 
 	println!("clearing clusters");
 	{
-		let c = cluster::list(None).await?;
+		let c = cluster::list().await?;
 		for cluster in c.into_iter() {
 			cluster::remove(&cluster.cluster_path()).await?;
 		}

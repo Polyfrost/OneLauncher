@@ -62,7 +62,11 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 							Cluster::handle_crash(cluster_path);
 						} else if !paths.contains(&formatted) {
 							if sub {
-								Cluster::sync_packages(cluster_path, false);
+								// TODO: Packages Figure this out
+								// let cluster_path = cluster_path.clone();
+								// tokio::task::spawn(async move {
+								// 	Cluster::sync_packages(&cluster_path, true).await
+								// });
 								paths.push(formatted);
 							} else {
 								Clusters::sync_cluster(cluster_path);

@@ -331,7 +331,7 @@ async fn import_mmc_unmanaged(
 	)
 	.await?;
 
-	if let Some(cluster_val) = crate::api::cluster::get(&cluster_path, None).await? {
+	if let Some(cluster_val) = crate::api::cluster::get(&cluster_path).await? {
 		crate::game::install_minecraft(&cluster_val, Some(ingress), false).await?;
 		{
 			let state = State::get().await?;

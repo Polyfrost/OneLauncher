@@ -459,8 +459,6 @@ export interface Cluster {
 	 */
 	force_fullscreen: boolean | null;
 	init_hooks?: InitHooks | null;
-	packages: { [key in PackagePath]: Package };
-	update?: string | null;
 };
 /**
  * Represents core Cluster metadata ([`Cluster#meta`]).
@@ -693,10 +691,6 @@ export interface MinecraftCredentials {
 };
 export interface OfflinePayload { offline: boolean };
 /**
- * A struct that represents a Package.
- */
-export interface Package { sha512: string; meta: PackageMetadata; file_name: string; disabled: boolean };
-/**
  * Optional data used to link a specific cluster to a package project.
  */
 export interface PackageData {
@@ -713,14 +707,6 @@ export interface PackageData {
 	 */
 	locked?: boolean | null;
 };
-/**
- * Metadata that represents a [`Package`].
- */
-export type PackageMetadata = { type: 'managed'; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string } | { type: 'mapped'; title: string | null; description: string | null; authors: string[]; version: string | null; icon: string | null; package_type: PackageType | null } | { type: 'unknown' };
-/**
- * Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
- */
-export type PackagePath = string;
 /**
  * The Client/Server side type of a [`Package`].
  */

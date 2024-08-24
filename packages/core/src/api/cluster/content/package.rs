@@ -2,9 +2,9 @@ use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::prelude::PackagePath;
 use crate::processor::Cluster;
 use crate::proxy::send::send_internet;
-use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata};
+use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata, Packages};
 use crate::utils::{http, io};
-use crate::{Result, State};
+use crate::{cluster, Result, State};
 // TODO: Implement proper error handling
 
 /// Find a managed version using filters
@@ -28,9 +28,11 @@ pub async fn find_managed_version(
 			let check_game_version = game_version
 				.as_ref()
 				.is_some_and(|gv| v.game_versions.iter().any(|gv2| *gv2 == *gv));
+
 			let check_loader = loader
 				.as_ref()
 				.is_some_and(|loader| v.loaders.iter().any(|l| *l == *loader));
+
 			let check_package_version = package_version
 				.as_ref()
 				.map_or(true, |pv| pv == &v.version_id);
@@ -52,7 +54,7 @@ pub async fn download_package(
 	game_version: Option<String>,
 	loader: Option<Loader>,
 	package_version: Option<String>,
-) -> Result<()> {
+) -> Result<(PackagePath, Package)> {
 	tracing::info!(
 		"preparing package '{}' for cluster '{}'",
 		package.title,
@@ -92,7 +94,26 @@ pub async fn download_package(
 		disabled: false,
 	};
 
-	add_package_to_cluster(&cluster.cluster_path(), package, package_path).await?;
+	Ok((package_path, package))
+}
+
+/// Add a package to a cluster.
+#[tracing::instrument]
+pub async fn add_package_to_cluster(
+	package_path: PackagePath,
+	package: Package,
+	cluster: &Cluster,
+	package_type: Option<PackageType>,
+) -> Result<()> {
+	let package_type = match package_type {
+		Some(pt) => pt,
+		None => package.get_package_type()?,
+	};
+
+	let mut packages = get_packages_by_type(&cluster.cluster_path(), package_type).await?;
+	packages.insert(package_path, package);
+
+	cluster::sync_packages(&cluster.cluster_path(), false).await;
 
 	Ok(())
 }
@@ -132,20 +153,25 @@ async fn download_file(
 	Ok(path)
 }
 
+/// Get all packages by package type in a cluster.
 #[tracing::instrument]
-pub async fn add_package_to_cluster(
-	cluster_path: &ClusterPath,
-	package: Package,
-	path: PackagePath,
-) -> Result<()> {
-	crate::cluster::edit(cluster_path, move |cluster| {
-		cluster.packages.insert(path.clone(), package.clone());
+pub async fn get_packages_by_type(
+	path: &ClusterPath,
+	package_type: PackageType,
+) -> crate::Result<Packages> {
+	let packages_meta = path.full_path().await?.join(package_type.get_meta());
 
-		async { Ok(()) }
-	})
-	.await?;
+	// TODO: Implement other package types
+	if package_type != PackageType::Mod {
+		return Err(anyhow::anyhow!("unsupported package type: {:?}", package_type).into());
+	}
 
-	State::sync().await?;
+	let packages: Packages = if packages_meta.exists() && packages_meta.is_file() {
+		serde_json::from_slice(&io::read(packages_meta).await?)?
+	} else {
+		io::write(packages_meta, "{}").await?;
+		Packages::new()
+	};
 
-	Ok(())
+	Ok(packages)
 }

@@ -1,18 +1,15 @@
 //! Import and Export `.mrpack` mod packs.
 
 use crate::package::from::{set_cluster_information, EnvType, PackFile, PackFileHash};
-use crate::prelude::{ClusterPath, ManagedVersion};
+use crate::prelude::ClusterPath;
 use crate::proxy::ingress_try_for_each;
 use crate::proxy::send::{init_or_edit_ingress, send_ingress};
-use crate::store::{ClusterStage, Clusters, PackageMetadata, PackageSide};
-use crate::utils::http::{fetch_from_mirrors, fetch_json, write};
+use crate::store::{ClusterStage, Clusters, PackageSide};
+use crate::utils::http::{fetch_from_mirrors, write};
 use crate::utils::io;
 use crate::{cluster, IngressType, State};
 use async_zip::base::read::seek::ZipFileReader;
-use reqwest::Method;
-use serde_json::json;
 
-use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::{Component, PathBuf};
 
@@ -223,7 +220,7 @@ pub async fn install_zipped_mrpack_files(
 			cluster::edit_icon(&cluster_path, Some(&potential_icon)).await?;
 		}
 
-		if let Some(cluster) = cluster::get(&cluster_path, None).await? {
+		if let Some(cluster) = cluster::get(&cluster_path).await? {
 			crate::game::install_minecraft(&cluster, Some(ingress), false).await?;
 
 			State::sync().await?;
@@ -268,43 +265,45 @@ pub async fn remove_all_related_files(
 		})
 		.await?;
 
-		let state = State::get().await?;
-		let all_hashes = pack
-			.files
-			.iter()
-			.filter_map(|f| Some(f.hashes.get(&PackFileHash::Sha512)?.clone()))
-			.collect::<Vec<_>>();
+		// let state = State::get().await?;
+		// TODO: Packages
+		// let all_hashes = pack
+		// 	.files
+		// 	.iter()
+		// 	.filter_map(|f| Some(f.hashes.get(&PackFileHash::Sha512)?.clone()))
+		// 	.collect::<Vec<_>>();
 
-		let files_url = format!("{}version_files", crate::constants::MODRINTH_API_URL);
+		// let files_url = format!("{}version_files", crate::constants::MODRINTH_API_URL);
 
-		let hash_packages = fetch_json::<HashMap<String, ManagedVersion>>(
-			Method::POST,
-			&files_url,
-			None,
-			Some(json!({
-				"hashes": all_hashes,
-				"algorithm": "sha512",
-			})),
-			&state.fetch_semaphore,
-		)
-		.await?;
-		let to_remove = hash_packages
-			.into_values()
-			.map(|p| p.package_id)
-			.collect::<Vec<_>>();
-		let cluster = cluster::get(&cluster_path, None).await?.ok_or_else(|| {
-			anyhow::anyhow!("{} is an unmanaged cluster!", cluster_path.to_string())
-		})?;
-		for (package_path, package) in &cluster.packages {
-			if let PackageMetadata::Managed { package_id, .. } = &package.meta {
-				if to_remove.contains(package_id) {
-					let path = cluster.get_full_path().await?.join(package_path.0.clone());
-					if path.exists() {
-						io::remove_file(&path).await?;
-					}
-				}
-			}
-		}
+		// let hash_packages = fetch_json::<HashMap<String, ManagedVersion>>(
+		// 	Method::POST,
+		// 	&files_url,
+		// 	None,
+		// 	Some(json!({
+		// 		"hashes": all_hashes,
+		// 		"algorithm": "sha512",
+		// 	})),
+		// 	&state.fetch_semaphore,
+		// )
+		// .await?;
+		// let to_remove = hash_packages
+		// 	.into_values()
+		// 	.map(|p| p.package_id)
+		// 	.collect::<Vec<_>>();
+		// let cluster = cluster::get(&cluster_path).await?.ok_or_else(|| {
+		// 	anyhow::anyhow!("{} is an unmanaged cluster!", cluster_path.to_string())
+		// })?;
+
+		// for (package_path, package) in &cluster.packages {
+		// 	if let PackageMetadata::Managed { package_id, .. } = &package.meta {
+		// 		if to_remove.contains(package_id) {
+		// 			let path = cluster.get_full_path().await?.join(package_path.0.clone());
+		// 			if path.exists() {
+		// 				io::remove_file(&path).await?;
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		for file in pack.files {
 			let path: PathBuf = cluster_path.full_path().await?.join(file.path.to_string());

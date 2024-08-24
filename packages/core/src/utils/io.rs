@@ -216,3 +216,13 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOErro
 			path: path.to_string_lossy().to_string(),
 		})
 }
+
+///// Returns the SHA512 hash of a file.
+// pub fn sha512(path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
+// 	let path = path.as_ref();
+// 	let mut file = std::fs::File::open(path)?;
+// 	let mut hasher = sha2::Sha512::new();
+// 	std::io::copy(&mut file, &mut hasher)?;
+
+// 	Ok(format!("{:x}", hasher.finalize()))
+// }

@@ -61,7 +61,7 @@ pub async fn download_package(
 	loader: Option<Loader>,
 	package_version: Option<String>,
 ) -> Result<(), String> {
-	let mut cluster = onelauncher::cluster::get_by_uuid(cluster_id, None)
+	let mut cluster = onelauncher::cluster::get_by_uuid(cluster_id)
 		.await?
 		.ok_or("cluster not found")?;
 

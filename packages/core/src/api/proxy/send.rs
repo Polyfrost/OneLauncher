@@ -4,7 +4,6 @@ use crate::api::proxy::{
 };
 use crate::proxy::OfflinePayload;
 use crate::store::{ClusterPath, IngressProcessType, IngressProcessor};
-use tauri::Emitter;
 use uuid::Uuid;
 
 #[cfg(feature = "cli")]
@@ -15,6 +14,9 @@ use tauri_specta::Event;
 
 #[cfg(feature = "tauri")]
 use crate::api::proxy::{ClusterPayload, IngressPayload, MessagePayload, ProcessPayload};
+
+#[cfg(feature = "tauri")]
+use tauri::Emitter;
 
 #[onelauncher_macros::memory]
 pub async fn init_ingress(

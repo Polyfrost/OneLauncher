@@ -64,7 +64,10 @@ pub async fn install_minecraft(
 	State::sync().await?;
 
 	if should_sync {
-		Cluster::sync_packages(cluster.cluster_path(), true);
+		let path = cluster.cluster_path();
+		tokio::spawn(async move {
+			Cluster::sync_packages(&path, true).await
+		});
 	}
 
 	let state = State::get().await?;

@@ -29,11 +29,14 @@
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
 		"format": "pnpm format:es && pnpm format:rs",
 		"lint": "pnpm lint:es && pnpm lint:rs",
+
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
 		"scripts": "pnpm --filter @onelauncher/scripts -- ",
 		"actions": "pnpm --filter @onelauncher/action* --",
+		"testing": "pnpm --filter @onelauncher/testing --",
+
 		"tauri": "pnpm desktop tauri-ext",
 		"postupdate": "cargo update",
 		"test:vi": "pnpm vitest run",

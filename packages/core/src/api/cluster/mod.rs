@@ -28,43 +28,46 @@ pub mod update;
 
 /// get a cluster by its specified [`ClusterPath`].
 #[tracing::instrument]
-pub async fn get(path: &ClusterPath, clear: Option<bool>) -> crate::Result<Option<Cluster>> {
+pub async fn get(path: &ClusterPath) -> crate::Result<Option<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
-	let mut cluster = clusters.0.get(path).cloned();
+	let cluster = clusters.0.get(path).cloned();
 
-	if clear.unwrap_or(false) {
-		if let Some(cluster) = &mut cluster {
-			cluster.packages = HashMap::new();
-		}
-	}
+	Ok(cluster)
+}
+
+/// get a cluster by its specified [`ClusterPath`].
+#[tracing::instrument]
+pub async fn get_by_name(name: &str) -> crate::Result<Option<Cluster>> {
+	let state = State::get().await?;
+	let clusters = state.clusters.read().await;
+	let cluster = clusters
+		.0
+		.values()
+		.find(|c| c.meta.name == name)
+		.cloned();
 
 	Ok(cluster)
 }
 
 /// get a list of all [`Cluster`]s
 #[tracing::instrument]
-pub async fn list(clear: Option<bool>) -> crate::Result<Vec<Cluster>> {
+pub async fn list() -> crate::Result<Vec<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
 	Ok(clusters
 		.0
 		.clone()
 		.into_iter()
-		.map(|mut it| {
-			if clear.unwrap_or(false) {
-				it.1.packages = HashMap::new();
-			}
-			it.1
-		})
+		.map(|it| it.1)
 		.collect())
 }
 
 /// get a Map of [`Cluster`] group names containing lists of [`Cluster`]s
 #[tracing::instrument]
-pub async fn list_grouped(clear: Option<bool>) -> crate::Result<HashMap<String, Vec<Cluster>>> {
+pub async fn list_grouped() -> crate::Result<HashMap<String, Vec<Cluster>>> {
 	// TODO: This can 100% be made better
-	let list = list(clear).await?;
+	let list = list().await?;
 	let mut map = HashMap::<String, Vec<Cluster>>::new();
 
 	for cluster in list {
@@ -123,7 +126,7 @@ pub async fn run_credentials(
 ) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
 	let state = State::get().await?;
 	let settings = state.settings.read().await;
-	let cluster = get(path, None)
+	let cluster = get(path)
 		.await?
 		.ok_or_else(|| anyhow::anyhow!("failed to run a nonexistent cluster at path {}", path))?;
 
@@ -241,16 +244,10 @@ pub async fn remove(path: &ClusterPath) -> crate::Result<()> {
 
 /// get a cluster by it's [`uuid::Uuid`]
 #[tracing::instrument]
-pub async fn get_by_uuid(uuid: uuid::Uuid, clear: Option<bool>) -> crate::Result<Option<Cluster>> {
+pub async fn get_by_uuid(uuid: uuid::Uuid) -> crate::Result<Option<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
-	let mut cluster = clusters.0.values().find(|c| c.uuid == uuid).cloned();
-
-	if clear.unwrap_or(false) {
-		if let Some(cluster) = &mut cluster {
-			cluster.packages = HashMap::new();
-		}
-	}
+	let cluster = clusters.0.values().find(|c| c.uuid == uuid).cloned();
 
 	Ok(cluster)
 }
@@ -258,7 +255,7 @@ pub async fn get_by_uuid(uuid: uuid::Uuid, clear: Option<bool>) -> crate::Result
 /// get a cluster's full path by it's [`ClusterPath`].
 #[tracing::instrument]
 pub async fn get_full_path(path: &ClusterPath) -> crate::Result<PathBuf> {
-	let _ = get(path, Some(true)).await?.ok_or_else(|| {
+	let _ = get(path).await?.ok_or_else(|| {
 		anyhow::anyhow!("failed to get the full path of cluster at path {}", path)
 	})?;
 	let full_path = io::canonicalize(path.full_path().await?)?;
@@ -272,7 +269,7 @@ pub async fn get_mod_path(
 	cluster_path: &ClusterPath,
 	package_path: &PackagePath,
 ) -> crate::Result<PathBuf> {
-	if get(cluster_path, Some(true)).await?.is_some() {
+	if get(cluster_path).await?.is_some() {
 		let full_path = io::canonicalize(package_path.full_path(cluster_path.clone()).await?)?;
 
 		return Ok(full_path);
@@ -367,7 +364,7 @@ pub async fn edit_icon(path: &ClusterPath, icon_path: Option<&Path>) -> crate::R
 /// gets the optimal java version for a given [`Cluster`].
 pub async fn get_optimal_java_version(path: &ClusterPath) -> crate::Result<Option<JavaVersion>> {
 	let state = State::get().await?;
-	if let Some(cluster) = get(path, None).await? {
+	if let Some(cluster) = get(path).await? {
 		let metadata = state.metadata.read().await;
 		let minecraft_metadata = metadata
 			.minecraft
@@ -411,7 +408,7 @@ pub async fn get_optimal_java_version(path: &ClusterPath) -> crate::Result<Optio
 #[onelauncher_macros::memory]
 pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 	let state = State::get().await?;
-	let cluster = get(path, None)
+	let cluster = get(path)
 		.await?
 		.ok_or_else(|| anyhow::anyhow!("failed to update playtime at path {}", path))?;
 	let recent_playtime = cluster.meta.recently_played;
@@ -430,6 +427,12 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 	State::sync().await?;
 
 	Ok(())
+}
+
+/// get a cluster by its specified [`ClusterPath`].
+#[tracing::instrument]
+pub async fn sync_packages(path: &ClusterPath, force: bool) {
+	Cluster::sync_packages(path, force).await;
 }
 
 /// Sanitize a user-inputted [`Cluster`] name.

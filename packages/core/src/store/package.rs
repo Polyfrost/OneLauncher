@@ -2,33 +2,16 @@
 
 use crate::package::content::Providers;
 use crate::store::Loader;
-use crate::utils::http::{self, write_icon, FetchSemaphore, IoSemaphore};
-use crate::State;
+use crate::utils::http::{write_icon, IoSemaphore};
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::{Cluster, PackagePath};
+use super::PackagePath;
 
 // TODO: Curseforge, Modrinth, SkyClient integration
-
-/// Creates [`Package`] data for a given [`Cluster`] from on-device files and APIs.
-/// Paths must be the full paths and not relative paths.
-#[tracing::instrument(skip(_paths, _cluster, _io_semaphore, _fetch_semaphore))]
-#[onelauncher_macros::memory]
-pub async fn generate_context(
-	_cluster: Cluster,
-	_paths: Vec<PathBuf>,
-	_cache_path: PathBuf,
-	_io_semaphore: &IoSemaphore,
-	_fetch_semaphore: &FetchSemaphore,
-) -> crate::Result<HashMap<PackagePath, Package>> {
-	let result = HashMap::new();
-
-	Ok(result)
-}
 
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -96,6 +79,10 @@ impl PackageType {
 		}
 	}
 
+	pub fn get_meta(&self) -> PathBuf {
+		PathBuf::from(format!("{}/.packages.json", self.get_folder()))
+	}
+
 	pub fn iterator() -> impl Iterator<Item = PackageType> {
 		[
 			PackageType::Mod,
@@ -150,6 +137,27 @@ pub struct Package {
 	pub file_name: String,
 	pub disabled: bool,
 }
+
+impl Package {
+	pub async fn new(path: &PackagePath, meta: PackageMetadata) -> crate::Result<Self> {
+		let file_name = path
+			.0
+			.file_name()
+			.ok_or_else(|| crate::ErrorKind::AnyhowError(anyhow::anyhow!("no file name")))?
+			.to_string_lossy()
+			.to_string();
+		let sha512 = String::from("unknown");
+
+		Ok(Self {
+			sha512,
+			meta,
+			file_name,
+			disabled: false,
+		})
+	}
+}
+
+pub type Packages = HashMap<PackagePath, Package>;
 
 /// Metadata that represents a [`Package`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -295,27 +303,6 @@ pub struct ManagedVersionFile {
 	pub size: u32,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
-}
-
-impl ManagedVersionFile {
-	#[tracing::instrument]
-	pub async fn download_to_cluster(&self, cluster: &Cluster) -> crate::Result<()> {
-		tracing::info!(
-			"downloading mod '{}' to cluster '{}'",
-			self.file_name,
-			cluster.meta.name
-		);
-		let path = cluster
-			.get_full_path()
-			.await?
-			.join("mods")
-			.join(&self.file_name);
-		let state = State::get().await?;
-		let bytes = http::fetch(&self.url, None, &state.fetch_semaphore).await?;
-		http::write(&path, &bytes, &state.io_semaphore).await?;
-
-		Ok(())
-	}
 }
 
 /// Universal interface for managed package dependencies.

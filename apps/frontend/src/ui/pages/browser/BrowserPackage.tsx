@@ -74,7 +74,7 @@ function BrowserPackage(props: ParentProps) {
 
 	return (
 		<>
-			<div class="flex flex-row gap-x-4">
+			<div class="flex flex-row items-start gap-x-4">
 				{/* TODO: Make a progress bar of some sort */}
 				<Show
 					when={pkg() !== undefined && authors() !== undefined}
@@ -122,7 +122,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 	const promptOpen = usePromptOpener();
 
 	return (
-		<div class="max-w-60 min-w-54 flex flex-col gap-y-4">
+		<div class="sticky top-0 max-w-60 min-w-54 flex flex-col gap-y-4">
 			<div class="min-h-72 flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div class="relative h-28 flex items-center justify-center overflow-hidden">
 					<img class="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={props.package.icon_url || ''} alt={`Icon for ${props.package.title}`} />
@@ -277,7 +277,7 @@ function InstallButton(props: ManagedPackage) {
 				onClick={download}
 				children={(
 					<div class="flex flex-1 flex-col items-center justify-center">
-						<p class="text-xs">Download to</p>
+						<p class="text-xs">Download latest to</p>
 						<span class="mt-0.5 h-3.5 max-w-38 overflow-x-hidden text-sm font-bold">{filtered?.()?.[selected?.()]?.meta.name || 'Unknown'}</span>
 					</div>
 				)}
@@ -309,20 +309,12 @@ function InstallButton(props: ManagedPackage) {
 }
 
 // Sub pages
-
-const testing = `
-\`\`\`ts
-const h: string = 'h';
-\`\`\`
-`;
-
 function BrowserPackageBody() {
 	const context = useContext(BrowserPackageContext);
 
 	return (
 		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
 			<Markdown body={context?.body || ''} />
-			<Markdown body={testing} />
 		</div>
 	);
 }

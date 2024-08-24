@@ -15,6 +15,10 @@ function Markdown(props: MarkdownProps) {
 			class={styles.markdown}
 			// eslint-disable-next-line solid/no-innerhtml -- Should be sanitised properly
 			innerHTML={renderHighlightedString(props.body)}
+			onContextMenu={(e) => {
+				e.stopImmediatePropagation();
+				e.preventDefault();
+			}}
 			onClick={(e) => {
 				e.stopImmediatePropagation();
 				e.preventDefault();

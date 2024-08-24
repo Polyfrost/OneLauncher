@@ -1,15 +1,15 @@
 .markdown {
-	@apply line-height-relaxed flex flex-col gap-y-2;
+	@apply line-height-relaxed flex flex-col items-start gap-y-2;
 }
 
 .markdown {
-  :deep(table) {
+  table {
     width: auto;
   }
 
-  :deep(hr),
-  :deep(h1),
-  :deep(h2) {
+  hr,
+  h1,
+  h2 {
     max-width: max(60rem, 90%);
   }
 

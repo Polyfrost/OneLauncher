@@ -23,6 +23,19 @@ export const configuredXss: FilterXSS = new FilterXSS({
 		th: [...(whiteList.th || []), 'style'],
 		picture: [],
 		source: ['media', 'sizes', 'src', 'srcset', 'type'],
+
+		// Other
+		center: [],
+		code: [],
+		strike: [],
+		strong: [],
+		em: [],
+		b: [],
+		blockquote: [],
+		table: [],
+		tbody: [],
+		tr: [],
+		video: [],
 	},
 	css: {
 		whiteList: {
@@ -116,7 +129,9 @@ export const configuredXss: FilterXSS = new FilterXSS({
 export function md(options: MarkdownOptions = {}): MarkdownIt {
 	const md = new MarkdownIt('default', { html: true, linkify: true, ...options });
 
-	const defaultLinkOpenRenderer = md.renderer.rules.link_open || md.renderer.renderToken;
+	const defaultLinkOpenRenderer
+		= md.renderer.rules.link_open
+		|| ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
 
 	md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 		const token = tokens[idx]!;

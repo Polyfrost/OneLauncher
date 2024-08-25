@@ -5,7 +5,9 @@ members = [
 	"apps/desktop", # onelauncher_gui -- the rust code for our tauri app
 	"packages/core", # onelauncher -- the rust core for onelauncher
 	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
-	"packages/gamemode" # onelauncher_gamemode -- rust wrapper for feral gamemode
+	"packages/gamemode", # onelauncher_gamemode -- rust wrapper for feral gamemode
+	"packages/prisma-cli", # onelauncher_prisma_cli -- rust wrapper for prisma cli
+	"packages/prisma" # onelauncher_prisma -- rust client for prisma
 ]
 
 [workspace.package] # sets default [package] settings for workspace members
@@ -27,6 +29,8 @@ onelauncher_macros = { path = "./packages/macros" }
 onelauncher_gui = { path = "./apps/desktop" }
 onelauncher_test = { path = "./apps/testing" }
 onelauncher_gamemode = { path = "./packages/gamemode" }
+onelauncher_prisma = { path = "./packages/prisma" }
+onelauncher_prisma_cli = { path = "./packages/prisma-cli" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel

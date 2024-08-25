@@ -1,0 +1,15 @@
+datasource db {
+	provider = "sqlite"
+	url = "file:dev.db"
+}
+
+generator client {
+	provider = "cargo prisma"
+	output = "../../prisma/src/prisma"
+	module_path = "prisma"
+	client_folder = "prisma"
+}
+
+model Settings {
+	id Int @id @unique @default(autoincrement())
+}

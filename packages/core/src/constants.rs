@@ -94,19 +94,12 @@ pub const NATIVE_ARCH: &str = "64";
 #[cfg(all(not(target_arch = "x86_64"), not(target_arch = "x86")))]
 pub const NATIVE_ARCH: &str = "64";
 
-// =========== Java ===========
-/// The default java executable on Windows.
-#[cfg(target_os = "windows")]
-pub const JAVA_BIN: &str = "javaw.exe";
+// =========== Platform ===========
+/// The default java executable on Windows or anything else.
+pub const JAVA_BIN: &str = if cfg!(windows) { "javaw.exe" } else { "java" };
 
-/// The default java executable on macOS and Linux.
-#[cfg(not(target_os = "windows"))]
-pub const JAVA_BIN: &str = "java";
+/// The bit width on x64 or x32 architectures.
+pub const ARCH_WIDTH: &str = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
 
-/// The bit width on x64 architectures.
-#[cfg(target_pointer_width = "64")]
-pub const ARCH_WIDTH: &str = "64";
-
-/// The bit width on x32 architectures.
-#[cfg(target_pointer_width = "32")]
-pub const ARCH_WIDTH: &str = "32";
+/// Evaluates to `\r\n` on windows, and `\n` on everything else.
+pub const LINE_ENDING: &str = if cfg!(windows) { "\r\n" } else { "\n" };

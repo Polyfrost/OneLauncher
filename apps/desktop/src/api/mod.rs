@@ -18,6 +18,7 @@ pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 		.build()
 }
 
+// TODO: fix the error system/rspc
 pub type Result<T> = std::result::Result<T, OneLauncherSerializableError>;
 
 #[derive(thiserror::Error, Debug, Serialize, specta::Type)]

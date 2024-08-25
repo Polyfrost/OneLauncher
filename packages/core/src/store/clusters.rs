@@ -18,7 +18,7 @@ use crate::utils::io::{self, IOError};
 use crate::utils::java::JavaVersion;
 use crate::State;
 
-use super::{Directories, InitHooks, Memory, PackageMetadata, PackageType, Package, Packages, Resolution};
+use super::{Directories, InitHooks, Memory, PackageType, Resolution};
 
 /// Core Cluster state manager with a [`HashMap<ClusterPath, Cluster>`].
 pub(crate) struct Clusters(pub HashMap<ClusterPath, Cluster>);
@@ -515,74 +515,6 @@ impl Cluster {
 		});
 	}
 
-	/// sync a package
-	#[tracing::instrument]
-	pub async fn sync_package(cluster_path: &ClusterPath, package_path: PackagePath, package: Package) {
-
-	}
-
-	/// sync all packages
-	#[tracing::instrument]
-	pub async fn sync_packages(cluster_path: &ClusterPath) {
-		let result = async {
-			let cluster = if let Some(cluster) = crate::api::cluster::get(&cluster_path).await? {
-				cluster
-			} else {
-				return Ok::<(), crate::Error>(());
-			};
-
-			Self::sync_packages_by_type(&cluster_path, PackageType::Mod).await?;
-
-			let _ = send_cluster(
-				cluster.uuid,
-				&cluster_path,
-				&cluster.meta.name,
-				ClusterPayloadType::Synced,
-			).await;
-
-			Ok::<(), crate::Error>(())
-		}
-		.await;
-
-		match result {
-			Ok(()) => {}
-			Err(err) => tracing::warn!("failed to fetch cluster packages: {err}"),
-		}
-	}
-
-	// Sync packages in a cluster
-	#[tracing::instrument]
-	async fn sync_packages_by_type(path: &ClusterPath, package_type: PackageType) -> crate::Result<()> {
-		tracing::info!("syncing packages for cluster {}", path);
-		let dir = path.full_path().await?.join(package_type.get_folder());
-		let saved_packages = crate::api::cluster::content::package::get_packages_by_type(path, package_type).await?;
-		let mut packages = Packages::new();
-
-		let mut files = io::read_dir(&dir).await?;
-		while let Some(file) = files.next_entry().await.map_err(IOError::from)? {
-			let file_path = file.path();
-
-			if file_path.is_dir() || file_path.file_name().is_some_and(|f| f == ".packages.json") {
-				continue;
-			}
-
-			let package_path = PackagePath::new(&file_path);
-			if let Some(pkg) = saved_packages.get(&package_path) {
-				packages.insert(package_path.clone(), pkg.clone());
-			} else {
-				// TODO: Infer package type from the file
-				// let package = package::get(&package_path).await?;
-				let package = Package::new(&package_path, PackageMetadata::Unknown).await?;
-				packages.insert(package_path.clone(), package);
-			}
-		}
-
-		let packages_meta = path.full_path().await?.join(package_type.get_meta());
-		io::write(packages_meta, serde_json::to_string(&packages)?).await?;
-
-		Ok(())
-	}
-
 	/// get the full path to the current cluster.
 	pub async fn get_full_path(&self) -> crate::Result<PathBuf> {
 		let state = State::get().await?;
@@ -693,54 +625,6 @@ impl Clusters {
 	#[onelauncher_macros::memory]
 	pub async fn update_packages() {
 		// TODO: Pacakges
-		// let res = async {
-		// 	let state = State::get().await?;
-		// 	let mut files: Vec<(Cluster, Vec<PathBuf>)> = Vec::new();
-
-		// 	{
-		// 		let clusters = state.clusters.read().await;
-		// 		for (_cluster_path, cluster) in clusters.0.iter() {
-		// 			let paths = cluster.get_full_subs().await?;
-		// 			files.push((cluster.clone(), paths));
-		// 		}
-		// 	}
-
-		// 	let caches_dir = state.directories.caches_dir().await;
-		// 	future::try_join_all(files.into_iter().map(|(cluster, files)| async {
-		// 		let cluster_name = cluster.cluster_path();
-		// 		let packages = super::generate_context(
-		// 			cluster,
-		// 			files,
-		// 			caches_dir.clone(),
-		// 			&state.io_semaphore,
-		// 			&state.fetch_semaphore,
-		// 		)
-		// 		.await?;
-
-		// 		let mut new_clusters = state.clusters.write().await;
-		// 		if let Some(cluster) = new_clusters.0.get_mut(&cluster_name) {
-		// 			cluster.packages = packages;
-		// 		}
-
-		// 		drop(new_clusters);
-
-		// 		Ok::<(), crate::Error>(())
-		// 	}))
-		// 	.await?;
-
-		// 	{
-		// 		let clusters = state.clusters.read().await;
-		// 		clusters.sync().await?;
-		// 	}
-
-		// 	Ok::<(), crate::Error>(())
-		// }
-		// .await;
-
-		// match res {
-		// 	Ok(()) => {}
-		// 	Err(err) => tracing::warn!("failed to fetch cluster packages: {err}"),
-		// };
 	}
 
 	/// update all available package versions
@@ -874,7 +758,7 @@ impl Clusters {
 						.await?;
 
 					tokio::task::spawn(async move {
-						Cluster::sync_packages(&cluster_path, false).await;
+						// Cluster::sync_packages(&cluster_path).await;
 					});
 				}
 				Ok::<(), crate::Error>(())

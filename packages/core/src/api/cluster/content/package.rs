@@ -2,7 +2,7 @@ use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::prelude::PackagePath;
 use crate::processor::Cluster;
 use crate::proxy::send::send_internet;
-use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata, Packages};
+use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata, PackagesMap};
 use crate::utils::{http, io};
 use crate::{cluster, Result, State};
 // TODO: Implement proper error handling
@@ -113,7 +113,7 @@ pub async fn add_package_to_cluster(
 	let mut packages = get_packages_by_type(&cluster.cluster_path(), package_type).await?;
 	packages.insert(package_path, package);
 
-	cluster::sync_packages(&cluster.cluster_path(), false).await;
+	cluster::sync_packages(&cluster.cluster_path()).await;
 
 	Ok(())
 }
@@ -151,27 +151,4 @@ async fn download_file(
 	};
 
 	Ok(path)
-}
-
-/// Get all packages by package type in a cluster.
-#[tracing::instrument]
-pub async fn get_packages_by_type(
-	path: &ClusterPath,
-	package_type: PackageType,
-) -> crate::Result<Packages> {
-	let packages_meta = path.full_path().await?.join(package_type.get_meta());
-
-	// TODO: Implement other package types
-	if package_type != PackageType::Mod {
-		return Err(anyhow::anyhow!("unsupported package type: {:?}", package_type).into());
-	}
-
-	let packages: Packages = if packages_meta.exists() && packages_meta.is_file() {
-		serde_json::from_slice(&io::read(packages_meta).await?)?
-	} else {
-		io::write(packages_meta, "{}").await?;
-		Packages::new()
-	};
-
-	Ok(packages)
 }

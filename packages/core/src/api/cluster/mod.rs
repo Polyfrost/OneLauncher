@@ -431,8 +431,8 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 
 /// get a cluster by its specified [`ClusterPath`].
 #[tracing::instrument]
-pub async fn sync_packages(path: &ClusterPath, force: bool) {
-	Cluster::sync_packages(path, force).await;
+pub async fn sync_packages(path: &ClusterPath) {
+	Cluster::sync_packages(path).await;
 }
 
 /// Sanitize a user-inputted [`Cluster`] name.

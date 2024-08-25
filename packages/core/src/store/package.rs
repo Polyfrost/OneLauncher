@@ -1,21 +1,25 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
+use crate::cluster;
 use crate::package::content::Providers;
+use crate::proxy::send::send_cluster;
+use crate::proxy::ClusterPayloadType;
 use crate::store::Loader;
 use crate::utils::http::{write_icon, IoSemaphore};
+use crate::utils::io;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::PackagePath;
+use super::{ClusterPath, Clusters, PackagePath};
 
 // TODO: Curseforge, Modrinth, SkyClient integration
 
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum PackageType {
 	/// Represents a mod jarfile
@@ -80,7 +84,11 @@ impl PackageType {
 	}
 
 	pub fn get_meta(&self) -> PathBuf {
-		PathBuf::from(format!("{}/.packages.json", self.get_folder()))
+		PathBuf::from(format!("{}/{}", self.get_folder(), self.get_meta_file_name()))
+	}
+
+	pub fn get_meta_file_name(&self) -> String {
+		String::from(".packages.json")
 	}
 
 	pub fn iterator() -> impl Iterator<Item = PackageType> {
@@ -157,7 +165,238 @@ impl Package {
 	}
 }
 
-pub type Packages = HashMap<PackagePath, Package>;
+pub type PackagesMap = HashMap<PackagePath, Package>;
+
+pub struct Packages {
+	managers: HashMap<ClusterPath, PackageManager>,
+}
+
+impl Packages {
+	pub async fn initialize(clusters: &Clusters) -> Self {
+		let mut managers = HashMap::new();
+
+		// TODO: This should probably not clone and store the cluster path in like 2 areas
+		for cluster_path in clusters.0.keys() {
+			let mgr = PackageManager::initialize(cluster_path.clone()).await;
+
+			match mgr {
+				Ok(mgr) => {
+					managers.insert(cluster_path.clone(), mgr);
+				},
+				Err(e) => {
+					tracing::error!("failed to initialize package manager for cluster {}: {}. skipping", cluster_path, e);
+				}
+			};
+		}
+
+		Self {
+			managers
+		}
+	}
+
+	pub fn get(&self, cluster_path: &ClusterPath) -> Option<&PackageManager> {
+		self.managers.get(cluster_path)
+	}
+
+	pub fn get_mut(&mut self, cluster_path: &ClusterPath) -> Option<&mut PackageManager> {
+		self.managers.get_mut(cluster_path)
+	}
+
+	pub fn insert(&mut self, cluster_path: ClusterPath, manager: PackageManager) {
+		self.managers.insert(cluster_path, manager);
+	}
+
+	pub fn remove(&mut self, cluster_path: &ClusterPath) {
+		self.managers.remove(cluster_path);
+	}
+}
+
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PackagesMeta {
+	pub packages: PackagesMap,
+	pub package_type: PackageType,
+}
+
+impl PackagesMeta {
+	pub fn new(package_type: PackageType) -> Self {
+		Self {
+			packages: PackagesMap::new(),
+			package_type,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct PackageManager {
+	pub cluster_path: ClusterPath,
+	mods: PackagesMeta,
+	datapacks: PackagesMeta,
+	resourcepacks: PackagesMeta,
+	shaderpacks: PackagesMeta,
+}
+
+impl PackageManager {
+	pub async fn initialize(cluster_path: ClusterPath) -> crate::Result<Self> {
+		let mut manager = Self::new(cluster_path);
+		manager.sync_packages().await;
+
+		Ok(manager)
+	}
+
+	pub fn new(cluster_path: ClusterPath) -> Self {
+		Self {
+			cluster_path,
+			mods: PackagesMeta::new(PackageType::Mod),
+			datapacks: PackagesMeta::new(PackageType::DataPack),
+			resourcepacks: PackagesMeta::new(PackageType::ResourcePack),
+			shaderpacks: PackagesMeta::new(PackageType::ShaderPack),
+		}
+	}
+
+	pub async fn get_meta_file(&self, package_type: PackageType) -> crate::Result<PathBuf> {
+		Ok(self.cluster_path.full_path().await?.join(package_type.get_meta()))
+	}
+
+	/// Get the PackagesMeta for a specific package type. Does not sync.
+	pub fn get(&self, package_type: PackageType) -> &PackagesMeta {
+		match package_type {
+			PackageType::Mod => &self.mods,
+			PackageType::DataPack => &self.datapacks,
+			PackageType::ResourcePack => &self.resourcepacks,
+			PackageType::ShaderPack => &self.shaderpacks,
+		}
+	}
+
+	/// Get the PackagesMeta for a specific package type. Does not sync.
+	fn get_mut(&mut self, package_type: PackageType) -> &mut PackagesMeta {
+		match package_type {
+			PackageType::Mod => &mut self.mods,
+			PackageType::DataPack => &mut self.datapacks,
+			PackageType::ResourcePack => &mut self.resourcepacks,
+			PackageType::ShaderPack => &mut self.shaderpacks,
+		}
+	}
+
+	/// Get the PackagesMeta for a specific package type. Does not sync.
+	#[tracing::instrument]
+	async fn get_from_file(&self, package_type: PackageType) -> crate::Result<PackagesMeta> {
+		let packages_meta = &self.get_meta_file(package_type).await?;
+
+		Ok(if packages_meta.exists() && packages_meta.is_file() {
+			serde_json::from_slice(&io::read(packages_meta).await?)?
+		} else {
+			io::write(packages_meta, "{}").await?;
+			PackagesMeta {
+				packages: PackagesMap::new(),
+				package_type,
+			}
+		})
+	}
+
+	// add a package to the manager
+	#[tracing::instrument]
+	pub async fn add_package(&mut self, package_path: PackagePath, package: Package, package_type: Option<PackageType>) -> crate::Result<()> {
+		let package_type = package.meta.get_package_type().unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
+		let packages = &mut self.get_mut(package_type).packages;
+		packages.insert(package_path, package);
+
+		Ok(())
+	}
+
+	// remove a package to the manager
+	#[tracing::instrument]
+	pub async fn remove_package(&mut self, package_path: PackagePath, package: Package, package_type: Option<PackageType>) -> crate::Result<()> {
+		let package_type = package.meta.get_package_type().unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
+
+		let packages = &mut self.get_mut(package_type).packages;
+		packages.remove(&package_path);
+
+		Ok(())
+	}
+
+	/// sync all packages
+	#[tracing::instrument]
+	pub async fn sync_packages(&mut self) {
+		&self.sync_packages_by_type(PackageType::Mod).await;
+		&self.sync_packages_by_type(PackageType::DataPack).await;
+		&self.sync_packages_by_type(PackageType::ResourcePack).await;
+		&self.sync_packages_by_type(PackageType::ShaderPack).await;
+	}
+
+	/// sync packages from the metafile
+	#[tracing::instrument]
+	async fn sync_from_file_by_type(&mut self, package_type: PackageType) -> crate::Result<()> {
+		let packages_meta = self.get_from_file(package_type).await?;
+		self.get_mut(package_type).packages = packages_meta.packages;
+
+		Ok(())
+	}
+
+	/// sync packages from the manager to the metafile
+	#[tracing::instrument]
+	async fn sync_to_file_by_type(&self, package_type: PackageType) -> crate::Result<()> {
+		let packages_meta = self.get(package_type);
+		let packages_meta = serde_json::to_string(&packages_meta)?;
+
+		io::write(self.get_meta_file(package_type).await?, packages_meta).await?;
+
+		Ok(())
+	}
+
+	/// returns a list of packages that have a file but are not synced in the manager
+	#[tracing::instrument]
+	async fn get_unsynced_packages(&self, package_type: PackageType) -> crate::Result<PackagesMap> {
+		let mut files = io::read_dir(self.cluster_path.full_path().await?.join(package_type.get_folder())).await?;
+		let mut packages = self.get(package_type).packages.clone();
+
+		for file in files.next_entry().await? {
+			let path = PackagePath::new(&file.path());
+			if !packages.contains_key(&path) {
+				let package = Package::new(&path, PackageMetadata::Mapped {
+					title: None,
+					description: None,
+					authors: Vec::new(),
+					version: None,
+					icon: None,
+					package_type: Some(package_type),
+				}).await?;
+				packages.insert(path, package);
+			}
+		}
+
+		Ok(packages)
+	}
+
+	// sync packages in a cluster
+	#[tracing::instrument]
+	async fn sync_packages_by_type(&mut self, package_type: PackageType) -> crate::Result<()> {
+		tracing::info!("syncing packages");
+
+		// Clone the current packages and merge them with the local package list
+		let mut packages = self.get(package_type).packages.clone();
+		let mut new_packages = self.get_from_file(package_type).await?.packages;
+		packages.extend(new_packages.drain());
+
+		// Get the unsynced packages (files that exist but are not in the manager) and merge them with the local package list
+		let unsynced = self.get_unsynced_packages(package_type).await?;
+		packages.extend(unsynced);
+
+		// Finally store the new list in memory
+		self.get_mut(package_type).packages = packages;
+
+		let cluster_path = self.cluster_path.clone();
+		tokio::task::spawn(async move {
+			if let Ok(cluster) = cluster::get(&cluster_path).await {
+				if let Some(cluster) = cluster {
+					send_cluster(cluster.uuid, &cluster_path, &cluster.meta.name, ClusterPayloadType::Synced).await;
+				}
+			}
+		});
+
+		Ok(())
+	}
+}
 
 /// Metadata that represents a [`Package`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -192,6 +431,14 @@ impl PackageMetadata {
 			title: package.title,
 			provider: package.provider,
 			package_type: package.package_type,
+		}
+	}
+
+	pub fn get_package_type(&self) -> Option<PackageType> {
+		match self {
+			PackageMetadata::Managed { package_type, .. } => Some(*package_type),
+			PackageMetadata::Mapped { package_type, .. } => *package_type,
+			PackageMetadata::Unknown => None,
 		}
 	}
 }

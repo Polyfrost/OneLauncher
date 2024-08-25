@@ -79,6 +79,8 @@ pub struct State {
 	pub credentials: RwLock<Option<Credentials>>,
 	/// Handles clusters
 	pub(crate) clusters: RwLock<Clusters>,
+	/// Handles packages
+	pub(crate) packages: RwLock<Packages>,
 	/// Handles internal ingress processes
 	pub(crate) ingress_processor: RwLock<IngressProcessor>,
 	/// Handles file system watching for cluster manager
@@ -141,6 +143,8 @@ impl State {
 			users_in,
 		}?;
 
+		let packages = Packages::initialize(&clusters).await;
+
 		let ingress_processor = IngressProcessor::new();
 		let discord_rpc = DiscordRPC::initialize(is_offline || settings.disable_discord).await?;
 		if !settings.disable_discord && !is_offline {
@@ -166,6 +170,7 @@ impl State {
 			oneconfig: RwLock::new(None),
 			credentials: RwLock::new(None),
 			clusters: RwLock::new(clusters),
+			packages: RwLock::new(packages),
 			ingress_processor: RwLock::new(ingress_processor),
 			watcher: RwLock::new(watcher),
 			discord_rpc,

@@ -1,15 +1,152 @@
 datasource db {
-	provider = "sqlite"
-	url = "file:dev.db"
+  provider = "sqlite"
+  url      = "file:dev.db"
 }
 
 generator client {
-	provider = "cargo prisma"
-	output = "../../prisma/src/prisma"
-	module_path = "prisma"
-	client_folder = "prisma"
+  provider      = "cargo prisma"
+  output        = "../../prisma/src/prisma"
+  module_path   = "prisma"
+  client_format = "folder"
 }
 
 model Settings {
-	id Int @id @unique @default(autoincrement())
+  id                 Int     @id @unique @default(0)
+  theme              String  @default("dark")
+  hide_close_prompt  Boolean @default(true)
+  disable_animations Boolean @default(false)
+  disable_analytics  Boolean @default(false)
+  debug_mode         Boolean @default(false)
+  hide_on_launch     Boolean @default(false)
+  force_fullscreen   Boolean @default(false)
+  disable_discord    Boolean @default(false)
+
+  custom_java_args String
+  custom_env_args  String
+
+  max_async_io_operations Int @default(10)
+  max_async_fetches       Int @default(10)
+  max_async_api_fetches   Int @default(25)
+
+  resolution_x Int @default(854)
+  resolution_y Int @default(480)
+
+  memory_max Int @default(2048)
+  memory_min Int @default(512)
+
+  hook_pre     String?
+  hook_wrapper String?
+  hook_post    String?
+
+  @@map("settings")
+}
+
+model JavaVersion {
+  id            String        @id @unique @default(uuid())
+  major_version Int
+  full_version  String
+  arch          String
+  os            String
+  type          String
+  vendor        String
+  path          String        @unique
+  valid         Boolean       @default(true)
+  profile       JavaProfile[]
+
+  @@map("java_version")
+}
+
+model JavaProfile {
+  name         String       @id
+  system       Boolean      @default(false)
+  java_version JavaVersion? @relation(fields: [java_id], references: [id], onDelete: SetNull)
+  java_id      String?
+}
+
+model MinecraftUser {
+  uuid          String   @id
+  active        Boolean  @default(false)
+  username      String
+  access_token  String
+  refresh_token String
+  expires       DateTime
+  last_used     DateTime
+  skin_id       String?
+
+  @@unique([active])
+  @@map("minecraft_user")
+}
+
+model Skin {
+  id   String @id
+  skin Bytes
+}
+
+// TODO: packages/caching
+
+model MinecraftDeviceToken {
+  id             Int    @id @default(0)
+  uuid           String
+  private_key    String
+  x              String
+  y              String
+  issue_instant  Int
+  not_after      Int
+  token          String
+  display_claims String
+
+  @@map("minecraft_device_token")
+}
+
+model Cluster {
+  path            String       @id
+  stage           String
+  name            String
+  icon_path       String?
+  mc_version      String
+  loader          String       @default("vanilla")
+  loader_version  String?      @default("stable")
+  group           ClusterGroup @relation(fields: [group_id], references: [id])
+  group_id        Int
+  created_at      DateTime     @default(now())
+  modified_at     DateTime
+  played_at       DateTime?
+  overall_played  Int          @default(0)
+  recently_played Int          @default(0)
+
+  override_java_path        String?
+  override_custom_java_args String
+  override_custom_env_args  String
+  override_memory_max       Int?
+  override_memory_min       Int?
+  override_force_fullscreen Int?
+  override_resolution_x     Int?
+  override_resolution_y     Int?
+  override_hook_pre         String?
+  override_hook_wrapper     String?
+  override_hook_post        String?
+  processes                 Process[]
+
+  @@map("cluster")
+}
+
+model ClusterGroup {
+  id       Int       @id @default(autoincrement())
+  name     String
+  index    Int
+  clusters Cluster[]
+}
+
+model Process {
+  pid          Int      @id
+  start_time   DateTime @default(now())
+  name         String
+  executable   String
+  cluster_path String
+  post_exit    String?
+  cluster      Cluster  @relation(fields: [cluster_path], references: [path])
+
+  @@unique([pid])
+  @@index([cluster_path])
+  @@map("process")
 }

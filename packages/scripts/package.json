@@ -16,7 +16,12 @@
 	"types": "./src/index.ts",
 	"scripts": {
 		"tauri": "pnpm tsx tauri.ts",
-		"prep": "pnpm tsx prepare.ts"
+		"prep": "pnpm tsx prepare.ts",
+		"setup-win": "./setup.ps1",
+		"setup-nix": "./setup.sh",
+		"autoformat": "./format.sh",
+		"fix-deb": "./fix-deb.sh",
+		"dupe": "./dedupe.sh"
 	},
 	"dependencies": {
 		"execa": "^9.3.1",
@@ -25,7 +30,6 @@
 		"semver": "^7.6.3"
 	},
 	"devDependencies": {
-		"@types/iarna__toml": "^2.0.5",
 		"@types/mustache": "^4.2.5",
 		"@types/semver": "^7.5.8"
 	}

@@ -4,6 +4,7 @@ import { createPersistedMutable, useSolidStore } from '../library';
 
 export interface DebugState {
 	enabled: boolean;
+	rspcLogger: boolean;
 	shareFullTelemetry: boolean;
 	telemetryLogging: boolean;
 }
@@ -12,6 +13,7 @@ export const debugState = createPersistedMutable(
 	'onelauncher-debugState',
 	createMutable<DebugState>({
 		enabled: globalThis.isDevelopment,
+		rspcLogger: false,
 		shareFullTelemetry: false,
 		telemetryLogging: false,
 	}),

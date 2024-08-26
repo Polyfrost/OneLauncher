@@ -1,8 +1,10 @@
 # todo list
 
+- [ ] **remove clusterpath, just switch to pathbuf or string in prisma, and refactor package api**
 - [ ] fix missing jars and libraries when launching clusters
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 	- maybe use `sqlx` instead to avoid unnecessary bloat (but also i don't like sqlx lol)
+	- todo: also add caching  to the prisma schema
 - [ ] migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
 	- waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
 - [ ] bump `tauri` to stable v2 when it releases.

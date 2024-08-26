@@ -21,6 +21,7 @@ cli = [ "dep:indicatif" ]
 [dependencies]
 # features[default]
 onelauncher_macros = { workspace = true }
+onelauncher_prisma = { workspace = true }
 interpulse = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

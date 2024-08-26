@@ -103,7 +103,7 @@ pub async fn edit_cluster_meta(
 	name: Option<String>,
 	icon_path: Option<String>,
 ) -> Result<(), String> {
-	let cluster = cluster::get_by_uuid(uuid,)
+	let cluster = cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster does not exist")?;
 

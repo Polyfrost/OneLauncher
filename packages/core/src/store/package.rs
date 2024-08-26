@@ -84,7 +84,11 @@ impl PackageType {
 	}
 
 	pub fn get_meta(&self) -> PathBuf {
-		PathBuf::from(format!("{}/{}", self.get_folder(), self.get_meta_file_name()))
+		PathBuf::from(format!(
+			"{}/{}",
+			self.get_folder(),
+			self.get_meta_file_name()
+		))
 	}
 
 	pub fn get_meta_file_name(&self) -> String {
@@ -182,16 +186,18 @@ impl Packages {
 			match mgr {
 				Ok(mgr) => {
 					managers.insert(cluster_path.clone(), mgr);
-				},
+				}
 				Err(e) => {
-					tracing::error!("failed to initialize package manager for cluster {}: {}. skipping", cluster_path, e);
+					tracing::error!(
+						"failed to initialize package manager for cluster {}: {}. skipping",
+						cluster_path,
+						e
+					);
 				}
 			};
 		}
 
-		Self {
-			managers
-		}
+		Self { managers }
 	}
 
 	pub fn get(&self, cluster_path: &ClusterPath) -> Option<&PackageManager> {
@@ -255,7 +261,11 @@ impl PackageManager {
 	}
 
 	pub async fn get_meta_file(&self, package_type: PackageType) -> crate::Result<PathBuf> {
-		Ok(self.cluster_path.full_path().await?.join(package_type.get_meta()))
+		Ok(self
+			.cluster_path
+			.full_path()
+			.await?
+			.join(package_type.get_meta()))
 	}
 
 	/// Get the PackagesMeta for a specific package type. Does not sync.
@@ -296,8 +306,16 @@ impl PackageManager {
 
 	// add a package to the manager
 	#[tracing::instrument]
-	pub async fn add_package(&mut self, package_path: PackagePath, package: Package, package_type: Option<PackageType>) -> crate::Result<()> {
-		let package_type = package.meta.get_package_type().unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
+	pub async fn add_package(
+		&mut self,
+		package_path: PackagePath,
+		package: Package,
+		package_type: Option<PackageType>,
+	) -> crate::Result<()> {
+		let package_type = package
+			.meta
+			.get_package_type()
+			.unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.insert(package_path, package);
 
@@ -306,8 +324,16 @@ impl PackageManager {
 
 	// remove a package to the manager
 	#[tracing::instrument]
-	pub async fn remove_package(&mut self, package_path: PackagePath, package: Package, package_type: Option<PackageType>) -> crate::Result<()> {
-		let package_type = package.meta.get_package_type().unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
+	pub async fn remove_package(
+		&mut self,
+		package_path: PackagePath,
+		package: Package,
+		package_type: Option<PackageType>,
+	) -> crate::Result<()> {
+		let package_type = package
+			.meta
+			.get_package_type()
+			.unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
 
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.remove(&package_path);
@@ -347,20 +373,30 @@ impl PackageManager {
 	/// returns a list of packages that have a file but are not synced in the manager
 	#[tracing::instrument]
 	async fn get_unsynced_packages(&self, package_type: PackageType) -> crate::Result<PackagesMap> {
-		let mut files = io::read_dir(self.cluster_path.full_path().await?.join(package_type.get_folder())).await?;
+		let mut files = io::read_dir(
+			self.cluster_path
+				.full_path()
+				.await?
+				.join(package_type.get_folder()),
+		)
+		.await?;
 		let mut packages = self.get(package_type).packages.clone();
 
 		for file in files.next_entry().await? {
 			let path = PackagePath::new(&file.path());
 			if !packages.contains_key(&path) {
-				let package = Package::new(&path, PackageMetadata::Mapped {
-					title: None,
-					description: None,
-					authors: Vec::new(),
-					version: None,
-					icon: None,
-					package_type: Some(package_type),
-				}).await?;
+				let package = Package::new(
+					&path,
+					PackageMetadata::Mapped {
+						title: None,
+						description: None,
+						authors: Vec::new(),
+						version: None,
+						icon: None,
+						package_type: Some(package_type),
+					},
+				)
+				.await?;
 				packages.insert(path, package);
 			}
 		}
@@ -389,7 +425,13 @@ impl PackageManager {
 		tokio::task::spawn(async move {
 			if let Ok(cluster) = cluster::get(&cluster_path).await {
 				if let Some(cluster) = cluster {
-					send_cluster(cluster.uuid, &cluster_path, &cluster.meta.name, ClusterPayloadType::Synced).await;
+					send_cluster(
+						cluster.uuid,
+						&cluster_path,
+						&cluster.meta.name,
+						ClusterPayloadType::Synced,
+					)
+					.await;
 				}
 			}
 		});

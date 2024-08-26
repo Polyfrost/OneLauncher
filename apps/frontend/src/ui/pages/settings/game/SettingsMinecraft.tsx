@@ -48,12 +48,12 @@ export function createSetting<T>(initial: T | undefined | null, fallback?: T): C
 		checkGlobal();
 	});
 
-	// @ts-expect-error -- Can't be bothered to fix this type issue
-	const set: Setter<T> = (value) => {
-		setRaw(value!);
-		setValue(value!);
-
+	const set: Setter<T> = (newValue?: any) => {
+		setRaw(newValue!);
+		setValue(newValue!);
 		checkGlobal();
+
+		return value as any;
 	};
 
 	const resetToFallback = (raw?: T) => {

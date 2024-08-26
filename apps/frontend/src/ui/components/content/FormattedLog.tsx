@@ -1,4 +1,4 @@
-import { Index, Show, createMemo, createSignal, untrack } from 'solid-js';
+import { Index, Show, createEffect, createMemo, createSignal, untrack } from 'solid-js';
 import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
 import type { Ref } from '@solid-primitives/refs';
 import { AlignBottom01Icon } from '@untitled-theme/icons-solid';
@@ -15,8 +15,11 @@ interface FormattedLogProps {
 function FormattedLog(props: FormattedLogProps) {
 	// TODO(perf): Do a "infinite scroll" method of rendering the log. Adding 15918590815 dom elements at once lags the render thread for a bit
 	const lines = createMemo(() => (props.log?.trim().split('\n') || []));
-	// eslint-disable-next-line solid/reactivity -- Shouldn't really be tracked
-	const [shouldScroll, setShouldScroll] = createSignal(props.enableAutoScroll === true);
+	const [shouldScroll, setShouldScroll] = createSignal(false);
+
+	createEffect(() => {
+		setShouldScroll(props.enableAutoScroll === true);
+	});
 
 	let overlayScrollbars!: OverlayScrollbarsComponentRef;
 

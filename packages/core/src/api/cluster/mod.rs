@@ -41,11 +41,7 @@ pub async fn get(path: &ClusterPath) -> crate::Result<Option<Cluster>> {
 pub async fn get_by_name(name: &str) -> crate::Result<Option<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
-	let cluster = clusters
-		.0
-		.values()
-		.find(|c| c.meta.name == name)
-		.cloned();
+	let cluster = clusters.0.values().find(|c| c.meta.name == name).cloned();
 
 	Ok(cluster)
 }
@@ -55,12 +51,7 @@ pub async fn get_by_name(name: &str) -> crate::Result<Option<Cluster>> {
 pub async fn list() -> crate::Result<Vec<Cluster>> {
 	let state = State::get().await?;
 	let clusters = state.clusters.read().await;
-	Ok(clusters
-		.0
-		.clone()
-		.into_iter()
-		.map(|it| it.1)
-		.collect())
+	Ok(clusters.0.clone().into_iter().map(|it| it.1).collect())
 }
 
 /// get a Map of [`Cluster`] group names containing lists of [`Cluster`]s

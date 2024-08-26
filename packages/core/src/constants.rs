@@ -99,7 +99,11 @@ pub const NATIVE_ARCH: &str = "64";
 pub const JAVA_BIN: &str = if cfg!(windows) { "javaw.exe" } else { "java" };
 
 /// The bit width on x64 or x32 architectures.
-pub const ARCH_WIDTH: &str = if cfg!(target_pointer_width = "64") { "64" } else { "32" };
+pub const ARCH_WIDTH: &str = if cfg!(target_pointer_width = "64") {
+	"64"
+} else {
+	"32"
+};
 
 /// Evaluates to `\r\n` on windows, and `\n` on everything else.
 pub const LINE_ENDING: &str = if cfg!(windows) { "\r\n" } else { "\n" };

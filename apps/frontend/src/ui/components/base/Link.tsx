@@ -12,18 +12,15 @@ function Link(props: LinkProps) {
 	const [split, rest] = splitProps(props, ['prompt', 'class', 'href', 'onClick', 'children']);
 	const open = usePromptOpener();
 
-	function onClick() {
-		open(split.href, !!split.prompt);
-
-		// @ts-expect-error -- This should be valid
-		props.onClick?.();
-	}
-
 	return (
 		<button
 			{...rest as any}
 			class={`${styles.link} ${split.class || ''}`}
-			onClick={onClick}
+			onClick={(e) => {
+				open(split.href, !!split.prompt);
+				if (typeof props.onClick === 'function')
+					props.onClick(e as any);
+			}}
 			children={(
 				<div class="flex flex-row gap-x-1">
 					{props.children}

@@ -10,11 +10,10 @@ function Toggle(props: ToggleProps) {
 	const [checked, setChecked] = createSignal(props.checked?.());
 	const [split, rest] = splitProps(props, ['class', 'checked', 'onChecked', 'text']);
 
-	// eslint-disable-next-line solid/reactivity -- i hate mylife
-	if (props.checked)
-		createEffect(() => {
-			setChecked(props.checked!());
-		});
+	createEffect(() => {
+		if (props.checked)
+			setChecked(props.checked());
+	});
 
 	function toggle() {
 		const newValue = !checked();

@@ -71,8 +71,7 @@ export function useRecentCluster() {
 	const [cluster, setCluster] = createSignal<Cluster>();
 
 	createEffect(() => {
-		// eslint-disable-next-line no-undef-init -- This is fine. I love eslint rule clash though
-		let mostRecentCluster: Cluster | undefined = undefined;
+		let mostRecentCluster: Cluster | undefined;
 		const list = clusters();
 
 		if (list === undefined)

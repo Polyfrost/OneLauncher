@@ -23,9 +23,7 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 function Dropdown(props: DropdownProps) {
 	const [split, rest] = splitProps(props, ['disabled', 'children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass', 'listToolRow']);
 	const [visible, setVisible] = createSignal(false);
-
-	// eslint-disable-next-line solid/reactivity -- todo
-	const [selected, setSelected] = createSignal<number>(split.selected?.() || 0);
+	const [selected, setSelected] = createSignal(0);
 
 	createEffect(() => {
 		if (split.selected)
@@ -41,7 +39,7 @@ function Dropdown(props: DropdownProps) {
 		setVisible(false);
 
 		if (split.onChange)
-			split.onChange(selected());
+			split.onChange(index);
 	}
 
 	const Component = () => (

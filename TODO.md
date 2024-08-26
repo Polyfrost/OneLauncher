@@ -1,6 +1,7 @@
 # todo list
 
 - [ ] **remove clusterpath, just switch to pathbuf or string in prisma, and refactor package api**
+- [ ] **splash screen and reduce startup times**
 - [ ] fix missing jars and libraries when launching clusters
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 	- maybe use `sqlx` instead to avoid unnecessary bloat (but also i don't like sqlx lol)

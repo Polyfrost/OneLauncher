@@ -335,7 +335,6 @@ function Banner(props: BannerProps) {
 					</div>
 
 					<div class="flex flex-row items-end gap-x-2.5 *:h-8">
-
 						<Button
 							buttonStyle="iconSecondary"
 							children={<Share07Icon />}

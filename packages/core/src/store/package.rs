@@ -327,7 +327,7 @@ impl PackageManager {
 		package_type: PackageType,
 	) -> crate::Result<()> {
 		let packages = &mut self.get_mut(package_type).packages;
-		packages.remove(&package_path);
+		packages.remove(package_path);
 
 		Ok(())
 	}
@@ -416,9 +416,9 @@ impl PackageManager {
 			}
 
 			let path = PackagePath::new(&file.path());
-			if !packages.contains_key(&path) {
+			if let std::collections::hash_map::Entry::Vacant(e) = packages.entry(path) {
 				let package = Package::new(
-					&path,
+					&PackagePath::new(&file.path()),
 					PackageMetadata::Mapped {
 						title: None,
 						description: None,
@@ -429,7 +429,7 @@ impl PackageManager {
 					},
 				)
 				.await?;
-				packages.insert(path, package);
+				e.insert(package);
 			}
 		}
 

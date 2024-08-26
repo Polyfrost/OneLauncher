@@ -11,9 +11,9 @@
 pub mod http;
 pub mod io;
 pub mod java;
+pub mod logging;
 pub mod platform;
 pub mod watcher;
-pub mod logging;
 
 /// Simple macro that takes a mutable reference and inserts it into a codeblock closure
 /// as an owned reference.

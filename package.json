@@ -24,7 +24,8 @@
 	"scripts": {
 		"prep": "pnpm scripts prep",
 		"typecheck": "pnpm -r typecheck",
-		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
+		"codegen": "pnpm prisma:gen",
+		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep && pnpm codegen",
 		"autoformat": "./packages/scripts/format.sh",
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
 		"format": "pnpm format:es && pnpm format:rs",

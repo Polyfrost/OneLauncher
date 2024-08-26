@@ -11,15 +11,17 @@ generator client {
 }
 
 model Settings {
-  id                 Int     @id @unique @default(0)
-  theme              String  @default("dark")
-  hide_close_prompt  Boolean @default(true)
-  disable_animations Boolean @default(false)
-  disable_analytics  Boolean @default(false)
-  debug_mode         Boolean @default(false)
-  hide_on_launch     Boolean @default(false)
-  force_fullscreen   Boolean @default(false)
-  disable_discord    Boolean @default(false)
+  id                Int     @id @unique @default(0)
+  theme             String  @default("dark")
+  hide_close_prompt Boolean @default(true)
+  reduced_motion    Boolean @default(false)
+  disable_analytics Boolean @default(false)
+  debug_mode        Boolean @default(false)
+  hide_on_launch    Boolean @default(false)
+  force_fullscreen  Boolean @default(false)
+  disable_discord   Boolean @default(false)
+  release_channel   String  @default("stable")
+  show_news         Boolean @default(true)
 
   custom_java_args String
   custom_env_args  String
@@ -61,6 +63,8 @@ model JavaProfile {
   system       Boolean      @default(false)
   java_version JavaVersion? @relation(fields: [java_id], references: [id], onDelete: SetNull)
   java_id      String?
+
+  @@map("java_profile")
 }
 
 model MinecraftUser {
@@ -80,6 +84,8 @@ model MinecraftUser {
 model Skin {
   id   String @id
   skin Bytes
+
+  @@map("skin")
 }
 
 // TODO: packages/caching
@@ -109,7 +115,7 @@ model Cluster {
   group           ClusterGroup @relation(fields: [group_id], references: [id])
   group_id        Int
   created_at      DateTime     @default(now())
-  modified_at     DateTime
+  updated_at      DateTime     @updatedAt
   played_at       DateTime?
   overall_played  Int          @default(0)
   recently_played Int          @default(0)
@@ -135,6 +141,8 @@ model ClusterGroup {
   name     String
   index    Int
   clusters Cluster[]
+
+  @@map("cluster_group")
 }
 
 model Process {
@@ -149,4 +157,76 @@ model Process {
   @@unique([pid])
   @@index([cluster_path])
   @@map("process")
+}
+
+model VersionInfoCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  version_info Bytes
+
+  @@map("version_info_cache")
+}
+
+model PartialVersionInfoCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  version_info Bytes
+
+  @@map("partial_version_info")
+}
+
+model AssetsIndexCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  assets_index Bytes
+
+  @@map("assets_index_cache")
+}
+
+model PackageCache {
+  id         String          @id @default(uuid())
+  updated_at DateTime        @default(now()) @updatedAt
+  sha512     String
+  file_name  String
+  file_size  Int
+  disabled   Boolean
+  meta_id    String
+  meta       PackageMetadata @relation(fields: [meta_id], references: [id], onDelete: Restrict)
+
+  @@unique([file_name])
+  @@map("package_cache")
+}
+
+model PackageMetadata {
+  id          String           @id
+  updated_at  DateTime         @default(now()) @updatedAt
+  name        String?
+  package_id  String?
+  version     String?
+  description String?
+  authors     String?
+  loader      String
+  // icon IconCache?
+  managed     ManagedModCache?
+  // inferred InferredModCache?
+  cached      PackageCache[]
+
+  @@map("package_metadata")
+}
+
+model ManagedModCache {
+  meta_id      String          @id
+  project_id   Int
+  file_id      Int
+  name         String
+  version      String
+  urlslug      String
+  summary      String
+  authors      String
+  release_type Int
+  update_paths String
+  cached_at    DateTime
+  meta         PackageMetadata @relation(fields: [meta_id], references: [id], onDelete: Cascade)
+
+  @@map("managed_mod_cache")
 }

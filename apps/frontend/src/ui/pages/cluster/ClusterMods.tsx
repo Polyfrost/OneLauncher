@@ -1,22 +1,19 @@
-import { ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Switch, createMemo, createSignal, onMount } from 'solid-js';
+import { Edit02Icon, FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { For, Match, Switch, createEffect, createSignal } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
 import type { Package } from '@onelauncher/client/bindings';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
+import useClusterContext from '~ui/hooks/useCluster';
+import useCommand from '~ui/hooks/useCommand';
+import { bridge } from '~imports';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
-	// const [cluster] = useClusterContext();
-
-	// Initial mods for this cluster
-	const mods = createMemo(() => {
-		// return Object.values(cluster()?.packages || {})
-		// 	.filter(pkg => (pkg.meta.type === 'managed' || pkg.meta.type === 'mapped') && pkg.meta.package_type === 'mod');
-		return [] as Package[];
-	});
+	const [cluster] = useClusterContext();
+	const [mods] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
 	// Mods to display, should be a clone of the mods array but sorted
 	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
@@ -32,7 +29,7 @@ function ClusterMods() {
 	}
 
 	const uf = new UFuzzy();
-	const [modsSearchable] = createSignal(() => mods().map(getModName) || []);
+	const [modsSearchable] = createSignal(() => mods()?.map(getModName) || []);
 
 	function search(value: string) {
 		if (value === '' || value === undefined) {
@@ -44,7 +41,7 @@ function ClusterMods() {
 
 		const filtered: Package[] = [];
 		result[0]?.forEach((index) => {
-			const mod = mods()[index];
+			const mod = mods()?.[index];
 			if (mod)
 				filtered.push(mod);
 		});
@@ -65,10 +62,10 @@ function ClusterMods() {
 	}
 
 	function resetMods() {
-		setDisplayedMods(sortListByName([...mods()]));
+		setDisplayedMods(sortListByName([...(mods() || [])]));
 	}
 
-	onMount(() => {
+	createEffect(() => {
 		resetMods();
 	});
 
@@ -79,9 +76,9 @@ function ClusterMods() {
 				<div class="flex flex-row items-center justify-end gap-x-2">
 					<Button
 						buttonStyle="secondary"
-						iconLeft={sortingAtoZ() ? <ChevronUpIcon /> : <ChevronDownIcon />}
 						onClick={() => toggleNameSort()}
-						children="Name"
+						children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
+						iconLeft={<FilterFunnel01Icon />}
 					/>
 
 					<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
@@ -136,6 +133,17 @@ function ModEntry(props: ModEntryProps) {
 		return formatted;
 	};
 
+	const tag = () => {
+		let tag = 'Unknown';
+
+		if (props.pkg.meta.type === 'managed')
+			tag = props.pkg.meta.provider;
+		else if (props.pkg.meta.type === 'mapped')
+			tag = 'Mapped';
+
+		return tag;
+	};
+
 	return (
 		<div class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover">
 			<div>
@@ -145,7 +153,10 @@ function ModEntry(props: ModEntryProps) {
 				<div class="flex flex-row items-center justify-between">
 					<div class="flex flex-col items-start justify-center">
 						<div class="flex flex-col items-start justify-center gap-y-2">
-							<h4>{name()}</h4>
+							<span class="flex flex-row items-center justify-start gap-x-1">
+								<h4>{name()}</h4>
+								<span class="rounded-xl bg-gray-05 px-1.5 py-0.5 text-xs text-white/60">{tag()}</span>
+							</span>
 							<span class="h-2 flex flex-row items-center justify-start text-xs text-fg-secondary/50 font-600">
 								{version()}
 								{/* TODO: Add version checker */}

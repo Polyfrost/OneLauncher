@@ -87,8 +87,8 @@ pub async fn get_cluster_package(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_cluster_packages(cluster_path: ClusterPath) -> Result<Vec<Package>, String> {
-	Ok(package::get_packages(&cluster_path).await?)
+pub async fn get_cluster_packages(cluster_path: ClusterPath, package_type: PackageType) -> Result<Vec<Package>, String> {
+	Ok(package::get_packages(&cluster_path, package_type).await?)
 }
 
 #[specta::specta]

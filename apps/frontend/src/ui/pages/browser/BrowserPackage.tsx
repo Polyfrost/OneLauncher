@@ -236,21 +236,28 @@ function InstallButton(props: ManagedPackage) {
 
 	const getSelectedCluster = () => filtered()?.[selected()];
 
-	function download() {
+	async function download() {
 		const cluster = getSelectedCluster();
 
 		if (cluster === undefined)
 			return;
 
 		// TODO: Add a progress bar
-		bridge.commands.downloadProviderPackage(
-			props.provider,
-			props.id,
-			cluster.uuid,
-			cluster.meta.mc_version,
-			cluster.meta.loader || null,
-			null, // TODO: Specific package version
-		);
+		try {
+			await bridge.commands.downloadProviderPackage(
+				props.provider,
+				props.id,
+				cluster.uuid,
+				cluster.meta.mc_version,
+				cluster.meta.loader || null,
+				null, // TODO: Specific package version
+			);
+
+			await bridge.commands.syncClusterPackages(cluster.path || '');
+		}
+		catch (err) {
+			console.error(err);
+		}
 	}
 
 	createEffect(() => {

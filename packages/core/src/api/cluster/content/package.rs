@@ -194,7 +194,7 @@ pub async fn get_package(
 
 /// Get packages from a cluster.
 #[tracing::instrument]
-pub async fn get_packages(cluster_path: &ClusterPath) -> Result<Vec<Package>> {
+pub async fn get_packages(cluster_path: &ClusterPath, package_type: PackageType) -> Result<Vec<Package>> {
 	let state = State::get().await?;
 	let manager = state.packages.read().await;
 	let manager = manager
@@ -202,7 +202,7 @@ pub async fn get_packages(cluster_path: &ClusterPath) -> Result<Vec<Package>> {
 		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
 	Ok(manager
-		.get(PackageType::Mod)
+		.get(package_type)
 		.packages
 		.values()
 		.cloned()

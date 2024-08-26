@@ -11,440 +11,354 @@ import * as TAURI_API_EVENT from '@tauri-apps/api/event';
 import type { WebviewWindow as __WebviewWindow__ } from '@tauri-apps/api/webviewWindow';
 
 export const commands = {
-	async authLogin(): Promise<Result<MinecraftCredentials | null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('auth_login') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getUsers(): Promise<Result<MinecraftCredentials[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_users') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getUser(uuid: string): Promise<Result<MinecraftCredentials, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_user', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getDefaultUser(fallback: boolean | null): Promise<Result<MinecraftCredentials | null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_default_user', { fallback }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async setDefaultUser(uuid: string | null): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('set_default_user', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async removeUser(uuid: string): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('remove_user', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async createCluster(props: CreateCluster): Promise<Result<string, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('create_cluster', { props }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	/**
-	 * Updates the cluster with the given UUID. The cluster only updates game setting fields
-	 */
-	async editGameSettings(uuid: string, newCluster: Cluster): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('edit_game_settings', { uuid, newCluster }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async editClusterMeta(uuid: string, name: string | null, iconPath: string | null): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('edit_cluster_meta', { uuid, name, iconPath }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async removeCluster(uuid: string): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('remove_cluster', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getCluster(uuid: string): Promise<Result<Cluster, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_cluster', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClusters(): Promise<Result<Cluster[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_clusters') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClustersGrouped(): Promise<Result<{ [key in string]: Cluster[] }, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_clusters_grouped') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async runCluster(uuid: string): Promise<Result<DetailedProcess, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('run_cluster', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClusterLogs(uuid: string): Promise<Result<string[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_cluster_logs', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClusterLog(uuid: string, logName: string): Promise<Result<string, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_cluster_log', { uuid, logName }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async uploadLog(uuid: string, logName: string): Promise<Result<string, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('upload_log', { uuid, logName }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getScreenshots(uuid: string): Promise<Result<string[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_screenshots', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getWorlds(uuid: string): Promise<Result<string[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_worlds', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getRunningClusters(): Promise<Result<Cluster[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_running_clusters') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProcessesByPath(path: ClusterPath): Promise<Result<string[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_processes_by_path', { path }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async killProcess(uuid: string): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('kill_process', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async isClusterRunning(uuid: string): Promise<Result<boolean, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('is_cluster_running', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getPidByUuid(uuid: string): Promise<Result<number, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_pid_by_uuid', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getUserByProcess(uuid: string): Promise<Result<string | null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_user_by_process', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProcessStartedAt(uuid: string): Promise<Result<string, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_process_started_at', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProcessesDetailedByPath(path: ClusterPath): Promise<Result<DetailedProcess[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_processes_detailed_by_path', { path }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProcessDetailedById(uuid: string): Promise<Result<DetailedProcess, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_process_detailed_by_id', { uuid }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getSettings(): Promise<Result<Settings, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_settings') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async setSettings(settings: Settings): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('set_settings', { settings }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getMinecraftVersions(): Promise<Result<Version[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_minecraft_versions') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProviderPackage(provider: Providers, projectId: string): Promise<Result<ManagedPackage, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_provider_package', { provider, projectId }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProviderPackages(provider: Providers, projectIds: string[]): Promise<Result<ManagedPackage[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_provider_packages', { provider, projectIds }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async searchProviderPackages(provider: Providers, query: string | null, limit: number | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null): Promise<Result<ProviderSearchResults, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('search_provider_packages', { provider, query, limit, gameVersions, categories, loaders, openSource }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getProviderAuthors(provider: Providers, author: Author): Promise<Result<ManagedUser[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_provider_authors', { provider, author }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async downloadProviderPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('download_provider_package', { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType): Promise<Result<Package, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_cluster_package', { clusterPath, packagePath, packageType }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async getClusterPackages(clusterPath: ClusterPath): Promise<Result<Package[], string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_cluster_packages', { clusterPath }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async addClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, pkg: Package, packageType: PackageType | null): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('add_cluster_package', { clusterPath, packagePath, pkg, packageType }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async removeClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('remove_cluster_package', { clusterPath, packagePath, packageType }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async syncClusterPackages(clusterPath: ClusterPath): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('sync_cluster_packages', { clusterPath }) };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async checkForUpdate(): Promise<Result<Update | null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('check_for_update') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-	async installUpdate(): Promise<Result<null, string>> {
-		try {
-			return { status: 'ok', data: await TAURI_INVOKE('install_update') };
-		}
-		catch (e) {
-			if (e instanceof Error)
-				throw e;
-			else return { status: 'error', error: e as any };
-		}
-	},
-};
+async authLogin() : Promise<Result<MinecraftCredentials | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("auth_login") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getUsers() : Promise<Result<MinecraftCredentials[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_users") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getUser(uuid: string) : Promise<Result<MinecraftCredentials, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_user", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getDefaultUser(fallback: boolean | null) : Promise<Result<MinecraftCredentials | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_default_user", { fallback }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setDefaultUser(uuid: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_default_user", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeUser(uuid: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_user", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async createCluster(props: CreateCluster) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("create_cluster", { props }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Updates the cluster with the given UUID. The cluster only updates game setting fields
+ */
+async editGameSettings(uuid: string, newCluster: Cluster) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("edit_game_settings", { uuid, newCluster }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async editClusterMeta(uuid: string, name: string | null, iconPath: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("edit_cluster_meta", { uuid, name, iconPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeCluster(uuid: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_cluster", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getCluster(uuid: string) : Promise<Result<Cluster, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusters() : Promise<Result<Cluster[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_clusters") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClustersGrouped() : Promise<Result<{ [key in string]: Cluster[] }, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_clusters_grouped") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async runCluster(uuid: string) : Promise<Result<DetailedProcess, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("run_cluster", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterLogs(uuid: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_logs", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterLog(uuid: string, logName: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_log", { uuid, logName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async uploadLog(uuid: string, logName: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("upload_log", { uuid, logName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getScreenshots(uuid: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_screenshots", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getWorlds(uuid: string) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_worlds", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getRunningClusters() : Promise<Result<Cluster[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_running_clusters") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProcessesByPath(path: ClusterPath) : Promise<Result<string[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_processes_by_path", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async killProcess(uuid: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("kill_process", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async isClusterRunning(uuid: string) : Promise<Result<boolean, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("is_cluster_running", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getPidByUuid(uuid: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_pid_by_uuid", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getUserByProcess(uuid: string) : Promise<Result<string | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_user_by_process", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProcessStartedAt(uuid: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_process_started_at", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProcessesDetailedByPath(path: ClusterPath) : Promise<Result<DetailedProcess[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_processes_detailed_by_path", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProcessDetailedById(uuid: string) : Promise<Result<DetailedProcess, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_process_detailed_by_id", { uuid }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getSettings() : Promise<Result<Settings, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setSettings(settings: Settings) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getMinecraftVersions() : Promise<Result<Version[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_minecraft_versions") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProviderPackage(provider: Providers, projectId: string) : Promise<Result<ManagedPackage, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_package", { provider, projectId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProviderPackages(provider: Providers, projectIds: string[]) : Promise<Result<ManagedPackage[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_packages", { provider, projectIds }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async searchProviderPackages(provider: Providers, query: string | null, limit: number | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null) : Promise<Result<ProviderSearchResults, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search_provider_packages", { provider, query, limit, gameVersions, categories, loaders, openSource }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getProviderAuthors(provider: Providers, author: Author) : Promise<Result<ManagedUser[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_authors", { provider, author }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async downloadProviderPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("download_provider_package", { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType) : Promise<Result<Package, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_package", { clusterPath, packagePath, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterPackages(clusterPath: ClusterPath, packageType: PackageType) : Promise<Result<Package[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_packages", { clusterPath, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, pkg: Package, packageType: PackageType | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_cluster_package", { clusterPath, packagePath, pkg, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_cluster_package", { clusterPath, packagePath, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncClusterPackages(clusterPath: ClusterPath) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_cluster_packages", { clusterPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async checkForUpdate() : Promise<Result<Update | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_for_update") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async installUpdate() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("install_update") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+}
+}
 
 /** user-defined events */
 

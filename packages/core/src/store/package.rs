@@ -7,6 +7,7 @@ use crate::utils::io;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tokio::fs::DirEntry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -90,6 +91,21 @@ impl PackageType {
 
 	pub fn get_meta_file_name(&self) -> String {
 		String::from(".packages.json")
+	}
+
+	pub async fn file_matches(&self, entry: &DirEntry) -> crate::Result<bool> {
+		if entry.path().try_exists()? == false {
+			return Ok(false);
+		}
+
+		Ok(match self {
+			PackageType::Mod => {
+				entry.file_type().await?.is_file() && entry.path().extension() == Some("jar".as_ref())
+			}
+			_ => {
+				false
+			}
+		})
 	}
 
 	pub fn iterator() -> impl Iterator<Item = PackageType> {
@@ -290,15 +306,20 @@ impl PackageManager {
 	) -> crate::Result<PackagesMeta> {
 		let packages_meta = &self.get_meta_file(dirs, package_type).await?;
 
-		Ok(if packages_meta.exists() && packages_meta.is_file() {
-			serde_json::from_slice(&io::read(packages_meta).await?)?
+		let meta: PackagesMeta = if packages_meta.exists() && packages_meta.is_file() {
+			if let Ok(meta) = serde_json::from_slice(&io::read(packages_meta).await?) {
+				meta
+			} else {
+				io::copy(packages_meta, packages_meta.with_extension("bak")).await?;
+				io::write(packages_meta, "{}").await?;
+				PackagesMeta::new(package_type)
+			}
 		} else {
 			io::write(packages_meta, "{}").await?;
-			PackagesMeta {
-				packages: PackagesMap::new(),
-				package_type,
-			}
-		})
+			PackagesMeta::new(package_type)
+		};
+
+		Ok(meta)
 	}
 
 	// add a package to the manager
@@ -392,11 +413,12 @@ impl PackageManager {
 
 	/// returns a list of packages that have a file but are not synced in the manager
 	#[tracing::instrument]
-	async fn get_unsynced_packages(
+	async fn insert_unsynced_packages(
 		&self,
 		dirs: &Directories,
+		packages: &mut PackagesMap,
 		package_type: PackageType,
-	) -> crate::Result<PackagesMap> {
+	) -> crate::Result<()> {
 		let mut files = io::read_dir(
 			self.cluster_path
 				.full_path_dirs(dirs)
@@ -404,7 +426,6 @@ impl PackageManager {
 				.join(package_type.get_folder()),
 		)
 		.await?;
-		let mut packages = self.get(package_type).packages.clone();
 
 		while let Some(file) = files.next_entry().await? {
 			if file
@@ -416,24 +437,21 @@ impl PackageManager {
 			}
 
 			let path = PackagePath::new(&file.path());
+
 			if let std::collections::hash_map::Entry::Vacant(e) = packages.entry(path) {
-				let package = Package::new(
-					&PackagePath::new(&file.path()),
-					PackageMetadata::Mapped {
-						title: None,
-						description: None,
-						authors: Vec::new(),
-						version: None,
-						icon: None,
-						package_type: Some(package_type),
-					},
-				)
-				.await?;
-				e.insert(package);
+				if package_type.file_matches(&file).await? {
+					// TODO: Infer
+					let package = Package::new(
+						&PackagePath::new(&file.path()),
+						PackageMetadata::Unknown,
+					)
+					.await?;
+					e.insert(package);
+				}
 			}
 		}
 
-		Ok(packages)
+		Ok(())
 	}
 
 	// sync packages in a cluster
@@ -448,9 +466,8 @@ impl PackageManager {
 		let mut new_packages = self.get_from_file(dirs, package_type).await?.packages;
 		packages.extend(new_packages.drain());
 
-		// Get the unsynced packages (files that exist but are not in the manager) and merge them with the local package list
-		let unsynced = self.get_unsynced_packages(dirs, package_type).await?;
-		packages.extend(unsynced);
+		// Insert unsynced packages (files that exist but are not in the manager)
+		self.insert_unsynced_packages(dirs, &mut packages, package_type).await?;
 
 		// Finally store the new list in memory and on disk
 		// TODO: Should probably only do this if the packages have changed

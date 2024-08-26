@@ -56,12 +56,18 @@ macro_rules! collect_commands {
 			set_settings,
 			// Metadata
 			get_minecraft_versions,
-			// Package
-			get_package,
-			get_packages,
-			search_packages,
-			get_authors,
-			download_package,
+			// Provider Packages
+			get_provider_package,
+			get_provider_packages,
+			search_provider_packages,
+			get_provider_authors,
+			download_provider_package,
+			// Cluster Packages
+			get_cluster_package,
+			get_cluster_packages,
+			add_cluster_package,
+			remove_cluster_package,
+			sync_cluster_packages,
 			// Updater
 			check_for_update,
 			install_update

@@ -42,7 +42,7 @@ pub async fn install_minecraft(
 	old_ingress: Option<IngressId>,
 	repair: bool,
 ) -> crate::Result<()> {
-	let should_sync = old_ingress.is_some();
+	// let should_sync = old_ingress.is_some();
 	let ingress = init_or_edit_ingress(
 		old_ingress,
 		IngressType::DownloadLoader {

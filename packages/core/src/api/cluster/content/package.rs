@@ -142,9 +142,13 @@ pub async fn add_package(
 ) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
-	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get_mut(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
-	manager.add_package(package_path, package, package_type).await?;
+	manager
+		.add_package(package_path, package, package_type)
+		.await?;
 
 	Ok(())
 }
@@ -158,7 +162,9 @@ pub async fn remove_package(
 ) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
-	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get_mut(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager.remove_package(package_path, package_type).await?;
 
@@ -174,9 +180,16 @@ pub async fn get_package(
 ) -> Result<Package> {
 	let state = State::get().await?;
 	let manager = state.packages.read().await;
-	let manager = manager.get(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
-	Ok(manager.get(package_type).packages.get(package_path).cloned().ok_or(anyhow::anyhow!("package not found"))?)
+	Ok(manager
+		.get(package_type)
+		.packages
+		.get(package_path)
+		.cloned()
+		.ok_or(anyhow::anyhow!("package not found"))?)
 }
 
 /// Get packages from a cluster.
@@ -184,9 +197,16 @@ pub async fn get_package(
 pub async fn get_packages(cluster_path: &ClusterPath) -> Result<Vec<Package>> {
 	let state = State::get().await?;
 	let manager = state.packages.read().await;
-	let manager = manager.get(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
-	Ok(manager.get(PackageType::Mod).packages.values().cloned().collect())
+	Ok(manager
+		.get(PackageType::Mod)
+		.packages
+		.values()
+		.cloned()
+		.collect())
 }
 
 /// Sync packages from a cluster.
@@ -194,7 +214,9 @@ pub async fn get_packages(cluster_path: &ClusterPath) -> Result<Vec<Package>> {
 pub async fn sync_packages(cluster_path: &ClusterPath) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
-	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get_mut(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager.sync_packages(&state.directories).await;
 
@@ -203,10 +225,15 @@ pub async fn sync_packages(cluster_path: &ClusterPath) -> Result<()> {
 
 /// Sync packages from a cluster.
 #[tracing::instrument]
-pub async fn sync_packages_by_type(cluster_path: &ClusterPath, package_type: PackageType) -> Result<()> {
+pub async fn sync_packages_by_type(
+	cluster_path: &ClusterPath,
+	package_type: PackageType,
+) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
-	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+	let manager = manager
+		.get_mut(&cluster_path)
+		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager.sync_packages(&state.directories).await;
 

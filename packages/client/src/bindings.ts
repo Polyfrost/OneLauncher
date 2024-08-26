@@ -256,41 +256,81 @@ async getMinecraftVersions() : Promise<Result<Version[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
-async getPackage(provider: Providers, projectId: string) : Promise<Result<ManagedPackage, string>> {
+async getProviderPackage(provider: Providers, projectId: string) : Promise<Result<ManagedPackage, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_package", { provider, projectId }) };
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_package", { provider, projectId }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async getPackages(provider: Providers, projectIds: string[]) : Promise<Result<ManagedPackage[], string>> {
+async getProviderPackages(provider: Providers, projectIds: string[]) : Promise<Result<ManagedPackage[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_packages", { provider, projectIds }) };
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_packages", { provider, projectIds }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async searchPackages(provider: Providers, query: string | null, limit: number | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null) : Promise<Result<ProviderSearchResults, string>> {
+async searchProviderPackages(provider: Providers, query: string | null, limit: number | null, gameVersions: string[] | null, categories: string[] | null, loaders: Loader[] | null, openSource: boolean | null) : Promise<Result<ProviderSearchResults, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("search_packages", { provider, query, limit, gameVersions, categories, loaders, openSource }) };
+    return { status: "ok", data: await TAURI_INVOKE("search_provider_packages", { provider, query, limit, gameVersions, categories, loaders, openSource }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async getAuthors(provider: Providers, author: Author) : Promise<Result<ManagedUser[], string>> {
+async getProviderAuthors(provider: Providers, author: Author) : Promise<Result<ManagedUser[], string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("get_authors", { provider, author }) };
+    return { status: "ok", data: await TAURI_INVOKE("get_provider_authors", { provider, author }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async downloadPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null) : Promise<Result<null, string>> {
+async downloadProviderPackage(provider: Providers, packageId: string, clusterId: string, gameVersion: string | null, loader: Loader | null, packageVersion: string | null) : Promise<Result<null, string>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("download_package", { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
+    return { status: "ok", data: await TAURI_INVOKE("download_provider_package", { provider, packageId, clusterId, gameVersion, loader, packageVersion }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType) : Promise<Result<Package, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_package", { clusterPath, packagePath, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getClusterPackages(clusterPath: ClusterPath) : Promise<Result<Package[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cluster_packages", { clusterPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async addClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, pkg: Package, packageType: PackageType | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_cluster_package", { clusterPath, packagePath, pkg, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async removeClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("remove_cluster_package", { clusterPath, packagePath, packageType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async syncClusterPackages(clusterPath: ClusterPath) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("sync_cluster_packages", { clusterPath }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -602,6 +642,10 @@ refresh_token: string;
 expires: string }
 export type OfflinePayload = { offline: boolean }
 /**
+ * A struct that represents a Package.
+ */
+export type Package = { sha512: string; meta: PackageMetadata; file_name: string; disabled: boolean }
+/**
  * Optional data used to link a specific cluster to a package project.
  */
 export type PackageData = { 
@@ -617,6 +661,14 @@ version_id: string | null;
  * Whether or not the current package is locked (for legacy modpack support).
  */
 locked?: boolean | null }
+/**
+ * Metadata that represents a [`Package`].
+ */
+export type PackageMetadata = { type: "managed"; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string } | { type: "mapped"; title: string | null; description: string | null; authors: string[]; version: string | null; icon: string | null; package_type: PackageType | null } | { type: "unknown" }
+/**
+ * Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
+ */
+export type PackagePath = string
 /**
  * The Client/Server side type of a [`Package`].
  */

@@ -1,12 +1,12 @@
 use onelauncher::cluster::content::package;
-use onelauncher::data::{Loader, ManagedPackage, ManagedUser};
+use onelauncher::data::{Loader, ManagedPackage, ManagedUser, PackageType};
 use onelauncher::package::content::Providers;
-use onelauncher::store::{Author, ProviderSearchResults};
+use onelauncher::store::{Author, ClusterPath, Package, PackagePath, ProviderSearchResults};
 use uuid::Uuid;
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_package(
+pub async fn get_provider_package(
 	provider: Providers,
 	project_id: String,
 ) -> Result<ManagedPackage, String> {
@@ -15,7 +15,7 @@ pub async fn get_package(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_packages(
+pub async fn get_provider_packages(
 	provider: Providers,
 	project_ids: Vec<String>,
 ) -> Result<Vec<ManagedPackage>, String> {
@@ -24,7 +24,7 @@ pub async fn get_packages(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn search_packages(
+pub async fn search_provider_packages(
 	provider: Providers,
 	query: Option<String>,
 	limit: Option<u8>,
@@ -47,13 +47,16 @@ pub async fn search_packages(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_authors(provider: Providers, author: Author) -> Result<Vec<ManagedUser>, String> {
+pub async fn get_provider_authors(
+	provider: Providers,
+	author: Author,
+) -> Result<Vec<ManagedUser>, String> {
 	Ok(provider.get_authors(&author).await?)
 }
 
 #[specta::specta]
 #[tauri::command]
-pub async fn download_package(
+pub async fn download_provider_package(
 	provider: Providers,
 	package_id: String,
 	cluster_id: Uuid,
@@ -69,5 +72,51 @@ pub async fn download_package(
 
 	package::download_package(&pkg, &mut cluster, game_version, loader, package_version).await?;
 
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster_package(
+	cluster_path: ClusterPath,
+	package_path: PackagePath,
+	package_type: PackageType,
+) -> Result<Package, String> {
+	Ok(package::get_package(&cluster_path, &package_path, package_type).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster_packages(cluster_path: ClusterPath) -> Result<Vec<Package>, String> {
+	Ok(package::get_packages(&cluster_path).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn add_cluster_package(
+	cluster_path: ClusterPath,
+	package_path: PackagePath,
+	pkg: Package,
+	package_type: Option<PackageType>,
+) -> Result<(), String> {
+	package::add_package(&cluster_path, package_path, pkg, package_type).await?;
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn remove_cluster_package(
+	cluster_path: ClusterPath,
+	package_path: PackagePath,
+	package_type: PackageType,
+) -> Result<(), String> {
+	package::remove_package(&cluster_path, &package_path, package_type).await?;
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn sync_cluster_packages(cluster_path: ClusterPath) -> Result<(), String> {
+	package::sync_packages(&cluster_path).await?;
 	Ok(())
 }

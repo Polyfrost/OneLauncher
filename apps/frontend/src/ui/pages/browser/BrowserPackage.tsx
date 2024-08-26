@@ -63,8 +63,8 @@ function NavLink(props: ParentProps & { href: string }) {
 
 function BrowserPackage(props: ParentProps) {
 	const [params] = useSearchParams<BrowserModParams>();
-	const [pkg] = useCommand(() => bridge.commands.getPackage(params.provider!, params.id!));
-	const [authors] = useCommand(pkg, () => bridge.commands.getAuthors(pkg()!.provider, pkg()!.author));
+	const [pkg] = useCommand(() => bridge.commands.getProviderPackage(params.provider!, params.id!));
+	const [authors] = useCommand(pkg, () => bridge.commands.getProviderAuthors(pkg()!.provider, pkg()!.author));
 
 	const links = [
 		['About', '/'],
@@ -243,7 +243,7 @@ function InstallButton(props: ManagedPackage) {
 			return;
 
 		// TODO: Add a progress bar
-		bridge.commands.downloadPackage(
+		bridge.commands.downloadProviderPackage(
 			props.provider,
 			props.id,
 			cluster.uuid,

@@ -19,15 +19,29 @@ async fn main() -> Result<()> {
 	print_packages(&cluster).await?;
 
 	// Download the first mod, add it to the PackageManager and sync packages
-	download_mod(&mut cluster, MODRINTH_PACKAGE_ONE, MODRINTH_PACKAGE_ONE_VERSION, true).await?;
-	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod).await?;
+	download_mod(
+		&mut cluster,
+		MODRINTH_PACKAGE_ONE,
+		MODRINTH_PACKAGE_ONE_VERSION,
+		true,
+	)
+	.await?;
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+		.await?;
 
 	// Print Packages again
 	print_packages(&cluster).await?;
 
 	// Download the second mod, DON'T add it to the PackageManager and sync packages
-	download_mod(&mut cluster, MODRINTH_PACKAGE_TWO, MODRINTH_PACKAGE_TWO_VERSION, false).await?;
-	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod).await?;
+	download_mod(
+		&mut cluster,
+		MODRINTH_PACKAGE_TWO,
+		MODRINTH_PACKAGE_TWO_VERSION,
+		false,
+	)
+	.await?;
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+		.await?;
 
 	// Print Packages again
 	print_packages(&cluster).await?;

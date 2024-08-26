@@ -249,13 +249,16 @@ impl PackageManager {
 		}
 	}
 
-	pub async fn get_meta_file(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PathBuf> {
+	pub async fn get_meta_file(
+		&self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<PathBuf> {
 		Ok(self
 			.cluster_path
 			.full_path_dirs(dirs)
 			.await?
-			.join(package_type.get_meta())
-		)
+			.join(package_type.get_meta()))
 	}
 
 	/// Get the PackagesMeta for a specific package type. Does not sync.
@@ -280,7 +283,11 @@ impl PackageManager {
 
 	/// Get the PackagesMeta for a specific package type. Does not sync.
 	#[tracing::instrument]
-	async fn get_from_file(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PackagesMeta> {
+	async fn get_from_file(
+		&self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<PackagesMeta> {
 		let packages_meta = &self.get_meta_file(dirs, package_type).await?;
 
 		Ok(if packages_meta.exists() && packages_meta.is_file() {
@@ -332,22 +339,35 @@ impl PackageManager {
 			tracing::error!("failed to sync mods: {}", err);
 		}
 
-		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::DataPack).await {
+		if let Err(err) = &self
+			.sync_packages_by_type(dirs, PackageType::DataPack)
+			.await
+		{
 			tracing::error!("failed to sync datapacks: {}", err);
 		}
 
-		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::ResourcePack).await {
+		if let Err(err) = &self
+			.sync_packages_by_type(dirs, PackageType::ResourcePack)
+			.await
+		{
 			tracing::error!("failed to sync resourcepacks: {}", err);
 		}
 
-		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::ShaderPack).await {
+		if let Err(err) = &self
+			.sync_packages_by_type(dirs, PackageType::ShaderPack)
+			.await
+		{
 			tracing::error!("failed to sync shaderpacks: {}", err);
 		}
 	}
 
 	/// sync packages from the metafile
 	#[tracing::instrument]
-	async fn sync_from_file_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
+	async fn sync_from_file_by_type(
+		&mut self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<()> {
 		let packages_meta = self.get_from_file(dirs, package_type).await?;
 		self.get_mut(package_type).packages = packages_meta.packages;
 
@@ -356,7 +376,11 @@ impl PackageManager {
 
 	/// sync packages from the manager to the metafile
 	#[tracing::instrument]
-	async fn sync_to_file_by_type(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
+	async fn sync_to_file_by_type(
+		&self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<()> {
 		let packages_meta = self.get(package_type);
 		let packages_meta = serde_json::to_string(&packages_meta)?;
 
@@ -367,7 +391,11 @@ impl PackageManager {
 
 	/// returns a list of packages that have a file but are not synced in the manager
 	#[tracing::instrument]
-	async fn get_unsynced_packages(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PackagesMap> {
+	async fn get_unsynced_packages(
+		&self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<PackagesMap> {
 		let mut files = io::read_dir(
 			self.cluster_path
 				.full_path_dirs(dirs)
@@ -378,7 +406,11 @@ impl PackageManager {
 		let mut packages = self.get(package_type).packages.clone();
 
 		while let Some(file) = files.next_entry().await? {
-			if file.file_name().to_string_lossy().eq(&package_type.get_meta_file_name()) {
+			if file
+				.file_name()
+				.to_string_lossy()
+				.eq(&package_type.get_meta_file_name())
+			{
 				continue;
 			}
 
@@ -405,7 +437,11 @@ impl PackageManager {
 
 	// sync packages in a cluster
 	#[tracing::instrument]
-	async fn sync_packages_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
+	async fn sync_packages_by_type(
+		&mut self,
+		dirs: &Directories,
+		package_type: PackageType,
+	) -> crate::Result<()> {
 		tracing::info!("syncing packages");
 
 		// Clone the current packages and merge them with the local package list

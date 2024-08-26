@@ -11,4 +11,4 @@ homepage = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-prisma-client-rust-cli = { workspace = true }
+prisma-client-rust-generator = { workspace = true }

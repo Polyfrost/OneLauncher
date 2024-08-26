@@ -120,6 +120,7 @@ base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
 uuid = { version = "1.8", features = [ "serde", "v4" ] }
 toml = { version = "0.8" }
+nom = { version = "7" }
 
 # # ============= NETWORK ============= # #
 reqwest = { version = "0.12", default-features = false, features = [
@@ -188,7 +189,7 @@ features = [
 ]
 default-features = false
 
-[workspace.dependencies.prisma-client-rust-cli]
+[workspace.dependencies.prisma-client-rust-generator]
 git = "https://github.com/brendonovich/prisma-client-rust"
 rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
 features = [

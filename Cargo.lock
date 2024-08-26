@@ -4368,6 +4368,7 @@ dependencies = [
  "interpulse",
  "iota_stronghold",
  "lazy_static",
+ "nom",
  "notify",
  "notify-debouncer-mini",
  "onelauncher_gamemode",
@@ -4468,7 +4469,7 @@ dependencies = [
 name = "onelauncher_prisma_cli"
 version = "1.0.0-alpha.1"
 dependencies = [
- "prisma-client-rust-cli",
+ "prisma-client-rust-generator",
 ]
 
 [[package]]
@@ -5152,26 +5153,6 @@ dependencies = [
  "tracing",
  "user-facing-errors",
  "uuid 1.10.0",
-]
-
-[[package]]
-name = "prisma-client-rust-cli"
-version = "0.6.8"
-source = "git+https://github.com/brendonovich/prisma-client-rust?rev=4f9ef9d38ca732162accff72b2eb684d2f120bab#4f9ef9d38ca732162accff72b2eb684d2f120bab"
-dependencies = [
- "directories",
- "flate2",
- "http 0.2.12",
- "prisma-client-rust-generator",
- "proc-macro2",
- "quote",
- "regex",
- "reqwest 0.11.27",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "syn 1.0.109",
- "thiserror",
 ]
 
 [[package]]

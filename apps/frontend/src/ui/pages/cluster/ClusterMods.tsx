@@ -1,4 +1,4 @@
-import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { For, Match, Switch, createMemo, createSignal, onMount } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
 import type { Package } from '@onelauncher/client/bindings';
@@ -6,16 +6,16 @@ import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-import useClusterContext from '~ui/hooks/useCluster';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
-	const [cluster] = useClusterContext();
+	// const [cluster] = useClusterContext();
 
 	// Initial mods for this cluster
 	const mods = createMemo(() => {
-		return Object.values(cluster()?.packages || {})
-			.filter(pkg => (pkg.meta.type === 'managed' || pkg.meta.type === 'mapped') && pkg.meta.package_type === 'mod');
+		// return Object.values(cluster()?.packages || {})
+		// 	.filter(pkg => (pkg.meta.type === 'managed' || pkg.meta.type === 'mapped') && pkg.meta.package_type === 'mod');
+		return [] as Package[];
 	});
 
 	// Mods to display, should be a clone of the mods array but sorted
@@ -42,7 +42,7 @@ function ClusterMods() {
 
 		const result = uf.search(modsSearchable()(), value);
 
-		const filtered: ModEntryProps[] = [];
+		const filtered: Package[] = [];
 		result[0]?.forEach((index) => {
 			const mod = mods()[index];
 			if (mod)
@@ -93,7 +93,7 @@ function ClusterMods() {
 					<Match when={displayedMods().length > 0}>
 						<For each={displayedMods()}>
 							{mod => (
-								<ModEntry {...mod} />
+								<ModEntry pkg={mod} />
 							)}
 						</For>
 					</Match>
@@ -109,34 +109,49 @@ function ClusterMods() {
 
 export default ClusterMods;
 
-// TODO: Mod
 interface ModEntryProps {
-	id: string;
-	thumbnail: string;
-	name: string;
-	author: string;
-	version: string;
-	description: string;
-	provider: 'curseforge' | 'modrinth' | 'polyfrost';
+	pkg: Package;
 };
 
 function ModEntry(props: ModEntryProps) {
+	const name = () => {
+		if (props.pkg.meta.type === 'unknown')
+			return props.pkg.file_name;
+
+		return props.pkg.meta.title || props.pkg.file_name;
+	};
+
+	const icon = () => {
+		return '';
+	};
+
+	const version = () => {
+		let formatted = 'Unknown';
+
+		if (props.pkg.meta.type === 'managed')
+			formatted = props.pkg.meta.version_formatted;
+		else if (props.pkg.meta.type === 'mapped')
+			formatted = props.pkg.meta.version || formatted;
+
+		return formatted;
+	};
+
 	return (
 		<div class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover">
 			<div>
-				<img src={props.thumbnail} alt={props.name} class="aspect-ratio-square h-10 rounded-lg" />
+				<img src={icon()} alt={name()} class="aspect-ratio-square h-10 rounded-lg" />
 			</div>
 			<div class="flex flex-1 flex-col">
 				<div class="flex flex-row items-center justify-between">
 					<div class="flex flex-col items-start justify-center">
 						<div class="flex flex-col items-start justify-center gap-y-2">
-							<h4>{props.name}</h4>
+							<h4>{name()}</h4>
 							<span class="h-2 flex flex-row items-center justify-start text-xs text-fg-secondary/50 font-600">
-								{props.version}
+								{version()}
 								{/* TODO: Add version checker */}
 								{/* <Show when={props.version.includes()}> */}
-								<ArrowRightIcon class="w-4 stroke-success" />
-								<span class="text-success">1.0.1</span>
+								{/* <ArrowRightIcon class="w-4 stroke-success" />
+								<span class="text-success">1.0.1</span> */}
 								{/* </Show> */}
 							</span>
 						</div>

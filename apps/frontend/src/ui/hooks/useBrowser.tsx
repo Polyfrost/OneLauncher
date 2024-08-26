@@ -59,7 +59,7 @@ export function BrowserProvider(props: ParentProps) {
 		},
 
 		async refreshCache() {
-			const res = await tryResult(() => bridge.commands.searchPackages('Modrinth', null, 10, null, null, null, null));
+			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', null, 10, null, null, null, null));
 
 			setMainPageCache(res);
 		},

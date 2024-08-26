@@ -295,7 +295,7 @@ impl PackageManager {
 	}
 
 	// add a package to the manager
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, package))]
 	pub async fn add_package(
 		&mut self,
 		package_path: PackagePath,
@@ -313,7 +313,7 @@ impl PackageManager {
 	}
 
 	// remove a package to the manager
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self))]
 	pub async fn remove_package(
 		&mut self,
 		package_path: &PackagePath,
@@ -326,8 +326,9 @@ impl PackageManager {
 	}
 
 	/// sync all packages
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, dirs))]
 	pub async fn sync_packages(&mut self, dirs: &Directories) {
+		tracing::info!("syncing packages for cluster {}", self.cluster_path);
 		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::Mod).await {
 			tracing::error!("failed to sync mods: {}", err);
 		}
@@ -346,7 +347,7 @@ impl PackageManager {
 	}
 
 	/// sync packages from the metafile
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, dirs))]
 	async fn sync_from_file_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
 		let packages_meta = self.get_from_file(dirs, package_type).await?;
 		self.get_mut(package_type).packages = packages_meta.packages;
@@ -355,7 +356,7 @@ impl PackageManager {
 	}
 
 	/// sync packages from the manager to the metafile
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, dirs))]
 	async fn sync_to_file_by_type(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
 		let packages_meta = self.get(package_type);
 		let packages_meta = serde_json::to_string(&packages_meta)?;
@@ -406,8 +407,6 @@ impl PackageManager {
 	// sync packages in a cluster
 	#[tracing::instrument]
 	async fn sync_packages_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
-		tracing::info!("syncing packages");
-
 		// Clone the current packages and merge them with the local package list
 		let mut packages = self.get(package_type).packages.clone();
 		let mut new_packages = self.get_from_file(dirs, package_type).await?.packages;
@@ -418,6 +417,7 @@ impl PackageManager {
 		packages.extend(unsynced);
 
 		// Finally store the new list in memory and on disk
+		// TODO: Should probably only do this if the packages have changed
 		self.get_mut(package_type).packages = packages;
 		self.sync_to_file_by_type(dirs, package_type).await?;
 

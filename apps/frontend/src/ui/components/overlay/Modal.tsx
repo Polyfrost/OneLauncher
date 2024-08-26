@@ -8,9 +8,9 @@ import { For, Show, createContext, createSignal, onCleanup, onMount, splitProps,
 import { mergeRefs } from '@solid-primitives/refs';
 import { createStore } from 'solid-js/store';
 import { Transition } from 'solid-transition-group';
+import type { MakeOptional } from '@onelauncher/client';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
-import type { MakeOptional } from '~types';
 
 type ModalsList = (() => JSX.Element)[];
 

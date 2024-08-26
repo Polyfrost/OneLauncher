@@ -33,7 +33,5 @@ rustflags = ["-C", "link-args=-fuse-ld={{{linker}}}"]
 {{/hasLLD}}
 {{/isLinux}}
 
-{{#hasAlias}}
 [alias]
 prisma = "run -p onelauncher_prisma_cli --bin prisma --"
-{{/hasAlias}}

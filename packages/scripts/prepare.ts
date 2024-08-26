@@ -23,7 +23,6 @@ if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f)
 console.log('generating cargo configuration file.');
 
 interface ConfigStore {
-	hasAlias: boolean;
 	isWin: boolean;
 	isMacOS: boolean;
 	isLinux: boolean;
@@ -31,7 +30,6 @@ interface ConfigStore {
 }
 
 const configStore: ConfigStore = {
-	hasAlias: true,
 	isWin: false,
 	isMacOS: false,
 	isLinux: false,

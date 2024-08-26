@@ -1,9 +1,6 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
-use crate::cluster;
 use crate::package::content::Providers;
-use crate::proxy::send::send_cluster;
-use crate::proxy::ClusterPayloadType;
 use crate::store::Loader;
 use crate::utils::http::{write_icon, IoSemaphore};
 use crate::utils::io;
@@ -13,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::{ClusterPath, Clusters, PackagePath};
+use super::{ClusterPath, Clusters, Directories, PackagePath};
 
 // TODO: Curseforge, Modrinth, SkyClient integration
 
@@ -171,17 +168,17 @@ impl Package {
 
 pub type PackagesMap = HashMap<PackagePath, Package>;
 
-pub struct Packages {
+pub(crate) struct Packages {
 	managers: HashMap<ClusterPath, PackageManager>,
 }
 
 impl Packages {
-	pub async fn initialize(clusters: &Clusters) -> Self {
+	pub async fn initialize(dirs: &Directories, clusters: &Clusters) -> Self {
 		let mut managers = HashMap::new();
 
 		// TODO: This should probably not clone and store the cluster path in like 2 areas
 		for cluster_path in clusters.0.keys() {
-			let mgr = PackageManager::initialize(cluster_path.clone()).await;
+			let mgr = PackageManager::initialize(dirs, cluster_path.clone()).await;
 
 			match mgr {
 				Ok(mgr) => {
@@ -206,14 +203,6 @@ impl Packages {
 
 	pub fn get_mut(&mut self, cluster_path: &ClusterPath) -> Option<&mut PackageManager> {
 		self.managers.get_mut(cluster_path)
-	}
-
-	pub fn insert(&mut self, cluster_path: ClusterPath, manager: PackageManager) {
-		self.managers.insert(cluster_path, manager);
-	}
-
-	pub fn remove(&mut self, cluster_path: &ClusterPath) {
-		self.managers.remove(cluster_path);
 	}
 }
 
@@ -243,9 +232,9 @@ pub struct PackageManager {
 }
 
 impl PackageManager {
-	pub async fn initialize(cluster_path: ClusterPath) -> crate::Result<Self> {
+	pub async fn initialize(dirs: &Directories, cluster_path: ClusterPath) -> crate::Result<Self> {
 		let mut manager = Self::new(cluster_path);
-		manager.sync_packages().await;
+		manager.sync_packages(dirs).await;
 
 		Ok(manager)
 	}
@@ -260,12 +249,13 @@ impl PackageManager {
 		}
 	}
 
-	pub async fn get_meta_file(&self, package_type: PackageType) -> crate::Result<PathBuf> {
+	pub async fn get_meta_file(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PathBuf> {
 		Ok(self
 			.cluster_path
-			.full_path()
+			.full_path_dirs(dirs)
 			.await?
-			.join(package_type.get_meta()))
+			.join(package_type.get_meta())
+		)
 	}
 
 	/// Get the PackagesMeta for a specific package type. Does not sync.
@@ -290,8 +280,8 @@ impl PackageManager {
 
 	/// Get the PackagesMeta for a specific package type. Does not sync.
 	#[tracing::instrument]
-	async fn get_from_file(&self, package_type: PackageType) -> crate::Result<PackagesMeta> {
-		let packages_meta = &self.get_meta_file(package_type).await?;
+	async fn get_from_file(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PackagesMeta> {
+		let packages_meta = &self.get_meta_file(dirs, package_type).await?;
 
 		Ok(if packages_meta.exists() && packages_meta.is_file() {
 			serde_json::from_slice(&io::read(packages_meta).await?)?
@@ -326,15 +316,9 @@ impl PackageManager {
 	#[tracing::instrument]
 	pub async fn remove_package(
 		&mut self,
-		package_path: PackagePath,
-		package: Package,
-		package_type: Option<PackageType>,
+		package_path: &PackagePath,
+		package_type: PackageType,
 	) -> crate::Result<()> {
-		let package_type = package
-			.meta
-			.get_package_type()
-			.unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
-
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.remove(&package_path);
 
@@ -343,17 +327,28 @@ impl PackageManager {
 
 	/// sync all packages
 	#[tracing::instrument]
-	pub async fn sync_packages(&mut self) {
-		&self.sync_packages_by_type(PackageType::Mod).await;
-		&self.sync_packages_by_type(PackageType::DataPack).await;
-		&self.sync_packages_by_type(PackageType::ResourcePack).await;
-		&self.sync_packages_by_type(PackageType::ShaderPack).await;
+	pub async fn sync_packages(&mut self, dirs: &Directories) {
+		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::Mod).await {
+			tracing::error!("failed to sync mods: {}", err);
+		}
+
+		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::DataPack).await {
+			tracing::error!("failed to sync datapacks: {}", err);
+		}
+
+		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::ResourcePack).await {
+			tracing::error!("failed to sync resourcepacks: {}", err);
+		}
+
+		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::ShaderPack).await {
+			tracing::error!("failed to sync shaderpacks: {}", err);
+		}
 	}
 
 	/// sync packages from the metafile
 	#[tracing::instrument]
-	async fn sync_from_file_by_type(&mut self, package_type: PackageType) -> crate::Result<()> {
-		let packages_meta = self.get_from_file(package_type).await?;
+	async fn sync_from_file_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
+		let packages_meta = self.get_from_file(dirs, package_type).await?;
 		self.get_mut(package_type).packages = packages_meta.packages;
 
 		Ok(())
@@ -361,28 +356,32 @@ impl PackageManager {
 
 	/// sync packages from the manager to the metafile
 	#[tracing::instrument]
-	async fn sync_to_file_by_type(&self, package_type: PackageType) -> crate::Result<()> {
+	async fn sync_to_file_by_type(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
 		let packages_meta = self.get(package_type);
 		let packages_meta = serde_json::to_string(&packages_meta)?;
 
-		io::write(self.get_meta_file(package_type).await?, packages_meta).await?;
+		io::write(self.get_meta_file(dirs, package_type).await?, packages_meta).await?;
 
 		Ok(())
 	}
 
 	/// returns a list of packages that have a file but are not synced in the manager
 	#[tracing::instrument]
-	async fn get_unsynced_packages(&self, package_type: PackageType) -> crate::Result<PackagesMap> {
+	async fn get_unsynced_packages(&self, dirs: &Directories, package_type: PackageType) -> crate::Result<PackagesMap> {
 		let mut files = io::read_dir(
 			self.cluster_path
-				.full_path()
+				.full_path_dirs(dirs)
 				.await?
 				.join(package_type.get_folder()),
 		)
 		.await?;
 		let mut packages = self.get(package_type).packages.clone();
 
-		for file in files.next_entry().await? {
+		while let Some(file) = files.next_entry().await? {
+			if file.file_name().to_string_lossy().eq(&package_type.get_meta_file_name()) {
+				continue;
+			}
+
 			let path = PackagePath::new(&file.path());
 			if !packages.contains_key(&path) {
 				let package = Package::new(
@@ -406,35 +405,21 @@ impl PackageManager {
 
 	// sync packages in a cluster
 	#[tracing::instrument]
-	async fn sync_packages_by_type(&mut self, package_type: PackageType) -> crate::Result<()> {
+	async fn sync_packages_by_type(&mut self, dirs: &Directories, package_type: PackageType) -> crate::Result<()> {
 		tracing::info!("syncing packages");
 
 		// Clone the current packages and merge them with the local package list
 		let mut packages = self.get(package_type).packages.clone();
-		let mut new_packages = self.get_from_file(package_type).await?.packages;
+		let mut new_packages = self.get_from_file(dirs, package_type).await?.packages;
 		packages.extend(new_packages.drain());
 
 		// Get the unsynced packages (files that exist but are not in the manager) and merge them with the local package list
-		let unsynced = self.get_unsynced_packages(package_type).await?;
+		let unsynced = self.get_unsynced_packages(dirs, package_type).await?;
 		packages.extend(unsynced);
 
-		// Finally store the new list in memory
+		// Finally store the new list in memory and on disk
 		self.get_mut(package_type).packages = packages;
-
-		let cluster_path = self.cluster_path.clone();
-		tokio::task::spawn(async move {
-			if let Ok(cluster) = cluster::get(&cluster_path).await {
-				if let Some(cluster) = cluster {
-					send_cluster(
-						cluster.uuid,
-						&cluster_path,
-						&cluster.meta.name,
-						ClusterPayloadType::Synced,
-					)
-					.await;
-				}
-			}
-		});
+		self.sync_to_file_by_type(dirs, package_type).await?;
 
 		Ok(())
 	}

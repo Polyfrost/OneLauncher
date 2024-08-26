@@ -188,7 +188,7 @@ features = [
 ]
 default-features = false
 
-[workspace.dependencies.prisma-client-rust-generator]
+[workspace.dependencies.prisma-client-rust-cli]
 git = "https://github.com/brendonovich/prisma-client-rust"
 rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
 features = [

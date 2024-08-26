@@ -420,12 +420,6 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 	Ok(())
 }
 
-/// get a cluster by its specified [`ClusterPath`].
-#[tracing::instrument]
-pub async fn sync_packages(path: &ClusterPath) {
-	Cluster::sync_packages(path).await;
-}
-
 /// Sanitize a user-inputted [`Cluster`] name.
 pub fn sanitize_cluster_name(input: &str) -> String {
 	input.replace(['/', '\\', '?', '*', ':', '\'', '\"', '|', '<', '>'], "_")

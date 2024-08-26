@@ -143,7 +143,8 @@ impl State {
 			users_in,
 		}?;
 
-		let packages = Packages::initialize(&clusters).await;
+		send_ingress(&ingress, 5.0, Some("loading packages")).await?;
+		let packages = Packages::initialize(&directories, &clusters).await;
 
 		let ingress_processor = IngressProcessor::new();
 		let discord_rpc = DiscordRPC::initialize(is_offline || settings.disable_discord).await?;

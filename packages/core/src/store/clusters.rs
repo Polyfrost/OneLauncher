@@ -90,6 +90,12 @@ impl ClusterPath {
 		Ok(clusters_dir.join(&self.0))
 	}
 
+	/// Get the full [`PathBuf`] of the current cluster path.
+	pub async fn full_path_dirs(&self, dirs: &Directories) -> crate::Result<PathBuf> {
+		let clusters_dir = dirs.clusters_dir().await;
+		Ok(clusters_dir.join(&self.0))
+	}
+
 	/// Validate the UTF of a cluster path.
 	pub fn validate(&self) -> crate::Result<&Self> {
 		self.0.to_str().ok_or(anyhow::anyhow!(

@@ -46,8 +46,8 @@
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
 		"release:node": "bumpp -r",
-		"prisma:gen": "pnpm prisma generate --schema packages/core/prisma/schema.prisma",
-		"prisma:migrate": "pnpm prisma migrate dev --schema packages/core/prisma/schema.prisma"
+		"prisma:gen": "cargo prisma generate --schema packages/core/prisma/schema.prisma",
+		"prisma:migrate": "cargo prisma migrate dev --schema packages/core/prisma/schema.prisma"
 	},
 	"workspaces": {
 		"packages": [

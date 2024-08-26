@@ -17,6 +17,7 @@
 	"scripts": {
 		"tauri": "pnpm tsx tauri.ts",
 		"prep": "pnpm tsx prepare.ts",
+		"prepare": "pnpm tsx prepare.ts",
 		"setup-win": "./setup.ps1",
 		"setup-nix": "./setup.sh",
 		"autoformat": "./format.sh",

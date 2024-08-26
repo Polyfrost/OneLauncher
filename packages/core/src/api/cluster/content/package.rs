@@ -2,9 +2,9 @@ use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::prelude::PackagePath;
 use crate::processor::Cluster;
 use crate::proxy::send::send_internet;
-use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata, PackagesMap};
+use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata};
 use crate::utils::{http, io};
-use crate::{cluster, Result, State};
+use crate::{Result, State};
 // TODO: Implement proper error handling
 
 /// Find a managed version using filters
@@ -97,27 +97,6 @@ pub async fn download_package(
 	Ok((package_path, package))
 }
 
-/// Add a package to a cluster.
-#[tracing::instrument]
-pub async fn add_package_to_cluster(
-	package_path: PackagePath,
-	package: Package,
-	cluster: &Cluster,
-	package_type: Option<PackageType>,
-) -> Result<()> {
-	let package_type = match package_type {
-		Some(pt) => pt,
-		None => package.get_package_type()?,
-	};
-
-	let mut packages = get_packages_by_type(&cluster.cluster_path(), package_type).await?;
-	packages.insert(package_path, package);
-
-	cluster::sync_packages(&cluster.cluster_path()).await;
-
-	Ok(())
-}
-
 /// Download a file to a cluster from a managed version file.
 #[tracing::instrument(skip(file, cluster))]
 async fn download_file(
@@ -151,4 +130,85 @@ async fn download_file(
 	};
 
 	Ok(path)
+}
+
+/// Add a package to a cluster.
+#[tracing::instrument]
+pub async fn add_package(
+	cluster_path: &ClusterPath,
+	package_path: PackagePath,
+	package: Package,
+	package_type: Option<PackageType>,
+) -> Result<()> {
+	let state = State::get().await?;
+	let mut manager = state.packages.write().await;
+	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	manager.add_package(package_path, package, package_type).await?;
+
+	Ok(())
+}
+
+/// Remove a package from a cluster.
+#[tracing::instrument]
+pub async fn remove_package(
+	cluster_path: &ClusterPath,
+	package_path: &PackagePath,
+	package_type: PackageType,
+) -> Result<()> {
+	let state = State::get().await?;
+	let mut manager = state.packages.write().await;
+	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	manager.remove_package(package_path, package_type).await?;
+
+	Ok(())
+}
+
+/// Get a package from a cluster.
+#[tracing::instrument]
+pub async fn get_package(
+	cluster_path: &ClusterPath,
+	package_path: &PackagePath,
+	package_type: PackageType,
+) -> Result<Package> {
+	let state = State::get().await?;
+	let manager = state.packages.read().await;
+	let manager = manager.get(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	Ok(manager.get(package_type).packages.get(package_path).cloned().ok_or(anyhow::anyhow!("package not found"))?)
+}
+
+/// Get packages from a cluster.
+#[tracing::instrument]
+pub async fn get_packages(cluster_path: &ClusterPath) -> Result<Vec<Package>> {
+	let state = State::get().await?;
+	let manager = state.packages.read().await;
+	let manager = manager.get(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	Ok(manager.get(PackageType::Mod).packages.values().cloned().collect())
+}
+
+/// Sync packages from a cluster.
+#[tracing::instrument]
+pub async fn sync_packages(cluster_path: &ClusterPath) -> Result<()> {
+	let state = State::get().await?;
+	let mut manager = state.packages.write().await;
+	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	manager.sync_packages(&state.directories).await;
+
+	Ok(())
+}
+
+/// Sync packages from a cluster.
+#[tracing::instrument]
+pub async fn sync_packages_by_type(cluster_path: &ClusterPath, package_type: PackageType) -> Result<()> {
+	let state = State::get().await?;
+	let mut manager = state.packages.write().await;
+	let manager = manager.get_mut(&cluster_path).ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+
+	manager.sync_packages(&state.directories).await;
+
+	Ok(())
 }

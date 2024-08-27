@@ -10,48 +10,88 @@ generator client {
   client_format = "folder"
 }
 
+/// A global settings state for the launcher.
 model Settings {
-  id                Int     @id @unique @default(0)
-  theme             String  @default("dark")
-  hide_close_prompt Boolean @default(true)
-  reduced_motion    Boolean @default(false)
-  disable_analytics Boolean @default(false)
-  debug_mode        Boolean @default(false)
-  hide_on_launch    Boolean @default(false)
-  force_fullscreen  Boolean @default(false)
-  disable_discord   Boolean @default(false)
-  release_channel   String  @default("stable")
-  show_news         Boolean @default(true)
+  /// The unique ID associated with this Settings instance.
+  id                 Int     @id @unique @default(0)
+  /// A OneLauncher theme managed by the core GUI.
+  theme              String  @default("dark")
+  /// Whether or not ask for confirmation when closing the core GUI.
+  hide_close_prompt  Boolean @default(true)
+  /// Disables animations in the core GUI.
+  reduced_motion     Boolean @default(false)
+  /// Whether or not to disable Plausible and Sentry analytics.
+  disable_analytics  Boolean @default(false)
+  /// Whether or not to enable a debug mode in the launcher.
+  debug_mode         Boolean @default(false)
+  /// Whether or not to minimize the launcher upon a game launch.
+  hide_on_launch     Boolean @default(false)
+  /// A global fullscreen Minecraft state.
+  force_fullscreen   Boolean @default(false)
+  /// Whether or not to disable Discord IPC.
+  disable_discord    Boolean @default(false)
+  /// The release channel of the launcher. ("stable","beta","alpha").
+  release_channel    String  @default("stable")
+  /// Whether or not to show news and release notes in the launcher.
+  show_news          Boolean @default(true)
+  /// Enable/disable advanced rendering and window decorations.
+  advanced_rendering Boolean @default(true)
+  /// Whether to allow launching the same cluster under the same account.
+  allow_parallel     Boolean @default(true)
+  /// Whether to launch Feral Gamemode on Linux systems.
+  enable_gamemode    Boolean @default(true)
 
+  /// Global and default custom Java arguments. This is parsed as a `Vec<String>` in Rust.
   custom_java_args String
+  /// Global and default custom environment variables. This is parsed as a `Vec<String>` in Rust.
   custom_env_args  String
 
+  /// Global and default maximum `Semaphore` I/O operations.
   max_async_io_operations Int @default(10)
+  /// Global and default maximum `Semaphore` HTTP operations.
   max_async_fetches       Int @default(10)
+  /// Global and default maximum `Semaphore` API HTTP operations.
   max_async_api_fetches   Int @default(25)
 
+  /// Global and default Minecraft window resoluton on the X axis.
   resolution_x Int @default(854)
+  /// Global and default Minecraft window resoluton on the Y axis.
   resolution_y Int @default(480)
 
+  /// Maximum amount of Java memory available globally.
   memory_max Int @default(2048)
-  memory_min Int @default(512)
+  /// Minimum amount of Java memory available globally.
+  memory_min Int @default(256)
 
+  /// Global and default preinitialization hook.
   hook_pre     String?
+  /// Global and default wrapper hook.
   hook_wrapper String?
+  /// Global and default postinitialization hook.
   hook_post    String?
 
   @@map("settings")
 }
 
+/// A structure representing a single version of the Java Runtime Environment.
 model JavaVersion {
+  /// The unique UUID associated with this Java version.
   id            String        @id @unique @default(uuid())
+  /// The major Java version of this Java version (8, 16, 21).
   major_version Int
+  /// The full Java version of this Java version.
   full_version  String
+  /// The architecture that this Java version was built for.
   arch          String
+  /// The OS that this Java version was built for.
   os            String
+  /// The type of Java installation that this Java version is.
   type          String
+  /// The vendor of this Java version (Adoptium, OpenJDK, Oracle).
   vendor        String
+  /// The unique path location of this Java version.
   path          String        @unique
+  /// Whether or not this Java version is valid.
   valid         Boolean       @default(true)
   profile       JavaProfile[]
 

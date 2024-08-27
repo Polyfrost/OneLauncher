@@ -30,7 +30,7 @@
 	},
 	"dependencies": {
 		"@solid-primitives/deep": "^0.2.9",
-		"@tanstack/solid-query": "^5.52.0",
+		"@tanstack/solid-query": "^5.52.2",
 		"@tauri-apps/api": "=2.0.0-rc.1",
 		"highlight.js": "^11.10.0",
 		"markdown-it": "^14.1.0",

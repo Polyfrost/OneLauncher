@@ -11,6 +11,9 @@ CREATE TABLE "settings" (
     "disable_discord" BOOLEAN NOT NULL DEFAULT false,
     "release_channel" TEXT NOT NULL DEFAULT 'stable',
     "show_news" BOOLEAN NOT NULL DEFAULT true,
+    "advanced_rendering" BOOLEAN NOT NULL DEFAULT true,
+    "allow_parallel" BOOLEAN NOT NULL DEFAULT true,
+    "enable_gamemode" BOOLEAN NOT NULL DEFAULT true,
     "custom_java_args" TEXT NOT NULL,
     "custom_env_args" TEXT NOT NULL,
     "max_async_io_operations" INTEGER NOT NULL DEFAULT 10,
@@ -19,7 +22,7 @@ CREATE TABLE "settings" (
     "resolution_x" INTEGER NOT NULL DEFAULT 854,
     "resolution_y" INTEGER NOT NULL DEFAULT 480,
     "memory_max" INTEGER NOT NULL DEFAULT 2048,
-    "memory_min" INTEGER NOT NULL DEFAULT 512,
+    "memory_min" INTEGER NOT NULL DEFAULT 256,
     "hook_pre" TEXT,
     "hook_wrapper" TEXT,
     "hook_post" TEXT

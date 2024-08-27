@@ -194,7 +194,10 @@ pub async fn get_package(
 
 /// Get packages from a cluster.
 #[tracing::instrument]
-pub async fn get_packages(cluster_path: &ClusterPath, package_type: PackageType) -> Result<Vec<Package>> {
+pub async fn get_packages(
+	cluster_path: &ClusterPath,
+	package_type: PackageType,
+) -> Result<Vec<Package>> {
 	let state = State::get().await?;
 	let manager = state.packages.read().await;
 	let manager = manager

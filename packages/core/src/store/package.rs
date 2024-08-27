@@ -7,9 +7,9 @@ use crate::utils::io;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tokio::fs::DirEntry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use tokio::fs::DirEntry;
 
 use super::{ClusterPath, Clusters, Directories, PackagePath};
 
@@ -94,17 +94,16 @@ impl PackageType {
 	}
 
 	pub async fn file_matches(&self, entry: &DirEntry) -> crate::Result<bool> {
-		if entry.path().try_exists()? == false {
+		if !(entry.path().try_exists()?) {
 			return Ok(false);
 		}
 
 		Ok(match self {
 			PackageType::Mod => {
-				entry.file_type().await?.is_file() && entry.path().extension() == Some("jar".as_ref())
+				entry.file_type().await?.is_file()
+					&& entry.path().extension() == Some("jar".as_ref())
 			}
-			_ => {
-				false
-			}
+			_ => false,
 		})
 	}
 
@@ -441,11 +440,9 @@ impl PackageManager {
 			if let std::collections::hash_map::Entry::Vacant(e) = packages.entry(path) {
 				if package_type.file_matches(&file).await? {
 					// TODO: Infer
-					let package = Package::new(
-						&PackagePath::new(&file.path()),
-						PackageMetadata::Unknown,
-					)
-					.await?;
+					let package =
+						Package::new(&PackagePath::new(&file.path()), PackageMetadata::Unknown)
+							.await?;
 					e.insert(package);
 				}
 			}
@@ -467,7 +464,8 @@ impl PackageManager {
 		packages.extend(new_packages.drain());
 
 		// Insert unsynced packages (files that exist but are not in the manager)
-		self.insert_unsynced_packages(dirs, &mut packages, package_type).await?;
+		self.insert_unsynced_packages(dirs, &mut packages, package_type)
+			.await?;
 
 		// Finally store the new list in memory and on disk
 		// TODO: Should probably only do this if the packages have changed

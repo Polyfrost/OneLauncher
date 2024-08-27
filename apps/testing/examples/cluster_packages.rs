@@ -100,7 +100,8 @@ async fn download_mod(cluster: &mut Cluster, pkg: &str, ver: &str, add: bool) ->
 }
 
 async fn print_packages(cluster: &Cluster) -> Result<()> {
-	let packages = cluster::content::package::get_packages(&cluster.cluster_path(), PackageType::Mod).await?;
+	let packages =
+		cluster::content::package::get_packages(&cluster.cluster_path(), PackageType::Mod).await?;
 
 	println!("Packages for cluster: {:?}", cluster.cluster_path());
 	for package in packages {

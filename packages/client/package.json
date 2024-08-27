@@ -18,7 +18,7 @@
 	"dependencies": {
 		"@flowr/utils": "^3.12.1",
 		"@solid-primitives/deep": "^0.2.9",
-		"@tanstack/solid-query": "^5.51.24",
+		"@tanstack/solid-query": "^5.52.2",
 		"fast-equals": "^5.0.1",
 		"plausible-tracker": "^0.3.9",
 		"react": "^18.3.1",

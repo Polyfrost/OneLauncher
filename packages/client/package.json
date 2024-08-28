@@ -35,7 +35,7 @@
 		"highlight.js": "^11.10.0",
 		"markdown-it": "^14.1.0",
 		"plausible-tracker": "^0.3.9",
-		"solid-js": "^1.8.21",
+		"solid-js": "^1.8.22",
 		"xss": "^1.0.15"
 	},
 	"devDependencies": {

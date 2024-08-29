@@ -29,9 +29,11 @@ function App(props: ParentProps) {
 					<div class="absolute left-0 top-0 h-full w-full flex flex-col overflow-x-hidden">
 						<ErrorBoundary>
 							<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute left-0 top-0 h-full w-full flex flex-col overflow-x-hidden overflow-y-auto px-8 pb-8">
-								<AnimatedRoutes>
-									{props.children}
-								</AnimatedRoutes>
+								<div class="h-full flex-1">
+									<AnimatedRoutes>
+										{props.children}
+									</AnimatedRoutes>
+								</div>
 							</OverlayScrollbarsComponent>
 						</ErrorBoundary>
 					</div>

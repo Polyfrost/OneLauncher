@@ -74,8 +74,7 @@ function BrowserPackage(props: ParentProps) {
 
 	return (
 		<>
-			<div class="flex flex-row items-start gap-x-4">
-				{/* TODO: Make a progress bar of some sort */}
+			<div class="flex flex-row items-start gap-x-4 pb-8">
 				<Show
 					when={pkg() !== undefined && authors() !== undefined}
 					fallback={<div>Loading...</div>}
@@ -109,7 +108,7 @@ function BrowserPackage(props: ParentProps) {
 }
 
 BrowserPackage.buildUrl = function (params: BrowserModParams): string {
-	return `${basePath}?id=${params.id}&provider=${params.provider}`;
+	return `${basePath}/?id=${params.id}&provider=${params.provider}`;
 };
 
 BrowserPackage.Routes = BrowserPackageRoutes;

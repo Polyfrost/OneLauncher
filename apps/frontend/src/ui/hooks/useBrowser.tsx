@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
-import type { Cluster, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
+import type { Cluster, ManagedPackage, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 import { useRecentCluster } from './useCluster';
 import { bridge } from '~imports';
@@ -21,12 +21,14 @@ interface BrowserControllerType {
 
 	refreshCache: () => void;
 	cache: Accessor<ProviderSearchResults | undefined>;
+	featured: Accessor<ManagedPackage | undefined>;
 };
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
 
 export function BrowserProvider(props: ParentProps) {
 	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
+	const [featured, setFeatured] = createSignal<ManagedPackage | undefined>();
 
 	const [cluster, setCluster] = createSignal<Cluster>();
 	const recentCluster = useRecentCluster();
@@ -62,9 +64,18 @@ export function BrowserProvider(props: ParentProps) {
 			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', null, 10, null, null, null, null));
 
 			setMainPageCache(res);
+
+			// TODO: Better algorithm for selecting a featured package
+			const firstPackage = res.results[0];
+			if (firstPackage !== undefined) {
+				const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
+				setFeatured(featuredPackage);
+			}
 		},
 
 		cache: mainPageCache,
+
+		featured,
 	};
 
 	onMount(() => {

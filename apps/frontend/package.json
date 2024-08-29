@@ -42,7 +42,7 @@
 		"zod": "^3.23.8"
 	},
 	"devDependencies": {
-		"@sentry/vite-plugin": "^2.22.2",
+		"@sentry/vite-plugin": "^2.22.3",
 		"@solidjs/testing-library": "^0.8.9",
 		"@tauri-apps/cli": "=2.0.0-rc.4",
 		"@testing-library/jest-dom": "^6.5.0",

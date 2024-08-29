@@ -6,7 +6,7 @@ export default defineConfig({
 	unocss: true,
 	toml: true,
 	gitignore: true,
-	ignores: ['*.rs', '**/migrations'],
+	ignores: ['*.rs', '**/migrations/**'],
 	rules: {
 		'ts/no-use-before-define': 'off',
 	},

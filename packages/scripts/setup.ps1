@@ -17,7 +17,7 @@ if ((-not [string]::IsNullOrEmpty($env:PROCESSOR_ARCHITEW6432)) -or (
         "$env:PROCESSOR_ARCHITECTURE" -eq 'ARM64'
     ) -or (
         -not [System.Environment]::Is64BitOperatingSystem
-        # Powershell >= 6 is cross-platform, check if running on Windows
+        # powershell >= 6 is cross-platform, check if we are running on windows
     ) -or (($PSVersionTable.PSVersion.Major -ge 6) -and (-not $IsWindows))
 ) {
     $ErrorActionPreference = 'Continue'
@@ -31,7 +31,7 @@ if ((-not [string]::IsNullOrEmpty($env:PROCESSOR_ARCHITEW6432)) -or (
 } elseif (
     -not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 ) {
-    # starts a new PowerShell process with administrator privileges and set the working directory to the directory where the script is located
+    # starts a new powershell process with administrator privileges and set the working directory to the directory where the script is located
     $proc = Start-Process -PassThru -Wait -FilePath 'PowerShell.exe' -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Definition)`"" -WorkingDirectory "$PSScriptRoot"
     # resets path so the user doesn't have to restart the shell to use the tools installed by this script
     Reset-Path
@@ -66,15 +66,15 @@ function Add-DirectoryToPath($directory) {
     Reset-Path
 }
 
-# resets PATH to ensure the script doesn't have stale Path entries
+# resets PATH to ensure the script doesn't have stale PATH entries
 Reset-Path
 
-# gets project dir (get dir from script location: <PROJECT_ROOT>\packages\scripts\setup.ps1)
+# gets project dir (get dir from script location: <projectRoot>\packages\scripts\setup.ps1)
 $packagesRoot = Split-Path -Path $PSScriptRoot -Parent
 $projectRoot = Split-Path -Path $packagesRoot -Parent
 $packageJson = Get-Content -Raw -Path "$projectRoot\package.json" | ConvertFrom-Json
 
-# valid winget exit statuses
+# valid winget exit statuses (i.e. not an error)
 $wingetValidExit = 0, -1978335189, -1978335153, -1978335135
 
 Write-Host 'OneLauncher Development Environment Setup' -ForegroundColor Magenta
@@ -97,7 +97,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
 '@
     }
 
-    # check system winget version is greater or equal to v1.4.10052
+    # check that system winget version is greater or equal to v1.4.10052
     $wingetVersion = [Version]((winget --version) -replace '.*?(\d+)\.(\d+)\.(\d+).*', '$1.$2.$3')
     $requiredVersion = [Version]'1.4.10052'
     if ($wingetVersion.CompareTo($requiredVersion) -lt 0) {
@@ -105,7 +105,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
         Exit-WithError $errorMessage
     }
 
-    # check connectivity to github
+    # check for connectivity to github
     $ProgressPreference = 'SilentlyContinue'
     if (-not ((Test-NetConnection -ComputerName 'github.com' -Port 80).TcpTestSucceeded)) {
         Exit-WithError "Can't connect to github, check your internet connection and run this script again"
@@ -115,7 +115,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
     Write-Host
     Read-Host 'Press Enter to continue'
 
-    # TODO: Force update Visual Studio build tools
+    # todo: force update visual studio build tools
     Write-Host
     Write-Host 'Installing Visual Studio Build Tools...' -ForegroundColor Yellow
     Write-Host 'This will take some time as it involves downloading several gigabytes of data....' -ForegroundColor Cyan

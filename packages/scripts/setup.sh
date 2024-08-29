@@ -14,6 +14,7 @@ err() {
 	exit 1
 }
 
+# check if a specified command exists in path
 has() {
 	for prog in "$@"; do
 		if ! command -v "$prog" 1>/dev/null 2>&1; then
@@ -41,9 +42,10 @@ script_failure() {
 	err "an error occurred at $_line." "setup failed!"
 }
 
+# traps any errors in script_failure and passes in the line number
 trap 'script_failure ${LINENO:-}' ERR
 
-# checks if we are running in a windows environment
+# checks if we are running in a bash for windows environment
 case "${OSTYPE:-}" in
 	'msys' | 'mingw' | 'cygwin')
 		err 'bash for windows is not supported, please use powershell or cmd and run setup.ps1'
@@ -61,21 +63,21 @@ if [ "${CI:-}" != "true" ]; then
 	if ! has pnpm; then
 	err 'pnpm was not found.' \
 		"ensure the 'pnpm' command is in your \$PATH." \
-		'you must use pnpm for this project; yarn and npm are not allowed.' \
+		'you must use pnpm for this project; yarn and npm will not work:' \
 		'https://pnpm.io/installation'
 	fi
 
 	# checks if rustc and cargo are installed
 	if ! has rustc cargo; then
 	err 'rust was not found!' \
-		"ensure the 'rustc' and 'cargo' binaries are in your \$PATH." \
+		"ensure the 'rustc' and 'cargo' binaries are in your \$PATH:" \
 		'https://rustup.rs'
 	fi
 
 	echo
 fi
 
-# installs system deps
+# installs system-specific dependencies
 case "$(uname)" in
 	"Darwin")
 		if [ "$(uname -m)" = 'x86_64' ] && ! [ "${CI:-}" = "true" ]; then
@@ -93,7 +95,7 @@ case "$(uname)" in
 			# Tauri dependencies
 			set -- build-essential curl wget file libssl-dev libgtk-3-dev librsvg2-dev \
 				libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev libdbus-1-dev libvips42 \
-				llvm-dev libclang-dev clang nasm perl
+				llvm-dev libclang-dev clang nasm perl pkg-config
 
 			sudo apt-get -y update
 			sudo apt-get -y install "$@"
@@ -102,7 +104,8 @@ case "$(uname)" in
 			echo "installing dependencies with pacman..."
 
 			# Tauri dependencies
-			set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator dbus xdotool libvips clang nasm perl
+			set -- appmenu-gtk-module libappindicator-gtk3 base-devel curl wget file openssl \
+				gtk3 librsvg webkit2gtk-4.1 libayatana-appindicator dbus xdotool libvips clang nasm perl
 
 			sudo pacman -Sy --needed "$@"
 		elif has dnf; then
@@ -116,7 +119,8 @@ case "$(uname)" in
 			fi
 
 			# Tauri dependencies
-			set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libxdo-devel dbus vips clang clang-devel nasm perl-core
+			set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel \
+				librsvg2-devel libxdo-devel dbus vips clang clang-devel nasm perl-core
 
 			sudo dnf install "$@"
 		elif has apk; then
@@ -148,6 +152,15 @@ case "$(uname)" in
 
 			sudo zypper in "$@"
 			sudo zypper in -t pattern devel_basis
+		elif has xbps-install; then
+			echo "detected xbps-install!"
+			echo "installing dependencies with xbps-install..."
+			echo "note: void support is experimental" >&2
+
+			set -- webkit2gtk-devel curl wget file openssl gtk+3-devel libappindicator \
+				librsvg-devel gcc pkg-config
+
+			sudo xbps-install -Sy --needed "$@"
 		else
 			if has lsb_release; then
 				_distro="'$(lsb_release -s -d)' "

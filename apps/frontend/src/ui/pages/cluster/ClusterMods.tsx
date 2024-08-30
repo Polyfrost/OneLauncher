@@ -110,16 +110,16 @@ interface ModEntryProps {
 	pkg: Package;
 };
 
+function icon() {
+	return '';
+}
+
 function ModEntry(props: ModEntryProps) {
 	const name = () => {
 		if (props.pkg.meta.type === 'unknown')
 			return props.pkg.file_name;
 
 		return props.pkg.meta.title || props.pkg.file_name;
-	};
-
-	const icon = () => {
-		return '';
 	};
 
 	const version = () => {

@@ -5,17 +5,9 @@ type TimeProps = ParentProps & {
 	timestamp: Date | number;
 };
 
-export function TimeAgo(props: TimeProps) {
-	const getRelativeTime = (timestamp: number): string => {
-		return formatAsRelative(timestamp);
-	};
+export const TimeAgo = (props: TimeProps) => <InternalTime {...props} format={formatAsRelative} />;
 
-	return <InternalTime {...props} format={getRelativeTime} />;
-}
-
-type InternalTimeProps = TimeProps & {
-	format: (time: number) => string;
-};
+type InternalTimeProps = TimeProps & { format: (time: number) => string };
 
 function InternalTime(props: InternalTimeProps) {
 	const [time, setTime] = createSignal('');

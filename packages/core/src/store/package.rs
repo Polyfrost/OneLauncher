@@ -536,7 +536,7 @@ pub struct ManagedUser {
 	#[serde(default = "default_is_organization_user")]
 	pub is_organization_user: bool,
 	#[serde(default)]
-	pub role: Option<String>
+	pub role: Option<String>,
 }
 
 fn default_is_organization_user() -> bool {

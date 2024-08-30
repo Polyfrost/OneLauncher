@@ -350,7 +350,6 @@ pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 	match author {
 		Author::Users(users) => Ok(users.clone()),
 		Author::Team { team, organization } => {
-
 			if let Some(organization) = organization {
 				#[derive(Deserialize)]
 				struct Organization {
@@ -380,10 +379,7 @@ pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 					role: None,
 				};
 
-				org_user.url = Some(format!(
-					"https://modrinth.com/organization/{}",
-					org_user.id
-				));
+				org_user.url = Some(format!("https://modrinth.com/organization/{}", org_user.id));
 
 				let members = get_team(team.clone()).await;
 				let members = match members {

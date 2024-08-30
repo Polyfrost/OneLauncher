@@ -1,11 +1,18 @@
+import fs from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'pathe';
+import { join, resolve } from 'pathe';
 import mustache from 'mustache';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
-const { __debug, __exit, __root } = checkEnvironment(import.meta);
+const { __debug, __exit, __root, __deps } = checkEnvironment(import.meta);
 const triple = getTriple();
+const PREPARE_LOCK_VERSION = '1';
+const prepareLockPath = resolve(join(__deps, 'prepare_lock'));
+
+if (fs.existsSync(prepareLockPath))
+	if (fs.readFileSync(prepareLockPath, 'utf-8') === PREPARE_LOCK_VERSION)
+		__exit(0);
 
 if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f))
 	console.error(
@@ -57,7 +64,8 @@ try {
 
 	const template = await readFile(join(__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
 	const rendered = mustache.render(template, configStore).replace(/\n{2,}/g, '\n');
-	await writeFile(join(__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+' });
+	await writeFile(join(__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+', encoding: 'utf-8' });
+	await writeFile(join(__deps, 'prepare_lock'), PREPARE_LOCK_VERSION, 'utf-8');
 }
 catch (error) {
 	console.error(`

@@ -107,10 +107,10 @@ export type BrowserContentProps = ParentProps & {
 	categories?: BrowserSidebarCategory[];
 };
 
+const categories = (packageType: PackageType) => browserCategories.byPackageType(packageType);
+
 export function BrowserContent(props: BrowserContentProps) {
 	const browser = useBrowser();
-
-	const categories = (packageType: PackageType) => browserCategories.byPackageType(packageType);
 
 	return (
 		<div class="relative h-full flex flex-1 flex-col items-center gap-2">

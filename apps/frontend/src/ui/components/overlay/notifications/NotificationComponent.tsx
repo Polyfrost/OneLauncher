@@ -1,4 +1,4 @@
-import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
+import { type ComponentProps, type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
 import { InfoCircleIcon } from '@untitled-theme/icons-solid';
 import { PausableTimer } from '@onelauncher/client';
 import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
@@ -7,41 +7,33 @@ type NotificationComponentProps = IngressPayload & {
 	overlay: boolean;
 };
 
-function IconFromNotificationType(type: IngressType['type']): (props: JSX.HTMLAttributes<HTMLDivElement>) => JSX.Element {
+function IconFromNotificationType(type: IngressType['type']): (props: ComponentProps<'svg'>) => JSX.Element {
 	switch (type) {
-		// case NotificationType.Alert:
-		// 	return AlertTriangleIcon as any;
-		// case NotificationType.Download:
-		// 	return FolderDownloadIcon as any;
-		// case NotificationType.DownloadSuccess:
-		// 	return FolderCheckIcon as any;
-		// case NotificationType.DownloadError:
-		// 	return FolderXIcon as any;
-		// case NotificationType.Refresh:
-		// 	return RefreshCcw02Icon as any;
-		// case NotificationType.Success:
-		// 	return CheckCircleIcon as any;
-		// case NotificationType.Info:
+		case 'initialize':
+		case 'download_java':
+		case 'download_loader':
+		case 'sync_cluster':
+		case 'copy_cluster':
+		case 'sync_config':
+		case 'archival':
+		case 'download_package':
+		case 'download_pack':
 		default:
-			return InfoCircleIcon as any;
+			return InfoCircleIcon;
 	}
 }
 
 function ColorFromNotificationType(type: IngressType['type']): string {
 	switch (type) {
-		// case NotificationType.Info:
-		// case NotificationType.Refresh:
-		// 	return 'text-brand';
-
-		// case NotificationType.Alert:
-		// case NotificationType.DownloadError:
-		// 	return 'text-danger';
-
-		// case NotificationType.DownloadSuccess:
-		// case NotificationType.Success:
-		// 	return 'text-success';
-
-		// case NotificationType.Download:
+		case 'initialize':
+		case 'download_java':
+		case 'download_loader':
+		case 'sync_cluster':
+		case 'copy_cluster':
+		case 'sync_config':
+		case 'archival':
+		case 'download_package':
+		case 'download_pack':
 		default:
 			return 'text-fg-primary';
 	}

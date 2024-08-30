@@ -14,12 +14,12 @@ function Link(props: LinkProps) {
 
 	return (
 		<button
-			{...rest as any}
+			{...rest as JSX.ButtonHTMLAttributes<HTMLButtonElement>}
 			class={`${styles.link} ${split.class || ''}`}
 			onClick={(e) => {
 				open(split.href, !!split.prompt);
-				if (typeof props.onClick === 'function')
-					props.onClick(e as any);
+				if (typeof split.onClick === 'function')
+					split.onClick(e as any);
 			}}
 			children={(
 				<div class="flex flex-row gap-x-1">

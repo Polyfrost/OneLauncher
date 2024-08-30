@@ -22,13 +22,13 @@ function TitlebarButton(props: TitlebarButtonProps) {
 	);
 }
 
+const maximize = () => Window.getCurrent().toggleMaximize();
+const minimize = () => Window.getCurrent().minimize();
+const quit = () => Window.getCurrent().close();
+const kill = () => Window.getCurrent().destroy();
+
 function WindowFrame() {
 	const { settings } = useSettings();
-
-	const maximize = () => Window.getCurrent().toggleMaximize();
-	const minimize = () => Window.getCurrent().minimize();
-	const quit = () => Window.getCurrent().close();
-	const kill = () => Window.getCurrent().destroy();
 
 	const modal = createModal(props => (
 		<Modal.Simple

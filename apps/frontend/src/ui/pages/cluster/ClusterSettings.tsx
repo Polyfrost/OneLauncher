@@ -5,7 +5,7 @@ import { GameSettings, JvmSettings, LauncherSettings, ProcessSettings, createSet
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 
@@ -25,7 +25,7 @@ function ClusterSettings() {
 }
 
 function PageSettings(cluster: Accessor<Cluster>) {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	// Game
 	const fullscreen = createSetting(cluster().force_fullscreen, settings().force_fullscreen ?? false);

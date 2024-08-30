@@ -533,6 +533,14 @@ pub struct ManagedUser {
 	pub avatar_url: Option<String>,
 	#[serde(default)]
 	pub bio: Option<String>,
+	#[serde(default = "default_is_organization_user")]
+	pub is_organization_user: bool,
+	#[serde(default)]
+	pub role: Option<String>
+}
+
+fn default_is_organization_user() -> bool {
+	false
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]

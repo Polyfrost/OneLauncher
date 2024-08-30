@@ -338,12 +338,30 @@ where
 	})
 }
 
+#[derive(Deserialize)]
+struct TeamMember {
+	#[serde(default)]
+	pub role: Option<String>,
+	pub user: ManagedUser,
+}
+
+/// Get the authors of a project
 pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 	match author {
 		Author::Users(users) => Ok(users.clone()),
 		Author::Team { team, organization } => {
+
 			if let Some(organization) = organization {
-				let mut organization_user: ManagedUser = serde_json::from_slice(
+				#[derive(Deserialize)]
+				struct Organization {
+					pub id: String,
+					pub name: String,
+					pub icon_url: String,
+					pub description: String,
+					pub members: Vec<TeamMember>,
+				}
+
+				let organization: Organization = serde_json::from_slice(
 					&fetch(
 						format_url_v3!("/organization/{}", organization).as_str(),
 						None,
@@ -352,38 +370,64 @@ pub async fn get_authors(author: &Author) -> Result<Vec<ManagedUser>> {
 					.await?,
 				)?;
 
-				organization_user.url = Some(format!(
+				let mut org_user = ManagedUser {
+					id: organization.id,
+					username: organization.name,
+					avatar_url: Some(organization.icon_url),
+					bio: Some(organization.description),
+					url: None,
+					is_organization_user: true,
+					role: None,
+				};
+
+				org_user.url = Some(format!(
 					"https://modrinth.com/organization/{}",
-					organization_user.id
+					org_user.id
 				));
 
-				Ok(vec![organization_user])
+				let members = get_team(team.clone()).await;
+				let members = match members {
+					Ok(members) => members,
+					Err(err) => {
+						tracing::error!("Failed to get team members: {}", err);
+						organization
+							.members
+							.into_iter()
+							.map(|member| member.user)
+							.collect::<Vec<ManagedUser>>()
+					}
+				};
+
+				let mut authors = vec![org_user];
+				authors.extend(members);
+
+				Ok(authors)
 			} else {
-				#[derive(Deserialize)]
-				struct TeamMember {
-					pub user: ManagedUser,
-				}
-
-				let authors: Vec<TeamMember> = serde_json::from_slice(
-					&fetch(
-						format_url_v3!("/team/{}/members", team).as_str(),
-						None,
-						&State::get().await?.fetch_semaphore,
-					)
-					.await?,
-				)?;
-
-				Ok(authors
-					.into_iter()
-					.map(|member| {
-						let mut user = member.user;
-						user.url = Some(format!("https://modrinth.com/user/{}", user.id));
-						user
-					})
-					.collect())
+				get_team(team.clone()).await
 			}
 		}
 	}
+}
+
+async fn get_team(team_id: String) -> Result<Vec<ManagedUser>> {
+	let authors: Vec<TeamMember> = serde_json::from_slice(
+		&fetch(
+			format_url!("/team/{}/members", team_id).as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?;
+
+	Ok(authors
+		.into_iter()
+		.map(|member| {
+			let mut user = member.user;
+			user.url = Some(format!("https://modrinth.com/user/{}", user.id));
+			user.role = member.role;
+			user
+		})
+		.collect())
 }
 
 // TODO: modrinth api v3

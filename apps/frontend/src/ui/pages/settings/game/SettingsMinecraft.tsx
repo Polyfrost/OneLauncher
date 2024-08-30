@@ -6,7 +6,7 @@ import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
 
 function SettingsMinecraft() {
@@ -344,7 +344,7 @@ export function JvmSettings(props: {
 }
 
 function PageSettings() {
-	const { settings, saveOnLeave } = useSettingsContext();
+	const { settings, saveOnLeave } = useSettings();
 
 	// Game
 	const fullscreen = createSetting(settings().force_fullscreen ?? false);

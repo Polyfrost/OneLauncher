@@ -1,15 +1,17 @@
-import { ColorsIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
+import { ColorsIcon, PackageIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
 import { useBeforeLeave } from '@solidjs/router';
-import { createSignal } from 'solid-js';
+import { For, createSignal } from 'solid-js';
 import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
 import Sidebar from '~ui/components/Sidebar';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
+import Dropdown from '~ui/components/base/Dropdown';
+import { BROWSER_VIEWS } from '~utils/browser';
 
 function SettingsAppearance() {
-	const { settings, saveOnLeave } = useSettingsContext();
+	const { settings, saveOnLeave } = useSettings();
 	const [shouldReload, setShouldReload] = createSignal(false);
 
 	useBeforeLeave((e) => {
@@ -38,6 +40,23 @@ function SettingsAppearance() {
 					icon={<PaintPourIcon />}
 				>
 					<Button iconLeft={<ColorsIcon />}>#ff0000</Button>
+				</SettingsRow>
+
+				<SettingsRow
+					title="Package List Style"
+					description="Change the look of the package list."
+					icon={<PackageIcon />}
+				>
+					<Dropdown
+						selected={() => BROWSER_VIEWS.indexOf(settings().browser_list_view ?? 'grid')}
+						onChange={value => settings().browser_list_view = BROWSER_VIEWS[value] ?? 'grid'}
+					>
+						<For each={BROWSER_VIEWS}>
+							{view => (
+								<Dropdown.Row>{view}</Dropdown.Row>
+							)}
+						</For>
+					</Dropdown>
 				</SettingsRow>
 
 				<SettingsRow

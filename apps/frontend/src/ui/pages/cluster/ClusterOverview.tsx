@@ -15,12 +15,12 @@ import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import Modal, { type ModalProps, createModal } from '~ui/components/overlay/Modal';
 import usePreventLeave from '~ui/hooks/usePreventLeave';
 
 function ClusterOverview() {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 	const [cluster, { refetch }] = useClusterContext();
 
 	const [editMode, setEditMode] = createSignal(false);

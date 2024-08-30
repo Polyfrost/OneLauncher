@@ -10,10 +10,10 @@ import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 
 function ClusterWorlds() {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 	const [cluster] = useClusterContext();
 	const [list] = useCommand(() => bridge.commands.getWorlds(cluster()!.uuid));
 
@@ -54,7 +54,7 @@ function ClusterWorlds() {
 export default ClusterWorlds;
 
 function WorldEntry(props: { name: string; cluster_path: string }) {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	const dir = () => join(settings().config_dir || '', 'clusters', props.cluster_path, 'saves', props.name);
 

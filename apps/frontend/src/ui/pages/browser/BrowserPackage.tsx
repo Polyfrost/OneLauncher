@@ -175,7 +175,17 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 							onClick={() => promptOpen(author.url)}
 						>
 							<img class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} alt={`${author.username}'s avatar`} />
-							<span class="flex-1">{author.username}</span>
+							<div class="flex flex-1 flex-col justify-center gap-y-1">
+								<span>{author.username}</span>
+
+								<Show when={author.is_organization_user}>
+									<span class="text-xs text-fg-secondary">Organization</span>
+								</Show>
+
+								<Show when={author.role !== null}>
+									<span class="text-xs text-fg-secondary">{author.role}</span>
+								</Show>
+							</div>
 							<LinkExternal01Icon class="h-4 w-4" />
 						</div>
 					)}

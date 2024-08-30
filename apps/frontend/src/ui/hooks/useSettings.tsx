@@ -54,7 +54,7 @@ export function SettingsProvider(props: ParentProps) {
 	);
 }
 
-export function useSettingsContext() {
+export function useSettings() {
 	const context = useContext(SettingsContext);
 
 	if (!context)
@@ -63,4 +63,4 @@ export function useSettingsContext() {
 	return context;
 }
 
-export default useSettingsContext;
+export default useSettings;

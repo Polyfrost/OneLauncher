@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
+import type { Cluster, ManagedPackage, PackageType, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 import { useRecentCluster } from './useCluster';
 import { bridge } from '~imports';
@@ -19,6 +19,9 @@ interface BrowserControllerType {
 	displayCategory: (category: string) => void;
 	displayClusterSelector: () => void;
 
+	packageType: Accessor<PackageType>;
+	setPackageType: Setter<PackageType>;
+
 	refreshCache: () => void;
 	cache: Accessor<ProviderSearchResults | undefined>;
 	featured: Accessor<ManagedPackage | undefined>;
@@ -29,6 +32,8 @@ const BrowserContext = createContext() as Context<BrowserControllerType>;
 export function BrowserProvider(props: ParentProps) {
 	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
 	const [featured, setFeatured] = createSignal<ManagedPackage | undefined>();
+
+	const [packageType, setPackageType] = createSignal<PackageType>('mod');
 
 	const [cluster, setCluster] = createSignal<Cluster>();
 	const recentCluster = useRecentCluster();
@@ -59,6 +64,9 @@ export function BrowserProvider(props: ParentProps) {
 		displayClusterSelector() {
 			modal.show();
 		},
+
+		packageType,
+		setPackageType,
 
 		async refreshCache() {
 			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', null, 10, null, null, null, null));

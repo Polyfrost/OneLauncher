@@ -7,13 +7,13 @@ import { bridge } from '~imports';
 import useClusterContext from '~ui/hooks/useCluster';
 import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import FormattedLog from '~ui/components/content/FormattedLog';
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
 	const [logs] = useCommand(() => bridge.commands.getClusterLogs(cluster()!.uuid));
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
 	const [logContent, setLogContent] = createSignal<string | null>(null);

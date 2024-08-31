@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'pathe';
 import { execa } from 'execa';
 import semver from 'semver';
+import consola from 'consola';
 import type { CheckedEnvironment } from '.';
 
 const UPDATEKEY_LOCK_VERSION = '1';
@@ -30,12 +31,12 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	try {
 		[keys.publicKey, keys.privateKey] = await readKeys();
 		if (keys.privateKey === '' || keys.publicKey === '')
-			throw new Error(`empty keys`);
+			consola.error(new Error(`empty keys`));
 	}
 	catch (error) {
 		if (env.__debug) {
-			console.warn(`failed to read updater keys`);
-			console.error(error);
+			consola.warn(`failed to read updater keys`);
+			consola.error(error);
 		}
 
 		const quote = type() === 'Windows_NT' ? '"' : '\'';
@@ -109,7 +110,7 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 			))
 		) {
 			macOSStore.minimumVersion = macOSStore.defaultArm64;
-			env.__console.log(`[aarch64-apple-darwin]: setting minimum system version to ${macOSStore.minimumVersion}`);
+			consola.log(`[aarch64-apple-darwin]: setting minimum system version to ${macOSStore.minimumVersion}`);
 		}
 
 		if (macOSStore.minimumVersion) {

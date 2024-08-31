@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'pathe';
 import mustache from 'mustache';
+import consola from 'consola';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
@@ -11,7 +12,7 @@ const PREPARE_LOCK_VERSION = '1';
 const prepareLockPath = resolve(join(env.__deps, 'prepare_lock'));
 
 if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f))
-	console.error(
+	consola.error(
 		`
 		Basic OneLauncher dependencies missing!
 		Ensure you have rust and pnpm installed:
@@ -23,7 +24,7 @@ if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f)
 		`,
 	);
 
-env.__console.info('generating cargo configuration file.');
+consola.info('generating cargo configuration file.');
 
 if (fs.existsSync(prepareLockPath))
 	if (fs.readFileSync(prepareLockPath, 'utf-8') === PREPARE_LOCK_VERSION)
@@ -68,12 +69,12 @@ try {
 	await writeFile(join(env.__deps, 'prepare_lock'), PREPARE_LOCK_VERSION, 'utf-8');
 }
 catch (error) {
-	console.error(`
+	consola.error(`
 		failed to generate .config/cargo.toml.
 		this is probably a bug, please open an issue with system info at
 		https://github.com/polyfrost/onelauncher/issues/new/choose
 	`);
 	if (env.__debug)
-		console.error(error);
+		consola.error(error);
 	env.__exit(1);
 }

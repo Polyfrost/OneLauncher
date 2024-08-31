@@ -72,7 +72,7 @@ Reset-Path
 $currentDir = Get-Location
 $scriptDir = Get-Item -Path $PSScriptRoot
 
-if ($currentDir.FullName -eq $scriptDir.Parent.Parent.FullName) {
+if ($currentDir -eq $scriptDir.Parent.Parent.FullName) {
     $projectRoot = $currentDir.FullName
 } else {
     $projectRoot = $scriptDir.Parent.Parent.FullName
@@ -167,7 +167,8 @@ https://learn.microsoft.com/windows/package-manager/winget/
     Write-Host 'Installing NodeJS...' -ForegroundColor Yellow
     # check if nodejs is already installed and if it's compatible with the project
     $currentNode = Get-Command node -ea 0
-    $currentNodeVersion = if (-not $currentNode) { $null } elseif ($currentNode.Version) { $currentNode.Version } elseif ((node --version) -match '(?sm)(\d+(\.\d+)*)') { [Version]$matches[1] } else { $null }
+    $nodeVersionOutput = node --version 2>&1
+    $currentNodeVersion = if ($nodeVersionOutput -match 'v(\d+\.\d+\.\d+)') { [Version]$matches[1] } else { $null }
     $enginesNodeVersion = if ($packageJson.engines.node -match '(?sm)(\d+(\.\d+)*)') { [Version]$matches[1] } else { $null }
     if ($currentNodeVersion -and $enginesNodeVersion -and $currentNodeVersion.CompareTo($enginesNodeVersion) -lt 0) {
         Exit-WithError "Current Node.JS version: $currentNodeVersion (required: $enginesNodeVersion)" `

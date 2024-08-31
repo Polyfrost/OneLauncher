@@ -1,9 +1,9 @@
 import { type ParentProps, Show } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 
 function AnimatedRoutes(props: TransitionProps & ParentProps) {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	const before: Keyframe = {
 		transform: 'translateX(-85px)',

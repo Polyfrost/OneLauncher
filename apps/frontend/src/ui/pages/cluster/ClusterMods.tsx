@@ -1,47 +1,35 @@
-import { ArrowRightIcon, ChevronDownIcon, ChevronUpIcon, Edit02Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Switch, createSignal, onMount } from 'solid-js';
-import * as uuid from 'uuid';
+import { Edit02Icon, FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { For, Match, Switch, createEffect, createSignal } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
+import type { Package } from '@onelauncher/client/bindings';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-
-const randomModNames = [
-	'Sodium',
-	'Nvidium',
-	'Iris Shaders',
-	'Create',
-	'Fabric API',
-	'Create: Estrogen',
-	'OneConfig',
-	'PolySprint',
-	'PolyEffects',
-];
-
-const _mods: readonly ModEntryProps[] = Array(randomModNames.length).fill(undefined).map((_, index) => ({
-	id: uuid.v4(),
-	name: randomModNames[index] || 'Unknown',
-	author: 'Author Name',
-	version: '1.0.0',
-	description: 'This is a mod description',
-	provider: 'curseforge',
-	thumbnail: 'https://cdn.modrinth.com/data/AANobbMI/icon.png',
-}));
+import useClusterContext from '~ui/hooks/useCluster';
+import useCommand from '~ui/hooks/useCommand';
+import { bridge } from '~imports';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
-	// Initial mods for this cluster
-	const [mods] = createSignal<ModEntryProps[]>([..._mods]); // TODO: Replace with hook
+	const [cluster] = useClusterContext();
+	const [mods] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
 	// Mods to display, should be a clone of the mods array but sorted
-	const [displayedMods, setDisplayedMods] = createSignal<ModEntryProps[]>([]);
+	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
 
 	// true - `A to Z` & false - `Z to A`
 	const [sortingAtoZ, setSortingAtoZ] = createSignal<boolean>(true);
 
+	function getModName(mod: Package) {
+		if (mod.meta.type === 'unknown')
+			return mod.file_name;
+
+		return mod.meta.title || mod.file_name;
+	}
+
 	const uf = new UFuzzy();
-	const [modsSearchable] = createSignal(() => mods().map(mod => mod.name));
+	const [modsSearchable] = createSignal(() => mods()?.map(getModName) || []);
 
 	function search(value: string) {
 		if (value === '' || value === undefined) {
@@ -51,9 +39,9 @@ function ClusterMods() {
 
 		const result = uf.search(modsSearchable()(), value);
 
-		const filtered: ModEntryProps[] = [];
+		const filtered: Package[] = [];
 		result[0]?.forEach((index) => {
-			const mod = mods()[index];
+			const mod = mods()?.[index];
 			if (mod)
 				filtered.push(mod);
 		});
@@ -61,11 +49,11 @@ function ClusterMods() {
 		setDisplayedMods(sortListByName(filtered));
 	}
 
-	function sortListByName(list: ModEntryProps[]): ModEntryProps[] {
+	function sortListByName(list: Package[]): Package[] {
 		if (sortingAtoZ())
-			return list.sort((a, b) => a.name.localeCompare(b.name));
+			return list.sort((a, b) => getModName(a).localeCompare(getModName(b)));
 		else
-			return list.sort((a, b) => b.name.localeCompare(a.name));
+			return list.sort((a, b) => getModName(b).localeCompare(getModName(a)));
 	}
 
 	function toggleNameSort() {
@@ -74,10 +62,10 @@ function ClusterMods() {
 	}
 
 	function resetMods() {
-		setDisplayedMods(sortListByName([...mods()]));
+		setDisplayedMods(sortListByName([...(mods() || [])]));
 	}
 
-	onMount(() => {
+	createEffect(() => {
 		resetMods();
 	});
 
@@ -88,9 +76,9 @@ function ClusterMods() {
 				<div class="flex flex-row items-center justify-end gap-x-2">
 					<Button
 						buttonStyle="secondary"
-						iconLeft={sortingAtoZ() ? <ChevronUpIcon /> : <ChevronDownIcon />}
 						onClick={() => toggleNameSort()}
-						children="Name"
+						children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
+						iconLeft={<FilterFunnel01Icon />}
 					/>
 
 					<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
@@ -102,7 +90,7 @@ function ClusterMods() {
 					<Match when={displayedMods().length > 0}>
 						<For each={displayedMods()}>
 							{mod => (
-								<ModEntry {...mod} />
+								<ModEntry pkg={mod} />
 							)}
 						</For>
 					</Match>
@@ -118,34 +106,63 @@ function ClusterMods() {
 
 export default ClusterMods;
 
-// TODO: Mod
 interface ModEntryProps {
-	id: string;
-	thumbnail: string;
-	name: string;
-	author: string;
-	version: string;
-	description: string;
-	provider: 'curseforge' | 'modrinth' | 'polyfrost';
+	pkg: Package;
 };
 
+function icon() {
+	return '';
+}
+
 function ModEntry(props: ModEntryProps) {
+	const name = () => {
+		if (props.pkg.meta.type === 'unknown')
+			return props.pkg.file_name;
+
+		return props.pkg.meta.title || props.pkg.file_name;
+	};
+
+	const version = () => {
+		let formatted = 'Unknown';
+
+		if (props.pkg.meta.type === 'managed')
+			formatted = props.pkg.meta.version_formatted;
+		else if (props.pkg.meta.type === 'mapped')
+			formatted = props.pkg.meta.version || formatted;
+
+		return formatted;
+	};
+
+	const tag = () => {
+		let tag = 'Unknown';
+
+		if (props.pkg.meta.type === 'managed')
+			tag = props.pkg.meta.provider;
+		else if (props.pkg.meta.type === 'mapped')
+			tag = 'Mapped';
+
+		return tag;
+	};
+
 	return (
 		<div class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover">
 			<div>
-				<img src={props.thumbnail} alt={props.name} class="aspect-ratio-square h-10 rounded-lg" />
+				<img src={icon()} alt={name()} class="aspect-ratio-square h-10 rounded-lg" />
 			</div>
 			<div class="flex flex-1 flex-col">
 				<div class="flex flex-row items-center justify-between">
 					<div class="flex flex-col items-start justify-center">
 						<div class="flex flex-col items-start justify-center gap-y-2">
-							<h4>{props.name}</h4>
+							<span class="flex flex-row items-center justify-start gap-x-1">
+								<h4>{name()}</h4>
+								<span class="rounded-xl bg-gray-05 px-1.5 py-0.5 text-xs text-white/60">{tag()}</span>
+							</span>
 							<span class="h-2 flex flex-row items-center justify-start text-xs text-fg-secondary/50 font-600">
-								{props.version}
+								{version()}
 								{/* TODO: Add version checker */}
 								{/* <Show when={props.version.includes()}> */}
-								<ArrowRightIcon class="w-4 stroke-success" />
-								<span class="text-success">1.0.1</span>
+								{/* <ArrowRightIcon class="w-4 stroke-success" />
+								<span class="text-success">1.0.1</span> */}
 								{/* </Show> */}
 							</span>
 						</div>

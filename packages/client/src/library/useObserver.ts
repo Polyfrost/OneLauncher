@@ -1,64 +1,68 @@
-import { useEffect, useRef, useState } from 'react';
 import type { Owner } from 'solid-js';
-import { createReaction, createRoot, runWithOwner } from 'solid-js';
+import { createEffect, createReaction, createRoot, createSignal, onCleanup, runWithOwner } from 'solid-js';
+
+export interface Observer {
+	dispose: () => void;
+	track: (fn: () => void) => void;
+};
 
 // copied from `useObserver` in `react-solid-state`, ported to work with new versions.
 // https://github.com/solidjs/react-solid-state/issues/4
 export function useObserver<T>(fn: () => T): T {
-	const [_, setTick] = useState(0);
-	const state = useRef({
+	const [tick, setTick] = createSignal(0);
+	const state = {
 		onUpdate: (): void => {
-			state.current.firedDuringRender = true;
+			state.firedDuringRender = true;
 		},
 		firstRenderFired: false,
 		firedDuringRender: false,
-	});
+	};
 
-	const reaction = useRef<{ dispose: () => void; track: (fn: () => void) => void }>();
+	let reaction: Observer | undefined;
+	reaction = createRoot(dispose => ({
+		dispose,
+		track: createReaction(() => state.onUpdate()),
+	}));
 
-	if (!reaction.current)
-		reaction.current = createRoot(dispose => ({
-			dispose,
-			track: createReaction(() => state.current.onUpdate()),
-		}));
+	createEffect(() => {
+		if (state.firedDuringRender)
+			setTick(tick() + 1);
 
-	useEffect(() => {
-		if (state.current.firedDuringRender)
-			setTick(t => t + 1);
+		state.onUpdate = () => setTick(tick() + 1);
+		state.firstRenderFired = true;
 
-		state.current.onUpdate = () => setTick(t => t + 1);
-		state.current.firstRenderFired = true;
-
-		return () => {
-			state.current.onUpdate = () => {
-				state.current.firedDuringRender = false;
+		onCleanup(() => {
+			state.onUpdate = () => {
+				state.firedDuringRender = false;
 			};
 
-			if (!state.current.firstRenderFired) {
-				reaction.current?.dispose();
-				reaction.current = undefined;
+			if (!state.firstRenderFired) {
+				reaction?.dispose();
+				reaction = undefined;
 			}
-		};
-	}, []);
+		});
+	});
 
 	let rendering!: T;
-	reaction.current.track(() => (rendering = fn()));
+	reaction.track(() => (rendering = fn()));
 	return rendering;
 }
 
+export interface OwnedObserver { track: (fn: () => void) => void }
+
 export function useObserverWithOwner<T>(owner: Owner, fn: () => T): T {
-	const [_, setTick] = useState(0);
-	const state = useRef({ onUpdate: () => {} });
-	const reaction = useRef<{ track: (fn: () => void) => void }>();
+	const [tick, setTick] = createSignal(0);
+	const state = { onUpdate: () => {} };
 
-	if (!reaction.current)
-		reaction.current = runWithOwner(owner, () => ({
-			track: createReaction(() => state.current.onUpdate()),
-		}))!;
+	const reaction: OwnedObserver = runWithOwner(owner, () => ({
+		track: createReaction(() => state.onUpdate()),
+	}))!;
 
-	useEffect(() => state.current.onUpdate = () => setTick(t => t + 1));
+	createEffect(() => {
+		state.onUpdate = () => setTick(tick() + 1);
+	});
 
 	let rendering!: T;
-	reaction.current.track(() => (rendering = fn()));
+	reaction.track(() => (rendering = fn()));
 	return rendering;
 }

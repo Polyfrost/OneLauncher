@@ -4,12 +4,12 @@ import SettingsRow from '../../../components/SettingsRow';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Toggle from '~ui/components/base/Toggle';
 import Sidebar from '~ui/components/Sidebar';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import Button from '~ui/components/base/Button';
 import DiscordIcon from '~assets/logos/discord.svg?component-solid';
 
 function SettingsGeneral() {
-	const { settings, saveOnLeave } = useSettingsContext();
+	const { settings, saveOnLeave } = useSettings();
 
 	saveOnLeave(() => ({
 		disable_discord: settings().disable_discord!,
@@ -56,7 +56,6 @@ function SettingsGeneral() {
 				</SettingsRow>
 
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
-
 				<SettingsRow
 					title="Launcher Folder"
 					description={settings().config_dir || 'Unknown'}

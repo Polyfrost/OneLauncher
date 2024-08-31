@@ -281,13 +281,13 @@ pub async fn copy(
 #[tracing::instrument(skip(bytes, io_semaphore))]
 pub async fn write_icon(
 	icon_path: &str,
-	cache_path: &Path,
+	cache_dir: &Path,
 	bytes: Bytes,
 	io_semaphore: &IoSemaphore,
 ) -> crate::Result<PathBuf> {
 	let ext = Path::new(&icon_path).extension().and_then(OsStr::to_str);
 	let hash = check_sha1(bytes.clone()).await?;
-	let path = cache_path.join("icons").join(if let Some(e) = ext {
+	let path = cache_dir.join("icons").join(if let Some(e) = ext {
 		format!("{hash}.{e}")
 	} else {
 		hash

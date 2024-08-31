@@ -93,11 +93,11 @@ jobs:
               - '.github/actions/setup-rust/**'
               - '.github/actions/setup-system/**'
 
-      - name: Setup System
+      - name: Setup Rust
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'
-        uses: ./.github/actions/setup-system
+        uses: ./.github/actions/setup-rust
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          restore-cache: false
 
       - name: Run Rustfmt
         if: steps.filter.outcome != 'success' || steps.filter.outputs.changes == 'true'

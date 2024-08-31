@@ -42,7 +42,7 @@ pub async fn install_minecraft(
 	old_ingress: Option<IngressId>,
 	repair: bool,
 ) -> crate::Result<()> {
-	let should_sync = old_ingress.is_some();
+	// let should_sync = old_ingress.is_some();
 	let ingress = init_or_edit_ingress(
 		old_ingress,
 		IngressType::DownloadLoader {
@@ -63,9 +63,12 @@ pub async fn install_minecraft(
 
 	State::sync().await?;
 
-	if should_sync {
-		Cluster::sync_packages(cluster.cluster_path(), true);
-	}
+	// if should_sync {
+	// 	let path = cluster.cluster_path();
+	// 	tokio::task::spawn(async move {
+	// 		Cluster::sync_packages(&path).await
+	// 	});
+	// }
 
 	let state = State::get().await?;
 	let instance_path = &io::canonicalize(cluster.get_full_path().await?)?;
@@ -469,6 +472,7 @@ pub async fn launch_minecraft(
 		.await
 }
 
+/// Parses an array of Minecraft library feature or OS rules.
 #[tracing::instrument]
 pub fn rules(rules: &[ip::api::minecraft::Rule], java_version: &str, updated: bool) -> bool {
 	let mut rule = rules
@@ -485,6 +489,10 @@ pub fn rules(rules: &[ip::api::minecraft::Rule], java_version: &str, updated: bo
 	!(rule.iter().any(|r| r == &Some(false)) || rule.iter().all(|r| r.is_none()))
 }
 
+/// Parses a Minecraft library feature or OS rule.
+/// Is disallowed -> Don't include it
+/// Is not allowed -> Don't include it
+/// Is allowed -> Include it
 #[tracing::instrument]
 pub fn rule(rule: &ip::api::minecraft::Rule, java_version: &str, updated: bool) -> Option<bool> {
 	use ip::api::minecraft::{Rule, RuleAction};
@@ -512,7 +520,7 @@ pub fn rule(rule: &ip::api::minecraft::Rule, java_version: &str, updated: bool) 
 			if result {
 				Some(true)
 			} else {
-				None
+				Some(false)
 			}
 		}
 		RuleAction::Disallow => {

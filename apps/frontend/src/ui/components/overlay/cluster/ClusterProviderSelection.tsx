@@ -32,7 +32,7 @@ export default createClusterStep({
 function ClusterProviderSelection(props: ClusterStepProps) {
 	const [selected, setSelected] = createSignal<number>();
 
-	const check = () => {
+	createEffect(() => {
 		// TODO: Add more stages
 		// eslint-disable-next-line solid/reactivity -- It's fine
 		props.setCanGoForward(() => {
@@ -43,9 +43,7 @@ function ClusterProviderSelection(props: ClusterStepProps) {
 
 			return isTrue;
 		});
-	};
-
-	createEffect(check);
+	});
 
 	return (
 		<div class="grid grid-cols-3 gap-2">

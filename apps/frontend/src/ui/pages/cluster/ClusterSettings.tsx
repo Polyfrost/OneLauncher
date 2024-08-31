@@ -1,11 +1,11 @@
 import { useBeforeLeave } from '@solidjs/router';
 import { type Accessor, Show } from 'solid-js';
+import type { Cluster } from '@onelauncher/client/bindings';
 import { GameSettings, JvmSettings, LauncherSettings, ProcessSettings, createSetting } from '../settings/game/SettingsMinecraft';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import type { Cluster } from '~bindings';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 
@@ -25,7 +25,7 @@ function ClusterSettings() {
 }
 
 function PageSettings(cluster: Accessor<Cluster>) {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	// Game
 	const fullscreen = createSetting(cluster().force_fullscreen, settings().force_fullscreen ?? false);
@@ -44,7 +44,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
 
 	useBeforeLeave(() => {
-		tryResult(bridge.commands.editGameSettings, cluster().uuid, {
+		tryResult(() => bridge.commands.editGameSettings(cluster().uuid, {
 			...cluster(),
 
 			// Game
@@ -64,7 +64,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 				custom_arguments: javaArgs.getRaw(),
 				custom_env_arguments: envVars.getRaw(),
 			},
-		});
+		}));
 	});
 
 	return (

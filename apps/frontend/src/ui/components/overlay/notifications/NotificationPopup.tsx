@@ -4,10 +4,10 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup, { type PopupProps } from '../Popup';
 import Button from '../../base/Button';
 import NotificationComponent from './NotificationComponent';
-import useNotifications from '~ui/hooks/useNotifications';
+import useIngress from '~ui/hooks/useIngress';
 
 function NotificationPopup(props: PopupProps) {
-	const [notifications] = useNotifications(updateSize);
+	const [ingress] = useIngress(updateSize);
 
 	let inner!: HTMLDivElement;
 	let parent!: HTMLDivElement;
@@ -40,10 +40,10 @@ function NotificationPopup(props: PopupProps) {
 					<div class="flex flex-col items-stretch justify-start gap-2 text-start" ref={inner}>
 						<p class="px-2 pt-1 text-2lg">Notifications</p>
 						<Switch>
-							<Match when={notifications().length > 0}>
+							<Match when={ingress().length > 0}>
 								<OverlayScrollbarsComponent class="max-h-[min(500px,60vh)] overflow-auto">
 									<div class="flex flex-col-reverse items-stretch justify-center">
-										<For each={notifications()}>
+										<For each={ingress()}>
 											{noti => (
 												<div class="w-full flex flex-col">
 													<NotificationComponent {...noti} overlay={false} />
@@ -54,7 +54,7 @@ function NotificationPopup(props: PopupProps) {
 									</div>
 								</OverlayScrollbarsComponent>
 							</Match>
-							<Match when={notifications().length === 0}>
+							<Match when={ingress().length === 0}>
 								<span class="px-2">You have no notifications</span>
 								<span class="h-px bg-gray-05" />
 							</Match>

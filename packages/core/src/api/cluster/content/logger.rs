@@ -111,7 +111,11 @@ pub async fn get_logs(
 	let mut logs = logs
 		.into_iter()
 		.collect::<crate::Result<Vec<LogManager>>>()?;
-	logs.sort_by(|a, b| b.age.cmp(&a.age).then(b.log_file.cmp(&a.log_file)));
+	logs.sort_by(|a, b| match (a.log_file.as_str(), b.log_file.as_str()) {
+		("latest.log", _) => std::cmp::Ordering::Less,
+		(_, "latest.log") => std::cmp::Ordering::Greater,
+		_ => b.age.cmp(&a.age).then(b.log_file.cmp(&a.log_file)),
+	});
 	Ok(logs)
 }
 

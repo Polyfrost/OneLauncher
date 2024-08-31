@@ -1,5 +1,5 @@
 {
-	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/core/tauri-config-schema/schema.json",
+	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
 	"productName": "OneLauncher",
 	"identifier": "org.polyfrost.launcher",
 	"app": {
@@ -18,7 +18,9 @@
 					"https://polyfrost.org",
 					"https://*.polyfrost.org",
 					"https://*.cloudflare.com",
-					"https://api.mclo.gs"
+					"https://api.mclo.gs",
+					"ipc:",
+					"http://ipc.localhost"
 				],
 				"img-src": [
 					"'self'",
@@ -41,9 +43,11 @@
 					"https://www.youtube-nocookie.com",
 					"https://discord.com",
 					"https://*.githubusercontent.com",
-					"'self'"
+					"'self'",
+					"'unsafe-inline'"
 				],
 				"style-src": [
+					"'unsafe-inline'",
 					"unsafe-inline",
 					"'self'"
 				]
@@ -107,7 +111,7 @@
 		"license": "GPL-3.0-only",
 		"homepage": "https://polyfrost.org/",
 		"longDescription": "Next-generation open source Minecraft launcher",
-		"createUpdaterArtifacts": true,
+		"createUpdaterArtifacts": "v1Compatible",
 		"resources": [],
 		"externalBin": [],
 		"linux": {

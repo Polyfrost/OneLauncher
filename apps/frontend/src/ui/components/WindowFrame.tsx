@@ -4,7 +4,7 @@ import type { JSX } from 'solid-js';
 import { onMount } from 'solid-js';
 import Modal, { createModal } from './overlay/Modal';
 import Button from './base/Button';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 
 interface TitlebarButtonProps {
 	icon: (any: any) => JSX.Element;
@@ -22,13 +22,13 @@ function TitlebarButton(props: TitlebarButtonProps) {
 	);
 }
 
-function WindowFrame() {
-	const { settings } = useSettingsContext();
+const maximize = () => Window.getCurrent().toggleMaximize();
+const minimize = () => Window.getCurrent().minimize();
+const quit = () => Window.getCurrent().close();
+const kill = () => Window.getCurrent().destroy();
 
-	const maximize = () => Window.getCurrent().toggleMaximize();
-	const minimize = () => Window.getCurrent().minimize();
-	const quit = () => Window.getCurrent().close();
-	const kill = () => Window.getCurrent().destroy();
+function WindowFrame() {
+	const { settings } = useSettings();
 
 	const modal = createModal(props => (
 		<Modal.Simple

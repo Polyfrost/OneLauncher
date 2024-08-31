@@ -77,7 +77,7 @@ function ClusterSidebar() {
 		if (!c || typeof c.path !== 'string')
 			return [];
 
-		return tryResult(bridge.commands.getProcessesDetailedByPath, c.path);
+		return tryResult(() => bridge.commands.getProcessesDetailedByPath(c.path!));
 	});
 
 	const isRouting = useIsRouting();

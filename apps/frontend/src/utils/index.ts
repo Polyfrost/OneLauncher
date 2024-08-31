@@ -1,8 +1,6 @@
+import { open } from '@tauri-apps/plugin-shell';
+import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 import { DurationFormat } from '@formatjs/intl-durationformat';
-import type { Cluster, Loader, VersionType } from '~bindings';
-
-export * from './timer';
-export * from './sorting';
 
 export function supportsMods(loader?: Cluster | Loader): boolean {
 	if (loader === undefined)
@@ -25,12 +23,20 @@ export function formatVersionRelease(release: VersionType): string {
 	return mapping[release];
 }
 
-export function upperFirst(object: any): string {
-	const str = object.toString();
-	return str.charAt(0).toUpperCase() + str.slice(1);
+export function upperFirst<T extends string>(object: T): Capitalize<T> {
+	const string = object.toString();
+	return (string.charAt(0).toUpperCase() + string.slice(1)) as Capitalize<T>;
 }
 
-export function abbreviateNumber(n: number, locale: string = 'en-US'): string {
+export function uint32ToBigInt([high, low]: [number, number]): bigint {
+	return (BigInt(high >>> 0) << 32n) | BigInt(low >>> 0);
+}
+
+export function int32ToBigInt([high, low]: [number, number]): bigint {
+	return (BigInt(high | 0) << 32n) | BigInt(low >>> 0);
+}
+
+export function abbreviateNumber(n: number | bigint, locale: string = 'en-US'): string {
 	return new Intl.NumberFormat(locale, {
 		notation: 'compact',
 		compactDisplay: 'short',
@@ -44,15 +50,21 @@ export function pluralize(n: number, word: string, locale: string = 'en'): strin
 	return pluralForm === 'one' ? word : `${word}s`;
 }
 
-export function secondsToWords(
-	seconds: number | bigint,
+export function formatAsDuration(
+	seconds: number | bigint | Date,
 	locale: string = 'en',
 	style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
 ): string {
-	const n = Number(seconds);
+	let n: number | undefined;
+
+	if (seconds instanceof Date)
+		n = seconds.getTime();
+	else
+		n = Number(seconds);
+
 	const formatter = new DurationFormat(locale, { style });
-	return formatter.format({
-		seconds: n % 60,
+	const duration = formatter.format({
+		seconds: Math.floor(n % 60),
 		minutes: Math.floor(n / 60) % 60,
 		hours: Math.floor(n / (60 * 60)) % 24,
 		days: Math.floor(n / (60 * 60 * 24)) % 7,
@@ -60,6 +72,43 @@ export function secondsToWords(
 		months: Math.floor(n / (60 * 60 * 24 * 30)) % 12,
 		years: Math.floor(n / (60 * 60 * 24 * 365)),
 	});
+
+	if (duration.length === 0)
+		return 'never';
+
+	return duration;
+}
+
+export function formatAsRelative(
+	seconds: number | bigint | Date,
+	locale: string = 'en',
+	style: 'long' | 'short' | 'narrow' | 'digital' = 'long',
+): string {
+	let elapsed: number | undefined;
+
+	if (seconds instanceof Date)
+		elapsed = seconds.getTime();
+	else
+		elapsed = Number(seconds);
+
+	elapsed -= Date.now();
+
+	const units = {
+		year: 31536000000,
+		month: 2592000000,
+		week: 604800000,
+		day: 86400000,
+		hour: 3600000,
+		minute: 60000,
+		second: 1000,
+	};
+
+	const formatter = new Intl.RelativeTimeFormat(locale, { style: style as Intl.RelativeTimeFormatStyle });
+	for (const [unit, ms] of Object.entries(units))
+		if (Math.abs(elapsed) > ms || unit === 'second')
+			return formatter.format(Math.round(elapsed / ms), unit as Intl.RelativeTimeFormatUnit);
+
+	return 'now';
 }
 
 export function asEnvVariables(str: string): [string, string][] {
@@ -72,4 +121,34 @@ export function asEnvVariables(str: string): [string, string][] {
 		.filter(pair => pair !== null);
 }
 
+export function getLicenseUrl(licenseId: string | License | null | undefined): string | undefined {
+	if (licenseId === null || licenseId === undefined)
+		return;
+
+	let id: string | undefined;
+
+	if (typeof licenseId !== 'string') {
+		if (licenseId.url !== null && licenseId.url !== undefined) {
+			open(licenseId.url);
+			return;
+		}
+
+		id = licenseId.id || licenseId.name;
+	}
+	else {
+		id = licenseId;
+	}
+
+	return `https://spdx.org/licenses/${id}.html`;
+}
+
+export function getPackageUrl(provider: Providers, id: string, package_type: PackageType = 'mod'): string {
+	const mapping: Record<Providers, string> = {
+		Modrinth: `https://modrinth.com/${package_type}/${id}`,
+	};
+
+	return mapping[provider];
+}
+
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
+export const PROVIDERS: Providers[] = ['Modrinth'] as const;

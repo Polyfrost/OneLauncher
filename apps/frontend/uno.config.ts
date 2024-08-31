@@ -111,6 +111,13 @@ export default defineConfig({
 				trace: '#FDFDFD',
 			},
 
+			link: {
+				DEFAULT: '#61AFEF',
+				hover: '#5F87FF',
+				pressed: '#72AFFF',
+				disabled: '#61AFEF80',
+			},
+
 			page: {
 				DEFAULT: '#11171c',
 				elevated: '#151c22',

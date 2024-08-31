@@ -5,7 +5,8 @@ use crate::store::{ClusterPath, ProcessorChild};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-#[derive(specta::Type, serde::Serialize)]
+#[derive(serde::Serialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct DetailedProcess {
 	pub uuid: Uuid,
 	pub user: Option<Uuid>,

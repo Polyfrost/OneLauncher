@@ -1,26 +1,26 @@
 import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { type Accessor, type Setter, Show, createSignal, untrack } from 'solid-js';
-import { useBeforeLeave, useNavigate } from '@solidjs/router';
+import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
 import { join } from 'pathe';
+import type { Cluster } from '@onelauncher/client/bindings';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';
 import Button from '../../components/base/Button';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-import type { Cluster } from '~bindings';
-import { secondsToWords, upperFirst } from '~utils';
+import { formatAsDuration, upperFirst } from '~utils';
 import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import SettingsRow from '~ui/components/SettingsRow';
-import useSettingsContext from '~ui/hooks/useSettings';
-import type { ModalProps } from '~ui/components/overlay/Modal';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
+import useSettings from '~ui/hooks/useSettings';
+import Modal, { type ModalProps, createModal } from '~ui/components/overlay/Modal';
+import usePreventLeave from '~ui/hooks/usePreventLeave';
 
 function ClusterOverview() {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 	const [cluster, { refetch }] = useClusterContext();
 
 	const [editMode, setEditMode] = createSignal(false);
@@ -30,19 +30,19 @@ function ClusterOverview() {
 	const navigate = useNavigate();
 
 	const saveModal = createModal(props => (
-		<SaveModal {...props} save={save} dontSave={dontSave} />
+		<SaveModal
+			{...props}
+			save={save}
+			dontSave={dontSave}
+		/>
 	));
 
 	const deleteModal = createModal(props => (
-		<Modal.Delete {...props} onDelete={deleteCluster} />
+		<Modal.Delete
+			{...props}
+			onDelete={deleteCluster}
+		/>
 	));
-
-	useBeforeLeave((e) => {
-		if (editMode() && madeChanges()) {
-			e.preventDefault();
-			saveModal.show();
-		}
-	});
 
 	function getPath() {
 		const clusterPath = cluster()?.path;
@@ -103,15 +103,28 @@ function ClusterOverview() {
 		refetch();
 	}
 
-	function dontSave() {
+	const preventLeave = usePreventLeave((ctx) => {
+		if (editMode() && madeChanges()) {
+			ctx.preventNavigation();
+			saveModal.show();
+		}
+	});
+
+	async function dontSave() {
 		saveModal.hide();
 		setEditMode(false);
+
+		if (preventLeave.triedNavigating())
+			preventLeave.continue();
 	}
 
-	function save() {
-		pushEdits();
+	async function save() {
+		await pushEdits();
 		saveModal.hide();
 		setEditMode(false);
+
+		if (preventLeave.triedNavigating())
+			preventLeave.continue();
 	}
 
 	return (
@@ -263,7 +276,7 @@ function Banner(props: BannerProps) {
 				<Show when={props.editMode()}>
 					<div
 						onClick={launchFilePicker}
-						class="absolute h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
+						class="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
 					>
 						<ImagePlusIcon class="h-12 w-12" />
 					</div>
@@ -304,9 +317,9 @@ function Banner(props: BannerProps) {
 									'opacity-50': props.editMode(),
 								}}
 							/>
+							<span>{props.cluster.meta.mc_version}</span>
 							<span>{upperFirst(props.cluster.meta.loader || 'unknown')}</span>
 							{props.cluster.meta.loader_version && <span>{props.cluster.meta.loader_version.id}</span>}
-							<span>{props.cluster.meta.mc_version}</span>
 						</span>
 						<span
 							class="text-xs text-fg-secondary"
@@ -316,13 +329,12 @@ function Banner(props: BannerProps) {
 						>
 							Played for
 							{' '}
-							<b>{secondsToWords((props.cluster.meta.overall_played || 0n))}</b>
+							<b>{formatAsDuration((props.cluster.meta.overall_played || 0))}</b>
 							.
 						</span>
 					</div>
 
 					<div class="flex flex-row items-end gap-x-2.5 *:h-8">
-
 						<Button
 							buttonStyle="iconSecondary"
 							children={<Share07Icon />}

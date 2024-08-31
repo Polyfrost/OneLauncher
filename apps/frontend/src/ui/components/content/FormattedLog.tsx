@@ -1,4 +1,4 @@
-import { Index, Show, createMemo, createSignal, untrack } from 'solid-js';
+import { Index, Show, createEffect, createMemo, createSignal, untrack } from 'solid-js';
 import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
 import type { Ref } from '@solid-primitives/refs';
 import { AlignBottom01Icon } from '@untitled-theme/icons-solid';
@@ -15,8 +15,11 @@ interface FormattedLogProps {
 function FormattedLog(props: FormattedLogProps) {
 	// TODO(perf): Do a "infinite scroll" method of rendering the log. Adding 15918590815 dom elements at once lags the render thread for a bit
 	const lines = createMemo(() => (props.log?.trim().split('\n') || []));
-	// eslint-disable-next-line solid/reactivity -- Shouldn't really be tracked
-	const [shouldScroll, setShouldScroll] = createSignal(props.enableAutoScroll === true);
+	const [shouldScroll, setShouldScroll] = createSignal(false);
+
+	createEffect(() => {
+		setShouldScroll(props.enableAutoScroll === true);
+	});
 
 	let overlayScrollbars!: OverlayScrollbarsComponentRef;
 
@@ -38,7 +41,7 @@ function FormattedLog(props: FormattedLogProps) {
 	}
 
 	return (
-		<div class="relative h-full flex flex-1 flex-col rounded-md bg-component-bg p-2">
+		<div class="relative h-full flex flex-1 flex-col rounded-md bg-component-bg">
 			<Show when={props.enableAutoScroll === true}>
 				<div class="absolute right-0 top-0 z-1 h-6 w-full flex flex-row justify-end border border-gray-05 rounded-t-md bg-page p-px">
 					<Button.Toggle

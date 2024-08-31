@@ -18,7 +18,7 @@ use crate::utils::io::{self, IOError};
 use crate::utils::java::JavaVersion;
 use crate::State;
 
-use super::{Directories, InitHooks, Memory, Package, PackageType, Resolution};
+use super::{Directories, InitHooks, Memory, PackageType, Resolution};
 
 /// Core Cluster state manager with a [`HashMap<ClusterPath, Cluster>`].
 pub(crate) struct Clusters(pub HashMap<ClusterPath, Cluster>);
@@ -39,6 +39,31 @@ pub enum ClusterStage {
 	NotInstalled,
 }
 
+impl ClusterStage {
+	pub fn as_str(&self) -> &'static str {
+		match *self {
+			Self::Installed => "installed",
+			Self::Downloading => "downloading",
+			Self::PackDownloading => "pack_downloading",
+			Self::NotInstalled => "not_installed",
+		}
+	}
+}
+
+impl std::str::FromStr for ClusterStage {
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		Ok(match s {
+			"installed" => Self::Installed,
+			"downloading" => Self::Downloading,
+			"pack_downloading" => Self::PackDownloading,
+			"not_installed" => Self::NotInstalled,
+			_ => Self::NotInstalled,
+		})
+	}
+
+	type Err = crate::Error;
+}
+
 /// Relative Path wrapper to be used as an identifer for a cluster path.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
@@ -52,7 +77,7 @@ impl ClusterPath {
 	}
 
 	pub async fn find_by_uuid(uuid: Uuid) -> crate::Result<Self> {
-		Ok(crate::cluster::get_by_uuid(uuid, None)
+		Ok(crate::cluster::get_by_uuid(uuid)
 			.await?
 			.ok_or(anyhow::anyhow!("Cluster does not exist"))?
 			.cluster_path())
@@ -62,6 +87,12 @@ impl ClusterPath {
 	pub async fn full_path(&self) -> crate::Result<PathBuf> {
 		let state = State::get().await?;
 		let clusters_dir = state.directories.clusters_dir().await;
+		Ok(clusters_dir.join(&self.0))
+	}
+
+	/// Get the full [`PathBuf`] of the current cluster path.
+	pub async fn full_path_dirs(&self, dirs: &Directories) -> crate::Result<PathBuf> {
+		let clusters_dir = dirs.clusters_dir().await;
 		Ok(clusters_dir.join(&self.0))
 	}
 
@@ -76,7 +107,7 @@ impl ClusterPath {
 
 	/// Validate the cluster and clone the current [`ClusterPath`].
 	pub async fn cluster_path(&self) -> crate::Result<ClusterPath> {
-		if let Some(c) = crate::cluster::get(self, None).await? {
+		if let Some(c) = crate::cluster::get(self).await? {
 			Ok(c.cluster_path())
 		} else {
 			Err(anyhow::anyhow!(
@@ -146,6 +177,8 @@ impl From<InnerPathLinux> for RawPackagePath {
 		RawPackagePath(value.0)
 	}
 }
+
+// TODO: make it not a pathbuf, just get rid of all packagepath and clusterpath into str. maybe even just go straight to prisma with strings
 
 /// Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -222,9 +255,6 @@ pub struct Cluster {
 	// The per-cluster initialization hooks.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub init_hooks: Option<InitHooks>,
-	pub packages: HashMap<PackagePath, Package>,
-	#[serde(default)]
-	pub update: Option<String>,
 }
 
 /// Represents core Cluster metadata ([`Cluster#meta`]).
@@ -313,6 +343,61 @@ pub enum Loader {
 	LegacyFabric,
 }
 
+impl Loader {
+	pub fn as_str(&self) -> &'static str {
+		match *self {
+			Self::Vanilla => "vanilla",
+			Self::Forge => "forge",
+			Self::Fabric => "fabric",
+			Self::Quilt => "quilt",
+			Self::NeoForge => "neoforge",
+			Self::LegacyFabric => "legacyfabric",
+		}
+	}
+
+	pub fn as_meta_str(&self) -> &'static str {
+		match *self {
+			Self::Vanilla => "vanilla",
+			Self::Forge => "forge",
+			Self::Fabric => "fabric",
+			Self::Quilt => "quilt",
+			Self::NeoForge => "neo",
+			Self::LegacyFabric => "legacyfabric",
+		}
+	}
+
+	pub fn from_string(val: &str) -> Self {
+		match val {
+			"vanilla" => Self::Vanilla,
+			"forge" => Self::Forge,
+			"fabric" => Self::Fabric,
+			"quilt" => Self::Quilt,
+			"neoforge" => Self::NeoForge,
+			_ => Self::Vanilla,
+		}
+	}
+
+	pub fn supports_mods(&self) -> bool {
+		!matches!(self, Self::Vanilla)
+	}
+}
+
+impl TryFrom<String> for Loader {
+	type Error = crate::ErrorKind;
+
+	fn try_from(value: String) -> Result<Self, Self::Error> {
+		Ok(match value.to_lowercase().as_str() {
+			"vanilla" => Self::Vanilla,
+			"forge" => Self::Forge,
+			"fabric" => Self::Fabric,
+			"neoforge" => Self::NeoForge,
+			"quilt" => Self::Quilt,
+			"legacyfabric" | "legacy_fabric" => Self::LegacyFabric,
+			_ => return Err(anyhow::anyhow!("invalid loader type").into()),
+		})
+	}
+}
+
 impl std::fmt::Display for Loader {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.write_str(match *self {
@@ -373,8 +458,6 @@ impl Cluster {
 			resolution: None,
 			force_fullscreen: None,
 			init_hooks: None,
-			packages: HashMap::new(),
-			update: None,
 		})
 	}
 
@@ -418,7 +501,7 @@ impl Cluster {
 	pub fn handle_crash(path: ClusterPath) {
 		tokio::task::spawn(async move {
 			let res = async {
-				let cluster = crate::api::cluster::get(&path, None).await?;
+				let cluster = crate::api::cluster::get(&path).await?;
 				if let Some(cluster) = cluster {
 					if cluster.stage == ClusterStage::Installed {
 						send_message(&format!(
@@ -436,57 +519,6 @@ impl Cluster {
 			match res {
 				Ok(()) => {}
 				Err(err) => tracing::warn!("failed to send crash report to frontend {err}"),
-			};
-		});
-	}
-
-	/// sync all packages
-	pub fn sync_packages(cluster_path: ClusterPath, force: bool) {
-		let span = tracing::span!(tracing::Level::INFO, "sync_packages", ?cluster_path, ?force);
-		tokio::task::spawn(async move {
-			let result = async {
-				let _span = span.enter();
-				let state = State::get().await?;
-				let cluster = crate::api::cluster::get(&cluster_path, None).await?;
-
-				if let Some(cluster) = cluster {
-					if cluster.stage != ClusterStage::PackDownloading || force {
-						let paths = cluster.get_full_subs().await?;
-						let caches_dir = state.directories.caches_dir().await;
-						let packages = crate::store::generate_context(
-							cluster.clone(),
-							paths,
-							caches_dir,
-							&state.io_semaphore,
-							&state.fetch_semaphore,
-						)
-						.await?;
-
-						let mut new_clusters = state.clusters.write().await;
-						if let Some(cluster) = new_clusters.0.get_mut(&cluster_path) {
-							cluster.packages = packages;
-						}
-
-						send_cluster(
-							cluster.uuid,
-							&cluster_path,
-							&cluster.meta.name,
-							ClusterPayloadType::Synced,
-						)
-						.await?;
-					}
-				} else {
-					tracing::warn!(
-						"failed to fetch cluster packages: path {cluster_path} invalid."
-					);
-				}
-				Ok::<(), crate::Error>(())
-			}
-			.await;
-
-			match result {
-				Ok(()) => {}
-				Err(err) => tracing::warn!("failed to fetch cluster packages: {err}"),
 			};
 		});
 	}
@@ -516,8 +548,8 @@ impl Cluster {
 		};
 
 		paths(PackageType::Mod.get_folder())?;
-		paths(PackageType::Shader.get_folder())?;
-		paths(PackageType::Resource.get_folder())?;
+		paths(PackageType::ShaderPack.get_folder())?;
+		paths(PackageType::ResourcePack.get_folder())?;
 		paths(PackageType::DataPack.get_folder())?;
 
 		Ok(files)
@@ -544,8 +576,13 @@ impl Cluster {
 		}
 
 		watch_path(cluster_path, watcher, PackageType::Mod.get_folder()).await?;
-		watch_path(cluster_path, watcher, PackageType::Shader.get_folder()).await?;
-		watch_path(cluster_path, watcher, PackageType::Resource.get_folder()).await?;
+		watch_path(cluster_path, watcher, PackageType::ShaderPack.get_folder()).await?;
+		watch_path(
+			cluster_path,
+			watcher,
+			PackageType::ResourcePack.get_folder(),
+		)
+		.await?;
 		watch_path(cluster_path, watcher, PackageType::DataPack.get_folder()).await?;
 		watch_path(cluster_path, watcher, "crash-reports").await?;
 
@@ -595,54 +632,7 @@ impl Clusters {
 	#[tracing::instrument]
 	#[onelauncher_macros::memory]
 	pub async fn update_packages() {
-		let res = async {
-			let state = State::get().await?;
-			let mut files: Vec<(Cluster, Vec<PathBuf>)> = Vec::new();
-
-			{
-				let clusters = state.clusters.read().await;
-				for (_cluster_path, cluster) in clusters.0.iter() {
-					let paths = cluster.get_full_subs().await?;
-					files.push((cluster.clone(), paths));
-				}
-			}
-
-			let caches_dir = state.directories.caches_dir().await;
-			future::try_join_all(files.into_iter().map(|(cluster, files)| async {
-				let cluster_name = cluster.cluster_path();
-				let packages = super::generate_context(
-					cluster,
-					files,
-					caches_dir.clone(),
-					&state.io_semaphore,
-					&state.fetch_semaphore,
-				)
-				.await?;
-
-				let mut new_clusters = state.clusters.write().await;
-				if let Some(cluster) = new_clusters.0.get_mut(&cluster_name) {
-					cluster.packages = packages;
-				}
-
-				drop(new_clusters);
-
-				Ok::<(), crate::Error>(())
-			}))
-			.await?;
-
-			{
-				let clusters = state.clusters.read().await;
-				clusters.sync().await?;
-			}
-
-			Ok::<(), crate::Error>(())
-		}
-		.await;
-
-		match res {
-			Ok(()) => {}
-			Err(err) => tracing::warn!("failed to fetch cluster packages: {err}"),
-		};
+		// TODO: Pacakges
 	}
 
 	/// update all available package versions
@@ -745,10 +735,10 @@ impl Clusters {
 		Ok(cluster)
 	}
 
-	/// sync all available clusters
-	pub fn sync_clusters(cluster_path: ClusterPath) {
+	/// sync a cluster
+	pub fn sync_cluster(cluster_path: ClusterPath) {
 		tokio::task::spawn(async move {
-			let span = tracing::span!(tracing::Level::INFO, "sync_clusters");
+			let span = tracing::span!(tracing::Level::INFO, "sync_cluster");
 			let res = async {
 				let _span = span.enter();
 				let state = State::get().await?;
@@ -761,7 +751,7 @@ impl Clusters {
 							cluster.uuid,
 							&cluster_path,
 							&cluster.meta.name,
-							crate::proxy::ClusterPayloadType::Deleted,
+							ClusterPayloadType::Deleted,
 						)
 						.await?;
 						tracing::debug!("removed non-existant fs cluster!");
@@ -774,7 +764,10 @@ impl Clusters {
 							false,
 						)
 						.await?;
-					Cluster::sync_packages(cluster_path, false);
+
+					tokio::task::spawn(async move {
+						// Cluster::sync_packages(&cluster_path).await;
+					});
 				}
 				Ok::<(), crate::Error>(())
 			}

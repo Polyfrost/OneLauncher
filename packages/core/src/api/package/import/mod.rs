@@ -233,7 +233,7 @@ pub async fn copy_minecraft(
 	old_ingress: Option<IngressId>,
 ) -> crate::Result<IngressId> {
 	let cluster_path_full = cluster_path.full_path().await?;
-	let subfiles = sub(&minecraft_path).await?;
+	let subfiles = sub(&minecraft_path, false).await?;
 	let total_subfiles = subfiles.len() as u64;
 	let ingress = init_or_edit_ingress(
 		old_ingress,
@@ -263,19 +263,25 @@ pub async fn copy_minecraft(
 #[onelauncher_macros::memory]
 #[async_recursion::async_recursion]
 #[tracing::instrument]
-pub async fn sub(path: &Path) -> crate::Result<Vec<PathBuf>> {
+pub async fn sub(path: &Path, include_empty: bool) -> crate::Result<Vec<PathBuf>> {
 	if !path.is_dir() {
 		return Ok(vec![path.to_path_buf()]);
 	}
 	let mut files = Vec::new();
 	let mut dir = io::read_dir(&path).await?;
+	let mut has_files = false;
 	while let Some(child) = dir
 		.next_entry()
 		.await
 		.map_err(|e| IOError::with_path(e, path))?
 	{
+		has_files = true;
 		let path_child = child.path();
-		files.append(&mut sub(&path_child).await?);
+		files.append(&mut sub(&path_child, include_empty).await?);
+	}
+
+	if !has_files && include_empty {
+		files.push(path.to_path_buf());
 	}
 
 	Ok(files)

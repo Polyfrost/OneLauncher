@@ -11,5 +11,7 @@
 	},
 	"bugs": "https://github.com/polyfrost/onelauncher/issues",
 	"sideEffects": false,
-	"scripts": {}
+	"scripts": {
+		"example": "cargo run --example "
+	}
 }

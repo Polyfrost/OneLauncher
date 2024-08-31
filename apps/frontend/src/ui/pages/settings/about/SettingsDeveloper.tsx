@@ -4,10 +4,10 @@ import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import SettingsRow from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 
 function SettingsDeveloper() {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	return (
 		<Sidebar.Page>

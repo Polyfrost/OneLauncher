@@ -1,11 +1,11 @@
 import { For, Show } from 'solid-js';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Button from '../../base/Button';
 import PlayerHead from '../../game/PlayerHead';
 import Popup, { type PopupProps } from '../Popup';
 import useAccountController from './AddAccountModal';
-import type { MinecraftCredentials } from '~bindings';
 
 interface AccountComponentProps {
 	account: MinecraftCredentials | null | undefined;

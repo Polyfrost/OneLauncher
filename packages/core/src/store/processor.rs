@@ -368,8 +368,7 @@ impl Processor {
 					.await?
 					.is_none()
 				{
-					if let Some(cluster) = cluster::get(&process.cluster_path.clone(), None).await?
-					{
+					if let Some(cluster) = cluster::get(&process.cluster_path.clone()).await? {
 						clusters.push(cluster);
 					}
 				}

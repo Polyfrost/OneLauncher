@@ -6,10 +6,12 @@
 //! - [`java`]: Async utilities for managing and downloading Java versions.
 //! - [`platform`]: Async utilities for managing OS-specific [`interpulse`] operations and rules.
 //! - [`watcher`]: Async utilities for watching files with [`notify`].
+//! - [`logging`]: Async utilities for log4j parsing with [`nom`].
 
 pub mod http;
 pub mod io;
 pub mod java;
+pub mod logging;
 pub mod platform;
 pub mod watcher;
 

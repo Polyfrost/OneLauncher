@@ -23,7 +23,7 @@ function NavbarLink(props: NavbarLinkProps) {
 			class="rounded-lg px-4 py-2 text-lg hover:bg-component-bg-hover hover:text-fg-primary-hover"
 			inactiveClass="text-fg-secondary"
 			activeClass="text-fg-primary"
-			end
+			end={props.path === '/'}
 		>
 			{props.label}
 		</A>

@@ -20,10 +20,10 @@ async fn initialize_state(handle: &tauri::AppHandle) -> api::Result<()> {
 	Ok(())
 }
 
+/// initializes the logger and runs the app. if the logger fails to initialize
+/// we panic because nothing else can be debugged once the logger fails.
+/// the only thing that can fail before the logger should be our [`tokio::main`] loop.
 pub async fn run() {
-	// initializes the logger and runs the app. if the logger fails to initialize
-	// we panic because nothing else can be debugged once the logger fails.
-	// the only thing that can fail before the logger should be our `tokio::main` loop.
 	let _log_guard = onelauncher::start_logger();
 	tracing::info!("initialized logger. loading onelauncher/tauri...");
 
@@ -50,7 +50,7 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
 				.formatter(crate::ext::specta::formatter),
-			"../frontend/src/bindings.ts",
+			"../../packages/client/src/bindings.ts",
 		)
 		.expect("failed to export debug bindings!");
 

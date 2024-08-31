@@ -1,7 +1,7 @@
 import { type Context, Match, type ParentProps, type Resource, Switch, createContext, createSignal, useContext } from 'solid-js';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Modal, { type ModalProps, createModal } from '../Modal';
-import type { MinecraftCredentials } from '~bindings';
 import { bridge } from '~imports';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import Button from '~ui/components/base/Button';
@@ -18,8 +18,8 @@ interface AccountControllerContextFunc {
 const AccountControllerContext = createContext<AccountControllerContextFunc>() as Context<AccountControllerContextFunc>;
 
 export function AccountControllerProvider(props: ParentProps) {
-	const [accounts, { refetch: refetchAccounts }] = useCommand(bridge.commands.getUsers);
-	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(bridge.commands.getDefaultUser, true);
+	const [accounts, { refetch: refetchAccounts }] = useCommand(() => bridge.commands.getUsers());
+	const [defaultAccount, { refetch: refetchDefaultAccount }] = useCommand(() => bridge.commands.getDefaultUser(true));
 
 	const [deleteModalUuid, setDeleteModalUuid] = createSignal<string>();
 
@@ -37,7 +37,7 @@ export function AccountControllerProvider(props: ParentProps) {
 	}
 
 	async function setDefaultAccount(uuid: string | null) {
-		await tryResult(bridge.commands.setDefaultUser, uuid).then(refetch);
+		await tryResult(() => bridge.commands.setDefaultUser(uuid)).then(refetch);
 	}
 
 	async function removeAccount(uuid: string, force?: boolean) {
@@ -52,7 +52,7 @@ export function AccountControllerProvider(props: ParentProps) {
 		if (uuid === undefined)
 			return;
 
-		await tryResult(bridge.commands.removeUser, uuid);
+		await tryResult(() => bridge.commands.removeUser(uuid));
 		refetch();
 	}
 

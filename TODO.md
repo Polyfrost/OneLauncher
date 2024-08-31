@@ -1,6 +1,11 @@
 # todo list
 
+- [ ] **remove clusterpath, just switch to pathbuf or string in prisma, and refactor package api**
+- [ ] **splash screen and reduce startup times**
+- [ ] fix missing jars and libraries when launching clusters
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
+	- maybe use `sqlx` instead to avoid unnecessary bloat (but also i don't like sqlx lol)
+	- todo: also add caching  to the prisma schema
 - [ ] migrate api commands that currently use `tauri-specta` but don't actually rely on `tauri` to `rspc`
 	- waiting on `rspc` to update to the latest version (hopefully once tauri comes out of rc)
 - [ ] bump `tauri` to stable v2 when it releases.
@@ -9,6 +14,7 @@
 - legacy fabric, babric, nilloader, java agent support
 	- nilloader <https://github.com/modrinth/labrinth/issues/903> <https://github.com/orgs/modrinth/discussions/45>
 - [ ] shared cluster resources and options (<https://github.com/enjarai/shared-resources>)
+- [ ] utils testing, dom testing, client testing, e2e testing
 - [ ] ftb, technic, and tlauncher importing
 - [ ] better debug logging and mc logging, for the launcher and spawn
 - [ ] implement forgewrapper instead of processing ourselves
@@ -23,10 +29,10 @@
 - [x] modal stacking
 - [x] popup visibility toggled
 - [x] smooth animations/animation accessibility
-- [ ] cluster grouping
+- [x] cluster grouping
 - [ ] cluster reorganizing (drag n drop)
-- [ ] different cluster views
-- [ ] settings tsx
+- [x] different cluster views
+- [x] settings tsx
 - [ ] packages api
 - [ ] browser tsx
 - [ ] importing tsx
@@ -35,10 +41,25 @@
 - [x] self updater
 - [x] authentication
 - [x] manifest fetching
+- [ ] tauri updater v1 -> v2
 - [ ] fix old intel gpus <https://github.com/MultiMC/Launcher/issues/1276#issuecomment-774541617>
 - [ ] fix cmd+a on macos not selecting all text
 - [ ] fix cmd+c on macos not pasting in oauth and entire launcher
 - [ ] hotfix some webkitgtk problems if possible
-- [ ] fetching from screenshots
+- [x] fetching from screenshots
+- [ ] inferring metadata from zip
+- [ ] inferring metadata from modrinth api
 - [ ] feature parity with prism:
-	- [ ] h
+	- [ ]
+- [ ] feature parity with modrinth app:
+	- [ ]
+- [ ] reduce bundle size (<https://bundlephobia.com>):
+	- [ ] markdown-it (157kb) - lots of alternatives
+	- [ ] highlight.js (143kb) - shiki is a good alternative i think
+	- [ ] uFuzzy (24kb) - lots of alternatives, but its one of the best fuzzy searching libs
+	- [ ] overlayscrollbars (60kb) - not sure
+	- [ ] assets (63kb in icons and a lot more in .pngs) - we need to optimize our own assets, the ones from libs are negligable (default_instance_cover_ and header jpgs specifically)
+- [ ] reduce app size (release binary) including in appimage (10mb right now, aiming for less than 14mb total release)
+- [ ] drag and drop files into the launcher window (mods and modpack files)
+- [ ] <https://github.com/gorilla-devs/GDLauncher-Carbon> and <https://github.com/gorilla-devs/libium>
+- [ ] <https://github.com/gorilla-devs/furse> and <https://github.com/gorilla-devs/ferinth>

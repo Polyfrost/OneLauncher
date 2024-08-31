@@ -1,49 +1,39 @@
-import { type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
+import { type ComponentProps, type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
 import { InfoCircleIcon } from '@untitled-theme/icons-solid';
-import { TimeAgo } from '../../DynamicTime';
-import { PausableTimer } from '~utils';
+import { PausableTimer } from '@onelauncher/client';
+import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
 
-type NotificationComponentProps = Core.Notification & {
+type NotificationComponentProps = IngressPayload & {
 	overlay: boolean;
 };
 
-type NotificationType = '';
-
-function IconFromNotificationType(type: NotificationType): (props: JSX.HTMLAttributes<HTMLDivElement>) => JSX.Element {
+function IconFromNotificationType(type: IngressType['type']): (props: ComponentProps<'svg'>) => JSX.Element {
 	switch (type) {
-		// case NotificationType.Alert:
-		// 	return AlertTriangleIcon as any;
-		// case NotificationType.Download:
-		// 	return FolderDownloadIcon as any;
-		// case NotificationType.DownloadSuccess:
-		// 	return FolderCheckIcon as any;
-		// case NotificationType.DownloadError:
-		// 	return FolderXIcon as any;
-		// case NotificationType.Refresh:
-		// 	return RefreshCcw02Icon as any;
-		// case NotificationType.Success:
-		// 	return CheckCircleIcon as any;
-		// case NotificationType.Info:
+		case 'initialize':
+		case 'download_java':
+		case 'download_loader':
+		case 'sync_cluster':
+		case 'copy_cluster':
+		case 'sync_config':
+		case 'archival':
+		case 'download_package':
+		case 'download_pack':
 		default:
-			return InfoCircleIcon as any;
+			return InfoCircleIcon;
 	}
 }
 
-function ColorFromNotificationType(type: NotificationType): string {
+function ColorFromNotificationType(type: IngressType['type']): string {
 	switch (type) {
-		// case NotificationType.Info:
-		// case NotificationType.Refresh:
-		// 	return 'text-brand';
-
-		// case NotificationType.Alert:
-		// case NotificationType.DownloadError:
-		// 	return 'text-danger';
-
-		// case NotificationType.DownloadSuccess:
-		// case NotificationType.Success:
-		// 	return 'text-success';
-
-		// case NotificationType.Download:
+		case 'initialize':
+		case 'download_java':
+		case 'download_loader':
+		case 'sync_cluster':
+		case 'copy_cluster':
+		case 'sync_config':
+		case 'archival':
+		case 'download_package':
+		case 'download_pack':
 		default:
 			return 'text-fg-primary';
 	}
@@ -57,9 +47,9 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 	const [secondsLeft, setSecondsLeft] = createSignal<number>(TOTAL_SECONDS);
 
 	createEffect(() => {
-		setDisappearing(props.progress === undefined);
+		setDisappearing(props.fraction === undefined);
 
-		if (props.progress !== undefined && props.progress >= 1) {
+		if (props.fraction !== null && props.fraction >= 1) {
 			setVisible(false);
 			return;
 		}
@@ -121,7 +111,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 					<NotificationPopupComponent {...props} />
 				</div>
 
-				<Show when={disappearing() === true && props.progress === undefined}>
+				<Show when={disappearing() === true && props.fraction === undefined}>
 					<div class="h-1.5 w-full bg-brand-disabled">
 						<div
 							style={{
@@ -141,31 +131,28 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 	return (
 		<div class="flex flex-col gap-y-1 p-2">
 			<div class="grid grid-cols-[24px_1fr_auto] min-h-10 place-items-center gap-3">
-				{IconFromNotificationType(props.notification_type)({
-					class: `w-6 h-6 ${ColorFromNotificationType(props.notification_type)}`,
+				{IconFromNotificationType(props.event.type)({
+					class: `w-6 h-6 ${ColorFromNotificationType(props.event.type)}`,
 				})}
 
 				<div class="w-full flex flex-col">
-					<span class={`font-medium ${ColorFromNotificationType(props.notification_type)}`}>{props.title}</span>
+					<span class={`font-medium ${ColorFromNotificationType(props.event.type)}`}>{props.message}</span>
 					<span class="text-sm text-white/60">{props.message}</span>
 				</div>
 
 				<Show when={props.overlay !== true}>
 					<div class="flex flex-row items-center justify-end gap-1">
-						<span class="text-sm text-white/40">
-							<TimeAgo timestamp={props.created_at * 1000} />
-						</span>
 						<span class="h-1.5 w-1.5 rounded-full bg-brand" />
 					</div>
 				</Show>
 			</div>
 
-			<Show when={props.progress !== undefined}>
+			<Show when={props.fraction !== null}>
 				<div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled">
 					<div
 						class="h-full max-w-full min-w-0 rounded-full bg-brand transition-width"
 						style={{
-							width: `${Math.floor(props.progress! * 100)}%`,
+							width: `${Math.floor(props.fraction!)}%`,
 						}}
 					/>
 				</div>

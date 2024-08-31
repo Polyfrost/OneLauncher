@@ -1,7 +1,7 @@
 import { type Context, type ParentProps, Show, createContext, createEffect, useContext } from 'solid-js';
 import { useBeforeLeave } from '@solidjs/router';
+import type { Settings } from '@onelauncher/client/bindings';
 import useCommand from './useCommand';
-import type { Settings } from '~bindings';
 import { bridge } from '~imports';
 
 /**
@@ -20,7 +20,7 @@ interface SettingsControllerType {
 const SettingsContext = createContext() as Context<SettingsControllerType>;
 
 export function SettingsProvider(props: ParentProps) {
-	const [settings, { refetch }] = useCommand(bridge.commands.getSettings);
+	const [settings, { refetch }] = useCommand(() => bridge.commands.getSettings());
 
 	createEffect(() => {
 		if (settings !== undefined && settings() !== undefined)
@@ -54,7 +54,7 @@ export function SettingsProvider(props: ParentProps) {
 	);
 }
 
-export function useSettingsContext() {
+export function useSettings() {
 	const context = useContext(SettingsContext);
 
 	if (!context)
@@ -63,4 +63,4 @@ export function useSettingsContext() {
 	return context;
 }
 
-export default useSettingsContext;
+export default useSettings;

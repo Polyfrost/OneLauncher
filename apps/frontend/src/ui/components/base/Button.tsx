@@ -43,8 +43,8 @@ Button.Toggle = (props: ButtonToggleProps) => {
 		<Button
 			onClick={(e) => {
 				toggle();
-				// @ts-expect-error -- JSX doesn't seem to use the same type
-				split.onClick?.(e);
+				if (typeof split.onClick === 'function')
+					split.onClick(e);
 			}}
 			aria-checked={checked()}
 			{...rest}

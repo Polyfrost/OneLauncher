@@ -1,4 +1,10 @@
 fn main() {
+	#[cfg(target_os = "linux")]
+	build_stub();
+}
+
+#[cfg(target_os = "linux")]
+fn build_stub() {
 	cc::Build::new()
 		.include("include")
 		.file("stub/stub.c")
@@ -7,5 +13,5 @@ fn main() {
 		.warnings(true)
 		.compile("stub");
 
-	println!("cargo::rerun-if-changed=stub.c");
+	println!("cargo:rerun-if-changed=stub.c");
 }

@@ -1,17 +1,27 @@
 import process from 'node:process';
 import fs from 'node:fs/promises';
 import { type } from 'node:os';
-import { join } from 'pathe';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'pathe';
 import { execa } from 'execa';
 import semver from 'semver';
+import consola from 'consola';
 import type { CheckedEnvironment } from '.';
+
+const UPDATEKEY_LOCK_VERSION = '1';
 
 export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | undefined> {
 	if (process.env.TAURI_SIGNING_PRIVATE_KEY)
 		return;
 
-	const privateKeyPath = join(env.__root, '.keys', 'tauri.key');
-	const publicKeyPath = join(env.__root, '.keys', 'tauri.key.pub');
+	const privateKeyPath = resolve(join(env.__deps, 'tauri.key'));
+	const publicKeyPath = resolve(join(env.__deps, 'tauri.key.pub'));
+	const updatekeyPath = resolve(join(env.__deps, 'updatekey_lock'));
+
+	if (existsSync(updatekeyPath))
+		if (readFileSync(updatekeyPath, 'utf-8') === UPDATEKEY_LOCK_VERSION)
+			return;
+
 	const readKeys = () => Promise.all([
 		fs.readFile(publicKeyPath, 'utf-8'),
 		fs.readFile(privateKeyPath, 'utf-8'),
@@ -21,16 +31,16 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	try {
 		[keys.publicKey, keys.privateKey] = await readKeys();
 		if (keys.privateKey === '' || keys.publicKey === '')
-			throw new Error(`empty keys`);
+			consola.error(new Error(`empty keys`));
 	}
 	catch (error) {
 		if (env.__debug) {
-			console.warn(`failed to read updater keys`);
-			console.error(error);
+			consola.warn(`failed to read updater keys`);
+			consola.error(error);
 		}
 
 		const quote = type() === 'Windows_NT' ? '"' : '\'';
-		await execa`pnpm desktop tauri signer generate --ci -w ${quote}${privateKeyPath}${quote}`;
+		await execa`pnpm exec tauri signer generate --ci -w ${quote}${privateKeyPath}${quote}`;
 		[keys.publicKey, keys.privateKey] = await readKeys();
 		if (keys.privateKey === '' || keys.publicKey === '')
 			throw new Error(`empty keys`);
@@ -38,6 +48,7 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 
 	process.env.TAURI_SIGNING_PRIVATE_KEY = keys.privateKey;
 	process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = '';
+	await fs.writeFile(updatekeyPath, UPDATEKEY_LOCK_VERSION, 'utf-8');
 	return keys.publicKey;
 }
 
@@ -86,7 +97,7 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 
 	if (osType === 'Darwin') {
 		const macOSStore = {
-			defaultArm64: '11.0', // arm64 support was added in macOS 11.0
+			defaultArm64: '11.0', // arm64 support was added in macOS 11.0 (but the safari feature support is bad)
 			minimumVersion: tauriConfig?.bundle?.macOS?.minimumSystemVersion,
 		};
 
@@ -94,12 +105,12 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 			(targets.includes('aarch64-apple-darwin')
 			|| (targets.length === 0 && process.arch === 'arm64'))
 			&& (macOSStore.minimumVersion == null || semver.lt(
-				semver.coerce(macOSStore.minimumVersion) as semver.SemVer,
-				semver.coerce(macOSStore.defaultArm64) as semver.SemVer,
+				semver.coerce(macOSStore.minimumVersion)!,
+				semver.coerce(macOSStore.defaultArm64)!,
 			))
 		) {
 			macOSStore.minimumVersion = macOSStore.defaultArm64;
-			console.log(`aarch64-apple-darwin target: setting minimum system version to ${macOSStore.minimumVersion}`);
+			consola.log(`[aarch64-apple-darwin]: setting minimum system version to ${macOSStore.minimumVersion}`);
 		}
 
 		if (macOSStore.minimumVersion) {

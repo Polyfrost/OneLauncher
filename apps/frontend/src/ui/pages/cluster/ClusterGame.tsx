@@ -3,6 +3,7 @@ import { createSignal, onCleanup, onMount } from 'solid-js';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { SlashOctagonIcon } from '@untitled-theme/icons-solid';
 import { render } from 'solid-js/web';
+import type { DetailedProcess } from '@onelauncher/client/bindings';
 import { bridge } from '~imports';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
@@ -11,7 +12,6 @@ import Tooltip from '~ui/components/base/Tooltip';
 import FormattedLog, { Line } from '~ui/components/content/FormattedLog';
 import Button from '~ui/components/base/Button';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
-import type { DetailedProcess } from '~bindings';
 import useCommand from '~ui/hooks/useCommand';
 
 interface ClusterGameParams extends Params {
@@ -24,7 +24,7 @@ interface ClusterGameParams extends Params {
 function ClusterGame() {
 	const [cluster] = useClusterContext();
 	const [params] = useSearchParams<ClusterGameParams>();
-	const [log] = useCommand(bridge.commands.getClusterLog, cluster()!.uuid, 'latest.log');
+	const [log] = useCommand(() => bridge.commands.getClusterLog(cluster()!.uuid, 'latest.log'));
 	const [isRunning, setIsRunning] = createSignal(true);
 
 	const [unlisten, setUnlisten] = createSignal<UnlistenFn>();

@@ -60,8 +60,8 @@ SelectList.Row = (props: SelectListRowProps) => {
 				if (props.index !== undefined)
 					setSelected(props.index);
 
-				// @ts-expect-error -- JSX doesn't seem to use the same type
-				split.onClick?.(e);
+				if (typeof split.onClick === 'function')
+					split.onClick(e);
 			}}
 			class={`${styles.row} ${props.index !== undefined && selected() === props.index ? styles.selected : ''} ${split.class || ''}`}
 		>

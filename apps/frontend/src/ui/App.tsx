@@ -1,5 +1,6 @@
 import type { ParentProps } from 'solid-js';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import { PROGRAM_INFO } from '@onelauncher/client/bindings';
 import WindowFrame from './components/WindowFrame';
 import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -10,7 +11,7 @@ import { ClusterModalControllerProvider } from './components/overlay/cluster/Clu
 import { MultiProvider } from './components/MultiProvider';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
 import { ModalProvider, ModalRenderer } from './components/overlay/Modal';
-import { PROGRAM_INFO } from '~bindings';
+import { BrowserProvider } from './hooks/useBrowser';
 
 function App(props: ParentProps) {
 	if (PROGRAM_INFO.dev_build !== true)
@@ -28,9 +29,11 @@ function App(props: ParentProps) {
 					<div class="absolute left-0 top-0 h-full w-full flex flex-col overflow-x-hidden">
 						<ErrorBoundary>
 							<OverlayScrollbarsComponent class="os-hide-horizontal-scrollbar absolute left-0 top-0 h-full w-full flex flex-col overflow-x-hidden overflow-y-auto px-8 pb-8">
-								<AnimatedRoutes>
-									{props.children}
-								</AnimatedRoutes>
+								<div class="h-full flex-1">
+									<AnimatedRoutes>
+										{props.children}
+									</AnimatedRoutes>
+								</div>
 							</OverlayScrollbarsComponent>
 						</ErrorBoundary>
 					</div>
@@ -53,6 +56,7 @@ function GlobalContexts(props: ParentProps) {
 				SettingsProvider,
 				AccountControllerProvider,
 				ClusterModalControllerProvider,
+				BrowserProvider,
 			]}
 		>
 			{props.children}

@@ -1,5 +1,5 @@
 [toolchain]
-channel = "1.80.1"
+channel = "nightly"
 profile = "minimal"
 components = [
 	"cargo",
@@ -8,4 +8,6 @@ components = [
 	"rustc",
 	"rust-src",
 	"rustfmt",
+	"rust-docs",
+	"rust-analyzer",
 ]

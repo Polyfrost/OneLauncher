@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[specta::specta]
 #[tauri::command]
 pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
-	match onelauncher::cluster::get_by_uuid(uuid, None).await? {
+	match onelauncher::cluster::get_by_uuid(uuid).await? {
 		Some(cluster) => Ok(cluster),
 		None => Err("Cluster does not exist".into()),
 	}
@@ -24,13 +24,13 @@ pub async fn get_cluster(uuid: Uuid) -> Result<Cluster, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_clusters() -> Result<Vec<Cluster>, String> {
-	Ok(onelauncher::cluster::list(None).await?)
+	Ok(onelauncher::cluster::list().await?)
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_clusters_grouped() -> Result<HashMap<String, Vec<Cluster>>, String> {
-	Ok(onelauncher::cluster::list_grouped(None).await?)
+	Ok(onelauncher::cluster::list_grouped().await?)
 }
 
 #[derive(Serialize, Deserialize, Type)]
@@ -62,7 +62,7 @@ pub async fn create_cluster(props: CreateCluster) -> Result<Uuid, String> {
 	)
 	.await?;
 
-	if let Some(cluster) = cluster::get(&path, None).await? {
+	if let Some(cluster) = cluster::get(&path).await? {
 		Ok(cluster.uuid)
 	} else {
 		Err("Cluster does not exist".to_string())
@@ -103,7 +103,7 @@ pub async fn edit_cluster_meta(
 	name: Option<String>,
 	icon_path: Option<String>,
 ) -> Result<(), String> {
-	let cluster = cluster::get_by_uuid(uuid, None)
+	let cluster = cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster does not exist")?;
 
@@ -144,7 +144,7 @@ pub async fn run_cluster(uuid: Uuid) -> Result<DetailedProcess, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_cluster_logs(uuid: Uuid) -> Result<Vec<String>, String> {
-	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+	let cluster = onelauncher::cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster not found")?;
 	let logs = logger::get_logs(&cluster.cluster_path(), None)
@@ -158,7 +158,7 @@ pub async fn get_cluster_logs(uuid: Uuid) -> Result<Vec<String>, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_cluster_log(uuid: Uuid, log_name: String) -> Result<String, String> {
-	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+	let cluster = onelauncher::cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster not found")?;
 	let log = logger::get_output_by_file(&cluster.cluster_path(), logger::LogType::Info, &log_name)
@@ -169,7 +169,7 @@ pub async fn get_cluster_log(uuid: Uuid, log_name: String) -> Result<String, Str
 #[specta::specta]
 #[tauri::command]
 pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> {
-	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+	let cluster = onelauncher::cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster not found")?;
 	let log = logger::get_output_by_file(&cluster.cluster_path(), logger::LogType::Info, &log_name)
@@ -182,7 +182,7 @@ pub async fn upload_log(uuid: Uuid, log_name: String) -> Result<String, String> 
 #[specta::specta]
 #[tauri::command]
 pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
-	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+	let cluster = onelauncher::cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster not found")?;
 
@@ -195,7 +195,7 @@ pub async fn get_screenshots(uuid: Uuid) -> Result<Vec<String>, String> {
 #[specta::specta]
 #[tauri::command]
 pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
-	let cluster = onelauncher::cluster::get_by_uuid(uuid, None)
+	let cluster = onelauncher::cluster::get_by_uuid(uuid)
 		.await?
 		.ok_or("cluster not found")?;
 

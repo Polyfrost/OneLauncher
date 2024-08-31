@@ -1,4 +1,4 @@
-import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Show, Switch, children, createSignal, splitProps } from 'solid-js';
+import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Show, Switch, children, createEffect, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import Popup from '../overlay/Popup';
@@ -8,7 +8,7 @@ import styles from './Dropdown.module.scss';
 export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'> & {
 	onChange?: (selected: number) => any;
 	text?: string;
-	selected?: number;
+	selected?: Accessor<number>;
 	dropdownClass?: string;
 	listToolRow?: () => JSX.Element;
 	component?: (
@@ -23,9 +23,12 @@ export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'>
 function Dropdown(props: DropdownProps) {
 	const [split, rest] = splitProps(props, ['disabled', 'children', 'class', 'text', 'onChange', 'selected', 'component', 'dropdownClass', 'listToolRow']);
 	const [visible, setVisible] = createSignal(false);
+	const [selected, setSelected] = createSignal(0);
 
-	// eslint-disable-next-line solid/reactivity -- todo
-	const [selected, setSelected] = createSignal<number>(split.selected || 0);
+	createEffect(() => {
+		if (split.selected)
+			setSelected(split.selected());
+	});
 
 	let ref!: HTMLDivElement;
 
@@ -36,7 +39,7 @@ function Dropdown(props: DropdownProps) {
 		setVisible(false);
 
 		if (split.onChange)
-			split.onChange(selected());
+			split.onChange(index);
 	}
 
 	const Component = () => (

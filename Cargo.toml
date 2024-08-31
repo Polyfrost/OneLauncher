@@ -5,7 +5,9 @@ members = [
 	"apps/desktop", # onelauncher_gui -- the rust code for our tauri app
 	"packages/core", # onelauncher -- the rust core for onelauncher
 	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
-	"packages/gamemode" # onelauncher_gamemode -- rust wrapper for feral gamemode
+	"packages/gamemode", # onelauncher_gamemode -- rust wrapper for feral gamemode
+	"packages/prisma-cli", # onelauncher_prisma_cli -- rust wrapper for prisma cli
+	"packages/prisma" # onelauncher_prisma -- rust client for prisma
 ]
 
 [workspace.package] # sets default [package] settings for workspace members
@@ -27,6 +29,8 @@ onelauncher_macros = { path = "./packages/macros" }
 onelauncher_gui = { path = "./apps/desktop" }
 onelauncher_test = { path = "./apps/testing" }
 onelauncher_gamemode = { path = "./packages/gamemode" }
+onelauncher_prisma = { path = "./packages/prisma" }
+onelauncher_prisma_cli = { path = "./packages/prisma-cli" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel
@@ -90,7 +94,7 @@ specta-typescript = { version = "=0.0.7" }
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
 # core utilities for minecraft and mod management with pulseflow apis
-interpulse = { version = "1", features = [ "specta" ] }
+interpulse = { version = "1.1.0", features = [ "specta" ] }
 
 # # ============= SECURITY ============= # #
 thiserror = { version = "1.0" }
@@ -115,6 +119,8 @@ byteorder = { version = "1.5.0" }
 base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
 uuid = { version = "1.8", features = [ "serde", "v4" ] }
+toml = { version = "0.8" }
+nom = { version = "7" }
 
 # # ============= NETWORK ============= # #
 reqwest = { version = "0.12", default-features = false, features = [
@@ -183,7 +189,7 @@ features = [
 ]
 default-features = false
 
-[workspace.dependencies.prisma-client-rust-cli]
+[workspace.dependencies.prisma-client-rust-generator]
 git = "https://github.com/brendonovich/prisma-client-rust"
 rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
 features = [

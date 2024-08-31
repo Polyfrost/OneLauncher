@@ -2,6 +2,7 @@ import { type ParentProps, createSignal } from 'solid-js';
 import { Brush01Icon, CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon, Users01Icon } from '@untitled-theme/icons-solid';
 import { Route } from '@solidjs/router';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { PROGRAM_INFO } from '@onelauncher/client/bindings';
 import Sidebar from '../../components/Sidebar';
 import SettingsGeneral from './launcher/SettingsGeneral';
 import SettingsAppearance from './launcher/SettingsAppearance';
@@ -13,7 +14,6 @@ import SettingsChangelog from './about/SettingsChangelog';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import ErrorBoundary from '~ui/components/ErrorBoundary';
 import Tooltip from '~ui/components/base/Tooltip';
-import { PROGRAM_INFO } from '~bindings';
 
 function SettingsRoutes() {
 	return (

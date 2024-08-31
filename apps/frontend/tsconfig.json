@@ -17,8 +17,7 @@
 		"types": [
 			"vitest/globals",
 			"@testing-library/jest-dom",
-			"vite-plugin-solid-svg/types",
-			"@formatjs/intl-durationformat"
+			"vite-plugin-solid-svg/types"
 		],
 		"allowImportingTsExtensions": true,
 		"strict": true,

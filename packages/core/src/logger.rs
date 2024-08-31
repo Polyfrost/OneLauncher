@@ -15,6 +15,8 @@
 
 use tracing_appender::non_blocking::WorkerGuard;
 
+// TODO: refactor logging and add more env filters.
+
 /// Initialize the global [`tracing`] logger in development.
 #[cfg(debug_assertions)]
 pub fn start_logger() -> Option<WorkerGuard> {

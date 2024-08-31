@@ -6,7 +6,7 @@ import solid from 'vite-plugin-solid';
 import solidSvg from 'vite-plugin-solid-svg';
 import paths from 'vite-tsconfig-paths';
 import unocss from 'unocss/vite';
-import * as sentry from '@sentry/vite-plugin';
+import { sentryVitePlugin as sentry } from '@sentry/vite-plugin';
 
 export default defineConfig(async ({ mode }) => {
 	process.env = { ...process.env, ...loadEnv(mode, process.cwd(), '') };
@@ -30,6 +30,7 @@ export default defineConfig(async ({ mode }) => {
 			rollupOptions: {
 				treeshake: 'recommended',
 			},
+			emptyOutDir: false,
 		},
 
 		clearScreen: false,
@@ -40,7 +41,7 @@ export default defineConfig(async ({ mode }) => {
 	};
 
 	if (process.env.SENTRY_AUTH_TOKEN)
-		config.plugins.push(sentry.sentryVitePlugin({
+		config.plugins.push(sentry({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			org: 'polyfrost',
 			project: 'onelauncher_frontend',

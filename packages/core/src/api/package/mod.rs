@@ -5,5 +5,6 @@
 pub mod content;
 pub mod from;
 pub mod import;
+pub mod infer;
 pub mod mrpack;
 pub mod zip;

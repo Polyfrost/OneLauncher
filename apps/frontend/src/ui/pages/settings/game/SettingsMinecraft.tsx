@@ -1,12 +1,12 @@
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
 import { type Accessor, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
-import type { Memory, Resolution } from '~bindings';
+import type { Memory, Resolution } from '@onelauncher/client/bindings';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
 
 function SettingsMinecraft() {
@@ -48,12 +48,12 @@ export function createSetting<T>(initial: T | undefined | null, fallback?: T): C
 		checkGlobal();
 	});
 
-	// @ts-expect-error -- Can't be bothered to fix this type issue
-	const set: Setter<T> = (value) => {
-		setRaw(value!);
-		setValue(value!);
-
+	const set: Setter<T> = (newValue?: any) => {
+		setRaw(newValue!);
+		setValue(newValue!);
 		checkGlobal();
+
+		return value as any;
 	};
 
 	const resetToFallback = (raw?: T) => {
@@ -146,6 +146,7 @@ export function GameSettings(props: {
 				</div>
 			</SettingsRow>
 
+			{/* TODO: make this a memory slider */}
 			<SettingsRow
 				title="Memory"
 				description="The amount of memory in megabytes allocated for the game."
@@ -343,7 +344,7 @@ export function JvmSettings(props: {
 }
 
 function PageSettings() {
-	const { settings, saveOnLeave } = useSettingsContext();
+	const { settings, saveOnLeave } = useSettings();
 
 	// Game
 	const fullscreen = createSetting(settings().force_fullscreen ?? false);

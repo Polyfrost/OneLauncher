@@ -63,37 +63,37 @@ pub async fn modrinth() -> onelauncher::Result<()> {
 	let result = provider.get("oneconfig").await?;
 	println!("{:#?}", result);
 
-	let managed_version = provider
-		.get_version_for_game_version(&result.id, "1.8.9")
-		.await?;
-	println!("{:#?}", result);
+	// let managed_version = provider
+	// 	.get_version_for_game_version(&result.id, "1.8.9")
+	// 	.await?;
+	// println!("{:#?}", result);
 
-	let name = "Example".to_string();
-	let game = "1.21".to_string();
-	let loader = Loader::Fabric;
+	// let name = "Example".to_string();
+	// let game = "1.21".to_string();
+	// let loader = Loader::Fabric;
 
-	let cluster_path = create_cluster(
-		name.clone(),
-		game,
-		loader,
-		None, // latest
-		None,
-		None,
-		None,
-		None,
-		None,
-	)
-	.await?;
+	// let cluster_path = create_cluster(
+	// 	name.clone(),
+	// 	game,
+	// 	loader,
+	// 	None, // latest
+	// 	None,
+	// 	None,
+	// 	None,
+	// 	None,
+	// 	None,
+	// )
+	// .await?;
 
-	let cluster = cluster::get(&cluster_path, None)
-		.await?
-		.expect("couldnt get cluster");
-	managed_version
-		.files
-		.first()
-		.expect("no files found")
-		.download_to_cluster(&cluster)
-		.await?;
+	// let cluster = cluster::get(&cluster_path, None)
+	// 	.await?
+	// 	.expect("couldnt get cluster");
+	// managed_version
+	// 	.files
+	// 	.first()
+	// 	.expect("no files found")
+	// 	.download_to_cluster(&cluster)
+	// 	.await?;
 
 	Ok(())
 }
@@ -113,7 +113,7 @@ pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 
 	println!("clearing clusters");
 	{
-		let c = cluster::list(None).await?;
+		let c = cluster::list().await?;
 		for cluster in c.into_iter() {
 			cluster::remove(&cluster.cluster_path()).await?;
 		}

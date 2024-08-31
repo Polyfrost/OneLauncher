@@ -10,8 +10,8 @@ readme = { workspace = true }
 homepage = { workspace = true }
 authors = { workspace = true }
 
-[dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
 
-[build-dependencies]
+[target.'cfg(target_os = "linux")'.build-dependencies]
 cc = { workspace = true }

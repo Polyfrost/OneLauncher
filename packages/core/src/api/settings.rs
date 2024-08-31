@@ -107,7 +107,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 				|| file_name == crate::constants::METADATA_FOLDER
 			{
 				if across_filesystems {
-					entries.extend(crate::package::import::sub(&epath).await?);
+					entries.extend(crate::package::import::sub(&epath, false).await?);
 					cleanable.push(epath.clone());
 				} else {
 					entries.push(epath.clone());

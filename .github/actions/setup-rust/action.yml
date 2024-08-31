@@ -40,3 +40,47 @@ runs:
     - name: Prepare Cargo
       shell: bash
       run: echo '{}' | npx -y mustache - .cargo/config.toml.mustache .cargo/config.toml
+
+    - name: Prisma Cache
+      id: prisma-cache
+      uses: actions/cache/restore@v4
+      with:
+        key: prisma-v1-${{ runner.os }}-${{ hashFiles('./packages/core/prisma/*', './Cargo.*') }}
+        path: packages/prisma/src/**/*.rs
+
+    - name: Generate Prisma
+      if: ${{ steps.prisma-cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        set -euxo pipefail
+        npx -y prisma generate --schema packages/core/prisma/schema.prisma
+
+        if ! [ -f packages/prisma/src/prisma/mod.rs ]; then
+          echo "prisma generation failed" >&2
+          exit 1
+        fi
+
+        npx -y prisma migrate dev --schema packages/core/prisma/schema.prisma -n test --create-only --skip-generate
+        _new_migrations="$(
+          git ls-files --others --exclude-standard \
+            | { grep '^prisma/migrations/' || true; } \
+            | xargs sh -euxc '[ "$#" -lt 2 ] || grep -L "$@" || true' sh 'empty migration' \
+            | wc -l \
+            | awk '{$1=$1};1'
+        )"
+        if [ "$_new_migrations" -gt 0 ]; then
+            echo "::error file=packages/core/prisma/schema.prisma,title=missing migration::new migration should be generated due to changes in prisma schema"
+            case "$GITHUB_REF" in
+                "refs/heads/main" | "refs/heads/gh-readonly-queue/main/"* | "refs/tags/"*)
+                    exit 1
+                    ;;
+            esac
+        fi
+
+    - name: Save Prisma Cache
+      id: prisma-cache-save
+      if: ${{ steps.prisma-cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || inputs.save-cache == 'true') }}
+      uses: actions/cache/save@v4
+      with:
+        key: ${{ steps.cache-prisma-restore.outputs.cache-primary-key }}
+        path: packages/prisma/src/**/*.rs

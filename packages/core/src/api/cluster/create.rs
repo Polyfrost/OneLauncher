@@ -154,7 +154,7 @@ pub async fn create_cluster_from_package(cluster: CreatePackCluster) -> crate::R
 
 /// Create a duplicate [`Cluster`] from another [`ClusterPath`], returning a new [`ClusterPath`]
 pub async fn create_cluster_from_duplicate(from: ClusterPath) -> crate::Result<ClusterPath> {
-	let cluster = cluster::get(&from, None).await?.ok_or_else(|| {
+	let cluster = cluster::get(&from).await?.ok_or_else(|| {
 		anyhow::anyhow!("failed to get unmanaged cluster from {}", from.to_string())
 	})?;
 	let cluster_path = create_cluster(
@@ -179,7 +179,7 @@ pub async fn create_cluster_from_duplicate(from: ClusterPath) -> crate::Result<C
 	)
 	.await?;
 
-	let duplicated = cluster::get(&cluster_path, None).await?.ok_or_else(|| {
+	let duplicated = cluster::get(&cluster_path).await?.ok_or_else(|| {
 		anyhow::anyhow!(
 			"failed to get unmanaged cluster from {}",
 			cluster_path.to_string()

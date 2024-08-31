@@ -9,12 +9,12 @@ import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
-import useSettingsContext from '~ui/hooks/useSettings';
+import useSettings from '~ui/hooks/useSettings';
 
 function ClusterScreenshots() {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 	const [cluster] = useClusterContext();
-	const [list] = useCommand(bridge.commands.getScreenshots, cluster()!.uuid!);
+	const [list] = useCommand(() => bridge.commands.getScreenshots(cluster()!.uuid!));
 
 	function openFolder() {
 		open(join(settings().config_dir || '', 'clusters', cluster()?.path || '', 'screenshots'));
@@ -53,7 +53,7 @@ function ClusterScreenshots() {
 export default ClusterScreenshots;
 
 function ScreenshotEntry(props: { path: string; cluster_path: string }) {
-	const { settings } = useSettingsContext();
+	const { settings } = useSettings();
 
 	const dir = () => join(settings().config_dir || '', 'clusters', props.cluster_path, 'screenshots');
 	const pathSrc = () => convertFileSrc(join(dir(), props.path));

@@ -1,6 +1,7 @@
 import { env } from 'node:process';
 import { machine, type } from 'node:os';
 import { execaCommand } from 'execa';
+import consola from 'consola';
 
 const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 	__debug: env.NODE_ENV === 'debug',
@@ -15,8 +16,8 @@ if (type() === 'Linux')
 	}
 	catch (error) {
 		if (state.__debug) {
-			console.warn('failed to check libs type');
-			console.error(error);
+			consola.warn('failed to check libs type');
+			consola.error(error);
 		}
 	}
 

@@ -1,7 +1,7 @@
-import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createSignal, useContext } from 'solid-js';
+import { type Accessor, type Context, type ParentProps, type ResourceReturn, Show, createContext, createEffect, createSignal, useContext } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
+import type { Cluster } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
-import type { Cluster } from '~bindings';
 import { bridge } from '~imports';
 import ClusterGame from '~ui/pages/cluster/ClusterGame';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
@@ -12,7 +12,7 @@ export function getCluster(uuid: string | undefined | null): ResourceReturn<Clus
 	if (typeof uuid !== 'string' || uuid.length === 0)
 		return undefined;
 
-	const resource = useCommand(bridge.commands.getCluster, uuid);
+	const resource = useCommand(() => bridge.commands.getCluster(uuid));
 	return resource;
 }
 
@@ -57,13 +57,50 @@ export function useLaunchCluster(uuid: string | Accessor<string | undefined> | (
 		if (uuid === undefined)
 			return;
 
-		tryResult(bridge.commands.runCluster, uuid).then((details) => {
+		tryResult(() => bridge.commands.runCluster(uuid)).then((details) => {
 			navigate(`/clusters/game?${ClusterGame.buildUrl(uuid, details).toString()}`);
 		}).catch((err) => {
 			setError(err);
 			modal.show();
 		});
 	};
+}
+
+export function useRecentCluster() {
+	const [clusters] = useCommand(() => bridge.commands.getClusters());
+	const [cluster, setCluster] = createSignal<Cluster>();
+
+	createEffect(() => {
+		let mostRecentCluster: Cluster | undefined;
+		const list = clusters();
+
+		if (list === undefined)
+			return;
+
+		for (const cluster of list) {
+			if (mostRecentCluster === undefined) {
+				mostRecentCluster = cluster;
+				continue;
+			}
+
+			if (typeof mostRecentCluster.meta.played_at !== 'string' && typeof cluster.meta.played_at === 'string') {
+				mostRecentCluster = cluster;
+				continue;
+			}
+
+			if (typeof mostRecentCluster.meta.played_at === 'string' && typeof cluster.meta.played_at === 'string') {
+				const playedAt = new Date(mostRecentCluster.meta.played_at);
+				const clusterPlayedAt = new Date(cluster.meta.played_at);
+
+				if (clusterPlayedAt > playedAt)
+					mostRecentCluster = cluster;
+			}
+		}
+
+		setCluster(mostRecentCluster);
+	});
+
+	return cluster;
 }
 
 export default useClusterContext;

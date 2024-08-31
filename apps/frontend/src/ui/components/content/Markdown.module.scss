@@ -1,0 +1,21 @@
+.markdown {
+	@apply line-height-relaxed flex flex-col items-start gap-y-2;
+}
+
+.markdown {
+  table {
+    width: auto;
+  }
+
+  hr,
+  h1,
+  h2 {
+    max-width: max(60rem, 90%);
+  }
+
+  ul,
+  ol {
+    margin-left: 2rem;
+	list-style: initial;
+  }
+}

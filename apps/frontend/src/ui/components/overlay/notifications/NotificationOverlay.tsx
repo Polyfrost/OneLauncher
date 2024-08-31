@@ -1,10 +1,10 @@
 import { For } from 'solid-js';
 import Popup from '../Popup';
 import NotificationComponent from './NotificationComponent';
-import useNotifications from '~ui/hooks/useNotifications';
+import useIngress from '~ui/hooks/useIngress';
 
 export default function NotificationOverlay() {
-	const [notifications] = useNotifications();
+	const [ingress] = useIngress();
 
 	return (
 		<Popup
@@ -14,7 +14,7 @@ export default function NotificationOverlay() {
 			ref={ref => ref.classList.add('fixed', 'bottom-8', 'right-8')}
 		>
 			<div class="flex flex-col-reverse gap-2">
-				<For each={notifications()}>
+				<For each={ingress()}>
 					{notification => (
 						<NotificationComponent overlay {...notification} />
 					)}

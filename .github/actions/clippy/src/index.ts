@@ -8,10 +8,11 @@ import { exec } from '@actions/exec';
 import { getInput as getCoreInput, group } from '@actions/core';
 import { installReviewdog } from './installer';
 
+const getInput = <T = string>(name: string): T => getCoreInput(name) as T;
+
 async function run(): Promise<void> {
 	const runnerTmpdir = env.RUNNER_TEMP || getTmpdir();
 	const tmpdir = await fs.mkdtemp(join(runnerTmpdir, 'reviewdog-'));
-	const getInput = <T = string>(name: string): T => getCoreInput(name) as T;
 
 	const reviewdogVersion = getInput('reviewdog_version') || 'latest';
 	const toolName = getInput('tool_name') || 'clippy';

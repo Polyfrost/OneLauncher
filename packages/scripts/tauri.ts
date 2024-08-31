@@ -3,17 +3,15 @@ import fs from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import pathe from 'pathe';
 import { execa } from 'execa';
+import consola from 'consola';
 import { awaitLock, checkEnvironment } from './utils';
 import { patchTauri } from './utils/patch';
 
 const env = checkEnvironment(import.meta);
-const { __dirname, __root, __exit } = env;
 const [_, __, ...args] = process.argv;
-const __distribution = pathe.join(__root, 'packages', 'distribution');
-const __desktop = pathe.join(__root, 'apps', 'desktop');
-const __cleanup: string[] = [];
-
-const cleanup = () => Promise.all(__cleanup.map(f => fs.unlink(f).catch((_) => {})));
+const __desktop = pathe.join(env.__root, 'apps', 'desktop');
+const store = { code: 0, cleanup: new Array<string>() };
+const cleanup = () => Promise.all(store.cleanup.map(f => fs.unlink(f).catch((_) => {})));
 
 process.on('SIGINT', cleanup);
 if (args.length === 0)
@@ -32,16 +30,14 @@ function targetFilter(filter: 'b' | 't') {
 const targets = args.filter(targetFilter('t')).flatMap(t => t.split(','));
 const bundles = args.filter(targetFilter('b')).flatMap(b => b.split(','));
 
-const store = { code: 0 };
-
 try {
 	switch (args[0]) {
 		case 'dev': {
-			__cleanup.push(...(await patchTauri(env, targets, args)));
+			store.cleanup.push(...(await patchTauri(env, targets, args)));
 			switch (process.platform) {
 				case 'linux':
 				case 'darwin':
-					void awaitLock(pathe.join(__root, 'target', 'debug', '.cargo-lock'))
+					void awaitLock(pathe.join(env.__root, 'target', 'debug', '.cargo-lock'))
 						.then(_ => setTimeout(1000).then(cleanup), (_) => {});
 					break;
 			}
@@ -53,37 +49,37 @@ try {
 				process.env.NODE_OPTIONS = `--max_old_space_size=4096 ${process.env.NODE_OPTIONS ?? ''}`;
 
 			process.env.GENERATE_SOURCEMAP = 'false';
-			__cleanup.push(...(await patchTauri(env, targets, args)));
+			store.cleanup.push(...(await patchTauri(env, targets, args)));
 		}
 	}
 
-	await execa('pnpm', ['desktop', 'tauri', ...args], { cwd: __desktop });
+	await execa('pnpm', ['exec', 'tauri', ...args], { cwd: __desktop });
 
 	if (args[0] === 'build' && bundles.some(b => b === 'deb' || b === 'all')) {
 		const linuxTargets = targets.filter(t => t.includes('-linux-'));
 		if (linuxTargets.length > 0)
 			linuxTargets.forEach(async (t) => {
 				process.env.TARGET = t;
-				await execa(pathe.join(__dirname, 'fix-deb.sh'), [], { cwd: __dirname });
+				await execa(pathe.join(env.__dirname, 'fix-deb.sh'), [], { cwd: env.__dirname });
 			});
 		else if (process.platform === 'linux')
-			await execa(pathe.join(__dirname, 'fix-deb.sh'), [], { cwd: __dirname });
+			await execa(pathe.join(env.__dirname, 'fix-deb.sh'), [], { cwd: env.__dirname });
 	}
 }
 catch (error: any) {
-	console.error(`tauri ${args[0]} failed with exit code ${typeof error === 'number' ? error : 1}`);
-	console.warn(`to fix some errors, run ${process.platform === 'win32' ? './packages/scripts/setup.ps1' : './packages/scripts/setup.sh'}`);
+	consola.error(`tauri ${args[0]} failed with exit code ${typeof error === 'number' ? error : 1}`);
+	consola.warn(`to fix some errors, run ${process.platform === 'win32' ? './packages/scripts/setup.ps1' : './packages/scripts/setup.sh'}`);
 
 	if (typeof error === 'number') {
 		store.code = error;
 	}
 	else {
 		if (error instanceof Error)
-			console.error(error);
+			consola.error(error);
 		store.code = 1;
 	}
 }
 finally {
 	cleanup();
-	__exit(store.code);
+	env.__exit(store.code);
 }

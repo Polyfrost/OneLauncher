@@ -29,10 +29,9 @@ rustflags = ["-C", "link-args=-fuse-ld={{{linker}}}"]
 [target.aarch64-unknown-linux-gnu]
 {{#hasLLD}}
 linker = "clang"
-rustflags = ["-C", "link-args=-fus-ld={{{linker}}}"]
+rustflags = ["-C", "link-args=-fuse-ld={{{linker}}}"]
 {{/hasLLD}}
 {{/isLinux}}
 
-{{#hasAlias}}
-prisma = "run -p prisma-cli --bin prisma --"
-{{/hasAlias}}
+[alias]
+prisma = "run -p onelauncher_prisma_cli --bin prisma --"

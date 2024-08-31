@@ -1,0 +1,272 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.db"
+}
+
+generator client {
+  provider      = "cargo prisma"
+  output        = "../../prisma/src/prisma"
+  module_path   = "prisma"
+  client_format = "folder"
+}
+
+/// A global settings state for the launcher.
+model Settings {
+  /// The unique ID associated with this Settings instance.
+  id                 Int     @id @unique @default(0)
+  /// A OneLauncher theme managed by the core GUI.
+  theme              String  @default("dark")
+  /// Whether or not ask for confirmation when closing the core GUI.
+  hide_close_prompt  Boolean @default(true)
+  /// Disables animations in the core GUI.
+  reduced_motion     Boolean @default(false)
+  /// Whether or not to disable Plausible and Sentry analytics.
+  disable_analytics  Boolean @default(false)
+  /// Whether or not to enable a debug mode in the launcher.
+  debug_mode         Boolean @default(false)
+  /// Whether or not to minimize the launcher upon a game launch.
+  hide_on_launch     Boolean @default(false)
+  /// A global fullscreen Minecraft state.
+  force_fullscreen   Boolean @default(false)
+  /// Whether or not to disable Discord IPC.
+  disable_discord    Boolean @default(false)
+  /// The release channel of the launcher. ("stable","beta","alpha").
+  release_channel    String  @default("stable")
+  /// Whether or not to show news and release notes in the launcher.
+  show_news          Boolean @default(true)
+  /// Enable/disable advanced rendering and window decorations.
+  advanced_rendering Boolean @default(true)
+  /// Whether to allow launching the same cluster under the same account.
+  allow_parallel     Boolean @default(true)
+  /// Whether to launch Feral Gamemode on Linux systems.
+  enable_gamemode    Boolean @default(true)
+
+  /// Global and default custom Java arguments. This is parsed as a `Vec<String>` in Rust.
+  custom_java_args String
+  /// Global and default custom environment variables. This is parsed as a `Vec<String>` in Rust.
+  custom_env_args  String
+
+  /// Global and default maximum `Semaphore` I/O operations.
+  max_async_io_operations Int @default(10)
+  /// Global and default maximum `Semaphore` HTTP operations.
+  max_async_fetches       Int @default(10)
+  /// Global and default maximum `Semaphore` API HTTP operations.
+  max_async_api_fetches   Int @default(25)
+
+  /// Global and default Minecraft window resoluton on the X axis.
+  resolution_x Int @default(854)
+  /// Global and default Minecraft window resoluton on the Y axis.
+  resolution_y Int @default(480)
+
+  /// Maximum amount of Java memory available globally.
+  memory_max Int @default(2048)
+  /// Minimum amount of Java memory available globally.
+  memory_min Int @default(256)
+
+  /// Global and default preinitialization hook.
+  hook_pre     String?
+  /// Global and default wrapper hook.
+  hook_wrapper String?
+  /// Global and default postinitialization hook.
+  hook_post    String?
+
+  @@map("settings")
+}
+
+/// A structure representing a single version of the Java Runtime Environment.
+model JavaVersion {
+  /// The unique UUID associated with this Java version.
+  id            String        @id @unique @default(uuid())
+  /// The major Java version of this Java version (8, 16, 21).
+  major_version Int
+  /// The full Java version of this Java version.
+  full_version  String
+  /// The architecture that this Java version was built for.
+  arch          String
+  /// The OS that this Java version was built for.
+  os            String
+  /// The type of Java installation that this Java version is.
+  type          String
+  /// The vendor of this Java version (Adoptium, OpenJDK, Oracle).
+  vendor        String
+  /// The unique path location of this Java version.
+  path          String        @unique
+  /// Whether or not this Java version is valid.
+  valid         Boolean       @default(true)
+  profile       JavaProfile[]
+
+  @@map("java_version")
+}
+
+model JavaProfile {
+  name         String       @id
+  system       Boolean      @default(false)
+  java_version JavaVersion? @relation(fields: [java_id], references: [id], onDelete: SetNull)
+  java_id      String?
+
+  @@map("java_profile")
+}
+
+model MinecraftUser {
+  uuid          String   @id
+  active        Boolean  @default(false)
+  username      String
+  access_token  String
+  refresh_token String
+  expires       DateTime
+  last_used     DateTime
+  skin_id       String?
+
+  @@unique([active])
+  @@map("minecraft_user")
+}
+
+model Skin {
+  id   String @id
+  skin Bytes
+
+  @@map("skin")
+}
+
+// TODO: packages/caching
+
+model MinecraftDeviceToken {
+  id             Int    @id @default(0)
+  uuid           String
+  private_key    String
+  x              String
+  y              String
+  issue_instant  Int
+  not_after      Int
+  token          String
+  display_claims String
+
+  @@map("minecraft_device_token")
+}
+
+model Cluster {
+  path            String       @id
+  stage           String
+  name            String
+  icon_path       String?
+  mc_version      String
+  loader          String       @default("vanilla")
+  loader_version  String?      @default("stable")
+  group           ClusterGroup @relation(fields: [group_id], references: [id])
+  group_id        Int
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+  played_at       DateTime?
+  overall_played  Int          @default(0)
+  recently_played Int          @default(0)
+
+  override_java_path        String?
+  override_custom_java_args String
+  override_custom_env_args  String
+  override_memory_max       Int?
+  override_memory_min       Int?
+  override_force_fullscreen Int?
+  override_resolution_x     Int?
+  override_resolution_y     Int?
+  override_hook_pre         String?
+  override_hook_wrapper     String?
+  override_hook_post        String?
+  processes                 Process[]
+
+  @@map("cluster")
+}
+
+model ClusterGroup {
+  id       Int       @id @default(autoincrement())
+  name     String
+  index    Int
+  clusters Cluster[]
+
+  @@map("cluster_group")
+}
+
+model Process {
+  pid          Int      @id
+  start_time   DateTime @default(now())
+  name         String
+  executable   String
+  cluster_path String
+  post_exit    String?
+  cluster      Cluster  @relation(fields: [cluster_path], references: [path])
+
+  @@unique([pid])
+  @@index([cluster_path])
+  @@map("process")
+}
+
+model VersionInfoCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  version_info Bytes
+
+  @@map("version_info_cache")
+}
+
+model PartialVersionInfoCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  version_info Bytes
+
+  @@map("partial_version_info")
+}
+
+model AssetsIndexCache {
+  id           String   @id
+  updated_at   DateTime @default(now()) @updatedAt
+  assets_index Bytes
+
+  @@map("assets_index_cache")
+}
+
+model PackageCache {
+  id         String          @id @default(uuid())
+  updated_at DateTime        @default(now()) @updatedAt
+  sha512     String
+  file_name  String
+  file_size  Int
+  disabled   Boolean
+  meta_id    String
+  meta       PackageMetadata @relation(fields: [meta_id], references: [id], onDelete: Restrict)
+
+  @@unique([file_name])
+  @@map("package_cache")
+}
+
+model PackageMetadata {
+  id          String           @id
+  updated_at  DateTime         @default(now()) @updatedAt
+  name        String?
+  package_id  String?
+  version     String?
+  description String?
+  authors     String?
+  loader      String
+  // icon IconCache?
+  managed     ManagedModCache?
+  // inferred InferredModCache?
+  cached      PackageCache[]
+
+  @@map("package_metadata")
+}
+
+model ManagedModCache {
+  meta_id      String          @id
+  project_id   Int
+  file_id      Int
+  name         String
+  version      String
+  urlslug      String
+  summary      String
+  authors      String
+  release_type Int
+  update_paths String
+  cached_at    DateTime
+  meta         PackageMetadata @relation(fields: [meta_id], references: [id], onDelete: Cascade)
+
+  @@map("managed_mod_cache")
+}

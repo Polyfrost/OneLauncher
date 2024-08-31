@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 pub struct Settings {
 	/// A OneLauncher [`Theme`] managed by the core GUI.
 	pub theme: Theme,
+	/// A global browser list view for the OneLauncher GUI.
+	#[serde(default)]
+	pub browser_list_view: BrowserListView,
 	/// Does not ask for confirmation when closing the OneLauncher GUI
 	#[serde(default)]
 	pub hide_close_prompt: bool,
@@ -98,6 +101,7 @@ impl Settings {
 		} else {
 			let settings = Self {
 				theme: Theme::Dark,
+				browser_list_view: BrowserListView::Grid,
 				hide_close_prompt: true,
 				disable_animations: false,
 				force_fullscreen: false,
@@ -137,6 +141,17 @@ impl Settings {
 		io::write(to, serde_json::to_vec(self)?).await?;
 		Ok(())
 	}
+}
+
+/// OneLauncher browser list type.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserListView {
+	#[default]
+	Grid,
+	List,
+	Preview,
 }
 
 /// A OneLauncher theme managed by the GUI.

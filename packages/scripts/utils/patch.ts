@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'pathe';
 import { execa } from 'execa';
 import semver from 'semver';
-import consola from 'consola';
+import { consola } from 'consola';
 import type { CheckedEnvironment } from '.';
 
 const UPDATEKEY_LOCK_VERSION = '1';

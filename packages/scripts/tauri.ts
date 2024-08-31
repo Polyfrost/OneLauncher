@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { setTimeout } from 'node:timers/promises';
 import pathe from 'pathe';
 import { execa } from 'execa';
-import consola from 'consola';
+import { consola } from 'consola';
 import { awaitLock, checkEnvironment } from './utils';
 import { patchTauri } from './utils/patch';
 

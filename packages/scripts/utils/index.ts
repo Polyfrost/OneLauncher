@@ -33,7 +33,7 @@ async function where(cmd: string): Promise<boolean> {
 		return false;
 
 	try {
-		await execa(cmd);
+		await execa`where "${cmd}"`;
 	}
 	catch {
 		return false;

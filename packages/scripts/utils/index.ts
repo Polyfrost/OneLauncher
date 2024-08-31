@@ -6,6 +6,7 @@ import { type } from 'node:os';
 import fs from 'node:fs/promises';
 import { dirname, join, resolve } from 'pathe';
 import { execa } from 'execa';
+import { consola } from 'consola';
 
 export type CheckedEnvironment = ReturnType<typeof checkEnvironment>;
 
@@ -22,8 +23,10 @@ export function checkEnvironment(meta: ImportMeta) {
 	const __debug = process.env.NODE_ENV === 'debug';
 	const __root = resolve(join(__dirname, '..', '..'));
 	const __deps = resolve(join(__root, '.deps'));
+	const __console = consola;
+	const __exit = process.exit;
 
-	return { __filename, __dirname, __debug, __root, __deps, __exit: process.exit };
+	return { __filename, __dirname, __debug, __root, __deps, __console, __exit };
 }
 
 async function where(cmd: string): Promise<boolean> {

@@ -167,9 +167,6 @@ importers:
       '@untitled-theme/icons-solid':
         specifier: ^0.10.5
         version: 0.10.5(solid-js@1.8.22)
-      highlight.js:
-        specifier: ^11.10.0
-        version: 11.10.0
       overlayscrollbars:
         specifier: ^2.10.0
         version: 2.10.0
@@ -267,6 +264,9 @@ importers:
 
   packages/scripts:
     dependencies:
+      consola:
+        specifier: ^3.2.3
+        version: 3.2.3
       execa:
         specifier: ^9.3.1
         version: 9.3.1

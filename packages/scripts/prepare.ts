@@ -5,14 +5,10 @@ import mustache from 'mustache';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
-const { __debug, __exit, __root, __deps } = checkEnvironment(import.meta);
+const env = checkEnvironment(import.meta);
 const triple = getTriple();
 const PREPARE_LOCK_VERSION = '1';
-const prepareLockPath = resolve(join(__deps, 'prepare_lock'));
-
-if (fs.existsSync(prepareLockPath))
-	if (fs.readFileSync(prepareLockPath, 'utf-8') === PREPARE_LOCK_VERSION)
-		__exit(0);
+const prepareLockPath = resolve(join(env.__deps, 'prepare_lock'));
 
 if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f))
 	console.error(
@@ -27,7 +23,11 @@ if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f)
 		`,
 	);
 
-console.log('generating cargo configuration file.');
+env.__console.info('generating cargo configuration file.');
+
+if (fs.existsSync(prepareLockPath))
+	if (fs.readFileSync(prepareLockPath, 'utf-8') === PREPARE_LOCK_VERSION)
+		env.__exit(0);
 
 interface ConfigStore {
 	isWin: boolean;
@@ -62,10 +62,10 @@ try {
 			break;
 	}
 
-	const template = await readFile(join(__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
+	const template = await readFile(join(env.__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
 	const rendered = mustache.render(template, configStore).replace(/\n{2,}/g, '\n');
-	await writeFile(join(__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+', encoding: 'utf-8' });
-	await writeFile(join(__deps, 'prepare_lock'), PREPARE_LOCK_VERSION, 'utf-8');
+	await writeFile(join(env.__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+', encoding: 'utf-8' });
+	await writeFile(join(env.__deps, 'prepare_lock'), PREPARE_LOCK_VERSION, 'utf-8');
 }
 catch (error) {
 	console.error(`
@@ -73,7 +73,7 @@ catch (error) {
 		this is probably a bug, please open an issue with system info at
 		https://github.com/polyfrost/onelauncher/issues/new/choose
 	`);
-	if (__debug)
+	if (env.__debug)
 		console.error(error);
-	__exit(1);
+	env.__exit(1);
 }

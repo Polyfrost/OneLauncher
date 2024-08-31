@@ -1,6 +1,4 @@
-# set default value of 0 for external command exit code
 $LASTEXITCODE = 0
-# enables strict mode, which causes PowerShell to treat uninitialized variables, undefined functions, and other common errors as terminating errors.
 $ErrorActionPreference = if ($env:CI) { 'Stop' } else { 'Inquire' }
 Set-StrictMode -Version Latest
 
@@ -70,11 +68,18 @@ function Add-DirectoryToPath($directory) {
 Reset-Path
 
 # gets project dir (get dir from script location: <projectRoot>\packages\scripts\setup.ps1)
-$packagesRoot = Split-Path -Path $PSScriptRoot -Parent
-$projectRoot = Split-Path -Path $packagesRoot -Parent
-$packageJson = Get-Content -Raw -Path "$projectRoot\package.json" | ConvertFrom-Json
+# Determine if the script is run from the project root directory
+$currentDir = Get-Location
+$scriptDir = Get-Item -Path $PSScriptRoot
 
-# valid winget exit statuses (i.e. not an error)
+if ($currentDir.FullName -eq $scriptDir.Parent.Parent.FullName) {
+    $projectRoot = $currentDir.FullName
+} else {
+    $projectRoot = $scriptDir.Parent.Parent.FullName
+}
+
+$packageJsonPath = "$projectRoot\package.json"
+$packageJson = Get-Content -Raw -Path $packageJsonPath | ConvertFrom-Json
 $wingetValidExit = 0, -1978335189, -1978335153, -1978335135
 
 Write-Host 'OneLauncher Development Environment Setup' -ForegroundColor Magenta
@@ -88,7 +93,7 @@ To set up your machine for OneLauncher development, this script will do the foll
 5) Install Node.js, npm and pnpm (if not already installed)
 "@
 
-# Install System dependencies (GitHub Actions already has all of those installed)
+# install system dependencies (github actions already has all of these installed)
 if (-not $env:CI) {
     if (-not (Get-Command winget -ea 0)) {
         Exit-WithError 'winget not available' @'
@@ -115,13 +120,13 @@ https://learn.microsoft.com/windows/package-manager/winget/
     Write-Host
     Read-Host 'Press Enter to continue'
 
-    # todo: force update visual studio build tools
+    # TODO: force update visual studio build tools
     Write-Host
     Write-Host 'Installing Visual Studio Build Tools...' -ForegroundColor Yellow
     Write-Host 'This will take some time as it involves downloading several gigabytes of data....' -ForegroundColor Cyan
     winget install -e --accept-source-agreements --force --disable-interactivity --id Microsoft.VisualStudio.2022.BuildTools `
         --override 'updateall --quiet --wait'
-    # force install because BuildTools is itself a package manager, so let it decide if something needs to be installed or not
+    # force install because buildtools is itself a package manager, so let it decide if something needs to be installed or not
     winget install -e --accept-source-agreements --force --disable-interactivity --id Microsoft.VisualStudio.2022.BuildTools `
         --override '--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'
     if (-not ($wingetValidExit -contains $LASTEXITCODE)) {
@@ -168,6 +173,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
         Exit-WithError "Current Node.JS version: $currentNodeVersion (required: $enginesNodeVersion)" `
             'Uninstall the current version of Node.JS and run this script again'
     }
+
     # installs nodejs
     winget install -e --accept-source-agreements --disable-interactivity --id OpenJS.NodeJS
     if (-not ($wingetValidExit -contains $LASTEXITCODE)) {
@@ -175,6 +181,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
     } else {
         $LASTEXITCODE = 0
     }
+
     # adds nodejs to the PATH
     Add-DirectoryToPath "$env:SystemDrive\Program Files\nodejs"
 

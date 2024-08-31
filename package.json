@@ -16,10 +16,10 @@
 	"bugs": "https://github.com/polyfrost/onelauncher/issues",
 	"sideEffects": false,
 	"engines": {
-		"pnpm": "9.9.0",
+		"pnpm": ">=9.0.0",
 		"npm": "pnpm",
 		"yarn": "pnpm",
-		"node": ">=18"
+		"node": ">=18.18 <19 || >=20"
 	},
 	"scripts": {
 		"prep": "pnpm scripts prep",

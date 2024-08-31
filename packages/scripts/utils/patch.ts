@@ -109,7 +109,7 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 			))
 		) {
 			macOSStore.minimumVersion = macOSStore.defaultArm64;
-			console.log(`aarch64-apple-darwin target: setting minimum system version to ${macOSStore.minimumVersion}`);
+			env.__console.log(`[aarch64-apple-darwin]: setting minimum system version to ${macOSStore.minimumVersion}`);
 		}
 
 		if (macOSStore.minimumVersion) {

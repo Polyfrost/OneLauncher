@@ -1,6 +1,6 @@
-import { For, type ParentProps, Show, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
+import { For, Match, type ParentProps, Show, Switch, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
 import { A, type Params, Route, useSearchParams } from '@solidjs/router';
-import { CalendarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
+import { CalendarIcon, ChevronDownIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
 import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
 import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 import { bridge } from '~imports';
@@ -14,6 +14,7 @@ import useBrowser from '~ui/hooks/useBrowser';
 import SteveHead from '~assets/images/steve.png';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import Link from '~ui/components/base/Link';
+import usePagination from '~ui/hooks/usePagination';
 
 interface BrowserModParams extends Params {
 	id: string;
@@ -357,9 +358,12 @@ function BrowserPackageBody() {
 
 function BrowserPackageVersions() {
 	const context = useContext(BrowserPackageContext);
-	const [page, setPage] = createSignal(1);
-
 	const MAX_ITEMS_PER_PAGE = 20;
+
+	const { page, Navigation } = usePagination({
+		itemsCount: () => context?.versions.length || 0,
+		itemsPerPage: () => MAX_ITEMS_PER_PAGE,
+	});
 
 	const getVersionsForPage = (page: number) => {
 		if (context === null)
@@ -372,15 +376,6 @@ function BrowserPackageVersions() {
 		return newestToOldest.slice(start, end);
 	};
 
-	const getMaxPage = () => {
-		if (context === null)
-			return 1;
-
-		return Math.ceil(context.versions.length / MAX_ITEMS_PER_PAGE);
-	};
-
-	const diffFrom = (from: number = page()) => getMaxPage() - from;
-
 	const [versions, { refetch }] = useCommand(context, async () => {
 		if (context === null)
 			return { error: 'No package context', status: 'error' };
@@ -390,35 +385,24 @@ function BrowserPackageVersions() {
 		return await bridge.commands.getProviderPackageVersions(context.provider, list);
 	});
 
-	function PaginationBtn(props: { page: number }) {
-		return (
-			<Button
-				buttonStyle={props.page === page() ? 'iconPrimary' : 'iconSecondary'}
-				children={props.page}
-				onClick={() => {
-					if (props.page === page())
-						return;
-
-					setPage(props.page);
-				}}
-			/>
-		);
-	}
-
 	let container!: HTMLDivElement;
 
 	createEffect(on(() => page(), () => {
 		refetch();
-		container.scrollIntoView({ behavior: 'smooth' });
+		container.parentElement?.scrollIntoView({ behavior: 'smooth' });
 	}));
 
 	return (
 		<div ref={container} class="w-full flex flex-1 flex-col gap-y-1">
-			<h1>
-				Versions - Page
-				{' '}
-				{page()}
-			</h1>
+			<div class="flex flex-row justify-between">
+				<h1>
+					Versions - Page
+					{' '}
+					{page()}
+				</h1>
+
+				<Navigation />
+			</div>
 
 			<table class="w-full border-separate border-spacing-x-none border-spacing-y-1">
 				<thead>
@@ -441,49 +425,28 @@ function BrowserPackageVersions() {
 				</tbody>
 			</table>
 
-			<div class="flex flex-row gap-x-1">
-				<Button
-					buttonStyle="iconSecondary"
-					children={<ChevronLeftIcon />}
-					disabled={page() <= 1}
-					onClick={() => setPage(page => page - 1)}
-				/>
-
-				<PaginationBtn page={1} />
-
-				{/* TODO: Pagination */}
-				{/* <Switch>
-					<Match when={}
-				</Switch> */}
-
-				<Button
-					buttonStyle="iconSecondary"
-					children={<ChevronRightIcon />}
-					disabled={page() >= getMaxPage()}
-					onClick={() => setPage(page => page + 1)}
-				/>
-			</div>
+			<Navigation />
 
 		</div>
 	);
 }
 
-function VersionRow(props: ManagedVersion) {
-	function colorForType(type: string) {
-		switch (type) {
-			case 'release':
-				return 'bg-code-trace';
-			case 'snapshot':
-				return 'bg-code-debug';
-			case 'beta':
-				return 'bg-code-warn';
-			case 'alpha':
-				return 'bg-code-error';
-			default:
-				return 'bg-gray-05';
-		}
+function colorForType(type: string) {
+	switch (type) {
+		case 'release':
+			return 'bg-code-trace';
+		case 'snapshot':
+			return 'bg-code-debug';
+		case 'beta':
+			return 'bg-code-warn';
+		case 'alpha':
+			return 'bg-code-error';
+		default:
+			return 'bg-gray-05';
 	}
+}
 
+function VersionRow(props: ManagedVersion) {
 	return (
 		<tr class="my-2 bg-page-elevated px-4 [&>td]:py-4">
 			<td class="rounded-l-lg px-4">
@@ -502,7 +465,19 @@ function VersionRow(props: ManagedVersion) {
 			</td>
 
 			<td>
-				{props.game_versions.join(', ')}
+				<Switch>
+					<Match when={props.game_versions.length > 3}>
+						<Tooltip text={props.game_versions.join(', ')}>
+							<span>
+								{props.game_versions.slice(-3).toReversed().join(', ')}
+								...
+							</span>
+						</Tooltip>
+					</Match>
+					<Match when>
+						<span>{props.game_versions.join(', ')}</span>
+					</Match>
+				</Switch>
 			</td>
 
 			<td>
@@ -514,7 +489,7 @@ function VersionRow(props: ManagedVersion) {
 			</td>
 
 			<td>
-				{props.downloads}
+				{props.downloads.toLocaleString()}
 			</td>
 
 			<td class="rounded-r-lg">

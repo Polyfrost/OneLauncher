@@ -11,7 +11,7 @@
         @apply opacity-0 transition-opacity;
         @apply absolute left-1/2 -translate-x-1/2 top-0 -translate-y-6/5;
         @apply w-max max-w-52;
-        @apply backdrop-blur-lg rounded-md bg-black/50 p-2 text-center text-sm text-wrap text-white shadow shadow-black/30;
+        @apply backdrop-blur-lg rounded-md bg-black/50 p-2 text-center text-sm text-wrap line-height-relaxed text-white shadow shadow-black/30;
     }
 
 }

@@ -1,5 +1,5 @@
 use onelauncher::cluster::content::package;
-use onelauncher::data::{Loader, ManagedPackage, ManagedUser, PackageType};
+use onelauncher::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use onelauncher::package::content::Providers;
 use onelauncher::store::{Author, ClusterPath, Package, PackagePath, ProviderSearchResults};
 use uuid::Uuid;
@@ -20,6 +20,35 @@ pub async fn get_provider_packages(
 	project_ids: Vec<String>,
 ) -> Result<Vec<ManagedPackage>, String> {
 	Ok(provider.get_multiple(&project_ids).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_all_provider_package_versions(
+	provider: Providers,
+	project_id: String,
+	game_versions: Option<Vec<String>>,
+	loaders: Option<Vec<Loader>>,
+) -> Result<Vec<ManagedVersion>, String> {
+	Ok(provider.get_all_versions(&project_id, game_versions, loaders).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_provider_package_versions(
+	provider: Providers,
+	versions: Vec<String>,
+) -> Result<Vec<ManagedVersion>, String> {
+	Ok(provider.get_versions(versions).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_provider_package_version(
+	provider: Providers,
+	version: String,
+) -> Result<ManagedVersion, String> {
+	Ok(provider.get_version(&version).await?)
 }
 
 #[specta::specta]
@@ -74,6 +103,9 @@ pub async fn download_provider_package(
 
 	Ok(())
 }
+
+
+
 
 #[specta::specta]
 #[tauri::command]

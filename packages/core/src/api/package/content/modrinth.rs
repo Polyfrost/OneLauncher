@@ -429,10 +429,38 @@ async fn get_team(team_id: String) -> Result<Vec<ManagedUser>> {
 // TODO: modrinth api v3
 // pub async fn get_org_projects(organization: &str) -> Result<>
 
-pub async fn get_versions(project_id: &str) -> Result<Vec<ModrinthVersion>> {
+pub async fn get_all_versions(
+	project_id: &str,
+	game_versions: Option<Vec<String>>,
+	loaders: Option<Vec<Loader>>,
+) -> Result<Vec<ModrinthVersion>> {
+	let mut url = url::Url::parse(format_url!("/project/{}/version", project_id).as_str())?;
+	if let Some(game_versions) = game_versions {
+		url.query_pairs_mut()
+			.append_pair("game_versions", &game_versions.iter().map(|v| format!("\"{}\"", v.to_string())).collect::<Vec<String>>().join(","));
+	}
+
+	if let Some(loaders) = loaders {
+		url.query_pairs_mut()
+			.append_pair("loaders", format!("[{}]", &loaders.iter().map(|l| format!("\"{}\"", l.to_string())).collect::<Vec<String>>().join(",")).as_str());
+	}
+
 	Ok(serde_json::from_slice(
 		&fetch(
-			format_url!("/project/{}/version", project_id).as_str(),
+			format_url!(
+				"/project/{}/version",
+				project_id).as_str(),
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?,
+	)?)
+}
+
+pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>> {
+	Ok(serde_json::from_slice(
+		&fetch(
+			format_url!("/versions?ids=[{}]", versions.iter().map(|v| format!("\"{}\"", v)).collect::<Vec<String>>().join(",")).as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)

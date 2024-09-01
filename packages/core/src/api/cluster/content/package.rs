@@ -20,7 +20,11 @@ pub async fn find_managed_version(
 ) -> Result<ManagedVersion> {
 	let provider = package.provider.clone();
 
-	let versions = provider.get_versions(&package.id).await?;
+	let versions = provider.get_all_versions(
+		&package.id,
+		game_version.as_ref().map(|v| vec![v.to_owned()]).to_owned(),
+		loader.map(|l| vec![l]).clone(),
+	).await?;
 
 	Ok(versions
 		.iter()

@@ -5,7 +5,7 @@ import styles from './Button.module.scss';
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & ParentProps & {
 	iconLeft?: JSX.Element;
 	iconRight?: JSX.Element;
-	buttonStyle?: 'primary' | 'secondary' | 'danger' | 'icon' | 'iconSecondary' | 'iconDanger' | 'ghost';
+	buttonStyle?: 'primary' | 'secondary' | 'danger' | 'icon' | 'iconPrimary' | 'iconSecondary' | 'iconDanger' | 'ghost';
 	large?: boolean;
 };
 

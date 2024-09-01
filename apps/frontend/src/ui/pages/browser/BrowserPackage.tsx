@@ -1,8 +1,8 @@
-import { For, type ParentProps, Show, createContext, createEffect, createSignal, useContext } from 'solid-js';
+import { For, type ParentProps, Show, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
 import { A, type Params, Route, useSearchParams } from '@solidjs/router';
-import { CalendarIcon, ChevronDownIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import type { Cluster, ManagedPackage, ManagedUser, Providers } from '@onelauncher/client/bindings';
-import { getLicenseUrl, getPackageUrl } from '../../../utils';
+import { CalendarIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
+import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
+import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 import { bridge } from '~imports';
 import useCommand from '~ui/hooks/useCommand';
 import { abbreviateNumber, formatAsRelative } from '~utils';
@@ -37,7 +37,7 @@ function BrowserPackageRoutes() {
 	return (
 		<>
 			<Route path="/" component={BrowserPackageBody} />
-			<Route path="/gallery" component={BrowserPackageGallery} />
+			{/* <Route path="/gallery" component={BrowserPackageGallery} /> */}
 			<Route path="/versions" component={BrowserPackageVersions} />
 		</>
 	);
@@ -68,7 +68,7 @@ function BrowserPackage(props: ParentProps) {
 
 	const links = [
 		['About', '/'],
-		['Gallery', '/gallery'],
+		// ['Gallery', '/gallery'],
 		['Versions', '/versions'],
 	];
 
@@ -170,24 +170,29 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 				<h4 class="text-fg-primary font-bold">Authors</h4>
 				<For each={props.authors}>
 					{author => (
-						<div
-							class="flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
-							onClick={() => promptOpen(author.url)}
-						>
-							<img class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} alt={`${author.username}'s avatar`} />
-							<div class="flex flex-1 flex-col justify-center gap-y-1">
-								<span>{author.username}</span>
+						<>
+							<div
+								class="flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
+								onClick={() => promptOpen(author.url)}
+							>
+								<img class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} alt={`${author.username}'s avatar`} />
+								<div class="flex flex-1 flex-col justify-center gap-y-1">
+									<span>{author.username}</span>
 
-								<Show when={author.is_organization_user}>
-									<span class="text-xs text-fg-secondary">Organization</span>
-								</Show>
+									<Show when={author.is_organization_user}>
+										<span class="text-xs text-fg-secondary">Organization</span>
+									</Show>
 
-								<Show when={author.role !== null}>
-									<span class="text-xs text-fg-secondary">{author.role}</span>
-								</Show>
+									<Show when={author.role !== null}>
+										<span class="text-xs text-fg-secondary">{author.role}</span>
+									</Show>
+								</div>
+								<LinkExternal01Icon class="h-4 w-4" />
 							</div>
-							<LinkExternal01Icon class="h-4 w-4" />
-						</div>
+							<Show when={author.is_organization_user === true}>
+								<div class="h-px w-full bg-gray-05" />
+							</Show>
+						</>
 					)}
 				</For>
 			</div>
@@ -335,27 +340,190 @@ function BrowserPackageBody() {
 	);
 }
 
-function BrowserPackageGallery() {
-	// const context = useContext(BrowserPackageContext);
+// function BrowserPackageGallery() {
+// 	// const context = useContext(BrowserPackageContext);
+
+// 	return (
+// 		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
+// 			<div>Gallery</div>
+// 			{/* <For each={[]}>
+// 				{image => (
+// 					<img src={image.url} alt={image.alt} />
+// 				)}
+// 			</For> */}
+// 		</div>
+// 	);
+// }
+
+function BrowserPackageVersions() {
+	const context = useContext(BrowserPackageContext);
+	const [page, setPage] = createSignal(1);
+
+	const MAX_ITEMS_PER_PAGE = 20;
+
+	const getVersionsForPage = (page: number) => {
+		if (context === null)
+			return [];
+
+		const newestToOldest = context.versions.toReversed();
+		const start = (page - 1) * MAX_ITEMS_PER_PAGE;
+		const end = start + MAX_ITEMS_PER_PAGE;
+
+		return newestToOldest.slice(start, end);
+	};
+
+	const getMaxPage = () => {
+		if (context === null)
+			return 1;
+
+		return Math.ceil(context.versions.length / MAX_ITEMS_PER_PAGE);
+	};
+
+	const diffFrom = (from: number = page()) => getMaxPage() - from;
+
+	const [versions, { refetch }] = useCommand(context, async () => {
+		if (context === null)
+			return { error: 'No package context', status: 'error' };
+
+		const list = getVersionsForPage(page());
+
+		return await bridge.commands.getProviderPackageVersions(context.provider, list);
+	});
+
+	function PaginationBtn(props: { page: number }) {
+		return (
+			<Button
+				buttonStyle={props.page === page() ? 'iconPrimary' : 'iconSecondary'}
+				children={props.page}
+				onClick={() => {
+					if (props.page === page())
+						return;
+
+					setPage(props.page);
+				}}
+			/>
+		);
+	}
+
+	let container!: HTMLDivElement;
+
+	createEffect(on(() => page(), () => {
+		refetch();
+		container.scrollIntoView({ behavior: 'smooth' });
+	}));
 
 	return (
-		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
-			<div>Gallery</div>
-			{/* <For each={[]}>
-				{image => (
-					<img src={image.url} alt={image.alt} />
-				)}
-			</For> */}
+		<div ref={container} class="w-full flex flex-1 flex-col gap-y-1">
+			<h1>
+				Versions - Page
+				{' '}
+				{page()}
+			</h1>
+
+			<table class="w-full border-separate border-spacing-x-none border-spacing-y-1">
+				<thead>
+					<tr class="bg-page-elevated [&>th]:py-2 [&>th]:text-left">
+						<th class="w-16 rounded-l-lg" />
+
+						<th>Name</th>
+						<th>Game Version</th>
+						<th>Loader</th>
+						<th>Created</th>
+						<th>Downloads</th>
+						<th class="rounded-r-lg" />
+					</tr>
+				</thead>
+
+				<tbody>
+					<For each={versions()?.reverse()}>
+						{version => <VersionRow {...version} />}
+					</For>
+				</tbody>
+			</table>
+
+			<div class="flex flex-row gap-x-1">
+				<Button
+					buttonStyle="iconSecondary"
+					children={<ChevronLeftIcon />}
+					disabled={page() <= 1}
+					onClick={() => setPage(page => page - 1)}
+				/>
+
+				<PaginationBtn page={1} />
+
+				{/* TODO: Pagination */}
+				{/* <Switch>
+					<Match when={}
+				</Switch> */}
+
+				<Button
+					buttonStyle="iconSecondary"
+					children={<ChevronRightIcon />}
+					disabled={page() >= getMaxPage()}
+					onClick={() => setPage(page => page + 1)}
+				/>
+			</div>
+
 		</div>
 	);
 }
 
-function BrowserPackageVersions() {
-	// const context = useContext(BrowserPackageContext);
+function VersionRow(props: ManagedVersion) {
+	function colorForType(type: string) {
+		switch (type) {
+			case 'release':
+				return 'bg-code-trace';
+			case 'snapshot':
+				return 'bg-code-debug';
+			case 'beta':
+				return 'bg-code-warn';
+			case 'alpha':
+				return 'bg-code-error';
+			default:
+				return 'bg-gray-05';
+		}
+	}
 
 	return (
-		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
-			<div>versions</div>
-		</div>
+		<tr class="my-2 bg-page-elevated px-4 [&>td]:py-4">
+			<td class="rounded-l-lg px-4">
+				<Tooltip text={upperFirst(props.version_type)}>
+					<div class={`${colorForType(props.version_type)} h-8 w-8 flex items-center justify-center rounded-md bg-opacity-30`}>
+						<span class="font-bold">{props.version_type.charAt(0).toUpperCase()}</span>
+					</div>
+				</Tooltip>
+			</td>
+
+			<td>
+				<div class="flex flex-col gap-2">
+					<h3 class="text-lg">{props.version_id}</h3>
+					<p class="text-wrap text-sm">{props.name}</p>
+				</div>
+			</td>
+
+			<td>
+				{props.game_versions.join(', ')}
+			</td>
+
+			<td>
+				{props.loaders.map(upperFirst).join(', ')}
+			</td>
+
+			<td>
+				{formatAsRelative(new Date(props.published).getTime(), 'en', 'long')}
+			</td>
+
+			<td>
+				{props.downloads}
+			</td>
+
+			<td class="rounded-r-lg">
+				<Button
+					buttonStyle="iconSecondary"
+					children={<Download01Icon />}
+				/>
+			</td>
+
+		</tr>
 	);
 }

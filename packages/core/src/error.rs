@@ -115,6 +115,10 @@ pub enum ErrorKind {
 	#[error("failed to manage credentials with IOTA stronghold: {0}")]
 	StrongholdError(#[from] crate::store::StrongholdError),
 
+	/// Wrapper around [`url::ParseError`] to handle URL parsing errors
+	#[error("failed to parse and handle URLs: {0}")]
+	URLError(#[from] url::ParseError),
+
 	/// Wrapper around [`tauri::Error`] to handle Tauri errors when the feature flag is enabled
 	#[cfg(feature = "tauri")]
 	#[error("error handling tauri: {0}")]

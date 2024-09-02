@@ -153,8 +153,8 @@ importers:
         specifier: '=2.0.0-rc.1'
         version: 2.0.0-rc.1
       '@tauri-apps/plugin-clipboard-manager':
-        specifier: '=2.0.0-rc.0'
-        version: 2.0.0-rc.0
+        specifier: '=2.0.0-rc.1'
+        version: 2.0.0-rc.1
       '@tauri-apps/plugin-dialog':
         specifier: '=2.0.0-rc.0'
         version: 2.0.0-rc.0
@@ -1407,6 +1407,9 @@ packages:
   '@tauri-apps/api@2.0.0-rc.1':
     resolution: {integrity: sha512-qubAWjM9sqofUh7fe+7UAbBY3wlkfCyxm+PNRYpq9mnNng7lvSQq3sYsFUEB12AYvgGARZSb54VMVUvRuVLi7w==}
 
+  '@tauri-apps/api@2.0.0-rc.4':
+    resolution: {integrity: sha512-UNiIhhKG08j4ooss2oEEVexffmWkgkYlC2M3GcX3VPtNsqFgVNL8Mcw/4Y7rO9M9S+ffAMnLOF5ypzyuyb8tyg==}
+
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.4':
     resolution: {integrity: sha512-CSkGon9QAGymYhDng3GTiBuyrWAkqdGimL+3hzfAA4c0yMV87Y68IZ7mwzzbmRjweImvrhuNgw4ME94d1wnGPQ==}
     engines: {node: '>= 10'}
@@ -1472,8 +1475,8 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
-  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.0':
-    resolution: {integrity: sha512-2fS3wbRQEtorkk3Np2msJUeKCXRqLQ9sSo2FzlFdUPYNzThsu43uWCF55McGLAfltNOvXQIcQLUBf05jbBL/5w==}
+  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.1':
+    resolution: {integrity: sha512-hFgUABMmQuVGKwHb8PR9fuqfk0WRkedbWUt/ZV5sL4Q6kLrsp3JYJvtzVPeMYdeBvMqHl8WXNxAc/zwSld2h9w==}
 
   '@tauri-apps/plugin-dialog@2.0.0-rc.0':
     resolution: {integrity: sha512-DPOXYe8SQ6Radk/67EOdaomlxL7oF99JO/ZUaPp1IBEs3Wro7lhlz63CfdKIBfKIZTLJLzP1R7/EiPL/GTA3Bg==}
@@ -5249,6 +5252,8 @@ snapshots:
 
   '@tauri-apps/api@2.0.0-rc.1': {}
 
+  '@tauri-apps/api@2.0.0-rc.4': {}
+
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.4':
     optional: true
 
@@ -5292,9 +5297,9 @@ snapshots:
       '@tauri-apps/cli-win32-ia32-msvc': 2.0.0-rc.4
       '@tauri-apps/cli-win32-x64-msvc': 2.0.0-rc.4
 
-  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.0':
+  '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.1':
     dependencies:
-      '@tauri-apps/api': 2.0.0-rc.1
+      '@tauri-apps/api': 2.0.0-rc.4
 
   '@tauri-apps/plugin-dialog@2.0.0-rc.0':
     dependencies:

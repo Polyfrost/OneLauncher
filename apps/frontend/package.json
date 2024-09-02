@@ -29,7 +29,7 @@
 		"@tanstack/solid-query": "^5.53.1",
 		"@tauri-apps/api": "=2.0.0-rc.1",
 		"@tauri-apps/plugin-clipboard-manager": "=2.0.0-rc.0",
-		"@tauri-apps/plugin-dialog": "=2.0.0-rc.0",
+		"@tauri-apps/plugin-dialog": "=2.0.0-rc.1",
 		"@tauri-apps/plugin-shell": "=2.0.0-rc.0",
 		"@unocss/reset": "^0.62.3",
 		"@untitled-theme/icons-solid": "^0.10.5",

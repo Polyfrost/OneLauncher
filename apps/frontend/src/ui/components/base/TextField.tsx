@@ -12,7 +12,7 @@ type TextFieldProps = {
 } & JSX.InputHTMLAttributes<HTMLInputElement>;
 
 function TextField(props: TextFieldProps) {
-	const [split, rest] = splitProps(props, ['iconLeft', 'iconRight', 'inputFilter', 'onValidInput', 'onValidSubmit', 'labelClass']);
+	const [split, rest] = splitProps(props, ['iconLeft', 'iconRight', 'inputFilter', 'onValidInput', 'onValidSubmit', 'labelClass', 'onInput', 'onChange']);
 	const [isValid, setIsValid] = createSignal(true);
 	const id = createUniqueId();
 
@@ -30,9 +30,19 @@ function TextField(props: TextFieldProps) {
 			split.onValidInput(value);
 	}
 
-	function onSubmit() {
+	function onInput(e: Event) {
+		validate();
+
+		// @ts-expect-error -- I do not care about the event types anymore
+		split.onInput?.(e);
+	}
+
+	function onChange(e: Event) {
 		if (isValid() && split.onValidSubmit)
 			split.onValidSubmit(ref.value);
+
+		// @ts-expect-error -- I do not care about the event types anymore
+		split.onChange?.(e);
 	}
 
 	onMount(() => {
@@ -46,8 +56,8 @@ function TextField(props: TextFieldProps) {
 				id={id}
 				type="text"
 				ref={ref}
-				onInput={validate}
-				onChange={onSubmit}
+				onInput={onInput}
+				onChange={onChange}
 				{...rest}
 			/>
 			{split.iconRight && <span class={styles.icon}>{split.iconRight}</span>}

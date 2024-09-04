@@ -28,6 +28,8 @@ pub enum PackageType {
 	ResourcePack,
 	/// Represents a shaderpack file
 	ShaderPack,
+	/// Represents a modpack file
+	ModPack,
 }
 
 impl PackageType {
@@ -59,6 +61,7 @@ impl PackageType {
 			"datapacks" => Some(PackageType::DataPack),
 			"resourcepacks" => Some(PackageType::ResourcePack),
 			"shaderpacks" => Some(PackageType::ShaderPack),
+			"modpack" => Some(PackageType::ModPack),
 			_ => None,
 		}
 	}
@@ -69,6 +72,7 @@ impl PackageType {
 			PackageType::DataPack => "datapack",
 			PackageType::ResourcePack => "resourcepack",
 			PackageType::ShaderPack => "shaderpack",
+			PackageType::ModPack => "modpack",
 		}
 	}
 
@@ -78,6 +82,7 @@ impl PackageType {
 			PackageType::DataPack => "datapacks",
 			PackageType::ResourcePack => "resourcepacks",
 			PackageType::ShaderPack => "shaderpacks",
+			PackageType::ModPack => "modpack",
 		}
 	}
 
@@ -283,6 +288,7 @@ impl PackageManager {
 			PackageType::DataPack => &self.datapacks,
 			PackageType::ResourcePack => &self.resourcepacks,
 			PackageType::ShaderPack => &self.shaderpacks,
+			_ => unreachable!(),
 		}
 	}
 
@@ -293,6 +299,7 @@ impl PackageManager {
 			PackageType::DataPack => &mut self.datapacks,
 			PackageType::ResourcePack => &mut self.resourcepacks,
 			PackageType::ShaderPack => &mut self.shaderpacks,
+			_ => unreachable!(),
 		}
 	}
 

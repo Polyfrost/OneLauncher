@@ -51,25 +51,29 @@ pub async fn get_provider_package_version(
 	Ok(provider.get_version(&version).await?)
 }
 
-#[specta::specta]
-#[tauri::command]
-pub async fn search_provider_packages(
-	provider: Providers,
+#[derive(specta::Type, serde::Deserialize, serde::Serialize)]
+pub struct ProviderSearchQuery {
 	query: Option<String>,
 	limit: Option<u8>,
 	game_versions: Option<Vec<String>>,
 	categories: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
+	package_types: Option<Vec<PackageType>>,
 	open_source: Option<bool>,
-) -> Result<ProviderSearchResults, String> {
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn search_provider_packages(provider: Providers, query: ProviderSearchQuery) -> Result<ProviderSearchResults, String> {
 	Ok(provider
 		.search(
-			query,
-			limit,
-			game_versions,
-			categories,
-			loaders,
-			open_source,
+			query.query,
+			query.limit,
+			query.game_versions,
+			query.categories,
+			query.loaders,
+			query.package_types,
+			query.open_source,
 		)
 		.await?)
 }

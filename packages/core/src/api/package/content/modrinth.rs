@@ -249,7 +249,7 @@ impl FacetBuilder {
 				if i != 0 {
 					builder.push(',');
 				}
-				builder.push_str(f.to_string().as_str());
+				builder.push_str(format!("\"{}\"", f.to_string()).as_str());
 			}
 			builder.push(']');
 		}
@@ -322,7 +322,7 @@ where
 				if facets.is_empty() {
 					"".to_string()
 				} else {
-					format!("&facets={}", facets)
+					format!("&facets=[{}]", facets)
 				}
 			)
 			.as_str(),

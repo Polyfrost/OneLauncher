@@ -5,7 +5,7 @@
 use modrinth::{Facet, FacetOperation};
 use serde::{Deserialize, Serialize};
 
-use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion};
+use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::package::content::modrinth::FacetBuilder;
 use crate::store::{Author, ProviderSearchResults};
 use crate::Result;
@@ -47,6 +47,7 @@ impl Providers {
 		game_versions: Option<Vec<String>>,
 		categories: Option<Vec<String>>,
 		loaders: Option<Vec<Loader>>,
+		package_types: Option<Vec<PackageType>>,
 		open_source: Option<bool>,
 	) -> Result<ProviderSearchResults> {
 		match self {
@@ -66,6 +67,16 @@ impl Providers {
 								"categories".to_string(),
 								FacetOperation::Eq,
 								category,
+							));
+						}
+					}
+
+					if let Some(package_types) = package_types {
+						for package_type in package_types {
+							builder.or(Facet(
+								"project_types".to_string(),
+								FacetOperation::Eq,
+								package_type.get_name().to_string(),
 							));
 						}
 					}

@@ -33,6 +33,12 @@ interface FeaturedProps {
 }
 
 function Featured(props: FeaturedProps) {
+	const browser = useBrowser();
+
+	const open = () => {
+		browser.displayPackage(props.package.id, props.package.provider);
+	};
+
 	return (
 		<div class="flex flex-col gap-y-1">
 			<h5 class="ml-2">Featured</h5>
@@ -55,7 +61,7 @@ function Featured(props: FeaturedProps) {
 							buttonStyle="ghost"
 							iconRight={<ChevronRightIcon />}
 							children="View Package"
-							onClick={() => { }}
+							onClick={open}
 						/>
 					</div>
 				</div>

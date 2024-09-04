@@ -1,10 +1,11 @@
 import { Route } from '@solidjs/router';
-import { For, type ParentProps } from 'solid-js';
+import { For, type JSX, type ParentProps } from 'solid-js';
 import { SearchMdIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import type { PackageType } from '@onelauncher/client/bindings';
 import BrowserMain from './BrowserMain';
 import BrowserCategory from './BrowserCategory';
 import BrowserPackage from './BrowserPackage';
+import BrowserSearch from './BrowserSearch';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import useBrowser from '~ui/hooks/useBrowser';
@@ -16,6 +17,7 @@ function BrowserRoutes() {
 			<Route path="/" component={BrowserMain} />
 			<Route path="/category" component={BrowserCategory} />
 			<Route path="/package" component={BrowserPackage} children={<BrowserPackage.Routes />} />
+			<Route path="/search" component={BrowserSearch} />
 		</>
 	);
 }
@@ -27,23 +29,31 @@ function BrowserRoot(props: ParentProps) {
 }
 
 function BrowserToolbar() {
-	// const controller = useBrowser();
+	const browser = useBrowser();
+
+	const onKeyPress: JSX.EventHandlerUnion<HTMLInputElement, KeyboardEvent> = (e) => {
+		if (e.key === 'Enter') {
+			const query = e.currentTarget.value;
+
+			browser.setSearchQuery(prev => ({
+				...prev,
+				query,
+			}));
+
+			browser.search();
+		}
+	};
 
 	return (
 		<div class="w-full flex flex-row justify-between bg-page">
-			<div class="flex flex-row gap-2">
-				{/* <Button
-					buttonStyle="secondary"
-					children={controller.cluster()?.meta.name || 'None'}
-					iconLeft={<Settings01Icon />}
-					onClick={controller.displayClusterSelector}
-				/> */}
-			</div>
+			<div class="flex flex-row gap-2" />
 
 			<div class="flex flex-row gap-2">
 				<TextField
 					iconLeft={<SearchMdIcon />}
+					value={browser.searchQuery().query || ''}
 					placeholder="Search for content"
+					onKeyPress={onKeyPress}
 				/>
 			</div>
 		</div>

@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, PackageType, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
+import type { Cluster, ManagedPackage, PackageType, ProviderSearchQuery, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 import { useRecentCluster } from './useCluster';
 import { bridge } from '~imports';
@@ -19,6 +19,10 @@ interface BrowserControllerType {
 	displayCategory: (category: string) => void;
 	displayClusterSelector: () => void;
 
+	search: () => void;
+	searchQuery: Accessor<ProviderSearchQuery>;
+	setSearchQuery: Setter<ProviderSearchQuery>;
+
 	packageType: Accessor<PackageType>;
 	setPackageType: Setter<PackageType>;
 
@@ -33,11 +37,24 @@ export function BrowserProvider(props: ParentProps) {
 	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
 	const [featured, setFeatured] = createSignal<ManagedPackage | undefined>();
 
+	// Used for the current "Browser Mode". It'll only show packages of the selected type
 	const [packageType, setPackageType] = createSignal<PackageType>('mod');
 
+	// Active cluster that results should be "focused" on
 	const [cluster, setCluster] = createSignal<Cluster>();
-	const recentCluster = useRecentCluster();
+
+	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchQuery>({
+		query: '',
+		limit: 20,
+		categories: null,
+		game_versions: null,
+		loaders: null,
+		package_types: ['mod'],
+		open_source: null,
+	});
+
 	const navigate = useNavigate();
+	const recentCluster = useRecentCluster();
 
 	const modal = createModal(props => (
 		<ChooseClusterModal
@@ -65,11 +82,18 @@ export function BrowserProvider(props: ParentProps) {
 			modal.show();
 		},
 
+		search: () => {
+			navigate('/browser/search');
+		},
+		searchQuery: searchOptions,
+		setSearchQuery: setSearchOptions,
+
 		packageType,
 		setPackageType,
 
 		async refreshCache() {
-			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', null, 10, null, null, null, null));
+			const opts = untrack(searchOptions);
+			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', opts));
 
 			setMainPageCache(res);
 

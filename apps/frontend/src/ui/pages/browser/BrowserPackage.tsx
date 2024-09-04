@@ -15,6 +15,8 @@ import SteveHead from '~assets/images/steve.png';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import Link from '~ui/components/base/Link';
 import usePagination from '~ui/hooks/usePagination';
+import Spinner from '~ui/components/Spinner';
+import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 
 interface BrowserModParams extends Params {
 	id: string;
@@ -74,17 +76,16 @@ function BrowserPackage(props: ParentProps) {
 	];
 
 	return (
-		<>
-			<div class="flex flex-row items-start gap-x-4 pb-8">
+		<Spinner.Suspense>
+			<div class="h-full flex flex-1 flex-row items-start gap-x-4 pb-8">
 				<Show
 					when={pkg() !== undefined && authors() !== undefined}
-					fallback={<div>Loading...</div>}
 					children={(
 						<>
 							<BrowserSidebar package={pkg()!} authors={authors()!} />
 
-							<div class="flex flex-1 flex-col items-start justify-between gap-y-4">
-								<div class="flex flex-row gap-x-1 rounded-lg bg-component-bg p-1">
+							<div class="min-h-full flex flex-1 flex-col items-start gap-y-4">
+								<div class="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1">
 									<For each={links}>
 										{link => (
 											<NavLink href={link[1] || ''}>
@@ -94,17 +95,23 @@ function BrowserPackage(props: ParentProps) {
 									</For>
 								</div>
 
-								<BrowserPackageProvider pkg={pkg()!}>
-									{/* <AnimatedRoutes> */}
-									{props.children}
-									{/* </AnimatedRoutes> */}
-								</BrowserPackageProvider>
+								<div class="h-full min-h-full w-full flex-1">
+									<BrowserPackageProvider pkg={pkg()!}>
+										<Spinner.Suspense>
+											<div class="h-full max-w-full min-h-full w-full overflow-hidden">
+												<AnimatedRoutes>
+													{props.children}
+												</AnimatedRoutes>
+											</div>
+										</Spinner.Suspense>
+									</BrowserPackageProvider>
+								</div>
 							</div>
 						</>
 					)}
 				/>
 			</div>
-		</>
+		</Spinner.Suspense>
 	);
 }
 
@@ -122,7 +129,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 	const promptOpen = usePromptOpener();
 
 	return (
-		<div class="sticky top-0 max-w-60 min-w-54 flex flex-col gap-y-4">
+		<div class="sticky top-0 z-1 max-w-60 min-w-54 flex flex-col gap-y-4">
 			<div class="min-h-72 flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div class="relative h-28 flex items-center justify-center overflow-hidden">
 					<img class="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={props.package.icon_url || ''} alt={`Icon for ${props.package.title}`} />
@@ -389,11 +396,11 @@ function BrowserPackageVersions() {
 
 	createEffect(on(() => page(), () => {
 		refetch();
-		container.parentElement?.scrollIntoView({ behavior: 'smooth' });
+		container.parentElement?.parentElement?.scrollIntoView({ behavior: 'smooth' });
 	}));
 
 	return (
-		<div ref={container} class="w-full flex flex-1 flex-col gap-y-1">
+		<div ref={container} class="h-full w-full flex flex-1 flex-col gap-y-1">
 			<div class="flex flex-row justify-between">
 				<h1>
 					Versions - Page
@@ -404,26 +411,28 @@ function BrowserPackageVersions() {
 				<Navigation />
 			</div>
 
-			<table class="w-full border-separate border-spacing-x-none border-spacing-y-1">
-				<thead>
-					<tr class="bg-page-elevated [&>th]:py-2 [&>th]:text-left">
-						<th class="w-16 rounded-l-lg" />
+			<Spinner.Suspense>
+				<table class="w-full border-separate border-spacing-x-none border-spacing-y-1">
+					<thead>
+						<tr class="bg-page-elevated [&>th]:py-2 [&>th]:text-left">
+							<th class="w-16 rounded-l-lg" />
 
-						<th>Name</th>
-						<th>Game Version</th>
-						<th>Loader</th>
-						<th>Created</th>
-						<th>Downloads</th>
-						<th class="rounded-r-lg" />
-					</tr>
-				</thead>
+							<th>Name</th>
+							<th>Game Version</th>
+							<th>Loader</th>
+							<th>Created</th>
+							<th>Downloads</th>
+							<th class="rounded-r-lg" />
+						</tr>
+					</thead>
 
-				<tbody>
-					<For each={versions()?.reverse()}>
-						{version => <VersionRow {...version} />}
-					</For>
-				</tbody>
-			</table>
+					<tbody>
+						<For each={versions()?.reverse()}>
+							{version => <VersionRow {...version} />}
+						</For>
+					</tbody>
+				</table>
+			</Spinner.Suspense>
 
 			<Navigation />
 

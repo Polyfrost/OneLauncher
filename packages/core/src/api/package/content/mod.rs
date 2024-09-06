@@ -44,6 +44,7 @@ impl Providers {
 		&self,
 		query: Option<String>,
 		limit: Option<u8>,
+		offset: Option<u32>,
 		game_versions: Option<Vec<String>>,
 		categories: Option<Vec<String>>,
 		loaders: Option<Vec<Loader>>,
@@ -54,6 +55,7 @@ impl Providers {
 			Providers::Modrinth => modrinth::search(
 				query,
 				limit,
+				offset,
 				Some(|mut builder: FacetBuilder| {
 					if let Some(game_versions) = game_versions {
 						for version in game_versions {
@@ -63,7 +65,7 @@ impl Providers {
 
 					if let Some(categories) = categories {
 						for category in categories {
-							builder.or(Facet(
+							builder.and(Facet(
 								"categories".to_string(),
 								FacetOperation::Eq,
 								category,
@@ -73,7 +75,7 @@ impl Providers {
 
 					if let Some(package_types) = package_types {
 						for package_type in package_types {
-							builder.or(Facet(
+							builder.and(Facet(
 								"project_types".to_string(),
 								FacetOperation::Eq,
 								package_type.get_name().to_string(),

@@ -145,6 +145,9 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 							{' '}
 							<span class="text-fg-primary">{props.package.provider}</span>
 						</p>
+						<Show when={props.package.is_archived === true}>
+							<p class="w-fit rounded-full bg-code-warn/10 px-2 py-1 text-xs text-code-warn">Archived</p>
+						</Show>
 					</div>
 
 					<p class="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{props.package.description}</p>

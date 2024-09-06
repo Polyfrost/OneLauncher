@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from '@untitled-theme/icons-solid';
-import { Show } from 'solid-js';
+import { Show, onMount } from 'solid-js';
 import type { ManagedPackage } from '@onelauncher/client/bindings';
 import { BrowserContent } from './BrowserRoot';
 import useBrowser from '~ui/hooks/useBrowser';
@@ -9,6 +9,13 @@ import SearchResultsContainer from '~ui/components/content/SearchResults';
 
 function BrowserMain() {
 	const browser = useBrowser();
+
+	onMount(() => {
+		browser.setSearchQuery(prev => ({
+			...prev,
+			categories: [],
+		}));
+	});
 
 	return (
 		<BrowserContent>

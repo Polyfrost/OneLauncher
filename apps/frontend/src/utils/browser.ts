@@ -1,8 +1,11 @@
 import type { BrowserListView, PackageType } from '@onelauncher/client/bindings';
-import type { BrowserSidebarCategory } from '~ui/pages/browser/BrowserRoot';
-import { LOADERS, PROVIDERS } from '~utils';
 
 export const BROWSER_VIEWS: BrowserListView[] = ['grid', 'list', 'preview'] as const;
+
+export interface BrowserSidebarCategory {
+	name: string;
+	sub: string[];
+};
 
 export const browserCategories = {
 	byPackageType(packageType: PackageType): BrowserSidebarCategory[] {
@@ -16,6 +19,8 @@ export const browserCategories = {
 			case 'shaderpack':
 				return this.shaderpack();
 		}
+
+		return [];
 	},
 
 	mod(): BrowserSidebarCategory[] {
@@ -23,15 +28,14 @@ export const browserCategories = {
 			{
 				name: 'Categories',
 				sub: [
-					['Adventure', '/adventure'],
-					['Magic', '/magic'],
-					['Technology', '/technology'],
-					['Utility', '/utility'],
-					['Worldgen', '/worldgen'],
-					['Miscellaneous', '/miscellaneous'],
+					'adventure',
+					'magic',
+					'technology',
+					'utility',
+					'worldgen',
+					'miscellaneous',
 				],
 			},
-			...this.loader(false),
 		];
 	},
 
@@ -45,32 +49,5 @@ export const browserCategories = {
 
 	shaderpack(): BrowserSidebarCategory[] {
 		return [];
-	},
-
-	provider(): BrowserSidebarCategory[] {
-		return [
-			{
-				name: 'Providers',
-				sub: PROVIDERS.map(provider => [provider, `/${provider.toLowerCase()}`]),
-			},
-		];
-	},
-
-	loader(vanilla: boolean = false): BrowserSidebarCategory[] {
-		const loaders: [string, string][] = [];
-
-		for (const loader of LOADERS) {
-			if (vanilla === false && loader === 'vanilla')
-				continue;
-
-			loaders.push([loader, `/${loader.toLowerCase()}`]);
-		}
-
-		return [
-			{
-				name: 'Loaders',
-				sub: loaders,
-			},
-		];
 	},
 };

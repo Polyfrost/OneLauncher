@@ -8,6 +8,7 @@ async fn main() -> Result<()> {
 	let results = provider.search(
 		Some("chatting".to_string()),
 		Some(5),
+		Some(0),
 		None,
 		None,
 		None,

@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router';
-import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, onMount, untrack, useContext } from 'solid-js';
+import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, on, onMount, untrack, useContext } from 'solid-js';
 import type { Cluster, ManagedPackage, PackageType, ProviderSearchQuery, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 import { useRecentCluster } from './useCluster';
@@ -46,6 +46,7 @@ export function BrowserProvider(props: ParentProps) {
 	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchQuery>({
 		query: '',
 		limit: 20,
+		offset: 0,
 		categories: null,
 		game_versions: null,
 		loaders: null,
@@ -118,6 +119,21 @@ export function BrowserProvider(props: ParentProps) {
 	createEffect(() => {
 		setCluster(recentCluster());
 	});
+
+	createEffect(on(cluster, (cluster) => {
+		if (cluster !== undefined)
+			setSearchOptions((prev) => {
+				const opts: ProviderSearchQuery = {
+					...prev,
+					game_versions: [cluster.meta.mc_version],
+				};
+
+				if (cluster.meta.loader !== undefined)
+					opts.loaders = [cluster.meta.loader];
+
+				return opts;
+			});
+	}));
 
 	return (
 		<BrowserContext.Provider value={controller}>

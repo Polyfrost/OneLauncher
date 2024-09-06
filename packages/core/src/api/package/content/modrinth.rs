@@ -36,8 +36,7 @@ pub struct ModrinthPackage {
 	// pub donation_urls: Vec<DonationUrl>,
 	pub project_type: PackageType,
 	pub downloads: u32,
-	#[serde(default)]
-	pub icon_url: String,
+	pub icon_url: Option<String>,
 	#[serde(alias = "project_id")]
 	pub id: String,
 	pub team: String,
@@ -57,6 +56,8 @@ pub struct ModrinthPackage {
 	pub license: Option<License>,
 	// #[serde(default)]
 	// pub gallery: Vec<Gallery>,
+	#[serde(default)]
+	pub status: String,
 }
 
 impl From<ModrinthPackage> for ManagedPackage {
@@ -71,7 +72,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			versions: value.versions,
 			game_versions: value.game_versions,
 			loaders: value.loaders,
-			icon_url: Some(value.icon_url),
+			icon_url: value.icon_url,
 			created: value.published,
 			updated: value.updated,
 			client: value.client_side,
@@ -87,6 +88,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 				team: value.team,
 				organization: value.organization,
 			},
+			is_archived: value.status == "archived",
 		}
 	}
 }
@@ -114,6 +116,7 @@ pub struct Gallery {
 #[derive(Deserialize)]
 struct SearchResults {
 	hits: Vec<SearchResult>,
+	total_hits: u32,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -241,20 +244,23 @@ impl FacetBuilder {
 	}
 
 	pub fn build(&self) -> String {
-		let mut builder = String::new();
+		let mut builder: Vec<String> = vec![];
 
 		for facet in &self.facets {
-			builder.push('[');
+			let mut stringified = String::new();
+			stringified.push('[');
 			for (i, f) in facet.iter().enumerate() {
 				if i != 0 {
-					builder.push(',');
+					stringified.push(',');
 				}
-				builder.push_str(format!("\"{}\"", f.to_string()).as_str());
+				stringified.push_str(format!("\"{}\"", f.to_string()).as_str());
 			}
-			builder.push(']');
+			stringified.push(']');
+
+			builder.push(stringified);
 		}
 
-		builder
+		builder.join(",")
 	}
 }
 
@@ -306,6 +312,7 @@ pub async fn list() -> Result<Vec<ModrinthPackage>> {
 pub async fn search<F>(
 	query: Option<String>,
 	limit: Option<u8>,
+	offset: Option<u32>,
 	facets: Option<F>,
 ) -> Result<ProviderSearchResults>
 where
@@ -316,9 +323,10 @@ where
 	let results: SearchResults = serde_json::from_slice(
 		&fetch(
 			format_url!(
-				"/search?query={}&limit={}{}",
+				"/search?query={}&limit={}&offset={}{}",
 				query.unwrap_or_default(),
 				limit.unwrap_or(10),
+				offset.unwrap_or(0),
 				if facets.is_empty() {
 					"".to_string()
 				} else {
@@ -335,6 +343,7 @@ where
 	Ok(ProviderSearchResults {
 		provider: Providers::Modrinth,
 		results: results.hits,
+		total: results.total_hits,
 	})
 }
 

@@ -1,9 +1,7 @@
-import { Route } from '@solidjs/router';
+import { Route, useLocation } from '@solidjs/router';
 import { For, type JSX, type ParentProps } from 'solid-js';
 import { SearchMdIcon, Settings01Icon } from '@untitled-theme/icons-solid';
-import type { PackageType } from '@onelauncher/client/bindings';
 import BrowserMain from './BrowserMain';
-import BrowserCategory from './BrowserCategory';
 import BrowserPackage from './BrowserPackage';
 import BrowserSearch from './BrowserSearch';
 import Button from '~ui/components/base/Button';
@@ -15,7 +13,6 @@ function BrowserRoutes() {
 	return (
 		<>
 			<Route path="/" component={BrowserMain} />
-			<Route path="/category" component={BrowserCategory} />
 			<Route path="/package" component={BrowserPackage} children={<BrowserPackage.Routes />} />
 			<Route path="/search" component={BrowserSearch} />
 		</>
@@ -60,27 +57,49 @@ function BrowserToolbar() {
 	);
 }
 
-export interface BrowserSidebarCategory {
-	name: string;
-	sub: [string, string][];
-};
+function BrowserCategories() {
+	const browser = useBrowser();
+	const location = useLocation();
 
-function BrowserCategories(props: { categories: BrowserSidebarCategory[] }) {
+	const getEnabledCategories = () => browser.searchQuery().categories || [];
+
+	const isEnabled = (category: string) => {
+		return getEnabledCategories().includes(category);
+	};
+
+	const toggleCategory = (category: string) => {
+		const enabledCategories = getEnabledCategories();
+		const index = enabledCategories.indexOf(category);
+		if (index > -1)
+			enabledCategories.splice(index, 1);
+		else
+			enabledCategories.push(category);
+
+		browser.setSearchQuery(prev => ({
+			...prev,
+			categories: enabledCategories,
+		}));
+
+		if (!location.pathname.includes('/search'))
+			browser.search();
+	};
+
 	return (
 		<div class="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
 			<div />
 			<div class="flex flex-col gap-y-6">
-				<For each={props.categories.concat(browserCategories.provider())}>
+				<For each={browserCategories.byPackageType(browser.packageType())}>
 					{category => (
 						<div class="flex flex-col gap-y-2">
 							<h6 class="my-1">{category.name}</h6>
 							<For each={category.sub}>
 								{sub => (
-									<a
-										href={sub[1]}
-										class="text-md text-fg-primary capitalize hover:text-fg-secondary"
-										children={sub[0]}
-									/>
+									<p
+										class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover ${isEnabled(sub) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
+										onClick={() => toggleCategory(sub)}
+									>
+										{sub}
+									</p>
 								)}
 							</For>
 						</div>
@@ -97,31 +116,21 @@ function BrowserSidebar() {
 	return (
 		<div class="flex flex-col gap-y-4">
 			<div class="flex flex-col gap-y-1">
-				<h6 class="my-1">Active Cluster</h6>
-				<Button
-					buttonStyle="secondary"
-					children={controller.cluster()?.meta.name || 'None'}
-					iconLeft={<Settings01Icon />}
-					onClick={controller.displayClusterSelector}
-				/>
-			</div>
-
-			<div class="flex flex-col gap-y-1">
-				<h6 class="my-1">Search Filters</h6>
+				<div class="flex flex-col gap-y-1">
+					<h6 class="my-1">Active Cluster</h6>
+					<Button
+						buttonStyle="secondary"
+						children={controller.cluster()?.meta.name || 'None'}
+						iconLeft={<Settings01Icon />}
+						onClick={controller.displayClusterSelector}
+					/>
+				</div>
 			</div>
 		</div>
 	);
 }
 
-export type BrowserContentProps = ParentProps & {
-	categories?: BrowserSidebarCategory[];
-};
-
-const categories = (packageType: PackageType) => browserCategories.byPackageType(packageType);
-
-export function BrowserContent(props: BrowserContentProps) {
-	const browser = useBrowser();
-
+export function BrowserContent(props: ParentProps) {
 	return (
 		<div class="relative h-full flex flex-1 flex-col items-center gap-2">
 			<div class="h-full w-full max-w-screen-xl flex flex-1 flex-col items-center gap-y-2">
@@ -132,7 +141,7 @@ export function BrowserContent(props: BrowserContentProps) {
 				</div>
 
 				<div class="grid grid-cols-[220px_auto_220px] w-full max-w-screen-xl gap-x-6 pb-8">
-					<BrowserCategories categories={categories(browser.packageType()).concat(props.categories || [])} />
+					<BrowserCategories />
 
 					<div class="h-full flex flex-col gap-y-4">
 						<div class="h-full flex-1">

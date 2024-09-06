@@ -2,26 +2,34 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-solid';
 import { For, Show, createSignal } from 'solid-js';
 import Button from '~ui/components/base/Button';
 
-interface PaginationOptions {
+export interface PaginationOptions {
 	itemsCount: () => number;
 	itemsPerPage: () => number;
 	initialPage?: () => number;
 };
 
-function usePagination(options: PaginationOptions) {
-	const [page, setPage] = createSignal(Math.max(1, options.initialPage?.() || 1));
+function usePagination(initialOptions: PaginationOptions) {
+	const [options, setOptions] = createSignal(initialOptions);
+
+	// eslint-disable-next-line solid/reactivity -- -
+	const [page, setPage] = createSignal(Math.max(1, options().initialPage?.() || 1));
 
 	const next = () => setPage(page => page + 1);
 	const prev = () => setPage(page => page - 1);
 
-	const totalPages = () => Math.ceil(options.itemsCount() / options.itemsPerPage());
+	const totalPages = () => Math.ceil(options().itemsCount() / options().itemsPerPage());
 
 	const hasNext = () => page() < totalPages();
 	const hasPrev = () => page() > 1;
 
-	const offset = () => (page() - 1) * options.itemsPerPage();
+	const offset = () => (page() - 1) * options().itemsPerPage();
 
-	// Navigation
+	// Exported
+	function reset(options: PaginationOptions) {
+		setOptions(options);
+		setPage(1);
+	}
+
 	function getVisiblePageNumbers(page: number) {
 		const pages: number[] = [];
 
@@ -97,6 +105,7 @@ function usePagination(options: PaginationOptions) {
 		hasPrev,
 		totalPages,
 		offset,
+		reset,
 		Navigation,
 	};
 }

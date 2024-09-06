@@ -55,6 +55,7 @@ pub async fn get_provider_package_version(
 pub struct ProviderSearchQuery {
 	query: Option<String>,
 	limit: Option<u8>,
+	offset: Option<u32>,
 	game_versions: Option<Vec<String>>,
 	categories: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
@@ -69,6 +70,7 @@ pub async fn search_provider_packages(provider: Providers, query: ProviderSearch
 		.search(
 			query.query,
 			query.limit,
+			query.offset,
 			query.game_versions,
 			query.categories,
 			query.loaders,

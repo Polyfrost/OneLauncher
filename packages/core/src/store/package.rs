@@ -155,6 +155,7 @@ pub struct SearchResult {
 pub struct ProviderSearchResults {
 	pub provider: Providers,
 	pub results: Vec<SearchResult>,
+	pub total: u32,
 }
 
 /// A struct that represents a Package.
@@ -587,8 +588,9 @@ pub struct ManagedPackage {
 	pub categories: Vec<String>,
 	pub optional_categories: Option<Vec<String>>,
 	pub license: Option<License>,
-
 	pub author: Author,
+
+	pub is_archived: bool,
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]

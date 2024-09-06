@@ -1,4 +1,4 @@
-import type { ProviderSearchResults, Providers, SearchResult } from '@onelauncher/client/bindings';
+import type { Providers, SearchResult } from '@onelauncher/client/bindings';
 import { ChevronDownIcon, Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
 import { For, Match, Show, Switch, createSignal } from 'solid-js';
 import Button from '../base/Button';
@@ -6,11 +6,13 @@ import useBrowser from '~ui/hooks/useBrowser';
 import useSettings from '~ui/hooks/useSettings';
 import { abbreviateNumber } from '~utils';
 
-type SearchResultsContainerProps = ProviderSearchResults & {
+interface SearchResultsContainerProps {
+	provider: Providers;
+	results: SearchResult[];
 	header: string;
 	category: string;
 	collapsable?: boolean;
-};
+}
 
 function SearchResultsContainer(props: SearchResultsContainerProps) {
 	const { settings } = useSettings();

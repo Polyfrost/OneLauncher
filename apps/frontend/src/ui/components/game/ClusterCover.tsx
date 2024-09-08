@@ -1,8 +1,8 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import defaultCover from '~assets/images/default_instance_cover.jpg';
 import { type JSX, type ParentProps, Show, splitProps } from 'solid-js';
 import type { Cluster } from '@onelauncher/client/bindings';
 import styles from './ClusterCover.module.scss';
-import defaultCover from '~assets/images/default_instance_cover.jpg';
 
 type ClusterCoverProps = JSX.HTMLAttributes<HTMLImageElement> & {
 	cluster: Cluster | undefined;
@@ -31,14 +31,14 @@ function ClusterCover(props: ClusterCoverProps) {
 	};
 
 	const Wrapper = (props: ParentProps) => (
-		<Show when={split.linearBlur !== undefined} fallback={<>{props.children}</>}>
+		<Show fallback={<>{props.children}</>} when={split.linearBlur !== undefined}>
 			<div
+				children={props.children}
 				class={`${styles.linearBlur} ${split.linearBlur?.class || ''}`}
 				style={{
 					'--degrees': `${split.linearBlur?.degrees ?? 0}deg`,
 					'--blur': `${split.linearBlur?.blur ?? 0}px`,
 				}}
-				children={props.children}
 			/>
 		</Show>
 	);
@@ -48,12 +48,12 @@ function ClusterCover(props: ClusterCoverProps) {
 			<img
 				{...rest}
 				class={`${split.class || ''}`}
-				src={image()}
 				onError={(e) => {
 					e.currentTarget.src = split.override ? convertFileSrc(split.override) : defaultCover;
 					if (typeof split.onError === 'function')
 						split.onError(e);
 				}}
+				src={image()}
 			/>
 		</Wrapper>
 	);

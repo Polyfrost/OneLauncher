@@ -20,11 +20,13 @@ pub async fn find_managed_version(
 ) -> Result<ManagedVersion> {
 	let provider = package.provider.clone();
 
-	let versions = provider.get_all_versions(
-		&package.id,
-		game_version.as_ref().map(|v| vec![v.to_owned()]).to_owned(),
-		loader.map(|l| vec![l]).clone(),
-	).await?;
+	let versions = provider
+		.get_all_versions(
+			&package.id,
+			game_version.as_ref().map(|v| vec![v.to_owned()]).to_owned(),
+			loader.map(|l| vec![l]).clone(),
+		)
+		.await?;
 
 	Ok(versions
 		.iter()
@@ -242,7 +244,9 @@ pub async fn sync_packages_by_type(
 		.get_mut(cluster_path)
 		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
-	manager.sync_packages_by_type(&state.directories, package_type).await?;
+	manager
+		.sync_packages_by_type(&state.directories, package_type)
+		.await?;
 
 	Ok(())
 }

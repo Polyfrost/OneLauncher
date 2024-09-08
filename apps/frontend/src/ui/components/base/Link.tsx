@@ -1,7 +1,7 @@
-import { type JSX, splitProps } from 'solid-js';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import styles from './Link.module.scss';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
+import { type JSX, splitProps } from 'solid-js';
+import styles from './Link.module.scss';
 
 export type LinkProps = JSX.IntrinsicElements['a'] & {
 	prompt?: boolean;
@@ -15,12 +15,6 @@ function Link(props: LinkProps) {
 	return (
 		<button
 			{...rest as JSX.ButtonHTMLAttributes<HTMLButtonElement>}
-			class={`${styles.link} ${split.class || ''}`}
-			onClick={(e) => {
-				open(split.href, !!split.prompt);
-				if (typeof split.onClick === 'function')
-					split.onClick(e as any);
-			}}
 			children={(
 				<div class="flex flex-row gap-x-1">
 					{props.children}
@@ -29,6 +23,12 @@ function Link(props: LinkProps) {
 					)}
 				</div>
 			)}
+			class={`${styles.link} ${split.class || ''}`}
+			onClick={(e) => {
+				open(split.href, !!split.prompt);
+				if (typeof split.onClick === 'function')
+					split.onClick(e as any);
+			}}
 		/>
 	);
 }

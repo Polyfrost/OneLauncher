@@ -1,11 +1,11 @@
-import { tmpdir as getTmpdir } from 'node:os';
-import { promises as fs } from 'node:fs';
-import { env, cwd as getCwd } from 'node:process';
 import { Buffer } from 'node:buffer';
-import { join, relative } from 'pathe';
-import { rmRF } from '@actions/io';
-import { exec } from '@actions/exec';
+import { promises as fs } from 'node:fs';
+import { tmpdir as getTmpdir } from 'node:os';
+import { env, cwd as getCwd } from 'node:process';
 import { getInput as getCoreInput, group } from '@actions/core';
+import { exec } from '@actions/exec';
+import { rmRF } from '@actions/io';
+import { join, relative } from 'pathe';
 import { installReviewdog } from './installer';
 
 const getInput = <T = string>(name: string): T => getCoreInput(name) as T;

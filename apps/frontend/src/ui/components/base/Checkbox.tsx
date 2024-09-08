@@ -1,5 +1,5 @@
-import { type JSX, createSignal, splitProps } from 'solid-js';
 import { CheckIcon } from '@untitled-theme/icons-solid';
+import { createSignal, type JSX, splitProps } from 'solid-js';
 import styles from './Checkbox.module.scss';
 
 type CheckboxProps = JSX.HTMLAttributes<HTMLDivElement> & {
@@ -19,8 +19,8 @@ function Checkbox(props: CheckboxProps) {
 
 	return (
 		<div
-			onClick={() => toggle()}
 			class={`${styles.checkbox} ${` ${split.class}` ?? ''}`}
+			onClick={() => toggle()}
 			{...rest}
 		>
 			<div class={`${styles.box} ${checked() ? styles.checked : ''}`}>

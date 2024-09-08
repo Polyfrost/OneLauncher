@@ -1,34 +1,33 @@
 import { type Navigator, Route, useIsRouting, useSearchParams } from '@solidjs/router';
-import { type ParentProps, Show, createEffect, createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
-import type { UnlistenFn } from '@tauri-apps/api/event';
-import Sidebar from '../../components/Sidebar';
-import AnimatedRoutes from '../../components/AnimatedRoutes';
-import ErrorBoundary from '../../components/ErrorBoundary';
-import ClusterOverview from './ClusterOverview';
-import ClusterLogs from './ClusterLogs';
-import ClusterMods from './ClusterMods';
-import ClusterScreenshots from './ClusterScreenshots';
-import ClusterSettings from './ClusterSettings';
-import ClusterGame from './ClusterGame';
-import ClusterWorlds from './ClusterWorlds';
-import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
-import { supportsMods } from '~utils';
-import { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
 import PlayerHead from '~ui/components/game/PlayerHead';
+import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
+import { tryResult } from '~ui/hooks/useCommand';
+import { supportsMods } from '~utils';
+import { createEffect, createResource, createSignal, onCleanup, onMount, type ParentProps, Show } from 'solid-js';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import AnimatedRoutes from '../../components/AnimatedRoutes';
+import ErrorBoundary from '../../components/ErrorBoundary';
+import Sidebar from '../../components/Sidebar';
+import ClusterGame from './ClusterGame';
+import ClusterLogs from './ClusterLogs';
+import ClusterMods from './ClusterMods';
+import ClusterOverview from './ClusterOverview';
+import ClusterScreenshots from './ClusterScreenshots';
+import ClusterSettings from './ClusterSettings';
+import ClusterWorlds from './ClusterWorlds';
 
 function ClusterRoutes() {
 	return (
 		<>
-			<Route path="/" component={ClusterOverview} />
-			<Route path="/logs" component={ClusterLogs} />
-			<Route path="/mods" component={ClusterMods} />
-			<Route path="/screenshots" component={ClusterScreenshots} />
-			<Route path="/worlds" component={ClusterWorlds} />
-			<Route path="/settings" component={ClusterSettings} />
+			<Route component={ClusterOverview} path="/" />
+			<Route component={ClusterLogs} path="/logs" />
+			<Route component={ClusterMods} path="/mods" />
+			<Route component={ClusterScreenshots} path="/screenshots" />
+			<Route component={ClusterWorlds} path="/worlds" />
+			<Route component={ClusterSettings} path="/settings" />
 			<Route
-				path="/game"
 				component={() => {
 					const [searchParams] = useSearchParams();
 
@@ -38,6 +37,7 @@ function ClusterRoutes() {
 						</Show>
 					);
 				}}
+				path="/game"
 			/>
 		</>
 	);

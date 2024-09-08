@@ -1,6 +1,6 @@
+import useSettings from '~ui/hooks/useSettings';
 import { type ParentProps, Show } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
-import useSettings from '~ui/hooks/useSettings';
 
 function AnimatedRoutes(props: TransitionProps & ParentProps) {
 	const { settings } = useSettings();
@@ -17,10 +17,6 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 
 	return (
 		<Show
-			when={settings().disable_animations !== true}
-			fallback={(
-				<>{props.children}</>
-			)}
 			children={(
 				<Transition
 					mode="outin"
@@ -60,6 +56,10 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 					{props.children}
 				</Transition>
 			)}
+			fallback={(
+				<>{props.children}</>
+			)}
+			when={settings().disable_animations !== true}
 		/>
 	);
 }

@@ -354,7 +354,13 @@ impl PackageManager {
 		package_path: &PackagePath,
 		package_type: PackageType,
 	) -> crate::Result<()> {
-		let full_path = self.cluster_path.clone().full_path().await?.join(package_type.get_folder()).join(package_path.0.clone());
+		let full_path = self
+			.cluster_path
+			.clone()
+			.full_path()
+			.await?
+			.join(package_type.get_folder())
+			.join(package_path.0.clone());
 		io::remove_file(full_path).await?;
 
 		let packages = &mut self.get_mut(package_type).packages;
@@ -441,7 +447,8 @@ impl PackageManager {
 
 		while let Some(file) = files.next_entry().await? {
 			// Skip .packages.json meta file
-			if file.file_name()
+			if file
+				.file_name()
 				.to_string_lossy()
 				.eq(&package_type.get_meta_file_name())
 			{

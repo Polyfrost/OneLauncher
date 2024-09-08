@@ -1,4 +1,4 @@
-import { type JSX, type ParentProps, Suspense, splitProps } from 'solid-js';
+import { type JSX, type ParentProps, splitProps, Suspense } from 'solid-js';
 
 export interface SpinnerProps extends JSX.HTMLAttributes<HTMLDivElement> {
 

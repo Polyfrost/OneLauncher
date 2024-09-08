@@ -1,14 +1,14 @@
-import { For, Show, createEffect, createSignal, untrack } from 'solid-js';
-import { LinkExternal01Icon, Upload01Icon } from '@untitled-theme/icons-solid';
 import { open } from '@tauri-apps/plugin-shell';
-import { join } from 'pathe';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import { LinkExternal01Icon, Upload01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
-import useClusterContext from '~ui/hooks/useCluster';
-import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
-import useSettings from '~ui/hooks/useSettings';
+import Dropdown from '~ui/components/base/Dropdown';
 import FormattedLog from '~ui/components/content/FormattedLog';
+import useClusterContext from '~ui/hooks/useCluster';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import useSettings from '~ui/hooks/useSettings';
+import { join } from 'pathe';
+import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
@@ -71,16 +71,16 @@ function ClusterLogs() {
 					<div class="flex flex-row gap-x-2">
 						<Button
 							buttonStyle="secondary"
-							onClick={uploadAndOpenLog}
 							children="Upload"
-							iconLeft={<Upload01Icon />}
 							disabled={missingLogs()}
+							iconLeft={<Upload01Icon />}
+							onClick={uploadAndOpenLog}
 						/>
 
 						<Dropdown
-							onChange={changeLog}
 							class="min-w-50"
 							disabled={missingLogs()}
+							onChange={changeLog}
 						>
 							<For each={logs() || ['None']}>
 								{(log) => {
@@ -98,14 +98,14 @@ function ClusterLogs() {
 
 						<Button
 							buttonStyle="primary"
-							onClick={openFolder}
 							children="Open Folder"
 							iconLeft={<LinkExternal01Icon />}
+							onClick={openFolder}
 						/>
 					</div>
 				</div>
 
-				<Show when={logContent() !== null} fallback={<span>No logs were found.</span>}>
+				<Show fallback={<span>No logs were found.</span>} when={logContent() !== null}>
 					<FormattedLog log={logContent()!} />
 				</Show>
 			</div>

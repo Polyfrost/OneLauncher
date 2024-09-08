@@ -1,11 +1,11 @@
 import { ChevronRightIcon } from '@untitled-theme/icons-solid';
-import { Show, onMount } from 'solid-js';
-import type { ManagedPackage } from '@onelauncher/client/bindings';
-import { BrowserContent } from './BrowserRoot';
-import useBrowser from '~ui/hooks/useBrowser';
 import OneConfigLogo from '~assets/logos/oneconfig.svg?component-solid';
 import Button from '~ui/components/base/Button';
 import SearchResultsContainer from '~ui/components/content/SearchResults';
+import useBrowser from '~ui/hooks/useBrowser';
+import { onMount, Show } from 'solid-js';
+import type { ManagedPackage } from '@onelauncher/client/bindings';
+import { BrowserContent } from './BrowserRoot';
 
 function BrowserMain() {
 	const browser = useBrowser();
@@ -24,9 +24,9 @@ function BrowserMain() {
 					<Featured package={browser.featured()!} />
 
 					<SearchResultsContainer
-						header="Modrinth"
 						category="modrinth"
 						collapsable
+						header="Modrinth"
 						{...browser.cache()!}
 					/>
 				</Show>
@@ -51,7 +51,7 @@ function Featured(props: FeaturedProps) {
 			<h5 class="ml-2">Featured</h5>
 			<div class="w-full flex flex-row overflow-hidden rounded-lg bg-page-elevated">
 				<div class="w-full p-1">
-					<img class="aspect-ratio-video w-full rounded-md object-cover object-center" src="" alt="" />
+					<img alt="" class="aspect-ratio-video w-full rounded-md object-cover object-center" src="" />
 				</div>
 				<div class="max-w-84 min-w-52 flex flex-col gap-y-1 p-4">
 					<h2>{props.package.title}</h2>
@@ -66,8 +66,8 @@ function Featured(props: FeaturedProps) {
 					<div class="flex flex-row justify-end">
 						<Button
 							buttonStyle="ghost"
-							iconRight={<ChevronRightIcon />}
 							children="View Package"
+							iconRight={<ChevronRightIcon />}
 							onClick={open}
 						/>
 					</div>

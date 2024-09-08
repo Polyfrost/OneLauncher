@@ -1,14 +1,14 @@
-import { ColorsIcon, PackageIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
 import { useBeforeLeave } from '@solidjs/router';
-import { For, createSignal } from 'solid-js';
-import SettingsRow from '../../../components/SettingsRow';
-import ScrollableContainer from '~ui/components/ScrollableContainer';
+import { ColorsIcon, PackageIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
 import Button from '~ui/components/base/Button';
+import Dropdown from '~ui/components/base/Dropdown';
 import Toggle from '~ui/components/base/Toggle';
+import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
-import Dropdown from '~ui/components/base/Dropdown';
 import { BROWSER_VIEWS } from '~utils/browser';
+import { createSignal, For } from 'solid-js';
+import SettingsRow from '../../../components/SettingsRow';
 
 function SettingsAppearance() {
 	const { settings, saveOnLeave } = useSettings();
@@ -35,21 +35,21 @@ function SettingsAppearance() {
 				</div>
 
 				<SettingsRow
-					title="Accent Color"
 					description="The main color used across the launcher. This doesn't edit your theme."
 					icon={<PaintPourIcon />}
+					title="Accent Color"
 				>
 					<Button iconLeft={<ColorsIcon />}>#ff0000</Button>
 				</SettingsRow>
 
 				<SettingsRow
-					title="Package List Style"
 					description="Change the look of the package list."
 					icon={<PackageIcon />}
+					title="Package List Style"
 				>
 					<Dropdown
-						selected={() => BROWSER_VIEWS.indexOf(settings().browser_list_view ?? 'grid')}
 						onChange={value => settings().browser_list_view = BROWSER_VIEWS[value] ?? 'grid'}
+						selected={() => BROWSER_VIEWS.indexOf(settings().browser_list_view ?? 'grid')}
 					>
 						<For each={BROWSER_VIEWS}>
 							{view => (
@@ -60,9 +60,9 @@ function SettingsAppearance() {
 				</SettingsRow>
 
 				<SettingsRow
-					title="Disable Animations"
 					description="Disables all animations in the launcher."
 					icon={<Speedometer04Icon />}
+					title="Disable Animations"
 				>
 					<Toggle
 						checked={() => settings().disable_animations ?? false}

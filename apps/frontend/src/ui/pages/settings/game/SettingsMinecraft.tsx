@@ -1,6 +1,4 @@
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
-import { type Accessor, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
-import type { Memory, Resolution } from '@onelauncher/client/bindings';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -8,6 +6,8 @@ import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsR
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
+import { type Accessor, createSignal, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
+import type { Memory, Resolution } from '@onelauncher/client/bindings';
 
 function SettingsMinecraft() {
 	return (
@@ -108,11 +108,11 @@ export function GameSettings(props: {
 			<BaseSettingsRow.Header>Game</BaseSettingsRow.Header>
 
 			<SettingsRow
-				title="Force Fullscreen"
 				description="Force Minecraft to start in fullscreen mode."
 				icon={<Maximize01Icon />}
 				isGlobal={props.fullscreen.isGlobal}
 				reset={props.fullscreen.resetToFallback}
+				title="Force Fullscreen"
 			>
 				<Toggle
 					checked={props.fullscreen.get}
@@ -121,38 +121,38 @@ export function GameSettings(props: {
 			</SettingsRow>
 
 			<SettingsRow
-				title="Resolution"
 				description="The game window resolution in pixels."
 				icon={<LayoutTopIcon />}
 				isGlobal={props.resolution.isGlobal}
 				reset={props.resolution.resetToFallback}
+				title="Resolution"
 			>
 				<div class="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField.Number
 						class="text-center"
-						value={props.resolution.get()[0]}
 						onValidSubmit={(value) => {
 							props.resolution.set([Number.parseInt(value), props.resolution.get()[1]]);
 						}}
+						value={props.resolution.get()[0]}
 					/>
 					<XIcon class="h-4 w-4" />
 					<TextField.Number
 						class="text-center"
-						value={props.resolution.get()[1]}
 						onValidSubmit={(value) => {
 							props.resolution.set([props.resolution.get()[0], Number.parseInt(value)]);
 						}}
+						value={props.resolution.get()[1]}
 					/>
 				</div>
 			</SettingsRow>
 
 			{/* TODO: make this a memory slider */}
 			<SettingsRow
-				title="Memory"
 				description="The amount of memory in megabytes allocated for the game."
 				icon={<Database01Icon />}
 				isGlobal={props.memory.isGlobal}
 				reset={props.memory.resetToFallback}
+				title="Memory"
 			>
 				<div class="flex items-center gap-x-4 flex-justify-center">
 					<div class="flex flex-row items-center gap-x-2">
@@ -160,12 +160,12 @@ export function GameSettings(props: {
 						<TextField.Number
 							class="text-center"
 							labelClass="w-[70px]!"
-							value={props.memory.get().minimum}
-							min={1}
 							max={props.memory.get().maximum}
+							min={1}
 							onValidSubmit={(value) => {
 								props.memory.set({ minimum: Number.parseInt(value), maximum: props.memory.get().maximum });
 							}}
+							value={props.memory.get().minimum}
 						/>
 					</div>
 
@@ -174,12 +174,12 @@ export function GameSettings(props: {
 						<TextField.Number
 							class="text-center"
 							labelClass="w-[70px]!"
-							value={props.memory.get().maximum}
-							min={props.memory.get().minimum}
 							max={Number.MAX_SAFE_INTEGER}
+							min={props.memory.get().minimum}
 							onValidSubmit={(value) => {
 								props.memory.set({ minimum: props.memory.get().minimum, maximum: Number.parseInt(value) });
 							}}
+							value={props.memory.get().maximum}
 						/>
 					</div>
 				</div>
@@ -202,11 +202,11 @@ export function LauncherSettings(props: {
 
 			<Show when={props.hideOnLaunch !== undefined}>
 				<SettingsRow
-					title="Hide On Launch"
 					description="Hide the launcher whenever you start a game."
 					icon={<EyeIcon />}
 					isGlobal={props.hideOnLaunch!.isGlobal}
 					reset={props.hideOnLaunch!.resetToFallback}
+					title="Hide On Launch"
 				>
 					<Toggle
 						checked={props.hideOnLaunch!.get}
@@ -217,11 +217,11 @@ export function LauncherSettings(props: {
 
 			<Show when={props.allowParallelClusters !== undefined}>
 				<SettingsRow
-					title="Allow Parallel Clusters"
 					description="Allow running the same cluster with the same account."
 					icon={<ActivityIcon />}
 					isGlobal={props.allowParallelClusters!.isGlobal}
 					reset={props.allowParallelClusters!.resetToFallback}
+					title="Allow Parallel Clusters"
 				>
 					<Toggle
 						checked={props.allowParallelClusters!.get}
@@ -243,47 +243,47 @@ export function ProcessSettings(props: {
 			<BaseSettingsRow.Header>Process</BaseSettingsRow.Header>
 
 			<SettingsRow
-				title="Pre-Launch Command"
 				description="Command to run before launching the game."
 				icon={<FilePlus02Icon />}
 				isGlobal={props.preCommand.isGlobal}
 				reset={props.preCommand.resetToFallback}
+				title="Pre-Launch Command"
 			>
 				<TextField
 					labelClass="w-full! min-w-[260px]!"
+					onValidSubmit={props.preCommand.set}
 					placeholder="echo 'Game started'"
 					value={props.preCommand.get()}
-					onValidSubmit={props.preCommand.set}
 				/>
 			</SettingsRow>
 
 			<SettingsRow
-				title="Wrapper Command"
 				description="Command to run when launching the game."
 				icon={<ParagraphWrapIcon />}
 				isGlobal={props.wrapperCommand.isGlobal}
 				reset={props.wrapperCommand.resetToFallback}
+				title="Wrapper Command"
 			>
 				<TextField
 					labelClass="w-full! min-w-[260px]!"
+					onValidSubmit={props.wrapperCommand.set}
 					placeholder="gamescope"
 					value={props.wrapperCommand.get()}
-					onValidSubmit={props.wrapperCommand.set}
 				/>
 			</SettingsRow>
 
 			<SettingsRow
-				title="Post-Exit Command"
 				description="Command to run after exiting the game."
 				icon={<FileX02Icon />}
 				isGlobal={props.postCommand.isGlobal}
 				reset={props.postCommand.resetToFallback}
+				title="Post-Exit Command"
 			>
 				<TextField
 					labelClass="w-full! min-w-[260px]!"
+					onValidSubmit={props.postCommand.set}
 					placeholder="echo 'Game exited'"
 					value={props.postCommand.get()}
-					onValidSubmit={props.postCommand.set}
 				/>
 			</SettingsRow>
 		</>
@@ -299,44 +299,44 @@ export function JvmSettings(props: {
 			<BaseSettingsRow.Header>Java</BaseSettingsRow.Header>
 
 			<SettingsRow
-				title="Version"
 				description="Choose the JRE (Java Runtime Environment) used for the game."
 				icon={<CpuChip01Icon />}
 				isGlobal={() => true}
 				reset={() => {}}
+				title="Version"
 			/>
 
 			<SettingsRow
-				title="Arguments"
 				description="Additional arguments passed to the JVM (Java Virtual Machine)."
 				icon={<FilePlus02Icon />}
 				isGlobal={props.javaArgs.isGlobal}
 				reset={props.javaArgs.resetToFallback}
+				title="Arguments"
 			>
 				<TextField
 					labelClass="w-full! min-w-[260px]!"
-					placeholder='"-Xmx3G"'
-					value={props.javaArgs.get().join(' ')}
 					onValidSubmit={(value) => {
 						props.javaArgs.set(value.split(' '));
 					}}
+					placeholder='"-Xmx3G"'
+					value={props.javaArgs.get().join(' ')}
 				/>
 			</SettingsRow>
 
 			<SettingsRow
-				title="Environment Variables"
 				description="Additional environment variables passed to the JVM (Java Virtual Machine)."
 				icon={<VariableIcon />}
 				isGlobal={props.envVars.isGlobal}
 				reset={props.envVars.resetToFallback}
+				title="Environment Variables"
 			>
 				<TextField
 					labelClass="w-full! min-w-[260px]!"
-					placeholder='"JAVA_HOME=/path/to/java"'
-					value={props.envVars.get().join(' ')}
 					onValidSubmit={(value) => {
 						props.envVars.set(asEnvVariables(value));
 					}}
+					placeholder='"JAVA_HOME=/path/to/java"'
+					value={props.envVars.get().join(' ')}
 				/>
 			</SettingsRow>
 		</>

@@ -1,8 +1,8 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import DefaultWorld from '~assets/images/default_world.png?url';
+import useSettings from '~ui/hooks/useSettings';
 import { join } from 'pathe';
 import { type JSX, splitProps } from 'solid-js';
-import useSettings from '~ui/hooks/useSettings';
-import DefaultWorld from '~assets/images/default_world.png?url';
 
 export type WorldIconProps = JSX.HTMLAttributes<HTMLImageElement> & {
 	world_name: string;
@@ -17,12 +17,12 @@ function WorldIcon(props: WorldIconProps) {
 	return (
 		<img
 			{...rest}
+			alt={`${props.world_name} icon`}
 			class={`w-16 h-16 rounded-md ${split.class || ''}`}
-			src={path()}
 			onError={(e) => {
 				e.currentTarget.src = DefaultWorld;
 			}}
-			alt={`${props.world_name} icon`}
+			src={path()}
 		/>
 	);
 }

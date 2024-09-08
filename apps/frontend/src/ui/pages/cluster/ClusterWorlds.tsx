@@ -1,7 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { LinkExternal01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
-import { join } from 'pathe';
-import { For, Show } from 'solid-js';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import WorldIcon from '~ui/components/game/WorldIcon';
@@ -11,6 +9,8 @@ import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import useSettings from '~ui/hooks/useSettings';
+import { join } from 'pathe';
+import { For, Show } from 'solid-js';
 
 function ClusterWorlds() {
 	const { settings } = useSettings();
@@ -32,7 +32,7 @@ function ClusterWorlds() {
 					<div class="flex flex-col gap-2">
 						<For each={list()!}>
 							{world_name => (
-								<WorldEntry name={world_name} cluster_path={cluster()?.path || ''} />
+								<WorldEntry cluster_path={cluster()?.path || ''} name={world_name} />
 							)}
 						</For>
 					</div>
@@ -42,8 +42,8 @@ function ClusterWorlds() {
 			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
-					iconLeft={<LinkExternal01Icon />}
 					children="Open Folder"
+					iconLeft={<LinkExternal01Icon />}
 					onClick={openFolder}
 				/>
 			</div>
@@ -61,11 +61,11 @@ function WorldEntry(props: { name: string; cluster_path: string }) {
 	const deleteModal = createModal(self => (
 		<Modal.Delete
 			{...self}
-			title={`Delete '${props.name}'`}
 			onDelete={() => {
 				// bridge.commands.deleteWorld(props.name);
 				self.hide();
 			}}
+			title={`Delete '${props.name}'`}
 		/>
 	));
 
@@ -87,7 +87,7 @@ function WorldEntry(props: { name: string; cluster_path: string }) {
 			onClick={onClick}
 		>
 			<div class="flex flex-row items-center gap-x-3">
-				<WorldIcon cluster_name={props.cluster_path} world_name={props.name} class="aspect-ratio-square h-16 w-16" />
+				<WorldIcon class="aspect-ratio-square h-16 w-16" cluster_name={props.cluster_path} world_name={props.name} />
 				<div class="flex flex-col gap-y-2">
 					<h3>{props.name}</h3>
 					<p>Todo</p>

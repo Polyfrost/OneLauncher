@@ -1,14 +1,14 @@
+import { mergeRefs } from '@solid-primitives/refs';
+import { createContext, createSignal, For, onCleanup, onMount, Show, splitProps, useContext } from 'solid-js';
+import { createStore } from 'solid-js/store';
+import { Transition } from 'solid-transition-group';
+import type { MakeOptional } from '@onelauncher/client';
 import type {
 	Context,
 	JSX,
 	ParentProps,
 	Ref,
 } from 'solid-js';
-import { For, Show, createContext, createSignal, onCleanup, onMount, splitProps, useContext } from 'solid-js';
-import { mergeRefs } from '@solid-primitives/refs';
-import { createStore } from 'solid-js/store';
-import { Transition } from 'solid-transition-group';
-import type { MakeOptional } from '@onelauncher/client';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
 
@@ -68,20 +68,20 @@ export function ModalRenderer() {
 
 	return (
 		<FullscreenOverlay
-			visible={() => controller.modals().length > 0}
 			setVisible={(value) => {
 				if (value === false)
 					controller.closeModal();
 			}}
+			visible={() => controller.modals().length > 0}
 		>
 			<Transition
-				mode="outin"
-				enterClass="modal-animation-enter"
 				enterActiveClass="modal-animation-enter-active"
+				enterClass="modal-animation-enter"
 				enterToClass="modal-animation-enter-to"
-				exitClass="modal-animation-leave"
 				exitActiveClass="modal-animation-leave-active"
+				exitClass="modal-animation-leave"
 				exitToClass="modal-animation-leave-to"
+				mode="outin"
 			>
 				<Show when={controller.modals().length > 0}>
 					{controller.modals()[controller.modals().length - 1]!()}
@@ -127,7 +127,7 @@ export type ModalProps = {
 
 function Modal(props: ModalProps) {
 	return (
-		<div ref={mergeRefs(props.ref)} class="min-w-xs flex flex-col gap-y-2 border border-white/5 rounded-lg bg-page p-4 text-center">
+		<div class="min-w-xs flex flex-col gap-y-2 border border-white/5 rounded-lg bg-page p-4 text-center" ref={mergeRefs(props.ref)}>
 			{props.children}
 		</div>
 	);
@@ -174,7 +174,6 @@ Modal.Error = function (props: ModalErrorProps) {
 	return (
 		<Modal.Simple
 			{...rest}
-			title={split.title || 'Error'}
 			buttons={split.buttons || [
 				<Button
 					buttonStyle="secondary"
@@ -182,6 +181,7 @@ Modal.Error = function (props: ModalErrorProps) {
 					onClick={props.hide}
 				/>,
 			]}
+			title={split.title || 'Error'}
 		>
 			<div class="flex flex-col items-center gap-y-2">
 				{split.children || (
@@ -265,7 +265,6 @@ Modal.Delete = function (props: ModalDeleteProps) {
 	return (
 		<Modal.Simple
 			{...rest}
-			title={split.title || 'Confirm Delete'}
 			buttons={split.buttons || [
 				<Button
 					buttonStyle="secondary"
@@ -279,6 +278,7 @@ Modal.Delete = function (props: ModalDeleteProps) {
 					onClick={onDelete}
 				/>,
 			]}
+			title={split.title || 'Confirm Delete'}
 		>
 			{split.children || (
 				<>

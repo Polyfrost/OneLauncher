@@ -1,11 +1,11 @@
-import process from 'node:process';
+import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { type } from 'node:os';
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'pathe';
-import { execa } from 'execa';
-import semver from 'semver';
+import process from 'node:process';
 import { consola } from 'consola';
+import { execa } from 'execa';
+import { join, resolve } from 'pathe';
+import semver from 'semver';
 import type { CheckedEnvironment } from '.';
 
 const UPDATEKEY_LOCK_VERSION = '1';
@@ -53,7 +53,7 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 }
 
 export async function patchTauri(env: CheckedEnvironment, targets: string[], args: string[]): Promise<string[]> {
-	if (args.findIndex(a => ['-c', '--config'].includes(a)) !== -1)
+	if (args.findIndex(a => ['--config', '-c'].includes(a)) !== -1)
 		throw new Error('custom tauri build configuration is not supported!');
 
 	const osType = type();

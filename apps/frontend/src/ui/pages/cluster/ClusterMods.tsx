@@ -1,16 +1,16 @@
-import { FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Show, Switch, createEffect, createResource, createSignal } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
-import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
+import { FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-import useClusterContext from '~ui/hooks/useCluster';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
-import { bridge } from '~imports';
 import Spinner from '~ui/components/Spinner';
 import useBrowser from '~ui/hooks/useBrowser';
+import useClusterContext from '~ui/hooks/useCluster';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
@@ -114,12 +114,12 @@ function ClusterMods() {
 					<div class="flex flex-row items-stretch justify-end gap-x-2">
 						<Button
 							buttonStyle="secondary"
-							onClick={() => toggleNameSort()}
 							children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
 							iconLeft={<FilterFunnel01Icon />}
+							onClick={() => toggleNameSort()}
 						/>
 
-						<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
+						<TextField iconLeft={<SearchMdIcon />} onInput={e => search(e.target.value)} placeholder="Search..." />
 					</div>
 				</div>
 			</div>
@@ -132,7 +132,7 @@ function ClusterMods() {
 								<For each={displayedMods()}>
 									{(mod) => {
 										const managed = getManagedData(mod);
-										return <ModEntry pkg={mod} managed={managed} refetch={refetch} />;
+										return <ModEntry managed={managed} pkg={mod} refetch={refetch} />;
 									}}
 								</For>
 							</Match>
@@ -224,9 +224,9 @@ function ModEntry(props: ModEntryProps) {
 		>
 			<div>
 				<Show
-					when={icon()}
+					children={<img alt={name()} class="aspect-ratio-square h-10 rounded-lg" src={icon()!} />}
 					fallback={<div class="aspect-ratio-square h-10 rounded-lg bg-gray-05" />}
-					children={<img src={icon()!} alt={name()} class="aspect-ratio-square h-10 rounded-lg" />}
+					when={icon()}
 				/>
 			</div>
 			<div class="flex flex-1 flex-col">

@@ -1,6 +1,6 @@
+import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
 import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
-import { DurationFormat } from '@formatjs/intl-durationformat';
 
 export function supportsMods(loader?: Cluster | Loader): boolean {
 	if (loader === undefined)

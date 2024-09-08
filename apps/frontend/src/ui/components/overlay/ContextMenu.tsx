@@ -1,4 +1,4 @@
-import { type Accessor, type JSX, createEffect, createSignal } from 'solid-js';
+import { type Accessor, createEffect, createSignal, type JSX } from 'solid-js';
 import Popup, { type PopupProps } from './Popup';
 
 type ContextMenuProps = {
@@ -33,10 +33,10 @@ function ContextMenu(props: ContextMenuProps) {
 				el.style.left = `${pos().x}px`;
 				el.style.top = `${pos().y}px`;
 			}}
-			visible={props.visible}
 			setVisible={props.setVisible}
+			visible={props.visible}
 		>
-			<div ref={setRef} class="border border-gray-05 rounded-xl bg-page-elevated p-1 shadow-black/30 shadow-md">
+			<div class="border border-gray-05 rounded-xl bg-page-elevated p-1 shadow-black/30 shadow-md" ref={setRef}>
 				<div class="flex flex-col gap-y-1 text-fg-primary">
 					{props.children}
 				</div>
@@ -58,8 +58,8 @@ interface ContextMenuRowProps {
 ContextMenu.Row = function (props: ContextMenuRowProps) {
 	return (
 		<div
-			onClick={e => props.onClick?.(e)}
 			class="m-px flex items-center gap-x-2 rounded-lg px-1.5 py-0.5 [&>svg]:w-[18px] active:bg-gray-10 hover:bg-gray-05"
+			onClick={e => props.onClick?.(e)}
 		>
 			{props.icon}
 			{props.text}

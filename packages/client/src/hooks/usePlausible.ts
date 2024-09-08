@@ -1,12 +1,12 @@
-import type { PlausibleOptions as PlausibleTrackerOptions } from 'plausible-tracker';
 import Plausible from 'plausible-tracker';
+import { createEffect, createSignal } from 'solid-js';
 
 import { createMutable } from 'solid-js/store';
-import { createEffect, createSignal } from 'solid-js';
-import { createPersistedMutable, useSolidStore } from '../library';
-import type { ProgramInfo } from '../types';
+import type { PlausibleOptions as PlausibleTrackerOptions } from 'plausible-tracker';
 import { PROGRAM_INFO } from '../bindings';
+import { createPersistedMutable, useSolidStore } from '../library';
 import { useDebugState } from './useDebug';
+import type { ProgramInfo } from '../types';
 
 /**
  * Possible platform types for Plausible.

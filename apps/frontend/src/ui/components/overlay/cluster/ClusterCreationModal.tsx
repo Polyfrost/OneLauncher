@@ -1,13 +1,13 @@
-import { type Accessor, type Context, type JSX, type ParentProps, type Setter, Show, createContext, createSignal, untrack, useContext } from 'solid-js';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
+import Button from '~ui/components/base/Button';
+import { type Accessor, type Context, createContext, createSignal, type JSX, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import type { CreateCluster } from '@onelauncher/client/bindings';
 import HeaderImage from '../../../../assets/images/header.png';
 import { createModal } from '../Modal';
 import ClusterGameSetup from './ClusterGameSetup';
 import ClusterProviderSelection from './ClusterProviderSelection';
-import Button from '~ui/components/base/Button';
-import { bridge } from '~imports';
 
 export enum CreationStage {
 	PROVIDER_SELECTION = 0,
@@ -176,7 +176,7 @@ export function createClusterStep(props: CreateClusterStepType): () => JSX.Eleme
 			<div class="min-w-sm flex flex-col rounded-lg bg-page text-center">
 				<div class="relative h-25 flex">
 					<div class="absolute left-0 top-0 h-full w-full">
-						<img class="h-full w-full rounded-t-lg" src={HeaderImage} alt="Header Image" />
+						<img alt="Header Image" class="h-full w-full rounded-t-lg" src={HeaderImage} />
 					</div>
 					<div
 						class="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
@@ -199,16 +199,16 @@ export function createClusterStep(props: CreateClusterStepType): () => JSX.Eleme
 
 					<div class="flex flex-row justify-end gap-x-2 p-3 pt-0">
 						<Button
-							class="capitalize"
-							children={previousButtonText()}
 							buttonStyle="ghost"
+							children={previousButtonText()}
+							class="capitalize"
 							onClick={previousBtnClick}
 						/>
 
 						<Button
+							buttonStyle="primary"
 							children={props.buttonType}
 							class="capitalize"
-							buttonStyle="primary"
 							disabled={canGoForward() !== true}
 							iconRight={<ArrowRightIcon />}
 							onClick={btnClick}

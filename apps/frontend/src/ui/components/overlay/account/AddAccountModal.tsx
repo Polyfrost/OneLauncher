@@ -1,10 +1,10 @@
-import { type Context, Match, type ParentProps, type Resource, Switch, createContext, createSignal, useContext } from 'solid-js';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import type { MinecraftCredentials } from '@onelauncher/client/bindings';
-import Modal, { type ModalProps, createModal } from '../Modal';
 import { bridge } from '~imports';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import Button from '~ui/components/base/Button';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import { type Context, createContext, createSignal, Match, type ParentProps, type Resource, Switch, useContext } from 'solid-js';
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
+import Modal, { createModal, type ModalProps } from '../Modal';
 
 interface AccountControllerContextFunc {
 	displayAddAccount: () => void;
@@ -106,7 +106,6 @@ function AddAccountModal(p: AddAccountModalProps) {
 	return (
 		<Modal.Simple
 			{...modalProps}
-			title="Add Account"
 			buttons={[
 				<Button
 					buttonStyle="secondary"
@@ -116,11 +115,12 @@ function AddAccountModal(p: AddAccountModalProps) {
 				<Button
 					buttonStyle="primary"
 					children="Add"
+					disabled={stage() !== 0}
 					iconLeft={<LinkExternal01Icon />}
 					onClick={start}
-					disabled={stage() !== 0}
 				/>,
 			]}
+			title="Add Account"
 		>
 			<div class="max-w-120 flex flex-col gap-y-3 line-height-normal">
 				<Switch>

@@ -1,22 +1,22 @@
 import { Route, useLocation } from '@solidjs/router';
-import { For, type JSX, type ParentProps } from 'solid-js';
 import { SearchMdIcon, Settings01Icon } from '@untitled-theme/icons-solid';
+import Button from '~ui/components/base/Button';
+import Dropdown from '~ui/components/base/Dropdown';
+import TextField from '~ui/components/base/TextField';
+import useBrowser from '~ui/hooks/useBrowser';
+import { PROVIDERS } from '~utils';
+import { browserCategories } from '~utils/browser';
+import { For, type JSX, type ParentProps } from 'solid-js';
 import BrowserMain from './BrowserMain';
 import BrowserPackage from './BrowserPackage';
 import BrowserSearch from './BrowserSearch';
-import Button from '~ui/components/base/Button';
-import TextField from '~ui/components/base/TextField';
-import useBrowser from '~ui/hooks/useBrowser';
-import { browserCategories } from '~utils/browser';
-import Dropdown from '~ui/components/base/Dropdown';
-import { PROVIDERS } from '~utils';
 
 function BrowserRoutes() {
 	return (
 		<>
-			<Route path="/" component={BrowserMain} />
-			<Route path="/package" component={BrowserPackage} children={<BrowserPackage.Routes />} />
-			<Route path="/search" component={BrowserSearch} />
+			<Route component={BrowserMain} path="/" />
+			<Route children={<BrowserPackage.Routes />} component={BrowserPackage} path="/package" />
+			<Route component={BrowserSearch} path="/search" />
 		</>
 	);
 }
@@ -50,9 +50,9 @@ function BrowserToolbar() {
 			<div class="flex flex-row gap-2">
 				<TextField
 					iconLeft={<SearchMdIcon />}
-					value={browser.searchQuery().query || ''}
-					placeholder="Search for content"
 					onKeyPress={onKeyPress}
+					placeholder="Search for content"
+					value={browser.searchQuery().query || ''}
 				/>
 			</div>
 		</div>
@@ -126,11 +126,11 @@ function BrowserSidebar() {
 				<div class="flex flex-col gap-y-1">
 					<h6 class="my-1">Provider</h6>
 					<Dropdown
-						selected={() => PROVIDERS.indexOf(controller.searchQuery().provider)}
 						onChange={index => controller.setSearchQuery(prev => ({
 							...prev,
 							provider: PROVIDERS[index] || 'Modrinth',
 						}))}
+						selected={() => PROVIDERS.indexOf(controller.searchQuery().provider)}
 					>
 						<For each={PROVIDERS}>
 							{provider => (

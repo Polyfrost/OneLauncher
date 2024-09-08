@@ -1,15 +1,15 @@
 import { TextInputIcon } from '@untitled-theme/icons-solid';
-import { For, Index, type JSX, Show, createEffect, createSignal, onMount, splitProps, untrack } from 'solid-js';
+import { bridge } from '~imports';
+import Checkbox from '~ui/components/base/Checkbox';
+import Dropdown from '~ui/components/base/Dropdown';
+import SelectList from '~ui/components/base/SelectList';
+import TextField from '~ui/components/base/TextField';
+import LoaderIcon from '~ui/components/game/LoaderIcon';
+import useCommand from '~ui/hooks/useCommand';
+import { formatVersionRelease, LOADERS } from '~utils';
+import { createEffect, createSignal, For, Index, type JSX, onMount, Show, splitProps, untrack } from 'solid-js';
 import type { Loader, VersionType } from '@onelauncher/client/bindings';
 import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
-import Dropdown from '~ui/components/base/Dropdown';
-import TextField from '~ui/components/base/TextField';
-import useCommand from '~ui/hooks/useCommand';
-import { bridge } from '~imports';
-import SelectList from '~ui/components/base/SelectList';
-import Checkbox from '~ui/components/base/Checkbox';
-import { LOADERS, formatVersionRelease } from '~utils';
-import LoaderIcon from '~ui/components/game/LoaderIcon';
 
 export default createClusterStep({
 	message: 'Game Setup',
@@ -40,9 +40,9 @@ function ClusterGameSetup(props: ClusterStepProps) {
 		<div class="flex flex-col gap-y-4">
 			<Option header="Name">
 				<TextField
+					iconLeft={<TextInputIcon />}
 					onInput={e => setName(e.target.value)}
 					placeholder="Name"
-					iconLeft={<TextInputIcon />}
 				/>
 			</Option>
 

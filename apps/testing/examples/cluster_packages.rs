@@ -51,7 +51,8 @@ async fn main() -> Result<()> {
 		&cluster.cluster_path(),
 		&package_path,
 		PackageType::Mod,
-	).await?;
+	)
+	.await?;
 	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
 		.await?;
 
@@ -83,7 +84,12 @@ async fn create_cluster() -> Result<Cluster> {
 	Ok(cluster)
 }
 
-async fn download_mod(cluster: &mut Cluster, pkg: &str, ver: &str, add: bool) -> Result<PackagePath> {
+async fn download_mod(
+	cluster: &mut Cluster,
+	pkg: &str,
+	ver: &str,
+	add: bool,
+) -> Result<PackagePath> {
 	let package = Providers::Modrinth.get(pkg).await?;
 
 	let (package_path, package) = cluster::content::package::download_package(

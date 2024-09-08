@@ -1,11 +1,11 @@
 import { InfoCircleIcon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Show, Switch, createSignal, mergeProps } from 'solid-js';
 import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
 import useAccountController from '~ui/components/overlay/account/AddAccountModal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
+import { createSignal, For, Match, mergeProps, Show, Switch } from 'solid-js';
 
 function SettingsAccounts() {
 	const controller = useAccountController();
@@ -38,11 +38,11 @@ function SettingsAccounts() {
 						<For each={controller.accounts()}>
 							{account => (
 								<AccountRow
-									username={account.username}
-									uuid={account.id}
 									current={controller.defaultAccount()?.id === account.id}
 									onClick={setCurrent}
 									onDelete={onDelete}
+									username={account.username}
+									uuid={account.id}
 								/>
 							)}
 						</For>
@@ -53,8 +53,8 @@ function SettingsAccounts() {
 			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
-					iconLeft={<UserPlus02Icon />}
 					children="Add Account"
+					iconLeft={<UserPlus02Icon />}
 					onClick={showModal}
 				/>
 			</div>
@@ -76,14 +76,14 @@ function AccountRow(props: AccountRowProps) {
 
 	return (
 		<div
-			onClick={() => props.onClick(props.uuid)}
 			class={`flex flex-row bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-xl gap-3.5 p-4 items-center box-border border ${defaultProps.current ? 'border-brand' : 'border-transparent'}`}
+			onClick={() => props.onClick(props.uuid)}
 		>
 			<div class="h-12 w-12 flex items-center justify-center">
 				<PlayerHead
 					class="h-12 w-12 rounded-md"
-					uuid={props.uuid}
 					onError={() => setErrored(true)}
+					uuid={props.uuid}
 				/>
 			</div>
 

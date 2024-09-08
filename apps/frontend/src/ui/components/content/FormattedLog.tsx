@@ -1,7 +1,7 @@
-import { Index, Show, createEffect, createMemo, createSignal, untrack } from 'solid-js';
-import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
-import type { Ref } from '@solid-primitives/refs';
 import { AlignBottom01Icon } from '@untitled-theme/icons-solid';
+import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
+import { createEffect, createMemo, createSignal, Index, Show, untrack } from 'solid-js';
+import type { Ref } from '@solid-primitives/refs';
 import type { OnUpdatedEventListenerArgs, OverlayScrollbars } from 'overlayscrollbars';
 import Button from '../base/Button';
 import styles from './FormattedLog.module.scss';
@@ -46,10 +46,10 @@ function FormattedLog(props: FormattedLogProps) {
 				<div class="absolute right-0 top-0 z-1 h-6 w-full flex flex-row justify-end border border-gray-05 rounded-t-md bg-page p-px">
 					<Button.Toggle
 						buttonStyle="icon"
-						children={<AlignBottom01Icon />}
 						checked={shouldScroll}
-						onChecked={toggleAutoScroll}
+						children={<AlignBottom01Icon />}
 						class="h-full! rounded-md! py-1!"
+						onChecked={toggleAutoScroll}
 					/>
 				</div>
 			</Show>
@@ -58,14 +58,14 @@ function FormattedLog(props: FormattedLogProps) {
 				class={`${props.enableAutoScroll === true ? 'mt-6' : ''} h-full flex flex-1 overflow-auto font-medium font-mono`}
 			>
 				<OverlayScrollbarsComponent
-					ref={overlayScrollbars}
+					class="relative h-full flex-1"
 					events={{
 						updated: autoScrollUpdated,
 						initialized: autoScrollInitialized,
 					}}
-					class="relative h-full flex-1"
+					ref={overlayScrollbars}
 				>
-					<code ref={props.codeRef} class={styles.log}>
+					<code class={styles.log} ref={props.codeRef}>
 						<Index each={lines()}>
 							{(line, index) => {
 								if (index === lines().length - 1)

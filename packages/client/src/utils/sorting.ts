@@ -1,4 +1,4 @@
-import { type Accessor, type Setter, createSignal } from 'solid-js';
+import { type Accessor, createSignal, type Setter } from 'solid-js';
 
 export type SortingFunction<T> = (a: T, b: T) => number;
 export type Sortables<T> = Record<string, SortingFunction<T>>;

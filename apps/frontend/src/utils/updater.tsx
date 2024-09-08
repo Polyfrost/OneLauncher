@@ -1,5 +1,5 @@
-import { listen } from '@tauri-apps/api/event';
 import { commands } from '@onelauncher/client/bindings';
+import { listen } from '@tauri-apps/api/event';
 
 declare global {
 	interface Window {

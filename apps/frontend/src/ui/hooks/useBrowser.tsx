@@ -1,14 +1,14 @@
 import { useNavigate } from '@solidjs/router';
-import { type Accessor, type Context, For, type ParentProps, type Setter, Show, createContext, createEffect, createSignal, on, onMount, untrack, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, PackageType, ProviderSearchQuery, ProviderSearchResults, Providers } from '@onelauncher/client/bindings';
-import useCommand, { tryResult } from './useCommand';
-import { useRecentCluster } from './useCluster';
 import { bridge } from '~imports';
-import BrowserPackage from '~ui/pages/browser/BrowserPackage';
-import type { ModalProps } from '~ui/components/overlay/Modal';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
-import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
+import Dropdown from '~ui/components/base/Dropdown';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
+import BrowserPackage from '~ui/pages/browser/BrowserPackage';
+import { type Accessor, type Context, createContext, createEffect, createSignal, For, on, onMount, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
+import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, ProviderSearchResults } from '@onelauncher/client/bindings';
+import type { ModalProps } from '~ui/components/overlay/Modal';
+import { useRecentCluster } from './useCluster';
+import useCommand, { tryResult } from './useCommand';
 
 export type ProviderSearchOptions = ProviderSearchQuery & { provider: Providers };
 
@@ -191,11 +191,21 @@ function ChooseClusterModal(props: ModalProps) {
 	return (
 		<Modal.Simple
 			{...props}
-			title="Choose a cluster"
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Close"
+					onClick={props.hide}
+				/>,
+				<Button
+					children="Save"
+					onClick={chooseCluster}
+				/>,
+			]}
 			children={(
 				<Show
-					when={clusters !== undefined}
 					fallback={<div>Loading...</div>}
+					when={clusters !== undefined}
 				>
 					<Dropdown
 						onChange={setSelected}
@@ -209,17 +219,7 @@ function ChooseClusterModal(props: ModalProps) {
 					</Dropdown>
 				</Show>
 			)}
-			buttons={[
-				<Button
-					children="Close"
-					onClick={props.hide}
-					buttonStyle="secondary"
-				/>,
-				<Button
-					children="Save"
-					onClick={chooseCluster}
-				/>,
-			]}
+			title="Choose a cluster"
 		/>
 	);
 }

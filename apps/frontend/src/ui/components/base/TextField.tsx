@@ -1,5 +1,5 @@
-import type { JSX } from 'solid-js';
 import { createSignal, createUniqueId, onMount, splitProps } from 'solid-js';
+import type { JSX } from 'solid-js';
 import styles from './TextField.module.scss';
 
 type TextFieldProps = {
@@ -50,14 +50,14 @@ function TextField(props: TextFieldProps) {
 	});
 
 	return (
-		<label for={id} class={`${styles.textfield} ${isValid() ? '' : styles.invalid} ${split.labelClass || ''}`}>
+		<label class={`${styles.textfield} ${isValid() ? '' : styles.invalid} ${split.labelClass || ''}`} for={id}>
 			{split.iconLeft && <span class={styles.icon}>{split.iconLeft}</span>}
 			<input
 				id={id}
-				type="text"
-				ref={ref}
-				onInput={onInput}
 				onChange={onChange}
+				onInput={onInput}
+				ref={ref}
+				type="text"
 				{...rest}
 			/>
 			{split.iconRight && <span class={styles.icon}>{split.iconRight}</span>}

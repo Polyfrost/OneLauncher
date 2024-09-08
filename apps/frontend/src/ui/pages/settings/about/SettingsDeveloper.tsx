@@ -15,20 +15,20 @@ function SettingsDeveloper() {
 			<p class="mb-2">You probably shouldn't mess with any of these if you don't know what you're doing!</p>
 			<ScrollableContainer>
 				<SettingsRow
-					title="Open Dev Tools"
 					description="Opens the browser developer tools."
 					icon={<CodeBrowserIcon />}
+					title="Open Dev Tools"
 				>
 					<Button
-						iconLeft={<LinkExternal01Icon />}
 						children="Open"
+						iconLeft={<LinkExternal01Icon />}
 					/>
 				</SettingsRow>
 
 				<SettingsRow
-					title="Debug mode"
 					description="Enables debug mode."
 					icon={<GitMergeIcon />}
+					title="Debug mode"
 				>
 					<Toggle
 						checked={() => settings().debug_mode ?? false}
@@ -37,14 +37,14 @@ function SettingsDeveloper() {
 				</SettingsRow>
 
 				<SettingsRow
-					title="Reload"
 					description="Reloads the launcher frontend."
 					icon={<RefreshCcw05Icon />}
+					title="Reload"
 				>
 					<Button
+						children="Reload"
 						iconLeft={<RefreshCcw05Icon />}
 						onClick={() => location.href = '/'}
-						children="Reload"
 					/>
 				</SettingsRow>
 

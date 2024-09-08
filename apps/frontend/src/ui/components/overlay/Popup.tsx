@@ -1,12 +1,12 @@
 import { mergeRefs } from '@solid-primitives/refs';
 import { createEffect } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import type {
 	Accessor,
 	JSX,
 	ParentProps,
 	Setter,
 } from 'solid-js';
-import { Portal } from 'solid-js/web';
 
 export type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
 	visible: Accessor<boolean>;
@@ -44,7 +44,7 @@ function Popup(props: PopupProps) {
 				return el;
 			}, props.ref)}
 		>
-			<div ref={popupRef} style={props.style || ''} class={`transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} ${props.class || ''}`}>
+			<div class={`transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'} ${props.class || ''}`} ref={popupRef} style={props.style || ''}>
 				{props.children}
 			</div>
 		</Portal>

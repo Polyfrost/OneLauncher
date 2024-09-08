@@ -1,23 +1,23 @@
-import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
-import { type Accessor, type Setter, Show, createSignal, untrack } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
-import { join } from 'pathe';
-import type { Cluster } from '@onelauncher/client/bindings';
-import ClusterCover from '../../components/game/ClusterCover';
-import LoaderIcon from '../../components/game/LoaderIcon';
-import Button from '../../components/base/Button';
-import ScrollableContainer from '~ui/components/ScrollableContainer';
-import Sidebar from '~ui/components/Sidebar';
-import { formatAsDuration, upperFirst } from '~utils';
-import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
+import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
+import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
+import ScrollableContainer from '~ui/components/ScrollableContainer';
 import SettingsRow from '~ui/components/SettingsRow';
-import useSettings from '~ui/hooks/useSettings';
-import Modal, { type ModalProps, createModal } from '~ui/components/overlay/Modal';
+import Sidebar from '~ui/components/Sidebar';
+import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
 import usePreventLeave from '~ui/hooks/usePreventLeave';
+import useSettings from '~ui/hooks/useSettings';
+import { formatAsDuration, upperFirst } from '~utils';
+import { join } from 'pathe';
+import { type Accessor, createSignal, type Setter, Show, untrack } from 'solid-js';
+import type { Cluster } from '@onelauncher/client/bindings';
+import Button from '../../components/base/Button';
+import ClusterCover from '../../components/game/ClusterCover';
+import LoaderIcon from '../../components/game/LoaderIcon';
 
 function ClusterOverview() {
 	const { settings } = useSettings();
@@ -32,8 +32,8 @@ function ClusterOverview() {
 	const saveModal = createModal(props => (
 		<SaveModal
 			{...props}
-			save={save}
 			dontSave={dontSave}
+			save={save}
 		/>
 	));
 
@@ -133,67 +133,67 @@ function ClusterOverview() {
 			<ScrollableContainer>
 				<Banner
 					cluster={cluster()!}
-					refetch={refetch}
-
 					editMode={editMode}
-					newName={newName}
-					setNewName={setNewName}
+
 					newCover={newCover}
+					newName={newName}
+					refetch={refetch}
 					setNewCover={setNewCover}
+					setNewName={setNewName}
 				/>
 
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
 				<SettingsRow
-					title="Cluster Folder"
-					description={getPath()}
-					icon={<FolderIcon />}
-					disabled={editMode()}
 					children={(
 						<Button
 							buttonStyle="primary"
 							children="Open"
+							disabled={editMode()}
 							iconLeft={<LinkExternal01Icon />}
 							onClick={openPath}
-							disabled={editMode()}
 						/>
 					)}
+					description={getPath()}
+					disabled={editMode()}
+					icon={<FolderIcon />}
+					title="Cluster Folder"
 				/>
 
 				<SettingsRow.Header>Cluster Actions</SettingsRow.Header>
 				<SettingsRow
-					title="Edit Cluster"
-					description="Edit the cluster name and cover image."
-					icon={<Edit02Icon />}
 					children={(
 						<Button.Toggle
 							buttonStyle={editMode() === false ? 'secondary' : 'primary'}
+							checked={editMode}
+							children={editMode() ? 'Save' : 'Edit'}
 							iconLeft={(
 								<Show
-									when={editMode() === false}
-									fallback={<Save01Icon />}
 									children={<Edit02Icon />}
+									fallback={<Save01Icon />}
+									when={editMode() === false}
 								/>
 							)}
-							children={editMode() ? 'Save' : 'Edit'}
-							checked={editMode}
 							onChecked={toggleEditMode}
 						/>
 					)}
+					description="Edit the cluster name and cover image."
+					icon={<Edit02Icon />}
+					title="Edit Cluster"
 				/>
 				<SettingsRow
-					title="Delete Cluster"
-					description="Delete this cluster and all its data."
-					icon={<Trash01Icon />}
-					disabled={editMode()}
 					children={(
 						<Button
 							buttonStyle="danger"
 							children="Delete"
+							disabled={editMode()}
 							iconLeft={<Trash01Icon />}
 							onClick={() => deleteModal.show()}
-							disabled={editMode()}
 						/>
 					)}
+					description="Delete this cluster and all its data."
+					disabled={editMode()}
+					icon={<Trash01Icon />}
+					title="Delete Cluster"
 				/>
 			</ScrollableContainer>
 		</Sidebar.Page>
@@ -211,8 +211,6 @@ function SaveModal(p: SaveModalProps) {
 	return (
 		<Modal.Simple
 			{...modalProps}
-			title="Save Changes?"
-			children="Do you want to save your changes?"
 			buttons={[
 				<Button
 					buttonStyle="secondary"
@@ -230,6 +228,8 @@ function SaveModal(p: SaveModalProps) {
 					onClick={props.save}
 				/>,
 			]}
+			children="Do you want to save your changes?"
+			title="Save Changes?"
 		/>
 	);
 }
@@ -275,29 +275,29 @@ function Banner(props: BannerProps) {
 			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-gray-10 rounded-lg">
 				<Show when={props.editMode()}>
 					<div
-						onClick={launchFilePicker}
 						class="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
+						onClick={launchFilePicker}
 					>
 						<ImagePlusIcon class="h-12 w-12" />
 					</div>
 				</Show>
 
-				<ClusterCover override={props.newCover()} cluster={props.cluster} class="h-full w-full object-cover" />
+				<ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} />
 			</div>
 
 			<div class="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
 				<div>
 					<Show
-						when={props.editMode()}
 						fallback={
 							<h2 class="break-words text-wrap text-2xl">{props.cluster.meta.name}</h2>
 						}
+						when={props.editMode()}
 					>
 						<TextField
-							placeholder={props.cluster.meta.name}
-							labelClass="h-10"
 							class="text-xl font-bold"
+							labelClass="h-10"
 							onChange={e => updateName(e.target.value)}
+							placeholder={props.cluster.meta.name}
 						/>
 					</Show>
 				</div>
@@ -311,11 +311,11 @@ function Banner(props: BannerProps) {
 					>
 						<span class="flex flex-row items-center gap-x-1">
 							<LoaderIcon
-								loader={props.cluster.meta.loader}
 								class="w-5"
 								classList={{
 									'opacity-50': props.editMode(),
 								}}
+								loader={props.cluster.meta.loader}
 							/>
 							<span>{props.cluster.meta.mc_version}</span>
 							<span>{upperFirst(props.cluster.meta.loader || 'unknown')}</span>
@@ -343,11 +343,11 @@ function Banner(props: BannerProps) {
 
 						<Button
 							buttonStyle="primary"
-							iconLeft={<PlayIcon />}
 							children="Launch"
 							class="!w-auto"
-							onClick={launch}
 							disabled={props.editMode()}
+							iconLeft={<PlayIcon />}
+							onClick={launch}
 						/>
 					</div>
 				</div>

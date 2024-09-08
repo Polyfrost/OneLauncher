@@ -3,7 +3,7 @@
  * MIT LICENSE
  */
 /* eslint-disable solid/reactivity -- . */
-import { type Context, type ContextProviderComponent, type FlowComponent, type JSX, createComponent } from 'solid-js';
+import { type Context, type ContextProviderComponent, createComponent, type FlowComponent, type JSX } from 'solid-js';
 
 export function MultiProvider<T extends readonly [unknown?, ...unknown[]]>(props: {
 	values: {

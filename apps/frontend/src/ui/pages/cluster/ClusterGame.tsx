@@ -1,18 +1,18 @@
 import { type Params, useSearchParams } from '@solidjs/router';
-import { createSignal, onCleanup, onMount } from 'solid-js';
-import type { UnlistenFn } from '@tauri-apps/api/event';
 import { SlashOctagonIcon } from '@untitled-theme/icons-solid';
-import { render } from 'solid-js/web';
-import type { DetailedProcess } from '@onelauncher/client/bindings';
 import { bridge } from '~imports';
-import Sidebar from '~ui/components/Sidebar';
-import useClusterContext from '~ui/hooks/useCluster';
-import { TimeAgo } from '~ui/components/DynamicTime';
+import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import FormattedLog, { Line } from '~ui/components/content/FormattedLog';
-import Button from '~ui/components/base/Button';
+import { TimeAgo } from '~ui/components/DynamicTime';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
+import Sidebar from '~ui/components/Sidebar';
+import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
+import { createSignal, onCleanup, onMount } from 'solid-js';
+import { render } from 'solid-js/web';
+import type { DetailedProcess } from '@onelauncher/client/bindings';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 
 interface ClusterGameParams extends Params {
 	process_uuid: string;
@@ -51,11 +51,11 @@ function ClusterGame() {
 	const killModal = createModal(props => (
 		<Modal.Delete
 			{...props}
-			title="Kill Game"
 			children="Are you sure you want to kill the game?"
-			onDelete={() => killProcess(true)}
 			deleteBtnText="Kill $1"
+			onDelete={() => killProcess(true)}
 			timeLeft={1}
+			title="Kill Game"
 		/>
 	));
 
@@ -98,17 +98,17 @@ function ClusterGame() {
 
 				<FormattedLog
 					codeRef={el => codeRef = el}
-					log={log()?.trim()}
 					enableAutoScroll={true}
+					log={log()?.trim()}
 				/>
 
 				<div class="flex flex-row items-center justify-end gap-x-2">
 					<Button
 						buttonStyle="danger"
 						children="Kill"
+						disabled={!isRunning()}
 						iconLeft={<SlashOctagonIcon />}
 						onClick={() => killProcess(false)}
-						disabled={!isRunning()}
 					/>
 				</div>
 			</div>

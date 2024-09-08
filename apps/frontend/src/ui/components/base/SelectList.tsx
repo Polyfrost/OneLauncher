@@ -1,5 +1,5 @@
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { type Context, type JSX, type ParentProps, type Signal, createContext, createEffect, createSignal, splitProps, useContext } from 'solid-js';
+import { type Context, createContext, createEffect, createSignal, type JSX, type ParentProps, type Signal, splitProps, useContext } from 'solid-js';
 import styles from './SelectList.module.scss';
 
 type SelectListContextHelpers = Signal<number | undefined>;
@@ -55,7 +55,7 @@ SelectList.Row = (props: SelectListRowProps) => {
 	return (
 		<div
 			{...rest}
-			tabIndex={0}
+			class={`${styles.row} ${props.index !== undefined && selected() === props.index ? styles.selected : ''} ${split.class || ''}`}
 			onClick={(e) => {
 				if (props.index !== undefined)
 					setSelected(props.index);
@@ -63,7 +63,7 @@ SelectList.Row = (props: SelectListRowProps) => {
 				if (typeof split.onClick === 'function')
 					split.onClick(e);
 			}}
-			class={`${styles.row} ${props.index !== undefined && selected() === props.index ? styles.selected : ''} ${split.class || ''}`}
+			tabIndex={0}
 		>
 			{props.children}
 		</div>

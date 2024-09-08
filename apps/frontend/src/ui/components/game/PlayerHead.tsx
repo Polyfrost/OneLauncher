@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, on, splitProps } from 'solid-js';
+import { createEffect, createSignal, on, Show, splitProps } from 'solid-js';
 import type { JSX } from 'solid-js';
 import steveSrc from '../../../assets/images/steve.png';
 
@@ -20,23 +20,23 @@ function PlayerHead(props: PlayerHeadProps) {
 	return (
 		<>
 			<Show
-				when={props.uuid !== null && props.uuid !== undefined}
-				fallback={(
-					<img
-						src={steveSrc}
-						class={`image-render-pixel ${split.class}`}
-						{...rest}
-					/>
-				)}
 				children={(
 					<img
-						src={headSrc(split.uuid!)}
-						onLoad={() => setLoaded(true)}
-						onError={() => props.onError && props.onError()}
 						class={`image-render-pixel ${isLoaded() ? '' : 'hidden'} ${split.class}`}
+						onError={() => props.onError && props.onError()}
+						onLoad={() => setLoaded(true)}
+						src={headSrc(split.uuid!)}
 						{...rest}
 					/>
 				)}
+				fallback={(
+					<img
+						class={`image-render-pixel ${split.class}`}
+						src={steveSrc}
+						{...rest}
+					/>
+				)}
+				when={props.uuid !== null && props.uuid !== undefined}
 			/>
 		</>
 	);

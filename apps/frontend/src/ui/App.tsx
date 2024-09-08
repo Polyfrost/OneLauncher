@@ -1,17 +1,17 @@
-import type { ParentProps } from 'solid-js';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { PROGRAM_INFO } from '@onelauncher/client/bindings';
-import WindowFrame from './components/WindowFrame';
-import Navbar from './components/Navbar';
-import ErrorBoundary from './components/ErrorBoundary';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import type { ParentProps } from 'solid-js';
 import AnimatedRoutes from './components/AnimatedRoutes';
-import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
-import { SettingsProvider } from './hooks/useSettings';
-import { ClusterModalControllerProvider } from './components/overlay/cluster/ClusterCreationModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import { MultiProvider } from './components/MultiProvider';
+import Navbar from './components/Navbar';
 import { AccountControllerProvider } from './components/overlay/account/AddAccountModal';
+import { ClusterModalControllerProvider } from './components/overlay/cluster/ClusterCreationModal';
 import { ModalProvider, ModalRenderer } from './components/overlay/Modal';
+import NotificationOverlay from './components/overlay/notifications/NotificationOverlay';
+import WindowFrame from './components/WindowFrame';
 import { BrowserProvider } from './hooks/useBrowser';
+import { SettingsProvider } from './hooks/useSettings';
 
 function App(props: ParentProps) {
 	if (PROGRAM_INFO.dev_build !== true)

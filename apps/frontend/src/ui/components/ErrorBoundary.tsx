@@ -1,5 +1,5 @@
-import type { ParentProps } from 'solid-js';
 import { ErrorBoundary as Boundary, Match, Switch } from 'solid-js';
+import type { ParentProps } from 'solid-js';
 
 function ErrorBoundary(props: ParentProps) {
 	return (

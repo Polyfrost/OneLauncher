@@ -3078,6 +3078,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "infer"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc150e5ce2330295b8616ce0e3f53250e53af31759a9dbedad1621ba29151847"
+dependencies = [
+ "cfb",
+]
+
+[[package]]
 name = "inotify"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7208,9 +7217,9 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "tauri"
-version = "2.0.0-rc.3"
+version = "2.0.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79776954e2cd6b6c3b56e2cd99905a3a166017495a39ac8eb4c85dd8ea8704b4"
+checksum = "e8345ccc676ef16e26b61fc0f5340b4e770678b1e1f53f08c69ebdac5e56b422"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7252,7 +7261,7 @@ dependencies = [
  "tracing",
  "tray-icon",
  "url",
- "urlpattern",
+ "urlpattern 0.2.0",
  "uuid 1.10.0",
  "webkit2gtk",
  "webview2-com",
@@ -7262,9 +7271,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-build"
-version = "2.0.0-rc.7"
+version = "2.0.0-rc.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5ad5fcfaf02cf79aa6727f6c5df38567d8dce172b00b62690c6bc46c08b7ce"
+checksum = "4acec578ff9de14da177722c8fb5e3d6c88af296696190c70b83bec91437248a"
 dependencies = [
  "anyhow",
  "cargo_toml",
@@ -7285,9 +7294,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-codegen"
-version = "2.0.0-rc.7"
+version = "2.0.0-rc.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "809ef6316726fc72593d296cf6f4e7461326e310c313d6a6c42b6e7f1e2671cf"
+checksum = "467d3e95b57c860bea13b7c812820d9e7425e4b700e5e69b358d906f22022007"
 dependencies = [
  "base64 0.22.1",
  "brotli",
@@ -7343,9 +7352,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-clipboard-manager"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6719e5f3fcc6c6f5afda68da944a44a50c28f30a3506c457ea7dbcc13377bfe0"
+checksum = "4a9d78deb78704d9eeedc23892fc6b25a944c7f9c59354a0ea9a4fb5ab043794"
 dependencies = [
  "arboard",
  "image 0.24.9",
@@ -7359,9 +7368,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-deep-link"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c8e169df47aa4892184c812cc9753a486328835d38d2269a4b062179698a242"
+checksum = "694ba1e772040fcc3728ad16744ae851059e09394e3bc33353d80d9a945cf974"
 dependencies = [
  "dunce",
  "log",
@@ -7379,9 +7388,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-dialog"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcf99017391fdc40b6c8ae0dae8d970cc8151a8177d48b8805f320f52cac0e3c"
+checksum = "aa8bd381f75c47687f41fb603f67fdd99a1af377da22d03d8fb959d2481845c1"
 dependencies = [
  "dunce",
  "log",
@@ -7393,13 +7402,14 @@ dependencies = [
  "tauri-plugin",
  "tauri-plugin-fs",
  "thiserror",
+ "url",
 ]
 
 [[package]]
 name = "tauri-plugin-fs"
-version = "2.0.0-rc.0"
+version = "2.0.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5df6b25b1f2b7b61565e66c4dbee9eb39e5635d2a763206e380e07cc3f601a67"
+checksum = "0704205734f3b4f37d7bf9e9072537716371741bf98b22a22cc5e5340e512467"
 dependencies = [
  "anyhow",
  "glob",
@@ -7416,9 +7426,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-shell"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2133e5c6fe2ae0263ff5920feed477d3b1413f89033f537966831b0cb6f61f8e"
+checksum = "e83800ddf78b820172efb5ed7310344e8e4f97fd30cd8237a3f20c12a79eb136"
 dependencies = [
  "encoding_rs",
  "log",
@@ -7437,31 +7447,31 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-single-instance"
-version = "2.0.0-rc.0"
+version = "2.0.0-rc.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de552151b4c9ba9ff72c7244dccaadd47f88d1f0d5caa2603c5c1c12b7636edc"
+checksum = "d73c92c98d44d4daba0118d905f45243dfcd6eaac82216c3382a02d17cb74cf2"
 dependencies = [
  "log",
  "serde",
  "serde_json",
  "tauri",
  "thiserror",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
  "zbus",
 ]
 
 [[package]]
 name = "tauri-plugin-updater"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dfd104b50e1c17998fc131edd21ced948a9605bac7eb6827f94e099a644f924"
+checksum = "f7048854b4271f3bc58ee850f0582f8d9bb0190118afa8397f36fc260daaa68b"
 dependencies = [
  "base64 0.22.1",
  "dirs 5.0.1",
  "flate2",
  "futures-util",
  "http 1.1.0",
- "infer",
+ "infer 0.15.0",
  "minisign-verify",
  "reqwest 0.12.7",
  "semver",
@@ -7481,9 +7491,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-window-state"
-version = "2.0.0-rc.1"
+version = "2.0.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb6839228cbd225b95681c766cc51113e9dad62c4b3f6ebb102234413ba85ee2"
+checksum = "303569dd7858361d4c623845448b136b4c95d53b5d2bde6630bea9d7f0022d45"
 dependencies = [
  "bitflags 2.6.0",
  "log",
@@ -7540,9 +7550,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-specta"
-version = "2.0.0-rc.17"
+version = "2.0.0-rc.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b37d5f9a690f0c5264e5461a2cd9a273565f9a12acf642692a16ea292e32f6b"
+checksum = "c2d58f5067f811ac923825ed15a95baa76313891ddc9ccfe28e4526e86477347"
 dependencies = [
  "heck 0.5.0",
  "serde",
@@ -7569,9 +7579,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-utils"
-version = "2.0.0-rc.7"
+version = "2.0.0-rc.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d53d9fe87e985b273696ae22ce2b9f099a8f1b44bc8fb127467bda5fcb3e4371"
+checksum = "6746b87c4755f493b94920622e245aef2d771f001ddeffc203e315872d323e1c"
 dependencies = [
  "aes-gcm",
  "brotli",
@@ -7581,7 +7591,7 @@ dependencies = [
  "getrandom 0.2.15",
  "glob",
  "html5ever",
- "infer",
+ "infer 0.16.0",
  "json-patch",
  "kuchikiki",
  "log",
@@ -7601,7 +7611,7 @@ dependencies = [
  "thiserror",
  "toml 0.8.2",
  "url",
- "urlpattern",
+ "urlpattern 0.3.0",
  "walkdir",
 ]
 
@@ -8043,9 +8053,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.15.2"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0aeee1ab20514132ef14bf3f4725f39246e82fd4866f7bbd209c36907be44e3"
+checksum = "131a65b2cef2081bc14dbcd414c906edbfa3bb5323dd7e748cc298614681196b"
 dependencies = [
  "core-graphics 0.24.0",
  "crossbeam-channel",
@@ -8274,6 +8284,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9bd5ff03aea02fa45b13a7980151fe45009af1980ba69f651ec367121a31609"
 dependencies = [
  "derive_more",
+ "regex",
+ "serde",
+ "unic-ucd-ident",
+ "url",
+]
+
+[[package]]
+name = "urlpattern"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70acd30e3aa1450bc2eece896ce2ad0d178e9c079493819301573dae3c37ba6d"
+dependencies = [
  "regex",
  "serde",
  "unic-ucd-ident",

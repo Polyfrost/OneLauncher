@@ -1,5 +1,5 @@
-import { type IngressPayload, type IngressType, events } from '@onelauncher/client/bindings';
-import { type Signal, createSignal, onMount } from 'solid-js';
+import { events, type IngressPayload, type IngressType } from '@onelauncher/client/bindings';
+import { createSignal, onMount, type Signal } from 'solid-js';
 
 type Ingresses = IngressPayload[];
 type OnUpdateFn = (event: IngressType['type']) => unknown;

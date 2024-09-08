@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'pathe';
-import mustache from 'mustache';
 import { consola } from 'consola';
+import mustache from 'mustache';
+import { join, resolve } from 'pathe';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 

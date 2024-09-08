@@ -1,9 +1,9 @@
-import process from 'node:process';
 import fs from 'node:fs/promises';
+import process from 'node:process';
 import { setTimeout } from 'node:timers/promises';
-import pathe from 'pathe';
-import { execa } from 'execa';
 import { consola } from 'consola';
+import { execa } from 'execa';
+import pathe from 'pathe';
 import { awaitLock, checkEnvironment } from './utils';
 import { patchTauri } from './utils/patch';
 

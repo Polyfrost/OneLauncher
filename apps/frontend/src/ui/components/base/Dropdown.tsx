@@ -1,6 +1,6 @@
-import { type Accessor, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Show, Switch, children, createEffect, createSignal, splitProps } from 'solid-js';
 import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import { type Accessor, children, createEffect, createSignal, Index, type JSX, Match, type ParentProps, type ResolvedJSXElement, type Setter, Show, splitProps, Switch } from 'solid-js';
 import Popup from '../overlay/Popup';
 import Button from './Button';
 import styles from './Dropdown.module.scss';
@@ -47,10 +47,10 @@ function Dropdown(props: DropdownProps) {
 			? split.component({ visible, setVisible, children: items })
 			: (
 					<Button
-						class="h-full w-full"
 						buttonStyle="secondary"
-						onClick={() => setVisible(true)}
+						class="h-full w-full"
 						iconRight={<ChevronDownIcon />}
+						onClick={() => setVisible(true)}
 					>
 						<div
 							class="h-full flex flex-1 flex-row items-center gap-1 overflow-hidden text-nowrap"
@@ -63,18 +63,18 @@ function Dropdown(props: DropdownProps) {
 	);
 
 	return (
-		<div ref={ref} class={`${styles.dropdown} ${split.class || ''}`} data-disabled={split.disabled || false} {...rest}>
+		<div class={`${styles.dropdown} ${split.class || ''}`} data-disabled={split.disabled || false} ref={ref} {...rest}>
 			<Component />
 
 			<Popup
 				mount={ref}
-				visible={visible}
-				setVisible={setVisible}
 				ref={(ref) => {
 					ref.classList.add('mt-1', 'w-full');
 					if (split.dropdownClass)
 						ref.classList.add(...split.dropdownClass.split(' '));
 				}}
+				setVisible={setVisible}
+				visible={visible}
 			>
 				<div class={`${styles.dropdown_elements_container} ${visible() ? styles.visible : ''}`}>
 					<OverlayScrollbarsComponent class={`${styles.list} ${styles.dropdown_element}`}>
@@ -119,10 +119,9 @@ Dropdown.Minimal = function (props: MinimalDropdownProps) {
 	return (
 		<Dropdown
 			class="w-auto!"
-			dropdownClass="w-max!"
 			component={props => (
 				<Button
-					onClick={() => props.setVisible(true)}
+					buttonStyle="iconSecondary"
 					children={(
 						<Switch>
 							<Match when={split.icon}>
@@ -136,9 +135,10 @@ Dropdown.Minimal = function (props: MinimalDropdownProps) {
 							</Match>
 						</Switch>
 					)}
-					buttonStyle="iconSecondary"
+					onClick={() => props.setVisible(true)}
 				/>
 			)}
+			dropdownClass="w-max!"
 			{...rest}
 		/>
 	);

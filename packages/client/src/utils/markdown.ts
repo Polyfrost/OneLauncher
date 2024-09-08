@@ -1,5 +1,5 @@
 import MarkdownIt, { type Options as MarkdownOptions } from 'markdown-it';
-import { FilterXSS, escapeAttrValue, safeAttrValue, whiteList } from 'xss';
+import { escapeAttrValue, FilterXSS, safeAttrValue, whiteList } from 'xss';
 
 // from https://github.com/modrinth/code/blob/main/packages/utils/parse.ts for parsing modrinth style markdown
 export const configuredXss: FilterXSS = new FilterXSS({
@@ -73,7 +73,7 @@ export const configuredXss: FilterXSS = new FilterXSS({
 			}
 		}
 
-		if (name === 'class' && ['pre', 'code', 'span'].includes(tag)) {
+		if (name === 'class' && ['code', 'pre', 'span'].includes(tag)) {
 			const allowedClasses: string[] = [];
 			for (const className of value.split(/\s/g))
 				if (className.startsWith('hljs-') || className.startsWith('language-'))

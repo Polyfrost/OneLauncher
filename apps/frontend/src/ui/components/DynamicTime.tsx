@@ -1,5 +1,5 @@
-import { type ParentProps, createSignal, onCleanup, onMount } from 'solid-js';
 import { formatAsRelative } from '~utils';
+import { createSignal, onCleanup, onMount, type ParentProps } from 'solid-js';
 
 type TimeProps = ParentProps & {
 	timestamp: Date | number;

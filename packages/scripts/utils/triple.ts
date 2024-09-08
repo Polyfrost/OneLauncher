@@ -1,7 +1,7 @@
-import { env } from 'node:process';
 import { machine, type } from 'node:os';
-import { execaCommand } from 'execa';
+import { env } from 'node:process';
 import { consola } from 'consola';
+import { execaCommand } from 'execa';
 
 const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 	__debug: env.NODE_ENV === 'debug',

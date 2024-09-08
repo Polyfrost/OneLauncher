@@ -290,7 +290,14 @@ pub async fn get(id: &str) -> Result<ModrinthPackage> {
 pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
 	Ok(serde_json::from_slice(
 		&fetch(
-			format_url!("/projects?ids=[{}]", ids.iter().map(|id| format!("\"{}\"", id)).collect::<Vec<String>>().join(",")).as_str(),
+			format_url!(
+				"/projects?ids=[{}]",
+				ids.iter()
+					.map(|id| format!("\"{}\"", id))
+					.collect::<Vec<String>>()
+					.join(",")
+			)
+			.as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)
@@ -445,20 +452,34 @@ pub async fn get_all_versions(
 ) -> Result<Vec<ModrinthVersion>> {
 	let mut url = url::Url::parse(format_url!("/project/{}/version", project_id).as_str())?;
 	if let Some(game_versions) = game_versions {
-		url.query_pairs_mut()
-			.append_pair("game_versions", &game_versions.iter().map(|v| format!("\"{}\"", v.to_string())).collect::<Vec<String>>().join(","));
+		url.query_pairs_mut().append_pair(
+			"game_versions",
+			&game_versions
+				.iter()
+				.map(|v| format!("\"{}\"", v.to_string()))
+				.collect::<Vec<String>>()
+				.join(","),
+		);
 	}
 
 	if let Some(loaders) = loaders {
-		url.query_pairs_mut()
-			.append_pair("loaders", format!("[{}]", &loaders.iter().map(|l| format!("\"{}\"", l.to_string())).collect::<Vec<String>>().join(",")).as_str());
+		url.query_pairs_mut().append_pair(
+			"loaders",
+			format!(
+				"[{}]",
+				&loaders
+					.iter()
+					.map(|l| format!("\"{}\"", l.to_string()))
+					.collect::<Vec<String>>()
+					.join(",")
+			)
+			.as_str(),
+		);
 	}
 
 	Ok(serde_json::from_slice(
 		&fetch(
-			format_url!(
-				"/project/{}/version",
-				project_id).as_str(),
+			format_url!("/project/{}/version", project_id).as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)
@@ -469,7 +490,15 @@ pub async fn get_all_versions(
 pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>> {
 	Ok(serde_json::from_slice(
 		&fetch(
-			format_url!("/versions?ids=[{}]", versions.iter().map(|v| format!("\"{}\"", v)).collect::<Vec<String>>().join(",")).as_str(),
+			format_url!(
+				"/versions?ids=[{}]",
+				versions
+					.iter()
+					.map(|v| format!("\"{}\"", v))
+					.collect::<Vec<String>>()
+					.join(",")
+			)
+			.as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)

@@ -1,6 +1,6 @@
-import { For, Show } from 'solid-js';
-import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import { useNavigate } from '@solidjs/router';
+import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
+import { For, Show } from 'solid-js';
 import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Button from '../../base/Button';
 import PlayerHead from '../../game/PlayerHead';
@@ -26,8 +26,8 @@ function AccountComponent(props: AccountComponentProps) {
 	return (
 		<Show when={props.account}>
 			<div
-				onClick={login}
 				class={`flex flex-row justify-between p-2 rounded-lg ${props.loggedIn !== true && 'hover:bg-gray-05 active:bg-gray-10 hover:text-fg-primary-hover'}`}
+				onClick={login}
 			>
 				<div class="flex flex-1 flex-row justify-start gap-x-3">
 					<PlayerHead class="h-8 w-8 rounded-md" uuid={props.account!.id} />

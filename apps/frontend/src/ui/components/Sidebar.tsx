@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from '@solidjs/router';
+import { createEffect, For, splitProps } from 'solid-js';
 import type { JSX, ParentProps } from 'solid-js';
-import { For, createEffect, splitProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
 	base: string;
@@ -47,10 +47,10 @@ function Sidebar(props: SidebarProps) {
 
 										return (
 											<a
-												onClick={() => goto(link[2], link[3])}
 												class={
 													`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-gray-05' : 'border-transparent'}`
 												}
+												onClick={() => goto(link[2], link[3])}
 											>
 												<span class="flex flex-row items-center gap-x-3 *:w-5">
 													{link[0]}

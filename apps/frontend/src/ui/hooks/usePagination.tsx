@@ -1,6 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-solid';
-import { For, Show, createSignal } from 'solid-js';
 import Button from '~ui/components/base/Button';
+import { createSignal, For, Show } from 'solid-js';
 
 export interface PaginationOptions {
 	itemsCount: () => number;

@@ -1,3 +1,4 @@
+import { useNavigate } from '@solidjs/router';
 import {
 	DotsVerticalIcon,
 	PlayIcon,
@@ -5,20 +6,19 @@ import {
 	RefreshCw01Icon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, Show, onMount } from 'solid-js';
-import { useNavigate } from '@solidjs/router';
+import { bridge } from '~imports';
 
+import ClusterCover from '~ui/components/game/ClusterCover';
+import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
+import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
+import useCommand from '~ui/hooks/useCommand';
+import { formatAsDuration, upperFirst } from '~utils';
+import { For, onMount, Show } from 'solid-js';
 import type { Cluster } from '@onelauncher/client/bindings';
 import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import TextField from '../components/base/TextField';
 import ClusterRoot from './cluster/ClusterRoot';
-import ClusterCover from '~ui/components/game/ClusterCover';
-import useCommand from '~ui/hooks/useCommand';
-import { bridge } from '~imports';
-import { formatAsDuration, upperFirst } from '~utils';
-import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
-import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 
 type GroupedClusters = Record<string, Cluster[]>;
 
@@ -63,19 +63,18 @@ function HomePage() {
 
 					<Button
 						buttonStyle="primary"
-						iconLeft={<PlusIcon class="stroke-[2.2] !w-5" />}
 						children="New Cluster"
+						iconLeft={<PlusIcon class="stroke-[2.2] !w-5" />}
 						onClick={newCluster}
 					/>
 				</div>
 			</div>
 
 			<Show
-				when={containerIds(clusters()).length > 0}
 				children={(
 					<For each={Object.entries(clusters() ?? {})}>
 						{([group, clusters]) => (
-							<ClusterGroup title={group} clusters={clusters} />
+							<ClusterGroup clusters={clusters} title={group} />
 						)}
 					</For>
 				)}
@@ -85,6 +84,7 @@ function HomePage() {
 						<span class="text-xl font-bold">Create one now with the New Cluster button.</span>
 					</div>
 				)}
+				when={containerIds(clusters()).length > 0}
 			/>
 		</div>
 	);
@@ -109,13 +109,13 @@ function Banner() {
 		<div class="relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
 			<ClusterCover
 				class="absolute h-52 w-full rounded-xl object-cover"
+				cluster={cluster()}
+				fallback={BannerBackground}
 				linearBlur={{
 					degrees: 270,
 					blur: 30,
 					class: 'after:right-1/3!',
 				}}
-				cluster={cluster()}
-				fallback={BannerBackground}
 			/>
 
 			<div class="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6 text-fg-primary">
@@ -141,23 +141,23 @@ function Banner() {
 				<div class="w-full flex flex-row items-end justify-between">
 					<div class="flex flex-row items-center gap-x-4">
 						<Show
-							when={cluster() !== undefined}
 							children={(
 								<>
 									<Button
 										buttonStyle="primary"
-										iconLeft={<PlayIcon />}
 										children={`Launch ${cluster()!.meta.mc_version}`}
+										iconLeft={<PlayIcon />}
 										onClick={launch}
 									/>
 									<Button
 										buttonStyle="iconSecondary"
-										class="bg-op-10!"
 										children={<DotsVerticalIcon />}
+										class="bg-op-10!"
 										onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
 									/>
 								</>
 							)}
+							when={cluster() !== undefined}
 						/>
 					</div>
 					<div class="flex flex-row gap-x-2">
@@ -183,8 +183,8 @@ function ClusterCard(props: Cluster) {
 	return (
 		<>
 			<div
-				onClick={e => openClusterPage(e)}
 				class="group relative h-[152px] flex flex-col border border-gray-05 rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				onClick={e => openClusterPage(e)}
 			>
 				<div class="relative flex-1 overflow-hidden rounded-t-xl">
 					<div
@@ -192,8 +192,8 @@ function ClusterCard(props: Cluster) {
 						style={{ '-webkit-transform': 'translateZ(0)' }}
 					>
 						<ClusterCover
-							cluster={props}
 							class="h-full w-full object-cover"
+							cluster={props}
 						/>
 					</div>
 				</div>

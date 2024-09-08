@@ -1,12 +1,12 @@
-import process from 'node:process';
-import { fileURLToPath } from 'node:url';
-import { setTimeout } from 'node:timers/promises';
-
-import { type } from 'node:os';
 import fs from 'node:fs/promises';
-import { dirname, join, resolve } from 'pathe';
-import { execa } from 'execa';
+import { type } from 'node:os';
+import process from 'node:process';
+
+import { setTimeout } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { consola } from 'consola';
+import { execa } from 'execa';
+import { dirname, join, resolve } from 'pathe';
 
 export type CheckedEnvironment = ReturnType<typeof checkEnvironment>;
 

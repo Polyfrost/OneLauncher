@@ -1,6 +1,6 @@
-import { type ComponentProps, type JSX, Match, Show, Switch, createEffect, createSignal } from 'solid-js';
-import { InfoCircleIcon } from '@untitled-theme/icons-solid';
 import { PausableTimer } from '@onelauncher/client';
+import { InfoCircleIcon } from '@untitled-theme/icons-solid';
+import { type ComponentProps, createEffect, createSignal, type JSX, Match, Show, Switch } from 'solid-js';
 import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
 
 type NotificationComponentProps = IngressPayload & {
@@ -103,9 +103,9 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 	// >
 		<Show when={visible()}>
 			<div
+				class="flex flex-col overflow-hidden rounded-lg bg-component-bg"
 				onMouseEnter={() => onEnter()}
 				onMouseLeave={() => onLeave()}
-				class="flex flex-col overflow-hidden rounded-lg bg-component-bg"
 			>
 				<div class="px-2">
 					<NotificationPopupComponent {...props} />
@@ -114,10 +114,10 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 				<Show when={disappearing() === true && props.fraction === undefined}>
 					<div class="h-1.5 w-full bg-brand-disabled">
 						<div
+							class="h-1.5 rounded-lg bg-brand transition-width"
 							style={{
 								width: `${(secondsLeft() / TOTAL_SECONDS) * 100}%`,
 							}}
-							class="h-1.5 rounded-lg bg-brand transition-width"
 						/>
 					</div>
 				</Show>

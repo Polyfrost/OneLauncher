@@ -1,8 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import { join } from 'pathe';
-import { For, Show } from 'solid-js';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -10,6 +8,8 @@ import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import useSettings from '~ui/hooks/useSettings';
+import { join } from 'pathe';
+import { For, Show } from 'solid-js';
 
 function ClusterScreenshots() {
 	const { settings } = useSettings();
@@ -31,7 +31,7 @@ function ClusterScreenshots() {
 					<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full transform-gpu gap-2">
 						<For each={list()!}>
 							{screenshot => (
-								<ScreenshotEntry path={screenshot} cluster_path={cluster()?.path || ''} />
+								<ScreenshotEntry cluster_path={cluster()?.path || ''} path={screenshot} />
 							)}
 						</For>
 					</div>
@@ -41,8 +41,8 @@ function ClusterScreenshots() {
 			<div class="mt-2 flex flex-row items-end justify-end">
 				<Button
 					buttonStyle="primary"
-					iconLeft={<LinkExternal01Icon />}
 					children="Open Folder"
+					iconLeft={<LinkExternal01Icon />}
 					onClick={openFolder}
 				/>
 			</div>
@@ -68,7 +68,7 @@ function ScreenshotEntry(props: { path: string; cluster_path: string }) {
 			class="flex flex-col items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover hover:opacity-80"
 			onClick={onClick}
 		>
-			<img src={pathSrc()} alt={props.path} class="aspect-ratio-video w-full rounded-lg" />
+			<img alt={props.path} class="aspect-ratio-video w-full rounded-lg" src={pathSrc()} />
 		</div>
 	);
 }

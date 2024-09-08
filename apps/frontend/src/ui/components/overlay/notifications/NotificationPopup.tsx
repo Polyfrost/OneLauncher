@@ -1,10 +1,10 @@
-import { For, Match, Switch } from 'solid-js';
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import Popup, { type PopupProps } from '../Popup';
-import Button from '../../base/Button';
-import NotificationComponent from './NotificationComponent';
 import useIngress from '~ui/hooks/useIngress';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
+import { For, Match, Switch } from 'solid-js';
+import Button from '../../base/Button';
+import Popup, { type PopupProps } from '../Popup';
+import NotificationComponent from './NotificationComponent';
 
 function NotificationPopup(props: PopupProps) {
 	const [ingress] = useIngress(updateSize);
@@ -61,7 +61,7 @@ function NotificationPopup(props: PopupProps) {
 						</Switch>
 
 						<div class="flex flex-row items-end justify-between">
-							<Button onClick={() => {}} buttonStyle="ghost" iconLeft={<Trash01Icon />}>
+							<Button buttonStyle="ghost" iconLeft={<Trash01Icon />} onClick={() => {}}>
 								Clear Notifications
 							</Button>
 

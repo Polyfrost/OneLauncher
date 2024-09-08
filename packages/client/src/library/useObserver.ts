@@ -1,5 +1,5 @@
-import type { Owner } from 'solid-js';
 import { createEffect, createReaction, createRoot, createSignal, onCleanup, runWithOwner } from 'solid-js';
+import type { Owner } from 'solid-js';
 
 export interface Observer {
 	dispose: () => void;

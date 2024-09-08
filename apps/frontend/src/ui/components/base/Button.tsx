@@ -1,5 +1,5 @@
-import type { Accessor, JSX, ParentProps } from 'solid-js';
 import { createEffect, createSignal, mergeProps, on, splitProps, untrack } from 'solid-js';
+import type { Accessor, JSX, ParentProps } from 'solid-js';
 import styles from './Button.module.scss';
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & ParentProps & {
@@ -41,12 +41,12 @@ Button.Toggle = (props: ButtonToggleProps) => {
 
 	return (
 		<Button
+			aria-checked={checked()}
 			onClick={(e) => {
 				toggle();
 				if (typeof split.onClick === 'function')
 					split.onClick(e);
 			}}
-			aria-checked={checked()}
 			{...rest}
 		/>
 	);

@@ -30,7 +30,9 @@ pub async fn get_all_provider_package_versions(
 	game_versions: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
 ) -> Result<Vec<ManagedVersion>, String> {
-	Ok(provider.get_all_versions(&project_id, game_versions, loaders).await?)
+	Ok(provider
+		.get_all_versions(&project_id, game_versions, loaders)
+		.await?)
 }
 
 #[specta::specta]
@@ -65,7 +67,10 @@ pub struct ProviderSearchQuery {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn search_provider_packages(provider: Providers, query: ProviderSearchQuery) -> Result<ProviderSearchResults, String> {
+pub async fn search_provider_packages(
+	provider: Providers,
+	query: ProviderSearchQuery,
+) -> Result<ProviderSearchResults, String> {
 	Ok(provider
 		.search(
 			query.query,
@@ -105,14 +110,24 @@ pub async fn download_provider_package(
 
 	let mgd_pkg = provider.get(&package_id).await?;
 
-	let (pkg_path, pkg) = package::download_package(&mgd_pkg, &mut cluster, game_version, loader, package_version).await?;
-	package::add_package(&cluster.cluster_path(), pkg_path, pkg, Some(mgd_pkg.package_type)).await?;
+	let (pkg_path, pkg) = package::download_package(
+		&mgd_pkg,
+		&mut cluster,
+		game_version,
+		loader,
+		package_version,
+	)
+	.await?;
+	package::add_package(
+		&cluster.cluster_path(),
+		pkg_path,
+		pkg,
+		Some(mgd_pkg.package_type),
+	)
+	.await?;
 
 	Ok(())
 }
-
-
-
 
 #[specta::specta]
 #[tauri::command]
@@ -165,7 +180,10 @@ pub async fn sync_cluster_packages(cluster_path: ClusterPath) -> Result<(), Stri
 
 #[specta::specta]
 #[tauri::command]
-pub async fn sync_cluster_packages_by_type(cluster_path: ClusterPath, package_type: PackageType) -> Result<(), String> {
+pub async fn sync_cluster_packages_by_type(
+	cluster_path: ClusterPath,
+	package_type: PackageType,
+) -> Result<(), String> {
 	package::sync_packages_by_type(&cluster_path, package_type).await?;
 	Ok(())
 }

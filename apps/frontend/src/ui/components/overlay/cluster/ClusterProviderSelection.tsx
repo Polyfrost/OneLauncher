@@ -1,8 +1,8 @@
 import { Upload01Icon, User03Icon } from '@untitled-theme/icons-solid';
-import { Index, type JSX, createEffect, createSignal } from 'solid-js';
-import { type ClusterStepProps, CreationStage, createClusterStep } from './ClusterCreationModal';
-import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
+import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
+import { createEffect, createSignal, Index, type JSX } from 'solid-js';
+import { type ClusterStepProps, createClusterStep, CreationStage } from './ClusterCreationModal';
 
 const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
 	{
@@ -70,8 +70,8 @@ interface ProviderCardProps {
 function ProviderCard(props: ProviderCardProps) {
 	return (
 		<div
-			onClick={() => props.setSelected()}
 			class={`flex flex-col justify-center items-center gap-y-2 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg ${props.selected ? 'bg-component-bg' : ''}`}
+			onClick={() => props.setSelected()}
 		>
 			<div class="[&>svg]:(h-8 w-8)">
 				{props.icon}

@@ -1,35 +1,35 @@
-import { type ParentProps, createSignal } from 'solid-js';
-import { Brush01Icon, CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon, Users01Icon } from '@untitled-theme/icons-solid';
+import { PROGRAM_INFO } from '@onelauncher/client/bindings';
 import { Route } from '@solidjs/router';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { PROGRAM_INFO } from '@onelauncher/client/bindings';
+import { Brush01Icon, CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon, Users01Icon } from '@untitled-theme/icons-solid';
+import AnimatedRoutes from '~ui/components/AnimatedRoutes';
+import Tooltip from '~ui/components/base/Tooltip';
+import ErrorBoundary from '~ui/components/ErrorBoundary';
+import { createSignal, type ParentProps } from 'solid-js';
 import Sidebar from '../../components/Sidebar';
-import SettingsGeneral from './launcher/SettingsGeneral';
-import SettingsAppearance from './launcher/SettingsAppearance';
-import SettingsAccounts from './game/SettingsAccounts';
-import SettingsMinecraft from './game/SettingsMinecraft';
+import SettingsChangelog from './about/SettingsChangelog';
 import SettingsDeveloper from './about/SettingsDeveloper';
 import SettingsFeedback from './about/SettingsFeedback';
-import SettingsChangelog from './about/SettingsChangelog';
-import AnimatedRoutes from '~ui/components/AnimatedRoutes';
-import ErrorBoundary from '~ui/components/ErrorBoundary';
-import Tooltip from '~ui/components/base/Tooltip';
+import SettingsAccounts from './game/SettingsAccounts';
+import SettingsMinecraft from './game/SettingsMinecraft';
+import SettingsAppearance from './launcher/SettingsAppearance';
+import SettingsGeneral from './launcher/SettingsGeneral';
 
 function SettingsRoutes() {
 	return (
 		<>
 			{/* Launcher Settings */}
-			<Route path="/" component={SettingsGeneral} />
-			<Route path="/appearance" component={SettingsAppearance} />
+			<Route component={SettingsGeneral} path="/" />
+			<Route component={SettingsAppearance} path="/appearance" />
 
 			{/* Game Settings */}
-			<Route path="/minecraft" component={SettingsMinecraft} />
-			<Route path="/accounts" component={SettingsAccounts} />
+			<Route component={SettingsMinecraft} path="/minecraft" />
+			<Route component={SettingsAccounts} path="/accounts" />
 
 			{/* About */}
-			<Route path="/feedback" component={SettingsFeedback} />
-			<Route path="/changelog" component={SettingsChangelog} />
-			<Route path="/developer" component={SettingsDeveloper} />
+			<Route component={SettingsFeedback} path="/feedback" />
+			<Route component={SettingsChangelog} path="/changelog" />
+			<Route component={SettingsDeveloper} path="/developer" />
 		</>
 	);
 }

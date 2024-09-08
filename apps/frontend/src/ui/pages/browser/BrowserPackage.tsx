@@ -1,22 +1,22 @@
-import { For, Match, type ParentProps, Show, Switch, createContext, createEffect, createSignal, on, useContext } from 'solid-js';
 import { A, type Params, Route, useSearchParams } from '@solidjs/router';
 import { CalendarIcon, ChevronDownIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
-import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
-import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
+import SteveHead from '~assets/images/steve.png';
 import { bridge } from '~imports';
-import useCommand from '~ui/hooks/useCommand';
-import { abbreviateNumber, formatAsRelative } from '~utils';
-import Tooltip from '~ui/components/base/Tooltip';
-import Markdown from '~ui/components/content/Markdown';
+import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
-import useBrowser from '~ui/hooks/useBrowser';
-import SteveHead from '~assets/images/steve.png';
-import usePromptOpener from '~ui/hooks/usePromptOpener';
 import Link from '~ui/components/base/Link';
-import usePagination from '~ui/hooks/usePagination';
+import Tooltip from '~ui/components/base/Tooltip';
+import Markdown from '~ui/components/content/Markdown';
 import Spinner from '~ui/components/Spinner';
-import AnimatedRoutes from '~ui/components/AnimatedRoutes';
+import useBrowser from '~ui/hooks/useBrowser';
+import useCommand from '~ui/hooks/useCommand';
+import usePagination from '~ui/hooks/usePagination';
+import usePromptOpener from '~ui/hooks/usePromptOpener';
+import { abbreviateNumber, formatAsRelative } from '~utils';
+import { createContext, createEffect, createSignal, For, Match, on, type ParentProps, Show, Switch, useContext } from 'solid-js';
+import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
+import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 
 interface BrowserModParams extends Params {
 	id: string;
@@ -39,9 +39,9 @@ function BrowserPackageProvider(props: ParentProps & { pkg: ManagedPackage }) {
 function BrowserPackageRoutes() {
 	return (
 		<>
-			<Route path="/" component={BrowserPackageBody} />
+			<Route component={BrowserPackageBody} path="/" />
 			{/* <Route path="/gallery" component={BrowserPackageGallery} /> */}
-			<Route path="/versions" component={BrowserPackageVersions} />
+			<Route component={BrowserPackageVersions} path="/versions" />
 		</>
 	);
 }
@@ -56,10 +56,10 @@ function NavLink(props: ParentProps & { href: string }) {
 
 	return (
 		<A
-			class="rounded-md px-4 py-2 text-sm text-fg-primary font-semibold uppercase active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			activeClass="bg-component-bg-pressed hover:bg-component-bg-pressed"
-			href={url()}
 			children={props.children}
+			class="rounded-md px-4 py-2 text-sm text-fg-primary font-semibold uppercase active:bg-component-bg-pressed hover:bg-component-bg-hover"
+			href={url()}
 		/>
 	);
 }
@@ -79,10 +79,9 @@ function BrowserPackage(props: ParentProps) {
 		<Spinner.Suspense>
 			<div class="h-full flex flex-1 flex-row items-start gap-x-4">
 				<Show
-					when={pkg() !== undefined && authors() !== undefined}
 					children={(
 						<>
-							<BrowserSidebar package={pkg()!} authors={authors()!} />
+							<BrowserSidebar authors={authors()!} package={pkg()!} />
 
 							<div class="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
 								<div class="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1">
@@ -109,6 +108,7 @@ function BrowserPackage(props: ParentProps) {
 							</div>
 						</>
 					)}
+					when={pkg() !== undefined && authors() !== undefined}
 				/>
 			</div>
 		</Spinner.Suspense>
@@ -132,8 +132,8 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 		<div class="sticky top-0 z-1 max-w-60 min-w-54 flex flex-col gap-y-4">
 			<div class="min-h-72 flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div class="relative h-28 flex items-center justify-center overflow-hidden">
-					<img class="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={props.package.icon_url || ''} alt={`Icon for ${props.package.title}`} />
-					<img class="relative z-1 aspect-ratio-square w-2/5 rounded-md image-render-auto" src={props.package.icon_url || ''} alt={`Icon for ${props.package.title}`} />
+					<img alt={`Icon for ${props.package.title}`} class="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={props.package.icon_url || ''} />
+					<img alt={`Icon for ${props.package.title}`} class="relative z-1 aspect-ratio-square w-2/5 rounded-md image-render-auto" src={props.package.icon_url || ''} />
 				</div>
 				<div class="flex flex-1 flex-col gap-2 p-3">
 					<div class="flex flex-col gap-2">
@@ -170,7 +170,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 
 			<div class="flex flex-col gap-2 rounded-lg bg-component-bg p-3">
 				<h4 class="text-fg-primary font-bold">Links</h4>
-				<Link includeIcon href={getPackageUrl(props.package.provider, props.package.id, props.package.package_type)}>
+				<Link href={getPackageUrl(props.package.provider, props.package.id, props.package.package_type)} includeIcon>
 					{props.package.provider}
 					{' '}
 					Page
@@ -186,7 +186,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 								class="flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
 								onClick={() => promptOpen(author.url)}
 							>
-								<img class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} alt={`${author.username}'s avatar`} />
+								<img alt={`${author.username}'s avatar`} class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} />
 								<div class="flex flex-1 flex-col justify-center gap-y-1">
 									<span>{author.username}</span>
 
@@ -214,7 +214,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 					<div class="flex flex-row items-start gap-x-1">
 						<File02Icon class="h-3 min-w-3 w-3" />
 						License
-						<Link includeIcon href={getLicenseUrl(props.package.license)}>
+						<Link href={getLicenseUrl(props.package.license)} includeIcon>
 							{props.package.license?.name || props.package.license?.id || 'Unknown'}
 						</Link>
 					</div>
@@ -303,32 +303,32 @@ function InstallButton(props: ManagedPackage) {
 
 			<Button
 				buttonStyle="primary"
-				iconLeft={<Download01Icon />}
-				class="max-w-full flex-1 rounded-r-none!"
-				disabled={filtered()?.length === 0}
-				onClick={download}
 				children={(
 					<div class="flex flex-1 flex-col items-center justify-center">
 						<p class="text-xs">Download latest to</p>
 						<span class="mt-0.5 h-3.5 max-w-38 overflow-x-hidden text-sm font-bold">{filtered?.()?.[selected?.()]?.meta.name || 'Unknown'}</span>
 					</div>
 				)}
+				class="max-w-full flex-1 rounded-r-none!"
+				disabled={filtered()?.length === 0}
+				iconLeft={<Download01Icon />}
+				onClick={download}
 			/>
 
 			<Dropdown
 				class="w-8"
-				dropdownClass="w-58! right-0"
-				disabled={filtered()?.length === 0}
-				selected={selected}
-				onChange={setSelected}
 				component={props => (
 					<Button
 						buttonStyle="primary"
-						iconLeft={<ChevronDownIcon />}
 						class="h-full w-full border-l border-white/5 rounded-l-none! px-0!"
+						iconLeft={<ChevronDownIcon />}
 						onClick={() => props.setVisible(true)}
 					/>
 				)}
+				disabled={filtered()?.length === 0}
+				dropdownClass="w-58! right-0"
+				onChange={setSelected}
+				selected={selected}
 			>
 				<For each={filtered()}>
 					{cluster => (
@@ -403,7 +403,7 @@ function BrowserPackageVersions() {
 	}));
 
 	return (
-		<div ref={container} class="h-full w-full flex flex-1 flex-col gap-y-1">
+		<div class="h-full w-full flex flex-1 flex-col gap-y-1" ref={container}>
 			<div class="flex flex-row justify-between">
 				<h1>
 					Versions - Page

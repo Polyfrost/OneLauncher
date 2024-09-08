@@ -1,7 +1,7 @@
 import { arch as getArch, platform as getPlatform } from 'node:process';
-import { join } from 'pathe';
 import { Headers, HttpClient, HttpCodes } from '@actions/http-client';
 import { downloadTool, extractTar } from '@actions/tool-cache';
+import { join } from 'pathe';
 
 const getUrl = (version: string, platform: string, arch: string) => `https://github.com/reviewdog/reviewdog/releases/download/v${version}/reviewdog_${version}_${platform}_${arch}.tar.gz`;
 

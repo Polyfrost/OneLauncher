@@ -138,10 +138,11 @@ impl Providers {
 		.collect())
 	}
 
-	pub async fn get_all_versions(&self,
+	pub async fn get_all_versions(
+		&self,
 		project_id: &str,
 		game_versions: Option<Vec<String>>,
-		loaders: Option<Vec<Loader>>
+		loaders: Option<Vec<Loader>>,
 	) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
 			Providers::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),

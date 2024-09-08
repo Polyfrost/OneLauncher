@@ -1,11 +1,11 @@
-import type { Providers, SearchResult } from '@onelauncher/client/bindings';
 import { ChevronDownIcon, Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
-import type { JSX } from 'solid-js';
-import { For, Match, Show, Switch, createSignal } from 'solid-js';
-import Button from '../base/Button';
 import useBrowser from '~ui/hooks/useBrowser';
 import useSettings from '~ui/hooks/useSettings';
 import { abbreviateNumber } from '~utils';
+import { createSignal, For, Match, Show, Switch } from 'solid-js';
+import type { Providers, SearchResult } from '@onelauncher/client/bindings';
+import type { JSX } from 'solid-js';
+import Button from '../base/Button';
 
 interface SearchResultsContainerProps {
 	provider: Providers;
@@ -89,7 +89,7 @@ function PackageList(props: SearchResultsContainerProps) {
 		<div class="flex flex-col gap-2">
 			<For each={props.results}>
 				{mod => (
-					<PackageItem {...mod} row provider={props.provider} />
+					<PackageItem {...mod} provider={props.provider} row />
 				)}
 			</For>
 		</div>
@@ -105,13 +105,13 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 
 	return (
 		<div
-			tabIndex={0}
-			onClick={redirect}
 			class="h-full min-w-50 flex overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover"
 			classList={{
 				'flex-row max-h-32 min-h-32': props.row,
 				'flex-col max-h-74 min-h-74': !props.row,
 			}}
+			onClick={redirect}
+			tabIndex={0}
 		>
 			<div
 				class="relative flex items-center justify-center overflow-hidden"
@@ -132,15 +132,15 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 					)}
 					when={props.icon_url}
 				>
-					<img class="absolute z-0 max-w-none w-7/6 opacity-50 filter-blur-xl" src={props.icon_url!} alt={`Icon for ${props.title}`} />
+					<img alt={`Icon for ${props.title}`} class="absolute z-0 max-w-none w-7/6 opacity-50 filter-blur-xl" src={props.icon_url!} />
 					<img
+						alt={`Icon for ${props.title}`}
 						class="relative z-1 aspect-ratio-square rounded-md image-render-auto"
 						classList={{
 							'w-2/5': !props.row,
 							'w-3/4': props.row,
 						}}
 						src={props.icon_url!}
-						alt={`Icon for ${props.title}`}
 					/>
 				</Show>
 			</div>

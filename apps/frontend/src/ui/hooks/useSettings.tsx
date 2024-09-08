@@ -1,8 +1,8 @@
-import { type Context, type ParentProps, Show, createContext, createEffect, useContext } from 'solid-js';
 import { useBeforeLeave } from '@solidjs/router';
+import { bridge } from '~imports';
+import { type Context, createContext, createEffect, type ParentProps, Show, useContext } from 'solid-js';
 import type { Settings } from '@onelauncher/client/bindings';
 import useCommand from './useCommand';
-import { bridge } from '~imports';
 
 /**
  * Sync the launcher state (CSS, text etc) with the current settings

@@ -86,7 +86,9 @@ function usePagination(initialOptions: PaginationOptions) {
 				<span>...</span>
 			</Show>
 
-			<PaginationBtn page={totalPages()} />
+			<Show when={totalPages() > 1}>
+				<PaginationBtn page={totalPages()} />
+			</Show>
 
 			<Button
 				buttonStyle="iconSecondary"

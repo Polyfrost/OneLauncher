@@ -77,14 +77,14 @@ function BrowserPackage(props: ParentProps) {
 
 	return (
 		<Spinner.Suspense>
-			<div class="h-full flex flex-1 flex-row items-start gap-x-4 pb-8">
+			<div class="h-full flex flex-1 flex-row items-start gap-x-4">
 				<Show
 					when={pkg() !== undefined && authors() !== undefined}
 					children={(
 						<>
 							<BrowserSidebar package={pkg()!} authors={authors()!} />
 
-							<div class="min-h-full flex flex-1 flex-col items-start gap-y-4">
+							<div class="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
 								<div class="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1">
 									<For each={links}>
 										{link => (
@@ -200,7 +200,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 								</div>
 								<LinkExternal01Icon class="h-4 w-4" />
 							</div>
-							<Show when={author.is_organization_user === true}>
+							<Show when={author.is_organization_user === true && props.authors.length > 1}>
 								<div class="h-px w-full bg-gray-05" />
 							</Show>
 						</>

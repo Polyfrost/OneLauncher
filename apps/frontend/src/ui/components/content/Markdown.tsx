@@ -20,11 +20,10 @@ function Markdown(props: MarkdownProps) {
 				e.preventDefault();
 			}}
 			onClick={(e) => {
-				e.stopImmediatePropagation();
-				e.preventDefault();
-
-				// TODO: Create a custom renderer or just use something else instead of markdown-it :D
 				if (e.target.nodeName === 'A') {
+					e.stopImmediatePropagation();
+					e.preventDefault();
+
 					const target = e.target as HTMLAnchorElement;
 					if (target.href.startsWith('http'))
 						promptOpen(target.href);

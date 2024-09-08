@@ -36,22 +36,25 @@ function BrowserSearch() {
 
 	return (
 		<BrowserContent>
-			<pagination.Navigation />
+			<Spinner.Suspense>
+				<Show when={results() !== undefined}>
+					<SearchResultsContainer
+						category="test"
+						provider="Modrinth"
+						results={results()!.results}
+						header={(
+							<div class="w-full flex flex-row items-end justify-between">
+								<h5 class="ml-2">Results</h5>
+								<pagination.Navigation />
+							</div>
+						)}
+					/>
+				</Show>
 
-			<div class="my-2">
-				<Spinner.Suspense>
-					<Show when={results() !== undefined}>
-						<SearchResultsContainer
-							category="test"
-							header="Results"
-							provider="Modrinth"
-							results={results()!.results}
-						/>
-					</Show>
-				</Spinner.Suspense>
-			</div>
-
-			<pagination.Navigation />
+				<div class="mt-2">
+					<pagination.Navigation />
+				</div>
+			</Spinner.Suspense>
 		</BrowserContent>
 	);
 }

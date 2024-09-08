@@ -1,5 +1,6 @@
 import type { Providers, SearchResult } from '@onelauncher/client/bindings';
 import { ChevronDownIcon, Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
+import type { JSX } from 'solid-js';
 import { For, Match, Show, Switch, createSignal } from 'solid-js';
 import Button from '../base/Button';
 import useBrowser from '~ui/hooks/useBrowser';
@@ -9,7 +10,7 @@ import { abbreviateNumber } from '~utils';
 interface SearchResultsContainerProps {
 	provider: Providers;
 	results: SearchResult[];
-	header: string;
+	header: string | JSX.Element;
 	category: string;
 	collapsable?: boolean;
 }
@@ -22,7 +23,15 @@ function SearchResultsContainer(props: SearchResultsContainerProps) {
 	return (
 		<div class="relative flex flex-1 flex-col gap-3">
 			<div class="flex flex-1 flex-row justify-between">
-				<h5 class="ml-2">{props.header}</h5>
+				<Switch>
+					<Match when={typeof props.header === 'string'}>
+						<h5 class="ml-2">{props.header}</h5>
+					</Match>
+
+					<Match when>
+						{props.header}
+					</Match>
+				</Switch>
 			</div>
 
 			<div
@@ -32,6 +41,10 @@ function SearchResultsContainer(props: SearchResultsContainerProps) {
 				}}
 			>
 				<Switch>
+					<Match when={props.results.length === 0}>
+						<p class="mb-8 text-center text-fg-secondary">No results found</p>
+					</Match>
+
 					<Match when={settings().browser_list_view === 'list'}>
 						<PackageList {...props} />
 					</Match>
@@ -107,16 +120,29 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 					'w-full h-28': !props.row,
 				}}
 			>
-				<img class="absolute z-0 max-w-none w-7/6 opacity-50 filter-blur-xl" src={props.icon_url || ''} alt={`Icon for ${props.title}`} />
-				<img
-					class="relative z-1 aspect-ratio-square rounded-md image-render-auto"
-					classList={{
-						'w-2/5': !props.row,
-						'w-3/4': props.row,
-					}}
-					src={props.icon_url || ''}
-					alt={`Icon for ${props.title}`}
-				/>
+				<Show
+					fallback={(
+						<div
+							class="aspect-ratio-square rounded-md bg-gray-05"
+							classList={{
+								'w-2/5': !props.row,
+								'w-3/4': props.row,
+							}}
+						/>
+					)}
+					when={props.icon_url}
+				>
+					<img class="absolute z-0 max-w-none w-7/6 opacity-50 filter-blur-xl" src={props.icon_url!} alt={`Icon for ${props.title}`} />
+					<img
+						class="relative z-1 aspect-ratio-square rounded-md image-render-auto"
+						classList={{
+							'w-2/5': !props.row,
+							'w-3/4': props.row,
+						}}
+						src={props.icon_url!}
+						alt={`Icon for ${props.title}`}
+					/>
+				</Show>
 			</div>
 			<div class="flex flex-1 flex-col gap-2 p-3">
 				<div class="flex flex-col gap-2">

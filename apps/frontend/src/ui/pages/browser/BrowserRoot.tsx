@@ -8,6 +8,8 @@ import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import useBrowser from '~ui/hooks/useBrowser';
 import { browserCategories } from '~utils/browser';
+import Dropdown from '~ui/components/base/Dropdown';
+import { PROVIDERS } from '~utils';
 
 function BrowserRoutes() {
 	return (
@@ -88,23 +90,19 @@ function BrowserCategories() {
 		<div class="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
 			<div />
 			<div class="flex flex-col gap-y-6">
-				<For each={browserCategories.byPackageType(browser.packageType())}>
-					{category => (
-						<div class="flex flex-col gap-y-2">
-							<h6 class="my-1">{category.name}</h6>
-							<For each={category.sub}>
-								{sub => (
-									<p
-										class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover ${isEnabled(sub) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
-										onClick={() => toggleCategory(sub)}
-									>
-										{sub}
-									</p>
-								)}
-							</For>
-						</div>
-					)}
-				</For>
+				<div class="flex flex-col gap-y-2">
+					<h6 class="my-1">Categories</h6>
+					<For each={browserCategories.byPackageType(browser.packageType())}>
+						{category => (
+							<p
+								class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
+								onClick={() => toggleCategory(category.id)}
+							>
+								{category.display}
+							</p>
+						)}
+					</For>
+				</div>
 			</div>
 		</div>
 	);
@@ -115,7 +113,7 @@ function BrowserSidebar() {
 
 	return (
 		<div class="flex flex-col gap-y-4">
-			<div class="flex flex-col gap-y-1">
+			<div class="flex flex-col gap-y-4">
 				<div class="flex flex-col gap-y-1">
 					<h6 class="my-1">Active Cluster</h6>
 					<Button
@@ -124,6 +122,24 @@ function BrowserSidebar() {
 						iconLeft={<Settings01Icon />}
 						onClick={controller.displayClusterSelector}
 					/>
+				</div>
+				<div class="flex flex-col gap-y-1">
+					<h6 class="my-1">Provider</h6>
+					<Dropdown
+						selected={() => PROVIDERS.indexOf(controller.searchQuery().provider)}
+						onChange={index => controller.setSearchQuery(prev => ({
+							...prev,
+							provider: PROVIDERS[index] || 'Modrinth',
+						}))}
+					>
+						<For each={PROVIDERS}>
+							{provider => (
+								<Dropdown.Row>
+									{provider}
+								</Dropdown.Row>
+							)}
+						</For>
+					</Dropdown>
 				</div>
 			</div>
 		</div>

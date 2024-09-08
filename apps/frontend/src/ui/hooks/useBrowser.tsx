@@ -10,6 +10,8 @@ import Modal, { createModal } from '~ui/components/overlay/Modal';
 import Dropdown from '~ui/components/base/Dropdown';
 import Button from '~ui/components/base/Button';
 
+export type ProviderSearchOptions = ProviderSearchQuery & { provider: Providers };
+
 interface BrowserControllerType {
 	cluster: Accessor<Cluster | undefined>;
 	setCluster: Setter<Cluster | undefined>;
@@ -20,8 +22,8 @@ interface BrowserControllerType {
 	displayClusterSelector: () => void;
 
 	search: () => void;
-	searchQuery: Accessor<ProviderSearchQuery>;
-	setSearchQuery: Setter<ProviderSearchQuery>;
+	searchQuery: Accessor<ProviderSearchOptions>;
+	setSearchQuery: Setter<ProviderSearchOptions>;
 
 	packageType: Accessor<PackageType>;
 	setPackageType: Setter<PackageType>;
@@ -43,7 +45,8 @@ export function BrowserProvider(props: ParentProps) {
 	// Active cluster that results should be "focused" on
 	const [cluster, setCluster] = createSignal<Cluster>();
 
-	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchQuery>({
+	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchOptions>({
+		provider: 'Modrinth',
 		query: '',
 		limit: 20,
 		offset: 0,
@@ -123,7 +126,7 @@ export function BrowserProvider(props: ParentProps) {
 	createEffect(on(cluster, (cluster) => {
 		if (cluster !== undefined)
 			setSearchOptions((prev) => {
-				const opts: ProviderSearchQuery = {
+				const opts: ProviderSearchOptions = {
 					...prev,
 					game_versions: [cluster.meta.mc_version],
 				};

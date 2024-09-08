@@ -13,7 +13,6 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 
 	const privateKeyPath = resolve(join(env.__deps, 'tauri.key'));
 	const publicKeyPath = resolve(join(env.__deps, 'tauri.key.pub'));
-	const updatekeyPath = resolve(join(env.__deps, 'updatekey_lock'));
 
 	const readKeys = () => Promise.all([
 		fs.readFile(publicKeyPath, 'utf-8'),

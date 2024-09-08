@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { type } from 'node:os';
 import process from 'node:process';
@@ -8,8 +7,6 @@ import { join, resolve } from 'pathe';
 import semver from 'semver';
 import type { CheckedEnvironment } from '.';
 
-const UPDATEKEY_LOCK_VERSION = '1';
-
 export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | undefined> {
 	if (process.env.TAURI_SIGNING_PRIVATE_KEY)
 		return;
@@ -17,10 +14,6 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	const privateKeyPath = resolve(join(env.__deps, 'tauri.key'));
 	const publicKeyPath = resolve(join(env.__deps, 'tauri.key.pub'));
 	const updatekeyPath = resolve(join(env.__deps, 'updatekey_lock'));
-
-	if (existsSync(updatekeyPath))
-		if (readFileSync(updatekeyPath, 'utf-8') === UPDATEKEY_LOCK_VERSION)
-			return;
 
 	const readKeys = () => Promise.all([
 		fs.readFile(publicKeyPath, 'utf-8'),
@@ -48,7 +41,6 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 
 	process.env.TAURI_SIGNING_PRIVATE_KEY = keys.privateKey;
 	process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD = '';
-	await fs.writeFile(updatekeyPath, UPDATEKEY_LOCK_VERSION, 'utf-8');
 	return keys.publicKey;
 }
 

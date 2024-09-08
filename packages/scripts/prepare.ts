@@ -1,15 +1,12 @@
-import fs from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { consola } from 'consola';
 import mustache from 'mustache';
-import { join, resolve } from 'pathe';
+import { join } from 'pathe';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
 const env = checkEnvironment(import.meta);
 const triple = getTriple();
-const PREPARE_LOCK_VERSION = '1';
-const prepareLockPath = resolve(join(env.__deps, 'prepare_lock'));
 
 if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f))
 	consola.error(
@@ -25,10 +22,6 @@ if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f)
 	);
 
 consola.info('generating cargo configuration file.');
-
-if (fs.existsSync(prepareLockPath))
-	if (fs.readFileSync(prepareLockPath, 'utf-8') === PREPARE_LOCK_VERSION)
-		env.__exit(0);
 
 interface ConfigStore {
 	isWin: boolean;
@@ -66,7 +59,6 @@ try {
 	const template = await readFile(join(env.__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
 	const rendered = mustache.render(template, configStore).replace(/\n{2,}/g, '\n');
 	await writeFile(join(env.__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+', encoding: 'utf-8' });
-	await writeFile(join(env.__deps, 'prepare_lock'), PREPARE_LOCK_VERSION, 'utf-8');
 }
 catch (error) {
 	consola.error(`

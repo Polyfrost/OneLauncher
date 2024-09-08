@@ -1,19 +1,56 @@
-import { Edit02Icon, FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Switch, createEffect, createSignal } from 'solid-js';
+import { FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { For, Match, Show, Switch, createEffect, createResource, createSignal } from 'solid-js';
 import UFuzzy from '@leeoniya/ufuzzy';
-import type { Package } from '@onelauncher/client/bindings';
+import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import useCommand from '~ui/hooks/useCommand';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import { bridge } from '~imports';
+import Spinner from '~ui/components/Spinner';
+import useBrowser from '~ui/hooks/useBrowser';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {
 	const [cluster] = useClusterContext();
-	const [mods] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
+	const [mods, { refetch }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
+	const [managedMods] = createResource(mods, async () => {
+		const list = mods();
+		if (!list)
+			return Promise.resolve(new Map<Providers, ManagedPackage[]>());
+
+		const providers: Map<Providers, string[]> = new Map();
+
+		list.forEach((mod) => {
+			if (mod.meta.type === 'managed')
+				providers.set(mod.meta.provider, [
+					...(providers.get(mod.meta.provider) || []),
+					mod.meta.package_id,
+				]);
+		});
+
+		const formatted: Map<Providers, ManagedPackage[]> = new Map();
+
+		for (const [provider, packageIds] of providers.entries()) {
+			const result = await tryResult(() => bridge.commands.getProviderPackages(provider, packageIds));
+			formatted.set(provider, result);
+		}
+
+		return formatted;
+	});
+
+	function getManagedData(mod: Package): ManagedPackage | undefined {
+		const meta = mod.meta;
+		if (meta.type === 'managed') {
+			const provider = managedMods()?.get(meta.provider);
+			if (provider && provider.length > 0)
+				return provider.find(pkg => pkg.id === meta.package_id);
+		}
+
+		return undefined;
+	}
 
 	// Mods to display, should be a clone of the mods array but sorted
 	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
@@ -73,32 +110,39 @@ function ClusterMods() {
 		<Sidebar.Page>
 			<div class="w-full flex flex-row justify-between">
 				<h1>Mods</h1>
-				<div class="flex flex-row items-center justify-end gap-x-2">
-					<Button
-						buttonStyle="secondary"
-						onClick={() => toggleNameSort()}
-						children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
-						iconLeft={<FilterFunnel01Icon />}
-					/>
+				<div>
+					<div class="flex flex-row items-stretch justify-end gap-x-2">
+						<Button
+							buttonStyle="secondary"
+							onClick={() => toggleNameSort()}
+							children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
+							iconLeft={<FilterFunnel01Icon />}
+						/>
 
-					<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
+						<TextField iconLeft={<SearchMdIcon />} placeholder="Search..." onInput={e => search(e.target.value)} />
+					</div>
 				</div>
 			</div>
 
 			<ScrollableContainer>
-				<Switch>
-					<Match when={displayedMods().length > 0}>
-						<For each={displayedMods()}>
-							{mod => (
-								<ModEntry pkg={mod} />
-							)}
-						</For>
-					</Match>
+				<Spinner.Suspense>
+					<Show when={managedMods.loading === false}>
+						<Switch>
+							<Match when={displayedMods().length > 0}>
+								<For each={displayedMods()}>
+									{(mod) => {
+										const managed = getManagedData(mod);
+										return <ModEntry pkg={mod} managed={managed} refetch={refetch} />;
+									}}
+								</For>
+							</Match>
 
-					<Match when={displayedMods().length === 0}>
-						<p class="my-4 text-center text-2lg">No mods were found</p>
-					</Match>
-				</Switch>
+							<Match when={displayedMods().length === 0}>
+								<p class="my-4 text-center text-2lg">No mods were found</p>
+							</Match>
+						</Switch>
+					</Show>
+				</Spinner.Suspense>
 			</ScrollableContainer>
 		</Sidebar.Page>
 	);
@@ -108,13 +152,14 @@ export default ClusterMods;
 
 interface ModEntryProps {
 	pkg: Package;
+	refetch: () => void;
+	managed?: ManagedPackage | undefined;
 };
 
-function icon() {
-	return '';
-}
-
 function ModEntry(props: ModEntryProps) {
+	const [cluster] = useClusterContext();
+	const browser = useBrowser();
+
 	const name = () => {
 		if (props.pkg.meta.type === 'unknown')
 			return props.pkg.file_name;
@@ -144,10 +189,45 @@ function ModEntry(props: ModEntryProps) {
 		return tag;
 	};
 
+	const icon = () => {
+		if (props.pkg.meta.type === 'managed')
+			return props.managed?.icon_url;
+
+		return undefined;
+	};
+
+	function onClick(e: MouseEvent) {
+		if (props.managed) {
+			e.preventDefault();
+			e.stopPropagation();
+
+			browser.displayPackage(props.managed.id, props.managed.provider);
+		}
+	}
+
+	async function deletePackage(e: MouseEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		const path = cluster()?.path;
+		if (path) {
+			await bridge.commands.removeClusterPackage(path, props.pkg.file_name, 'mod');
+			await bridge.commands.syncClusterPackages(path);
+			props.refetch();
+		}
+	}
+
 	return (
-		<div class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover">
+		<div
+			class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover"
+			onClick={onClick}
+		>
 			<div>
-				<img src={icon()} alt={name()} class="aspect-ratio-square h-10 rounded-lg" />
+				<Show
+					when={icon()}
+					fallback={<div class="aspect-ratio-square h-10 rounded-lg bg-gray-05" />}
+					children={<img src={icon()!} alt={name()} class="aspect-ratio-square h-10 rounded-lg" />}
+				/>
 			</div>
 			<div class="flex flex-1 flex-col">
 				<div class="flex flex-row items-center justify-between">
@@ -169,12 +249,12 @@ function ModEntry(props: ModEntryProps) {
 					</div>
 
 					<div class="flex flex-row items-end justify-center gap-2">
-						<Button buttonStyle="iconSecondary">
+						{/* <Button buttonStyle="iconSecondary">
 							<Edit02Icon />
-						</Button>
+						</Button> */}
 
-						<Button buttonStyle="iconSecondary">
-							<Trash03Icon class="!stroke-danger" />
+						<Button buttonStyle="iconDanger" onClick={deletePackage}>
+							<Trash03Icon />
 						</Button>
 					</div>
 				</div>

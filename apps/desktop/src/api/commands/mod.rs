@@ -71,6 +71,7 @@ macro_rules! collect_commands {
 			add_cluster_package,
 			remove_cluster_package,
 			sync_cluster_packages,
+			sync_cluster_packages_by_type,
 			// Updater
 			check_for_update,
 			install_update

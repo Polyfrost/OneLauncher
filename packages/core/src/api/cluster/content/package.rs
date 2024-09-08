@@ -242,7 +242,7 @@ pub async fn sync_packages_by_type(
 		.get_mut(cluster_path)
 		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
 
-	manager.sync_packages(&state.directories).await;
+	manager.sync_packages_by_type(&state.directories, package_type).await?;
 
 	Ok(())
 }

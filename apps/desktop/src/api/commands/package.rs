@@ -103,9 +103,10 @@ pub async fn download_provider_package(
 		.await?
 		.ok_or("cluster not found")?;
 
-	let pkg = provider.get(&package_id).await?;
+	let mgd_pkg = provider.get(&package_id).await?;
 
-	package::download_package(&pkg, &mut cluster, game_version, loader, package_version).await?;
+	let (pkg_path, pkg) = package::download_package(&mgd_pkg, &mut cluster, game_version, loader, package_version).await?;
+	package::add_package(&cluster.cluster_path(), pkg_path, pkg, Some(mgd_pkg.package_type)).await?;
 
 	Ok(())
 }
@@ -159,5 +160,12 @@ pub async fn remove_cluster_package(
 #[tauri::command]
 pub async fn sync_cluster_packages(cluster_path: ClusterPath) -> Result<(), String> {
 	package::sync_packages(&cluster_path).await?;
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn sync_cluster_packages_by_type(cluster_path: ClusterPath, package_type: PackageType) -> Result<(), String> {
+	package::sync_packages_by_type(&cluster_path, package_type).await?;
 	Ok(())
 }

@@ -1,6 +1,6 @@
 use onelauncher::data::{Loader, PackageType};
 use onelauncher::package::content::Providers;
-use onelauncher::store::Cluster;
+use onelauncher::store::{Cluster, PackagePath};
 use onelauncher::{cluster, Result};
 
 const CLUSTER_NAME: &str = "Test Packages";
@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
 	// Print Packages first
 	print_packages(&cluster).await?;
 
-	// Download the first mod, add it to the PackageManager and sync packages
+	println!("Download the first mod, adding it to the PackageManager and sync packages");
 	download_mod(
 		&mut cluster,
 		MODRINTH_PACKAGE_ONE,
@@ -32,8 +32,8 @@ async fn main() -> Result<()> {
 	// Print Packages again
 	print_packages(&cluster).await?;
 
-	// Download the second mod, DON'T add it to the PackageManager and sync packages
-	download_mod(
+	println!("Download the second mod, NOT adding it to the PackageManager and sync packages");
+	let package_path = download_mod(
 		&mut cluster,
 		MODRINTH_PACKAGE_TWO,
 		MODRINTH_PACKAGE_TWO_VERSION,
@@ -45,6 +45,15 @@ async fn main() -> Result<()> {
 
 	// Print Packages again
 	print_packages(&cluster).await?;
+
+	println!("Removing the second mod from the PackageManager and sync packages");
+	cluster::content::package::remove_package(
+		&cluster.cluster_path(),
+		&package_path,
+		PackageType::Mod,
+	).await?;
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+		.await?;
 
 	Ok(())
 }
@@ -74,7 +83,7 @@ async fn create_cluster() -> Result<Cluster> {
 	Ok(cluster)
 }
 
-async fn download_mod(cluster: &mut Cluster, pkg: &str, ver: &str, add: bool) -> Result<()> {
+async fn download_mod(cluster: &mut Cluster, pkg: &str, ver: &str, add: bool) -> Result<PackagePath> {
 	let package = Providers::Modrinth.get(pkg).await?;
 
 	let (package_path, package) = cluster::content::package::download_package(
@@ -96,7 +105,7 @@ async fn download_mod(cluster: &mut Cluster, pkg: &str, ver: &str, add: bool) ->
 		.await?;
 	}
 
-	Ok(())
+	Ok(package_path)
 }
 
 async fn print_packages(cluster: &Cluster) -> Result<()> {

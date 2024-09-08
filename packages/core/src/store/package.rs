@@ -7,7 +7,7 @@ use crate::utils::io;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tokio::fs::DirEntry;
 
@@ -354,6 +354,9 @@ impl PackageManager {
 		package_path: &PackagePath,
 		package_type: PackageType,
 	) -> crate::Result<()> {
+		let full_path = self.cluster_path.clone().full_path().await?.join(package_type.get_folder()).join(package_path.0.clone());
+		io::remove_file(full_path).await?;
+
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.remove(package_path);
 
@@ -420,7 +423,7 @@ impl PackageManager {
 
 	/// returns a list of packages that have a file but are not synced in the manager
 	#[tracing::instrument]
-	async fn insert_unsynced_packages(
+	async fn sync_packages_from_local(
 		&self,
 		dirs: &Directories,
 		packages: &mut PackagesMap,
@@ -434,26 +437,45 @@ impl PackageManager {
 		)
 		.await?;
 
+		let mut packages_to_keep = HashSet::<PackagePath>::new();
+
 		while let Some(file) = files.next_entry().await? {
-			if file
-				.file_name()
+			// Skip .packages.json meta file
+			if file.file_name()
 				.to_string_lossy()
 				.eq(&package_type.get_meta_file_name())
 			{
 				continue;
 			}
 
-			let path = PackagePath::new(&file.path());
+			let package_path = PackagePath::new(&file.path());
 
-			if let std::collections::hash_map::Entry::Vacant(e) = packages.entry(path) {
-				if package_type.file_matches(&file).await? {
-					// TODO: Infer
-					let package =
-						Package::new(&PackagePath::new(&file.path()), PackageMetadata::Unknown)
-							.await?;
-					e.insert(package);
-				}
+			// Check if the file is in the packages list already
+			if let Some(_package) = packages.get(&package_path) {
+				// Package path is in manager and file system
+
+				// match package.meta {
+				// 	PackageMetadata::Unknown => {
+				// 		// TODO: Infer
+				// 	}
+				// 	_ => {}
+				// }
+			} else {
+				// Package path is not in the packages list but exists on file system, lets add it to the manager
+
+				// TODO: Infer package
+				let meta = PackageMetadata::Unknown;
+				let package = Package::new(&package_path, meta).await?;
+
+				packages.insert(package_path.clone(), package);
 			}
+
+			// Add the package to the set to not remove it from the manager
+			packages_to_keep.insert(package_path);
+		}
+
+		if packages.len() != packages_to_keep.len() {
+			packages.retain(|pkg_path, _| packages_to_keep.contains(pkg_path))
 		}
 
 		Ok(())
@@ -461,7 +483,7 @@ impl PackageManager {
 
 	// sync packages in a cluster
 	#[tracing::instrument]
-	async fn sync_packages_by_type(
+	pub async fn sync_packages_by_type(
 		&mut self,
 		dirs: &Directories,
 		package_type: PackageType,
@@ -471,8 +493,8 @@ impl PackageManager {
 		let mut new_packages = self.get_from_file(dirs, package_type).await?.packages;
 		packages.extend(new_packages.drain());
 
-		// Insert unsynced packages (files that exist but are not in the manager)
-		self.insert_unsynced_packages(dirs, &mut packages, package_type)
+		// Sync the packages from FS
+		self.sync_packages_from_local(dirs, &mut packages, package_type)
 			.await?;
 
 		// Finally store the new list in memory and on disk

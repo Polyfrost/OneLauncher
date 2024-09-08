@@ -290,7 +290,7 @@ pub async fn get(id: &str) -> Result<ModrinthPackage> {
 pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
 	Ok(serde_json::from_slice(
 		&fetch(
-			format_url!("/projects?ids=[{}]", ids.join(",")).as_str(),
+			format_url!("/projects?ids=[{}]", ids.iter().map(|id| format!("\"{}\"", id)).collect::<Vec<String>>().join(",")).as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)

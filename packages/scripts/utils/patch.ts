@@ -94,11 +94,11 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 
 		if (
 			(targets.includes('aarch64-apple-darwin')
-			|| (targets.length === 0 && process.arch === 'arm64'))
-			&& (macOSStore.minimumVersion == null || semver.lt(
-				semver.coerce(macOSStore.minimumVersion)!,
-				semver.coerce(macOSStore.defaultArm64)!,
-			))
+				|| (targets.length === 0 && process.arch === 'arm64'))
+				&& (macOSStore.minimumVersion == null || semver.lt(
+					semver.coerce(macOSStore.minimumVersion)!,
+					semver.coerce(macOSStore.defaultArm64)!,
+				))
 		) {
 			macOSStore.minimumVersion = macOSStore.defaultArm64;
 			consola.log(`[aarch64-apple-darwin]: setting minimum system version to ${macOSStore.minimumVersion}`);

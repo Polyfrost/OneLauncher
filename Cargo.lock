@@ -3127,9 +3127,9 @@ dependencies = [
 
 [[package]]
 name = "interpulse"
-version = "1.1.1"
+version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d2b6984ea6501c1ecb8637b02331e6dff911ded1d6c2856dd1c0ef572962025"
+checksum = "e6f88df96566153d2d0f7761efe19c8f9bb1b867c47b5fa0d9a8e6e7ef273a0d"
 dependencies = [
  "bytes",
  "chrono",

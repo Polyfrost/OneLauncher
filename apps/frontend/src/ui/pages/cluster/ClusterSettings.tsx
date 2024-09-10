@@ -1,13 +1,13 @@
 import { useBeforeLeave } from '@solidjs/router';
+import { type Accessor, Show } from 'solid-js';
+import type { Cluster } from '@onelauncher/client/bindings';
+import { GameSettings, JvmSettings, LauncherSettings, ProcessSettings, createSetting } from '../settings/game/SettingsMinecraft';
 import { bridge } from '~imports';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import { tryResult } from '~ui/hooks/useCommand';
 import useSettings from '~ui/hooks/useSettings';
-import { type Accessor, Show } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
-import { createSetting, GameSettings, JvmSettings, LauncherSettings, ProcessSettings } from '../settings/game/SettingsMinecraft';
 
 function ClusterSettings() {
 	const [cluster] = useClusterContext();
@@ -40,6 +40,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 	const postCommand = createSetting(cluster().init_hooks?.post, settings().init_hooks.post ?? '');
 
 	// JVM
+	const javaVersion = createSetting(cluster().java?.custom_version || null);
 	const javaArgs = createSetting(cluster().java?.custom_arguments, settings().custom_java_args);
 	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
 
@@ -61,6 +62,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 
 			// JVM
 			java: {
+				custom_version: javaVersion.getRaw(),
 				custom_arguments: javaArgs.getRaw(),
 				custom_env_arguments: envVars.getRaw(),
 			},
@@ -94,6 +96,8 @@ function PageSettings(cluster: Accessor<Cluster>) {
 
 			<JvmSettings
 				{...{
+					javaVersion,
+					javaVersions: undefined,
 					javaArgs,
 					envVars,
 				}}

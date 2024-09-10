@@ -1,4 +1,6 @@
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
+import { type Accessor, For, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
+import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -6,8 +8,8 @@ import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsR
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
-import { type Accessor, createSignal, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
-import type { Memory, Resolution } from '@onelauncher/client/bindings';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
+import Button from '~ui/components/base/Button';
 
 function SettingsMinecraft() {
 	return (
@@ -291,9 +293,44 @@ export function ProcessSettings(props: {
 }
 
 export function JvmSettings(props: {
+	javaVersion: CreateSetting<JavaVersion> | undefined;
+	javaVersions: CreateSetting<JavaVersions> | undefined;
 	javaArgs: CreateSetting<string[]>;
 	envVars: CreateSetting<[string, string][]>;
 }) {
+	const modal = createModal(controller => (
+		<Modal.Simple
+			title="Java Versions"
+			buttons={[
+				<Button
+					onClick={controller.hide}
+					buttonStyle="secondary"
+					children="Close"
+				/>,
+			]}
+			{...controller}
+		>
+			<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
+				<For each={Object.entries(props.javaVersions?.get() ?? {}).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version))}>
+					{([version, meta]) => {
+						const prettified = version.toLowerCase().replaceAll('_', ' ');
+						return (
+							<>
+								<span class="capitalize">{prettified}</span>
+								<TextField
+									value={meta.path}
+									onValidSubmit={(value) => {
+										props.javaVersions?.set({ ...props.javaVersions.get(), [version]: { ...meta, path: value } });
+									}}
+								/>
+							</>
+						);
+					}}
+				</For>
+			</div>
+		</Modal.Simple>
+	));
+
 	return (
 		<>
 			<BaseSettingsRow.Header>Java</BaseSettingsRow.Header>
@@ -304,7 +341,13 @@ export function JvmSettings(props: {
 				isGlobal={() => true}
 				reset={() => {}}
 				title="Version"
-			/>
+			>
+				<Button
+					onClick={modal.show}
+					iconLeft={<Database01Icon />}
+					children="Configure"
+				/>
+			</SettingsRow>
 
 			<SettingsRow
 				description="Additional arguments passed to the JVM (Java Virtual Machine)."
@@ -361,6 +404,7 @@ function PageSettings() {
 	const postCommand = createSetting(settings().init_hooks.post ?? '');
 
 	// JVM
+	const javaVersions = createSetting(settings().java_versions);
 	const javaArgs = createSetting(settings().custom_java_args);
 	const envVars = createSetting(settings().custom_env_args);
 
@@ -382,6 +426,7 @@ function PageSettings() {
 		},
 
 		// JVM
+		java_versions: javaVersions.get(),
 		custom_java_args: javaArgs.get(),
 		custom_env_args: envVars.get(),
 	}));
@@ -413,6 +458,8 @@ function PageSettings() {
 
 			<JvmSettings
 				{...{
+					javaVersion: undefined,
+					javaVersions,
 					javaArgs,
 					envVars,
 				}}

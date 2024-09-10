@@ -6,6 +6,12 @@ import {
 	RefreshCw01Icon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
+import { For, Show, onMount } from 'solid-js';
+import type { Cluster } from '@onelauncher/client/bindings';
+import BannerBackground from '../../assets/images/header.png';
+import Button from '../components/base/Button';
+import TextField from '../components/base/TextField';
+import ClusterRoot from './cluster/ClusterRoot';
 import { bridge } from '~imports';
 
 import ClusterCover from '~ui/components/game/ClusterCover';
@@ -13,12 +19,6 @@ import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreatio
 import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import { formatAsDuration, upperFirst } from '~utils';
-import { For, onMount, Show } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
-import BannerBackground from '../../assets/images/header.png';
-import Button from '../components/base/Button';
-import TextField from '../components/base/TextField';
-import ClusterRoot from './cluster/ClusterRoot';
 
 type GroupedClusters = Record<string, Cluster[]>;
 
@@ -72,11 +72,13 @@ function HomePage() {
 
 			<Show
 				children={(
-					<For each={Object.entries(clusters() ?? {})}>
-						{([group, clusters]) => (
-							<ClusterGroup clusters={clusters} title={group} />
-						)}
-					</For>
+					<div class="flex flex-col gap-y-8 pb-8">
+						<For each={Object.entries(clusters() ?? {})}>
+							{([group, clusters]) => (
+								<ClusterGroup clusters={clusters} title={group} />
+							)}
+						</For>
+					</div>
 				)}
 				fallback={(
 					<div class="max-h-64 flex flex-1 flex-col items-center justify-center gap-y-4">

@@ -42,6 +42,8 @@ tauri = { version = "=2.0.0-rc.8", features = [
 	"protocol-asset"
 ] }
 
+# tauri-utils is a collection of utilities for tauri apps.
+tauri-utils = { version = "=2.0.0-rc.7" }
 # tauri-build is the codegen utility for our tauri buildscript.
 tauri-build = { version = "=2.0.0-rc.7" }
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
@@ -174,8 +176,8 @@ cocoa = { version = "0.26" }
 objc = { version = "0.2" }
 cc = { version = "1.1" }
 libc = { version = "0.2" }
-# https://github.com/tauri-apps/tauri/blob/tauri-v2.0.0-rc.0/core/tauri/Cargo.toml#L86
-webkit2gtk = { version = "=2.0.1", features = [ "v2_38" ] }
+# https://github.com/tauri-apps/tauri/blob/dev/crates/tauri/Cargo.toml#L102
+webkit2gtk = { version = "=2.0.1", features = [ "v2_40" ] }
 
 [workspace.dependencies.prisma-client-rust]
 git = "https://github.com/brendonovich/prisma-client-rust"

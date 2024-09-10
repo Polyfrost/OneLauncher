@@ -1,14 +1,14 @@
 import { useBeforeLeave } from '@solidjs/router';
-import { ColorsIcon, PackageIcon, PaintPourIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
-import Button from '~ui/components/base/Button';
+import { PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
+import { For, createSignal } from 'solid-js';
+import SettingsRow from '../../../components/SettingsRow';
 import Dropdown from '~ui/components/base/Dropdown';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { BROWSER_VIEWS } from '~utils/browser';
-import { createSignal, For } from 'solid-js';
-import SettingsRow from '../../../components/SettingsRow';
+import { upperFirst } from '~utils';
 
 function SettingsAppearance() {
 	const { settings, saveOnLeave } = useSettings();
@@ -30,17 +30,17 @@ function SettingsAppearance() {
 		<Sidebar.Page>
 			<h1>Appearance</h1>
 			<ScrollableContainer>
-				<div class="flex flex-row items-center">
+				{/* <div class="flex flex-row items-center">
 					<p>theme placeholder</p>
-				</div>
+				</div> */}
 
-				<SettingsRow
+				{/* <SettingsRow
 					description="The main color used across the launcher. This doesn't edit your theme."
 					icon={<PaintPourIcon />}
 					title="Accent Color"
 				>
 					<Button iconLeft={<ColorsIcon />}>#ff0000</Button>
-				</SettingsRow>
+				</SettingsRow> */}
 
 				<SettingsRow
 					description="Change the look of the package list."
@@ -53,7 +53,7 @@ function SettingsAppearance() {
 					>
 						<For each={BROWSER_VIEWS}>
 							{view => (
-								<Dropdown.Row>{view}</Dropdown.Row>
+								<Dropdown.Row>{upperFirst(view)}</Dropdown.Row>
 							)}
 						</For>
 					</Dropdown>

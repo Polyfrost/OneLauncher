@@ -1,11 +1,11 @@
 import { ChevronDownIcon, Download01Icon, HeartIcon } from '@untitled-theme/icons-solid';
-import useBrowser from '~ui/hooks/useBrowser';
-import useSettings from '~ui/hooks/useSettings';
-import { abbreviateNumber } from '~utils';
-import { createSignal, For, Match, Show, Switch } from 'solid-js';
+import { For, Match, Show, Switch, createSignal } from 'solid-js';
 import type { Providers, SearchResult } from '@onelauncher/client/bindings';
 import type { JSX } from 'solid-js';
 import Button from '../base/Button';
+import { abbreviateNumber } from '~utils';
+import useSettings from '~ui/hooks/useSettings';
+import useBrowser from '~ui/hooks/useBrowser';
 
 interface SearchResultsContainerProps {
 	provider: Providers;

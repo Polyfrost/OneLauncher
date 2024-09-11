@@ -57,12 +57,6 @@ impl Providers {
 				limit,
 				offset,
 				Some(|mut builder: FacetBuilder| {
-					if let Some(game_versions) = game_versions {
-						for version in game_versions {
-							builder.and(Facet("versions".to_string(), FacetOperation::Eq, version));
-						}
-					}
-
 					if let Some(categories) = categories {
 						for category in categories {
 							builder.and(Facet(
@@ -73,22 +67,30 @@ impl Providers {
 						}
 					}
 
+					if let Some(game_versions) = game_versions {
+						for version in game_versions {
+							builder.and(Facet("versions".to_string(), FacetOperation::Eq, version));
+						}
+					}
+
 					if let Some(package_types) = package_types {
+						if package_types.contains(&PackageType::Mod) || package_types.contains(&PackageType::ModPack) {
+							if let Some(loaders) = loaders {
+								for loader in loaders {
+									builder.and(Facet(
+										"categories".to_string(),
+										FacetOperation::Eq,
+										loader.to_string(),
+									));
+								}
+							}
+						}
+
 						for package_type in package_types {
 							builder.and(Facet(
 								"project_types".to_string(),
 								FacetOperation::Eq,
 								package_type.get_name().to_string(),
-							));
-						}
-					}
-
-					if let Some(loaders) = loaders {
-						for loader in loaders {
-							builder.or(Facet(
-								"categories".to_string(),
-								FacetOperation::Eq,
-								loader.to_string(),
 							));
 						}
 					}

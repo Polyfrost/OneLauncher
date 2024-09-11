@@ -27,6 +27,7 @@ pub enum PackageType {
 	/// Represents a resourcepack file
 	ResourcePack,
 	/// Represents a shaderpack file
+	#[serde(alias = "shader")]
 	ShaderPack,
 	/// Represents a modpack file
 	ModPack,
@@ -71,7 +72,7 @@ impl PackageType {
 			PackageType::Mod => "mod",
 			PackageType::DataPack => "datapack",
 			PackageType::ResourcePack => "resourcepack",
-			PackageType::ShaderPack => "shaderpack",
+			PackageType::ShaderPack => "shader",
 			PackageType::ModPack => "modpack",
 		}
 	}
@@ -118,6 +119,7 @@ impl PackageType {
 			PackageType::DataPack,
 			PackageType::ResourcePack,
 			PackageType::ShaderPack,
+			PackageType::ModPack,
 		]
 		.iter()
 		.copied()

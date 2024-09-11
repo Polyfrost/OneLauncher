@@ -141,6 +141,24 @@ function BrowserSidebar() {
 						</For>
 					</Dropdown>
 				</div>
+				{/* <div class="flex flex-col gap-y-1">
+					<h6 class="my-1">Package Type</h6>
+					<Dropdown
+						onChange={index => controller.setSearchQuery(prev => ({
+							...prev,
+							package_types: [PACKAGE_TYPES[index] || 'mod'],
+						}))}
+						selected={() => PACKAGE_TYPES.indexOf(controller.searchQuery().package_types?.[0] || 'mod')}
+					>
+						<For each={PACKAGE_TYPES}>
+							{provider => (
+								<Dropdown.Row>
+									{provider}
+								</Dropdown.Row>
+							)}
+						</For>
+					</Dropdown>
+				</div> */}
 			</div>
 		</div>
 	);

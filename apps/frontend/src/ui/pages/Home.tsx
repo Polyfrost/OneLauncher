@@ -6,19 +6,19 @@ import {
 	RefreshCw01Icon,
 	SearchMdIcon,
 } from '@untitled-theme/icons-solid';
-import { For, Show, onMount } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
-import BannerBackground from '../../assets/images/header.png';
-import Button from '../components/base/Button';
-import TextField from '../components/base/TextField';
-import ClusterRoot from './cluster/ClusterRoot';
 import { bridge } from '~imports';
-
 import ClusterCover from '~ui/components/game/ClusterCover';
 import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
 import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import { formatAsDuration, upperFirst } from '~utils';
+import { For, onMount, Show } from 'solid-js';
+
+import type { Cluster } from '@onelauncher/client/bindings';
+import BannerBackground from '../../assets/images/header.png';
+import Button from '../components/base/Button';
+import TextField from '../components/base/TextField';
+import ClusterRoot from './cluster/ClusterRoot';
 
 type GroupedClusters = Record<string, Cluster[]>;
 

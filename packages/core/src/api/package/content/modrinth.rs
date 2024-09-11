@@ -236,6 +236,7 @@ impl FacetBuilder {
 		self
 	}
 
+	#[allow(dead_code)]
 	pub fn or(&mut self, facet: Facet) -> &Self {
 		let mut last_facet = self.facets.pop().unwrap_or_default();
 		last_facet.push(facet);

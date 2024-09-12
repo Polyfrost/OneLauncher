@@ -6,7 +6,7 @@ use crate::proxy::IngressId;
 
 use crate::store::Clusters;
 use crate::utils::http::{self, IoSemaphore};
-use crate::utils::io::{self, IOError};
+use onelauncher_utils::io::{self, IOError};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -24,19 +24,19 @@ pub mod tlauncher;
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ImportType {
-	/// MultiMC based launchers
+	/// `MultiMC` based launchers
 	MultiMC,
 	/// Prism Launcher has its own category because it has different logic (also is objectively better than mmc)
 	PrismLauncher,
-	/// GDLauncher
+	/// `GDLauncher`
 	GDLauncher,
 	/// Curseforge's launcher
 	Curseforge,
-	/// ATLauncher
+	/// `ATLauncher`
 	ATLauncher,
 	/// Modrinth app.
 	Modrinth,
-	/// TLauncher
+	/// `TLauncher`
 	TLauncher,
 	/// FTB Launcher
 	FTBLauncher,
@@ -50,16 +50,16 @@ pub enum ImportType {
 impl fmt::Display for ImportType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ImportType::MultiMC => write!(f, "MultiMC"),
-			ImportType::ATLauncher => write!(f, "ATLauncher"),
-			ImportType::Curseforge => write!(f, "Curseforge"),
-			ImportType::GDLauncher => write!(f, "GDLauncher"),
-			ImportType::Modrinth => write!(f, "Modrinth App"),
-			ImportType::PrismLauncher => write!(f, "PrismLauncher"),
-			ImportType::TLauncher => write!(f, "TLauncher"),
-			ImportType::FTBLauncher => write!(f, "Feed The Beast"),
-			ImportType::Technic => write!(f, "Technic"),
-			ImportType::Unknown => write!(f, "Unknown"),
+			Self::MultiMC => write!(f, "MultiMC"),
+			Self::ATLauncher => write!(f, "ATLauncher"),
+			Self::Curseforge => write!(f, "Curseforge"),
+			Self::GDLauncher => write!(f, "GDLauncher"),
+			Self::Modrinth => write!(f, "Modrinth App"),
+			Self::PrismLauncher => write!(f, "PrismLauncher"),
+			Self::TLauncher => write!(f, "TLauncher"),
+			Self::FTBLauncher => write!(f, "Feed The Beast"),
+			Self::Technic => write!(f, "Technic"),
+			Self::Unknown => write!(f, "Unknown"),
 		}
 	}
 }
@@ -77,9 +77,9 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 				.unwrap_or_else(|| "instances".to_string())
 		}
 		ImportType::Modrinth => "profiles".to_string(),
-		ImportType::TLauncher => "instances".to_string(),
-		ImportType::FTBLauncher => "instances".to_string(),
-		ImportType::Technic => "instances".to_string(),
+		ImportType::TLauncher => "tinstances".to_string(),
+		ImportType::FTBLauncher => "ftbinstances".to_string(),
+		ImportType::Technic => "tecinstances".to_string(),
 		_ => return Err(anyhow::anyhow!("launcher type unknown, cant import").into()),
 	};
 
@@ -152,7 +152,7 @@ pub async fn import_instance(
 	};
 
 	match result {
-		Ok(_) => {}
+		Ok(()) => {}
 		Err(e) => {
 			tracing::warn!("failed to import modpack: {:?}", e);
 			let _ = crate::api::cluster::remove(&cluster_path).await;
@@ -167,6 +167,7 @@ pub async fn import_instance(
 }
 
 /// returns the default path for a given [`ImportType`].
+#[must_use]
 pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 	let path = match r#type {
 		ImportType::MultiMC => None, // MultiMC data is in it's application directory

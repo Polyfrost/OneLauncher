@@ -36,7 +36,7 @@ impl DiscordRPC {
 		};
 
 		let client = Arc::new(RwLock::new(discord_ipc));
-		Ok(DiscordRPC { client, connected })
+		Ok(Self { client, connected })
 	}
 
 	/// Set the Discord IPC activity with a message and try to reconnect if the initial connection fails.

@@ -128,7 +128,7 @@ pub async fn send_ingress(
 		{
 			ingress.cli.set_message(
 				message
-					.map(|x| x.to_string())
+					.map(ToString::to_string)
 					.unwrap_or(ingress.message.clone()),
 			);
 			ingress

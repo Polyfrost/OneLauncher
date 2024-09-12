@@ -10,9 +10,9 @@ checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
 
 [[package]]
 name = "addr2line"
-version = "0.22.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e4503c46a5c0c7844e948c9a4d6acd9f50cccb4de1c48eb9e291ea17470c678"
+checksum = "f5fb1d8e4442bd405fdfd1dacb42792696b0cf9cb15882e5d097b742a676d375"
 dependencies = [
  "gimli",
 ]
@@ -458,17 +458,17 @@ checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
 name = "backtrace"
-version = "0.3.73"
+version = "0.3.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cc23269a4f8976d0a4d2e7109211a419fe30e8d88d677cd60b6bc79c5732e0a"
+checksum = "8d82cb332cdfaed17ae235a638438ac4d4839913cc2af585c3c6746e8f8bee1a"
 dependencies = [
  "addr2line",
- "cc",
  "cfg-if",
  "libc",
- "miniz_oxide 0.7.4",
+ "miniz_oxide 0.8.0",
  "object",
  "rustc-demangle",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -1870,9 +1870,9 @@ dependencies = [
 
 [[package]]
 name = "error-code"
-version = "3.2.0"
+version = "3.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0474425d51df81997e2f90a21591180b38eccf27292d755f3e30750225c175b"
+checksum = "a5d9305ccc6942a704f4335694ecd3de2ea531b114ac2d51f5f843750787a92f"
 
 [[package]]
 name = "event-listener"
@@ -2404,9 +2404,9 @@ dependencies = [
 
 [[package]]
 name = "gimli"
-version = "0.29.0"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
+checksum = "32085ea23f3234fc7846555e85283ba4de91e21016dc0455a16286d87a292d64"
 
 [[package]]
 name = "gio"
@@ -2904,9 +2904,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cde7055719c54e36e95e8719f95883f22072a48ede39db7fc17a4e1d5281e9b9"
+checksum = "da62f120a8a37763efb0cf8fdf264b884c7b8b9ac8660b900c8661030c00e6ba"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -4350,7 +4350,6 @@ name = "onelauncher"
 version = "1.0.0-alpha.1"
 dependencies = [
  "anyhow",
- "async-compression",
  "async-recursion",
  "async-tungstenite",
  "async_zip",
@@ -4360,19 +4359,18 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "discord-rich-presence",
- "dunce",
  "flate2",
  "futures",
  "indicatif",
  "interpulse",
  "iota_stronghold",
  "lazy_static",
- "nom",
  "notify",
  "notify-debouncer-mini",
  "onelauncher_gamemode",
  "onelauncher_macros",
  "onelauncher_prisma",
+ "onelauncher_utils",
  "p256",
  "paste",
  "rand 0.8.5",
@@ -4384,7 +4382,6 @@ dependencies = [
  "sha1_smol",
  "sha2 0.10.8",
  "specta 2.0.0-rc.20",
- "sys-info",
  "sysinfo",
  "tauri",
  "tauri-specta",
@@ -4481,6 +4478,31 @@ dependencies = [
  "tokio",
  "url",
  "webbrowser",
+]
+
+[[package]]
+name = "onelauncher_utils"
+version = "1.0.0-alpha.1"
+dependencies = [
+ "async-channel",
+ "async-compression",
+ "chrono",
+ "dunce",
+ "futures",
+ "interpulse",
+ "nom",
+ "onelauncher_prisma",
+ "pin-project-lite",
+ "prisma-client-rust",
+ "regex",
+ "serde",
+ "sys-info",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid 1.10.0",
+ "zip",
 ]
 
 [[package]]
@@ -6002,9 +6024,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.12"
+version = "0.23.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c58f8c84392efc0a126acce10fa59ff7b3d2ac06ab451a33f2741989b806b044"
+checksum = "f2dabaac7466917e566adb06783a81ca48944c6898a1b08b9374106dd671f4c8"
 dependencies = [
  "once_cell",
  "ring",
@@ -6041,9 +6063,9 @@ checksum = "fc0a2ce646f8655401bb81e7927b812614bd5d91dbc968696be50603510fcaf0"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.102.7"
+version = "0.102.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84678086bd54edf2b415183ed7a94d0efb049f1b646a33e22a36f3794be6ae56"
+checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
 dependencies = [
  "ring",
  "rustls-pki-types",

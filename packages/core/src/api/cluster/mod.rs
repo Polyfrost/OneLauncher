@@ -1,4 +1,4 @@
-//! **OneLauncher Cluster**
+//! **`OneLauncher` Cluster**
 //!
 //! API for creating our managed Minecraft instances, Clusters.
 
@@ -11,7 +11,7 @@ use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, JavaOptions, State};
 use crate::store::{MinecraftCredentials, ProcessorChild};
 
-use crate::utils::io::{self, IOError};
+use onelauncher_utils::io::{self, IOError};
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -66,7 +66,7 @@ pub async fn list_grouped() -> crate::Result<HashMap<String, Vec<Cluster>>> {
 			.meta
 			.group
 			.clone()
-			.unwrap_or(String::from("Ungrouped"));
+			.unwrap_or_else(|| String::from("Ungrouped"));
 		if let Some(items) = map.get_mut(&group) {
 			items.push(cluster);
 		} else {
@@ -141,7 +141,7 @@ pub async fn run_credentials(
 		if let Some(command) = cmd.next() {
 			let full_path = path.full_path().await?;
 			let result = Command::new(command)
-				.args(cmd.collect::<Vec<&str>>())
+				.args(cmd)
 				.current_dir(&full_path)
 				.spawn()
 				.map_err(|e| IOError::with_path(e, &full_path))?
@@ -359,8 +359,8 @@ pub async fn get_optimal_java_version(path: &ClusterPath) -> crate::Result<Optio
 		let metadata = state.metadata.read().await;
 		let minecraft_metadata = metadata
 			.minecraft
-			.to_owned()
-			.ok_or(anyhow::anyhow!("couldn't get minecraft metadata"))?;
+			.clone()
+			.ok_or_else(|| anyhow::anyhow!("couldn't get minecraft metadata"))?;
 
 		let version = minecraft_metadata
 			.versions
@@ -421,6 +421,7 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 }
 
 /// Sanitize a user-inputted [`Cluster`] name.
+#[must_use]
 pub fn sanitize_cluster_name(input: &str) -> String {
 	input.replace(['/', '\\', '?', '*', ':', '\'', '\"', '|', '<', '>'], "_")
 }

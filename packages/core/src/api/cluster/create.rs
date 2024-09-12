@@ -5,9 +5,9 @@ use crate::package::from::CreatePackCluster;
 use crate::proxy::send::send_cluster;
 use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, ClusterPath, JavaOptions, PackageData, State};
-use crate::utils::io::{self, canonicalize};
 use crate::{cluster, package};
 use interpulse::api::modded::LoaderVersion;
+use onelauncher_utils::io::{self, canonicalize};
 use std::path::PathBuf;
 
 /// Creates a [`Cluster`] and adds it to the memory [`State`].
@@ -60,10 +60,10 @@ pub async fn create_cluster(
 		"creating cluster at path {}",
 		&canonicalize(&path)?.display()
 	);
-	let loader = if mod_loader != Loader::Vanilla {
-		get_loader_version(mc_version.clone(), mod_loader, loader_version).await?
-	} else {
+	let loader = if mod_loader == Loader::Vanilla {
 		None
+	} else {
+		get_loader_version(mc_version.clone(), mod_loader, loader_version).await?
 	};
 
 	let mut cluster = Cluster::new(uuid, name, mc_version).await?;
@@ -101,8 +101,10 @@ pub async fn create_cluster(
 		.await?;
 
 		{
-			let mut clusters = state.clusters.write().await;
-			clusters
+			state
+				.clusters
+				.write()
+				.await
 				.insert(cluster.clone(), skip_watch.unwrap_or_default())
 				.await?;
 		}
@@ -129,7 +131,7 @@ pub async fn create_cluster(
 	match result {
 		Ok(cluster) => Ok(cluster),
 		Err(err) => {
-			let _ = crate::api::cluster::remove(&cluster.cluster_path()).await;
+			let _ = cluster::remove(&cluster.cluster_path()).await;
 
 			Err(err)
 		}
@@ -170,11 +172,10 @@ pub async fn create_cluster_from_duplicate(from: ClusterPath) -> crate::Result<C
 	)
 	.await?;
 
-	let state = State::get().await?;
 	let copied = package::import::copy_minecraft(
 		cluster_path.clone(),
 		from.full_path().await?,
-		&state.io_semaphore,
+		&State::get().await?.io_semaphore,
 		None,
 	)
 	.await?;
@@ -221,8 +222,8 @@ pub(crate) async fn get_loader_version(
 		"stable" => it.stable,
 		id => {
 			it.id == *id
-				|| format!("{}-{}", mc_version, id) == it.id
-				|| format!("{}-{}-{}", mc_version, id, mc_version) == it.id
+				|| format!("{mc_version}-{id}") == it.id
+				|| format!("{mc_version}-{id}-{mc_version}") == it.id
 		}
 	};
 
@@ -237,7 +238,7 @@ pub(crate) async fn get_loader_version(
 
 	let loader_meta = loader_meta
 		.to_owned()
-		.ok_or(anyhow::anyhow!("couldn't get game versions"))?;
+		.ok_or_else(|| anyhow::anyhow!("couldn't get game versions"))?;
 
 	let loaders = &loader_meta
 		.game_versions
@@ -256,10 +257,12 @@ pub(crate) async fn get_loader_version(
 		.iter()
 		.find(|&it| filter(it))
 		.cloned()
-		.or(if version == "stable" {
-			loaders.iter().next().cloned()
-		} else {
-			None
+		.or_else(|| {
+			if version == "stable" {
+				loaders.iter().next().cloned()
+			} else {
+				None
+			}
 		})
 		.ok_or_else(|| CreateClusterError::InvalidLoaderVersion(version, loader.to_string()))?;
 

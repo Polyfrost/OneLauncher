@@ -1,5 +1,5 @@
-//! Launcher Import: ATLauncher
-//! Source Code available at https://github.com/ATLauncher/ATLauncher
+//! Launcher Import: `ATLauncher`
+//! Source Code available at <https://github.com/ATLauncher/ATLauncher>
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use crate::package::import::{self, copy_minecraft};
 use crate::package::{self};
 use crate::prelude::{Cluster, ClusterPath, Loader};
 use crate::store::{ClusterStage, PackageData, State};
-use crate::utils::io;
+use onelauncher_utils::io;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,7 +97,7 @@ pub struct ATLauncherMod {
 pub async fn is_valid_atlauncher(instance_folder: PathBuf) -> bool {
 	let instance: String = io::read_to_string(&instance_folder.join("instance.json"))
 		.await
-		.unwrap_or("".to_string());
+		.unwrap_or(String::new());
 	let instance: Result<ATInstance, serde_json::Error> =
 		serde_json::from_str::<ATInstance>(&instance);
 	if let Err(e) = instance {
@@ -157,7 +157,7 @@ pub async fn import_atlauncher(
 		cluster_path: cluster_path.clone(),
 	};
 
-	let backup_name = format!("ATLauncher-{}", instance_folder);
+	let backup_name = format!("ATLauncher-{instance_folder}");
 	let minecraft_folder = atlauncher_instance_path;
 
 	import_atlauncher_unmanaged(
@@ -186,15 +186,15 @@ async fn import_atlauncher_unmanaged(
 	let mod_loader: Loader = serde_json::from_str::<Loader>(&mod_loader)?;
 
 	let game_version = atinstance.id;
-	let loader_version = if mod_loader != Loader::Vanilla {
+	let loader_version = if mod_loader == Loader::Vanilla {
+		None
+	} else {
 		crate::cluster::create::get_loader_version(
 			game_version.clone(),
 			mod_loader,
 			Some(atinstance.launcher.loader_version.version.clone()),
 		)
 		.await?
-	} else {
-		None
 	};
 
 	crate::api::cluster::edit(&cluster_path, |cl| {

@@ -6,10 +6,11 @@ use crate::proxy::ingress_try_for_each;
 use crate::proxy::send::{init_or_edit_ingress, send_ingress};
 use crate::store::{ClusterStage, Clusters, PackageSide};
 use crate::utils::http::{fetch_from_mirrors, write};
-use crate::utils::io;
 use crate::{cluster, IngressType, State};
 use async_zip::base::read::seek::ZipFileReader;
+use onelauncher_utils::io;
 
+use futures::StreamExt;
 use std::io::Cursor;
 use std::path::{Component, PathBuf};
 
@@ -55,7 +56,7 @@ pub async fn install_zipped_mrpack(
 	match result {
 		Ok(cluster) => Ok(cluster),
 		Err(err) => {
-			let _ = crate::api::cluster::remove(&cluster_path).await;
+			let _ = cluster::remove(&cluster_path).await;
 
 			Err(err)
 		}
@@ -121,7 +122,6 @@ pub async fn install_zipped_mrpack_files(
 		.await?;
 
 		let num_files = pack.files.len();
-		use futures::StreamExt;
 		ingress_try_for_each(
 			futures::stream::iter(pack.files.into_iter()).map(Ok::<PackFile, crate::Error>),
 			None,
@@ -136,8 +136,7 @@ pub async fn install_zipped_mrpack_files(
 					if let Some(env) = pack.env {
 						if env
 							.get(&EnvType::Client)
-							.map(|x| x == &PackageSide::Unsupported)
-							.unwrap_or(false)
+							.is_some_and(|x| x == &PackageSide::Unsupported)
 						{
 							return Ok(());
 						}
@@ -208,8 +207,8 @@ pub async fn install_zipped_mrpack_files(
 
 				send_ingress(
 					&ingress,
-					30.0 / total_len as f64,
-					Some(&format!("extracting override {}/{}", index, total_len)),
+					30.0 / f64::from(total_len),
+					Some(&format!("extracting override {index}/{total_len}")),
 				)
 				.await?;
 			}
@@ -259,7 +258,7 @@ pub async fn remove_all_related_files(
 			return Err(anyhow::anyhow!("pack doesn't support Minecraft").into());
 		}
 
-		crate::api::cluster::edit(&cluster_path, |cl| {
+		cluster::edit(&cluster_path, |cl| {
 			cl.stage = ClusterStage::PackDownloading;
 			async { Ok(()) }
 		})

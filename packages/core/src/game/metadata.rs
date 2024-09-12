@@ -13,9 +13,9 @@ use crate::proxy::send::send_ingress;
 use crate::proxy::utils::ingress_try_for_each;
 use crate::proxy::IngressId;
 use crate::store::State;
-use crate::utils::http::*;
-use crate::utils::io;
-use crate::utils::platform::OsExt;
+use crate::utils::http::{fetch, fetch_json, write};
+use onelauncher_utils::io;
+use onelauncher_utils::platform::OsExt;
 
 #[tracing::instrument(skip(st, version))]
 pub async fn download_minecraft(
@@ -28,12 +28,7 @@ pub async fn download_minecraft(
 ) -> crate::Result<()> {
 	tracing::info!("downloading minecraft version {}", version.id);
 	let assets_index = download_assets_index(st, version, Some(ingress), force).await?;
-	let processors = if version
-		.processors
-		.as_ref()
-		.map(|p| !p.is_empty())
-		.unwrap_or(false)
-	{
+	let processors = if version.processors.as_ref().is_some_and(|p| !p.is_empty()) {
 		25.0
 	} else {
 		40.0
@@ -294,11 +289,11 @@ pub async fn download_libraries(
                             let reader = std::io::Cursor::new(&data);
                             if let Ok(mut archive) = zip::ZipArchive::new(reader) {
                                 match archive.extract(st.directories.version_natives_dir(version).await) {
-                                    Ok(_) => tracing::debug!("downloaded native {}", &lib.name),
+                                    Ok(()) => tracing::debug!("downloaded native {}", &lib.name),
                                     Err(err) => tracing::error!("failed to download native {}: {}", &lib.name, err)
                                 }
                             } else {
-                                tracing::error!("failed to extract native {}", &lib.name)
+                                tracing::error!("failed to extract native {}", &lib.name);
                             }
                         }
                     }

@@ -1,4 +1,4 @@
-//! **OneLauncher API**
+//! **`OneLauncher` API**
 //!
 //! API for interacting with our Rust core.
 
@@ -26,7 +26,6 @@ pub mod prelude {
 	pub use crate::data::*;
 	pub use crate::proxy::InternetPayload;
 	pub use crate::store::{ClusterPath, JavaVersions, PackageDependency, PackagePath};
-	pub use crate::utils::io::{canonicalize, IOError};
 	pub use crate::utils::java::JavaVersion;
 	pub use crate::{java, metadata, minecraft, package, processor, settings, State};
 }

@@ -34,7 +34,7 @@ fn whitespace<'a, O, E: ParseError<&'a str>>(
 	delimited(multispace0, inner, multispace0)
 }
 
-pub fn parse_logentry(input: &str) -> IResult<&str, LogEntry> {
+pub fn parse_logentry(input: &str) -> IResult<&str, LogEntry<'_>> {
 	let (o, (attributes, _, message)) = preceded(
 		multispace0,
 		alt((
@@ -74,7 +74,7 @@ pub struct Attributes<'a> {
 	pub thread_name: &'a str,
 }
 
-fn attributes(input: &str) -> IResult<&str, Attributes> {
+fn attributes(input: &str) -> IResult<&str, Attributes<'_>> {
 	let (o, attributes) = count(whitespace(attribute), 4)(input)?;
 	macro_rules! extract_attribute {
 		($field:ident) => {{
@@ -114,11 +114,11 @@ enum Attribute<'a> {
 	ThreadName(&'a str),
 }
 
-fn attribute(input: &str) -> IResult<&str, Attribute> {
+fn attribute(input: &str) -> IResult<&str, Attribute<'_>> {
 	alt((attr_logger, attr_timestamp, attr_level, attr_thread))(input)
 }
 
-fn attr_logger(input: &str) -> IResult<&str, Attribute> {
+fn attr_logger(input: &str) -> IResult<&str, Attribute<'_>> {
 	map(
 		separated_pair(
 			tag("logger"),
@@ -129,7 +129,7 @@ fn attr_logger(input: &str) -> IResult<&str, Attribute> {
 	)(input)
 }
 
-fn attr_timestamp(input: &str) -> IResult<&str, Attribute> {
+fn attr_timestamp(input: &str) -> IResult<&str, Attribute<'_>> {
 	map(
 		separated_pair(
 			tag("timestamp"),
@@ -140,7 +140,7 @@ fn attr_timestamp(input: &str) -> IResult<&str, Attribute> {
 	)(input)
 }
 
-fn attr_level(input: &str) -> IResult<&str, Attribute> {
+fn attr_level(input: &str) -> IResult<&str, Attribute<'_>> {
 	map(
 		separated_pair(
 			tag("level"),
@@ -151,7 +151,7 @@ fn attr_level(input: &str) -> IResult<&str, Attribute> {
 	)(input)
 }
 
-fn attr_thread(input: &str) -> IResult<&str, Attribute> {
+fn attr_thread(input: &str) -> IResult<&str, Attribute<'_>> {
 	map(
 		separated_pair(
 			tag("thread"),
@@ -185,7 +185,7 @@ fn message(input: &str) -> IResult<&str, &str> {
 	)(input)
 }
 
-fn plain_text(input: &str) -> IResult<&str, (Attributes, &str, &str)> {
+fn plain_text(input: &str) -> IResult<&str, (Attributes<'_>, &str, &str)> {
 	map(take_until("<"), |text| {
 		(
 			Attributes {
@@ -201,15 +201,16 @@ fn plain_text(input: &str) -> IResult<&str, (Attributes, &str, &str)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
 	use super::*;
 
 	#[test]
 	fn parse_message() {
 		message(
-			r#"<log4j:Message>
+			r"<log4j:Message>
                 <![CDATA[200 Datafixer optimizations took 2000 years]]>
-            </log4j:Message>"#,
+            </log4j:Message>",
 		)
 		.unwrap();
 	}
@@ -232,7 +233,7 @@ mod tests {
 			Attributes {
 				logger: "com.mojang.datafixers.DataFixerBuilder",
 				level: LogLevel::Debug,
-				timestamp: 3213819318239,
+				timestamp: 3_213_819_318_239,
 				thread_name: "Datafixer"
 			}
 		);
@@ -257,7 +258,7 @@ mod tests {
 	#[test]
 	fn parse_timestamp_attribute() {
 		let (_, attr) = attr_timestamp(r#"timestamp="313213473127""#).unwrap();
-		assert_eq!(attr, Attribute::Timestamp(313213473127));
+		assert_eq!(attr, Attribute::Timestamp(313_213_473_127));
 	}
 
 	#[test]
@@ -296,7 +297,7 @@ mod tests {
 			LogEntry {
 				logger: "com.mojang.datafixers.DataFixerBuilder",
 				level: LogLevel::Debug,
-				timestamp: 3213712731731,
+				timestamp: 3_213_712_731_731,
 				thread_name: "Datafixer",
 				message: "200 Datafixer optimizations took 2000 years",
 			}

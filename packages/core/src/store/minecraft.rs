@@ -880,7 +880,7 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	let auth = authorization.map_or(Vec::new(), |v| v.as_bytes().to_vec());
 	let body = serde_json::to_vec(&raw_body)
 		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;
-	let time: u128 = { ((current_date.timestamp() as u128) + 11644473600) * 10000000 };
+	let time: u128 = { ((current_date.timestamp() as u128) + 11_644_473_600) * 10_000_000 };
 
 	use byteorder::WriteBytesExt;
 	let mut buffer = Vec::new();
@@ -896,7 +896,7 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	buffer
 		.write_u8(0)
 		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
-	buffer.extend_from_slice("POST".as_bytes());
+	buffer.extend_from_slice(b"POST");
 	buffer
 		.write_u8(0)
 		.map_err(|source| MinecraftAuthError::SigningError { step, source })?;
@@ -975,8 +975,7 @@ fn get_date_header(headers: &reqwest::header::HeaderMap) -> DateTime<Utc> {
 		.get(reqwest::header::DATE)
 		.and_then(|x| x.to_str().ok())
 		.and_then(|x| DateTime::parse_from_rfc2822(x).ok())
-		.map(|x| x.with_timezone(&Utc))
-		.unwrap_or(Utc::now())
+		.map_or(Utc::now(), |x| x.with_timezone(&Utc))
 }
 
 #[tracing::instrument]

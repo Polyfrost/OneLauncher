@@ -1,5 +1,5 @@
-//! Launcher Import: GDLauncher (legacy)
-//! Source Code available at https://github.com/gorilla-devs/GDLauncher
+//! Launcher Import: `GDLauncher` (legacy)
+//! Source Code available at <https://github.com/gorilla-devs/GDLauncher>
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use super::{cache_icon, copy_minecraft};
 use crate::prelude::{Cluster, ClusterPath, Loader};
 use crate::store::{ClusterStage, State};
-use crate::utils::io;
+use onelauncher_utils::io;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +30,7 @@ pub struct GDLauncherLoader {
 pub async fn is_valid_gdlauncher(instance_folder: PathBuf) -> bool {
 	let config: String = io::read_to_string(&instance_folder.join("config.json"))
 		.await
-		.unwrap_or("".to_string());
+		.unwrap_or(String::new());
 	let config: Result<GDLauncherConfig, serde_json::Error> =
 		serde_json::from_str::<GDLauncherConfig>(&config);
 	config.is_ok()
@@ -48,8 +48,7 @@ pub async fn import_gdlauncher(
 		"GDLauncher-{}",
 		gdlauncher_instance_folder
 			.file_name()
-			.map(|a| a.to_string_lossy().to_string())
-			.unwrap_or("Unknown".to_string())
+			.map_or("Unknown".to_string(), |a| a.to_string_lossy().to_string())
 	);
 
 	let icon = config
@@ -66,11 +65,11 @@ pub async fn import_gdlauncher(
 	let mod_loader = config.loader.loader_type;
 	let loader_version = config.loader.loader_version;
 
-	let loader_version = if mod_loader != Loader::Vanilla {
+	let loader_version = if mod_loader == Loader::Vanilla {
+		None
+	} else {
 		crate::cluster::create::get_loader_version(game_version.clone(), mod_loader, loader_version)
 			.await?
-	} else {
-		None
 	};
 
 	crate::api::cluster::edit(&cluster_path, |cl| {

@@ -2,7 +2,7 @@
 
 use super::Directories;
 use crate::utils::http::IoSemaphore;
-use iota_stronghold::{KeyProvider, SnapshotPath};
+use iota_stronghold::{KeyProvider, SnapshotPath, Stronghold};
 use serde::{Serialize, Serializer};
 use std::ops::Deref;
 use std::path::Path;
@@ -11,9 +11,9 @@ use zeroize::Zeroizing;
 /// A K/V encrypted store to handle digital secrets using IOTA Stronghold.
 #[derive(Debug)]
 pub struct Credentials {
-	inner: iota_stronghold::Stronghold,
-	path: iota_stronghold::SnapshotPath,
-	keyprovider: iota_stronghold::KeyProvider,
+	inner: Stronghold,
+	path: SnapshotPath,
+	keyprovider: KeyProvider,
 }
 
 impl Credentials {
@@ -25,7 +25,7 @@ impl Credentials {
 		_io_semaphore: &IoSemaphore,
 	) -> crate::Result<Self> {
 		let path = SnapshotPath::from_path(path);
-		let stronghold = iota_stronghold::Stronghold::default();
+		let stronghold = Stronghold::default();
 		let keyprovider = KeyProvider::try_from(password).map_err(StrongholdError::MemoryError)?;
 		if path.exists() {
 			stronghold
@@ -46,13 +46,13 @@ impl Credentials {
 		Ok(())
 	}
 
-	pub fn inner(&self) -> &iota_stronghold::Stronghold {
+	pub const fn inner(&self) -> &Stronghold {
 		&self.inner
 	}
 }
 
 impl Deref for Credentials {
-	type Target = iota_stronghold::Stronghold;
+	type Target = Stronghold;
 	fn deref(&self) -> &Self::Target {
 		&self.inner
 	}
@@ -71,7 +71,7 @@ pub enum StrongholdError {
 }
 
 impl Serialize for StrongholdError {
-	fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
 	{

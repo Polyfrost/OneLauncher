@@ -16,12 +16,12 @@ use crate::constants::PROCESSOR_FILE;
 use crate::proxy::send::send_process;
 use crate::proxy::ProcessPayloadType;
 use crate::utils::http::read_json;
-use crate::utils::io::IOError;
 use crate::State;
+use onelauncher_utils::io::IOError;
 
 use super::{Cluster, ClusterPath};
 
-/// Wrapper over a HashMap of PIDs to ProcessorChildren and unified apis
+/// Wrapper over a `HashMap` of PIDs to `ProcessorChildren` and unified apis
 pub struct Processor(HashMap<Uuid, Arc<RwLock<ProcessorChild>>>);
 
 /// Manager for safe processes like ingress feeds which need to be safely shut down.
@@ -48,13 +48,14 @@ impl Default for IngressProcessor {
 
 impl IngressProcessor {
 	/// Initialize a new ingresss process manager.
-	pub fn new() -> Self {
+	#[must_use]
+	pub const fn new() -> Self {
 		Self {
 			ingress_feeds: Vec::new(),
 		}
 	}
 
-	/// Add an ingress safety process to the HashMap.
+	/// Add an ingress safety process to the `HashMap`.
 	pub async fn add_ingress(r#type: IngressProcessType, uuid: Uuid) -> crate::Result<Uuid> {
 		let state = State::get().await?;
 		let mut ingress_processor = state.ingress_processor.write().await;
@@ -67,7 +68,7 @@ impl IngressProcessor {
 		Ok(uuid)
 	}
 
-	/// Complete and retain an ingress safety process from the HashMap of ingress feeds.
+	/// Complete and retain an ingress safety process from the `HashMap` of ingress feeds.
 	pub async fn finish(r#type: IngressProcessType, uuid: Uuid) -> crate::Result<()> {
 		let state = State::get().await?;
 		let mut ingress_processor = state.ingress_processor.write().await;
@@ -127,15 +128,16 @@ pub struct ProcessorCache {
 }
 
 impl ChildType {
-	/// Get the PID of a specific ChildType process.
+	/// Get the PID of a specific `ChildType` process.
+	#[must_use]
 	pub fn id(&self) -> Option<u32> {
 		match self {
-			ChildType::ChildProcess(child) => child.id(),
-			ChildType::RescuedChild(pid) => Some(*pid),
+			Self::ChildProcess(child) => child.id(),
+			Self::RescuedChild(pid) => Some(*pid),
 		}
 	}
 
-	/// Store a cache of a specific ChildType.
+	/// Store a cache of a specific `ChildType`.
 	pub async fn cache(
 		&self,
 		uuid: Uuid,
@@ -144,11 +146,11 @@ impl ChildType {
 		user: Option<Uuid>,
 	) -> crate::Result<()> {
 		let pid = match self {
-			ChildType::ChildProcess(child) => child.id().unwrap_or(0),
-			ChildType::RescuedChild(pid) => *pid,
+			Self::ChildProcess(child) => child.id().unwrap_or(0),
+			Self::RescuedChild(pid) => *pid,
 		};
 
-		let state = crate::State::get().await?;
+		let state = State::get().await?;
 		let mut system = sysinfo::System::new();
 
 		system.refresh_processes(sysinfo::ProcessesToUpdate::All);
@@ -174,13 +176,9 @@ impl ChildType {
 		};
 
 		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
-		let mut caches = if let Ok(proc_json) =
-			read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore).await
-		{
-			proc_json
-		} else {
-			HashMap::new()
-		};
+		let mut caches = (read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore)
+			.await)
+			.unwrap_or_default();
 
 		caches.insert(uuid, cached_proccess);
 		crate::utils::http::write(&path, &serde_json::to_vec(&caches)?, &state.io_semaphore)
@@ -191,15 +189,11 @@ impl ChildType {
 
 	/// Remove a child from the global store of processes.
 	pub async fn remove(&self, uuid: Uuid) -> crate::Result<()> {
-		let state = crate::State::get().await?;
+		let state = State::get().await?;
 		let path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
-		let mut caches = if let Ok(proc_json) =
-			read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore).await
-		{
-			proc_json
-		} else {
-			HashMap::new()
-		};
+		let mut caches = (read_json::<HashMap<Uuid, ProcessorCache>>(&path, &state.io_semaphore)
+			.await)
+			.unwrap_or_default();
 		caches.remove(&uuid);
 		crate::utils::http::write(&path, &serde_json::to_vec(&caches)?, &state.io_semaphore)
 			.await?;
@@ -210,8 +204,8 @@ impl ChildType {
 	/// Kill a process in the global store of processes.
 	pub async fn kill(&mut self) -> crate::Result<()> {
 		match self {
-			ChildType::ChildProcess(child) => Ok(child.kill().await.map_err(IOError::from)?),
-			ChildType::RescuedChild(pid) => {
+			Self::ChildProcess(child) => Ok(child.kill().await.map_err(IOError::from)?),
+			Self::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
 				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[
 					sysinfo::Pid::from_u32(*pid),
@@ -230,11 +224,11 @@ impl ChildType {
 	/// Wait for a process to complete.
 	pub async fn try_wait(&mut self) -> crate::Result<Option<i32>> {
 		match self {
-			ChildType::ChildProcess(child) => Ok(child
+			Self::ChildProcess(child) => Ok(child
 				.try_wait()
 				.map_err(IOError::from)?
 				.map(|x| x.code().unwrap_or(0))),
-			ChildType::RescuedChild(pid) => {
+			Self::RescuedChild(pid) => {
 				let mut system = sysinfo::System::new();
 				if system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[
 					sysinfo::Pid::from_u32(*pid),
@@ -279,18 +273,21 @@ pub struct ProcessorChild {
 
 impl Processor {
 	/// Get a new [`Processor`] instance.
+	#[must_use]
 	pub fn new() -> Self {
-		Processor(HashMap::new())
+		Self(HashMap::new())
 	}
 
 	/// Returns a reference to the value corresponding to the key.
+	#[must_use]
 	pub fn get(&self, uuid: Uuid) -> Option<Arc<RwLock<ProcessorChild>>> {
 		self.0.get(&uuid).cloned()
 	}
 
 	/// An collection visiting all keys in arbitrary order.
+	#[must_use]
 	pub fn keys(&self) -> Vec<Uuid> {
-		self.0.keys().cloned().collect()
+		self.0.keys().copied().collect()
 	}
 
 	/// Get all running processes.
@@ -390,13 +387,12 @@ impl Processor {
 
 	/// restore processes from the cache.
 	pub async fn restore(&mut self) -> crate::Result<()> {
-		let state = crate::State::get().await?;
+		let state = State::get().await?;
 		let processor_path = state.directories.caches_dir().await.join(PROCESSOR_FILE);
 		let mut processor_caches = if let Ok(processes_json) =
-			read_json::<HashMap<uuid::Uuid, ProcessorCache>>(&processor_path, &state.io_semaphore)
-				.await
+			read_json::<HashMap<Uuid, ProcessorCache>>(&processor_path, &state.io_semaphore).await
 		{
-			let zeros = HashMap::<uuid::Uuid, ProcessorCache>::new();
+			let zeros = HashMap::<Uuid, ProcessorCache>::new();
 			crate::utils::http::write(
 				&processor_path,
 				&serde_json::to_vec(&zeros)?,
@@ -469,7 +465,7 @@ impl Processor {
 			} {
 				if let Some(line) = line {
 					let mut censored = line.clone();
-					for (key, value) in censors.iter() {
+					for (key, value) in &censors {
 						censored = censored.replace(key, value);
 					}
 
@@ -521,7 +517,7 @@ impl Processor {
 		&mut self,
 		cache: ProcessorCache,
 	) -> crate::Result<Arc<RwLock<ProcessorChild>>> {
-		let _state = crate::State::get().await?;
+		let _state = State::get().await?;
 
 		// ensure located stray process matches with our pid recorded process
 		{
@@ -680,7 +676,7 @@ impl Processor {
 		});
 
 		tokio::spawn(async {
-			let state = match crate::State::get().await {
+			let state = match State::get().await {
 				Ok(state) => state,
 				Err(err) => {
 					tracing::warn!("failed to get state: {}", err);
@@ -717,8 +713,7 @@ impl Processor {
 			let mut cmd = hook.split(' ');
 			if let Some(c) = cmd.next() {
 				let mut c = Command::new(c);
-				c.args(cmd.collect::<Vec<&str>>())
-					.current_dir(cluster_path.full_path().await?);
+				c.args(cmd).current_dir(cluster_path.full_path().await?);
 				Some(c)
 			} else {
 				None

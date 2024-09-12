@@ -19,6 +19,7 @@ pub struct Directories {
 
 impl Directories {
 	/// Bootstrap the initial settings directory on first startup.
+	#[must_use]
 	pub fn init_settings_dir() -> Option<PathBuf> {
 		Self::env_path("ONELAUNCHER_CONFIG")
 			.or_else(|| Some(dirs::data_dir()?.join(constants::NAME)))
@@ -76,6 +77,7 @@ impl Directories {
 
 	/// Bootstrap the core logs directory and get it as a [`PathBuf`].
 	#[inline]
+	#[must_use]
 	pub fn logs_dir() -> Option<PathBuf> {
 		Self::init_settings_dir().map(|d| d.join("logs"))
 	}

@@ -1,6 +1,6 @@
-//! Launcher Import: MultiMC & Prism Launcher
-//! Source Code available at https://github.com/PrismLauncher/PrismLauncher
-//! Source Code available at https://github.com/MultiMC/Launcher
+//! Launcher Import: `MultiMC` & Prism Launcher
+//! Source Code available at <https://github.com/PrismLauncher/PrismLauncher>
+//! Source Code available at <https://github.com/MultiMC/Launcher>
 
 use serde::{de, Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use crate::package::from::{self, CreatePackDescription, PackDependency};
 use crate::package::import::{self, copy_minecraft};
 use crate::prelude::{Cluster, ClusterPath, State};
-use crate::utils::io;
+use onelauncher_utils::io;
 
 // instance.cfg: https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/minecraft/MinecraftInstance.cpp
 #[derive(Serialize, Deserialize, Debug)]
@@ -53,15 +53,14 @@ fn deserialize_optional_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D:
 where
 	D: de::Deserializer<'de>,
 {
-	let s = Option::<String>::deserialize(deserializer)?;
-	match s {
-		Some(string) => match string.as_str() {
+	Option::<String>::deserialize(deserializer)?.map_or_else(
+		|| Ok(None),
+		|string| match string.as_str() {
 			"true" => Ok(Some(true)),
 			"false" => Ok(Some(false)),
 			_ => Err(de::Error::custom("expected 'true' or 'false'")),
 		},
-		None => Ok(None),
-	}
+	)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -139,10 +138,8 @@ pub struct MMCLauncher {
 pub async fn is_valid_multibased(instance_folder: PathBuf) -> bool {
 	let instance_cfg = instance_folder.join("instance.cfg");
 	let mmc_pack = instance_folder.join("mmc-pack.json");
-
-	let mmc_pack = match io::read_to_string(&mmc_pack).await {
-		Ok(mmc_pack) => mmc_pack,
-		Err(_) => return false,
+	let Ok(mmc_pack) = io::read_to_string(&mmc_pack).await else {
+		return false;
 	};
 
 	load_instance_cfg(&instance_cfg).await.is_ok()
@@ -217,7 +214,7 @@ pub async fn import_mmc(
 				)
 				.await?;
 			}
-			Some(MMCManagedPackType::Flame) | Some(MMCManagedPackType::ATLauncher) => {
+			Some(MMCManagedPackType::Flame | MMCManagedPackType::ATLauncher) => {
 				// Same as unmanaged, but with 'minecraft' folder instead of '.minecraft'
 				let minecraft_folder = mmc_base_path
 					.join("instances")
@@ -313,7 +310,7 @@ async fn import_mmc_unmanaged(
 		})
 		.collect();
 
-	from::set_cluster_information(
+	from::set_cluster_information::<std::hash::RandomState>(
 		cluster_path.clone(),
 		&description,
 		&backup_name,

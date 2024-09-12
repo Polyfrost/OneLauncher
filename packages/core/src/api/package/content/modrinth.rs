@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
@@ -14,7 +15,7 @@ use serde_json::Value;
 
 use super::Providers;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModrinthPackage {
 	pub slug: String,
 	pub title: String,
@@ -61,9 +62,9 @@ pub struct ModrinthPackage {
 }
 
 impl From<ModrinthPackage> for ManagedPackage {
-	fn from(value: ModrinthPackage) -> ManagedPackage {
-		ManagedPackage {
-			provider: super::Providers::Modrinth,
+	fn from(value: ModrinthPackage) -> Self {
+		Self {
+			provider: Providers::Modrinth,
 			id: value.id,
 			title: value.title,
 			description: value.description,
@@ -93,14 +94,14 @@ impl From<ModrinthPackage> for ManagedPackage {
 	}
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DonationUrl {
 	pub id: String,
 	pub platform: String,
 	pub url: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gallery {
 	pub url: String,
 	pub featured: bool,
@@ -119,7 +120,7 @@ struct SearchResults {
 	total_hits: u32,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModrinthVersion {
 	pub game_versions: Vec<String>,
 	pub loaders: Vec<String>,
@@ -140,7 +141,7 @@ pub struct ModrinthVersion {
 	pub dependencies: Vec<Value>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct File {
 	pub url: String,
 	pub filename: String,
@@ -151,20 +152,20 @@ pub struct File {
 
 impl From<File> for ManagedVersionFile {
 	fn from(value: File) -> Self {
-		ManagedVersionFile {
+		Self {
 			url: value.url,
 			file_name: value.filename,
 			primary: value.primary,
 			size: value.size,
 			file_type: value.file_type,
-			hashes: Default::default(), // TODO
+			hashes: HashMap::default(), // TODO
 		}
 	}
 }
 
 impl From<ModrinthVersion> for ManagedVersion {
 	fn from(value: ModrinthVersion) -> Self {
-		ManagedVersion {
+		Self {
 			id: value.id,
 			package_id: value.project_id,
 			author: value.author_id,
@@ -179,7 +180,7 @@ impl From<ModrinthVersion> for ManagedVersion {
 			downloads: value.downloads,
 			version_type: value.version_type,
 
-			files: value.files.into_iter().map(|f| f.into()).collect(),
+			files: value.files.into_iter().map(Into::into).collect(),
 			deps: vec![], // TODO [`ManagedDependency`]?
 			game_versions: value.game_versions,
 			loaders: value
@@ -204,12 +205,12 @@ pub enum FacetOperation {
 impl Display for FacetOperation {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_str(match self {
-			FacetOperation::NotEq => "!=",
-			FacetOperation::LargeEq => ">=",
-			FacetOperation::Large => ">",
-			FacetOperation::SmallEq => "<=",
-			FacetOperation::Small => "<",
-			FacetOperation::Eq => "=",
+			Self::NotEq => "!=",
+			Self::LargeEq => ">=",
+			Self::Large => ">",
+			Self::SmallEq => "<=",
+			Self::Small => "<",
+			Self::Eq => "=",
 		})
 	}
 }
@@ -217,7 +218,7 @@ impl Display for FacetOperation {
 pub struct Facet(pub String, pub FacetOperation, pub String);
 
 impl Display for Facet {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		f.write_str(format!("{}{}{}", self.0, self.1, self.2).as_str())
 	}
 }
@@ -227,8 +228,8 @@ pub struct FacetBuilder {
 }
 
 impl FacetBuilder {
-	pub fn builder() -> Self {
-		FacetBuilder { facets: vec![] }
+	pub const fn builder() -> Self {
+		Self { facets: vec![] }
 	}
 
 	pub fn and(&mut self, facet: Facet) -> &Self {
@@ -253,7 +254,7 @@ impl FacetBuilder {
 				if i != 0 {
 					stringified.push(',');
 				}
-				stringified.push_str(format!("\"{}\"", f.to_string()).as_str());
+				stringified.push_str(format!("\"{f}\"").as_str());
 			}
 			stringified.push(']');
 
@@ -293,7 +294,7 @@ pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
 			format_url!(
 				"/projects?ids=[{}]",
 				ids.iter()
-					.map(|id| format!("\"{}\"", id))
+					.map(|id| format!("\"{id}\""))
 					.collect::<Vec<String>>()
 					.join(",")
 			)
@@ -335,9 +336,9 @@ where
 				limit.unwrap_or(10),
 				offset.unwrap_or(0),
 				if facets.is_empty() {
-					"".to_string()
+					String::new()
 				} else {
-					format!("&facets=[{}]", facets)
+					format!("&facets=[{facets}]")
 				}
 			)
 			.as_str(),
@@ -456,7 +457,7 @@ pub async fn get_all_versions(
 			"game_versions",
 			&game_versions
 				.iter()
-				.map(|v| format!("\"{}\"", v.to_string()))
+				.map(|v| format!("\"{v}\""))
 				.collect::<Vec<String>>()
 				.join(","),
 		);
@@ -469,7 +470,7 @@ pub async fn get_all_versions(
 				"[{}]",
 				&loaders
 					.iter()
-					.map(|l| format!("\"{}\"", l.to_string()))
+					.map(|l| format!("\"{l}\""))
 					.collect::<Vec<String>>()
 					.join(",")
 			)
@@ -494,7 +495,7 @@ pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>>
 				"/versions?ids=[{}]",
 				versions
 					.iter()
-					.map(|v| format!("\"{}\"", v))
+					.map(|v| format!("\"{v}\""))
 					.collect::<Vec<String>>()
 					.join(",")
 			)

@@ -1,4 +1,4 @@
-//! **OneLauncher Game**
+//! **`OneLauncher` Game**
 //!
 //! Manages, installs, and launches the core Minecraft game.
 
@@ -9,7 +9,7 @@ use crate::proxy::{IngressId, IngressType};
 use crate::store::{
 	self as st, Cluster, ClusterStage, MinecraftCredentials, ProcessorChild, State,
 };
-use crate::utils::io::{self, IOError};
+use onelauncher_utils::io::{self, IOError};
 
 use chrono::Utc;
 use interpulse as ip;
@@ -74,7 +74,7 @@ pub async fn install_minecraft(
 	let instance_path = &io::canonicalize(cluster.get_full_path().await?)?;
 	let metadata = state.metadata.read().await;
 
-	let version_manifest = metadata.minecraft.to_owned();
+	let version_manifest = metadata.minecraft.clone();
 	let versions = version_manifest
 		.ok_or(anyhow::anyhow!("couldn't get minecraft manifest"))?
 		.versions;
@@ -108,8 +108,7 @@ pub async fn install_minecraft(
 	let key = version_info
 		.java_version
 		.as_ref()
-		.map(|it| it.major_version)
-		.unwrap_or(8);
+		.map_or(8, |it| it.major_version);
 	let (java_version, set_java) =
 		if let Some(java_version) = java_version_from_cluster(cluster, &version_info).await? {
 			(std::path::PathBuf::from(java_version.path), false)
@@ -177,8 +176,8 @@ pub async fn install_minecraft(
 					}
 				}
 
-				let cp = ref_owned!(cp = processor.classpath.clone() => {
-					cp.push(processor.jar.clone())
+				let cp = onelauncher_utils::ref_owned!(cp = processor.classpath.clone() => {
+					cp.push(processor.jar.clone());
 				});
 
 				let child = Command::new(&java_version.path)
@@ -223,10 +222,7 @@ pub async fn install_minecraft(
 				send_ingress(
 					&ingress,
 					30.0 / total_length as f64,
-					Some(&format!(
-						"running forge processor {}/{}",
-						index, total_length
-					)),
+					Some(&format!("running forge processor {index}/{total_length}")),
 				)
 				.await?;
 			}
@@ -273,7 +269,7 @@ pub async fn launch_minecraft(
 	let instance_path = cluster.get_full_path().await?;
 	let instance_path = &io::canonicalize(instance_path)?;
 
-	let version_manifest = metadata.minecraft.to_owned();
+	let version_manifest = metadata.minecraft.clone();
 	let versions = version_manifest
 		.ok_or(anyhow::anyhow!("couldn't get minecraft manifest"))?
 		.versions;
@@ -316,7 +312,9 @@ pub async fn launch_minecraft(
 		.join(format!("{version_jar}.jar"));
 	let args = version_info.arguments.clone().unwrap_or_default();
 	let mut command = match wrapper {
-		Some(hook) => ref_owned!(it = Command::new(hook) => {it.arg(&java_version.path)}),
+		Some(hook) => {
+			onelauncher_utils::ref_owned!(it = Command::new(hook) => {it.arg(&java_version.path)})
+		}
 		None => Command::new(&java_version.path),
 	};
 	let env_args = Vec::from(env_args);
@@ -335,7 +333,7 @@ pub async fn launch_minecraft(
 		.args(
 			arguments::java_arguments(
 				args.get(&ip::api::minecraft::ArgumentType::Jvm)
-					.map(|x| x.as_slice()),
+					.map(Vec::as_slice),
 				&state.directories.version_natives_dir(&version_jar).await,
 				&state.directories.libraries_dir().await,
 				&arguments::classpaths(
@@ -350,14 +348,13 @@ pub async fn launch_minecraft(
 				Vec::from(java_args),
 				&java_version.arch,
 			)?
-			.into_iter()
-			.collect::<Vec<_>>(),
+			.into_iter(),
 		)
 		.arg(version_info.main_class.clone())
 		.args(
 			arguments::minecraft_arguments(
 				args.get(&ip::api::minecraft::ArgumentType::Game)
-					.map(|a| a.as_slice()),
+					.map(Vec::as_slice),
 				version_info.minecraft_arguments.as_deref(),
 				credentials,
 				&version.id,
@@ -368,8 +365,7 @@ pub async fn launch_minecraft(
 				*resolution,
 				&java_version.arch,
 			)?
-			.into_iter()
-			.collect::<Vec<_>>(),
+			.into_iter(),
 		)
 		.current_dir(instance_path.clone());
 
@@ -393,10 +389,10 @@ pub async fn launch_minecraft(
 		for (key, value) in mc_options {
 			let re = regex::Regex::new(&format!(r"(?m)^{}:.*$", regex::escape(key)))?;
 			if !re.is_match(&options_string) {
-				options_string.push_str(&format!("\n{}:{}", key, value));
+				options_string.push_str(&format!("\n{key}:{value}"));
 			} else {
 				let replaced_string = re
-					.replace_all(&options_string, &format!("{}:{}", key, value))
+					.replace_all(&options_string, &format!("{key}:{value}"))
 					.to_string();
 				options_string = replaced_string;
 			}
@@ -416,16 +412,10 @@ pub async fn launch_minecraft(
 	let mut censors = HashMap::new();
 	let username = whoami::username();
 	let realname = whoami::realname();
-	censors.insert(format!("/{}/", username), "/{ENV_USERNAME}/".to_string());
-	censors.insert(
-		format!("\\{}\\", username),
-		"\\{ENV_USERNAME}\\".to_string(),
-	);
-	censors.insert(format!("/{}/", realname), "/{ENV_REALNAME}/".to_string());
-	censors.insert(
-		format!("\\{}\\", realname),
-		"\\{ENV_REALNAME}\\".to_string(),
-	);
+	censors.insert(format!("/{username}/"), "/{ENV_USERNAME}/".to_string());
+	censors.insert(format!("\\{username}\\"), "\\{ENV_USERNAME}\\".to_string());
+	censors.insert(format!("/{realname}/"), "/{ENV_REALNAME}/".to_string());
+	censors.insert(format!("\\{realname}\\"), "\\{ENV_REALNAME}\\".to_string());
 	censors.insert(
 		credentials.access_token.clone(),
 		"{MC_ACCESS_TOKEN}".to_string(),
@@ -483,10 +473,10 @@ pub fn rules(rules: &[ip::api::minecraft::Rule], java_version: &str, updated: bo
 		.iter()
 		.all(|r| matches!(r.action, RuleAction::Disallow))
 	{
-		rule.push(Some(true))
+		rule.push(Some(true));
 	}
 
-	!(rule.iter().any(|r| r == &Some(false)) || rule.iter().all(|r| r.is_none()))
+	!(rule.iter().any(|r| r == &Some(false)) || rule.iter().all(Option::is_none))
 }
 
 /// Parses a Minecraft library feature or OS rule.
@@ -500,7 +490,7 @@ pub fn rule(rule: &ip::api::minecraft::Rule, java_version: &str, updated: bool) 
 	let result = match rule {
 		Rule {
 			os: Some(ref os), ..
-		} => crate::utils::platform::os_rule(os, java_version, updated),
+		} => onelauncher_utils::platform::os_rule(os, java_version, updated),
 		Rule {
 			features: Some(ref features),
 			..
@@ -543,8 +533,7 @@ pub async fn java_version_from_cluster(
 		let key = version_info
 			.java_version
 			.as_ref()
-			.map(|x| x.major_version)
-			.unwrap_or(8);
+			.map_or(8, |x| x.major_version);
 
 		let state = State::get().await?;
 		let settings = state.settings.read().await;

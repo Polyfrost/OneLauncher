@@ -1,4 +1,4 @@
-//! **OneLauncher Store**
+//! **`OneLauncher` Store**
 //!
 //! Core state and storage management for the launcher, managing all states.
 
@@ -49,7 +49,7 @@ pub use self::oneconfig::*;
 /// The static [`OnceCell<RwLock<State>>`] for storing the global runtime launcher state.
 static LAUNCHER_STATE: OnceCell<RwLock<State>> = OnceCell::const_new();
 
-/// The public OneLauncher state structure.
+/// The public `OneLauncher` state structure.
 pub struct State {
 	/// Handles a boolean to check if the launcher is connected to the internet
 	pub offline: RwLock<bool>,
@@ -73,7 +73,7 @@ pub struct State {
 	pub users: RwLock<MinecraftState>,
 	/// Handles processes
 	pub processor: RwLock<Processor>,
-	/// Handles OneConfig integration with [`async-tungstenite`]
+	/// Handles `OneConfig` integration with [`async-tungstenite`]
 	pub oneconfig: RwLock<Option<OneConfig>>,
 	/// Handles secure credential management with [`iota_stronghold`].
 	pub credentials: RwLock<Option<Credentials>>,
@@ -113,7 +113,7 @@ impl State {
 	/// Initializes the core OneLauncher state fully.
 	#[tracing::instrument]
 	#[onelauncher_macros::memory]
-	async fn initialize() -> crate::Result<RwLock<State>> {
+	async fn initialize() -> crate::Result<RwLock<Self>> {
 		let ingress =
 			init_ingress_internal(crate::IngressType::Initialize, 100.0, "initializing state")
 				.await?;
@@ -195,7 +195,7 @@ impl State {
 	/// Updates all data if we are connected to the internet.
 	pub fn update() {
 		tokio::task::spawn(async {
-			if let Ok(state) = crate::State::get().await {
+			if let Ok(state) = Self::get().await {
 				if !*state.offline.read().await {
 					let version_up = Clusters::update_versions();
 					let meta_up = Metadata::update();

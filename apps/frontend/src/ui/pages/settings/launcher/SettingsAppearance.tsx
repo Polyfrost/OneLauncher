@@ -1,14 +1,14 @@
 import { useBeforeLeave } from '@solidjs/router';
 import { PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
-import { For, createSignal } from 'solid-js';
-import SettingsRow from '../../../components/SettingsRow';
 import Dropdown from '~ui/components/base/Dropdown';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
-import { BROWSER_VIEWS } from '~utils/browser';
 import { upperFirst } from '~utils';
+import { BROWSER_VIEWS } from '~utils/browser';
+import { createSignal, For } from 'solid-js';
+import SettingsRow from '../../../components/SettingsRow';
 
 function SettingsAppearance() {
 	const { settings, saveOnLeave } = useSettings();

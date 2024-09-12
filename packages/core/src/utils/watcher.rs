@@ -19,8 +19,11 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 		Duration::from_secs_f32(2.0),
 		move |result: DebounceEventResult| {
 			futures::executor::block_on(async {
-				sender.send(result).await.unwrap();
-			})
+				sender
+					.send(result)
+					.await
+					.expect("failed to send debouse event");
+			});
 		},
 	)?;
 
@@ -34,7 +37,7 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 				Ok(mut events) => {
 					let mut paths = Vec::new();
 					events.sort_by(|a, b| a.path.cmp(&b.path));
-					events.iter().for_each(|a| {
+					for a in &events {
 						let mut formatted = PathBuf::new();
 						let mut components = a.path.components();
 						let mut matched = false;
@@ -57,7 +60,7 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 						if a.path
 							.components()
 							.any(|c| c.as_os_str() == crate::constants::CRASH_PATH)
-							&& a.path.extension().map(|e| e == "txt").unwrap_or(false)
+							&& a.path.extension().is_some_and(|e| e == "txt")
 						{
 							Cluster::handle_crash(cluster_path);
 						} else if !paths.contains(&formatted) {
@@ -72,7 +75,7 @@ pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>
 								Clusters::sync_cluster(cluster_path);
 							}
 						}
-					});
+					}
 				}
 				Err(err) => tracing::warn!("fs watching error: {err}"),
 			}

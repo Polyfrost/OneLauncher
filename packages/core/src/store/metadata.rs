@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::constants::METADATA_API_URL;
 use crate::utils::http::{fetch, read_json, write, FetchSemaphore, IoSemaphore};
-use crate::utils::io::copy;
 use crate::State;
 
 use super::Directories;
@@ -20,7 +19,7 @@ pub struct Metadata {
 	pub fabric: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core Quilt versions.
 	pub quilt: Option<ModdedManifest>,
-	/// The [`ModdedManifest`] associated with core NeoForge versions.
+	/// The [`ModdedManifest`] associated with core `NeoForge` versions.
 	pub neoforge: Option<ModdedManifest>,
 	/// The [`ModdedManifest`] associated with core Forge versions.
 	pub forge: Option<ModdedManifest>,
@@ -154,7 +153,7 @@ impl Metadata {
 		let backup = dirs.caches_dir().await.join("metadata.json.bak");
 		let mut should_write = false;
 
-		if let Ok(mut metadata_json) = read_json::<Metadata>(&path, io_semaphore).await {
+		if let Ok(mut metadata_json) = read_json::<Self>(&path, io_semaphore).await {
 			should_write = metadata_json.fetch_errored(fetch_semaphore).await?;
 
 			metadata = Some(metadata_json);
@@ -171,12 +170,12 @@ impl Metadata {
 			match res {
 				Ok(()) => {}
 				Err(err) => {
-					tracing::warn!("failed to fetch metadata: {err}")
+					tracing::warn!("failed to fetch metadata: {err}");
 				}
 			}
-		} else if let Ok(metadata_json) = read_json::<Metadata>(&backup, io_semaphore).await {
+		} else if let Ok(metadata_json) = read_json::<Self>(&backup, io_semaphore).await {
 			metadata = Some(metadata_json);
-			copy(&backup, &path).await?;
+			onelauncher_utils::io::copy(&backup, &path).await?;
 		}
 
 		if should_write {
@@ -205,7 +204,7 @@ impl Metadata {
 	pub async fn update() {
 		let res = async {
 			let state = State::get().await?;
-			let fetch_data = Metadata::fetch(&state.fetch_semaphore).await?;
+			let fetch_data = Self::fetch(&state.fetch_semaphore).await?;
 
 			let path = state.directories.caches_dir().await.join("metadata.json");
 			let backup = state
@@ -215,7 +214,7 @@ impl Metadata {
 				.join("metadata.json.bak");
 
 			if path.exists() {
-				copy(&path, &backup).await?;
+				onelauncher_utils::io::copy(&path, &backup).await?;
 			}
 
 			write(
@@ -235,7 +234,7 @@ impl Metadata {
 		match res {
 			Ok(()) => {}
 			Err(err) => {
-				tracing::warn!("failed to update launcher metadata: {err}")
+				tracing::warn!("failed to update launcher metadata: {err}");
 			}
 		};
 	}
@@ -247,9 +246,8 @@ async fn fetch_version_manifest(
 ) -> crate::Result<MinecraftManifest> {
 	let url = url.unwrap_or(interpulse::api::minecraft::VERSION_MANIFEST_URL);
 	Ok(serde_json::from_slice(
-		&fetch(url, None, semaphore).await.map_err(|err| {
+		&fetch(url, None, semaphore).await.inspect_err(|_| {
 			tracing::error!("couldn't fetch version manifest at '{}'", url);
-			err
 		})?,
 	)?)
 }
@@ -259,9 +257,8 @@ async fn fetch_modded_manifest(
 	semaphore: &FetchSemaphore,
 ) -> crate::Result<ModdedManifest> {
 	Ok(serde_json::from_slice(
-		&fetch(url, None, semaphore).await.map_err(|err| {
+		&fetch(url, None, semaphore).await.inspect_err(|_| {
 			tracing::error!("couldn't fetch modded manifest at '{}'", url);
-			err
 		})?,
 	)?)
 }

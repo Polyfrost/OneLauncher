@@ -2,7 +2,7 @@
 
 use super::{Directories, JavaVersions};
 use crate::constants::CURRENT_SETTINGS_FORMAT_VERSION;
-use crate::utils::io;
+use onelauncher_utils::io;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -10,15 +10,15 @@ use std::path::{Path, PathBuf};
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
-	/// A OneLauncher [`Theme`] managed by the core GUI.
+	/// A `OneLauncher` [`Theme`] managed by the core GUI.
 	pub theme: Theme,
-	/// A global browser list view for the OneLauncher GUI.
+	/// A global browser list view for the `OneLauncher` GUI.
 	#[serde(default)]
 	pub browser_list_view: BrowserListView,
-	/// Does not ask for confirmation when closing the OneLauncher GUI
+	/// Does not ask for confirmation when closing the `OneLauncher` GUI
 	#[serde(default)]
 	pub hide_close_prompt: bool,
-	/// Disables animations in the OneLauncher GUI
+	/// Disables animations in the `OneLauncher` GUI
 	#[serde(default)]
 	pub disable_animations: bool,
 	/// A global fullscreen Minecraft state.
@@ -78,7 +78,7 @@ impl Settings {
 			let read_settings = io::read(&file)
 				.await
 				.map_err(|err| anyhow::anyhow!("error reading settings file: {0}", err).into())
-				.and_then(|it| serde_json::from_slice::<Settings>(&it).map_err(crate::Error::from));
+				.and_then(|it| serde_json::from_slice::<Self>(&it).map_err(crate::Error::from));
 
 			if let Err(ref err) = read_settings {
 				tracing::error!("failed to load settings file: {err}.");
@@ -143,7 +143,7 @@ impl Settings {
 	}
 }
 
-/// OneLauncher browser list type.
+/// `OneLauncher` browser list type.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -154,7 +154,7 @@ pub enum BrowserListView {
 	Preview,
 }
 
-/// A OneLauncher theme managed by the GUI.
+/// A `OneLauncher` theme managed by the GUI.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -164,7 +164,7 @@ pub enum Theme {
 	/// A default Light theme.
 	Light,
 	/// OLED Dark Theme.
-	Contrast,
+	Oled,
 	/// Cute and colorful theme.
 	Cat,
 }

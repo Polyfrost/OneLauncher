@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use crate::utils::java;
 use crate::utils::java::JavaVersion;
 
-/// A HashMap of all located and installed available Java versions
+/// A `HashMap` of all located and installed available Java versions
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct JavaVersions(HashMap<String, JavaVersion>);
@@ -19,9 +19,10 @@ impl Default for JavaVersions {
 }
 
 impl JavaVersions {
-	/// Create an empty JavaVersions `HashMap`.
-	pub fn new() -> JavaVersions {
-		JavaVersions(HashMap::new())
+	/// Create an empty `JavaVersions` `HashMap`.
+	#[must_use]
+	pub fn new() -> Self {
+		Self(HashMap::new())
 	}
 
 	/// Inserts a key-value pair into the map.
@@ -35,6 +36,7 @@ impl JavaVersions {
 	}
 
 	/// Returns a reference to the value corresponding to the key.
+	#[must_use]
 	pub fn get(&self, key: &String) -> Option<&JavaVersion> {
 		self.0.get(key)
 	}
@@ -45,18 +47,20 @@ impl JavaVersions {
 	}
 
 	/// Returns the number of elements in the map.
+	#[must_use]
 	pub fn count(&self) -> usize {
 		self.0.len()
 	}
 
 	/// A collection visiting all keys in arbitrary order.
+	#[must_use]
 	pub fn keys(&self) -> Vec<String> {
 		self.0.keys().cloned().collect()
 	}
 
 	/// Validates all stored java versions.
 	pub async fn validate(&self) -> bool {
-		for (_, java) in self.0.iter() {
+		for java in self.0.values() {
 			let runtime = java::check_java_instance(PathBuf::from(&java.path).as_path()).await;
 			if let Some(runtime) = runtime {
 				if runtime.version != java.version {

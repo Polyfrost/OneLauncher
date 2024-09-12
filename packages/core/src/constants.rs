@@ -1,4 +1,4 @@
-//! **OneLauncher Constants**
+//! **`OneLauncher` Constants**
 //!
 //! Public constant variables and strings that are used throughout the launcher.
 //! Can be shared publically, any secrets should be stored in [`crate::store::credentials`].
@@ -39,7 +39,7 @@ pub const MODRINTH_V3_API_URL: &str = "https://api.modrinth.com/v3";
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/";
 /// Our metadata API base url.
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
-/// https://mclo.gs/ API base url.
+/// <https://mclo.gs>/ API base url.
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 
 // =========== Paths ===========

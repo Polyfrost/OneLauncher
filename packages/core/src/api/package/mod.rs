@@ -1,6 +1,6 @@
-//! **OneLauncher Package**
+//! **`OneLauncher` Package**
 //!
-//! Utilities for importing packages from and to OneLauncher.
+//! Utilities for importing packages from and to `OneLauncher`.
 
 pub mod content;
 pub mod from;

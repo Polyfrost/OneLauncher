@@ -11,8 +11,8 @@ use interpulse::utils::get_path_from_artifact;
 
 use crate::constants::DUMMY_REPLACE_NEWLINE;
 use crate::store::{Memory, MinecraftCredentials, Resolution};
-use crate::utils::io::IOError;
-use crate::utils::platform::classpath_separator;
+use onelauncher_utils::io::IOError;
+use onelauncher_utils::platform::classpath_separator;
 
 #[allow(clippy::too_many_arguments)]
 pub fn java_arguments(
@@ -45,7 +45,7 @@ pub fn java_arguments(
 	} else {
 		parsed.push(format!(
 			"-Djava.library.path={}",
-			dunce::canonicalize(natives_path)
+			onelauncher_utils::io::canonicalize(natives_path)
 				.map_err(|_| anyhow::anyhow!(
 					"specified natives path {} not found",
 					natives_path.to_string_lossy()
@@ -146,12 +146,12 @@ pub fn processor_arguments<T: AsRef<str>>(
 					)?
 				} else {
 					entry.client.clone()
-				})
+				});
 			}
 		} else if arg.as_ref().starts_with('[') {
-			parsed.push(get_library(libraries_path, a, true)?)
+			parsed.push(get_library(libraries_path, a, true)?);
 		} else {
-			parsed.push(arg.as_ref().to_string())
+			parsed.push(arg.as_ref().to_string());
 		}
 	}
 
@@ -214,36 +214,15 @@ fn parse_minecraft_argument(
 		.replace("${assets_index_name}", asset_index)
 		.replace(
 			"${game_directory}",
-			&dunce::canonicalize(game_directory)
-				.map_err(|_| {
-					anyhow::anyhow!(
-						"game directory {} doesn't exist",
-						game_directory.to_string_lossy()
-					)
-				})?
-				.to_string_lossy(),
+			&onelauncher_utils::io::canonicalize(game_directory)?.to_string_lossy(),
 		)
 		.replace(
 			"${assets_root}",
-			&dunce::canonicalize(assets_directory)
-				.map_err(|_| {
-					anyhow::anyhow!(
-						"assets directory {} doesn't exist",
-						assets_directory.to_string_lossy()
-					)
-				})?
-				.to_string_lossy(),
+			&onelauncher_utils::io::canonicalize(assets_directory)?.to_string_lossy(),
 		)
 		.replace(
 			"${game_assets}",
-			&dunce::canonicalize(assets_directory)
-				.map_err(|_| {
-					anyhow::anyhow!(
-						"assets directory {} doesn't exist",
-						assets_directory.to_string_lossy()
-					)
-				})?
-				.to_string_lossy(),
+			&onelauncher_utils::io::canonicalize(assets_directory)?.to_string_lossy(),
 		)
 		.replace("${version_type}", version_type.as_str())
 		.replace("${resolution_width}", &resolution.0.to_string())
@@ -263,25 +242,11 @@ fn parse_java_argument(
 	Ok(argument
 		.replace(
 			"${natives_directory}",
-			&dunce::canonicalize(natives_path)
-				.map_err(|_| {
-					anyhow::anyhow!(
-						"natives path {} doesn't exist",
-						natives_path.to_string_lossy()
-					)
-				})?
-				.to_string_lossy(),
+			&onelauncher_utils::io::canonicalize(natives_path)?.to_string_lossy(),
 		)
 		.replace(
 			"${library_directory}",
-			&dunce::canonicalize(libraries_path)
-				.map_err(|_| {
-					anyhow::anyhow!(
-						"libraries path {} doesn't eixst",
-						libraries_path.to_string_lossy()
-					)
-				})?
-				.to_string_lossy(),
+			&onelauncher_utils::io::canonicalize(libraries_path)?.to_string_lossy(),
 		)
 		.replace("${classpath_seperator}", classpath_separator(java_arch))
 		.replace("${launcher_name}", crate::constants::NAME)
@@ -315,13 +280,7 @@ pub fn classpaths(
 		.collect::<Result<HashSet<_>, _>>()?;
 
 	classpaths.insert(
-		dunce::canonicalize(client_path)
-			.map_err(|_| {
-				anyhow::anyhow!(
-					"specified classpath {} not found",
-					client_path.to_string_lossy()
-				)
-			})?
+		onelauncher_utils::io::canonicalize(client_path)?
 			.to_string_lossy()
 			.to_string(),
 	);
@@ -357,8 +316,7 @@ pub fn get_library(
 		return Ok(path.to_string_lossy().to_string());
 	}
 
-	let path = &dunce::canonicalize(&path)
-		.map_err(|_| anyhow::anyhow!("library file {} not found", path.to_string_lossy()))?;
+	let path = &onelauncher_utils::io::canonicalize(&path)?;
 
 	Ok(path.to_string_lossy().to_string())
 }

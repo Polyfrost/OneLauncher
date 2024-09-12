@@ -7,7 +7,8 @@ members = [
 	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
 	"packages/gamemode", # onelauncher_gamemode -- rust wrapper for feral gamemode
 	"packages/prisma-cli", # onelauncher_prisma_cli -- rust wrapper for prisma cli
-	"packages/prisma" # onelauncher_prisma -- rust client for prisma
+	"packages/prisma", # onelauncher_prisma -- rust client for prisma
+	"packages/utils" # onelauncher_utils -- standard utilities for use within all crates
 ]
 
 [workspace.package] # sets default [package] settings for workspace members
@@ -31,6 +32,7 @@ onelauncher_test = { path = "./apps/testing" }
 onelauncher_gamemode = { path = "./packages/gamemode" }
 onelauncher_prisma = { path = "./packages/prisma" }
 onelauncher_prisma_cli = { path = "./packages/prisma-cli" }
+onelauncher_utils = { path = "./packages/utils" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel
@@ -158,6 +160,8 @@ sha2 = { version = "0.10" }
 bytes = { version = "1.7" }
 
 # # ============= UTILITY ============= # #
+async-channel = { version = "2.3" }
+pin-project-lite = { version = "0.2" }
 once_cell = { version = "1.19" }
 quote = { version = "1.0" }
 syn = { version = "2.0", features = [ "full" ] }

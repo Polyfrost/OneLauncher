@@ -18,14 +18,14 @@ use winreg::{
 	RegKey,
 };
 
-use super::io;
+use onelauncher_utils::io;
 
 /// A struct representing a single version of the Java Runtime Environment.
 /// Use [`locate_java`] to get an array of all located java instances on the machine.
 ///
-/// common java paths from https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp under GPL 3.0
+/// common java paths from <https://github.com/PrismLauncher/PrismLauncher/blob/develop/launcher/java/JavaUtils.cpp> under GPL 3.0
 ///
-/// java check functionality from https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs under MIT
+/// java check functionality from <https://github.com/modrinth/theseus/blob/master/theseus/src/util/jre.rs> under MIT
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Clone)]
 pub struct JavaVersion {
@@ -192,9 +192,13 @@ pub async fn locate_java() -> Result<Vec<JavaVersion>, JavaError> {
 #[onelauncher_macros::memory]
 async fn locate_installed_java() -> Result<HashSet<PathBuf>, JavaError> {
 	Box::pin(async move {
-		let state = State::get().await.map_err(|_| JavaError::MutexError)?;
 		let mut paths = HashSet::new();
-		let java_base_path = state.directories.java_dir().await;
+		let java_base_path = State::get()
+			.await
+			.map_err(|_| JavaError::MutexError)?
+			.directories
+			.java_dir()
+			.await;
 
 		if java_base_path.is_dir() {
 			if let Ok(dir) = std::fs::read_dir(java_base_path) {
@@ -239,7 +243,7 @@ pub async fn check_java(paths: HashSet<PathBuf>) -> HashSet<JavaVersion> {
 
 	java_instances
 		.into_iter()
-		.flat_map(|p| p.ok())
+		.filter_map(Result::ok)
 		.flatten()
 		.collect()
 }
@@ -253,10 +257,10 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 	let Ok(path) = io::canonicalize(path) else {
 		return None;
 	};
-	let java = if path.file_name()?.to_str()? != JAVA_BIN {
-		path.join(JAVA_BIN)
-	} else {
+	let java = if path.file_name()?.to_str()? == JAVA_BIN {
 		path
+	} else {
+		path.join(JAVA_BIN)
 	};
 	if !java.exists() {
 		return None;
@@ -277,7 +281,7 @@ pub async fn check_java_instance(path: &Path) -> Option<JavaVersion> {
 
 	let output = Command::new(&java)
 		.arg("-cp")
-		.arg(file_path.parent().unwrap())
+		.arg(file_path.parent().expect("failed to get java parent"))
 		.arg("JavaInfo")
 		.env_remove("_JAVA_OPTIONS")
 		.output()

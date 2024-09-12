@@ -14,14 +14,14 @@ use crate::constants::CLUSTER_FILE;
 use crate::proxy::send::{send_cluster, send_message};
 use crate::proxy::ClusterPayloadType;
 use crate::utils::http::{write_icon, IoSemaphore};
-use crate::utils::io::{self, IOError};
 use crate::utils::java::JavaVersion;
 use crate::State;
+use onelauncher_utils::io::{self, IOError};
 
 use super::{Directories, InitHooks, Memory, PackageType, Resolution};
 
 /// Core Cluster state manager with a [`HashMap<ClusterPath, Cluster>`].
-pub(crate) struct Clusters(pub HashMap<ClusterPath, Cluster>);
+pub struct Clusters(pub HashMap<ClusterPath, Cluster>);
 
 /// Core Cluster stages used in package logic.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -40,7 +40,8 @@ pub enum ClusterStage {
 }
 
 impl ClusterStage {
-	pub fn as_str(&self) -> &'static str {
+	#[must_use]
+	pub const fn as_str(&self) -> &'static str {
 		match *self {
 			Self::Installed => "installed",
 			Self::Downloading => "downloading",
@@ -73,7 +74,7 @@ pub struct ClusterPath(pub PathBuf);
 impl ClusterPath {
 	/// Get a new [`ClusterPath`] instance from an [`Into<PathBuf>`].
 	pub fn new(path: impl Into<PathBuf>) -> Self {
-		ClusterPath(path.into())
+		Self(path.into())
 	}
 
 	pub async fn find_by_uuid(uuid: Uuid) -> crate::Result<Self> {
@@ -106,7 +107,7 @@ impl ClusterPath {
 	}
 
 	/// Validate the cluster and clone the current [`ClusterPath`].
-	pub async fn cluster_path(&self) -> crate::Result<ClusterPath> {
+	pub async fn cluster_path(&self) -> crate::Result<Self> {
 		if let Some(c) = crate::cluster::get(self).await? {
 			Ok(c.cluster_path())
 		} else {
@@ -146,6 +147,7 @@ pub struct InnerPathLinux(pub String);
 
 impl InnerPathLinux {
 	/// Get the first 2 components of the inner path.
+	#[must_use]
 	pub fn get_components(&self) -> String {
 		self.to_string()
 			.split('/')
@@ -163,7 +165,7 @@ impl std::fmt::Display for InnerPathLinux {
 
 impl From<RawPackagePath> for InnerPathLinux {
 	fn from(value: RawPackagePath) -> Self {
-		InnerPathLinux(value.0.replace('\\', "/"))
+		Self(value.0.replace('\\', "/"))
 	}
 }
 
@@ -174,7 +176,7 @@ struct RawPackagePath(pub String);
 
 impl From<InnerPathLinux> for RawPackagePath {
 	fn from(value: InnerPathLinux) -> Self {
-		RawPackagePath(value.0)
+		Self(value.0)
 	}
 }
 
@@ -210,6 +212,7 @@ impl PackagePath {
 	}
 
 	/// Get the [`InnerPathLinux`] of a [`PackagePath`].
+	#[must_use]
 	pub fn inner_path(&self) -> InnerPathLinux {
 		InnerPathLinux(
 			self.0
@@ -220,9 +223,10 @@ impl PackagePath {
 		)
 	}
 
-	/// Create a new PackagePath from a relative path.
+	/// Create a new `PackagePath` from a relative path.
+	#[must_use]
 	pub fn new(path: &Path) -> Self {
-		PackagePath(PathBuf::from(path))
+		Self(PathBuf::from(path))
 	}
 }
 
@@ -319,7 +323,8 @@ pub struct PackageData {
 	pub locked: Option<bool>,
 }
 
-pub fn default_locked() -> Option<bool> {
+#[must_use]
+pub const fn default_locked() -> Option<bool> {
 	Some(true)
 }
 
@@ -331,11 +336,11 @@ pub enum Loader {
 	/// The default vanilla loader, no modding supported.
 	#[default]
 	Vanilla,
-	/// The MinecraftForge Minecraft mod loader.
+	/// The `MinecraftForge` Minecraft mod loader.
 	Forge,
-	/// The FabircMC Minecraft mod loader.
+	/// The `FabircMC` Minecraft mod loader.
 	Fabric,
-	/// The NeoForge Minecraft mod loader.
+	/// The `NeoForge` Minecraft mod loader.
 	NeoForge,
 	/// The Quilt Minecraft mod loader.
 	Quilt,
@@ -344,7 +349,8 @@ pub enum Loader {
 }
 
 impl Loader {
-	pub fn as_str(&self) -> &'static str {
+	#[must_use]
+	pub const fn as_str(&self) -> &'static str {
 		match *self {
 			Self::Vanilla => "vanilla",
 			Self::Forge => "forge",
@@ -355,7 +361,8 @@ impl Loader {
 		}
 	}
 
-	pub fn as_meta_str(&self) -> &'static str {
+	#[must_use]
+	pub const fn as_meta_str(&self) -> &'static str {
 		match *self {
 			Self::Vanilla => "vanilla",
 			Self::Forge => "forge",
@@ -366,6 +373,7 @@ impl Loader {
 		}
 	}
 
+	#[must_use]
 	pub fn from_string(val: &str) -> Self {
 		match val {
 			"vanilla" => Self::Vanilla,
@@ -377,7 +385,8 @@ impl Loader {
 		}
 	}
 
-	pub fn supports_mods(&self) -> bool {
+	#[must_use]
+	pub const fn supports_mods(&self) -> bool {
 		!matches!(self, Self::Vanilla)
 	}
 }
@@ -463,6 +472,7 @@ impl Cluster {
 
 	/// Get the [`ClusterPath`] of the specified [`Cluster`].
 	#[inline]
+	#[must_use]
 	pub fn cluster_path(&self) -> ClusterPath {
 		ClusterPath::new(&self.path)
 	}
@@ -645,7 +655,7 @@ impl Clusters {
 
 			{
 				let clusters = state.clusters.read().await;
-				for (cluster_path, cluster) in clusters.0.iter() {
+				for (cluster_path, cluster) in &clusters.0 {
 					if let Some(package_data) = &cluster.meta.package_data {
 						if let Some(linked_package) = &package_data.package_id {
 							updateable.push((cluster_path.clone(), linked_package.clone()));
@@ -679,7 +689,7 @@ impl Clusters {
 			cluster.uuid,
 			&cluster.cluster_path(),
 			&cluster.meta.name,
-			crate::proxy::ClusterPayloadType::Inserted,
+			ClusterPayloadType::Inserted,
 		)
 		.await?;
 

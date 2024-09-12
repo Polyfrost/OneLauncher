@@ -14,7 +14,7 @@ generator client {
 model Settings {
   /// The unique ID associated with this Settings instance.
   id                 Int     @id @unique @default(0)
-  /// A OneLauncher theme managed by the core GUI.
+  /// A OneLauncher theme managed by the core GUI. (system, light, dark, oled, mocha)
   theme              String  @default("dark")
   /// Whether or not ask for confirmation when closing the core GUI.
   hide_close_prompt  Boolean @default(true)

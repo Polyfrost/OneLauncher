@@ -1,6 +1,6 @@
-//! **OneLauncher Content Package**
+//! **`OneLauncher` Content Package**
 //!
-//! Utilities for searching and downloading content packages to OneLauncher.
+//! Utilities for searching and downloading content packages to `OneLauncher`.
 
 use modrinth::{Facet, FacetOperation};
 use serde::{Deserialize, Serialize};
@@ -27,19 +27,22 @@ impl std::fmt::Display for Providers {
 
 impl Providers {
 	/// Get the name of the provider
-	pub fn name(&self) -> &str {
+	#[must_use]
+	pub const fn name(&self) -> &str {
 		match self {
-			Providers::Modrinth => "Modrinth",
+			Self::Modrinth => "Modrinth",
 		}
 	}
 
 	/// Get the URL of the provider
-	pub fn url(&self) -> &str {
+	#[must_use]
+	pub const fn url(&self) -> &str {
 		match self {
-			Providers::Modrinth => "https://modrinth.com",
+			Self::Modrinth => "https://modrinth.com",
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub async fn search(
 		&self,
 		query: Option<String>,
@@ -52,7 +55,7 @@ impl Providers {
 		open_source: Option<bool>,
 	) -> Result<ProviderSearchResults> {
 		match self {
-			Providers::Modrinth => modrinth::search(
+			Self::Modrinth => modrinth::search(
 				query,
 				limit,
 				offset,
@@ -112,17 +115,17 @@ impl Providers {
 
 	pub async fn list(&self) -> Result<Vec<ManagedPackage>> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::list(),
+			Self::Modrinth => modrinth::list(),
 		}
 		.await?
 		.into_iter()
-		.map(|p| p.into())
+		.map(Into::into)
 		.collect())
 	}
 
 	pub async fn get(&self, slug_or_id: &str) -> Result<ManagedPackage> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::get(slug_or_id),
+			Self::Modrinth => modrinth::get(slug_or_id),
 		}
 		.await?
 		.into())
@@ -130,11 +133,11 @@ impl Providers {
 
 	pub async fn get_multiple(&self, slug_or_ids: &[String]) -> Result<Vec<ManagedPackage>> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::get_multiple(slug_or_ids),
+			Self::Modrinth => modrinth::get_multiple(slug_or_ids),
 		}
 		.await?
 		.into_iter()
-		.map(|p| p.into())
+		.map(Into::into)
 		.collect())
 	}
 
@@ -145,27 +148,27 @@ impl Providers {
 		loaders: Option<Vec<Loader>>,
 	) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),
+			Self::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),
 		}
 		.await?
 		.into_iter()
-		.map(|p| p.into())
+		.map(Into::into)
 		.collect())
 	}
 
 	pub async fn get_versions(&self, versions: Vec<String>) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::get_versions(versions),
+			Self::Modrinth => modrinth::get_versions(versions),
 		}
 		.await?
 		.into_iter()
-		.map(|p| p.into())
+		.map(Into::into)
 		.collect())
 	}
 
 	pub async fn get_version(&self, version_id: &str) -> Result<ManagedVersion> {
 		Ok(match self {
-			Providers::Modrinth => modrinth::get_version(version_id),
+			Self::Modrinth => modrinth::get_version(version_id),
 		}
 		.await?
 		.into())
@@ -173,7 +176,7 @@ impl Providers {
 
 	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
 		match self {
-			Providers::Modrinth => modrinth::get_authors(author),
+			Self::Modrinth => modrinth::get_authors(author),
 		}
 		.await
 	}

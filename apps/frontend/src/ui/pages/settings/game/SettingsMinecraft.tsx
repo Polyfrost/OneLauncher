@@ -1,15 +1,15 @@
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
-import { type Accessor, For, type Setter, Show, createSignal, onMount, splitProps, untrack } from 'solid-js';
-import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
+import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
+import Modal, { createModal } from '~ui/components/overlay/Modal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
-import Button from '~ui/components/base/Button';
+import { type Accessor, createSignal, For, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
+import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
 
 function SettingsMinecraft() {
 	return (
@@ -300,14 +300,14 @@ export function JvmSettings(props: {
 }) {
 	const modal = createModal(controller => (
 		<Modal.Simple
-			title="Java Versions"
 			buttons={[
 				<Button
-					onClick={controller.hide}
 					buttonStyle="secondary"
 					children="Close"
+					onClick={controller.hide}
 				/>,
 			]}
+			title="Java Versions"
 			{...controller}
 		>
 			<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
@@ -318,10 +318,10 @@ export function JvmSettings(props: {
 							<>
 								<span class="capitalize">{prettified}</span>
 								<TextField
-									value={meta.path}
 									onValidSubmit={(value) => {
 										props.javaVersions?.set({ ...props.javaVersions.get(), [version]: { ...meta, path: value } });
 									}}
+									value={meta.path}
 								/>
 							</>
 						);
@@ -343,9 +343,9 @@ export function JvmSettings(props: {
 				title="Version"
 			>
 				<Button
-					onClick={modal.show}
-					iconLeft={<Database01Icon />}
 					children="Configure"
+					iconLeft={<Database01Icon />}
+					onClick={modal.show}
 				/>
 			</SettingsRow>
 

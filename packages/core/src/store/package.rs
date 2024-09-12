@@ -3,9 +3,9 @@
 use crate::package::content::Providers;
 use crate::store::Loader;
 use crate::utils::http::{write_icon, IoSemaphore};
-use crate::utils::io;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
+use onelauncher_utils::io;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -34,58 +34,63 @@ pub enum PackageType {
 
 impl PackageType {
 	/// attempt to get a [`PackageType`] from a loader string.
+	#[must_use]
 	pub fn from_loader(loaders: Vec<String>) -> Option<Self> {
 		if loaders
 			.iter()
 			.any(|x| ["fabric", "forge", "quilt"].contains(&&**x))
 		{
-			Some(PackageType::Mod)
+			Some(Self::Mod)
 		} else if loaders.iter().any(|x| x == "datapack") {
-			Some(PackageType::DataPack)
+			Some(Self::DataPack)
 		} else if loaders.iter().any(|x| ["iris", "optifine"].contains(&&**x)) {
-			Some(PackageType::ShaderPack)
+			Some(Self::ShaderPack)
 		} else if loaders
 			.iter()
 			.any(|x| ["vanilla", "canvas", "minecraft"].contains(&&**x))
 		{
-			Some(PackageType::ResourcePack)
+			Some(Self::ResourcePack)
 		} else {
 			None
 		}
 	}
 
+	#[must_use]
 	pub fn from_parent(path: PathBuf) -> Option<Self> {
 		let path = path.parent()?.file_name()?;
 		match path.to_str()? {
-			"mods" => Some(PackageType::Mod),
-			"datapacks" => Some(PackageType::DataPack),
-			"resourcepacks" => Some(PackageType::ResourcePack),
-			"shaderpacks" => Some(PackageType::ShaderPack),
-			"modpack" => Some(PackageType::ModPack),
+			"mods" => Some(Self::Mod),
+			"datapacks" => Some(Self::DataPack),
+			"resourcepacks" => Some(Self::ResourcePack),
+			"shaderpacks" => Some(Self::ShaderPack),
+			"modpack" => Some(Self::ModPack),
 			_ => None,
 		}
 	}
 
-	pub fn get_name(&self) -> &'static str {
+	#[must_use]
+	pub const fn get_name(&self) -> &'static str {
 		match self {
-			PackageType::Mod => "mod",
-			PackageType::DataPack => "datapack",
-			PackageType::ResourcePack => "resourcepack",
-			PackageType::ShaderPack => "shaderpack",
-			PackageType::ModPack => "modpack",
+			Self::Mod => "mod",
+			Self::DataPack => "datapack",
+			Self::ResourcePack => "resourcepack",
+			Self::ShaderPack => "shaderpack",
+			Self::ModPack => "modpack",
 		}
 	}
 
-	pub fn get_folder(&self) -> &'static str {
+	#[must_use]
+	pub const fn get_folder(&self) -> &'static str {
 		match self {
-			PackageType::Mod => "mods",
-			PackageType::DataPack => "datapacks",
-			PackageType::ResourcePack => "resourcepacks",
-			PackageType::ShaderPack => "shaderpacks",
-			PackageType::ModPack => "modpack",
+			Self::Mod => "mods",
+			Self::DataPack => "datapacks",
+			Self::ResourcePack => "resourcepacks",
+			Self::ShaderPack => "shaderpacks",
+			Self::ModPack => "modpack",
 		}
 	}
 
+	#[must_use]
 	pub fn get_meta(&self) -> PathBuf {
 		PathBuf::from(format!(
 			"{}/{}",
@@ -94,6 +99,7 @@ impl PackageType {
 		))
 	}
 
+	#[must_use]
 	pub fn get_meta_file_name(&self) -> String {
 		String::from(".packages.json")
 	}
@@ -104,7 +110,7 @@ impl PackageType {
 		}
 
 		Ok(match self {
-			PackageType::Mod => {
+			Self::Mod => {
 				entry.file_type().await?.is_file()
 					&& entry.path().extension() == Some("jar".as_ref())
 			}
@@ -112,19 +118,19 @@ impl PackageType {
 		})
 	}
 
-	pub fn iterator() -> impl Iterator<Item = PackageType> {
+	pub fn iterator() -> impl Iterator<Item = Self> {
 		[
-			PackageType::Mod,
-			PackageType::DataPack,
-			PackageType::ResourcePack,
-			PackageType::ShaderPack,
+			Self::Mod,
+			Self::DataPack,
+			Self::ResourcePack,
+			Self::ShaderPack,
 		]
 		.iter()
 		.copied()
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SearchResult {
 	pub slug: String,
@@ -189,7 +195,7 @@ impl Package {
 
 pub type PackagesMap = HashMap<PackagePath, Package>;
 
-pub(crate) struct Packages {
+pub struct Packages {
 	managers: HashMap<ClusterPath, PackageManager>,
 }
 
@@ -218,6 +224,7 @@ impl Packages {
 		Self { managers }
 	}
 
+	#[must_use]
 	pub fn get(&self, cluster_path: &ClusterPath) -> Option<&PackageManager> {
 		self.managers.get(cluster_path)
 	}
@@ -235,6 +242,7 @@ pub struct PackagesMeta {
 }
 
 impl PackagesMeta {
+	#[must_use]
 	pub fn new(package_type: PackageType) -> Self {
 		Self {
 			packages: PackagesMap::new(),
@@ -260,6 +268,7 @@ impl PackageManager {
 		Ok(manager)
 	}
 
+	#[must_use]
 	pub fn new(cluster_path: ClusterPath) -> Self {
 		Self {
 			cluster_path,
@@ -282,7 +291,8 @@ impl PackageManager {
 			.join(package_type.get_meta()))
 	}
 
-	/// Get the PackagesMeta for a specific package type. Does not sync.
+	/// Get the `PackagesMeta` for a specific package type. Does not sync.
+	#[must_use]
 	pub fn get(&self, package_type: PackageType) -> &PackagesMeta {
 		match package_type {
 			PackageType::Mod => &self.mods,
@@ -293,7 +303,7 @@ impl PackageManager {
 		}
 	}
 
-	/// Get the PackagesMeta for a specific package type. Does not sync.
+	/// Get the `PackagesMeta` for a specific package type. Does not sync.
 	fn get_mut(&mut self, package_type: PackageType) -> &mut PackagesMeta {
 		match package_type {
 			PackageType::Mod => &mut self.mods,
@@ -482,7 +492,7 @@ impl PackageManager {
 		}
 
 		if packages.len() != packages_to_keep.len() {
-			packages.retain(|pkg_path, _| packages_to_keep.contains(pkg_path))
+			packages.retain(|pkg_path, _| packages_to_keep.contains(pkg_path));
 		}
 
 		Ok(())
@@ -538,6 +548,7 @@ pub enum PackageMetadata {
 }
 
 impl PackageMetadata {
+	#[must_use]
 	pub fn from_managed_package(package: ManagedPackage, version: ManagedVersion) -> Self {
 		Self::Managed {
 			package_id: package.id,
@@ -549,11 +560,12 @@ impl PackageMetadata {
 		}
 	}
 
-	pub fn get_package_type(&self) -> Option<PackageType> {
+	#[must_use]
+	pub const fn get_package_type(&self) -> Option<PackageType> {
 		match self {
-			PackageMetadata::Managed { package_type, .. } => Some(*package_type),
-			PackageMetadata::Mapped { package_type, .. } => *package_type,
-			PackageMetadata::Unknown => None,
+			Self::Managed { package_type, .. } => Some(*package_type),
+			Self::Mapped { package_type, .. } => *package_type,
+			Self::Unknown => None,
 		}
 	}
 }
@@ -576,7 +588,7 @@ pub struct ManagedUser {
 	pub role: Option<String>,
 }
 
-fn default_is_organization_user() -> bool {
+const fn default_is_organization_user() -> bool {
 	false
 }
 
@@ -623,7 +635,7 @@ pub struct ManagedPackage {
 }
 
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct License {
 	#[serde(default)]
 	pub id: String,
@@ -658,6 +670,7 @@ pub struct ManagedVersion {
 }
 
 impl ManagedVersion {
+	#[must_use]
 	pub fn get_primary_file(&self) -> Option<&ManagedVersionFile> {
 		self.files.iter().find(|f| f.primary)
 	}
@@ -665,7 +678,7 @@ impl ManagedVersion {
 
 /// Universal interface for managed package files.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 pub struct ManagedVersionFile {
 	pub url: String,
 	pub file_name: String,
@@ -709,7 +722,7 @@ pub enum PackageSide {
 
 /// The file type of a [`Package`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub enum PackageFile {
 	RequiredPack,

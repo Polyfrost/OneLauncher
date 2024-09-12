@@ -19,26 +19,26 @@ impl OsExt for Os {
 	fn native_arch(java_arch: &str) -> Self {
 		if std::env::consts::OS == "windows" {
 			if java_arch == "aarch64" {
-				Os::WindowsArm64
+				Self::WindowsArm64
 			} else {
-				Os::Windows
+				Self::Windows
 			}
 		} else if std::env::consts::OS == "linux" {
 			if java_arch == "aarch64" {
-				Os::LinuxArm64
+				Self::LinuxArm64
 			} else if java_arch == "arm" {
-				Os::LinuxArm32
+				Self::LinuxArm32
 			} else {
-				Os::Linux
+				Self::Linux
 			}
 		} else if std::env::consts::OS == "macos" {
 			if java_arch == "aarch64" {
-				Os::OsxArm64
+				Self::OsxArm64
 			} else {
-				Os::Osx
+				Self::Osx
 			}
 		} else {
-			Os::Unknown
+			Self::Unknown
 		}
 	}
 
@@ -53,6 +53,7 @@ impl OsExt for Os {
 }
 
 /// Handles an os-specific [`OsRule`], returning if the [`Os`] matches the rule.
+#[must_use]
 pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 	let mut rule_match = true;
 
@@ -78,6 +79,7 @@ pub fn os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 }
 
 /// Gets the seperator between Java classpaths in metadata (`";"` on Windows, `";"` on others).
+#[must_use]
 pub fn classpath_separator(java_arch: &str) -> &'static str {
 	match Os::native_arch(java_arch) {
 		Os::Osx | Os::OsxArm64 | Os::Linux | Os::LinuxArm32 | Os::LinuxArm64 | Os::Unknown => ":",

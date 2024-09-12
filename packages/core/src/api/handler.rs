@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::api::prelude::InternetPayload;
 use crate::proxy::send::{send_internet, send_message};
-use crate::utils::io;
+use onelauncher_utils::io;
 
 pub async fn parse_uri(cmd: &str) -> crate::Result<()> {
 	let cmd = handle_cmd(cmd).await?;

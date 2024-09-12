@@ -1,6 +1,6 @@
-//! **OneLauncher Errors**
+//! **`OneLauncher` Errors**
 //!
-//! Public wrappers around common OneLauncher errors.
+//! Public wrappers around common `OneLauncher` errors.
 
 use tracing_error::InstrumentError;
 
@@ -83,7 +83,7 @@ pub enum ErrorKind {
 	#[error("failed to watch file {0}")]
 	NotifyError(#[from] notify::Error),
 
-	/// Wrapper around [`regex::Error`] to handle RegExp errors.
+	/// Wrapper around [`regex::Error`] to handle `RegExp` errors.
 	#[error("string verification with regex failed: {0}")]
 	RegexError(#[from] regex::Error),
 
@@ -99,11 +99,11 @@ pub enum ErrorKind {
 	#[error("checksum {0} did not match {1}!")]
 	HashError(String, String),
 
-	/// Wrapper around [`crate::utils::io::IOError`] to handle wrapped std::io errors.
+	/// Wrapper around [`onelauncher_utils::io::IOError`] to handle wrapped `std::io` errors.
 	#[error("error handling IO operations: {0}")]
-	IOError(#[from] crate::utils::io::IOError),
+	IOError(#[from] onelauncher_utils::io::IOError),
 
-	/// Wrapper around [`std::io::Error`] to handle non-wrapped std::io errors.
+	/// Wrapper around [`std::io::Error`] to handle non-wrapped `std::io` errors.
 	#[error("error handling standard IO operations: {0}")]
 	StdIOError(#[from] std::io::Error),
 

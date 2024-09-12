@@ -5,9 +5,9 @@ use serde::Deserialize;
 
 use crate::proxy::send::{init_ingress, send_ingress};
 use crate::utils::http::{fetch_advanced, fetch_json};
-use crate::utils::io::{self, IOError};
 use crate::utils::java::{self, get_java_version, JavaVersion};
 use crate::State;
+use onelauncher_utils::io::{self, IOError};
 
 pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec<JavaVersion>> {
 	let java = java::locate_java().await?;
@@ -15,11 +15,7 @@ pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec
 		java.into_iter()
 			.filter(|j| {
 				let jre_version = get_java_version(&j.version);
-				if let Ok(jre_version) = jre_version {
-					jre_version.1 == java_version
-				} else {
-					false
-				}
+				jre_version.map_or(false, |jre_version| jre_version.1 == java_version)
 			})
 			.collect()
 	} else {
@@ -27,6 +23,13 @@ pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec
 	})
 }
 
+#[derive(Deserialize)]
+struct JavaPackage {
+	pub download_url: String,
+	pub name: PathBuf,
+}
+
+// TODO: support more than just zulu ?
 #[onelauncher_macros::memory]
 pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 	let state = State::get().await?;
@@ -40,14 +43,8 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 	)
 	.await?;
 
-	#[derive(Deserialize)]
-	struct Package {
-		pub download_url: String,
-		pub name: PathBuf,
-	}
-
 	send_ingress(&ingress, 0.0, Some("fetching java api")).await?;
-	let packages = fetch_json::<Vec<Package>>(Method::GET, &format!(
+	let packages = fetch_json::<Vec<JavaPackage>>(Method::GET, &format!(
         "https://api.azul.com/metadata/v1/zulu/packages?arch={}&java_version={}&os={}&archive_type=zip&javafx_bundled=false&java_package_type=jre&page_size=1",
         std::env::consts::ARCH, java_version, std::env::consts::OS,
     ), None, None, &state.fetch_semaphore).await?;
@@ -93,11 +90,11 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 		#[cfg(target_os = "macos")]
 		{
 			base_path = base_path
-				.join(format!("zulu-{}.jre", java_version))
+				.join(format!("zulu-{java_version}.jre"))
 				.join("Contents")
 				.join("Home")
 				.join("bin")
-				.join("java")
+				.join("java");
 		}
 
 		#[cfg(not(target_os = "macos"))]
@@ -122,9 +119,8 @@ pub async fn check_java(path: PathBuf) -> crate::Result<Option<JavaVersion>> {
 }
 
 pub async fn test_java(path: PathBuf, major: u32) -> crate::Result<bool> {
-	let jvm = match java::check_java_instance(&path).await {
-		Some(jvm) => jvm,
-		None => return Ok(false),
+	let Some(jvm) = java::check_java_instance(&path).await else {
+		return Ok(false);
 	};
 
 	let (maj, _) = get_java_version(&jvm.version)?;

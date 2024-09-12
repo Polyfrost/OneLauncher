@@ -4,7 +4,6 @@
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use bytes::Bytes;
 use reqwest::Method;
@@ -15,9 +14,9 @@ use tokio::sync::{RwLock, Semaphore};
 use crate::constants::FETCH_ATTEMPTS;
 use crate::proxy::send::send_ingress;
 use crate::proxy::IngressId;
-use crate::utils::io;
 
-use super::io::IOError;
+use onelauncher_utils::io;
+use onelauncher_utils::io::IOError;
 
 /// A [`Semaphore`] used for all I/O operations.
 #[derive(Debug)]
@@ -34,7 +33,7 @@ lazy_static::lazy_static! {
 			"{}/{} (https://polyfrost.org)",
 			crate::constants::NAME,
 			crate::constants::VERSION,
-		)).unwrap();
+		)).expect("failed to build reqwest headers!");
 		headers.insert(reqwest::header::USER_AGENT, header);
 		reqwest::Client::builder()
 			.tcp_keepalive(Some(std::time::Duration::from_secs(15)))
@@ -91,7 +90,7 @@ pub async fn fetch_advanced(
 		let mut req = REQWEST_CLIENT.request(method.clone(), url);
 
 		if let Some(body) = json_body.clone() {
-			req = req.json(&body)
+			req = req.json(&body);
 		}
 
 		if let Some(header) = header {
@@ -120,7 +119,7 @@ pub async fn fetch_advanced(
 							.await?;
 						}
 
-						Ok(bytes::Bytes::from(bytes))
+						Ok(Bytes::from(bytes))
 					} else {
 						x.bytes().await
 					}
@@ -134,14 +133,13 @@ pub async fn fetch_advanced(
 						if &*hash != sha1 {
 							if attempt <= 3 {
 								continue;
-							} else {
-								return Err(anyhow::anyhow!(
-									"hash {0} does not match {1}",
-									sha1.to_string(),
-									hash
-								)
-								.into());
 							}
+							return Err(anyhow::anyhow!(
+								"hash {0} does not match {1}",
+								sha1.to_string(),
+								hash
+							)
+							.into());
 						}
 					}
 
@@ -191,7 +189,7 @@ pub async fn fetch_from_mirrors(
 pub async fn check_internet_connection(timeout: u64) -> bool {
 	REQWEST_CLIENT
 		.get("https://api.polyfrost.org/")
-		.timeout(Duration::from_secs(timeout))
+		.timeout(std::time::Duration::from_secs(timeout))
 		.send()
 		.await
 		.is_ok()
@@ -255,8 +253,8 @@ pub async fn write<'a>(path: &Path, bytes: &[u8], semaphore: &IoSemaphore) -> cr
 
 /// Copy a file from one [`AsRef<Path>`] to another.
 pub async fn copy(
-	src: impl AsRef<std::path::Path>,
-	dest: impl AsRef<std::path::Path>,
+	src: impl AsRef<Path>,
+	dest: impl AsRef<Path>,
 	semaphore: &IoSemaphore,
 ) -> crate::Result<()> {
 	let src = src.as_ref();

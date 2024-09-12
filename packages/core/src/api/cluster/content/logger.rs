@@ -1,17 +1,17 @@
-//! OneLauncher log management
+//! `OneLauncher` log management
 
 use crate::data::{Credentials, Directories, MinecraftCredentials};
 use crate::prelude::ClusterPath;
 use crate::utils::http;
-use crate::utils::io::{self, IOError};
 use futures::TryFutureExt;
+use onelauncher_utils::io::{self, IOError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::SystemTime;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 // TODO: put this in the global store
-/// Core logging state and reader for OneLauncher.
+/// Core logging state and reader for `OneLauncher`.
 #[derive(Serialize, Debug)]
 pub struct LogManager {
 	/// Type log type associated with this log file.
@@ -128,7 +128,7 @@ pub async fn delete_logs(cluster_path: ClusterPath) -> crate::Result<()> {
 		let entry = entry.map_err(|e| IOError::with_path(e, &logs_folder))?;
 		let path = entry.path();
 		if path.is_dir() {
-			io::remove_dir_all(&path).await?
+			io::remove_dir_all(&path).await?;
 		}
 	}
 
@@ -170,14 +170,13 @@ pub async fn get_live_log_cursor(
 	mut cursor: u64,
 ) -> crate::Result<LogCursor> {
 	let cluster_path = cluster_path.cluster_path().await?;
-	let state = crate::State::get().await?;
 	let logs_folder = Directories::cluster_logs_dir(&cluster_path).await?;
 	let path = logs_folder.join(log_file);
 	if !path.exists() {
 		return Ok(LogCursor {
 			cursor: 0,
 			new: false,
-			output: LogOutput("".to_string()),
+			output: LogOutput(String::new()),
 		});
 	}
 
@@ -188,12 +187,13 @@ pub async fn get_live_log_cursor(
 		.metadata()
 		.await
 		.map_err(|e| IOError::with_path(e, &path))?;
-	let mut new = false;
 
-	if cursor > metadata.len() {
+	let new = if cursor > metadata.len() {
 		cursor = 0;
-		new = true;
-	}
+		true
+	} else {
+		false
+	};
 
 	let mut buf = Vec::new();
 	file.seek(std::io::SeekFrom::Start(cursor))
@@ -205,7 +205,8 @@ pub async fn get_live_log_cursor(
 		.await?;
 	let output = String::from_utf8_lossy(&buf).to_string();
 	let cursor = cursor + bytes_read as u64;
-	let creds: Vec<MinecraftCredentials> = state
+	let creds: Vec<MinecraftCredentials> = crate::State::get()
+		.await?
 		.users
 		.read()
 		.await
@@ -213,11 +214,11 @@ pub async fn get_live_log_cursor(
 		.clone()
 		.into_values()
 		.collect();
-	let output = LogOutput::censor_secrets(output, &creds, None);
+	let output = LogOutput::censor_secrets(output, &creds, &None);
 	Ok(LogCursor {
 		cursor,
-		new,
 		output,
+		new,
 	})
 }
 
@@ -262,13 +263,13 @@ pub async fn get_output_by_file(
 	log_type: LogType,
 	log_file: &str,
 ) -> crate::Result<LogOutput> {
-	let state = crate::State::get().await?;
 	let logs_folder = match log_type {
 		LogType::Info => Directories::cluster_logs_dir(cluster_path).await?,
 		LogType::Crash => Directories::crash_reports_dir(cluster_path).await?,
 	};
 	let path = logs_folder.join(log_file);
-	let credentials: Vec<MinecraftCredentials> = state
+	let credentials: Vec<MinecraftCredentials> = crate::State::get()
+		.await?
 		.users
 		.read()
 		.await
@@ -279,7 +280,7 @@ pub async fn get_output_by_file(
 
 	let result = read_log_to_string(&path).await?;
 
-	return Ok(LogOutput::censor_secrets(result, &credentials, None));
+	return Ok(LogOutput::censor_secrets(result, &credentials, &None));
 }
 
 /// The log cursor used to parse logs passed into [`LogManager`].
@@ -303,14 +304,14 @@ impl LogOutput {
 	pub fn censor_secrets(
 		mut output: String,
 		credentials: &Vec<MinecraftCredentials>,
-		_credentials_store: Option<Credentials>,
+		_credentials_store: &Option<Credentials>,
 	) -> Self {
 		let username = whoami::username();
 		let realname = whoami::realname();
-		output = output.replace(&format!("/{}/", username), "/{ENV_USERNAME}/");
-		output = output.replace(&format!("\\{}\\", username), "\\{ENV_USERNAME}\\");
-		output = output.replace(&format!("/{}/", realname), "/{ENV_REALNAME}/");
-		output = output.replace(&format!("\\{}\\", realname), "\\{ENV_REALNAME}\\");
+		output = output.replace(&format!("/{username}/"), "/{ENV_USERNAME}/");
+		output = output.replace(&format!("\\{username}\\"), "\\{ENV_USERNAME}\\");
+		output = output.replace(&format!("/{realname}/"), "/{ENV_REALNAME}/");
+		output = output.replace(&format!("\\{realname}\\"), "\\{ENV_REALNAME}\\");
 
 		for cred in credentials {
 			output = output.replace(&cred.access_token, "{MC_ACCESS_TOKEN}");
@@ -323,6 +324,15 @@ impl LogOutput {
 	}
 }
 
+#[derive(serde::Deserialize)]
+struct McLogsResponse {
+	pub success: bool,
+	#[serde(default)]
+	pub id: Option<String>,
+	#[serde(default)]
+	pub error: Option<String>,
+}
+
 /// Upload a log to https://mclo.gs/. If successful, it returns the log id
 #[tracing::instrument]
 pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<String> {
@@ -330,16 +340,7 @@ pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<Str
 	let mut form = HashMap::new();
 	form.insert("content", log);
 
-	#[derive(serde::Deserialize)]
-	struct ResponseBody {
-		pub success: bool,
-		#[serde(default)]
-		pub id: Option<String>,
-		#[serde(default)]
-		pub error: Option<String>,
-	}
-
-	let parsed = serde_json::from_slice::<ResponseBody>(
+	let parsed = serde_json::from_slice::<McLogsResponse>(
 		&http::REQWEST_CLIENT
 			.post(format!("{}/log", crate::constants::MCLOGS_API_URL))
 			.header("Content-Type", "application/x-www-form-urlencoded")
@@ -351,11 +352,10 @@ pub async fn upload_log(path: &ClusterPath, log: LogOutput) -> crate::Result<Str
 	)?;
 
 	if parsed.success {
-		if let Some(id) = parsed.id {
-			Ok(id)
-		} else {
-			Err(anyhow::anyhow!("failed to get log id from mclo.gs").into())
-		}
+		parsed.id.map_or_else(
+			|| Err(anyhow::anyhow!("failed to get log id from mclo.gs").into()),
+			Ok,
+		)
 	} else {
 		Err(anyhow::anyhow!(
 			"failed to upload log to mclo.gs: {}",

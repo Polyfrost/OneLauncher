@@ -1,4 +1,4 @@
-//! Launcher Import: CurseForge
+//! Launcher Import: `CurseForge`
 //! Closed Source, all this information is datamined unfortunately.
 
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use super::{cache_icon, copy_minecraft};
 use crate::prelude::{Cluster, ClusterPath, Loader};
 use crate::store::{ClusterStage, State};
 use crate::utils::http::{fetch, write_icon};
-use crate::utils::io;
+use onelauncher_utils::io;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -37,12 +37,13 @@ pub async fn is_valid_curseforge(instance_folder: PathBuf) -> bool {
 	let minecraftinstance: String =
 		io::read_to_string(&instance_folder.join("minecraftinstance.json"))
 			.await
-			.unwrap_or("".to_string());
+			.unwrap_or(String::new());
 	let minecraftinstance: Result<MinecraftInstance, serde_json::Error> =
 		serde_json::from_str::<MinecraftInstance>(&minecraftinstance);
 	minecraftinstance.is_ok()
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn import_curseforge(
 	// The path to the CurseForge instance
 	curseforge_instance_folder: PathBuf,
@@ -58,8 +59,7 @@ pub async fn import_curseforge(
 		"Curseforge-{}",
 		curseforge_instance_folder
 			.file_name()
-			.map(|a| a.to_string_lossy().to_string())
-			.unwrap_or("Unknown".to_string())
+			.map_or("Unknown".to_string(), |a| a.to_string_lossy().to_string())
 	);
 
 	let state = State::get().await?;
@@ -104,15 +104,15 @@ pub async fn import_curseforge(
 		}
 
 		let mod_loader = mod_loader.unwrap_or(Loader::Vanilla);
-		let loader_version = if mod_loader != Loader::Vanilla {
+		let loader_version = if mod_loader == Loader::Vanilla {
+			None
+		} else {
 			crate::cluster::create::get_loader_version(
 				game_version.clone(),
 				mod_loader,
 				loader_version,
 			)
 			.await?
-		} else {
-			None
 		};
 
 		crate::api::cluster::edit(&cluster_path, |cl| {

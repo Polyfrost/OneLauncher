@@ -12,7 +12,7 @@ use tokio::task::spawn_blocking;
 #[derive(Debug, thiserror::Error)]
 pub enum IOError {
 	/// A wrapped [`std::io::Error`] along with the path involved in the error.
-	#[error("{source}, path: {path}")]
+	#[error("error acessing path: {source}, path: {path}")]
 	IOErrorWrapper {
 		#[source]
 		source: std::io::Error,
@@ -26,14 +26,29 @@ pub enum IOError {
 	IOError(#[from] std::io::Error),
 }
 
+impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
+	fn from((path, source): (P, std::io::Error)) -> Self {
+		Self::IOErrorWrapper {
+			source,
+			path: path.as_ref().to_string_lossy().to_string(),
+		}
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("received a non UTF-8 path: <lossy_path='{}'>", .0.to_string_lossy())]
+pub struct NonUtf8PathError(pub Box<std::path::Path>);
+
 impl IOError {
 	/// Converts a [`std::io::Error`] into an [`IOError`].
-	pub fn from(source: std::io::Error) -> Self {
+	#[must_use]
+	pub const fn from(source: std::io::Error) -> Self {
 		Self::IOError(source)
 	}
 
 	/// Converts a [`zip::result::ZipError`] into an [`IOError`].
-	pub fn from_zip(source: zip::result::ZipError) -> Self {
+	#[must_use]
+	pub const fn from_zip(source: zip::result::ZipError) -> Self {
 		Self::ZipError(source)
 	}
 

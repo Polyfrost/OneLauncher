@@ -1,9 +1,9 @@
-//! **OneLauncher Logger**
+//! **`OneLauncher` Logger**
 //!
-//! Public utilities for [`tracing`] logging in OneLauncher.
+//! Public utilities for [`tracing`] logging in `OneLauncher`.
 //!
 //! - `RUST_LOG=xxx` is a variable which defines tracing configuration (`ERROR > WARN > INFO > DEBUG > TRACE`)
-//! - `RUST_LOG="onelauncher=trace"` will show **all** mesages from OneLauncher and not other dependencies.
+//! - `RUST_LOG="onelauncher=trace"` will show **all** mesages from `OneLauncher` and not other dependencies.
 //! - `RUST_LOG="info"` will show info, warn, and error logs.
 //!
 //! Errors returned to [`tauri`] are displayed as tracing error logs.
@@ -11,7 +11,7 @@
 //! Tracing errors also provide Sentry metadata to be handled.
 //! To set the environment variable on `unix` you can use the following command: `RUST_LOG="xxx" {your command}`
 //!
-//! The default `RUST_LOG` is `onelauncher=show`, meaning only logs from OneLauncher will be displayed at the info, warn, and error levels.
+//! The default `RUST_LOG` is `onelauncher=show`, meaning only logs from `OneLauncher` will be displayed at the info, warn, and error levels.
 
 use tracing_appender::non_blocking::WorkerGuard;
 
@@ -19,6 +19,7 @@ use tracing_appender::non_blocking::WorkerGuard;
 
 /// Initialize the global [`tracing`] logger in development.
 #[cfg(debug_assertions)]
+#[must_use]
 pub fn start_logger() -> Option<WorkerGuard> {
 	use tracing_subscriber::prelude::*;
 

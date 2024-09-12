@@ -6,8 +6,8 @@ use crate::proxy::send::{init_ingress, send_ingress};
 use crate::proxy::IngressId;
 use crate::store::{ClusterStage, PackageSide};
 use crate::utils::http::{fetch, fetch_advanced, fetch_json, write_icon};
-use crate::utils::io;
 use crate::{IngressType, InnerPathLinux, State};
+use onelauncher_utils::io;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -46,9 +46,9 @@ pub enum PackFileHash {
 impl From<String> for PackFileHash {
 	fn from(s: String) -> Self {
 		return match s.as_str() {
-			"sha1" => PackFileHash::Sha1,
-			"sha512" => PackFileHash::Sha512,
-			_ => PackFileHash::Unknown(s),
+			"sha1" => Self::Sha1,
+			"sha512" => Self::Sha512,
+			_ => Self::Unknown(s),
 		};
 	}
 }
@@ -120,7 +120,7 @@ pub struct CreatePackCluster {
 
 impl Default for CreatePackCluster {
 	fn default() -> Self {
-		CreatePackCluster {
+		Self {
 			name: "Untitled".to_string(),
 			mc_version: "1.20.4".to_string(),
 			mod_loader: Loader::Vanilla,
@@ -150,6 +150,7 @@ pub struct CreatePackDescription {
 	pub cluster_path: ClusterPath,
 }
 
+#[must_use]
 pub fn get_cluster_from_pack(location: CreatePackLocation) -> CreatePackCluster {
 	match location {
 		CreatePackLocation::FromModrinth {
@@ -320,11 +321,11 @@ pub async fn generate_pack_from_file(
 /// Sets generated cluster attributes to the pack attributes (using `cluster::edit`).
 /// This includes the pack name, icon, game version, loader version, and loader.
 #[onelauncher_macros::memory]
-pub async fn set_cluster_information(
+pub async fn set_cluster_information<S: ::std::hash::BuildHasher>(
 	cluster_path: ClusterPath,
 	description: &CreatePackDescription,
 	backup_name: &str,
-	deps: &HashMap<PackDependency, String>,
+	deps: &HashMap<PackDependency, String, S>,
 	ignore_lock: bool,
 ) -> crate::Result<()> {
 	let mut game_version: Option<&String> = None;
@@ -353,22 +354,19 @@ pub async fn set_cluster_information(
 		}
 	}
 
-	let game_version = if let Some(game_version) = game_version {
-		game_version
-	} else {
+	let Some(game_version) = game_version else {
 		return Err(anyhow::anyhow!("pack did not specify Minecraft version").into());
 	};
-
 	let mod_loader = mod_loader.unwrap_or(Loader::Vanilla);
-	let loader_version = if mod_loader != Loader::Vanilla {
+	let loader_version = if mod_loader == Loader::Vanilla {
+		None
+	} else {
 		crate::cluster::create::get_loader_version(
 			game_version.clone(),
 			mod_loader,
 			loader_version.cloned(),
 		)
 		.await?
-	} else {
-		None
 	};
 
 	crate::api::cluster::edit(&cluster_path, |cl| {
@@ -384,10 +382,10 @@ pub async fn set_cluster_information(
 			Some(PackageData {
 				package_id,
 				version_id,
-				locked: if !ignore_lock {
-					Some(true)
-				} else {
+				locked: if ignore_lock {
 					cl.meta.package_data.as_ref().and_then(|x| x.locked)
+				} else {
+					Some(true)
 				},
 			})
 		} else {

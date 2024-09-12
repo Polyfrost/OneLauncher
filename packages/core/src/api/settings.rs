@@ -3,6 +3,7 @@
 use crate::proxy::send::{init_ingress, send_ingress};
 use crate::store::{Clusters, Directories, Settings};
 use crate::State;
+use onelauncher_utils::io;
 use std::path::{Path, PathBuf};
 use tokio::sync::RwLock;
 
@@ -91,7 +92,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	state_write.watcher = RwLock::new(fs_watcher);
 
 	tracing::trace!("collecting all config files to be transfered");
-	let mut cfg_entries = crate::utils::io::read_dir(&old).await?;
+	let mut cfg_entries = io::read_dir(&old).await?;
 	let across_filesystems = is_different_fs(&old, &new);
 	let mut entries = vec![];
 	let mut cleanable = vec![];
@@ -99,7 +100,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	while let Some(e) = cfg_entries
 		.next_entry()
 		.await
-		.map_err(|err| crate::utils::io::IOError::with_path(err, &old))?
+		.map_err(|err| io::IOError::with_path(err, &old))?
 	{
 		let epath = e.path();
 		if let Some(file_name) = epath.file_name() {
@@ -127,7 +128,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 		if across_filesystems {
 			crate::utils::http::copy(&epath, &newpath, io_semaphore).await?;
 		} else {
-			crate::utils::io::rename(epath.clone(), newpath.clone()).await?;
+			io::rename(epath.clone(), newpath.clone()).await?;
 		}
 
 		send_ingress(&ingress, 80.0 * (1.0 / nentries), None).await?;
@@ -161,7 +162,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 		tracing::trace!("deleting old config files");
 	}
 	for ce in cleanable {
-		crate::utils::io::remove_dir_all(ce).await?;
+		io::remove_dir_all(ce).await?;
 		send_ingress(&ingress, 10.0 * (1.0 / cleanable_nentries as f64), None).await?;
 	}
 
@@ -181,18 +182,18 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 }
 
 /// checks if two paths are on different data storage devices
-fn is_different_fs(a: &Path, b: &Path) -> bool {
-	let roota = a.components().next();
-	let rootb = b.components().next();
-	roota != rootb
+fn is_different_fs(first: &Path, second: &Path) -> bool {
+	let first_root = first.components().next();
+	let second_root = second.components().next();
+	first_root != second_root
 }
 
 /// checks if a [`PathBuf`] is writable or locked.
 pub async fn is_writable(path: PathBuf) -> crate::Result<bool> {
 	let tmp = path.join(".tmp");
-	match crate::utils::io::write(tmp.clone(), "test").await {
-		Ok(_) => {
-			crate::utils::io::remove_file(tmp).await?;
+	match io::write(tmp.clone(), "test").await {
+		Ok(()) => {
+			io::remove_file(tmp).await?;
 			Ok(true)
 		}
 		Err(e) => {

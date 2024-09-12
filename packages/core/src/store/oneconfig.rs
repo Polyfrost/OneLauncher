@@ -1,10 +1,10 @@
-//! OneConfig state using [`async_tungstenite`] to communicate to the OneConfig server
+//! `OneConfig` state using [`async_tungstenite`] to communicate to the `OneConfig` server
 
 use super::ClusterPath;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Wrapper over an [`async_tungstenite::WebSocketStream`] to connect to the OneConfig server.
+/// Wrapper over an [`async_tungstenite::WebSocketStream`] to connect to the `OneConfig` server.
 pub struct OneConfig {
 	/// The public tokio socket connection.
 	pub socket: async_tungstenite::WebSocketStream<async_tungstenite::tokio::ConnectStream>,
@@ -22,7 +22,7 @@ pub struct ModUpdatePacket {
 }
 
 impl OneConfig {
-	/// Initializes a OneConfig socket connection on localhost port `4023`.
+	/// Initializes a `OneConfig` socket connection on localhost port `4023`.
 	pub async fn initialize(cluster: ClusterPath) -> crate::Result<Self> {
 		let (socket, _) = async_tungstenite::tokio::connect_async(format!(
 			"wss://localhost:4023/oneconfig/ws?cluster={cluster}"

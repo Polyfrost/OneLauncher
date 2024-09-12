@@ -1,11 +1,11 @@
 import { InfoCircleIcon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-solid';
-import { For, Match, Show, Switch, createSignal, mergeProps } from 'solid-js';
 import Button from '~ui/components/base/Button';
 import Tooltip from '~ui/components/base/Tooltip';
 import PlayerHead from '~ui/components/game/PlayerHead';
 import useAccountController from '~ui/components/overlay/account/AddAccountModal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
+import { createSignal, For, Match, mergeProps, Show, Switch } from 'solid-js';
 
 function SettingsAccounts() {
 	const controller = useAccountController();

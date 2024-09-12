@@ -1,17 +1,4 @@
 import hljs from 'highlight.js/lib/core';
-// import javascript from 'highlight.js/lib/languages/javascript';
-// import python from 'highlight.js/lib/languages/python';
-// import lua from 'highlight.js/lib/languages/lua';
-// import java from 'highlight.js/lib/languages/java';
-// import kotlin from 'highlight.js/lib/languages/kotlin';
-// import scala from 'highlight.js/lib/languages/scala';
-// import groovy from 'highlight.js/lib/languages/groovy';
-// import gradle from 'highlight.js/lib/languages/gradle';
-// import json from 'highlight.js/lib/languages/json';
-// import ini from 'highlight.js/lib/languages/ini';
-// import yaml from 'highlight.js/lib/languages/yaml';
-// import xml from 'highlight.js/lib/languages/xml';
-// import properties from 'highlight.js/lib/languages/properties';
 import { configuredXss, md, noop } from './markdown';
 
 function langFactory(lang: string) {

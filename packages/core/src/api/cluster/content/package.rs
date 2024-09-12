@@ -1,10 +1,13 @@
+#![allow(clippy::significant_drop_tightening)]
+
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::prelude::PackagePath;
 use crate::processor::Cluster;
 use crate::proxy::send::send_internet;
 use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata};
-use crate::utils::{http, io};
+use crate::utils::http;
 use crate::{Result, State};
+use onelauncher_utils::io;
 // TODO: Implement proper error handling
 
 /// Find a managed version using filters
@@ -23,7 +26,7 @@ pub async fn find_managed_version(
 	let versions = provider
 		.get_all_versions(
 			&package.id,
-			game_version.as_ref().map(|v| vec![v.to_owned()]).to_owned(),
+			game_version.as_ref().map(|v| vec![v.to_owned()]).clone(),
 			loader.map(|l| vec![l]).clone(),
 		)
 		.await?;
@@ -45,7 +48,7 @@ pub async fn find_managed_version(
 
 			check_game_version && check_loader && check_package_version
 		})
-		.ok_or(anyhow::anyhow!("no matching version found"))
+		.ok_or_else(|| anyhow::anyhow!("no matching version found"))
 		.cloned()?)
 }
 
@@ -72,14 +75,14 @@ pub async fn download_package(
 	.await?;
 
 	let loader = loader.unwrap_or(cluster.meta.loader);
-	let game_version = game_version.unwrap_or(cluster.meta.mc_version.clone());
+	let game_version = game_version.unwrap_or_else(|| cluster.meta.mc_version.clone());
 
 	let managed_version =
 		find_managed_version(package, Some(game_version), Some(loader), package_version).await?;
 
 	let file = managed_version
 		.get_primary_file()
-		.ok_or(anyhow::anyhow!("no primary file found"))?;
+		.ok_or_else(|| anyhow::anyhow!("no primary file found"))?;
 	tracing::info!(
 		"downloading file '{}' version '{}'",
 		file.file_name,
@@ -91,7 +94,7 @@ pub async fn download_package(
 		.hashes
 		.get("sha512")
 		.unwrap_or(&"unknown".to_string())
-		.to_owned(); // TODO: Figure out sha1
+		.to_owned();
 
 	let package = Package {
 		file_name: file.file_name.clone(),
@@ -122,7 +125,7 @@ async fn download_file(
 	let state = State::get().await?;
 	let bytes = http::fetch(
 		&file.url,
-		file.hashes.get("sha1").map(|s| s.as_str()),
+		file.hashes.get("sha1").map(String::as_str),
 		&state.fetch_semaphore,
 	)
 	.await?;
@@ -134,6 +137,8 @@ async fn download_file(
 
 		return Err(err);
 	};
+
+	drop(state);
 
 	Ok(path)
 }
@@ -150,7 +155,7 @@ pub async fn add_package(
 	let mut manager = state.packages.write().await;
 	let manager = manager
 		.get_mut(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager
 		.add_package(package_path, package, package_type)
@@ -170,7 +175,7 @@ pub async fn remove_package(
 	let mut manager = state.packages.write().await;
 	let manager = manager
 		.get_mut(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager.remove_package(package_path, package_type).await?;
 
@@ -188,14 +193,14 @@ pub async fn get_package(
 	let manager = state.packages.read().await;
 	let manager = manager
 		.get(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	Ok(manager
 		.get(package_type)
 		.packages
 		.get(package_path)
 		.cloned()
-		.ok_or(anyhow::anyhow!("package not found"))?)
+		.ok_or_else(|| anyhow::anyhow!("package not found"))?)
 }
 
 /// Get packages from a cluster.
@@ -208,7 +213,7 @@ pub async fn get_packages(
 	let manager = state.packages.read().await;
 	let manager = manager
 		.get(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	Ok(manager
 		.get(package_type)
@@ -225,7 +230,7 @@ pub async fn sync_packages(cluster_path: &ClusterPath) -> Result<()> {
 	let mut manager = state.packages.write().await;
 	let manager = manager
 		.get_mut(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager.sync_packages(&state.directories).await;
 
@@ -242,7 +247,7 @@ pub async fn sync_packages_by_type(
 	let mut manager = state.packages.write().await;
 	let manager = manager
 		.get_mut(cluster_path)
-		.ok_or(anyhow::anyhow!("cluster not found in packages map"))?;
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager
 		.sync_packages_by_type(&state.directories, package_type)

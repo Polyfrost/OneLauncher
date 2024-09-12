@@ -1,3 +1,5 @@
+import { useNavigate } from '@solidjs/router';
+import useSettings from '~ui/hooks/useSettings';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import type { ParentProps } from 'solid-js';
 import AnimatedRoutes from '../components/AnimatedRoutes';
@@ -5,6 +7,12 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import Navbar from '../components/Navbar';
 
 function App(props: ParentProps) {
+	const { settings } = useSettings();
+	const navigate = useNavigate();
+
+	if (settings().onboarding_completed !== true)
+		navigate('/onboarding');
+
 	return (
 		<>
 			<div class="flex flex-col px-8">

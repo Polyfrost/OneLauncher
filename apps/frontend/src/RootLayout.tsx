@@ -1,5 +1,5 @@
 import { PROGRAM_INFO } from '@onelauncher/client/bindings';
-import type { ParentProps } from 'solid-js';
+import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
 import { AccountControllerProvider } from './ui/components/overlay/account/AddAccountModal';
 import { ClusterModalControllerProvider } from './ui/components/overlay/cluster/ClusterCreationModal';
@@ -10,8 +10,10 @@ import { BrowserProvider } from './ui/hooks/useBrowser';
 import { SettingsProvider } from './ui/hooks/useSettings';
 
 function RootLayout(props: ParentProps) {
-	if (PROGRAM_INFO.dev_build !== true)
-		document.addEventListener('contextmenu', e => e.preventDefault());
+	onMount(() => {
+		if (PROGRAM_INFO.dev_build !== true)
+			document.addEventListener('contextmenu', e => e.preventDefault());
+	});
 
 	return (
 		<GlobalContexts>

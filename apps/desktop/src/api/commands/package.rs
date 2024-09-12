@@ -1,8 +1,26 @@
+use std::path::PathBuf;
+
 use onelauncher::cluster::content::package;
 use onelauncher::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use onelauncher::package::content::Providers;
+use onelauncher::package::import::{default_launcher_path, ImportType};
 use onelauncher::store::{Author, ClusterPath, Package, PackagePath, ProviderSearchResults};
 use uuid::Uuid;
+
+#[specta::specta]
+#[tauri::command]
+pub async fn import_launcher_instances(launcher: ImportType, path: Option<PathBuf>) -> Result<(), String> {
+	onelauncher::api::package::import::import_instances(
+		launcher,
+		path.unwrap_or(
+			default_launcher_path(launcher)
+			.ok_or(
+				"couldn't get a default path for this launcher"
+			)?
+		)
+	).await?;
+	Ok(())
+}
 
 #[specta::specta]
 #[tauri::command]

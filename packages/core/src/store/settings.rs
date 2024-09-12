@@ -66,6 +66,9 @@ pub struct Settings {
 	/// Enable/disable advanced rendering and window decorations.
 	#[serde(default)]
 	pub rendering: bool,
+	/// Completed onboarding.
+	#[serde(default)]
+	pub onboarding_completed: bool,
 }
 
 impl Settings {
@@ -125,6 +128,7 @@ impl Settings {
 				config_dir: Directories::init_settings_dir(),
 				hide_on_launch: false,
 				rendering: true,
+				onboarding_completed: false,
 			};
 
 			if recovered_corruption {

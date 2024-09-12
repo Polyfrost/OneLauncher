@@ -1,6 +1,6 @@
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
-import type { Cluster, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
+import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
 export function supportsMods(loader?: Cluster | Loader): boolean {
 	if (loader === undefined)
@@ -153,3 +153,4 @@ export function getPackageUrl(provider: Providers, id: string, package_type: Pac
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
 export const PROVIDERS: Providers[] = ['Modrinth'] as const;
 export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
+export const LAUNCHER_IMPORT_TYPES: ImportType[] = ['PrismLauncher', 'Curseforge', 'Modrinth', 'ATLauncher', 'GDLauncher', 'FTBLauncher', 'MultiMC', 'TLauncher', 'Technic'] as const;

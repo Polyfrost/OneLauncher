@@ -152,3 +152,4 @@ export function getPackageUrl(provider: Providers, id: string, package_type: Pac
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
 export const PROVIDERS: Providers[] = ['Modrinth'] as const;
+export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;

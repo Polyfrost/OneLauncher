@@ -2,6 +2,14 @@ import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
 import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
+export function setAsyncTimeout<T>(callback: () => T, ms: number): Promise<T> {
+	return new Promise((resolve) => {
+		setTimeout(() => {
+			resolve(callback());
+		}, ms);
+	});
+}
+
 export function supportsMods(loader?: Cluster | Loader): boolean {
 	if (loader === undefined)
 		return false;

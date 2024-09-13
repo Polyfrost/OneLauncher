@@ -1,11 +1,18 @@
+import { useBeforeLeave } from '@solidjs/router';
 import Illustration from '~assets/illustrations/onboarding/import_from_others.svg?component-solid';
 import Image from '~assets/logos/vanilla.png';
 import { LAUNCHER_IMPORT_TYPES } from '~utils';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { For } from 'solid-js';
-import { OnboardingStep } from './Onboarding';
+import Onboarding, { OnboardingStep } from './Onboarding';
 
 function OnboardingImport() {
+	const ctx = Onboarding.useContext();
+
+	useBeforeLeave(() => {
+		ctx.setImportTypes([]);
+	});
+
 	return (
 		<OnboardingStep
 			illustration={<Illustration />}

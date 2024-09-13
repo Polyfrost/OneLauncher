@@ -1,7 +1,7 @@
+import { PROGRAM_INFO, type Settings } from '@onelauncher/client/bindings';
 import { useBeforeLeave } from '@solidjs/router';
 import { bridge } from '~imports';
 import { type Context, createContext, createEffect, type ParentProps, Show, useContext } from 'solid-js';
-import type { Settings } from '@onelauncher/client/bindings';
 import useCommand from './useCommand';
 
 /**
@@ -14,7 +14,7 @@ export function syncSettings(settings: Settings) {
 interface SettingsControllerType {
 	settings: () => Settings;
 	saveOnLeave: (settings: () => Partial<Settings>) => void;
-	save: (settings: Settings) => void;
+	save: (settings: Settings) => Promise<void>;
 }
 
 const SettingsContext = createContext() as Context<SettingsControllerType>;
@@ -37,13 +37,16 @@ export function SettingsProvider(props: ParentProps) {
 				});
 			});
 		},
-		save: (settings) => {
-			bridge.commands.setSettings(settings).then(() => {
-				syncSettings(settings);
-				refetch();
-			});
+		save: async (settings) => {
+			await bridge.commands.setSettings(settings);
+			syncSettings(settings);
+			await refetch();
 		},
 	};
+
+	if (PROGRAM_INFO.dev_build)
+		// @ts-expect-error - Expose settings globally for debugging purposes
+		window.onelauncherSettings = controller;
 
 	return (
 		<Show when={settings !== undefined && settings() !== undefined}>

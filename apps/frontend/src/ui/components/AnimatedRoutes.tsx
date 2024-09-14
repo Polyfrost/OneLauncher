@@ -2,18 +2,36 @@ import useSettings from '~ui/hooks/useSettings';
 import { type ParentProps, Show } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
 
-function AnimatedRoutes(props: TransitionProps & ParentProps) {
+type AnimationTypes = 'default' | 'fade';
+export interface AnimatedProps {
+	animation?: AnimationTypes;
+};
+
+const animations: { [key in AnimationTypes]: { before: Keyframe; after: Keyframe } } = {
+	default: {
+		before: {
+			transform: 'translateX(-85px)',
+			opacity: 0,
+		},
+		after: {
+			transform: 'translateX(0)',
+			opacity: 1,
+		},
+	},
+	fade: {
+		before: {
+			opacity: 0,
+		},
+		after: {
+			opacity: 1,
+		},
+	},
+};
+
+function AnimatedRoutes(props: AnimatedProps & TransitionProps & ParentProps) {
 	const { settings } = useSettings();
 
-	const before: Keyframe = {
-		transform: 'translateX(-85px)',
-		opacity: 0,
-	};
-
-	const after: Keyframe = {
-		transform: 'translateX(0)',
-		opacity: 1,
-	};
+	const animation = () => animations[props.animation ?? 'default'];
 
 	return (
 		<Show
@@ -27,8 +45,8 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 						}
 
 						el.animate([
-							before,
-							after,
+							animation().before,
+							animation().after,
 						], {
 							duration: 90,
 							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -43,8 +61,8 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 						}
 
 						el.animate([
-							after,
-							before,
+							animation().after,
+							animation().before,
 						], {
 							duration: 95,
 							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -56,9 +74,7 @@ function AnimatedRoutes(props: TransitionProps & ParentProps) {
 					{props.children}
 				</Transition>
 			)}
-			fallback={(
-				<>{props.children}</>
-			)}
+			fallback={(<>{props.children}</>)}
 			when={settings().disable_animations !== true}
 		/>
 	);

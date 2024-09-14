@@ -1,4 +1,5 @@
 import { PROGRAM_INFO } from '@onelauncher/client/bindings';
+import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
 import { AccountControllerProvider } from './ui/components/overlay/account/AddAccountModal';
@@ -20,7 +21,9 @@ function RootLayout(props: ParentProps) {
 			<main class="h-screen max-h-screen min-h-screen w-full flex flex-col overflow-hidden bg-page text-fg-primary">
 				<WindowFrame />
 
-				{props.children}
+				<AnimatedRoutes animation="fade" appear>
+					{props.children}
+				</AnimatedRoutes>
 
 				<NotificationOverlay />
 				<ModalRenderer />

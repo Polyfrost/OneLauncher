@@ -1,14 +1,14 @@
-import { Route, useLocation, useNavigate } from '@solidjs/router';
+import { Route, useBeforeLeave, useLocation, useNavigate } from '@solidjs/router';
 import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-solid';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import Button from '~ui/components/base/Button';
 import useSettings from '~ui/hooks/useSettings';
 import { setAsyncTimeout } from '~utils';
-import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, type ParentProps, useContext } from 'solid-js';
+import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, on, type ParentProps, useContext } from 'solid-js';
 import type { ImportType } from '@onelauncher/client/bindings';
 import OnboardingComplete from './OnboardingComplete';
 import OnboardingImport from './OnboardingImport';
-import OnboardingLanguage, { type Language } from './OnboardingLanguage';
+import OnboardingLanguage, { type Language, LanguagesList } from './OnboardingLanguage';
 import OnboardingSummary from './OnboardingSummary';
 import OnboardingWelcome from './OnboardingWelcome';
 
@@ -34,7 +34,10 @@ interface OnboardingContextType {
 	setLanguage: (language: Language) => void;
 	setImportTypes: (types: ImportType[]) => void;
 
+	getTasks: () => string[];
+
 	tasksStage: Accessor<OnboardingTaskStage>;
+	tasksMessage: Accessor<string>;
 }
 
 const OnboardingContext = createContext() as Context<OnboardingContextType>;
@@ -50,6 +53,7 @@ function Onboarding(props: ParentProps) {
 	const [language, setLanguage] = createSignal<Language>('en');
 	const [importTypes, setImportTypes] = createSignal<ImportType[]>([]);
 	const [tasksStage, setTasksStage] = createSignal<OnboardingTaskStage>(OnboardingTaskStage.NotStarted);
+	const [tasksMessage, setTasksMessage] = createSignal<string>('');
 
 	const tasksCompleted = () => tasksStage() === OnboardingTaskStage.Completed;
 
@@ -57,8 +61,13 @@ function Onboarding(props: ParentProps) {
 	const step = () => OnboardingSteps.findIndex(([path]) => (basePath + path).startsWith(location.pathname));
 	const shallRunTasks = () => !tasksCompleted() && step() === OnboardingSteps.length - 2;
 
-	createEffect(() => {
+	createEffect(on(() => location.pathname, () => {
 		setBackButtonEnabled(step() > 0 && !tasksCompleted());
+	}));
+
+	useBeforeLeave((e) => {
+		if (tasksCompleted() && step() === OnboardingSteps.length - 1 && !settings().onboarding_completed)
+			e.preventDefault();
 	});
 
 	const next = () => {
@@ -94,26 +103,49 @@ function Onboarding(props: ParentProps) {
 		setTasksStage(OnboardingTaskStage.Running);
 
 		const tasks = [
-			// eslint-disable-next-line no-console -- -
-			setAsyncTimeout(() => console.log('Task 1'), 1500),
-			// eslint-disable-next-line no-console -- -
-			setAsyncTimeout(() => console.log('Task 2'), 3500),
-		];
 
-		const promises = Object.values(tasks);
-		const errorCount = (await Promise.allSettled(promises)).filter(value => value.status === 'rejected').length;
+			async () => {
+				setTasksMessage('Setting language');
+				await setAsyncTimeout(500);
+			},
+
+			async () => {
+				setTasksMessage('Importing data');
+				await setAsyncTimeout(1000);
+			},
+
+		].map(task => task());
+
+		const errorCount = (await Promise.allSettled(tasks)).filter(({ status }) => status === 'rejected').length;
 
 		if (errorCount > 0)
 			console.error('Error count:', errorCount); // TODO: Show a toast or something idk
 
 		setForwardButtonEnabled(true);
 		setTasksStage(OnboardingTaskStage.Completed);
+		next(); // Go to Completion page
+	};
+
+	const getTasks = () => {
+		const tasks = [];
+
+		tasks.push(`Set language to ${LanguagesList[language()][0]}`);
+
+		importTypes().forEach((type) => {
+			tasks.push(`Import profiles from ${type}`);
+		});
+
+		return tasks;
 	};
 
 	const ctx: OnboardingContextType = {
 		setLanguage,
 		setImportTypes,
+
+		getTasks,
+
 		tasksStage,
+		tasksMessage,
 	};
 
 	return (

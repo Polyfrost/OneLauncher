@@ -1,3 +1,4 @@
+import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
 import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
@@ -9,7 +10,6 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
 import { type Accessor, createSignal, For, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
-import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
 
 function SettingsMinecraft() {
 	return (

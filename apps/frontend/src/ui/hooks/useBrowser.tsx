@@ -1,3 +1,5 @@
+import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, ProviderSearchResults } from '@onelauncher/client/bindings';
+import type { ModalProps } from '~ui/components/overlay/Modal';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
@@ -5,8 +7,6 @@ import Dropdown from '~ui/components/base/Dropdown';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
 import { type Accessor, type Context, createContext, createEffect, createSignal, For, on, onMount, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, ProviderSearchResults } from '@onelauncher/client/bindings';
-import type { ModalProps } from '~ui/components/overlay/Modal';
 import { useRecentCluster } from './useCluster';
 import useCommand, { tryResult } from './useCommand';
 

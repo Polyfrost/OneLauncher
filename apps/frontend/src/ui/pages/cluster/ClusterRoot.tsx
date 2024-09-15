@@ -1,3 +1,4 @@
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import { type Navigator, Route, useIsRouting, useSearchParams } from '@solidjs/router';
 import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
@@ -6,7 +7,6 @@ import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 import { tryResult } from '~ui/hooks/useCommand';
 import { supportsMods } from '~utils';
 import { createEffect, createResource, createSignal, onCleanup, onMount, type ParentProps, Show } from 'solid-js';
-import type { UnlistenFn } from '@tauri-apps/api/event';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import Sidebar from '../../components/Sidebar';

@@ -1,9 +1,9 @@
+import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 import ClusterGame from '~ui/pages/cluster/ClusterGame';
 import { type Accessor, type Context, createContext, createEffect, createSignal, type ParentProps, type ResourceReturn, Show, useContext } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
 import useCommand, { tryResult } from './useCommand';
 
 const ClusterContext = createContext() as Context<ResourceReturn<Cluster>>;

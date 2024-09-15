@@ -1,9 +1,9 @@
+import type { CreateCluster } from '@onelauncher/client/bindings';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import { type Accessor, type Context, createContext, createSignal, type JSX, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import type { CreateCluster } from '@onelauncher/client/bindings';
 import HeaderImage from '../../../../assets/images/header.png';
 import { createModal } from '../Modal';
 import ClusterGameSetup from './ClusterGameSetup';

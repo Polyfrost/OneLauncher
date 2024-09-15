@@ -1,3 +1,4 @@
+import type { Loader, VersionType } from '@onelauncher/client/bindings';
 import { TextInputIcon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Checkbox from '~ui/components/base/Checkbox';
@@ -8,7 +9,6 @@ import LoaderIcon from '~ui/components/game/LoaderIcon';
 import useCommand from '~ui/hooks/useCommand';
 import { formatVersionRelease, LOADERS } from '~utils';
 import { createEffect, createSignal, For, Index, type JSX, onMount, Show, splitProps, untrack } from 'solid-js';
-import type { Loader, VersionType } from '@onelauncher/client/bindings';
 import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
 
 export default createClusterStep({

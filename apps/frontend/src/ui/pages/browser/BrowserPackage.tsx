@@ -1,3 +1,4 @@
+import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
 import { A, type Params, Route, useSearchParams } from '@solidjs/router';
 import { CalendarIcon, ChevronDownIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
 import SteveHead from '~assets/images/steve.png';
@@ -15,7 +16,6 @@ import usePagination from '~ui/hooks/usePagination';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import { abbreviateNumber, formatAsRelative } from '~utils';
 import { createContext, createEffect, createSignal, For, Match, on, type ParentProps, Show, Switch, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
 import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 
 interface BrowserModParams extends Params {

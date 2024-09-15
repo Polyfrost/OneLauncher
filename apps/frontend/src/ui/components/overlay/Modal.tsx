@@ -1,7 +1,3 @@
-import { mergeRefs } from '@solid-primitives/refs';
-import { createContext, createSignal, For, onCleanup, onMount, Show, splitProps, useContext } from 'solid-js';
-import { createStore } from 'solid-js/store';
-import { Transition } from 'solid-transition-group';
 import type { MakeOptional } from '@onelauncher/client';
 import type {
 	Context,
@@ -9,6 +5,10 @@ import type {
 	ParentProps,
 	Ref,
 } from 'solid-js';
+import { mergeRefs } from '@solid-primitives/refs';
+import { createContext, createSignal, For, onCleanup, onMount, Show, splitProps, useContext } from 'solid-js';
+import { createStore } from 'solid-js/store';
+import { Transition } from 'solid-transition-group';
 import Button from '../base/Button';
 import FullscreenOverlay from './FullscreenOverlay';
 

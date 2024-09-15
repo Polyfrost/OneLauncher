@@ -1,7 +1,7 @@
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-solid';
 import { For, Show } from 'solid-js';
-import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Button from '../../base/Button';
 import PlayerHead from '../../game/PlayerHead';
 import Popup, { type PopupProps } from '../Popup';

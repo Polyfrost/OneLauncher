@@ -1,5 +1,5 @@
-import { createEffect, createSignal, on, Show, splitProps } from 'solid-js';
 import type { JSX } from 'solid-js';
+import { createEffect, createSignal, on, Show, splitProps } from 'solid-js';
 import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & {

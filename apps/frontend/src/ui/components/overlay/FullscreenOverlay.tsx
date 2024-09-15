@@ -1,9 +1,9 @@
-import { Portal } from 'solid-js/web';
 import type {
 	Accessor,
 	ParentProps,
 	Setter,
 } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 export type FullscreenOverlayProps = {
 	visible: Accessor<boolean>;

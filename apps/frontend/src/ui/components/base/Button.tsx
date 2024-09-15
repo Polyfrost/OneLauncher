@@ -1,5 +1,5 @@
-import { createEffect, createSignal, mergeProps, on, splitProps, untrack } from 'solid-js';
 import type { Accessor, JSX, ParentProps } from 'solid-js';
+import { createEffect, createSignal, mergeProps, on, splitProps, untrack } from 'solid-js';
 import styles from './Button.module.scss';
 
 type ButtonProps = JSX.ButtonHTMLAttributes<HTMLButtonElement> & ParentProps & {

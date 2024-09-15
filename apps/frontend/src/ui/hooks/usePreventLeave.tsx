@@ -1,6 +1,6 @@
+import type { BeforeLeaveEventArgs } from '@solidjs/router';
 import { useBeforeLeave } from '@solidjs/router';
 import { createSignal } from 'solid-js';
-import type { BeforeLeaveEventArgs } from '@solidjs/router';
 
 interface PreventLeaveContext {
 	continue: () => void;

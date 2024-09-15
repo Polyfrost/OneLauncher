@@ -1,8 +1,8 @@
+import type { JSX } from 'solid-js';
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import useSettings from '~ui/hooks/useSettings';
 import { onMount } from 'solid-js';
-import type { JSX } from 'solid-js';
 import Button from './base/Button';
 import Modal, { createModal } from './overlay/Modal';
 

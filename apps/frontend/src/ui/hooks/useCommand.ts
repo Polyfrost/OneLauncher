@@ -1,5 +1,5 @@
-import { createResource, type ResourceOptions, type ResourceReturn, type ResourceSource } from 'solid-js';
 import type { Result } from '@onelauncher/client/bindings';
+import { createResource, type ResourceOptions, type ResourceReturn, type ResourceSource } from 'solid-js';
 
 type Command<R, E> = () => Promise<Result<R, E>>;
 

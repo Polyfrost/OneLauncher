@@ -1,7 +1,7 @@
+import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
 import { PausableTimer } from '@onelauncher/client';
 import { InfoCircleIcon } from '@untitled-theme/icons-solid';
 import { type ComponentProps, createEffect, createSignal, type JSX, Match, Show, Switch } from 'solid-js';
-import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
 
 type NotificationComponentProps = IngressPayload & {
 	overlay: boolean;

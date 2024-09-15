@@ -1,12 +1,12 @@
-import { mergeRefs } from '@solid-primitives/refs';
-import { createEffect } from 'solid-js';
-import { Portal } from 'solid-js/web';
 import type {
 	Accessor,
 	JSX,
 	ParentProps,
 	Setter,
 } from 'solid-js';
+import { mergeRefs } from '@solid-primitives/refs';
+import { createEffect } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 export type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & ParentProps & {
 	visible: Accessor<boolean>;

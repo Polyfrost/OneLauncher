@@ -1,5 +1,5 @@
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import type { ParentProps } from 'solid-js';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 
 function ScrollableContainer(props: ParentProps) {
 	return (

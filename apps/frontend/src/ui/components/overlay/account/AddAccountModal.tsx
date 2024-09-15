@@ -1,9 +1,9 @@
+import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import { LinkExternal01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import { type Context, createContext, createSignal, Match, type ParentProps, type Resource, Switch, useContext } from 'solid-js';
-import type { MinecraftCredentials } from '@onelauncher/client/bindings';
 import Modal, { createModal, type ModalProps } from '../Modal';
 
 interface AccountControllerContextFunc {

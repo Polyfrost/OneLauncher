@@ -1,7 +1,7 @@
+import type { ParentProps } from 'solid-js';
 import { useNavigate } from '@solidjs/router';
 import useSettings from '~ui/hooks/useSettings';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import type { ParentProps } from 'solid-js';
 import AnimatedRoutes from '../components/AnimatedRoutes';
 import Navbar from '../components/Navbar';
 

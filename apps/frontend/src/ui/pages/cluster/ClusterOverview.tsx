@@ -1,3 +1,4 @@
+import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
@@ -14,7 +15,6 @@ import useSettings from '~ui/hooks/useSettings';
 import { formatAsDuration, upperFirst } from '~utils';
 import { join } from 'pathe';
 import { type Accessor, createSignal, type Setter, Show, untrack } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
 import Button from '../../components/base/Button';
 import ClusterCover from '../../components/game/ClusterCover';
 import LoaderIcon from '../../components/game/LoaderIcon';

@@ -1,3 +1,4 @@
+import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
 import UFuzzy from '@leeoniya/ufuzzy';
 import { FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
@@ -10,7 +11,6 @@ import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
-import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
 
 // TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
 function ClusterMods() {

@@ -1,3 +1,5 @@
+import type { DetailedProcess } from '@onelauncher/client/bindings';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import { type Params, useSearchParams } from '@solidjs/router';
 import { SlashOctagonIcon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
@@ -11,8 +13,6 @@ import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { render } from 'solid-js/web';
-import type { DetailedProcess } from '@onelauncher/client/bindings';
-import type { UnlistenFn } from '@tauri-apps/api/event';
 
 interface ClusterGameParams extends Params {
 	process_uuid: string;

@@ -1,6 +1,6 @@
+import type { JSX, ParentProps } from 'solid-js';
 import { useLocation, useNavigate } from '@solidjs/router';
 import { createEffect, For, splitProps } from 'solid-js';
-import type { JSX, ParentProps } from 'solid-js';
 
 type SidebarProps = ParentProps & {
 	base: string;

@@ -1,3 +1,4 @@
+import type { ImportType } from '@onelauncher/client/bindings';
 import { Route, useBeforeLeave, useLocation, useNavigate } from '@solidjs/router';
 import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-solid';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
@@ -5,7 +6,6 @@ import Button from '~ui/components/base/Button';
 import useSettings from '~ui/hooks/useSettings';
 import { setAsyncTimeout } from '~utils';
 import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, on, type ParentProps, useContext } from 'solid-js';
-import type { ImportType } from '@onelauncher/client/bindings';
 import OnboardingComplete from './OnboardingComplete';
 import OnboardingImport from './OnboardingImport';
 import OnboardingLanguage, { type Language, LanguagesList } from './OnboardingLanguage';

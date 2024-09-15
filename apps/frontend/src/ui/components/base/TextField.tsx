@@ -1,5 +1,5 @@
-import { createSignal, createUniqueId, onMount, splitProps } from 'solid-js';
 import type { JSX } from 'solid-js';
+import { createSignal, createUniqueId, onMount, splitProps } from 'solid-js';
 import styles from './TextField.module.scss';
 
 type TextFieldProps = {

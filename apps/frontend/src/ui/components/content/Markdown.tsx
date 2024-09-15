@@ -1,6 +1,6 @@
+import type { ParentProps } from 'solid-js';
 import { renderHighlightedString } from '@onelauncher/client';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
-import type { ParentProps } from 'solid-js';
 import styles from './Markdown.module.scss';
 
 export type MarkdownProps = ParentProps & {

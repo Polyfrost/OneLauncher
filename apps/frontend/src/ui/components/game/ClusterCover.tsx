@@ -1,7 +1,7 @@
+import type { Cluster } from '@onelauncher/client/bindings';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import defaultCover from '~assets/images/default_instance_cover.jpg';
 import { type JSX, type ParentProps, Show, splitProps } from 'solid-js';
-import type { Cluster } from '@onelauncher/client/bindings';
 import styles from './ClusterCover.module.scss';
 
 type ClusterCoverProps = JSX.HTMLAttributes<HTMLImageElement> & {

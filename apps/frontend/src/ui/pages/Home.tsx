@@ -1,3 +1,4 @@
+import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import {
 	DotsVerticalIcon,
@@ -12,9 +13,8 @@ import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreatio
 import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import { formatAsDuration, upperFirst } from '~utils';
-import { For, onMount, Show } from 'solid-js';
 
-import type { Cluster } from '@onelauncher/client/bindings';
+import { For, onMount, Show } from 'solid-js';
 import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
 import TextField from '../components/base/TextField';

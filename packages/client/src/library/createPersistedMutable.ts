@@ -1,6 +1,6 @@
+import type { StoreNode } from 'solid-js/store';
 import { trackDeep } from '@solid-primitives/deep';
 import { createEffect, createRoot } from 'solid-js';
-import type { StoreNode } from 'solid-js/store';
 
 export interface CreatePersistedMutableOpts<T> {
 	onSave?: (value: T) => T;

@@ -1,6 +1,6 @@
-import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
+import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
 export function setAsyncTimeout(ms: number): Promise<void>;
 export function setAsyncTimeout(callback: () => any, ms: number): Promise<void>;

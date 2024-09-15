@@ -1,9 +1,9 @@
-import type { Cluster, Loader } from '@onelauncher/client/bindings';
 import FabricImage from '~assets/logos/fabric.png';
 import ForgeImage from '~assets/logos/forge.png';
 import QuiltImage from '~assets/logos/quilt.png';
 import VanillaImage from '~assets/logos/vanilla.png';
 import { type JSX, splitProps } from 'solid-js';
+import type { Cluster, Loader } from '@onelauncher/client/bindings';
 
 export function getLoaderLogoSrc(loader: Cluster | Loader): string {
 	const loaderName = (typeof loader === 'string' ? loader : loader.meta.loader)?.toLowerCase() as Loader;

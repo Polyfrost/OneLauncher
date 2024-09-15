@@ -63,9 +63,9 @@ pub struct Settings {
 	/// Whether or not to minimize the launcher upon a game launch.
 	#[serde(default)]
 	pub hide_on_launch: bool,
-	/// Enable/disable advanced rendering and window decorations.
+	/// Enable/disable custom window decorations.
 	#[serde(default)]
-	pub rendering: bool,
+	pub custom_frame: bool,
 	/// Completed onboarding.
 	#[serde(default)]
 	pub onboarding_completed: bool,
@@ -127,7 +127,7 @@ impl Settings {
 				debug_mode: false,
 				config_dir: Directories::init_settings_dir(),
 				hide_on_launch: false,
-				rendering: true,
+				custom_frame: true,
 				onboarding_completed: false,
 			};
 
@@ -155,7 +155,6 @@ pub enum BrowserListView {
 	#[default]
 	Grid,
 	List,
-	Preview,
 }
 
 /// A `OneLauncher` theme managed by the GUI.

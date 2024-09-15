@@ -1,4 +1,5 @@
 use api::statics::get_program_info;
+use onelauncher::utils::window::set_window_styling;
 use tauri::{Emitter, Manager};
 
 pub mod api;
@@ -91,7 +92,24 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 
 fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 	let win = handle.get_webview_window("main").unwrap();
-	win.show().unwrap();
+
+	tokio::task::spawn(async move {
+		let state = match onelauncher::State::get().await {
+			Ok(state) => state,
+			Err(err) => {
+				tracing::error!("{err}");
+				return;
+			}
+		};
+
+		let settings = state.settings.read().await;
+
+		if let Err(err) = set_window_styling(&win, settings.custom_frame) {
+			tracing::error!(err);
+		};
+
+		win.show().unwrap();
+	});
 
 	Ok(())
 }

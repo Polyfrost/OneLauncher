@@ -1,6 +1,8 @@
 use interpulse::api::minecraft::Version;
 use onelauncher::data::Settings;
 use onelauncher::settings;
+use tauri::AppHandle;
+use tauri::Manager;
 
 mod cluster;
 pub use crate::api::commands::cluster::*;
@@ -76,7 +78,9 @@ macro_rules! collect_commands {
 			sync_cluster_packages_by_type,
 			// Updater
 			check_for_update,
-			install_update
+			install_update,
+			// Other
+			set_window_style,
 		]
 	}};
 }
@@ -99,4 +103,12 @@ pub async fn get_settings() -> Result<Settings, String> {
 #[tauri::command]
 pub async fn set_settings(settings: Settings) -> Result<(), String> {
 	Ok(settings::set(settings).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn set_window_style(handle: AppHandle, custom: bool) -> Result<(), String> {
+	let window = handle.get_webview_window("main").unwrap();
+	onelauncher::utils::window::set_window_styling(&window, custom)
+		.map_err(|e| e.to_string())
 }

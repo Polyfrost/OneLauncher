@@ -8,3 +8,6 @@
 pub mod http;
 pub mod java;
 pub mod watcher;
+
+#[cfg(feature = "tauri")]
+pub mod window;

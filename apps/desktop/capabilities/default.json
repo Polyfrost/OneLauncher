@@ -21,6 +21,8 @@
 		"core:window:allow-maximize",
 		"core:window:allow-toggle-maximize",
 		"core:window:allow-internal-toggle-maximize",
+		"core:window:allow-set-decorations",
+		"core:window:allow-set-title-bar-style",
 		"core:webview:allow-internal-toggle-devtools",
 
 		"core:event:default",

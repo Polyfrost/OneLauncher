@@ -1,6 +1,6 @@
 import type { BrowserListView, PackageType, Providers } from '@onelauncher/client/bindings';
 
-export const BROWSER_VIEWS: BrowserListView[] = ['grid', 'list', 'preview'] as const;
+export const BROWSER_VIEWS: BrowserListView[] = ['grid', 'list'] as const;
 
 export interface CategoryItem {
 	display: string;

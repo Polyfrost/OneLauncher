@@ -1,8 +1,9 @@
 import { Route, useLocation } from '@solidjs/router';
-import { SearchMdIcon, Settings01Icon } from '@untitled-theme/icons-solid';
+import { SearchMdIcon } from '@untitled-theme/icons-solid';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
+import ProviderIcon from '~ui/components/content/ProviderIcon';
 import useBrowser from '~ui/hooks/useBrowser';
 import { PROVIDERS } from '~utils';
 import { browserCategories } from '~utils/browser';
@@ -119,7 +120,6 @@ function BrowserSidebar() {
 					<Button
 						buttonStyle="secondary"
 						children={controller.cluster()?.meta.name || 'None'}
-						iconLeft={<Settings01Icon />}
 						onClick={controller.displayClusterSelector}
 					/>
 				</div>
@@ -135,6 +135,7 @@ function BrowserSidebar() {
 						<For each={PROVIDERS}>
 							{provider => (
 								<Dropdown.Row>
+									<ProviderIcon class="h-4 w-4" provider={provider} />
 									{provider}
 								</Dropdown.Row>
 							)}

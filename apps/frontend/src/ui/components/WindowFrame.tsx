@@ -1,8 +1,8 @@
-import type { JSX } from 'solid-js';
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import useSettings from '~ui/hooks/useSettings';
-import { onMount } from 'solid-js';
+import { onMount, Show } from 'solid-js';
+import type { JSX } from 'solid-js';
 import Button from './base/Button';
 import Modal, { createModal } from './overlay/Modal';
 
@@ -51,17 +51,19 @@ function WindowFrame() {
 	});
 
 	return (
-		<div class="z-[99999] h-8 w-screen flex flex-row items-center justify-between gap-0.5 bg-page-elevated pr-0.5" data-tauri-drag-region>
-			<div class="flex flex-row items-center">
-				<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
-			</div>
+		<Show when={settings().custom_frame}>
+			<div class="z-[99999] h-8 w-screen flex flex-row items-center justify-between gap-0.5 bg-page-elevated pr-0.5" data-tauri-drag-region>
+				<div class="flex flex-row items-center">
+					<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
+				</div>
 
-			<div class="flex flex-row items-center justify-end">
-				<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
-				<TitlebarButton icon={Maximize02Icon} onClick={() => maximize()} />
-				<TitlebarButton danger icon={XCloseIcon} onClick={() => quit()} />
+				<div class="flex flex-row items-center justify-end">
+					<TitlebarButton icon={MinusIcon} onClick={() => minimize()} />
+					<TitlebarButton icon={Maximize02Icon} onClick={() => maximize()} />
+					<TitlebarButton danger icon={XCloseIcon} onClick={() => quit()} />
+				</div>
 			</div>
-		</div>
+		</Show>
 	);
 }
 

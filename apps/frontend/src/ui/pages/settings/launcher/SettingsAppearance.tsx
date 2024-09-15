@@ -1,5 +1,7 @@
 import { useBeforeLeave } from '@solidjs/router';
-import { PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
+import { Window } from '@tauri-apps/api/window';
+import { Monitor01Icon, PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
 import Dropdown from '~ui/components/base/Dropdown';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -20,10 +22,14 @@ function SettingsAppearance() {
 			setShouldReload(false);
 			location.reload();
 		}
+
+		if (settings().custom_frame !== undefined)
+			bridge.commands.setWindowStyle(settings().custom_frame!);
 	});
 
 	saveOnLeave(() => ({
 		disable_animations: settings().disable_animations!,
+		custom_frame: settings().custom_frame!,
 	}));
 
 	return (
@@ -57,6 +63,21 @@ function SettingsAppearance() {
 							)}
 						</For>
 					</Dropdown>
+				</SettingsRow>
+
+				<SettingsRow
+					description="Uses custom window frame for the launcher."
+					icon={<Monitor01Icon />}
+					title="Custom Window Frame"
+				>
+					<Toggle
+						checked={() => settings().custom_frame ?? true}
+						onChecked={(value) => {
+							settings().custom_frame = value;
+							Window.getCurrent().setDecorations(value);
+							// setShouldReload(true);
+						}}
+					/>
 				</SettingsRow>
 
 				<SettingsRow

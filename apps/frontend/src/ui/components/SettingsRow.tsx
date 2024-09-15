@@ -21,7 +21,7 @@ function SettingsRow(props: SettingsRowProps) {
 			</div>
 
 			<div class="flex flex-1 flex-col gap-2">
-				<h3 class="text-lg">{props.title}</h3>
+				<h3 class="text-lg capitalize">{props.title}</h3>
 				<p class="text-wrap text-sm">{props.description}</p>
 			</div>
 

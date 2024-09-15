@@ -66,7 +66,7 @@ try {
 			await execa(pathe.join(env.__dirname, 'fix-deb.sh'), [], { cwd: env.__dirname });
 	}
 }
-catch (error: any) {
+catch (error) {
 	consola.error(`tauri ${args[0]} failed with exit code ${typeof error === 'number' ? error : 1}`);
 	consola.warn(`to fix some errors, run ${process.platform === 'win32' ? './packages/scripts/setup.ps1' : './packages/scripts/setup.sh'}`);
 

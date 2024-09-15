@@ -6,8 +6,8 @@ type TextFieldProps = {
 	iconLeft?: JSX.Element;
 	iconRight?: JSX.Element;
 	inputFilter?: (value: string) => boolean;
-	onValidInput?: (value: string) => any;
-	onValidSubmit?: (value: string) => any;
+	onValidInput?: (value: string) => void;
+	onValidSubmit?: (value: string) => void;
 	labelClass?: string;
 } & JSX.InputHTMLAttributes<HTMLInputElement>;
 

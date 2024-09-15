@@ -201,8 +201,8 @@ function ClusterOverview() {
 }
 
 interface SaveModalProps extends ModalProps {
-	save: () => any;
-	dontSave: () => any;
+	save: () => void;
+	dontSave: () => void;
 }
 
 function SaveModal(p: SaveModalProps) {

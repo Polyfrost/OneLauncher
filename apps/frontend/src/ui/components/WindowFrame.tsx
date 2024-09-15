@@ -1,13 +1,13 @@
+import type { ComponentProps, JSX } from 'solid-js';
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-solid';
 import useSettings from '~ui/hooks/useSettings';
 import { onMount, Show } from 'solid-js';
-import type { JSX } from 'solid-js';
 import Button from './base/Button';
 import Modal, { createModal } from './overlay/Modal';
 
 interface TitlebarButtonProps {
-	icon: (any: any) => JSX.Element;
+	icon: (props: ComponentProps<'svg'>) => JSX.Element;
 	onClick: (event: MouseEvent) => void;
 	danger?: boolean;
 }

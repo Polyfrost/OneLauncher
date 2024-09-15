@@ -66,8 +66,8 @@ interface AccountRowProps {
 	username: string;
 	uuid: string;
 	current?: boolean;
-	onClick: (uuid: string) => any;
-	onDelete: (uuid: string) => any;
+	onClick: (uuid: string) => void;
+	onDelete: (uuid: string) => void;
 };
 
 function AccountRow(props: AccountRowProps) {

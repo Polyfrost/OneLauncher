@@ -77,7 +77,9 @@ impl Providers {
 					}
 
 					if let Some(package_types) = package_types {
-						if package_types.contains(&PackageType::Mod) || package_types.contains(&PackageType::ModPack) {
+						if package_types.contains(&PackageType::Mod)
+							|| package_types.contains(&PackageType::ModPack)
+						{
 							if let Some(loaders) = loaders {
 								for loader in loaders {
 									builder.and(Facet(

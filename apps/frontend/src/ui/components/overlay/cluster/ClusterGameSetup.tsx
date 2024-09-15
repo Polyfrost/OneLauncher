@@ -74,7 +74,7 @@ type VersionReleaseFilters = {
 	[key in VersionType]: boolean;
 };
 
-function VersionSelector(props: { setVersion: (version: string) => any }) {
+function VersionSelector(props: { setVersion: (version: string) => void }) {
 	const [versions] = useCommand(() => bridge.commands.getMinecraftVersions());
 	const [filteredVersions, setFilteredVersions] = createSignal<bridge.Version[]>([]);
 	const [filters, setFilters] = createSignal<VersionReleaseFilters>({

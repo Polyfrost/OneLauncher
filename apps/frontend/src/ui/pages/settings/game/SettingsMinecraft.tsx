@@ -27,7 +27,7 @@ interface CreateSetting<T> {
 	getRaw: () => T;
 	set: Setter<T>;
 	isGlobal: Accessor<boolean | null>;
-	resetToFallback: (raw?: any) => void;
+	resetToFallback: (raw?: T) => void;
 };
 
 export function createSetting<T>(initial: T | undefined | null, fallback?: T): CreateSetting<T> {

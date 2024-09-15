@@ -85,7 +85,7 @@ enum ModalStage {
 }
 
 interface AddAccountModalProps extends ModalProps {
-	refetch: () => any;
+	refetch: () => void;
 }
 
 function AddAccountModal(p: AddAccountModalProps) {

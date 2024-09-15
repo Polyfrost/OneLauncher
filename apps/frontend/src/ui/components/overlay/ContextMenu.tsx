@@ -52,7 +52,7 @@ ContextMenu.Seperator = function () {
 interface ContextMenuRowProps {
 	icon: JSX.Element;
 	text: string;
-	onClick?: (e: MouseEvent) => any;
+	onClick?: (e: MouseEvent) => void;
 }
 
 ContextMenu.Row = function (props: ContextMenuRowProps) {

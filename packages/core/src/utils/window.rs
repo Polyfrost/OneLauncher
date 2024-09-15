@@ -9,9 +9,9 @@ pub fn set_window_styling(
 	#[cfg(target_os = "macos")]
 	{
 		if custom {
-			win.set_title_bar_style(tauri_utils::TitleBarStyle::Overlay)?;
+			win.set_title_bar_style(tauri::TitleBarStyle::Overlay)?;
 		} else {
-			win.set_title_bar_style(tauri_utils::TitleBarStyle::Visible)?;
+			win.set_title_bar_style(tauri::TitleBarStyle::Visible)?;
 		}
 	}
 

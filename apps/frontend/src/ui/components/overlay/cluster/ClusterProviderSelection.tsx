@@ -63,7 +63,7 @@ function ClusterProviderSelection(props: ClusterStepProps) {
 interface ProviderCardProps {
 	icon: JSX.Element;
 	name: string;
-	setSelected: () => any;
+	setSelected: () => void;
 	selected: boolean;
 };
 

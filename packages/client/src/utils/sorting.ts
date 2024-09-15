@@ -7,7 +7,7 @@ interface CreateSortable<T, S extends Sortables<T> = Sortables<T>> {
 	list: Accessor<T[]>;
 	key: Accessor<keyof S>;
 	setList: Setter<T[]>;
-	setKey: (val: keyof S | number) => any;
+	setKey: (val: keyof S | number) => void;
 	sortables: S;
 }
 

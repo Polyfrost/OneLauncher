@@ -9,16 +9,18 @@ use uuid::Uuid;
 
 #[specta::specta]
 #[tauri::command]
-pub async fn import_launcher_instances(launcher: ImportType, path: Option<PathBuf>) -> Result<(), String> {
+pub async fn import_launcher_instances(
+	launcher: ImportType,
+	path: Option<PathBuf>,
+) -> Result<(), String> {
 	onelauncher::api::package::import::import_instances(
 		launcher,
 		path.unwrap_or(
 			default_launcher_path(launcher)
-			.ok_or(
-				"couldn't get a default path for this launcher"
-			)?
-		)
-	).await?;
+				.ok_or("couldn't get a default path for this launcher")?,
+		),
+	)
+	.await?;
 	Ok(())
 }
 

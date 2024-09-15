@@ -4,7 +4,7 @@ import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & {
 	uuid: string | null | undefined;
-	onError?: () => any;
+	onError?: () => void;
 };
 
 function headSrc(uuid: string) {

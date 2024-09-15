@@ -6,7 +6,7 @@ type SelectListContextHelpers = Signal<number | undefined>;
 const SelectListContext = createContext<SelectListContextHelpers>() as Context<SelectListContextHelpers>;
 
 function SelectListContextProvider(props: ParentProps & {
-	onChanged?: ((index: number | undefined) => any) | undefined;
+	onChanged?: ((index: number | undefined) => void) | undefined;
 }) {
 	const [selected, setSelected] = createSignal<number | undefined>();
 
@@ -26,7 +26,7 @@ function useSelectListContext() {
 }
 
 export type SelectListProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'> & {
-	onChange?: (index: number | undefined) => any;
+	onChange?: (index: number | undefined) => void;
 };
 
 function SelectList(props: SelectListProps) {

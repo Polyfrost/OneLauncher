@@ -6,7 +6,7 @@ import Button from './Button';
 import styles from './Dropdown.module.scss';
 
 export type DropdownProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, 'onChange'> & {
-	onChange?: (selected: number) => any;
+	onChange?: (selected: number) => void;
 	text?: string;
 	selected?: Accessor<number>;
 	dropdownClass?: string;

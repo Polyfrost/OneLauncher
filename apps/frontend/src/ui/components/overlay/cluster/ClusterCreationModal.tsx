@@ -16,7 +16,7 @@ export enum CreationStage {
 }
 
 type PartialCluster = Partial<CreateCluster>;
-type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => any;
+type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => void;
 
 interface ClusterModalController {
 	step: Accessor<CreationStage | undefined>;

@@ -6,58 +6,7 @@
 		"withGlobalTauri": true,
 		"macOSPrivateApi": true,
 		"security": {
-			"csp": {
-				"default-src": [
-					"'self'",
-					"customprotocol:",
-					"asset:"
-				],
-				"connect-src": [
-					"https://modrinth.com",
-					"https://api.modrinth.com",
-					"https://polyfrost.org",
-					"https://*.polyfrost.org",
-					"https://*.cloudflare.com",
-					"https://api.mclo.gs",
-					"ipc:",
-					"http://ipc.localhost"
-				],
-				"img-src": [
-					"'self'",
-					"tauri:",
-					"https:",
-					"data:",
-					"blob:",
-					"'unsafe-inline'",
-					"asset:",
-					"https://asset.localhost"
-				],
-				"script-src": [
-					"'self'",
-					"https://*.cloudflare.com",
-					"https://*.polyfrost.org"
-				],
-				"frame-src": [
-					"https://*.cloudflare.com",
-					"https://www.youtube.com",
-					"https://www.youtube-nocookie.com",
-					"https://discord.com",
-					"https://*.githubusercontent.com",
-					"'self'",
-					"'unsafe-inline'"
-				],
-				"style-src": [
-					"'unsafe-inline'",
-					"unsafe-inline",
-					"'self'"
-				]
-			},
-			"pattern": {
-				"use": "isolation",
-				"options": {
-					"dir": "../frontend/isolation/"
-				}
-			},
+			"csp": null,
 			"assetProtocol": {
 				"enable": true,
 				"scope": {

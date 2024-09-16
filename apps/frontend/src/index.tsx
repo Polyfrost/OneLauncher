@@ -1,10 +1,22 @@
 /* @refresh reload */
 import { Route, Router } from '@solidjs/router';
 
+/* eslint-disable perfectionist/sort-imports -- Import order does matter Here */
+import '~utils/patches';
+import '@fontsource/poppins/400.css';
+
+import '@fontsource/poppins/500.css';
+import '@fontsource/poppins/600.css';
+import 'virtual:uno.css';
+import '@unocss/reset/tailwind.css';
+import 'overlayscrollbars/overlayscrollbars.css';
+import '~styles/globals.css';
+import '~styles/highlightjs.css';
+
 import App from '~ui/pages/App';
 import BrowserRoot from '~ui/pages/browser/BrowserRoot';
-
 import ClusterRoot from '~ui/pages/cluster/ClusterRoot';
+
 import Onboarding from '~ui/pages/onboarding/Onboarding';
 import SettingsRoot from '~ui/pages/settings/SettingsRoot';
 import { render } from 'solid-js/web';

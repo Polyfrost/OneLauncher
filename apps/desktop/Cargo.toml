@@ -16,7 +16,7 @@ name = "onelauncher_gui"
 crate-type = [ "staticlib", "cdylib", "lib" ]
 
 [build-dependencies]
-tauri-build = { workspace = true, features = [ "isolation" ] }
+tauri-build = { workspace = true }
 
 [dependencies]
 onelauncher = { workspace = true, features = [ "tauri", "specta" ] }
@@ -48,7 +48,6 @@ tracing-error = { workspace = true }
 [dependencies.tauri]
 workspace = true
 features = [
-	"isolation",
 	"macos-private-api",
 	"image-ico",
 	"image-png",

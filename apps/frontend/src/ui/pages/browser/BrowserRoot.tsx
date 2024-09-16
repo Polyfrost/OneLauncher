@@ -120,6 +120,7 @@ function BrowserSidebar() {
 					<Button
 						buttonStyle="secondary"
 						children={controller.cluster()?.meta.name || 'None'}
+						class="h-9.5"
 						onClick={controller.displayClusterSelector}
 					/>
 				</div>

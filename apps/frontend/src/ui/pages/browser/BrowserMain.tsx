@@ -1,10 +1,10 @@
-import type { ManagedPackage } from '@onelauncher/client/bindings';
 import { ChevronRightIcon } from '@untitled-theme/icons-solid';
 import OneConfigLogo from '~assets/logos/oneconfig.svg?component-solid';
 import Button from '~ui/components/base/Button';
 import SearchResultsContainer from '~ui/components/content/SearchResults';
 import useBrowser from '~ui/hooks/useBrowser';
 import { onMount, Show } from 'solid-js';
+import type { ManagedPackage } from '@onelauncher/client/bindings';
 import { BrowserContent } from './BrowserRoot';
 
 function BrowserMain() {

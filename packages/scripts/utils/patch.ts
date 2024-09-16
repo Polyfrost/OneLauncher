@@ -1,4 +1,3 @@
-import type { CheckedEnvironment } from '.';
 import fs from 'node:fs/promises';
 import { type } from 'node:os';
 import process from 'node:process';
@@ -6,6 +5,7 @@ import { consola } from 'consola';
 import { execa } from 'execa';
 import { join, resolve } from 'pathe';
 import semver from 'semver';
+import type { CheckedEnvironment } from '.';
 
 export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | undefined> {
 	if (process.env.TAURI_SIGNING_PRIVATE_KEY)
@@ -78,10 +78,16 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 			tauriPatch.build.features.push('devtools');
 			break;
 		case 'build':
-			if (tauriConfig.bundle?.createUpdaterArtifacts !== false) {
-				const pubKey = await tauriUpdateKey(env);
-				if (pubKey != null)
-					tauriPatch.plugins.updater.pubkey = pubKey;
+			try {
+				if (tauriConfig.bundle?.createUpdaterArtifacts !== false) {
+					const pubKey = await tauriUpdateKey(env);
+					if (pubKey != null)
+						tauriPatch.plugins.updater.pubkey = pubKey;
+				}
+			}
+			catch (err) {
+				consola.error('failed to generate tauri updater keys');
+				consola.error(err);
 			}
 			break;
 	}

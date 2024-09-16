@@ -11,8 +11,8 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	if (process.env.TAURI_SIGNING_PRIVATE_KEY)
 		return;
 
-	const privateKeyPath = resolve(join(env.__deps, 'tauri.key'));
-	const publicKeyPath = resolve(join(env.__deps, 'tauri.key.pub'));
+	const privateKeyPath = resolve(join(env.__root, 'tauri.key'));
+	const publicKeyPath = resolve(join(env.__root, 'tauri.key.pub'));
 
 	const readKeys = () => Promise.all([
 		fs.readFile(publicKeyPath, 'utf-8'),
@@ -31,7 +31,8 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 			consola.error(error);
 		}
 
-		const quote = type() === 'Windows_NT' ? '"' : '\'';
+		// eslint-disable-next-line style/quotes -- h
+		const quote = type() === 'Windows_NT' ? '"' : "'";
 		await execa`pnpm exec tauri signer generate --ci -w ${quote}${privateKeyPath}${quote}`;
 		[keys.publicKey, keys.privateKey] = await readKeys();
 		if (keys.privateKey === '' || keys.publicKey === '')
@@ -78,10 +79,15 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 			tauriPatch.build.features.push('devtools');
 			break;
 		case 'build':
-			if (tauriConfig.bundle?.createUpdaterArtifacts !== false) {
-				const pubKey = await tauriUpdateKey(env);
-				if (pubKey != null)
-					tauriPatch.plugins.updater.pubkey = pubKey;
+			try {
+				if (tauriConfig.bundle?.createUpdaterArtifacts !== false) {
+					const pubKey = await tauriUpdateKey(env);
+					if (pubKey != null)
+						tauriPatch.plugins.updater.pubkey = pubKey;
+				}
+			}
+			catch (err) {
+				consola.error('failed to generate tauri updater keys', err);
 			}
 			break;
 	}

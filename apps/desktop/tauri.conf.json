@@ -60,7 +60,7 @@
 		"license": "GPL-3.0-only",
 		"homepage": "https://polyfrost.org/",
 		"longDescription": "Next-generation open source Minecraft launcher",
-		"createUpdaterArtifacts": "v1Compatible",
+		"createUpdaterArtifacts": false,
 		"resources": [],
 		"externalBin": [],
 		"linux": {
@@ -75,7 +75,6 @@
 			"exceptionDomain": null,
 			"frameworks": [],
 			"dmg": {
-				"background": "../../packages/distribution/macos/dmg-background.png",
 				"appPosition": {
 					"x": 190,
 					"y": 190

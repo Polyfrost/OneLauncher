@@ -29,6 +29,7 @@ function targetFilter(filter: 'b' | 't') {
 
 const targets = args.filter(targetFilter('t')).flatMap(t => t.split(','));
 const bundles = args.filter(targetFilter('b')).flatMap(b => b.split(','));
+consola.info('tauri constants prepared, determining arguments');
 
 try {
 	switch (args[0]) {
@@ -53,8 +54,10 @@ try {
 		}
 	}
 
+	consola.info('starting tauri...');
 	await execa('pnpm', ['exec', 'tauri', ...args], { cwd: __desktop });
 
+	consola.info('build completed, fixing linux build');
 	if (args[0] === 'build' && bundles.some(b => b === 'deb' || b === 'all')) {
 		const linuxTargets = targets.filter(t => t.includes('-linux-'));
 		if (linuxTargets.length > 0)
@@ -80,6 +83,7 @@ catch (error) {
 	}
 }
 finally {
+	consola.info('cleaning up');
 	cleanup();
 	env.__exit(store.code);
 }

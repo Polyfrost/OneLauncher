@@ -57,8 +57,10 @@ const os: OS = getInput('os');
 const arch: Arch = getInput('arch');
 const profile: Profile = getInput('profile');
 const target = getInput('target');
+const binaryName = getInput<string | undefined>('binary');
 
-const bundleDir = `target/${target}/${profile}/bundle`;
+const targetDir = `target/${target}`;
+const bundleDir = `${targetDir}/${profile}/bundle`;
 const artifactsDir = '.artifacts';
 const artifactBase = `OneLauncher-${os}-${arch}`;
 const frontendBundle = 'apps/frontend/dist.tar.xz';
@@ -111,6 +113,22 @@ async function uploadStandalone({ bundle, ext }: TargetConfig) {
 	await client.uploadArtifact(artifactName, [artifactPath], artifactsDir);
 }
 
+async function uploadBinary() {
+	if (typeof binaryName !== 'string')
+		return;
+
+	const file = binaryName || 'onelauncher_gui';
+	const binaryPath = `${targetDir}/${file}`;
+
+	if (!(await exists(binaryPath))) {
+		console.error('binary missing!');
+		return;
+	}
+
+	await io.cp(binaryPath, `${artifactsDir}/${file}`);
+	await client.uploadArtifact(file, [`${artifactsDir}/${file}`], artifactsDir);
+}
+
 async function run() {
 	await io.mkdirP(artifactsDir);
 	const { updater, standalone } = osTargets[os];
@@ -118,6 +136,7 @@ async function run() {
 	await Promise.all([
 		uploadUpdater(updater),
 		uploadFrontend(),
+		uploadBinary(),
 		...standalone.map(uploadStandalone),
 	]);
 }

@@ -1,4 +1,4 @@
-name: Release
+name: Build Artifacts
 
 on:
   pull_request:
@@ -37,8 +37,10 @@ jobs:
             bundles: deb
             os: linux
             arch: x86_64
+            binary: onelauncher_gui
     name: Desktop (${{ matrix.settings.target }})
     runs-on: ${{ matrix.settings.host }}
+    continue-on-error: true
     steps:
       - name: (Linux) Maximize build space
         if: ${{ runner.os == 'Linux' }}

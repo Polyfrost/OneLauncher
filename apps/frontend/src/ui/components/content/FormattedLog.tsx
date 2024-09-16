@@ -1,8 +1,8 @@
+import type { Ref } from '@solid-primitives/refs';
+import type { OnUpdatedEventListenerArgs, OverlayScrollbars } from 'overlayscrollbars';
 import { AlignBottom01Icon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
 import { createEffect, createMemo, createSignal, Index, Show, untrack } from 'solid-js';
-import type { Ref } from '@solid-primitives/refs';
-import type { OnUpdatedEventListenerArgs, OverlayScrollbars } from 'overlayscrollbars';
 import Button from '../base/Button';
 import styles from './FormattedLog.module.scss';
 

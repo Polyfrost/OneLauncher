@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { consola } from 'consola';
 import mustache from 'mustache';
 import { join } from 'pathe';
+import { parse as parseTOML } from 'smol-toml';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
@@ -58,7 +59,11 @@ try {
 
 	const template = await readFile(join(env.__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
 	const rendered = mustache.render(template, configStore).replace(/\n{2,}/g, '\n');
-	await writeFile(join(env.__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+', encoding: 'utf-8' });
+
+	consola.info('validating rendered cargo.toml file');
+	parseTOML(rendered);
+
+	await writeFile(join(env.__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+' });
 }
 catch (error) {
 	consola.error(`

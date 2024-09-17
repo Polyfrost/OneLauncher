@@ -26,10 +26,11 @@
 	},
 	"dependencies": {
 		"consola": "^3.2.3",
-		"execa": "^9.3.1",
+		"execa": "^9.4.0",
 		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",
-		"semver": "^7.6.3"
+		"semver": "^7.6.3",
+		"smol-toml": "^1.3.0"
 	},
 	"devDependencies": {
 		"@types/mustache": "^4.2.5",

@@ -4,6 +4,7 @@ dev.db-journal
 .cargo/config.toml
 .deps/*
 vite.config.ts.timestamp*
+packages/client/src/bindings.ts
 
 # Created by https://www.toptal.com/developers/gitignore/api/node,rust,yarn,linux,macos,windows,intellij+all,rust-analyzer,visualstudiocode,intellij,intellij+iml,git
 # Edit at https://www.toptal.com/developers/gitignore?templates=node,rust,yarn,linux,macos,windows,intellij+all,rust-analyzer,visualstudiocode,intellij,intellij+iml,git

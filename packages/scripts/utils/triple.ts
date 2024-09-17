@@ -1,7 +1,7 @@
 import { machine, type } from 'node:os';
 import { env } from 'node:process';
 import { consola } from 'consola';
-import { execaCommand } from 'execa';
+import { execa } from 'execa';
 
 const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 	__debug: env.NODE_ENV === 'debug',
@@ -10,8 +10,7 @@ const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
 
 if (type() === 'Linux')
 	try {
-		const lldResult = await execaCommand('ldd /bin/ls');
-		if (lldResult.stdout.includes('msl'))
+		if ((await execa`ldd /bin/ls`).stdout.includes('musl'))
 			state.libc = 'musl';
 	}
 	catch (error) {

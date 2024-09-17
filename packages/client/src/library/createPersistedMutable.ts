@@ -20,7 +20,7 @@ export function createPersistedMutable<T extends StoreNode>(
 		}
 	}
 	catch (err) {
-		console.error(`failed to load persisted state from localStorage '${key}': ${err}`);
+		console.error(`failed to load persisted state from localStorage['${key}']: ${err}`);
 	}
 
 	const dispose = createRoot((dispose) => {

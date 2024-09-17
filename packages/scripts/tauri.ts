@@ -4,6 +4,7 @@ import { setTimeout } from 'node:timers/promises';
 import { consola } from 'consola';
 import { execa } from 'execa';
 import pathe from 'pathe';
+import { parse as parseTOML } from 'smol-toml';
 import { awaitLock, checkEnvironment } from './utils';
 import { patchTauri } from './utils/patch';
 
@@ -17,6 +18,15 @@ process.on('SIGINT', cleanup);
 if (args.length === 0)
 	args.push('build');
 
+const cargoConfig = await fs
+	.readFile(pathe.resolve(env.__root, '.cargo', 'config.toml'), { encoding: 'binary' })
+	.then(parseTOML);
+
+if (cargoConfig.env && typeof cargoConfig.env === 'object')
+	for (const [k, v] of Object.entries(cargoConfig.env))
+		if (!process.env[k])
+			process.env[k] = v;
+
 function targetFilter(filter: 'b' | 't') {
 	const filters = filter === 'b' ? ['-b', '--bundles'] : ['-t', '--target'];
 	return (_: string, idx: number, args: string[]) => {
@@ -29,7 +39,7 @@ function targetFilter(filter: 'b' | 't') {
 
 const targets = args.filter(targetFilter('t')).flatMap(t => t.split(','));
 const bundles = args.filter(targetFilter('b')).flatMap(b => b.split(','));
-consola.info('tauri constants prepared, determining arguments');
+consola.info('tauri bundle constants prepared, determining arguments');
 
 try {
 	switch (args[0]) {
@@ -55,7 +65,7 @@ try {
 	}
 
 	consola.info('starting tauri...');
-	await execa('pnpm', ['exec', 'tauri', ...args], { cwd: __desktop });
+	await execa({ cwd: __desktop })('pnpm', ['exec', 'tauri', ...args]);
 
 	consola.info('build completed, fixing linux build');
 	if (args[0] === 'build' && bundles.some(b => b === 'deb' || b === 'all')) {
@@ -63,10 +73,10 @@ try {
 		if (linuxTargets.length > 0)
 			linuxTargets.forEach(async (t) => {
 				process.env.TARGET = t;
-				await execa(pathe.join(env.__dirname, 'fix-deb.sh'), [], { cwd: env.__dirname });
+				await execa({ cwd: env.__dirname })(pathe.join(env.__dirname, 'fix-deb.sh'));
 			});
 		else if (process.platform === 'linux')
-			await execa(pathe.join(env.__dirname, 'fix-deb.sh'), [], { cwd: env.__dirname });
+			await execa({ cwd: env.__dirname })(pathe.join(env.__dirname, 'fix-deb.sh'));
 	}
 }
 catch (error) {

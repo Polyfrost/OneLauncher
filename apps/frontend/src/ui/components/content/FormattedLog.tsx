@@ -1,8 +1,8 @@
-import type { Ref } from '@solid-primitives/refs';
-import type { OnUpdatedEventListenerArgs, OverlayScrollbars } from 'overlayscrollbars';
-import { AlignBottom01Icon } from '@untitled-theme/icons-solid';
+import { ChevronDownDoubleIcon } from '@untitled-theme/icons-solid';
 import { OverlayScrollbarsComponent, type OverlayScrollbarsComponentRef } from 'overlayscrollbars-solid';
 import { createEffect, createMemo, createSignal, Index, Show, untrack } from 'solid-js';
+import type { Ref } from '@solid-primitives/refs';
+import type { OnUpdatedEventListenerArgs, OverlayScrollbars } from 'overlayscrollbars';
 import Button from '../base/Button';
 import styles from './FormattedLog.module.scss';
 
@@ -47,7 +47,7 @@ function FormattedLog(props: FormattedLogProps) {
 					<Button.Toggle
 						buttonStyle="icon"
 						checked={shouldScroll}
-						children={<AlignBottom01Icon />}
+						children={<ChevronDownDoubleIcon />}
 						class="h-full! rounded-md! py-1!"
 						onChecked={toggleAutoScroll}
 					/>

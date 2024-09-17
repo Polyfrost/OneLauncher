@@ -1,6 +1,6 @@
-import type { ManagedPackage, Providers } from '@onelauncher/client/bindings';
 import ModrinthImage from '~assets/logos/modrinth.svg?component-solid';
 import { type Component, type JSX, Match, Show, splitProps, Switch } from 'solid-js';
+import type { ManagedPackage, Providers } from '@onelauncher/client/bindings';
 
 export function getProviderLogoElement(provider: ManagedPackage | Providers): string | Component {
 	const providerName = (typeof provider === 'string' ? provider : provider.provider)?.toLowerCase() as Lowercase<Providers>;

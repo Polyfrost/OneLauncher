@@ -449,9 +449,9 @@ impl Processor {
 		#[cfg(target_os = "linux")]
 		{
 			if enable_gamemode.is_some_and(|x| x == true) {
-				// TODO: maybe just ignore the error...?
-				onelauncher_gamemode::request_start_for_wrapper(pid)
-					.map_err(|e| anyhow::anyhow!("failed to enable gamemode: {e}"))?;
+				if let Err(err) = onelauncher_gamemode::request_start_for_wrapper(pid) {
+					tracing::warn!("failed to enable gamemode, continuing: {}", err);
+				};
 			}
 		}
 

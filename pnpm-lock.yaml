@@ -150,8 +150,8 @@ importers:
         specifier: ^5.56.2
         version: 5.56.2(solid-js@1.8.22)
       '@tauri-apps/api':
-        specifier: '=2.0.0-rc.4'
-        version: 2.0.0-rc.4
+        specifier: '=2.0.0-rc.5'
+        version: 2.0.0-rc.5
       '@tauri-apps/plugin-clipboard-manager':
         specifier: '=2.0.0-rc.2'
         version: 2.0.0-rc.2
@@ -234,8 +234,8 @@ importers:
         specifier: ^5.56.2
         version: 5.56.2(solid-js@1.8.22)
       '@tauri-apps/api':
-        specifier: '=2.0.0-rc.4'
-        version: 2.0.0-rc.4
+        specifier: '=2.0.0-rc.5'
+        version: 2.0.0-rc.5
       highlight.js:
         specifier: ^11.10.0
         version: 11.10.0
@@ -1282,8 +1282,8 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
-  '@tauri-apps/api@2.0.0-rc.4':
-    resolution: {integrity: sha512-UNiIhhKG08j4ooss2oEEVexffmWkgkYlC2M3GcX3VPtNsqFgVNL8Mcw/4Y7rO9M9S+ffAMnLOF5ypzyuyb8tyg==}
+  '@tauri-apps/api@2.0.0-rc.5':
+    resolution: {integrity: sha512-JWs69pE9NsQdcqTpEVBepAZ08+jgQWuthIiTiaWRq/YlCLgnqq0KfC9sDem55uJ0YpgsytZuyj+m6b6q8oiD2g==}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.15':
     resolution: {integrity: sha512-WuzQRELJTeSHe/uLu6IClCCEkwQy4qtZdHUmcAW3baKD217WCytn4jQ5+NFs2GxhK1a2GLHMQtQZSFTLkKiXkw==}
@@ -5094,7 +5094,7 @@ snapshots:
       '@tanstack/query-core': 5.56.2
       solid-js: 1.8.22
 
-  '@tauri-apps/api@2.0.0-rc.4': {}
+  '@tauri-apps/api@2.0.0-rc.5': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.0-rc.15':
     optional: true
@@ -5141,15 +5141,15 @@ snapshots:
 
   '@tauri-apps/plugin-clipboard-manager@2.0.0-rc.2':
     dependencies:
-      '@tauri-apps/api': 2.0.0-rc.4
+      '@tauri-apps/api': 2.0.0-rc.5
 
   '@tauri-apps/plugin-dialog@2.0.0-rc.1':
     dependencies:
-      '@tauri-apps/api': 2.0.0-rc.4
+      '@tauri-apps/api': 2.0.0-rc.5
 
   '@tauri-apps/plugin-shell@2.0.0-rc.1':
     dependencies:
-      '@tauri-apps/api': 2.0.0-rc.4
+      '@tauri-apps/api': 2.0.0-rc.5
 
   '@testing-library/dom@10.4.0':
     dependencies:

@@ -54,6 +54,7 @@ export async function awaitLock(file: string): Promise<void> {
 	if (!(await which`flock`))
 		throw new Error('flock is not installed!');
 
+	consola.start(`waiting for file lock on ${file}`);
 	const store = { locked: false };
 	while (!store.locked)
 		try {

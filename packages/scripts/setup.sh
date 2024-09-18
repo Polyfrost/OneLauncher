@@ -55,12 +55,13 @@ esac
 if [ "${CI:-}" != "true" ]; then
 	echo 'onelauncher development environment setup:'
 	echo 'to set up your machine for onelauncher development, this script will install some required dependencies with your system package manager'
+	echo 'you can audit this script, it is documented inline at `packages/scripts/setup.sh`'
 	echo
 	echo 'press enter to continue'
 	read -r
 
 	# checks if pnpm is installed
-	if ! has pnpm; then
+	if ! has pnpm git; then
 	err 'pnpm was not found.' \
 		"ensure the 'pnpm' command is in your \$PATH." \
 		'you must use pnpm for this project; yarn and npm will not work:' \
@@ -80,6 +81,8 @@ fi
 # installs system-specific dependencies
 case "$(uname)" in
 	"Darwin")
+		# we assume that developer tools and brew are already installed, as they
+		# are prerequisites to most installations of rustup and pnpm.
 		if [ "$(uname -m)" = 'x86_64' ] && ! [ "${CI:-}" = "true" ]; then
 			brew install nasm
 		fi

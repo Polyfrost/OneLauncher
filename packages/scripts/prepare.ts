@@ -6,6 +6,7 @@ import { parse as parseTOML } from 'smol-toml';
 import { checkEnvironment, which } from './utils';
 import { getTriple } from './utils/triple';
 
+consola.info('checking the development environment...');
 const env = checkEnvironment(import.meta);
 const triple = getTriple();
 
@@ -22,7 +23,7 @@ if ((await Promise.all([which`cargo`, which`rustc`, which`pnpm`])).some(f => !f)
 		`,
 	);
 
-consola.info('generating cargo configuration file.');
+consola.start('generating cargo configuration file...');
 
 interface ConfigStore {
 	isWin: boolean;
@@ -60,10 +61,11 @@ try {
 	const template = await readFile(join(env.__root, '.cargo', 'config.toml.mustache'), { encoding: 'utf8' });
 	const rendered = mustache.render(template, configStore).replace(/\n{2,}/g, '\n');
 
-	consola.info('validating rendered cargo.toml file');
+	consola.info('validating rendered cargo.toml file...');
 	parseTOML(rendered);
 
 	await writeFile(join(env.__root, '.cargo', 'config.toml'), rendered, { mode: 0o751, flag: 'w+' });
+	consola.success('successfully prepared the development environment!');
 }
 catch (error) {
 	consola.error(`

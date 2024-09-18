@@ -64,10 +64,10 @@ try {
 		}
 	}
 
-	consola.info('starting tauri...');
+	consola.start('initializing tauri...');
 	await execa({ cwd: __desktop })('pnpm', ['exec', 'tauri', ...args]);
 
-	consola.info('build completed, fixing linux build');
+	consola.success('build completed, fixing linux build...');
 	if (args[0] === 'build' && bundles.some(b => b === 'deb' || b === 'all')) {
 		const linuxTargets = targets.filter(t => t.includes('-linux-'));
 		if (linuxTargets.length > 0)
@@ -93,7 +93,7 @@ catch (error) {
 	}
 }
 finally {
-	consola.info('cleaning up');
+	consola.info('cleaning up...');
 	cleanup();
 	env.__exit(store.code);
 }

@@ -1,20 +1,20 @@
-import { machine, type } from 'node:os';
-import { env } from 'node:process';
+import os from 'node:os';
+import process from 'node:process';
 import { consola } from 'consola';
 import { execa } from 'execa';
 
-const state: { __debug: boolean; libc: 'musl' | 'glibc' } = {
-	__debug: env.NODE_ENV === 'debug',
+const state: { debug: boolean; libc: 'musl' | 'glibc' } = {
+	debug: process.env.NODE_ENV === 'debug',
 	libc: 'glibc',
 };
 
-if (type() === 'Linux')
+if (os.type() === 'Linux')
 	try {
 		if ((await execa`ldd /bin/ls`).stdout.includes('musl'))
 			state.libc = 'musl';
 	}
 	catch (error) {
-		if (state.__debug) {
+		if (state.debug) {
 			consola.warn('failed to check libs type');
 			consola.error(error);
 		}
@@ -26,40 +26,42 @@ const OS_TYPE: Record<string, string> = {
 	linux: 'Linux',
 };
 
-type TripleID = ['Darwin' | 'Windows_NT', 'x86_64' | 'aarch64'] | ['Linux', 'x86_64' | 'aarch64', 'musl' | 'glibc'];
+type TripleID =
+	| ['Darwin' | 'Windows_NT', 'x86_64' | 'aarch64']
+	| ['Linux', 'x86_64' | 'aarch64', 'musl' | 'glibc'];
 
 export function getTriple(): TripleID {
 	const tripleState: {
-		_libc: typeof state.libc;
-		_os: string;
-		_arch: string;
+		libc: typeof state.libc;
+		os: string;
+		arch: string;
 	} = {
-		_libc: state.libc,
-		_os: '',
-		_arch: '',
+		libc: state.libc,
+		os: '',
+		arch: '',
 	};
 
-	if (env.TARGET_TRIPLE) {
-		const target = env.TARGET_TRIPLE.split('-');
-		tripleState._os = OS_TYPE[target[2] ?? ''] as string;
-		tripleState._arch = target[0] as string;
-		if (tripleState._os === 'Linux')
-			tripleState._libc = target[3]?.includes('musl') ? 'musl' : 'glibc';
+	if (process.env.TARGET_TRIPLE) {
+		const target = process.env.TARGET_TRIPLE.split('-');
+		tripleState.os = OS_TYPE[target[2] ?? ''] as string;
+		tripleState.arch = target[0] as string;
+		if (tripleState.os === 'Linux')
+			tripleState.libc = target[3]?.includes('musl') ? 'musl' : 'glibc';
 	}
 	else {
-		tripleState._os = type();
-		tripleState._arch = machine();
-		if (tripleState._arch === 'arm64')
-			tripleState._arch = 'aarch64';
+		tripleState.os = os.type();
+		tripleState.arch = os.machine();
+		if (tripleState.arch === 'arm64')
+			tripleState.arch = 'aarch64';
 	}
 
-	if (tripleState._arch !== 'x86_64' && tripleState._arch !== 'aarch64')
+	if (tripleState.arch !== 'x86_64' && tripleState.arch !== 'aarch64')
 		throw new Error(`Unsuported architecture`);
 
-	if (tripleState._os === 'Linux')
-		return [tripleState._os, tripleState._arch, tripleState._libc];
-	else if (tripleState._os !== 'Darwin' && tripleState._os !== 'Windows_NT')
+	if (tripleState.os === 'Linux')
+		return [tripleState.os, tripleState.arch, tripleState.libc];
+	else if (tripleState.os !== 'Darwin' && tripleState.os !== 'Windows_NT')
 		throw new Error(`Unsuported OS`);
 
-	return [tripleState._os, tripleState._arch];
+	return [tripleState.os, tripleState.arch];
 }

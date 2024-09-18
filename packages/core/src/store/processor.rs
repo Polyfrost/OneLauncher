@@ -222,7 +222,7 @@ impl ChildType {
 	}
 
 	/// Wait for a process to complete.
-	pub async fn try_wait(&mut self) -> crate::Result<Option<i32>> {
+	pub fn try_wait(&mut self) -> crate::Result<Option<i32>> {
 		match self {
 			Self::ChildProcess(child) => Ok(child
 				.try_wait()
@@ -301,8 +301,7 @@ impl Processor {
 					.current_child
 					.write()
 					.await
-					.try_wait()
-					.await?
+					.try_wait()?
 					.is_none()
 				{
 					keys.push(key);
@@ -339,8 +338,7 @@ impl Processor {
 					.current_child
 					.write()
 					.await
-					.try_wait()
-					.await?
+					.try_wait()?
 					.is_none()
 				{
 					clusters.push(process.cluster_path.clone());
@@ -361,8 +359,7 @@ impl Processor {
 					.current_child
 					.write()
 					.await
-					.try_wait()
-					.await?
+					.try_wait()?
 					.is_none()
 				{
 					if let Some(cluster) = cluster::get(&process.cluster_path.clone()).await? {
@@ -378,7 +375,7 @@ impl Processor {
 	pub async fn exit_status(&self, uuid: Uuid) -> crate::Result<Option<i32>> {
 		if let Some(process) = self.get(uuid) {
 			let process = process.write().await;
-			let status = process.current_child.write().await.try_wait().await?;
+			let status = process.current_child.write().await.try_wait()?;
 			Ok(status)
 		} else {
 			Ok(None)
@@ -626,7 +623,7 @@ impl Processor {
 
 		// core main process loop, managed by tokio
 		loop {
-			if let Some(stat) = current_child.write().await.try_wait().await? {
+			if let Some(stat) = current_child.write().await.try_wait()? {
 				exit_status = stat;
 				break;
 			}
@@ -742,7 +739,7 @@ impl Processor {
 			.await?;
 
 			loop {
-				if let Some(stat) = current_child.write().await.try_wait().await? {
+				if let Some(stat) = current_child.write().await.try_wait()? {
 					exit_status = stat;
 					break;
 				}

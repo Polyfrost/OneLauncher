@@ -36,7 +36,7 @@ onelauncher_utils = { path = "./packages/utils" }
 
 # # ============= TAURI ============= # #
 # tauri uses latest crates.io rc channel
-tauri = { version = "=2.0.0-rc.8", features = [
+tauri = { version = "=2.0.0-rc.15", features = [
 	"rustls-tls",
 	"tracing",
 	"specta",
@@ -44,24 +44,22 @@ tauri = { version = "=2.0.0-rc.8", features = [
 	"protocol-asset"
 ] }
 
-# tauri-utils is a collection of utilities for tauri apps.
-tauri-utils = { version = "=2.0.0-rc.7" }
 # tauri-build is the codegen utility for our tauri buildscript.
-tauri-build = { version = "=2.0.0-rc.7" }
+tauri-build = { version = "=2.0.0-rc.12" }
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "=2.0.0-rc.3" }
 # tauri-plugin-window-state saves the window position and size to be restored.
-tauri-plugin-window-state = { version = "=2.0.0-rc.2" }
+tauri-plugin-window-state = { version = "=2.0.0-rc.5" }
 # tauri-plugin-single-instance ensures that only one instance of the app is running.
-tauri-plugin-single-instance = { version = "=2.0.0-rc.1" }
+tauri-plugin-single-instance = { version = "=2.0.0-rc.4" }
 # tauri-plugin-clipboard-manager adds a bridge for reading/writing to the clipboard.
-tauri-plugin-clipboard-manager = { version = "=2.0.0-rc.3" }
+tauri-plugin-clipboard-manager = { version = "=2.0.0-rc.4" }
 # tauri-plugin-updater allows for us to use it's functionality for in-app updates.
-tauri-plugin-updater = { version = "=2.0.0-rc.2" }
+tauri-plugin-updater = { version = "=2.0.0-rc.3" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
-tauri-plugin-dialog = { version = "=2.0.0-rc.3" }
+tauri-plugin-dialog = { version = "=2.0.0-rc.7" }
 # tauri-plugin-deep-link adds a way to handle custom uri schemes (onelauncher://)
-tauri-plugin-deep-link = { version = "=2.0.0-rc.2" }
+tauri-plugin-deep-link = { version = "=2.0.0-rc.6" }
 
 # # ============= CORE ============= # #
 # rspc is used as a faster and more intuitive replacement for tauri-specta
@@ -92,7 +90,7 @@ specta = { version = "=2.0.0-rc.20", features = [
 ] }
 
 # tauri-specta is the tauri adapter for specta.
-tauri-specta = { version = "=2.0.0-rc.18", features = [ "javascript", "typescript", "derive" ] }
+tauri-specta = { version = "=2.0.0-rc.20", features = [ "javascript", "typescript", "derive" ] }
 # specta-typescript is the typescript adapter for specta.
 specta-typescript = { version = "=0.0.7" }
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.

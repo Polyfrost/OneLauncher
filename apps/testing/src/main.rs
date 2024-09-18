@@ -20,10 +20,15 @@ async fn main() -> onelauncher::Result<()> {
 }
 
 /// pauline's epic gamer minecraft auth flow
+///
 /// opens a browser tab in which the user sees xbox login and logs in with microsoft and gets redirected
-/// to a new url. this new url contains the ?code=.... parameter that we need to finish authentication.
+/// to a new url.
+///
+/// this new url contains the ?code=.... parameter that we need to finish authentication.
+///
 /// in this testing environment we can just copy the final url from our browser and into the testing console
 /// and it will parse the url and find the code and complete the authenticaiton process.
+///
 /// in production/frontend, it works the same way but we get the url and code parameter automatically.
 pub async fn authenticate_mc() -> onelauncher::Result<MinecraftCredentials> {
 	// begins login flow, opens browser

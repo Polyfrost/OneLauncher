@@ -20,7 +20,7 @@ pub struct DiscordRPC {
 impl DiscordRPC {
 	/// Initialize the Discord IPC client and attempt to connect to the server.
 	/// If an error is returned, it will be ignored since Discord RPC isnt essential for the launcher to load.
-	pub async fn initialize(is_offline: bool) -> crate::Result<Self> {
+	pub fn initialize(is_offline: bool) -> crate::Result<Self> {
 		let mut discord_ipc = DiscordIpcClient::new(DISCORD_RPC_CLIENT_ID)
 			.map_err(|e| anyhow::anyhow!("failed to create discord client {}", e))?;
 

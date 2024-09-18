@@ -126,7 +126,3 @@ pub async fn test_java(path: PathBuf, major: u32) -> crate::Result<bool> {
 	let (maj, _) = get_java_version(&jvm.version)?;
 	Ok(maj == major)
 }
-
-pub async fn get_max_memory() -> crate::Result<u64> {
-	Ok(sysinfo::System::new().total_memory())
-}

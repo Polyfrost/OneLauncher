@@ -177,13 +177,14 @@ pub struct Package {
 }
 
 impl Package {
-	pub async fn new(path: &PackagePath, meta: PackageMetadata) -> crate::Result<Self> {
+	pub fn new(path: &PackagePath, meta: PackageMetadata) -> crate::Result<Self> {
 		let file_name = path
 			.0
 			.file_name()
 			.ok_or_else(|| crate::ErrorKind::AnyhowError(anyhow::anyhow!("no file name")))?
 			.to_string_lossy()
 			.to_string();
+		// TODO: sha512
 		let sha512 = String::from("unknown");
 
 		Ok(Self {
@@ -484,7 +485,7 @@ impl PackageManager {
 
 				// TODO: Infer package
 				let meta = PackageMetadata::Unknown;
-				let package = Package::new(&package_path, meta).await?;
+				let package = Package::new(&package_path, meta)?;
 
 				packages.insert(package_path.clone(), package);
 			}

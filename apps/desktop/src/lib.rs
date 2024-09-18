@@ -21,8 +21,11 @@ async fn initialize_state(handle: &tauri::AppHandle) -> api::Result<()> {
 	Ok(())
 }
 
-/// initializes the logger and runs the app. if the logger fails to initialize
-/// we panic because nothing else can be debugged once the logger fails.
+/// the main entrypoint to the desktop add (initializes the logger and runs the app)
+///
+/// if the logger fails to initialize then we will panic because
+/// nothing else can be debugged once the logger fails.
+///
 /// the only thing that can fail before the logger should be our [`tokio::main`] loop.
 pub async fn run() {
 	let _log_guard = onelauncher::start_logger();

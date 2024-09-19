@@ -143,7 +143,7 @@ pub struct SearchResult {
 	pub client_side: PackageSide,
 	pub server_side: PackageSide,
 	pub project_type: PackageType,
-	pub downloads: u32,
+	pub downloads: u64,
 	#[serde(default)]
 	pub icon_url: String,
 	pub project_id: String,
@@ -154,8 +154,6 @@ pub struct SearchResult {
 	pub follows: u32,
 	pub date_created: DateTime<Utc>,
 	pub date_modified: DateTime<Utc>,
-	#[serde(default)]
-	pub license: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -612,7 +610,6 @@ pub struct ManagedPackage {
 	// Core Metadata
 	pub provider: Providers,
 	pub id: String,
-	pub uid: Option<String>,
 	pub package_type: PackageType,
 	pub title: String,
 	pub description: String,

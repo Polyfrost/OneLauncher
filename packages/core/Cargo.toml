@@ -36,6 +36,7 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_ini = { workspace = true }
+serde_repr = { workspace = true }
 paste = { workspace = true }
 futures = { workspace = true }
 zip = { workspace = true }
@@ -75,6 +76,9 @@ specta = { workspace = true, optional = true }
 
 # features[cli]
 indicatif = { workspace = true, optional = true }
+
+[build-dependencies]
+dotenvy = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = { workspace = true }

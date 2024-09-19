@@ -11,12 +11,14 @@ use crate::store::{Author, ProviderSearchResults};
 use crate::Result;
 
 mod modrinth;
+mod curseforge;
 
 /// Providers for content packages
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub enum Providers {
 	Modrinth,
+	Curseforge,
 }
 
 impl std::fmt::Display for Providers {
@@ -31,6 +33,7 @@ impl Providers {
 	pub const fn name(&self) -> &str {
 		match self {
 			Self::Modrinth => "Modrinth",
+			Self::Curseforge => "Curseforge",
 		}
 	}
 
@@ -39,6 +42,7 @@ impl Providers {
 	pub const fn url(&self) -> &str {
 		match self {
 			Self::Modrinth => "https://modrinth.com",
+			Self::Curseforge => "https://curseforge.com",
 		}
 	}
 
@@ -59,85 +63,38 @@ impl Providers {
 				query,
 				limit,
 				offset,
-				Some(|mut builder: FacetBuilder| {
-					if let Some(categories) = categories {
-						for category in categories {
-							builder.and(Facet(
-								"categories".to_string(),
-								FacetOperation::Eq,
-								category,
-							));
-						}
-					}
-
-					if let Some(game_versions) = game_versions {
-						for version in game_versions {
-							builder.and(Facet("versions".to_string(), FacetOperation::Eq, version));
-						}
-					}
-
-					if let Some(package_types) = package_types {
-						if package_types.contains(&PackageType::Mod)
-							|| package_types.contains(&PackageType::ModPack)
-						{
-							if let Some(loaders) = loaders {
-								for loader in loaders {
-									builder.and(Facet(
-										"categories".to_string(),
-										FacetOperation::Eq,
-										loader.to_string(),
-									));
-								}
-							}
-						}
-
-						for package_type in package_types {
-							builder.and(Facet(
-								"project_types".to_string(),
-								FacetOperation::Eq,
-								package_type.get_name().to_string(),
-							));
-						}
-					}
-
-					if let Some(open_source) = open_source {
-						builder.and(Facet(
-							"open_source".to_string(),
-							FacetOperation::Eq,
-							open_source.to_string(),
-						));
-					}
-
-					// builder.and(Facet("client_side".to_string(), FacetOperation::Eq, "")) // TODO: Possibly make this client_side = required
-
-					builder.build()
-				}),
-			),
+				Some(|mut builder| build_facets(
+					&mut builder,
+					categories,
+					game_versions,
+					loaders,
+					package_types,
+					open_source
+				)),
+			).await,
+			Self::Curseforge => curseforge::search(
+				query,
+				limit,
+				offset,
+				game_versions,
+				categories,
+				loaders,
+				package_types
+			).await
 		}
-		.await
-	}
-
-	pub async fn list(&self) -> Result<Vec<ManagedPackage>> {
-		Ok(match self {
-			Self::Modrinth => modrinth::list(),
-		}
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
 	}
 
 	pub async fn get(&self, slug_or_id: &str) -> Result<ManagedPackage> {
 		Ok(match self {
-			Self::Modrinth => modrinth::get(slug_or_id),
-		}
-		.await?
-		.into())
+			Self::Modrinth => modrinth::get(slug_or_id).await?.into(),
+			Self::Curseforge => curseforge::get(slug_or_id.parse::<u32>().map_err(|err| anyhow::anyhow!(err))?).await?.into(),
+		})
 	}
 
 	pub async fn get_multiple(&self, slug_or_ids: &[String]) -> Result<Vec<ManagedPackage>> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_multiple(slug_or_ids),
+			Self::Curseforge => todo!(),
 		}
 		.await?
 		.into_iter()
@@ -153,6 +110,7 @@ impl Providers {
 	) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),
+			Self::Curseforge => todo!(),
 		}
 		.await?
 		.into_iter()
@@ -163,6 +121,7 @@ impl Providers {
 	pub async fn get_versions(&self, versions: Vec<String>) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_versions(versions),
+			Self::Curseforge => todo!(),
 		}
 		.await?
 		.into_iter()
@@ -173,6 +132,7 @@ impl Providers {
 	pub async fn get_version(&self, version_id: &str) -> Result<ManagedVersion> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_version(version_id),
+			Self::Curseforge => todo!(),
 		}
 		.await?
 		.into())
@@ -181,7 +141,69 @@ impl Providers {
 	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
 		match self {
 			Self::Modrinth => modrinth::get_authors(author),
+			Self::Curseforge => todo!(),
 		}
 		.await
 	}
+}
+
+fn build_facets(
+	builder: &mut FacetBuilder,
+	categories: Option<Vec<String>>,
+	game_versions: Option<Vec<String>>,
+	loaders: Option<Vec<Loader>>,
+	package_types: Option<Vec<PackageType>>,
+	open_source: Option<bool>,
+) -> String {
+	if let Some(categories) = categories {
+		for category in categories {
+			builder.and(Facet(
+				"categories".to_string(),
+				FacetOperation::Eq,
+				category,
+			));
+		}
+	}
+
+	if let Some(game_versions) = game_versions {
+		for version in game_versions {
+			builder.and(Facet("versions".to_string(), FacetOperation::Eq, version));
+		}
+	}
+
+	if let Some(package_types) = package_types {
+		if package_types.contains(&PackageType::Mod)
+			|| package_types.contains(&PackageType::ModPack)
+		{
+			if let Some(loaders) = loaders {
+				for loader in loaders {
+					builder.and(Facet(
+						"categories".to_string(),
+						FacetOperation::Eq,
+						loader.to_string(),
+					));
+				}
+			}
+		}
+
+		for package_type in package_types {
+			builder.and(Facet(
+				"project_types".to_string(),
+				FacetOperation::Eq,
+				package_type.get_name().to_string(),
+			));
+		}
+	}
+
+	if let Some(open_source) = open_source {
+		builder.and(Facet(
+			"open_source".to_string(),
+			FacetOperation::Eq,
+			open_source.to_string(),
+		));
+	}
+
+	// builder.and(Facet("client_side".to_string(), FacetOperation::Eq, "")) // TODO: Possibly make this client_side = required
+
+	builder.build()
 }

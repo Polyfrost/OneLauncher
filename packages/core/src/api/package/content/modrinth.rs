@@ -82,7 +82,6 @@ impl From<ModrinthPackage> for ManagedPackage {
 			followers: value.followers,
 			categories: value.categories,
 			optional_categories: Some(value.additional_categories),
-			uid: None,
 			package_type: PackageType::Mod,
 			license: value.license,
 			author: Author::Team {
@@ -300,17 +299,6 @@ pub async fn get_multiple(ids: &[String]) -> Result<Vec<ModrinthPackage>> {
 					.join(",")
 			)
 			.as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?)
-}
-
-pub async fn list() -> Result<Vec<ModrinthPackage>> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			format_url!("/projects_random?count=10").as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)

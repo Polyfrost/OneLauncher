@@ -2,6 +2,7 @@
 //!
 //! Async extensions and wrappers around [`reqwest`] functions.
 
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -79,7 +80,7 @@ pub async fn fetch_advanced(
 	url: &str,
 	sha1: Option<&str>,
 	json_body: Option<serde_json::Value>,
-	header: Option<(&str, &str)>,
+	headers: Option<HashMap<&str, &str>>,
 	ingress: Option<(&IngressId, f64)>,
 	semaphore: &FetchSemaphore,
 ) -> crate::Result<Bytes> {
@@ -93,8 +94,10 @@ pub async fn fetch_advanced(
 			req = req.json(&body);
 		}
 
-		if let Some(header) = header {
-			req = req.header(header.0, header.1);
+		if let Some(headers) = &headers {
+			for (key, value) in headers {
+				req = req.header(*key, *value);
+			}
 		}
 
 		let result = req.send().await;

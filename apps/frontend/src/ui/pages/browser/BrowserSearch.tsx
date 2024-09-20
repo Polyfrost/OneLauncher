@@ -9,7 +9,7 @@ import { BrowserContent } from './BrowserRoot';
 
 function BrowserSearch() {
 	const browser = useBrowser();
-	const [results, { refetch }] = useCommand(() => bridge.commands.searchProviderPackages('Modrinth', browser.searchQuery()));
+	const [results, { refetch }] = useCommand(() => bridge.commands.searchProviderPackages(browser.searchQuery().provider, browser.searchQuery()));
 
 	const paginationOptions = (): PaginationOptions => ({
 		itemsCount: () => results()?.total || 0,

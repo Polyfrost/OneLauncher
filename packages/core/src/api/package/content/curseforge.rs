@@ -71,6 +71,7 @@ impl From<Loader> for CurseforgeLoader {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Pagination {
 	pub index: u32,
 	pub page_size: u32,
@@ -89,25 +90,25 @@ pub struct CurseforgePackage {
     pub slug: String,
     pub links: Links,
     pub summary: String,
-    pub status: u32,
+    // pub status: u32,
     pub download_count: u64,
     pub is_featured: bool,
-    pub primary_category_id: u32,
+    // pub primary_category_id: u32,
     pub categories: Vec<Category>,
     pub authors: Vec<Author>,
     pub logo: Logo,
-    pub screenshots: Vec<Screenshot>,
-    pub main_file_id: u32,
-    pub latest_files: Vec<LatestFile>,
-    pub latest_files_indexes: Vec<LatestFilesIndex>,
-    pub latest_early_access_files_indexes: Vec<LatestEarlyAccessFilesIndex>,
+    // pub screenshots: Vec<Screenshot>,
+    // pub main_file_id: u32,
+    // pub latest_files: Vec<LatestFile>,
+    // pub latest_files_indexes: Vec<LatestFilesIndex>,
+    // pub latest_early_access_files_indexes: Vec<LatestEarlyAccessFilesIndex>,
     pub date_created: DateTime<Utc>,
     pub date_modified: DateTime<Utc>,
     pub date_released: DateTime<Utc>,
 	#[serde(default)]
     pub allow_mod_distribution: bool,
-    pub game_popularity_rank: u32,
-    pub is_available: bool,
+    // pub game_popularity_rank: u32,
+    // pub is_available: bool,
     pub thumbs_up_count: u32,
     pub rating: Option<f32>,
 }
@@ -183,7 +184,7 @@ pub struct Category {
     pub url: String,
     pub icon_url: String,
     pub date_modified: String,
-    pub parent_category_id: u32,
+    // pub parent_category_id: u32,
     // pub display_index: u32,
 }
 
@@ -226,11 +227,11 @@ pub struct LatestFile {
     pub is_available: bool,
     pub display_name: String,
     pub file_name: String,
-    pub release_type: u32,
-    pub file_status: u32,
-    pub hashes: Vec<Hash>,
-    pub file_date: String,
-    pub file_length: u32,
+    // pub release_type: u32,
+    // pub file_status: u32,
+    // pub hashes: Vec<Hash>,
+    // pub file_date: String,
+    // pub file_length: u32,
     pub download_count: u32,
     // pub file_size_on_disk: u32,
     pub download_url: Option<String>,
@@ -319,7 +320,7 @@ struct CFData<T> {
 	data: T,
 }
 
-pub async fn fetch(url: &str, url_builder: Option<Box<dyn FnOnce(&mut Url)>>) -> Result<Bytes> {
+pub async fn fetch_url_builder<F: FnOnce(&mut Url)>(url: &str, url_builder: Option<F>) -> Result<Bytes> {
 	// TODO: Get the API key from settings, fallback to constant, and error if missing
 	let key = crate::constants::CURSEFORGE_API_KEY.ok_or(anyhow::anyhow!("missing curseforge api key"))?;
 
@@ -338,7 +339,7 @@ pub async fn fetch(url: &str, url_builder: Option<Box<dyn FnOnce(&mut Url)>>) ->
 
 	http::fetch_advanced(
 		Method::GET,
-		url.as_str(),
+		dbg!(url.as_str()),
 		None,
 		None,
 		Some(headers),
@@ -346,6 +347,10 @@ pub async fn fetch(url: &str, url_builder: Option<Box<dyn FnOnce(&mut Url)>>) ->
 		&State::get().await?.fetch_semaphore,
 	)
 	.await
+}
+
+async fn fetch(url: &str) -> Result<Bytes> {
+	fetch_url_builder(url, None::<fn(&mut Url)>).await
 }
 
 pub async fn search(
@@ -364,7 +369,7 @@ pub async fn search(
 	}
 
 	let results: CFSearchResults = serde_json::from_slice(
-		&fetch(
+		&fetch_url_builder(
 			"/v1/mods/search",
 			Some(Box::new(move |url: &mut Url| {
 				let params = &mut url.query_pairs_mut();
@@ -378,16 +383,16 @@ pub async fn search(
 
 				if let Some(game_versions) = game_versions {
 					// Need to create a list e.g. ["1.16.5", "1.17.1"]
-					params.append_pair("gameVersions", game_versions.into_iter().map(|v| format!("\"{}\"", v)).collect::<Vec<String>>().join(",").as_str());
+					params.append_pair("gameVersions", format!("[{}]", game_versions.into_iter().map(|v| format!("\"{}\"", v)).collect::<Vec<String>>().join(",")).as_str());
 				}
 
 				if let Some(loaders) = loaders {
-					params.append_pair("modLoaderTypes", loaders.into_iter().map(|l| (CurseforgeLoader::from(l) as u32).to_string()).collect::<Vec<String>>().join(",").as_str());
+					params.append_pair("modLoaderTypes", format!("[{}]", loaders.into_iter().map(|l| (CurseforgeLoader::from(l) as u32).to_string()).collect::<Vec<String>>().join(",")).as_str());
 				}
 
 				// TODO: Merge this with categories
 				if let Some(package_types) = package_types {
-					params.append_pair("categoryIds", package_types.into_iter().map(|p| (CFPackageType::from(p) as u32).to_string()).collect::<Vec<_>>().join(",").as_str());
+					params.append_pair("categoryIds", format!("[{}]", package_types.into_iter().map(|p| (CFPackageType::from(p) as u32).to_string()).collect::<Vec<_>>().join(",")).as_str());
 				}
 			}))
 		).await?)?;
@@ -401,10 +406,7 @@ pub async fn search(
 
 pub async fn get(id: u32) -> Result<CurseforgePackage> {
 	Ok(serde_json::from_slice::<CFData<_>>(
-		&fetch(
-			format!("/v1/mods/{}", id).as_str(),
-			None,
-		)
+		&fetch(format!("/v1/mods/{}", id).as_str())
 		.await?,
 	)?.data)
 }

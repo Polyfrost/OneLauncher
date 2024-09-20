@@ -179,7 +179,7 @@ cocoa = { version = "0.26" }
 objc = { version = "0.2" }
 cc = { version = "1.1" }
 libc = { version = "0.2" }
-dotenvy = { version = "0.15.7" }
+dotenvy = { git = "https://github.com/allan2/dotenvy/", rev = "db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5" }
 # https://github.com/tauri-apps/tauri/blob/dev/crates/tauri/Cargo.toml#L102
 webkit2gtk = { version = "=2.0.1", features = [ "v2_40" ] }
 

@@ -93,7 +93,7 @@ function BrowserCategories() {
 			<div class="flex flex-col gap-y-6">
 				<div class="flex flex-col gap-y-2">
 					<h6 class="my-1">Categories</h6>
-					<For each={browserCategories.byPackageType(browser.packageType())}>
+					<For each={browserCategories.byPackageType(browser.packageType(), browser.searchQuery().provider)}>
 						{category => (
 							<p
 								class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}

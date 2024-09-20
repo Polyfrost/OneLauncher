@@ -7,74 +7,11 @@ export interface CategoryItem {
 	id: string;
 }
 
-type ModCategories = [
-	'adventure',
-	'library',
-	'equipment',
-	'decoration',
-	'food',
-	'magic',
-	'performance',
-	'storage',
-	'technology',
-	'utility',
-	'worldgen',
-];
-
-const modMapping: Record<Providers, { [key in ModCategories[number]]: CategoryItem }> = {
-	Modrinth: {
-		adventure: {
-			display: 'Adventure',
-			id: 'adventure',
-		},
-		library: {
-			display: 'Library',
-			id: 'library',
-		},
-		decoration: {
-			display: 'Decoration',
-			id: 'decoration',
-		},
-		equipment: {
-			display: 'Equipment',
-			id: 'equipment',
-		},
-		food: {
-			display: 'Food',
-			id: 'food',
-		},
-		magic: {
-			display: 'Magic',
-			id: 'magic',
-		},
-		performance: {
-			display: 'Performance',
-			id: 'optimization',
-		},
-		storage: {
-			display: 'Storage',
-			id: 'storage',
-		},
-		technology: {
-			display: 'Technology',
-			id: 'technology',
-		},
-		utility: {
-			display: 'Utility',
-			id: 'utility',
-		},
-		worldgen: {
-			display: 'World Generation',
-			id: 'worldgen',
-		},
-	},
-};
-
 export const browserCategories = {
-	byPackageType(packageType: PackageType): CategoryItem[] {
+	byPackageType(packageType: PackageType, provider: Providers = 'Modrinth'): CategoryItem[] {
 		switch (packageType) {
 			case 'mod':
-				return this.mod();
+				return this.mod(provider);
 		}
 
 		return [];
@@ -83,4 +20,76 @@ export const browserCategories = {
 	mod(provider: Providers = 'Modrinth'): CategoryItem[] {
 		return Object.values(modMapping[provider]);
 	},
+};
+
+const modMapping: Record<Providers, CategoryItem[]> = {
+	Curseforge: [
+		{ display: 'Server Utility', id: '435' },
+		{ display: 'Armor, Tools, and Weapons', id: '434' },
+		{ display: 'API and Library', id: '421' },
+		{ display: 'Adventure and RPG', id: '422' },
+		{ display: 'World Gen', id: '406' },
+		{ display: 'Buildcraft', id: '432' },
+		{ display: 'Twitch Integration', id: '4671' },
+		{ display: 'Industrial Craft', id: '429' },
+		{ display: 'Magic', id: '419' },
+		{ display: 'Cosmetic', id: '424' },
+		{ display: 'KubeJS', id: '5314' },
+		{ display: 'Storage', id: '420' },
+		{ display: 'Mobs', id: '411' },
+		{ display: 'Ores and Resources', id: '408' },
+		{ display: 'Create', id: '6484' },
+		{ display: 'Genetics', id: '418' },
+		{ display: 'Food', id: '436' },
+		{ display: 'Automation', id: '4843' },
+		{ display: 'Performance', id: '6814' },
+		{ display: 'Farming', id: '416' },
+		{ display: 'CraftTweaker', id: '4773' },
+		{ display: 'Structures', id: '409' },
+		{ display: 'Map and Information', id: '423' },
+		{ display: 'Bug Fixes', id: '6821' },
+		{ display: 'Biomes', id: '407' },
+		{ display: 'Energy', id: '417' },
+		{ display: 'Addons', id: '426' },
+		{ display: 'Blood Magic', id: '4485' },
+		{ display: 'Energy, Fluid, and Item Transport', id: '415' },
+		{ display: 'Forestry', id: '433' },
+		{ display: 'Education', id: '5299' },
+		{ display: 'Technology', id: '412' },
+		{ display: 'Thermal Expansion', id: '427' },
+		{ display: 'Dimensions', id: '410' },
+		{ display: 'Thaumcraft', id: '430' },
+		{ display: 'Processing', id: '413' },
+		{ display: 'Tinker\'s Construct', id: '428' },
+		{ display: 'Miscellaneous', id: '425' },
+		{ display: 'Skyblock', id: '6145' },
+		{ display: 'Galacticraft', id: '5232' },
+		{ display: 'Player Transport', id: '414' },
+		{ display: 'Applied Energistics 2', id: '4545' },
+		{ display: 'Integrated Dynamics', id: '6954' },
+		{ display: 'Redstone', id: '4558' },
+		{ display: 'Utility & QoL', id: '5191' },
+		{ display: 'MCreator', id: '4906' },
+	],
+	Modrinth: [
+		{ display: 'Adventure', id: 'adventure' },
+		{ display: 'Cursed', id: 'cursed' },
+		{ display: 'Decoration', id: 'decoration' },
+		{ display: 'Economy', id: 'economy' },
+		{ display: 'Equipment', id: 'equipment' },
+		{ display: 'Food', id: 'food' },
+		{ display: 'Game Mechanics', id: 'game-mechanics' },
+		{ display: 'Library', id: 'library' },
+		{ display: 'Magic', id: 'magic' },
+		{ display: 'Management', id: 'management' },
+		{ display: 'Minigame', id: 'minigame' },
+		{ display: 'Mobs', id: 'mobs' },
+		{ display: 'Optimization', id: 'optimization' },
+		{ display: 'Social', id: 'social' },
+		{ display: 'Storage', id: 'storage' },
+		{ display: 'Technology', id: 'technology' },
+		{ display: 'Transportation', id: 'transportation' },
+		{ display: 'Utility', id: 'utility' },
+		{ display: 'World Generation', id: 'worldgen' },
+	],
 };

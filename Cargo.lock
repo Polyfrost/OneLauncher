@@ -1673,6 +1673,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "git+https://github.com/allan2/dotenvy/?rev=db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5#db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5"
+
+[[package]]
 name = "dpi"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4357,7 +4362,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "discord-rich-presence",
- "dotenvy",
+ "dotenvy 0.15.7 (git+https://github.com/allan2/dotenvy/?rev=db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5)",
  "flate2",
  "futures",
  "indicatif",
@@ -5153,7 +5158,7 @@ dependencies = [
  "bigdecimal 0.4.5",
  "chrono",
  "diagnostics",
- "dotenvy",
+ "dotenvy 0.15.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures",
  "include_dir",
  "indexmap 1.9.3",

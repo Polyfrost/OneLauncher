@@ -1,6 +1,6 @@
-import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
+import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
 export function setAsyncTimeout(ms: number): Promise<void>;
 export function setAsyncTimeout(callback: () => void, ms: number): Promise<void>;
@@ -163,12 +163,13 @@ export function getLicenseUrl(licenseId: string | License | null | undefined): s
 export function getPackageUrl(provider: Providers, id: string, package_type: PackageType = 'mod'): string {
 	const mapping: Record<Providers, string> = {
 		Modrinth: `https://modrinth.com/${package_type}/${id}`,
+		Curseforge: `https://www.curseforge.com/minecraft/${package_type}/${id}`,
 	};
 
 	return mapping[provider];
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
-export const PROVIDERS: Providers[] = ['Modrinth'] as const;
+export const PROVIDERS: Providers[] = ['Modrinth', 'Curseforge'] as const;
 export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 export const LAUNCHER_IMPORT_TYPES: ImportType[] = ['PrismLauncher', 'Curseforge', 'Modrinth', 'ATLauncher', 'GDLauncher', 'FTBLauncher', 'MultiMC', 'TLauncher', 'Technic'] as const;

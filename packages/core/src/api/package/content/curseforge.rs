@@ -118,10 +118,10 @@ impl From<CurseforgePackage> for ManagedPackage {
 		ManagedPackage {
 			id: package.id.to_string(),
 			title: package.name,
-			provider: todo!(),
-			package_type: todo!(),
-			description: todo!(),
-			body: todo!(),
+			provider: super::Providers::Curseforge,
+			package_type: package.package_type.into(),
+			description: package.summary,
+			body: "".to_string(), // TODO: Description is a new HTTP request
 			main: todo!(),
 			versions: todo!(),
 			game_versions: todo!(),
@@ -305,6 +305,7 @@ pub struct LatestEarlyAccessFilesIndex {
 }
 
 // https://docs.curseforge.com/rest-api/?shell#tocS_ModsSearchSortField
+#[allow(dead_code)]
 enum SearchSort {
     Featured = 1,
 	Popularity = 2,
@@ -339,7 +340,7 @@ pub async fn fetch_url_builder<F: FnOnce(&mut Url)>(url: &str, url_builder: Opti
 
 	http::fetch_advanced(
 		Method::GET,
-		dbg!(url.as_str()),
+		url.as_str(),
 		None,
 		None,
 		Some(headers),
@@ -353,6 +354,7 @@ async fn fetch(url: &str) -> Result<Bytes> {
 	fetch_url_builder(url, None::<fn(&mut Url)>).await
 }
 
+#[tracing::instrument(skip_all)]
 pub async fn search(
 	query: Option<String>,
 	limit: Option<u8>,
@@ -377,6 +379,9 @@ pub async fn search(
 				params.append_pair("gameId", crate::constants::CURSEFORGE_GAME_ID.to_string().as_str());
 				params.append_pair("pageSize", limit.unwrap_or(10).to_string().as_str());
 				params.append_pair("index", offset.unwrap_or(0).to_string().as_str());
+				params.append_pair("sortField", (SearchSort::Popularity as u8).to_string().as_str());
+				params.append_pair("sortOrder", "desc");
+
 				if let Some(query) = query {
 					params.append_pair("searchFilter", query.as_str());
 				}
@@ -390,9 +395,18 @@ pub async fn search(
 					params.append_pair("modLoaderTypes", format!("[{}]", loaders.into_iter().map(|l| (CurseforgeLoader::from(l) as u32).to_string()).collect::<Vec<String>>().join(",")).as_str());
 				}
 
-				// TODO: Merge this with categories
 				if let Some(package_types) = package_types {
-					params.append_pair("categoryIds", format!("[{}]", package_types.into_iter().map(|p| (CFPackageType::from(p) as u32).to_string()).collect::<Vec<_>>().join(",")).as_str());
+					if package_types.len() == 0 {
+						return;
+					}
+
+					if package_types.len() > 1 {
+						tracing::warn!("curseforge provider does not support multiple package types");
+					}
+
+					let package_type = package_types.first().unwrap();
+
+					params.append_pair("classId", (CFPackageType::from(*package_type) as u32).to_string().as_str());
 				}
 			}))
 		).await?)?;

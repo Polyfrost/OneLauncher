@@ -96,7 +96,7 @@ function BrowserCategories() {
 					<For each={browserCategories.byPackageType(browser.packageType(), browser.searchQuery().provider)}>
 						{category => (
 							<p
-								class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
+								class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover line-height-snug ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
 								onClick={() => toggleCategory(category.id)}
 							>
 								{category.display}
@@ -127,10 +127,13 @@ function BrowserSidebar() {
 				<div class="flex flex-col gap-y-1">
 					<h6 class="my-1">Provider</h6>
 					<Dropdown
-						onChange={index => controller.setSearchQuery(prev => ({
-							...prev,
-							provider: PROVIDERS[index] || 'Modrinth',
-						}))}
+						onChange={(index) => {
+							controller.setSearchQuery(prev => ({
+								...prev,
+								provider: PROVIDERS[index] || 'Modrinth',
+							}));
+							controller.search();
+						}}
 						selected={() => PROVIDERS.indexOf(controller.searchQuery().provider)}
 					>
 						<For each={PROVIDERS}>

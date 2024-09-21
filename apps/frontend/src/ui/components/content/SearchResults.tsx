@@ -11,7 +11,6 @@ interface SearchResultsContainerProps {
 	provider: Providers;
 	results: SearchResult[];
 	header: string | JSX.Element;
-	category: string;
 	collapsable?: boolean;
 }
 
@@ -56,7 +55,7 @@ function SearchResultsContainer(props: SearchResultsContainerProps) {
 			</div>
 
 			<Show when={collapsed() === true}>
-				<div class="absolute bottom-4 left-1/2 z-2 -translate-x-1/2">
+				<div class="w-full flex items-center justify-center">
 					<Button
 						buttonStyle="secondary"
 						children="Show more"
@@ -146,7 +145,7 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 			</div>
 			<div class="flex flex-1 flex-col gap-2 p-3">
 				<div class="flex flex-col gap-2">
-					<h4 class="text-fg-primary font-medium">{props.title}</h4>
+					<h4 class="text-fg-primary font-medium line-height-normal">{props.title}</h4>
 					<p class="text-xs text-fg-secondary">
 						By
 						{' '}

@@ -39,14 +39,13 @@ function BrowserSearch() {
 			<Spinner.Suspense>
 				<Show when={results() !== undefined}>
 					<SearchResultsContainer
-						category="test"
 						header={(
 							<div class="w-full flex flex-row items-end justify-between">
 								<h5 class="ml-2">Results</h5>
 								<pagination.Navigation />
 							</div>
 						)}
-						provider="Modrinth"
+						provider={browser.searchQuery().provider}
 						results={results()!.results}
 					/>
 				</Show>

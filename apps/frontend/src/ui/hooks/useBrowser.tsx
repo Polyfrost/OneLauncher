@@ -1,16 +1,18 @@
+import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, SearchResult } from '@onelauncher/client/bindings';
+import type { ModalProps } from '~ui/components/overlay/Modal';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Dropdown from '~ui/components/base/Dropdown';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
+import { PROVIDERS } from '~utils';
 import { type Accessor, type Context, createContext, createEffect, createSignal, For, on, onMount, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
-import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, ProviderSearchResults } from '@onelauncher/client/bindings';
-import type { ModalProps } from '~ui/components/overlay/Modal';
 import { useRecentCluster } from './useCluster';
 import useCommand, { tryResult } from './useCommand';
 
 export type ProviderSearchOptions = ProviderSearchQuery & { provider: Providers };
+export type PopularPackages = Record<Providers, SearchResult[]>;
 
 interface BrowserControllerType {
 	cluster: Accessor<Cluster | undefined>;
@@ -18,7 +20,6 @@ interface BrowserControllerType {
 
 	displayBrowser: (cluster?: Cluster | undefined) => void;
 	displayPackage: (id: string, provider: Providers) => void;
-	displayCategory: (category: string) => void;
 	displayClusterSelector: () => void;
 
 	search: () => void;
@@ -28,16 +29,15 @@ interface BrowserControllerType {
 	packageType: Accessor<PackageType>;
 	setPackageType: Setter<PackageType>;
 
-	refreshCache: () => void;
-	cache: Accessor<ProviderSearchResults | undefined>;
-	featured: Accessor<ManagedPackage | undefined>;
+	popularPackages: Accessor<PopularPackages | undefined>;
+	featuredPackage: Accessor<ManagedPackage | undefined>;
 };
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
 
 export function BrowserProvider(props: ParentProps) {
-	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
-	const [featured, setFeatured] = createSignal<ManagedPackage | undefined>();
+	const [popularPackages, setPopularPackages] = createSignal<PopularPackages | undefined>();
+	const [featuredPackage, setFeaturedPackage] = createSignal<ManagedPackage | undefined>();
 
 	// Used for the current "Browser Mode". It'll only show packages of the selected type
 	const [packageType, setPackageType] = createSignal<PackageType>('mod');
@@ -48,7 +48,7 @@ export function BrowserProvider(props: ParentProps) {
 	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchOptions>({
 		provider: 'Modrinth',
 		query: '',
-		limit: 20,
+		limit: 18, // Even multiples of 3 recommended for grid view (normally 3 columns, 2 columns on very small windows)
 		offset: 0,
 		categories: null,
 		game_versions: null,
@@ -78,45 +78,55 @@ export function BrowserProvider(props: ParentProps) {
 			navigate(BrowserPackage.buildUrl({ id, provider }));
 		},
 
-		displayCategory(_category: string) {
-
-		},
-
 		displayClusterSelector() {
 			modal.show();
 		},
 
-		search: () => {
-			navigate('/browser/search');
-		},
+		search: () => navigate('/browser/search'),
 		searchQuery: searchOptions,
 		setSearchQuery: setSearchOptions,
 
 		packageType,
 		setPackageType,
 
-		async refreshCache() {
-			const opts = untrack(searchOptions);
-			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', opts));
-
-			setMainPageCache(res);
-
-			// TODO: Better algorithm for selecting a featured package
-			const firstPackage = res.results[0];
-			if (firstPackage !== undefined) {
-				const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
-				setFeatured(featuredPackage);
-			}
-		},
-
-		cache: mainPageCache,
-
-		featured,
+		popularPackages,
+		featuredPackage,
 	};
 
-	onMount(() => {
-		if (mainPageCache() === undefined)
-			controller.refreshCache();
+	onMount(async () => {
+		const getOpts = (provider: Providers): ProviderSearchOptions => ({
+			provider,
+			query: '',
+			limit: 10,
+			offset: 0,
+			categories: null,
+			game_versions: null,
+			loaders: null,
+			package_types: ['mod'],
+			open_source: null,
+		});
+
+		const response = await Promise.allSettled(
+			PROVIDERS.map(provider => tryResult(() => bridge.commands.searchProviderPackages(provider, getOpts(provider)))),
+		);
+
+		const popularPackages = response.reduce((acc, res, i) => {
+			const provider = PROVIDERS[i] as Providers;
+
+			if (res.status === 'fulfilled')
+				acc[provider] = res.value.results;
+
+			return acc;
+		}, {} as PopularPackages);
+
+		setPopularPackages(popularPackages);
+
+		// TODO: Better algorithm for selecting a featured package
+		const firstPackage = popularPackages.Modrinth[0] || popularPackages.Curseforge[0];
+		if (firstPackage !== undefined) {
+			const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
+			setFeaturedPackage(featuredPackage);
+		}
 	});
 
 	createEffect(() => {

@@ -63,3 +63,5 @@
 - [ ] drag and drop files into the launcher window (mods and modpack files)
 - [ ] <https://github.com/gorilla-devs/GDLauncher-Carbon> and <https://github.com/gorilla-devs/libium>
 - [ ] <https://github.com/gorilla-devs/furse> and <https://github.com/gorilla-devs/ferinth>
+- [ ] add `minecraft.modpack.name` jvm arg based on installed modpack in `run_credentials`
+- [ ] backwards compatibility from <https://github.com/PrismLauncher/PrismLauncher/blob/develop/libraries/launcher/org/prismlauncher/SystemProperties.java>

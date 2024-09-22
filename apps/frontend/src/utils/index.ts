@@ -1,6 +1,6 @@
+import type { Cluster, ImportType, License, Loader, ManagedPackage, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 import { DurationFormat } from '@formatjs/intl-durationformat';
 import { open } from '@tauri-apps/plugin-shell';
-import type { Cluster, ImportType, License, Loader, PackageType, Providers, VersionType } from '@onelauncher/client/bindings';
 
 export function setAsyncTimeout(ms: number): Promise<void>;
 export function setAsyncTimeout(callback: () => void, ms: number): Promise<void>;
@@ -160,13 +160,23 @@ export function getLicenseUrl(licenseId: string | License | null | undefined): s
 	return `https://spdx.org/licenses/${id}.html`;
 }
 
-export function getPackageUrl(provider: Providers, id: string, package_type: PackageType = 'mod'): string {
-	const mapping: Record<Providers, string> = {
-		Modrinth: `https://modrinth.com/${package_type}/${id}`,
-		Curseforge: `https://www.curseforge.com/minecraft/${package_type}/${id}`,
+export function getPackageUrl(pkg: ManagedPackage): string {
+	const mapping: Record<Providers, () => string> = {
+		Modrinth: () => `https://modrinth.com/${pkg.package_type}/${pkg.id}`,
+		Curseforge: () => {
+			const packageTypeMapping: Record<PackageType, string> = {
+				mod: 'mc-mods',
+				shaderpack: 'shaders',
+				resourcepack: 'texture-packs',
+				datapack: 'data-packs',
+				modpack: 'modpacks',
+			};
+
+			return `https://www.curseforge.com/minecraft/${packageTypeMapping[pkg.package_type]}/${pkg.main}`;
+		},
 	};
 
-	return mapping[provider];
+	return mapping[pkg.provider]();
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;

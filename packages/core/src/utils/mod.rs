@@ -8,6 +8,7 @@
 pub mod http;
 pub mod java;
 pub mod watcher;
+pub mod pagination;
 
 #[cfg(feature = "tauri")]
 pub mod window;

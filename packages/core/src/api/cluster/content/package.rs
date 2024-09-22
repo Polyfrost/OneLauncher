@@ -28,6 +28,8 @@ pub async fn find_managed_version(
 			&package.id,
 			game_version.as_ref().map(|v| vec![v.to_owned()]).clone(),
 			loader.map(|l| vec![l]).clone(),
+			None,
+			None,
 		)
 		.await?;
 

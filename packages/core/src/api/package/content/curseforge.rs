@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use url::Url;
 
-use crate::{data::{Loader, ManagedPackage, PackageType}, store::{ProviderSearchResults, SearchResult}, utils::http, Result, State};
+use crate::{data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType}, store::{ProviderSearchResults, SearchResult}, utils::http, Result, State};
 
 /// Mapping of Curseforge "classes" to their respective category ids
 #[derive(Debug, Default, Serialize_repr, Deserialize_repr)]
@@ -121,23 +121,33 @@ impl From<CurseforgePackage> for ManagedPackage {
 			provider: super::Providers::Curseforge,
 			package_type: package.package_type.into(),
 			description: package.summary,
-			body: "".to_string(), // TODO: Description is a new HTTP request
-			main: todo!(),
-			versions: todo!(),
-			game_versions: todo!(),
-			loaders: todo!(),
-			icon_url: todo!(),
-			created: todo!(),
-			updated: todo!(),
-			client: todo!(),
-			server: todo!(),
-			downloads: todo!(),
-			followers: todo!(),
-			categories: todo!(),
-			optional_categories: todo!(),
-			license: todo!(),
-			author: todo!(),
-			is_archived: todo!(),
+			body: crate::store::PackageBody::Url(format!("/v1/mods/{}/description", package.id)),
+			main: package.slug,
+			versions: vec![],
+			game_versions: vec![],
+			loaders: vec![],
+			icon_url: Some(package.logo.url),
+			created: package.date_created,
+			updated: package.date_modified,
+			client: crate::store::PackageSide::Unknown,
+			server: crate::store::PackageSide::Unknown,
+			downloads: package.download_count,
+			followers: package.rating.unwrap_or(0.0) as u32,
+			categories: vec![], // TODO
+			optional_categories: None,
+			license: None,
+			author: crate::store::Author::Users(
+				package.authors.into_iter().map(|a| ManagedUser {
+					id: a.id.to_string(),
+					username: a.name,
+					url: Some(a.url),
+					is_organization_user: false,
+					avatar_url: None,
+					bio: None,
+					role: None,
+				}).collect()
+			),
+			is_archived: false,
 		}
 	}
 }
@@ -220,7 +230,7 @@ pub struct Screenshot {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LatestFile {
+pub struct ModFile {
     pub id: u32,
     pub game_id: u32,
     pub mod_id: u32,
@@ -282,19 +292,7 @@ pub struct Module {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LatestFilesIndex {
-    pub game_version: String,
-    pub file_id: u32,
-    pub filename: String,
-    pub release_type: u32,
-    pub game_version_type_id: u32,
-	#[serde(default)]
-    pub mod_loader: CurseforgeLoader,
-}
-
-#[derive(Default, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LatestEarlyAccessFilesIndex {
+pub struct ModFilesIndex {
     pub game_version: String,
     pub file_id: u32,
     pub filename: String,
@@ -424,3 +422,19 @@ pub async fn get(id: u32) -> Result<CurseforgePackage> {
 		.await?,
 	)?.data)
 }
+
+pub async fn get_package_body(url: String) -> Result<String> {
+	Ok(serde_json::from_slice::<CFData<_>>(
+		&fetch(&url).await?,
+	)?.data)
+}
+
+// pub async fn get_all_versions(
+// 	project_id: &str,
+// 	game_versions: Option<Vec<String>>,
+// 	loaders: Option<Vec<Loader>>,
+// 	page: Option<u32>,
+// 	page_size: Option<u16>,
+// ) -> Result<Vec<ManagedVersion>> {
+
+// }

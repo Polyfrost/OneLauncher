@@ -67,6 +67,7 @@ macro_rules! collect_commands {
 			get_provider_package_version,
 			search_provider_packages,
 			get_provider_authors,
+			get_package_body,
 			download_provider_package,
 			// Cluster Packages
 			get_cluster_package,

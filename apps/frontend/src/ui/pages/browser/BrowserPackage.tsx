@@ -1,4 +1,4 @@
-import type { Cluster, ManagedPackage, ManagedUser, ManagedVersion, Providers } from '@onelauncher/client/bindings';
+import type { Cluster, ManagedPackage, ManagedVersion, Providers } from '@onelauncher/client/bindings';
 import { A, type Params, Route, useSearchParams } from '@solidjs/router';
 import { CalendarIcon, ChevronDownIcon, ClockRewindIcon, Download01Icon, File02Icon, HeartIcon, LinkExternal01Icon } from '@untitled-theme/icons-solid';
 import SteveHead from '~assets/images/steve.png';
@@ -15,7 +15,7 @@ import useCommand from '~ui/hooks/useCommand';
 import usePagination from '~ui/hooks/usePagination';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import { abbreviateNumber, formatAsRelative } from '~utils';
-import { createContext, createEffect, createSignal, For, Match, on, type ParentProps, Show, Switch, useContext } from 'solid-js';
+import { type Accessor, createContext, createEffect, createSignal, For, Match, on, type ParentProps, type Resource, Show, Switch, useContext } from 'solid-js';
 import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 
 interface BrowserModParams extends Params {
@@ -23,14 +23,25 @@ interface BrowserModParams extends Params {
 	provider: Providers;
 }
 
-const BrowserPackageContext = createContext<ManagedPackage | null>(null);
+interface BrowserPackageContextType {
+	pkg: Accessor<ManagedPackage>;
+	body: Resource<string>;
+};
+
+const BrowserPackageContext = createContext<BrowserPackageContextType | null>(null);
 
 const basePath = '/browser/package';
 
 function BrowserPackageProvider(props: ParentProps & { pkg: ManagedPackage }) {
+	const [body] = useCommand(() => bridge.commands.getPackageBody(props.pkg.provider, props.pkg.body));
+
+	const ctx: BrowserPackageContextType = {
+		pkg: () => props.pkg,
+		body,
+	};
+
 	return (
-		// eslint-disable-next-line solid/reactivity -- Should be fine
-		<BrowserPackageContext.Provider value={props.pkg}>
+		<BrowserPackageContext.Provider value={ctx}>
 			{props.children}
 		</BrowserPackageContext.Provider>
 	);
@@ -67,7 +78,6 @@ function NavLink(props: ParentProps & { href: string }) {
 function BrowserPackage(props: ParentProps) {
 	const [params] = useSearchParams<BrowserModParams>();
 	const [pkg] = useCommand(() => bridge.commands.getProviderPackage(params.provider!, params.id!));
-	const [authors] = useCommand(pkg, () => bridge.commands.getProviderAuthors(pkg()!.provider, pkg()!.author));
 
 	const links = [
 		['About', '/'],
@@ -81,7 +91,7 @@ function BrowserPackage(props: ParentProps) {
 				<Show
 					children={(
 						<>
-							<BrowserSidebar authors={authors()!} package={pkg()!} />
+							<BrowserSidebar package={pkg()!} />
 
 							<div class="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
 								<div class="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1">
@@ -108,7 +118,7 @@ function BrowserPackage(props: ParentProps) {
 							</div>
 						</>
 					)}
-					when={pkg() !== undefined && authors() !== undefined}
+					when={pkg() !== undefined}
 				/>
 			</div>
 		</Spinner.Suspense>
@@ -123,7 +133,8 @@ BrowserPackage.Routes = BrowserPackageRoutes;
 
 export default BrowserPackage;
 
-function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[] }) {
+function BrowserSidebar(props: { package: ManagedPackage }) {
+	const [authors] = useCommand(() => props.package, () => bridge.commands.getProviderAuthors(props.package.provider, props.package.author));
 	const createdAt = () => new Date(props.package.created);
 	const updatedAt = () => new Date(props.package.updated);
 	const promptOpen = usePromptOpener();
@@ -158,10 +169,12 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 							{abbreviateNumber(props.package.downloads)}
 						</div>
 
-						<div class="flex flex-row items-center gap-2">
-							<HeartIcon class="h-4 w-4" />
-							{abbreviateNumber(props.package.followers)}
-						</div>
+						<Show when={props.package.followers > 0}>
+							<div class="flex flex-row items-center gap-2">
+								<HeartIcon class="h-4 w-4" />
+								{abbreviateNumber(props.package.followers)}
+							</div>
+						</Show>
 					</div>
 				</div>
 			</div>
@@ -170,7 +183,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 
 			<div class="flex flex-col gap-2 rounded-lg bg-component-bg p-3">
 				<h4 class="text-fg-primary font-bold">Links</h4>
-				<Link href={getPackageUrl(props.package.provider, props.package.id, props.package.package_type)} includeIcon>
+				<Link href={getPackageUrl(props.package)} includeIcon>
 					{props.package.provider}
 					{' '}
 					Page
@@ -179,14 +192,14 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 
 			<div class="flex flex-col gap-2 rounded-lg bg-component-bg p-3">
 				<h4 class="text-fg-primary font-bold">Authors</h4>
-				<For each={props.authors}>
+				<For each={authors()}>
 					{author => (
 						<>
 							<div
 								class="flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
 								onClick={() => promptOpen(author.url)}
 							>
-								<img alt={`${author.username}'s avatar`} class="h-8 min-h-8 min-w-8 w-8 rounded-md" src={author.avatar_url || SteveHead} />
+								<img alt={`${author.username}'s avatar`} class="h-8 min-h-8 min-w-8 w-8 rounded-[5px]" src={author.avatar_url || SteveHead} />
 								<div class="flex flex-1 flex-col justify-center gap-y-1">
 									<span>{author.username}</span>
 
@@ -200,7 +213,7 @@ function BrowserSidebar(props: { package: ManagedPackage; authors: ManagedUser[]
 								</div>
 								<LinkExternal01Icon class="h-4 w-4" />
 							</div>
-							<Show when={author.is_organization_user === true && props.authors.length > 1}>
+							<Show when={author.is_organization_user === true && ((authors()?.length || 0) > 1)}>
 								<div class="h-px w-full bg-gray-05" />
 							</Show>
 						</>
@@ -346,7 +359,7 @@ function BrowserPackageBody() {
 
 	return (
 		<div class="w-full flex-1 rounded-lg bg-component-bg p-4 px-6">
-			<Markdown body={context?.body || ''} />
+			<Markdown body={context?.body?.() || ''} />
 		</div>
 	);
 }
@@ -371,7 +384,7 @@ function BrowserPackageVersions() {
 	const MAX_ITEMS_PER_PAGE = 20;
 
 	const { page, Navigation } = usePagination({
-		itemsCount: () => context?.versions.length || 0,
+		itemsCount: () => context?.pkg().versions.length || 0,
 		itemsPerPage: () => MAX_ITEMS_PER_PAGE,
 	});
 
@@ -379,7 +392,7 @@ function BrowserPackageVersions() {
 		if (context === null)
 			return [];
 
-		const newestToOldest = context.versions.toReversed();
+		const newestToOldest = context.pkg().versions.toReversed();
 		const start = (page - 1) * MAX_ITEMS_PER_PAGE;
 		const end = start + MAX_ITEMS_PER_PAGE;
 
@@ -392,7 +405,7 @@ function BrowserPackageVersions() {
 
 		const list = getVersionsForPage(page());
 
-		return await bridge.commands.getProviderPackageVersions(context.provider, list);
+		return await bridge.commands.getProviderPackageVersions(context.pkg().provider, list);
 	});
 
 	let container!: HTMLDivElement;

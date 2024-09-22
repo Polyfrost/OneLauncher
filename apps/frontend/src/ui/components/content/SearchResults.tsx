@@ -165,10 +165,12 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 						{abbreviateNumber(props.downloads)}
 					</div>
 
-					<div class="flex flex-row items-center gap-2">
-						<HeartIcon class="h-4 w-4" />
-						{abbreviateNumber(props.follows)}
-					</div>
+					<Show when={props.follows > 0}>
+						<div class="flex flex-row items-center gap-2">
+							<HeartIcon class="h-4 w-4" />
+							{abbreviateNumber(props.follows)}
+						</div>
+					</Show>
 				</div>
 			</div>
 		</div>

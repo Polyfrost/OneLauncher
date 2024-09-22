@@ -603,6 +603,13 @@ pub enum Author {
 	Users(Vec<ManagedUser>),
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum PackageBody {
+	Url(String),
+	Markdown(String),
+}
+
 /// Universal metadata for any managed package from a Mod distribution platform.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -613,7 +620,7 @@ pub struct ManagedPackage {
 	pub package_type: PackageType,
 	pub title: String,
 	pub description: String,
-	pub body: String,
+	pub body: PackageBody,
 	pub main: String,
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
@@ -624,7 +631,7 @@ pub struct ManagedPackage {
 	pub updated: DateTime<Utc>,
 	pub client: PackageSide,
 	pub server: PackageSide,
-	pub downloads: u32,
+	pub downloads: u64,
 	pub followers: u32,
 	pub categories: Vec<String>,
 	pub optional_categories: Option<Vec<String>>,

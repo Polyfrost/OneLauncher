@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::package::content::modrinth::FacetBuilder;
-use crate::store::{Author, ProviderSearchResults};
+use crate::store::{Author, PackageBody, ProviderSearchResults};
 use crate::Result;
 
 mod modrinth;
@@ -107,18 +107,29 @@ impl Providers {
 		project_id: &str,
 		game_versions: Option<Vec<String>>,
 		loaders: Option<Vec<Loader>>,
+		page: Option<u32>,
+		page_size: Option<u16>,
 	) -> Result<Vec<ManagedVersion>> {
-		Ok(match self {
-			Self::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),
-			Self::Curseforge => todo!(),
-		}
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
+		Ok(
+			match self {
+				Self::Modrinth => modrinth::get_all_versions(project_id, game_versions, loaders),
+				// Self::Curseforge => curseforge::get_all_versions(
+				// 	project_id,
+				// 	game_versions.map(|list| list.first()),
+				// 	loaders.map(|list| list.first()),
+				// 	page,
+				// 	page_size
+				// ),
+				Self::Curseforge => todo!(),
+			}
+			.await?
+			.into_iter()
+			.map(Into::into)
+			.collect()
+		)
 	}
 
-	pub async fn get_versions(&self, versions: Vec<String>) -> Result<Vec<ManagedVersion>> {
+	pub async fn get_versions(&self, pkg_id: &str, versions: Vec<String>) -> Result<Vec<ManagedVersion>> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_versions(versions),
 			Self::Curseforge => todo!(),
@@ -129,7 +140,7 @@ impl Providers {
 		.collect())
 	}
 
-	pub async fn get_version(&self, version_id: &str) -> Result<ManagedVersion> {
+	pub async fn get_version(&self, pkg_id: &str, version_id: &str) -> Result<ManagedVersion> {
 		Ok(match self {
 			Self::Modrinth => modrinth::get_version(version_id),
 			Self::Curseforge => todo!(),
@@ -139,11 +150,27 @@ impl Providers {
 	}
 
 	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
-		match self {
-			Self::Modrinth => modrinth::get_authors(author),
-			Self::Curseforge => todo!(),
-		}
-		.await
+		Ok(match author {
+			Author::Team { .. } => {
+				match self {
+					Self::Modrinth => modrinth::get_authors(author).await?,
+					_ => return Err(anyhow::anyhow!("{} does not support teams", self).into()),
+				}
+			},
+			Author::Users(users) => users.to_owned()
+		})
+	}
+
+	pub async fn get_package_body(&self, body: &PackageBody) -> Result<String> {
+		Ok(match body {
+			PackageBody::Url(url) => {
+				match self {
+					Self::Curseforge => curseforge::get_package_body(url.to_owned()).await?,
+					_ => return Err(anyhow::anyhow!("{} does not support direct URLs", self).into()),
+				}
+			},
+			PackageBody::Markdown(markdown) => markdown.to_owned()
+		})
 	}
 }
 

@@ -136,19 +136,19 @@ importers:
         version: link:../../packages/client
       '@solid-primitives/i18n':
         specifier: ^2.1.1
-        version: 2.1.1(solid-js@1.8.22)
+        version: 2.1.1(solid-js@1.8.23)
       '@solid-primitives/refs':
         specifier: ^1.0.8
-        version: 1.0.8(solid-js@1.8.22)
+        version: 1.0.8(solid-js@1.8.23)
       '@solidjs/router':
         specifier: ^0.14.5
-        version: 0.14.5(solid-js@1.8.22)
+        version: 0.14.5(solid-js@1.8.23)
       '@t3-oss/env-core':
         specifier: ^0.11.0
         version: 0.11.1(typescript@5.6.2)(zod@3.23.8)
       '@tanstack/solid-query':
         specifier: ^5.56.2
-        version: 5.56.2(solid-js@1.8.22)
+        version: 5.56.2(solid-js@1.8.23)
       '@tauri-apps/api':
         specifier: '=2.0.0-rc.5'
         version: 2.0.0-rc.5
@@ -166,22 +166,22 @@ importers:
         version: 0.62.4
       '@untitled-theme/icons-solid':
         specifier: ^0.10.5
-        version: 0.10.5(solid-js@1.8.22)
+        version: 0.10.5(solid-js@1.8.23)
       overlayscrollbars:
         specifier: ^2.10.0
         version: 2.10.0
       overlayscrollbars-solid:
         specifier: ^0.5.5
-        version: 0.5.5(overlayscrollbars@2.10.0)(solid-js@1.8.22)
+        version: 0.5.5(overlayscrollbars@2.10.0)(solid-js@1.8.23)
       pathe:
         specifier: ^1.1.2
         version: 1.1.2
       solid-js:
-        specifier: ^1.8.22
-        version: 1.8.22
+        specifier: ^1.8.23
+        version: 1.8.23
       solid-transition-group:
         specifier: ^0.2.3
-        version: 0.2.3(solid-js@1.8.22)
+        version: 0.2.3(solid-js@1.8.23)
       zod:
         specifier: ^3.23.8
         version: 3.23.8
@@ -191,7 +191,7 @@ importers:
         version: 2.22.4
       '@solidjs/testing-library':
         specifier: ^0.8.9
-        version: 0.8.9(@solidjs/router@0.14.5(solid-js@1.8.22))(solid-js@1.8.22)
+        version: 0.8.9(@solidjs/router@0.14.5(solid-js@1.8.23))(solid-js@1.8.23)
       '@tauri-apps/cli':
         specifier: '=2.0.0-rc.16'
         version: 2.0.0-rc.16
@@ -215,10 +215,10 @@ importers:
         version: 5.4.7(@types/node@22.5.5)(sass@1.79.3)
       vite-plugin-solid:
         specifier: ^2.10.2
-        version: 2.10.2(@testing-library/jest-dom@6.5.0)(solid-js@1.8.22)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
+        version: 2.10.2(@testing-library/jest-dom@6.5.0)(solid-js@1.8.23)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
       vite-plugin-solid-svg:
         specifier: ^0.8.1
-        version: 0.8.1(solid-js@1.8.22)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
+        version: 0.8.1(solid-js@1.8.23)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
       vite-tsconfig-paths:
         specifier: ^5.0.1
         version: 5.0.1(typescript@5.6.2)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
@@ -229,10 +229,10 @@ importers:
     dependencies:
       '@solid-primitives/deep':
         specifier: ^0.2.9
-        version: 0.2.9(solid-js@1.8.22)
+        version: 0.2.9(solid-js@1.8.23)
       '@tanstack/solid-query':
         specifier: ^5.56.2
-        version: 5.56.2(solid-js@1.8.22)
+        version: 5.56.2(solid-js@1.8.23)
       '@tauri-apps/api':
         specifier: '=2.0.0-rc.5'
         version: 2.0.0-rc.5
@@ -246,8 +246,8 @@ importers:
         specifier: ^0.3.9
         version: 0.3.9
       solid-js:
-        specifier: ^1.8.22
-        version: 1.8.22
+        specifier: ^1.8.23
+        version: 1.8.23
       xss:
         specifier: ^1.0.15
         version: 1.0.15
@@ -3517,8 +3517,8 @@ packages:
     resolution: {integrity: sha512-tWpi2TsODPScmi48b/OQZGi2lgUmBCHy6SZrhi/FdnnHiU1GwebbCfuQuxsC3nHaLwtYeJGPrDZDIeodDOc4pA==}
     engines: {node: '>= 18'}
 
-  solid-js@1.8.22:
-    resolution: {integrity: sha512-VBzN5j+9Y4rqIKEnK301aBk+S7fvFSTs9ljg+YEdFxjNjH0hkjXPiQRcws9tE5fUzMznSS6KToL5hwMfHDgpLA==}
+  solid-js@1.8.23:
+    resolution: {integrity: sha512-0jKzMgxmU/b3k4iJmIZJW2BIArrHN+Mug0n7m7MeHvGHWiS57ZdyTmnqNMSbGRvE73QBnTiGFJc90cPPieawaA==}
 
   solid-refresh@0.6.3:
     resolution: {integrity: sha512-F3aPsX6hVw9ttm5LYlth8Q15x6MlI/J3Dn+o3EQyRTtTxidepSTwAYdozt01/YA+7ObcciagGEyXIopGZzQtbA==}
@@ -5016,48 +5016,48 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@solid-primitives/deep@0.2.9(solid-js@1.8.22)':
+  '@solid-primitives/deep@0.2.9(solid-js@1.8.23)':
     dependencies:
-      '@solid-primitives/memo': 1.3.9(solid-js@1.8.22)
-      solid-js: 1.8.22
+      '@solid-primitives/memo': 1.3.9(solid-js@1.8.23)
+      solid-js: 1.8.23
 
-  '@solid-primitives/i18n@2.1.1(solid-js@1.8.22)':
+  '@solid-primitives/i18n@2.1.1(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
-  '@solid-primitives/memo@1.3.9(solid-js@1.8.22)':
+  '@solid-primitives/memo@1.3.9(solid-js@1.8.23)':
     dependencies:
-      '@solid-primitives/scheduled': 1.4.3(solid-js@1.8.22)
-      '@solid-primitives/utils': 6.2.3(solid-js@1.8.22)
-      solid-js: 1.8.22
+      '@solid-primitives/scheduled': 1.4.3(solid-js@1.8.23)
+      '@solid-primitives/utils': 6.2.3(solid-js@1.8.23)
+      solid-js: 1.8.23
 
-  '@solid-primitives/refs@1.0.8(solid-js@1.8.22)':
+  '@solid-primitives/refs@1.0.8(solid-js@1.8.23)':
     dependencies:
-      '@solid-primitives/utils': 6.2.3(solid-js@1.8.22)
-      solid-js: 1.8.22
+      '@solid-primitives/utils': 6.2.3(solid-js@1.8.23)
+      solid-js: 1.8.23
 
-  '@solid-primitives/scheduled@1.4.3(solid-js@1.8.22)':
+  '@solid-primitives/scheduled@1.4.3(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
-  '@solid-primitives/transition-group@1.0.5(solid-js@1.8.22)':
+  '@solid-primitives/transition-group@1.0.5(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
-  '@solid-primitives/utils@6.2.3(solid-js@1.8.22)':
+  '@solid-primitives/utils@6.2.3(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
-  '@solidjs/router@0.14.5(solid-js@1.8.22)':
+  '@solidjs/router@0.14.5(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
-  '@solidjs/testing-library@0.8.9(@solidjs/router@0.14.5(solid-js@1.8.22))(solid-js@1.8.22)':
+  '@solidjs/testing-library@0.8.9(@solidjs/router@0.14.5(solid-js@1.8.23))(solid-js@1.8.23)':
     dependencies:
       '@testing-library/dom': 10.4.0
-      solid-js: 1.8.22
+      solid-js: 1.8.23
     optionalDependencies:
-      '@solidjs/router': 0.14.5(solid-js@1.8.22)
+      '@solidjs/router': 0.14.5(solid-js@1.8.23)
 
   '@stylistic/eslint-plugin@2.8.0(eslint@9.11.0(jiti@1.21.6))(typescript@5.6.2)':
     dependencies:
@@ -5079,10 +5079,10 @@ snapshots:
 
   '@tanstack/query-core@5.56.2': {}
 
-  '@tanstack/solid-query@5.56.2(solid-js@1.8.22)':
+  '@tanstack/solid-query@5.56.2(solid-js@1.8.23)':
     dependencies:
       '@tanstack/query-core': 5.56.2
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
   '@tauri-apps/api@2.0.0-rc.5': {}
 
@@ -5505,9 +5505,9 @@ snapshots:
       - rollup
       - supports-color
 
-  '@untitled-theme/icons-solid@0.10.5(solid-js@1.8.22)':
+  '@untitled-theme/icons-solid@0.10.5(solid-js@1.8.23)':
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
   '@vercel/ncc@0.38.1': {}
 
@@ -7329,10 +7329,10 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  overlayscrollbars-solid@0.5.5(overlayscrollbars@2.10.0)(solid-js@1.8.22):
+  overlayscrollbars-solid@0.5.5(overlayscrollbars@2.10.0)(solid-js@1.8.23):
     dependencies:
       overlayscrollbars: 2.10.0
-      solid-js: 1.8.22
+      solid-js: 1.8.23
 
   overlayscrollbars@2.10.0: {}
 
@@ -7660,26 +7660,26 @@ snapshots:
 
   smol-toml@1.3.0: {}
 
-  solid-js@1.8.22:
+  solid-js@1.8.23:
     dependencies:
       csstype: 3.1.3
       seroval: 1.1.1
       seroval-plugins: 1.1.1(seroval@1.1.1)
 
-  solid-refresh@0.6.3(solid-js@1.8.22):
+  solid-refresh@0.6.3(solid-js@1.8.23):
     dependencies:
       '@babel/generator': 7.25.5
       '@babel/helper-module-imports': 7.24.7
       '@babel/types': 7.25.4
-      solid-js: 1.8.22
+      solid-js: 1.8.23
     transitivePeerDependencies:
       - supports-color
 
-  solid-transition-group@0.2.3(solid-js@1.8.22):
+  solid-transition-group@0.2.3(solid-js@1.8.23):
     dependencies:
-      '@solid-primitives/refs': 1.0.8(solid-js@1.8.22)
-      '@solid-primitives/transition-group': 1.0.5(solid-js@1.8.22)
-      solid-js: 1.8.22
+      '@solid-primitives/refs': 1.0.8(solid-js@1.8.23)
+      '@solid-primitives/transition-group': 1.0.5(solid-js@1.8.23)
+      solid-js: 1.8.23
 
   source-map-js@1.2.1: {}
 
@@ -8051,20 +8051,20 @@ snapshots:
       - supports-color
       - terser
 
-  vite-plugin-solid-svg@0.8.1(solid-js@1.8.22)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3)):
+  vite-plugin-solid-svg@0.8.1(solid-js@1.8.23)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3)):
     dependencies:
-      solid-js: 1.8.22
+      solid-js: 1.8.23
       svgo: 3.3.2
       vite: 5.4.7(@types/node@22.5.5)(sass@1.79.3)
 
-  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.5.0)(solid-js@1.8.22)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3)):
+  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.5.0)(solid-js@1.8.23)(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3)):
     dependencies:
       '@babel/core': 7.25.2
       '@types/babel__core': 7.20.5
       babel-preset-solid: 1.8.19(@babel/core@7.25.2)
       merge-anything: 5.1.7
-      solid-js: 1.8.22
-      solid-refresh: 0.6.3(solid-js@1.8.22)
+      solid-js: 1.8.23
+      solid-refresh: 0.6.3(solid-js@1.8.23)
       vite: 5.4.7(@types/node@22.5.5)(sass@1.79.3)
       vitefu: 0.2.5(vite@5.4.7(@types/node@22.5.5)(sass@1.79.3))
     optionalDependencies:

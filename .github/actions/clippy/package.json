@@ -25,6 +25,6 @@
 		"pathe": "^1.1.2"
 	},
 	"devDependencies": {
-		"@vercel/ncc": "^0.38.1"
+		"@vercel/ncc": "^0.38.2"
 	}
 }

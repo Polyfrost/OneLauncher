@@ -18,6 +18,9 @@ tauri = [ "dep:tauri", "dep:tauri-specta", "specta" ]
 specta = [ "dep:specta" ]
 cli = [ "dep:indicatif" ]
 
+[lints]
+workspace = true
+
 [dependencies]
 # features[default]
 onelauncher_macros = { workspace = true }

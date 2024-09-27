@@ -206,6 +206,41 @@ features = [
 ]
 default-features = false
 
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unnecessary_cast = "warn"
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
+dbg_macro = "warn"
+deprecated_cfg_attr = "warn"
+separated_literal_suffix = "warn"
+missing_errors_doc = "allow"
+future_not_send = "allow"
+module_name_repetitions = "allow"
+struct_field_names = "allow"
+cast_precision_loss = "allow"
+missing_panics_doc = "allow"
+
+[workspace.lints.rust]
+unused_qualifications = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_allocation = "warn"
+unused_import_braces = "warn"
+deprecated = "warn"
+deprecated_in_future = "forbid"
+unused_must_use = "deny"
+
 [patch.crates-io]
 # rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
 # rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }

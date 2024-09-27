@@ -1,0 +1,14 @@
+{
+	"name": "@onelauncher/utils",
+	"version": "1.0.0-alpha.1",
+	"description": "Next-generation open source Minecraft launcher utils",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "packages/utils"
+	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
+	"scripts": {}
+}

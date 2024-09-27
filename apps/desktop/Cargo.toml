@@ -43,6 +43,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 tracing-error = { workspace = true }
+mimalloc = { workspace = true }
 
 [dependencies.tauri]
 workspace = true

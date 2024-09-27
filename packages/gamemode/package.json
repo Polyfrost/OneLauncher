@@ -1,0 +1,14 @@
+{
+	"name": "@onelauncher/gamemode",
+	"version": "1.0.0-alpha.1",
+	"description": "Next-generation open source Minecraft launcher feral gamemode bindings",
+	"license": "GPL-3.0-only",
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:polyfrost/onelauncher",
+		"directory": "packages/gamemode"
+	},
+	"bugs": "https://github.com/polyfrost/onelauncher/issues",
+	"sideEffects": false,
+	"scripts": {}
+}

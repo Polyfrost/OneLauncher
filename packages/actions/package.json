@@ -1,5 +1,5 @@
 {
-	"name": "@onelauncher/action-publish-artifacts",
+	"name": "@onelauncher/actions",
 	"version": "1.0.0-alpha.1",
 	"private": true,
 	"description": "Next-generation open source Minecraft launcher",
@@ -7,20 +7,14 @@
 	"repository": {
 		"type": "git",
 		"url": "git@github.com:polyfrost/onelauncher",
-		"directory": ".github/actions/publish-artifacts"
+		"directory": "packages/actions"
 	},
 	"bugs": "https://github.com/polyfrost/onelauncher/issues",
 	"sideEffects": false,
 	"scripts": {
-		"build": "rimraf dist && ncc build src/index.ts -m -q --license ../../LICENSE"
 	},
 	"dependencies": {
-		"@actions/artifact": "^2.1.9",
-		"@actions/core": "^1.10.1",
-		"@actions/glob": "^0.5.0",
-		"@actions/io": "^1.1.3"
 	},
 	"devDependencies": {
-		"@vercel/ncc": "^0.38.2"
 	}
 }

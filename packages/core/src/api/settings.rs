@@ -59,6 +59,7 @@ pub async fn set(settings: Settings) -> crate::Result<()> {
 }
 
 /// sets the config and caches directory, this can have side effects.
+#[allow(clippy::too_many_lines)]
 pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	tracing::trace!("changing config directory to {}", new.display());
 
@@ -88,7 +89,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	let old = state_write.directories.config_dir.read().await.clone();
 
 	tracing::trace!("resetting file watcher after changing config directory");
-	let fs_watcher = crate::utils::watcher::initialize_watcher().await?;
+	let fs_watcher = crate::utils::watcher::initialize_watcher()?;
 	state_write.watcher = RwLock::new(fs_watcher);
 
 	tracing::trace!("collecting all config files to be transfered");
@@ -167,7 +168,7 @@ pub async fn set_directory(new: PathBuf) -> crate::Result<()> {
 	}
 
 	tracing::trace!("re-resetting file watching system");
-	let mut file_watcher = crate::utils::watcher::initialize_watcher().await?;
+	let mut file_watcher = crate::utils::watcher::initialize_watcher()?;
 	state_write.clusters =
 		RwLock::new(Clusters::initialize(&state_write.directories, &mut file_watcher).await?);
 	state_write.watcher = RwLock::new(file_watcher);

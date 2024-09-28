@@ -57,7 +57,6 @@ impl std::str::FromStr for ClusterStage {
 			"installed" => Self::Installed,
 			"downloading" => Self::Downloading,
 			"pack_downloading" => Self::PackDownloading,
-			"not_installed" => Self::NotInstalled,
 			_ => Self::NotInstalled,
 		})
 	}
@@ -80,7 +79,7 @@ impl ClusterPath {
 	pub async fn find_by_uuid(uuid: Uuid) -> crate::Result<Self> {
 		Ok(crate::cluster::get_by_uuid(uuid)
 			.await?
-			.ok_or(anyhow::anyhow!("Cluster does not exist"))?
+			.ok_or_else(|| anyhow::anyhow!("Cluster does not exist"))?
 			.cluster_path())
 	}
 
@@ -99,24 +98,27 @@ impl ClusterPath {
 
 	/// Validate the UTF of a cluster path.
 	pub fn validate(&self) -> crate::Result<&Self> {
-		self.0.to_str().ok_or(anyhow::anyhow!(
-			"invalid file path string {}!",
-			self.0.clone().to_string_lossy()
-		))?;
+		self.0.to_str().ok_or_else(|| {
+			anyhow::anyhow!(
+				"invalid file path string {}!",
+				self.0.clone().to_string_lossy()
+			)
+		})?;
 		Ok(self)
 	}
 
 	/// Validate the cluster and clone the current [`ClusterPath`].
 	pub async fn cluster_path(&self) -> crate::Result<Self> {
-		if let Some(c) = crate::cluster::get(self).await? {
-			Ok(c.cluster_path())
-		} else {
-			Err(anyhow::anyhow!(
-				"failed to get path of unmanaged or corrupted cluster {}",
-				self.to_string()
-			)
-			.into())
-		}
+		(crate::cluster::get(self).await?).map_or_else(
+			|| {
+				Err(anyhow::anyhow!(
+					"failed to get path of unmanaged or corrupted cluster {}",
+					self.to_string()
+				)
+				.into())
+			},
+			|c| Ok(c.cluster_path()),
+		)
 	}
 
 	/// Create a [`ClusterPath`] from a full [`PathBuf`].
@@ -376,7 +378,6 @@ impl Loader {
 	#[must_use]
 	pub fn from_string(val: &str) -> Self {
 		match val {
-			"vanilla" => Self::Vanilla,
 			"forge" => Self::Forge,
 			"fabric" => Self::Fabric,
 			"quilt" => Self::Quilt,

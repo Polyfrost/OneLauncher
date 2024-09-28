@@ -75,9 +75,8 @@ pub async fn install_update(
 	app: tauri::AppHandle,
 	state: tauri::State<'_, State>,
 ) -> Result<(), String> {
-	let lock = match state.install_lock.try_lock() {
-		Ok(lock) => lock,
-		Err(_) => return Err("Update already installing".into()),
+	let Ok(lock) = state.install_lock.try_lock() else {
+		return Err("Update already installing".into());
 	};
 
 	app.emit("updater", UpdateEvent::Installing).ok();
@@ -94,6 +93,7 @@ pub async fn install_update(
 	Ok(())
 }
 
+#[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
 	tauri::plugin::Builder::new("onelauncher-updater")
 		.on_page_load(|window, _| {

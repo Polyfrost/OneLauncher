@@ -77,7 +77,7 @@ pub fn minecraft_arguments(
 	asset_index: &str,
 	game_directory: &Path,
 	assets_directory: &Path,
-	version_type: &VersionType,
+	version_type: VersionType,
 	resolution: Resolution,
 	java_arch: &str,
 ) -> crate::Result<Vec<String>> {
@@ -196,7 +196,7 @@ fn parse_minecraft_argument(
 	asset_index: &str,
 	game_directory: &Path,
 	assets_directory: &Path,
-	version_type: &VersionType,
+	version_type: VersionType,
 	resolution: Resolution,
 ) -> crate::Result<String> {
 	Ok(argument

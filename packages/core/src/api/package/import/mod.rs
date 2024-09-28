@@ -64,26 +64,36 @@ impl fmt::Display for ImportType {
 	}
 }
 
-pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Result<Vec<String>> {
-	let instances_path = match import {
-		ImportType::GDLauncher | ImportType::ATLauncher => "instances".to_string(),
-		ImportType::Curseforge => "Instances".to_string(),
-		ImportType::MultiMC => multibased::get_instances_subpath(path.clone().join("multimc.cfg"))
-			.await
-			.unwrap_or_else(|| "instances".to_string()),
-		ImportType::PrismLauncher => {
-			multibased::get_instances_subpath(path.clone().join("prismlauncher.cfg"))
-				.await
-				.unwrap_or_else(|| "instances".to_string())
-		}
-		ImportType::Modrinth => "profiles".to_string(),
-		ImportType::TLauncher => "tinstances".to_string(),
-		ImportType::FTBLauncher => "ftbinstances".to_string(),
-		ImportType::Technic => "tecinstances".to_string(),
-		_ => return Err(anyhow::anyhow!("launcher type unknown, cant import").into()),
-	};
+impl ImportType {
+	pub async fn get_instances_subpath(&self, path: &Path) -> crate::Result<PathBuf> {
+		Ok(path.join(
+			&(match self {
+				Self::GDLauncher | Self::ATLauncher => "instances".to_string(),
+				Self::Curseforge => "Instances".to_string(),
+				Self::MultiMC => {
+					multibased::get_instances_subpath(path.to_path_buf().join("multimc.cfg"))
+						.await
+						.unwrap_or_else(|| "instances".to_string())
+				}
+				Self::PrismLauncher => {
+					multibased::get_instances_subpath(path.to_path_buf().join("prismlauncher.cfg"))
+						.await
+						.unwrap_or_else(|| "instances".to_string())
+				}
+				Self::Modrinth => "profiles".to_string(),
+				Self::TLauncher => "tinstances".to_string(),
+				Self::FTBLauncher => "ftbinstances".to_string(),
+				Self::Technic => "tecinstances".to_string(),
+				Self::Unknown => {
+					return Err(anyhow::anyhow!("launcher type unknown, cant import").into())
+				}
+			}),
+		))
+	}
+}
 
-	let instances_dir = path.join(&instances_path);
+pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Result<Vec<String>> {
+	let instances_dir = import.get_instances_subpath(&path).await?;
 	let mut instances = Vec::new();
 	let mut dir = io::read_dir(&instances_dir)
 		.await
@@ -170,7 +180,6 @@ pub async fn import_instance(
 #[must_use]
 pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 	let path = match r#type {
-		ImportType::MultiMC => None, // MultiMC data is in it's application directory
 		ImportType::PrismLauncher => Some(dirs::data_dir()?.join("PrismLauncher")),
 		ImportType::ATLauncher => Some(dirs::data_dir()?.join("ATLauncher")),
 		ImportType::GDLauncher => Some(dirs::data_dir()?.join("gdlauncher_next")),
@@ -179,7 +188,7 @@ pub fn default_launcher_path(r#type: ImportType) -> Option<PathBuf> {
 		ImportType::FTBLauncher => Some(dirs::data_dir()?.join("FTB")),
 		ImportType::Technic => Some(dirs::data_dir()?.join("Technic")),
 		ImportType::TLauncher => Some(dirs::data_dir()?.join("TLauncher")),
-		ImportType::Unknown => None,
+		ImportType::Unknown | ImportType::MultiMC => None, // MultiMC data is in it's application directory
 	};
 
 	let path = path?;

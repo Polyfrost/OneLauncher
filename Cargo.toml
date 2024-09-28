@@ -217,9 +217,6 @@ complexity = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 unnecessary_cast = "warn"
 cast_lossless = "warn"
-cast_possible_truncation = "warn"
-cast_possible_wrap = "warn"
-cast_sign_loss = "warn"
 dbg_macro = "warn"
 deprecated_cfg_attr = "warn"
 separated_literal_suffix = "warn"
@@ -229,6 +226,8 @@ module_name_repetitions = "allow"
 struct_field_names = "allow"
 cast_precision_loss = "allow"
 missing_panics_doc = "allow"
+significant_drop_tightening = "allow" # tmp
+needless_return = "allow"
 
 [workspace.lints.rust]
 unused_qualifications = "warn"

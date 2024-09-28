@@ -34,14 +34,14 @@ pub async fn get_process_detailed_by_id(uuid: Uuid) -> crate::Result<DetailedPro
 
 	let child = processor
 		.get(uuid)
-		.ok_or(anyhow::anyhow!("process not found"))?;
+		.ok_or_else(|| anyhow::anyhow!("process not found"))?;
 	let child = child.read().await;
 	let pid = child
 		.current_child
 		.read()
 		.await
 		.id()
-		.ok_or(anyhow::anyhow!("process not found"))?;
+		.ok_or_else(|| anyhow::anyhow!("process not found"))?;
 	Ok(DetailedProcess {
 		uuid,
 		user: child.user,
@@ -63,14 +63,14 @@ pub async fn get_processes_detailed_by_path(
 	for uuid in uuids {
 		let child = processor
 			.get(uuid)
-			.ok_or(anyhow::anyhow!("process not found"))?;
+			.ok_or_else(|| anyhow::anyhow!("process not found"))?;
 		let child = child.read().await;
 		let pid = child
 			.current_child
 			.read()
 			.await
 			.id()
-			.ok_or(anyhow::anyhow!("process not found"))?;
+			.ok_or_else(|| anyhow::anyhow!("process not found"))?;
 		processes.push(DetailedProcess {
 			uuid,
 			user: child.user,
@@ -221,12 +221,12 @@ pub async fn get_pid_by_uuid(uuid: Uuid) -> crate::Result<u32> {
 	let processor = state.processor.read().await;
 	Ok(processor
 		.get(uuid)
-		.ok_or(anyhow::anyhow!("process not found"))?
+		.ok_or_else(|| anyhow::anyhow!("process not found"))?
 		.read()
 		.await
 		.current_child
 		.read()
 		.await
 		.id()
-		.ok_or(anyhow::anyhow!("process not found"))?)
+		.ok_or_else(|| anyhow::anyhow!("process not found"))?)
 }

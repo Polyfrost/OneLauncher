@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
 		)
 		.await?;
 
-	println!("{:#?}", results);
+	println!("{results:#?}");
 
 	Ok(())
 }

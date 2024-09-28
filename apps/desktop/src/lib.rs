@@ -53,7 +53,7 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		.export(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
-				.formatter(crate::ext::specta::formatter),
+				.formatter(ext::specta::formatter),
 			"../../packages/client/src/bindings.ts",
 		)
 		.expect("failed to export debug bindings!");
@@ -90,14 +90,15 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		tracing::error!("{err}");
 	};
 
-	app.run(|_, _| {})
+	app.run(|_, _| {});
 }
 
 fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 	let win = handle.get_webview_window("main").unwrap();
 
 	tokio::task::spawn(async move {
-		let state = match onelauncher::State::get().await {
+		let state = onelauncher::State::get();
+		let state = match state.await {
 			Ok(state) => state,
 			Err(err) => {
 				tracing::error!("{err}");

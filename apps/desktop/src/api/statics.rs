@@ -1,4 +1,4 @@
-use onelauncher::constants::*;
+use onelauncher::constants::{NATIVE_ARCH, TARGET_OS, VERSION};
 use serde::Serialize;
 use specta::Type;
 
@@ -12,8 +12,9 @@ pub struct ProgramInfo {
 	arch: String,
 }
 
+#[must_use]
 pub fn get_program_info() -> ProgramInfo {
-	let webview_version = tauri::webview_version().unwrap_or("UNKNOWN".into());
+	let webview_version = tauri::webview_version().unwrap_or_else(|_| "UNKNOWN".into());
 	let tauri_version = tauri::VERSION;
 	let dev_build = tauri::is_dev();
 

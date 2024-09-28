@@ -76,16 +76,15 @@ pub async fn install_minecraft(
 
 	let version_manifest = metadata.minecraft.clone();
 	let versions = version_manifest
-		.ok_or(anyhow::anyhow!("couldn't get minecraft manifest"))?
+		.ok_or_else(|| anyhow::anyhow!("couldn't get minecraft manifest"))?
 		.versions;
 
 	let version_idx = versions
 		.iter()
 		.position(|g| g.id == cluster.meta.mc_version)
-		.ok_or(anyhow::anyhow!(
-			"invalid minecraft game version {}",
-			cluster.meta.mc_version
-		))?;
+		.ok_or_else(|| {
+			anyhow::anyhow!("invalid minecraft game version {}", cluster.meta.mc_version)
+		})?;
 
 	let version = &versions[version_idx];
 	let updated = version_idx <= versions.iter().position(|g| g.id == "22w16a").unwrap_or(0); // LWJGL patching
@@ -271,16 +270,13 @@ pub async fn launch_minecraft(
 
 	let version_manifest = metadata.minecraft.clone();
 	let versions = version_manifest
-		.ok_or(anyhow::anyhow!("couldn't get minecraft manifest"))?
+		.ok_or_else(|| anyhow::anyhow!("couldn't get minecraft manifest"))?
 		.versions;
 
 	let version_index = versions
 		.iter()
 		.position(|it| it.id == cluster.meta.mc_version)
-		.ok_or(anyhow::anyhow!(
-			"invalid game version {}",
-			cluster.meta.mc_version
-		))?;
+		.ok_or_else(|| anyhow::anyhow!("invalid game version {}", cluster.meta.mc_version))?;
 
 	let version = &versions[version_index];
 	let updated = version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0);
@@ -361,7 +357,7 @@ pub async fn launch_minecraft(
 				&version_info.asset_index.id,
 				instance_path,
 				&state.directories.assets_dir().await,
-				&version.type_,
+				version.type_,
 				*resolution,
 				&java_version.arch,
 			)?
@@ -382,19 +378,20 @@ pub async fn launch_minecraft(
 	// overrides `options.txt` with our settings: i can't believe it's not yaml
 	if !mc_options.is_empty() {
 		let options_path = instance_path.join("options.txt");
-		let mut options_string = String::new();
-		if options_path.exists() {
-			options_string = io::read_to_string(&options_path).await?;
-		}
+		let mut options_string = if options_path.exists() {
+			io::read_to_string(&options_path).await?
+		} else {
+			String::new()
+		};
 		for (key, value) in mc_options {
 			let re = regex::Regex::new(&format!(r"(?m)^{}:.*$", regex::escape(key)))?;
-			if !re.is_match(&options_string) {
-				options_string.push_str(&format!("\n{key}:{value}"));
-			} else {
+			if re.is_match(&options_string) {
 				let replaced_string = re
 					.replace_all(&options_string, &format!("{key}:{value}"))
 					.to_string();
 				options_string = replaced_string;
+			} else {
+				options_string.push_str(&format!("\n{key}:{value}"));
 			}
 		}
 

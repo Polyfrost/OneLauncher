@@ -10,6 +10,9 @@ readme = { workspace = true }
 homepage = { workspace = true }
 authors = { workspace = true }
 
+[lints]
+workspace = true
+
 [dependencies]
 onelauncher = { workspace = true, features = [ "cli" ] }
 tokio = { workspace = true }

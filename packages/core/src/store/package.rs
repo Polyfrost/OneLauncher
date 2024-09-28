@@ -36,7 +36,7 @@ pub enum PackageType {
 impl PackageType {
 	/// attempt to get a [`PackageType`] from a loader string.
 	#[must_use]
-	pub fn from_loader(loaders: Vec<String>) -> Option<Self> {
+	pub fn from_loader(loaders: &[String]) -> Option<Self> {
 		if loaders
 			.iter()
 			.any(|x| ["fabric", "forge", "quilt"].contains(&&**x))
@@ -57,7 +57,7 @@ impl PackageType {
 	}
 
 	#[must_use]
-	pub fn from_parent(path: PathBuf) -> Option<Self> {
+	pub fn from_parent(path: &Path) -> Option<Self> {
 		let path = path.parent()?.file_name()?;
 		match path.to_str()? {
 			"mods" => Some(Self::Mod),
@@ -257,6 +257,7 @@ impl PackagesMeta {
 #[derive(Debug)]
 pub struct PackageManager {
 	pub cluster_path: ClusterPath,
+	modpacks: PackagesMeta,
 	mods: PackagesMeta,
 	datapacks: PackagesMeta,
 	resourcepacks: PackagesMeta,
@@ -275,6 +276,7 @@ impl PackageManager {
 	pub fn new(cluster_path: ClusterPath) -> Self {
 		Self {
 			cluster_path,
+			modpacks: PackagesMeta::new(PackageType::ModPack),
 			mods: PackagesMeta::new(PackageType::Mod),
 			datapacks: PackagesMeta::new(PackageType::DataPack),
 			resourcepacks: PackagesMeta::new(PackageType::ResourcePack),
@@ -296,13 +298,13 @@ impl PackageManager {
 
 	/// Get the `PackagesMeta` for a specific package type. Does not sync.
 	#[must_use]
-	pub fn get(&self, package_type: PackageType) -> &PackagesMeta {
+	pub const fn get(&self, package_type: PackageType) -> &PackagesMeta {
 		match package_type {
 			PackageType::Mod => &self.mods,
 			PackageType::DataPack => &self.datapacks,
 			PackageType::ResourcePack => &self.resourcepacks,
 			PackageType::ShaderPack => &self.shaderpacks,
-			_ => unreachable!(),
+			PackageType::ModPack => &self.modpacks,
 		}
 	}
 
@@ -310,10 +312,10 @@ impl PackageManager {
 	fn get_mut(&mut self, package_type: PackageType) -> &mut PackagesMeta {
 		match package_type {
 			PackageType::Mod => &mut self.mods,
+			PackageType::ModPack => &mut self.modpacks,
 			PackageType::DataPack => &mut self.datapacks,
 			PackageType::ResourcePack => &mut self.resourcepacks,
 			PackageType::ShaderPack => &mut self.shaderpacks,
-			_ => unreachable!(),
 		}
 	}
 
@@ -353,7 +355,7 @@ impl PackageManager {
 		let package_type = package
 			.meta
 			.get_package_type()
-			.unwrap_or(package_type.ok_or(anyhow::anyhow!("no package type"))?);
+			.unwrap_or(package_type.ok_or_else(|| anyhow::anyhow!("no package type"))?);
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.insert(package_path, package);
 

@@ -159,8 +159,8 @@ importers:
         specifier: '=2.0.0-rc.1'
         version: 2.0.0-rc.1
       '@unocss/reset':
-        specifier: ^0.62.4
-        version: 0.62.4
+        specifier: ^0.63.2
+        version: 0.63.2
       '@untitled-theme/icons-solid':
         specifier: ^0.10.5
         version: 0.10.5(solid-js@1.9.1)
@@ -1700,6 +1700,9 @@ packages:
 
   '@unocss/reset@0.62.4':
     resolution: {integrity: sha512-CtxjeDgN39fY/eZDLIXN4wy7C8W7+SD+41AlzGVU5JwhcXmnb1XoDpOd2lzMxc/Yy3F5dIJt2+MRDj9RnpX9Ew==}
+
+  '@unocss/reset@0.63.2':
+    resolution: {integrity: sha512-qKA1pp+FLV8vnnNPDh60yq63HsehkJtX8gbZwk4X5mYm8FvZJsgTtSnSkoLEqO9855JIhXvLxjGs4a7LBiEhLA==}
 
   '@unocss/rule-utils@0.62.4':
     resolution: {integrity: sha512-XUwLbLUzL+VSHCJNK5QBHC9RbFehumge1/XJmsRfmh0+oxgJoO1gvEvxi57gYEmdJdMRJHRJZ66se6+cB0Ymvw==}
@@ -5618,6 +5621,8 @@ snapshots:
       '@unocss/rule-utils': 0.62.4
 
   '@unocss/reset@0.62.4': {}
+
+  '@unocss/reset@0.63.2': {}
 
   '@unocss/rule-utils@0.62.4':
     dependencies:

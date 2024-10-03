@@ -13,8 +13,6 @@ use tokio::fs::DirEntry;
 
 use super::{ClusterPath, Clusters, Directories, PackagePath};
 
-// TODO: Curseforge, Modrinth, SkyClient integration
-
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -554,7 +552,7 @@ impl PackageMetadata {
 		Self::Managed {
 			package_id: package.id,
 			version_id: version.id,
-			version_formatted: version.version_id,
+			version_formatted: version.version_display,
 			title: package.title,
 			provider: package.provider,
 			package_type: package.package_type,
@@ -662,15 +660,16 @@ pub struct ManagedVersion {
 	pub name: String,
 
 	pub featured: bool,
-	pub version_id: String,
+	pub version_display: String,
 	pub changelog: String,
 	pub changelog_url: Option<String>,
 
 	pub published: DateTime<Utc>,
 	pub downloads: u32,
-	pub version_type: String,
+	pub version_type: ManagedVersionReleaseType,
 
 	pub files: Vec<ManagedVersionFile>,
+	pub is_available: bool,
 	pub deps: Vec<ManagedDependency>,
 	pub game_versions: Vec<String>,
 	pub loaders: Vec<Loader>,
@@ -683,6 +682,39 @@ impl ManagedVersion {
 	}
 }
 
+/// Universal version release type
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub enum ManagedVersionReleaseType {
+	#[default]
+	Release,
+	Alpha,
+	Beta,
+	Snapshot,
+}
+
+impl From<String> for ManagedVersionReleaseType {
+	fn from(s: String) -> Self {
+		match s.to_lowercase().as_str() {
+			"alpha" => Self::Alpha,
+			"beta" => Self::Beta,
+			"snapshot" => Self::Snapshot,
+			_ => Self::Release,
+		}
+	}
+}
+
+impl ToString for ManagedVersionReleaseType {
+	fn to_string(&self) -> String {
+		match self {
+			Self::Release => "Release",
+			Self::Alpha => "Alpha",
+			Self::Beta => "Beta",
+			Self::Snapshot => "Snapshot",
+		}.to_string()
+	}
+}
+
 /// Universal interface for managed package files.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -691,7 +723,7 @@ pub struct ManagedVersionFile {
 	pub file_name: String,
 	pub primary: bool,
 
-	pub size: u32,
+	pub size: u64,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
 }

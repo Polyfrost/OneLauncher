@@ -297,13 +297,7 @@ impl Processor {
 			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
-				if process
-					.current_child
-					.write()
-					.await
-					.try_wait()?
-					.is_none()
-				{
+				if process.current_child.write().await.try_wait()?.is_none() {
 					keys.push(key);
 				}
 			}
@@ -334,13 +328,7 @@ impl Processor {
 			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
-				if process
-					.current_child
-					.write()
-					.await
-					.try_wait()?
-					.is_none()
-				{
+				if process.current_child.write().await.try_wait()?.is_none() {
 					clusters.push(process.cluster_path.clone());
 				}
 			}
@@ -355,13 +343,7 @@ impl Processor {
 			if let Some(process) = self.get(key) {
 				let process = process.clone();
 				let process = process.write().await;
-				if process
-					.current_child
-					.write()
-					.await
-					.try_wait()?
-					.is_none()
-				{
+				if process.current_child.write().await.try_wait()?.is_none() {
 					if let Some(cluster) = cluster::get(&process.cluster_path.clone()).await? {
 						clusters.push(cluster);
 					}

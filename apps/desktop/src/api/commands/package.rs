@@ -4,7 +4,10 @@ use onelauncher::cluster::content::package;
 use onelauncher::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use onelauncher::package::content::Providers;
 use onelauncher::package::import::{default_launcher_path, ImportType};
-use onelauncher::store::{Author, ClusterPath, Package, PackageBody, PackagePath, ProviderSearchResults};
+use onelauncher::store::{
+	Author, ClusterPath, Package, PackageBody, PackagePath, ProviderSearchResults,
+};
+use onelauncher::utils::pagination::Pagination;
 use uuid::Uuid;
 
 #[specta::specta]
@@ -49,9 +52,11 @@ pub async fn get_all_provider_package_versions(
 	project_id: String,
 	game_versions: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
-) -> Result<Vec<ManagedVersion>, String> {
+	page: Option<u32>,
+	page_size: Option<u16>,
+) -> Result<(Vec<ManagedVersion>, Pagination), String> {
 	Ok(provider
-		.get_all_versions(&project_id, game_versions, loaders, None, None) // TODO
+		.get_all_versions(&project_id, game_versions, loaders, page, page_size)
 		.await?)
 }
 
@@ -61,7 +66,7 @@ pub async fn get_provider_package_versions(
 	provider: Providers,
 	versions: Vec<String>,
 ) -> Result<Vec<ManagedVersion>, String> {
-	Ok(provider.get_versions("", versions).await?)  // TODO
+	Ok(provider.get_versions(versions).await?)
 }
 
 #[specta::specta]
@@ -70,7 +75,7 @@ pub async fn get_provider_package_version(
 	provider: Providers,
 	version: String,
 ) -> Result<ManagedVersion, String> {
-	Ok(provider.get_version("", &version).await?)  // TODO
+	Ok(provider.get_version("", &version).await?) // TODO
 }
 
 #[derive(specta::Type, serde::Deserialize, serde::Serialize)]
@@ -116,10 +121,7 @@ pub async fn get_provider_authors(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_package_body(
-	provider: Providers,
-	body: PackageBody
-) -> Result<String, String> {
+pub async fn get_package_body(provider: Providers, body: PackageBody) -> Result<String, String> {
 	Ok(provider.get_package_body(&body).await?)
 }
 

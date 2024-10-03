@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 
 fn main() {
-	let paths = vec![
-		get_root_workspace().join(".env"),
-		PathBuf::from(".env"),
-	];
+	let paths = vec![get_root_workspace().join(".env"), PathBuf::from(".env")];
 
 	for path in paths {
 		if path.exists() {
@@ -33,9 +30,11 @@ fn get_root_workspace() -> PathBuf {
 }
 
 fn load_from_path(path: PathBuf) {
-	let vars = dotenvy::EnvLoader::with_path(path).load().expect("failed to find .env file");
+	let vars = dotenvy::EnvLoader::with_path(path)
+		.load()
+		.expect("failed to find .env file");
 
-    for (key, value) in vars {
-        println!("cargo:rustc-env={key}={value}");
-    }
+	for (key, value) in vars {
+		println!("cargo:rustc-env={key}={value}");
+	}
 }

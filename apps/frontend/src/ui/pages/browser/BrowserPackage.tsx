@@ -11,11 +11,11 @@ import Tooltip from '~ui/components/base/Tooltip';
 import Markdown from '~ui/components/content/Markdown';
 import Spinner from '~ui/components/Spinner';
 import useBrowser from '~ui/hooks/useBrowser';
-import useCommand from '~ui/hooks/useCommand';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import usePagination from '~ui/hooks/usePagination';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import { abbreviateNumber, formatAsRelative } from '~utils';
-import { type Accessor, createContext, createEffect, createSignal, For, Match, on, type ParentProps, type Resource, Show, Switch, useContext } from 'solid-js';
+import { type Accessor, createContext, createEffect, createResource, createSignal, For, Match, on, type ParentProps, type Resource, Show, Switch, useContext } from 'solid-js';
 import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 
 interface BrowserModParams extends Params {
@@ -148,7 +148,7 @@ function BrowserSidebar(props: { package: ManagedPackage }) {
 				</div>
 				<div class="flex flex-1 flex-col gap-2 p-3">
 					<div class="flex flex-col gap-2">
-						<h4 class="text-fg-primary font-medium">{props.package.title}</h4>
+						<h4 class="text-fg-primary font-medium line-height-snug">{props.package.title}</h4>
 						<p class="text-xs text-fg-secondary">
 							<span class="text-fg-primary capitalize">{props.package.package_type}</span>
 							{' '}
@@ -383,7 +383,7 @@ function BrowserPackageVersions() {
 	const context = useContext(BrowserPackageContext);
 	const MAX_ITEMS_PER_PAGE = 20;
 
-	const { page, Navigation } = usePagination({
+	const { page, Navigation, reset, options } = usePagination({
 		itemsCount: () => context?.pkg().versions.length || 0,
 		itemsPerPage: () => MAX_ITEMS_PER_PAGE,
 	});
@@ -399,13 +399,25 @@ function BrowserPackageVersions() {
 		return newestToOldest.slice(start, end);
 	};
 
-	const [versions, { refetch }] = useCommand(context, async () => {
+	const [versions, { refetch }] = createResource(context, async () => {
 		if (context === null)
-			return { error: 'No package context', status: 'error' };
+			throw new Error('Context is null');
+
+		if (context.pkg().versions.length === 0) {
+			const [data, pagination] = (await tryResult(() => bridge.commands.getAllProviderPackageVersions(context.pkg().provider, context.pkg().id, null, null, page() - 1, MAX_ITEMS_PER_PAGE))) || [];
+
+			if (options().itemsCount() !== pagination.totalCount)
+				reset({
+					itemsCount: () => pagination.totalCount || 0,
+					itemsPerPage: () => MAX_ITEMS_PER_PAGE,
+				});
+
+			return data;
+		}
 
 		const list = getVersionsForPage(page());
 
-		return await bridge.commands.getProviderPackageVersions(context.pkg().provider, list);
+		return await tryResult(() => bridge.commands.getProviderPackageVersions(context.pkg().provider, list));
 	});
 
 	let container!: HTMLDivElement;
@@ -484,8 +496,8 @@ function VersionRow(props: ManagedVersion) {
 
 			<td>
 				<div class="flex flex-col gap-2">
-					<h3 class="text-lg">{props.version_id}</h3>
-					<p class="text-wrap text-sm">{props.name}</p>
+					<h3 class="text-lg">{props.version_display}</h3>
+					<p class="text-wrap text-sm">{props.name === props.version_display ? props.files[0]?.file_name : props.name}</p>
 				</div>
 			</td>
 

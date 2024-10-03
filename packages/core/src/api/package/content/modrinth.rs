@@ -3,10 +3,10 @@ use std::fmt::{Display, Formatter};
 
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::store::{
-	Author, License, ManagedVersionFile, PackageFile, PackageSide, ProviderSearchResults,
-	SearchResult,
+	Author, License, ManagedVersionFile, ManagedVersionReleaseType, PackageFile, PackageSide, ProviderSearchResults, SearchResult
 };
 use crate::utils::http::fetch;
+use crate::utils::pagination::Pagination;
 use crate::{Result, State};
 
 use chrono::{DateTime, Utc};
@@ -145,7 +145,7 @@ pub struct File {
 	pub url: String,
 	pub filename: String,
 	pub primary: bool,
-	pub size: u32,
+	pub size: u64,
 	pub file_type: Option<PackageFile>,
 }
 
@@ -171,15 +171,16 @@ impl From<ModrinthVersion> for ManagedVersion {
 			name: value.name,
 
 			featured: value.featured,
-			version_id: value.version_number,
+			version_display: value.version_number,
 			changelog: value.changelog,
 			changelog_url: value.changelog_url,
 
 			published: value.date_published,
 			downloads: value.downloads,
-			version_type: value.version_type,
+			version_type: ManagedVersionReleaseType::from(value.version_type),
 
 			files: value.files.into_iter().map(Into::into).collect(),
+			is_available: true,
 			deps: vec![], // TODO [`ManagedDependency`]?
 			game_versions: value.game_versions,
 			loaders: value
@@ -439,7 +440,9 @@ pub async fn get_all_versions(
 	project_id: &str,
 	game_versions: Option<Vec<String>>,
 	loaders: Option<Vec<Loader>>,
-) -> Result<Vec<ModrinthVersion>> {
+	page: Option<u32>,
+	page_size: Option<u16>,
+) -> Result<(Vec<ModrinthVersion>, Pagination)> {
 	let mut url = url::Url::parse(format_url!("/project/{}/version", project_id).as_str())?;
 	if let Some(game_versions) = game_versions {
 		url.query_pairs_mut().append_pair(
@@ -467,14 +470,26 @@ pub async fn get_all_versions(
 		);
 	}
 
-	Ok(serde_json::from_slice(
+	let data = serde_json::from_slice::<Vec<ModrinthVersion>>(
 		&fetch(
 			format_url!("/project/{}/version", project_id).as_str(),
 			None,
 			&State::get().await?.fetch_semaphore,
 		)
 		.await?,
-	)?)
+	)?;
+
+	let data_len = data.len() as u32;
+
+	Ok((
+		data,
+		Pagination {
+			index: page.unwrap_or(1),
+			page_size: page_size.unwrap_or(10),
+			result_count: data_len,
+			total_count: data_len,
+		},
+	))
 }
 
 pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>> {

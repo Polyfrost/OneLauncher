@@ -33,7 +33,7 @@ pub async fn find_managed_version(
 		)
 		.await?;
 
-	Ok(versions
+	Ok(versions.0
 		.iter()
 		.find(|v| {
 			let check_game_version = game_version
@@ -46,7 +46,7 @@ pub async fn find_managed_version(
 
 			let check_package_version = package_version
 				.as_ref()
-				.map_or(true, |pv| pv == &v.version_id);
+				.map_or(true, |pv| pv == &v.version_display);
 
 			check_game_version && check_loader && check_package_version
 		})

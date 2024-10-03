@@ -33,6 +33,14 @@ export default defineConfig(async ({ mode }) => {
 			emptyOutDir: false,
 		},
 
+		css: {
+			preprocessorOptions: {
+				scss: {
+					api: 'modern-compiler',
+				},
+			},
+		},
+
 		clearScreen: false,
 		server: {
 			port: 8001,

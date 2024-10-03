@@ -108,6 +108,7 @@ function usePagination(initialOptions: PaginationOptions) {
 		totalPages,
 		offset,
 		reset,
+		options,
 		Navigation,
 	};
 }

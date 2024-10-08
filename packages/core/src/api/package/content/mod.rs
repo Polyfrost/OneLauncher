@@ -108,13 +108,36 @@ impl Providers {
 
 	pub async fn get_multiple(&self, slug_or_ids: &[String]) -> Result<Vec<ManagedPackage>> {
 		Ok(match self {
-			Self::Modrinth => modrinth::get_multiple(slug_or_ids),
-			Self::Curseforge => todo!(),
-		}
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
+			Self::Modrinth => {
+				if slug_or_ids.len() <= 0 {
+					return Ok(vec![]);
+				}
+
+				modrinth::get_multiple(slug_or_ids)
+					.await?
+					.into_iter()
+					.map(Into::into)
+					.collect()
+			},
+			Self::Curseforge => {
+				let parsed_ids = slug_or_ids
+					.iter()
+					.filter_map(|id| id.parse::<u32>().ok())
+					.collect::<Vec<u32>>();
+
+				if parsed_ids.len() <= 0 {
+					return Ok(vec![]);
+				}
+
+				let parsed_ids = parsed_ids.as_slice();
+
+				curseforge::get_multiple(parsed_ids)
+					.await?
+					.into_iter()
+					.map(Into::into)
+					.collect()
+			},
+		})
 	}
 
 	pub async fn get_all_versions(

@@ -6,7 +6,6 @@ import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
-import Spinner from '~ui/components/Spinner';
 import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
@@ -39,18 +38,9 @@ function ClusterMods() {
 		}
 
 		return formatted;
+	}, {
+		initialValue: new Map<Providers, ManagedPackage[]>(),
 	});
-
-	function getManagedData(mod: Package): ManagedPackage | undefined {
-		const meta = mod.meta;
-		if (meta.type === 'managed') {
-			const provider = managedMods()?.get(meta.provider);
-			if (provider && provider.length > 0)
-				return provider.find(pkg => pkg.id === meta.package_id);
-		}
-
-		return undefined;
-	}
 
 	// Mods to display, should be a clone of the mods array but sorted
 	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
@@ -125,24 +115,19 @@ function ClusterMods() {
 			</div>
 
 			<ScrollableContainer>
-				<Spinner.Suspense>
-					<Show when={managedMods.loading === false}>
-						<Switch>
-							<Match when={displayedMods().length > 0}>
-								<For each={displayedMods()}>
-									{(mod) => {
-										const managed = getManagedData(mod);
-										return <ModEntry managed={managed} pkg={mod} refetch={refetch} />;
-									}}
-								</For>
-							</Match>
+				<Switch>
+					<Match when={displayedMods().length > 0}>
+						<For each={displayedMods()}>
+							{mod => (
+								<ModEntry managedMods={managedMods()} pkg={mod} refetch={refetch} />
+							)}
+						</For>
+					</Match>
 
-							<Match when={displayedMods().length === 0}>
-								<p class="my-4 text-center text-2lg">No mods were found</p>
-							</Match>
-						</Switch>
-					</Show>
-				</Spinner.Suspense>
+					<Match when={displayedMods().length === 0}>
+						<p class="my-4 text-center text-2lg">No mods were found</p>
+					</Match>
+				</Switch>
 			</ScrollableContainer>
 		</Sidebar.Page>
 	);
@@ -153,12 +138,22 @@ export default ClusterMods;
 interface ModEntryProps {
 	pkg: Package;
 	refetch: () => void;
-	managed?: ManagedPackage | undefined;
+	managedMods?: Map<Providers, ManagedPackage[]>;
 };
 
 function ModEntry(props: ModEntryProps) {
 	const [cluster] = useClusterContext();
 	const browser = useBrowser();
+
+	const managed = () => {
+		const pkg = props.pkg;
+		if (props.managedMods && pkg.meta.type === 'managed') {
+			const package_id = pkg.meta.package_id;
+			return props.managedMods.get(pkg.meta.provider)?.find(p => p.id === package_id);
+		}
+
+		return undefined;
+	};
 
 	const name = () => {
 		if (props.pkg.meta.type === 'unknown')
@@ -191,17 +186,19 @@ function ModEntry(props: ModEntryProps) {
 
 	const icon = () => {
 		if (props.pkg.meta.type === 'managed')
-			return props.managed?.icon_url;
+			return managed()?.icon_url;
 
 		return undefined;
 	};
 
 	function onClick(e: MouseEvent) {
-		if (props.managed) {
+		const mngd = managed();
+
+		if (mngd) {
 			e.preventDefault();
 			e.stopPropagation();
 
-			browser.displayPackage(props.managed.id, props.managed.provider);
+			browser.displayPackage(mngd.id, mngd.provider);
 		}
 	}
 

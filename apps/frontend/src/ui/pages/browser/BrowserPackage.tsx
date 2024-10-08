@@ -9,13 +9,15 @@ import Dropdown from '~ui/components/base/Dropdown';
 import Link from '~ui/components/base/Link';
 import Tooltip from '~ui/components/base/Tooltip';
 import Markdown from '~ui/components/content/Markdown';
+import { createModal } from '~ui/components/overlay/Modal';
 import Spinner from '~ui/components/Spinner';
 import useBrowser from '~ui/hooks/useBrowser';
+import { ChooseClusterModal } from '~ui/hooks/useCluster';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import usePagination from '~ui/hooks/usePagination';
 import usePromptOpener from '~ui/hooks/usePromptOpener';
 import { abbreviateNumber, formatAsRelative } from '~utils';
-import { type Accessor, createContext, createEffect, createResource, createSignal, For, Match, on, type ParentProps, type Resource, Show, Switch, useContext } from 'solid-js';
+import { type Accessor, createContext, createEffect, createMemo, createResource, createSignal, For, Match, on, type ParentProps, type Resource, Show, Switch, useContext } from 'solid-js';
 import { getLicenseUrl, getPackageUrl, upperFirst } from '../../../utils';
 
 interface BrowserModParams extends Params {
@@ -270,7 +272,7 @@ function InstallButton(props: ManagedPackage) {
 		return game_version && loader;
 	};
 
-	const filtered = () => clusters()?.filter(meetsRequirements);
+	const filtered = createMemo(() => clusters()?.filter(meetsRequirements));
 
 	const getSelectedCluster = () => filtered()?.[selected()];
 
@@ -312,44 +314,44 @@ function InstallButton(props: ManagedPackage) {
 	});
 
 	return (
-		<div class="h-12 flex flex-row">
+		<Show when={(filtered()?.length || 0) > 0}>
+			<div class="h-12 flex flex-row">
 
-			<Button
-				buttonStyle="primary"
-				children={(
-					<div class="flex flex-1 flex-col items-center justify-center">
-						<p class="text-xs">Download latest to</p>
-						<span class="mt-0.5 h-3.5 max-w-38 overflow-x-hidden text-sm font-bold">{filtered?.()?.[selected?.()]?.meta.name || 'Unknown'}</span>
-					</div>
-				)}
-				class="max-w-full flex-1 rounded-r-none!"
-				disabled={filtered()?.length === 0}
-				iconLeft={<Download01Icon />}
-				onClick={download}
-			/>
-
-			<Dropdown
-				class="w-8"
-				component={props => (
-					<Button
-						buttonStyle="primary"
-						class="h-full w-full border-l border-white/5 rounded-l-none! px-0!"
-						iconLeft={<ChevronDownIcon />}
-						onClick={() => props.setVisible(true)}
-					/>
-				)}
-				disabled={filtered()?.length === 0}
-				dropdownClass="w-58! right-0"
-				onChange={setSelected}
-				selected={selected}
-			>
-				<For each={filtered()}>
-					{cluster => (
-						<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
+				<Button
+					buttonStyle="primary"
+					children={(
+						<div class="flex flex-1 flex-col items-center justify-center">
+							<p class="text-xs">Download latest to</p>
+							<span class="mt-0.5 h-3.5 max-w-38 overflow-x-hidden text-sm font-bold">{filtered?.()?.[selected?.()]?.meta.name || 'Unknown'}</span>
+						</div>
 					)}
-				</For>
-			</Dropdown>
-		</div>
+					class="max-w-full flex-1 rounded-r-none!"
+					iconLeft={<Download01Icon />}
+					onClick={download}
+				/>
+
+				<Dropdown
+					class="w-8"
+					component={props => (
+						<Button
+							buttonStyle="primary"
+							class="h-full w-full border-l border-white/5 rounded-l-none! px-0!"
+							iconLeft={<ChevronDownIcon />}
+							onClick={() => props.setVisible(true)}
+						/>
+					)}
+					dropdownClass="w-58! right-0"
+					onChange={setSelected}
+					selected={selected}
+				>
+					<For each={filtered()}>
+						{cluster => (
+							<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
+						)}
+					</For>
+				</Dropdown>
+			</div>
+		</Show>
 	);
 }
 
@@ -417,7 +419,7 @@ function BrowserPackageVersions() {
 
 		const list = getVersionsForPage(page());
 
-		return await tryResult(() => bridge.commands.getProviderPackageVersions(context.pkg().provider, list));
+		return (await tryResult(() => bridge.commands.getProviderPackageVersions(context.pkg().provider, list))).toReversed();
 	});
 
 	let container!: HTMLDivElement;
@@ -455,7 +457,7 @@ function BrowserPackageVersions() {
 					</thead>
 
 					<tbody>
-						<For each={versions()?.reverse()}>
+						<For each={versions() || []}>
 							{version => <VersionRow {...version} />}
 						</For>
 					</tbody>
@@ -469,7 +471,7 @@ function BrowserPackageVersions() {
 }
 
 function colorForType(type: string) {
-	switch (type) {
+	switch (type.toLowerCase()) {
 		case 'release':
 			return 'bg-code-trace';
 		case 'snapshot':
@@ -484,6 +486,59 @@ function colorForType(type: string) {
 }
 
 function VersionRow(props: ManagedVersion) {
+	const [clusters, setClusters] = createSignal<Cluster[]>([]);
+	const context = useContext(BrowserPackageContext);
+
+	async function getClusters() {
+		const clusters = await tryResult(bridge.commands.getClusters);
+
+		return clusters.filter((cluster) => {
+			const game_version = props.game_versions.includes(cluster.meta.mc_version);
+			const loader = props.loaders.includes(cluster.meta.loader || 'vanilla');
+
+			return game_version && loader;
+		});
+	}
+
+	const modal = createModal((props) => {
+		return (
+			<ChooseClusterModal
+				clusters={clusters}
+				onSelected={downloadPackage}
+				{...props}
+			/>
+		);
+	});
+
+	async function downloadPrompted() {
+		const clusterz = await getClusters();
+		setClusters(clusterz);
+
+		modal.show();
+	}
+
+	async function downloadPackage(cluster: Cluster) {
+		if (cluster === undefined)
+			return;
+
+		try {
+			// eslint-disable-next-line solid/reactivity -- lint issue
+			await tryResult(() => bridge.commands.downloadProviderPackage(
+				context!.pkg()!.provider,
+				context!.pkg()!.id,
+				cluster.uuid,
+				cluster.meta.mc_version,
+				cluster.meta.loader || null,
+				props.id,
+			));
+
+			await bridge.commands.syncClusterPackages(cluster.path || '');
+		}
+		catch (err) {
+			console.error(err);
+		}
+	}
+
 	return (
 		<tr class="my-2 bg-page-elevated px-4 [&>td]:py-4">
 			<td class="rounded-l-lg px-4">
@@ -533,6 +588,7 @@ function VersionRow(props: ManagedVersion) {
 				<Button
 					buttonStyle="iconSecondary"
 					children={<Download01Icon />}
+					onClick={downloadPrompted}
 				/>
 			</td>
 

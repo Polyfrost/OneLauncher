@@ -109,11 +109,12 @@ pub struct CurseforgePackage {
 	pub summary: String,
 	// pub status: u32,
 	pub download_count: u64,
+	#[serde(default)]
 	pub is_featured: bool,
 	// pub primary_category_id: u32,
 	pub categories: Vec<Category>,
 	pub authors: Vec<Author>,
-	pub logo: Logo,
+	pub logo: Option<Logo>,
 	// pub screenshots: Vec<Screenshot>,
 	// pub main_file_id: u32,
 	// pub latest_files: Vec<LatestFile>,
@@ -122,8 +123,8 @@ pub struct CurseforgePackage {
 	pub date_created: DateTime<Utc>,
 	pub date_modified: DateTime<Utc>,
 	pub date_released: DateTime<Utc>,
-	#[serde(default)]
-	pub allow_mod_distribution: bool,
+	// #[serde(default)]
+	// pub allow_mod_distribution: bool,
 	// pub game_popularity_rank: u32,
 	// pub is_available: bool,
 	pub thumbs_up_count: u32,
@@ -143,7 +144,7 @@ impl From<CurseforgePackage> for ManagedPackage {
 			versions: vec![],
 			game_versions: vec![],
 			loaders: vec![],
-			icon_url: Some(package.logo.url),
+			icon_url: package.logo.and_then(|l| Some(l.url)),
 			created: package.date_created,
 			updated: package.date_modified,
 			client: crate::store::PackageSide::Unknown,
@@ -189,7 +190,7 @@ impl Into<SearchResult> for CurseforgePackage {
 			server_side: crate::store::PackageSide::Unknown,
 			project_type: self.package_type.into(),
 			downloads: self.download_count,
-			icon_url: self.logo.url,
+			icon_url: self.logo.map_or(String::new(), |l| l.url),
 			categories: vec![], // TODO
 			display_categories: vec![],
 			versions: vec![],
@@ -278,6 +279,7 @@ pub struct ModFile {
 	pub id: u32,
 	pub game_id: u32,
 	pub mod_id: u32,
+	#[serde(default)]
 	pub is_available: bool,
 	pub display_name: String,
 	pub file_name: String,
@@ -587,6 +589,25 @@ pub async fn search(
 pub async fn get(id: u32) -> Result<CurseforgePackage> {
 	Ok(
 		serde_json::from_slice::<CFData<_>>(&fetch(format!("/v1/mods/{}", id).as_str()).await?)?
+			.data,
+	)
+}
+
+pub async fn get_multiple(ids: &[u32]) -> Result<Vec<CurseforgePackage>> {
+	let mut map = serde_json::Map::new();
+	map.insert("modIds".to_string(), ids.to_vec().into());
+
+	let json_body = serde_json::Value::Object(map);
+
+	Ok(
+		serde_json::from_slice::<CFData<_>>(
+			&fetch_advanced(
+				Method::POST,
+				"/v1/mods",
+				None::<fn(&mut Url)>,
+				None,
+				Some(json_body),
+			).await?)?
 			.data,
 	)
 }

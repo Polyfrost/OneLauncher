@@ -1,9 +1,11 @@
 import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
+import Button from '~ui/components/base/Button';
+import Dropdown from '~ui/components/base/Dropdown';
+import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
 import ClusterGame from '~ui/pages/cluster/ClusterGame';
-import { type Accessor, type Context, createContext, createEffect, createSignal, type ParentProps, type ResourceReturn, Show, useContext } from 'solid-js';
+import { type Accessor, type Context, createContext, createEffect, createResource, createSignal, For, Match, onMount, type ParentProps, type ResourceReturn, Show, Switch, untrack, useContext } from 'solid-js';
 import useCommand, { tryResult } from './useCommand';
 
 const ClusterContext = createContext() as Context<ResourceReturn<Cluster>>;
@@ -104,3 +106,82 @@ export function useRecentCluster() {
 }
 
 export default useClusterContext;
+
+type ChooseClusterModalProps = ModalProps & {
+	clusters?: () => Cluster[];
+	selected?: (clusters: Cluster[]) => number;
+	onSelected?: (cluster: Cluster) => void;
+};
+
+export function ChooseClusterModal(props: ChooseClusterModalProps) {
+	const [clusters] = createResource(async () => {
+		if (props.clusters !== undefined)
+			return await props.clusters();
+
+		return await tryResult(bridge.commands.getClusters);
+	});
+	const [selected, setSelected] = createSignal<number>(0);
+
+	onMount(() => {
+		const newSelected = props.selected?.(clusters() || []);
+		if (newSelected !== undefined)
+			setSelected(newSelected);
+	});
+
+	function chooseCluster() {
+		const index = untrack(selected);
+		const clusterz = untrack(clusters);
+		if (clusterz !== undefined && index !== undefined) {
+			const cluster = clusterz[index];
+			if (cluster !== undefined)
+				props.onSelected?.(cluster);
+		}
+
+		props.hide();
+	}
+
+	return (
+		<Modal.Simple
+			{...props}
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Close"
+					onClick={props.hide}
+				/>,
+				<Button
+					children="Save"
+					onClick={chooseCluster}
+				/>,
+			]}
+			children={(
+				<Switch>
+					<Match when={clusters() !== undefined}>
+						<Dropdown
+							disabled={clusters()?.length === 0}
+							onChange={setSelected}
+							selected={selected}
+						>
+							<Switch>
+								<Match when={(clusters()?.length || 0) > 0}>
+									<For each={clusters()!}>
+										{cluster => (
+											<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
+										)}
+									</For>
+								</Match>
+								<Match when>
+									<Dropdown.Row>No clusters found</Dropdown.Row>
+								</Match>
+							</Switch>
+						</Dropdown>
+					</Match>
+					<Match when>
+						<div>Loading...</div>
+					</Match>
+				</Switch>
+			)}
+			title="Choose a cluster"
+		/>
+	);
+}

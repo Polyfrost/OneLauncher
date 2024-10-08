@@ -149,6 +149,7 @@ pub async fn download_provider_package(
 		package_version,
 	)
 	.await?;
+
 	package::add_package(
 		&cluster.cluster_path(),
 		pkg_path,

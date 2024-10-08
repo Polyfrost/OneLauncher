@@ -1,15 +1,12 @@
 import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, SearchResult } from '@onelauncher/client/bindings';
-import type { ModalProps } from '~ui/components/overlay/Modal';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
-import Button from '~ui/components/base/Button';
-import Dropdown from '~ui/components/base/Dropdown';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
+import { createModal } from '~ui/components/overlay/Modal';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
 import { PROVIDERS } from '~utils';
-import { type Accessor, type Context, createContext, createEffect, createSignal, For, on, onMount, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
-import { useRecentCluster } from './useCluster';
-import useCommand, { tryResult } from './useCommand';
+import { type Accessor, type Context, createContext, createEffect, createSignal, on, onMount, type ParentProps, type Setter, useContext } from 'solid-js';
+import { ChooseClusterModal, useRecentCluster } from './useCluster';
+import { tryResult } from './useCommand';
 
 export type ProviderSearchOptions = ProviderSearchQuery & { provider: Providers };
 export type PopularPackages = Record<Providers, SearchResult[]>;
@@ -60,8 +57,30 @@ export function BrowserProvider(props: ParentProps) {
 	const navigate = useNavigate();
 	const recentCluster = useRecentCluster();
 
+	const currentlySelectedCluster = (list: Cluster[]) => {
+		const cluster = controller.cluster();
+
+		if (cluster === undefined)
+			return 0;
+
+		if (list === undefined)
+			return 0;
+
+		const index = list.findIndex(c => c.uuid === cluster.uuid) || 0;
+		if (index === -1)
+			return 0;
+
+		return index;
+	};
+
+	const chooseCluster = (cluster: Cluster) => {
+		controller.setCluster(cluster);
+	};
+
 	const modal = createModal(props => (
 		<ChooseClusterModal
+			onSelected={chooseCluster}
+			selected={list => currentlySelectedCluster(list) || 0}
 			{...props}
 		/>
 	));
@@ -162,74 +181,4 @@ export default function useBrowser() {
 		throw new Error('useBrowserController should be called inside its BrowserProvider');
 
 	return controller;
-}
-
-function ChooseClusterModal(props: ModalProps) {
-	const [selected, setSelected] = createSignal<number>(0);
-	const [clusters] = useCommand(() => bridge.commands.getClusters());
-	const controller = useBrowser();
-
-	const currentlySelectedCluster = (list: Cluster[]) => {
-		const cluster = controller.cluster();
-
-		if (cluster === undefined)
-			return 0;
-
-		if (list === undefined)
-			return 0;
-
-		const index = list.findIndex(c => c.uuid === cluster.uuid) || 0;
-		if (index === -1)
-			return 0;
-
-		return index;
-	};
-
-	createEffect(() => {
-		setSelected(currentlySelectedCluster(clusters() || []));
-	});
-
-	function chooseCluster() {
-		const index = untrack(selected);
-		const clusterz = untrack(clusters);
-		if (clusterz !== undefined && index !== undefined)
-			controller.setCluster(clusterz[index]);
-
-		props.hide();
-	}
-
-	return (
-		<Modal.Simple
-			{...props}
-			buttons={[
-				<Button
-					buttonStyle="secondary"
-					children="Close"
-					onClick={props.hide}
-				/>,
-				<Button
-					children="Save"
-					onClick={chooseCluster}
-				/>,
-			]}
-			children={(
-				<Show
-					fallback={<div>Loading...</div>}
-					when={clusters !== undefined}
-				>
-					<Dropdown
-						onChange={setSelected}
-						selected={selected}
-					>
-						<For each={clusters()!}>
-							{cluster => (
-								<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
-							)}
-						</For>
-					</Dropdown>
-				</Show>
-			)}
-			title="Choose a cluster"
-		/>
-	);
 }

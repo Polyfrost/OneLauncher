@@ -28,7 +28,7 @@ async fn search(provider: Providers) -> Result<()> {
 		)
 		.await?;
 
-	println!("{:#?}", results);
+	println!("{results:#?}");
 
 	Ok(())
 }

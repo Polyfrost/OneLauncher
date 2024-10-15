@@ -96,7 +96,7 @@ specta-typescript = { version = "=0.0.7" }
 # rspc-specta2 is the specta v2 (rc) adapter for rspc.
 rspc-tauri2 = { version = "=0.0.1" }
 # core utilities for minecraft and mod management with pulseflow apis
-interpulse = { version = "=1.1.3", features = [ "specta" ] }
+interpulse = { version = "=1.2.0", features = [ "specta" ] }
 
 # # ============= SECURITY ============= # #
 thiserror = { version = "1.0" }
@@ -123,7 +123,7 @@ base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
 uuid = { version = "1.10", features = [ "serde", "v4" ] }
 toml = { version = "0.8" }
-nom = { version = "7" }
+nom = { version = "7.1" }
 
 # # ============= NETWORK ============= # #
 reqwest = { version = "0.12", default-features = false, features = [
@@ -160,6 +160,7 @@ bytes = { version = "1.7" }
 
 # # ============= UTILITY ============= # #
 async-channel = { version = "2.3" }
+mimalloc = { version = "0.1" }
 pin-project-lite = { version = "0.2" }
 once_cell = { version = "1.19" }
 quote = { version = "1.0" }
@@ -206,6 +207,40 @@ features = [
 	"rspc"
 ]
 default-features = false
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unnecessary_cast = "warn"
+cast_lossless = "warn"
+dbg_macro = "warn"
+deprecated_cfg_attr = "warn"
+separated_literal_suffix = "warn"
+missing_errors_doc = "allow"
+future_not_send = "allow"
+module_name_repetitions = "allow"
+struct_field_names = "allow"
+cast_precision_loss = "allow"
+missing_panics_doc = "allow"
+significant_drop_tightening = "allow" # tmp
+needless_return = "allow"
+
+[workspace.lints.rust]
+unused_qualifications = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+unused_allocation = "warn"
+unused_import_braces = "warn"
+deprecated = "warn"
+deprecated_in_future = "forbid"
+unused_must_use = "deny"
 
 [patch.crates-io]
 # rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }

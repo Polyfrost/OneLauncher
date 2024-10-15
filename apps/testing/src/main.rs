@@ -16,7 +16,7 @@ async fn main() -> onelauncher::Result<()> {
 	// launch_and_authenticate().await?;
 	authenticate_mc().await?;
 
-	Ok(())
+	return Ok(());
 }
 
 /// pauline's epic gamer minecraft auth flow
@@ -66,7 +66,7 @@ pub async fn modrinth() -> onelauncher::Result<()> {
 	let _state = State::get().await?;
 	let provider = Providers::Modrinth;
 	let result = provider.get("oneconfig").await?;
-	println!("{:#?}", result);
+	println!("{result:#?}");
 
 	// let managed_version = provider
 	// 	.get_version_for_game_version(&result.id, "1.8.9")
@@ -119,7 +119,7 @@ pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 	println!("clearing clusters");
 	{
 		let c = cluster::list().await?;
-		for cluster in c.into_iter() {
+		for cluster in c {
 			cluster::remove(&cluster.cluster_path()).await?;
 		}
 	}
@@ -149,8 +149,8 @@ pub async fn launch_and_authenticate() -> onelauncher::Result<()> {
 	let uuid = c_lock.read().await.uuid;
 	let pid = c_lock.read().await.current_child.read().await.id();
 
-	println!("mc_uuid: {}", uuid);
-	println!("mc_pid: {:?}", pid);
+	println!("mc_uuid: {uuid}");
+	println!("mc_pid: {pid:?}");
 
 	println!("proc_uuid: {:?}", processor::get_running().await?);
 	println!(

@@ -121,7 +121,7 @@ impl State {
 		let settings = Settings::initialize(&Directories::init_settings_file()?).await?;
 		let directories = Directories::initalize(&settings)?;
 		send_ingress(&ingress, 10.0, None).await?;
-		let mut watcher = crate::utils::watcher::initialize_watcher().await?;
+		let mut watcher = crate::utils::watcher::initialize_watcher()?;
 		let fetch_semaphore =
 			FetchSemaphore(RwLock::new(Semaphore::new(settings.max_async_fetches)));
 		let io_semaphore = IoSemaphore(RwLock::new(Semaphore::new(
@@ -195,7 +195,8 @@ impl State {
 	/// Updates all data if we are connected to the internet.
 	pub fn update() {
 		tokio::task::spawn(async {
-			if let Ok(state) = Self::get().await {
+			let state = Self::get();
+			if let Ok(state) = state.await {
 				if !*state.offline.read().await {
 					let version_up = Clusters::update_versions();
 					let meta_up = Metadata::update();

@@ -37,6 +37,7 @@ pub struct Ingress {
 pub struct IngressId(Uuid);
 
 impl Drop for IngressId {
+	#[clippy::has_significant_drop]
 	fn drop(&mut self) {
 		let ingress_uuid = self.0;
 		tokio::spawn(async move {
@@ -52,11 +53,10 @@ impl Drop for IngressId {
 
 					#[cfg(feature = "tauri")]
 					{
-						let _ingress_feed_uuid = ingress.ingress_uuid;
+						use tauri::Emitter;
 						let event = ingress.ingress_type.clone();
 						let fraction = ingress.current / ingress.total;
 
-						use tauri::Emitter;
 						let _ = proxy_state.app.emit(
 							"ingress",
 							IngressPayload {
@@ -119,7 +119,10 @@ impl ProxyState {
 		Ok(value.app.get_webview_window("main").unwrap())
 	}
 
-	#[allow(clippy::unused_async)]
+	#[allow(
+		clippy::unused_async,
+		reason = "clippy doesn't take into account the features"
+	)]
 	#[cfg(feature = "tauri")]
 	pub async fn get() -> crate::Result<Arc<Self>> {
 		Ok(PROXY_STATE.get().ok_or(ProxyError::NotInitialized)?.clone())

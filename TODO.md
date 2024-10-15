@@ -2,7 +2,7 @@
 
 - [ ] **remove clusterpath, just switch to pathbuf or string in prisma, and refactor package api**
 - [ ] **splash screen and reduce startup times**
-- [ ] fix missing jars and libraries when launching clusters
+- [x] fix missing jars and libraries when launching clusters
 - [ ] migrate launcher backend storage to `prisma-client-rust` (see `prisma` branch).
 	- maybe use `sqlx` instead to avoid unnecessary bloat (but also i don't like sqlx lol)
 	- todo: also add caching  to the prisma schema
@@ -20,12 +20,10 @@
 - [ ] implement forgewrapper instead of processing ourselves
 - [ ] allow per-cluster sandboxing
 - [x] implement gamemode
-- [ ] better toml support
+- [x] better toml support
 - [ ] make all tauri events into tauri_specta events
 - [ ] apple and windows signing
 - [ ] calendar ian button easter egg
-- [ ] investigate post init hooks
-- [ ] investigate missing forge libraries
 - [x] modal stacking
 - [x] popup visibility toggled
 - [x] smooth animations/animation accessibility
@@ -33,8 +31,9 @@
 - [ ] cluster reorganizing (drag n drop)
 - [x] different cluster views
 - [x] settings tsx
-- [ ] packages api
-- [ ] browser tsx
+- [x] packages api
+  - [ ] curseforge api
+- [x] browser tsx
 - [ ] importing tsx
 - [ ] mrpack tsx
 - [x] launch the game
@@ -42,7 +41,7 @@
 - [x] authentication
 - [x] manifest fetching
 - [ ] tauri updater v1 -> v2
-- [ ] fix old intel gpus <https://github.com/MultiMC/Launcher/issues/1276#issuecomment-774541617>
+- [x] fix old intel gpus <https://github.com/MultiMC/Launcher/issues/1276#issuecomment-774541617>
 - [ ] fix cmd+a on macos not selecting all text
 - [ ] fix cmd+c on macos not pasting in oauth and entire launcher
 - [ ] hotfix some webkitgtk problems if possible
@@ -56,10 +55,10 @@
 - [ ] reduce bundle size (<https://bundlephobia.com>):
 	- [ ] markdown-it (157kb) - lots of alternatives
 	- [ ] highlight.js (143kb) - shiki is a good alternative i think
-	- [ ] uFuzzy (24kb) - lots of alternatives, but its one of the best fuzzy searching libs
-	- [ ] overlayscrollbars (60kb) - not sure
 	- [ ] assets (63kb in icons and a lot more in .pngs) - we need to optimize our own assets, the ones from libs are negligable (default_instance_cover_ and header jpgs specifically)
 - [ ] reduce app size (release binary) including in appimage (10mb right now, aiming for less than 14mb total release)
 - [ ] drag and drop files into the launcher window (mods and modpack files)
 - [ ] <https://github.com/gorilla-devs/GDLauncher-Carbon> and <https://github.com/gorilla-devs/libium>
 - [ ] <https://github.com/gorilla-devs/furse> and <https://github.com/gorilla-devs/ferinth>
+- [ ] add `minecraft.modpack.name` jvm arg based on installed modpack in `run_credentials`
+- [ ] backwards compatibility from <https://github.com/PrismLauncher/PrismLauncher/blob/develop/libraries/launcher/org/prismlauncher/SystemProperties.java>

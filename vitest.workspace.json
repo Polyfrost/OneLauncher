@@ -1,0 +1,4 @@
+[
+	"packages/client/vitest.config.ts",
+	"apps/frontend/vitest.config.ts"
+]

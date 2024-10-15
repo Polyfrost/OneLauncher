@@ -24,15 +24,15 @@ impl DiscordRPC {
 		let mut discord_ipc = DiscordIpcClient::new(DISCORD_RPC_CLIENT_ID)
 			.map_err(|e| anyhow::anyhow!("failed to create discord client {}", e))?;
 
-		let connected = if !is_offline {
+		let connected = if is_offline {
+			Arc::new(AtomicBool::new(false))
+		} else {
 			let result = discord_ipc.connect();
 			if result.is_ok() {
 				Arc::new(AtomicBool::new(true))
 			} else {
 				Arc::new(AtomicBool::new(false))
 			}
-		} else {
-			Arc::new(AtomicBool::new(false))
 		};
 
 		let client = Arc::new(RwLock::new(discord_ipc));
@@ -92,11 +92,9 @@ impl DiscordRPC {
 
 	/// Attempt to check if we are still in an offline environment.
 	pub async fn retry_online(&self) -> bool {
-		let state = match State::get().await {
-			Ok(s) => s,
-			Err(_) => return false,
+		let Ok(state) = State::get().await else {
+			return false;
 		};
-
 		let offline = state.offline.read().await;
 		if *offline {
 			return false;

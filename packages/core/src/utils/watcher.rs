@@ -13,7 +13,7 @@ use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
 
 /// Creates and initializes an FS watcher for the `clusters` directory, returning
 /// the watcher as a [`Debouncer<RecommendedWatcher>`].
-pub async fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>> {
+pub fn initialize_watcher() -> crate::Result<Debouncer<RecommendedWatcher>> {
 	let (mut sender, mut rscv) = channel(1);
 	let watcher = new_debouncer(
 		Duration::from_secs_f32(2.0),

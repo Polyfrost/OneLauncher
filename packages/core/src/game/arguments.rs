@@ -77,7 +77,7 @@ pub fn minecraft_arguments(
 	asset_index: &str,
 	game_directory: &Path,
 	assets_directory: &Path,
-	version_type: &VersionType,
+	version_type: VersionType,
 	resolution: Resolution,
 	java_arch: &str,
 ) -> crate::Result<Vec<String>> {
@@ -196,7 +196,7 @@ fn parse_minecraft_argument(
 	asset_index: &str,
 	game_directory: &Path,
 	assets_directory: &Path,
-	version_type: &VersionType,
+	version_type: VersionType,
 	resolution: Resolution,
 ) -> crate::Result<String> {
 	Ok(argument
@@ -204,7 +204,7 @@ fn parse_minecraft_argument(
 		.replace("${auth_access_token}", access_token)
 		.replace("${auth_session}", access_token)
 		.replace("${auth_player_name}", username)
-		.replace("${auth_xuid}", "10")
+		.replace("${auth_xuid}", "0") // TODO: add auth xuid
 		.replace("${auth_uuid}", &uuid.simple().to_string())
 		.replace("${uuid}", &uuid.simple().to_string())
 		.replace("${clientid}", crate::constants::MICROSOFT_CLIENT_ID)
@@ -248,7 +248,7 @@ fn parse_java_argument(
 			"${library_directory}",
 			&onelauncher_utils::io::canonicalize(libraries_path)?.to_string_lossy(),
 		)
-		.replace("${classpath_seperator}", classpath_separator(java_arch))
+		.replace("${classpath_separator}", classpath_separator(java_arch))
 		.replace("${launcher_name}", crate::constants::NAME)
 		.replace("${launcher_version}", crate::constants::VERSION)
 		.replace("${version_name}", version)

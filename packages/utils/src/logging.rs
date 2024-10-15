@@ -185,6 +185,7 @@ fn message(input: &str) -> IResult<&str, &str> {
 	)(input)
 }
 
+#[allow(clippy::cast_sign_loss)]
 fn plain_text(input: &str) -> IResult<&str, (Attributes<'_>, &str, &str)> {
 	map(take_until("<"), |text| {
 		(

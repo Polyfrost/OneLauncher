@@ -8,6 +8,7 @@ pub mod commands;
 pub mod events;
 pub mod statics;
 
+#[must_use]
 pub fn init<R: tauri::Runtime>() -> TauriPlugin<R> {
 	tauri::plugin::Builder::new("onelauncher")
 		.setup(|app, _| {

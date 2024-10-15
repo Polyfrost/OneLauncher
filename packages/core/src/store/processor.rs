@@ -237,16 +237,16 @@ impl ChildType {
 					return Ok(Some(0));
 				}
 
-				let process = system.process(sysinfo::Pid::from_u32(*pid));
-				if let Some(process) = process {
-					if process.status() == sysinfo::ProcessStatus::Run {
-						Ok(None)
-					} else {
-						Ok(Some(0))
-					}
-				} else {
-					Ok(Some(0))
-				}
+				system.process(sysinfo::Pid::from_u32(*pid)).map_or_else(
+					|| Ok(Some(0)),
+					|process| {
+						if process.status() == sysinfo::ProcessStatus::Run {
+							Ok(None)
+						} else {
+							Ok(Some(0))
+						}
+					},
+				)
 			}
 		}
 	}
@@ -575,9 +575,9 @@ impl Processor {
 			started_at: Utc
 				.timestamp_opt(cache.start_time as i64, 0)
 				.single()
-				.ok_or(anyhow::anyhow!(
-					"couldn't convert processor cache timestamp to Utc"
-				))?, // TODO: Look into this
+				.ok_or_else(|| {
+					anyhow::anyhow!("couldn't convert processor cache timestamp to Utc")
+				})?, // TODO: Look into this
 			current_child,
 			manager,
 			last_updated,
@@ -605,7 +605,8 @@ impl Processor {
 
 		// core main process loop, managed by tokio
 		loop {
-			if let Some(stat) = current_child.write().await.try_wait()? {
+			let value = current_child.write().await.try_wait();
+			if let Some(stat) = value? {
 				exit_status = stat;
 				break;
 			}
@@ -655,7 +656,8 @@ impl Processor {
 		});
 
 		tokio::spawn(async {
-			let state = match State::get().await {
+			let state = State::get();
+			let state = match state.await {
 				Ok(state) => state,
 				Err(err) => {
 					tracing::warn!("failed to get state: {}", err);
@@ -721,7 +723,8 @@ impl Processor {
 			.await?;
 
 			loop {
-				if let Some(stat) = current_child.write().await.try_wait()? {
+				let value = current_child.write().await.try_wait();
+				if let Some(stat) = value? {
 					exit_status = stat;
 					break;
 				}

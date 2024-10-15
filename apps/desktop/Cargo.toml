@@ -15,6 +15,9 @@ authors = { workspace = true }
 name = "onelauncher_gui"
 crate-type = [ "staticlib", "cdylib", "lib" ]
 
+[lints]
+workspace = true
+
 [build-dependencies]
 tauri-build = { workspace = true }
 
@@ -43,6 +46,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }
 tracing-error = { workspace = true }
+mimalloc = { workspace = true }
 
 [dependencies.tauri]
 workspace = true

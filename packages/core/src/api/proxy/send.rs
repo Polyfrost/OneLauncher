@@ -85,8 +85,9 @@ pub async fn edit_ingress(
 	title: &str,
 ) -> crate::Result<()> {
 	let proxy_state = crate::ProxyState::get().await?;
+	let ingress_feeds = proxy_state.ingress_feeds.write();
 
-	if let Some(ingress) = proxy_state.ingress_feeds.write().await.get_mut(&id.0) {
+	if let Some(ingress) = ingress_feeds.await.get_mut(&id.0) {
 		ingress.ingress_type = ingress_type;
 		ingress.total = total;
 		ingress.message = title.to_string();
@@ -112,11 +113,9 @@ pub async fn send_ingress(
 ) -> crate::Result<()> {
 	let proxy_state = crate::ProxyState::get().await?;
 	let mut ingress = proxy_state.ingress_feeds.write().await;
-	let ingress = match ingress.get_mut(&key.0) {
-		Some(f) => f,
-		None => {
-			return Err(ProxyError::NoIngressFound(key.0).into());
-		}
+
+	let Some(ingress) = ingress.get_mut(&key.0) else {
+		return Err(ProxyError::NoIngressFound(key.0).into());
 	};
 
 	ingress.current += increment;
@@ -125,19 +124,15 @@ pub async fn send_ingress(
 
 	if f64::abs(display - ingress.last_sent) > 0.005 {
 		#[cfg(feature = "cli")]
+		#[allow(clippy::cast_possible_truncation)]
 		{
-			ingress.cli.set_message(
-				message
-					.map(ToString::to_string)
-					.unwrap_or(ingress.message.clone()),
-			);
+			ingress
+				.cli
+				.set_message(message.map_or_else(|| ingress.message.clone(), ToString::to_string));
 			ingress
 				.cli
 				.set_position((display * CLI_TOTAL_INGRESS as f64).round() as u64);
 		}
-
-		#[cfg(feature = "tauri")]
-		use tauri::Emitter;
 
 		#[cfg(feature = "tauri")]
 		proxy_state

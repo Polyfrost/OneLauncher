@@ -325,9 +325,7 @@ pub async fn download_client(
 	let client = version
 		.downloads
 		.get(&ip::api::minecraft::DownloadType::Client)
-		.ok_or(anyhow::anyhow!(
-			"no client downloads exist for {version_id}"
-		))?;
+		.ok_or_else(|| anyhow::anyhow!("no client downloads exist for {version_id}"))?;
 
 	let path = st
 		.directories

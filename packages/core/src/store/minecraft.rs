@@ -38,15 +38,16 @@ impl MinecraftState {
 			.await
 			.ok();
 
-		if let Some(store) = store {
-			Ok(store)
-		} else {
-			Ok(Self {
-				users: HashMap::new(),
-				token: None,
-				default_user: None,
-			})
-		}
+		store.map_or_else(
+			|| {
+				Ok(Self {
+					users: HashMap::new(),
+					token: None,
+					default_user: None,
+				})
+			},
+			Ok,
+		)
 	}
 
 	/// Save the current Minecraft credentials.
@@ -141,7 +142,9 @@ impl MinecraftState {
 				redirect_uri: redirect_uri.value.msa_oauth_redirect,
 			}),
 			Err(err) => {
-				if !valid_date {
+				if valid_date {
+					Err(err.into())
+				} else {
 					let (key, token, current_date, _) = self.refresh(Utc::now(), false).await?;
 					let verify = generate_oauth_challenge();
 					let mut hash = sha2::Sha256::new();
@@ -157,8 +160,6 @@ impl MinecraftState {
 						session_id,
 						redirect_uri: redirect_uri.value.msa_oauth_redirect,
 					})
-				} else {
-					Err(err.into())
 				}
 			}
 		}
@@ -877,12 +878,12 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	step: MinecraftAuthStep,
 	current_date: DateTime<Utc>,
 ) -> Result<SignedRequestResponse<T>, MinecraftAuthError> {
+	use byteorder::WriteBytesExt;
 	let auth = authorization.map_or(Vec::new(), |v| v.as_bytes().to_vec());
 	let body = serde_json::to_vec(&raw_body)
 		.map_err(|source| MinecraftAuthError::SerializeError { step, source })?;
 	let time: u128 = { ((current_date.timestamp() as u128) + 11_644_473_600) * 10_000_000 };
 
-	use byteorder::WriteBytesExt;
 	let mut buffer = Vec::new();
 	buffer
 		.write_u32::<byteorder::BigEndian>(1)
@@ -975,7 +976,7 @@ fn get_date_header(headers: &reqwest::header::HeaderMap) -> DateTime<Utc> {
 		.get(reqwest::header::DATE)
 		.and_then(|x| x.to_str().ok())
 		.and_then(|x| DateTime::parse_from_rfc2822(x).ok())
-		.map_or(Utc::now(), |x| x.with_timezone(&Utc))
+		.map_or_else(Utc::now, |x| x.with_timezone(&Utc))
 }
 
 #[tracing::instrument]

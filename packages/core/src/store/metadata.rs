@@ -193,11 +193,10 @@ impl Metadata {
 			.await?;
 		}
 
-		if let Some(meta) = metadata {
-			Ok(meta)
-		} else {
-			Err(anyhow::anyhow!("failed to fetch launcher metadata").into())
-		}
+		metadata.map_or_else(
+			|| Err(anyhow::anyhow!("failed to fetch launcher metadata").into()),
+			Ok,
+		)
 	}
 
 	/// Update and backup all available metadata.

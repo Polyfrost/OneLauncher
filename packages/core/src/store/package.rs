@@ -13,8 +13,6 @@ use tokio::fs::DirEntry;
 
 use super::{ClusterPath, Clusters, Directories, PackagePath};
 
-// TODO: Curseforge, Modrinth, SkyClient integration
-
 /// Represents types of packages handled by the launcher.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -143,7 +141,7 @@ pub struct SearchResult {
 	pub client_side: PackageSide,
 	pub server_side: PackageSide,
 	pub project_type: PackageType,
-	pub downloads: u32,
+	pub downloads: u64,
 	#[serde(default)]
 	pub icon_url: String,
 	pub project_id: String,
@@ -154,8 +152,6 @@ pub struct SearchResult {
 	pub follows: u32,
 	pub date_created: DateTime<Utc>,
 	pub date_modified: DateTime<Utc>,
-	#[serde(default)]
-	pub license: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -558,7 +554,7 @@ impl PackageMetadata {
 		Self::Managed {
 			package_id: package.id,
 			version_id: version.id,
-			version_formatted: version.version_id,
+			version_formatted: version.version_display,
 			title: package.title,
 			provider: package.provider,
 			package_type: package.package_type,
@@ -607,6 +603,13 @@ pub enum Author {
 	Users(Vec<ManagedUser>),
 }
 
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum PackageBody {
+	Url(String),
+	Markdown(String),
+}
+
 /// Universal metadata for any managed package from a Mod distribution platform.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -614,11 +617,10 @@ pub struct ManagedPackage {
 	// Core Metadata
 	pub provider: Providers,
 	pub id: String,
-	pub uid: Option<String>,
 	pub package_type: PackageType,
 	pub title: String,
 	pub description: String,
-	pub body: String,
+	pub body: PackageBody,
 	pub main: String,
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
@@ -629,7 +631,7 @@ pub struct ManagedPackage {
 	pub updated: DateTime<Utc>,
 	pub client: PackageSide,
 	pub server: PackageSide,
-	pub downloads: u32,
+	pub downloads: u64,
 	pub followers: u32,
 	pub categories: Vec<String>,
 	pub optional_categories: Option<Vec<String>>,
@@ -660,15 +662,16 @@ pub struct ManagedVersion {
 	pub name: String,
 
 	pub featured: bool,
-	pub version_id: String,
+	pub version_display: String,
 	pub changelog: String,
 	pub changelog_url: Option<String>,
 
 	pub published: DateTime<Utc>,
 	pub downloads: u32,
-	pub version_type: String,
+	pub version_type: ManagedVersionReleaseType,
 
 	pub files: Vec<ManagedVersionFile>,
+	pub is_available: bool,
 	pub deps: Vec<ManagedDependency>,
 	pub game_versions: Vec<String>,
 	pub loaders: Vec<Loader>,
@@ -681,6 +684,39 @@ impl ManagedVersion {
 	}
 }
 
+/// Universal version release type
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
+pub enum ManagedVersionReleaseType {
+	#[default]
+	Release,
+	Alpha,
+	Beta,
+	Snapshot,
+}
+
+impl From<String> for ManagedVersionReleaseType {
+	fn from(s: String) -> Self {
+		match s.to_lowercase().as_str() {
+			"alpha" => Self::Alpha,
+			"beta" => Self::Beta,
+			"snapshot" => Self::Snapshot,
+			_ => Self::Release,
+		}
+	}
+}
+
+impl ToString for ManagedVersionReleaseType {
+	fn to_string(&self) -> String {
+		match self {
+			Self::Release => "Release",
+			Self::Alpha => "Alpha",
+			Self::Beta => "Beta",
+			Self::Snapshot => "Snapshot",
+		}.to_string()
+	}
+}
+
 /// Universal interface for managed package files.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, PartialEq, Eq, Clone, Debug)]
@@ -689,7 +725,7 @@ pub struct ManagedVersionFile {
 	pub file_name: String,
 	pub primary: bool,
 
-	pub size: u32,
+	pub size: u64,
 	pub file_type: Option<PackageFile>,
 	pub hashes: HashMap<String, String>,
 }

@@ -28,12 +28,18 @@ pub async fn find_managed_version(
 			&package.id,
 			game_version.as_ref().map(|v| vec![v.to_owned()]).clone(),
 			loader.map(|l| vec![l]).clone(),
+			None,
+			None,
 		)
 		.await?;
 
-	Ok(versions
+	Ok(versions.0
 		.iter()
 		.find(|v| {
+			if package_version.is_some() {
+				return v.id == *package_version.as_ref().unwrap();
+			}
+
 			let check_game_version = game_version
 				.as_ref()
 				.is_some_and(|gv| v.game_versions.iter().any(|gv2| *gv2 == *gv));
@@ -42,11 +48,7 @@ pub async fn find_managed_version(
 				.as_ref()
 				.is_some_and(|loader| v.loaders.iter().any(|l| *l == *loader));
 
-			let check_package_version = package_version
-				.as_ref()
-				.map_or(true, |pv| pv == &v.version_id);
-
-			check_game_version && check_loader && check_package_version
+			check_game_version && check_loader
 		})
 		.ok_or_else(|| anyhow::anyhow!("no matching version found"))
 		.cloned()?)

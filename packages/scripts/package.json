@@ -22,10 +22,13 @@
 		"setup-nix": "./setup.sh",
 		"autoformat": "./format.sh",
 		"fix-deb": "./fix-deb.sh",
-		"dupe": "./dedupe.sh"
+		"dupe": "./dedupe.sh",
+		"api:categories": "pnpm tsx ./api/fetch_categories.ts"
 	},
 	"dependencies": {
+		"@pnpm/find-workspace-dir": "^7.0.1",
 		"consola": "^3.2.3",
+		"dotenv": "^16.4.5",
 		"execa": "^9.4.0",
 		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",

@@ -1,10 +1,10 @@
-import type { ManagedPackage } from '@onelauncher/client/bindings';
+import type { ManagedPackage, Providers } from '@onelauncher/client/bindings';
 import { ChevronRightIcon } from '@untitled-theme/icons-solid';
 import OneConfigLogo from '~assets/logos/oneconfig.svg?component-solid';
 import Button from '~ui/components/base/Button';
 import SearchResultsContainer from '~ui/components/content/SearchResults';
 import useBrowser from '~ui/hooks/useBrowser';
-import { onMount, Show } from 'solid-js';
+import { For, onMount, Show } from 'solid-js';
 import { BrowserContent } from './BrowserRoot';
 
 function BrowserMain() {
@@ -20,15 +20,19 @@ function BrowserMain() {
 	return (
 		<BrowserContent>
 			<div class="flex flex-col gap-8">
-				<Show when={browser.cache() !== undefined && browser.featured() !== undefined}>
-					<Featured package={browser.featured()!} />
+				<Show when={browser.popularPackages() !== undefined && browser.featuredPackage() !== undefined}>
+					<Featured package={browser.featuredPackage()!} />
 
-					<SearchResultsContainer
-						category="modrinth"
-						collapsable
-						header="Modrinth"
-						{...browser.cache()!}
-					/>
+					<For each={Object.entries(browser.popularPackages()!)}>
+						{([provider, results]) => (
+							<SearchResultsContainer
+								collapsable
+								header={provider}
+								provider={provider as Providers}
+								results={results}
+							/>
+						)}
+					</For>
 				</Show>
 			</div>
 		</BrowserContent>

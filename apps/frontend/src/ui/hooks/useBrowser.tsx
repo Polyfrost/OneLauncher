@@ -1,16 +1,15 @@
-import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, ProviderSearchResults } from '@onelauncher/client/bindings';
-import type { ModalProps } from '~ui/components/overlay/Modal';
+import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, SearchResult } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
-import Button from '~ui/components/base/Button';
-import Dropdown from '~ui/components/base/Dropdown';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
+import { createModal } from '~ui/components/overlay/Modal';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
-import { type Accessor, type Context, createContext, createEffect, createSignal, For, on, onMount, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
-import { useRecentCluster } from './useCluster';
-import useCommand, { tryResult } from './useCommand';
+import { PROVIDERS } from '~utils';
+import { type Accessor, type Context, createContext, createEffect, createSignal, on, onMount, type ParentProps, type Setter, useContext } from 'solid-js';
+import { ChooseClusterModal, useRecentCluster } from './useCluster';
+import { tryResult } from './useCommand';
 
 export type ProviderSearchOptions = ProviderSearchQuery & { provider: Providers };
+export type PopularPackages = Record<Providers, SearchResult[]>;
 
 interface BrowserControllerType {
 	cluster: Accessor<Cluster | undefined>;
@@ -18,7 +17,6 @@ interface BrowserControllerType {
 
 	displayBrowser: (cluster?: Cluster | undefined) => void;
 	displayPackage: (id: string, provider: Providers) => void;
-	displayCategory: (category: string) => void;
 	displayClusterSelector: () => void;
 
 	search: () => void;
@@ -28,16 +26,15 @@ interface BrowserControllerType {
 	packageType: Accessor<PackageType>;
 	setPackageType: Setter<PackageType>;
 
-	refreshCache: () => void;
-	cache: Accessor<ProviderSearchResults | undefined>;
-	featured: Accessor<ManagedPackage | undefined>;
+	popularPackages: Accessor<PopularPackages | undefined>;
+	featuredPackage: Accessor<ManagedPackage | undefined>;
 };
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
 
 export function BrowserProvider(props: ParentProps) {
-	const [mainPageCache, setMainPageCache] = createSignal<ProviderSearchResults>();
-	const [featured, setFeatured] = createSignal<ManagedPackage | undefined>();
+	const [popularPackages, setPopularPackages] = createSignal<PopularPackages | undefined>();
+	const [featuredPackage, setFeaturedPackage] = createSignal<ManagedPackage | undefined>();
 
 	// Used for the current "Browser Mode". It'll only show packages of the selected type
 	const [packageType, setPackageType] = createSignal<PackageType>('mod');
@@ -48,7 +45,7 @@ export function BrowserProvider(props: ParentProps) {
 	const [searchOptions, setSearchOptions] = createSignal<ProviderSearchOptions>({
 		provider: 'Modrinth',
 		query: '',
-		limit: 20,
+		limit: 18, // Even multiples of 3 recommended for grid view (normally 3 columns, 2 columns on very small windows)
 		offset: 0,
 		categories: null,
 		game_versions: null,
@@ -60,8 +57,30 @@ export function BrowserProvider(props: ParentProps) {
 	const navigate = useNavigate();
 	const recentCluster = useRecentCluster();
 
+	const currentlySelectedCluster = (list: Cluster[]) => {
+		const cluster = controller.cluster();
+
+		if (cluster === undefined)
+			return 0;
+
+		if (list === undefined)
+			return 0;
+
+		const index = list.findIndex(c => c.uuid === cluster.uuid) || 0;
+		if (index === -1)
+			return 0;
+
+		return index;
+	};
+
+	const chooseCluster = (cluster: Cluster) => {
+		controller.setCluster(cluster);
+	};
+
 	const modal = createModal(props => (
 		<ChooseClusterModal
+			onSelected={chooseCluster}
+			selected={list => currentlySelectedCluster(list) || 0}
 			{...props}
 		/>
 	));
@@ -78,45 +97,55 @@ export function BrowserProvider(props: ParentProps) {
 			navigate(BrowserPackage.buildUrl({ id, provider }));
 		},
 
-		displayCategory(_category: string) {
-
-		},
-
 		displayClusterSelector() {
 			modal.show();
 		},
 
-		search: () => {
-			navigate('/browser/search');
-		},
+		search: () => navigate('/browser/search'),
 		searchQuery: searchOptions,
 		setSearchQuery: setSearchOptions,
 
 		packageType,
 		setPackageType,
 
-		async refreshCache() {
-			const opts = untrack(searchOptions);
-			const res = await tryResult(() => bridge.commands.searchProviderPackages('Modrinth', opts));
-
-			setMainPageCache(res);
-
-			// TODO: Better algorithm for selecting a featured package
-			const firstPackage = res.results[0];
-			if (firstPackage !== undefined) {
-				const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
-				setFeatured(featuredPackage);
-			}
-		},
-
-		cache: mainPageCache,
-
-		featured,
+		popularPackages,
+		featuredPackage,
 	};
 
-	onMount(() => {
-		if (mainPageCache() === undefined)
-			controller.refreshCache();
+	onMount(async () => {
+		const getOpts = (provider: Providers): ProviderSearchOptions => ({
+			provider,
+			query: '',
+			limit: 10,
+			offset: 0,
+			categories: null,
+			game_versions: null,
+			loaders: null,
+			package_types: ['mod'],
+			open_source: null,
+		});
+
+		const response = await Promise.allSettled(
+			PROVIDERS.map(provider => tryResult(() => bridge.commands.searchProviderPackages(provider, getOpts(provider)))),
+		);
+
+		const popularPackages = response.reduce((acc, res, i) => {
+			const provider = PROVIDERS[i] as Providers;
+
+			if (res.status === 'fulfilled')
+				acc[provider] = res.value.results;
+
+			return acc;
+		}, {} as PopularPackages);
+
+		setPopularPackages(popularPackages);
+
+		// TODO: Better algorithm for selecting a featured package
+		const firstPackage = popularPackages.Modrinth[0] || popularPackages.Curseforge[0];
+		if (firstPackage !== undefined) {
+			const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
+			setFeaturedPackage(featuredPackage);
+		}
 	});
 
 	createEffect(() => {
@@ -152,74 +181,4 @@ export default function useBrowser() {
 		throw new Error('useBrowserController should be called inside its BrowserProvider');
 
 	return controller;
-}
-
-function ChooseClusterModal(props: ModalProps) {
-	const [selected, setSelected] = createSignal<number>(0);
-	const [clusters] = useCommand(() => bridge.commands.getClusters());
-	const controller = useBrowser();
-
-	const currentlySelectedCluster = (list: Cluster[]) => {
-		const cluster = controller.cluster();
-
-		if (cluster === undefined)
-			return 0;
-
-		if (list === undefined)
-			return 0;
-
-		const index = list.findIndex(c => c.uuid === cluster.uuid) || 0;
-		if (index === -1)
-			return 0;
-
-		return index;
-	};
-
-	createEffect(() => {
-		setSelected(currentlySelectedCluster(clusters() || []));
-	});
-
-	function chooseCluster() {
-		const index = untrack(selected);
-		const clusterz = untrack(clusters);
-		if (clusterz !== undefined && index !== undefined)
-			controller.setCluster(clusterz[index]);
-
-		props.hide();
-	}
-
-	return (
-		<Modal.Simple
-			{...props}
-			buttons={[
-				<Button
-					buttonStyle="secondary"
-					children="Close"
-					onClick={props.hide}
-				/>,
-				<Button
-					children="Save"
-					onClick={chooseCluster}
-				/>,
-			]}
-			children={(
-				<Show
-					fallback={<div>Loading...</div>}
-					when={clusters !== undefined}
-				>
-					<Dropdown
-						onChange={setSelected}
-						selected={selected}
-					>
-						<For each={clusters()!}>
-							{cluster => (
-								<Dropdown.Row>{cluster.meta.name}</Dropdown.Row>
-							)}
-						</For>
-					</Dropdown>
-				</Show>
-			)}
-			title="Choose a cluster"
-		/>
-	);
 }

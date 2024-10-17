@@ -119,10 +119,7 @@ impl ProxyState {
 		Ok(value.app.get_webview_window("main").unwrap())
 	}
 
-	#[allow(
-		clippy::unused_async,
-		reason = "clippy doesn't take into account the features"
-	)]
+	#[allow(clippy::unused_async)]
 	#[cfg(feature = "tauri")]
 	pub async fn get() -> crate::Result<Arc<Self>> {
 		Ok(PROXY_STATE.get().ok_or(ProxyError::NotInitialized)?.clone())

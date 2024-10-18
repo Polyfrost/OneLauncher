@@ -69,15 +69,6 @@ pub async fn get_provider_package_versions(
 	Ok(provider.get_versions(versions).await?)
 }
 
-#[specta::specta]
-#[tauri::command]
-pub async fn get_provider_package_version(
-	provider: Providers,
-	version: String,
-) -> Result<ManagedVersion, String> {
-	Ok(provider.get_version("", &version).await?) // TODO
-}
-
 #[derive(specta::Type, serde::Deserialize, serde::Serialize)]
 pub struct ProviderSearchQuery {
 	query: Option<String>,

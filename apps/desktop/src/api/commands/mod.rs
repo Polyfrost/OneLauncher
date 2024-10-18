@@ -64,7 +64,6 @@ macro_rules! collect_commands {
 			get_provider_packages,
 			get_all_provider_package_versions,
 			get_provider_package_versions,
-			get_provider_package_version,
 			search_provider_packages,
 			get_provider_authors,
 			get_package_body,

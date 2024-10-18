@@ -510,14 +510,3 @@ pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>>
 		.await?,
 	)?)
 }
-
-pub async fn get_version(version_id: &str) -> Result<ModrinthVersion> {
-	Ok(serde_json::from_slice(
-		&fetch(
-			format_url!("/version/{}", version_id).as_str(),
-			None,
-			&State::get().await?.fetch_semaphore,
-		)
-		.await?,
-	)?)
-}

@@ -176,15 +176,6 @@ impl Providers {
 		})
 	}
 
-	pub async fn get_version(&self, pkg_id: &str, version_id: &str) -> Result<ManagedVersion> {
-		Ok(match self {
-			Self::Modrinth => modrinth::get_version(version_id),
-			Self::Curseforge => todo!(),
-		}
-		.await?
-		.into())
-	}
-
 	pub async fn get_authors(&self, author: &Author) -> Result<Vec<ManagedUser>> {
 		Ok(match author {
 			Author::Team { .. } => match self {

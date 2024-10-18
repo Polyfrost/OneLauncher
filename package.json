@@ -33,7 +33,6 @@
 		"client": "pnpm --filter @onelauncher/client -- ",
 		"desktop": "pnpm --filter @onelauncher/desktop -- ",
 		"scripts": "pnpm --filter @onelauncher/scripts -- ",
-		"actions": "pnpm --filter @onelauncher/action* --",
 		"testing": "pnpm --filter @onelauncher/testing --",
 		"tauri": "pnpm desktop tauri-ext",
 		"postupdate": "cargo update",

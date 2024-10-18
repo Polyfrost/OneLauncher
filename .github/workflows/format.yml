@@ -45,7 +45,7 @@ jobs:
           restore-cache: true
 
       - name: Setup Packages
-        uses: ./.github/actions/setup-system
+        uses: ./.github/actions/setup-packages
 
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features

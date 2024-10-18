@@ -24,7 +24,6 @@
 	"scripts": {
 		"prep": "pnpm scripts prep",
 		"typecheck": "pnpm -r typecheck",
-		"codegen": "pnpm prisma:gen",
 		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep && pnpm codegen",
 		"autoformat": "./packages/scripts/format.sh",
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
@@ -45,9 +44,7 @@
 		"lint:es": "eslint . --cache --flag unstable_ts_config",
 		"format:es": "pnpm lint:es --fix",
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
-		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
-		"prisma:gen": "pnpm prisma generate --schema packages/core/prisma/schema.prisma",
-		"prisma:migrate": "pnpm prisma migrate dev --schema packages/core/prisma/schema.prisma"
+		"format:rs": "cargo +nightly fmt && cargo clippy --fix"
 	},
 	"workspaces": {
 		"packages": [
@@ -63,7 +60,6 @@
 		"eslint": "^9.11.1",
 		"eslint-plugin-solid": "^0.14.3",
 		"jiti": "^2.0.0",
-		"prisma": "^5.20.0",
 		"rimraf": "^6.0.1",
 		"ts-node": "^10.9.2",
 		"tsx": "^4.19.1",

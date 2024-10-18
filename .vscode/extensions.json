@@ -6,7 +6,6 @@
 		"oscarbeaumont.rspc-vscode", // RSPC is a framework for Routers.
 		"antfu.unocss", // Provides UnoCSS intellisense.
 		"EditorConfig.EditorConfig", // Maintains consistent coding styles.
-		"prisma.prisma", // Prisma is an open-source ORM database toolkit.
 		"dbaeumer.vscode-eslint" // Code formatting using ESLint.
 	]
 }

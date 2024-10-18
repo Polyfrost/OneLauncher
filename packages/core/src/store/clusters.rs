@@ -182,7 +182,7 @@ impl From<InnerPathLinux> for RawPackagePath {
 	}
 }
 
-// TODO: make it not a pathbuf, just get rid of all packagepath and clusterpath into str. maybe even just go straight to prisma with strings
+// TODO: make it not a pathbuf, just get rid of all packagepath and clusterpath into str.
 
 /// Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]

@@ -14,7 +14,6 @@ authors = { workspace = true }
 workspace = true
 
 [dependencies]
-onelauncher_prisma = { workspace = true }
 serde = { workspace = true }
 uuid = { workspace = true }
 async-channel = { workspace = true }
@@ -30,6 +29,5 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 nom = { workspace = true }
-prisma-client-rust = { workspace = true }
 regex = { workspace = true }
 interpulse = { workspace = true }

@@ -23,9 +23,7 @@ jobs:
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1))" >> "${GITHUB_ENV}"
 
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
-        with:
-          fetch-depth: ${{ env.PR_FETCH_DEPTH }}
+        uses: actions/checkout@4
 
       - name: Setup Pnpm
         uses: ./.github/actions/setup-pnpm
@@ -38,6 +36,10 @@ jobs:
     name: Rust Checks
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Install system packages
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features

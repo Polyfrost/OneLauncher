@@ -4,7 +4,7 @@ use crate::State;
 pub use interpulse::api::minecraft::VersionManifest;
 pub use interpulse::api::modded::Manifest;
 
-// TODO: better error handling (prisma?)
+// TODO: better error handling
 // TODO: fix this lmao
 
 /// Get a [`VersionManifest`] for all available Minecraft versions.

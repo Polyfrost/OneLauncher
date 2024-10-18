@@ -8,7 +8,6 @@
 pub mod io;
 pub mod logging;
 pub mod platform;
-pub mod prisma;
 
 /// Simple macro that takes a mutable reference and inserts it into a codeblock closure
 /// as an owned reference.

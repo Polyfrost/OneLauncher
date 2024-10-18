@@ -1,4 +1,3 @@
-crates/prisma/src/prisma.rs
 dev.db
 dev.db-journal
 .cargo/config.toml

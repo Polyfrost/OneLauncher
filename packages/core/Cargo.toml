@@ -24,7 +24,6 @@ workspace = true
 [dependencies]
 # features[default]
 onelauncher_macros = { workspace = true }
-onelauncher_prisma = { workspace = true }
 onelauncher_utils = { workspace = true }
 interpulse = { workspace = true }
 tracing = { workspace = true }

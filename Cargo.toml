@@ -6,8 +6,6 @@ members = [
 	"packages/core", # onelauncher -- the rust core for onelauncher
 	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
 	"packages/gamemode", # onelauncher_gamemode -- rust wrapper for feral gamemode
-	"packages/prisma-cli", # onelauncher_prisma_cli -- rust wrapper for prisma cli
-	"packages/prisma", # onelauncher_prisma -- rust client for prisma
 	"packages/utils" # onelauncher_utils -- standard utilities for use within all crates
 ]
 
@@ -30,8 +28,6 @@ onelauncher_macros = { path = "./packages/macros" }
 onelauncher_gui = { path = "./apps/desktop" }
 onelauncher_test = { path = "./apps/testing" }
 onelauncher_gamemode = { path = "./packages/gamemode" }
-onelauncher_prisma = { path = "./packages/prisma" }
-onelauncher_prisma_cli = { path = "./packages/prisma-cli" }
 onelauncher_utils = { path = "./packages/utils" }
 
 # # ============= TAURI ============= # #
@@ -164,30 +160,6 @@ libc = { version = "0.2" }
 dotenvy = { git = "https://github.com/allan2/dotenvy/", rev = "db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5" }
 # https://github.com/tauri-apps/tauri/blob/dev/crates/tauri/Cargo.toml#L102
 webkit2gtk = { version = "=2.0.1", features = [ "v2_40" ] }
-
-[workspace.dependencies.prisma-client-rust]
-git = "https://github.com/brendonovich/prisma-client-rust"
-rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
-features = [
-	"migrations",
-	"specta",
-	"sqlite",
-	"sqlite-create-many",
-	"rspc"
-]
-default-features = false
-
-[workspace.dependencies.prisma-client-rust-generator]
-git = "https://github.com/brendonovich/prisma-client-rust"
-rev = "4f9ef9d38ca732162accff72b2eb684d2f120bab"
-features = [
-	"migrations",
-	"specta",
-	"sqlite",
-	"sqlite-create-many",
-	"rspc"
-]
-default-features = false
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

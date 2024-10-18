@@ -17,13 +17,12 @@ jobs:
     name: ES Checks
     runs-on: ubuntu-22.04
     timeout-minutes: 7
-    permissions: {}
     steps:
       - name: Prepare Target
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1))" >> "${GITHUB_ENV}"
 
       - name: Checkout
-        uses: actions/checkout@4
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
 
       - name: Setup Pnpm
         uses: ./.github/actions/setup-pnpm
@@ -36,11 +35,11 @@ jobs:
     name: Rust Checks
     runs-on: ubuntu-22.04
     steps:
-      - name: Install system packages
-        uses: ./.github/actions/setup-system
-
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install system packages
+        uses: ./.github/actions/setup-system
 
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features

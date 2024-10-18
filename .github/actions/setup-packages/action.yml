@@ -5,17 +5,10 @@ inputs:
     description: GitHub token
     required: false
     default: ''
-  target:
-    description: Toolchain target triple
-    required: false
   setup-arg:
     description: Argument for the system setup script
     required: false
     default: ''
-  save-cache:
-    description: Whether or not to save the system cache
-    required: false
-    default: 'false'
 runs:
   using: composite
   steps:
@@ -43,12 +36,6 @@ runs:
 
         sudo apt-get remove libunwind-* || true
 
-    - name: Setup Rust and Dependencies
-      uses: ./.github/actions/setup-rust
-      with:
-        target: ${{ inputs.target }}
-        save-cache: ${{ inputs.save-cache }}
-
     - name: (Linux/macOS) - Setup System
       shell: bash
       if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
@@ -67,7 +54,6 @@ runs:
     - name: Setup Shared Libraries
       shell: bash
       env:
-        TARGET_TRIPLE: ${{ inputs.triple }}
         GITHUB_TOKEN: ${{ inputs.token }}
         NODE_ENV: debug
       run: pnpm prep

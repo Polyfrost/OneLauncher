@@ -22,7 +22,7 @@ jobs:
         run: echo "PR_FETCH_DEPTH=$(( ${{ github.event.pull_request.commits }} + 1))" >> "${GITHUB_ENV}"
 
       - name: Checkout
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+        uses: actions/checkout@v4
 
       - name: Setup Pnpm
         uses: ./.github/actions/setup-pnpm
@@ -38,7 +38,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system packages
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          save-cache: true
+          restore-cache: true
+
+      - name: Setup Packages
         uses: ./.github/actions/setup-system
 
       - name: Run Clippy

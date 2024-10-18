@@ -37,6 +37,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Install system packages
+        uses: ./.github/actions/setup-system
 
       - name: Checkout
         uses: actions/checkout@v4

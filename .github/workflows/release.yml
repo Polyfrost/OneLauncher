@@ -44,4 +44,5 @@ jobs:
           releaseName: OneLauncher __VERSION__
           releaseDraft: true
           prerelease: false
+          tauriScript: pnpm desktop
           args: ${{ matrix.args }}

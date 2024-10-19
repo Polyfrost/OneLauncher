@@ -80,8 +80,15 @@ macro_rules! collect_commands {
 			install_update,
 			// Other
 			set_window_style,
+			get_program_info
 		]
 	}};
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn get_program_info() -> Result<super::statics::ProgramInfo, String> {
+	Ok(super::statics::get_program_info())
 }
 
 #[specta::specta]

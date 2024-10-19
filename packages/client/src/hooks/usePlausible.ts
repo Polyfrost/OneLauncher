@@ -1,11 +1,11 @@
 import type { PlausibleOptions as PlausibleTrackerOptions } from 'plausible-tracker';
-import type { ProgramInfo } from '../types';
 
+import type { ProgramInfo } from '../bindings';
 import Plausible from 'plausible-tracker';
 import { createEffect, createSignal } from 'solid-js';
 import { createMutable } from 'solid-js/store';
-import { PROGRAM_INFO } from '../bindings';
 import { createPersistedMutable, useSolidStore } from '../library';
+import { getProgramInfo } from '../utils';
 import { useDebugState } from './useDebug';
 
 /**
@@ -30,7 +30,7 @@ export const plausibleState: PlausibleState = createPersistedMutable(
 	createMutable<PlausibleState>({
 		shareFullTelemetry: false, // false by default
 		platform: 'unknown',
-		programInfo: PROGRAM_INFO,
+		programInfo: getProgramInfo(),
 	}),
 );
 

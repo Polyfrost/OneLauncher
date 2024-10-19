@@ -1,4 +1,4 @@
-import { PROGRAM_INFO } from '@onelauncher/client/bindings';
+import { getProgramInfo } from '@onelauncher/client';
 import { Route } from '@solidjs/router';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { Brush01Icon, CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon, Users01Icon } from '@untitled-theme/icons-solid';
@@ -89,13 +89,16 @@ function Info() {
 							});
 					}}
 				>
-					{`
+					{(() => {
+						const PROGRAM_INFO = getProgramInfo();
+						return `
 Launcher Version: ${PROGRAM_INFO.launcher_version}
 Tauri Version: ${PROGRAM_INFO.tauri_version}
 Webview Version: ${PROGRAM_INFO.webview_version}
 Platform: ${PROGRAM_INFO.platform} ${PROGRAM_INFO.arch} bit
 Build: ${PROGRAM_INFO.dev_build ? 'dev' : 'release'}
-`.trim()}
+`.trim();
+					})()}
 				</div>
 			</Tooltip>
 		</div>

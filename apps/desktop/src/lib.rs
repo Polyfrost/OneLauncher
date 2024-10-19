@@ -46,8 +46,7 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 ) {
 	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
 		.commands(collect_commands!())
-		.events(collect_events!())
-		.constant("PROGRAM_INFO", get_program_info());
+		.events(collect_events!());
 
 	#[cfg(debug_assertions)]
 	prebuild

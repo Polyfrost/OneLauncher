@@ -1,4 +1,4 @@
-import { PROGRAM_INFO } from '@onelauncher/client/bindings';
+import { getProgramInfo } from '@onelauncher/client';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
@@ -12,7 +12,7 @@ import { SettingsProvider } from './ui/hooks/useSettings';
 
 function RootLayout(props: ParentProps) {
 	onMount(() => {
-		if (PROGRAM_INFO.dev_build !== true)
+		if (getProgramInfo().dev_build !== true)
 			document.addEventListener('contextmenu', e => e.preventDefault());
 	});
 

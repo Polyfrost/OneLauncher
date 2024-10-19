@@ -1,4 +1,5 @@
-import { PROGRAM_INFO, type Settings } from '@onelauncher/client/bindings';
+import type { Settings } from '@onelauncher/client/bindings';
+import { getProgramInfo } from '@onelauncher/client';
 import { useBeforeLeave } from '@solidjs/router';
 import { bridge } from '~imports';
 import { type Context, createContext, createEffect, type ParentProps, Show, useContext } from 'solid-js';
@@ -44,7 +45,7 @@ export function SettingsProvider(props: ParentProps) {
 		},
 	};
 
-	if (PROGRAM_INFO.dev_build)
+	if (getProgramInfo().dev_build)
 		// @ts-expect-error - Expose settings globally for debugging purposes
 		window.onelauncherSettings = controller;
 

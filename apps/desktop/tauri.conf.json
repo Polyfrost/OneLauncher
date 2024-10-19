@@ -46,7 +46,14 @@
 	},
 	"bundle": {
 		"active": true,
-		"targets": "all",
+		"targets": [
+			"app",
+			"dmg",
+			"deb",
+			"rpm",
+			"appimage",
+			"nsis"
+		],
 		"category": "Game",
 		"icon": [
 			"../../packages/distribution/icons/32x32.png",

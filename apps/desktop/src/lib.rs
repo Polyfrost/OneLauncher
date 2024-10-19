@@ -1,5 +1,4 @@
 #![allow(trivial_casts)]
-use api::statics::get_program_info;
 use onelauncher::utils::window::set_window_styling;
 use tauri::{Emitter, Manager};
 

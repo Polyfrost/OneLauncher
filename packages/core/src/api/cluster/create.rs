@@ -123,6 +123,9 @@ pub async fn create_cluster(
 		}
 
 		State::sync().await?;
+		let state = State::get().await?;
+		let mut packages = state.packages.write().await;
+		packages.add_cluster(&state.directories, cluster.cluster_path()).await;
 
 		Ok(cluster.cluster_path())
 	}

@@ -200,27 +200,31 @@ pub struct Packages {
 
 impl Packages {
 	pub async fn initialize(dirs: &Directories, clusters: &Clusters) -> Self {
-		let mut managers = HashMap::new();
+		let mut this = Self { managers: HashMap::new() };
 
 		// TODO: This should probably not clone and store the cluster path in like 2 areas
 		for cluster_path in clusters.0.keys() {
-			let mgr = PackageManager::initialize(dirs, cluster_path.clone()).await;
-
-			match mgr {
-				Ok(mgr) => {
-					managers.insert(cluster_path.clone(), mgr);
-				}
-				Err(e) => {
-					tracing::error!(
-						"failed to initialize package manager for cluster {}: {}. skipping",
-						cluster_path,
-						e
-					);
-				}
-			};
+			this.add_cluster(dirs, cluster_path.clone()).await;
 		}
 
-		Self { managers }
+		this
+	}
+
+	pub async fn add_cluster(&mut self, dirs: &Directories, cluster_path: ClusterPath) {
+		let mgr = PackageManager::initialize(dirs, cluster_path.clone()).await;
+
+		match mgr {
+			Ok(mgr) => {
+				self.managers.insert(cluster_path, mgr);
+			}
+			Err(e) => {
+				tracing::error!(
+					"failed to initialize package manager for cluster {}: {}. skipping",
+					cluster_path,
+					e
+				);
+			}
+		};
 	}
 
 	#[must_use]
@@ -384,29 +388,17 @@ impl PackageManager {
 	#[tracing::instrument(skip(self, dirs))]
 	pub async fn sync_packages(&mut self, dirs: &Directories) {
 		tracing::info!("syncing packages for cluster {}", self.cluster_path);
-		if let Err(err) = &self.sync_packages_by_type(dirs, PackageType::Mod).await {
-			tracing::error!("failed to sync mods: {}", err);
-		}
+		let package_types = vec![
+			PackageType::Mod,
+			PackageType::DataPack,
+			PackageType::ResourcePack,
+			PackageType::ShaderPack,
+		];
 
-		if let Err(err) = &self
-			.sync_packages_by_type(dirs, PackageType::DataPack)
-			.await
-		{
-			tracing::error!("failed to sync datapacks: {}", err);
-		}
-
-		if let Err(err) = &self
-			.sync_packages_by_type(dirs, PackageType::ResourcePack)
-			.await
-		{
-			tracing::error!("failed to sync resourcepacks: {}", err);
-		}
-
-		if let Err(err) = &self
-			.sync_packages_by_type(dirs, PackageType::ShaderPack)
-			.await
-		{
-			tracing::error!("failed to sync shaderpacks: {}", err);
+		for package_type in package_types {
+			if let Err(err) = &self.sync_packages_by_type(dirs, package_type).await {
+				tracing::error!("failed to sync package {}: {}", package_type.get_name(), err);
+			}
 		}
 	}
 

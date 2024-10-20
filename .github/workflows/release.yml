@@ -38,10 +38,11 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         with:
           tagName: onelauncher-__VERSION__
           releaseName: OneLauncher __VERSION__
-          releaseDraft: true
-          prerelease: false
+          releaseDraft: false
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-alpha') || false }}
           tauriScript: pnpm desktop
           args: ${{ matrix.args }}

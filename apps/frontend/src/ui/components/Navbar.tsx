@@ -9,7 +9,6 @@ import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/account/AccountsPopup';
 import useAccountController from './overlay/account/AddAccountModal';
 import NotificationPopup from './overlay/notifications/NotificationPopup';
-import Popup from './overlay/Popup';
 
 interface NavbarLinkProps {
 	path: string;
@@ -37,8 +36,8 @@ function Navbar() {
 
 	const navigate = useNavigate();
 
-	let profileButton!: HTMLButtonElement;
-	let notificationButton!: HTMLButtonElement;
+	let profileButtonContainer!: HTMLDivElement;
+	let notificationButtonContainer!: HTMLDivElement;
 
 	return (
 		<div class="h-15 min-h-[60px] flex flex-row items-center *:flex-1">
@@ -62,14 +61,23 @@ function Navbar() {
 				</Button>
 
 				{/* Notification Manager Button */}
-				<Button
-					buttonStyle="icon"
-					class="relative [&>div]:absolute"
-					onClick={() => setNotificationMenuOpen(!notificationMenuOpen())}
-					ref={notificationButton}
-				>
-					<Bell01Icon />
-				</Button>
+				<div class="relative" ref={notificationButtonContainer}>
+					<Button
+						buttonStyle="icon"
+						class="relative [&>div]:absolute"
+						onClick={() => setNotificationMenuOpen(!notificationMenuOpen())}
+					>
+						<Bell01Icon />
+					</Button>
+
+					<NotificationPopup
+						class="mt-2"
+						mount={notificationButtonContainer}
+						ref={el => el.classList.add('right-0')}
+						setVisible={setNotificationMenuOpen}
+						visible={notificationMenuOpen}
+					/>
+				</div>
 
 				{/* Launcher Settings Button */}
 				<Button buttonStyle="icon" onClick={() => navigate('/settings')}>
@@ -77,28 +85,23 @@ function Navbar() {
 				</Button>
 
 				{/* Account Menu Button */}
-				<button
-					class="hover:opacity-70"
-					onClick={() => setProfileMenuOpen(!profileMenuOpen())}
-					ref={profileButton}
-				>
-					<PlayerHead class="h-8 max-h-8 max-w-8 min-h-8 min-w-8 w-8 rounded-md" uuid={controller.defaultAccount()?.id} />
-				</button>
+				<div class="relative" ref={profileButtonContainer}>
+					<button
+						class="hover:opacity-70"
+						onClick={() => setProfileMenuOpen(!profileMenuOpen())}
+					>
+						<PlayerHead class="h-8 max-h-8 max-w-8 min-h-8 min-w-8 w-8 rounded-md" uuid={controller.defaultAccount()?.id} />
+					</button>
+
+					<AccountPopup
+						class="mt-2"
+						mount={profileButtonContainer}
+						ref={el => el.classList.add('right-0')}
+						setVisible={setProfileMenuOpen}
+						visible={profileMenuOpen}
+					/>
+				</div>
 			</div>
-
-			<AccountPopup
-				class="mt-2"
-				ref={el => Popup.setPos(profileButton, el)}
-				setVisible={setProfileMenuOpen}
-				visible={profileMenuOpen}
-			/>
-
-			<NotificationPopup
-				class="mt-2"
-				ref={el => Popup.setPos(notificationButton, el)}
-				setVisible={setNotificationMenuOpen}
-				visible={notificationMenuOpen}
-			/>
 		</div>
 	);
 }

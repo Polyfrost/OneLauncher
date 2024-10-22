@@ -1,37 +1,29 @@
 import { Settings01Icon, Trash01Icon } from '@untitled-theme/icons-solid';
-import useIngress from '~ui/hooks/useIngress';
+import useNotifications from '~ui/hooks/useNotifications';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { For, Match, Switch } from 'solid-js';
+import { createEffect, createMemo, For, Match, on, Switch } from 'solid-js';
 import Button from '../../base/Button';
 import Popup, { type PopupProps } from '../Popup';
 import NotificationComponent from './NotificationComponent';
 
 function NotificationPopup(props: PopupProps) {
-	const [ingress] = useIngress(updateSize);
+	const [notifications, setNotifications] = useNotifications();
 
 	let inner!: HTMLDivElement;
 	let parent!: HTMLDivElement;
 
-	function updateSize() {
+	createEffect(on(notifications, () => {
 		if (inner && parent) {
 			const rect = inner.getBoundingClientRect();
 			parent.style.height = `${rect.height}px`;
 		}
-	}
+	}));
 
-	// onMount(() => {
-	// 	document.addEventListener('keypress', async (e) => {
-	// 		if (e.key === 'n') {
-	// 			const progress = Math.random() > 0.0 ? { progress: 0.39 } : {};
-	// 			const id = await manager.addNotification({
-	// 				title: 'Test Notification',
-	// 				message: 'This is a test notification',
-	// 				notification_type: manager.NotificationType.Download,
-	// 				...(progress),
-	// 			});
-	// 		}
-	// 	});
-	// });
+	const memoedNotifications = createMemo(() => Object.values(notifications()));
+
+	function clearNotifications() {
+		setNotifications({});
+	}
 
 	return (
 		<Popup {...props}>
@@ -40,10 +32,10 @@ function NotificationPopup(props: PopupProps) {
 					<div class="flex flex-col items-stretch justify-start gap-2 text-start" ref={inner}>
 						<p class="px-2 pt-1 text-2lg">Notifications</p>
 						<Switch>
-							<Match when={ingress().length > 0}>
+							<Match when={memoedNotifications().length > 0}>
 								<OverlayScrollbarsComponent class="max-h-[min(500px,60vh)] overflow-auto">
 									<div class="flex flex-col-reverse items-stretch justify-center">
-										<For each={ingress()}>
+										<For each={memoedNotifications()}>
 											{noti => (
 												<div class="w-full flex flex-col">
 													<NotificationComponent {...noti} overlay={false} />
@@ -54,14 +46,14 @@ function NotificationPopup(props: PopupProps) {
 									</div>
 								</OverlayScrollbarsComponent>
 							</Match>
-							<Match when={ingress().length === 0}>
+							<Match when>
 								<span class="px-2">You have no notifications</span>
 								<span class="h-px bg-gray-05" />
 							</Match>
 						</Switch>
 
 						<div class="flex flex-row items-end justify-between">
-							<Button buttonStyle="ghost" iconLeft={<Trash01Icon />} onClick={() => {}}>
+							<Button buttonStyle="ghost" iconLeft={<Trash01Icon />} onClick={clearNotifications}>
 								Clear Notifications
 							</Button>
 

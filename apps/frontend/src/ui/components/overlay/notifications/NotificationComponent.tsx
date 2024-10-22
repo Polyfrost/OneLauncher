@@ -1,45 +1,21 @@
-import type { IngressPayload, IngressType } from '@onelauncher/client/bindings';
 import { PausableTimer } from '@onelauncher/client';
 import { InfoCircleIcon } from '@untitled-theme/icons-solid';
-import { type ComponentProps, createEffect, createSignal, type JSX, Match, Show, Switch } from 'solid-js';
+import { createEffect, createSignal, type JSX, Match, Show, Switch } from 'solid-js';
 
-type NotificationComponentProps = IngressPayload & {
+export interface NotificationData {
+	title: string;
+	message: string;
+	fraction?: number | undefined;
+}
+
+export type NotificationComponentProps = NotificationData & {
+	icon?: () => JSX.Element;
 	overlay: boolean;
 };
 
-function IconFromNotificationType(type: IngressType['type']): (props: ComponentProps<'svg'>) => JSX.Element {
-	switch (type) {
-		case 'initialize':
-		case 'download_java':
-		case 'download_loader':
-		case 'sync_cluster':
-		case 'copy_cluster':
-		case 'sync_config':
-		case 'archival':
-		case 'download_package':
-		case 'download_pack':
-		default:
-			return InfoCircleIcon;
-	}
-}
-
-function ColorFromNotificationType(type: IngressType['type']): string {
-	switch (type) {
-		case 'initialize':
-		case 'download_java':
-		case 'download_loader':
-		case 'sync_cluster':
-		case 'copy_cluster':
-		case 'sync_config':
-		case 'archival':
-		case 'download_package':
-		case 'download_pack':
-		default:
-			return 'text-fg-primary';
-	}
-}
-
 const TOTAL_SECONDS = 7;
+const fractionEnded = (fraction: number | undefined) => fraction !== undefined && fraction >= 0.97;
+
 function NotificationOverlayComponent(props: NotificationComponentProps) {
 	const [disappearing, setDisappearing] = createSignal<boolean>(true);
 	const [timer, setTimer] = createSignal<PausableTimer | undefined>();
@@ -49,7 +25,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 	createEffect(() => {
 		setDisappearing(props.fraction === undefined);
 
-		if (props.fraction !== null && props.fraction >= 1) {
+		if (fractionEnded(props.fraction)) {
 			setVisible(false);
 			return;
 		}
@@ -64,10 +40,6 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 			setTimer(undefined);
 		}
 	});
-
-	// onMount(() => {
-	// 	setVisible(true);
-	// });
 
 	function onInterval() {
 		if (secondsLeft() <= 0) {
@@ -93,14 +65,6 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 	}
 
 	return (
-	// <Transition
-	// 	enterClass="noti-animation-enter"
-	// 	enterActiveClass="noti-animation-enter-active"
-	// 	enterToClass="noti-animation-enter-to"
-	// 	exitClass="noti-animation-leave"
-	// 	exitActiveClass="noti-animation-leave-active"
-	// 	exitToClass="noti-animation-leave-to"
-	// >
 		<Show when={visible()}>
 			<div
 				class="flex flex-col overflow-hidden rounded-lg bg-component-bg"
@@ -111,7 +75,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 					<NotificationPopupComponent {...props} />
 				</div>
 
-				<Show when={disappearing() === true && props.fraction === undefined}>
+				<Show when={disappearing() === true}>
 					<div class="h-1.5 w-full bg-brand-disabled">
 						<div
 							class="h-1.5 rounded-lg bg-brand transition-width"
@@ -123,21 +87,21 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 				</Show>
 			</div>
 		</Show>
-	// </Transition>
 	);
 }
 
 function NotificationPopupComponent(props: NotificationComponentProps) {
+	// eslint-disable-next-line solid/reactivity -- Doesn't really matter here
+	const Icon = props.icon ?? InfoCircleIcon;
+
 	return (
 		<div class="flex flex-col gap-y-1 p-2">
 			<div class="grid grid-cols-[24px_1fr_auto] min-h-10 place-items-center gap-3">
-				{IconFromNotificationType(props.event.type)({
-					class: `w-6 h-6 ${ColorFromNotificationType(props.event.type)}`,
-				})}
+				<Icon class="h-6 w-6 text-fg-primary" />
 
-				<div class="w-full flex flex-col">
-					<span class={`font-medium ${ColorFromNotificationType(props.event.type)}`}>{props.message}</span>
-					<span class="text-sm text-white/60">{props.message}</span>
+				<div class="w-full flex flex-col gap-y-1">
+					<span class="text-fg-primary font-medium capitalize">{props.title}</span>
+					<span class="text-sm text-white/60 capitalize">{props.message}</span>
 				</div>
 
 				<Show when={props.overlay !== true}>
@@ -147,12 +111,12 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 				</Show>
 			</div>
 
-			<Show when={props.fraction !== null}>
+			<Show when={props.fraction !== undefined && props.fraction !== null && !fractionEnded(props.fraction)}>
 				<div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled">
 					<div
 						class="h-full max-w-full min-w-0 rounded-full bg-brand transition-width"
 						style={{
-							width: `${Math.floor(props.fraction!)}%`,
+							width: `${Math.floor(props.fraction! * 100)}%`,
 						}}
 					/>
 				</div>

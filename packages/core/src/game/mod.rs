@@ -235,7 +235,7 @@ pub async fn install_minecraft(
 	})
 	.await?;
 	State::sync().await?;
-	send_ingress(&ingress, 1.0, Some("installed minecraft successfully")).await?;
+	send_ingress(&ingress, 100.0, Some("installed minecraft successfully")).await?;
 
 	Ok(())
 }

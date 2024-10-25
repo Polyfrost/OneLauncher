@@ -89,8 +89,8 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
       '@formatjs/intl-durationformat':
-        specifier: ^0.5.0
-        version: 0.5.0
+        specifier: ^0.6.1
+        version: 0.6.1
       '@leeoniya/ufuzzy':
         specifier: ^1.0.14
         version: 1.0.14
@@ -944,17 +944,17 @@ packages:
   '@fontsource/poppins@5.1.0':
     resolution: {integrity: sha512-tpLXlnNi2fwQjiipvuj4uNFHCdoLA8izRsKdoexZuEzjx0r/g1aKLf4ta6lFgF7L+/+AFdmaXFlUwwvmDzYH+g==}
 
-  '@formatjs/ecma402-abstract@2.2.0':
-    resolution: {integrity: sha512-IpM+ev1E4QLtstniOE29W1rqH9eTdx5hQdNL8pzrflMj/gogfaoONZqL83LUeQScHAvyMbpqP5C9MzNf+fFwhQ==}
+  '@formatjs/ecma402-abstract@2.2.1':
+    resolution: {integrity: sha512-O4ywpkdJybrjFc9zyL8qK5aklleIAi5O4nYhBVJaOFtCkNrnU+lKFeJOFC48zpsZQmR8Aok2V79hGpHnzbmFpg==}
 
-  '@formatjs/fast-memoize@2.2.1':
-    resolution: {integrity: sha512-XS2RcOSyWxmUB7BUjj3mlPH0exsUzlf6QfhhijgI941WaJhVxXQ6mEWkdUFIdnKi3TuTYxRdelsgv3mjieIGIA==}
+  '@formatjs/fast-memoize@2.2.2':
+    resolution: {integrity: sha512-mzxZcS0g1pOzwZTslJOBTmLzDXseMLLvnh25ymRilCm8QLMObsQ7x/rj9GNrH0iUhZMlFisVOD6J1n6WQqpKPQ==}
 
-  '@formatjs/intl-durationformat@0.5.0':
-    resolution: {integrity: sha512-L0Jf50P7AjuLa9B5xnQlgRxLqAXjCgTlVeiMDYP3ccVVfhLT1wSsTXCRgRn2K1vxuHEtcCeKV9ZFGLe4fuZdEg==}
+  '@formatjs/intl-durationformat@0.6.1':
+    resolution: {integrity: sha512-tPSX/D/wjO5ZKnRtwLlUYtjLUBILLX1w6+arU97NpPCpZ8SRWQePu+kDAxDwFKJ/w09idqvSFkJjYGTs6hMd1A==}
 
-  '@formatjs/intl-localematcher@0.5.5':
-    resolution: {integrity: sha512-t5tOGMgZ/i5+ALl2/offNqAQq/lfUnKLEw0mXQI4N4bqpedhrSE+fyKLpwnd22sK0dif6AV+ufQcTsKShB9J1g==}
+  '@formatjs/intl-localematcher@0.5.6':
+    resolution: {integrity: sha512-roz1+Ba5e23AHX6KUAWmLEyTRZegM5YDuxuvkHCyK3RJddf/UXB2f+s7pOMm9ktfPGla0g+mQXOn5vsuYirnaA==}
 
   '@humanfs/core@0.19.0':
     resolution: {integrity: sha512-2cbWIHbZVEweE853g8jymffCA+NCMiuqeECeBBLm8dg2oFdjuGJhgN4UAbI+6v0CKbbhvtXA4qV8YR5Ji86nmw==}
@@ -3845,9 +3845,6 @@ packages:
       typescript:
         optional: true
 
-  tslib@2.7.0:
-    resolution: {integrity: sha512-gLXCKdN1/j47AiHiOkJN69hJmcbGTHI0ImLmbYLHykhgeN0jVGola9yVjFgzCUklsZQMW55o+dW7IXv3RCXDzA==}
-
   tslib@2.8.0:
     resolution: {integrity: sha512-jWVzBLplnCmoaTr13V9dYbiQ99wvZRd0vNWaDRg+aVYRcjDF3nDksxFDE/+fkXnKhpnUUkmx5pK/v8mCtLVqZA==}
 
@@ -4366,7 +4363,7 @@ snapshots:
       '@azure/core-xml': 1.4.3
       '@azure/logger': 1.1.4
       events: 3.3.0
-      tslib: 2.7.0
+      tslib: 2.8.0
     transitivePeerDependencies:
       - supports-color
 
@@ -4886,23 +4883,23 @@ snapshots:
 
   '@fontsource/poppins@5.1.0': {}
 
-  '@formatjs/ecma402-abstract@2.2.0':
+  '@formatjs/ecma402-abstract@2.2.1':
     dependencies:
-      '@formatjs/fast-memoize': 2.2.1
-      '@formatjs/intl-localematcher': 0.5.5
+      '@formatjs/fast-memoize': 2.2.2
+      '@formatjs/intl-localematcher': 0.5.6
       tslib: 2.8.0
 
-  '@formatjs/fast-memoize@2.2.1':
+  '@formatjs/fast-memoize@2.2.2':
     dependencies:
       tslib: 2.8.0
 
-  '@formatjs/intl-durationformat@0.5.0':
+  '@formatjs/intl-durationformat@0.6.1':
     dependencies:
-      '@formatjs/ecma402-abstract': 2.2.0
-      '@formatjs/intl-localematcher': 0.5.5
+      '@formatjs/ecma402-abstract': 2.2.1
+      '@formatjs/intl-localematcher': 0.5.6
       tslib: 2.8.0
 
-  '@formatjs/intl-localematcher@0.5.5':
+  '@formatjs/intl-localematcher@0.5.6':
     dependencies:
       tslib: 2.8.0
 
@@ -8104,8 +8101,6 @@ snapshots:
   tsconfck@3.1.1(typescript@5.6.3):
     optionalDependencies:
       typescript: 5.6.3
-
-  tslib@2.7.0: {}
 
   tslib@2.8.0: {}
 

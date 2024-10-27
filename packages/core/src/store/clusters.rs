@@ -750,8 +750,7 @@ impl Clusters {
 	pub fn sync_cluster(cluster_path: ClusterPath) {
 		tokio::task::spawn(async move {
 			let span = tracing::span!(tracing::Level::INFO, "sync_cluster");
-			let res = async {
-				let _span = span.enter();
+			let res = span.in_scope(|| async {
 				let state = State::get().await?;
 				let dirs = &state.directories;
 				let mut clusters = state.clusters.write().await;
@@ -781,7 +780,7 @@ impl Clusters {
 					});
 				}
 				Ok::<(), crate::Error>(())
-			}
+			})
 			.await;
 
 			match res {

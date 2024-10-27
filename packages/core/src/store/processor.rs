@@ -438,22 +438,20 @@ impl Processor {
 			let mut stdout = BufReader::new(stdout).lines();
 			let mut stderr = BufReader::new(stderr).lines();
 
-			while let Ok(line) = tokio::select! {
+			while let Ok(Some(line)) = tokio::select! {
 				line = stdout.next_line() => line,
 				line = stderr.next_line() => line,
 			} {
-				if let Some(line) = line {
-					let mut censored = line.clone();
-					for (key, value) in &censors {
-						censored = censored.replace(key, value);
-					}
-
-					if let Err(err) =
-						send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await
-					{
-						tracing::warn!("failed to send process log: {}", err);
-					};
+				let mut censored = line.clone();
+				for (key, value) in &censors {
+					censored = censored.replace(key, value);
 				}
+
+				if let Err(err) =
+					send_process(uuid, pid, ProcessPayloadType::Logging, &censored).await
+				{
+					tracing::warn!("failed to send process log: {}", err);
+				};
 			}
 		});
 

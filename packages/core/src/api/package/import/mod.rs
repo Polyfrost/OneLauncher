@@ -92,8 +92,14 @@ impl ImportType {
 	}
 }
 
-pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Result<Vec<String>> {
-	let instances_dir = import.get_instances_subpath(&path).await?;
+pub async fn get_launcher_instances(import: ImportType, path: Option<PathBuf>) -> crate::Result<(PathBuf, Vec<String>)> {
+	let instances_dir = import.get_instances_subpath(
+		&path.unwrap_or(
+			default_launcher_path(import)
+			.ok_or(anyhow::anyhow!("could not get launcher base path for {import}")
+		)?
+	)).await?;
+
 	let mut instances = Vec::new();
 	let mut dir = io::read_dir(&instances_dir)
 		.await
@@ -113,7 +119,21 @@ pub async fn import_instances(import: ImportType, path: PathBuf) -> crate::Resul
 		}
 	}
 
-	Ok(instances)
+	Ok((instances_dir, instances))
+}
+
+#[tracing::instrument]
+pub async fn import_instances(
+	import: ImportType,
+	base_path: PathBuf,
+	instances: Vec<String>,
+) -> crate::Result<()> {
+	for instance in instances {
+		let cluster_path = ClusterPath::new(&instance);
+		import_instance(cluster_path, import, base_path.clone(), instance).await?;
+	}
+
+	Ok(())
 }
 
 #[tracing::instrument]

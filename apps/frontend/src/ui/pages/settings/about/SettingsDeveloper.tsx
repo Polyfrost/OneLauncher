@@ -1,4 +1,5 @@
-import { CodeBrowserIcon, GitMergeIcon, LinkExternal01Icon, RefreshCcw05Icon } from '@untitled-theme/icons-solid';
+import { useNavigate } from '@solidjs/router';
+import { CodeBrowserIcon, EyeIcon, GitMergeIcon, LinkExternal01Icon, RefreshCcw05Icon } from '@untitled-theme/icons-solid';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -7,7 +8,13 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 
 function SettingsDeveloper() {
-	const { settings } = useSettings();
+	const { settings, saveOnLeave } = useSettings();
+	const navigate = useNavigate();
+
+	saveOnLeave(() => ({
+		debug_mode: settings().debug_mode!,
+		onboarding_completed: settings().onboarding_completed!,
+	}));
 
 	return (
 		<Sidebar.Page>
@@ -44,7 +51,22 @@ function SettingsDeveloper() {
 					<Button
 						children="Reload"
 						iconLeft={<RefreshCcw05Icon />}
-						onClick={() => location.href = '/'}
+						onClick={() => location.reload()}
+					/>
+				</SettingsRow>
+
+				<SettingsRow
+					description="Enter onboarding mode"
+					icon={<EyeIcon />}
+					title="Onboarding"
+				>
+					<Button
+						children="Open"
+						iconLeft={<EyeIcon />}
+						onClick={() => {
+							settings().onboarding_completed = false;
+							navigate('/onboarding');
+						}}
 					/>
 				</SettingsRow>
 

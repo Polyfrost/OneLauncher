@@ -58,7 +58,8 @@ macro_rules! collect_commands {
 			// Metadata
 			get_minecraft_versions,
 			// Launcher Packages (Instances)
-			import_launcher_instances,
+			get_launcher_instances,
+			import_instances,
 			// Provider Packages
 			get_provider_package,
 			get_provider_packages,

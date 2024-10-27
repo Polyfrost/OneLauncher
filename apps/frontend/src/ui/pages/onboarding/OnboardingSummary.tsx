@@ -16,7 +16,7 @@ function OnboardingSummary() {
 			<AnimatedRoutes>
 				<Switch>
 					<Match when={ctx.tasksStage() === OnboardingTaskStage.NotStarted}>
-						<div class="my-8 max-h-36 w-full flex flex-1 flex-col gap-y-2 rounded-lg bg-page-elevated p-4">
+						<div class="my-8 max-h-36 w-full flex flex-1 flex-col gap-y-2 rounded-lg bg-page-elevated p-4 font-mono">
 							<For each={ctx.getTasks()}>
 								{task => (
 									<span class="text-lg text-fg-primary">

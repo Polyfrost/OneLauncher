@@ -32,7 +32,7 @@ export const enum OnboardingTaskStage {
 
 interface OnboardingContextType {
 	setLanguage: (language: Language) => void;
-	setImportTypes: (types: ImportType[]) => void;
+	setImportTypeInstances: (type: ImportType, instances: string[]) => void;
 
 	getTasks: () => string[];
 
@@ -51,7 +51,7 @@ function Onboarding(props: ParentProps) {
 	const [forwardButtonEnabled, setForwardButtonEnabled] = createSignal(true);
 
 	const [language, setLanguage] = createSignal<Language>('en');
-	const [importTypes, setImportTypes] = createSignal<ImportType[]>([]);
+	const [importTypes, setImportTypes] = createSignal<Map<ImportType, string[]>>(new Map());
 	const [tasksStage, setTasksStage] = createSignal<OnboardingTaskStage>(OnboardingTaskStage.NotStarted);
 	const [tasksMessage, setTasksMessage] = createSignal<string>('');
 
@@ -140,7 +140,13 @@ function Onboarding(props: ParentProps) {
 
 	const ctx: OnboardingContextType = {
 		setLanguage,
-		setImportTypes,
+		setImportTypeInstances(type, instances) {
+			setImportTypes((importTypes) => {
+				const newMap = new Map(importTypes);
+				newMap.set(type, instances);
+				return newMap;
+			});
+		},
 
 		getTasks,
 

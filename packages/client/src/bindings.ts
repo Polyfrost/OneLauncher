@@ -324,9 +324,19 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async importLauncherInstances(launcher: ImportType, path: string | null): Promise<Result<null, string>> {
+	async getLauncherInstances(launcher: ImportType, path: string | null): Promise<Result<[string, string[]], string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('import_launcher_instances', { launcher, path }) };
+			return { status: 'ok', data: await TAURI_INVOKE('get_launcher_instances', { launcher, path }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async importInstances(launcher: ImportType, basePath: string, instances: string[]): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('import_instances', { launcher, basePath, instances }) };
 		}
 		catch (e) {
 			if (e instanceof Error)

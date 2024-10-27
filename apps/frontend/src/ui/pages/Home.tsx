@@ -1,11 +1,11 @@
 import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import {
-	DotsVerticalIcon,
 	PlayIcon,
 	PlusIcon,
 	RefreshCw01Icon,
 	SearchMdIcon,
+	Settings01Icon,
 } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import ClusterCover from '~ui/components/game/ClusterCover';
@@ -142,25 +142,20 @@ function Banner() {
 				</div>
 				<div class="w-full flex flex-row items-end justify-between">
 					<div class="flex flex-row items-center gap-x-4">
-						<Show
-							children={(
-								<>
-									<Button
-										buttonStyle="primary"
-										children={`Launch ${cluster()!.meta.mc_version}`}
-										iconLeft={<PlayIcon />}
-										onClick={launch}
-									/>
-									<Button
-										buttonStyle="iconSecondary"
-										children={<DotsVerticalIcon />}
-										class="bg-op-10!"
-										onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
-									/>
-								</>
-							)}
-							when={cluster() !== undefined}
-						/>
+						<Show when={cluster() !== undefined}>
+							<Button
+								buttonStyle="primary"
+								children={`Launch ${cluster()!.meta.mc_version}`}
+								iconLeft={<PlayIcon />}
+								onClick={launch}
+							/>
+							<Button
+								buttonStyle="iconSecondary"
+								children={<Settings01Icon />}
+								class="bg-op-10!"
+								onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
+							/>
+						</Show>
 					</div>
 					<div class="flex flex-row gap-x-2">
 						{/* TODO: These tags */}

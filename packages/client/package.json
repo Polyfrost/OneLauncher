@@ -29,7 +29,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@solid-primitives/deep": "^0.2.9",
+		"@solid-primitives/deep": "^0.2.10",
 		"@tanstack/solid-query": "^5.56.2",
 		"@tauri-apps/api": "^2.0.3",
 		"highlight.js": "^11.10.0",

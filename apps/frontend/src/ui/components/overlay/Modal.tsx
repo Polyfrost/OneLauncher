@@ -156,7 +156,7 @@ Modal.Simple = function (props: ModalSimpleProps) {
 			<div class="mt-2 flex flex-row gap-x-4 [&>*]:flex-1">
 				<For each={split.buttons}>
 					{button => (
-						<ModalButton props={button} />
+						<ModalButton hide={props.hide} props={button} />
 					)}
 				</For>
 			</div>
@@ -304,12 +304,12 @@ Modal.Delete = function (props: ModalDeleteProps) {
 	);
 };
 
-function ModalButton(button: { props: ModalButtonProps }) {
+function ModalButton(button: { hide: () => void; props: ModalButtonProps }) {
 	return (
 		<>
 			{typeof button.props === 'string'
 				? (
-						<Button buttonStyle="secondary">
+						<Button buttonStyle="secondary" onClick={button.hide}>
 							{button.props}
 						</Button>
 					)

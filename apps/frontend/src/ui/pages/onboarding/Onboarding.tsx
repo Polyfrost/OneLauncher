@@ -30,9 +30,19 @@ export const enum OnboardingTaskStage {
 	Completed = 2,
 }
 
+interface ImportInstancesType {
+	basePath: string;
+	instances: string[];
+}
+
+type InstancesImportMapType = Map<ImportType, ImportInstancesType>;
+
 interface OnboardingContextType {
 	setLanguage: (language: Language) => void;
-	setImportTypeInstances: (type: ImportType, instances: string[]) => void;
+	language: () => Language;
+
+	setImportInstances: (type: ImportType, basePath: string, instances: string[]) => void;
+	importInstances: (type: ImportType) => ImportInstancesType | undefined;
 
 	getTasks: () => string[];
 
@@ -51,7 +61,7 @@ function Onboarding(props: ParentProps) {
 	const [forwardButtonEnabled, setForwardButtonEnabled] = createSignal(true);
 
 	const [language, setLanguage] = createSignal<Language>('en');
-	const [importTypes, setImportTypes] = createSignal<Map<ImportType, string[]>>(new Map());
+	const [importInstances, setImportInstances] = createSignal<InstancesImportMapType>(new Map());
 	const [tasksStage, setTasksStage] = createSignal<OnboardingTaskStage>(OnboardingTaskStage.NotStarted);
 	const [tasksMessage, setTasksMessage] = createSignal<string>('');
 
@@ -131,7 +141,7 @@ function Onboarding(props: ParentProps) {
 
 		tasks.push(`Set language to ${LanguagesList[language()][0]}`);
 
-		importTypes().forEach((type) => {
+		importInstances().forEach((type) => {
 			tasks.push(`Import profiles from ${type}`);
 		});
 
@@ -140,13 +150,19 @@ function Onboarding(props: ParentProps) {
 
 	const ctx: OnboardingContextType = {
 		setLanguage,
-		setImportTypeInstances(type, instances) {
-			setImportTypes((importTypes) => {
+		language,
+
+		setImportInstances(type, basePath, instances) {
+			setImportInstances((importTypes) => {
 				const newMap = new Map(importTypes);
-				newMap.set(type, instances);
+				newMap.set(type, {
+					basePath,
+					instances,
+				});
 				return newMap;
 			});
 		},
+		importInstances: type => importInstances().get(type),
 
 		getTasks,
 

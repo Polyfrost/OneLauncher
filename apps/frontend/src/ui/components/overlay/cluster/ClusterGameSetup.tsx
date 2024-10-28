@@ -129,7 +129,7 @@ function VersionSelector(props: { setVersion: (version: string) => void }) {
 		<div class="flex flex-1 flex-row gap-2">
 			<SelectList
 				class="max-h-40 min-w-3/5"
-				onChange={setVersion}
+				onChange={indexes => setVersion(indexes[0])}
 			>
 				<Show when={filteredVersions() !== undefined}>
 					<Index each={filteredVersions()}>

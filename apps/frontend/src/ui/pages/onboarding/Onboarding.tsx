@@ -1,10 +1,11 @@
 import type { ImportType } from '@onelauncher/client/bindings';
 import { Route, useBeforeLeave, useLocation, useNavigate } from '@solidjs/router';
 import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import Button from '~ui/components/base/Button';
 import useSettings from '~ui/hooks/useSettings';
-import { setAsyncTimeout } from '~utils';
+import { pluralize, setAsyncTimeout } from '~utils';
 import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, on, type ParentProps, useContext } from 'solid-js';
 import OnboardingComplete from './OnboardingComplete';
 import OnboardingImport from './OnboardingImport';
@@ -115,13 +116,26 @@ function Onboarding(props: ParentProps) {
 		const tasks = [
 
 			async () => {
-				setTasksMessage('Setting language');
+				setTasksMessage('Setting language'); // TODO: Actually do this
 				await setAsyncTimeout(500);
 			},
 
+			// eslint-disable-next-line solid/reactivity -- -
 			async () => {
-				setTasksMessage('Importing data');
-				await setAsyncTimeout(1000);
+				for (const [launcher, value] of importInstances()) {
+					if (value.instances.length === 0)
+						continue;
+
+					setTasksMessage(`Importing ${value.instances.length} ${pluralize(value.instances.length, 'instance')} ${launcher}`);
+					try {
+						await bridge.commands.importInstances(launcher, value.basePath, value.instances);
+					}
+					catch (e) {
+						console.error(e);
+						setTasksMessage(`Failed to import ${value.instances.length} ${pluralize(value.instances.length, 'instance')} ${launcher}...`);
+						await setAsyncTimeout(1500);
+					}
+				}
 			},
 
 		].map(task => task());
@@ -141,8 +155,16 @@ function Onboarding(props: ParentProps) {
 
 		tasks.push(`Set language to ${LanguagesList[language()][0]}`);
 
-		importInstances().forEach((type) => {
-			tasks.push(`Import profiles from ${type}`);
+		importInstances().forEach((value, launcher) => {
+			if (value.instances.length === 0)
+				return;
+
+			let builder = `Import ${value.instances.length} ${pluralize(value.instances.length, 'instance')} from ${launcher}\n`;
+			value.instances.forEach((instance, index) => {
+				builder += ` ${index + 1}. ${instance}\n`;
+			});
+
+			tasks.push(builder);
 		});
 
 		return tasks;

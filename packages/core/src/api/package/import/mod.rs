@@ -129,8 +129,7 @@ pub async fn import_instances(
 	instances: Vec<String>,
 ) -> crate::Result<()> {
 	for instance in instances {
-		let cluster_path = ClusterPath::new(&instance);
-		import_instance(cluster_path, import, base_path.clone(), instance).await?;
+		import_instance(import, base_path.clone(), instance).await?;
 	}
 
 	Ok(())
@@ -139,12 +138,13 @@ pub async fn import_instances(
 #[tracing::instrument]
 #[onelauncher_macros::memory]
 pub async fn import_instance(
-	cluster_path: ClusterPath,
 	import: ImportType,
 	base_path: PathBuf,
 	instance_path: String,
 ) -> crate::Result<()> {
 	tracing::debug!("importing instance from {instance_path}");
+
+	let cluster_path = crate::cluster::create::create_unfinished_cluster(instance_path.clone()).await?;
 
 	let result = match import {
 		ImportType::MultiMC | ImportType::PrismLauncher => {

@@ -369,6 +369,10 @@ pub async fn set_cluster_information<S: ::std::hash::BuildHasher>(
 		.await?
 	};
 
+	// crate::api::cluster::create::create_cluster(
+	// 	description.override_title.clone().unwrap_or_else(|| backup_name.to_string()),
+	// 	mc_version, mod_loader, loader_version, icon, icon_url, package_data, skip, skip_watch)
+
 	crate::api::cluster::edit(&cluster_path, |cl| {
 		cl.meta.name = description
 			.override_title

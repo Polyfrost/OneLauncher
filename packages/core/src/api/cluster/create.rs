@@ -10,21 +10,13 @@ use interpulse::api::modded::LoaderVersion;
 use onelauncher_utils::io::{self, canonicalize};
 use std::path::PathBuf;
 
-/// Creates a [`Cluster`] and adds it to the memory [`State`].
+/// Creates an unfinished [`Cluster`] used for building onto it and adds it to the memory [`State`].
 /// Returns a relative filepath ([`ClusterPath`]) which can be used to access the cluster.
 #[tracing::instrument]
 #[onelauncher_macros::memory]
 #[allow(clippy::too_many_arguments)]
-pub async fn create_cluster(
+pub async fn create_unfinished_cluster(
 	mut name: String,
-	mc_version: String,
-	mod_loader: Loader,
-	loader_version: Option<String>,
-	icon: Option<PathBuf>,
-	icon_url: Option<String>,
-	package_data: Option<PackageData>,
-	skip: Option<bool>,
-	skip_watch: Option<bool>,
 ) -> crate::Result<ClusterPath> {
 	name = cluster::sanitize_cluster_name(&name);
 	tracing::trace!("creating new cluster {}", name);
@@ -60,14 +52,70 @@ pub async fn create_cluster(
 		"creating cluster at path {}",
 		&canonicalize(&path)?.display()
 	);
+
+	let cluster = Cluster::new(uuid, name, String::from("none")).await?;
+	let result = async {
+		{
+			state
+				.clusters
+				.write()
+				.await
+				.insert(cluster.clone(), false)
+				.await?;
+		}
+
+		State::sync().await?;
+		let state = State::get().await?;
+		let mut packages = state.packages.write().await;
+		packages.add_cluster(&state.directories, cluster.cluster_path()).await;
+
+		Ok(cluster.cluster_path())
+	}
+	.await;
+
+	match result {
+		Ok(cluster) => Ok(cluster),
+		Err(err) => {
+			let _ = cluster::remove(&cluster.cluster_path()).await;
+
+			Err(err)
+		}
+	}
+}
+
+/// Creates a [`Cluster`] and adds it to the memory [`State`].
+/// Returns a relative filepath ([`ClusterPath`]) which can be used to access the cluster.
+#[tracing::instrument]
+#[onelauncher_macros::memory]
+#[allow(clippy::too_many_arguments)]
+pub async fn create_cluster(
+	name: String,
+	mc_version: String,
+	mod_loader: Loader,
+	loader_version: Option<String>,
+	icon: Option<PathBuf>,
+	icon_url: Option<String>,
+	package_data: Option<PackageData>,
+	skip: Option<bool>,
+	skip_watch: Option<bool>,
+) -> crate::Result<ClusterPath> {
+	let mut cluster = cluster::get(&create_unfinished_cluster(name).await?)
+		.await?
+		.ok_or(anyhow::anyhow!("failed to get cluster"))?;
+
+	let state = State::get().await?;
+
 	let loader = if mod_loader == Loader::Vanilla {
 		None
 	} else {
 		get_loader_version(mc_version.clone(), mod_loader, loader_version).await?
 	};
 
-	let mut cluster = Cluster::new(uuid, name, mc_version).await?;
 	let result = async {
+		cluster.meta.mc_version = mc_version;
+		cluster.meta.loader = mod_loader;
+		cluster.meta.loader_version = loader.clone();
+
 		if let Some(ref icon) = icon {
 			let bytes = io::read(state.directories.caches_dir().await.join(icon)).await?;
 			cluster
@@ -93,7 +141,7 @@ pub async fn create_cluster(
 		}
 
 		send_cluster(
-			uuid,
+			cluster.uuid,
 			&cluster.cluster_path(),
 			&cluster.meta.name,
 			ClusterPayloadType::Created,

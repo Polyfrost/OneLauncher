@@ -43,10 +43,10 @@ importers:
         version: 5.6.3
       vite:
         specifier: ^5.4.10
-        version: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+        version: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
       vitest:
         specifier: ^2.1.3
-        version: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.3)
+        version: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.7)
 
   .github/actions/publish-artifacts:
     dependencies:
@@ -171,23 +171,23 @@ importers:
         specifier: ^5.12.0
         version: 5.12.0(rollup@4.24.0)
       sass:
-        specifier: ^1.79.4
-        version: 1.80.3
+        specifier: ^1.80.7
+        version: 1.80.7
       unocss:
         specifier: ^0.63.6
-        version: 0.63.6(postcss@8.4.47)(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+        version: 0.63.6(postcss@8.4.47)(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
       vite:
         specifier: ^5.4.8
-        version: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+        version: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
       vite-plugin-solid:
         specifier: ^2.10.2
-        version: 2.10.2(@testing-library/jest-dom@6.6.2)(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+        version: 2.10.2(@testing-library/jest-dom@6.6.2)(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
       vite-plugin-solid-svg:
         specifier: ^0.8.1
-        version: 0.8.1(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+        version: 0.8.1(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
       vite-tsconfig-paths:
         specifier: ^5.0.1
-        version: 5.0.1(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+        version: 5.0.1(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
 
   apps/testing: {}
 
@@ -2741,8 +2741,8 @@ packages:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
 
-  immutable@4.3.7:
-    resolution: {integrity: sha512-1hqclzwYwjRDFLjcFxOM5AYkkG0rpFPpr1RLPMEuGczoS7YA8gLhy8SWXYRAA/XwfEHpfo3cw5JGioS32fnMRw==}
+  immutable@5.0.2:
+    resolution: {integrity: sha512-1NU7hWZDkV7hJ4PJ9dur9gTNQ4ePNPN4k9/0YhwjzykTi/+3Q5pF93YU5QoVj8BuOnhLgaY8gs0U2pj4kSYVcw==}
 
   import-fresh@3.3.0:
     resolution: {integrity: sha512-veYYhQa+D1QBKznvhUHxb8faxlrwUnxseDAbAp457E0wLNio2bOSKnjYDhMj+YiAq61xrMGhQk9iXVk5FzgQMw==}
@@ -3558,8 +3558,8 @@ packages:
   safer-buffer@2.1.2:
     resolution: {integrity: sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==}
 
-  sass@1.80.3:
-    resolution: {integrity: sha512-ptDWyVmDMVielpz/oWy3YP3nfs7LpJTHIJZboMVs8GEC9eUmtZTZhMHlTW98wY4aEorDfjN38+Wr/XjskFWcfA==}
+  sass@1.80.7:
+    resolution: {integrity: sha512-MVWvN0u5meytrSjsU7AWsbhoXi1sc58zADXFllfZzbsBT1GHjjar6JwBINYPRrkx/zqnQ6uqbQuHgE95O+C+eQ==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -5118,6 +5118,7 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.4.1
       '@parcel/watcher-win32-ia32': 2.4.1
       '@parcel/watcher-win32-x64': 2.4.1
+    optional: true
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -5587,13 +5588,13 @@ snapshots:
       '@typescript-eslint/types': 8.11.0
       eslint-visitor-keys: 3.4.3
 
-  '@unocss/astro@0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))':
+  '@unocss/astro@0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))':
     dependencies:
       '@unocss/core': 0.63.6
       '@unocss/reset': 0.63.6
-      '@unocss/vite': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+      '@unocss/vite': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
     optionalDependencies:
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
     transitivePeerDependencies:
       - rollup
       - supports-color
@@ -5734,7 +5735,7 @@ snapshots:
     dependencies:
       '@unocss/core': 0.63.6
 
-  '@unocss/vite@0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))':
+  '@unocss/vite@0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@rollup/pluginutils': 5.1.3(rollup@4.24.0)
@@ -5744,7 +5745,7 @@ snapshots:
       chokidar: 3.6.0
       magic-string: 0.30.12
       tinyglobby: 0.2.9
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
     transitivePeerDependencies:
       - rollup
       - supports-color
@@ -5762,7 +5763,7 @@ snapshots:
       eslint: 9.13.0(jiti@2.3.3)
     optionalDependencies:
       typescript: 5.6.3
-      vitest: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.3)
+      vitest: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.7)
 
   '@vitest/expect@2.1.3':
     dependencies:
@@ -5771,13 +5772,13 @@ snapshots:
       chai: 5.1.2
       tinyrainbow: 1.2.0
 
-  '@vitest/mocker@2.1.3(@vitest/spy@2.1.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))':
+  '@vitest/mocker@2.1.3(@vitest/spy@2.1.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))':
     dependencies:
       '@vitest/spy': 2.1.3
       estree-walker: 3.0.3
       magic-string: 0.30.12
     optionalDependencies:
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
 
   '@vitest/pretty-format@2.1.3':
     dependencies:
@@ -5807,7 +5808,7 @@ snapshots:
       sirv: 2.0.4
       tinyglobby: 0.2.9
       tinyrainbow: 1.2.0
-      vitest: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.3)
+      vitest: 2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.7)
 
   '@vitest/utils@2.1.3':
     dependencies:
@@ -6254,7 +6255,8 @@ snapshots:
 
   destr@2.0.3: {}
 
-  detect-libc@1.0.3: {}
+  detect-libc@1.0.3:
+    optional: true
 
   devlop@1.1.0:
     dependencies:
@@ -6890,7 +6892,7 @@ snapshots:
 
   ignore@5.3.2: {}
 
-  immutable@4.3.7: {}
+  immutable@5.0.2: {}
 
   import-fresh@3.3.0:
     dependencies:
@@ -7513,7 +7515,8 @@ snapshots:
       lower-case: 2.0.2
       tslib: 2.8.0
 
-  node-addon-api@7.1.1: {}
+  node-addon-api@7.1.1:
+    optional: true
 
   node-fetch-native@1.6.4: {}
 
@@ -7833,12 +7836,13 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
-  sass@1.80.3:
+  sass@1.80.7:
     dependencies:
-      '@parcel/watcher': 2.4.1
       chokidar: 4.0.1
-      immutable: 4.3.7
+      immutable: 5.0.2
       source-map-js: 1.2.1
+    optionalDependencies:
+      '@parcel/watcher': 2.4.1
 
   saxes@6.0.0:
     dependencies:
@@ -8182,9 +8186,9 @@ snapshots:
 
   universal-user-agent@6.0.1: {}
 
-  unocss@0.63.6(postcss@8.4.47)(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3)):
+  unocss@0.63.6(postcss@8.4.47)(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7)):
     dependencies:
-      '@unocss/astro': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+      '@unocss/astro': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
       '@unocss/cli': 0.63.6(rollup@4.24.0)
       '@unocss/core': 0.63.6
       '@unocss/postcss': 0.63.6(postcss@8.4.47)
@@ -8200,9 +8204,9 @@ snapshots:
       '@unocss/transformer-compile-class': 0.63.6
       '@unocss/transformer-directives': 0.63.6
       '@unocss/transformer-variant-group': 0.63.6
-      '@unocss/vite': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+      '@unocss/vite': 0.63.6(rollup@4.24.0)(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
     optionalDependencies:
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
     transitivePeerDependencies:
       - postcss
       - rollup
@@ -8248,12 +8252,12 @@ snapshots:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
 
-  vite-node@2.1.3(@types/node@22.7.9)(sass@1.80.3):
+  vite-node@2.1.3(@types/node@22.7.9)(sass@1.80.7):
     dependencies:
       cac: 6.7.14
       debug: 4.3.7
       pathe: 1.1.2
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
     transitivePeerDependencies:
       - '@types/node'
       - less
@@ -8265,13 +8269,13 @@ snapshots:
       - supports-color
       - terser
 
-  vite-plugin-solid-svg@0.8.1(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3)):
+  vite-plugin-solid-svg@0.8.1(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7)):
     dependencies:
       solid-js: 1.9.3
       svgo: 3.3.2
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
 
-  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.6.2)(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3)):
+  vite-plugin-solid@2.10.2(@testing-library/jest-dom@6.6.2)(solid-js@1.9.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7)):
     dependencies:
       '@babel/core': 7.25.2
       '@types/babel__core': 7.20.5
@@ -8279,25 +8283,25 @@ snapshots:
       merge-anything: 5.1.7
       solid-js: 1.9.3
       solid-refresh: 0.6.3(solid-js@1.9.3)
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
-      vitefu: 0.2.5(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
+      vitefu: 0.2.5(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
     optionalDependencies:
       '@testing-library/jest-dom': 6.6.2
     transitivePeerDependencies:
       - supports-color
 
-  vite-tsconfig-paths@5.0.1(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3)):
+  vite-tsconfig-paths@5.0.1(typescript@5.6.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7)):
     dependencies:
       debug: 4.3.6
       globrex: 0.1.2
       tsconfck: 3.1.1(typescript@5.6.3)
     optionalDependencies:
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
     transitivePeerDependencies:
       - supports-color
       - typescript
 
-  vite@5.4.10(@types/node@22.7.9)(sass@1.80.3):
+  vite@5.4.10(@types/node@22.7.9)(sass@1.80.7):
     dependencies:
       esbuild: 0.21.5
       postcss: 8.4.47
@@ -8305,16 +8309,16 @@ snapshots:
     optionalDependencies:
       '@types/node': 22.7.9
       fsevents: 2.3.3
-      sass: 1.80.3
+      sass: 1.80.7
 
-  vitefu@0.2.5(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3)):
+  vitefu@0.2.5(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7)):
     optionalDependencies:
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
 
-  vitest@2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.3):
+  vitest@2.1.3(@types/node@22.7.9)(@vitest/ui@2.1.3)(jsdom@25.0.1)(sass@1.80.7):
     dependencies:
       '@vitest/expect': 2.1.3
-      '@vitest/mocker': 2.1.3(@vitest/spy@2.1.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.3))
+      '@vitest/mocker': 2.1.3(@vitest/spy@2.1.3)(vite@5.4.10(@types/node@22.7.9)(sass@1.80.7))
       '@vitest/pretty-format': 2.1.3
       '@vitest/runner': 2.1.3
       '@vitest/snapshot': 2.1.3
@@ -8329,8 +8333,8 @@ snapshots:
       tinyexec: 0.3.1
       tinypool: 1.0.1
       tinyrainbow: 1.2.0
-      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.3)
-      vite-node: 2.1.3(@types/node@22.7.9)(sass@1.80.3)
+      vite: 5.4.10(@types/node@22.7.9)(sass@1.80.7)
+      vite-node: 2.1.3(@types/node@22.7.9)(sass@1.80.7)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.7.9

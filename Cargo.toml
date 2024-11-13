@@ -155,7 +155,7 @@ sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
 cocoa = { version = "0.26" }
 objc = { version = "0.2" }
-cc = { version = "1.1" }
+cc = { version = "1.2" }
 libc = { version = "0.2" }
 dotenvy = { git = "https://github.com/allan2/dotenvy/", rev = "db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5" }
 # https://github.com/tauri-apps/tauri/blob/dev/crates/tauri/Cargo.toml#L102

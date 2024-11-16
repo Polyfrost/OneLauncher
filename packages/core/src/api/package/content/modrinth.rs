@@ -5,11 +5,12 @@ use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageTy
 use crate::store::{
 	Author, License, ManagedVersionFile, ManagedVersionReleaseType, PackageFile, PackageSide, ProviderSearchResults, SearchResult
 };
-use crate::utils::http::fetch;
+use crate::utils::http::{fetch, fetch_advanced};
 use crate::utils::pagination::Pagination;
 use crate::{Result, State};
 
 use chrono::{DateTime, Utc};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -147,6 +148,7 @@ pub struct File {
 	pub primary: bool,
 	pub size: u64,
 	pub file_type: Option<PackageFile>,
+	pub hashes: HashMap<String, String>
 }
 
 impl From<File> for ManagedVersionFile {
@@ -157,7 +159,7 @@ impl From<File> for ManagedVersionFile {
 			primary: value.primary,
 			size: value.size,
 			file_type: value.file_type,
-			hashes: HashMap::default(), // TODO
+			hashes: value.hashes
 		}
 	}
 }
@@ -508,5 +510,25 @@ pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ModrinthVersion>>
 			&State::get().await?.fetch_semaphore,
 		)
 		.await?,
+	)?)
+}
+
+pub async fn get_versions_by_hashes(hashes: Vec<String>) -> Result<HashMap<String, ModrinthVersion>> {
+	let body = serde_json::json!({
+		"hashes": hashes,
+		"algorithm": "sha1"
+	});
+
+	Ok(serde_json::from_slice(
+		&fetch_advanced(
+			Method::POST,
+			format_url!("/version_files").as_str(),
+			None,
+			Some(body),
+			None,
+			None,
+			&State::get().await?.fetch_semaphore,
+		)
+		.await?
 	)?)
 }

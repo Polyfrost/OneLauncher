@@ -474,9 +474,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async syncClusterPackagesByType(clusterPath: ClusterPath, packageType: PackageType): Promise<Result<null, string>> {
+	async syncClusterPackagesByType(clusterPath: ClusterPath, packageType: PackageType, clear: boolean | null): Promise<Result<null, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('sync_cluster_packages_by_type', { clusterPath, packageType }) };
+			return { status: 'ok', data: await TAURI_INVOKE('sync_cluster_packages_by_type', { clusterPath, packageType, clear }) };
 		}
 		catch (e) {
 			if (e instanceof Error)
@@ -885,7 +885,7 @@ export interface OfflinePayload { offline: boolean };
 /**
  * A struct that represents a Package.
  */
-export interface Package { sha512: string; meta: PackageMetadata; file_name: string; disabled: boolean };
+export interface Package { sha1: string; meta: PackageMetadata; file_name: string; disabled: boolean };
 export type PackageBody = { Url: string } | { Markdown: string };
 /**
  * Optional data used to link a specific cluster to a package project.
@@ -915,7 +915,7 @@ export type PackageFile = 'required_pack' | 'optional_pack' | 'unknown';
 /**
  * Metadata that represents a [`Package`].
  */
-export type PackageMetadata = { type: 'managed'; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string } | { type: 'mapped'; title: string | null; description: string | null; authors: string[]; version: string | null; icon: string | null; package_type: PackageType | null } | { type: 'unknown' };
+export type PackageMetadata = { type: 'managed'; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string; mc_versions: string[] | null } | { type: 'unknown' };
 /**
  * Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
  */

@@ -92,15 +92,11 @@ pub async fn download_package(
 	);
 
 	let package_path = download_file(file, &package.package_type, cluster).await?;
-	let sha512 = file
-		.hashes
-		.get("sha512")
-		.unwrap_or(&"unknown".to_string())
-		.to_owned();
+	let sha1 = file.hashes.get("sha1").unwrap_or(&"".to_string()).clone();
 
 	let package = Package {
 		file_name: file.file_name.clone(),
-		sha512,
+		sha1,
 		meta: PackageMetadata::from_managed_package(package.clone(), managed_version),
 		disabled: false,
 	};
@@ -192,13 +188,14 @@ pub async fn get_package(
 	package_type: PackageType,
 ) -> Result<Package> {
 	let state = State::get().await?;
-	let manager = state.packages.read().await;
-	let manager = manager
-		.get(cluster_path)
+	let mut store = state.packages.write().await;
+	let manager = store
+		.get_mut(cluster_path)
 		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	Ok(manager
 		.get(package_type)
+		.await
 		.packages
 		.get(package_path)
 		.cloned()
@@ -212,13 +209,14 @@ pub async fn get_packages(
 	package_type: PackageType,
 ) -> Result<Vec<Package>> {
 	let state = State::get().await?;
-	let manager = state.packages.read().await;
-	let manager = manager
-		.get(cluster_path)
+	let mut store = state.packages.write().await;
+	let manager = store
+		.get_mut(cluster_path)
 		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	Ok(manager
 		.get(package_type)
+		.await
 		.packages
 		.values()
 		.cloned()
@@ -244,6 +242,7 @@ pub async fn sync_packages(cluster_path: &ClusterPath) -> Result<()> {
 pub async fn sync_packages_by_type(
 	cluster_path: &ClusterPath,
 	package_type: PackageType,
+	clear: Option<bool>
 ) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
@@ -252,7 +251,7 @@ pub async fn sync_packages_by_type(
 		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager
-		.sync_packages_by_type(&state.directories, package_type)
+		.sync_packages_by_type(&state.directories, package_type, clear)
 		.await?;
 
 	Ok(())

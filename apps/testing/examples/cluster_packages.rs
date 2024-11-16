@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
 		true,
 	)
 	.await?;
-	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod, None)
 		.await?;
 
 	// Print Packages again
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
 		false,
 	)
 	.await?;
-	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod, None)
 		.await?;
 
 	// Print Packages again
@@ -53,7 +53,7 @@ async fn main() -> Result<()> {
 		PackageType::Mod,
 	)
 	.await?;
-	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod)
+	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod, None)
 		.await?;
 
 	Ok(())

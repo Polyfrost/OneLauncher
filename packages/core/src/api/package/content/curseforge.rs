@@ -4,6 +4,7 @@ use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use url::Url;
 
@@ -301,7 +302,7 @@ pub struct ModFile {
 	// pub server_pack_file_id: u32,
 	// pub is_early_access_content: bool,
 	// pub early_access_end_date: String,
-	// pub file_fingerprint: u32,
+	pub file_fingerprint: u32,
 	// pub modules: Vec<Module>,
 }
 
@@ -657,11 +658,10 @@ pub async fn get_all_versions(
 
 pub async fn get_versions(
 	versions: Vec<String>,
-) -> Result<Vec<ManagedVersion>> {
-	let mut map = serde_json::Map::new();
-	map.insert("fileIds".to_string(), versions.iter().map(|v| v.parse::<u32>().unwrap()).collect::<Vec<u32>>().into());
-
-	let json_body = serde_json::Value::Object(map);
+) -> Result<Vec<ModFile>> {
+	let json_body = json!({
+		"fileIds": versions.iter().map(|v| v.parse::<u32>().unwrap()).collect::<Vec<u32>>()
+	});
 
 	Ok(serde_json::from_slice::<CFData<_>>(
 		&fetch_advanced(
@@ -674,6 +674,40 @@ pub async fn get_versions(
 		.await?,
 	)?
 	.data)
+}
+
+pub async fn get_versions_by_hashes(
+	hashes: Vec<String>,
+) -> Result<HashMap<String, ModFile>> {
+	let body = json!({
+		"fingerprints": hashes.into_iter().map(|hash| hash.parse::<u32>().unwrap_or_default()).collect::<Vec<u32>>()
+	});
+
+	#[derive(Debug, Serialize, Deserialize)]
+	#[serde(rename_all = "camelCase")]
+	struct Response {
+		exact_matches: Vec<FingerprintMatch>,
+		exact_fingerprints: Vec<u32>
+	}
+
+	#[derive(Debug, Serialize, Deserialize)]
+	struct FingerprintMatch {
+		id: u32,
+		file: ModFile
+	}
+
+	let files = serde_json::from_slice::<CFData<Response>>(
+		&fetch_advanced(
+			Method::POST,
+			format!("/v1/fingerprints/{}", crate::constants::CURSEFORGE_GAME_ID).as_str(),
+			None::<fn(&mut Url)>,
+			None,
+			Some(body),
+		)
+		.await?,
+	)?;
+
+	Ok(files.data.exact_matches.into_iter().map(|m| (m.file.file_fingerprint.to_string(), m.file)).collect())
 }
 
 

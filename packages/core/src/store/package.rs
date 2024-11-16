@@ -2,7 +2,9 @@
 
 use crate::package::content::Providers;
 use crate::store::Loader;
+use crate::utils::crypto;
 use crate::utils::http::{write_icon, IoSemaphore};
+use crate::State;
 use async_zip::tokio::read::fs::ZipFileReader;
 use chrono::{DateTime, Utc};
 use onelauncher_utils::io;
@@ -166,7 +168,7 @@ pub struct ProviderSearchResults {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct Package {
-	pub sha512: String,
+	pub sha1: String,
 	pub meta: PackageMetadata,
 	pub file_name: String,
 	pub disabled: bool,
@@ -180,11 +182,11 @@ impl Package {
 			.ok_or_else(|| crate::ErrorKind::AnyhowError(anyhow::anyhow!("no file name")))?
 			.to_string_lossy()
 			.to_string();
-		// TODO: sha512
-		let sha512 = String::from("unknown");
+
+		let sha1 = crypto::sha1_file(&path.0)?;
 
 		Ok(Self {
-			sha512,
+			sha1,
 			meta,
 			file_name,
 			disabled: false,
@@ -199,32 +201,20 @@ pub struct Packages {
 }
 
 impl Packages {
-	pub async fn initialize(dirs: &Directories, clusters: &Clusters) -> Self {
+	pub async fn initialize(clusters: &Clusters) -> Self {
 		let mut this = Self { managers: HashMap::new() };
 
 		// TODO: This should probably not clone and store the cluster path in like 2 areas
 		for cluster_path in clusters.0.keys() {
-			this.add_cluster(dirs, cluster_path.clone()).await;
+			this.add_cluster(cluster_path.clone()).await;
 		}
 
 		this
 	}
 
-	pub async fn add_cluster(&mut self, dirs: &Directories, cluster_path: ClusterPath) {
-		let mgr = PackageManager::initialize(dirs, cluster_path.clone()).await;
-
-		match mgr {
-			Ok(mgr) => {
-				self.managers.insert(cluster_path, mgr);
-			}
-			Err(e) => {
-				tracing::error!(
-					"failed to initialize package manager for cluster {}: {}. skipping",
-					cluster_path,
-					e
-				);
-			}
-		};
+	pub async fn add_cluster(&mut self, cluster_path: ClusterPath) {
+		let mgr = PackageManager::new(cluster_path.clone());
+		self.managers.insert(cluster_path, mgr);
 	}
 
 	#[must_use]
@@ -257,6 +247,7 @@ impl PackagesMeta {
 #[derive(Debug)]
 pub struct PackageManager {
 	pub cluster_path: ClusterPath,
+	synced: bool,
 	modpacks: PackagesMeta,
 	mods: PackagesMeta,
 	datapacks: PackagesMeta,
@@ -265,18 +256,12 @@ pub struct PackageManager {
 }
 
 impl PackageManager {
-	pub async fn initialize(dirs: &Directories, cluster_path: ClusterPath) -> crate::Result<Self> {
-		let mut manager = Self::new(cluster_path);
-		manager.sync_packages(dirs).await;
-
-		Ok(manager)
-	}
-
 	#[must_use]
 	pub fn new(cluster_path: ClusterPath) -> Self {
 		Self {
 			cluster_path,
 			modpacks: PackagesMeta::new(PackageType::ModPack),
+			synced: false,
 			mods: PackagesMeta::new(PackageType::Mod),
 			datapacks: PackagesMeta::new(PackageType::DataPack),
 			resourcepacks: PackagesMeta::new(PackageType::ResourcePack),
@@ -296,9 +281,27 @@ impl PackageManager {
 			.join(package_type.get_meta()))
 	}
 
-	/// Get the `PackagesMeta` for a specific package type. Does not sync.
+	#[async_recursion::async_recursion]
+	async fn get_and_sync(&mut self, dirs: Option<&Directories>) -> &mut Self {
+		if !self.synced {
+			self.synced = true; // early set to prevent infinite loop
+
+			let state = State::get().await.expect("couldn't get state when syncing packages");
+			let dirs = match dirs {
+				Some(dirs) => dirs,
+				None => &state.directories,
+			};
+
+			self.sync_packages(dirs).await;
+		}
+
+		self
+	}
+
+	/// Get the `PackagesMeta` for a specific package type. Syncs.
 	#[must_use]
-	pub const fn get(&self, package_type: PackageType) -> &PackagesMeta {
+	pub async fn get(&mut self, package_type: PackageType) -> &PackagesMeta {
+		self.get_and_sync(None).await;
 		match package_type {
 			PackageType::Mod => &self.mods,
 			PackageType::DataPack => &self.datapacks,
@@ -396,7 +399,7 @@ impl PackageManager {
 		];
 
 		for package_type in package_types {
-			if let Err(err) = &self.sync_packages_by_type(dirs, package_type).await {
+			if let Err(err) = &self.sync_packages_by_type(dirs, package_type, None).await {
 				tracing::error!("failed to sync package {}: {}", package_type.get_name(), err);
 			}
 		}
@@ -418,11 +421,11 @@ impl PackageManager {
 	/// sync packages from the manager to the metafile
 	#[tracing::instrument(skip(self, dirs))]
 	async fn sync_to_file_by_type(
-		&self,
+		&mut self,
 		dirs: &Directories,
 		package_type: PackageType,
 	) -> crate::Result<()> {
-		let packages_meta = self.get(package_type);
+		let packages_meta = self.get(package_type).await;
 		let packages_meta = serde_json::to_string(&packages_meta)?;
 
 		io::write(self.get_meta_file(dirs, package_type).await?, packages_meta).await?;
@@ -431,7 +434,7 @@ impl PackageManager {
 	}
 
 	/// returns a list of packages that have a file but are not synced in the manager
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, dirs, packages))]
 	async fn sync_packages_from_local(
 		&self,
 		dirs: &Directories,
@@ -447,13 +450,11 @@ impl PackageManager {
 		.await?;
 
 		let mut packages_to_keep = HashSet::<PackagePath>::new();
+		let mut packages_to_infer = HashSet::<PathBuf>::new();
 
 		while let Some(file) = files.next_entry().await? {
 			// Skip .packages.json meta file
-			if file
-				.file_name()
-				.to_string_lossy()
-				.eq(&package_type.get_meta_file_name())
+			if file.file_name().to_string_lossy().eq(&package_type.get_meta_file_name()) || file.file_type().await?.is_dir()
 			{
 				continue;
 			}
@@ -461,27 +462,22 @@ impl PackageManager {
 			let package_path = PackagePath::new(&file.path());
 
 			// Check if the file is in the packages list already
-			if let Some(_package) = packages.get(&package_path) {
-				// Package path is in manager and file system
-
-				// match package.meta {
-				// 	PackageMetadata::Unknown => {
-				// 		// TODO: Infer
-				// 	}
-				// 	_ => {}
-				// }
-			} else {
-				// Package path is not in the packages list but exists on file system, lets add it to the manager
-
-				// TODO: Infer package
-				let meta = PackageMetadata::Unknown;
-				let package = Package::new(&package_path, meta)?;
-
-				packages.insert(package_path.clone(), package);
+			if let None = packages.get(&package_path) {
+				// Package path is not in the packages list but exists on file system, lets try to infer it later on
+				packages_to_infer.insert(package_path.0.clone());
 			}
 
 			// Add the package to the set to not remove it from the manager
 			packages_to_keep.insert(package_path);
+		}
+
+		// Infer any packages
+		if packages_to_infer.len() > 0 {
+			let not_found = infer_modrinth(packages, packages_to_infer, package_type).await;
+
+			if let Some(not_found) = not_found {
+				infer_curseforge(packages, not_found, package_type).await;
+			}
 		}
 
 		if packages.len() != packages_to_keep.len() {
@@ -492,28 +488,163 @@ impl PackageManager {
 	}
 
 	// sync packages in a cluster
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self, dirs))]
 	pub async fn sync_packages_by_type(
 		&mut self,
 		dirs: &Directories,
 		package_type: PackageType,
+		clear: Option<bool>,
 	) -> crate::Result<()> {
+		if clear.unwrap_or(false) {
+			self.get_mut(package_type).packages.clear();
+		}
+
 		// Clone the current packages and merge them with the local package list
-		let mut packages = self.get(package_type).packages.clone();
+		let mut packages = self.get(package_type).await.packages.clone();
 		let mut new_packages = self.get_from_file(dirs, package_type).await?.packages;
 		packages.extend(new_packages.drain());
 
 		// Sync the packages from FS
-		self.sync_packages_from_local(dirs, &mut packages, package_type)
-			.await?;
+		self.sync_packages_from_local(dirs, &mut packages, package_type).await?;
 
 		// Finally store the new list in memory and on disk
-		// TODO: Should probably only do this if the packages have changed
-		self.get_mut(package_type).packages = packages;
-		self.sync_to_file_by_type(dirs, package_type).await?;
+		let stored_packages = &self.get_mut(package_type).packages;
+		if stored_packages.len() != packages.len() {
+			self.get_mut(package_type).packages = packages;
+			self.sync_to_file_by_type(dirs, package_type).await?;
+		}
 
 		Ok(())
 	}
+}
+
+#[tracing::instrument(skip(packages, to_infer))]
+async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) -> Option<HashSet<PathBuf>> {
+	let mut sha1_map = HashMap::<String, PathBuf>::new();
+	to_infer.iter().for_each(|path| {
+		if let Ok(hash) = crypto::sha1_file(path) {
+			sha1_map.insert(hash, path.clone());
+		}
+	});
+
+
+	let sha1_len = sha1_map.len();
+	match Providers::Modrinth.get_versions_by_hashes(sha1_map.iter().map(|hash| hash.0.clone()).collect()).await {
+		Ok(versions) => {
+
+			let found_all = (sha1_len - versions.len()) <= 0;
+
+			let havent_found = if !found_all {
+				Some(sha1_map.iter().filter_map(|(hash, path)| {
+					if versions.contains_key(hash) {
+						None
+					} else {
+						Some(path.clone())
+					}
+				}).collect::<HashSet<PathBuf>>())
+			} else {
+				None
+			};
+
+			let package_ids = versions.iter().map(|(hash, version)| (version.package_id.clone(), hash.clone())).collect::<HashMap<String, String>>();
+
+			match Providers::Modrinth.get_multiple(package_ids.clone().into_keys().collect::<Vec<String>>().as_slice()).await {
+				Ok(managed_packages) => {
+					for managed in managed_packages {
+						let hash = match package_ids.get(&managed.id) {
+							Some(hash) => hash,
+							None => continue,
+						};
+
+						let version = match versions.get(hash) {
+							Some(version) => version,
+							None => continue,
+						};
+
+						if let Some(package_path) = sha1_map.get(hash) {
+							let meta = PackageMetadata::Managed {
+								package_id: managed.id,
+								provider: Providers::Modrinth,
+								package_type,
+								title: managed.title,
+								version_id: version.id.clone(),
+								version_formatted: version.version_display.clone(),
+								mc_versions: Some(version.game_versions.clone()),
+							};
+
+							let package_path = &PackagePath::new(package_path);
+							match Package::new(package_path, meta) {
+								Ok(package) => {
+									packages.insert(package_path.clone(), package);
+								},
+								Err(err) => {
+									tracing::error!("failed to create package from Modrinth: {}", err);
+								},
+							};
+						}
+					}
+				},
+				Err(err) => {
+					tracing::error!("failed to get versions from Modrinth: {}", err);
+				}
+			}
+
+			return havent_found;
+		},
+		Err(err) => {
+			tracing::error!("failed to get versions from Modrinth: {}", err);
+		}
+	};
+
+	Some(to_infer)
+}
+
+#[tracing::instrument(skip(packages, to_infer))]
+async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) {
+	let provider = Providers::Curseforge;
+
+	let mut murmur_map = HashMap::<String, PathBuf>::new();
+	to_infer.iter().for_each(|path| {
+		if let Ok(hash) = crypto::murmur2_file(path) {
+			murmur_map.insert(hash.to_string(), path.clone());
+		}
+	});
+
+	let sha1_len = murmur_map.len();
+	match provider.get_versions_by_hashes(murmur_map.iter().map(|hash| hash.0.clone()).collect()).await {
+		Ok(versions) => {
+			let found_all = (sha1_len - versions.len()) <= 0;
+
+			if !found_all {
+				tracing::warn!("failed to infer all packages from Curseforge");
+			}
+
+			for (hash, version) in versions {
+				let package_path = match murmur_map.get(&hash) {
+					Some(path) => PackagePath::new(path),
+					None => continue,
+				};
+
+				let meta = PackageMetadata::Managed {
+					package_id: version.package_id,
+					provider: provider.clone(),
+					package_type,
+					title: version.name,
+					version_id: version.id,
+					version_formatted: version.version_display,
+					mc_versions: Some(version.game_versions),
+				};
+
+
+				if let Ok(package) = Package::new(&package_path, meta) {
+					packages.insert(package_path, package);
+				}
+			}
+		},
+		Err(err) => {
+			tracing::error!("failed to get versions from Curseforge: {}", err);
+		}
+	};
 }
 
 /// Metadata that represents a [`Package`].
@@ -528,14 +659,7 @@ pub enum PackageMetadata {
 		title: String,
 		version_id: String,
 		version_formatted: String,
-	},
-	Mapped {
-		title: Option<String>,
-		description: Option<String>,
-		authors: Vec<String>,
-		version: Option<String>,
-		icon: Option<PathBuf>,
-		package_type: Option<PackageType>,
+		mc_versions: Option<Vec<String>>,
 	},
 	Unknown,
 }
@@ -550,6 +674,7 @@ impl PackageMetadata {
 			title: package.title,
 			provider: package.provider,
 			package_type: package.package_type,
+			mc_versions: Some(version.game_versions)
 		}
 	}
 
@@ -557,8 +682,7 @@ impl PackageMetadata {
 	pub const fn get_package_type(&self) -> Option<PackageType> {
 		match self {
 			Self::Managed { package_type, .. } => Some(*package_type),
-			Self::Mapped { package_type, .. } => *package_type,
-			Self::Unknown => None,
+			_ => None,
 		}
 	}
 }

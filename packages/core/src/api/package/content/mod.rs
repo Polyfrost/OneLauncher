@@ -2,6 +2,8 @@
 //!
 //! Utilities for searching and downloading content packages to `OneLauncher`.
 
+use std::collections::HashMap;
+
 use modrinth::{Facet, FacetOperation};
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +47,10 @@ impl Providers {
 			Self::Modrinth => "https://modrinth.com",
 			Self::Curseforge => "https://curseforge.com",
 		}
+	}
+
+	pub const fn get_providers() -> &'static [Providers] {
+		&[Self::Modrinth, Self::Curseforge]
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -193,6 +199,21 @@ impl Providers {
 				_ => return Err(anyhow::anyhow!("{} does not support direct URLs", self).into()),
 			},
 			PackageBody::Markdown(markdown) => markdown.to_owned(),
+		})
+	}
+
+	pub async fn get_versions_by_hashes(&self, hashes: Vec<String>) -> Result<HashMap<String, ManagedVersion>> {
+		Ok(match self {
+			Self::Modrinth => modrinth::get_versions_by_hashes(hashes)
+				.await?
+				.into_iter()
+				.map(|(hash, version)| (hash, version.into()))
+				.collect(),
+			Self::Curseforge => curseforge::get_versions_by_hashes(hashes)
+				.await?
+				.into_iter()
+				.map(|(hash, version)| (hash, version.into()))
+				.collect()
 		})
 	}
 }

@@ -1,6 +1,6 @@
-import type { ManagedPackage, Package, Providers } from '@onelauncher/client/bindings';
+import type { Package } from '@onelauncher/client/bindings';
 import UFuzzy from '@leeoniya/ufuzzy';
-import { FilterFunnel01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { FilterFunnel01Icon, RefreshCw01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import TextField from '~ui/components/base/TextField';
@@ -8,39 +8,13 @@ import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
-import useCommand, { tryResult } from '~ui/hooks/useCommand';
-import { createEffect, createResource, createSignal, For, Match, Show, Switch } from 'solid-js';
+import useCommand from '~ui/hooks/useCommand';
+import { createEffect, createSignal, For, Match, Show, Switch } from 'solid-js';
 
-// TODO: Possibly optimise this as it has 2 cloned lists, and another containing only the names
+// TODO: This needs a rewrite.
 function ClusterMods() {
 	const [cluster] = useClusterContext();
-	const [mods, { refetch }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
-	const [managedMods] = createResource(mods, async () => {
-		const list = mods();
-		if (!list)
-			return Promise.resolve(new Map<Providers, ManagedPackage[]>());
-
-		const providers: Map<Providers, string[]> = new Map();
-
-		list.forEach((mod) => {
-			if (mod.meta.type === 'managed')
-				providers.set(mod.meta.provider, [
-					...(providers.get(mod.meta.provider) || []),
-					mod.meta.package_id,
-				]);
-		});
-
-		const formatted: Map<Providers, ManagedPackage[]> = new Map();
-
-		for (const [provider, packageIds] of providers.entries()) {
-			const result = await tryResult(() => bridge.commands.getProviderPackages(provider, packageIds));
-			formatted.set(provider, result);
-		}
-
-		return formatted;
-	}, {
-		initialValue: new Map<Providers, ManagedPackage[]>(),
-	});
+	const [mods, { refetch: refetchMods }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
 	// Mods to display, should be a clone of the mods array but sorted
 	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
@@ -101,7 +75,15 @@ function ClusterMods() {
 			<div class="w-full flex flex-row justify-between">
 				<h1>Mods</h1>
 				<div>
-					<div class="flex flex-row items-stretch justify-end gap-x-2">
+					<div class="h-8 flex flex-row items-stretch justify-end gap-x-2">
+						<Button
+							buttonStyle="iconSecondary"
+							children={<RefreshCw01Icon />}
+							onClick={() => {
+								bridge.commands.syncClusterPackagesByType(cluster()?.path || '', 'mod', true).then(refetchMods);
+							}}
+						/>
+
 						<Button
 							buttonStyle="secondary"
 							children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
@@ -119,7 +101,7 @@ function ClusterMods() {
 					<Match when={displayedMods().length > 0}>
 						<For each={displayedMods()}>
 							{mod => (
-								<ModEntry managedMods={managedMods()} pkg={mod} refetch={refetch} />
+								<ModEntry pkg={mod} refetch={refetchMods} />
 							)}
 						</For>
 					</Match>
@@ -138,22 +120,11 @@ export default ClusterMods;
 interface ModEntryProps {
 	pkg: Package;
 	refetch: () => void;
-	managedMods?: Map<Providers, ManagedPackage[]>;
 };
 
 function ModEntry(props: ModEntryProps) {
 	const [cluster] = useClusterContext();
 	const browser = useBrowser();
-
-	const managed = () => {
-		const pkg = props.pkg;
-		if (props.managedMods && pkg.meta.type === 'managed') {
-			const package_id = pkg.meta.package_id;
-			return props.managedMods.get(pkg.meta.provider)?.find(p => p.id === package_id);
-		}
-
-		return undefined;
-	};
 
 	const name = () => {
 		if (props.pkg.meta.type === 'unknown')
@@ -167,38 +138,45 @@ function ModEntry(props: ModEntryProps) {
 
 		if (props.pkg.meta.type === 'managed')
 			formatted = props.pkg.meta.version_formatted;
-		else if (props.pkg.meta.type === 'mapped')
-			formatted = props.pkg.meta.version || formatted;
 
 		return formatted;
 	};
 
-	const tag = () => {
-		let tag = 'Unknown';
+	const tags = () => {
+		type TagStatus = 'normal' | 'warning' | 'danger';
+		const tags: [string, TagStatus][] = [];
+		const meta = props.pkg.meta;
 
-		if (props.pkg.meta.type === 'managed')
-			tag = props.pkg.meta.provider;
-		else if (props.pkg.meta.type === 'mapped')
-			tag = 'Mapped';
+		if (meta.type === 'managed') {
+			tags[0] = [meta.provider, 'normal'];
 
-		return tag;
+			const supportedVersions = meta.mc_versions || [];
+			if (supportedVersions.length === 0)
+				tags.push(['Unknown Version', 'warning']);
+			else if (!supportedVersions.includes(cluster()!.meta.mc_version))
+				tags.push(['Incompatible', 'danger']);
+		}
+		else {
+			tags[0] = ['Unknown', 'normal'];
+		}
+
+		return tags;
 	};
 
 	const icon = () => {
-		if (props.pkg.meta.type === 'managed')
-			return managed()?.icon_url;
+		// if (props.pkg.meta.type === 'managed')
+		// 	return props.pkg.meta.;
 
 		return undefined;
 	};
 
 	function onClick(e: MouseEvent) {
-		const mngd = managed();
-
-		if (mngd) {
+		const meta = props.pkg.meta;
+		if (meta.type === 'managed') {
 			e.preventDefault();
 			e.stopPropagation();
 
-			browser.displayPackage(mngd.id, mngd.provider);
+			browser.displayPackage(meta.package_id, meta.provider);
 		}
 	}
 
@@ -232,7 +210,20 @@ function ModEntry(props: ModEntryProps) {
 						<div class="flex flex-col items-start justify-center gap-y-2">
 							<span class="flex flex-row items-center justify-start gap-x-1">
 								<h4>{name()}</h4>
-								<span class="rounded-xl bg-gray-05 px-1.5 py-0.5 text-xs text-white/60">{tag()}</span>
+								<For each={tags()}>
+									{([tag, status]) => (
+										<span
+											class="rounded-xl px-1.5 py-1 text-xs"
+											classList={{
+												'bg-gray-05 text-white/60': status === 'normal',
+												'bg-amber/10 text-amber': status === 'warning',
+												'bg-danger/15 text-danger': status === 'danger',
+											}}
+										>
+											{tag}
+										</span>
+									)}
+								</For>
 							</span>
 							<span class="h-2 flex flex-row items-center justify-start text-xs text-fg-secondary/50 font-600">
 								{version()}

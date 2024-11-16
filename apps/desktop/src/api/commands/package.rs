@@ -213,7 +213,8 @@ pub async fn sync_cluster_packages(cluster_path: ClusterPath) -> Result<(), Stri
 pub async fn sync_cluster_packages_by_type(
 	cluster_path: ClusterPath,
 	package_type: PackageType,
+	clear: Option<bool>,
 ) -> Result<(), String> {
-	package::sync_packages_by_type(&cluster_path, package_type).await?;
+	package::sync_packages_by_type(&cluster_path, package_type, clear).await?;
 	Ok(())
 }

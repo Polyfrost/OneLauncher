@@ -27,7 +27,7 @@ function NotificationPopup(props: PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="w-96 border border-gray-10 rounded-xl bg-page-elevated p-2 shadow-black/30 shadow-md">
+			<div class="w-96 border border-border/10 rounded-xl bg-page-elevated p-2 shadow-black/30 shadow-md">
 				<div class="overflow-hidden transition-height" ref={parent}>
 					<div class="flex flex-col items-stretch justify-start gap-2 text-start" ref={inner}>
 						<p class="px-2 pt-1 text-2lg">Notifications</p>
@@ -39,7 +39,7 @@ function NotificationPopup(props: PopupProps) {
 											{noti => (
 												<div class="w-full flex flex-col">
 													<NotificationComponent {...noti} overlay={false} />
-													<span class="h-px w-full bg-gray-05" />
+													<span class="h-px w-full bg-border/05" />
 												</div>
 											)}
 										</For>
@@ -48,7 +48,7 @@ function NotificationPopup(props: PopupProps) {
 							</Match>
 							<Match when>
 								<span class="px-2">You have no notifications</span>
-								<span class="h-px bg-gray-05" />
+								<span class="h-px bg-border/05" />
 							</Match>
 						</Switch>
 

@@ -9,12 +9,20 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { upperFirst } from '~utils';
 import { BROWSER_VIEWS } from '~utils/browser';
-import { createSignal, For } from 'solid-js';
+import { THEMES } from '~utils/theming';
+import { createEffect, createSignal, For } from 'solid-js';
 import SettingsRow from '../../../components/SettingsRow';
 
 function SettingsAppearance() {
 	const { settings, saveOnLeave } = useSettings();
 	const [shouldReload, setShouldReload] = createSignal(false);
+	const [theme, setTheme] = createSignal(settings().theme);
+
+	createEffect(() => {
+		document.body.classList.add('theme-transition');
+		document.body.setAttribute('data-theme', theme() ?? 'dark');
+		setTimeout(() => document.body.classList.remove('theme-transition'), 300);
+	});
 
 	useBeforeLeave((e) => {
 		if (shouldReload()) {
@@ -27,18 +35,27 @@ function SettingsAppearance() {
 			bridge.commands.setWindowStyle(settings().custom_frame!);
 	});
 
+	// eslint-disable-next-line solid/reactivity -- This is a side effect
 	saveOnLeave(() => ({
 		disable_animations: settings().disable_animations!,
 		custom_frame: settings().custom_frame!,
+		theme: theme() ?? 'dark',
 	}));
 
 	return (
 		<Sidebar.Page>
 			<h1>Appearance</h1>
 			<ScrollableContainer>
-				{/* <div class="flex flex-row items-center">
-					<p>theme placeholder</p>
-				</div> */}
+				<div class="flex flex-row items-center gap-4">
+					<PrimaryThemeCard theme={theme()} />
+					<div class="grid grid-cols-3 h-full gap-4">
+						<For each={THEMES}>
+							{theme => (
+								<ThemeCard setTheme={setTheme} theme={theme} />
+							)}
+						</For>
+					</div>
+				</div>
 
 				{/* <SettingsRow
 					description="The main color used across the launcher. This doesn't edit your theme."
@@ -99,3 +116,49 @@ function SettingsAppearance() {
 }
 
 export default SettingsAppearance;
+
+interface ThemeCardProps {
+	theme: string;
+	setTheme: (theme: string) => void;
+};
+
+function ThemeCard(props: ThemeCardProps) {
+	return (
+		<div class={`theme-${props.theme}`} onClick={() => props.setTheme(props.theme)}>
+			<svg fill="none" height="78" viewBox="0 0 126 78" width="126" xmlns="http://www.w3.org/2000/svg">
+				<rect fill="rgb(var(--clr-page))" height="78" rx="8" width="126" />
+				<rect height="77" rx="7.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.1" width="125" x="0.5" y="0.5" />
+				<path d="M8 16H116" stroke="rgb(var(--clr-fg-primary))" stroke-linecap="round" stroke-width="5" />
+				<path d="M8 26H56" stroke="rgb(var(--clr-fg-secondary))" stroke-linecap="round" stroke-width="3" />
+				<rect fill="rgb(var(--clr-brand))" fill-opacity="0.5" height="16" rx="4" width="64" x="54" y="54" />
+				<path d="M54 58C54 55.7909 55.7909 54 58 54H86V70H58C55.7909 70 54 68.2091 54 66V58Z" fill="rgb(var(--clr-brand))" />
+			</svg>
+
+		</div>
+	);
+}
+
+interface PrimaryThemeCardProps {
+	theme: string | undefined;
+}
+
+function PrimaryThemeCard(props: PrimaryThemeCardProps) {
+	return (
+		<div class={`theme-${props.theme ?? 'dark'}`}>
+			<svg fill="none" height="183" viewBox="0 0 296 183" width="296" xmlns="http://www.w3.org/2000/svg">
+				<rect fill="rgb(var(--clr-page))" height="183" rx="16" width="296" />
+				<rect height="180" rx="14.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.1" stroke-width="1.5" width="293" x="1.5" y="1.5" />
+				<rect fill="rgb(var(--clr-page-elevated))" height="123" rx="8" width="168" x="112" y="44" />
+				<rect height="122" rx="7.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.05" width="167" x="112.5" y="44.5" />
+				<rect fill="rgb(var(--clr-brand))" fill-opacity="0.5" height="16" rx="4" width="64" x="208" y="143" />
+				<path d="M132 64H240" stroke="rgb(var(--clr-fg-primary))" stroke-linecap="round" stroke-width="5" />
+				<path d="M132 74H180" stroke="rgb(var(--clr-fg-secondary))" stroke-linecap="round" stroke-width="3" />
+				<path d="M132 94H216" stroke="rgb(var(--clr-code-error))" stroke-linecap="round" stroke-width="4" />
+				<path d="M132 104H192" stroke="rgb(var(--clr-code-warn))" stroke-linecap="round" stroke-width="4" />
+				<path d="M132 114H210" stroke="rgb(var(--clr-code-info))" stroke-linecap="round" stroke-width="4" />
+				<path d="M208 147C208 144.791 209.791 143 212 143H240V159H212C209.791 159 208 157.209 208 155V147Z" fill="rgb(var(--clr-brand))" />
+			</svg>
+
+		</div>
+	);
+}

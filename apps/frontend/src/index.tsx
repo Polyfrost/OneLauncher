@@ -10,6 +10,7 @@ import '@fontsource/poppins/600.css';
 import 'virtual:uno.css';
 import '@unocss/reset/tailwind.css';
 import 'overlayscrollbars/overlayscrollbars.css';
+import '~styles/themes.scss';
 import '~styles/globals.css';
 import '~styles/highlightjs.css';
 
@@ -23,11 +24,9 @@ import { render } from 'solid-js/web';
 import RootLayout from './RootLayout';
 import HomePage from './ui/pages/Home';
 import UpdatesPage from './ui/pages/Updates';
-import { getProgramInfo, initProgramInfo } from '@onelauncher/client';
+import { initProgramInfo } from '@onelauncher/client';
 
 initProgramInfo().finally(() => {
-	document.body.setAttribute('data-platform', getProgramInfo().platform);
-
 	render(() => (
 		<Router root={RootLayout}>
 			<Route component={App}>

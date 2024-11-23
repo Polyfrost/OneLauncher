@@ -25,7 +25,7 @@ function ClusterScreenshots() {
 			<h1>Screenshots</h1>
 			<ScrollableContainer>
 				<Show
-					fallback={<div class="text-gray-400">No screenshots found. Press F2 in game to take a screenshot!</div>}
+					fallback={<div class="text-border/400">No screenshots found. Press F2 in game to take a screenshot!</div>}
 					when={list() !== undefined && list()!.length > 0}
 				>
 					<div class="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full transform-gpu gap-2">

@@ -82,7 +82,7 @@ function Dropdown(props: DropdownProps) {
 						<Index each={items()}>
 							{(item, index) => (
 								<div onClick={() => select(index)}>
-									<div class="flex flex-row items-center justify-between gap-2 rounded-lg p-2 hover:bg-gray-05">
+									<div class="flex flex-row items-center justify-between gap-2 rounded-lg p-2 hover:bg-border/05">
 										{item()}
 										<div class={styles.selected! + (selected() === index ? ` ${styles.visible}` : '')} />
 									</div>

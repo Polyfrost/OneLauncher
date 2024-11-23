@@ -216,7 +216,7 @@ function BrowserSidebar(props: { package: ManagedPackage }) {
 								<LinkExternal01Icon class="h-4 w-4" />
 							</div>
 							<Show when={author.is_organization_user === true && ((authors()?.length || 0) > 1)}>
-								<div class="h-px w-full bg-gray-05" />
+								<div class="h-px w-full bg-border/05" />
 							</Show>
 						</>
 					)}
@@ -481,7 +481,7 @@ function colorForType(type: string) {
 		case 'alpha':
 			return 'bg-code-error';
 		default:
-			return 'bg-gray-05';
+			return 'bg-border/05';
 	}
 }
 

@@ -272,7 +272,7 @@ function Banner(props: BannerProps) {
 
 	return (
 		<div class="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
-			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-gray-10 rounded-lg">
+			<div class="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-border/10 rounded-lg">
 				<Show when={props.editMode()}>
 					<div
 						class="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"

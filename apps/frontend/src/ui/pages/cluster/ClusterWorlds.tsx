@@ -26,7 +26,7 @@ function ClusterWorlds() {
 			<h1>Worlds</h1>
 			<ScrollableContainer>
 				<Show
-					fallback={<div class="text-gray-400">No worlds found.</div>}
+					fallback={<div class="text-border/400">No worlds found.</div>}
 					when={list() !== undefined && list()!.length > 0}
 				>
 					<div class="flex flex-col gap-2">

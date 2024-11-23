@@ -1,0 +1,126 @@
+@mixin define-theme($name, $selectors: "") {
+	$selector: "#{$selectors} [data-theme="#{$name}"], .theme-#{$name}";
+
+	#{$selector} {
+		@content;
+	}
+}
+
+@include define-theme("dark", ":root,") {
+	--clr-white: 255, 255, 255;
+	--clr-black: 0, 0, 0;
+
+	--clr-border: 255, 255, 255;
+
+	--clr-fg-primary: 213, 219, 255;
+	--clr-fg-primary-hover: 218, 224, 255;
+	--clr-fg-primary-pressed: 225, 229, 255;
+	--clr-fg-primary-disabled: 225, 229, 255, 0.5;
+
+	--clr-fg-secondary: 120, 129, 141;
+	--clr-fg-secondary-hover: 95, 104, 116;
+	--clr-fg-secondary-pressed: 130, 141, 155;
+	--clr-fg-secondary-disabled: 120, 129, 141, 0.5;
+
+	--clr-brand: 43, 75, 255;
+	--clr-brand-hover: 40, 67, 221;
+	--clr-brand-pressed: 57, 87, 255;
+	--clr-brand-disabled: 57, 87, 255, 0.5;
+
+	--clr-onbrand: 213, 219, 255;
+	--clr-onbrand-hover: 218, 224, 255;
+	--clr-onbrand-pressed: 225, 229, 255;
+	--clr-onbrand-disabled: 225, 229, 255, 0.5;
+
+	--clr-danger: 255, 68, 68;
+	--clr-danger-hover: 214, 52, 52;
+	--clr-danger-pressed: 255, 86, 86;
+	--clr-danger-disabled: 255, 68, 68, 0.5;
+
+	--clr-success: 35, 154, 96;
+	--clr-success-hover: 26, 135, 82;
+	--clr-success-pressed: 44, 172, 110;
+	--clr-success-disabled: 35, 154, 96, 0.5;
+
+	--clr-component-bg: 26, 34, 41;
+	--clr-component-bg-hover: 23, 31, 37;
+	--clr-component-bg-pressed: 34, 44, 53;
+	--clr-component-bg-disabled: 26, 34, 41, 0.5;
+
+	--clr-code-info: 97, 175, 239;
+	--clr-code-warn: 229, 192, 123;
+	--clr-code-error: 190, 80, 70;
+	--clr-code-debug: 43, 75, 255;
+	--clr-code-trace: 253, 253, 253;
+
+	--clr-link: 97, 175, 239;
+	--clr-link-hover: 95, 135, 255;
+	--clr-link-pressed: 114, 175, 255;
+	--clr-link-disabled: 97, 175, 239, 0.5;
+
+	--clr-page: 17, 23, 28;
+	--clr-page-elevated: 21, 28, 34;
+	--clr-page-pressed: 14, 19, 23;
+
+	--clr-secondary: 25, 32, 38;
+}
+
+@include define-theme("light") {
+	--clr-white: 255, 255, 255;
+	--clr-black: 0, 0, 0;
+
+	--clr-border: 40, 40, 40;
+
+	--clr-fg-primary: 40, 40, 40;
+	--clr-fg-primary-hover: 30, 30, 30;
+	--clr-fg-primary-pressed: 20, 20, 20;
+	--clr-fg-primary-disabled: 40, 40, 40, 0.5;
+
+	--clr-fg-secondary: 80, 80, 80;
+	--clr-fg-secondary-hover: 60, 60, 60;
+	--clr-fg-secondary-pressed: 100, 100, 100;
+	--clr-fg-secondary-disabled: 80, 80, 80, 0.5;
+
+	--clr-brand: 43, 75, 255;
+	--clr-brand-hover: 35, 60, 200;
+	--clr-brand-pressed: 30, 50, 170;
+	--clr-brand-disabled: 43, 75, 255, 0.5;
+
+	--clr-onbrand: 255, 255, 255;
+	--clr-onbrand-hover: 245, 245, 245;
+	--clr-onbrand-pressed: 230, 230, 230;
+	--clr-onbrand-disabled: 230, 230, 230, 0.5;
+
+	--clr-danger: 200, 50, 50;
+	--clr-danger-hover: 180, 40, 40;
+	--clr-danger-pressed: 220, 60, 60;
+	--clr-danger-disabled: 200, 50, 50, 0.5;
+
+	--clr-success: 50, 160, 100;
+	--clr-success-hover: 40, 140, 90;
+	--clr-success-pressed: 60, 180, 110;
+	--clr-success-disabled: 50, 160, 100, 0.5;
+
+	--clr-component-bg: 240, 240, 240;
+	--clr-component-bg-hover: 230, 230, 230;
+	--clr-component-bg-pressed: 220, 220, 220;
+	--clr-component-bg-disabled: 240, 240, 240, 0.5;
+
+	--clr-code-info: 40, 120, 200;
+	--clr-code-warn: 200, 150, 90;
+	--clr-code-error: 180, 70, 60;
+	--clr-code-debug: 40, 70, 200;
+	--clr-code-trace: 40, 40, 40;
+
+	--clr-link: 40, 120, 200;
+	--clr-link-hover: 30, 100, 180;
+	--clr-link-pressed: 20, 80, 160;
+	--clr-link-disabled: 40, 120, 200, 0.5;
+
+	--clr-page: 255, 255, 255;
+	--clr-page-elevated: 245, 245, 245;
+	--clr-page-pressed: 230, 230, 230;
+
+	--clr-secondary: 220, 220, 220;
+
+}

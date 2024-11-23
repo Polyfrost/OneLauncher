@@ -10,8 +10,9 @@ use std::path::{Path, PathBuf};
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
-	/// A `OneLauncher` [`Theme`] managed by the core GUI.
-	pub theme: Theme,
+	/// A `OneLauncher` theme managed by the `OneLauncher` GUI.
+	#[serde(default = "theme_default")]
+	pub theme: String,
 	/// A global browser list view for the `OneLauncher` GUI.
 	#[serde(default)]
 	pub browser_list_view: BrowserListView,
@@ -71,6 +72,10 @@ pub struct Settings {
 	pub onboarding_completed: bool,
 }
 
+fn theme_default() -> String {
+	"dark".to_string()
+}
+
 impl Settings {
 	/// Initializes the global settings state.
 	#[tracing::instrument]
@@ -103,7 +108,7 @@ impl Settings {
 			Ok(settings)
 		} else {
 			let settings = Self {
-				theme: Theme::Dark,
+				theme: "dark".to_string(),
 				browser_list_view: BrowserListView::Grid,
 				hide_close_prompt: true,
 				disable_animations: false,
@@ -155,21 +160,6 @@ pub enum BrowserListView {
 	#[default]
 	Grid,
 	List,
-}
-
-/// A `OneLauncher` theme managed by the GUI.
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Theme {
-	/// A default Dark theme.
-	Dark,
-	/// A default Light theme.
-	Light,
-	/// OLED Dark Theme.
-	Oled,
-	/// Cute and colorful theme.
-	Cat,
 }
 
 /// Global memory settings across all clusters.

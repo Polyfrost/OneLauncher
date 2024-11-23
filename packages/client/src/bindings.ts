@@ -968,9 +968,9 @@ export interface SearchResult { slug: string; title: string; description: string
  */
 export interface Settings {
 /**
- * A `OneLauncher` [`Theme`] managed by the core GUI.
+ * A `OneLauncher` theme managed by the `OneLauncher` GUI.
  */
-	theme: Theme;
+	theme?: string;
 	/**
 	 * A global browser list view for the `OneLauncher` GUI.
 	 */
@@ -1060,26 +1060,6 @@ export interface Settings {
 	 */
 	onboarding_completed?: boolean;
 };
-/**
- * A `OneLauncher` theme managed by the GUI.
- */
-export type Theme =
-/**
- * A default Dark theme.
- */
-	'dark' |
-/**
- * A default Light theme.
- */
-	'light' |
-/**
- * OLED Dark Theme.
- */
-	'oled' |
-/**
- * Cute and colorful theme.
- */
-	'cat';
 export interface Update { version: string };
 /**
  * A game version of Minecraft

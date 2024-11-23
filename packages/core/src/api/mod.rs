@@ -17,7 +17,7 @@ pub mod data {
 	pub use crate::store::{
 		ClusterMeta, Credentials, Directories, InitHooks, JavaOptions, Loader, ManagedDependency,
 		ManagedPackage, ManagedUser, ManagedVersion, Memory, MinecraftCredentials, PackageData,
-		PackageType, Resolution, Settings, Theme,
+		PackageType, Resolution, Settings,
 	};
 }
 

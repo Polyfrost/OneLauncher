@@ -26,7 +26,7 @@ function AccountComponent(props: AccountComponentProps) {
 	return (
 		<Show when={props.account}>
 			<div
-				class={`flex flex-row justify-between p-2 rounded-lg ${props.loggedIn !== true && 'hover:bg-gray-05 active:bg-gray-10 hover:text-fg-primary-hover'}`}
+				class={`flex flex-row justify-between p-2 rounded-lg ${props.loggedIn !== true && 'hover:bg-border/05 active:bg-border/10 hover:text-fg-primary-hover'}`}
 				onClick={login}
 			>
 				<div class="flex flex-1 flex-row justify-start gap-x-3">
@@ -60,7 +60,7 @@ function AccountPopup(props: PopupProps) {
 
 	return (
 		<Popup {...props}>
-			<div class="w-72 border border-gray-10 rounded-xl bg-page-elevated p-2 shadow-black/30 shadow-md">
+			<div class="w-72 border border-border/10 rounded-xl bg-page-elevated p-2 shadow-black/30 shadow-md">
 				<div class="flex flex-col gap-y-2 text-fg-primary">
 					<Show when={controller.defaultAccount() !== null || controller.defaultAccount() !== undefined}>
 						<AccountComponent
@@ -76,7 +76,7 @@ function AccountPopup(props: PopupProps) {
 							)}
 						</For>
 					</Show>
-					<div class="h-px w-full rounded-md bg-gray-05" />
+					<div class="h-px w-full rounded-md bg-border/05" />
 
 					<div class="flex flex-row justify-between">
 						<div>

@@ -200,7 +200,7 @@ function ModEntry(props: ModEntryProps) {
 			<div>
 				<Show
 					children={<img alt={name()} class="aspect-ratio-square h-10 rounded-lg" src={icon()!} />}
-					fallback={<div class="aspect-ratio-square h-10 rounded-lg bg-gray-05" />}
+					fallback={<div class="aspect-ratio-square h-10 rounded-lg bg-border/05" />}
 					when={icon()}
 				/>
 			</div>
@@ -215,7 +215,7 @@ function ModEntry(props: ModEntryProps) {
 										<span
 											class="rounded-xl px-1.5 py-1 text-xs"
 											classList={{
-												'bg-gray-05 text-white/60': status === 'normal',
+												'bg-border/05 text-white/60': status === 'normal',
 												'bg-amber/10 text-amber': status === 'warning',
 												'bg-danger/15 text-danger': status === 'danger',
 											}}

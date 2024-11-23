@@ -12,7 +12,6 @@ export default defineConfig({
 	shortcuts: {},
 	presets: [
 		presetUno(),
-		presetAttributify(),
 		presetIcons(),
 	],
 	transformers: [
@@ -43,88 +42,85 @@ export default defineConfig({
 		},
 
 		colors: {
-			white: '#ffffff',
-			black: '#000000',
+			white: 'rgba(var(--clr-white), <alpha-value>)',
+			black: 'rgba(var(--clr-black), <alpha-value>)',
 
-			gray: {
-				'05': '#FFFFFF0D',
-				'10': '#FFFFFF1A',
-			},
+			border: 'rgba(var(--clr-border), <alpha-value>)',
 
 			fg: {
 				primary: {
-					DEFAULT: '#D5DBFF',
-					hover: '#D5DBFFD9',
-					pressed: '#E1E5FF',
-					disabled: '#E1E5FF80',
+					DEFAULT: 'rgba(var(--clr-fg-primary), <alpha-value>)',
+					hover: 'rgba(var(--clr-fg-primary-hover), <alpha-value>)',
+					pressed: 'rgba(var(--clr-fg-primary-pressed), <alpha-value>)',
+					disabled: 'rgba(var(--clr-fg-primary-disabled))',
 				},
 				secondary: {
-					DEFAULT: '#78818D',
-					hover: '#5F6874',
-					pressed: '#828D9B',
-					disabled: '#78818D80',
+					DEFAULT: 'rgba(var(--clr-fg-secondary), <alpha-value>)',
+					hover: 'rgba(var(--clr-fg-secondary-hover), <alpha-value>)',
+					pressed: 'rgba(var(--clr-fg-secondary-pressed), <alpha-value>)',
+					disabled: 'rgba(var(--clr-fg-secondary-disabled))',
 				},
 			},
 
 			brand: {
-				DEFAULT: '#2B4BFF',
-				hover: '#2843DD',
-				pressed: '#3957FF',
-				disabled: '#3957FF80',
+				DEFAULT: 'rgba(var(--clr-brand), <alpha-value>)',
+				hover: 'rgba(var(--clr-brand-hover), <alpha-value>)',
+				pressed: 'rgba(var(--clr-brand-pressed), <alpha-value>)',
+				disabled: 'rgba(var(--clr-brand-disabled))',
 			},
 
 			onbrand: {
-				DEFAULT: '#D5DBFF',
-				hover: '#D5DBFFD9',
-				pressed: '#E1E5FF',
-				disabled: '#E1E5FF80',
+				DEFAULT: 'rgba(var(--clr-onbrand), <alpha-value>)',
+				hover: 'rgba(var(--clr-onbrand-hover), <alpha-value>)',
+				pressed: 'rgba(var(--clr-onbrand-pressed), <alpha-value>)',
+				disabled: 'rgba(var(--clr-onbrand-disabled))',
 			},
 
 			danger: {
-				DEFAULT: '#FF4444',
-				hover: '#D63434',
-				pressed: '#FF5656',
-				disabled: '#FF444480',
+				DEFAULT: 'rgba(var(--clr-danger), <alpha-value>)',
+				hover: 'rgba(var(--clr-danger-hover), <alpha-value>)',
+				pressed: 'rgba(var(--clr-danger-pressed), <alpha-value>)',
+				disabled: 'rgba(var(--clr-danger-disabled))',
 			},
 
 			success: {
-				DEFAULT: '#239A60',
-				hover: '#1A8752',
-				pressed: '#2CAC6E',
-				disabled: '#239A6080',
+				DEFAULT: 'rgba(var(--clr-success), <alpha-value>)',
+				hover: 'rgba(var(--clr-success-hover), <alpha-value>)',
+				pressed: 'rgba(var(--clr-success-pressed), <alpha-value>)',
+				disabled: 'rgba(var(--clr-success-disabled))',
 			},
 
 			component: {
 				bg: {
-					DEFAULT: '#1A2229',
-					hover: '#171F25',
-					pressed: '#222C35',
-					disabled: '#1A222980',
+					DEFAULT: 'rgba(var(--clr-component-bg), <alpha-value>)',
+					hover: 'rgba(var(--clr-component-bg-hover), <alpha-value>)',
+					pressed: 'rgba(var(--clr-component-bg-pressed), <alpha-value>)',
+					disabled: 'rgba(var(--clr-component-bg-disabled))',
 				},
 			},
 
 			code: {
-				info: '#61AFEF',
-				warn: '#E5C07B',
-				error: '#BE5046',
-				debug: '#2B4BFF',
-				trace: '#FDFDFD',
+				info: 'rgba(var(--clr-code-info), <alpha-value>)',
+				warn: 'rgba(var(--clr-code-warn), <alpha-value>)',
+				error: 'rgba(var(--clr-code-error), <alpha-value>)',
+				debug: 'rgba(var(--clr-code-debug), <alpha-value>)',
+				trace: 'rgba(var(--clr-code-trace), <alpha-value>)',
 			},
 
 			link: {
-				DEFAULT: '#61AFEF',
-				hover: '#5F87FF',
-				pressed: '#72AFFF',
-				disabled: '#61AFEF80',
+				DEFAULT: 'rgba(var(--clr-link), <alpha-value>)',
+				hover: 'rgba(var(--clr-link-hover), <alpha-value>)',
+				pressed: 'rgba(var(--clr-link-pressed), <alpha-value>)',
+				disabled: 'rgba(var(--clr-link-disabled))',
 			},
 
 			page: {
-				DEFAULT: '#11171c',
-				elevated: '#151c22',
-				pressed: '#0e1317',
+				DEFAULT: 'rgba(var(--clr-page), <alpha-value>)',
+				elevated: 'rgba(var(--clr-page-elevated), <alpha-value>)',
+				pressed: 'rgba(var(--clr-page-pressed), <alpha-value>)',
 			},
 
-			secondary: '#192026',
+			secondary: 'rgba(var(--clr-secondary), <alpha-value>)',
 		},
 		extend: {
 			height: {
@@ -138,22 +134,6 @@ export default defineConfig({
 			backgroundColor: {
 				transparent: 'transparent',
 			},
-
-			// animation: {
-			// 	'fade-in': 'fadeIn 150ms easeOutExpo forwards',
-			// 	'fade-out': 'fadeOut 150ms easeOutExpo forwards',
-			// },
-
-			// keyframes: {
-			// 	fadeIn: {
-			// 		'0%': { opacity: '0' },
-			// 		'100%': { opacity: '1' },
-			// 	},
-			// 	fadeOut: {
-			// 		'0%': { opacity: '1' },
-			// 		'100%': { opacity: '0' },
-			// 	},
-			// },
 		},
 	},
 });

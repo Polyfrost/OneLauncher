@@ -39,7 +39,7 @@ function OnboardingLanguage() {
 										class="flex flex-row items-center rounded-lg px-6 py-5"
 										classList={{
 											'bg-brand': language === getSelectedLanguage(),
-											'hover:bg-gray-05 active:bg-gray-10': language !== getSelectedLanguage(),
+											'hover:bg-border/05 active:bg-border/10': language !== getSelectedLanguage(),
 										}}
 										onClick={() => setSelected(code as Language)}
 									>

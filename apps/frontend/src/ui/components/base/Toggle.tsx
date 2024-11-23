@@ -23,7 +23,7 @@ function Toggle(props: ToggleProps) {
 
 	return (
 		<div
-			class={`w-[40px] h-[22px] p-3 flex flex-row relative rounded-full transition-colors overflow-hidden ${checked() ? 'bg-brand' : 'bg-gray-10'}${` ${split.class}` || ''}`}
+			class={`w-[40px] h-[22px] p-3 flex flex-row relative rounded-full transition-colors overflow-hidden ${checked() ? 'bg-brand' : 'bg-border/10'}${` ${split.class}` || ''}`}
 			onClick={() => toggle()}
 			{...rest}
 		>

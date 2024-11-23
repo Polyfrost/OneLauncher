@@ -43,7 +43,7 @@ function ProviderIcon(props: ProviderIconProps) {
 				<Element />
 			)}
 			fallback={(
-				<div class={`bg-gray-05 ${split.class || ''}`} {...rest as JSX.HTMLAttributes<HTMLDivElement>} />
+				<div class={`bg-border/05 ${split.class || ''}`} {...rest as JSX.HTMLAttributes<HTMLDivElement>} />
 			)}
 			when={split.provider !== undefined}
 		/>

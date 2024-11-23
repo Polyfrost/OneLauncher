@@ -140,7 +140,7 @@ function VersionSelector(props: { setVersion: (version: string) => void }) {
 				</Show>
 			</SelectList>
 
-			<div class="flex flex-1 flex-col gap-y-2 overflow-hidden border border-gray-05 rounded-lg bg-component-bg p-2">
+			<div class="flex flex-1 flex-col gap-y-2 overflow-hidden border border-border/05 rounded-lg bg-component-bg p-2">
 				<For each={Object.keys(filters())}>
 					{name => (
 						<Checkbox

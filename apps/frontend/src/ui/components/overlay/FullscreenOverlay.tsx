@@ -22,7 +22,7 @@ function FullscreenOverlay(props: FullscreenOverlayProps) {
 	return (
 		<Portal {...(props.mount ? { mount: props.mount } : {})}>
 			<div
-				class={`fixed top-0 left-0 w-screen h-screen bg-black/60 backdrop-blur-sm backdrop-grayscale transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+				class={`fixed top-0 left-0 w-screen h-screen bg-black/60 backdrop-blur-sm backdrop-borderscale transition-opacity ${props.visible() ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
 				style={{ 'z-index': props.zIndex || 1000 }}
 			>
 

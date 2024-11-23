@@ -43,7 +43,7 @@ function OnboardingImport() {
 						<For each={LAUNCHER_IMPORT_TYPES}>
 							{type => (
 								<button
-									class={`flex flex-col items-center justify-center gap-y-4 rounded-md p-4 active:bg-gray-10 hover:bg-gray-05 ${(ctx.importInstances(type)?.instances.length || 0) > 0 ? 'bg-success hover:bg-success/70' : ''}`}
+									class={`flex flex-col items-center justify-center gap-y-4 rounded-md p-4 active:bg-border/10 hover:bg-border/05 ${(ctx.importInstances(type)?.instances.length || 0) > 0 ? 'bg-success hover:bg-success/70' : ''}`}
 									onClick={() => displayImport(type)}
 								>
 									<LauncherIcon class="h-16 max-w-22 min-w-16" launcher={type} />

@@ -1,5 +1,5 @@
 .select_list {
-    @apply bg-component-bg rounded-lg overflow-hidden border border-gray-05;
+    @apply bg-component-bg rounded-lg overflow-hidden border border-border/05;
 
     .row {
         @apply min-h-4 py-1 px-2 text-left;

@@ -122,7 +122,7 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 				<Show
 					fallback={(
 						<div
-							class="aspect-ratio-square rounded-md bg-gray-05"
+							class="aspect-ratio-square rounded-md bg-border/05"
 							classList={{
 								'w-2/5': !props.row,
 								'w-3/4': props.row,

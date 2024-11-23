@@ -48,7 +48,7 @@ function Sidebar(props: SidebarProps) {
 										return (
 											<a
 												class={
-													`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-gray-05' : 'border-transparent'}`
+													`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-border/05' : 'border-transparent'}`
 												}
 												onClick={() => goto(link[2], link[3])}
 											>

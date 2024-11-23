@@ -64,7 +64,7 @@ function HomePage() {
 					<Button
 						buttonStyle="primary"
 						children="New Cluster"
-						iconLeft={<PlusIcon class="stroke-[2.2] !w-5" />}
+						iconLeft={<PlusIcon class="stroke-width-[2.2] !w-5" />}
 						onClick={newCluster}
 					/>
 				</div>
@@ -108,7 +108,7 @@ function Banner() {
 	const navigate = useNavigate();
 
 	return (
-		<div class="relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
+		<div class="theme-dark relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
 			<ClusterCover
 				class="absolute h-52 w-full rounded-xl object-cover"
 				cluster={cluster()}
@@ -180,7 +180,7 @@ function ClusterCard(props: Cluster) {
 	return (
 		<>
 			<div
-				class="group relative h-[152px] flex flex-col border border-gray-05 rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				class="group border-border/05 relative h-[152px] flex flex-col border rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 				onClick={e => openClusterPage(e)}
 			>
 				<div class="relative flex-1 overflow-hidden rounded-t-xl">

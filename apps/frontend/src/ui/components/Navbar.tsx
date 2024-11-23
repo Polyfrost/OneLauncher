@@ -41,8 +41,8 @@ function Navbar() {
 
 	return (
 		<div class="h-15 min-h-[60px] flex flex-row items-center *:flex-1">
-			<div>
-				<div class="w-min flex items-center justify-center transition-transform active:scale-90" onClick={() => open(WEBSITE)}>
+			<div class="h-full flex items-center justify-start">
+				<div class="h-full flex items-start justify-start transition-transform active:scale-90" onClick={() => open(WEBSITE)}>
 					<PolyfrostFull />
 				</div>
 			</div>

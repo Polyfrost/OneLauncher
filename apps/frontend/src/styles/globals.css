@@ -2,6 +2,18 @@ body {
     @apply font-sans text-fg-primary text-md;
 }
 
+body.theme-transition * {
+	transition-delay: 0ms !important;
+	transition-duration: 400ms !important;
+	transition-property: color, border, background-color !important;
+}
+
+body[data-platform="linux"].theme-transition * {
+	transition-delay: 0ms !important;
+	transition-duration: 400ms !important;
+	transition-property: background-color !important;
+}
+
 /* start lynith's native experience (tm) */
 * {
     -webkit-user-select: none;
@@ -24,13 +36,13 @@ img {
 }
 /* end lynith's native experience (tm) */
 
-/* lynith's epic webkit gtk <=2.44 fixer */
-body[data-platform="linux"] img {
-	/* Forces webkit gtk to use the GPU for image rendering, should speed up loading of some pages. Temporary until Tauri updates to at least 2.45
-	2.45 is the first version to use Skia for rendering, which prioritises the GPU over the CPU unlike Cairo */
+/* lynith's epic webkit gtk <=2.45 fixer */
+body[data-platform="linux"][data-skia-renderer="false"] img {
+	/* Forces webkit gtk to use the GPU for image rendering, should speed up loading of some pages. Temporary until Tauri updates to at least 2.46
+	2.46 is the first version to use Skia for rendering, which prioritises the GPU over the CPU unlike Cairo */
 	@apply transform-gpu;
 }
-/* end lynith's epic webkit gtk <=2.44 fixer */
+/* end lynith's epic webkit gtk <=2.45 fixer */
 
 h1 { @apply text-2xl font-semibold; line-height: 1.5 !important; }
 h2 { @apply text-xxl font-semibold; line-height: 1.25 !important; }

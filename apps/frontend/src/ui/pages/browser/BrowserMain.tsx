@@ -60,7 +60,7 @@ function Featured(props: FeaturedProps) {
 				<div class="max-w-84 min-w-52 flex flex-col gap-y-1 p-4">
 					<h2>{props.package.title}</h2>
 
-					<div class="w-fit flex flex-row items-center gap-x-1 rounded-lg bg-gray-10 px-1.5 py-1 text-fg-primary transition hover:opacity-80">
+					<div class="w-fit flex flex-row items-center gap-x-1 rounded-lg bg-border/10 px-1.5 py-1 text-fg-primary transition hover:opacity-80">
 						<OneConfigLogo class="h-3.5 w-3.5" />
 						<span class="text-sm font-medium">OneConfig Integrated</span>
 					</div>

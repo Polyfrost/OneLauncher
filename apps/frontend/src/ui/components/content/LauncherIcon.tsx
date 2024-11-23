@@ -50,7 +50,7 @@ function LauncherIcon(props: LauncherIconProps) {
 		<Show
 			children={getLauncherLogoElement(split.launcher!)({ ...rest, ...(split.class ? { class: split.class } : {}) })}
 			fallback={(
-				<div class={`bg-gray-05 ${split.class || ''}`} {...rest as JSX.HTMLAttributes<HTMLDivElement>} />
+				<div class={`bg-border/05 ${split.class || ''}`} {...rest as JSX.HTMLAttributes<HTMLDivElement>} />
 			)}
 			when={split.launcher !== undefined}
 		/>

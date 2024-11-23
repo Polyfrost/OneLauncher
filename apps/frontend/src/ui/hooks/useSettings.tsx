@@ -10,6 +10,7 @@ import useCommand from './useCommand';
  */
 export function syncSettings(settings: Settings) {
 	document.body.classList.toggle('reduce-motion', settings.disable_animations);
+	document.body.setAttribute('data-theme', settings.theme ?? 'dark');
 }
 
 interface SettingsControllerType {

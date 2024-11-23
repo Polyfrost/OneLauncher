@@ -476,7 +476,17 @@ impl PackageManager {
 			let not_found = infer_modrinth(packages, packages_to_infer, package_type).await;
 
 			if let Some(not_found) = not_found {
-				infer_curseforge(packages, not_found, package_type).await;
+				if let Some(not_found) = infer_curseforge(packages, not_found, package_type).await {
+					for path in not_found {
+						tracing::warn!("failed to infer package: {:?}", path);
+
+						let package_path = PackagePath::new(&path);
+						let meta = PackageMetadata::Unknown;
+						let package = Package::new(&package_path, meta)?;
+
+						packages.insert(package_path, package);
+					}
+				}
 			}
 		}
 
@@ -600,7 +610,7 @@ async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, 
 }
 
 #[tracing::instrument(skip(packages, to_infer))]
-async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) {
+async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) -> Option<HashSet<PathBuf>> {
 	let provider = Providers::Curseforge;
 
 	let mut murmur_map = HashMap::<String, PathBuf>::new();
@@ -610,14 +620,22 @@ async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>
 		}
 	});
 
-	let sha1_len = murmur_map.len();
+	let murmur_len = murmur_map.len();
 	match provider.get_versions_by_hashes(murmur_map.iter().map(|hash| hash.0.clone()).collect()).await {
 		Ok(versions) => {
-			let found_all = (sha1_len - versions.len()) <= 0;
+			let found_all = (murmur_len - versions.len()) <= 0;
 
-			if !found_all {
-				tracing::warn!("failed to infer all packages from Curseforge");
-			}
+			let havent_found = if !found_all {
+				Some(murmur_map.iter().filter_map(|(hash, path)| {
+					if versions.contains_key(hash) {
+						None
+					} else {
+						Some(path.clone())
+					}
+				}).collect::<HashSet<PathBuf>>())
+			} else {
+				None
+			};
 
 			for (hash, version) in versions {
 				let package_path = match murmur_map.get(&hash) {
@@ -640,11 +658,15 @@ async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>
 					packages.insert(package_path, package);
 				}
 			}
+
+			return havent_found;
 		},
 		Err(err) => {
 			tracing::error!("failed to get versions from Curseforge: {}", err);
 		}
 	};
+
+	return Some(to_infer);
 }
 
 /// Metadata that represents a [`Package`].

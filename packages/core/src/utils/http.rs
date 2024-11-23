@@ -19,6 +19,8 @@ use crate::proxy::IngressId;
 use onelauncher_utils::io;
 use onelauncher_utils::io::IOError;
 
+use super::crypto;
+
 /// A [`Semaphore`] used for all I/O operations.
 #[derive(Debug)]
 pub struct IoSemaphore(pub RwLock<Semaphore>);
@@ -132,7 +134,7 @@ pub async fn fetch_advanced(
 
 				if let Ok(bytes) = bytes {
 					if let Some(sha1) = sha1 {
-						let hash = check_sha1(bytes.clone()).await?;
+						let hash = crypto::sha1(&bytes);
 						if &*hash != sha1 {
 							if attempt <= 3 {
 								continue;
@@ -287,7 +289,7 @@ pub async fn write_icon(
 	io_semaphore: &IoSemaphore,
 ) -> crate::Result<PathBuf> {
 	let ext = Path::new(&icon_path).extension().and_then(OsStr::to_str);
-	let hash = check_sha1(bytes.clone()).await?;
+	let hash = crypto::sha1(&bytes);
 	let path = cache_dir.join("icons").join(if let Some(e) = ext {
 		format!("{hash}.{e}")
 	} else {
@@ -298,12 +300,4 @@ pub async fn write_icon(
 
 	let path = io::canonicalize(path)?;
 	Ok(path)
-}
-
-/// Get the Sha1 hash of [`bytes::Bytes`] array.
-pub async fn check_sha1(bytes: Bytes) -> crate::Result<String> {
-	let hash =
-		tokio::task::spawn_blocking(move || sha1_smol::Sha1::from(bytes).hexdigest()).await?;
-
-	Ok(hash)
 }

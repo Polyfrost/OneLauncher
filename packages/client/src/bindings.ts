@@ -915,7 +915,7 @@ export type PackageFile = 'required_pack' | 'optional_pack' | 'unknown';
 /**
  * Metadata that represents a [`Package`].
  */
-export type PackageMetadata = { type: 'managed'; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string; mc_versions: string[] | null } | { type: 'unknown' };
+export type PackageMetadata = { type: 'managed'; package_id: string; provider: Providers; package_type: PackageType; title: string; version_id: string; version_formatted: string; mc_versions?: string[] | null; icon_url?: string | null } | { type: 'unknown' };
 /**
  * Relative [`PathBuf`] for a specific [`Package`] of a [`Cluster`].
  */

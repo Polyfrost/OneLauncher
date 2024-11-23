@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use whoami::Result;
+use crate::Result;
 
 pub fn sha1(bytes: &[u8]) -> String {
 	sha1_smol::Sha1::from(bytes).digest().to_string()

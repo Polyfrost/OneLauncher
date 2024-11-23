@@ -164,8 +164,8 @@ function ModEntry(props: ModEntryProps) {
 	};
 
 	const icon = () => {
-		// if (props.pkg.meta.type === 'managed')
-		// 	return props.pkg.meta.;
+		if (props.pkg.meta.type === 'managed')
+			return props.pkg.meta.icon_url;
 
 		return undefined;
 	};

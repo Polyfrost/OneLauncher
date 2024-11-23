@@ -473,10 +473,13 @@ impl PackageManager {
 
 		// Infer any packages
 		if packages_to_infer.len() > 0 {
-			let not_found = infer_modrinth(packages, packages_to_infer, package_type).await;
+			let not_found = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await;
 
 			if let Some(not_found) = not_found {
-				if let Some(not_found) = infer_curseforge(packages, not_found, package_type).await {
+				if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
+					let hash = crypto::murmur2_file(path)?;
+					Ok(hash.to_string())
+				}).await {
 					for path in not_found {
 						tracing::warn!("failed to infer package: {:?}", path);
 
@@ -529,23 +532,29 @@ impl PackageManager {
 }
 
 #[tracing::instrument(skip(packages, to_infer))]
-async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) -> Option<HashSet<PathBuf>> {
-	let mut sha1_map = HashMap::<String, PathBuf>::new();
+async fn infer_provider(
+	provider: Providers,
+	package_type: PackageType,
+	packages: &mut PackagesMap,
+	to_infer: HashSet<PathBuf>,
+	hash_fn: fn(&PathBuf) -> crate::Result<String>,
+) -> Option<HashSet<PathBuf>> {
+	let mut hash_map = HashMap::<String, PathBuf>::new();
 	to_infer.iter().for_each(|path| {
-		if let Ok(hash) = crypto::sha1_file(path) {
-			sha1_map.insert(hash, path.clone());
+		if let Ok(hash) = hash_fn(path) {
+			hash_map.insert(hash, path.clone());
 		}
 	});
 
 
-	let sha1_len = sha1_map.len();
-	match Providers::Modrinth.get_versions_by_hashes(sha1_map.iter().map(|hash| hash.0.clone()).collect()).await {
+	let hash_len = hash_map.len();
+	match provider.get_versions_by_hashes(hash_map.iter().map(|hash| hash.0.clone()).collect()).await {
 		Ok(versions) => {
 
-			let found_all = (sha1_len - versions.len()) <= 0;
+			let found_all = (hash_len - versions.len()) <= 0;
 
 			let havent_found = if !found_all {
-				Some(sha1_map.iter().filter_map(|(hash, path)| {
+				Some(hash_map.iter().filter_map(|(hash, path)| {
 					if versions.contains_key(hash) {
 						None
 					} else {
@@ -558,7 +567,7 @@ async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, 
 
 			let package_ids = versions.iter().map(|(hash, version)| (version.package_id.clone(), hash.clone())).collect::<HashMap<String, String>>();
 
-			match Providers::Modrinth.get_multiple(package_ids.clone().into_keys().collect::<Vec<String>>().as_slice()).await {
+			match provider.get_multiple(package_ids.clone().into_keys().collect::<Vec<String>>().as_slice()).await {
 				Ok(managed_packages) => {
 					for managed in managed_packages {
 						let hash = match package_ids.get(&managed.id) {
@@ -571,15 +580,16 @@ async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, 
 							None => continue,
 						};
 
-						if let Some(package_path) = sha1_map.get(hash) {
+						if let Some(package_path) = hash_map.get(hash) {
 							let meta = PackageMetadata::Managed {
 								package_id: managed.id,
-								provider: Providers::Modrinth,
+								provider: provider.clone(),
 								package_type,
 								title: managed.title,
 								version_id: version.id.clone(),
 								version_formatted: version.version_display.clone(),
 								mc_versions: Some(version.game_versions.clone()),
+								icon_url: managed.icon_url
 							};
 
 							let package_path = &PackagePath::new(package_path);
@@ -588,85 +598,25 @@ async fn infer_modrinth(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, 
 									packages.insert(package_path.clone(), package);
 								},
 								Err(err) => {
-									tracing::error!("failed to create package from Modrinth: {}", err);
+									tracing::error!("failed to create package from {}: {}", provider, err);
 								},
 							};
 						}
 					}
 				},
 				Err(err) => {
-					tracing::error!("failed to get versions from Modrinth: {}", err);
+					tracing::error!("failed to get versions from {}: {}", provider, err);
 				}
 			}
 
 			return havent_found;
 		},
 		Err(err) => {
-			tracing::error!("failed to get versions from Modrinth: {}", err);
+			tracing::error!("failed to get versions from {}: {}", provider, err);
 		}
 	};
 
 	Some(to_infer)
-}
-
-#[tracing::instrument(skip(packages, to_infer))]
-async fn infer_curseforge(packages: &mut PackagesMap, to_infer: HashSet<PathBuf>, package_type: PackageType) -> Option<HashSet<PathBuf>> {
-	let provider = Providers::Curseforge;
-
-	let mut murmur_map = HashMap::<String, PathBuf>::new();
-	to_infer.iter().for_each(|path| {
-		if let Ok(hash) = crypto::murmur2_file(path) {
-			murmur_map.insert(hash.to_string(), path.clone());
-		}
-	});
-
-	let murmur_len = murmur_map.len();
-	match provider.get_versions_by_hashes(murmur_map.iter().map(|hash| hash.0.clone()).collect()).await {
-		Ok(versions) => {
-			let found_all = (murmur_len - versions.len()) <= 0;
-
-			let havent_found = if !found_all {
-				Some(murmur_map.iter().filter_map(|(hash, path)| {
-					if versions.contains_key(hash) {
-						None
-					} else {
-						Some(path.clone())
-					}
-				}).collect::<HashSet<PathBuf>>())
-			} else {
-				None
-			};
-
-			for (hash, version) in versions {
-				let package_path = match murmur_map.get(&hash) {
-					Some(path) => PackagePath::new(path),
-					None => continue,
-				};
-
-				let meta = PackageMetadata::Managed {
-					package_id: version.package_id,
-					provider: provider.clone(),
-					package_type,
-					title: version.name,
-					version_id: version.id,
-					version_formatted: version.version_display,
-					mc_versions: Some(version.game_versions),
-				};
-
-
-				if let Ok(package) = Package::new(&package_path, meta) {
-					packages.insert(package_path, package);
-				}
-			}
-
-			return havent_found;
-		},
-		Err(err) => {
-			tracing::error!("failed to get versions from Curseforge: {}", err);
-		}
-	};
-
-	return Some(to_infer);
 }
 
 /// Metadata that represents a [`Package`].
@@ -681,7 +631,10 @@ pub enum PackageMetadata {
 		title: String,
 		version_id: String,
 		version_formatted: String,
+		#[serde(skip_serializing_if = "Option::is_none", default)]
 		mc_versions: Option<Vec<String>>,
+		#[serde(skip_serializing_if = "Option::is_none", default)]
+		icon_url: Option<String>,
 	},
 	Unknown,
 }
@@ -696,7 +649,8 @@ impl PackageMetadata {
 			title: package.title,
 			provider: package.provider,
 			package_type: package.package_type,
-			mc_versions: Some(version.game_versions)
+			mc_versions: Some(version.game_versions),
+			icon_url: package.icon_url,
 		}
 	}
 

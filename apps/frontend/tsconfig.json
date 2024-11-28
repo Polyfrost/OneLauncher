@@ -1,0 +1,40 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"target": "ESNext",
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"useDefineForClassFields": true,
+		"rootDir": ".",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"paths": {
+			"~*": ["./src/*"]
+		},
+
+		"resolveJsonModule": true,
+		"types": [
+			"vitest/globals",
+			"@testing-library/jest-dom",
+			"vite-plugin-solid-svg/types"
+		],
+		"allowImportingTsExtensions": true,
+		"strict": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"noEmit": true,
+		"sourceMap": false,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"skipLibCheck": true
+	},
+	"references": [{ "path": "./tsconfig.node.json" }],
+	"include": [
+		"./src/**/*.ts",
+		"./src/**/*.d.ts",
+		"./src/**/*.tsx"
+	]
+}

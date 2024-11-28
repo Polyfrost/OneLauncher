@@ -450,8 +450,7 @@ pub async fn fetch_advanced<F: FnOnce(&mut Url)>(
 	json_body: Option<serde_json::Value>,
 ) -> Result<Bytes> {
 	// TODO: Get the API key from settings, fallback to constant, and error if missing
-	let key = crate::constants::CURSEFORGE_API_KEY
-		.ok_or(anyhow::anyhow!("missing curseforge api key"))?;
+	let key = crate::constants::CURSEFORGE_API_KEY;
 
 	let mut headers = headers.unwrap_or(HashMap::<&str, &str>::new());
 	headers.insert("x-api-key", key);

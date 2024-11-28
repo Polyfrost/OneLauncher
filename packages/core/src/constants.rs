@@ -38,8 +38,8 @@ pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
 pub const MODRINTH_V3_API_URL: &str = "https://api.modrinth.com/v3";
 /// The Curseforge API base url.
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com";
-/// The Curseforge API key. This is a secret and should not be shared.
-pub const CURSEFORGE_API_KEY: Option<&'static str> = option_env!("CURSEFORGE_API_KEY");
+/// The Curseforge API key. Reserved for use in OneLauncher projects only. Do not use in other projects without permission from the OneLauncher team.
+pub const CURSEFORGE_API_KEY: &str = "$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kpFB0fsmE/d42ZAfFgCe";
 /// The Minecraft game ID on Curseforge.
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 /// Our metadata API base url.

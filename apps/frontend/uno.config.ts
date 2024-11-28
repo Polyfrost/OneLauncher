@@ -52,13 +52,13 @@ export default defineConfig({
 					DEFAULT: 'rgba(var(--clr-fg-primary), <alpha-value>)',
 					hover: 'rgba(var(--clr-fg-primary-hover), <alpha-value>)',
 					pressed: 'rgba(var(--clr-fg-primary-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-fg-primary-disabled))',
+					disabled: 'rgba(var(--clr-fg-primary-disabled), <alpha-value>)',
 				},
 				secondary: {
 					DEFAULT: 'rgba(var(--clr-fg-secondary), <alpha-value>)',
 					hover: 'rgba(var(--clr-fg-secondary-hover), <alpha-value>)',
 					pressed: 'rgba(var(--clr-fg-secondary-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-fg-secondary-disabled))',
+					disabled: 'rgba(var(--clr-fg-secondary-disabled), <alpha-value>)',
 				},
 			},
 
@@ -66,28 +66,28 @@ export default defineConfig({
 				DEFAULT: 'rgba(var(--clr-brand), <alpha-value>)',
 				hover: 'rgba(var(--clr-brand-hover), <alpha-value>)',
 				pressed: 'rgba(var(--clr-brand-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-brand-disabled))',
+				disabled: 'rgba(var(--clr-brand-disabled), <alpha-value>)',
 			},
 
 			onbrand: {
 				DEFAULT: 'rgba(var(--clr-onbrand), <alpha-value>)',
 				hover: 'rgba(var(--clr-onbrand-hover), <alpha-value>)',
 				pressed: 'rgba(var(--clr-onbrand-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-onbrand-disabled))',
+				disabled: 'rgba(var(--clr-onbrand-disabled), <alpha-value>)',
 			},
 
 			danger: {
 				DEFAULT: 'rgba(var(--clr-danger), <alpha-value>)',
 				hover: 'rgba(var(--clr-danger-hover), <alpha-value>)',
 				pressed: 'rgba(var(--clr-danger-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-danger-disabled))',
+				disabled: 'rgba(var(--clr-danger-disabled), <alpha-value>)',
 			},
 
 			success: {
 				DEFAULT: 'rgba(var(--clr-success), <alpha-value>)',
 				hover: 'rgba(var(--clr-success-hover), <alpha-value>)',
 				pressed: 'rgba(var(--clr-success-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-success-disabled))',
+				disabled: 'rgba(var(--clr-success-disabled), <alpha-value>)',
 			},
 
 			component: {
@@ -95,7 +95,7 @@ export default defineConfig({
 					DEFAULT: 'rgba(var(--clr-component-bg), <alpha-value>)',
 					hover: 'rgba(var(--clr-component-bg-hover), <alpha-value>)',
 					pressed: 'rgba(var(--clr-component-bg-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-component-bg-disabled))',
+					disabled: 'rgba(var(--clr-component-bg-disabled), <alpha-value>)',
 				},
 			},
 

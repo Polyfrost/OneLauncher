@@ -19,7 +19,7 @@ function Checkbox(props: CheckboxProps) {
 
 	return (
 		<div
-			class={`${styles.checkbox} ${` ${split.class}` ?? ''}`}
+			class={`${styles.checkbox} ${split.class ?? ''}`}
 			onClick={() => toggle()}
 			{...rest}
 		>

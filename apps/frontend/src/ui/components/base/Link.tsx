@@ -4,12 +4,12 @@ import { type JSX, splitProps } from 'solid-js';
 import styles from './Link.module.scss';
 
 export type LinkProps = JSX.IntrinsicElements['a'] & {
-	prompt?: boolean;
+	skipPrompt?: boolean;
 	includeIcon?: boolean;
 };
 
 function Link(props: LinkProps) {
-	const [split, rest] = splitProps(props, ['prompt', 'class', 'href', 'onClick', 'children']);
+	const [split, rest] = splitProps(props, ['skipPrompt', 'class', 'href', 'onClick', 'children']);
 	const open = usePromptOpener();
 
 	return (
@@ -25,7 +25,7 @@ function Link(props: LinkProps) {
 			)}
 			class={`${styles.link} ${split.class || ''}`}
 			onClick={(e) => {
-				open(split.href, !!split.prompt);
+				open(split.href, !!split.skipPrompt);
 				if (typeof split.onClick === 'function')
 					split.onClick(e as any);
 			}}

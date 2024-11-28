@@ -56,7 +56,7 @@ function OnboardingLanguage() {
 				</div>
 
 				<div class="w-full flex flex-row justify-end">
-					<Link class="text-xs" href={TRANSLATION_WEBSITE}>Help translate OneLauncher</Link>
+					<Link class="text-xs" href={TRANSLATION_WEBSITE} skipPrompt>Help translate OneLauncher</Link>
 				</div>
 			</div>
 		</OnboardingStep>

@@ -2,6 +2,7 @@ import type { ImportType } from '@onelauncher/client/bindings';
 import Illustration from '~assets/illustrations/onboarding/import_from_others.svg?component-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
+import Link from '~ui/components/base/Link';
 import SelectList from '~ui/components/base/SelectList';
 import LauncherIcon from '~ui/components/content/LauncherIcon';
 import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
@@ -52,6 +53,12 @@ function OnboardingImport() {
 							)}
 						</For>
 					</div>
+					<small class="pt-2 text-fg-secondary">
+						Want to contribute a launcher import? Click
+						{' '}
+						<Link href="https://github.com/Polyfrost/OneLauncher" skipPrompt={true}>here</Link>
+						.
+					</small>
 				</OverlayScrollbarsComponent>
 			</div>
 		</OnboardingStep>

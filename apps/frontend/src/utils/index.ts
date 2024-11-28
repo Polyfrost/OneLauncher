@@ -182,4 +182,14 @@ export function getPackageUrl(pkg: ManagedPackage): string {
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
 export const PROVIDERS: Providers[] = ['Modrinth', 'Curseforge'] as const;
 export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
-export const LAUNCHER_IMPORT_TYPES: ImportType[] = ['PrismLauncher', 'Curseforge', 'Modrinth', 'ATLauncher', 'GDLauncher', 'FTBLauncher', 'MultiMC', 'TLauncher', 'Technic'] as const;
+export const LAUNCHER_IMPORT_TYPES: ImportType[] = [
+	'PrismLauncher',
+	'Curseforge',
+	// 'Modrinth',
+	'ATLauncher',
+	'GDLauncher',
+	// 'FTBLauncher',
+	'MultiMC',
+	// 'TLauncher',
+	// 'Technic'
+] as const;

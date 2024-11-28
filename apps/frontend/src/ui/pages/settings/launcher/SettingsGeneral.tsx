@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-shell';
-import { AlertSquareIcon, FolderIcon, LinkExternal01Icon, XIcon } from '@untitled-theme/icons-solid';
+import { FolderIcon, LinkExternal01Icon, XIcon } from '@untitled-theme/icons-solid';
 import DiscordIcon from '~assets/logos/discord.svg?component-solid';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
@@ -44,7 +44,7 @@ function SettingsGeneral() {
 					/>
 				</SettingsRow>
 
-				<SettingsRow
+				{/* <SettingsRow
 					description="Sends errors and crash logs using Sentry to help developers fix issues. (// TODO)"
 					icon={<AlertSquareIcon />}
 					title="Error Analytics"
@@ -53,7 +53,7 @@ function SettingsGeneral() {
 						checked={() => !(settings().disable_analytics ?? false)}
 						onChecked={value => settings().disable_analytics = !value}
 					/>
-				</SettingsRow>
+				</SettingsRow> */}
 
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
 				<SettingsRow

@@ -1,27 +1,9 @@
-import { Upload01Icon, User03Icon } from '@untitled-theme/icons-solid';
-import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
-import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
-import { createEffect, createSignal, Index, type JSX } from 'solid-js';
+import type { ImportType } from '@onelauncher/client/bindings';
+import { User03Icon } from '@untitled-theme/icons-solid';
+import LauncherIcon from '~ui/components/content/LauncherIcon';
+import { LAUNCHER_IMPORT_TYPES } from '~utils';
+import { createEffect, createSignal, For, type JSX } from 'solid-js';
 import { type ClusterStepProps, createClusterStep, CreationStage } from './ClusterCreationModal';
-
-const providers: Omit<ProviderCardProps, 'selected' | 'setSelected'>[] = [
-	{
-		name: 'New',
-		icon: <User03Icon />,
-	},
-	{
-		name: 'Modrinth',
-		icon: <ModrinthIcon color="#1bd96a" />,
-	},
-	{
-		name: 'Curseforge',
-		icon: <CurseforgeIcon color="#F16436" />,
-	},
-	{
-		name: 'Import',
-		icon: <Upload01Icon />,
-	},
-];
 
 export default createClusterStep({
 	message: 'Select Provider',
@@ -29,54 +11,92 @@ export default createClusterStep({
 	Component: ClusterProviderSelection,
 });
 
+export type ClusterCreationProvider = ImportType | 'New';
+
 function ClusterProviderSelection(props: ClusterStepProps) {
 	const [selected, setSelected] = createSignal<number>();
 
 	createEffect(() => {
-		// TODO: Add more stages
 		// eslint-disable-next-line solid/reactivity -- It's fine
 		props.setCanGoForward(() => {
-			const isTrue = selected() !== undefined;
+			const index = selected();
+			if (index === undefined)
+				return false;
 
-			if (isTrue)
+			if (index === -1) {
+				props.controller.setProvider('New');
 				props.setNextStage(CreationStage.GAME_SETUP);
+			}
+			else if (index >= 0) {
+				props.controller.setProvider(LAUNCHER_IMPORT_TYPES[index]);
+				props.setNextStage(CreationStage.IMPORT_SELECTION);
+			}
 
-			return isTrue;
+			return true;
 		});
 	});
 
 	return (
 		<div class="grid grid-cols-3 gap-2">
-			<Index each={providers}>
+			<ProviderCard
+				icon={<User03Icon />}
+				name="New"
+				selected={selected() === -1}
+				setSelected={() => setSelected(-1)}
+			/>
+
+			<For each={LAUNCHER_IMPORT_TYPES}>
 				{(provider, index) => (
 					<ProviderCard
-						{...provider()}
-						selected={index === selected()}
+						importType={provider}
+						selected={index() === selected()}
 						setSelected={() => setSelected(index)}
 					/>
 				)}
-			</Index>
+			</For>
 		</div>
 	);
 }
 
-interface ProviderCardProps {
+interface ProviderLauncherCardProps {
+	importType: ImportType;
+}
+
+interface ProviderCustomCardProps {
 	icon: JSX.Element;
 	name: string;
+}
+
+type ProviderCardProps = (ProviderLauncherCardProps | ProviderCustomCardProps) & {
 	setSelected: () => void;
 	selected: boolean;
 };
 
 function ProviderCard(props: ProviderCardProps) {
+	const Icon = () => {
+		if ('icon' in props)
+			// eslint-disable-next-line solid/components-return-once -- ok
+			return props.icon;
+
+		return <LauncherIcon launcher={props.importType} />;
+	};
+
+	const Name = () => {
+		if ('name' in props)
+			return props.name;
+
+		return props.importType;
+	};
+
 	return (
 		<div
-			class={`flex flex-col justify-center items-center gap-y-2 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg ${props.selected ? 'bg-component-bg' : ''}`}
+			class={`flex flex-col justify-center items-center gap-y-3 py-2 px-4 hover:bg-component-bg-hover active:bg-component-bg-pressed rounded-lg ${props.selected ? 'bg-component-bg' : ''}`}
 			onClick={() => props.setSelected()}
 		>
-			<div class="[&>svg]:(h-8 w-8)">
-				{props.icon}
+			<div class="h-8 w-8 flex items-center justify-center [&>svg]:(w-8 h-8!)">
+				<Icon />
 			</div>
-			<span>{props.name}</span>
+			<span>{Name()}</span>
 		</div>
 	);
 }

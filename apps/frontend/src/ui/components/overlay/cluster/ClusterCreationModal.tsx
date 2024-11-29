@@ -1,32 +1,32 @@
-import type { CreateCluster } from '@onelauncher/client/bindings';
 import { ArrowRightIcon, Server01Icon } from '@untitled-theme/icons-solid';
-import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
-import { type Accessor, type Context, createContext, createSignal, type JSX, type ParentProps, type Setter, Show, untrack, useContext } from 'solid-js';
+import { type Accessor, type Context, createContext, createSignal, type JSX, type ParentProps, type Setter, Show, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import HeaderImage from '../../../../assets/images/header.png';
 import { createModal } from '../Modal';
 import ClusterGameSetup from './ClusterGameSetup';
-import ClusterProviderSelection from './ClusterProviderSelection';
+import ClusterImportSelection from './ClusterImportSelection';
+import ClusterProviderSelection, { type ClusterCreationProvider } from './ClusterProviderSelection';
 
 export enum CreationStage {
-	PROVIDER_SELECTION = 0,
-	GAME_SETUP = 1,
-	IMPORT_SELECTION = 2,
+	PROVIDER_SELECTION,
+	GAME_SETUP,
+	IMPORT_SELECTION,
 }
 
-type PartialCluster = Partial<CreateCluster>;
-type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => void;
+type FinishFn = () => Promise<boolean> | boolean;
 
 interface ClusterModalController {
 	step: Accessor<CreationStage | undefined>;
 	setStep: (step: CreationStage | number | undefined) => void;
 
-	partialCluster: Accessor<PartialCluster>;
-	setPartialCluster: Setter<PartialCluster>;
-	updatePartialCluster: PartialClusterUpdateFunc;
+	provider: Accessor<ClusterCreationProvider | undefined>;
+	setProvider: Setter<ClusterCreationProvider | undefined>;
 
-	start: () => Promise<void>;
+	finishFunction: Accessor<FinishFn>;
+	setFinishFunction: Setter<FinishFn>;
+
+	start: () => void;
 	previous: () => void;
 	cancel: () => void;
 	finish: () => void;
@@ -35,14 +35,13 @@ interface ClusterModalController {
 const ClusterModalContext = createContext<ClusterModalController>() as Context<ClusterModalController>;
 
 export function ClusterModalControllerProvider(props: ParentProps) {
-	const [partialCluster, setPartialCluster] = createSignal<PartialCluster>({});
-	const requiredProps: (keyof PartialCluster)[] = ['name', 'mc_version', 'mod_loader'];
-
+	const [provider, setProvider] = createSignal<ClusterCreationProvider | undefined>();
+	const [finishFunction, setFinishFunction] = createSignal<FinishFn>(() => true);
 	const [steps, setSteps] = createSignal<CreationStage[]>([]);
 	const [stepComponents] = createStore<{ [key in CreationStage]: () => JSX.Element }>({
 		[CreationStage.PROVIDER_SELECTION]: ClusterProviderSelection,
 		[CreationStage.GAME_SETUP]: ClusterGameSetup,
-		[CreationStage.IMPORT_SELECTION]: () => <></>,
+		[CreationStage.IMPORT_SELECTION]: ClusterImportSelection,
 	});
 
 	const controller: ClusterModalController = {
@@ -64,12 +63,13 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 			});
 		},
 
-		partialCluster,
-		setPartialCluster,
-		updatePartialCluster: (key, value) => setPartialCluster(prev => ({ ...prev, [key]: value })),
+		provider,
+		setProvider,
 
-		async start() {
-			setPartialCluster({});
+		finishFunction,
+		setFinishFunction,
+
+		start() {
 			controller.setStep(CreationStage.PROVIDER_SELECTION);
 			modal.show();
 		},
@@ -83,24 +83,17 @@ export function ClusterModalControllerProvider(props: ParentProps) {
 			modal.hide();
 		},
 
-		async finish() {
-			const untracked = untrack(partialCluster);
+		finish() {
+			const fn = finishFunction()();
 
-			for (const prop of requiredProps)
-				if (!untracked[prop])
-					throw new Error(`Missing required property ${prop}`);
-
-			modal.hide();
-
-			await bridge.commands.createCluster({
-				icon: null,
-				icon_url: null,
-				loader_version: null,
-				package_data: null,
-				skip: null,
-				skip_watch: null,
-				...untracked,
-			} as CreateCluster);
+			if (fn instanceof Promise)
+				fn.then((res) => {
+					if (res === true)
+						modal.hide();
+				});
+			else
+				if (fn === true)
+					modal.hide();
 		},
 	};
 

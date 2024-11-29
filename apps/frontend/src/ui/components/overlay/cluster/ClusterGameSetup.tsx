@@ -1,4 +1,4 @@
-import type { Loader, VersionType } from '@onelauncher/client/bindings';
+import type { CreateCluster, Loader, VersionType } from '@onelauncher/client/bindings';
 import { TextInputIcon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Checkbox from '~ui/components/base/Checkbox';
@@ -8,8 +8,11 @@ import TextField from '~ui/components/base/TextField';
 import LoaderIcon from '~ui/components/game/LoaderIcon';
 import useCommand from '~ui/hooks/useCommand';
 import { formatVersionRelease, LOADERS } from '~utils';
-import { createEffect, createSignal, For, Index, type JSX, onMount, Show, splitProps, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Index, type JSX, onMount, Show, splitProps, untrack } from 'solid-js';
 import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
+
+type PartialCluster = Partial<CreateCluster>;
+type PartialClusterUpdateFunc = <K extends keyof PartialCluster>(key: K, value: PartialCluster[K]) => void;
 
 export default createClusterStep({
 	message: 'Game Setup',
@@ -17,23 +20,67 @@ export default createClusterStep({
 	Component: ClusterGameSetup,
 });
 
+function _epicHardcodedLoaderVersionFilter(loader: Loader, version: string): boolean {
+	if (loader === 'vanilla')
+		return true;
+
+	const split = version.split('.')[1];
+	if (split === undefined)
+		return true;
+
+	const minor = Number.parseInt(split);
+	if (minor < 13)
+		return loader === 'forge' || loader === 'legacyfabric';
+	else
+		return loader === 'forge' || loader === 'fabric' || loader === 'neoforge' || loader === 'quilt';
+}
+
 function ClusterGameSetup(props: ClusterStepProps) {
-	const check = () => {
-		const hasName = (props.controller.partialCluster().name?.length ?? 0) > 0;
-		const hasVersion = (props.controller.partialCluster().mc_version?.length ?? 0) > 0;
-		const hasLoader = (props.controller.partialCluster().mod_loader?.length ?? 0) > 0;
+	const [partialCluster, setPartialCluster] = createSignal<PartialCluster>({
+		mod_loader: 'vanilla',
+	});
+
+	const requiredProps: (keyof PartialCluster)[] = ['name', 'mc_version', 'mod_loader'];
+
+	const updatePartialCluster: PartialClusterUpdateFunc = (key, value) => setPartialCluster(prev => ({ ...prev, [key]: value }));
+	const setName = (name: string) => updatePartialCluster('name', name);
+	const setVersion = (version: string) => updatePartialCluster('mc_version', version);
+	const setLoader = (loader: Loader | string) => updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+
+	const getLoaders = createMemo(() => {
+		const version = partialCluster().mc_version ?? '';
+
+		return LOADERS.filter(loader => _epicHardcodedLoaderVersionFilter(loader, version));
+	});
+
+	createEffect(() => {
+		const hasName = (partialCluster().name?.length ?? 0) > 0;
+		const hasVersion = (partialCluster().mc_version?.length ?? 0) > 0;
+		const hasLoader = (partialCluster().mod_loader?.length ?? 0) > 0;
 
 		props.setCanGoForward(hasName && hasVersion && hasLoader);
-	};
-
-	createEffect(check);
-
-	const setName = (name: string) => props.controller.updatePartialCluster('name', name);
-	const setVersion = (version: string) => props.controller.updatePartialCluster('mc_version', version);
-	const setLoader = (loader: Loader | string) => props.controller.updatePartialCluster('mod_loader', loader.toLowerCase() as Loader);
+	});
 
 	onMount(() => {
-		setLoader('vanilla');
+		props.controller.setFinishFunction(() => async () => {
+			const untracked = untrack(partialCluster);
+
+			for (const prop of requiredProps)
+				if (!untracked[prop])
+					throw new Error(`Missing required property ${prop}`);
+
+			await bridge.commands.createCluster({
+				icon: null,
+				icon_url: null,
+				loader_version: null,
+				package_data: null,
+				skip: null,
+				skip_watch: null,
+				...untracked,
+			} as CreateCluster);
+
+			return true;
+		});
 	});
 
 	return (
@@ -51,8 +98,8 @@ function ClusterGameSetup(props: ClusterStepProps) {
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown onChange={index => setLoader(LOADERS[index] || 'vanilla')}>
-					<For each={LOADERS}>
+				<Dropdown onChange={index => setLoader(getLoaders()[index] || 'vanilla')}>
+					<For each={getLoaders()}>
 						{loader => (
 							<Dropdown.Row>
 								<div class="flex flex-row gap-x-2">

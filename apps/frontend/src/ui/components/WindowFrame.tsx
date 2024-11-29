@@ -52,7 +52,7 @@ function WindowFrame() {
 
 	return (
 		<Show when={settings().custom_frame}>
-			<div class="z-[99999] h-8 w-screen flex flex-row items-center justify-between gap-0.5 bg-page-elevated pr-0.5" data-tauri-drag-region>
+			<div class="z-[99999] h-8 w-screen flex flex-row items-center justify-between gap-0.5 bg-page-elevated py-0.5" data-tauri-drag-region>
 				<div class="flex flex-row items-center">
 					<TitlebarButton icon={ChevronLeftIcon} onClick={() => history.back()} />
 				</div>

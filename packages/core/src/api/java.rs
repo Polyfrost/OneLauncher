@@ -24,27 +24,9 @@ pub async fn filter_java_version(java_version: Option<u32>) -> crate::Result<Vec
 }
 
 #[derive(Deserialize)]
-pub struct JavaZuluPackage {
+struct JavaPackage {
 	pub download_url: String,
 	pub name: PathBuf,
-	pub java_version: Vec<u32>,
-}
-
-pub async fn fetch_zulu() -> crate::Result<Vec<JavaZuluPackage>> {
-	let state = State::get().await?;
-
-	fetch_json::<Vec<JavaZuluPackage>>(
-		Method::GET,
-		&format!(
-			"https://api.azul.com/metadata/v1/zulu/packages/?os={}&arch={}&archive_type=zip&java_package_type=jre&javafx_bundled=false&latest=true&release_status=ga&availability_types=CA&certifications=tck&page=1&page_size=100",
-			std::env::consts::OS,
-			std::env::consts::ARCH,
-		),
-		None,
-		None,
-		&state.fetch_semaphore,
-	)
-	.await
 }
 
 // TODO: support more than just zulu ?
@@ -62,7 +44,7 @@ pub async fn install_java(java_version: u32) -> crate::Result<PathBuf> {
 	.await?;
 
 	send_ingress(&ingress, 0.0, Some("fetching java api")).await?;
-	let packages = fetch_json::<Vec<JavaZuluPackage>>(Method::GET, &format!(
+	let packages = fetch_json::<Vec<JavaPackage>>(Method::GET, &format!(
         "https://api.azul.com/metadata/v1/zulu/packages?arch={}&java_version={}&os={}&archive_type=zip&javafx_bundled=false&java_package_type=jre&page_size=1",
         std::env::consts::ARCH, java_version, std::env::consts::OS,
     ), None, None, &state.fetch_semaphore).await?;

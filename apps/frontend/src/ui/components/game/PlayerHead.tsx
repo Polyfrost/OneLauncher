@@ -1,5 +1,5 @@
 import type { JSX } from 'solid-js';
-import { createEffect, createSignal, on, Show, splitProps } from 'solid-js';
+import { createEffect, createSignal, splitProps } from 'solid-js';
 import steveSrc from '../../../assets/images/steve.png';
 
 type PlayerHeadProps = JSX.IntrinsicElements['img'] & {
@@ -7,38 +7,31 @@ type PlayerHeadProps = JSX.IntrinsicElements['img'] & {
 	onError?: () => void;
 };
 
-function headSrc(uuid: string) {
+function crafatar(uuid: string) {
 	return `https://crafatar.com/avatars/${uuid}?size=48`;
 }
 
 function PlayerHead(props: PlayerHeadProps) {
 	const [split, rest] = splitProps(props, ['uuid', 'class']);
-	const [isLoaded, setLoaded] = createSignal(false);
+	const [src, setSrc] = createSignal(steveSrc);
 
-	createEffect(on(() => props.uuid, () => setLoaded(false)));
+	createEffect(() => {
+		if (split.uuid)
+			setSrc(crafatar(split.uuid));
+	});
+
+	const onError = () => {
+		setSrc(steveSrc);
+		props.onError && props.onError();
+	};
 
 	return (
-		<>
-			<Show
-				children={(
-					<img
-						class={`image-render-pixel ${isLoaded() ? '' : 'hidden'} ${split.class}`}
-						onError={() => props.onError && props.onError()}
-						onLoad={() => setLoaded(true)}
-						src={headSrc(split.uuid!)}
-						{...rest}
-					/>
-				)}
-				fallback={(
-					<img
-						class={`image-render-pixel ${split.class}`}
-						src={steveSrc}
-						{...rest}
-					/>
-				)}
-				when={props.uuid !== null && props.uuid !== undefined}
-			/>
-		</>
+		<img
+			class={`image-render-pixel ${split.class}`}
+			onError={onError}
+			src={src()}
+			{...rest}
+		/>
 	);
 }
 

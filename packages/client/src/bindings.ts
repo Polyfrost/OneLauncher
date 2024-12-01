@@ -524,6 +524,16 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async getFeaturedPackages(): Promise<Result<FeaturedPackage[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_featured_packages') };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 };
 
 /** user-defined events */
@@ -678,6 +688,7 @@ export type ClusterStage =
 	'not_installed';
 export interface CreateCluster { name: string; mc_version: string; mod_loader: Loader; loader_version: string | null; icon: string | null; icon_url: string | null; package_data: PackageData | null; skip: boolean | null; skip_watch: boolean | null };
 export interface DetailedProcess { uuid: string; user: string | null; started_at: string; pid: number };
+export interface FeaturedPackage { package_type: PackageType; provider: Providers; id: string; title: string; description: string; thumbnail: string; oneconfig: boolean };
 /**
  * List of launcher types we support importing from.
  */

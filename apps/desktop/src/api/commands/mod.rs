@@ -81,9 +81,16 @@ macro_rules! collect_commands {
 			install_update,
 			// Other
 			set_window_style,
-			get_program_info
+			get_program_info,
+			get_featured_packages,
 		]
 	}};
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_featured_packages() -> Result<Vec<onelauncher::package::content::FeaturedPackage>, String> {
+	Ok(onelauncher::package::content::get_featured_packages().await?)
 }
 
 #[specta::specta]

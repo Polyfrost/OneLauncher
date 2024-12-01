@@ -1,10 +1,10 @@
-import type { Cluster, ManagedPackage, PackageType, Providers, ProviderSearchQuery, SearchResult } from '@onelauncher/client/bindings';
+import type { Cluster, FeaturedPackage, PackageType, Providers, ProviderSearchQuery, SearchResult } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import { bridge } from '~imports';
 import { createModal } from '~ui/components/overlay/Modal';
 import BrowserPackage from '~ui/pages/browser/BrowserPackage';
 import { PROVIDERS } from '~utils';
-import { type Accessor, type Context, createContext, createEffect, createSignal, on, onMount, type ParentProps, type Setter, useContext } from 'solid-js';
+import { type Accessor, type Context, createContext, createEffect, createResource, createSignal, on, onMount, type ParentProps, type Resource, type Setter, useContext } from 'solid-js';
 import { ChooseClusterModal, useRecentCluster } from './useCluster';
 import { tryResult } from './useCommand';
 
@@ -27,14 +27,22 @@ interface BrowserControllerType {
 	setPackageType: Setter<PackageType>;
 
 	popularPackages: Accessor<PopularPackages | undefined>;
-	featuredPackage: Accessor<ManagedPackage | undefined>;
+	featuredPackage: Resource<FeaturedPackage[]>;
 };
 
 const BrowserContext = createContext() as Context<BrowserControllerType>;
 
 export function BrowserProvider(props: ParentProps) {
 	const [popularPackages, setPopularPackages] = createSignal<PopularPackages | undefined>();
-	const [featuredPackage, setFeaturedPackage] = createSignal<ManagedPackage | undefined>();
+	const [featuredPackage] = createResource(async () => {
+		try {
+			return await tryResult(bridge.commands.getFeaturedPackages);
+		}
+		catch (e) {
+			console.error('Failed to fetch featured packages', e);
+			return [];
+		}
+	});
 
 	// Used for the current "Browser Mode". It'll only show packages of the selected type
 	const [packageType, setPackageType] = createSignal<PackageType>('mod');
@@ -139,13 +147,6 @@ export function BrowserProvider(props: ParentProps) {
 		}, {} as PopularPackages);
 
 		setPopularPackages(popularPackages);
-
-		// TODO: Better algorithm for selecting a featured package
-		const firstPackage = popularPackages.Modrinth[0] || popularPackages.Curseforge[0];
-		if (firstPackage !== undefined) {
-			const featuredPackage = await tryResult(() => bridge.commands.getProviderPackage('Modrinth', firstPackage.project_id));
-			setFeaturedPackage(featuredPackage);
-		}
 	});
 
 	createEffect(() => {

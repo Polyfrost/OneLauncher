@@ -5,13 +5,15 @@
 use std::collections::HashMap;
 
 use modrinth::{Facet, FacetOperation};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::package::content::modrinth::FacetBuilder;
 use crate::store::{Author, PackageBody, ProviderSearchResults};
+use crate::utils::http::fetch_json;
 use crate::utils::pagination::Pagination;
-use crate::Result;
+use crate::{Result, State};
 
 mod curseforge;
 mod modrinth;
@@ -216,6 +218,29 @@ impl Providers {
 				.collect()
 		})
 	}
+}
+
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FeaturedPackage {
+	pub package_type: PackageType,
+	pub provider: Providers,
+	pub id: String,
+	pub title: String,
+	pub description: String,
+	pub thumbnail: String,
+	pub oneconfig: bool,
+}
+
+pub async fn get_featured_packages() -> Result<Vec<FeaturedPackage>> {
+	let state = State::get().await?;
+	fetch_json(
+		Method::GET,
+		crate::constants::FEATURED_PACKAGES_URL,
+		None,
+		None,
+		&state.fetch_semaphore
+	).await
 }
 
 fn build_facets(

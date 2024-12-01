@@ -42,85 +42,85 @@ export default defineConfig({
 		},
 
 		colors: {
-			white: 'rgba(var(--clr-white), <alpha-value>)',
-			black: 'rgba(var(--clr-black), <alpha-value>)',
+			white: 'rgba(var(--clr-white))',
+			black: 'rgba(var(--clr-black))',
 
-			border: 'rgba(var(--clr-border), <alpha-value>)',
+			border: 'rgba(var(--clr-border))',
 
 			fg: {
 				primary: {
-					DEFAULT: 'rgba(var(--clr-fg-primary), <alpha-value>)',
-					hover: 'rgba(var(--clr-fg-primary-hover), <alpha-value>)',
-					pressed: 'rgba(var(--clr-fg-primary-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-fg-primary-disabled), <alpha-value>)',
+					DEFAULT: 'rgba(var(--clr-fg-primary))',
+					hover: 'rgba(var(--clr-fg-primary-hover))',
+					pressed: 'rgba(var(--clr-fg-primary-pressed))',
+					disabled: 'rgba(var(--clr-fg-primary-disabled))',
 				},
 				secondary: {
-					DEFAULT: 'rgba(var(--clr-fg-secondary), <alpha-value>)',
-					hover: 'rgba(var(--clr-fg-secondary-hover), <alpha-value>)',
-					pressed: 'rgba(var(--clr-fg-secondary-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-fg-secondary-disabled), <alpha-value>)',
+					DEFAULT: 'rgba(var(--clr-fg-secondary))',
+					hover: 'rgba(var(--clr-fg-secondary-hover))',
+					pressed: 'rgba(var(--clr-fg-secondary-pressed))',
+					disabled: 'rgba(var(--clr-fg-secondary-disabled))',
 				},
 			},
 
 			brand: {
-				DEFAULT: 'rgba(var(--clr-brand), <alpha-value>)',
-				hover: 'rgba(var(--clr-brand-hover), <alpha-value>)',
-				pressed: 'rgba(var(--clr-brand-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-brand-disabled), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-brand))',
+				hover: 'rgba(var(--clr-brand-hover))',
+				pressed: 'rgba(var(--clr-brand-pressed))',
+				disabled: 'rgba(var(--clr-brand-disabled))',
 			},
 
 			onbrand: {
-				DEFAULT: 'rgba(var(--clr-onbrand), <alpha-value>)',
-				hover: 'rgba(var(--clr-onbrand-hover), <alpha-value>)',
-				pressed: 'rgba(var(--clr-onbrand-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-onbrand-disabled), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-onbrand))',
+				hover: 'rgba(var(--clr-onbrand-hover))',
+				pressed: 'rgba(var(--clr-onbrand-pressed))',
+				disabled: 'rgba(var(--clr-onbrand-disabled))',
 			},
 
 			danger: {
-				DEFAULT: 'rgba(var(--clr-danger), <alpha-value>)',
-				hover: 'rgba(var(--clr-danger-hover), <alpha-value>)',
-				pressed: 'rgba(var(--clr-danger-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-danger-disabled), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-danger))',
+				hover: 'rgba(var(--clr-danger-hover))',
+				pressed: 'rgba(var(--clr-danger-pressed))',
+				disabled: 'rgba(var(--clr-danger-disabled))',
 			},
 
 			success: {
-				DEFAULT: 'rgba(var(--clr-success), <alpha-value>)',
-				hover: 'rgba(var(--clr-success-hover), <alpha-value>)',
-				pressed: 'rgba(var(--clr-success-pressed), <alpha-value>)',
-				disabled: 'rgba(var(--clr-success-disabled), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-success))',
+				hover: 'rgba(var(--clr-success-hover))',
+				pressed: 'rgba(var(--clr-success-pressed))',
+				disabled: 'rgba(var(--clr-success-disabled))',
 			},
 
 			component: {
 				bg: {
-					DEFAULT: 'rgba(var(--clr-component-bg), <alpha-value>)',
-					hover: 'rgba(var(--clr-component-bg-hover), <alpha-value>)',
-					pressed: 'rgba(var(--clr-component-bg-pressed), <alpha-value>)',
-					disabled: 'rgba(var(--clr-component-bg-disabled), <alpha-value>)',
+					DEFAULT: 'rgba(var(--clr-component-bg))',
+					hover: 'rgba(var(--clr-component-bg-hover))',
+					pressed: 'rgba(var(--clr-component-bg-pressed))',
+					disabled: 'rgba(var(--clr-component-bg-disabled))',
 				},
 			},
 
 			code: {
-				info: 'rgba(var(--clr-code-info), <alpha-value>)',
-				warn: 'rgba(var(--clr-code-warn), <alpha-value>)',
-				error: 'rgba(var(--clr-code-error), <alpha-value>)',
-				debug: 'rgba(var(--clr-code-debug), <alpha-value>)',
-				trace: 'rgba(var(--clr-code-trace), <alpha-value>)',
+				info: 'rgba(var(--clr-code-info))',
+				warn: 'rgba(var(--clr-code-warn))',
+				error: 'rgba(var(--clr-code-error))',
+				debug: 'rgba(var(--clr-code-debug))',
+				trace: 'rgba(var(--clr-code-trace))',
 			},
 
 			link: {
-				DEFAULT: 'rgba(var(--clr-link), <alpha-value>)',
-				hover: 'rgba(var(--clr-link-hover), <alpha-value>)',
-				pressed: 'rgba(var(--clr-link-pressed), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-link))',
+				hover: 'rgba(var(--clr-link-hover))',
+				pressed: 'rgba(var(--clr-link-pressed))',
 				disabled: 'rgba(var(--clr-link-disabled))',
 			},
 
 			page: {
-				DEFAULT: 'rgba(var(--clr-page), <alpha-value>)',
-				elevated: 'rgba(var(--clr-page-elevated), <alpha-value>)',
-				pressed: 'rgba(var(--clr-page-pressed), <alpha-value>)',
+				DEFAULT: 'rgba(var(--clr-page))',
+				elevated: 'rgba(var(--clr-page-elevated))',
+				pressed: 'rgba(var(--clr-page-pressed))',
 			},
 
-			secondary: 'rgba(var(--clr-secondary), <alpha-value>)',
+			secondary: 'rgba(var(--clr-secondary))',
 		},
 		extend: {
 			height: {

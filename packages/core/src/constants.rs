@@ -44,6 +44,8 @@ pub const CURSEFORGE_API_KEY: &str = "$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kp
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 /// Our metadata API base url.
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
+/// Featured packages API url.
+pub const FEATURED_PACKAGES_URL: &str = "https://polyfrost.org/meta/onelauncher/featured.json";
 /// <https://mclo.gs>/ API base url.
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 

@@ -1,4 +1,4 @@
-import type { ManagedPackage, Providers } from '@onelauncher/client/bindings';
+import type { Providers } from '@onelauncher/client/bindings';
 import { ChevronRightIcon } from '@untitled-theme/icons-solid';
 import OneConfigLogo from '~assets/logos/oneconfig.svg?component-solid';
 import Button from '~ui/components/base/Button';
@@ -21,7 +21,7 @@ function BrowserMain() {
 		<BrowserContent>
 			<div class="flex flex-col gap-8">
 				<Show when={browser.popularPackages() !== undefined && browser.featuredPackage() !== undefined}>
-					<Featured package={browser.featuredPackage()!} />
+					<Featured package={browser.featuredPackage()! as unknown as FeaturedProps['package']} />
 
 					<For each={Object.entries(browser.popularPackages()!)}>
 						{([provider, results]) => (
@@ -40,7 +40,13 @@ function BrowserMain() {
 }
 
 interface FeaturedProps {
-	package: ManagedPackage;
+	package: {
+		title: string;
+		description: string;
+		id: string;
+		provider: Providers;
+		oneconfig: boolean;
+	};
 }
 
 function Featured(props: FeaturedProps) {

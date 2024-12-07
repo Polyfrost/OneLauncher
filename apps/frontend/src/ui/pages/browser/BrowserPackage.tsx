@@ -137,8 +137,8 @@ export default BrowserPackage;
 
 function BrowserSidebar(props: { package: ManagedPackage }) {
 	const [authors] = useCommand(() => props.package, () => bridge.commands.getProviderAuthors(props.package.provider, props.package.author));
-	const createdAt = () => new Date(props.package.created);
-	const updatedAt = () => new Date(props.package.updated);
+	const createdAt = createMemo(() => props.package.created ? new Date(props.package.created) : null);
+	const updatedAt = createMemo(() => props.package.updated ? new Date(props.package.updated) : null);
 	const promptOpen = usePromptOpener();
 
 	return (
@@ -166,16 +166,18 @@ function BrowserSidebar(props: { package: ManagedPackage }) {
 					<p class="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{props.package.description}</p>
 
 					<div class="flex flex-row gap-4 text-xs">
-						<div class="flex flex-row items-center gap-2">
-							<Download01Icon class="h-4 w-4" />
-							{abbreviateNumber(props.package.downloads)}
-						</div>
-
-						<Show when={props.package.followers > 0}>
+						<Show when={props.package.provider !== 'SkyClient'}>
 							<div class="flex flex-row items-center gap-2">
-								<HeartIcon class="h-4 w-4" />
-								{abbreviateNumber(props.package.followers)}
+								<Download01Icon class="h-4 w-4" />
+								{abbreviateNumber(props.package.downloads)}
 							</div>
+
+							<Show when={props.package.followers > 0}>
+								<div class="flex flex-row items-center gap-2">
+									<HeartIcon class="h-4 w-4" />
+									{abbreviateNumber(props.package.followers)}
+								</div>
+							</Show>
 						</Show>
 					</div>
 				</div>
@@ -235,25 +237,29 @@ function BrowserSidebar(props: { package: ManagedPackage }) {
 					</div>
 				</Show>
 
-				<Tooltip text={createdAt().toLocaleString()}>
-					<div class="flex flex-row items-center gap-x-1">
-						<CalendarIcon class="h-3 min-w-3 w-3" />
-						Created
-						<span class="text-fg-primary font-medium">
-							{formatAsRelative(createdAt().getTime(), 'en', 'long')}
-						</span>
-					</div>
-				</Tooltip>
+				<Show when={createdAt() !== null}>
+					<Tooltip text={createdAt()!.toLocaleString()}>
+						<div class="flex flex-row items-center gap-x-1">
+							<CalendarIcon class="h-3 min-w-3 w-3" />
+							Created
+							<span class="text-fg-primary font-medium">
+								{formatAsRelative(createdAt()!.getTime(), 'en', 'long')}
+							</span>
+						</div>
+					</Tooltip>
+				</Show>
 
-				<Tooltip text={updatedAt().toLocaleString()}>
-					<div class="flex flex-row items-center gap-x-1">
-						<ClockRewindIcon class="h-3 min-w-3 w-3" />
-						Last Updated
-						<span class="text-fg-primary font-medium">
-							{formatAsRelative(updatedAt().getTime(), 'en', 'long')}
-						</span>
-					</div>
-				</Tooltip>
+				<Show when={updatedAt() !== null}>
+					<Tooltip text={updatedAt()!.toLocaleString()}>
+						<div class="flex flex-row items-center gap-x-1">
+							<ClockRewindIcon class="h-3 min-w-3 w-3" />
+							Last Updated
+							<span class="text-fg-primary font-medium">
+								{formatAsRelative(updatedAt()!.getTime(), 'en', 'long')}
+							</span>
+						</div>
+					</Tooltip>
+				</Show>
 			</div>
 
 		</div>

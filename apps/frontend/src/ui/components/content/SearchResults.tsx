@@ -160,16 +160,18 @@ function PackageItem(props: SearchResult & { provider: Providers; row?: boolean 
 				<p class="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{props.description}</p>
 
 				<div class="flex flex-row gap-4 text-xs">
-					<div class="flex flex-row items-center gap-2">
-						<Download01Icon class="h-4 w-4" />
-						{abbreviateNumber(props.downloads)}
-					</div>
-
-					<Show when={props.follows > 0}>
+					<Show when={props.provider !== 'SkyClient'}>
 						<div class="flex flex-row items-center gap-2">
-							<HeartIcon class="h-4 w-4" />
-							{abbreviateNumber(props.follows)}
+							<Download01Icon class="h-4 w-4" />
+							{abbreviateNumber(props.downloads)}
 						</div>
+
+						<Show when={props.follows > 0}>
+							<div class="flex flex-row items-center gap-2">
+								<HeartIcon class="h-4 w-4" />
+								{abbreviateNumber(props.follows)}
+							</div>
+						</Show>
 					</Show>
 				</div>
 			</div>

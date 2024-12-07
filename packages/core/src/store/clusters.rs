@@ -376,7 +376,12 @@ impl Loader {
 	}
 
 	#[must_use]
-	pub fn from_string(val: &str) -> Self {
+	pub fn from_string(val: String) -> Self {
+		Self::from_str(val.as_str())
+	}
+
+	#[must_use]
+	pub fn from_str(val: &str) -> Self {
 		match val {
 			"forge" => Self::Forge,
 			"fabric" => Self::Fabric,

@@ -7,7 +7,7 @@ import ProviderIcon from '~ui/components/content/ProviderIcon';
 import useBrowser from '~ui/hooks/useBrowser';
 import { PROVIDERS } from '~utils';
 import { browserCategories } from '~utils/browser';
-import { For, type JSX, type ParentProps } from 'solid-js';
+import { createMemo, For, type JSX, type ParentProps, Show } from 'solid-js';
 import BrowserMain from './BrowserMain';
 import BrowserPackage from './BrowserPackage';
 import BrowserSearch from './BrowserSearch';
@@ -87,23 +87,29 @@ function BrowserCategories() {
 			browser.search();
 	};
 
+	const categories = createMemo(() => {
+		return browserCategories.byPackageType(browser.packageType(), browser.searchQuery().provider);
+	});
+
 	return (
 		<div class="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
 			<div />
 			<div class="flex flex-col gap-y-6">
-				<div class="flex flex-col gap-y-2">
-					<h6 class="my-1">Categories</h6>
-					<For each={browserCategories.byPackageType(browser.packageType(), browser.searchQuery().provider)}>
-						{category => (
-							<p
-								class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover line-height-snug ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
-								onClick={() => toggleCategory(category.id)}
-							>
-								{category.display}
-							</p>
-						)}
-					</For>
-				</div>
+				<Show when={categories().length > 0}>
+					<div class="flex flex-col gap-y-2">
+						<h6 class="my-1">Categories</h6>
+						<For each={categories()}>
+							{category => (
+								<p
+									class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover line-height-snug ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
+									onClick={() => toggleCategory(category.id)}
+								>
+									{category.display}
+								</p>
+							)}
+						</For>
+					</div>
+				</Show>
 			</div>
 		</div>
 	);

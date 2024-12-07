@@ -1,6 +1,7 @@
 import type { ManagedPackage, Providers } from '@onelauncher/client/bindings';
 import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
 import ModrinthImage from '~assets/logos/modrinth.svg?component-solid';
+import SkyClientImage from '~assets/logos/skyclient.png';
 import { type Component, type JSX, Match, Show, splitProps, Switch } from 'solid-js';
 
 export function getProviderLogoElement(provider: ManagedPackage | Providers): string | Component {
@@ -10,6 +11,7 @@ export function getProviderLogoElement(provider: ManagedPackage | Providers): st
 	const mapping: Record<Lowercase<Providers>, string | Component> = {
 		modrinth: ModrinthImage,
 		curseforge: CurseforgeIcon,
+		skyclient: SkyClientImage,
 	};
 
 	return mapping[providerName];

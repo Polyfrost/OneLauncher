@@ -146,8 +146,8 @@ impl From<CurseforgePackage> for ManagedPackage {
 			game_versions: vec![],
 			loaders: vec![],
 			icon_url: package.logo.and_then(|l| Some(l.url)),
-			created: package.date_created,
-			updated: package.date_modified,
+			created: Some(package.date_created),
+			updated: Some(package.date_modified),
 			client: crate::store::PackageSide::Unknown,
 			server: crate::store::PackageSide::Unknown,
 			downloads: package.download_count,
@@ -193,11 +193,10 @@ impl Into<SearchResult> for CurseforgePackage {
 			downloads: self.download_count,
 			icon_url: self.logo.map_or(String::new(), |l| l.url),
 			categories: vec![], // TODO
-			display_categories: vec![],
 			versions: vec![],
 			follows: self.thumbs_up_count,
-			date_created: self.date_created,
-			date_modified: self.date_modified,
+			date_created: Some(self.date_created),
+			date_modified: Some(self.date_modified),
 		}
 	}
 }

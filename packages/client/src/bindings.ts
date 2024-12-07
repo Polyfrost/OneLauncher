@@ -857,7 +857,7 @@ export interface ManagedDependency { version_id: string | null; package_id: stri
 /**
  * Universal metadata for any managed package from a Mod distribution platform.
  */
-export interface ManagedPackage { provider: Providers; id: string; package_type: PackageType; title: string; description: string; body: PackageBody; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; downloads: bigint; followers: number; categories: string[]; optional_categories: string[] | null; license: License | null; author: Author; is_archived: boolean };
+export interface ManagedPackage { provider: Providers; id: string; package_type: PackageType; title: string; description: string; body: PackageBody; main: string; versions: string[]; game_versions: string[]; loaders: Loader[]; icon_url: string | null; created: string | null; updated: string | null; client: PackageSide; server: PackageSide; downloads: bigint; followers: number; categories: string[]; optional_categories: string[] | null; license: License | null; author: Author; is_archived: boolean };
 /**
  * Universal metadata for any managed user from a Mod distribution platform.
  */
@@ -989,12 +989,12 @@ export interface ProviderSearchResults { provider: Providers; results: SearchRes
 /**
  * Providers for content packages
  */
-export type Providers = 'Modrinth' | 'Curseforge';
+export type Providers = 'Modrinth' | 'Curseforge' | 'SkyClient';
 /**
  * Global Minecraft resolution.
  */
 export type Resolution = [number, number];
-export interface SearchResult { slug: string; title: string; description: string; categories?: string[]; client_side: PackageSide; server_side: PackageSide; project_type: PackageType; downloads: bigint; icon_url?: string; project_id: string; author: string; display_categories?: string[]; versions: string[]; follows: number; date_created: string; date_modified: string };
+export interface SearchResult { slug: string; title: string; description: string; categories?: string[]; client_side: PackageSide; server_side: PackageSide; project_type: PackageType; downloads: bigint; icon_url?: string; project_id: string; author: string; versions: string[]; follows: number; date_created: string | null; date_modified: string | null };
 /**
  * A global settings state for the launcher.
  */

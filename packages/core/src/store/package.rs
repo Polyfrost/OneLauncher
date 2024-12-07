@@ -148,12 +148,10 @@ pub struct SearchResult {
 	pub icon_url: String,
 	pub project_id: String,
 	pub author: String,
-	#[serde(default)]
-	pub display_categories: Vec<String>,
 	pub versions: Vec<String>,
 	pub follows: u32,
-	pub date_created: DateTime<Utc>,
-	pub date_modified: DateTime<Utc>,
+	pub date_created: Option<DateTime<Utc>>,
+	pub date_modified: Option<DateTime<Utc>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -719,8 +717,8 @@ pub struct ManagedPackage {
 	pub loaders: Vec<Loader>,
 	pub icon_url: Option<String>,
 
-	pub created: DateTime<Utc>,
-	pub updated: DateTime<Utc>,
+	pub created: Option<DateTime<Utc>>,
+	pub updated: Option<DateTime<Utc>>,
 	pub client: PackageSide,
 	pub server: PackageSide,
 	pub downloads: u64,

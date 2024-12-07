@@ -174,13 +174,14 @@ export function getPackageUrl(pkg: ManagedPackage): string {
 
 			return `https://www.curseforge.com/minecraft/${packageTypeMapping[pkg.package_type]}/${pkg.main}`;
 		},
+		SkyClient: () => 'TODO',
 	};
 
 	return mapping[pkg.provider]();
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
-export const PROVIDERS: Providers[] = ['Modrinth', 'Curseforge'] as const;
+export const PROVIDERS: Providers[] = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
 export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 export const LAUNCHER_IMPORT_TYPES: ImportType[] = [
 	'PrismLauncher',

@@ -83,8 +83,22 @@ macro_rules! collect_commands {
 			set_window_style,
 			get_program_info,
 			get_featured_packages,
+			get_zulu_packages,
+			install_java_from_package,
 		]
 	}};
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_zulu_packages() -> Result<Vec<onelauncher::java::JavaZuluPackage>, String> {
+	Ok(onelauncher::java::get_zulu_packages().await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn install_java_from_package(download: onelauncher::java::JavaZuluPackage) -> Result<std::path::PathBuf, String> {
+	Ok(onelauncher::java::install_java_from_package(download).await?)
 }
 
 #[specta::specta]

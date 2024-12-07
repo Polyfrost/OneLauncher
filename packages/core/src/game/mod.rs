@@ -112,7 +112,7 @@ pub async fn install_minecraft(
 		if let Some(java_version) = java_version_from_cluster(cluster, &version_info).await? {
 			(std::path::PathBuf::from(java_version.path), false)
 		} else {
-			(crate::api::java::install_java(key).await?, true)
+			(crate::api::java::install_java_from_major(key).await?, true)
 		};
 
 	let java_version = crate::api::java::check_java(java_version.clone())

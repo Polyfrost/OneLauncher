@@ -534,6 +534,26 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async getZuluPackages(): Promise<Result<JavaZuluPackage[], string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_zulu_packages') };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async installJavaFromPackage(download: JavaZuluPackage): Promise<Result<string, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('install_java_from_package', { download }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 };
 
 /** user-defined events */
@@ -783,6 +803,7 @@ export interface JavaVersion { version: string; arch: string; path: string };
  * A `HashMap` of all located and installed available Java versions
  */
 export type JavaVersions = { [key in string]: JavaVersion };
+export interface JavaZuluPackage { download_url: string; name: string; java_version: number[] };
 export interface License { id?: string; name?: string; url?: string | null };
 /**
  * Available mod loaders to be used for a cluster.

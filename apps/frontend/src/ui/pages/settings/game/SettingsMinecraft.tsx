@@ -1,15 +1,18 @@
-import type { JavaVersion, JavaVersions, Memory, Resolution } from '@onelauncher/client/bindings';
-import { ActivityIcon, CpuChip01Icon, Database01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
+import type { JavaVersion, JavaVersions, JavaZuluPackage, Memory, Resolution } from '@onelauncher/client/bindings';
+import { ActivityIcon, CpuChip01Icon, Database01Icon, Download01Icon, EyeIcon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, VariableIcon, XIcon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
+import Dropdown from '~ui/components/base/Dropdown';
 import TextField from '~ui/components/base/TextField';
 import Toggle from '~ui/components/base/Toggle';
-import Modal, { createModal } from '~ui/components/overlay/Modal';
+import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import BaseSettingsRow, { type SettingsRowProps } from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
+import { tryResult } from '~ui/hooks/useCommand';
 import useSettings from '~ui/hooks/useSettings';
 import { asEnvVariables } from '~utils';
-import { type Accessor, createSignal, For, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
+import { type Accessor, createMemo, createResource, createSignal, For, onMount, type Setter, Show, splitProps, untrack } from 'solid-js';
 
 function SettingsMinecraft() {
 	return (
@@ -298,38 +301,7 @@ export function JvmSettings(props: {
 	javaArgs: CreateSetting<string[]>;
 	envVars: CreateSetting<[string, string][]>;
 }) {
-	const modal = createModal(controller => (
-		<Modal.Simple
-			buttons={[
-				<Button
-					buttonStyle="secondary"
-					children="Close"
-					onClick={controller.hide}
-				/>,
-			]}
-			title="Java Versions"
-			{...controller}
-		>
-			<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
-				<For each={Object.entries(props.javaVersions?.get() ?? {}).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version))}>
-					{([version, meta]) => {
-						const prettified = version.toLowerCase().replaceAll('_', ' ');
-						return (
-							<>
-								<span class="capitalize">{prettified}</span>
-								<TextField
-									onValidSubmit={(value) => {
-										props.javaVersions?.set({ ...props.javaVersions.get(), [version]: { ...meta, path: value } });
-									}}
-									value={meta.path}
-								/>
-							</>
-						);
-					}}
-				</For>
-			</div>
-		</Modal.Simple>
-	));
+	const modal = createModal(controller => <JavaVersionModal {...controller} javaVersions={props.javaVersions} />);
 
 	return (
 		<>
@@ -469,3 +441,101 @@ function PageSettings() {
 }
 
 export default SettingsMinecraft;
+
+function JavaVersionModal(props: ModalProps & {
+	javaVersions: CreateSetting<JavaVersions> | undefined;
+}) {
+	const [selectedPackageIndex, setSelectedPackageIndex] = createSignal<number>(-1);
+
+	const [zuluPackages] = createResource(async () => {
+		try {
+			return await tryResult(bridge.commands.getZuluPackages);
+		}
+		catch (e) {
+			console.error(e);
+			return [];
+		}
+	});
+
+	const foundVersions = createMemo(() => {
+		return zuluPackages()?.map(pkg => pkg.java_version.join('.')) ?? [];
+	});
+
+	const setPackage = (version: number, pkg: JavaVersion) => {
+		props.javaVersions?.set({
+			...props.javaVersions?.get(),
+			[`JAVA_${version}`]: pkg,
+		});
+	};
+
+	const download = async (pkg: JavaZuluPackage) => {
+		const path = await tryResult(() => bridge.commands.installJavaFromPackage(pkg));
+		if (path)
+			setPackage(pkg.java_version[0]!, {
+				version: pkg.java_version.join('.'),
+				path,
+				arch: '',
+			});
+	};
+
+	return (
+		<Modal.Simple
+			buttons={[
+				<Button
+					buttonStyle="secondary"
+					children="Close"
+					onClick={props.hide}
+				/>,
+			]}
+			title="Java Versions"
+			{...props}
+		>
+			<div class="flex flex-col gap-6">
+				<div class="flex flex-col gap-2">
+					<h4>Default Java Paths</h4>
+					<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
+						<For each={Object.entries(props.javaVersions?.get() ?? {}).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version))}>
+							{([version, meta]) => {
+								const major = version.toLowerCase().replaceAll('_', ' ').replaceAll('java', '');
+
+								return (
+									<>
+										<span class="capitalize">
+											Java
+											{major}
+										</span>
+										<TextField
+											onValidSubmit={(value) => {
+												setPackage(Number.parseInt(major), { ...meta, path: value });
+											}}
+											value={meta.path}
+										/>
+									</>
+								);
+							}}
+						</For>
+					</div>
+				</div>
+
+				<div class="flex flex-col gap-2">
+					<h4>Download Java</h4>
+					<div class="w-full flex flex-row gap-2">
+						<Dropdown class="w-full" onChange={setSelectedPackageIndex}>
+							<For each={foundVersions()}>
+								{version => (
+									<Dropdown.Row>{version}</Dropdown.Row>
+								)}
+							</For>
+						</Dropdown>
+
+						<Button
+							children="Download"
+							iconLeft={<Download01Icon />}
+							onClick={() => download(zuluPackages()![selectedPackageIndex()]!)}
+						/>
+					</div>
+				</div>
+			</div>
+		</Modal.Simple>
+	);
+}

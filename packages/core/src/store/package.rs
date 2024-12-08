@@ -200,7 +200,7 @@ pub struct Packages {
 }
 
 impl Packages {
-	pub async fn initialize(clusters: &Clusters) -> Self {
+	pub fn initialize(clusters: &Clusters) -> Self {
 		let mut this = Self { managers: HashMap::new() };
 
 		// TODO: This should probably not clone and store the cluster path in like 2 areas

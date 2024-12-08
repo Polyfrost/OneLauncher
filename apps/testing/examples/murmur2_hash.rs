@@ -10,5 +10,5 @@ fn main() {
 
 	dbg!(hash);
 	dbg!(hash as u64);
-	assert_eq!(hash, 661461369);
+	assert_eq!(hash, 661_461_369);
 }

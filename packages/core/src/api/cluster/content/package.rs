@@ -36,8 +36,8 @@ pub async fn find_managed_version(
 	Ok(versions.0
 		.iter()
 		.find(|v| {
-			if package_version.is_some() {
-				return v.id == *package_version.as_ref().unwrap();
+			if let Some(package_version) = package_version.as_ref() {
+				return v.id == *package_version;
 			}
 
 			let check_game_version = game_version

@@ -352,7 +352,7 @@ impl Into<ManagedVersion> for ModFile {
 			is_available: self.is_available && files.len() > 0,
 			files,
 			game_versions: game_versions,
-			published: self.file_date,
+			published: Some(self.file_date),
 			version_display: self.display_name,
 			version_type: self.release_type.into(),
 		}

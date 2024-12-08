@@ -865,7 +865,7 @@ export interface ManagedUser { id: string; username: string; url?: string | null
 /**
  * Universal managed package version of a package.
  */
-export interface ManagedVersion { id: string; package_id: string; author: string; name: string; featured: boolean; version_display: string; changelog: string; changelog_url: string | null; published: string; downloads: number; version_type: ManagedVersionReleaseType; files: ManagedVersionFile[]; is_available: boolean; deps: ManagedDependency[]; game_versions: string[]; loaders: Loader[] };
+export interface ManagedVersion { id: string; package_id: string; author: string; name: string; featured: boolean; version_display: string; changelog: string; changelog_url: string | null; published: string | null; downloads: number; version_type: ManagedVersionReleaseType; files: ManagedVersionFile[]; is_available: boolean; deps: ManagedDependency[]; game_versions: string[]; loaders: Loader[] };
 /**
  * Universal interface for managed package files.
  */

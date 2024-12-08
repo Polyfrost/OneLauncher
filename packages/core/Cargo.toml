@@ -51,6 +51,7 @@ dirs = { workspace = true }
 sha1_smol = { workspace = true }
 sha2 = { workspace = true }
 murmur2 = { workspace = true }
+md5 = { workspace = true }
 async_zip = { workspace = true }
 discord-rich-presence = { workspace = true }
 regex = { workspace = true }

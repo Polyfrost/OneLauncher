@@ -177,7 +177,7 @@ impl From<ModrinthVersion> for ManagedVersion {
 			changelog: value.changelog,
 			changelog_url: value.changelog_url,
 
-			published: value.date_published,
+			published: Some(value.date_published),
 			downloads: value.downloads,
 			version_type: ManagedVersionReleaseType::from(value.version_type),
 

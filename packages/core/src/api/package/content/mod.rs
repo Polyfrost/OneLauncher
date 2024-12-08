@@ -3,6 +3,7 @@
 //! Utilities for searching and downloading content packages to `OneLauncher`.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use modrinth::{Facet, FacetOperation};
 use reqwest::Method;
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::data::{Loader, ManagedPackage, ManagedUser, ManagedVersion, PackageType};
 use crate::package::content::modrinth::FacetBuilder;
 use crate::store::{Author, PackageBody, ProviderSearchResults};
+use crate::utils::crypto;
 use crate::utils::http::fetch_json;
 use crate::utils::pagination::Pagination;
 use crate::{Result, State};
@@ -178,7 +180,10 @@ impl Providers {
 				(data.0.into_iter().map(Into::into).collect(), data.1)
 			}
 
-			Self::SkyClient => todo!(),
+			Self::SkyClient => {
+				let data = skyclient::get_all_versions(project_id, game_versions, loaders, page, page_size).await?;
+				(data.0.into_iter().map(Into::into).collect(), data.1)
+			},
 		})
 	}
 
@@ -194,7 +199,7 @@ impl Providers {
 				.into_iter()
 				.map(Into::into)
 				.collect(),
-			Self::SkyClient => todo!(),
+			Self::SkyClient => skyclient::get_versions(versions).await?,
 		})
 	}
 
@@ -230,8 +235,19 @@ impl Providers {
 				.into_iter()
 				.map(|(hash, version)| (hash, version.into()))
 				.collect(),
-			Self::SkyClient => todo!(),
+			Self::SkyClient => skyclient::get_versions_by_hashes(hashes).await?,
 		})
+	}
+
+	pub fn hash_file(&self, path: &PathBuf) -> Result<String> {
+		match self {
+			Providers::Modrinth => crypto::sha1_file(path),
+			Providers::SkyClient => crypto::md5_file(path),
+			Providers::Curseforge => {
+				let hash = crypto::murmur2_file(path)?;
+				Ok(hash.to_string())
+			},
+		}
 	}
 }
 

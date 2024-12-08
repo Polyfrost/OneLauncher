@@ -18,6 +18,23 @@ pub fn sha1_files(files: Vec<&PathBuf>) -> Vec<Option<String>> {
 	hashes
 }
 
+pub fn mda5(bytes: &[u8]) -> String {
+	let digest = md5::compute(bytes);
+	format!("{:x}", digest)
+}
+
+pub fn md5_file(file: &PathBuf) -> Result<String> {
+	Ok(mda5(&std::fs::read(file)?))
+}
+
+pub fn md5_files(files: Vec<&PathBuf>) -> Vec<Option<String>> {
+	let mut hashes = Vec::new();
+	for file in files {
+		hashes.push(md5_file(file).ok());
+	}
+	hashes
+}
+
 const CURSEFORGE_FINGERPRINT_SEED: u32 = 1;
 pub fn murmur2(bytes: &[u8]) -> u32 {
 	let normalized = normalize_byte_array(bytes);

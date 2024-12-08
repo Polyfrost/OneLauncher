@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{OnceCell, RwLock};
 
-use crate::{data::{Loader, ManagedPackage, ManagedUser, ManagedVersion}, store::{ProviderSearchResults, SearchResult}, utils::{http, pagination::Pagination}, Result, State};
+use crate::{data::{Loader, ManagedPackage, ManagedUser, ManagedVersion}, store::{ManagedVersionFile, ProviderSearchResults, SearchResult}, utils::{http, pagination::Pagination}, Result, State};
 
 async fn fetch<T: DeserializeOwned>(url: &str) -> Result<T> {
 	let state = State::get().await?;
@@ -143,6 +143,37 @@ pub struct SkyClientModVersion {
     pub mod_id: Option<String>,
 }
 
+fn get_managed_version(m: &SkyClientMod, v: &SkyClientModVersion) -> ManagedVersion {
+	let mut map = HashMap::new();
+	map.insert(String::from("md5"), v.hash.clone());
+
+	ManagedVersion {
+		id: v.version.clone(),
+		package_id: m.id.clone(),
+		author: m.creator.clone(),
+		changelog_url: None,
+		changelog: String::new(),
+		deps: vec![],
+		downloads: 0,
+		featured: false,
+		files: vec![ManagedVersionFile {
+			file_name: v.file.clone(),
+			url: v.url.clone(),
+			file_type: None,
+			hashes: map,
+			primary: true,
+			size: 0,
+		}],
+		game_versions: v.game_versions.clone(),
+		is_available: true,
+		loaders: v.loaders.iter().map(|l| Loader::from_string(l.to_owned())).collect(),
+		name: format!("{} v{}", m.display, v.version),
+		published: None,
+		version_display: v.version.clone(),
+		version_type: crate::store::ManagedVersionReleaseType::Release,
+	}
+}
+
 pub async fn get(id: &str) -> Result<SkyClientMod> {
 	let store = SkyClientStore::get().await?;
 
@@ -181,45 +212,97 @@ pub async fn get_multiple(slug_or_ids: &[String]) -> Result<Vec<SkyClientMod>> {
 	Ok(results)
 }
 
-// pub async fn get_all_versions(
-// 	project_id: &str,
-// 	game_versions: Option<Vec<String>>,
-// 	loaders: Option<Vec<Loader>>,
-// 	page: Option<u32>,
-// 	page_size: Option<u16>,
-// ) -> Result<(Vec<ManagedVersion>, Pagination)> {
-// 	let store = SkyClientStore::get().await?;
+pub async fn get_all_versions(
+	project_id: &str,
+	game_versions: Option<Vec<String>>,
+	loaders: Option<Vec<Loader>>,
+	page: Option<u32>,
+	page_size: Option<u16>,
+) -> Result<(Vec<ManagedVersion>, Pagination)> {
+	let store = SkyClientStore::get().await?;
 
-// 	let mods = match &store.mods {
-// 		Some(mods) => mods,
-// 		None => return Ok((vec![], Pagination::default()))
-// 	};
+	let mods = match &store.mods {
+		Some(mods) => mods,
+		None => return Ok((vec![], Pagination::default()))
+	};
 
+	let mut pagination = Pagination::default();
+	let mut versions = vec![];
 
-// 	let mut versions = vec![];
+	for m in mods {
+		if m.id == project_id {
+			for v in &m.versions {
+				let mut can_add = true;
 
-// 	for m in mods {
-// 		if m.id == project_id {
-// 			for v in m.versions {
-// 				let mut can_add = true;
+				if let Some(game_versions) = &game_versions {
+					if !game_versions.is_empty() {
+						can_add = v.game_versions.iter().any(|gv| game_versions.contains(gv))
+					}
+				}
 
-// 				if let Some(game_versions) = &game_versions {
-// 					can_add = v.game_versions.iter().any(|gv| game_versions.contains(gv))
-// 				}
+				if can_add {
+					if let Some(loaders) = &loaders {
+						if !loaders.is_empty() {
+							can_add = v.loaders.iter().any(|l| loaders.contains(&Loader::from_string(l.to_owned())))
+						}
+					}
+				}
 
-// 				if can_add {
-// 					if let Some(loaders) = &loaders {
-// 						can_add = v.loaders.iter().any(|l| loaders.contains(&Loader::from_string(l)))
-// 					}
-// 				}
+				if can_add {
+					if page_size.map(|ps| versions.len() < ps as usize).unwrap_or(true) && page.map(|p| p <= pagination.index).unwrap_or(true) {
+						versions.push(get_managed_version(m, v));
+					}
 
-// 				if can_add {
-//
-// 				}
-// 			}
-// 		}
-// 	}
-// }
+					pagination.total_count += 1;
+				}
+			}
+		}
+	}
+
+	Ok((versions, pagination))
+}
+
+pub async fn get_versions(versions: Vec<String>) -> Result<Vec<ManagedVersion>> {
+	let store = SkyClientStore::get().await?;
+
+	let mods = match &store.mods {
+		Some(mods) => mods,
+		None => return Ok(vec![])
+	};
+
+	let mut results = vec![];
+
+	for m in mods {
+		for v in &m.versions {
+			if versions.contains(&v.version) {
+				results.push(get_managed_version(m, v));
+			}
+		}
+	}
+
+	Ok(results)
+}
+
+pub async fn get_versions_by_hashes(hashes: Vec<String>) -> Result<HashMap<String, ManagedVersion>> {
+	let store = SkyClientStore::get().await?;
+
+	let mods = match &store.mods {
+		Some(mods) => mods,
+		None => return Ok(HashMap::new())
+	};
+
+	let mut results = HashMap::new();
+
+	for m in mods {
+		for v in &m.versions {
+			if hashes.contains(&v.hash) {
+				results.insert(v.hash.clone(), get_managed_version(m, v));
+			}
+		}
+	}
+
+	Ok(results)
+}
 
 pub async fn search(
 	query: Option<String>,

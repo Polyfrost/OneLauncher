@@ -11,6 +11,7 @@ use onelauncher_utils::io;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::vec;
 use tokio::fs::DirEntry;
 
 use super::{ClusterPath, Clusters, Directories, PackagePath};
@@ -471,21 +472,21 @@ impl PackageManager {
 
 		// Infer any packages
 		if packages_to_infer.len() > 0 {
-			let not_found = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await;
+			if let Some(not_found) = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await {
+				if let Some(not_found) = infer_provider(Providers::SkyClient, package_type, packages, not_found, crypto::md5_file).await {
+					if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
+						let hash = crypto::murmur2_file(path)?;
+						Ok(hash.to_string())
+					}).await {
+						for path in not_found {
+							tracing::warn!("failed to infer package: {:?}", path);
 
-			if let Some(not_found) = not_found {
-				if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
-					let hash = crypto::murmur2_file(path)?;
-					Ok(hash.to_string())
-				}).await {
-					for path in not_found {
-						tracing::warn!("failed to infer package: {:?}", path);
+							let package_path = PackagePath::new(&path);
+							let meta = PackageMetadata::Unknown;
+							let package = Package::new(&package_path, meta)?;
 
-						let package_path = PackagePath::new(&path);
-						let meta = PackageMetadata::Unknown;
-						let package = Package::new(&package_path, meta)?;
-
-						packages.insert(package_path, package);
+							packages.insert(package_path, package);
+						}
 					}
 				}
 			}
@@ -529,6 +530,49 @@ impl PackageManager {
 	}
 }
 
+// #[tracing::instrument(skip(packages))]
+// async fn infer_packages(
+// 	packages: &mut PackagesMap,
+// 	package_type: PackageType,
+// 	to_infer: HashSet<PathBuf>,
+// ) {
+// 	let infer_order = vec![
+// 		Providers::Modrinth,
+// 		Providers::SkyClient,
+// 		Providers::Curseforge,
+// 	];
+
+
+// 	// if let Some(not_found) = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await {
+// 	// 	if let Some(not_found) = infer_provider(Providers::SkyClient, package_type, packages, not_found, crypto::md5_file).await {
+// 	// 		if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
+// 	// 			let hash = crypto::murmur2_file(path)?;
+// 	// 			Ok(hash.to_string())
+// 	// 		}).await {
+// 	// 		}
+// 	// 	}
+// 	// }
+
+// 	let mut to_infer = to_infer;
+// 	for provider in infer_order {
+// 		if let Some(not_found) = infer_provider(provider, package_type, packages, to_infer, move|path| {
+// 			Ok(provider.hash_file(path))
+// 		}).await {
+// 			to_infer = not_found;
+// 		}
+// 	}
+
+// 	for path in to_infer {
+// 		tracing::warn!("failed to infer package: {:?}", path);
+
+// 		let package_path = PackagePath::new(&path);
+// 		let meta = PackageMetadata::Unknown;
+// 		if let Ok(package) = Package::new(&package_path, meta) {
+// 			packages.insert(package_path, package);
+// 		}
+// 	}
+// }
+
 #[tracing::instrument(skip(packages, to_infer))]
 async fn infer_provider(
 	provider: Providers,
@@ -537,6 +581,8 @@ async fn infer_provider(
 	to_infer: HashSet<PathBuf>,
 	hash_fn: fn(&PathBuf) -> crate::Result<String>,
 ) -> Option<HashSet<PathBuf>> {
+	// TODO: Add ingress
+
 	let mut hash_map = HashMap::<String, PathBuf>::new();
 	to_infer.iter().for_each(|path| {
 		if let Ok(hash) = hash_fn(path) {
@@ -756,7 +802,7 @@ pub struct ManagedVersion {
 	pub changelog: String,
 	pub changelog_url: Option<String>,
 
-	pub published: DateTime<Utc>,
+	pub published: Option<DateTime<Utc>>,
 	pub downloads: u32,
 	pub version_type: ManagedVersionReleaseType,
 

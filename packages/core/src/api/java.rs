@@ -65,10 +65,11 @@ pub async fn install_java_from_major(java_version: u32) -> crate::Result<PathBuf
 #[onelauncher_macros::memory]
 pub async fn install_java_from_package(download: JavaZuluPackage) -> crate::Result<PathBuf> {
 	let state = State::get().await?;
+	let java_version = *download.java_version.get(0).unwrap_or(&0);
 
 	let ingress = init_ingress(
 		crate::IngressType::DownloadJava {
-			version: *download.java_version.get(0).unwrap_or(&0),
+			version: java_version,
 		},
 		100.0,
 		"downloading java version",
@@ -125,7 +126,7 @@ pub async fn install_java_from_package(download: JavaZuluPackage) -> crate::Resu
 
 	#[cfg(not(target_os = "macos"))]
 	{
-		base_path = base_path.join("bin").join(crate::constants::JAVA_BIN)
+		base_path = base_path.join("bin").join(crate::constants::JAVA_BIN);
 	}
 
 	send_ingress(&ingress, 100.0, Some("installed java binary")).await?;

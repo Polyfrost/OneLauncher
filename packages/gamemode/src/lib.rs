@@ -15,12 +15,9 @@ pub fn request_start_for_wrapper(pid: u32) -> Result<(), String> {
 			if result == 0 {
 				Ok(())
 			} else {
-				Err(format!(
-					"failed to request gamemode for pid {}: {}",
-					pid, result
-				))
+				Err(format!("failed to request gamemode for pid {pid}: {result}"))
 			}
 		},
-		Err(e) => Err(format!("failed to request gamemode for pid {}: {}", pid, e)),
+		Err(e) => Err(format!("failed to request gamemode for pid {pid}: {e}")),
 	}
 }

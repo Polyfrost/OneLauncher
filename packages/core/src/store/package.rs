@@ -205,13 +205,13 @@ impl Packages {
 
 		// TODO: This should probably not clone and store the cluster path in like 2 areas
 		for cluster_path in clusters.0.keys() {
-			this.add_cluster(cluster_path.clone()).await;
+			this.add_cluster(cluster_path.clone());
 		}
 
 		this
 	}
 
-	pub async fn add_cluster(&mut self, cluster_path: ClusterPath) {
+	pub fn add_cluster(&mut self, cluster_path: ClusterPath) {
 		let mgr = PackageManager::new(cluster_path.clone());
 		self.managers.insert(cluster_path, mgr);
 	}

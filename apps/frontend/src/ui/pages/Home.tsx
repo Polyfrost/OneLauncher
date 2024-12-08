@@ -180,7 +180,7 @@ function ClusterCard(props: Cluster) {
 	return (
 		<>
 			<div
-				class="group border-border/05 relative h-[152px] flex flex-col border rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				class="group relative h-[152px] flex flex-col border border-border/05 rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 				onClick={e => openClusterPage(e)}
 			>
 				<div class="relative flex-1 overflow-hidden rounded-t-xl">

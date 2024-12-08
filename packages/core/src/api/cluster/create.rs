@@ -67,7 +67,7 @@ pub async fn create_unfinished_cluster(
 		State::sync().await?;
 		let state = State::get().await?;
 		let mut packages = state.packages.write().await;
-		packages.add_cluster(cluster.cluster_path()).await;
+		packages.add_cluster(cluster.cluster_path());
 
 		Ok(cluster.cluster_path())
 	}
@@ -173,7 +173,7 @@ pub async fn create_cluster(
 		State::sync().await?;
 		let state = State::get().await?;
 		let mut packages = state.packages.write().await;
-		packages.add_cluster(cluster.cluster_path()).await;
+		packages.add_cluster(cluster.cluster_path());
 
 		Ok(cluster.cluster_path())
 	}

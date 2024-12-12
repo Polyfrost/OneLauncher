@@ -9,7 +9,7 @@ export default function NotificationOverlay() {
 	return (
 		<Popup
 			mount={document.body}
-			ref={ref => ref.classList.add('fixed', 'bottom-8', 'right-8')}
+			ref={ref => ref.classList.add('fixed', 'bottom-8', 'right-8', 'z-99999')}
 			setVisible={() => {}}
 			visible={() => true}
 		>

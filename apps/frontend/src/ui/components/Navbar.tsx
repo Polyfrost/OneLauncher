@@ -2,10 +2,10 @@ import { WEBSITE } from '@onelauncher/client';
 import { A, useNavigate } from '@solidjs/router';
 import { open } from '@tauri-apps/plugin-shell';
 import { Bell01Icon, Cloud01Icon, Settings01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-solid';
+import OneLauncherText from '~assets/logos/onelauncher_text.svg?component-solid';
 import { createSignal } from 'solid-js';
 import Button from './base/Button';
 import PlayerHead from './game/PlayerHead';
-import PolyfrostFull from './logos/PolyfrostFull';
 import AccountPopup from './overlay/account/AccountsPopup';
 import useAccountController from './overlay/account/AddAccountModal';
 import NotificationPopup from './overlay/notifications/NotificationPopup';
@@ -40,10 +40,10 @@ function Navbar() {
 	let notificationButtonContainer!: HTMLDivElement;
 
 	return (
-		<div class="h-15 min-h-[60px] flex flex-row items-center *:flex-1">
-			<div class="h-full flex items-center justify-start">
-				<div class="h-full flex items-start justify-start transition-transform active:scale-90" onClick={() => open(WEBSITE)}>
-					<PolyfrostFull />
+		<div class="h-15 min-h-15 flex flex-row items-center *:flex-1">
+			<div class="flex items-start justify-start">
+				<div class="flex items-start justify-start transition-transform active:scale-90" onClick={() => open(WEBSITE)}>
+					<OneLauncherText width={260} />
 				</div>
 			</div>
 			<div class="flex flex-row items-center justify-center gap-x-10 py-1">

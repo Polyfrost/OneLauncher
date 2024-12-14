@@ -17,6 +17,13 @@ export default defineConfig(async ({ mode }) => {
 			solid(),
 			solidSvg({
 				defaultAsComponent: false,
+				svgo: {
+					svgoConfig: {
+						plugins: [
+							'removeViewBox',
+						],
+					},
+				},
 			}),
 			paths(),
 		],

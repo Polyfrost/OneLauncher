@@ -1,4 +1,5 @@
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
 import { For, Match, Switch } from 'solid-js';
 import Onboarding, { OnboardingTaskStage } from './Onboarding';
 
@@ -16,15 +17,17 @@ function OnboardingSummary() {
 			<AnimatedRoutes>
 				<Switch>
 					<Match when={ctx.tasksStage() === OnboardingTaskStage.NotStarted}>
-						<div class="my-8 max-h-36 w-full flex flex-1 flex-col gap-y-2 rounded-lg bg-page-elevated p-4 font-mono">
-							<For each={ctx.getTasks()}>
-								{task => (
-									<span class="whitespace-pre text-lg text-fg-primary line-height-normal">
-										{task}
-									</span>
-								)}
-							</For>
-						</div>
+						<OverlayScrollbarsComponent class="my-8 max-h-36 w-full flex-1">
+							<div class="flex flex-1 flex-col gap-y-2 rounded-lg bg-page-elevated p-4 font-mono">
+								<For each={ctx.getTasks()}>
+									{task => (
+										<span class="whitespace-pre text-lg text-fg-primary line-height-normal">
+											{task}
+										</span>
+									)}
+								</For>
+							</div>
+						</OverlayScrollbarsComponent>
 					</Match>
 					<Match when>
 						<div class="my-8 max-h-36 w-full flex flex-1 flex-col gap-y-2">

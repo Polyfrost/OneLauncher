@@ -296,12 +296,33 @@ export function ProcessSettings(props: {
 }
 
 export function JvmSettings(props: {
-	javaVersion: CreateSetting<JavaVersion> | undefined;
-	javaVersions: CreateSetting<JavaVersions> | undefined;
 	javaArgs: CreateSetting<string[]>;
 	envVars: CreateSetting<[string, string][]>;
-}) {
-	const modal = createModal(controller => <JavaVersionModal {...controller} javaVersions={props.javaVersions} />);
+} & ({
+	clusterId: string;
+	javaVersion: CreateSetting<JavaVersion | null>;
+	javaVersions: JavaVersions;
+} | {
+	javaVersion: undefined;
+	javaVersions: CreateSetting<JavaVersions>;
+})) {
+	const modal = createModal((controller) => {
+		if (props.javaVersion)
+			return (
+				<ClusterJavaVersionModal
+					{...controller}
+					clusterId={props.clusterId}
+					javaVersion={props.javaVersion}
+					javaVersions={props.javaVersions}
+				/>
+			);
+		else return (
+			<GlobalJavaVersionModal
+				{...controller}
+				javaVersions={props.javaVersions}
+			/>
+		);
+	});
 
 	return (
 		<>
@@ -442,8 +463,119 @@ function PageSettings() {
 
 export default SettingsMinecraft;
 
-function JavaVersionModal(props: ModalProps & {
-	javaVersions: CreateSetting<JavaVersions> | undefined;
+function ClusterJavaVersionModal(props: ModalProps & {
+	clusterId: string;
+	javaVersion: CreateSetting<JavaVersion | null>;
+	javaVersions: JavaVersions;
+}) {
+	const [_, modalProps] = splitProps(props, ['javaVersion', 'javaVersions']);
+
+	const javaVersions = createMemo(() => Object.entries(props.javaVersions).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version)));
+	const [selected, setSelected] = createSignal<number>(0);
+
+	onMount(async () => {
+		const javaVersion = props.javaVersion.get();
+		if (!javaVersion) {
+			const clusterId = props.clusterId;
+			const optimal = await tryResult(() => bridge.commands.getOptimalJavaVersion(clusterId));
+			setSelected(javaVersions().findIndex(([_, meta]) => meta.path === optimal.path));
+		}
+		else {
+			const found = javaVersions().findIndex(([_, meta]) => meta.path === javaVersion.path);
+			setSelected(found);
+		}
+	});
+
+	const setPackage = (pkg: JavaVersion) => {
+		props.javaVersion.set(pkg);
+	};
+
+	const onChange = (selected: number) => {
+		const version = javaVersions()[selected]?.[0];
+		if (!version)
+			return;
+
+		const meta = props.javaVersions[version];
+		if (!meta)
+			return;
+
+		setPackage(meta);
+	};
+
+	return (
+		<BaseJavaVersionModal
+			{...modalProps}
+			setPackage={setPackage}
+		>
+			<h4>Java Path</h4>
+			<div class="flex flex-col items-stretch gap-y-2">
+				<Dropdown onChange={onChange} selected={selected}>
+					<For each={javaVersions()}>
+						{([version]) => {
+							const major = version.toLowerCase().replaceAll('_', ' ').replaceAll('java', '');
+
+							return (
+								<Dropdown.Row>
+									<span class="capitalize">
+										Java
+										{major}
+									</span>
+								</Dropdown.Row>
+							);
+						}}
+					</For>
+				</Dropdown>
+			</div>
+		</BaseJavaVersionModal>
+	);
+}
+
+function GlobalJavaVersionModal(props: ModalProps & {
+	javaVersions: CreateSetting<JavaVersions>;
+}) {
+	const [_, modalProps] = splitProps(props, ['javaVersions']);
+
+	const setPackage = (pkg: JavaVersion, version?: number) => {
+		props.javaVersions?.set({
+			...props.javaVersions?.get(),
+			[`JAVA_${version}`]: pkg,
+		});
+	};
+
+	return (
+		<BaseJavaVersionModal
+			{...modalProps}
+			setPackage={setPackage}
+		>
+			<h4>Default Java Paths</h4>
+			<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
+				<For each={Object.entries(props.javaVersions?.get() ?? {}).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version))}>
+					{([version, meta]) => {
+						const major = version.toLowerCase().replaceAll('_', ' ').replaceAll('java', '');
+
+						return (
+							<>
+								<span class="capitalize">
+									Java
+									{major}
+								</span>
+								<TextField
+									onValidSubmit={(value) => {
+										setPackage({ ...meta, path: value }, Number.parseInt(major));
+									}}
+									value={meta.path}
+								/>
+							</>
+						);
+					}}
+				</For>
+			</div>
+		</BaseJavaVersionModal>
+	);
+}
+
+function BaseJavaVersionModal(props: ModalProps & {
+	setPackage: (pkg: JavaVersion, version?: number) => void;
 }) {
 	const [selectedPackageIndex, setSelectedPackageIndex] = createSignal<number>(-1);
 
@@ -461,21 +593,14 @@ function JavaVersionModal(props: ModalProps & {
 		return zuluPackages()?.map(pkg => pkg.java_version.join('.')) ?? [];
 	});
 
-	const setPackage = (version: number, pkg: JavaVersion) => {
-		props.javaVersions?.set({
-			...props.javaVersions?.get(),
-			[`JAVA_${version}`]: pkg,
-		});
-	};
-
 	const download = async (pkg: JavaZuluPackage) => {
 		const path = await tryResult(() => bridge.commands.installJavaFromPackage(pkg));
 		if (path)
-			setPackage(pkg.java_version[0]!, {
+			props.setPackage({
 				version: pkg.java_version.join('.'),
 				path,
 				arch: '',
-			});
+			}, pkg.java_version[0]!);
 	};
 
 	return (
@@ -492,29 +617,7 @@ function JavaVersionModal(props: ModalProps & {
 		>
 			<div class="flex flex-col gap-6">
 				<div class="flex flex-col gap-2">
-					<h4>Default Java Paths</h4>
-					<div class="grid grid-cols-[80px_1fr] items-center gap-y-2">
-						<For each={Object.entries(props.javaVersions?.get() ?? {}).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version))}>
-							{([version, meta]) => {
-								const major = version.toLowerCase().replaceAll('_', ' ').replaceAll('java', '');
-
-								return (
-									<>
-										<span class="capitalize">
-											Java
-											{major}
-										</span>
-										<TextField
-											onValidSubmit={(value) => {
-												setPackage(Number.parseInt(major), { ...meta, path: value });
-											}}
-											value={meta.path}
-										/>
-									</>
-								);
-							}}
-						</For>
-					</div>
+					{props.children}
 				</div>
 
 				<div class="flex flex-col gap-2">

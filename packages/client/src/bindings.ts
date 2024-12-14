@@ -204,6 +204,16 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async getOptimalJavaVersion(clusterId: string): Promise<Result<JavaVersion, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('get_optimal_java_version', { clusterId }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
 	async getRunningClusters(): Promise<Result<Cluster[], string>> {
 		try {
 			return { status: 'ok', data: await TAURI_INVOKE('get_running_clusters') };

@@ -44,7 +44,7 @@ function ClusterRoutes() {
 }
 
 function ClusterRoot(props: ParentProps) {
-	const [searchParams] = useSearchParams();
+	const [searchParams] = useSearchParams<{ id: string }>();
 
 	return (
 		<ClusterProvider uuid={searchParams.id}>

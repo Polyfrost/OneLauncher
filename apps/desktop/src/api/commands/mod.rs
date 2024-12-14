@@ -1,5 +1,6 @@
 use interpulse::api::minecraft::Version;
 use onelauncher::data::Settings;
+use onelauncher::game::metadata;
 use onelauncher::settings;
 use tauri::{AppHandle, Manager};
 
@@ -42,6 +43,7 @@ macro_rules! collect_commands {
 			upload_log,
 			get_screenshots,
 			get_worlds,
+			get_optimal_java_version,
 			// Processor
 			get_running_clusters,
 			get_processes_by_path,

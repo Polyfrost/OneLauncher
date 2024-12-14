@@ -40,7 +40,8 @@ function PageSettings(cluster: Accessor<Cluster>) {
 	const postCommand = createSetting(cluster().init_hooks?.post, settings().init_hooks.post ?? '');
 
 	// JVM
-	const javaVersion = createSetting(cluster().java?.custom_version || null);
+	const javaVersion = createSetting<bridge.JavaVersion | null>(cluster().java?.custom_version || null);
+	const javaVersions = settings().java_versions;
 	const javaArgs = createSetting(cluster().java?.custom_arguments, settings().custom_java_args);
 	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
 
@@ -96,8 +97,9 @@ function PageSettings(cluster: Accessor<Cluster>) {
 
 			<JvmSettings
 				{...{
+					clusterId: cluster().uuid,
 					javaVersion,
-					javaVersions: undefined,
+					javaVersions,
 					javaArgs,
 					envVars,
 				}}

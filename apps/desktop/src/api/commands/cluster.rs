@@ -7,6 +7,7 @@ use onelauncher::cluster::{self};
 use onelauncher::data::{Loader, PackageData};
 use onelauncher::processor::DetailedProcess;
 use onelauncher::store::{Cluster, ClusterPath};
+use onelauncher::utils::java::JavaVersion;
 use onelauncher::State;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -194,4 +195,11 @@ pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
 	let screenshots = cluster::content::worlds::get_worlds(&cluster.cluster_path()).await?;
 
 	Ok(screenshots)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_optimal_java_version(cluster_id: Uuid) -> Result<JavaVersion, String> {
+	let cluster_path = cluster::get_by_uuid(cluster_id).await?.ok_or("Cluster not found")?.cluster_path();
+	Ok(cluster::get_optimal_java_version(&cluster_path).await?.ok_or("No Java version found")?)
 }

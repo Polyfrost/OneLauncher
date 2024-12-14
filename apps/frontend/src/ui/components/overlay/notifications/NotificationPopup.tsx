@@ -7,22 +7,22 @@ import Popup, { type PopupProps } from '../Popup';
 import NotificationComponent from './NotificationComponent';
 
 function NotificationPopup(props: PopupProps) {
-	const [notifications, setNotifications] = useNotifications();
+	const notifications = useNotifications();
 
 	let inner!: HTMLDivElement;
 	let parent!: HTMLDivElement;
 
-	createEffect(on(notifications, () => {
+	createEffect(on(notifications.list, () => {
 		if (inner && parent) {
 			const rect = inner.getBoundingClientRect();
 			parent.style.height = `${rect.height}px`;
 		}
 	}));
 
-	const memoedNotifications = createMemo(() => Object.values(notifications()));
+	const memoedNotifications = createMemo(() => Object.values(notifications.list()));
 
 	function clearNotifications() {
-		setNotifications({});
+		notifications.clear();
 	}
 
 	return (

@@ -76,7 +76,7 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 				</div>
 
 				<Show when={disappearing() === true}>
-					<div class="h-1.5 w-full bg-brand-disabled">
+					<div class="h-1.5 w-full bg-brand-disabled/10">
 						<div
 							class="h-1.5 rounded-lg bg-brand transition-width"
 							style={{
@@ -101,7 +101,7 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 
 				<div class="w-full flex flex-col gap-y-1">
 					<span class="text-fg-primary font-medium capitalize">{props.title}</span>
-					<span class="text-sm text-white/60 capitalize">{props.message}</span>
+					<span class="text-sm text-fg-secondary/60 capitalize">{props.message}</span>
 				</div>
 
 				<Show when={props.overlay !== true}>

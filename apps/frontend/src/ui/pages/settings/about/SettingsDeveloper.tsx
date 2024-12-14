@@ -1,20 +1,34 @@
 import { useNavigate } from '@solidjs/router';
-import { CodeBrowserIcon, EyeIcon, GitMergeIcon, LinkExternal01Icon, RefreshCcw05Icon } from '@untitled-theme/icons-solid';
+import { CodeBrowserIcon, EyeIcon, GitMergeIcon, LinkExternal01Icon, PlusIcon, RefreshCcw05Icon } from '@untitled-theme/icons-solid';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import SettingsRow from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
+import useNotifications from '~ui/hooks/useNotifications';
 import useSettings from '~ui/hooks/useSettings';
+import { createSignal } from 'solid-js';
 
 function SettingsDeveloper() {
+	const notifications = useNotifications();
 	const { settings, saveOnLeave } = useSettings();
 	const navigate = useNavigate();
+
+	const [notiCounter, setNotiCounter] = createSignal(0);
 
 	saveOnLeave(() => ({
 		debug_mode: settings().debug_mode!,
 		onboarding_completed: settings().onboarding_completed!,
 	}));
+
+	function createTestNotification() {
+		notifications.set(`test_notification${notiCounter()}`, {
+			title: `Test Notification ${notiCounter()}`,
+			message: 'Test Notification Message body',
+		});
+
+		setNotiCounter(count => count + 1);
+	}
 
 	return (
 		<Sidebar.Page>
@@ -67,6 +81,18 @@ function SettingsDeveloper() {
 							settings().onboarding_completed = false;
 							navigate('/onboarding');
 						}}
+					/>
+				</SettingsRow>
+
+				<SettingsRow
+					description="Creates a test notification."
+					icon={<EyeIcon />}
+					title="Create Test Notification"
+				>
+					<Button
+						children="Create"
+						iconLeft={<PlusIcon />}
+						onClick={createTestNotification}
 					/>
 				</SettingsRow>
 

@@ -1,5 +1,6 @@
 import { getProgramInfo } from '@onelauncher/client';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
+import { NotificationProvider } from '~ui/hooks/useNotifications';
 import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
 import { AccountControllerProvider } from './ui/components/overlay/account/AddAccountModal';
@@ -39,6 +40,7 @@ function GlobalContexts(props: ParentProps) {
 		<MultiProvider
 			values={[
 				ModalProvider,
+				NotificationProvider,
 				SettingsProvider,
 				AccountControllerProvider,
 				ClusterModalControllerProvider,

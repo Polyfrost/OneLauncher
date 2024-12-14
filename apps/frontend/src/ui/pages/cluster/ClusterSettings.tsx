@@ -41,7 +41,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 
 	// JVM
 	const javaVersion = createSetting<bridge.JavaVersion | null>(cluster().java?.custom_version || null);
-	const javaVersions = settings().java_versions;
+	const javaVersions = createSetting(settings().java_versions);
 	const javaArgs = createSetting(cluster().java?.custom_arguments, settings().custom_java_args);
 	const envVars = createSetting(cluster().java?.custom_env_arguments, settings().custom_env_args);
 

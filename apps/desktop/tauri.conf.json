@@ -74,6 +74,12 @@
 			"deb": {
 				"depends": [],
 				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
+			},
+			"rpm": {
+				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
+			},
+			"appimage": {
+				
 			}
 		},
 		"shortDescription": "OneLauncher",

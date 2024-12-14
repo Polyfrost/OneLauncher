@@ -8,5 +8,5 @@ Terminal=false
 StartupNotify=true
 Categories=Game;ActionGame;AdventureGame;Simulation;
 Keywords=mc;minecraft;game
-StartupWMClass=OneLauncher
+StartupWMClass={{exec}}
 Version=1.4

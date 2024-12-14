@@ -301,7 +301,7 @@ export function JvmSettings(props: {
 } & ({
 	clusterId: string;
 	javaVersion: CreateSetting<JavaVersion | null>;
-	javaVersions: JavaVersions;
+	javaVersions: CreateSetting<JavaVersions>;
 } | {
 	javaVersion: undefined;
 	javaVersions: CreateSetting<JavaVersions>;
@@ -466,7 +466,7 @@ export default SettingsMinecraft;
 function ClusterJavaVersionModal(props: ModalProps & {
 	clusterId: string;
 	javaVersion: CreateSetting<JavaVersion | null>;
-	javaVersions: JavaVersions;
+	javaVersions: CreateSetting<JavaVersions>;
 }) {
 	const [_, modalProps] = splitProps(props, ['javaVersion', 'javaVersions']);
 
@@ -486,8 +486,12 @@ function ClusterJavaVersionModal(props: ModalProps & {
 		}
 	});
 
-	const setPackage = (pkg: JavaVersion) => {
+	const setPackage = (pkg: JavaVersion, version: string) => {
 		props.javaVersion.set(pkg);
+		props.javaVersions.set({
+			...props.javaVersions?.get(),
+			[`JAVA_${version}`]: pkg,
+		});
 	};
 
 	const onChange = (selected: number) => {
@@ -495,11 +499,11 @@ function ClusterJavaVersionModal(props: ModalProps & {
 		if (!version)
 			return;
 
-		const meta = props.javaVersions[version];
+		const meta = props.javaVersions.get()[version];
 		if (!meta)
 			return;
 
-		setPackage(meta);
+		setPackage(meta, version);
 	};
 
 	return (
@@ -535,7 +539,7 @@ function GlobalJavaVersionModal(props: ModalProps & {
 }) {
 	const [_, modalProps] = splitProps(props, ['javaVersions']);
 
-	const setPackage = (pkg: JavaVersion, version?: number) => {
+	const setPackage = (pkg: JavaVersion, version: string) => {
 		props.javaVersions?.set({
 			...props.javaVersions?.get(),
 			[`JAVA_${version}`]: pkg,
@@ -561,7 +565,7 @@ function GlobalJavaVersionModal(props: ModalProps & {
 								</span>
 								<TextField
 									onValidSubmit={(value) => {
-										setPackage({ ...meta, path: value }, Number.parseInt(major));
+										setPackage({ ...meta, path: value }, major);
 									}}
 									value={meta.path}
 								/>
@@ -575,7 +579,7 @@ function GlobalJavaVersionModal(props: ModalProps & {
 }
 
 function BaseJavaVersionModal(props: ModalProps & {
-	setPackage: (pkg: JavaVersion, version?: number) => void;
+	setPackage: (pkg: JavaVersion, version: string) => void;
 }) {
 	const [selectedPackageIndex, setSelectedPackageIndex] = createSignal<number>(-1);
 
@@ -600,7 +604,7 @@ function BaseJavaVersionModal(props: ModalProps & {
 				version: pkg.java_version.join('.'),
 				path,
 				arch: '',
-			}, pkg.java_version[0]!);
+			}, pkg.java_version[0]!.toString());
 	};
 
 	return (

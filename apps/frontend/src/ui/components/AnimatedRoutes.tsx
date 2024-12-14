@@ -1,5 +1,6 @@
+import { getProgramInfo } from '@onelauncher/client';
 import useSettings from '~ui/hooks/useSettings';
-import { type ParentProps, Show } from 'solid-js';
+import { createMemo, type ParentProps, Show } from 'solid-js';
 import { Transition, type TransitionProps } from 'solid-transition-group';
 
 type AnimationTypes = 'default' | 'fade';
@@ -33,6 +34,14 @@ function AnimatedRoutes(props: AnimatedProps & TransitionProps & ParentProps) {
 
 	const animation = () => animations[props.animation ?? 'default'];
 
+	const durationMultiplier = createMemo(() => {
+		// I LOVE WEBKITGTK I LOVE WEBKTIGTKI LOVE WEBKITGTK I LOVE WEBKTIGTKI LOVE WEBKITGTK I LOVE WEBKTIGTK
+		if (getProgramInfo().platform === 'linux')
+			return 0.36;
+
+		return 1;
+	});
+
 	return (
 		<Show
 			children={(
@@ -48,7 +57,7 @@ function AnimatedRoutes(props: AnimatedProps & TransitionProps & ParentProps) {
 							animation().before,
 							animation().after,
 						], {
-							duration: 90,
+							duration: 250 * durationMultiplier(),
 							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
 						}).onfinish = () => {
 							done();
@@ -64,7 +73,7 @@ function AnimatedRoutes(props: AnimatedProps & TransitionProps & ParentProps) {
 							animation().after,
 							animation().before,
 						], {
-							duration: 95,
+							duration: 255 * durationMultiplier(),
 							easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
 						}).onfinish = () => {
 							done();

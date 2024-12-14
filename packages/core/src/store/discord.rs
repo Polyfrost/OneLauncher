@@ -64,8 +64,8 @@ impl DiscordRPC {
 			.buttons(vec![Button::new("Download", "https://polyfrost.org/")])
 			.assets(
 				Assets::new()
-					.large_image("polyfrost_logo_512")
-					.large_text("Polyfrost Logo"),
+					.large_image("onelauncher_logo_512")
+					.large_text("OneLauncher"),
 			);
 
 		let mut client: tokio::sync::RwLockWriteGuard<'_, DiscordIpcClient> =

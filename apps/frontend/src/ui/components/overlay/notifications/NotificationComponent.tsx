@@ -67,9 +67,10 @@ function NotificationOverlayComponent(props: NotificationComponentProps) {
 	return (
 		<Show when={visible()}>
 			<div
-				class="flex flex-col overflow-hidden rounded-lg bg-component-bg"
+				class="flex flex-col overflow-hidden border border-border/05 rounded-lg bg-component-bg shadow-sm active:brightness-80 hover:brightness-90"
 				onMouseEnter={() => onEnter()}
 				onMouseLeave={() => onLeave()}
+				onMouseUp={() => hide()}
 			>
 				<div class="px-2">
 					<NotificationPopupComponent {...props} />
@@ -112,7 +113,7 @@ function NotificationPopupComponent(props: NotificationComponentProps) {
 			</div>
 
 			<Show when={props.fraction !== undefined && props.fraction !== null && !fractionEnded(props.fraction)}>
-				<div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled">
+				<div class="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled/10">
 					<div
 						class="h-full max-w-full min-w-0 rounded-full bg-brand transition-width"
 						style={{

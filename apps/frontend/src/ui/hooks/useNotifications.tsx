@@ -18,6 +18,17 @@ export function NotificationProvider(props: ParentProps) {
 	let unlisten: UnlistenFn | undefined;
 
 	onMount(() => {
+		document.addEventListener('keypress', (e) => {
+			if (e.key === 'n')
+				setNotifications(notifications => ({
+					...notifications,
+					[Math.random().toString()]: {
+						title: 'Test',
+						message: 'This is a test notification',
+					},
+				}));
+		});
+
 		events.ingressPayload.listen((e) => {
 			setNotifications(notifications => ({
 				...notifications,

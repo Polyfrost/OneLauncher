@@ -1,4 +1,13 @@
+import { onMount } from 'solid-js';
+import Onboarding from './Onboarding';
+
 function OnboardingComplete() {
+	const context = Onboarding.useContext();
+
+	onMount(() => {
+		context.setForwardButtonEnabled(true);
+	});
+
 	return (
 		<div class="grid grid-cols-2 h-full w-full flex flex-col items-center justify-center gap-x-16">
 			<h1 class="text-6xl">

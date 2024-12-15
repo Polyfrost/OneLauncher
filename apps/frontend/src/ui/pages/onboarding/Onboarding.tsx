@@ -10,6 +10,7 @@ import { type Accessor, type Context, createContext, createEffect, createSignal,
 import OnboardingComplete from './OnboardingComplete';
 import OnboardingImport from './OnboardingImport';
 import OnboardingLanguage, { type Language, LanguagesList } from './OnboardingLanguage';
+import OnboardingLogin from './OnboardingLogin';
 import OnboardingSummary from './OnboardingSummary';
 import OnboardingWelcome from './OnboardingWelcome';
 
@@ -18,6 +19,7 @@ const OnboardingSteps = [
 	['/', OnboardingWelcome],
 
 	['/language', OnboardingLanguage],
+	['/login', OnboardingLogin],
 	['/import', OnboardingImport],
 
 	['/summary', OnboardingSummary], // Second to last will always be the summary (which is basically a confirmation for all the tasks that are about to be done)
@@ -44,6 +46,8 @@ interface OnboardingContextType {
 
 	setImportInstances: (type: ImportType, basePath: string, instances: string[]) => void;
 	importInstances: (type: ImportType) => ImportInstancesType | undefined;
+
+	setForwardButtonEnabled: (enabled: boolean) => void;
 
 	getTasks: () => string[];
 
@@ -74,6 +78,7 @@ function Onboarding(props: ParentProps) {
 
 	createEffect(on(() => location.pathname, () => {
 		setBackButtonEnabled(step() > 0 && !tasksCompleted());
+		setForwardButtonEnabled(step() < OnboardingSteps.length - 1 && !tasksCompleted());
 	}));
 
 	useBeforeLeave((e) => {
@@ -187,6 +192,8 @@ function Onboarding(props: ParentProps) {
 		importInstances: type => importInstances().get(type),
 
 		getTasks,
+
+		setForwardButtonEnabled,
 
 		tasksStage,
 		tasksMessage,

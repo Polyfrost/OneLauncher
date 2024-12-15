@@ -199,7 +199,19 @@ pub async fn get_worlds(uuid: Uuid) -> Result<Vec<String>, String> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn get_optimal_java_version(cluster_id: Uuid) -> Result<JavaVersion, String> {
-	let cluster_path = cluster::get_by_uuid(cluster_id).await?.ok_or("Cluster not found")?.cluster_path();
+pub async fn get_optimal_java_version(uuid: Uuid) -> Result<JavaVersion, String> {
+	let cluster_path = cluster::get_by_uuid(uuid).await?.ok_or("Cluster not found")?.cluster_path();
 	Ok(cluster::get_optimal_java_version(&cluster_path).await?.ok_or("No Java version found")?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn repair_cluster(uuid: Uuid) -> Result<(), String> {
+	let cluster = cluster::get_by_uuid(uuid)
+		.await?
+		.ok_or("cluster not found")?;
+
+	cluster::repair_cluster(&cluster.cluster_path()).await?;
+
+	Ok(())
 }

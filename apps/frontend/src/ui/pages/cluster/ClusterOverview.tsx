@@ -2,7 +2,7 @@ import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
-import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Trash01Icon } from '@untitled-theme/icons-solid';
+import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
 import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
@@ -61,6 +61,10 @@ function ClusterOverview() {
 	async function deleteCluster() {
 		await bridge.commands.removeCluster(cluster()!.uuid);
 		navigate('/');
+	}
+
+	async function repairCluster() {
+		await bridge.commands.repairCluster(cluster()!.uuid);
 	}
 
 	function madeChanges() {
@@ -195,6 +199,19 @@ function ClusterOverview() {
 					icon={<Trash01Icon />}
 					title="Delete Cluster"
 				/>
+				<SettingsRow
+					children={(
+						<Button
+							buttonStyle="secondary"
+							children="Repair"
+							iconLeft={<Tool02Icon />}
+							onClick={repairCluster}
+						/>
+					)}
+					description="Verifies whether all assets, libraries and natives were properly installed."
+					icon={<Tool02Icon />}
+					title="Verify Cluster"
+				/>
 			</ScrollableContainer>
 		</Sidebar.Page>
 	);
@@ -260,7 +277,7 @@ function Banner(props: BannerProps) {
 		if (selected === null)
 			return;
 
-		props.setNewCover(selected.path);
+		props.setNewCover(selected);
 	}
 
 	function updateName(name: string) {
@@ -338,7 +355,8 @@ function Banner(props: BannerProps) {
 						<Button
 							buttonStyle="iconSecondary"
 							children={<Share07Icon />}
-							disabled={props.editMode()}
+							// disabled={props.editMode()}
+							disabled={true}
 						/>
 
 						<Button

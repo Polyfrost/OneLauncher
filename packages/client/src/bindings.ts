@@ -204,9 +204,19 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async getOptimalJavaVersion(clusterId: string): Promise<Result<JavaVersion, string>> {
+	async getOptimalJavaVersion(uuid: string): Promise<Result<JavaVersion, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('get_optimal_java_version', { clusterId }) };
+			return { status: 'ok', data: await TAURI_INVOKE('get_optimal_java_version', { uuid }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async repairCluster(uuid: string): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('repair_cluster', { uuid }) };
 		}
 		catch (e) {
 			if (e instanceof Error)

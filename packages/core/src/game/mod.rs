@@ -124,7 +124,7 @@ pub async fn install_minecraft(
 			let mut settings = state.settings.write().await;
 			settings
 				.java_versions
-				.insert(format!("JAVA_{key}"), java_version.clone());
+				.insert(key.to_string(), java_version.clone());
 		}
 		State::sync().await?;
 	}
@@ -535,7 +535,7 @@ pub async fn java_version_from_cluster(
 		let state = State::get().await?;
 		let settings = state.settings.read().await;
 
-		if let Some(j) = settings.java_versions.get(&format!("JAVA_{key}")) {
+		if let Some(j) = settings.java_versions.get(&key.to_string()) {
 			return Ok(Some(j.clone()));
 		}
 

@@ -9,7 +9,7 @@ use crate::proxy::send::send_cluster;
 use crate::prelude::{ClusterPath, JavaVersion, PackagePath};
 use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, JavaOptions, State};
-use crate::store::{MinecraftCredentials, ProcessorChild};
+use crate::store::{ClusterStage, MinecraftCredentials, ProcessorChild};
 
 use onelauncher_utils::io::{self, IOError};
 
@@ -418,6 +418,15 @@ pub async fn update_playtime(path: &ClusterPath) -> crate::Result<()> {
 	State::sync().await?;
 
 	Ok(())
+}
+
+/// This forces the cluster to be verified (and possibly reinstalled).
+pub async fn repair_cluster(path: &ClusterPath) -> crate::Result<()> {
+	let cluster = get(path)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("failed to repair cluster at path {}", path))?;
+
+	crate::game::install_minecraft(&cluster, None, true).await
 }
 
 /// Sanitize a user-inputted [`Cluster`] name.

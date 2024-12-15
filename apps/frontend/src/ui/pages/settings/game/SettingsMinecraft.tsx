@@ -470,7 +470,7 @@ function ClusterJavaVersionModal(props: ModalProps & {
 }) {
 	const [_, modalProps] = splitProps(props, ['javaVersion', 'javaVersions']);
 
-	const javaVersions = createMemo(() => Object.entries(props.javaVersions).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version)));
+	const javaVersions = createMemo(() => Object.entries(props.javaVersions.get()).sort((a, b) => Number.parseFloat(b[1].version) - Number.parseFloat(a[1].version)));
 	const [selected, setSelected] = createSignal<number>(0);
 
 	onMount(async () => {
@@ -490,7 +490,7 @@ function ClusterJavaVersionModal(props: ModalProps & {
 		props.javaVersion.set(pkg);
 		props.javaVersions.set({
 			...props.javaVersions?.get(),
-			[`JAVA_${version}`]: pkg,
+			[version]: pkg,
 		});
 	};
 
@@ -522,6 +522,7 @@ function ClusterJavaVersionModal(props: ModalProps & {
 								<Dropdown.Row>
 									<span class="capitalize">
 										Java
+										{' '}
 										{major}
 									</span>
 								</Dropdown.Row>
@@ -542,7 +543,7 @@ function GlobalJavaVersionModal(props: ModalProps & {
 	const setPackage = (pkg: JavaVersion, version: string) => {
 		props.javaVersions?.set({
 			...props.javaVersions?.get(),
-			[`JAVA_${version}`]: pkg,
+			[version]: pkg,
 		});
 	};
 
@@ -561,6 +562,7 @@ function GlobalJavaVersionModal(props: ModalProps & {
 							<>
 								<span class="capitalize">
 									Java
+									{' '}
 									{major}
 								</span>
 								<TextField

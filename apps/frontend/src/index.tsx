@@ -11,7 +11,7 @@ import 'virtual:uno.css';
 import '@unocss/reset/tailwind.css';
 import 'overlayscrollbars/overlayscrollbars.css';
 import '~styles/themes.scss';
-import '~styles/globals.css';
+import '~styles/globals.scss';
 import '~styles/highlightjs.css';
 
 import App from '~ui/pages/App';

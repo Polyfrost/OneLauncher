@@ -57,10 +57,10 @@ code {
 
 .os-scrollbar {
     --os-size: 10px;
-    --os-track-border-radius: theme(borderRadius.lg);
-    --os-handle-bg: rgba(255, 255, 255, 0.05);
-    --os-handle-bg-hover: rgba(255, 255, 255, 0.10);
-    --os-handle-bg-active: rgba(255, 255, 255, 0.07);
+    --os-track-border-radius: theme('borderRadius.lg');
+    --os-handle-bg: theme('colors.border/.15');
+    --os-handle-bg-hover: theme('colors.border/.25');
+    --os-handle-bg-active: theme('colors.border/.10');
     --os-handle-perpendicular-size-hover: 140%;
     --os-handle-perpendicular-size-active: 140%;
     --os-handle-interactive-area-offset: 1;

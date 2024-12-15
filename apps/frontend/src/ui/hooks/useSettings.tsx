@@ -17,6 +17,7 @@ interface SettingsControllerType {
 	settings: () => Settings;
 	saveOnLeave: (settings: () => Partial<Settings>) => void;
 	save: (settings: Settings) => Promise<void>;
+	refetch: () => void;
 }
 
 const SettingsContext = createContext() as Context<SettingsControllerType>;
@@ -44,6 +45,7 @@ export function SettingsProvider(props: ParentProps) {
 			syncSettings(settings);
 			await refetch();
 		},
+		refetch,
 	};
 
 	if (getProgramInfo().dev_build)
@@ -64,6 +66,8 @@ export function useSettings() {
 
 	if (!context)
 		throw new Error('useSettingsContext should be called inside its SettingsProvider');
+
+	context.refetch();
 
 	return context;
 }

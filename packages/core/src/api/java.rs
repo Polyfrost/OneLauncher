@@ -54,7 +54,7 @@ pub async fn install_java_from_major(java_version: u32) -> crate::Result<PathBuf
 	let package = packages
 		.into_iter()
 		.find(|p| p.java_version.contains(&java_version))
-		.ok_or(anyhow::anyhow!(
+		.ok_or_else(|| anyhow::anyhow!(
 			"Could not find a java package for version {}",
 			java_version
 		))?;
@@ -65,7 +65,7 @@ pub async fn install_java_from_major(java_version: u32) -> crate::Result<PathBuf
 #[onelauncher_macros::memory]
 pub async fn install_java_from_package(download: JavaZuluPackage) -> crate::Result<PathBuf> {
 	let state = State::get().await?;
-	let java_version = *download.java_version.get(0).unwrap_or(&0);
+	let java_version = *download.java_version.first().unwrap_or(&0);
 
 	let ingress = init_ingress(
 		crate::IngressType::DownloadJava {

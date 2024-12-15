@@ -69,7 +69,7 @@ function ClusterGameSetup(props: ClusterStepProps) {
 				if (!untracked[prop])
 					throw new Error(`Missing required property ${prop}`);
 
-			await bridge.commands.createCluster({
+			bridge.commands.createCluster({
 				icon: null,
 				icon_url: null,
 				loader_version: null,

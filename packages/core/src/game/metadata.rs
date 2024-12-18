@@ -273,8 +273,8 @@ pub async fn download_libraries(
 						}
 					}
 
-					tracing::info!("fetching #2 library '{}' from '{}'", &lib.name, &artifact.url);
 					let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
+					tracing::info!("fetching #2 library '{}' from '{}'", &lib.name, &url);
 					let bytes = fetch(&url, None, &st.fetch_semaphore).await?;
 					write(&path, &bytes, &st.io_semaphore).await?;
 					tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);

@@ -106,11 +106,7 @@ pub async fn fetch_advanced(
 
 		match result {
 			Ok(x) => {
-				let x = if !x.url().to_string().starts_with("https://resources") {
-					tracing::info!(x)//.error_for_status()?;
-				} else {
-					x
-				};
+				let x = x.error_for_status()?;
 
 				let bytes = if let Some((feed, total)) = &ingress {
 					let length = x.content_length();

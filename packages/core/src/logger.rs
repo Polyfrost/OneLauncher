@@ -28,7 +28,7 @@ pub fn start_logger() -> Option<WorkerGuard> {
 	});
 
 	let subscriber = tracing_subscriber::registry()
-		.with(tracing_subscriber::fmt::layer().pretty())
+		.with(tracing_subscriber::fmt::layer())
 		.with(filter)
 		.with(tracing_error::ErrorLayer::default());
 
@@ -59,7 +59,6 @@ pub fn start_logger() -> Option<WorkerGuard> {
 	let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
 	let subscriber = tracing_subscriber::registry()
-		.with(tracing_subscriber::fmt::layer().pretty())
 		.with(
 			tracing_subscriber::fmt::layer()
 				.with_writer(non_blocking)

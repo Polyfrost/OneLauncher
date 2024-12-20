@@ -29,7 +29,7 @@
 		"@pnpm/find-workspace-dir": "^7.0.1",
 		"consola": "^3.2.3",
 		"dotenv": "^16.4.5",
-		"execa": "^9.4.0",
+		"execa": "^9.5.1",
 		"mustache": "^4.2.0",
 		"pathe": "^1.1.2",
 		"semver": "^7.6.3",

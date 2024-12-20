@@ -9,11 +9,13 @@ import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import useSettings from '~ui/hooks/useSettings';
 import { join } from 'pathe';
 import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
+import useNotifications from "~ui/hooks/useNotifications.tsx";
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
 	const [logs] = useCommand(() => bridge.commands.getClusterLogs(cluster()!.uuid));
 	const { settings } = useSettings();
+	const notifications = useNotifications();
 
 	const [activeLogFile, setActiveLogFile] = createSignal<string | null>(null);
 	const [logContent, setLogContent] = createSignal<string | null>(null);
@@ -46,7 +48,11 @@ function ClusterLogs() {
 			return;
 
 		const id = await tryResult(() => bridge.commands.uploadLog(cluster()!.uuid, log));
-		open(`https://mclo.gs/${id}`);
+
+		open(`https://mclo.gs/${id}`).then(() => notifications.set("logs", {
+			title: "Log Uploaded",
+			message: "Opening in your browser."
+		}));
 	}
 
 	const missingLogs = () => logs() === undefined || logs()?.length === 0 || false;

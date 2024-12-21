@@ -1,8 +1,9 @@
 import type { Cluster, Loader } from '@onelauncher/client/bindings';
-import FabricImage from '~assets/logos/fabric.png';
-import ForgeImage from '~assets/logos/forge.png';
-import QuiltImage from '~assets/logos/quilt.png';
-import VanillaImage from '~assets/logos/vanilla.png';
+import FabricImage from '~assets/logos/loaders/fabric.png';
+import ForgeImage from '~assets/logos/loaders/forge.png';
+import NeoForgeImage from '~assets/logos/loaders/neoforge.png';
+import QuiltImage from '~assets/logos/loaders/quilt.png';
+import VanillaImage from '~assets/logos/minecraft.png';
 import { type JSX, splitProps } from 'solid-js';
 
 export function getLoaderLogoSrc(loader: Cluster | Loader): string {
@@ -13,7 +14,7 @@ export function getLoaderLogoSrc(loader: Cluster | Loader): string {
 		fabric: FabricImage,
 		legacyfabric: FabricImage,
 		forge: ForgeImage,
-		neoforge: ForgeImage,
+		neoforge: NeoForgeImage,
 		quilt: QuiltImage,
 	};
 

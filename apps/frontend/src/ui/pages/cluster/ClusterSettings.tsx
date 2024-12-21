@@ -25,7 +25,7 @@ function ClusterSettings() {
 }
 
 function PageSettings(cluster: Accessor<Cluster>) {
-	const { settings } = useSettings();
+	const { settings, save } = useSettings();
 
 	// Game
 	const fullscreen = createSetting(cluster().force_fullscreen, settings().force_fullscreen ?? false);
@@ -68,6 +68,11 @@ function PageSettings(cluster: Accessor<Cluster>) {
 				custom_env_arguments: envVars.getRaw(),
 			},
 		}));
+
+		save({
+			...settings(),
+			java_versions: javaVersions.get(),
+		});
 	});
 
 	return (

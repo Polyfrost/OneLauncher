@@ -67,8 +67,6 @@ export function useSettings() {
 	if (!context)
 		throw new Error('useSettingsContext should be called inside its SettingsProvider');
 
-	context.refetch();
-
 	return context;
 }
 

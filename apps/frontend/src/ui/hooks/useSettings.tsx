@@ -2,6 +2,7 @@ import type { Settings } from '@onelauncher/client/bindings';
 import { getProgramInfo } from '@onelauncher/client';
 import { useBeforeLeave } from '@solidjs/router';
 import { bridge } from '~imports';
+import { DEFAULT_THEME, setAppTheme, splitMergedTheme } from '~utils/theming';
 import { type Context, createContext, createEffect, type ParentProps, Show, useContext } from 'solid-js';
 import useCommand from './useCommand';
 
@@ -10,7 +11,9 @@ import useCommand from './useCommand';
  */
 export function syncSettings(settings: Settings) {
 	document.body.classList.toggle('reduce-motion', settings.disable_animations);
-	document.body.setAttribute('data-theme', settings.theme ?? 'dark');
+
+	const split = splitMergedTheme(settings.theme || DEFAULT_THEME);
+	setAppTheme(split.theme, split.variant);
 }
 
 interface SettingsControllerType {

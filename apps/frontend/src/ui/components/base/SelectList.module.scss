@@ -6,7 +6,7 @@
         @apply [&:nth-child(even)]:bg-white/01 hover:bg-component-bg-hover active:bg-component-bg-pressed;
 
         &.selected {
-            @apply bg-white/10;
+            @apply bg-border/10;
         }
     }
 }

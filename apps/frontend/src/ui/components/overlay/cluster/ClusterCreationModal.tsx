@@ -167,17 +167,17 @@ export function createClusterStep(props: CreateClusterStepType): () => JSX.Eleme
 
 		return (
 			<div class="min-w-sm flex flex-col rounded-lg bg-page text-center">
-				<div class="relative h-25 flex">
+				<div class="theme-OneLauncher-Dark relative h-25 flex">
 					<div class="absolute left-0 top-0 h-full w-full">
 						<img alt="Header Image" class="h-full w-full rounded-t-lg" src={HeaderImage} />
 					</div>
 					<div
 						class="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
 					>
-						<Server01Icon class="h-8 w-8" />
+						<Server01Icon class="h-8 w-8 text-fg-primary" />
 						<div class="flex flex-col items-start justify-center">
-							<h1 class="h-10 -mt-2">New Cluster</h1>
-							<span>{props.message}</span>
+							<h1 class="h-10 text-fg-primary -mt-2">New Cluster</h1>
+							<span class="text-fg-primary">{props.message}</span>
 						</div>
 					</div>
 				</div>

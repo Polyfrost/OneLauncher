@@ -1,12 +1,9 @@
-@mixin define-theme($name, $selectors: "") {
-	$selector: "#{$selectors} [data-theme="#{$name}"], .theme-#{$name}";
+@use "_helpers.scss" as * with (
+	$name: "OneLauncher"
+);
 
-	#{$selector} {
-		@content;
-	}
-}
+@include variant("Dark", ":root,") {
 
-@include define-theme("dark", ":root,") {
 	--clr-white: 255, 255, 255;
 	--clr-black: 0, 0, 0;
 
@@ -65,7 +62,7 @@
 	--clr-secondary: 25, 32, 38;
 }
 
-@include define-theme("light") {
+@include variant("Light") {
 	--clr-white: 255, 255, 255;
 	--clr-black: 0, 0, 0;
 
@@ -122,5 +119,4 @@
 	--clr-page-pressed: 230, 230, 230;
 
 	--clr-secondary: 220, 220, 220;
-
 }

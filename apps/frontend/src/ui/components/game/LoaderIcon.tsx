@@ -27,8 +27,18 @@ type LoaderIconProp = JSX.HTMLAttributes<HTMLImageElement> & {
 
 function LoaderIcon(props: LoaderIconProp) {
 	const [{ loader = 'vanilla' }, rest] = splitProps(props, ['loader']);
+
+	const isMonochrome = () => loader === 'forge';
+
 	return (
-		<img {...rest} alt={`${loader}'s logo`} src={getLoaderLogoSrc(loader)} />
+		<img
+			{...rest}
+			alt={`${loader}'s logo`}
+			classList={{
+				'filter-brightness-0': isMonochrome() && document.body.getAttribute('data-theme-type') === 'light',
+			}}
+			src={getLoaderLogoSrc(loader)}
+		/>
 	);
 }
 

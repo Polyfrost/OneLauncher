@@ -9,18 +9,19 @@ import Sidebar from '~ui/components/Sidebar';
 import useSettings from '~ui/hooks/useSettings';
 import { upperFirst } from '~utils';
 import { BROWSER_VIEWS } from '~utils/browser';
-import { THEMES } from '~utils/theming';
+import { DEFAULT_THEME, setAppTheme, splitMergedTheme, THEMES } from '~utils/theming';
 import { createEffect, createSignal, For } from 'solid-js';
 import SettingsRow from '../../../components/SettingsRow';
 
 function SettingsAppearance() {
 	const { settings, saveOnLeave } = useSettings();
 	const [shouldReload, setShouldReload] = createSignal(false);
-	const [theme, setTheme] = createSignal(settings().theme);
+	const [theme, setTheme] = createSignal(settings().theme ?? DEFAULT_THEME);
 
 	createEffect(() => {
 		document.body.classList.add('theme-transition');
-		document.body.setAttribute('data-theme', theme() ?? 'dark');
+		const split = splitMergedTheme(theme());
+		setAppTheme(split.theme, split.variant);
 		setTimeout(() => document.body.classList.remove('theme-transition'), 300);
 	});
 
@@ -39,7 +40,7 @@ function SettingsAppearance() {
 	saveOnLeave(() => ({
 		disable_animations: settings().disable_animations!,
 		custom_frame: settings().custom_frame!,
-		theme: theme() ?? 'dark',
+		theme: theme(),
 	}));
 
 	return (
@@ -47,11 +48,18 @@ function SettingsAppearance() {
 			<h1>Appearance</h1>
 			<ScrollableContainer>
 				<div class="flex flex-row items-center gap-4">
-					<PrimaryThemeCard theme={theme()} />
+					<PrimaryThemeCard merged={theme()} />
 					<div class="grid grid-cols-3 h-full gap-4">
-						<For each={THEMES}>
+						<For each={Object.keys(THEMES) as (keyof typeof THEMES)[]}>
 							{theme => (
-								<ThemeCard setTheme={setTheme} theme={theme} />
+								<For each={THEMES[theme].variants}>
+									{variant => (
+										<ThemeCard
+											setTheme={setTheme}
+											themeSelector={`${theme}-${variant.name}`}
+										/>
+									)}
+								</For>
 							)}
 						</For>
 					</div>
@@ -118,13 +126,13 @@ function SettingsAppearance() {
 export default SettingsAppearance;
 
 interface ThemeCardProps {
-	theme: string;
-	setTheme: (theme: string) => void;
+	themeSelector: string;
+	setTheme: (merged: string) => void;
 };
 
 function ThemeCard(props: ThemeCardProps) {
 	return (
-		<div class={`theme-${props.theme}`} onClick={() => props.setTheme(props.theme)}>
+		<div class={`theme-${props.themeSelector}`} onClick={() => props.setTheme(props.themeSelector)}>
 			<svg fill="none" height="78" viewBox="0 0 126 78" width="126" xmlns="http://www.w3.org/2000/svg">
 				<rect fill="rgb(var(--clr-page))" height="78" rx="8" width="126" />
 				<rect height="77" rx="7.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.1" width="125" x="0.5" y="0.5" />
@@ -139,12 +147,12 @@ function ThemeCard(props: ThemeCardProps) {
 }
 
 interface PrimaryThemeCardProps {
-	theme: string | undefined;
+	merged: string;
 }
 
 function PrimaryThemeCard(props: PrimaryThemeCardProps) {
 	return (
-		<div class={`theme-${props.theme ?? 'dark'}`}>
+		<div class={`theme-${props.merged}`}>
 			<svg fill="none" height="183" viewBox="0 0 296 183" width="296" xmlns="http://www.w3.org/2000/svg">
 				<rect fill="rgb(var(--clr-page))" height="183" rx="16" width="296" />
 				<rect height="180" rx="14.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.1" stroke-width="1.5" width="293" x="1.5" y="1.5" />

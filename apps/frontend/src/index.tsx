@@ -10,7 +10,7 @@ import '@fontsource/poppins/600.css';
 import 'virtual:uno.css';
 import '@unocss/reset/tailwind.css';
 import 'overlayscrollbars/overlayscrollbars.css';
-import '~styles/themes.scss';
+import '~styles/themes/index.scss';
 import '~styles/globals.scss';
 import '~styles/highlightjs.css';
 

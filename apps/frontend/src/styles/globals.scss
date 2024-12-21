@@ -1,3 +1,7 @@
+html, body, :root {
+	@apply bg-page;
+}
+
 body {
     @apply font-sans text-fg-primary text-md;
 }

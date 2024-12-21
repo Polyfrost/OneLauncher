@@ -108,7 +108,7 @@ function Banner() {
 	const navigate = useNavigate();
 
 	return (
-		<div class="theme-dark relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
+		<div class="relative h-52 min-h-52 w-full overflow-hidden rounded-xl">
 			<ClusterCover
 				class="absolute h-52 w-full rounded-xl object-cover"
 				cluster={cluster()}
@@ -120,8 +120,8 @@ function Banner() {
 				}}
 			/>
 
-			<div class="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6 text-fg-primary">
-				<div class="flex flex-col gap-y-2">
+			<div class="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6">
+				<div class="theme-OneLauncher-Dark flex flex-col gap-y-2 text-fg-primary">
 					<h1>{cluster()?.meta.name || 'Create a cluster'}</h1>
 					<Show when={cluster() !== undefined}>
 						<p>
@@ -152,7 +152,7 @@ function Banner() {
 							<Button
 								buttonStyle="iconSecondary"
 								children={<Settings01Icon />}
-								class="bg-op-10!"
+								class="theme-OneLauncher-Dark bg-op-10!"
 								onClick={() => ClusterRoot.open(navigate, cluster()!.uuid)}
 							/>
 						</Show>

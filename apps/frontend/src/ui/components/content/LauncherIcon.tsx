@@ -7,8 +7,8 @@ import MultiMCImage from '~assets/logos/launchers/multimc.png';
 import PrismIcon from '~assets/logos/launchers/prismlauncher.svg?component-solid';
 import TechnicImage from '~assets/logos/launchers/technic.png';
 import TLauncherImage from '~assets/logos/launchers/tlauncher.png';
-import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import UnknownImage from '~assets/logos/minecraft.png';
+import ModrinthIcon from '~assets/logos/modrinth.svg?component-solid';
 import { type JSX, type JSXElement, Show, splitProps } from 'solid-js';
 
 type ElementType = (props: any) => JSXElement;

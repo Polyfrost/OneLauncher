@@ -1,0 +1,14 @@
+$name: "UNSET" !default;
+
+@mixin variant($variant, $selectors: "") {
+	#{$selectors} [data-theme="#{$name}-#{$variant}"], .theme-#{$name}-#{$variant} {
+		@content;
+	}
+}
+
+@mixin extends-variant($variant, $extends, $selectors: "") {
+	#{$selectors} [data-theme="#{$name}-#{$variant}"], .theme-#{$name}-#{$variant} {
+		@extend [data-theme="#{$name}-#{$extends}"], .theme-#{$name}-#{$extends};
+		@content;
+	}
+}

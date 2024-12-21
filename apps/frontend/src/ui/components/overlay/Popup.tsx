@@ -19,7 +19,7 @@ export type PopupProps = Omit<Parameters<typeof Portal>[0], 'children'> & Parent
 function Popup(props: PopupProps) {
 	let popupRef!: HTMLDivElement;
 
-	function onMouseDown(e: MouseEvent) {
+	function onClick(e: MouseEvent) {
 		e.stopPropagation();
 		if (!popupRef || !props.visible())
 			return;
@@ -31,9 +31,9 @@ function Popup(props: PopupProps) {
 
 	createEffect(() => {
 		if (props.visible())
-			document.addEventListener('mousedown', onMouseDown);
+			document.addEventListener('click', onClick);
 		else
-			document.removeEventListener('mousedown', onMouseDown);
+			document.removeEventListener('click', onClick);
 	});
 
 	return (

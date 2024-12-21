@@ -8,7 +8,7 @@ type PlayerHeadProps = JSX.IntrinsicElements['img'] & {
 };
 
 function crafatar(uuid: string) {
-	return `https://crafatar.com/avatars/${uuid}?size=48`;
+	return `https://crafatar.com/avatars/${uuid}?size=48&overlay`;
 }
 
 function PlayerHead(props: PlayerHeadProps) {

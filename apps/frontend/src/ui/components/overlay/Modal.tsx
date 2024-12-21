@@ -127,7 +127,7 @@ export type ModalProps = {
 
 function Modal(props: ModalProps) {
 	return (
-		<div class="min-w-xs flex flex-col gap-y-2 border border-white/5 rounded-lg bg-page p-4 text-center" ref={mergeRefs(props.ref)}>
+		<div class="min-w-md flex flex-col gap-y-2 border border-white/5 rounded-lg bg-page p-4 text-center" ref={mergeRefs(props.ref)}>
 			{props.children}
 		</div>
 	);

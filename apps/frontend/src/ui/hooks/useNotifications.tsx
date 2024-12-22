@@ -1,6 +1,7 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { NotificationData } from '~ui/components/overlay/notifications/NotificationComponent';
 import { events } from '@onelauncher/client/bindings';
+import { randomString } from '~utils';
 import { type Accessor, type Context, createContext, createSignal, onCleanup, onMount, type ParentProps, type Signal, useContext } from 'solid-js';
 
 type Notifications = Record<string, NotificationData>;
@@ -8,6 +9,7 @@ type Notifications = Record<string, NotificationData>;
 interface HookReturn {
 	list: Accessor<Notifications>;
 	set: (id: string, data: NotificationData) => void;
+	create: (data: NotificationData) => void;
 	clear: () => void;
 }
 
@@ -44,11 +46,14 @@ export function NotificationProvider(props: ParentProps) {
 function useNotifications(): HookReturn {
 	const [notifications, setNotifications] = useContext(NotificationContext);
 
-	return {
+	const ctx = {
 		list: notifications,
 		set: (id, data) => setNotifications(notifications => ({ ...notifications, [id]: data })),
+		create: data => ctx.set(randomString(6), data),
 		clear: () => setNotifications({}),
-	};
+	} satisfies HookReturn;
+
+	return ctx;
 }
 
 export default useNotifications;

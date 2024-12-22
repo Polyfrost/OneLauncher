@@ -54,6 +54,15 @@ export function int32ToBigInt([high, low]: [number, number]): bigint {
 	return (BigInt(high | 0) << 32n) | BigInt(low >>> 0);
 }
 
+export function randomString(len: number = 6, charSet: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') {
+	let randomString = '';
+	for (let i = 0; i < len; i++) {
+		const randomPos = Math.floor(Math.random() * charSet.length);
+		randomString += charSet.substring(randomPos, randomPos + 1);
+	}
+	return randomString;
+}
+
 export function abbreviateNumber(n: number | bigint, locale: string = 'en-US'): string {
 	return new Intl.NumberFormat(locale, {
 		notation: 'compact',

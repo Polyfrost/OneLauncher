@@ -11,6 +11,7 @@ import Modal, { createModal } from '~ui/components/overlay/Modal';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
+import useNotifications from '~ui/hooks/useNotifications';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { render } from 'solid-js/web';
 
@@ -26,6 +27,7 @@ function ClusterGame() {
 	const [params] = useSearchParams<ClusterGameParams>();
 	const [log] = useCommand(() => bridge.commands.getClusterLog(cluster()!.uuid, 'latest.log'));
 	const [isRunning, setIsRunning] = createSignal(true);
+	const notifications = useNotifications();
 
 	const [unlisten, setUnlisten] = createSignal<UnlistenFn>();
 	let codeRef!: HTMLElement;
@@ -39,6 +41,11 @@ function ClusterGame() {
 				render(() => <Line line={event.payload.message} />, codeRef);
 			else if (event.payload.event === 'finished')
 				setIsRunning(false);
+			else if (event.payload.event === 'modified')
+				notifications.create({
+					title: 'Process Status',
+					message: event.payload.message,
+				});
 		});
 
 		setUnlisten(() => unlisten);

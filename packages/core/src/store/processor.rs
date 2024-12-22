@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::api::cluster;
 use crate::constants::PROCESSOR_FILE;
-use crate::proxy::send::send_process;
+use crate::proxy::send::{send_ingress, send_message, send_process};
 use crate::proxy::ProcessPayloadType;
 use crate::utils::http::read_json;
 use crate::State;
@@ -427,7 +427,7 @@ impl Processor {
 
 		#[cfg(target_os = "linux")]
 		{
-			if enable_gamemode.is_some_and(|x| x == true) {
+			if enable_gamemode.is_some_and(|x| x) {
 				if let Err(err) = onelauncher_gamemode::request_start_for_wrapper(pid) {
 					tracing::warn!("failed to enable gamemode, continuing: {}", err);
 				};
@@ -654,8 +654,8 @@ impl Processor {
 		});
 
 		tokio::spawn(async {
-			let state = State::get();
-			let state = match state.await {
+			let state = State::get().await;
+			let state = match state {
 				Ok(state) => state,
 				Err(err) => {
 					tracing::warn!("failed to get state: {}", err);
@@ -689,47 +689,59 @@ impl Processor {
 		}
 
 		let post = if let Some(hook) = post {
-			let mut cmd = hook.split(' ');
-			if let Some(c) = cmd.next() {
-				let mut c = Command::new(c);
-				c.args(cmd).current_dir(cluster_path.full_path().await?);
-				Some(c)
-			} else {
+			if hook.is_empty() {
 				None
+			} else {
+				let mut cmd = hook.split(' ');
+				if let Some(c) = cmd.next() {
+					let mut c = Command::new(c);
+					c.args(cmd).current_dir(cluster_path.full_path().await?);
+					Some(c)
+				} else {
+					None
+				}
 			}
 		} else {
 			None
 		};
 
 		if let Some(mut m_c) = post {
-			{
-				let mut current_child: tokio::sync::RwLockWriteGuard<'_, ChildType> =
-					current_child.write().await;
-				let new_child = m_c.spawn().map_err(IOError::from)?;
-				current_pid = new_child
-					.id()
-					.ok_or_else(|| anyhow::anyhow!("process failed, couldnt get pid"))?;
-				*current_child = ChildType::ChildProcess(new_child);
-			}
+			let result = {
+				{
+					let mut current_child: tokio::sync::RwLockWriteGuard<'_, ChildType> =
+						current_child.write().await;
 
-			send_process(
-				uuid,
-				current_pid,
-				ProcessPayloadType::Modified,
-				"running post hook",
-			)
-			.await?;
+					let new_child = m_c.spawn().map_err(IOError::from)?;
 
-			loop {
+					current_pid = new_child
+						.id()
+						.ok_or_else(|| anyhow::anyhow!("process failed, couldnt get pid"))?;
+
+					*current_child = ChildType::ChildProcess(new_child);
+				};
+
+				send_process(
+					uuid,
+					current_pid,
+					ProcessPayloadType::Modified,
+					"running post hook",
+				)
+				.await?;
+
 				let value = current_child.write().await.try_wait();
-				if let Some(stat) = value? {
+
+				if let Ok(Some(stat)) = value {
 					exit_status = stat;
-					break;
 				}
 
-				tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+				Ok::<(), crate::Error>(())
+			};
+
+			if let Err(err) = result {
+				tracing::error!("failed to run post hook: {err}");
+				let _ = send_message(format!("failed to run post hook: {err}").as_str()).await;
 			}
-		}
+		};
 
 		send_process(
 			uuid,

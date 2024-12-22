@@ -195,55 +195,23 @@ pub async fn import_mmc(
 		cluster_path: cluster_path.clone(),
 	};
 
-	let backup_name = "Imported Modpack".to_string();
+	let mut minecraft_folder = mmc_base_path
+		.join("instances")
+		.join(instance_folder);
 
-	if instance_cfg.managed_pack.unwrap_or(false) {
+	if minecraft_folder.join("minecraft").exists() {
+		minecraft_folder = minecraft_folder.join("minecraft");
+	} else if minecraft_folder.join(".minecraft").exists() {
+		minecraft_folder = minecraft_folder.join(".minecraft");
+	}
+
+	let backup_name = if instance_cfg.managed_pack.unwrap_or(false) {
 		match instance_cfg.managed_pack_type {
-			Some(MMCManagedPackType::Modrinth) => {
-				let backup_name = "Imported Modrinth Modpack".to_string();
-				let minecraft_folder = mmc_base_path
-					.join("instances")
-					.join(instance_folder)
-					.join(".minecraft");
-				import_mmc_unmanaged(
-					cluster_path,
-					minecraft_folder,
-					backup_name,
-					description,
-					mmc_pack,
-				)
-				.await?;
-			}
-			Some(MMCManagedPackType::Flame | MMCManagedPackType::ATLauncher) => {
-				// Same as unmanaged, but with 'minecraft' folder instead of '.minecraft'
-				let minecraft_folder = mmc_base_path
-					.join("instances")
-					.join(instance_folder)
-					.join("minecraft");
-				import_mmc_unmanaged(
-					cluster_path,
-					minecraft_folder,
-					backup_name,
-					description,
-					mmc_pack,
-				)
-				.await?;
-			}
-			Some(_) => {
-				let backup_name = "ImportedModpack".to_string();
-				let minecraft_folder = mmc_base_path
-					.join("instances")
-					.join(instance_folder)
-					.join(".minecraft");
-				import_mmc_unmanaged(
-					cluster_path,
-					minecraft_folder,
-					backup_name,
-					description,
-					mmc_pack,
-				)
-				.await?;
-			}
+			Some(MMCManagedPackType::Modrinth) => "Imported Modrinth Modpack".to_string(),
+			Some(MMCManagedPackType::Flame) => "Imported CurseForge Modpack".to_string(),
+			Some(MMCManagedPackType::ATLauncher) => "Imported ATLauncher Modpack".to_string(),
+			Some(_) => "ImportedModpack".to_string(),
+
 			_ => {
 				return Err(anyhow::anyhow!(
 					"Instance is managed, but managed pack type not specified in instance.cfg"
@@ -252,20 +220,17 @@ pub async fn import_mmc(
 			}
 		}
 	} else {
-		let backup_name = "Imported Modpack".to_string();
-		let minecraft_folder = mmc_base_path
-			.join("instances")
-			.join(instance_folder)
-			.join(".minecraft");
-		import_mmc_unmanaged(
-			cluster_path,
-			minecraft_folder,
-			backup_name,
-			description,
-			mmc_pack,
-		)
-		.await?;
-	}
+		"Imported Modpack".to_string()
+	};
+
+	import_mmc_unmanaged(
+		cluster_path,
+		minecraft_folder,
+		backup_name,
+		description,
+		mmc_pack,
+	)
+	.await?;
 
 	Ok(())
 }

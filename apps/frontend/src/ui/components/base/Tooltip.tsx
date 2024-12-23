@@ -6,10 +6,10 @@ export type TooltipProps = JSX.HTMLAttributes<HTMLDivElement> & {
 };
 
 function Tooltip(props: TooltipProps) {
-	const [split, rest] = splitProps(props, ['class']);
+	const [split, rest] = splitProps(props, ['class', 'text']);
 
 	return (
-		<div class={`${styles.tooltip} ${split.class || ''}`} data-text={props.text} {...rest} />
+		<div class={`${styles.tooltip} ${split.class || ''}`} data-text={split.text} {...rest} />
 	);
 }
 

@@ -1,8 +1,8 @@
 import type { ImportType } from '@onelauncher/client/bindings';
+import type { LauncherImportInformation } from '~ui/components/content/LauncherImportComponent';
 import { bridge } from '~imports';
-import SelectList from '~ui/components/base/SelectList';
-import useCommand from '~ui/hooks/useCommand';
-import { createEffect, createSignal, For, onMount, untrack } from 'solid-js';
+import LauncherImportComponent from '~ui/components/content/LauncherImportComponent';
+import { createSignal, onMount, untrack } from 'solid-js';
 import { type ClusterStepProps, createClusterStep } from './ClusterCreationModal';
 
 export default createClusterStep({
@@ -12,67 +12,29 @@ export default createClusterStep({
 });
 
 function ClusterImportSelection(props: ClusterStepProps) {
-	const [instances] = useCommand(() => {
-		const importType = props.controller.provider();
-		if (importType === undefined || importType === 'New')
-			return [];
-
-		return bridge.commands.getLauncherInstances(importType, null);
-	});
-
-	const [selected, setSelected] = createSignal<number>();
-
-	createEffect(() => {
-		const index = selected();
-
-		props.setCanGoForward(() => {
-			if (index === undefined)
-				return false;
-
-			if (index >= 0)
-				return true;
-
-			return false;
-		});
+	const [importInfo, setImportInfo] = createSignal<LauncherImportInformation>({
+		// eslint-disable-next-line solid/reactivity -- It works as intended
+		importType: untrack(props.controller.provider) as ImportType,
+		instances: [],
+		path: null,
 	});
 
 	onMount(() => {
-		// eslint-disable-next-line solid/reactivity -- It's fine
 		props.controller.setFinishFunction(() => async () => {
-			const index = untrack(selected);
-			if (index === undefined)
-				return false;
+			const details = untrack(importInfo);
 
-			const list = untrack(instances);
-			if (list === undefined)
-				return false;
-
-			const instance = list[1][index];
-			if (instance === undefined)
-				return false;
-
-			const basePath = list[0];
-
-			const importType = untrack(props.controller.provider) as ImportType;
-
-			await bridge.commands.importInstances(importType, basePath, [instance]);
+			bridge.commands.importInstances(details.importType, details.path!, details.instances);
 
 			return true;
 		});
 	});
 
 	return (
-		<SelectList
-			class="h-52 max-h-52"
-			onChange={selected => setSelected(selected[0])}
-		>
-			<For each={instances()?.[1]}>
-				{(instance, index) => (
-					<SelectList.Row index={index()}>
-						{instance}
-					</SelectList.Row>
-				)}
-			</For>
-		</SelectList>
+		<LauncherImportComponent
+			importInformation={importInfo}
+			multiple={false}
+			setCanImport={props.setCanGoForward}
+			setImportInformation={setImportInfo}
+		/>
 	);
 }

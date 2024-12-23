@@ -3,7 +3,6 @@ import { useNavigate } from '@solidjs/router';
 import {
 	PlayIcon,
 	PlusIcon,
-	RefreshCw01Icon,
 	SearchMdIcon,
 	Settings01Icon,
 } from '@untitled-theme/icons-solid';
@@ -30,7 +29,7 @@ function HomePage() {
 
 	onMount(() => {
 		bridge.events.clusterPayload.listen(({ payload }) => {
-			if (payload.event === 'created' || payload.event === 'deleted')
+			if (payload.event === 'created' || payload.event === 'deleted' || payload.event === 'inserted')
 				refetch();
 		});
 	});
@@ -52,14 +51,15 @@ function HomePage() {
 
 			<div class="flex flex-row items-center justify-between">
 				<div>
-					<TextField iconLeft={<SearchMdIcon />} placeholder="Search for clusters..." />
+					<TextField disabled iconLeft={<SearchMdIcon />} placeholder="Search for clusters..." />
 				</div>
 				<div class="flex flex-row items-center gap-x-2">
-					<Button
+					{/* <Button
 						buttonStyle="icon"
 						children={<RefreshCw01Icon />}
 						onClick={refetch}
-					/>
+
+					/> */}
 
 					<Button
 						buttonStyle="primary"

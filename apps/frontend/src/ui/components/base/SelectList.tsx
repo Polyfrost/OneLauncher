@@ -1,5 +1,5 @@
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, type ParentProps, type Setter, splitProps, useContext } from 'solid-js';
+import { type Accessor, type Context, createContext, createEffect, createSignal, type JSX, onMount, type ParentProps, type Setter, splitProps, useContext } from 'solid-js';
 import styles from './SelectList.module.scss';
 
 interface SelectListContextHelpers {
@@ -83,11 +83,17 @@ function SelectList(props: SelectListProps) {
 
 export type SelectListRowProps = JSX.HTMLAttributes<HTMLDivElement> & {
 	index: number;
+	selected?: boolean;
 };
 
 SelectList.Row = (props: SelectListRowProps) => {
 	const { selected, setSelected, select } = useSelectListContext();
-	const [split, rest] = splitProps(props, ['index', 'class', 'onClick']);
+	const [split, rest] = splitProps(props, ['selected', 'index', 'class', 'onClick']);
+
+	onMount(() => {
+		if (split.selected)
+			select(split.index);
+	});
 
 	return (
 		<div

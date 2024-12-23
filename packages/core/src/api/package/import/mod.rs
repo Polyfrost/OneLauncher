@@ -93,10 +93,10 @@ impl ImportType {
 }
 
 pub async fn get_launcher_instances(import: ImportType, path: Option<PathBuf>) -> crate::Result<(PathBuf, Vec<String>)> {
-	let base_path = &path.unwrap_or(
-		default_launcher_path(import)
-		.ok_or_else(|| anyhow::anyhow!("could not get launcher base path for {import}"))?
-	);
+	let base_path = match &path {
+		Some(path) => path,
+		None => &default_launcher_path(import).ok_or_else(|| anyhow::anyhow!("could not get launcher base path for {import}"))?
+	};
 
 	let instances_dir = import.get_instances_subpath(base_path).await?;
 

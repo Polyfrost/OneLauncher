@@ -1,29 +1,31 @@
 import type { ImportType } from '@onelauncher/client/bindings';
+import type { LauncherImportInformation } from '~ui/components/content/LauncherImportComponent';
 import Illustration from '~assets/illustrations/onboarding/import_from_others.svg?component-solid';
-import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Link from '~ui/components/base/Link';
-import SelectList from '~ui/components/base/SelectList';
 import LauncherIcon from '~ui/components/content/LauncherIcon';
+import LauncherImportComponent from '~ui/components/content/LauncherImportComponent';
 import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
-import useCommand from '~ui/hooks/useCommand';
 import { LAUNCHER_IMPORT_TYPES } from '~utils';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-solid';
-import { createEffect, createSignal, For } from 'solid-js';
+import { createMemo, createSignal, For, untrack } from 'solid-js';
 import Onboarding, { OnboardingStep } from './Onboarding';
 
 function OnboardingImport() {
 	const ctx = Onboarding.useContext();
 	const [launcher, setLauncher] = createSignal<ImportType>();
 
+	const foundInfo = createMemo(() => ctx.importInstances(launcher()!));
+
 	const modal = createModal(props => (
 		<InstancesPickerModal
 			{...props}
+			instances={foundInfo()?.instances}
 			launcher={launcher()!}
 			onSelected={(basePath, instance) => {
 				ctx.setImportInstances(launcher()!, basePath, instance);
 			}}
-			selected={ctx.importInstances(launcher()!)?.instances}
+			path={foundInfo()?.basePath}
 		/>
 	));
 
@@ -69,24 +71,22 @@ export default OnboardingImport;
 
 type InstancesPickerModalProps = ModalProps & {
 	launcher: ImportType;
-	selected: string[] | undefined;
+	path: string | undefined;
+	instances: string[] | undefined;
 	onSelected: (basePath: string, instances: string[]) => void;
 };
 
 function InstancesPickerModal(props: InstancesPickerModalProps) {
-	const [instances] = useCommand(() => bridge.commands.getLauncherInstances(props.launcher, null));
-	const [selected, setSelected] = createSignal<number[]>([]);
-
-	const getSelectedInstances = () => selected().map(i => instances()?.[1][i]).filter(v => v !== undefined);
-
-	createEffect(() => {
-		const selected = props.selected;
-		const instancesList = instances()?.[1];
-		if (selected !== undefined && instancesList !== undefined) {
-			const indexes = selected.map(instance => instancesList.indexOf(instance)).filter(i => i !== undefined);
-			setSelected(indexes);
-		}
+	const [importInfo, setImportInfo] = createSignal<LauncherImportInformation>({
+		// eslint-disable-next-line solid/reactivity -- its ok
+		importType: props.launcher,
+		// eslint-disable-next-line solid/reactivity -- its ok
+		instances: props.instances || [],
+		// eslint-disable-next-line solid/reactivity -- its ok
+		path: props.path || '',
 	});
+
+	const instanceLength = createMemo(() => importInfo().instances.length);
 
 	return (
 		<Modal.Simple
@@ -95,32 +95,22 @@ function InstancesPickerModal(props: InstancesPickerModalProps) {
 				'Cancel',
 				<Button
 					buttonStyle="primary"
-					children={`Import (${selected().length || 'None'})`}
-					disabled={(instances()?.length || 0) <= 0}
+					children={`Import (${instanceLength() || 'None'})`}
+					disabled={instanceLength() <= 0}
 					onClick={() => {
-						props.onSelected(instances()![0], getSelectedInstances());
+						const info = untrack(importInfo);
+						props.onSelected(info.path!, info.instances);
 						props.hide();
 					}}
 				/>,
 			]}
 			title="Import Instances"
 		>
-			<div class="flex flex-col gap-2">
-				<SelectList
-					class="h-52 max-h-52"
-					multiple
-					onChange={setSelected}
-					selected={selected()}
-				>
-					<For each={instances()?.[1]}>
-						{(instance, index) => (
-							<SelectList.Row index={index()}>
-								{instance}
-							</SelectList.Row>
-						)}
-					</For>
-				</SelectList>
-			</div>
+			<LauncherImportComponent
+				importInformation={importInfo}
+				multiple={true}
+				setImportInformation={setImportInfo}
+			/>
 		</Modal.Simple>
 	);
 }

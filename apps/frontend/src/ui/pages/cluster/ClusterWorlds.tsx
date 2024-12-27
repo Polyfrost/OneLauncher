@@ -61,6 +61,7 @@ function WorldEntry(props: { name: string; cluster_path: string }) {
 	const deleteModal = createModal(self => (
 		<Modal.Delete
 			{...self}
+			name={`world '${props.name}'`}
 			onDelete={() => {
 				// bridge.commands.deleteWorld(props.name);
 				self.hide();

@@ -207,6 +207,8 @@ type ModalDeleteProps = MakeOptional<ModalSimpleProps, 'title'> & {
 	onDelete?: () => void;
 	timeLeft?: number;
 	deleteBtnText?: string;
+	name?: string;
+	description?: string;
 };
 
 Modal.Delete = function (props: ModalDeleteProps) {
@@ -232,7 +234,10 @@ Modal.Delete = function (props: ModalDeleteProps) {
 			return;
 
 		clearIntervalId();
-		setTimeLeft(split.timeLeft || 3);
+		setTimeLeft(split.timeLeft ?? 3);
+
+		if (split.timeLeft === 0)
+			return;
 
 		const intervalId = setInterval(() => {
 			setTimeLeft((prev) => {
@@ -283,19 +288,14 @@ Modal.Delete = function (props: ModalDeleteProps) {
 			{split.children || (
 				<>
 					<div class="flex flex-col items-center justify-center gap-y-3">
-						<p>Are you sure you want to delete this item?</p>
+						<p>
+							Are you sure you want to delete
+							{' '}
+							{props.name || 'this item'}
+							?
+						</p>
 						<p class="w-82 text-danger line-height-normal uppercase">
-							Doing this will
-							{' '}
-							<span class="font-bold underline">delete</span>
-							{' '}
-							your entire
-							{' '}
-							<br />
-							data
-							{' '}
-							<span class="font-bold underline">FOREVER</span>
-							.
+							{props.description || `${props.name || 'It'} will not be recoverable if you proceed!`}
 						</p>
 					</div>
 				</>

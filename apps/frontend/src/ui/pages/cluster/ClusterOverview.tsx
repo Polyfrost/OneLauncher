@@ -40,7 +40,9 @@ function ClusterOverview() {
 	const deleteModal = createModal(props => (
 		<Modal.Delete
 			{...props}
+			name={cluster() ? `'${cluster()?.meta.name}'` : 'The Cluster'}
 			onDelete={deleteCluster}
+			title="Confirm Cluster Deletion"
 		/>
 	));
 

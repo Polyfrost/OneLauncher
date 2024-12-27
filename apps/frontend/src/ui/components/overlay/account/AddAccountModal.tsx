@@ -28,7 +28,15 @@ export function AccountControllerProvider(props: ParentProps) {
 	));
 
 	const deleteAccountModal = createModal(props => (
-		<Modal.Delete {...props} onDelete={() => _forceRemoveAccount(deleteModalUuid())} />
+		<Modal.Delete
+			{...props}
+			children="Are you sure you want to remove this account?"
+			deleteBtnText="Remove $1"
+			name="Account"
+			onDelete={() => _forceRemoveAccount(deleteModalUuid())}
+			timeLeft={0}
+			title="Remove Account"
+		/>
 	));
 
 	function refetch() {

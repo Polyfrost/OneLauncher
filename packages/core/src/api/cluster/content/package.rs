@@ -3,11 +3,12 @@
 use crate::data::{Loader, ManagedPackage, ManagedVersion, PackageType};
 use crate::prelude::PackagePath;
 use crate::processor::Cluster;
-use crate::proxy::send::send_internet;
+use crate::proxy::send::{init_ingress, send_ingress, send_internet};
 use crate::store::{ClusterPath, ManagedVersionFile, Package, PackageMetadata};
 use crate::utils::http;
 use crate::{Result, State};
 use onelauncher_utils::io;
+use reqwest::Method;
 // TODO: Implement proper error handling
 
 /// Find a managed version using filters
@@ -85,14 +86,9 @@ pub async fn download_package(
 	let file = managed_version
 		.get_primary_file()
 		.ok_or_else(|| anyhow::anyhow!("no primary file found"))?;
-	tracing::info!(
-		"downloading file '{}' version '{}'",
-		file.file_name,
-		managed_version.name
-	);
 
-	let package_path = download_file(file, &package.package_type, cluster).await?;
-	let sha1 = file.hashes.get("sha1").unwrap_or(&"".to_string()).clone();
+	let package_path = download_file(package, &managed_version, file, &package.package_type, cluster).await?;
+	let sha1 = file.hashes.get("sha1").unwrap_or(&String::new()).clone();
 
 	let package = Package {
 		file_name: file.file_name.clone(),
@@ -105,28 +101,54 @@ pub async fn download_package(
 }
 
 /// Download a file to a cluster from a managed version file.
-#[tracing::instrument(skip(file, cluster))]
+#[tracing::instrument(skip_all)]
 async fn download_file(
+	package: &ManagedPackage,
+	version: &ManagedVersion,
 	file: &ManagedVersionFile,
 	package_type: &PackageType,
 	cluster: &Cluster,
 ) -> Result<PackagePath> {
 	// TODO: Implement hash checking
+	let cluster_path = &cluster.get_full_path().await?;
+
 	let path = PackagePath::new(
-		&cluster
-			.get_full_path()
-			.await?
+		&cluster_path
 			.join(package_type.get_folder())
 			.join(&file.file_name),
 	);
 
+	let ingress_id = init_ingress(
+		crate::IngressType::DownloadPackage {
+			cluster_path: cluster_path.to_owned(),
+			package_name: package.title.clone(),
+			icon: None,
+			package_id: Some(package.id.clone()),
+			package_version: Some(version.id.clone()),
+		}, 100.0, "downloading package").await?;
+
+	tracing::info!(
+		"downloading file '{}' version '{}'",
+		file.file_name,
+		version.name
+	);
+
 	let state = State::get().await?;
-	let bytes = http::fetch(
+	let bytes = http::fetch_advanced(
+		Method::GET,
 		&file.url,
 		file.hashes.get("sha1").map(String::as_str),
+		None,
+		None,
+		Some((&ingress_id, 90.0)),
 		&state.fetch_semaphore,
 	)
 	.await?;
+
+	if let Err(err) = send_ingress(&ingress_id, 5.0, Some("saving file")).await {
+		tracing::error!("{err}");
+	}
+
 	if let Err(err) = http::write(&path.0, &bytes, &state.io_semaphore).await {
 		tracing::error!("failed to write file to cluster: {err}");
 		if path.0.exists() {
@@ -135,6 +157,10 @@ async fn download_file(
 
 		return Err(err);
 	};
+
+	if let Err(err) = send_ingress(&ingress_id, 100.0, Some(format!("downloaded package {}", package.title).as_str())).await {
+		tracing::error!("{err}");
+	}
 
 	drop(state);
 

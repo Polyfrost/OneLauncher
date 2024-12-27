@@ -1,12 +1,10 @@
-import type { UnlistenFn } from '@tauri-apps/api/event';
 import { type Navigator, Route, useIsRouting, useSearchParams } from '@solidjs/router';
 import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
-import { bridge } from '~imports';
 import PlayerHead from '~ui/components/game/PlayerHead';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
-import { tryResult } from '~ui/hooks/useCommand';
+import useProcessor from '~ui/hooks/useProcessor';
 import { supportsMods } from '~utils';
-import { createEffect, createResource, createSignal, onCleanup, onMount, type ParentProps, Show } from 'solid-js';
+import { createEffect, type ParentProps, Show } from 'solid-js';
 import AnimatedRoutes from '../../components/AnimatedRoutes';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import Sidebar from '../../components/Sidebar';
@@ -71,33 +69,13 @@ ClusterRoot.open = function (navigate: Navigator, uuid: string) {
 
 function ClusterSidebar() {
 	const [cluster, { refetch: refetchCluster }] = useClusterContext();
-	const [listener, setListener] = createSignal<UnlistenFn>();
-	const [runningProcesses, { refetch: refetchProcesses }] = createResource([], async () => {
-		const c = cluster();
-		if (!c || typeof c.path !== 'string')
-			return [];
-
-		return tryResult(() => bridge.commands.getProcessesDetailedByPath(c.path!));
-	});
+	const { running: runningProcesses } = useProcessor(cluster()!);
 
 	const isRouting = useIsRouting();
 
 	createEffect(() => {
 		if (isRouting())
 			refetchCluster();
-	});
-
-	onMount(async () => {
-		const unlisten = await bridge.events.processPayload.listen(({ payload }) => {
-			if (payload.event === 'started' || payload.event === 'finished')
-				refetchProcesses();
-		});
-
-		setListener(() => unlisten);
-	});
-
-	onCleanup(() => {
-		listener?.()?.();
 	});
 
 	return (

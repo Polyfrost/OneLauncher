@@ -8,11 +8,13 @@ import {
 } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import ClusterCover from '~ui/components/game/ClusterCover';
+import PlayerHead from '~ui/components/game/PlayerHead';
 import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
 import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
-import { formatAsDuration, upperFirst } from '~utils';
 
+import useProcessor from '~ui/hooks/useProcessor';
+import { formatAsDuration, upperFirst } from '~utils';
 import { For, onMount, Show } from 'solid-js';
 import BannerBackground from '../../assets/images/header.png';
 import Button from '../components/base/Button';
@@ -170,6 +172,7 @@ function Banner() {
 
 function ClusterCard(props: Cluster) {
 	const navigate = useNavigate();
+	const { running, isRunning } = useProcessor(props);
 
 	function openClusterPage(_e: MouseEvent) {
 		navigate(`/clusters/?id=${props.uuid}`);
@@ -180,7 +183,11 @@ function ClusterCard(props: Cluster) {
 	return (
 		<>
 			<div
-				class="group relative h-[152px] flex flex-col border border-border/05 rounded-xl bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				class="group relative h-[152px] flex flex-col border rounded-xl"
+				classList={{
+					'border-brand bg-brand/20 active:bg-brand/30 hover:bg-brand/10': isRunning(),
+					'border-border/05 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover': !isRunning(),
+				}}
 				onClick={e => openClusterPage(e)}
 			>
 				<div class="relative flex-1 overflow-hidden rounded-t-xl">
@@ -193,6 +200,16 @@ function ClusterCard(props: Cluster) {
 							cluster={props}
 						/>
 					</div>
+
+					<Show when={isRunning()}>
+						<div class="absolute left-1 top-1 flex flex-row gap-1 rounded-md bg-brand/70 p-1">
+							<For each={running()}>
+								{process => (
+									<PlayerHead class="h-4 w-4 rounded-[4px]" uuid={process.user} />
+								)}
+							</For>
+						</div>
+					</Show>
 				</div>
 				<div class="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 					<div class="h-8 flex flex-col gap-1.5 overflow-hidden">

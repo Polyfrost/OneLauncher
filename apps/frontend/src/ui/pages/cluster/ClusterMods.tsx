@@ -9,11 +9,13 @@ import Sidebar from '~ui/components/Sidebar';
 import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
-import { createEffect, createSignal, For, Match, Show, Switch } from 'solid-js';
+import useProcessor from '~ui/hooks/useProcessor';
+import { type Accessor, createEffect, createSignal, For, Match, Show, Switch } from 'solid-js';
 
 // TODO: This needs a rewrite.
 function ClusterMods() {
 	const [cluster] = useClusterContext();
+	const { isRunning } = useProcessor(cluster()!);
 	const [mods, { refetch: refetchMods }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
 	// Mods to display, should be a clone of the mods array but sorted
@@ -101,7 +103,7 @@ function ClusterMods() {
 					<Match when={displayedMods().length > 0}>
 						<For each={displayedMods()}>
 							{mod => (
-								<ModEntry pkg={mod} refetch={refetchMods} />
+								<ModEntry isRunning={isRunning} pkg={mod} refetch={refetchMods} />
 							)}
 						</For>
 					</Match>
@@ -120,6 +122,7 @@ export default ClusterMods;
 interface ModEntryProps {
 	pkg: Package;
 	refetch: () => void;
+	isRunning: Accessor<boolean>;
 };
 
 function ModEntry(props: ModEntryProps) {
@@ -241,9 +244,12 @@ function ModEntry(props: ModEntryProps) {
 							<Edit02Icon />
 						</Button> */}
 
-						<Button buttonStyle="iconDanger" onClick={deletePackage}>
-							<Trash03Icon />
-						</Button>
+						<Button
+							buttonStyle="iconDanger"
+							children={<Trash03Icon />}
+							disabled={props.isRunning()}
+							onClick={deletePackage}
+						/>
 					</div>
 				</div>
 			</div>

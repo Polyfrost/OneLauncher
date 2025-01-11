@@ -1,6 +1,8 @@
 //! Handlers for Mod metadata that can be displayed in a GUI mod list or exported as a mod pack
 
 use crate::package::content::Providers;
+use crate::proxy::send::{init_ingress, send_ingress};
+use crate::proxy::IngressId;
 use crate::store::Loader;
 use crate::utils::crypto;
 use crate::utils::http::{write_icon, IoSemaphore};
@@ -10,6 +12,7 @@ use chrono::{DateTime, Utc};
 use onelauncher_utils::io;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::vec;
 use tokio::fs::DirEntry;
@@ -133,6 +136,12 @@ impl PackageType {
 	}
 }
 
+impl Display for PackageType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(self.get_name())
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct SearchResult {
@@ -200,6 +209,7 @@ pub struct Packages {
 }
 
 impl Packages {
+	#[must_use]
 	pub fn initialize(clusters: &Clusters) -> Self {
 		let mut this = Self { managers: HashMap::new() };
 
@@ -286,10 +296,7 @@ impl PackageManager {
 			self.synced = true; // early set to prevent infinite loop
 
 			let state = State::get().await.expect("couldn't get state when syncing packages");
-			let dirs = match dirs {
-				Some(dirs) => dirs,
-				None => &state.directories,
-			};
+			let dirs = dirs.map_or_else(|| &state.directories, |dirs| dirs);
 
 			self.sync_packages(dirs).await;
 		}
@@ -461,7 +468,7 @@ impl PackageManager {
 			let package_path = PackagePath::new(&file.path());
 
 			// Check if the file is in the packages list already
-			if let None = packages.get(&package_path) {
+			if packages.get(&package_path).is_none() {
 				// Package path is not in the packages list but exists on file system, lets try to infer it later on
 				packages_to_infer.insert(package_path.0.clone());
 			}
@@ -471,10 +478,12 @@ impl PackageManager {
 		}
 
 		// Infer any packages
-		if packages_to_infer.len() > 0 {
-			if let Some(not_found) = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await {
-				if let Some(not_found) = infer_provider(Providers::SkyClient, package_type, packages, not_found, crypto::md5_file).await {
-					if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
+		if !packages_to_infer.is_empty() {
+			let ingress = init_ingress(crate::IngressType::InferPackages, 300.0, format!("inferring {package_type}s").as_str()).await?;
+
+			if let Some(not_found) = infer_provider(&ingress, Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await {
+				if let Some(not_found) = infer_provider(&ingress, Providers::SkyClient, package_type, packages, not_found, crypto::md5_file).await {
+					if let Some(not_found) = infer_provider(&ingress, Providers::Curseforge, package_type, packages, not_found, |path| {
 						let hash = crypto::murmur2_file(path)?;
 						Ok(hash.to_string())
 					}).await {
@@ -490,6 +499,8 @@ impl PackageManager {
 					}
 				}
 			}
+
+			let _ = send_ingress(&ingress, 300.0, Some(format!("finished inferring {package_type}s").as_str())).await;
 		}
 
 		if packages.len() != packages_to_keep.len() {
@@ -575,29 +586,34 @@ impl PackageManager {
 
 #[tracing::instrument(skip(packages, to_infer))]
 async fn infer_provider(
+	ingress: &IngressId,
 	provider: Providers,
 	package_type: PackageType,
 	packages: &mut PackagesMap,
 	to_infer: HashSet<PathBuf>,
 	hash_fn: fn(&PathBuf) -> crate::Result<String>,
 ) -> Option<HashSet<PathBuf>> {
-	// TODO: Add ingress
+	let _ = send_ingress(ingress, 5.0, Some(format!("inferring {package_type}s from {provider}").as_str())).await;
 
 	let mut hash_map = HashMap::<String, PathBuf>::new();
-	to_infer.iter().for_each(|path| {
+	for path in &to_infer {
 		if let Ok(hash) = hash_fn(path) {
 			hash_map.insert(hash, path.clone());
 		}
-	});
+	}
 
 
 	let hash_len = hash_map.len();
+
+	let _ = send_ingress(ingress, 25.0, None).await;
 	match provider.get_versions_by_hashes(hash_map.iter().map(|hash| hash.0.clone()).collect()).await {
 		Ok(versions) => {
 
-			let found_all = (hash_len - versions.len()) <= 0;
+			let found_all = (hash_len - versions.len()) == 0;
 
-			let havent_found = if !found_all {
+			let havent_found = if found_all {
+				None
+			} else {
 				Some(hash_map.iter().filter_map(|(hash, path)| {
 					if versions.contains_key(hash) {
 						None
@@ -605,24 +621,17 @@ async fn infer_provider(
 						Some(path.clone())
 					}
 				}).collect::<HashSet<PathBuf>>())
-			} else {
-				None
 			};
 
 			let package_ids = versions.iter().map(|(hash, version)| (version.package_id.clone(), hash.clone())).collect::<HashMap<String, String>>();
 
+			let _ = send_ingress(ingress, 25.0, None).await;
 			match provider.get_multiple(package_ids.clone().into_keys().collect::<Vec<String>>().as_slice()).await {
 				Ok(managed_packages) => {
 					for managed in managed_packages {
-						let hash = match package_ids.get(&managed.id) {
-							Some(hash) => hash,
-							None => continue,
-						};
+						let Some(hash) = package_ids.get(&managed.id) else { continue };
 
-						let version = match versions.get(hash) {
-							Some(version) => version,
-							None => continue,
-						};
+						let Some(version) = versions.get(hash) else { continue; };
 
 						if let Some(package_path) = hash_map.get(hash) {
 							let meta = PackageMetadata::Managed {
@@ -653,13 +662,15 @@ async fn infer_provider(
 				}
 			}
 
+			let _ = send_ingress(ingress, 45.0, Some(format!("infered {package_type}s from {provider}").as_str())).await;
 			return havent_found;
 		},
 		Err(err) => {
-			tracing::error!("failed to get versions from {}: {}", provider, err);
+			tracing::error!("failed to get versions hashes from {}: {}", provider, err);
 		}
 	};
 
+	let _ = send_ingress(ingress, 70.0, Some(format!("failed to infer {package_type}s from {provider}").as_str())).await;
 	Some(to_infer)
 }
 
@@ -702,7 +713,7 @@ impl PackageMetadata {
 	pub const fn get_package_type(&self) -> Option<PackageType> {
 		match self {
 			Self::Managed { package_type, .. } => Some(*package_type),
-			_ => None,
+			Self::Unknown => None,
 		}
 	}
 }
@@ -747,6 +758,7 @@ pub enum PackageBody {
 }
 
 /// Universal metadata for any managed package from a Mod distribution platform.
+#[serde_with::serde_as]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedPackage {
@@ -760,6 +772,7 @@ pub struct ManagedPackage {
 	pub main: String,
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub loaders: Vec<Loader>,
 	pub icon_url: Option<String>,
 
@@ -789,6 +802,7 @@ pub struct License {
 }
 
 /// Universal managed package version of a package.
+#[serde_with::serde_as]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ManagedVersion {
@@ -810,6 +824,7 @@ pub struct ManagedVersion {
 	pub is_available: bool,
 	pub deps: Vec<ManagedDependency>,
 	pub game_versions: Vec<String>,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub loaders: Vec<Loader>,
 }
 
@@ -842,14 +857,14 @@ impl From<String> for ManagedVersionReleaseType {
 	}
 }
 
-impl ToString for ManagedVersionReleaseType {
-	fn to_string(&self) -> String {
-		match self {
+impl Display for ManagedVersionReleaseType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
 			Self::Release => "Release",
 			Self::Alpha => "Alpha",
 			Self::Beta => "Beta",
 			Self::Snapshot => "Snapshot",
-		}.to_string()
+		})
 	}
 }
 

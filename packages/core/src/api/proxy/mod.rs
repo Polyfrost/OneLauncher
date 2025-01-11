@@ -160,6 +160,7 @@ pub enum IngressType {
 		cluster_path: PathBuf,
 		cluster_name: String,
 	},
+	InferPackages,
 	CopyCluster {
 		import: PathBuf,
 		cluster_name: String,

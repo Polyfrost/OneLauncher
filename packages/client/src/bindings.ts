@@ -774,7 +774,7 @@ export type ImportType =
  */
 	'Unknown';
 export interface IngressPayload { event: IngressType; ingress_uuid: string; fraction: number | null; message: string };
-export type IngressType = { type: 'initialize' } | { type: 'download_java'; version: number } | { type: 'download_loader'; cluster_path: string; cluster_name: string } | { type: 'sync_cluster'; cluster_path: string; cluster_name: string } | { type: 'copy_cluster'; import: string; cluster_name: string } | { type: 'sync_config'; new_path: string } | { type: 'archival'; cluster_path: string; cluster_name: string } | { type: 'download_package'; cluster_path: string; package_name: string; icon: string | null; package_id: string | null; package_version: string | null } | { type: 'download_pack'; cluster_path: string; package_name: string; icon: string | null; package_version: string };
+export type IngressType = { type: 'initialize' } | { type: 'download_java'; version: number } | { type: 'download_loader'; cluster_path: string; cluster_name: string } | { type: 'sync_cluster'; cluster_path: string; cluster_name: string } | { type: 'infer_packages' } | { type: 'copy_cluster'; import: string; cluster_name: string } | { type: 'sync_config'; new_path: string } | { type: 'archival'; cluster_path: string; cluster_name: string } | { type: 'download_package'; cluster_path: string; package_name: string; icon: string | null; package_id: string | null; package_version: string | null } | { type: 'download_pack'; cluster_path: string; package_name: string; icon: string | null; package_version: string };
 /**
  * Global initialization hooks for all Minecraft clusters.
  */

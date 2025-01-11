@@ -10,19 +10,28 @@ import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand from '~ui/hooks/useCommand';
 import useProcessor from '~ui/hooks/useProcessor';
-import { type Accessor, createEffect, createSignal, For, Match, Show, Switch } from 'solid-js';
+import { type Accessor, createEffect, createSignal, For, Match, on, Show, Switch, untrack } from 'solid-js';
 
 // TODO: This needs a rewrite.
 function ClusterMods() {
 	const [cluster] = useClusterContext();
 	const { isRunning } = useProcessor(cluster()!);
-	const [mods, { refetch: refetchMods }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
+	const [mods, { refetch: refetchModsCommand }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
 	// Mods to display, should be a clone of the mods array but sorted
 	const [displayedMods, setDisplayedMods] = createSignal<Package[]>([]);
 
 	// true - `A to Z` & false - `Z to A`
 	const [sortingAtoZ, setSortingAtoZ] = createSignal<boolean>(true);
+
+	const [searchQuery, setSearchQuery] = createSignal<string>('');
+
+	async function refetchMods() {
+		if (mods.loading)
+			return;
+
+		await refetchModsCommand();
+	}
 
 	function getModName(mod: Package) {
 		if (mod.meta.type === 'unknown')
@@ -34,13 +43,11 @@ function ClusterMods() {
 	const uf = new UFuzzy();
 	const [modsSearchable] = createSignal(() => mods()?.map(getModName) || []);
 
-	function search(value: string) {
-		if (value === '' || value === undefined) {
-			resetMods();
-			return;
-		}
+	function search(query: string) {
+		if (query.length === 0)
+			return untrack(mods) || [];
 
-		const result = uf.search(modsSearchable()(), value);
+		const result = uf.search(modsSearchable()(), query);
 
 		const filtered: Package[] = [];
 		result[0]?.forEach((index) => {
@@ -49,7 +56,7 @@ function ClusterMods() {
 				filtered.push(mod);
 		});
 
-		setDisplayedMods(sortListByName(filtered));
+		return filtered;
 	}
 
 	function sortListByName(list: Package[]): Package[] {
@@ -59,18 +66,18 @@ function ClusterMods() {
 			return list.sort((a, b) => getModName(b).localeCompare(getModName(a)));
 	}
 
-	function toggleNameSort() {
-		setSortingAtoZ(!sortingAtoZ());
-		setDisplayedMods(sortListByName([...displayedMods()]));
+	function onToggleNameSort() {
+		setSortingAtoZ(value => !value);
+		setDisplayedMods(value => sortListByName([...value]));
 	}
 
-	function resetMods() {
-		setDisplayedMods(sortListByName([...(mods() || [])]));
-	}
+	createEffect(on(mods, (value) => {
+		setDisplayedMods(sortListByName(value || []));
+	}));
 
-	createEffect(() => {
-		resetMods();
-	});
+	createEffect(on(searchQuery, (query) => {
+		setDisplayedMods(sortListByName(search(query)));
+	}));
 
 	return (
 		<Sidebar.Page>
@@ -90,16 +97,20 @@ function ClusterMods() {
 							buttonStyle="secondary"
 							children={sortingAtoZ() ? 'A-Z' : 'Z-A'}
 							iconLeft={<FilterFunnel01Icon />}
-							onClick={() => toggleNameSort()}
+							onClick={() => onToggleNameSort()}
 						/>
 
-						<TextField iconLeft={<SearchMdIcon />} onInput={e => search(e.target.value)} placeholder="Search..." />
+						<TextField iconLeft={<SearchMdIcon />} onInput={e => setSearchQuery(e.target.value)} placeholder="Search..." />
 					</div>
 				</div>
 			</div>
 
 			<ScrollableContainer>
 				<Switch>
+					<Match when={mods.loading}>
+						<p class="my-4 text-center text-2lg">Fetching mods...</p>
+					</Match>
+
 					<Match when={displayedMods().length > 0}>
 						<For each={displayedMods()}>
 							{mod => (

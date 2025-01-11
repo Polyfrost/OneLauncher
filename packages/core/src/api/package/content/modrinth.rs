@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use super::Providers;
 
+#[serde_with::serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModrinthPackage {
 	pub slug: String,
@@ -52,7 +53,7 @@ pub struct ModrinthPackage {
 	#[serde(default)]
 	pub versions: Vec<String>,
 	pub game_versions: Vec<String>,
-	#[serde(default)]
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub loaders: Vec<Loader>,
 	#[serde(default)]
 	pub license: Option<License>,

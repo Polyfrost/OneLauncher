@@ -57,6 +57,7 @@ impl Providers {
 		}
 	}
 
+	#[must_use]
 	pub const fn get_providers() -> &'static [Providers] {
 		&[Self::Modrinth, Self::Curseforge, Self::SkyClient]
 	}
@@ -125,7 +126,7 @@ impl Providers {
 	}
 
 	pub async fn get_multiple(&self, slug_or_ids: &[String]) -> Result<Vec<ManagedPackage>> {
-		if slug_or_ids.len() <= 0 {
+		if slug_or_ids.is_empty() {
 			return Ok(vec![]);
 		}
 
@@ -141,7 +142,7 @@ impl Providers {
 					.filter_map(|id| id.parse::<u32>().ok())
 					.collect::<Vec<u32>>();
 
-				if parsed_ids.len() <= 0 {
+				if parsed_ids.is_empty() {
 					return Ok(vec![]);
 				}
 

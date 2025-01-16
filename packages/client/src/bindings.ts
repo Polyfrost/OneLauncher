@@ -464,9 +464,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async addClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, pkg: Package, packageType: PackageType | null): Promise<Result<null, string>> {
+	async addClusterPackage(clusterPath: ClusterPath, fileName: string, packageType: PackageType, pkg: Package): Promise<Result<null, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('add_cluster_package', { clusterPath, packagePath, pkg, packageType }) };
+			return { status: 'ok', data: await TAURI_INVOKE('add_cluster_package', { clusterPath, fileName, packageType, pkg }) };
 		}
 		catch (e) {
 			if (e instanceof Error)
@@ -474,9 +474,19 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
-	async removeClusterPackage(clusterPath: ClusterPath, packagePath: PackagePath, packageType: PackageType): Promise<Result<null, string>> {
+	async removeClusterPackage(clusterPath: ClusterPath, fileName: string, packageType: PackageType): Promise<Result<null, string>> {
 		try {
-			return { status: 'ok', data: await TAURI_INVOKE('remove_cluster_package', { clusterPath, packagePath, packageType }) };
+			return { status: 'ok', data: await TAURI_INVOKE('remove_cluster_package', { clusterPath, fileName, packageType }) };
+		}
+		catch (e) {
+			if (e instanceof Error)
+				throw e;
+			else return { status: 'error', error: e as any };
+		}
+	},
+	async setClusterPackageEnabled(clusterPath: ClusterPath, fileName: string, packageType: PackageType, enabled: boolean): Promise<Result<null, string>> {
+		try {
+			return { status: 'ok', data: await TAURI_INVOKE('set_cluster_package_enabled', { clusterPath, fileName, packageType, enabled }) };
 		}
 		catch (e) {
 			if (e instanceof Error)

@@ -112,11 +112,9 @@ async fn download_file(
 	// TODO: Implement hash checking
 	let cluster_path = &cluster.get_full_path().await?;
 
-	let path = PackagePath::new(
-		&cluster_path
+	let path = &cluster_path
 			.join(package_type.get_folder())
-			.join(&file.file_name),
-	);
+			.join(&file.file_name);
 
 	let ingress_id = init_ingress(
 		crate::IngressType::DownloadPackage {
@@ -149,10 +147,10 @@ async fn download_file(
 		tracing::error!("{err}");
 	}
 
-	if let Err(err) = http::write(&path.0, &bytes, &state.io_semaphore).await {
+	if let Err(err) = http::write(&path, &bytes, &state.io_semaphore).await {
 		tracing::error!("failed to write file to cluster: {err}");
-		if path.0.exists() {
-			let _ = io::remove_file(&path.0).await;
+		if path.exists() {
+			let _ = io::remove_file(&path).await;
 		}
 
 		return Err(err);
@@ -164,7 +162,7 @@ async fn download_file(
 
 	drop(state);
 
-	Ok(path)
+	Ok(PackagePath::from_path(path).await?)
 }
 
 /// Add a package to a cluster.
@@ -173,7 +171,6 @@ pub async fn add_package(
 	cluster_path: &ClusterPath,
 	package_path: PackagePath,
 	package: Package,
-	package_type: Option<PackageType>,
 ) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
@@ -182,7 +179,7 @@ pub async fn add_package(
 		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
 	manager
-		.add_package(package_path, package, package_type)
+		.add_package(package_path, package)
 		.await?;
 
 	Ok(())
@@ -193,7 +190,6 @@ pub async fn add_package(
 pub async fn remove_package(
 	cluster_path: &ClusterPath,
 	package_path: &PackagePath,
-	package_type: PackageType,
 ) -> Result<()> {
 	let state = State::get().await?;
 	let mut manager = state.packages.write().await;
@@ -201,7 +197,24 @@ pub async fn remove_package(
 		.get_mut(cluster_path)
 		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
 
-	manager.remove_package(package_path, package_type).await?;
+	manager.remove_package(package_path).await?;
+
+	Ok(())
+}
+
+#[tracing::instrument]
+pub async fn set_package_enabled(
+	cluster_path: &ClusterPath,
+	package_path: &PackagePath,
+	enabled: bool,
+) -> Result<()> {
+	let state = State::get().await?;
+	let mut manager = state.packages.write().await;
+	let manager = manager
+		.get_mut(cluster_path)
+		.ok_or_else(|| anyhow::anyhow!("cluster not found in packages map"))?;
+
+	manager.set_package_enabled(package_path, enabled).await?;
 
 	Ok(())
 }

@@ -8,6 +8,7 @@ use notify_debouncer_mini::Debouncer;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::constants::CLUSTER_FILE;
@@ -51,7 +52,7 @@ impl ClusterStage {
 	}
 }
 
-impl std::str::FromStr for ClusterStage {
+impl FromStr for ClusterStage {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(match s {
 			"installed" => Self::Installed,
@@ -188,7 +189,7 @@ impl From<InnerPathLinux> for RawPackagePath {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Hash)]
 #[serde(transparent)]
-pub struct PackagePath(pub PathBuf);
+pub struct PackagePath(PathBuf);
 
 impl PackagePath {
 	/// Transform a full [`PathBuf`] into a relative [`PackagePath`].
@@ -207,28 +208,32 @@ impl PackagePath {
 		Ok(Self(path))
 	}
 
+	pub fn new(package_type: PackageType, file_name: String) -> crate::Result<Self> {
+		Ok(Self(
+			PathBuf::from_str(format!("{}/{}", package_type.get_folder(), file_name).as_str())
+				.map_err(|e| anyhow::anyhow!("couldn't create package path from '{package_type}' '{file_name}': {e:?}"))?
+		))
+	}
+
 	/// Get the full [`PathBuf`] of the current package path.
-	pub async fn full_path(&self, cluster: ClusterPath) -> crate::Result<PathBuf> {
+	pub async fn full_path(&self, cluster: &ClusterPath) -> crate::Result<PathBuf> {
 		let cluster_dir = cluster.full_path().await?;
 		Ok(cluster_dir.join(&self.0))
 	}
 
-	/// Get the [`InnerPathLinux`] of a [`PackagePath`].
-	#[must_use]
-	pub fn inner_path(&self) -> InnerPathLinux {
-		InnerPathLinux(
-			self.0
-				.components()
-				.map(|c| c.as_os_str().to_string_lossy().to_string())
-				.collect::<Vec<_>>()
-				.join("/"),
-		)
+	pub fn package_type(&self) -> crate::Result<PackageType> {
+		PackageType::from_parent(&self.0).ok_or_else(|| anyhow::anyhow!("couldn't get package type of package path: {:?}", self.0).into())
 	}
 
-	/// Create a new `PackagePath` from a relative path.
-	#[must_use]
-	pub fn new(path: &Path) -> Self {
-		Self(PathBuf::from(path))
+	pub fn file_name(&self) -> crate::Result<String> {
+		self.0
+			.file_name()
+			.map(|p| p.to_string_lossy().to_string())
+			.ok_or_else(|| anyhow::anyhow!("couldn't get file name of package path: {:?}", self.0).into())
+	}
+
+	pub fn relative_path(&self) -> PathBuf {
+		self.0.clone()
 	}
 }
 

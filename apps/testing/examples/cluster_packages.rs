@@ -50,7 +50,6 @@ async fn main() -> Result<()> {
 	cluster::content::package::remove_package(
 		&cluster.cluster_path(),
 		&package_path,
-		PackageType::Mod,
 	)
 	.await?;
 	cluster::content::package::sync_packages_by_type(&cluster.cluster_path(), PackageType::Mod, None)
@@ -106,7 +105,6 @@ async fn download_mod(
 			&cluster.cluster_path(),
 			package_path.clone(),
 			package,
-			Some(PackageType::Mod),
 		)
 		.await?;
 	}

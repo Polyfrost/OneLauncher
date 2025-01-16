@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::api::cluster;
 use crate::constants::PROCESSOR_FILE;
-use crate::proxy::send::{send_ingress, send_message, send_process};
+use crate::proxy::send::{send_message, send_process};
 use crate::proxy::ProcessPayloadType;
 use crate::utils::http::read_json;
 use crate::State;

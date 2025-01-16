@@ -9,7 +9,7 @@ use crate::proxy::send::send_cluster;
 use crate::prelude::{ClusterPath, JavaVersion, PackagePath};
 use crate::proxy::ClusterPayloadType;
 pub use crate::store::{Cluster, JavaOptions, State};
-use crate::store::{ClusterStage, MinecraftCredentials, ProcessorChild};
+use crate::store::{MinecraftCredentials, ProcessorChild};
 
 use onelauncher_utils::io::{self, IOError};
 
@@ -256,12 +256,12 @@ pub async fn get_full_path(path: &ClusterPath) -> crate::Result<PathBuf> {
 
 /// get a specific mod's full path in the filesystem by it's [`ClusterPath`] and [`PackagePath`].
 #[tracing::instrument]
-pub async fn get_mod_path(
+pub async fn get_package_full_path(
 	cluster_path: &ClusterPath,
 	package_path: &PackagePath,
 ) -> crate::Result<PathBuf> {
 	if get(cluster_path).await?.is_some() {
-		let full_path = io::canonicalize(package_path.full_path(cluster_path.clone()).await?)?;
+		let full_path = io::canonicalize(package_path.full_path(cluster_path).await?)?;
 
 		return Ok(full_path);
 	}
@@ -269,7 +269,7 @@ pub async fn get_mod_path(
 	Err(anyhow::anyhow!(
 		"failed to get the full path of a cluster at path {}",
 		package_path
-			.full_path(cluster_path.clone())
+			.full_path(cluster_path)
 			.await?
 			.display()
 	)

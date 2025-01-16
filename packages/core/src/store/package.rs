@@ -183,15 +183,12 @@ pub struct Package {
 }
 
 impl Package {
-	pub fn new(path: &PackagePath, meta: PackageMetadata) -> crate::Result<Self> {
-		let file_name = path
-			.0
-			.file_name()
-			.ok_or_else(|| crate::ErrorKind::AnyhowError(anyhow::anyhow!("no file name")))?
+	pub fn new(path: &PathBuf, meta: PackageMetadata) -> crate::Result<Self> {
+		let file_name = path.file_name()
+			.ok_or_else(|| anyhow::anyhow!("couldn't get filename of path {path:?}"))?
 			.to_string_lossy()
 			.to_string();
-
-		let sha1 = crypto::sha1_file(&path.0)?;
+		let sha1 = crypto::sha1_file(path)?;
 
 		Ok(Self {
 			sha1,
@@ -341,7 +338,7 @@ impl PackageManager {
 			if let Ok(meta) = serde_json::from_slice(&io::read(packages_meta).await?) {
 				meta
 			} else {
-				io::copy(packages_meta, packages_meta.with_extension("bak")).await?;
+				io::copy(packages_meta, packages_meta.with_extension(".json.bak")).await?;
 				io::write(packages_meta, "{}").await?;
 				PackagesMeta::new(package_type)
 			}
@@ -359,14 +356,10 @@ impl PackageManager {
 		&mut self,
 		package_path: PackagePath,
 		package: Package,
-		package_type: Option<PackageType>,
 	) -> crate::Result<()> {
-		let package_type = package
-			.meta
-			.get_package_type()
-			.unwrap_or(package_type.ok_or_else(|| anyhow::anyhow!("no package type"))?);
+		let package_type = package_path.package_type()?;
 		let packages = &mut self.get_mut(package_type).packages;
-		packages.insert(package_path, package);
+		insert_package_by_path(packages, package_path, package);
 
 		Ok(())
 	}
@@ -376,19 +369,59 @@ impl PackageManager {
 	pub async fn remove_package(
 		&mut self,
 		package_path: &PackagePath,
-		package_type: PackageType,
 	) -> crate::Result<()> {
-		let full_path = self
-			.cluster_path
-			.clone()
-			.full_path()
-			.await?
-			.join(package_type.get_folder())
-			.join(package_path.0.clone());
+		let package_type = package_path.package_type()?;
+		let full_path = package_path.full_path(&self.cluster_path).await?;
+
 		io::remove_file(full_path).await?;
 
 		let packages = &mut self.get_mut(package_type).packages;
 		packages.remove(package_path);
+
+		Ok(())
+	}
+
+	// disable a package in the manager
+	#[tracing::instrument(skip(self))]
+	pub async fn set_package_enabled(
+		&mut self,
+		package_path: &PackagePath,
+		enabled: bool,
+	) -> crate::Result<()> {
+		let state = State::get().await?;
+
+		let package_type = package_path.package_type()?;
+		let full_path = package_path.full_path(&self.cluster_path).await?;
+
+		let packages = &mut self.get_mut(package_type).packages;
+
+		let was_disabled = full_path.extension().map_or(false, |e| e == "disabled");
+		let mut new_path = full_path.clone();
+
+		let changed = if enabled && was_disabled {
+			new_path.set_extension("") // removes .disabled
+		} else if !enabled && !was_disabled {
+			new_path.set_extension("jar.disabled") // adds .disabled
+		} else {
+			false
+		};
+
+		if changed {
+			io::rename(full_path, new_path.clone()).await?;
+
+
+			if let Some(mut package) = packages.remove(package_path) {
+				let file_name = new_path.file_name().ok_or_else(|| anyhow::anyhow!("couldn't get file name"))?.to_string_lossy().to_string();
+				let package_path = PackagePath::new(package_type.clone(), file_name.clone())?;
+
+				package.disabled = !enabled;
+				package.file_name = file_name;
+
+				packages.insert(package_path, package);
+			}
+
+			self.sync_to_file_by_type(&state.directories, package_type).await?;
+		}
 
 		Ok(())
 	}
@@ -458,19 +491,21 @@ impl PackageManager {
 		let mut packages_to_keep = HashSet::<PackagePath>::new();
 		let mut packages_to_infer = HashSet::<PathBuf>::new();
 
+		let full_cluster_path = self.cluster_path.full_path().await?;
+
 		while let Some(file) = files.next_entry().await? {
 			// Skip .packages.json meta file
-			if file.file_name().to_string_lossy().eq(&package_type.get_meta_file_name()) || file.file_type().await?.is_dir()
+			if file.file_name().to_string_lossy().starts_with(&package_type.get_meta_file_name()) || file.file_type().await?.is_dir()
 			{
 				continue;
 			}
 
-			let package_path = PackagePath::new(&file.path());
+			let package_path = PackagePath::from_path(&file.path()).await?;
 
 			// Check if the file is in the packages list already
 			if packages.get(&package_path).is_none() {
 				// Package path is not in the packages list but exists on file system, lets try to infer it later on
-				packages_to_infer.insert(package_path.0.clone());
+				packages_to_infer.insert(full_cluster_path.join(package_path.relative_path()));
 			}
 
 			// Add the package to the set to not remove it from the manager
@@ -490,11 +525,11 @@ impl PackageManager {
 						for path in not_found {
 							tracing::warn!("failed to infer package: {:?}", path);
 
-							let package_path = PackagePath::new(&path);
 							let meta = PackageMetadata::Unknown;
-							let package = Package::new(&package_path, meta)?;
+							let package = Package::new(&path, meta)?;
+							let package_path = PackagePath::from_path(&path).await?;
 
-							packages.insert(package_path, package);
+							insert_package_by_path(packages, package_path, package);
 						}
 					}
 				}
@@ -541,48 +576,17 @@ impl PackageManager {
 	}
 }
 
-// #[tracing::instrument(skip(packages))]
-// async fn infer_packages(
-// 	packages: &mut PackagesMap,
-// 	package_type: PackageType,
-// 	to_infer: HashSet<PathBuf>,
-// ) {
-// 	let infer_order = vec![
-// 		Providers::Modrinth,
-// 		Providers::SkyClient,
-// 		Providers::Curseforge,
-// 	];
+fn insert_package_by_path(packages: &mut PackagesMap, path: PackagePath, mut package: Package) {
+	if let Ok(file_name) = path.file_name() {
+		let is_disabled = file_name.ends_with(".disabled");
 
+		if is_disabled {
+			package.disabled = true;
+		}
+	}
 
-// 	// if let Some(not_found) = infer_provider(Providers::Modrinth, package_type, packages, packages_to_infer, crypto::sha1_file).await {
-// 	// 	if let Some(not_found) = infer_provider(Providers::SkyClient, package_type, packages, not_found, crypto::md5_file).await {
-// 	// 		if let Some(not_found) = infer_provider(Providers::Curseforge, package_type, packages, not_found, |path| {
-// 	// 			let hash = crypto::murmur2_file(path)?;
-// 	// 			Ok(hash.to_string())
-// 	// 		}).await {
-// 	// 		}
-// 	// 	}
-// 	// }
-
-// 	let mut to_infer = to_infer;
-// 	for provider in infer_order {
-// 		if let Some(not_found) = infer_provider(provider, package_type, packages, to_infer, move|path| {
-// 			Ok(provider.hash_file(path))
-// 		}).await {
-// 			to_infer = not_found;
-// 		}
-// 	}
-
-// 	for path in to_infer {
-// 		tracing::warn!("failed to infer package: {:?}", path);
-
-// 		let package_path = PackagePath::new(&path);
-// 		let meta = PackageMetadata::Unknown;
-// 		if let Ok(package) = Package::new(&package_path, meta) {
-// 			packages.insert(package_path, package);
-// 		}
-// 	}
-// }
+	packages.insert(path, package);
+}
 
 #[tracing::instrument(skip(packages, to_infer))]
 async fn infer_provider(
@@ -633,7 +637,7 @@ async fn infer_provider(
 
 						let Some(version) = versions.get(hash) else { continue; };
 
-						if let Some(package_path) = hash_map.get(hash) {
+						if let Some(path) = hash_map.get(hash) {
 							let meta = PackageMetadata::Managed {
 								package_id: managed.id,
 								provider: provider.clone(),
@@ -645,10 +649,14 @@ async fn infer_provider(
 								icon_url: managed.icon_url
 							};
 
-							let package_path = &PackagePath::new(package_path);
-							match Package::new(package_path, meta) {
+							let Ok(package_path) = PackagePath::from_path(path).await else {
+								tracing::error!("failed to create package path for {:?}", path);
+								continue;
+							};
+
+							match Package::new(path, meta) {
 								Ok(package) => {
-									packages.insert(package_path.clone(), package);
+									insert_package_by_path(packages, package_path, package);
 								},
 								Err(err) => {
 									tracing::error!("failed to create package from {}: {}", provider, err);

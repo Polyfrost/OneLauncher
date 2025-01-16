@@ -152,7 +152,6 @@ pub async fn download_provider_package(
 		&cluster.cluster_path(),
 		pkg_path,
 		pkg,
-		Some(mgd_pkg.package_type),
 	)
 	.await?;
 
@@ -182,11 +181,12 @@ pub async fn get_cluster_packages(
 #[tauri::command]
 pub async fn add_cluster_package(
 	cluster_path: ClusterPath,
-	package_path: PackagePath,
+	file_name: String,
+	package_type: PackageType,
 	pkg: Package,
-	package_type: Option<PackageType>,
 ) -> Result<(), String> {
-	package::add_package(&cluster_path, package_path, pkg, package_type).await?;
+	let package_path = PackagePath::new(package_type, file_name)?;
+	package::add_package(&cluster_path, package_path, pkg).await?;
 	Ok(())
 }
 
@@ -194,10 +194,24 @@ pub async fn add_cluster_package(
 #[tauri::command]
 pub async fn remove_cluster_package(
 	cluster_path: ClusterPath,
-	package_path: PackagePath,
+	file_name: String,
 	package_type: PackageType,
 ) -> Result<(), String> {
-	package::remove_package(&cluster_path, &package_path, package_type).await?;
+	let package_path = PackagePath::new(package_type, file_name)?;
+	package::remove_package(&cluster_path, &package_path).await?;
+	Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn set_cluster_package_enabled(
+	cluster_path: ClusterPath,
+	file_name: String,
+	package_type: PackageType,
+	enabled: bool,
+) -> Result<(), String> {
+	let package_path = PackagePath::new(package_type, file_name)?;
+	package::set_package_enabled(&cluster_path, &package_path, enabled).await?;
 	Ok(())
 }
 

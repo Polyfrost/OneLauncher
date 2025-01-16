@@ -3,12 +3,13 @@ import UFuzzy from '@leeoniya/ufuzzy';
 import { FilterFunnel01Icon, RefreshCw01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
+import Checkbox from '~ui/components/base/Checkbox';
 import TextField from '~ui/components/base/TextField';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import Sidebar from '~ui/components/Sidebar';
 import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
-import useCommand from '~ui/hooks/useCommand';
+import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import useProcessor from '~ui/hooks/useProcessor';
 import { type Accessor, createEffect, createSignal, For, Match, on, Show, Switch, untrack } from 'solid-js';
 
@@ -206,6 +207,25 @@ function ModEntry(props: ModEntryProps) {
 		}
 	}
 
+	async function togglePackage(checked: boolean) {
+		try {
+			const path = cluster()?.path;
+			if (path) {
+				// eslint-disable-next-line solid/reactivity -- bs lol
+				await tryResult(() => bridge.commands.setClusterPackageEnabled(
+					path,
+					props.pkg.file_name,
+					'mod',
+					checked,
+				));
+				props.refetch();
+			}
+		}
+		catch (err) {
+			console.error(err);
+		}
+	}
+
 	return (
 		<div
 			class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover"
@@ -251,9 +271,7 @@ function ModEntry(props: ModEntryProps) {
 					</div>
 
 					<div class="flex flex-row items-end justify-center gap-2">
-						{/* <Button buttonStyle="iconSecondary">
-							<Edit02Icon />
-						</Button> */}
+						<Checkbox defaultChecked={!props.pkg.disabled} onChecked={togglePackage} />
 
 						<Button
 							buttonStyle="iconDanger"

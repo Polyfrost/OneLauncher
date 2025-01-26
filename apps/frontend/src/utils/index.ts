@@ -183,7 +183,7 @@ export function getPackageUrl(pkg: ManagedPackage): string {
 
 			return `https://www.curseforge.com/minecraft/${packageTypeMapping[pkg.package_type]}/${pkg.main}`;
 		},
-		SkyClient: () => 'TODO',
+		SkyClient: () => 'https://skyclient.co/', // TODO: Use pkg links once added
 	};
 
 	return mapping[pkg.provider]();

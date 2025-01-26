@@ -440,7 +440,6 @@ function BrowserPackageVersions() {
 
 	createEffect(on(() => page(), () => {
 		refetch();
-		container.parentElement?.parentElement?.scrollIntoView({ behavior: 'smooth' });
 	}));
 
 	return (

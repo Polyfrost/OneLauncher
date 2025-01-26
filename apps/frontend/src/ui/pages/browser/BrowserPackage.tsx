@@ -400,7 +400,10 @@ function BrowserPackageVersions() {
 		if (context === null)
 			return [];
 
-		const newestToOldest = context.pkg().versions.toReversed();
+		const newestToOldest = context.pkg().versions;
+		if (context.pkg().provider !== 'SkyClient')
+			newestToOldest.reverse();
+
 		const start = (page - 1) * MAX_ITEMS_PER_PAGE;
 		const end = start + MAX_ITEMS_PER_PAGE;
 
@@ -425,7 +428,12 @@ function BrowserPackageVersions() {
 
 		const list = getVersionsForPage(page());
 
-		return (await tryResult(() => bridge.commands.getProviderPackageVersions(context.pkg().provider, list))).toReversed();
+		const versions = (await tryResult(() => bridge.commands.getProviderPackageVersions(context.pkg().provider, list)));
+
+		if (context.pkg().provider !== 'SkyClient')
+			versions.reverse();
+
+		return versions;
 	});
 
 	let container!: HTMLDivElement;
@@ -583,7 +591,7 @@ function VersionRow(props: ManagedVersion) {
 			</td>
 
 			<td>
-				{formatAsRelative(new Date(props.published).getTime(), 'en', 'long')}
+				{props.published ? formatAsRelative(new Date(props.published).getTime(), 'en', 'long') : 'Unknown'}
 			</td>
 
 			<td>

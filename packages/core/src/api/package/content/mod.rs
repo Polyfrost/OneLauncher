@@ -183,7 +183,7 @@ impl Providers {
 
 			Self::SkyClient => {
 				let data = skyclient::get_all_versions(project_id, game_versions, loaders, page, page_size).await?;
-				(data.0.into_iter().map(Into::into).collect(), data.1)
+				(data.0, data.1)
 			},
 		})
 	}

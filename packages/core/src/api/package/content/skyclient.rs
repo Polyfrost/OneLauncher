@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::{OnceCell, RwLock};
 
@@ -96,8 +97,8 @@ impl Into<ManagedPackage> for SkyClientMod {
 			categories: vec![],
 			client: crate::store::PackageSide::Required,
 			server: crate::store::PackageSide::Unknown,
-			created: None,
-			updated: None,
+			created: None, // TODO: Get the oldest date from versions
+			updated: None, // TODO: Get the newest date from versions
 			description: self.description.unwrap_or_default(),
 			downloads: 0,
 			followers: 0,
@@ -140,6 +141,7 @@ pub struct SkyClientModVersion {
     pub file: String,
     pub url: String,
     pub hash: String,
+	pub date_published: DateTime<Utc>,
     pub mod_id: Option<String>,
 }
 
@@ -168,7 +170,7 @@ fn get_managed_version(m: &SkyClientMod, v: &SkyClientModVersion) -> ManagedVers
 		is_available: true,
 		loaders: v.loaders.iter().map(|l| Loader::from_string(l.to_owned())).collect(),
 		name: format!("{} v{}", m.display, v.version),
-		published: None,
+		published: Some(v.date_published),
 		version_display: v.version.clone(),
 		version_type: crate::store::ManagedVersionReleaseType::Release,
 	}
@@ -177,9 +179,8 @@ fn get_managed_version(m: &SkyClientMod, v: &SkyClientModVersion) -> ManagedVers
 pub async fn get(id: &str) -> Result<SkyClientMod> {
 	let store = SkyClientStore::get().await?;
 
-	let mods = match &store.mods {
-		Some(mods) => mods,
-		None => return Err(anyhow::anyhow!("mod not found").into())
+	let Some(mods) = &store.mods else {
+		return Err(anyhow::anyhow!("mod not found").into())
 	};
 
 	for m in mods {
@@ -219,42 +220,33 @@ pub async fn get_all_versions(
 	page: Option<u32>,
 	page_size: Option<u16>,
 ) -> Result<(Vec<ManagedVersion>, Pagination)> {
-	let store = SkyClientStore::get().await?;
-
-	let mods = match &store.mods {
-		Some(mods) => mods,
-		None => return Ok((vec![], Pagination::default()))
-	};
-
 	let mut pagination = Pagination::default();
 	let mut versions = vec![];
 
-	for m in mods {
-		if m.id == project_id {
-			for v in &m.versions {
-				let mut can_add = true;
+	if let Ok(m) = &get(project_id).await {
+		for v in &m.versions {
+			let mut can_add = true;
 
-				if let Some(game_versions) = &game_versions {
-					if !game_versions.is_empty() {
-						can_add = v.game_versions.iter().any(|gv| game_versions.contains(gv))
+			if let Some(game_versions) = &game_versions {
+				if !game_versions.is_empty() {
+					can_add = v.game_versions.iter().any(|gv| game_versions.contains(gv))
+				}
+			}
+
+			if can_add {
+				if let Some(loaders) = &loaders {
+					if !loaders.is_empty() {
+						can_add = v.loaders.iter().any(|l| loaders.contains(&Loader::from_string(l.to_owned())))
 					}
 				}
+			}
 
-				if can_add {
-					if let Some(loaders) = &loaders {
-						if !loaders.is_empty() {
-							can_add = v.loaders.iter().any(|l| loaders.contains(&Loader::from_string(l.to_owned())))
-						}
-					}
+			if can_add {
+				if page_size.map(|ps| versions.len() < ps as usize).unwrap_or(true) && page.map(|p| p <= pagination.index).unwrap_or(true) {
+					versions.push(get_managed_version(m, v));
 				}
 
-				if can_add {
-					if page_size.map(|ps| versions.len() < ps as usize).unwrap_or(true) && page.map(|p| p <= pagination.index).unwrap_or(true) {
-						versions.push(get_managed_version(m, v));
-					}
-
-					pagination.total_count += 1;
-				}
+				pagination.total_count += 1;
 			}
 		}
 	}

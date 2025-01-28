@@ -88,8 +88,16 @@ macro_rules! collect_commands {
 			get_featured_packages,
 			get_zulu_packages,
 			install_java_from_package,
+			open_dev_tools,
 		]
 	}};
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn open_dev_tools(_webview: tauri::WebviewWindow) {
+	#[cfg(feature = "devtools")]
+	_webview.open_devtools();
 }
 
 #[specta::specta]

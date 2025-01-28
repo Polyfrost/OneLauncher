@@ -584,6 +584,9 @@ export const commands = {
 			else return { status: 'error', error: e as any };
 		}
 	},
+	async openDevTools(): Promise<void> {
+		await TAURI_INVOKE('open_dev_tools');
+	},
 };
 
 /** user-defined events */

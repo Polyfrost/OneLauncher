@@ -1,5 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { CodeBrowserIcon, EyeIcon, GitMergeIcon, LinkExternal01Icon, PlusIcon, RefreshCcw05Icon } from '@untitled-theme/icons-solid';
+import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Toggle from '~ui/components/base/Toggle';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
@@ -30,6 +31,10 @@ function SettingsDeveloper() {
 		setNotiCounter(count => count + 1);
 	}
 
+	function openDevTools() {
+		bridge.commands.openDevTools();
+	}
+
 	return (
 		<Sidebar.Page>
 			<h1>Developer Options</h1>
@@ -43,6 +48,7 @@ function SettingsDeveloper() {
 					<Button
 						children="Open"
 						iconLeft={<LinkExternal01Icon />}
+						onClick={openDevTools}
 					/>
 				</SettingsRow>
 

@@ -132,7 +132,7 @@ interface ThemeCardProps {
 
 function ThemeCard(props: ThemeCardProps) {
 	return (
-		<div class={`theme-${props.themeSelector}`} onClick={() => props.setTheme(props.themeSelector)}>
+		<div class={`h-min theme-${props.themeSelector}`} onClick={() => props.setTheme(props.themeSelector)}>
 			<svg fill="none" height="78" viewBox="0 0 126 78" width="126" xmlns="http://www.w3.org/2000/svg">
 				<rect fill="rgb(var(--clr-page))" height="78" rx="8" width="126" />
 				<rect height="77" rx="7.5" stroke="rgb(var(--clr-border))" stroke-opacity="0.1" width="125" x="0.5" y="0.5" />

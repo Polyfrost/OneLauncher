@@ -70,6 +70,6 @@ objc = { workspace = true }
 webkit2gtk = { workspace = true }
 
 [features]
-default = [ "custom-protocol" ]
+default = [ "custom-protocol", "devtools" ]
 devtools = [ "tauri/devtools" ]
 custom-protocol = [ "tauri/custom-protocol" ]

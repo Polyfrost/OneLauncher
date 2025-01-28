@@ -93,7 +93,7 @@ function Onboarding(props: ParentProps) {
 			saveSettings({
 				...settings(),
 				onboarding_completed: true,
-			}).then(() => navigate('/'));
+			}).finally(() => navigate('/'));
 		else
 			navigate(basePath + OnboardingSteps[step() + 1]![0]);
 	};

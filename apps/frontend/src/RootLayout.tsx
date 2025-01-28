@@ -1,5 +1,6 @@
 import { getProgramInfo } from '@onelauncher/client';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
+import ErrorBoundary from '~ui/components/ErrorBoundary';
 import { NotificationProvider } from '~ui/hooks/useNotifications';
 import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
@@ -18,18 +19,20 @@ function RootLayout(props: ParentProps) {
 	});
 
 	return (
-		<GlobalContexts>
-			<main class="h-screen max-h-screen min-h-screen w-full flex flex-col overflow-hidden bg-page text-fg-primary">
-				<WindowFrame />
+		<ErrorBoundary>
+			<GlobalContexts>
+				<main class="h-screen max-h-screen min-h-screen w-full flex flex-col overflow-hidden bg-page text-fg-primary">
+					<WindowFrame />
 
-				<AnimatedRoutes animation="fade" appear>
-					{props.children}
-				</AnimatedRoutes>
+					<AnimatedRoutes animation="fade" appear>
+						{props.children}
+					</AnimatedRoutes>
 
-				<NotificationOverlay />
-				<ModalRenderer />
-			</main>
-		</GlobalContexts>
+					<NotificationOverlay />
+					<ModalRenderer />
+				</main>
+			</GlobalContexts>
+		</ErrorBoundary>
 	);
 }
 

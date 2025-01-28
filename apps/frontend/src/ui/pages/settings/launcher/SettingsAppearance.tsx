@@ -52,7 +52,7 @@ function SettingsAppearance() {
 					<div class="grid grid-cols-3 h-full gap-4">
 						<For each={Object.keys(THEMES) as (keyof typeof THEMES)[]}>
 							{theme => (
-								<For each={THEMES[theme].variants}>
+								<For each={THEMES[theme ?? 'OneLauncher'].variants}>
 									{variant => (
 										<ThemeCard
 											setTheme={setTheme}

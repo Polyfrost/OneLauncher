@@ -26,7 +26,7 @@ export function splitMergedTheme(merged: string): {
 } {
 	const [name, ...variants] = merged.split('-');
 
-	const foundVariant = THEMES[name as keyof typeof THEMES].variants.find(variant => variant.name === variants.join('-'));
+	const foundVariant = THEMES[name as keyof typeof THEMES]?.variants.find(variant => variant.name === variants.join('-')) ?? undefined;
 
 	if (!name || !foundVariant)
 		return {

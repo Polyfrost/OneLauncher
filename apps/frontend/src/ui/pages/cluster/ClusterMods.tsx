@@ -140,6 +140,8 @@ interface ModEntryProps {
 function ModEntry(props: ModEntryProps) {
 	const [cluster] = useClusterContext();
 	const browser = useBrowser();
+	// eslint-disable-next-line solid/reactivity -- .
+	const [disabled, setDisabled] = createSignal(props.pkg.disabled || false);
 
 	const name = () => {
 		if (props.pkg.meta.type === 'unknown')
@@ -211,14 +213,14 @@ function ModEntry(props: ModEntryProps) {
 		try {
 			const path = cluster()?.path;
 			if (path) {
+				setDisabled(!checked);
 				// eslint-disable-next-line solid/reactivity -- bs lol
 				await tryResult(() => bridge.commands.setClusterPackageEnabled(
 					path,
 					props.pkg.file_name,
 					'mod',
 					checked,
-				));
-				props.refetch();
+				)).then(() => setDisabled(!checked));
 			}
 		}
 		catch (err) {
@@ -230,7 +232,7 @@ function ModEntry(props: ModEntryProps) {
 		<div
 			class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			classList={{
-				'opacity-70 grayscale-50 hover:grayscale-0 hover:opacity-100': props.pkg.disabled,
+				'opacity-70 grayscale-50 hover:grayscale-0 hover:opacity-100': disabled(),
 			}}
 			onClick={onClick}
 		>

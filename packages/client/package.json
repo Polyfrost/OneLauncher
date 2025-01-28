@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/client",
 	"type": "module",
-	"version": "1.0.0-alpha.1",
+	"version": "1.0.0-alpha.2",
 	"private": true,
 	"description": "RSPC Client and Utilities for OneLauncher",
 	"license": "GPL-3.0-only",

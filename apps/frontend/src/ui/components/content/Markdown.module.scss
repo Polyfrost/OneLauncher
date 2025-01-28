@@ -7,15 +7,28 @@
     width: auto;
   }
 
-  hr,
-  h1,
-  h2 {
-    max-width: max(60rem, 90%);
+  hr {
+	width: 100%;
+	margin: 20px 0px;
   }
 
   ul,
   ol {
     margin-left: 2rem;
 	list-style: initial;
+  }
+
+  center {
+	margin: auto;
+	width: 100%;
+  }
+
+  img {
+	display: inline-block;
+  }
+
+  blockquote, code, details, dl, ol, p, pre, table, ul {
+	margin-bottom: 16px;
+	margin-top: 0px;
   }
 }

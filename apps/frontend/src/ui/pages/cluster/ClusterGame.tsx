@@ -10,9 +10,9 @@ import { TimeAgo } from '~ui/components/DynamicTime';
 import Modal, { createModal } from '~ui/components/overlay/Modal';
 import Sidebar from '~ui/components/Sidebar';
 import useClusterContext from '~ui/hooks/useCluster';
-import useCommand from '~ui/hooks/useCommand';
+import { tryResult } from '~ui/hooks/useCommand';
 import useNotifications from '~ui/hooks/useNotifications';
-import { createSignal, onCleanup, onMount } from 'solid-js';
+import { createResource, createSignal, onCleanup, onMount } from 'solid-js';
 import { render } from 'solid-js/web';
 
 interface ClusterGameParams extends Params {
@@ -25,7 +25,14 @@ interface ClusterGameParams extends Params {
 function ClusterGame() {
 	const [cluster] = useClusterContext();
 	const [params] = useSearchParams<ClusterGameParams>();
-	const [log] = useCommand(() => bridge.commands.getClusterLog(cluster()!.uuid, 'latest.log'));
+	const [log] = createResource(() => {
+		return tryResult(() => bridge.commands.getClusterLog(cluster()!.uuid, 'latest.log'))
+			.then(res => res)
+			.catch((err) => {
+				console.error(err);
+				return '';
+			});
+	});
 	const [isRunning, setIsRunning] = createSignal(true);
 	const notifications = useNotifications();
 

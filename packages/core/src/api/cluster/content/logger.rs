@@ -247,7 +247,13 @@ pub async fn read_log_to_string(path: &std::path::PathBuf) -> crate::Result<Stri
 		if ext == "gz" {
 			result = io::read_gz_to_string(path).await?;
 		} else if ext == "log" || ext == "txt" {
-			result = io::read_to_string(path).await?;
+			// On Java 17 and older, UTF-8 is not the default charset (https://openjdk.org/jeps/400)
+			// Minecraft on Windows on older versions sometimes likes to output the log
+			// in an encoding other than UTF-8, which would make OneLauncher throw an error
+			// when attempting to read it into a String (Rust Strings are UTF-8)
+			// TODO: Potentially explore a better solution for non UTF-8 log reading?
+			let bytes = io::read(path).await?;
+			result = String::from_utf8_lossy(&bytes).to_string();
 		}
 
 		return Ok(result);

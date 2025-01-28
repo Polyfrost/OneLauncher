@@ -6,10 +6,10 @@ import Dropdown from '~ui/components/base/Dropdown';
 import FormattedLog from '~ui/components/content/FormattedLog';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
+import useNotifications from '~ui/hooks/useNotifications.tsx';
 import useSettings from '~ui/hooks/useSettings';
 import { join } from 'pathe';
 import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
-import useNotifications from "~ui/hooks/useNotifications.tsx";
 
 function ClusterLogs() {
 	const [cluster] = useClusterContext();
@@ -49,9 +49,9 @@ function ClusterLogs() {
 
 		const id = await tryResult(() => bridge.commands.uploadLog(cluster()!.uuid, log));
 
-		open(`https://mclo.gs/${id}`).then(() => notifications.set("logs", {
-			title: "Log Uploaded",
-			message: "Opening in your browser."
+		open(`https://mclo.gs/${id}`).then(() => notifications.set('logs', {
+			title: 'Log Uploaded',
+			message: 'Opening in your browser.',
 		}));
 	}
 

@@ -495,7 +495,7 @@ impl PackageManager {
 
 		while let Some(file) = files.next_entry().await? {
 			// Skip .packages.json meta file
-			if file.file_name().to_string_lossy().starts_with(&package_type.get_meta_file_name()) || file.file_type().await?.is_dir()
+			if file.file_name().to_string_lossy().starts_with(&".") || file.file_type().await?.is_dir()
 			{
 				continue;
 			}

@@ -1,6 +1,7 @@
 import type { Package } from '@onelauncher/client/bindings';
 import UFuzzy from '@leeoniya/ufuzzy';
-import { FilterFunnel01Icon, RefreshCw01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
+import { open } from '@tauri-apps/plugin-shell';
+import { FilterFunnel01Icon, LinkExternal01Icon, RefreshCw01Icon, SearchMdIcon, Trash03Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import Button from '~ui/components/base/Button';
 import Checkbox from '~ui/components/base/Checkbox';
@@ -11,11 +12,14 @@ import useBrowser from '~ui/hooks/useBrowser';
 import useClusterContext from '~ui/hooks/useCluster';
 import useCommand, { tryResult } from '~ui/hooks/useCommand';
 import useProcessor from '~ui/hooks/useProcessor';
+import useSettings from '~ui/hooks/useSettings';
+import { join } from 'pathe';
 import { type Accessor, createEffect, createSignal, For, Match, on, Show, Switch, untrack } from 'solid-js';
 
 // TODO: This needs a rewrite.
 function ClusterMods() {
 	const [cluster] = useClusterContext();
+	const { settings } = useSettings();
 	const { isRunning } = useProcessor(cluster()!);
 	const [mods, { refetch: refetchModsCommand }] = useCommand(cluster, () => bridge.commands.getClusterPackages(cluster()?.path || '', 'mod'));
 
@@ -72,6 +76,10 @@ function ClusterMods() {
 		setDisplayedMods(value => sortListByName([...value]));
 	}
 
+	function openFolder() {
+		open(join(settings().config_dir || '', 'clusters', cluster()?.path || '', 'mods'));
+	}
+
 	createEffect(on(mods, (value) => {
 		setDisplayedMods(sortListByName(value || []));
 	}));
@@ -125,6 +133,15 @@ function ClusterMods() {
 					</Match>
 				</Switch>
 			</ScrollableContainer>
+
+			<div class="mt-2 flex flex-row items-end justify-end">
+				<Button
+					buttonStyle="primary"
+					children="Open Folder"
+					iconLeft={<LinkExternal01Icon />}
+					onClick={openFolder}
+				/>
+			</div>
 		</Sidebar.Page>
 	);
 }
@@ -144,8 +161,13 @@ function ModEntry(props: ModEntryProps) {
 	const [disabled, setDisabled] = createSignal(props.pkg.disabled || false);
 
 	const name = () => {
-		if (props.pkg.meta.type === 'unknown')
-			return props.pkg.file_name;
+		if (props.pkg.meta.type === 'unknown') {
+			let fileName = props.pkg.file_name;
+			if (fileName.endsWith('.disabled'))
+				fileName = fileName.slice(0, -9);
+
+			return fileName;
+		}
 
 		return props.pkg.meta.title || props.pkg.file_name;
 	};

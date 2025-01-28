@@ -229,6 +229,9 @@ function ModEntry(props: ModEntryProps) {
 	return (
 		<div
 			class="flex flex-row items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover"
+			classList={{
+				'opacity-70 grayscale-50 hover:grayscale-0 hover:opacity-100': props.pkg.disabled,
+			}}
 			onClick={onClick}
 		>
 			<div>
@@ -270,7 +273,7 @@ function ModEntry(props: ModEntryProps) {
 						</div>
 					</div>
 
-					<div class="flex flex-row items-end justify-center gap-2">
+					<div class="flex flex-row items-center justify-center gap-2">
 						<Checkbox defaultChecked={!props.pkg.disabled} onChecked={togglePackage} />
 
 						<Button

@@ -10,7 +10,12 @@ export default defineConfig({
 	rules: [],
 	shortcuts: {},
 	presets: [
-		presetUno(),
+		presetUno({
+			dark: {
+				dark: 'body[data-theme-type="dark"]',
+				light: 'body[data-theme-type="light"]',
+			},
+		}),
 		presetIcons(),
 	],
 	transformers: [

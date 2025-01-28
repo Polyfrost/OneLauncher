@@ -2,7 +2,7 @@
     @apply flex flex-row gap-x-1 items-center;
 
     .box {
-        @apply w-[18px] h-[18px] flex flex-col justify-center items-center rounded-md bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-border/05 transition-all;
+        @apply w-[18px] h-[18px] flex flex-col justify-center items-center rounded-md bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed border border-border/05 text-white transition-all;
 
         > svg {
             @apply w-[18px] h-[18px] mt-px opacity-0 transition-opacity;

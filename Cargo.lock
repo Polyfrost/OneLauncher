@@ -3806,7 +3806,7 @@ checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "onelauncher"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -3867,7 +3867,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_gamemode"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "cc",
  "libc",
@@ -3875,7 +3875,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_gui"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3911,7 +3911,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_macros"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "quote",
  "syn 2.0.79",
@@ -3919,7 +3919,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_test"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "onelauncher",
  "tokio",
@@ -3929,7 +3929,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_utils"
-version = "1.0.0-alpha.2"
+version = "0.1.0-alpha.2"
 dependencies = [
  "async-channel",
  "async-compression",

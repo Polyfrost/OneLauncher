@@ -1,6 +1,6 @@
 {
 	"name": "@onelauncher/utils",
-	"version": "1.0.0-alpha.2",
+	"version": "0.1.0-alpha.2",
 	"description": "Next-generation open source Minecraft launcher utils",
 	"license": "GPL-3.0-only",
 	"repository": {

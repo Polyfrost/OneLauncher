@@ -2,14 +2,15 @@ import type { Cluster } from '@onelauncher/client/bindings';
 import { useNavigate } from '@solidjs/router';
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { open } from '@tauri-apps/plugin-shell';
-import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, PlayIcon, Save01Icon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-solid';
+import { Edit02Icon, FolderIcon, ImagePlusIcon, LinkExternal01Icon, Save01Icon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-solid';
 import { bridge } from '~imports';
 import TextField from '~ui/components/base/TextField';
+import LaunchButton from '~ui/components/LaunchButton';
 import Modal, { createModal, type ModalProps } from '~ui/components/overlay/Modal';
 import ScrollableContainer from '~ui/components/ScrollableContainer';
 import SettingsRow from '~ui/components/SettingsRow';
 import Sidebar from '~ui/components/Sidebar';
-import useClusterContext, { useLaunchCluster } from '~ui/hooks/useCluster';
+import useClusterContext from '~ui/hooks/useCluster';
 import usePreventLeave from '~ui/hooks/usePreventLeave';
 import useSettings from '~ui/hooks/useSettings';
 import { formatAsDuration, upperFirst } from '~utils';
@@ -264,8 +265,6 @@ interface BannerProps {
 }
 
 function Banner(props: BannerProps) {
-	const launch = useLaunchCluster(() => props.cluster.uuid);
-
 	async function launchFilePicker() {
 		const selected = await dialog.open({
 			multiple: false,
@@ -361,14 +360,7 @@ function Banner(props: BannerProps) {
 							disabled={true}
 						/>
 
-						<Button
-							buttonStyle="primary"
-							children="Launch"
-							class="!w-auto"
-							disabled={props.editMode()}
-							iconLeft={<PlayIcon />}
-							onClick={launch}
-						/>
+						<LaunchButton cluster={props.cluster} />
 					</div>
 				</div>
 

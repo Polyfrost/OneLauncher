@@ -1,6 +1,7 @@
 import { type Navigator, Route, useIsRouting, useSearchParams } from '@solidjs/router';
 import { EyeIcon, File06Icon, Globe04Icon, Image03Icon, PackagePlusIcon, Settings04Icon } from '@untitled-theme/icons-solid';
 import PlayerHead from '~ui/components/game/PlayerHead';
+import LaunchButton from '~ui/components/LaunchButton';
 import useClusterContext, { ClusterProvider } from '~ui/hooks/useCluster';
 import useProcessor from '~ui/hooks/useProcessor';
 import { supportsMods } from '~utils';
@@ -70,7 +71,6 @@ ClusterRoot.open = function (navigate: Navigator, uuid: string) {
 function ClusterSidebar() {
 	const [cluster, { refetch: refetchCluster }] = useClusterContext();
 	const { running: runningProcesses } = useProcessor(cluster()!);
-
 	const isRouting = useIsRouting();
 
 	createEffect(() => {
@@ -79,28 +79,34 @@ function ClusterSidebar() {
 	});
 
 	return (
-		<Sidebar
-			base="/clusters"
-			links={{
-				Cluster: [
-					[<EyeIcon />, 'Overview', '/'],
-					(supportsMods(cluster?.()) ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
-					[<Image03Icon />, 'Screenshots', '/screenshots'],
-					[<Globe04Icon />, 'Worlds', '/worlds'],
-					[<File06Icon />, 'Logs', '/logs'],
-					[<Settings04Icon />, 'Game Settings', '/settings'],
-				],
-				...(runningProcesses() && runningProcesses()!.length > 0
-					? {
-							Running: runningProcesses()!.map((details, index) => {
-								const icon = <PlayerHead uuid={details.user} />; ;
+		<div class="h-full flex flex-col items-center justify-between">
+			<Show when={cluster()}>
+				<Sidebar
+					base="/clusters"
+					links={{
+						Cluster: [
+							[<EyeIcon />, 'Overview', '/'],
+							(supportsMods(cluster()) ? [<PackagePlusIcon />, 'Mods', '/mods'] : undefined),
+							[<Image03Icon />, 'Screenshots', '/screenshots'],
+							[<Globe04Icon />, 'Worlds', '/worlds'],
+							[<File06Icon />, 'Logs', '/logs'],
+							[<Settings04Icon />, 'Game Settings', '/settings'],
+						],
+						...(runningProcesses() && runningProcesses()!.length > 0
+							? {
+									Running: runningProcesses()!.map((details, index) => {
+										const icon = <PlayerHead uuid={details.user} />; ;
 
-								return [icon, `Process #${index + 1}`, '/game', ClusterGame.buildUrl(cluster()!.uuid, details)];
-							}),
-						}
-					: {}),
-			}}
-		/>
+										return [icon, `Process #${index + 1}`, '/game', ClusterGame.buildUrl(cluster()!.uuid, details)];
+									}),
+								}
+							: {}),
+					}}
+				/>
+
+				<LaunchButton class="!w-full" cluster={cluster()!} />
+			</Show>
+		</div>
 	);
 }
 

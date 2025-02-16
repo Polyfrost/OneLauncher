@@ -9,10 +9,11 @@ import {
 import { bridge } from '~imports';
 import ClusterCover from '~ui/components/game/ClusterCover';
 import PlayerHead from '~ui/components/game/PlayerHead';
+import LaunchButton from '~ui/components/LaunchButton';
 import { useClusterCreator } from '~ui/components/overlay/cluster/ClusterCreationModal';
 import { useLaunchCluster, useRecentCluster } from '~ui/hooks/useCluster';
-import useCommand from '~ui/hooks/useCommand';
 
+import useCommand from '~ui/hooks/useCommand';
 import useProcessor from '~ui/hooks/useProcessor';
 import { formatAsDuration, upperFirst } from '~utils';
 import { For, onMount, Show } from 'solid-js';
@@ -178,8 +179,6 @@ function ClusterCard(props: Cluster) {
 		navigate(`/clusters/?id=${props.uuid}`);
 	}
 
-	const launch = useLaunchCluster(() => props.uuid);
-
 	return (
 		<>
 			<div
@@ -222,16 +221,8 @@ function ClusterCard(props: Cluster) {
 							{props.packages.mods && `• ${props.mods} mods`} */}
 						</p>
 					</div>
-					<Button
-						buttonStyle="iconSecondary"
-						onClick={(e) => {
-							e.preventDefault();
-							e.stopImmediatePropagation();
-							launch();
-						}}
-					>
-						<PlayIcon class="h-4! w-4!" />
-					</Button>
+
+					<LaunchButton cluster={props} iconOnly />
 				</div>
 			</div>
 		</>

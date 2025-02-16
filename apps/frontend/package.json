@@ -25,6 +25,7 @@
 		"@solid-primitives/i18n": "^2.1.1",
 		"@solid-primitives/map": "^0.4.13",
 		"@solid-primitives/refs": "^1.0.8",
+		"@solid-primitives/scheduled": "^1.5.0",
 		"@solidjs/router": "^0.14.7",
 		"@t3-oss/env-core": "^0.11.0",
 		"@tanstack/solid-query": "^5.56.2",

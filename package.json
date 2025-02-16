@@ -4,7 +4,6 @@
 	"version": "0.1.0-alpha.2",
 	"private": true,
 	"engineStrict": true,
-	"packageManager": "pnpm@9.15.4",
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
 	"license": "GPL-3.0-only",
 	"homepage": "https://polyfrost.org",

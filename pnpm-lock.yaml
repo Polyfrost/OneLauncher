@@ -227,6 +227,8 @@ importers:
 
   packages/core: {}
 
+  packages/core-new: {}
+
   packages/distribution: {}
 
   packages/gamemode: {}

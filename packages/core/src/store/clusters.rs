@@ -86,7 +86,7 @@ impl ClusterPath {
 
 	/// Get the full [`PathBuf`] of the current cluster path.
 	pub async fn full_path(&self) -> crate::Result<PathBuf> {
-		let state = State::get().await?;
+		let state: std::sync::Arc<tokio::sync::RwLockReadGuard<'_, State>> = State::get().await?;
 		let clusters_dir = state.directories.clusters_dir().await;
 		Ok(clusters_dir.join(&self.0))
 	}

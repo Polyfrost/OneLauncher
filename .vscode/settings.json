@@ -41,9 +41,9 @@
 		".rustup",
 		".crates"
 	],
-	"rust-analyzer.procMacro.enable": false,
-	"rust-analyzer.procMacro.attributes.enable": false,
-	"rust-analyzer.check.command": "check",
+	"rust-analyzer.procMacro.enable": true,
+	"rust-analyzer.procMacro.attributes.enable": true,
+	"rust-analyzer.check.command": "clippy",
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"rust-analyzer.linkedProjects": [],
 	"rust-analyzer.cargo.extraEnv": {},
@@ -53,6 +53,7 @@
 	// Disable the default formatter
 	"prettier.enable": false,
 	"editor.formatOnSave": false,
+
 	// Auto fix
 	"editor.codeActionsOnSave": {
 		"source.fixAll.eslint": "explicit",

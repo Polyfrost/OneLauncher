@@ -1,3 +1,4 @@
+#![allow(clippy::all)]
 //! # `OneLauncher`
 //!
 //! A library used as a core for our launcher and Rust APIs.

@@ -116,10 +116,10 @@ case "$(uname)" in
 			echo "installing dependencies with dnf..."
 
 			# For Enterprise Linux, you also need "Development Tools" instead of "C Development Tools and Libraries"
-			if ! { sudo dnf group install "C Development Tools and Libraries" || sudo dnf group install "Development Tools"; }; then
-				err 'We were unable to install the "C Development Tools and Libraries"/"Development Tools" package.' \
-				'Please open an issue if you feel that this is incorrect.'
-			fi
+			# if ! { sudo dnf group install "C Development Tools and Libraries" || sudo dnf group install "Development Tools"; }; then
+			# 	err 'We were unable to install the "C Development Tools and Libraries"/"Development Tools" package.' \
+			# 	'Please open an issue if you feel that this is incorrect.'
+			# fi
 
 			# Tauri dependencies
 			set -- openssl webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel \
@@ -185,6 +185,8 @@ if [ "${CI:-}" != "true" ]; then
 	echo "installing rust tools..."
 	_tools="cargo-watch"
 	echo "$_tools" | xargs cargo install
+
+	cargo install diesel_cli --no-default-features --features sqlite
 fi
 
 echo 'your machine has been setup for onelauncher development!'

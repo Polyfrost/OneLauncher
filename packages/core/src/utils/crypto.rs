@@ -18,13 +18,13 @@ pub fn sha1_files(files: Vec<&PathBuf>) -> Vec<Option<String>> {
 	hashes
 }
 
-pub fn mda5(bytes: &[u8]) -> String {
+pub fn md5(bytes: &[u8]) -> String {
 	let digest = md5::compute(bytes);
 	format!("{:x}", digest)
 }
 
 pub fn md5_file(file: &PathBuf) -> Result<String> {
-	Ok(mda5(&std::fs::read(file)?))
+	Ok(md5(&std::fs::read(file)?))
 }
 
 pub fn md5_files(files: Vec<&PathBuf>) -> Vec<Option<String>> {

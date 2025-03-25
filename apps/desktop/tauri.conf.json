@@ -6,7 +6,7 @@
 		"withGlobalTauri": true,
 		"macOSPrivateApi": true,
 		"security": {
-			"csp": null,
+			"csp": "img-src 'self' asset: http://asset.localhost",
 			"assetProtocol": {
 				"enable": true,
 				"scope": {

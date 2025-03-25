@@ -27,7 +27,7 @@ function ClusterCover(props: ClusterCoverProps) {
 		if (url.startsWith('/'))
 			return convertFileSrc(url);
 
-		return url;
+		return convertFileSrc(url);
 	};
 
 	const Wrapper = (props: ParentProps) => (

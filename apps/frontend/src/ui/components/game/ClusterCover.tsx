@@ -24,9 +24,6 @@ function ClusterCover(props: ClusterCoverProps) {
 		if (url === undefined || url === null)
 			return split.fallback || defaultCover;
 
-		if (url.startsWith('/'))
-			return convertFileSrc(url);
-
 		return convertFileSrc(url);
 	};
 

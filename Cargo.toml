@@ -55,7 +55,7 @@ tauri-plugin-updater = { version = "2.0" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
 tauri-plugin-dialog = { version = "2.0" }
 # tauri-plugin-deep-link adds a way to handle custom uri schemes (onelauncher://)
-tauri-plugin-deep-link = { version = "2.0" }
+tauri-plugin-deep-link = { version = "2.2" }
 
 # # ============= CORE ============= # #
 specta = { version = "2.0.0-rc.20", features = [

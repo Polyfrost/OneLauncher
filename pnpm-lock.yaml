@@ -197,8 +197,8 @@ importers:
   packages/client:
     dependencies:
       '@solid-primitives/deep':
-        specifier: ^0.2.9
-        version: 0.2.9(solid-js@1.9.3)
+        specifier: ^0.3.1
+        version: 0.3.1(solid-js@1.9.3)
       '@tanstack/solid-query':
         specifier: ^5.56.2
         version: 5.59.16(solid-js@1.9.3)
@@ -1349,8 +1349,8 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
-  '@solid-primitives/deep@0.2.9':
-    resolution: {integrity: sha512-jO8tYQ2BW4LKHLUpm/HcK6qqdH4vg1zmzHUnoUzspxZrKDqhqgBJTPl+vfmDqtt0hHCOhlEhEEV74+tCFyt3Mg==}
+  '@solid-primitives/deep@0.3.1':
+    resolution: {integrity: sha512-DaJ2iuHmYmHyGhA5EACfqVKXNivGlLA+zYborz1pLzKOpyMZq0LvmNoBgwFwN/ncOq5FhGP0Hvr6U7QP+hmLXw==}
     peerDependencies:
       solid-js: ^1.6.12
 
@@ -1364,18 +1364,13 @@ packages:
     peerDependencies:
       solid-js: ^1.6.12
 
-  '@solid-primitives/memo@1.3.9':
-    resolution: {integrity: sha512-OIlGcsEPXr6U23fDaSEm8iqezWDT4SNSjLTekWQVOu4qHostnMPlqU8xo1Jf0I7OgRuqA0wTMQ5cu0bYjeR/ZQ==}
+  '@solid-primitives/memo@1.4.1':
+    resolution: {integrity: sha512-MzNCJNpXidQdLOZUsEkwpuq52uwT8zrFrBxEVMEr9N35yIIvGhjqwrI1M6xzPmJGzuVUe8anCk57q+N5gyRk0Q==}
     peerDependencies:
       solid-js: ^1.6.12
 
   '@solid-primitives/refs@1.0.8':
     resolution: {integrity: sha512-+jIsWG8/nYvhaCoG2Vg6CJOLgTmPKFbaCrNQKWfChalgUf9WrVxWw0CdJb3yX15n5lUcQ0jBo6qYtuVVmBLpBw==}
-    peerDependencies:
-      solid-js: ^1.6.12
-
-  '@solid-primitives/scheduled@1.4.3':
-    resolution: {integrity: sha512-HfWN5w7b7FEc6VPLBKnnE302h90jsLMuR28Fcf7neRGGf8jBj6wm6/UFQ00VlKexHFMR6KQ2u4VBh5a1ZcqM8g==}
     peerDependencies:
       solid-js: ^1.6.12
 
@@ -1396,6 +1391,11 @@ packages:
 
   '@solid-primitives/utils@6.2.3':
     resolution: {integrity: sha512-CqAwKb2T5Vi72+rhebSsqNZ9o67buYRdEJrIFzRXz3U59QqezuuxPsyzTSVCacwS5Pf109VRsgCJQoxKRoECZQ==}
+    peerDependencies:
+      solid-js: ^1.6.12
+
+  '@solid-primitives/utils@6.3.0':
+    resolution: {integrity: sha512-e7hTlJ1Ywh2+g/Qug+n4L1mpfxsikoIS4/sHE2EK9WatQt8UJqop/vE6bsLnXlU1xuhb/jo94Ah5Y27rd4wP7A==}
     peerDependencies:
       solid-js: ^1.6.12
 
@@ -2866,8 +2866,8 @@ packages:
     resolution: {integrity: sha512-bZsjR/iRjl1Nk1UkjGpAzLNfQtzuijhn2g+pbZb98HQ1Gk8vM9hfbxeMBP+M2/UUdwj0RqGG3mlvk2MsAqwvEw==}
     engines: {node: 20 || >=22}
 
-  jiti@1.21.6:
-    resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
+  jiti@1.21.7:
+    resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
   jiti@2.0.0-beta.3:
@@ -5292,9 +5292,9 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@solid-primitives/deep@0.2.9(solid-js@1.9.3)':
+  '@solid-primitives/deep@0.3.1(solid-js@1.9.3)':
     dependencies:
-      '@solid-primitives/memo': 1.3.9(solid-js@1.9.3)
+      '@solid-primitives/memo': 1.4.1(solid-js@1.9.3)
       solid-js: 1.9.3
 
   '@solid-primitives/i18n@2.1.1(solid-js@1.9.3)':
@@ -5306,19 +5306,15 @@ snapshots:
       '@solid-primitives/trigger': 1.1.0(solid-js@1.9.3)
       solid-js: 1.9.3
 
-  '@solid-primitives/memo@1.3.9(solid-js@1.9.3)':
+  '@solid-primitives/memo@1.4.1(solid-js@1.9.3)':
     dependencies:
-      '@solid-primitives/scheduled': 1.4.3(solid-js@1.9.3)
-      '@solid-primitives/utils': 6.2.3(solid-js@1.9.3)
+      '@solid-primitives/scheduled': 1.5.0(solid-js@1.9.3)
+      '@solid-primitives/utils': 6.3.0(solid-js@1.9.3)
       solid-js: 1.9.3
 
   '@solid-primitives/refs@1.0.8(solid-js@1.9.3)':
     dependencies:
       '@solid-primitives/utils': 6.2.3(solid-js@1.9.3)
-      solid-js: 1.9.3
-
-  '@solid-primitives/scheduled@1.4.3(solid-js@1.9.3)':
-    dependencies:
       solid-js: 1.9.3
 
   '@solid-primitives/scheduled@1.5.0(solid-js@1.9.3)':
@@ -5335,6 +5331,10 @@ snapshots:
       solid-js: 1.9.3
 
   '@solid-primitives/utils@6.2.3(solid-js@1.9.3)':
+    dependencies:
+      solid-js: 1.9.3
+
+  '@solid-primitives/utils@6.3.0(solid-js@1.9.3)':
     dependencies:
       solid-js: 1.9.3
 
@@ -6917,7 +6917,7 @@ snapshots:
       debug: 4.3.7
       esbuild: 0.23.1
       jiti: 2.0.0-beta.3
-      jiti-v1: jiti@1.21.6
+      jiti-v1: jiti@1.21.7
       pathe: 1.1.2
       tsx: 4.19.1
     transitivePeerDependencies:
@@ -7002,7 +7002,7 @@ snapshots:
     dependencies:
       '@isaacs/cliui': 8.0.2
 
-  jiti@1.21.6: {}
+  jiti@1.21.7: {}
 
   jiti@2.0.0-beta.3: {}
 

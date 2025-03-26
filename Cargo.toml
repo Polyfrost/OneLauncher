@@ -99,7 +99,7 @@ rand = { version = "0.8.5" }
 byteorder = { version = "1.5.0" }
 base64 = { version = "0.22" }
 p256 = { version = "0.13.2", features = [ "ecdsa" ] }
-uuid = { version = "1.10", features = [ "serde", "v4" ] }
+uuid = { version = "1.16", features = [ "serde", "v4" ] }
 toml = { version = "0.8" }
 nom = { version = "7.1" }
 

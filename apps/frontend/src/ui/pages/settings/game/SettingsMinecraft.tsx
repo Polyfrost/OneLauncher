@@ -478,6 +478,7 @@ function ClusterJavaVersionModal(props: ModalProps & {
 		if (!javaVersion) {
 			const clusterId = props.clusterId;
 			const optimal = await tryResult(() => bridge.commands.getOptimalJavaVersion(clusterId));
+			setPackage(optimal, optimal.version)
 			setSelected(javaVersions().findIndex(([_, meta]) => meta.path === optimal.path));
 		}
 		else {

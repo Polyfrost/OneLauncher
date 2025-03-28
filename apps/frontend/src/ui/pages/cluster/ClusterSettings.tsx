@@ -80,7 +80,6 @@ function PageSettings(cluster: Accessor<Cluster>) {
 			<GameSettings
 				{...{
 					fullscreen,
-					memory,
 					resolution,
 				}}
 			/>
@@ -107,6 +106,7 @@ function PageSettings(cluster: Accessor<Cluster>) {
 					javaVersions,
 					javaArgs,
 					envVars,
+					memory,
 				}}
 			/>
 		</>

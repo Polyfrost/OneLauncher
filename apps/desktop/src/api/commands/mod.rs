@@ -89,6 +89,8 @@ macro_rules! collect_commands {
 			get_zulu_packages,
 			install_java_from_package,
 			open_dev_tools,
+			check_java,
+			locate_java,
 		]
 	}};
 }
@@ -116,6 +118,18 @@ pub async fn install_java_from_package(download: onelauncher::java::JavaZuluPack
 #[tauri::command]
 pub async fn get_featured_packages() -> Result<Vec<onelauncher::package::content::FeaturedPackage>, String> {
 	Ok(onelauncher::package::content::get_featured_packages().await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn check_java(path: std::path::PathBuf) -> Result<Option<onelauncher::prelude::JavaVersion>, String> {
+	Ok(onelauncher::java::check_java(path).await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn locate_java() -> Result<Vec<onelauncher::prelude::JavaVersion>, String> {
+	Ok(onelauncher::utils::java::locate_java().await.map_err(|e| e.to_string())?)
 }
 
 #[specta::specta]

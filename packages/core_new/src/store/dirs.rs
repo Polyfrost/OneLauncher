@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use tokio::sync::OnceCell;
 
-use crate::{constants, LauncherResult};
+use crate::{constants, utils, LauncherResult};
 
 /// The static [`OnceCell<RwLock<Dirs>>`] for storing the global directory state.
 /// Should be initialized as soon as possible (preferably before logging)
@@ -20,7 +20,7 @@ impl Dirs {
 	}
 
 	fn initialize() -> LauncherResult<Self> {
-		let base_dir = env_path("LAUNCHER_DIR")
+		let base_dir = utils::io::env_path("LAUNCHER_DIR")
 			.or_else(|| Some(dirs::data_dir()?.join(constants::NAME)))
 			.ok_or(DirectoryError::BaseDir)?;
 
@@ -41,11 +41,20 @@ impl Dirs {
 		self.base_dir().join("logs")
 	}
 
+
+	// --- FILES ---
+
 	#[must_use]
 	pub fn db_file(&self) -> PathBuf {
 		self.base_dir().join("user_data.db")
 	}
 
+	#[must_use]
+	pub fn settings_file(&self) -> PathBuf {
+		self.base_dir().join("settings.json")
+	}
+
+	// --- GAME DIRECTORIES ---
 
 	/// Get the `config_dir/metadata` folder within the core config directory.
 	#[inline]
@@ -85,6 +94,3 @@ pub enum DirectoryError {
 	BaseDir,
 }
 
-pub fn env_path(name: &str) -> Option<PathBuf> {
-	std::env::var_os(name).map(PathBuf::from)
-}

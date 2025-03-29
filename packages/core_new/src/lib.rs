@@ -1,16 +1,10 @@
-// Private (accessible by crate only) modules
-
-// Modules which are not re-exported
-pub mod io;
 pub mod constants;
-pub mod schema;
+pub mod utils;
+pub mod store;
+pub mod api;
 
-// Modules which are re-exported
-mod state;
 mod error;
 mod logger;
 
-// Re-exported modules
-pub use state::State;
-pub use error::*;
+pub use error::{LauncherResult, LauncherError};
 pub use logger::start_logger;

@@ -183,10 +183,8 @@ esac
 # installs cargo-watch for development purposes
 if [ "${CI:-}" != "true" ]; then
 	echo "installing rust tools..."
-	_tools="cargo-watch"
+	_tools="cargo-watch sqlx-cli"
 	echo "$_tools" | xargs cargo install
-
-	cargo install diesel_cli --no-default-features --features sqlite
 fi
 
 echo 'your machine has been setup for onelauncher development!'

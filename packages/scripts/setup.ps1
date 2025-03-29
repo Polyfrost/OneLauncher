@@ -199,7 +199,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
     Write-Host
     Write-Host 'Installing Rust tools...' -ForegroundColor Yellow
     cargo install cargo-watch
-	cargo install diesel_cli --no-default-features --features sqlite
+	cargo install sqlx-cli
     if ($LASTEXITCODE -ne 0) {
         Exit-WithError 'Failed to install Rust tools'
     }

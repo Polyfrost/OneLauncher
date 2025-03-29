@@ -1,7 +1,6 @@
 //! **`OneLauncher` Constants**
 //!
 //! Public constant variables and strings that are used throughout the launcher.
-//! Can be shared publically, any secrets should be stored in [`crate::store::credentials`].
 
 // =========== Core Metadata ===========
 /// The name of the launcher.

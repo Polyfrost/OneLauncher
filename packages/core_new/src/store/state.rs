@@ -1,14 +1,19 @@
 use std::sync::Arc;
 
+use sqlx::SqlitePool;
 use tokio::sync::{OnceCell, RwLock};
 
 use crate::LauncherResult;
+
+use super::{ingress::IngressProcessor, Settings};
 
 /// The static [`OnceCell<RwLock<State>>`] for storing the global runtime launcher state.
 static LAUNCHER_STATE: OnceCell<RwLock<State>> = OnceCell::const_new();
 
 pub struct State {
-
+	pub ingress_processor: IngressProcessor,
+	pub settings: Settings,
+	pub db: SqlitePool,
 }
 
 impl State {
@@ -32,9 +37,19 @@ impl State {
 			.await)
 	}
 
-	async fn initialize() -> LauncherResult<RwLock<Self>> {
-		Ok(RwLock::new(Self {
+	pub fn initialized() -> bool {
+		LAUNCHER_STATE.initialized()
+	}
 
+	async fn initialize() -> LauncherResult<RwLock<Self>> {
+		let ingress_processor = IngressProcessor::new();
+		let settings = Settings::new().await;
+		let db = super::db::create_pool().await?;
+
+		Ok(RwLock::new(Self {
+			ingress_processor,
+			settings,
+			db,
 		}))
 	}
 }

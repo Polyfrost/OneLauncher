@@ -1,4 +1,4 @@
-use onelauncher_new::io::Dirs;
+use onelauncher_new::store::Dirs;
 
 #[tokio::main]
 async fn main() {

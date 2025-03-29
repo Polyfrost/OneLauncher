@@ -126,10 +126,12 @@ md5 = { version = "0.7.0" }
 bytes = { version = "1.7" }
 
 # # ============= UTILITY ============= # #
-diesel = { version = "2.2.0", features = [
+sqlx = { version = "0.8", features = [
+	"runtime-tokio",
 	"sqlite",
-	"returning_clauses_for_sqlite_3_35",
-	"serde_json",
+	"macros",
+	"derive",
+	"migrate",
 	"uuid",
 	"chrono"
 ] }
@@ -149,6 +151,7 @@ lazy_static = { version = "1.5" }
 indicatif = { version = "0.17" }
 futures = { version = "0.3" }
 async-recursion = { version = "1.1" }
+async-trait = { version = "0.1" }
 sysinfo = { version = "0.31", features = [ "serde" ] }
 sys-info = { version = "0.9" }
 whoami = { version = "1.5" }

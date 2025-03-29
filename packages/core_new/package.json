@@ -13,6 +13,6 @@
 	"scripts": {
 		"cargo": "cargo",
 		"binary": "cargo run --bin",
-		"diesel": "diesel"
+		"sqlx": "sqlx"
 	}
 }

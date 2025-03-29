@@ -14,10 +14,16 @@ authors = { workspace = true }
 path = "src/lib.rs"
 
 [features]
-default = []
-tauri = [ "dep:tauri", "dep:tauri-specta", "specta" ]
+default = [ "cli" ]
+tauri = [
+	"dep:tauri",
+	"dep:tauri-specta",
+	"specta",
+	"gui"
+]
 specta = [ "dep:specta" ]
 cli = [ "dep:indicatif" ]
+gui = []
 
 [lints]
 workspace = true
@@ -39,12 +45,13 @@ serde_repr = { workspace = true }
 serde_with = { workspace = true }
 
 # utils
-diesel = { workspace = true }
+sqlx = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
+anyhow = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 regex = { workspace = true }
@@ -53,6 +60,7 @@ whoami = { workspace = true }
 lazy_static = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
+async-trait = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }
@@ -69,7 +77,8 @@ async_zip = { workspace = true }
 dirs = { workspace = true }
 bytes = { workspace = true }
 base64 = { workspace = true }
-flate2 = { workspace = true }
+async-compression = { workspace = true }
+dunce = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }

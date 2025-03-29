@@ -20,11 +20,11 @@ impl Deref for ProxyState {
 }
 
 impl ProxyState {
-	pub async fn initialize(proxy: Box<dyn LauncherProxy>) -> LauncherResult<Arc<Self>> {
+	pub async fn initialize(proxy: impl LauncherProxy + 'static) -> LauncherResult<Arc<Self>> {
 		PROXY_STATE
 			.get_or_try_init(|| async {
 				Ok(Arc::new(Self {
-					inner: proxy,
+					inner: Box::new(proxy),
 				}))
 			})
 			.await

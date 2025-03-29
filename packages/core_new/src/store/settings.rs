@@ -32,6 +32,7 @@ impl Default for Settings {
 }
 
 impl Settings {
+	#[tracing::instrument]
 	pub async fn new() -> Self {
 		match Self::read().await {
 			Ok(settings) => settings,

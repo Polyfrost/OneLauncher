@@ -1,5 +1,6 @@
 use crate::{store::{ingress::{IngressId, IngressType}, State}, LauncherResult};
 
+#[tracing::instrument]
 pub async fn init_ingress(
 	ingress_type: IngressType,
 	message: &str,
@@ -13,25 +14,43 @@ pub async fn init_ingress(
 	Ok(id)
 }
 
-pub async fn send_ingress(id: IngressId) -> LauncherResult<()> {
+#[tracing::instrument]
+pub async fn send_ingress(id: &IngressId, increment: f64) -> LauncherResult<()> {
 	let state = State::get().await?;
 	let processor = &state.ingress_processor;
 
-	processor.send(id.0).await?;
+	processor.send(id.0, increment).await?;
 	Ok(())
 }
 
-pub async fn update_ingress(id: IngressId, current: f64) -> LauncherResult<()> {
-	let state = State::get().await?;
-	let processor = &state.ingress_processor;
+#[cfg(test)]
+pub mod tests {
+    use std::time::Duration;
 
-	processor.update(id.0, current).await
-}
+    use crate::{api::{ingress::{init_ingress, send_ingress}, proxy::proxy_cli::ProxyCli}, initialize_core, store::ingress::IngressType, LauncherResult};
 
-pub async fn finish_ingress(id: IngressId) -> LauncherResult<()> {
-	let state = State::get().await?;
-	let processor = &state.ingress_processor;
 
-	processor.finish(id.0).await?;
-	Ok(())
+	#[tokio::test]
+	pub async fn create_and_update_ingress() -> LauncherResult<()> {
+		assert!(cfg!(feature = "cli"));
+
+		initialize_core(ProxyCli::new()).await?;
+
+		let id = init_ingress(IngressType::Download { file_name: "Some-Mod-1.8.9.jar".into() }, "This is a test message", 100.0).await?;
+		tokio::time::sleep(Duration::from_millis(2350)).await;
+
+		send_ingress(&id, 10.0).await?;
+		tokio::time::sleep(Duration::from_millis(2500)).await;
+
+		send_ingress(&id, 20.0).await?;
+		tokio::time::sleep(Duration::from_millis(2500)).await;
+
+		send_ingress(&id, 70.0).await?;
+		tokio::time::sleep(Duration::from_millis(2500)).await;
+
+		drop(id);
+
+		Ok(())
+	}
+
 }

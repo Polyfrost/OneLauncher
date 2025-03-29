@@ -41,6 +41,7 @@ impl State {
 		LAUNCHER_STATE.initialized()
 	}
 
+	#[tracing::instrument]
 	async fn initialize() -> LauncherResult<RwLock<Self>> {
 		let ingress_processor = IngressProcessor::new();
 		let settings = Settings::new().await;

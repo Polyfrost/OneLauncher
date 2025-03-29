@@ -21,10 +21,15 @@ pub enum IngressError {
 
 impl IngressProcessor {
 	#[must_use]
+	#[tracing::instrument]
 	pub fn new() -> Self {
-		Self {
+		let processor = Self {
 			ingress_feeds: RwLock::new(HashMap::new()),
-		}
+		};
+
+		tracing::debug!("created ingress processor");
+
+		processor
 	}
 
 	pub async fn create(&self, ingress_type: IngressType, message: String, total: f64) -> LauncherResult<IngressId> {
@@ -42,24 +47,21 @@ impl IngressProcessor {
 
 		feeds.insert(uuid, ingress);
 
-		self.send(uuid).await?;
+		// Drop the write lock to prevent deadlock
+		drop(feeds);
+
+		self.send(uuid, 0.0).await?;
 
 		Ok(IngressId(uuid))
 	}
 
-	pub async fn update(&self, id: Uuid, current: f64) -> LauncherResult<()> {
+	pub async fn send(&self, id: Uuid, increment: f64) -> LauncherResult<()> {
 		let mut feeds = self.ingress_feeds.write().await;
-		let ingress = feeds.get_mut(&id).ok_or_else(|| IngressError::NotFound)?;
-		ingress.current = current;
-
-		Ok(())
-	}
-
-	pub async fn send(&self, id: Uuid) -> LauncherResult<()> {
-		let feeds = self.ingress_feeds.read().await;
-		let ingress = feeds.get(&id).ok_or_else(|| IngressError::NotFound)?;
+		let ingress = feeds.get_mut(&id).ok_or(IngressError::NotFound)?;
 
 		let proxy = ProxyState::get()?;
+
+		ingress.current += increment;
 		proxy.send_ingress(IngressPayload {
 			id: ingress.id.0,
 			message: ingress.message.clone(),
@@ -71,9 +73,9 @@ impl IngressProcessor {
 		Ok(())
 	}
 
-	pub async fn finish(&self, uuid: Uuid) -> LauncherResult<Ingress> {
+	pub async fn remove(&self, uuid: Uuid) -> LauncherResult<Ingress> {
 		let mut feeds = self.ingress_feeds.write().await;
-		Ok(feeds.remove(&uuid).ok_or_else(|| IngressError::NotFound)?)
+		Ok(feeds.remove(&uuid).ok_or(IngressError::NotFound)?)
 	}
 }
 
@@ -119,7 +121,7 @@ impl Drop for IngressId {
 				let state = State::get().await?;
 				let processor = &state.ingress_processor;
 
-				let ingress = processor.finish(ingress_uuid).await?;
+				let ingress = processor.remove(ingress_uuid).await?;
 
 				let proxy = ProxyState::get()?;
 

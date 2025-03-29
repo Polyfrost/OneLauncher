@@ -2,12 +2,12 @@
 // This will log to the console, and will not log to a file
 #[cfg(debug_assertions)]
 pub async fn start_logger() {
-    use tracing_subscriber::prelude::*;
+    use tracing_subscriber::{prelude::*, util::SubscriberInitExt};
 
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=debug", env!("CARGO_PKG_NAME"))));
+		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
 
-    let subscriber = tracing_subscriber::registry()
+    tracing_subscriber::registry()
 	    .with(
 			tracing_subscriber::fmt::layer()
 				.with_ansi(true)
@@ -18,10 +18,8 @@ pub async fn start_logger() {
 				.pretty()
 		)
         .with(filter)
-        .with(tracing_error::ErrorLayer::default());
-
-	tracing::subscriber::set_global_default(subscriber)
-        .expect("setting default subscriber failed");
+        .with(tracing_error::ErrorLayer::default())
+		.init();
 }
 
 // Handling for the live production logging
@@ -60,7 +58,7 @@ pub async fn start_logger() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
 
-    let subscriber = tracing_subscriber::registry()
+    tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
 				.compact()
@@ -69,8 +67,6 @@ pub async fn start_logger() {
                 .with_timer(ChronoLocal::rfc_3339()),
         )
         .with(filter)
-        .with(tracing_error::ErrorLayer::default());
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Setting default subscriber failed");
+        .with(tracing_error::ErrorLayer::default())
+		.init();
 }

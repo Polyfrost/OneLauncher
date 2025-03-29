@@ -26,6 +26,7 @@ pub async fn create_pool_from_path(path: PathBuf) -> LauncherResult<SqlitePool> 
 	Ok(pool)
 }
 
+#[tracing::instrument]
 pub async fn create_pool() -> LauncherResult<SqlitePool> {
 	let path = Dirs::get().await?.db_file();
 	create_pool_from_path(path).await

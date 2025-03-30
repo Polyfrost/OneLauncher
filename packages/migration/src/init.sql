@@ -7,7 +7,7 @@ create table cluster_groups (
 create table java_versions (
 	id integer not null,
 	major_version integer not null,
-	display_name text not null,
+	vendor_name text not null,
 	absolute_path text not null,
 	full_version text not null,
 	constraint java_versions_pk primary key (id autoincrement)

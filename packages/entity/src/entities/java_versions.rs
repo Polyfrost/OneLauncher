@@ -11,7 +11,7 @@ pub struct Model {
 	pub id: i32,
 	pub major_version: i32,
 	#[sea_orm(column_type = "Text")]
-	pub display_name: String,
+	pub vendor_name: String,
 	#[sea_orm(column_type = "Text")]
 	pub absolute_path: String,
 	#[sea_orm(column_type = "Text")]

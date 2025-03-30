@@ -108,7 +108,8 @@ pub struct IngressPayload {
 pub enum IngressType {
 	Download {
 		file_name: String,
-	}
+	},
+	JavaCheck
 }
 
 impl Drop for IngressId {

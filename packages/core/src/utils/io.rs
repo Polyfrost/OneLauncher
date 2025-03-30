@@ -1,4 +1,5 @@
 use async_compression::tokio::bufread::GzipDecoder;
+use tempfile::TempDir;
 use tokio::io::AsyncReadExt;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
@@ -182,4 +183,14 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOErro
 			source: e,
 			path: path.to_string_lossy().to_string(),
 		})
+}
+
+/// Creates a temporary directory.
+pub fn tempdir() -> Result<TempDir, IOError> {
+	Ok(tempfile::tempdir()?)
+}
+
+/// Creates a temporary file.
+pub fn tempfile() -> Result<std::fs::File, IOError> {
+	Ok(tempfile::tempfile()?)
 }

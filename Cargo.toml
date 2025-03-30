@@ -1,37 +1,32 @@
 [workspace]
 resolver = "2" # virtual workspace resolver so we don't need a root package
 members = [
-	"apps/testing", # onelauncher_test -- test the core crate in a cli setting
-	"apps/desktop", # onelauncher_gui -- the rust code for our tauri app
-	"packages/core", # onelauncher -- the rust core for onelauncher
-	"packages/core_new",
-	"packages/macros", # onelauncher_macros -- utility procedural macros for onelauncher
-	"packages/gamemode", # onelauncher_gamemode -- rust wrapper for feral gamemode
-	"packages/utils" # onelauncher_utils -- standard utilities for use within all crates
+	"packages/core",
+	"packages/entity",
+	"packages/gamemode",
+	"packages/macro",
+	"packages/migration",
 ]
 
-[workspace.package] # sets default [package] settings for workspace members
+[workspace.package]
 license = "GPL-3.0-only"
-edition = "2021" # latest rust edition
+edition = "2024"
 repository = "https://github.com/Polyfrost/OneLauncher"
 documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
 homepage = "https://polyfrost.org/projects/onelauncher"
 authors = [ "Polyfrost", "Polyfrost Contributors" ]
-version = "0.1.0-alpha.2" # bump this manually for now
+version = "0.2.0-alpha.2"
 
 [workspace.dependencies]
-# # ============= WORKSPACE ============= # #
-# best practice to define all workspace crates in the root
-# even if they are not use, with no features enabled.
-onelauncher = { path = "./packages/core" }
-onelauncher_macros = { path = "./packages/macros" }
-onelauncher_gui = { path = "./apps/desktop" }
-onelauncher_test = { path = "./apps/testing" }
+# workspace
+onelauncher_core = { path = "./packages/core" }
+onelauncher_entity = { path = "./packages/entity" }
 onelauncher_gamemode = { path = "./packages/gamemode" }
-onelauncher_utils = { path = "./packages/utils" }
+onelauncher_macro = { path = "./packages/macro" }
+onelauncher_migration = { path = "./packages/migration" }
 
-# # ============= TAURI ============= # #
+# tauri
 tauri = { version = "2.0", features = [
 	"rustls-tls",
 	"tracing",
@@ -48,7 +43,10 @@ tauri-plugin-updater = { version = "2.0" }
 tauri-plugin-dialog = { version = "2.0" }
 tauri-plugin-deep-link = { version = "2.0" }
 
-# # ============= CORE ============= # #
+# core
+interpulse = { version = "=1.2.2", features = [ "specta" ] }
+
+# code gen
 specta = { version = "2.0.0-rc.20", features = [
 	"chrono",
 	"uuid",
@@ -60,19 +58,18 @@ specta = { version = "2.0.0-rc.20", features = [
 ] }
 tauri-specta = { version = "2.0.0-rc.20", features = [ "javascript", "typescript", "derive" ] }
 specta-typescript = { version = "=0.0.7" }
-interpulse = { version = "=1.2.2", features = [ "specta" ] }
 
-# # ============= SECURITY ============= # #
+# security
 iota_stronghold = { version = "2.1" }
 zeroize = { version = "1.8", features = [ "zeroize_derive" ] }
 
-# # ============= LOGGING ============= # #
+# logging
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = [ "chrono", "env-filter" ] }
 tracing-error = { version = "0.2" }
 tracing-appender = { version = "0.2" }
 
-# # ============= SERIALIZATION ============= # #
+# serialization & text
 serde = { version = "1.0", features = [ "derive" ] }
 serde_json = { version = "1.0" }
 serde_ini = { version = "0.2" }
@@ -90,7 +87,7 @@ uuid = { version = "1.10", features = [ "serde", "v4" ] }
 toml = { version = "0.8" }
 nom = { version = "7.1" }
 
-# # ============= NETWORK ============= # #
+# network
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"stream",
@@ -107,7 +104,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 async-tungstenite = { version = "0.28", features = [ "tokio-runtime", "tokio-rustls-webpki-roots" ] }
 webbrowser = { version = "1.0" }
 
-# # ============= SYSTEM ============= # #
+# io
 tokio = { version = "1.40", features = [ "full" ] }
 tokio-stream = { version = "0.1.16", features = [ "fs" ] }
 notify = { version = "6.1", default-features = false }
@@ -119,49 +116,40 @@ dirs = { version = "5.0" }
 async_zip = { version = "0.0.17", features = [ "full" ] }
 async-compression = { version = "0.4.12", features = [ "flate2", "tokio" ] }
 flate2 = { version = "1.0" }
+bytes = { version = "1.7" }
+
+# crypto
 sha1_smol = { version = "1.0", features = [ "std" ] }
 sha2 = { version = "0.10" }
 murmur2 = { version = "0.1.0" }
 md5 = { version = "0.7.0" }
-bytes = { version = "1.7" }
 
-# # ============= UTILITY ============= # #
-sqlx = { version = "0.8", features = [
-	"runtime-tokio",
-	"sqlite",
+# db
+sea-orm = { version = "1.1", features = [
+	"sqlx-sqlite",
+	"runtime-tokio-rustls",
 	"macros",
-	"derive",
-	"migrate",
-	"uuid",
-	"chrono"
+	"with-chrono",
+	"with-json",
+	"with-uuid"
 ] }
+sea-orm-migration = { version = "1.1", features = [ "sqlx-sqlite", "runtime-tokio-rustls" ] }
+
+# utils
 thiserror = { version = "1.0" }
 anyhow = { version = "1.0" }
-async-channel = { version = "2.3" }
-mimalloc = { version = "0.1" }
-pin-project-lite = { version = "0.2" }
-once_cell = { version = "1.19" }
-quote = { version = "1.0" }
-syn = { version = "2.0", features = [ "full" ] }
+sysinfo = { version = "0.31", features = [ "serde" ] }
 discord-rich-presence = { version = "0.2" }
-winreg = { version = "0.52" }
-paste = { version = "1.0" }
-dashmap = { version = "6.1", features = [ "serde" ] }
-lazy_static = { version = "1.5" }
 indicatif = { version = "0.17" }
 futures = { version = "0.3" }
-async-recursion = { version = "1.1" }
 async-trait = { version = "0.1" }
-sysinfo = { version = "0.31", features = [ "serde" ] }
-sys-info = { version = "0.9" }
 whoami = { version = "1.5" }
-cocoa = { version = "0.26" }
-objc = { version = "0.2" }
 cc = { version = "1.1" }
 libc = { version = "0.2" }
-dotenvy = { git = "https://github.com/allan2/dotenvy/", rev = "db0d6aa8fc8d1b0ddbfe94b5c833372e463eb1c5" }
-# https://github.com/tauri-apps/tauri/blob/dev/crates/tauri/Cargo.toml#L102
-webkit2gtk = { version = "=2.0.1", features = [ "v2_40" ] }
+
+# macro
+syn = { version = "2" }
+quote = { version = "1" }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -196,10 +184,6 @@ unused_import_braces = "warn"
 deprecated = "warn"
 deprecated_in_future = "forbid"
 unused_must_use = "deny"
-
-[patch.crates-io]
-# rspc = { git = "https://github.com/oscartbeaumont/rspc", rev = "9f26d6400affdb501837cb023678268ad72feb9b" }
-# rspc-tauri2 = { git = "https://github.com/specta-rs/tauri2", rev = "6b9419566e2a826fb2a62538c7647f4524ab0fea" }
 
 [profile.dev]
 # add debug symbols/logic and optimize for reduced build time (parallel)

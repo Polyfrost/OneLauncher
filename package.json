@@ -28,15 +28,17 @@
 		"test": "pnpm test:vi && pnpm --filter=./* run test",
 		"format": "pnpm format:es && pnpm format:rs",
 		"lint": "pnpm lint:es && pnpm lint:rs",
+
+		"migrate": "sea-orm-cli migrate -d ./packages/migration",
+		"entity:gen": "sea-orm-cli generate entity -o packages/entity/src/entities --with-serde both --model-extra-attributes 'onelauncher_macro::specta'",
+
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",
-		"desktop": "pnpm --filter @onelauncher/desktop -- ",
-		"core_new": "pnpm --filter @onelauncher/core_new -- ",
+		"core": "pnpm --filter @onelauncher/core -- ",
 		"scripts": "pnpm --filter @onelauncher/scripts -- ",
-		"testing": "pnpm --filter @onelauncher/testing --",
 		"tauri": "pnpm desktop tauri-ext",
+
 		"postupdate": "cargo update",
-		"----------------------": "----------------------",
 		"test:vi": "pnpm vitest run",
 		"test:update": "pnpm vitest -u",
 		"test:ui": "pnpm vitest --ui",

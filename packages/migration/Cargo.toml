@@ -1,0 +1,21 @@
+[package]
+name = "onelauncher_migration"
+description = "Database migration for OneLauncher"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+readme = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+publish = false
+
+[lib]
+name = "onelauncher_migration"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+sea-orm-migration = { workspace = true }

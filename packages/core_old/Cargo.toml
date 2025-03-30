@@ -1,5 +1,5 @@
 [package]
-name = "onelauncher_core"
+name = "onelauncher"
 description = "The core of OneLauncher"
 version = { workspace = true }
 license = { workspace = true }
@@ -10,78 +10,67 @@ readme = { workspace = true }
 homepage = { workspace = true }
 authors = { workspace = true }
 
-[lib]
-path = "src/lib.rs"
-
 [features]
-default = [ "tauri" ]
-tauri = [
-	"dep:tauri",
-	"dep:tauri-specta",
-	"specta",
-	"gui"
-]
+default = []
+# feature flag allowing us to interact with tauri (for loading animations, errors showing on gui, etc)
+# also allows us to compile onelauncher core without tauri
+tauri = [ "dep:tauri", "dep:tauri-specta", "specta" ]
 specta = [ "dep:specta" ]
 cli = [ "dep:indicatif" ]
-gui = []
 
 [lints]
 workspace = true
 
 [dependencies]
-# core
+# features[default]
+onelauncher_macros = { workspace = true }
+onelauncher_utils = { workspace = true }
 interpulse = { workspace = true }
-onelauncher_migration = { workspace = true }
-onelauncher_entity = { workspace = true }
-onelauncher_macro = { workspace = true }
-
-# logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-error = { workspace = true }
 tracing-appender = { workspace = true }
-
-# serialization
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
+iota_stronghold = { workspace = true }
+zeroize = { workspace = true }
+tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_ini = { workspace = true }
 serde_repr = { workspace = true }
 serde_with = { workspace = true }
-
-# utils
-sea-orm = { workspace = true }
-tokio = { workspace = true }
-tokio-stream = { workspace = true }
+paste = { workspace = true }
 futures = { workspace = true }
+zip = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
-regex = { workspace = true }
-sysinfo = { workspace = true }
-whoami = { workspace = true }
-rand = { workspace = true }
-url = { workspace = true }
-async-trait = { workspace = true }
-
-# integration
-discord-rich-presence = { workspace = true }
-
-# crypto
+dirs = { workspace = true }
 sha1_smol = { workspace = true }
 sha2 = { workspace = true }
 murmur2 = { workspace = true }
 md5 = { workspace = true }
-
-# io
-zip = { workspace = true }
 async_zip = { workspace = true }
-dirs = { workspace = true }
+discord-rich-presence = { workspace = true }
+regex = { workspace = true }
+sysinfo = { workspace = true }
+whoami = { workspace = true }
+lazy_static = { workspace = true }
+async-tungstenite = { workspace = true }
+async-recursion = { workspace = true }
+tokio-stream = { workspace = true }
 bytes = { workspace = true }
+tempfile = { workspace = true }
+rand = { workspace = true }
+p256 = { workspace = true }
+byteorder = { workspace = true }
 base64 = { workspace = true }
-async-compression = { workspace = true }
-dunce = { workspace = true }
+flate2 = { workspace = true }
+toml = { workspace = true }
+url = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }
@@ -92,6 +81,12 @@ specta = { workspace = true, optional = true }
 
 # features[cli]
 indicatif = { workspace = true, optional = true }
+
+[build-dependencies]
+dotenvy = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 onelauncher_gamemode = { workspace = true }

@@ -4,8 +4,8 @@ use libc::pid_t;
 use std::ffi::c_int;
 
 #[link(name = "stub", kind = "static")]
-extern "C" {
-	fn gamemode_start_for_wrapper(pid: pid_t) -> c_int;
+unsafe extern "C" {
+	unsafe fn gamemode_start_for_wrapper(pid: pid_t) -> c_int;
 }
 
 pub fn request_start_for_wrapper(pid: u32) -> Result<(), String> {

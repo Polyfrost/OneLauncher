@@ -1,14 +1,11 @@
 //! **`OneLauncher` Constants**
 //!
 //! Public constant variables and strings that are used throughout the launcher.
+//! Can be shared publically, any secrets should be stored in [`crate::store::credentials`].
 
 // =========== Core Metadata ===========
 /// The name of the launcher.
-pub const NAME: &str = match option_env!("LAUNCHER_NAME") {
-	Some(name) => name,
-	None => "OneLauncher",
-};
-
+pub const NAME: &str = "OneLauncher";
 /// The version of the launcher (from `../Cargo.toml` env).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -41,7 +38,7 @@ pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
 pub const MODRINTH_V3_API_URL: &str = "https://api.modrinth.com/v3";
 /// The Curseforge API base url.
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com";
-/// The Curseforge API key. Reserved for use in Polyfrost projects only. Do not use in other projects without permission from the Polyfrost team.
+/// The Curseforge API key. Reserved for use in OneLauncher projects only. Do not use in other projects without permission from the OneLauncher team.
 pub const CURSEFORGE_API_KEY: &str = "$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kpFB0fsmE/d42ZAfFgCe";
 /// The Minecraft game ID on Curseforge.
 pub const CURSEFORGE_GAME_ID: u32 = 432;
@@ -51,7 +48,7 @@ pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
 pub const FEATURED_PACKAGES_URL: &str = "https://polyfrost.org/meta/onelauncher/featured.json";
 /// <https://mclo.gs>/ API base url.
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
-/// <https://skyclient.co/> metadata base url.
+/// https://skyclient.co/ metadata base url.
 pub const SKYCLIENT_BASE_URL: &str = "https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
 
 // =========== Paths ===========
@@ -59,6 +56,10 @@ pub const SKYCLIENT_BASE_URL: &str = "https://raw.githubusercontent.com/Skyblock
 ///
 /// [`Settings`]: crate::store::Settings
 pub const SETTINGS_FILE: &str = "settings.json";
+/// The public `cluster.json` file used to store the global [`Clusters`] state.
+///
+/// [`Clusters`]: crate::store::Clusters
+pub const CLUSTER_FILE: &str = "cluster.json";
 /// The public `authentication.json` file used to store the global [`MinecraftAuth`] state.
 ///
 /// [`MinecraftAuth`]: crate::store::MinecraftAuth
@@ -73,6 +74,15 @@ pub const PROCESSOR_FILE: &str = "processor.json";
 ///
 /// [`Settings`]: crate::store::Settings
 pub const CURRENT_SETTINGS_FORMAT_VERSION: u32 = 1;
+
+/// The constant core caches folder.
+pub const CACHES_FOLDER: &str = "caches";
+/// The constant core crash reports folder.
+pub const CRASH_PATH: &str = "crash-reports";
+/// The constant core clusters folder.
+pub const CLUSTERS_FOLDER: &str = "clusters";
+/// The constant core metadata folder.
+pub const METADATA_FOLDER: &str = "metadata";
 
 // =========== Hacky Mojang-spec OS constants ===========
 #[cfg(target_os = "windows")]

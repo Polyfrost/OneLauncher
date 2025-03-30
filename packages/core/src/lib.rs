@@ -1,20 +1,25 @@
-#![allow(clippy::all)]
-//! # `OneLauncher`
-//!
-//! A library used as a core for our launcher and Rust APIs.
+use api::proxy::LauncherProxy;
+use store::{proxy::ProxyState, Dirs, State};
+use error::LauncherResult;
+use logger::start_logger;
 
-#[macro_use]
-pub mod utils;
-
-pub mod api;
 pub mod constants;
-pub mod error;
-pub mod game;
-pub mod logger;
+pub mod utils;
 pub mod store;
+pub mod api;
+pub mod error;
 
-pub use api::proxy::{Ingress, IngressType, ProxyState};
-pub use api::*;
-pub use error::*;
-pub use logger::start_logger;
-pub use store::{InnerPathLinux, State};
+mod logger;
+
+pub use onelauncher_entity as entity;
+pub use onelauncher_migration as migration;
+
+pub async fn initialize_core(proxy_backend: impl LauncherProxy + 'static) -> LauncherResult<()> {
+	Dirs::get().await?;
+	start_logger().await;
+
+	ProxyState::initialize(proxy_backend).await?;
+	State::get().await?;
+
+	Ok(())
+}

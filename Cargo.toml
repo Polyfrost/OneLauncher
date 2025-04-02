@@ -45,7 +45,7 @@ tauri-build = { version = "2.0" }
 # tauri-plugin-shell adds a bridge for opening urls and paths in the frontend.
 tauri-plugin-shell = { version = "2.0" }
 # tauri-plugin-window-state saves the window position and size to be restored.
-tauri-plugin-window-state = { version = "2.0" }
+tauri-plugin-window-state = { version = "2.2" }
 # tauri-plugin-single-instance ensures that only one instance of the app is running.
 tauri-plugin-single-instance = { version = "2.0" }
 # tauri-plugin-clipboard-manager adds a bridge for reading/writing to the clipboard.

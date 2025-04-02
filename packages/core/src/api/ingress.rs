@@ -19,20 +19,43 @@ pub async fn send_ingress(id: &IngressId, increment: f64) -> LauncherResult<()> 
 	let state = State::get().await?;
 	let processor = &state.ingress_processor;
 
-	processor.send(id.0, increment).await?;
+	processor.send(id, increment).await?;
 	Ok(())
 }
 
-#[cfg(test)]
+#[tracing::instrument]
+pub async fn init_ingress_opt(
+	init: bool,
+	ingress_type: IngressType,
+	message: &str,
+	total: f64,
+) -> LauncherResult<Option<IngressId>> {
+	if init {
+		let id = init_ingress(ingress_type, message, total).await?;
+		Ok(Some(id))
+	} else {
+		Ok(None)
+	}
+}
+
+#[tracing::instrument]
+pub async fn send_ingress_opt(
+	id: Option<&IngressId>,
+	increment: f64,
+) -> LauncherResult<()> {
+	if let Some(id) = id {
+		send_ingress(id, increment).await?;
+	}
+	Ok(())
+}
+
+#[cfg(all(feature = "cli", test))]
 pub mod tests {
 
-	#[cfg(feature = "cli")]
 	#[tokio::test]
-	pub async fn create_and_update_ingress() -> LauncherResult<()> {
-		assert!(cfg!(feature = "cli"));
-
+	pub async fn create_and_update_ingress() -> crate::LauncherResult<()> {
 		use std::time::Duration;
-		use crate::{api::{ingress::{init_ingress, send_ingress}, proxy::proxy_cli::ProxyCli}, initialize_core, store::ingress::IngressType, LauncherResult};
+		use crate::{api::{ingress::{init_ingress, send_ingress}, proxy::proxy_cli::ProxyCli}, initialize_core, store::ingress::IngressType};
 
 		initialize_core(ProxyCli::new()).await?;
 

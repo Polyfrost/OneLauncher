@@ -6,6 +6,8 @@ pub enum LauncherError {
 	IOError(#[from] crate::utils::io::IOError),
 	#[error(transparent)]
 	IngressError(#[from] crate::store::ingress::IngressError),
+	#[error(transparent)]
+	JavaError(#[from] crate::api::java::JavaError),
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),

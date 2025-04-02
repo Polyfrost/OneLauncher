@@ -7,7 +7,7 @@ pub async fn start_logger() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
 		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
 
-    tracing_subscriber::registry()
+    if let Err(err) = tracing_subscriber::registry()
 	    .with(
 			tracing_subscriber::fmt::layer()
 				.with_ansi(true)
@@ -19,7 +19,9 @@ pub async fn start_logger() {
 		)
         .with(filter)
         .with(tracing_error::ErrorLayer::default())
-		.init();
+		.try_init() {
+			eprintln!("Could not set default logger: {err}");
+		}
 }
 
 // Handling for the live production logging

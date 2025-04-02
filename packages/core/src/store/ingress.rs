@@ -36,8 +36,10 @@ impl IngressProcessor {
 		let mut feeds = self.ingress_feeds.write().await;
 
 		let uuid = Uuid::new_v4();
+		let ingress_id = IngressId(uuid);
+
 		let ingress = Ingress {
-			id: IngressId(uuid),
+			id: uuid,
 			message,
 			ingress_type,
 			total,
@@ -50,20 +52,21 @@ impl IngressProcessor {
 		// Drop the write lock to prevent deadlock
 		drop(feeds);
 
-		self.send(uuid, 0.0).await?;
+		self.send(&ingress_id, 0.0).await?;
 
-		Ok(IngressId(uuid))
+		Ok(ingress_id)
 	}
 
-	pub async fn send(&self, id: Uuid, increment: f64) -> LauncherResult<()> {
+	pub async fn send(&self, id: &IngressId, increment: f64) -> LauncherResult<()> {
 		let mut feeds = self.ingress_feeds.write().await;
-		let ingress = feeds.get_mut(&id).ok_or(IngressError::NotFound)?;
+		let uuid = &id.0;
+		let ingress = feeds.get_mut(uuid).ok_or(IngressError::NotFound)?;
 
 		let proxy = ProxyState::get()?;
 
 		ingress.current += increment;
 		proxy.send_ingress(IngressPayload {
-			id: ingress.id.0,
+			id: uuid.to_owned(),
 			message: ingress.message.clone(),
 			ingress_type: ingress.ingress_type.clone(),
 			percent: Some(ingress.current / ingress.total),
@@ -85,7 +88,7 @@ pub struct IngressId(pub Uuid);
 
 #[derive(Debug, Clone)]
 pub struct Ingress {
-	pub id: IngressId,
+	pub id: Uuid,
 	pub message: String,
 	pub ingress_type: IngressType,
 	pub total: f64,
@@ -109,7 +112,8 @@ pub enum IngressType {
 	Download {
 		file_name: String,
 	},
-	JavaCheck
+	JavaCheck,
+	JavaLocate
 }
 
 impl Drop for IngressId {
@@ -126,7 +130,7 @@ impl Drop for IngressId {
 				let proxy = ProxyState::get()?;
 
 				proxy.send_ingress(IngressPayload {
-					id: ingress.id.0,
+					id: ingress.id,
 					message: "Completed".into(),
 					ingress_type: ingress.ingress_type,
 					percent: None,

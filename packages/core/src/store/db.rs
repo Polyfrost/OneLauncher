@@ -11,7 +11,7 @@ pub async fn create_pool_from_path(path: PathBuf) -> LauncherResult<DatabaseConn
 		return Err(IOError::InvalidAbsolutePath(path).into());
 	}
 
-	let address = format!("sqlite:/{}?mode=rwc", path.to_string_lossy());
+	let address = format!("sqlite://{}?mode=rwc", path.to_string_lossy());
 	let mut opts = ConnectOptions::new(address);
 	opts.min_connections(5)
 		.max_connections(40)

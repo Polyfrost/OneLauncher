@@ -14,7 +14,7 @@ authors = { workspace = true }
 path = "src/lib.rs"
 
 [features]
-default = [ "tauri" ]
+default = []
 tauri = [
 	"dep:tauri",
 	"dep:tauri-specta",

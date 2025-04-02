@@ -6,6 +6,8 @@ pub mod proxy_tauri;
 #[cfg(feature = "cli")]
 pub mod proxy_cli;
 
+pub mod proxy_empty;
+
 #[async_trait::async_trait]
 pub trait LauncherProxy: Send + Sync {
 	async fn send_ingress(&self, ingress: crate::store::ingress::IngressPayload) -> crate::LauncherResult<()>;

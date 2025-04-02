@@ -13,7 +13,10 @@ create table java_versions (
 	constraint java_versions_pk primary key (id autoincrement)
 );
 
+create index java_versions_major_version_idx on java_versions (major_version);
+
 create table packages (
+	hash text not null,
 	file_name text not null,
 	display_name text not null,
 	display_version text not null,
@@ -22,9 +25,8 @@ create table packages (
 	provider_version text not null,
 	mc_versions text not null,
 	mc_loader text not null,
-	hash text not null,
 	icon_url text,
-	constraint packages_pk primary key (type_id, file_name)
+	constraint packages_pk primary key (hash)
 );
 
 create table setting_profiles (
@@ -44,6 +46,7 @@ create table setting_profiles (
 );
 
 create table clusters (
+	id integer not null,
 	path text not null,
 	created_at integer default (unixepoch()) not null,
 	updated_at integer default (unixepoch()) not null,
@@ -58,7 +61,17 @@ create table clusters (
 	setting_profile_name text,
 	linked_pack_id text,
 	linked_pack_version integer,
-	constraint clusters_pk primary key (path),
+	constraint clusters_pk primary key (id autoincrement),
 	constraint clusters_cluster_groups_id_fk foreign key (group_id) references cluster_groups(id),
 	constraint clusters_setting_profiles_name_fk foreign key (setting_profile_name) references setting_profiles(name)
+);
+
+create index clusters_path_idx on clusters (path);
+
+create table cluster_packages (
+	cluster_id integer not null,
+	package_hash text not null,
+	constraint cluster_packages_pk primary key (cluster_id, package_hash),
+	constraint cluster_packages_clusters_id_fk foreign key (cluster_id) references clusters(id),
+	constraint cluster_packages_packages_hash_fk foreign key (package_hash) references packages(hash)
 );

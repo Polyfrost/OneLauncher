@@ -8,6 +8,11 @@ pub enum LauncherError {
 	IngressError(#[from] crate::store::ingress::IngressError),
 	#[error(transparent)]
 	JavaError(#[from] crate::api::java::JavaError),
+	#[error(transparent)]
+	CryptoError(#[from] crate::utils::crypto::CryptoError),
+
+	#[error("failed to connect to discord rpc socket")]
+	DiscordError,
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),
@@ -15,6 +20,10 @@ pub enum LauncherError {
 	AnyhowError(#[from] anyhow::Error),
 	#[error(transparent)]
 	DbError(#[from] sea_orm::DbErr),
+	#[error(transparent)]
+	ReqwestError(#[from] reqwest::Error),
+	#[error("couldn't acquire semaphore: {0}")]
+	SemaphoreError(#[from] tokio::sync::AcquireError),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]

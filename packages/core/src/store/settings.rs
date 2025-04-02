@@ -1,7 +1,7 @@
 use onelauncher_entity::setting_profiles;
 use serde::{Deserialize, Serialize};
 
-use crate::{send_warning, utils::io, LauncherResult};
+use crate::{constants, send_warning, utils::io, LauncherResult};
 
 use super::Dirs;
 
@@ -13,6 +13,7 @@ pub struct Settings {
 	pub allow_parallel_running_clusters: bool,
 	pub enable_gamemode: bool,
 	pub discord_enabled: bool,
+	pub max_concurrent_requests: usize,
 	pub settings_version: u32,
 }
 
@@ -23,7 +24,8 @@ impl Default for Settings {
 			allow_parallel_running_clusters: false,
 			discord_enabled: false,
 			enable_gamemode: false,
-			settings_version: 2,
+			max_concurrent_requests: 25,
+			settings_version: constants::CURRENT_SETTINGS_FORMAT_VERSION,
 		}
 	}
 }

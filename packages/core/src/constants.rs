@@ -63,16 +63,12 @@ pub const SETTINGS_FILE: &str = "settings.json";
 ///
 /// [`MinecraftAuth`]: crate::store::MinecraftAuth
 pub const AUTH_FILE: &str = "authentication.json";
-/// The public `processor.json` file used to store the global [`Processor`] state.
-///
-/// [`Processor`]: crate::store::Processor
-pub const PROCESSOR_FILE: &str = "processor.json";
 
 /// The current [`Settings`] format version, bumped for breaking changes.
 /// If updated, a config file migration logic **NEEDS** to be implemented.
 ///
 /// [`Settings`]: crate::store::Settings
-pub const CURRENT_SETTINGS_FORMAT_VERSION: u32 = 1;
+pub const CURRENT_SETTINGS_FORMAT_VERSION: u32 = 2;
 
 // =========== Hacky Mojang-spec OS constants ===========
 #[cfg(target_os = "windows")]

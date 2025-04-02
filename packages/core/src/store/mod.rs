@@ -1,4 +1,5 @@
 pub(super) mod db;
+pub mod discord;
 pub mod ingress;
 pub mod proxy;
 pub mod java;

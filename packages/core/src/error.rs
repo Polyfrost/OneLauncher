@@ -12,6 +12,8 @@ pub enum LauncherError {
 	CryptoError(#[from] crate::utils::crypto::CryptoError),
 	#[error(transparent)]
 	DiscordError(#[from] crate::store::discord::DiscordError),
+	#[error(transparent)]
+	DaoError(#[from] DaoError),
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),
@@ -30,3 +32,11 @@ pub enum LauncherError {
 }
 
 pub type LauncherResult<T> = Result<T, LauncherError>;
+
+#[derive(thiserror::Error, Debug)]
+pub enum DaoError {
+	#[error("entity was not found")]
+	NotFound,
+	#[error("entity already exists")]
+	AlreadyExists
+}

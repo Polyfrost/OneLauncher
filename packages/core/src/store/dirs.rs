@@ -58,6 +58,12 @@ impl Dirs {
 
 	// --- GAME DIRECTORIES ---
 
+	/// Get the `config_dir/clusters` folder for the clusters.
+	#[must_use]
+	pub fn clusters_dir(&self) -> PathBuf {
+		self.base_dir().join("clusters")
+	}
+
 	/// Get the `config_dir/metadata` folder within the core config directory.
 	#[inline]
 	#[must_use]

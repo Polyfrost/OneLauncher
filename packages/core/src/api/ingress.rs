@@ -51,13 +51,15 @@ pub async fn send_ingress_opt(
 
 #[cfg(all(feature = "cli", test))]
 pub mod tests {
+    use crate::store::CoreOptions;
+
 
 	#[tokio::test]
 	pub async fn create_and_update_ingress() -> crate::LauncherResult<()> {
 		use std::time::Duration;
 		use crate::{api::{ingress::{init_ingress, send_ingress}, proxy::proxy_cli::ProxyCli}, initialize_core, store::ingress::IngressType};
 
-		initialize_core(ProxyCli::new()).await?;
+		initialize_core(CoreOptions::default(), ProxyCli::new()).await?;
 
 		let id = init_ingress(IngressType::Download { file_name: "Some-Mod-1.8.9.jar".into() }, "This is a test message", 100.0).await?;
 		tokio::time::sleep(Duration::from_millis(2350)).await;

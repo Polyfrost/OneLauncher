@@ -2,7 +2,6 @@ pub(super) mod db;
 pub mod discord;
 pub mod ingress;
 pub mod proxy;
-pub mod java;
 mod core_options;
 mod dirs;
 mod settings;

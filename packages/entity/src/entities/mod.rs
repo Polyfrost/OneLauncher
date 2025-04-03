@@ -3,6 +3,7 @@
 pub mod prelude;
 
 pub mod cluster_groups;
+pub mod cluster_packages;
 pub mod clusters;
 pub mod java_versions;
 pub mod packages;

@@ -2993,6 +2993,7 @@ dependencies = [
  "serde",
  "serde_json",
  "specta",
+ "url",
  "uuid 1.10.0",
 ]
 

@@ -1,12 +1,10 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{collections::HashMap, path::PathBuf};
 
-use onelauncher_entity::java_versions;
-use sea_orm::ActiveValue::Set;
 use serde::Serialize;
 
-use crate::{error::LauncherResult, store::ingress::IngressType, utils::io};
+use crate::{api::ingress::{init_ingress, init_ingress_opt, send_ingress, send_ingress_opt}, error::LauncherResult, store::ingress::IngressType, utils::io};
 
-use super::ingress::{init_ingress, init_ingress_opt, send_ingress, send_ingress_opt};
+pub mod dao;
 
 #[derive(Debug, thiserror::Error)]
 pub enum JavaError {
@@ -29,7 +27,7 @@ pub fn get_java_bin() -> PathBuf {
 	}
 	#[cfg(target_os = "windows")]
 	{
-		PathBuf::new().join("bin").join("java.exe")
+		PathBuf::new().join("bin").join("javaw.exe")
 	}
 	#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 	{
@@ -45,7 +43,7 @@ pub struct JavaInfo {
 	pub java_vendor: String,
 }
 
-const JAVA_INFO_CLASS: &[u8] = include_bytes!("../../assets/java/JavaInfo.class");
+const JAVA_INFO_CLASS: &[u8] = include_bytes!("../../../assets/java/JavaInfo.class");
 
 /// Accepts a path to a java executable and returns the [`JavaInfo`]
 pub async fn check_java_runtime(absolute_path: &PathBuf, with_ingress: bool) -> LauncherResult<JavaInfo> {
@@ -84,24 +82,6 @@ pub async fn check_java_runtime(absolute_path: &PathBuf, with_ingress: bool) -> 
 		os_arch: info.get("os.arch").cloned().unwrap_or_else(|| String::from("unknown")),
 		java_version: info.get("java.version").cloned().unwrap_or_else(|| String::from("unknown")),
 		java_vendor: info.get("java.vendor").cloned().unwrap_or_else(|| String::from("unknown")),
-	})
-}
-
-/// Accepts a path to a JRE folder and a [`JavaInfo`] and converts it to a [`java_versions::ActiveModel`]
-pub fn get_java_model(absolute_path: &Path, info: &JavaInfo) -> LauncherResult<java_versions::ActiveModel> {
-	let major_version = if info.java_version[0..2].eq("1.") {
-		info.java_version[2..3].parse::<i32>()
-	} else {
-		let split = info.java_version.split_once('.').unwrap_or_default();
-		split.0.parse::<i32>()
-	}.map_err(JavaError::from)?;
-
-	Ok(java_versions::ActiveModel {
-		absolute_path: Set(absolute_path.to_string_lossy().to_string()),
-		major_version: Set(major_version),
-		full_version: Set(info.java_version.clone()),
-		vendor_name: Set(info.java_vendor.clone()),
-		..Default::default()
 	})
 }
 

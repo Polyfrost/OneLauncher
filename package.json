@@ -30,7 +30,7 @@
 		"lint": "pnpm lint:es && pnpm lint:rs",
 
 		"migrate": "sea-orm-cli migrate -d ./packages/migration",
-		"entity:gen": "sea-orm-cli generate entity -o packages/entity/src/entities --with-serde both --model-extra-attributes 'onelauncher_macro::specta'",
+		"entity:gen": "sea-orm-cli generate entity -o packages/entity/src/entities --with-serde both --model-extra-attributes 'onelauncher_macro::specta' -t",
 
 		"frontend": "pnpm --filter @onelauncher/frontend -- ",
 		"client": "pnpm --filter @onelauncher/client -- ",

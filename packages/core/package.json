@@ -12,6 +12,7 @@
 	"sideEffects": false,
 	"scripts": {
 		"cargo": "cargo",
-		"binary": "cargo run --bin"
+		"binary": "cargo run --bin",
+		"example": "cargo run --example"
 	}
 }

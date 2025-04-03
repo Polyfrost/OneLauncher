@@ -3,17 +3,20 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::icon::Icon;
+
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "packages")]
 #[onelauncher_macro::specta]
 pub struct Model {
 	#[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
+	pub hash: String,
+	#[sea_orm(column_type = "Text")]
 	pub file_name: String,
 	#[sea_orm(column_type = "Text")]
 	pub display_name: String,
 	#[sea_orm(column_type = "Text")]
 	pub display_version: String,
-	#[sea_orm(primary_key, auto_increment = false)]
 	pub type_id: i32,
 	pub provider_id: i32,
 	#[sea_orm(column_type = "Text")]
@@ -22,13 +25,29 @@ pub struct Model {
 	pub mc_versions: String,
 	#[sea_orm(column_type = "Text")]
 	pub mc_loader: String,
-	#[sea_orm(column_type = "Text")]
-	pub hash: String,
 	#[sea_orm(column_type = "Text", nullable)]
-	pub icon_url: Option<String>,
+	pub icon_url: Option<Icon>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+	#[sea_orm(has_many = "super::cluster_packages::Entity")]
+	ClusterPackages,
+}
+
+impl Related<super::cluster_packages::Entity> for Entity {
+	fn to() -> RelationDef {
+		Relation::ClusterPackages.def()
+	}
+}
+
+impl Related<super::clusters::Entity> for Entity {
+	fn to() -> RelationDef {
+		super::cluster_packages::Relation::Clusters.def()
+	}
+	fn via() -> Option<RelationDef> {
+		Some(super::cluster_packages::Relation::Packages.def().rev())
+	}
+}
 
 impl ActiveModelBehavior for ActiveModel {}

@@ -1,9 +1,29 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use onelauncher_entity::java_versions;
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
+use sea_orm::{ActiveValue::Set, ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
 
-use crate::{api::java::{get_java_model, JavaInfo}, store::State, LauncherResult};
+use crate::{error::LauncherResult, store::State};
+
+use super::{JavaError, JavaInfo};
+
+/// Accepts a path to a JRE folder and a [`JavaInfo`] and converts it to a [`java_versions::ActiveModel`]
+pub fn get_java_model(absolute_path: &Path, info: &JavaInfo) -> LauncherResult<java_versions::ActiveModel> {
+	let major_version = if info.java_version[0..2].eq("1.") {
+		info.java_version[2..3].parse::<i32>()
+	} else {
+		let split = info.java_version.split_once('.').unwrap_or_default();
+		split.0.parse::<i32>()
+	}.map_err(JavaError::from)?;
+
+	Ok(java_versions::ActiveModel {
+		absolute_path: Set(absolute_path.to_string_lossy().to_string()),
+		major_version: Set(major_version),
+		full_version: Set(info.java_version.clone()),
+		vendor_name: Set(info.java_vendor.clone()),
+		..Default::default()
+	})
+}
 
 /// Returns all Java versions
 pub async fn get_java_all() -> LauncherResult<Vec<java_versions::Model>> {
@@ -59,4 +79,3 @@ pub async fn insert_java_many(java: Vec<(PathBuf, JavaInfo)>) -> LauncherResult<
 		.exec_with_returning_many(db)
 		.await?)
 }
-

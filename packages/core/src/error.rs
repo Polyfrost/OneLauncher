@@ -10,9 +10,8 @@ pub enum LauncherError {
 	JavaError(#[from] crate::api::java::JavaError),
 	#[error(transparent)]
 	CryptoError(#[from] crate::utils::crypto::CryptoError),
-
-	#[error("failed to connect to discord rpc socket")]
-	DiscordError,
+	#[error(transparent)]
+	DiscordError(#[from] crate::store::discord::DiscordError),
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),

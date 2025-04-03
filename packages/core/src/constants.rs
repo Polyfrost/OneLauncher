@@ -2,19 +2,7 @@
 //!
 //! Public constant variables and strings that are used throughout the launcher.
 
-// =========== Core Metadata ===========
-/// The name of the launcher.
-pub const NAME: &str = match option_env!("LAUNCHER_NAME") {
-	Some(name) => name,
-	None => "OneLauncher",
-};
-
-/// The version of the launcher (from `../Cargo.toml` env).
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 // =========== Default Ingress ===========
-/// The amount of attempts to fetch a file before a request fails.
-pub const FETCH_ATTEMPTS: usize = 3;
 /// The total ingress capacity of the CLI, provided to [`indicatif`].
 #[cfg(feature = "cli")]
 pub const CLI_TOTAL_INGRESS: u64 = 1000;
@@ -22,27 +10,17 @@ pub const CLI_TOTAL_INGRESS: u64 = 1000;
 pub const DUMMY_REPLACE_NEWLINE: &str = "\n";
 
 // =========== Authentication ===========
-/// Our Discord RPC client ID.
-pub const DISCORD_RPC_CLIENT_ID: &str = "1274084193193955408";
 /// Our Microsoft client ID.
 pub const MICROSOFT_CLIENT_ID: &str = "9eac3a4e-8cdd-43ef-863e-49cd601b1f03";
-/// Mojang/Microsoft client ID.
-pub const MINECRAFT_CLIENT_ID: &str = "00000000402b5328";
-/// Mojang/Microsoft login redirect URI.
-pub const MINECRAFT_REDIRECT_URL: &str = "https://login.live.com/oauth20_desktop.srf";
 /// Mojang/Microsoft login xboxlive scopes to get tokens.
 pub const MINECRAFT_SCOPES: &str = "service::user.auth.xboxlive.com::MBI_SSL";
 
 // =========== API ===========
 // !!! URLS must NOT have a trailing slash. !!!
 /// The Modrinth API base url.
-pub const MODRINTH_API_URL: &str = "https://api.modrinth.com/v2";
-/// The Modrinth V3 API base url. Used for things like fetching information about organizations.
-pub const MODRINTH_V3_API_URL: &str = "https://api.modrinth.com/v3";
+pub const MODRINTH_API_URL: &str = "https://api.modrinth.com";
 /// The Curseforge API base url.
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com";
-/// The Curseforge API key. Reserved for use in Polyfrost projects only. Do not use in other projects without permission from the Polyfrost team.
-pub const CURSEFORGE_API_KEY: &str = "$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kpFB0fsmE/d42ZAfFgCe";
 /// The Minecraft game ID on Curseforge.
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 /// Our metadata API base url.

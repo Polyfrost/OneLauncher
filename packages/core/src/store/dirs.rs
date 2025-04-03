@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use tokio::sync::OnceCell;
 
-use crate::{constants, utils, LauncherResult};
+use crate::{utils, LauncherResult};
+
+use super::Core;
 
 /// The static [`OnceCell<RwLock<Dirs>>`] for storing the global directory state.
 /// Should be initialized as soon as possible (preferably before logging)
@@ -21,7 +23,7 @@ impl Dirs {
 
 	fn initialize() -> LauncherResult<Self> {
 		let base_dir = utils::io::env_path("LAUNCHER_DIR")
-			.or_else(|| Some(dirs::data_dir()?.join(constants::NAME)))
+			.or_else(|| Some(dirs::data_dir()?.join(Core::get().launcher_name.clone())))
 			.ok_or(DirectoryError::BaseDir)?;
 
 		Ok(Self {

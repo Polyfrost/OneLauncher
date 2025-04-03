@@ -1,8 +1,8 @@
-use onelauncher_core::{api::{java, proxy::proxy_empty::ProxyEmpty}, error::LauncherResult, initialize_core};
+use onelauncher_core::{api::{java, proxy::proxy_empty::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
-	initialize_core(ProxyEmpty::new()).await?;
+	initialize_core(CoreOptions::default(), ProxyEmpty::new()).await?;
 
 	let java = java::locate_java().await?;
 

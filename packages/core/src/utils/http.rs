@@ -8,7 +8,7 @@ use serde::Deserialize;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
 
-use crate::{api::ingress::send_ingress, constants, error::LauncherResult, store::{ingress::IngressId, State}};
+use crate::{api::ingress::send_ingress, error::LauncherResult, store::{ingress::IngressId, Core, State}};
 
 use super::{crypto::{CryptoError, HashAlgorithm}, io};
 
@@ -29,9 +29,10 @@ pub fn create_client() -> LauncherResult<reqwest::Client> {
 		.default_headers({
 			let mut headers = reqwest::header::HeaderMap::new();
 			let header = reqwest::header::HeaderValue::from_str(&format!(
-				"{}/{} (https://polyfrost.org)",
-				constants::NAME,
-				constants::VERSION,
+				"{}/{} ({})",
+				Core::get().launcher_name,
+				Core::get().launcher_version,
+				Core::get().launcher_website,
 			))
 			.expect("failed to build reqwest headers!");
 			headers.insert(reqwest::header::USER_AGENT, header);
@@ -53,7 +54,7 @@ pub async fn fetch_advanced(
 	let _permit = state.fetch_semaphore.0.acquire().await?;
 	let client = &state.client;
 
-	for attempt in 0..constants::FETCH_ATTEMPTS {
+	for attempt in 0..Core::get().fetch_attempts {
 		let mut req = client.request(method.clone(), url);
 
 		if let Some(body) = body.clone() {

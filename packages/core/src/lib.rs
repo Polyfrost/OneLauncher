@@ -1,5 +1,5 @@
 use api::proxy::LauncherProxy;
-use store::{proxy::ProxyState, Dirs, State};
+use store::{proxy::ProxyState, Core, CoreOptions, Dirs, State};
 use error::LauncherResult;
 use logger::start_logger;
 
@@ -14,7 +14,8 @@ mod logger;
 pub use onelauncher_entity as entity;
 pub use onelauncher_migration as migration;
 
-pub async fn initialize_core(proxy_backend: impl LauncherProxy + 'static) -> LauncherResult<()> {
+pub async fn initialize_core(options: CoreOptions, proxy_backend: impl LauncherProxy + 'static) -> LauncherResult<()> {
+	Core::initialize(options).await?;
 	Dirs::get().await?;
 	start_logger().await;
 

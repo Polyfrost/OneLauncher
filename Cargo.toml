@@ -150,6 +150,7 @@ libc = { version = "0.2" }
 # macro
 syn = { version = "2" }
 quote = { version = "1" }
+paste = { version = "1" }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

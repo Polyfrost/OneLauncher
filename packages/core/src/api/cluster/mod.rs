@@ -1,17 +1,15 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
-
 use onelauncher_entity::clusters;
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
-use serde::Serialize;
 
-use crate::error::{DaoError, LauncherResult};
-use crate::send_error;
+use crate::error::LauncherResult;
 use crate::store::Dirs;
 use crate::utils::io;
 
 pub mod dao;
+
+mod sync;
+pub use sync::*;
 
 #[must_use]
 pub fn sanitize_name(name: &str) -> String {
@@ -29,7 +27,7 @@ pub async fn create_cluster(
 	icon_url: Option<Icon>,
 ) -> LauncherResult<clusters::Model> {
 	let name = sanitize_name(name);
-	let cluster_dir = Dirs::get().await?.clusters_dir();
+	let cluster_dir = Dirs::get_clusters_dir().await?;
 
 	// Get the directory for the cluster
 	let mut path = cluster_dir.join(&name);
@@ -81,109 +79,4 @@ pub async fn create_cluster(
 	}
 }
 
-#[onelauncher_macro::specta]
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub enum SyncAction {
-	Created,
-	Updated,
-	MissingDb,
-	MissingFs,
-	NoAction,
-}
 
-impl SyncAction {
-	#[must_use]
-	pub const fn is_missing(self) -> bool {
-		matches!(self, Self::MissingDb | Self::MissingFs)
-	}
-}
-
-/// Syncs all clusters in the database. Returns a list of cluster IDs that are missing.
-#[tracing::instrument]
-pub async fn sync_clusters() -> LauncherResult<Vec<i32>> {
-	let clusters = dao::get_all_clusters().await?;
-
-	let mut missing_ids = Vec::new();
-	let mut checked_paths = HashSet::new();
-
-	for cluster in clusters {
-		if sync_cluster(&cluster)
-			.await
-			.map(SyncAction::is_missing)
-			.unwrap_or(false)
-		{
-			missing_ids.push(cluster.id);
-
-			let path = cluster.path.clone();
-			send_error!(
-				"cluster {} is missing from the filesystem",
-				path.clone()
-			);
-		}
-
-		checked_paths.insert(PathBuf::from(cluster.path));
-	}
-
-	let cluster_dir = Dirs::get().await?.clusters_dir();
-	let mut stream = io::read_dir(cluster_dir).await?;
-	while let Ok(Some(entry)) = stream.next_entry().await {
-		let path = entry.path();
-		if !path.is_dir() || checked_paths.contains(&path) {
-			// Skip if it's not a directory or if we've already checked it
-			continue;
-		}
-
-		// We have a directory that is not in the database
-		if let Err(err) = sync_from_fs_to_db(&path).await {
-			tracing::error!("failed to sync cluster from fs to db: {}", err);
-		};
-	}
-
-	Ok(missing_ids)
-}
-
-/// Syncs the cluster with the database.
-/// Checks if the cluster in the database exists and if the directory exists.
-#[tracing::instrument]
-pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncAction> {
-	let path = PathBuf::from(cluster.path.clone());
-	if !path.exists() {
-		return Ok(SyncAction::MissingFs);
-	}
-
-	// TODO: sync packages
-
-	Ok(SyncAction::NoAction)
-}
-
-/// Syncs the cluster with the database.
-/// Checks if the cluster in the database exists and if the directory exists.
-#[tracing::instrument]
-pub async fn sync_cluster_by_id(id: i32) -> LauncherResult<SyncAction> {
-	let cluster = dao::get_cluster_by_id(id)
-		.await?
-		.ok_or(DaoError::NotFound)?;
-
-	sync_cluster(&cluster).await
-}
-
-/// Syncs the cluster with the database.
-/// Checks if the cluster in the database exists and if the directory exists.
-#[tracing::instrument]
-pub async fn sync_cluster_by_path(path: &PathBuf) -> LauncherResult<SyncAction> {
-	let Some(cluster) = dao::get_cluster_by_path(path).await? else {
-		tracing::warn!("cluster with path {path:?} not found in database");
-		return Ok(SyncAction::MissingDb);
-	};
-
-	sync_cluster(&cluster).await
-}
-
-#[tracing::instrument]
-async fn sync_from_fs_to_db(path: &PathBuf) -> LauncherResult<clusters::Model> {
-	// TODO: Create database entry from what can be inferred from the directory
-	Err(anyhow::anyhow!(
-		"TODO: failed to sync cluster from fs to db: {}",
-		path.display()
-	).into())
-}

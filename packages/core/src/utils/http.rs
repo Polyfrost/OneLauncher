@@ -1,6 +1,8 @@
 #![allow(clippy::implicit_hasher)]
 
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use reqwest::Method;
@@ -8,9 +10,13 @@ use serde::Deserialize;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
 
-use crate::{api::ingress::send_ingress, error::LauncherResult, store::{ingress::IngressId, Core, State}};
+use crate::api::ingress::send_ingress;
+use crate::error::LauncherResult;
+use crate::store::ingress::IngressRef;
+use crate::store::{Core, State};
 
-use super::{crypto::{CryptoError, HashAlgorithm}, io};
+use super::crypto::{CryptoError, HashAlgorithm};
+use super::io;
 
 #[derive(Debug)]
 pub struct FetchSemaphore(pub Arc<Semaphore>);
@@ -41,14 +47,14 @@ pub fn create_client() -> LauncherResult<reqwest::Client> {
 		.build()?)
 }
 
-#[tracing::instrument(skip(body, headers, ingress))]
+#[tracing::instrument(skip(body, headers, ingress_ref))]
 pub async fn fetch_advanced(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,
 	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
-	ingress: Option<(&IngressId, f64)>,
+	ingress_ref: Option<&IngressRef<'_>>,
 ) -> LauncherResult<Bytes> {
 	let state = State::get().await?;
 	let _permit = state.fetch_semaphore.0.acquire().await?;
@@ -70,22 +76,23 @@ pub async fn fetch_advanced(
 		let res = req.send().await;
 
 		match res {
-			Err(_) if attempt <= 3 => {},
+			Err(_) if attempt <= 3 => {}
 			Err(err) => return Err(err.into()),
 			Ok(res) => {
-				let bytes = if let Some((ingress_id, total)) = ingress {
+				let bytes = if let Some(ingress_ref) = ingress_ref {
 					let length = res.content_length();
 					if let Some(total_size) = length {
 						let mut stream = res.bytes_stream();
 						let mut bytes = Vec::new();
 
 						while let Some(item) = stream.next().await {
-							let chunk = item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
+							let chunk =
+								item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
 							bytes.append(&mut chunk.to_vec());
 
 							send_ingress(
-								ingress_id,
-								(chunk.len() as f64 / total_size as f64) * total,
+								ingress_ref,
+								(chunk.len() as f64 / total_size as f64) * ingress_ref.increment_by,
 							)
 							.await?;
 						}
@@ -111,8 +118,9 @@ pub async fn fetch_advanced(
 							return Err(CryptoError::InvalidHash {
 								algorithm: algorithm.clone(),
 								expected: expected_hash,
-								actual: calculated_hash
-							}.into());
+								actual: calculated_hash,
+							}
+							.into());
 						}
 					}
 
@@ -121,7 +129,7 @@ pub async fn fetch_advanced(
 				} else if let Err(err) = bytes {
 					return Err(err.into());
 				}
-			},
+			}
 		}
 	}
 
@@ -147,7 +155,7 @@ pub async fn fetch_json_advanced<T: for<'de> Deserialize<'de>>(
 	body: Option<serde_json::Value>,
 	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
-	ingress: Option<(&IngressId, f64)>,
+	ingress: Option<&IngressRef<'_>>,
 ) -> LauncherResult<T> {
 	let bytes = fetch_advanced(method, url, body, hash, headers, ingress).await?;
 	Ok(serde_json::from_slice(&bytes)?)
@@ -160,13 +168,21 @@ pub async fn download_advanced(
 	body: Option<serde_json::Value>,
 	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
-	ingress: Option<(&IngressId, f64)>,
+	ingress: Option<&IngressRef<'_>>,
 ) -> LauncherResult<()> {
-	let bytes = fetch_advanced(method, url, body, hash, headers, ingress.map(|(id, total)| (id, total / 2.0))).await?;
+	let bytes = fetch_advanced(
+		method,
+		url,
+		body,
+		hash,
+		headers,
+		ingress.map(|i| i.with_increment(i.increment_by / 2.0)).as_ref(),
+	)
+	.await?;
 	let path = path.as_ref();
 
-	if let Some((id, total)) = ingress {
-		send_ingress(id, total / 4.0).await?;
+	if let Some(ingress_ref) = ingress {
+		send_ingress(ingress_ref, ingress_ref.increment_by / 4.0).await?;
 	}
 
 	if let Some(parent) = path.parent() {
@@ -175,8 +191,8 @@ pub async fn download_advanced(
 
 	io::write(path, &bytes).await?;
 
-	if let Some((id, total)) = ingress {
-		send_ingress(id, total / 4.0).await?;
+	if let Some(ingress_ref) = ingress {
+		send_ingress(ingress_ref, ingress_ref.increment_by / 4.0).await?;
 	}
 
 	Ok(())
@@ -186,7 +202,7 @@ pub async fn download(
 	method: Method,
 	url: &str,
 	path: impl AsRef<Path>,
-	hash: Option<(HashAlgorithm, &str)>
+	hash: Option<(HashAlgorithm, &str)>,
 ) -> LauncherResult<()> {
 	download_advanced(method, url, path, None, hash, None, None).await
 }

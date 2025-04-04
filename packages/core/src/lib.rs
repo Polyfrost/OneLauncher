@@ -3,14 +3,16 @@ use store::{proxy::ProxyState, Core, CoreOptions, Dirs, State};
 use error::LauncherResult;
 use logger::start_logger;
 
-pub mod constants;
-pub mod utils;
-pub mod store;
 pub mod api;
+pub mod constants;
 pub mod error;
+pub mod game;
+pub mod store;
+pub mod utils;
 
 mod logger;
 
+pub use onelauncher_macro as macros;
 pub use onelauncher_entity as entity;
 pub use onelauncher_migration as migration;
 

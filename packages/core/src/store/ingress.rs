@@ -57,9 +57,9 @@ impl IngressProcessor {
 		Ok(ingress_id)
 	}
 
-	pub async fn send(&self, id: &IngressId, increment: f64) -> LauncherResult<()> {
+	pub async fn send(&self, id: impl AsRef<IngressId>, increment: f64) -> LauncherResult<()> {
 		let mut feeds = self.ingress_feeds.write().await;
-		let uuid = &id.0;
+		let uuid = &id.as_ref().0;
 		let ingress = feeds.get_mut(uuid).ok_or(IngressError::NotFound)?;
 
 		let proxy = ProxyState::get()?;
@@ -85,6 +85,43 @@ impl IngressProcessor {
 
 #[derive(Debug, Clone)]
 pub struct IngressId(pub Uuid);
+
+impl AsRef<Self> for IngressId {
+	fn as_ref(&self) -> &Self {
+		self
+	}
+}
+
+/// Used to pass around an ingress id and the increment value, usually passed in helper / utility functions
+#[derive(Debug, Clone)]
+pub struct IngressRef<'a> {
+	pub ingress_id: &'a IngressId,
+	pub increment_by: f64,
+}
+
+impl<'a> IngressRef<'a> {
+	#[must_use]
+	pub const fn new(ingress_id: &'a IngressId, increment_by: f64) -> Self {
+		Self {
+			ingress_id,
+			increment_by,
+		}
+	}
+
+	#[must_use]
+	pub const fn with_increment(&self, increment_by: f64) -> Self {
+		Self {
+			ingress_id: self.ingress_id,
+			increment_by,
+		}
+	}
+}
+
+impl AsRef<IngressId> for IngressRef<'_> {
+	fn as_ref(&self) -> &IngressId {
+		self.ingress_id
+	}
+}
 
 #[derive(Debug, Clone)]
 pub struct Ingress {
@@ -113,7 +150,8 @@ pub enum IngressType {
 		file_name: String,
 	},
 	JavaCheck,
-	JavaLocate
+	JavaLocate,
+	MinecraftDownload,
 }
 
 impl Drop for IngressId {

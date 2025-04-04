@@ -64,6 +64,7 @@ whoami = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
 async-trait = { workspace = true }
+paste = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }

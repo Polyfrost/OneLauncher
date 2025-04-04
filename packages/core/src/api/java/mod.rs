@@ -48,13 +48,14 @@ const JAVA_INFO_CLASS: &[u8] = include_bytes!("../../../assets/java/JavaInfo.cla
 /// Accepts a path to a java executable and returns the [`JavaInfo`]
 pub async fn check_java_runtime(absolute_path: &PathBuf, with_ingress: bool) -> LauncherResult<JavaInfo> {
 	let id = init_ingress_opt(with_ingress, IngressType::JavaCheck, "Checking JRE information", 100.0).await?;
+	let id = id.as_ref();
 
 	let dir = io::tempdir()?;
 	let file = dir.path().join("JavaInfo.class");
-	send_ingress_opt(id.as_ref(), 25.0).await?;
+	send_ingress_opt(id, 25.0).await?;
 
 	io::write(&file, JAVA_INFO_CLASS).await?;
-	send_ingress_opt(id.as_ref(), 25.0).await?;
+	send_ingress_opt(id, 25.0).await?;
 
 	let java_info = tokio::process::Command::new(absolute_path)
 		.arg("-cp")
@@ -66,7 +67,7 @@ pub async fn check_java_runtime(absolute_path: &PathBuf, with_ingress: bool) -> 
 		.map_err(JavaError::from)?;
 
 	let java_info = String::from_utf8_lossy(&java_info.stdout);
-	send_ingress_opt(id.as_ref(), 50.0).await?;
+	send_ingress_opt(id, 50.0).await?;
 
 	let info = java_info.lines()
 		.map(|line| {

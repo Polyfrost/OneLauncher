@@ -1,5 +1,5 @@
 use discord_rich_presence::activity::Timestamps;
-use onelauncher_core::{api::proxy::proxy_empty::ProxyEmpty, error::LauncherResult, initialize_core, store::{CoreOptions, State}};
+use onelauncher_core::{api::proxy::ProxyEmpty, error::LauncherResult, initialize_core, store::{CoreOptions, State}};
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {

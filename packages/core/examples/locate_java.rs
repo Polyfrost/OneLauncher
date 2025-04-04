@@ -1,4 +1,4 @@
-use onelauncher_core::{api::{java, proxy::proxy_empty::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
+use onelauncher_core::{api::{java, proxy::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {

@@ -14,6 +14,12 @@ pub struct Dirs {
 	base_dir: PathBuf,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum DirectoryError {
+	#[error("Failed to get the base directory for the launcher.")]
+	BaseDir,
+}
+
 impl Dirs {
 	pub async fn get() -> LauncherResult<&'static Self> {
 		DIRS_GLOBAL.get_or_try_init(async || {
@@ -37,68 +43,41 @@ impl Dirs {
 		&self.base_dir
 	}
 
-	/// Get the launcher's logs directory.
-	#[must_use]
-	pub fn launcher_logs_dir(&self) -> PathBuf {
-		self.base_dir().join("logs")
-	}
-
-
-	// --- FILES ---
-
-	#[must_use]
-	pub fn db_file(&self) -> PathBuf {
-		self.base_dir().join("user_data.db")
-	}
-
-	#[must_use]
-	pub fn settings_file(&self) -> PathBuf {
-		self.base_dir().join("settings.json")
-	}
-
-	// --- GAME DIRECTORIES ---
-
-	/// Get the `config_dir/clusters` folder for the clusters.
-	#[must_use]
-	pub fn clusters_dir(&self) -> PathBuf {
-		self.base_dir().join("clusters")
-	}
-
-	/// Get the `config_dir/metadata` folder within the core config directory.
-	#[inline]
-	#[must_use]
-	pub fn metadata_dir(&self) -> PathBuf {
-		self.base_dir().join("metadata")
-	}
-
-	/// Get the `config_dir/metadata/libraries` folder for Minecraft libraries.
-	#[must_use]
-	pub fn libraries_dir(&self) -> PathBuf {
-		self.metadata_dir().join("libraries")
-	}
-
-	/// Get the `config_dir/metadata/natives` folder for Minecraft natives.
-	#[must_use]
-	pub fn natives_dir(&self) -> PathBuf {
-		self.metadata_dir().join("natives")
-	}
-
-	/// Get the `config_dir/metadata/java` directory.
-	#[must_use]
-	pub fn java_dir(&self) -> PathBuf {
-		self.metadata_dir().join("java")
-	}
-
-	/// Get the `config_dir/metadata/caches` directory.
-	#[must_use]
-	pub fn caches_dir(&self) -> PathBuf {
-		self.metadata_dir().join("caches")
-	}
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum DirectoryError {
-	#[error("Failed to get the base directory for the launcher.")]
-	BaseDir,
+macro_rules! dirs_impl {
+	($($name:ident => |$self:ident| $path:expr),*) => {
+		paste::paste! {
+			impl Dirs {
+				$(
+					#[must_use]
+					pub fn $name(&self) -> PathBuf {
+						let $self = self;
+						$path
+					}
+
+					pub async fn [<get _ $name>]() -> LauncherResult<PathBuf> {
+						Dirs::get().await.map(|$self| {
+							$self.$name()
+						})
+					}
+				)*
+			}
+		}
+	};
 }
 
+dirs_impl! {
+	db_file => |this| this.base_dir.join("user_data.db"),
+	settings_file => |this| this.base_dir.join("settings.json"),
+
+	launcher_logs_dir => |this| this.base_dir.join("logs"),
+	clusters_dir => |this| this.base_dir.join("clusters"),
+	metadata_dir => |this| this.base_dir.join("metadata"),
+
+	version_infos_dir => |this| this.metadata_dir().join("version_infos"),
+	libraries_dir => |this| this.metadata_dir().join("libraries"),
+	natives_dir => |this| this.metadata_dir().join("natives"),
+	java_dir => |this| this.metadata_dir().join("java"),
+	caches_dir => |this| this.metadata_dir().join("caches")
+}

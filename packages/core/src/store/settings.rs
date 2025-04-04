@@ -43,13 +43,13 @@ impl Settings {
 	}
 
 	async fn read() -> LauncherResult<Self> {
-		let path = Dirs::get().await?.settings_file();
+		let path = Dirs::get_settings_file().await?;
 		let data = io::read(path).await?;
 		Ok(serde_json::from_slice(&data)?)
 	}
 
 	pub async fn save(&self) -> LauncherResult<()> {
-		let path = Dirs::get().await?.settings_file();
+		let path = Dirs::get_settings_file().await?;
 		let data = serde_json::to_string_pretty(self)?;
 		io::write(path, data).await?;
 

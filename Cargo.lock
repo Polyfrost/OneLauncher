@@ -2954,6 +2954,7 @@ dependencies = [
  "onelauncher_gamemode",
  "onelauncher_macro",
  "onelauncher_migration",
+ "paste",
  "rand 0.8.5",
  "regex",
  "reqwest",

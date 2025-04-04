@@ -1,4 +1,4 @@
-use onelauncher_core::{api::{self, proxy::proxy_empty::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
+use onelauncher_core::{api::{self, proxy::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
 use onelauncher_entity::loader::GameLoader;
 
 #[tokio::main]

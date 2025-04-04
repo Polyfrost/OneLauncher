@@ -25,6 +25,6 @@ pub async fn create_pool_from_path(path: PathBuf) -> LauncherResult<DatabaseConn
 
 #[tracing::instrument]
 pub async fn create_pool() -> LauncherResult<DatabaseConnection> {
-	let path = Dirs::get().await?.db_file();
+	let path = Dirs::get_db_file().await?;
 	create_pool_from_path(path).await
 }

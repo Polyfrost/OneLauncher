@@ -8,7 +8,7 @@ use crate::{constants::CLI_TOTAL_INGRESS, store::ingress::IngressPayload, Launch
 
 use super::LauncherProxy;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProxyCli {
 	ingress_feeds: RwLock<HashMap<Uuid, ProgressBar>>,
 }

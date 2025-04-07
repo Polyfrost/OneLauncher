@@ -2,7 +2,7 @@ use crate::{store::ingress::IngressPayload, LauncherResult};
 
 use super::LauncherProxy;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ProxyEmpty;
 
 impl ProxyEmpty {

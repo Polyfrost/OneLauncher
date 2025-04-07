@@ -2,7 +2,7 @@
 // This will log to the console, and will not log to a file
 #[cfg(debug_assertions)]
 pub async fn start_logger() {
-    use tracing_subscriber::{prelude::*, util::SubscriberInitExt};
+    use tracing_subscriber::{fmt::format::FmtSpan, prelude::*, util::SubscriberInitExt};
 
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
 		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
@@ -15,6 +15,7 @@ pub async fn start_logger() {
 				.with_line_number(true)
 				.with_level(true)
 				.with_thread_names(true)
+				.with_span_events(FmtSpan::FULL)
 				.pretty()
 		)
         .with(filter)

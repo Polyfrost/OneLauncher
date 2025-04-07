@@ -1,4 +1,5 @@
 use async_compression::tokio::bufread::GzipDecoder;
+use serde::{de::DeserializeOwned, Serialize};
 use tempfile::TempDir;
 use tokio::io::AsyncReadExt;
 
@@ -18,6 +19,8 @@ pub enum IOError {
 	ZipError(#[from] zip::result::ZipError),
 	#[error(transparent)]
 	IOError(#[from] std::io::Error),
+	#[error("json deserialization error: {0}")]
+	DeserializeError(#[from] serde_json::Error),
 }
 
 impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
@@ -119,7 +122,7 @@ pub async fn read_to_string(path: impl AsRef<std::path::Path>) -> Result<String,
 		})
 }
 
-/// Reads the entire contents of a file into a bytes vector.
+/// Asynchronously reads the entire contents of a file into a bytes vector.
 pub async fn read(path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, IOError> {
 	let path = path.as_ref();
 	tokio::fs::read(path)
@@ -128,6 +131,11 @@ pub async fn read(path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, IOError>
 			source: e,
 			path: path.to_string_lossy().to_string(),
 		})
+}
+
+/// Asynchronously read a file as JSON and return the deserialized object
+pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<std::path::Path>) -> Result<T, IOError> {
+	Ok(serde_json::from_slice(&read(path).await?)?)
 }
 
 /// Asynchrously write to a tempfile that is then transferred to an official [`AsRef<Path>`].
@@ -142,6 +150,14 @@ pub async fn write(
 			source: e,
 			path: path.to_string_lossy().to_string(),
 		})
+}
+
+/// Asynchronously write json to a file, creating it if it does not exist.
+pub async fn write_json<T: Serialize>(
+	path: impl AsRef<std::path::Path>,
+	data: T
+) -> Result<(), IOError> {
+	write(path, serde_json::to_vec(&data)?).await
 }
 
 /// Renames a file or directory to a new name, replacing the original file if `to` already exists.

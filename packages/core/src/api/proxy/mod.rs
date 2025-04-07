@@ -4,6 +4,8 @@ pub mod message;
 #[cfg(feature = "cli")] mod proxy_cli;
 mod proxy_empty;
 
+use std::fmt::Debug;
+
 #[cfg(feature = "tauri")] pub use proxy_tauri::ProxyTauri;
 #[cfg(feature = "cli")] pub use proxy_cli::ProxyCli;
 pub use proxy_empty::ProxyEmpty;
@@ -12,7 +14,7 @@ pub use proxy_empty::ProxyEmpty;
 #[cfg(not(feature = "cli"))] pub type ProxyDynamic = ProxyEmpty;
 
 #[async_trait::async_trait]
-pub trait LauncherProxy: Send + Sync {
+pub trait LauncherProxy: Send + Sync + Debug {
 	async fn send_ingress(&self, ingress: crate::store::ingress::IngressPayload) -> crate::LauncherResult<()>;
 	async fn send_message(&self, message: message::MessagePayload) -> crate::LauncherResult<()>;
 
@@ -22,4 +24,3 @@ pub trait LauncherProxy: Send + Sync {
 	#[cfg(feature = "gui")]
 	fn show_main_window(&self) -> crate::LauncherResult<()>;
 }
-

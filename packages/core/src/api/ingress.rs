@@ -30,6 +30,11 @@ pub async fn init_ingress_opt(
 
 #[tracing::instrument]
 pub async fn send_ingress(id: impl AsRef<IngressId> + std::fmt::Debug, increment: f64) -> LauncherResult<()> {
+	if !State::initialized() {
+		tracing::debug!("attempted to send ingress when state is not initialized");
+		return Ok(())
+	}
+
 	let state = State::get().await?;
 	let processor = &state.ingress_processor;
 

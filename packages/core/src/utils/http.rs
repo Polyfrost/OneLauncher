@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use bytes::Bytes;
 use reqwest::Method;
@@ -13,7 +13,8 @@ use tokio_stream::StreamExt;
 use crate::api::ingress::send_ingress;
 use crate::error::LauncherResult;
 use crate::store::ingress::IngressRef;
-use crate::store::{Core, State};
+use crate::store::semaphore::SemaphoreStore;
+use crate::store::Core;
 
 use super::crypto::{CryptoError, HashAlgorithm};
 use super::io;
@@ -28,8 +29,8 @@ impl FetchSemaphore {
 	}
 }
 
-pub fn create_client() -> LauncherResult<reqwest::Client> {
-	Ok(reqwest::ClientBuilder::new()
+static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+	reqwest::ClientBuilder::new()
 		.tcp_keepalive(Some(std::time::Duration::from_secs(15)))
 		.use_rustls_tls()
 		.default_headers({
@@ -44,10 +45,12 @@ pub fn create_client() -> LauncherResult<reqwest::Client> {
 			headers.insert(reqwest::header::USER_AGENT, header);
 			headers
 		})
-		.build()?)
-}
+		.build()
+		.expect("failed to build reqwest client!")
+});
 
-#[tracing::instrument(skip(body, headers, ingress_ref))]
+#[tracing::instrument(level = "debug", skip(body, headers, ingress_ref))]
+#[onelauncher_macro::pin]
 pub async fn fetch_advanced(
 	method: Method,
 	url: &str,
@@ -56,9 +59,9 @@ pub async fn fetch_advanced(
 	headers: Option<HashMap<&str, &str>>,
 	ingress_ref: Option<&IngressRef<'_>>,
 ) -> LauncherResult<Bytes> {
-	let state = State::get().await?;
-	let _permit = state.fetch_semaphore.0.acquire().await?;
-	let client = &state.client;
+	let semaphore = SemaphoreStore::fetch().await;
+	let _permit = semaphore.acquire().await?;
+	let client = &REQWEST_CLIENT;
 
 	for attempt in 0..Core::get().fetch_attempts {
 		let mut req = client.request(method.clone(), url);

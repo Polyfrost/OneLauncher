@@ -1,5 +1,7 @@
+#![feature(let_chains)]
+
 use api::proxy::LauncherProxy;
-use store::{proxy::ProxyState, Core, CoreOptions, Dirs, State};
+use store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State};
 use error::LauncherResult;
 use logger::start_logger;
 
@@ -21,8 +23,11 @@ pub async fn initialize_core(options: CoreOptions, proxy_backend: impl LauncherP
 	Dirs::get().await?;
 	start_logger().await;
 
+	SemaphoreStore::get().await;
 	ProxyState::initialize(proxy_backend).await?;
-	State::get().await?;
+	let _ = State::get().await?;
+
+	tracing::info!("Core initialized successfully");
 
 	Ok(())
 }

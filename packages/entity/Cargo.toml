@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [features]
 default = []
-specta = [ "dep:specta" ]
+specta = [ "dep:specta", "interpulse/specta" ]
 
 [dependencies]
 onelauncher_macro = { workspace = true }
@@ -26,4 +26,5 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 url = { workspace = true }
+interpulse = { workspace = true }
 specta = { workspace = true, optional = true }

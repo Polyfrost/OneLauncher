@@ -65,7 +65,7 @@ pub async fn sync_clusters() -> LauncherResult<Vec<i32>> {
 		// We have a directory that is not in the database
 		if let Err(err) = sync_from_fs_to_db(&path).await {
 			tracing::error!("failed to sync cluster from fs to db: {}", err);
-		};
+		}
 	}
 
 	Ok(missing_ids)

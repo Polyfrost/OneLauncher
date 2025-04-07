@@ -20,6 +20,7 @@ impl Deref for ProxyState {
 }
 
 impl ProxyState {
+	#[tracing::instrument(level = "debug")]
 	pub async fn initialize(proxy: impl LauncherProxy + 'static) -> LauncherResult<Arc<Self>> {
 		PROXY_STATE
 			.get_or_try_init(|| async {

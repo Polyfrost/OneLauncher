@@ -13,6 +13,8 @@ pub enum LauncherError {
 	#[error(transparent)]
 	DiscordError(#[from] crate::store::discord::DiscordError),
 	#[error(transparent)]
+	MetadataError(#[from] crate::store::metadata::MetadataError),
+	#[error(transparent)]
 	DaoError(#[from] DaoError),
 
 	#[error(transparent)]

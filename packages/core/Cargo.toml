@@ -21,7 +21,7 @@ tauri = [
 	"specta",
 	"gui"
 ]
-specta = [ "dep:specta", "onelauncher_entity/specta" ]
+specta = [ "dep:specta", "interpulse/specta", "onelauncher_entity/specta" ]
 cli = [ "dep:indicatif" ]
 gui = []
 

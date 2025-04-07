@@ -2989,6 +2989,7 @@ name = "onelauncher_entity"
 version = "0.2.0-alpha.2"
 dependencies = [
  "chrono",
+ "interpulse",
  "onelauncher_macro",
  "sea-orm",
  "serde",

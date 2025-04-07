@@ -121,7 +121,7 @@ async-tungstenite = { version = "0.28", features = [ "tokio-runtime", "tokio-rus
 webbrowser = { version = "1.0" }
 
 # # ============= SYSTEM ============= # #
-tokio = { version = "1.40", features = [ "full" ] }
+tokio = { version = "1.44", features = [ "full" ] }
 tokio-stream = { version = "0.1.16", features = [ "fs" ] }
 notify = { version = "6.1", default-features = false }
 notify-debouncer-mini = { version = "0.4", default-features = false }

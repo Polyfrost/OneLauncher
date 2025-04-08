@@ -8,7 +8,6 @@ use logger::start_logger;
 pub mod api;
 pub mod constants;
 pub mod error;
-pub mod game;
 pub mod store;
 pub mod utils;
 

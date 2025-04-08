@@ -1,0 +1,19 @@
+use anyhow::anyhow;
+use onelauncher_core::{api::{game::metadata::{download_minecraft_ingressed, download_version_info}, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::{CoreOptions, State}};
+use onelauncher_entity::loader::GameLoader;
+
+#[tokio::main]
+async fn main() -> LauncherResult<()> {
+	initialize_core(CoreOptions::default(), ProxyDynamic::new()).await?;
+
+	let state = State::get().await?;
+	let mut metadata = state.metadata.write().await;
+	let versions = metadata.get_vanilla(GameLoader::Vanilla).await?;
+
+	let version = versions.versions.iter().find(|v| v.id == "1.8.9").ok_or_else(|| anyhow!("couldn't find 1.8.9 in version list"))?;
+	let version_info = download_version_info(version, None, None, Some(true)).await?;
+
+	download_minecraft_ingressed(&version_info, Some(true)).await?;
+
+	Ok(())
+}

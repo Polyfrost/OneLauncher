@@ -8,14 +8,13 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "lowercase")]
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 pub enum GameLoader {
-	Vanilla = 0,
 	#[default]
-	Unknown = 1,
-	Forge = 2,
-	NeoForge = 3,
-	Quilt = 4,
-	Fabric = 5,
-	LegacyFabric = 6,
+	Vanilla = 0,
+	Forge = 1,
+	NeoForge = 2,
+	Quilt = 3,
+	Fabric = 4,
+	LegacyFabric = 5,
 }
 
 impl GameLoader {
@@ -27,7 +26,7 @@ impl GameLoader {
 
 	pub const fn get_format_version(&self) -> usize {
 		match self {
-			Self::Vanilla | Self::Unknown => interpulse::api::minecraft::CURRENT_FORMAT_VERSION,
+			Self::Vanilla => interpulse::api::minecraft::CURRENT_FORMAT_VERSION,
 			Self::Forge => interpulse::api::modded::CURRENT_FORGE_FORMAT_VERSION,
 			Self::NeoForge => interpulse::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION,
 			Self::Quilt => interpulse::api::modded::CURRENT_QUILT_FORMAT_VERSION,
@@ -38,7 +37,7 @@ impl GameLoader {
 
 	pub fn get_format_name(&self) -> String {
 		match self {
-			Self::Vanilla | Self::Unknown => String::from("minecraft"),
+			Self::Vanilla => String::from("minecraft"),
 			Self::NeoForge => String::from("neo"), // TODO(metadata): change to neoforge
 			_ => self.to_string().to_lowercase().replace(['_', '.', ' '], "")
 		}
@@ -46,25 +45,27 @@ impl GameLoader {
 
 }
 
-impl From<String> for GameLoader {
-	fn from(s: String) -> Self {
-		match s.to_lowercase().replace(['_', '.', ' '], "").as_str() {
+impl TryFrom<String> for GameLoader {
+	type Error = String;
+
+	fn try_from(s: String) -> Result<GameLoader, String> {
+		Ok(match s.to_lowercase().replace(['_', '.', ' '], "").as_str() {
 			"vanilla" => Self::Vanilla,
 			"forge" => Self::Forge,
-			"neoforge" => Self::NeoForge,
+			"neoforge" | "neo" => Self::NeoForge,
 			"quilt" => Self::Quilt,
 			"fabric" => Self::Fabric,
 			"legacyfabric" => Self::LegacyFabric,
-			_ => Self::Unknown,
-		}
+			_ => return Err(format!("'{s}' is not a valid game loader")),
+		})
 	}
 }
 
 impl FromStr for GameLoader {
-	type Err = ();
+	type Err = String;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Ok(Self::from(s.to_string()))
+		Self::try_from(s.to_string())
 	}
 }
 
@@ -78,7 +79,6 @@ impl Display for GameLoader {
 				Self::Quilt => "Quilt",
 				Self::Fabric => "Fabric",
 				Self::LegacyFabric => "LegacyFabric",
-				Self::Unknown => "Unknown",
 			}
 		)
 	}

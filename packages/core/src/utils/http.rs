@@ -60,10 +60,13 @@ pub async fn fetch_advanced(
 	ingress_ref: Option<&IngressRef<'_>>,
 ) -> LauncherResult<Bytes> {
 	let semaphore = SemaphoreStore::fetch().await;
-	let _permit = semaphore.acquire().await?;
+	let permit = semaphore.acquire().await;
+
 	let client = &REQWEST_CLIENT;
 
-	for attempt in 0..Core::get().fetch_attempts {
+	let mut attempt = 0;
+	let res = loop {
+		attempt += 1;
 		let mut req = client.request(method.clone(), url);
 
 		if let Some(body) = body.clone() {
@@ -76,67 +79,64 @@ pub async fn fetch_advanced(
 			}
 		}
 
-		let res = req.send().await;
-
-		match res {
-			Err(_) if attempt <= 3 => {}
-			Err(err) => return Err(err.into()),
-			Ok(res) => {
-				let bytes = if let Some(ingress_ref) = ingress_ref {
-					let length = res.content_length();
-					if let Some(total_size) = length {
-						let mut stream = res.bytes_stream();
-						let mut bytes = Vec::new();
-
-						while let Some(item) = stream.next().await {
-							let chunk =
-								item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
-							bytes.append(&mut chunk.to_vec());
-
-							send_ingress(
-								ingress_ref,
-								(chunk.len() as f64 / total_size as f64) * ingress_ref.increment_by,
-							)
-							.await?;
-						}
-
-						Ok(Bytes::from(bytes))
-					} else {
-						res.bytes().await
-					}
-				} else {
-					res.bytes().await
-				};
-
-				if let Ok(bytes) = bytes {
-					if let Some((ref algorithm, expected_hash)) = hash {
-						let expected_hash = expected_hash.to_string();
-						let calculated_hash = algorithm.hash(&bytes);
-
-						if *calculated_hash != expected_hash {
-							if attempt <= 3 {
-								continue;
-							}
-
-							return Err(CryptoError::InvalidHash {
-								algorithm: algorithm.clone(),
-								expected: expected_hash,
-								actual: calculated_hash,
-							}
-							.into());
-						}
-					}
-
-					tracing::debug!("finished downloading {url}");
-					return Ok(bytes);
-				} else if let Err(err) = bytes {
-					return Err(err.into());
+		match req.send().await {
+			Err(err) => {
+				if attempt <= Core::get().fetch_attempts {
+					tracing::error!("error occurred whilst fetching on attempt {attempt}: {err} retrying request...");
+					continue;
 				}
+
+				return Err(err.into())
+			},
+			Ok(res) => break res
+		}
+	};
+
+	// Drop the fetch permit as we are no longer fetching
+	drop(permit);
+
+	let bytes = if let Some(ingress_ref) = ingress_ref {
+		let length = res.content_length();
+		if let Some(total_size) = length {
+			let mut stream = res.bytes_stream();
+			let mut bytes = Vec::new();
+
+			while let Some(item) = stream.next().await {
+				let chunk =
+					item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
+				bytes.append(&mut chunk.to_vec());
+
+				send_ingress(
+					ingress_ref,
+					(chunk.len() as f64 / total_size as f64) * ingress_ref.increment_by,
+				)
+				.await?;
 			}
+
+			Ok(Bytes::from(bytes))
+		} else {
+			res.bytes().await
+		}
+	} else {
+		res.bytes().await
+	}?;
+
+	if let Some((ref algorithm, expected_hash)) = hash {
+		let expected_hash = expected_hash.to_string();
+		let calculated_hash = algorithm.hash(&bytes);
+
+		if *calculated_hash != expected_hash {
+			return Err(CryptoError::InvalidHash {
+				algorithm: algorithm.clone(),
+				expected: expected_hash,
+				actual: calculated_hash,
+			}
+			.into());
 		}
 	}
 
-	unreachable!()
+	tracing::debug!("finished downloading {url}");
+	Ok(bytes)
 }
 
 pub async fn fetch(method: Method, url: &str) -> LauncherResult<Bytes> {
@@ -147,17 +147,17 @@ pub async fn fetch_json<T: for<'de> Deserialize<'de>>(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,
-	headers: Option<HashMap<&str, &str>>,
+	ingress_ref: Option<&IngressRef<'_>>,
 ) -> LauncherResult<T> {
-	fetch_json_advanced(method, url, body, None, headers, None).await
+	fetch_json_advanced(method, url, body, None, None, ingress_ref).await
 }
 
 pub async fn fetch_json_advanced<T: for<'de> Deserialize<'de>>(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,
-	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
+	hash: Option<(HashAlgorithm, &str)>,
 	ingress: Option<&IngressRef<'_>>,
 ) -> LauncherResult<T> {
 	let bytes = fetch_advanced(method, url, body, hash, headers, ingress).await?;
@@ -169,10 +169,10 @@ pub async fn download_advanced(
 	url: &str,
 	path: impl AsRef<Path>,
 	body: Option<serde_json::Value>,
-	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
+	hash: Option<(HashAlgorithm, &str)>,
 	ingress: Option<&IngressRef<'_>>,
-) -> LauncherResult<()> {
+) -> LauncherResult<Bytes> {
 	let bytes = fetch_advanced(
 		method,
 		url,
@@ -198,7 +198,7 @@ pub async fn download_advanced(
 		send_ingress(ingress_ref, ingress_ref.increment_by / 4.0).await?;
 	}
 
-	Ok(())
+	Ok(bytes)
 }
 
 pub async fn download(
@@ -206,6 +206,7 @@ pub async fn download(
 	url: &str,
 	path: impl AsRef<Path>,
 	hash: Option<(HashAlgorithm, &str)>,
-) -> LauncherResult<()> {
-	download_advanced(method, url, path, None, hash, None, None).await
+	ingress_ref: Option<&IngressRef<'_>>
+) -> LauncherResult<Bytes> {
+	download_advanced(method, url, path, None, None, hash, ingress_ref).await
 }

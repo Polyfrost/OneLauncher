@@ -5,7 +5,7 @@ use tokio::sync::{OnceCell, Semaphore};
 static STORE_STATE: OnceCell<Arc<SemaphoreStore>> = OnceCell::const_new();
 
 pub struct SemaphoreStore {
-	fetch: Arc<Semaphore>
+	pub fetch: Arc<Semaphore>
 }
 
 impl SemaphoreStore {

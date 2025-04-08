@@ -1,23 +1,27 @@
+use tracing_subscriber::{prelude::*, util::SubscriberInitExt};
+use crate::store::Core;
+
 // Handling for the live development logging
 // This will log to the console, and will not log to a file
 #[cfg(debug_assertions)]
 pub async fn start_logger() {
-    use tracing_subscriber::{fmt::format::FmtSpan, prelude::*, util::SubscriberInitExt};
-
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
 		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
 
+	let mut fmt_layer = tracing_subscriber::fmt::layer()
+		.with_ansi(true)
+		.with_file(true)
+		.with_line_number(true)
+		.with_level(true)
+		.with_thread_names(true)
+		.pretty();
+
+	if let Some(span) = Core::get().span_formatting.clone() {
+		fmt_layer = fmt_layer.with_span_events(span);
+	}
+
     if let Err(err) = tracing_subscriber::registry()
-	    .with(
-			tracing_subscriber::fmt::layer()
-				.with_ansi(true)
-				.with_file(true)
-				.with_line_number(true)
-				.with_level(true)
-				.with_thread_names(true)
-				.with_span_events(FmtSpan::FULL)
-				.pretty()
-		)
+	    .with(fmt_layer)
         .with(filter)
         .with(tracing_error::ErrorLayer::default())
 		.try_init() {
@@ -32,7 +36,6 @@ pub async fn start_logger() {
     use chrono::Local;
     use std::fs::OpenOptions;
     use tracing_subscriber::fmt::time::ChronoLocal;
-    use tracing_subscriber::prelude::*;
 
     use crate::io::Dirs;
 
@@ -61,14 +64,18 @@ pub async fn start_logger() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
 
+	let mut fmt_layer = tracing_subscriber::fmt::layer()
+		.compact()
+		.with_writer(file)
+		.with_ansi(false)
+		.with_timer(ChronoLocal::rfc_3339());
+
+	if let Some(span) = Core::get().span_formatting.clone() {
+		fmt_layer = fmt_layer.with_span_events(span);
+	}
+
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-				.compact()
-                .with_writer(file)
-                .with_ansi(false)
-                .with_timer(ChronoLocal::rfc_3339()),
-        )
+        .with(fmt_layer)
         .with(filter)
         .with(tracing_error::ErrorLayer::default())
 		.init();

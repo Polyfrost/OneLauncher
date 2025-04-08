@@ -125,16 +125,19 @@ impl Metadata {
 		macro_rules! check {
 			($var:tt, $is_modded:tt) => {
 				if self.inner.$var.is_none() {
-					if let Ok(loader) = GameLoader::from_str(stringify!($var)) {
-						match check!(_fetch, loader, $is_modded) {
-							Ok(data) => {
-								self.inner.$var = Some(data);
-								changed += 1;
+					match GameLoader::from_str(stringify!($var)) {
+						Ok(loader) => {
+							match check!(_fetch, loader, $is_modded) {
+								Ok(data) => {
+									self.inner.$var = Some(data);
+									changed += 1;
+								}
+								Err(err) => {
+									tracing::error!("failed to fetch manifest for {}: {}", loader, err);
+								}
 							}
-							Err(err) => {
-								tracing::error!("failed to fetch manifest for {}: {}", loader, err);
-							}
-						}
+						},
+						Err(err) => tracing::error!("{err}")
 					};
 				}
 			};

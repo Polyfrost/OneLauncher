@@ -46,7 +46,7 @@ impl Dirs {
 }
 
 macro_rules! dirs_impl {
-	($($name:ident => |$self:ident| $path:expr),*) => {
+	($($name:ident => |$self:ident| $path:expr),*$(,)?) => {
 		paste::paste! {
 			impl Dirs {
 				$(
@@ -75,9 +75,14 @@ dirs_impl! {
 	clusters_dir => |this| this.base_dir.join("clusters"),
 	metadata_dir => |this| this.base_dir.join("metadata"),
 
-	version_infos_dir => |this| this.metadata_dir().join("version_infos"),
+	versions_dir => |this| this.metadata_dir().join("versions"),
 	libraries_dir => |this| this.metadata_dir().join("libraries"),
 	natives_dir => |this| this.metadata_dir().join("natives"),
 	java_dir => |this| this.metadata_dir().join("java"),
-	caches_dir => |this| this.metadata_dir().join("caches")
+	caches_dir => |this| this.metadata_dir().join("caches"),
+
+	assets_dir => |this| this.metadata_dir().join("assets"),
+	legacy_assets_dir => |this| this.metadata_dir().join("resources"),
+	assets_index_dir => |this| this.assets_dir().join("indexes"),
+	assets_object_dir => |this| this.assets_dir().join("objects"),
 }

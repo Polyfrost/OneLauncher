@@ -123,15 +123,21 @@ pub async fn fetch_advanced(
 
 	if let Some((ref algorithm, expected_hash)) = hash {
 		let expected_hash = expected_hash.to_string();
-		let calculated_hash = algorithm.hash(&bytes);
-
-		if *calculated_hash != expected_hash {
-			return Err(CryptoError::InvalidHash {
-				algorithm: algorithm.clone(),
-				expected: expected_hash,
-				actual: calculated_hash,
+		match algorithm.hash(&bytes).await {
+			Ok(calculated_hash) => {
+				if *calculated_hash != expected_hash {
+					return Err(CryptoError::InvalidHash {
+						algorithm: algorithm.clone(),
+						expected: expected_hash,
+						actual: calculated_hash,
+					}
+					.into());
+				}
+			},
+			Err(err) => {
+				tracing::error!("failed to calculate hash for {url}: {err}");
+				return Err(err.into());
 			}
-			.into());
 		}
 	}
 

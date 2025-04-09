@@ -117,12 +117,14 @@ async_zip = { version = "0.0.17", features = [ "full" ] }
 async-compression = { version = "0.4.12", features = [ "flate2", "tokio" ] }
 flate2 = { version = "1.0" }
 bytes = { version = "1.7" }
+sanitize-filename = { version = "0.6" }
 
 # crypto
-sha1_smol = { version = "1.0", features = [ "std" ] }
+digest = { version = "0.10" }
+sha1 = { version = "0.10" }
 sha2 = { version = "0.10" }
+md-5 = { version = "0.10" }
 murmur2 = { version = "0.1.0" }
-md5 = { version = "0.7.0" }
 
 # db
 sea-orm = { version = "1.1", features = [

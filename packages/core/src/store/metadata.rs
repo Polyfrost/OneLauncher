@@ -177,21 +177,19 @@ impl Metadata {
 			($(($var:tt, $is_modded:tt)),*) => {
 				let ($($var),*) = tokio::join!(
 					$(
-						tokio::spawn(async move {
+						async move {
 							if let Ok(loader) = GameLoader::from_str(stringify!(minecraft)) {
 								fetch_manifest!(loader, $is_modded).map_err(|e| $crate::send_error!("couldn't fetch {loader} manifest: {e}")).ok()
 							} else {
 								tracing::error!("failed to fetch {} manifest", stringify!($var));
 								None
 							}
-						}),
+						},
 					)*
 				);
 
 				$(
-					if let Ok(data) = $var {
-						self.inner.$var = data;
-					}
+					self.inner.$var = $var;
 				)*
 			};
 		}

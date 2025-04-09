@@ -1,4 +1,5 @@
 #![feature(let_chains)]
+#![feature(slice_as_array)]
 
 use api::proxy::LauncherProxy;
 use store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State};

@@ -25,6 +25,8 @@ pub enum LauncherError {
 	DbError(#[from] sea_orm::DbErr),
 	#[error(transparent)]
 	ReqwestError(#[from] reqwest::Error),
+	#[error(transparent)]
+	InterpulseError(#[from] interpulse::Error),
 	#[error("couldn't acquire semaphore: {0}")]
 	SemaphoreError(#[from] tokio::sync::AcquireError),
 

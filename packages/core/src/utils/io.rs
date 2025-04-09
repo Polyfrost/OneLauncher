@@ -1,13 +1,16 @@
+use std::path::PathBuf;
+
 use async_compression::tokio::bufread::GzipDecoder;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use tempfile::TempDir;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
 pub enum IOError {
 	#[error("invalid absolute path '{0}'")]
-	InvalidAbsolutePath(std::path::PathBuf),
+	InvalidAbsolutePath(PathBuf),
 
 	#[error("error acessing path: {source}, path: {path}")]
 	IOErrorWrapper {
@@ -21,6 +24,8 @@ pub enum IOError {
 	IOError(#[from] std::io::Error),
 	#[error("json deserialization error: {0}")]
 	DeserializeError(#[from] serde_json::Error),
+	#[error(transparent)]
+	AsyncZipError(#[from] async_zip::error::ZipError),
 }
 
 impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
@@ -37,12 +42,12 @@ impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
 pub struct NonUtf8PathError(pub Box<std::path::Path>);
 
 /// Attempts to parse a path taken from an environment variable. Returns `None` if the variable is not set.
-pub fn env_path(name: &str) -> Option<std::path::PathBuf> {
-	std::env::var_os(name).map(std::path::PathBuf::from)
+pub fn env_path(name: &str) -> Option<PathBuf> {
+	std::env::var_os(name).map(PathBuf::from)
 }
 
 /// An OS specific wrapper of [`std::fs::canonicalize`], but on Windows it outputs the most compatible form of a path instead of UNC.
-pub fn canonicalize(path: impl AsRef<std::path::Path>) -> Result<std::path::PathBuf, IOError> {
+pub fn canonicalize(path: impl AsRef<std::path::Path>) -> Result<PathBuf, IOError> {
 	let path = path.as_ref();
 	dunce::canonicalize(path).map_err(|e| IOError::IOErrorWrapper {
 		source: e,
@@ -134,11 +139,13 @@ pub async fn read(path: impl AsRef<std::path::Path>) -> Result<Vec<u8>, IOError>
 }
 
 /// Asynchronously read a file as JSON and return the deserialized object
-pub async fn read_json<T: DeserializeOwned>(path: impl AsRef<std::path::Path>) -> Result<T, IOError> {
+pub async fn read_json<T: DeserializeOwned>(
+	path: impl AsRef<std::path::Path>,
+) -> Result<T, IOError> {
 	Ok(serde_json::from_slice(&read(path).await?)?)
 }
 
-/// Asynchrously write to a tempfile that is then transferred to an official [`AsRef<Path>`].
+/// Asynchrously write to a file.
 pub async fn write(
 	path: impl AsRef<std::path::Path>,
 	data: impl AsRef<[u8]>,
@@ -152,10 +159,26 @@ pub async fn write(
 		})
 }
 
+/// Asynchronously write buffered data to a file, creating it if it does not exist.
+pub async fn write_buf<F>(path: impl AsRef<std::path::Path>, f: F) -> Result<(), IOError>
+where
+	F: AsyncFnOnce(&mut tokio::io::BufWriter<tokio::fs::File>) -> Result<(), IOError>,
+{
+	let path = path.as_ref();
+	let file = tokio::fs::File::create(path).await?;
+	let mut writer = tokio::io::BufWriter::new(file);
+
+	f(&mut writer).await?;
+
+	writer.flush().await?;
+
+	Ok(())
+}
+
 /// Asynchronously write json to a file, creating it if it does not exist.
 pub async fn write_json<T: Serialize>(
 	path: impl AsRef<std::path::Path>,
-	data: T
+	data: T,
 ) -> Result<(), IOError> {
 	write(path, serde_json::to_vec(&data)?).await
 }
@@ -209,4 +232,99 @@ pub fn tempdir() -> Result<TempDir, IOError> {
 /// Creates a temporary file.
 pub fn tempfile() -> Result<std::fs::File, IOError> {
 	Ok(tempfile::tempfile()?)
+}
+
+/// Unzips a zip archive from a byte array
+pub async fn unzip_bytes(
+	data: Vec<u8>,
+	dest_path: impl AsRef<std::path::Path>
+) -> Result<(), IOError> {
+	let reader = async_zip::base::read::mem::ZipFileReader::new(data).await?;
+
+	let entries = reader.file().entries();
+	for index in 0..entries.len() {
+		let entry = entries.get(index).expect("expected more zip entries");
+		let path = dest_path.as_ref().join(sanitize_path(entry.filename().as_str()?));
+
+		let is_dir = entry.dir()?;
+
+		let mut entry_reader = reader
+			.reader_without_entry(index)
+			.await
+			.expect("Failed to read ZipEntry");
+
+		if is_dir {
+			create_dir_all(path).await?;
+		} else {
+			if let Some(parent) = path.parent() {
+				create_dir_all(parent).await?;
+			}
+
+			let file = tokio::fs::File::create(&path).await?;
+			let mut writer = tokio::io::BufWriter::new(file);
+			let mut buf = vec![0; 8192];
+			loop {
+				let n = futures::AsyncReadExt::read(&mut entry_reader, &mut buf).await?;
+				if n == 0 {
+					break;
+				}
+				writer.write_all(&buf[..n]).await?;
+			}
+		}
+	}
+
+	Ok(())
+}
+
+/// Unzips a zip archive from a file
+pub async fn unzip_file(
+	zip_path: impl AsRef<std::path::Path>,
+	dest_path: impl AsRef<std::path::Path>,
+) -> Result<(), IOError> {
+	let zip_path = zip_path.as_ref();
+	let dest_path = dest_path.as_ref();
+
+	let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path).await?;
+	let entries = reader.file().entries();
+
+	for index in 0..entries.len() {
+		let entry = entries
+			.get(index)
+			.expect("expected more zip entries");
+
+		let path = dest_path.join(sanitize_path(entry.filename().as_str()?));
+		let is_dir = entry.dir()?;
+
+		if is_dir {
+			create_dir_all(&path).await?;
+		} else {
+			if let Some(parent) = path.parent() {
+				create_dir_all(parent).await?;
+			}
+
+			let file = tokio::fs::File::create(&path).await?;
+			let mut writer = tokio::io::BufWriter::new(file);
+			let mut entry_reader = reader.reader_without_entry(index).await?;
+
+			let mut buf = vec![0; 8192];
+			loop {
+				let n = futures::AsyncReadExt::read(&mut entry_reader, &mut buf).await?;
+				if n == 0 {
+					break;
+				}
+				writer.write_all(&buf[..n]).await?;
+			}
+		}
+	}
+
+	Ok(())
+}
+
+pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
+	path.as_ref()
+		.to_string_lossy()
+		.replace('\\', "/")
+		.split('/')
+		.map(sanitize_filename::sanitize)
+		.collect()
 }

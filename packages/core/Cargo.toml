@@ -70,10 +70,11 @@ paste = { workspace = true }
 discord-rich-presence = { workspace = true }
 
 # crypto
-sha1_smol = { workspace = true }
+digest = { workspace = true }
+sha1 = { workspace = true }
 sha2 = { workspace = true }
 murmur2 = { workspace = true }
-md5 = { workspace = true }
+md-5 = { workspace = true }
 
 # io
 zip = { workspace = true }
@@ -84,6 +85,7 @@ base64 = { workspace = true }
 async-compression = { workspace = true }
 dunce = { workspace = true }
 tempfile = { workspace = true }
+sanitize-filename = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }

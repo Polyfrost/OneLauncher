@@ -99,6 +99,9 @@ pub struct IngressRef<'a> {
 	pub increment_by: f64,
 }
 
+unsafe impl Send for IngressRef<'_> {}
+unsafe impl Sync for IngressRef<'_> {}
+
 impl<'a> IngressRef<'a> {
 	#[must_use]
 	pub const fn new(ingress_id: &'a IngressId, increment_by: f64) -> Self {

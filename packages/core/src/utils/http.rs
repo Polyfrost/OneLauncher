@@ -29,7 +29,7 @@ impl FetchSemaphore {
 	}
 }
 
-static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 	reqwest::ClientBuilder::new()
 		.tcp_keepalive(Some(std::time::Duration::from_secs(15)))
 		.use_rustls_tls()

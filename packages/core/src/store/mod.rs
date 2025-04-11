@@ -4,6 +4,7 @@ pub mod ingress;
 pub mod proxy;
 pub mod semaphore;
 pub mod metadata;
+pub  mod credentials;
 mod core_options;
 mod dirs;
 mod settings;

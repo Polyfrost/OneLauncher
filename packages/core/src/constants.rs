@@ -32,22 +32,6 @@ pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 /// <https://skyclient.co/> metadata base url.
 pub const SKYCLIENT_BASE_URL: &str = "https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
 
-// =========== Paths ===========
-/// The public `settings.json` file used to store the global [`Settings`] state.
-///
-/// [`Settings`]: crate::store::Settings
-pub const SETTINGS_FILE: &str = "settings.json";
-/// The public `authentication.json` file used to store the global [`MinecraftAuth`] state.
-///
-/// [`MinecraftAuth`]: crate::store::MinecraftAuth
-pub const AUTH_FILE: &str = "authentication.json";
-
-/// The current [`Settings`] format version, bumped for breaking changes.
-/// If updated, a config file migration logic **NEEDS** to be implemented.
-///
-/// [`Settings`]: crate::store::Settings
-pub const CURRENT_SETTINGS_FORMAT_VERSION: u32 = 2;
-
 // =========== Hacky Mojang-spec OS constants ===========
 #[cfg(target_os = "windows")]
 pub const TARGET_OS: &str = "windows";

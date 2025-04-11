@@ -70,6 +70,7 @@ macro_rules! dirs_impl {
 dirs_impl! {
 	db_file => |this| this.base_dir.join("user_data.db"),
 	settings_file => |this| this.base_dir.join("settings.json"),
+	auth_file => |this| this.base_dir.join("auth.json"),
 
 	launcher_logs_dir => |this| this.base_dir.join("logs"),
 	clusters_dir => |this| this.base_dir.join("clusters"),

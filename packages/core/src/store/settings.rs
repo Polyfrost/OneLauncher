@@ -1,7 +1,7 @@
 use onelauncher_entity::setting_profiles;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants, send_warning, utils::io, LauncherResult};
+use crate::{send_warning, utils::io, LauncherResult};
 
 use super::Dirs;
 
@@ -25,7 +25,7 @@ impl Default for Settings {
 			discord_enabled: false,
 			enable_gamemode: false,
 			max_concurrent_requests: 25,
-			settings_version: constants::CURRENT_SETTINGS_FORMAT_VERSION,
+			settings_version: 1,
 		}
 	}
 }

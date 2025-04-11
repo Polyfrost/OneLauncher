@@ -1,0 +1,87 @@
+//! Authentication flow manager
+
+use crate::{error::LauncherResult, store::{credentials::{MinecraftCredentials, MinecraftLogin}, State}};
+
+/// Begin a Microsoft authentication flow.
+#[tracing::instrument]
+pub async fn begin() -> LauncherResult<MinecraftLogin> {
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	store.begin().await
+}
+
+/// Complete a Microsoft authentication flow to recieve [`MinecraftCredentials`].
+#[tracing::instrument]
+pub async fn finish(code: &str, flow: MinecraftLogin) -> LauncherResult<MinecraftCredentials> {
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	store.finish(code, flow).await
+}
+
+/// Get the current default user if it exists by [`uuid::Uuid`].
+#[tracing::instrument]
+pub async fn get_default_user() -> LauncherResult<Option<uuid::Uuid>> {
+	let state = State::get().await?;
+	let store = state.credentials.read().await;
+
+	Ok(store.default_user)
+}
+
+/// Set the current default user by [`uuid::Uuid`].
+#[tracing::instrument]
+pub async fn set_default_user(user: Option<uuid::Uuid>) -> LauncherResult<()> {
+	let user = match user {
+		Some(user) => Some(get_user(user).await?.id),
+		None => None,
+	};
+
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	store.default_user = user;
+	store.save().await?;
+
+	Ok(())
+}
+
+/// Remove a user account by its [`uuid::Uuid`] from the global store.
+#[tracing::instrument]
+pub async fn remove_user(user: uuid::Uuid) -> LauncherResult<()> {
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	store.remove(user).await?;
+
+	if store.default_user == Some(user) {
+		set_default_user(Some(user)).await?;
+	}
+
+	Ok(())
+}
+
+/// Get a list of user [`MinecraftCredentials`].
+#[tracing::instrument]
+pub async fn users() -> LauncherResult<Vec<MinecraftCredentials>> {
+	let state = State::get().await?;
+	let store = state.credentials.read().await;
+
+	Ok(store.users.values().cloned().collect())
+}
+
+/// Get a specifc user's [`MinecraftCredentials`] by their [`uuid::Uuid`].
+/// Use [`crate::store::MinecraftState#refresh`] instead.
+#[tracing::instrument]
+pub async fn get_user(user: uuid::Uuid) -> LauncherResult<MinecraftCredentials> {
+	let state = State::get().await?;
+	let store = state.credentials.read().await;
+
+	let user = store
+		.users
+		.get(&user)
+		.ok_or_else(|| anyhow::anyhow!("failed to get nonexistent user with uuid {user}"))?
+		.clone();
+
+	Ok(user)
+}

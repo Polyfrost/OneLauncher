@@ -15,9 +15,11 @@ pub enum LauncherError {
 	#[error(transparent)]
 	MetadataError(#[from] crate::store::metadata::MetadataError),
 	#[error(transparent)]
-	DaoError(#[from] DaoError),
-	#[error(transparent)]
 	ClusterError(#[from] crate::api::cluster::ClusterError),
+	#[error(transparent)]
+	MinecraftAuthError(#[from] crate::store::credentials::MinecraftAuthError),
+	#[error(transparent)]
+	DaoError(#[from] DaoError),
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),

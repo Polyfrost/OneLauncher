@@ -1,5 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
+use onelauncher_migration::MigratorTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 
 use crate::{utils::io::IOError, LauncherResult};
@@ -19,6 +20,8 @@ pub async fn create_pool_from_path(path: PathBuf) -> LauncherResult<DatabaseConn
 		.idle_timeout(Duration::from_secs(6 * 60 * 60 /* 6 hours */));
 
 	let db = Database::connect(opts).await?;
+
+	onelauncher_migration::Migrator::up(&db, None).await?;
 
 	Ok(db)
 }

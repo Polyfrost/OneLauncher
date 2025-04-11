@@ -41,6 +41,10 @@ pub enum MetadataError {
 	NotVanillaManifest(GameLoader),
 	#[error("failed to parse metadata")]
 	ParseError(#[from] serde_json::Error),
+	#[error("no matching loader found")]
+	NoMatchingLoader,
+	#[error("no matching version found")]
+	NoMatchingVersion,
 }
 
 impl Metadata {
@@ -50,33 +54,38 @@ impl Metadata {
 	}
 
 	#[must_use]
-	pub fn initialize() -> Self {
+	pub fn new() -> Self {
 		Self::default()
 	}
 
 
-	pub async fn get_vanilla(&mut self, loader: GameLoader) -> LauncherResult<&VanillaManifest> {
-		if loader.is_mod_loader() {
-			return Err(MetadataError::NotVanillaManifest(loader).into());
-		}
-
+	pub async fn get_vanilla_or_fetch(&mut self) -> LauncherResult<&VanillaManifest> {
 		if !self.initialized() {
-			self.load().await?;
+			self.initialize().await?;
 		}
 
-		match loader {
-			GameLoader::Vanilla => self.inner.minecraft.as_ref(),
-			_ => None,
-		}.ok_or_else(|| MetadataError::FetchError.into())
+		self.get_vanilla()
 	}
 
-	pub async fn get_modded(&mut self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
-		if !loader.is_mod_loader() {
+	pub async fn get_modded_or_fetch(&mut self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
+		if !loader.is_modded() {
 			return Err(MetadataError::NotModdedManifest(loader).into());
 		}
 
 		if !self.initialized() {
-			self.load().await?;
+			self.initialize().await?;
+		}
+
+		self.get_modded(loader)
+	}
+
+	pub fn get_vanilla(&self) -> LauncherResult<&VanillaManifest> {
+		self.inner.minecraft.as_ref().ok_or_else(|| MetadataError::FetchError.into())
+	}
+
+	pub fn get_modded(&self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
+		if !loader.is_modded() {
+			return Err(MetadataError::NotModdedManifest(loader).into());
 		}
 
 		match loader {
@@ -88,8 +97,8 @@ impl Metadata {
 		}.ok_or_else(|| MetadataError::FetchError.into())
 	}
 
-
-	async fn load(&mut self) -> LauncherResult<()> {
+	#[tracing::instrument(skip_all)]
+	pub async fn initialize(&mut self) -> LauncherResult<()> {
 		let path = Dirs::get_caches_dir().await?.join("metadata.json");
 		let mut save_file = false;
 
@@ -178,10 +187,10 @@ impl Metadata {
 				let ($($var),*) = tokio::join!(
 					$(
 						async move {
-							if let Ok(loader) = GameLoader::from_str(stringify!(minecraft)) {
+							if let Ok(loader) = GameLoader::from_str(stringify!($var)) {
 								fetch_manifest!(loader, $is_modded).map_err(|e| $crate::send_error!("couldn't fetch {loader} manifest: {e}")).ok()
 							} else {
-								tracing::error!("failed to fetch {} manifest", stringify!($var));
+								tracing::error!("loader '{}' is not supported", stringify!($var));
 								None
 							}
 						},

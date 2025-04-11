@@ -16,6 +16,8 @@ pub enum LauncherError {
 	MetadataError(#[from] crate::store::metadata::MetadataError),
 	#[error(transparent)]
 	DaoError(#[from] DaoError),
+	#[error(transparent)]
+	ClusterError(#[from] crate::api::cluster::ClusterError),
 
 	#[error(transparent)]
 	SerdeError(#[from] serde_json::Error),
@@ -42,5 +44,7 @@ pub enum DaoError {
 	#[error("entity was not found")]
 	NotFound,
 	#[error("entity already exists")]
-	AlreadyExists
+	AlreadyExists,
+	#[error("invalid value '{0}' for {1}")]
+	InvalidValue(String, String),
 }

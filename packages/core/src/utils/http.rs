@@ -10,9 +10,9 @@ use serde::Deserialize;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
 
-use crate::api::ingress::send_ingress;
+use crate::api::ingress::IngressSendExt;
 use crate::error::LauncherResult;
-use crate::store::ingress::IngressRef;
+use crate::store::ingress::{SubIngress, SubIngressExt};
 use crate::store::semaphore::SemaphoreStore;
 use crate::store::Core;
 
@@ -49,7 +49,7 @@ static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.expect("failed to build reqwest client!")
 });
 
-#[tracing::instrument(level = "debug", skip(body, headers, ingress_ref))]
+#[tracing::instrument(level = "debug", skip(body, headers, ingress))]
 #[onelauncher_macro::pin]
 pub async fn fetch_advanced(
 	method: Method,
@@ -57,7 +57,7 @@ pub async fn fetch_advanced(
 	body: Option<serde_json::Value>,
 	hash: Option<(HashAlgorithm, &str)>,
 	headers: Option<HashMap<&str, &str>>,
-	ingress_ref: Option<&IngressRef<'_>>,
+	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
@@ -95,7 +95,7 @@ pub async fn fetch_advanced(
 	// Drop the fetch permit as we are no longer fetching
 	drop(permit);
 
-	let bytes = if let Some(ingress_ref) = ingress_ref {
+	let bytes = if let Some(ingress) = ingress {
 		let length = res.content_length();
 		if let Some(total_size) = length {
 			let mut stream = res.bytes_stream();
@@ -106,11 +106,9 @@ pub async fn fetch_advanced(
 					item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
 				bytes.append(&mut chunk.to_vec());
 
-				send_ingress(
-					ingress_ref,
-					(chunk.len() as f64 / total_size as f64) * ingress_ref.increment_by,
-				)
-				.await?;
+				ingress.send_ingress(
+					(chunk.len() as f64 / total_size as f64) * ingress.total,
+				).await?;
 			}
 
 			Ok(Bytes::from(bytes))
@@ -153,9 +151,9 @@ pub async fn fetch_json<T: for<'de> Deserialize<'de>>(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,
-	ingress_ref: Option<&IngressRef<'_>>,
+	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<T> {
-	fetch_json_advanced(method, url, body, None, None, ingress_ref).await
+	fetch_json_advanced(method, url, body, None, None, ingress).await
 }
 
 pub async fn fetch_json_advanced<T: for<'de> Deserialize<'de>>(
@@ -164,7 +162,7 @@ pub async fn fetch_json_advanced<T: for<'de> Deserialize<'de>>(
 	body: Option<serde_json::Value>,
 	headers: Option<HashMap<&str, &str>>,
 	hash: Option<(HashAlgorithm, &str)>,
-	ingress: Option<&IngressRef<'_>>,
+	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<T> {
 	let bytes = fetch_advanced(method, url, body, hash, headers, ingress).await?;
 	Ok(serde_json::from_slice(&bytes)?)
@@ -177,22 +175,23 @@ pub async fn download_advanced(
 	body: Option<serde_json::Value>,
 	headers: Option<HashMap<&str, &str>>,
 	hash: Option<(HashAlgorithm, &str)>,
-	ingress: Option<&IngressRef<'_>>,
+	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
+	const TASKS: f64 = 3.0;
+	let ingress_step = ingress.ingress_total().map(|total| total / TASKS).unwrap_or_default();
+
 	let bytes = fetch_advanced(
 		method,
 		url,
 		body,
 		hash,
 		headers,
-		ingress.map(|i| i.with_increment(i.increment_by / 2.0)).as_ref(),
+		ingress.ingress_sub(|total| total / TASKS).as_ref(),
 	)
 	.await?;
 	let path = path.as_ref();
 
-	if let Some(ingress_ref) = ingress {
-		send_ingress(ingress_ref, ingress_ref.increment_by / 4.0).await?;
-	}
+	ingress.send_ingress(ingress_step).await?;
 
 	if let Some(parent) = path.parent() {
 		io::create_dir_all(parent).await?;
@@ -200,9 +199,7 @@ pub async fn download_advanced(
 
 	io::write(path, &bytes).await?;
 
-	if let Some(ingress_ref) = ingress {
-		send_ingress(ingress_ref, ingress_ref.increment_by / 4.0).await?;
-	}
+	ingress.send_ingress(ingress_step).await?;
 
 	Ok(bytes)
 }
@@ -212,7 +209,7 @@ pub async fn download(
 	url: &str,
 	path: impl AsRef<Path>,
 	hash: Option<(HashAlgorithm, &str)>,
-	ingress_ref: Option<&IngressRef<'_>>
+	ingress: Option<&SubIngress<'_>>
 ) -> LauncherResult<Bytes> {
-	download_advanced(method, url, path, None, None, hash, ingress_ref).await
+	download_advanced(method, url, path, None, None, hash, ingress).await
 }

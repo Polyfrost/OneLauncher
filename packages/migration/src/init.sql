@@ -10,6 +10,7 @@ create table java_versions (
 	vendor_name text not null,
 	absolute_path text not null,
 	full_version text not null,
+	arch text not null,
 	constraint java_versions_pk primary key (id autoincrement)
 );
 

@@ -1,9 +1,9 @@
-use onelauncher_core::{api::{self, proxy::ProxyEmpty}, error::LauncherResult, initialize_core, store::CoreOptions};
+use onelauncher_core::{api::{self, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::CoreOptions};
 use onelauncher_entity::loader::GameLoader;
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
-	initialize_core(CoreOptions::default(), ProxyEmpty::new()).await?;
+	initialize_core(CoreOptions::default(), ProxyDynamic::new()).await?;
 
 	println!("syncing clusters");
 	let missing = api::cluster::sync_clusters().await?;
@@ -21,6 +21,9 @@ async fn main() -> LauncherResult<()> {
 	).await?;
 
 	println!("cluster created: {cluster:#?}");
+
+	println!("preparing cluster for launch");
+	api::cluster::prepare_cluster(&cluster).await?;
 
 	Ok(())
 }

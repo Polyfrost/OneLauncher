@@ -54,19 +54,23 @@ pub async fn sync_clusters() -> LauncherResult<Vec<i32>> {
 	// It iterates over the directories in the cluster directory
 	// and checks if they are in the database
 	let cluster_dir = Dirs::get_clusters_dir().await?;
-	let mut stream = io::read_dir(cluster_dir).await?;
-	while let Ok(Some(entry)) = stream.next_entry().await {
-		let path = entry.path();
-		if !path.is_dir() || checked_paths.contains(&path) {
-			// Skip if it's not a directory or if we've already checked it
-			continue;
-		}
+	if cluster_dir.exists() {
+ 		let mut stream = io::read_dir(cluster_dir).await?;
+ 		while let Ok(Some(entry)) = stream.next_entry().await {
+ 			let path = entry.path();
+ 			if !path.is_dir() || checked_paths.contains(&path) {
+ 				// Skip if it's not a directory or if we've already checked it
+ 				continue;
+ 			}
 
-		// We have a directory that is not in the database
-		if let Err(err) = sync_from_fs_to_db(&path).await {
-			tracing::error!("failed to sync cluster from fs to db: {}", err);
-		}
-	}
+ 			// We have a directory that is not in the database
+ 			if let Err(err) = sync_from_fs_to_db(&path).await {
+ 				tracing::error!("failed to sync cluster from fs to db: {}", err);
+ 			}
+ 		}
+ 	} else {
+ 		io::create_dir_all(cluster_dir).await?;
+ 	}
 
 	Ok(missing_ids)
 }

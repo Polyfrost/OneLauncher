@@ -20,7 +20,7 @@ pub struct Settings {
 impl Default for Settings {
 	fn default() -> Self {
 		Self {
-			global_game_settings: default_global_game_settings(),
+			global_game_settings: setting_profiles::Model::default_global_profile(),
 			allow_parallel_running_clusters: false,
 			discord_enabled: false,
 			enable_gamemode: false,
@@ -54,21 +54,5 @@ impl Settings {
 		io::write(path, data).await?;
 
 		Ok(())
-	}
-}
-
-fn default_global_game_settings() -> setting_profiles::Model {
-	setting_profiles::Model {
-		name: "Global".into(),
-		force_fullscreen: Some(false),
-		hook_post: None,
-		hook_pre: None,
-		hook_wrapper: None,
-		java_id: None,
-		launch_args: None,
-		launch_env: None,
-		mem_max: Some(3072),
-		res_h: None,
-		res_w: None,
 	}
 }

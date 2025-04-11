@@ -1,15 +1,32 @@
-use onelauncher_entity::clusters;
+use interpulse::api::minecraft::VersionInfo;
+use onelauncher_entity::cluster_stage::ClusterStage;
+use onelauncher_entity::{clusters, java_versions};
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
+use sea_orm::ActiveValue::Set;
+use tokio::process::Command;
 
+use crate::api::game::arguments;
+use crate::api::game::metadata::{self, download_minecraft};
+use crate::api::ingress::IngressSendExt;
+use crate::api::{java, setting_profiles};
 use crate::error::LauncherResult;
-use crate::store::Dirs;
-use crate::utils::io;
+use crate::store::ingress::{IngressType, SubIngress};
+use crate::store::{Dirs, State};
+use crate::utils::io::{self, IOError};
 
 pub mod dao;
 
 mod sync;
 pub use sync::*;
+
+use super::ingress::init_ingress;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClusterError {
+	#[error("version '{0}' was not found")]
+	InvalidVersion(String),
+}
 
 #[must_use]
 pub fn sanitize_name(name: &str) -> String {
@@ -79,4 +96,215 @@ pub async fn create_cluster(
 	}
 }
 
+/// Make a cluster playable (installs all necessary game files and dependencies required to play)
+pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
+	const INGRESS_TOTAL: f64 = 100.0;
+	const INGRESS_TASKS: f64 = 4.0;
+	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
 
+	tracing::debug!("preparing cluster {}", cluster.name);
+
+	if cluster.stage == ClusterStage::Ready {
+		tracing::info!("cluster is already ready");
+		return Ok(());
+	}
+
+	let ingress_id = init_ingress(
+		IngressType::PrepareCluster {
+			cluster_name: cluster.name.clone(),
+		},
+		"preparing cluster",
+		INGRESS_TOTAL,
+	)
+	.await?;
+
+	dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+		cluster.stage = Set(ClusterStage::Downloading);
+		Ok(cluster)
+	})
+	.await?;
+
+	let result: LauncherResult<()> = {
+		// TASK 1
+		ingress_id.set_ingress_message("fetching data").await?;
+		let setting_profile =
+			setting_profiles::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
+
+		let state = State::get().await?;
+		let mut metadata = state.metadata.write().await;
+
+		let version = metadata
+			.get_vanilla_or_fetch()
+			.await?
+			.versions
+			.iter()
+			.find(|v| v.id == cluster.mc_version)
+			.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+
+		let loader_version = metadata::get_loader_version(
+			&cluster.mc_version,
+			cluster.mc_loader,
+			cluster.mc_loader_version.as_deref(),
+		)
+		.await?;
+
+		// TASK 2
+		let mut version_info = metadata::download_version_info(
+			version,
+			loader_version.as_ref(),
+			Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
+			None,
+		)
+		.await?;
+
+		let java_version = if let Some(version) = java::get_recommended_java(&version_info, Some(&setting_profile)).await? {
+			version
+		} else {
+			// TODO: java runtime not found - should prob download
+			let java = java::locate_java().await?;
+
+			if java.is_empty() {
+				tracing::warn!("No Java installations found");
+				return Ok(());
+			}
+
+			for (path, info) in java {
+				java::dao::insert_java(path, info).await?;
+			}
+
+			java::get_recommended_java(&version_info, Some(&setting_profile)).await?
+				.ok_or_else(|| {
+					anyhow::anyhow!("No Java installations found, please install a Java runtime")
+				})?
+		};
+
+		// TASK 3
+		download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), None).await?;
+
+		// TASK 4
+		run_forge_processors(cluster, &mut version_info, java_version, &SubIngress::new(&ingress_id, INGRESS_STEP)).await?;
+
+		Ok(())
+	};
+
+	if let Err(err) = result {
+		tracing::error!("failed to prepare cluster: {}", err);
+		dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+			cluster.stage = Set(ClusterStage::NotReady);
+			Ok(cluster)
+		})
+		.await?;
+		return Err(err);
+	}
+
+	dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+		cluster.stage = Set(ClusterStage::Ready);
+		Ok(cluster)
+	})
+	.await?;
+	tracing::debug!("cluster is ready");
+
+	Ok(())
+}
+
+/// Run forge processors
+async fn run_forge_processors(
+	cluster: &clusters::Model,
+	version_info: &mut VersionInfo,
+	java_version: java_versions::Model,
+	ingress: &SubIngress<'_>,
+) -> LauncherResult<()> {
+	let Some(processors) = &version_info.processors else {
+		return Ok(());
+	};
+
+	let dirs = Dirs::get().await?;
+	let client = dirs
+		.versions_dir()
+		.join(format!("{}.jar", &version_info.id));
+	let libraries = dirs.libraries_dir();
+
+	let Some(data) = &mut version_info.data else {
+		return Ok(());
+	};
+
+	macro_rules! data_entry {
+		($dest:expr; $($name:literal: client => $client:expr, server => $server:expr;)+) => {
+			$(std::collections::HashMap::insert(
+				$dest,
+				String::from($name),
+				interpulse::api::modded::SidedDataEntry {
+					client: String::from($client),
+					server: String::from($server),
+				},
+			);)+
+		}
+	}
+
+	data_entry! {
+		data;
+		"SIDE":
+			client => "client",
+			server => "";
+		"MINECRAFT_JAR":
+			client => client.to_string_lossy(),
+			server => "";
+		"MINECRAFT_VERSION":
+			client => cluster.mc_version.clone(),
+			server => "";
+		"ROOT":
+			client => cluster.path.clone(),
+			server => "";
+		"LIBRARY_DIR":
+			client => libraries.to_string_lossy(),
+			server => "";
+	}
+
+	ingress.set_ingress_message("running forge processors").await?;
+	let total_length = processors.len();
+	for (index, processor) in processors.iter().enumerate() {
+		if let Some(sides) = &processor.sides {
+			if !sides.contains(&String::from("client")) {
+				continue;
+			}
+		}
+
+		let mut cp = processor.classpath.clone();
+		cp.push(processor.jar.clone());
+
+		let child = Command::new(&java_version.absolute_path)
+			.arg("-cp")
+			.arg(arguments::get_classpath_library(
+				&libraries,
+				&cp,
+			)?)
+			.arg(
+				arguments::main_class(arguments::get_library(&libraries, &processor.jar, false)?)
+					.await?
+					.ok_or_else(|| {
+						anyhow::anyhow!("failed to find processor main class for {}", processor.jar)
+					})?,
+			)
+			.args(arguments::processor_arguments(
+				&libraries,
+				&processor.args,
+				data,
+			)?)
+			.output()
+			.await
+			.map_err(IOError::from)
+			.map_err(|err| anyhow::anyhow!("failed to run processor: {err}"))?;
+
+		if !child.status.success() {
+			return Err(anyhow::anyhow!(
+				"error occured while running processor: {}",
+				String::from_utf8_lossy(&child.stderr)
+			)
+			.into());
+		}
+
+		ingress.set_ingress_message(&format!("running forge processors {index}/{total_length}")).await?;
+	}
+
+	Ok(())
+}

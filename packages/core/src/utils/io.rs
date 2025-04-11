@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use async_compression::tokio::bufread::GzipDecoder;
+use async_zip::StoredZipEntry;
+use async_zip::base::read::WithoutEntry;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tempfile::TempDir;
@@ -234,24 +236,49 @@ pub fn tempfile() -> Result<std::fs::File, IOError> {
 	Ok(tempfile::tempfile()?)
 }
 
-/// Unzips a zip archive from a byte array
-pub async fn unzip_bytes(
+/// Reads a zip archive from a byte array
+pub async fn read_zip_entries_bytes<F>(
 	data: Vec<u8>,
-	dest_path: impl AsRef<std::path::Path>
-) -> Result<(), IOError> {
+	mut f: F,
+) -> Result<(), IOError>
+where
+	F: AsyncFnMut(
+		usize,
+		&StoredZipEntry,
+		&mut async_zip::base::read::ZipEntryReader<
+			'_,
+			futures_lite::io::Cursor<&[u8]>,
+			WithoutEntry,
+		>,
+	) -> Result<(), IOError>,
+{
 	let reader = async_zip::base::read::mem::ZipFileReader::new(data).await?;
 
 	let entries = reader.file().entries();
 	for index in 0..entries.len() {
 		let entry = entries.get(index).expect("expected more zip entries");
-		let path = dest_path.as_ref().join(sanitize_path(entry.filename().as_str()?));
-
-		let is_dir = entry.dir()?;
-
 		let mut entry_reader = reader
 			.reader_without_entry(index)
 			.await
-			.expect("Failed to read ZipEntry");
+			.unwrap_or_else(|_| panic!("expected zip entry at index '{index}'"));
+
+		f(index, entry, &mut entry_reader).await?;
+	}
+
+	Ok(())
+}
+
+/// Unzips a zip archive from a byte array
+pub async fn unzip_bytes(
+	data: Vec<u8>,
+	dest_path: impl AsRef<std::path::Path>,
+) -> Result<(), IOError> {
+	read_zip_entries_bytes(data, async |_, entry, entry_reader| {
+		let path = dest_path
+			.as_ref()
+			.join(sanitize_path(entry.filename().as_str()?));
+
+		let is_dir = entry.dir()?;
 
 		if is_dir {
 			create_dir_all(path).await?;
@@ -262,16 +289,19 @@ pub async fn unzip_bytes(
 
 			let file = tokio::fs::File::create(&path).await?;
 			let mut writer = tokio::io::BufWriter::new(file);
+
 			let mut buf = vec![0; 8192];
 			loop {
-				let n = futures::AsyncReadExt::read(&mut entry_reader, &mut buf).await?;
+				let n = futures::AsyncReadExt::read(entry_reader, &mut buf).await?;
 				if n == 0 {
 					break;
 				}
 				writer.write_all(&buf[..n]).await?;
 			}
 		}
-	}
+
+		Ok(())
+	}).await?;
 
 	Ok(())
 }
@@ -288,9 +318,7 @@ pub async fn unzip_file(
 	let entries = reader.file().entries();
 
 	for index in 0..entries.len() {
-		let entry = entries
-			.get(index)
-			.expect("expected more zip entries");
+		let entry = entries.get(index).expect("expected more zip entries");
 
 		let path = dest_path.join(sanitize_path(entry.filename().as_str()?));
 		let is_dir = entry.dir()?;

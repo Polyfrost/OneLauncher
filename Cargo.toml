@@ -144,6 +144,7 @@ sysinfo = { version = "0.31", features = [ "serde" ] }
 discord-rich-presence = { version = "0.2" }
 indicatif = { version = "0.17" }
 futures = { version = "0.3" }
+futures-lite = { version = "2.6" }
 async-trait = { version = "0.1" }
 whoami = { version = "1.5" }
 cc = { version = "1.1" }

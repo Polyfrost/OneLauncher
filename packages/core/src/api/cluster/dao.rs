@@ -53,8 +53,13 @@ pub async fn delete_cluster_by_id(id: i32) -> LauncherResult<()> {
 	let state = State::get().await?;
 	let db = &state.db;
 
-	let model = get_cluster_by_id(id).await?.ok_or(DaoError::NotFound)?;
-	model.delete(db).await?;
+	let deleted = clusters::Entity::delete_by_id(id)
+		.exec(db)
+		.await?;
+
+	if deleted.rows_affected == 0 {
+		return Err(DaoError::NotFound.into());
+	}
 
 	Ok(())
 }

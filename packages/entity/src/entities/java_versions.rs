@@ -16,6 +16,8 @@ pub struct Model {
 	pub absolute_path: String,
 	#[sea_orm(column_type = "Text")]
 	pub full_version: String,
+	#[sea_orm(column_type = "Text")]
+	pub arch: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

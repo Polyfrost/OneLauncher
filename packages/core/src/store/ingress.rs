@@ -6,7 +6,8 @@ use uuid::Uuid;
 
 use crate::LauncherResult;
 
-use super::{proxy::ProxyState, State};
+use super::State;
+use super::proxy::ProxyState;
 
 #[derive(Default)]
 pub struct IngressProcessor {
@@ -32,7 +33,12 @@ impl IngressProcessor {
 		processor
 	}
 
-	pub async fn create(&self, ingress_type: IngressType, message: String, total: f64) -> LauncherResult<IngressId> {
+	pub async fn create(
+		&self,
+		ingress_type: IngressType,
+		message: String,
+		total: f64,
+	) -> LauncherResult<IngressId> {
 		let mut feeds = self.ingress_feeds.write().await;
 
 		let uuid = Uuid::new_v4();
@@ -52,77 +58,48 @@ impl IngressProcessor {
 		// Drop the write lock to prevent deadlock
 		drop(feeds);
 
-		self.send(&ingress_id, 0.0).await?;
+		self.send(&ingress_id, 0.0, None).await?;
 
 		Ok(ingress_id)
 	}
 
-	pub async fn send(&self, id: impl AsRef<IngressId>, increment: f64) -> LauncherResult<()> {
+	pub async fn send(
+		&self,
+		id: &IngressId,
+		increment: f64,
+		message: Option<String>,
+	) -> LauncherResult<()> {
 		let mut feeds = self.ingress_feeds.write().await;
-		let uuid = &id.as_ref().0;
+		let uuid = &id.0;
 		let ingress = feeds.get_mut(uuid).ok_or(IngressError::NotFound)?;
 
 		let proxy = ProxyState::get()?;
 
 		ingress.current += increment;
-		proxy.send_ingress(IngressPayload {
-			id: uuid.to_owned(),
-			message: ingress.message.clone(),
-			ingress_type: ingress.ingress_type.clone(),
-			percent: Some(ingress.current / ingress.total),
-			total: ingress.total,
-		}).await?;
+		if let Some(message) = message {
+			ingress.message = message;
+		}
+
+		proxy
+			.send_ingress(IngressPayload {
+				id: uuid.to_owned(),
+				message: ingress.message.clone(),
+				ingress_type: ingress.ingress_type.clone(),
+				percent: Some(ingress.current / ingress.total),
+				total: ingress.total,
+			})
+			.await?;
 
 		Ok(())
+	}
+
+	pub async fn set_message(&self, id: &IngressId, message: String) -> LauncherResult<()> {
+		self.send(id, 0.0, Some(message)).await
 	}
 
 	pub async fn remove(&self, uuid: Uuid) -> LauncherResult<Ingress> {
 		let mut feeds = self.ingress_feeds.write().await;
 		Ok(feeds.remove(&uuid).ok_or(IngressError::NotFound)?)
-	}
-}
-
-
-#[derive(Debug, Clone)]
-pub struct IngressId(pub Uuid);
-
-impl AsRef<Self> for IngressId {
-	fn as_ref(&self) -> &Self {
-		self
-	}
-}
-
-/// Used to pass around an ingress id and the increment value, usually passed in helper / utility functions
-#[derive(Debug, Clone)]
-pub struct IngressRef<'a> {
-	pub ingress_id: &'a IngressId,
-	pub increment_by: f64,
-}
-
-unsafe impl Send for IngressRef<'_> {}
-unsafe impl Sync for IngressRef<'_> {}
-
-impl<'a> IngressRef<'a> {
-	#[must_use]
-	pub const fn new(ingress_id: &'a IngressId, increment_by: f64) -> Self {
-		Self {
-			ingress_id,
-			increment_by,
-		}
-	}
-
-	#[must_use]
-	pub const fn with_increment(&self, increment_by: f64) -> Self {
-		Self {
-			ingress_id: self.ingress_id,
-			increment_by,
-		}
-	}
-}
-
-impl AsRef<IngressId> for IngressRef<'_> {
-	fn as_ref(&self) -> &IngressId {
-		self.ingress_id
 	}
 }
 
@@ -149,12 +126,84 @@ pub struct IngressPayload {
 #[onelauncher_macro::specta]
 #[derive(Serialize, Debug, Clone)]
 pub enum IngressType {
-	Download {
-		file_name: String,
-	},
+	Download { file_name: String },
 	JavaCheck,
 	JavaLocate,
 	MinecraftDownload,
+	PrepareCluster { cluster_name: String },
+}
+
+#[derive(Debug, Clone)]
+pub struct IngressId(pub Uuid);
+
+#[derive(Debug, Clone)]
+pub struct SubIngress<'a> {
+	pub id: &'a IngressId,
+	pub total: f64,
+}
+
+// TODO: Rewrite the ingress system to use a proper parent <-> child system
+impl<'a> SubIngress<'a> {
+	#[must_use]
+	pub const fn new(id: &'a IngressId, total: f64) -> Self {
+		Self { id, total }
+	}
+
+	#[must_use]
+	pub const fn from_sub(sub: &'a SubIngress<'_>, total: f64) -> Self {
+		Self { id: sub.id, total }
+	}
+}
+
+pub trait SubIngressExt {
+	type Target<'sub>
+	where
+		Self: 'sub;
+
+	type Total;
+
+	fn ingress_total(&self) -> Self::Total;
+	fn ingress_sub<F>(&self, total: F) -> Self::Target<'_>
+	where
+		F: FnOnce(f64) -> f64;
+}
+
+impl SubIngressExt for SubIngress<'_> {
+	type Target<'sub>
+		= SubIngress<'sub>
+	where
+		Self: 'sub;
+
+	type Total = f64;
+
+	fn ingress_total(&self) -> Self::Total {
+		self.total
+	}
+
+	fn ingress_sub<F>(&self, total: F) -> Self::Target<'_>
+	where
+		F: FnOnce(f64) -> f64 {
+		SubIngress::from_sub(self, total(self.total))
+	}
+}
+
+impl SubIngressExt for Option<&SubIngress<'_>> {
+	type Target<'sub>
+		= Option<SubIngress<'sub>>
+	where
+		Self: 'sub;
+
+	type Total = Option<f64>;
+
+	fn ingress_total(&self) -> Self::Total {
+		self.map(|sub| sub.total)
+	}
+
+	fn ingress_sub<F>(&self, total: F) -> Self::Target<'_>
+	where
+		F: FnOnce(f64) -> f64 {
+		self.map(|sub| SubIngress::from_sub(sub, total(sub.total)))
+	}
 }
 
 impl Drop for IngressId {
@@ -170,18 +219,25 @@ impl Drop for IngressId {
 
 				let proxy = ProxyState::get()?;
 
-				proxy.send_ingress(IngressPayload {
-					id: ingress.id,
-					message: "Completed".into(),
-					ingress_type: ingress.ingress_type,
-					percent: None,
-					total: ingress.total,
-				}).await?;
+				proxy
+					.send_ingress(IngressPayload {
+						id: ingress.id,
+						message: "Completed".into(),
+						ingress_type: ingress.ingress_type,
+						percent: None,
+						total: ingress.total,
+					})
+					.await?;
 
-				tracing::trace!("exited at {}% for ingress {:?}", ingress.current / ingress.total * 100.0, ingress_uuid);
+				tracing::trace!(
+					"exited at {}% for ingress {:?}",
+					ingress.current / ingress.total * 100.0,
+					ingress_uuid
+				);
 
 				Ok(())
-			}.await;
+			}
+			.await;
 
 			if let Err(e) = result {
 				tracing::error!("failed to finish ingress: {:?}", e);

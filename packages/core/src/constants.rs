@@ -80,3 +80,4 @@ pub const ARCH_WIDTH: &str = if cfg!(target_pointer_width = "64") {
 
 /// Evaluates to `\r\n` on windows, and `\n` on everything else.
 pub const LINE_ENDING: &str = if cfg!(windows) { "\r\n" } else { "\n" };
+pub const CLASSPATH_SEPARATOR: &str = if cfg!(windows) { ";" } else { ":" };

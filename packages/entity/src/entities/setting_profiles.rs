@@ -53,3 +53,33 @@ impl Related<super::java_versions::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
+
+const GLOBAL_NAME: &str = "Global";
+
+impl ActiveModel {
+	pub fn is_global(&self) -> bool {
+		self.name.try_as_ref().map(|name| name == GLOBAL_NAME).unwrap_or(false)
+	}
+}
+
+impl Model {
+	pub fn is_global(&self) -> bool {
+		self.name == GLOBAL_NAME
+	}
+
+	pub fn default_global_profile() -> Self {
+		Self {
+			name: GLOBAL_NAME.into(),
+			force_fullscreen: Some(false),
+			hook_post: None,
+			hook_pre: None,
+			hook_wrapper: None,
+			java_id: None,
+			launch_args: None,
+			launch_env: None,
+			mem_max: Some(3072),
+			res_h: None,
+			res_w: None,
+		}
+	}
+}

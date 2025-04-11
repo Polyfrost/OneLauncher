@@ -1,11 +1,22 @@
 use std::path::{Path, PathBuf};
 
 use onelauncher_entity::java_versions;
-use sea_orm::{ActiveValue::Set, ActiveModelTrait, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, Order, QueryFilter, QueryOrder};
 
 use crate::{error::LauncherResult, store::State};
 
 use super::{JavaError, JavaInfo};
+
+/// Returns the latest Java version
+pub async fn get_latest_java() -> LauncherResult<Option<java_versions::Model>> {
+	let db = &State::get().await?.db;
+
+	Ok(java_versions::Entity::find()
+		.order_by(java_versions::Column::MajorVersion, Order::Desc)
+		.order_by(java_versions::Column::FullVersion, Order::Desc)
+		.one(db)
+		.await?)
+}
 
 /// Accepts a path to a JRE folder and a [`JavaInfo`] and converts it to a [`java_versions::ActiveModel`]
 pub fn get_java_model(absolute_path: &Path, info: &JavaInfo) -> LauncherResult<java_versions::ActiveModel> {
@@ -14,13 +25,16 @@ pub fn get_java_model(absolute_path: &Path, info: &JavaInfo) -> LauncherResult<j
 	} else {
 		let split = info.java_version.split_once('.').unwrap_or_default();
 		split.0.parse::<i32>()
-	}.map_err(JavaError::from)?;
+	}.or_else(
+		|_| info.java_version.parse::<i32>()
+	).map_err(|e| JavaError::ParseVersion(info.java_version.clone(), e))?;
 
 	Ok(java_versions::ActiveModel {
 		absolute_path: Set(absolute_path.to_string_lossy().to_string()),
 		major_version: Set(major_version),
 		full_version: Set(info.java_version.clone()),
 		vendor_name: Set(info.java_vendor.clone()),
+		arch: Set(info.os_arch.clone()),
 		..Default::default()
 	})
 }
@@ -46,13 +60,24 @@ pub async fn get_java_by_id(id: i32) -> LauncherResult<Option<java_versions::Mod
 }
 
 /// Returns all versions of Java for a given major version
-pub async fn get_java_by_major(major: i32) -> LauncherResult<Vec<java_versions::Model>> {
+pub async fn get_all_java_by_major(major: i32) -> LauncherResult<Vec<java_versions::Model>> {
 	let db = &State::get().await?.db;
 
 	Ok(java_versions::Entity::find()
 		.filter(java_versions::Column::MajorVersion.eq(major))
 		.order_by(java_versions::Column::FullVersion, Order::Desc)
 		.all(db)
+		.await?)
+}
+
+/// Returns the latest Java version for a given major version
+pub async fn get_latest_java_by_major(major: i32) -> LauncherResult<Option<java_versions::Model>> {
+	let db = &State::get().await?.db;
+
+	Ok(java_versions::Entity::find()
+		.filter(java_versions::Column::MajorVersion.eq(major))
+		.order_by(java_versions::Column::FullVersion, Order::Desc)
+		.one(db)
 		.await?)
 }
 

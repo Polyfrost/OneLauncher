@@ -20,8 +20,8 @@ pub enum GameLoader {
 impl GameLoader {
 
 	#[must_use]
-	pub const fn is_mod_loader(&self) -> bool {
-		matches!(self, Self::Forge | Self::NeoForge | Self::Quilt | Self::Fabric | Self::LegacyFabric)
+	pub const fn is_modded(&self) -> bool {
+		!matches!(self, Self::Vanilla)
 	}
 
 	pub const fn get_format_version(&self) -> usize {
@@ -50,7 +50,7 @@ impl TryFrom<String> for GameLoader {
 
 	fn try_from(s: String) -> Result<GameLoader, String> {
 		Ok(match s.to_lowercase().replace(['_', '.', ' '], "").as_str() {
-			"vanilla" => Self::Vanilla,
+			"vanilla" | "minecraft" => Self::Vanilla,
 			"forge" => Self::Forge,
 			"neoforge" | "neo" => Self::NeoForge,
 			"quilt" => Self::Quilt,

@@ -40,7 +40,7 @@ impl State {
 		let ingress_processor = IngressProcessor::new();
 		let settings = Settings::new().await;
 		let db = super::db::create_pool().await?;
-		let metadata = Metadata::initialize();
+		let metadata = Metadata::new();
 
 		let rpc = match DiscordRPC::initialize() {
 			Ok(rpc) => Some(rpc),

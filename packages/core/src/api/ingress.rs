@@ -1,6 +1,19 @@
+use serde::Serialize;
+use uuid::Uuid;
+
 use crate::LauncherResult;
 use crate::store::State;
 use crate::store::ingress::{IngressId, IngressType, SubIngress};
+
+#[onelauncher_macro::specta(with_event)]
+#[derive(Serialize, Debug, Clone)]
+pub struct IngressPayload {
+	pub id: Uuid,
+	pub message: String,
+	pub ingress_type: IngressType,
+	pub percent: Option<f64>,
+	pub total: f64,
+}
 
 #[tracing::instrument]
 pub async fn init_ingress(

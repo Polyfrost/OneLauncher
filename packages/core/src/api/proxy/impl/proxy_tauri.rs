@@ -2,9 +2,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_specta::Event;
 use tracing::{error, warn};
 
-use crate::{store::ingress::IngressPayload, LauncherResult};
-
-use super::{message::{MessageLevel, MessagePayload}, LauncherProxy};
+use crate::{constants::CLI_TOTAL_INGRESS, api::proxy::{event::LauncherEvent, LauncherProxy, message::MessageLevel}, LauncherResult};
 
 #[derive(Debug)]
 pub struct ProxyTauri {
@@ -22,21 +20,20 @@ impl ProxyTauri {
 
 #[async_trait::async_trait]
 impl LauncherProxy for ProxyTauri {
-	async fn send_ingress(&self, ingress: IngressPayload) -> LauncherResult<()> {
-		self.handle
-			.emit(IngressPayload::NAME, ingress)
-			.map_err(Into::into)
-	}
+	async fn send_event(&self, event: LauncherEvent) -> LauncherResult<()> {
+		match event {
+			LauncherEvent::Message(message) => {
+				match message.level {
+					MessageLevel::Info => {},
+					MessageLevel::Warning => warn!("{}", message.message),
+					MessageLevel::Error => error!("{}", message.message),
+				};
+			},
+			_ => {}
+		}
 
-	async fn send_message(&self, message: MessagePayload) -> LauncherResult<()> {
-		match message.level {
-			MessageLevel::Info => {},
-			MessageLevel::Warning => warn!("{}", message.message),
-			MessageLevel::Error => error!("{}", message.message),
-		};
-
 		self.handle
-			.emit(MessagePayload::NAME, message)
+			.emit_all(LauncherEvent::NAME, event)
 			.map_err(Into::into)
 	}
 

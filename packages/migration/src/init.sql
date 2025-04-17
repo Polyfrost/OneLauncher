@@ -42,6 +42,7 @@ create table setting_profiles (
 	hook_pre text,
 	hook_wrapper text,
 	hook_post text,
+	os_extra json_text,
 	constraint setting_profiles_pk primary key (name),
 	constraint setting_profiles_java_versions_id_fk foreign key (java_id) references java_versions(id)
 );
@@ -51,7 +52,6 @@ create table clusters (
 	path text not null,
 	stage integer default (0) not null,
 	created_at integer default (unixepoch()) not null,
-	updated_at integer default (unixepoch()) not null,
 	group_id integer,
 	name text not null,
 	mc_version text not null,
@@ -62,7 +62,7 @@ create table clusters (
 	icon_url text,
 	setting_profile_name text,
 	linked_pack_id text,
-	linked_pack_version integer,
+	linked_pack_version text,
 	constraint clusters_pk primary key (id autoincrement),
 	constraint clusters_cluster_groups_id_fk foreign key (group_id) references cluster_groups(id),
 	constraint clusters_setting_profiles_name_fk foreign key (setting_profile_name) references setting_profiles(name)

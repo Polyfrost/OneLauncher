@@ -1,3 +1,5 @@
+#![feature(cfg_match)]
+
 mod entities;
 mod domain;
 

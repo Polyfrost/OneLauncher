@@ -18,6 +18,8 @@ pub enum JavaError {
 	ParseVersion(String, #[source] std::num::ParseIntError),
 	#[error("failed to execute java command")]
 	Execute(#[from] std::io::Error),
+	#[error("no java installations found")]
+	MissingJava,
 }
 
 /// Returns the relative path to the Java executable
@@ -133,8 +135,43 @@ pub async fn get_recommended_java(
 		return Ok(None);
 	};
 
-	#[allow(clippy::cast_possible_wrap)]
-	dao::get_latest_java_by_major(supported_ver.major_version as i32).await
+	dao::get_latest_java_by_major(supported_ver.major_version).await
+}
+
+pub async fn prepare_java(
+	major: u32,
+) -> LauncherResult<java_versions::Model> {
+	let id = init_ingress(
+		IngressType::JavaPrepare,
+		"preparing java",
+		100.0,
+	)
+	.await?;
+
+	let java = dao::get_latest_java_by_major(major).await?;
+	if let Some(java) = &java {
+		send_ingress(&id, 100.0).await?;
+		return Ok(java.clone());
+	}
+
+	let java = locate_java().await?;
+
+	if !java.is_empty() {
+		for (path, info) in java {
+			dao::insert_java(path, info).await?;
+		}
+
+		if let Some(java) = dao::get_latest_java_by_major(major).await? {
+			send_ingress(&id, 100.0).await?;
+			return Ok(java);
+		}
+	}
+
+	tracing::warn!("no java installations found on the system, please install java manually or use the launcher to download it");
+
+	// TODO: java runtime not found - should prob download
+
+	Err(JavaError::MissingJava.into())
 }
 
 /// Attempts to scan common paths for Java installations.

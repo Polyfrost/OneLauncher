@@ -149,6 +149,7 @@ async-trait = { version = "0.1" }
 whoami = { version = "1.5" }
 cc = { version = "1.1" }
 libc = { version = "0.2" }
+merge = { version = "0.2" }
 
 # macro
 syn = { version = "2" }

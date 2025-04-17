@@ -1,3 +1,4 @@
+use chrono::Utc;
 use interpulse::api::minecraft::VersionInfo;
 use onelauncher_entity::cluster_stage::ClusterStage;
 use onelauncher_entity::{clusters, java_versions};
@@ -26,6 +27,10 @@ use super::ingress::init_ingress;
 pub enum ClusterError {
 	#[error("version '{0}' was not found")]
 	InvalidVersion(String),
+	#[error("failed to imply java version")]
+	MissingJavaVersion,
+	#[error("cluster is in downloading stage")]
+	ClusterDownloading,
 }
 
 #[must_use]
@@ -97,7 +102,7 @@ pub async fn create_cluster(
 }
 
 /// Make a cluster playable (installs all necessary game files and dependencies required to play)
-pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
+pub async fn prepare_cluster(cluster: &mut clusters::Model) -> LauncherResult<&clusters::Model> {
 	const INGRESS_TOTAL: f64 = 100.0;
 	const INGRESS_TASKS: f64 = 4.0;
 	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
@@ -106,7 +111,7 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 
 	if cluster.stage == ClusterStage::Ready {
 		tracing::info!("cluster is already ready");
-		return Ok(());
+		return Ok(cluster);
 	}
 
 	let ingress_id = init_ingress(
@@ -118,7 +123,7 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 	)
 	.await?;
 
-	dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+	dao::update_cluster(cluster, async |mut cluster| {
 		cluster.stage = Set(ClusterStage::Downloading);
 		Ok(cluster)
 	})
@@ -128,7 +133,7 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 		// TASK 1
 		ingress_id.set_ingress_message("fetching data").await?;
 		let setting_profile =
-			setting_profiles::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
+			setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
 
 		let state = State::get().await?;
 		let mut metadata = state.metadata.write().await;
@@ -160,22 +165,11 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 		let java_version = if let Some(version) = java::get_recommended_java(&version_info, Some(&setting_profile)).await? {
 			version
 		} else {
-			// TODO: java runtime not found - should prob download
-			let java = java::locate_java().await?;
+			let Some(ver) = &version_info.java_version else {
+				return Err(ClusterError::MissingJavaVersion.into());
+			};
 
-			if java.is_empty() {
-				tracing::warn!("No Java installations found");
-				return Ok(());
-			}
-
-			for (path, info) in java {
-				java::dao::insert_java(path, info).await?;
-			}
-
-			java::get_recommended_java(&version_info, Some(&setting_profile)).await?
-				.ok_or_else(|| {
-					anyhow::anyhow!("No Java installations found, please install a Java runtime")
-				})?
+			java::prepare_java(ver.major_version).await?
 		};
 
 		// TASK 3
@@ -189,7 +183,7 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 
 	if let Err(err) = result {
 		tracing::error!("failed to prepare cluster: {}", err);
-		dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+		dao::update_cluster(cluster, async |mut cluster| {
 			cluster.stage = Set(ClusterStage::NotReady);
 			Ok(cluster)
 		})
@@ -197,14 +191,14 @@ pub async fn prepare_cluster(cluster: &clusters::Model) -> LauncherResult<()> {
 		return Err(err);
 	}
 
-	dao::update_cluster_by_id(cluster.id, async |mut cluster| {
+	dao::update_cluster(cluster, async |mut cluster| {
 		cluster.stage = Set(ClusterStage::Ready);
 		Ok(cluster)
 	})
 	.await?;
 	tracing::debug!("cluster is ready");
 
-	Ok(())
+	Ok(cluster)
 }
 
 /// Run forge processors
@@ -307,4 +301,15 @@ async fn run_forge_processors(
 	}
 
 	Ok(())
+}
+
+pub async fn update_playtime(id: u64, duration: i64) -> LauncherResult<clusters::Model> {
+	dao::update_cluster_by_id(id, async |mut cluster| {
+		let overall_played = cluster.overall_played.take().unwrap_or_default().unwrap_or_default();
+
+		cluster.overall_played = Set(Some(overall_played + duration));
+		cluster.last_played = Set(Some(Utc::now().timestamp()));
+
+		Ok(cluster)
+	}).await
 }

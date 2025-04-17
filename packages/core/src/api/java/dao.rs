@@ -20,13 +20,13 @@ pub async fn get_latest_java() -> LauncherResult<Option<java_versions::Model>> {
 
 /// Accepts a path to a JRE folder and a [`JavaInfo`] and converts it to a [`java_versions::ActiveModel`]
 pub fn get_java_model(absolute_path: &Path, info: &JavaInfo) -> LauncherResult<java_versions::ActiveModel> {
-	let major_version = if info.java_version[0..2].eq("1.") {
-		info.java_version[2..3].parse::<i32>()
+	let major_version: u32 = if info.java_version[0..2].eq("1.") {
+		info.java_version[2..3].parse()
 	} else {
 		let split = info.java_version.split_once('.').unwrap_or_default();
-		split.0.parse::<i32>()
+		split.0.parse()
 	}.or_else(
-		|_| info.java_version.parse::<i32>()
+		|_| info.java_version.parse()
 	).map_err(|e| JavaError::ParseVersion(info.java_version.clone(), e))?;
 
 	Ok(java_versions::ActiveModel {
@@ -50,7 +50,7 @@ pub async fn get_java_all() -> LauncherResult<Vec<java_versions::Model>> {
 }
 
 /// Returns the specific Java version by ID
-pub async fn get_java_by_id(id: i32) -> LauncherResult<Option<java_versions::Model>> {
+pub async fn get_java_by_id(id: u64) -> LauncherResult<Option<java_versions::Model>> {
 	let db = &State::get().await?.db;
 
 	Ok(java_versions::Entity::find()
@@ -60,7 +60,7 @@ pub async fn get_java_by_id(id: i32) -> LauncherResult<Option<java_versions::Mod
 }
 
 /// Returns all versions of Java for a given major version
-pub async fn get_all_java_by_major(major: i32) -> LauncherResult<Vec<java_versions::Model>> {
+pub async fn get_all_java_by_major(major: u32) -> LauncherResult<Vec<java_versions::Model>> {
 	let db = &State::get().await?.db;
 
 	Ok(java_versions::Entity::find()
@@ -71,7 +71,7 @@ pub async fn get_all_java_by_major(major: i32) -> LauncherResult<Vec<java_versio
 }
 
 /// Returns the latest Java version for a given major version
-pub async fn get_latest_java_by_major(major: i32) -> LauncherResult<Option<java_versions::Model>> {
+pub async fn get_latest_java_by_major(major: u32) -> LauncherResult<Option<java_versions::Model>> {
 	let db = &State::get().await?.db;
 
 	Ok(java_versions::Entity::find()

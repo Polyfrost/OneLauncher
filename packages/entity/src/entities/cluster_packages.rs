@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[onelauncher_macro::specta]
 pub struct Model {
 	#[sea_orm(primary_key, auto_increment = false)]
-	pub cluster_id: i32,
+	pub cluster_id: u64,
 	#[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
 	pub package_hash: String,
 }

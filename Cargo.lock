@@ -2543,6 +2543,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "merge"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56e520ba58faea3487f75df198b1d079644ec226ea3b0507d002c6fa4b8cf93a"
+dependencies = [
+ "merge_derive",
+ "num-traits",
+]
+
+[[package]]
+name = "merge_derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c8f8ce6efff81cbc83caf4af0905c46e58cb46892f63ad3835e81b47eaf7968"
+dependencies = [
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3020,6 +3042,7 @@ dependencies = [
  "indicatif",
  "interpulse",
  "md-5",
+ "merge",
  "murmur2",
  "onelauncher_entity",
  "onelauncher_gamemode",
@@ -3063,6 +3086,7 @@ version = "0.2.0-alpha.2"
 dependencies = [
  "chrono",
  "interpulse",
+ "merge",
  "onelauncher_macro",
  "sea-orm",
  "serde",

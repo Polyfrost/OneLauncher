@@ -19,6 +19,8 @@ pub enum LauncherError {
 	#[error(transparent)]
 	MinecraftAuthError(#[from] crate::store::credentials::MinecraftAuthError),
 	#[error(transparent)]
+	ProcessError(#[from] crate::store::processes::ProcessError),
+	#[error(transparent)]
 	DaoError(#[from] DaoError),
 
 	#[error(transparent)]

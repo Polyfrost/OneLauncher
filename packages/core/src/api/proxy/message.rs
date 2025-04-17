@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use super::event::send_event;
+
 #[onelauncher_macro::specta(with_event)]
 #[derive(Serialize, Debug, Clone)]
 pub struct MessagePayload {
@@ -11,48 +13,57 @@ pub struct MessagePayload {
 #[derive(Serialize, Debug, Clone)]
 pub enum MessageLevel {
 	Info,
-	Warning,
+	Warn,
 	Error,
+}
+
+pub fn send_message(level: MessageLevel, message: String) {
+	tokio::spawn(async move {
+		let payload = MessagePayload {
+			level,
+			message,
+		};
+
+		send_event(super::event::LauncherEvent::Message(payload)).await;
+	});
+}
+
+#[macro_export]
+macro_rules! send_message {
+	($level:tt, $($message:tt)*) => {
+		$crate::api::proxy::message::send_message(
+			$level,
+			format!($($message)*),
+		)
+	};
+}
+
+#[macro_export]
+macro_rules! send_info {
+	($($message:tt)*) => {
+		$crate::api::proxy::message::send_message(
+			$crate::api::proxy::message::MessageLevel::Info,
+			format!($($message)*),
+		)
+	};
 }
 
 #[macro_export]
 macro_rules! send_warning {
-	($($message:tt)*) => {{
-		tokio::spawn(async move {
-			let _ = match $crate::store::proxy::ProxyState::get() {
-				Ok(proxy) => {
-					let payload = $crate::api::proxy::message::MessagePayload {
-						level: $crate::api::proxy::message::MessageLevel::Warning,
-						message: format!($($message)*),
-					};
-					let _ = proxy.send_message(payload).await;
-				},
-				Err(err) => {
-					tracing::warn!($($message)*);
-					tracing::warn!("failed to send warning: {}", err);
-				},
-			};
-		})
-	}};
+	($($message:tt)*) => {
+		$crate::api::proxy::message::send_message(
+			$crate::api::proxy::message::MessageLevel::Warn,
+			format!($($message)*),
+		)
+	};
 }
 
 #[macro_export]
 macro_rules! send_error {
-	($($message:tt)*) => {{
-		tokio::spawn(async move {
-			let _ = match $crate::store::proxy::ProxyState::get() {
-				Ok(proxy) => {
-					let payload = $crate::api::proxy::message::MessagePayload {
-						level: $crate::api::proxy::message::MessageLevel::Error,
-						message: format!($($message)*),
-					};
-					let _ = proxy.send_message(payload).await;
-				},
-				Err(err) => {
-					tracing::error!($($message)*);
-					tracing::error!("failed to send error: {}", err);
-				},
-			};
-		})
-	}};
+	($($message:tt)*) => {
+		$crate::api::proxy::message::send_message(
+			$crate::api::proxy::message::MessageLevel::Error,
+			format!($($message)*),
+		)
+	};
 }

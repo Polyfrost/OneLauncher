@@ -27,4 +27,5 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 url = { workspace = true }
 interpulse = { workspace = true }
+merge = { workspace = true }
 specta = { workspace = true, optional = true }

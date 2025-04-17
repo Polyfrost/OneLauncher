@@ -6,6 +6,7 @@ use tokio::sync::{OnceCell, RwLock};
 use crate::LauncherResult;
 
 use super::credentials::CredentialsStore;
+use super::processes::ProcessStore;
 use super::Settings;
 use super::discord::DiscordRPC;
 use super::ingress::IngressProcessor;
@@ -20,6 +21,7 @@ pub struct State {
 	pub db: DatabaseConnection,
 	pub credentials: RwLock<CredentialsStore>,
 	pub metadata: RwLock<Metadata>,
+	pub processes: ProcessStore,
 	pub rpc: Option<DiscordRPC>,
 }
 
@@ -44,6 +46,7 @@ impl State {
 		let db = super::db::create_pool().await?;
 		let credentials = CredentialsStore::initialize().await?;
 		let metadata = Metadata::new();
+		let processes = ProcessStore::new();
 		let rpc = match DiscordRPC::initialize() {
 			Ok(rpc) => Some(rpc),
 			Err(err) => {
@@ -58,6 +61,7 @@ impl State {
 			db,
 			credentials: RwLock::new(credentials),
 			metadata: RwLock::new(metadata),
+			processes,
 			rpc,
 		}))
 	}

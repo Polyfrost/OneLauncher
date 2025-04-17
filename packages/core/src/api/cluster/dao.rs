@@ -34,7 +34,7 @@ pub async fn insert_cluster(
 
 /// Updates an existing cluster in the database.
 pub async fn update_cluster_by_id<B>(
-	id: i32,
+	id: u64,
 	block: B,
 ) -> LauncherResult<clusters::Model>
 where B: AsyncFnOnce(clusters::ActiveModel) -> LauncherResult<clusters::ActiveModel> {
@@ -48,8 +48,25 @@ where B: AsyncFnOnce(clusters::ActiveModel) -> LauncherResult<clusters::ActiveMo
 	Ok(model)
 }
 
+pub async fn update_cluster<B>(
+	cluster: &mut clusters::Model,
+	block: B,
+) -> LauncherResult<&mut clusters::Model>
+where B: AsyncFnOnce(clusters::ActiveModel) -> LauncherResult<clusters::ActiveModel> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	let model = cluster.clone().into_active_model();
+	let model = block(model).await?;
+	let model = model.update(db).await?;
+
+	*cluster = model;
+
+	Ok(cluster)
+}
+
 /// Deletes a cluster by its ID from the **database**.
-pub async fn delete_cluster_by_id(id: i32) -> LauncherResult<()> {
+pub async fn delete_cluster_by_id(id: u64) -> LauncherResult<()> {
 	let state = State::get().await?;
 	let db = &state.db;
 
@@ -65,7 +82,7 @@ pub async fn delete_cluster_by_id(id: i32) -> LauncherResult<()> {
 }
 
 /// Gets a cluster by its ID from the database.
-pub async fn get_cluster_by_id(id: i32) -> LauncherResult<Option<clusters::Model>> {
+pub async fn get_cluster_by_id(id: u64) -> LauncherResult<Option<clusters::Model>> {
 	let state = State::get().await?;
 	let db = &state.db;
 

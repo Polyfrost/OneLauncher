@@ -67,6 +67,7 @@ url = { workspace = true }
 async-trait = { workspace = true }
 paste = { workspace = true }
 byteorder = { workspace = true }
+merge = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }

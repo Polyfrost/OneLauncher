@@ -12,7 +12,7 @@ async fn main() -> LauncherResult<()> {
 	}
 
 	println!("creating cluster");
-	let cluster = api::cluster::create_cluster(
+	let cluster = &mut api::cluster::create_cluster(
 		"Test Cluster",
 		"1.8.9",
 		GameLoader::Vanilla,
@@ -23,7 +23,7 @@ async fn main() -> LauncherResult<()> {
 	println!("cluster created: {cluster:#?}");
 
 	println!("preparing cluster for launch");
-	api::cluster::prepare_cluster(&cluster).await?;
+	api::cluster::prepare_cluster(cluster).await?;
 
 	Ok(())
 }

@@ -4,10 +4,11 @@ use serde::Serialize;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::api::proxy::event::try_send_event;
 use crate::LauncherResult;
+use crate::api::ingress::IngressPayload;
 
 use super::State;
-use super::proxy::ProxyState;
 
 #[derive(Default)]
 pub struct IngressProcessor {
@@ -73,21 +74,20 @@ impl IngressProcessor {
 		let uuid = &id.0;
 		let ingress = feeds.get_mut(uuid).ok_or(IngressError::NotFound)?;
 
-		let proxy = ProxyState::get()?;
-
 		ingress.current += increment;
 		if let Some(message) = message {
 			ingress.message = message;
 		}
 
-		proxy
-			.send_ingress(IngressPayload {
-				id: uuid.to_owned(),
-				message: ingress.message.clone(),
-				ingress_type: ingress.ingress_type.clone(),
-				percent: Some(ingress.current / ingress.total),
-				total: ingress.total,
-			})
+		let payload = IngressPayload {
+			id: uuid.to_owned(),
+			message: ingress.message.clone(),
+			ingress_type: ingress.ingress_type.clone(),
+			percent: Some(ingress.current / ingress.total),
+			total: ingress.total,
+		};
+
+		try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload))
 			.await?;
 
 		Ok(())
@@ -113,20 +113,11 @@ pub struct Ingress {
 	pub last_sent: f64,
 }
 
-#[onelauncher_macro::specta(with_event)]
-#[derive(Serialize, Debug, Clone)]
-pub struct IngressPayload {
-	pub id: Uuid,
-	pub message: String,
-	pub ingress_type: IngressType,
-	pub percent: Option<f64>,
-	pub total: f64,
-}
-
 #[onelauncher_macro::specta]
 #[derive(Serialize, Debug, Clone)]
 pub enum IngressType {
 	Download { file_name: String },
+	JavaPrepare,
 	JavaCheck,
 	JavaLocate,
 	MinecraftDownload,
@@ -182,7 +173,8 @@ impl SubIngressExt for SubIngress<'_> {
 
 	fn ingress_sub<F>(&self, total: F) -> Self::Target<'_>
 	where
-		F: FnOnce(f64) -> f64 {
+		F: FnOnce(f64) -> f64,
+	{
 		SubIngress::from_sub(self, total(self.total))
 	}
 }
@@ -201,7 +193,8 @@ impl SubIngressExt for Option<&SubIngress<'_>> {
 
 	fn ingress_sub<F>(&self, total: F) -> Self::Target<'_>
 	where
-		F: FnOnce(f64) -> f64 {
+		F: FnOnce(f64) -> f64,
+	{
 		self.map(|sub| SubIngress::from_sub(sub, total(sub.total)))
 	}
 }
@@ -217,16 +210,15 @@ impl Drop for IngressId {
 
 				let ingress = processor.remove(ingress_uuid).await?;
 
-				let proxy = ProxyState::get()?;
+				let payload = IngressPayload {
+					id: ingress.id,
+					message: "Completed".into(),
+					ingress_type: ingress.ingress_type,
+					percent: None,
+					total: ingress.total,
+				};
 
-				proxy
-					.send_ingress(IngressPayload {
-						id: ingress.id,
-						message: "Completed".into(),
-						ingress_type: ingress.ingress_type,
-						percent: None,
-						total: ingress.total,
-					})
+				try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload))
 					.await?;
 
 				tracing::trace!(

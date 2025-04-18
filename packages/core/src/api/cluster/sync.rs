@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{error::{DaoError, LauncherResult}, send_error, store::Dirs, utils::io};
 
-use super::dao;
+use super::dao::{self, ClusterId};
 
 #[onelauncher_macro::specta]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -26,7 +26,7 @@ impl SyncAction {
 
 /// Syncs all clusters in the database. Returns a list of cluster IDs that are missing.
 #[tracing::instrument]
-pub async fn sync_clusters() -> LauncherResult<Vec<u64>> {
+pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 	let clusters = dao::get_all_clusters().await?;
 
 	let mut missing_ids = Vec::new();
@@ -92,7 +92,7 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 /// Syncs the cluster with the database.
 /// Checks if the cluster in the database exists and if the directory exists.
 #[tracing::instrument]
-pub async fn sync_cluster_by_id(id: u64) -> LauncherResult<SyncAction> {
+pub async fn sync_cluster_by_id(id: ClusterId) -> LauncherResult<SyncAction> {
 	let cluster = dao::get_cluster_by_id(id)
 		.await?
 		.ok_or(DaoError::NotFound)?;

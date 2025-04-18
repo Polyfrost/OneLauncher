@@ -4,7 +4,7 @@ use indicatif::ProgressBar;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{constants::CLI_TOTAL_INGRESS, api::proxy::{event::LauncherEvent, LauncherProxy}, LauncherResult};
+use crate::{api::{processes::ProcessPayload, proxy::{event::LauncherEvent, LauncherProxy}}, constants::CLI_TOTAL_INGRESS, LauncherResult};
 
 #[derive(Default, Debug)]
 pub struct ProxyCli {
@@ -49,9 +49,22 @@ impl LauncherProxy for ProxyCli {
 			LauncherEvent::Message(message) => {
 				println!("[{:?}] {}", message.level, message.message);
 			},
-			_ => {
-				println!("{:#?}", event);
-			},
+			LauncherEvent::Process(process) => {
+				match process {
+					ProcessPayload::Starting { command } => {
+						println!("Starting process: {command}");
+					},
+					ProcessPayload::Started { process } => {
+						println!("Process started: {process:#?}");
+					},
+					ProcessPayload::Stopped { pid, exit_code } => {
+						println!("Process {pid} exited with code {exit_code}");
+					},
+					ProcessPayload::Output { pid, output } => {
+						println!("Process {pid}: {output}");
+					},
+				}
+			}
 		}
 
 		Ok(())

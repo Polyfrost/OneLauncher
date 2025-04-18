@@ -7,6 +7,8 @@ use crate::{error::LauncherResult, store::State};
 
 use super::{JavaError, JavaInfo};
 
+pub type JavaVersionId = i64;
+
 /// Returns the latest Java version
 pub async fn get_latest_java() -> LauncherResult<Option<java_versions::Model>> {
 	let db = &State::get().await?.db;
@@ -50,7 +52,7 @@ pub async fn get_java_all() -> LauncherResult<Vec<java_versions::Model>> {
 }
 
 /// Returns the specific Java version by ID
-pub async fn get_java_by_id(id: u64) -> LauncherResult<Option<java_versions::Model>> {
+pub async fn get_java_by_id(id: JavaVersionId) -> LauncherResult<Option<java_versions::Model>> {
 	let db = &State::get().await?.db;
 
 	Ok(java_versions::Entity::find()

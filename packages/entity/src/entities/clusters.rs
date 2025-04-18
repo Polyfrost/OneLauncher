@@ -8,12 +8,12 @@ use crate::{cluster_stage::ClusterStage, icon::Icon, loader::GameLoader};
 #[onelauncher_macro::specta]
 pub struct Model {
 	#[sea_orm(primary_key)]
-	pub id: u64,
+	pub id: i64,
 	#[sea_orm(column_type = "Text")]
 	pub path: String,
 	pub stage: ClusterStage,
 	pub created_at: i64,
-	pub group_id: Option<u64>,
+	pub group_id: Option<i64>,
 	#[sea_orm(column_type = "Text")]
 	pub name: String,
 	#[sea_orm(column_type = "Text")]

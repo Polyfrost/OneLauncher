@@ -59,6 +59,7 @@ impl Metadata {
 	}
 
 
+	#[tracing::instrument(skip(self))]
 	pub async fn get_vanilla_or_fetch(&mut self) -> LauncherResult<&VanillaManifest> {
 		if !self.initialized() {
 			self.initialize().await?;
@@ -67,6 +68,7 @@ impl Metadata {
 		self.get_vanilla()
 	}
 
+	#[tracing::instrument(skip(self))]
 	pub async fn get_modded_or_fetch(&mut self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
 		if !loader.is_modded() {
 			return Err(MetadataError::NotModdedManifest(loader).into());

@@ -1,4 +1,5 @@
 use chrono::Utc;
+use dao::ClusterId;
 use interpulse::api::minecraft::VersionInfo;
 use onelauncher_entity::cluster_stage::ClusterStage;
 use onelauncher_entity::{clusters, java_versions};
@@ -31,6 +32,8 @@ pub enum ClusterError {
 	MissingJavaVersion,
 	#[error("cluster is in downloading stage")]
 	ClusterDownloading,
+	#[error("cluster is already running")]
+	ClusterAlreadyRunning,
 }
 
 #[must_use]
@@ -102,17 +105,17 @@ pub async fn create_cluster(
 }
 
 /// Make a cluster playable (installs all necessary game files and dependencies required to play)
-pub async fn prepare_cluster(cluster: &mut clusters::Model) -> LauncherResult<&clusters::Model> {
+pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>) -> LauncherResult<&clusters::Model> {
 	const INGRESS_TOTAL: f64 = 100.0;
 	const INGRESS_TASKS: f64 = 4.0;
 	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
 
 	tracing::debug!("preparing cluster {}", cluster.name);
 
-	if cluster.stage == ClusterStage::Ready {
-		tracing::info!("cluster is already ready");
-		return Ok(cluster);
-	}
+	// if cluster.stage == ClusterStage::Ready {
+	// 	tracing::info!("cluster is already ready");
+	// 	return Ok(cluster);
+	// }
 
 	let ingress_id = init_ingress(
 		IngressType::PrepareCluster {
@@ -144,7 +147,10 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model) -> LauncherResult<&c
 			.versions
 			.iter()
 			.find(|v| v.id == cluster.mc_version)
-			.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+			.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?
+			.clone();
+
+		drop(metadata);
 
 		let loader_version = metadata::get_loader_version(
 			&cluster.mc_version,
@@ -155,10 +161,10 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model) -> LauncherResult<&c
 
 		// TASK 2
 		let mut version_info = metadata::download_version_info(
-			version,
+			&version,
 			loader_version.as_ref(),
 			Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
-			None,
+			force,
 		)
 		.await?;
 
@@ -173,7 +179,7 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model) -> LauncherResult<&c
 		};
 
 		// TASK 3
-		download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), None).await?;
+		download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), force).await?;
 
 		// TASK 4
 		run_forge_processors(cluster, &mut version_info, java_version, &SubIngress::new(&ingress_id, INGRESS_STEP)).await?;
@@ -303,7 +309,7 @@ async fn run_forge_processors(
 	Ok(())
 }
 
-pub async fn update_playtime(id: u64, duration: i64) -> LauncherResult<clusters::Model> {
+pub async fn update_playtime(id: ClusterId, duration: i64) -> LauncherResult<clusters::Model> {
 	dao::update_cluster_by_id(id, async |mut cluster| {
 		let overall_played = cluster.overall_played.take().unwrap_or_default().unwrap_or_default();
 

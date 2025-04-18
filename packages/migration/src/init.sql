@@ -33,8 +33,7 @@ create table packages (
 create table setting_profiles (
 	name text not null,
 	java_id integer,
-	res_w integer,
-	res_h integer,
+	res json_text,
 	force_fullscreen boolean,
 	mem_max integer,
 	launch_args text,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -12,10 +13,11 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::api::cluster;
-use crate::api::game::log::censor_line;
+use crate::api::cluster::dao::ClusterId;
+use crate::api::game::log::{censor_line, CensorMap};
 use crate::api::processes::ProcessPayload;
 use crate::api::proxy::event::{send_event, LauncherEvent};
-use crate::error::{DaoError, LauncherResult};
+use crate::error::LauncherResult;
 use crate::send_error;
 use crate::utils::io::IOError;
 
@@ -39,7 +41,7 @@ pub struct ProcessStore {
 pub struct Process {
 	pub pid: u32,
 	pub started_at: DateTime<Utc>,
-	pub cluster_id: u64,
+	pub cluster_id: ClusterId,
 	pub post_hook: Option<String>,
 	pub account_id: Uuid,
 	#[serde(skip)]
@@ -79,7 +81,7 @@ impl ChildType {
 			Self::Owned(child) => child
 				.try_wait()
 				.map_err(IOError::from)?
-				.map(|s| s.code().unwrap_or_default()),
+				.and_then(|s| s.code()),
 		})
 	}
 
@@ -109,13 +111,83 @@ impl ProcessStore {
 		Self::default()
 	}
 
+	/// Returns a list of all running processes for a given cluster.
+	pub async fn get_running_by_cluster(
+		&self,
+		cluster_id: ClusterId,
+	) -> Vec<Arc<RwLock<Process>>> {
+		let mut list = Vec::new();
+		let read_guard = self.processes.read().await;
+
+		for process in read_guard.values() {
+			if process.read().await.cluster_id == cluster_id {
+				list.push(process.clone());
+			}
+		}
+
+		list
+	}
+
+	/// Returns a list of all running processes for a given account.
+	pub async fn get_running_by_account(
+		&self,
+		account_id: Uuid,
+	) -> Vec<Arc<RwLock<Process>>> {
+		let mut list = Vec::new();
+		let read_guard = self.processes.read().await;
+
+		for process in read_guard.values() {
+			if process.read().await.account_id == account_id {
+				list.push(process.clone());
+			}
+		}
+
+		list
+	}
+
+	/// Returns a list of all running processes.
+	pub async fn get_running(&self) -> Vec<Arc<RwLock<Process>>> {
+		let mut list = Vec::new();
+		let read_guard = self.processes.read().await;
+
+		for process in read_guard.values() {
+			list.push(process.clone());
+		}
+
+		list
+	}
+
+	/// Returns whether a cluster has a running process.
+	pub async fn has_running(&self, cluster_id: ClusterId) -> bool {
+		let read_guard = self.processes.read().await;
+
+		for process in read_guard.values() {
+			if process.read().await.cluster_id == cluster_id {
+				return true;
+			}
+		}
+
+		false
+	}
+
+	/// Spawns a new process (Minecraft Instance)
 	pub async fn spawn(
 		&self,
-		cluster_id: u64,
+		cluster_id: ClusterId,
+		cwd: PathBuf,
 		creds: MinecraftCredentials,
+		censors: CensorMap,
 		settings: &setting_profiles::Model,
 		mut command: Command,
 	) -> LauncherResult<Arc<RwLock<Process>>> {
+		send_event(LauncherEvent::Process(ProcessPayload::Starting { command: format!("{command:?}") })).await;
+
+		if let Some(pre_hook) = &settings.hook_pre {
+			if let Err(err) = run_hook(pre_hook, cwd.clone()).await {
+				send_error!("{err:?}");
+			}
+		}
+
 		command
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
@@ -140,20 +212,19 @@ impl ProcessStore {
 			}
 		}
 
-		let account_id = creds.id;
 		tokio::spawn(async move {
 			let mut stdout = BufReader::new(stdout).lines();
 			let mut stderr = BufReader::new(stderr).lines();
 
-			while let Ok(Some(line)) = tokio::select! {
+			while let Ok(Some(mut line)) = tokio::select! {
 				line = stdout.next_line() => line,
 				line = stderr.next_line() => line,
 			} {
-				let censored = censor_line(&creds, line);
+				censor_line(&censors, &mut line);
 
 				send_event(LauncherEvent::Process(ProcessPayload::Output {
 					pid,
-					output: censored,
+					output: line,
 				})).await;
 			}
 		});
@@ -164,10 +235,10 @@ impl ProcessStore {
 			started_at,
 			cluster_id,
 			post_hook: settings.hook_post.clone(),
-			account_id,
+			account_id: creds.id,
 			child_type: child_type.clone(),
 			process_loop: Some(tokio::task::spawn(Self::process_loop(
-				cluster_id, settings.hook_post.clone(), child_type,
+				cluster_id, cwd, settings.hook_post.clone(), child_type,
 			))),
 		};
 
@@ -185,7 +256,8 @@ impl ProcessStore {
 	}
 
 	async fn process_loop(
-		cluster_id: u64,
+		cluster_id: ClusterId,
+		cwd: PathBuf,
 		post_hook: Option<String>,
 		child: Arc<RwLock<ChildType>>,
 	) -> LauncherResult<i32> {
@@ -221,22 +293,8 @@ impl ProcessStore {
 		tracing::debug!("removed process with pid {}", pid);
 
 		if let Some(post_hook) = post_hook {
-			if !post_hook.is_empty() {
-				let result: LauncherResult<()> = {
-					let cluster = cluster::dao::get_cluster_by_id(cluster_id)
-					.await?
-					.ok_or(DaoError::NotFound)?;
-
-					if let Err(err) = run_hook(&post_hook, &cluster.path).await {
-						send_error!("{err:?}");
-					}
-
-					Ok(())
-				};
-
-				if let Err(err) = result {
-					send_error!("failed to run post hook: {}", err);
-				}
+			if let Err(err) = run_hook(&post_hook, cwd).await {
+				send_error!("{err:?}");
 			}
 		}
 
@@ -246,13 +304,14 @@ impl ProcessStore {
 	}
 }
 
-pub async fn run_hook(hook: &str, cwd: &str) -> LauncherResult<Option<i32>> {
+async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
 	let mut split = hook.split(' ');
 
 	let Some(command) = split.next() else {
 		return Ok(None);
 	};
 
+	tracing::debug!("running hook");
 	let result = Command::new(command)
 		.args(split)
 		.current_dir(cwd)

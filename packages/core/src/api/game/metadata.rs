@@ -50,7 +50,7 @@ pub async fn download_minecraft(
 }
 
 // MARK: Version Info
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(skip(ingress, force))]
 pub async fn download_version_info(
 	version: &Version,
 	loader: Option<&LoaderVersion>,
@@ -120,7 +120,7 @@ pub async fn download_assets_index(
 	tracing::debug!("loading assets index for version {}", version.id);
 	let path = Dirs::get_assets_index_dir()
 		.await?
-		.join(version.asset_index.id.clone());
+		.join(format!("{}.json", version.asset_index.id));
 
 	// let ingress_ref = ingress_ref.map(|i| i.with_increment(i.increment_by / 2.0));
 	// let ingress_ref = ingress_ref.as_ref();
@@ -274,10 +274,10 @@ pub async fn download_libraries(
 	tracing::debug!("loading libraries for version {}", version);
 
 	let lib_dir = Dirs::get_libraries_dir().await?;
-	let natives_dir = Dirs::get_natives_dir().await?;
+	let natives_dest = Dirs::get_natives_dir().await?.join(version);
 
 	io::create_dir_all(&lib_dir).await?;
-	io::create_dir_all(&natives_dir).await?;
+	io::create_dir_all(&natives_dest).await?;
 
 	let num_files = libraries.len();
 	let ingress = ingress.ingress_sub(|total| total / num_files as f64);
@@ -297,15 +297,16 @@ pub async fn download_libraries(
 			return Ok(());
 		}
 
+		let artifact_path = interpulse::utils::get_path_from_artifact(&lib.name)?;
+		let path = lib_dir.join(&artifact_path);
+
+		if path.exists() && !force.unwrap_or(false) {
+			tracing::debug!("library {} is installed, skipping", &lib.name);
+			return Ok(());
+		}
+
 		tokio::try_join! {
 			async {
-				let artifact_path = interpulse::utils::get_path_from_artifact(&lib.name)?;
-				let path = lib_dir.join(&artifact_path);
-
-				if path.exists() && !force.unwrap_or(false) {
-					return Ok(());
-				}
-
 				if let Some(interpulse::api::minecraft::LibraryDownloads {
 					artifact: Some(ref artifact), ..
 				}) = lib.downloads {
@@ -343,6 +344,7 @@ pub async fn download_libraries(
 					let parsed = os_key.replace("${arch}", crate::constants::ARCH_WIDTH);
 					if let Some(native) = classifiers.get(&parsed) {
 						tracing::trace!("found native library {}", &lib.name);
+
 						let data = http::fetch_advanced(
 							Method::GET,
 							&native.url,
@@ -352,9 +354,12 @@ pub async fn download_libraries(
 							ingress,
 						).await?;
 
-						let dest = natives_dir.join(version);
-						io::unzip_bytes(data.to_vec(), &dest).await?;
-						tracing::trace!("extracted native {} to path {:?}", &lib.name, &dest);
+						io::unzip_bytes_filtered(
+							data.to_vec(),
+							Some(|name: &str| !name.starts_with("META-INF")),
+							&natives_dest
+						).await?;
+						tracing::trace!("extracted native {} to path {:?}", &lib.name, &natives_dest);
 					}
 				}
 
@@ -380,6 +385,7 @@ pub async fn download_libraries(
 /// Gets the loader version for a given Minecraft version and loader
 /// If `loader_version` is `None`, it will return the latest stable version else
 /// it will return the specified version if found
+#[tracing::instrument]
 pub async fn get_loader_version(
 	mc_version: &str,
 	loader: GameLoader,
@@ -405,6 +411,7 @@ pub async fn get_loader_version(
 		.loaders
 		.iter()
 		.find(|it| loader_version.map_or(it.stable, |version| it.id == version))
+		.or_else(|| loaders.loaders.first())
 		.cloned()
 		.ok_or(MetadataError::NoMatchingLoader)?;
 

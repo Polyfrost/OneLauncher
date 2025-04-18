@@ -4,6 +4,9 @@ use crate::store::processes::Process;
 
 #[derive(Debug, Serialize)]
 pub enum ProcessPayload {
+	Starting {
+		command: String,
+	},
 	Started {
 		process: Process,
 	},

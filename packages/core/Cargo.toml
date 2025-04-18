@@ -14,7 +14,7 @@ authors = { workspace = true }
 path = "src/lib.rs"
 
 [features]
-default = []
+default = [ "cli" ]
 tauri = [
 	"dep:tauri",
 	"dep:tauri-specta",
@@ -51,6 +51,7 @@ serde_with = { workspace = true }
 # utils
 sea-orm = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
 futures = { workspace = true }
 futures-lite = { workspace = true }

@@ -33,6 +33,8 @@ pub enum LauncherError {
 	ReqwestError(#[from] reqwest::Error),
 	#[error(transparent)]
 	InterpulseError(#[from] interpulse::Error),
+	#[error(transparent)]
+	RegexError(#[from] regex::Error),
 	#[error("couldn't acquire semaphore: {0}")]
 	SemaphoreError(#[from] tokio::sync::AcquireError),
 

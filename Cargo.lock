@@ -3070,6 +3070,7 @@ dependencies = [
  "thiserror 1.0.64",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-error",

@@ -8,6 +8,8 @@ use serde::de::DeserializeOwned;
 use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+use tokio_util::compat::TokioAsyncWriteCompatExt;
+
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
 pub enum IOError {
@@ -215,6 +217,17 @@ pub async fn copy(
 		})
 }
 
+// /// Copies an async reader into an async writer. Returns the bytes copied
+// pub async fn copy_buf<'a, R, W>(reader: &'a mut R, writer: &'a mut W) -> Result<u64, IOError>
+// where
+// 	R: TokioAsyncReadCompatExt,
+// 	W: TokioAsyncWriteCompatExt,
+// {
+// 	tokio::io::copy_buf(reader, writer)
+// 		.await
+// 		.map_err(IOError::from)
+// }
+
 /// Removes a file from the filesystem.
 pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOError> {
 	let path = path.as_ref();
@@ -237,10 +250,7 @@ pub fn tempfile() -> Result<std::fs::File, IOError> {
 }
 
 /// Reads a zip archive from a byte array
-pub async fn read_zip_entries_bytes<F>(
-	data: Vec<u8>,
-	mut f: F,
-) -> Result<(), IOError>
+pub async fn read_zip_entries_bytes<F>(data: Vec<u8>, mut f: F) -> Result<(), IOError>
 where
 	F: AsyncFnMut(
 		usize,
@@ -273,10 +283,25 @@ pub async fn unzip_bytes(
 	data: Vec<u8>,
 	dest_path: impl AsRef<std::path::Path>,
 ) -> Result<(), IOError> {
+	unzip_bytes_filtered(data, None::<fn(&str) -> bool>, dest_path).await
+}
+
+/// Unzips a zip archive from a byte array
+pub async fn unzip_bytes_filtered(
+	data: Vec<u8>,
+	filter_entries: Option<impl Fn(&str) -> bool>,
+	dest_path: impl AsRef<std::path::Path>,
+) -> Result<(), IOError> {
 	read_zip_entries_bytes(data, async |_, entry, entry_reader| {
-		let path = dest_path
-			.as_ref()
-			.join(sanitize_path(entry.filename().as_str()?));
+		let file_name = entry.filename().as_str()?;
+
+		if let Some(filter) = &filter_entries {
+			if !filter(file_name) {
+				return Ok(());
+			}
+		}
+
+		let path = dest_path.as_ref().join(sanitize_path(file_name));
 
 		let is_dir = entry.dir()?;
 
@@ -288,20 +313,14 @@ pub async fn unzip_bytes(
 			}
 
 			let file = tokio::fs::File::create(&path).await?;
-			let mut writer = tokio::io::BufWriter::new(file);
+			let writer = tokio::io::BufWriter::new(file);
 
-			let mut buf = vec![0; 8192];
-			loop {
-				let n = futures::AsyncReadExt::read(entry_reader, &mut buf).await?;
-				if n == 0 {
-					break;
-				}
-				writer.write_all(&buf[..n]).await?;
-			}
+			futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
 		}
 
 		Ok(())
-	}).await?;
+	})
+	.await?;
 
 	Ok(())
 }
@@ -331,17 +350,10 @@ pub async fn unzip_file(
 			}
 
 			let file = tokio::fs::File::create(&path).await?;
-			let mut writer = tokio::io::BufWriter::new(file);
-			let mut entry_reader = reader.reader_without_entry(index).await?;
+			let writer = tokio::io::BufWriter::new(file);
+			let entry_reader = reader.reader_without_entry(index).await?;
 
-			let mut buf = vec![0; 8192];
-			loop {
-				let n = futures::AsyncReadExt::read(&mut entry_reader, &mut buf).await?;
-				if n == 0 {
-					break;
-				}
-				writer.write_all(&buf[..n]).await?;
-			}
+			futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
 		}
 	}
 

@@ -4,7 +4,7 @@ use merge::Merge;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::settings::SettingsOsExtra;
+use crate::{resolution::Resolution, settings::SettingsOsExtra};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize, Merge)]
 #[sea_orm(table_name = "setting_profiles")]
@@ -14,9 +14,9 @@ pub struct Model {
 	#[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
 	#[merge(skip)]
 	pub name: String,
-	pub java_id: Option<u64>,
-	pub res_w: Option<u32>,
-	pub res_h: Option<u32>,
+	pub java_id: Option<i64>,
+	#[sea_orm(column_type = "Text", nullable)]
+	pub res: Option<Resolution>,
 	pub force_fullscreen: Option<bool>,
 	pub mem_max: Option<u32>,
 	#[sea_orm(column_type = "Text", nullable)]
@@ -84,9 +84,8 @@ impl Model {
 			java_id: None,
 			launch_args: None,
 			launch_env: None,
-			mem_max: Some(3072),
-			res_h: None,
-			res_w: None,
+			mem_max: Some(2048),
+			res: None,
 			os_extra: Some(SettingsOsExtra::default())
 		}
 	}

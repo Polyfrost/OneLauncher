@@ -23,7 +23,7 @@ async fn main() -> LauncherResult<()> {
 	println!("cluster created: {cluster:#?}");
 
 	println!("preparing cluster for launch");
-	api::cluster::prepare_cluster(cluster).await?;
+	api::cluster::prepare_cluster(cluster, None).await?;
 
 	Ok(())
 }

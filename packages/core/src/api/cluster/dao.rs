@@ -5,6 +5,8 @@ use sea_orm::{ActiveValue::Set, IntoActiveModel, prelude::*};
 
 use crate::{error::{DaoError, LauncherResult}, store::State};
 
+pub type ClusterId = i64;
+
 /// Inserts a cluster in the database.
 pub async fn insert_cluster(
 	name: &str,
@@ -34,7 +36,7 @@ pub async fn insert_cluster(
 
 /// Updates an existing cluster in the database.
 pub async fn update_cluster_by_id<B>(
-	id: u64,
+	id: ClusterId,
 	block: B,
 ) -> LauncherResult<clusters::Model>
 where B: AsyncFnOnce(clusters::ActiveModel) -> LauncherResult<clusters::ActiveModel> {
@@ -66,7 +68,7 @@ where B: AsyncFnOnce(clusters::ActiveModel) -> LauncherResult<clusters::ActiveMo
 }
 
 /// Deletes a cluster by its ID from the **database**.
-pub async fn delete_cluster_by_id(id: u64) -> LauncherResult<()> {
+pub async fn delete_cluster_by_id(id: ClusterId) -> LauncherResult<()> {
 	let state = State::get().await?;
 	let db = &state.db;
 
@@ -82,7 +84,7 @@ pub async fn delete_cluster_by_id(id: u64) -> LauncherResult<()> {
 }
 
 /// Gets a cluster by its ID from the database.
-pub async fn get_cluster_by_id(id: u64) -> LauncherResult<Option<clusters::Model>> {
+pub async fn get_cluster_by_id(id: ClusterId) -> LauncherResult<Option<clusters::Model>> {
 	let state = State::get().await?;
 	let db = &state.db;
 

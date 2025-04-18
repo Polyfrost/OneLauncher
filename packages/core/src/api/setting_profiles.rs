@@ -1,6 +1,7 @@
 use onelauncher_entity::setting_profiles;
+use sea_orm::ActiveValue::Set;
 
-use crate::store::State;
+use crate::{error::LauncherResult, store::State};
 
 pub mod dao {
 	use onelauncher_entity::setting_profiles;
@@ -65,6 +66,7 @@ pub mod dao {
 	}
 }
 
+/// Returns the global settings profile
 pub async fn get_global_profile() -> setting_profiles::Model {
 	let Ok(state) = State::get().await else {
 		return setting_profiles::Model::default_global_profile();
@@ -72,4 +74,17 @@ pub async fn get_global_profile() -> setting_profiles::Model {
 
 	let settings = state.settings.read().await;
 	settings.global_game_settings.clone()
+}
+
+/// Creates a new setting profile and inserts it into the database. Returns the inserted entry
+pub async fn create_profile<F>(name: &str, block: F) -> LauncherResult<setting_profiles::Model>
+where F: AsyncFnOnce(setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::ActiveModel> {
+	let model = setting_profiles::ActiveModel {
+		name: Set(name.to_string()),
+		..Default::default()
+	};
+
+	let model = block(model).await?;
+
+	dao::insert_profile(model).await
 }

@@ -7,9 +7,11 @@ use futures::AsyncReadExt;
 use interpulse::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
 use interpulse::api::modded::SidedDataEntry;
 use interpulse::utils::get_path_from_artifact;
+use onelauncher_entity::resolution::Resolution;
 
 use crate::constants::{self, DUMMY_REPLACE_NEWLINE};
 use crate::error::LauncherResult;
+use crate::store::credentials::MinecraftCredentials;
 use crate::store::Core;
 use crate::utils::io;
 
@@ -20,9 +22,8 @@ pub fn java_arguments(
 	libraries_path: &Path,
 	classpaths: &str,
 	version: &str,
-	mem_min: usize,
-	mem_max: usize,
-	custom_args: Vec<String>,
+	mem_max: u32,
+	custom_args: String,
 	java_arch: &str,
 ) -> LauncherResult<Vec<String>> {
 	let mut parsed = Vec::new();
@@ -56,75 +57,72 @@ pub fn java_arguments(
 	}
 
 	parsed.push(format!("-Xmx{mem_max}M"));
-	parsed.push(format!("-Xms{mem_min}M"));
 
-	for arg in custom_args {
-		if !arg.is_empty() {
-			parsed.push(arg);
-		}
+	if !custom_args.is_empty() {
+		parsed.push(custom_args);
 	}
 
 	Ok(parsed)
 }
 
-// #[allow(clippy::too_many_arguments)]
-// pub fn minecraft_arguments(
-// 	args: Option<&[Argument]>,
-// 	legacy_args: Option<&str>,
-// 	creds: &MinecraftCredentials,
-// 	version: &str,
-// 	asset_index: &str,
-// 	game_directory: &Path,
-// 	assets_directory: &Path,
-// 	version_type: VersionType,
-// 	resolution: Resolution,
-// 	java_arch: &str,
-// ) -> LauncherResult<Vec<String>> {
-// 	if let Some(args) = args {
-// 		let mut parsed = Vec::new();
-// 		parse_arguments(
-// 			args,
-// 			&mut parsed,
-// 			|arg| {
-// 				parse_minecraft_argument(
-// 					arg,
-// 					&creds.access_token,
-// 					&creds.username,
-// 					creds.id,
-// 					version,
-// 					asset_index,
-// 					game_directory,
-// 					assets_directory,
-// 					version_type,
-// 					resolution,
-// 				)
-// 			},
-// 			java_arch,
-// 		)?;
+#[allow(clippy::too_many_arguments)]
+pub fn minecraft_arguments(
+	args: Option<&[Argument]>,
+	legacy_args: Option<&str>,
+	creds: &MinecraftCredentials,
+	version: &str,
+	asset_index: &str,
+	game_directory: &Path,
+	assets_directory: &Path,
+	version_type: VersionType,
+	resolution: Resolution,
+	java_arch: &str,
+) -> LauncherResult<Vec<String>> {
+	if let Some(args) = args {
+		let mut parsed = Vec::new();
+		parse_arguments(
+			args,
+			&mut parsed,
+			|arg| {
+				parse_minecraft_argument(
+					arg,
+					&creds.access_token,
+					&creds.username,
+					creds.id,
+					version,
+					asset_index,
+					game_directory,
+					assets_directory,
+					version_type,
+					resolution,
+				)
+			},
+			java_arch,
+		)?;
 
-// 		Ok(parsed)
-// 	} else if let Some(legacy_args) = legacy_args {
-// 		let mut parsed = Vec::new();
-// 		for arg in legacy_args.split(' ') {
-// 			parsed.push(parse_minecraft_argument(
-// 				&arg.replace(' ', DUMMY_REPLACE_NEWLINE),
-// 				&creds.access_token,
-// 				&creds.username,
-// 				creds.id,
-// 				version,
-// 				asset_index,
-// 				game_directory,
-// 				assets_directory,
-// 				version_type,
-// 				resolution,
-// 			)?);
-// 		}
+		Ok(parsed)
+	} else if let Some(legacy_args) = legacy_args {
+		let mut parsed = Vec::new();
+		for arg in legacy_args.split(' ') {
+			parsed.push(parse_minecraft_argument(
+				&arg.replace(' ', DUMMY_REPLACE_NEWLINE),
+				&creds.access_token,
+				&creds.username,
+				creds.id,
+				version,
+				asset_index,
+				game_directory,
+				assets_directory,
+				version_type,
+				resolution,
+			)?);
+		}
 
-// 		Ok(parsed)
-// 	} else {
-// 		Ok(Vec::new())
-// 	}
-// }
+		Ok(parsed)
+	} else {
+		Ok(Vec::new())
+	}
+}
 
 pub fn processor_arguments<T: AsRef<str>, S: ::std::hash::BuildHasher>(
 	libraries_path: &Path,
@@ -206,7 +204,7 @@ pub fn parse_minecraft_argument(
 	game_directory: &Path,
 	assets_directory: &Path,
 	version_type: VersionType,
-	resolution: (u32, u32),
+	resolution: Resolution,
 ) -> LauncherResult<String> {
 	#[allow(clippy::literal_string_with_formatting_args)]
 	Ok(argument
@@ -235,8 +233,8 @@ pub fn parse_minecraft_argument(
 			&io::canonicalize(assets_directory)?.to_string_lossy(),
 		)
 		.replace("${version_type}", version_type.as_str())
-		.replace("${resolution_width}", &resolution.0.to_string())
-		.replace("${resolution_height}", &resolution.1.to_string()))
+		.replace("${resolution_width}", &resolution.width.to_string())
+		.replace("${resolution_height}", &resolution.height.to_string()))
 }
 
 #[allow(clippy::too_many_arguments)]

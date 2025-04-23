@@ -119,8 +119,8 @@ importers:
         specifier: ^5.56.2
         version: 5.59.16(solid-js@1.9.3)
       '@tauri-apps/api':
-        specifier: ^2.0.3
-        version: 2.0.3
+        specifier: ^2.5.0
+        version: 2.5.0
       '@tauri-apps/plugin-clipboard-manager':
         specifier: ^2.0.0
         version: 2.0.0
@@ -203,8 +203,8 @@ importers:
         specifier: ^5.56.2
         version: 5.59.16(solid-js@1.9.3)
       '@tauri-apps/api':
-        specifier: ^2.0.3
-        version: 2.0.3
+        specifier: ^2.5.0
+        version: 2.5.0
       highlight.js:
         specifier: ^11.10.0
         version: 11.10.0
@@ -1437,8 +1437,8 @@ packages:
     peerDependencies:
       solid-js: ^1.6.0
 
-  '@tauri-apps/api@2.0.3':
-    resolution: {integrity: sha512-840qk6n8rbXBXMA5/aAgTYsg5JAubKO0nXw5wf7IzGnUuYKGbB4oFBIZtXOIWy+E0kNTDI3qhq5iqsoMJfwp8g==}
+  '@tauri-apps/api@2.5.0':
+    resolution: {integrity: sha512-Ldux4ip+HGAcPUmuLT8EIkk6yafl5vK0P0c0byzAKzxJh7vxelVtdPONjfgTm96PbN24yjZNESY8CKo8qniluA==}
 
   '@tauri-apps/cli-darwin-arm64@2.0.4':
     resolution: {integrity: sha512-siH7rOHobb16rPbc11k64p1mxIpiRCkWmzs2qmL5IX21Gx9K5onI3Tk67Oqpf2uNupbYzItrOttaDT4NHFC7tw==}
@@ -2866,8 +2866,8 @@ packages:
     resolution: {integrity: sha512-bZsjR/iRjl1Nk1UkjGpAzLNfQtzuijhn2g+pbZb98HQ1Gk8vM9hfbxeMBP+M2/UUdwj0RqGG3mlvk2MsAqwvEw==}
     engines: {node: 20 || >=22}
 
-  jiti@1.21.6:
-    resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
+  jiti@1.21.7:
+    resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
   jiti@2.0.0-beta.3:
@@ -5374,7 +5374,7 @@ snapshots:
       '@tanstack/query-core': 5.59.16
       solid-js: 1.9.3
 
-  '@tauri-apps/api@2.0.3': {}
+  '@tauri-apps/api@2.5.0': {}
 
   '@tauri-apps/cli-darwin-arm64@2.0.4':
     optional: true
@@ -5421,15 +5421,15 @@ snapshots:
 
   '@tauri-apps/plugin-clipboard-manager@2.0.0':
     dependencies:
-      '@tauri-apps/api': 2.0.3
+      '@tauri-apps/api': 2.5.0
 
   '@tauri-apps/plugin-dialog@2.0.1':
     dependencies:
-      '@tauri-apps/api': 2.0.3
+      '@tauri-apps/api': 2.5.0
 
   '@tauri-apps/plugin-shell@2.0.1':
     dependencies:
-      '@tauri-apps/api': 2.0.3
+      '@tauri-apps/api': 2.5.0
 
   '@testing-library/dom@10.4.0':
     dependencies:
@@ -6917,7 +6917,7 @@ snapshots:
       debug: 4.3.7
       esbuild: 0.23.1
       jiti: 2.0.0-beta.3
-      jiti-v1: jiti@1.21.6
+      jiti-v1: jiti@1.21.7
       pathe: 1.1.2
       tsx: 4.19.1
     transitivePeerDependencies:
@@ -7002,7 +7002,7 @@ snapshots:
     dependencies:
       '@isaacs/cliui': 8.0.2
 
-  jiti@1.21.6: {}
+  jiti@1.21.7: {}
 
   jiti@2.0.0-beta.3: {}
 

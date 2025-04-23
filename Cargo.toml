@@ -142,7 +142,7 @@ bytes = { version = "1.7" }
 async-channel = { version = "2.3" }
 mimalloc = { version = "0.1" }
 pin-project-lite = { version = "0.2" }
-once_cell = { version = "1.19" }
+once_cell = { version = "1.21" }
 quote = { version = "1.0" }
 syn = { version = "2.0", features = [ "full" ] }
 discord-rich-presence = { version = "0.2" }

@@ -137,11 +137,11 @@ importers:
         specifier: ^0.11.0
         version: 0.11.0(solid-js@1.9.3)
       overlayscrollbars:
-        specifier: ^2.10.0
-        version: 2.10.0
+        specifier: ^2.11.1
+        version: 2.11.1
       overlayscrollbars-solid:
         specifier: ^0.5.5
-        version: 0.5.5(overlayscrollbars@2.10.0)(solid-js@1.9.3)
+        version: 0.5.5(overlayscrollbars@2.11.1)(solid-js@1.9.3)
       pathe:
         specifier: ^1.1.2
         version: 1.1.2
@@ -2866,8 +2866,8 @@ packages:
     resolution: {integrity: sha512-bZsjR/iRjl1Nk1UkjGpAzLNfQtzuijhn2g+pbZb98HQ1Gk8vM9hfbxeMBP+M2/UUdwj0RqGG3mlvk2MsAqwvEw==}
     engines: {node: 20 || >=22}
 
-  jiti@1.21.6:
-    resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
+  jiti@1.21.7:
+    resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
   jiti@2.0.0-beta.3:
@@ -3297,8 +3297,8 @@ packages:
       overlayscrollbars: ^2.0.0
       solid-js: ^1.7.0
 
-  overlayscrollbars@2.10.0:
-    resolution: {integrity: sha512-diNMeEafWTE0A4GJfwRpdBp2rE/BEvrhptBdBcDu8/UeytWcdCy9Td8tZWnztJeJ26f8/uHCWfPnPUC/dtgJdw==}
+  overlayscrollbars@2.11.1:
+    resolution: {integrity: sha512-kogaNaBTIizRenQ2GTzt2cpkEH9B0nUBXseRxqQblH/YicJ3TaWuvn8E5TXPPfJCVoHYSgBYZzzva40kCERKHg==}
 
   p-limit@2.3.0:
     resolution: {integrity: sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==}
@@ -6917,7 +6917,7 @@ snapshots:
       debug: 4.3.7
       esbuild: 0.23.1
       jiti: 2.0.0-beta.3
-      jiti-v1: jiti@1.21.6
+      jiti-v1: jiti@1.21.7
       pathe: 1.1.2
       tsx: 4.19.1
     transitivePeerDependencies:
@@ -7002,7 +7002,7 @@ snapshots:
     dependencies:
       '@isaacs/cliui': 8.0.2
 
-  jiti@1.21.6: {}
+  jiti@1.21.7: {}
 
   jiti@2.0.0-beta.3: {}
 
@@ -7582,12 +7582,12 @@ snapshots:
       type-check: 0.4.0
       word-wrap: 1.2.5
 
-  overlayscrollbars-solid@0.5.5(overlayscrollbars@2.10.0)(solid-js@1.9.3):
+  overlayscrollbars-solid@0.5.5(overlayscrollbars@2.11.1)(solid-js@1.9.3):
     dependencies:
-      overlayscrollbars: 2.10.0
+      overlayscrollbars: 2.11.1
       solid-js: 1.9.3
 
-  overlayscrollbars@2.10.0: {}
+  overlayscrollbars@2.11.1: {}
 
   p-limit@2.3.0:
     dependencies:

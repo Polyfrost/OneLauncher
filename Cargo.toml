@@ -125,7 +125,7 @@ tokio = { version = "1.40", features = [ "full" ] }
 tokio-stream = { version = "0.1.16", features = [ "fs" ] }
 notify = { version = "6.1", default-features = false }
 notify-debouncer-mini = { version = "0.4", default-features = false }
-tempfile = { version = "3.12" }
+tempfile = { version = "3.19" }
 dunce = { version = "1.0.5" }
 zip = { version = "2.2.0" }
 dirs = { version = "5.0" }

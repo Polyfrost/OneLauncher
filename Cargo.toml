@@ -53,7 +53,7 @@ tauri-plugin-clipboard-manager = { version = "2.0" }
 # tauri-plugin-updater allows for us to use it's functionality for in-app updates.
 tauri-plugin-updater = { version = "2.0" }
 # tauri-plugin-dialog adds a bridge for opening file manager and message dialogs.
-tauri-plugin-dialog = { version = "2.0" }
+tauri-plugin-dialog = { version = "2.2" }
 # tauri-plugin-deep-link adds a way to handle custom uri schemes (onelauncher://)
 tauri-plugin-deep-link = { version = "2.0" }
 

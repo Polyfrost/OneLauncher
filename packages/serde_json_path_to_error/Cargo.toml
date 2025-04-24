@@ -1,0 +1,19 @@
+[package]
+name = "serde_json_path_to_error"
+version = "0.2.0"
+authors = [ "Polyfrost", "Ethan Brierley <ethanboxx@gmail.com>" ]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+description = """
+A drop in replacement for serde_json where detailed errors are the default
+"""
+keywords = [ "serde", "json", "serialization" ]
+documentation = "https://docs.rs/serde_json_path_to_error/"
+repository = "https://github.com/eopb/serde_json_path_to_error"
+edition = "2024"
+exclude = [ ".github" ]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_path_to_error = "0.1.17"

@@ -37,6 +37,8 @@ pub enum LauncherError {
 	RegexError(#[from] regex::Error),
 	#[error("couldn't acquire semaphore: {0}")]
 	SemaphoreError(#[from] tokio::sync::AcquireError),
+	#[error(transparent)]
+	UrlError(#[from] url::ParseError),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]

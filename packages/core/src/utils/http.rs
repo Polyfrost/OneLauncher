@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 
 use bytes::Bytes;
 use reqwest::Method;
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
 
@@ -49,7 +49,7 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.expect("failed to build reqwest client!")
 });
 
-#[tracing::instrument(level = "debug", skip(body, headers, ingress))]
+#[tracing::instrument(level = "debug", skip(ingress))]
 #[onelauncher_macro::pin]
 pub async fn fetch_advanced(
 	method: Method,
@@ -147,7 +147,7 @@ pub async fn fetch(method: Method, url: &str) -> LauncherResult<Bytes> {
 	fetch_advanced(method, url, None, None, None, None).await
 }
 
-pub async fn fetch_json<T: for<'de> Deserialize<'de>>(
+pub async fn fetch_json<T: DeserializeOwned>(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,
@@ -156,7 +156,7 @@ pub async fn fetch_json<T: for<'de> Deserialize<'de>>(
 	fetch_json_advanced(method, url, body, None, None, ingress).await
 }
 
-pub async fn fetch_json_advanced<T: for<'de> Deserialize<'de>>(
+pub async fn fetch_json_advanced<T: DeserializeOwned>(
 	method: Method,
 	url: &str,
 	body: Option<serde_json::Value>,

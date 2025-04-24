@@ -40,7 +40,7 @@ impl HashAlgorithm {
 
 	pub async fn hasher<F>(&self, closure: F) -> Result<String, IOError>
 	where
-		F: AsyncFn(&mut (dyn DynDigest)) -> Result<(), IOError>,
+		F: AsyncFn(&mut (dyn DynDigest + Send + Sync)) -> Result<(), IOError> + Send + Sync,
 	{
 		let mut hasher = get_inner(self);
 		closure(&mut *hasher).await?;
@@ -62,8 +62,8 @@ impl HashAlgorithm {
 	}
 
 	pub async fn hash_file(&self, path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
-		self.hasher(async |hasher: &mut dyn DynDigest| {
-			let path = path.as_ref();
+		let path = path.as_ref();
+		self.hasher(async |hasher: &mut (dyn DynDigest + Send + Sync)| {
 			let file = tokio::fs::File::open(path).await?;
 			let mut reader = tokio::io::BufReader::new(file);
 
@@ -125,7 +125,7 @@ impl FromStr for HashAlgorithm {
 	}
 }
 
-fn get_inner(algorithm: &HashAlgorithm) -> Box<dyn DynDigest> {
+fn get_inner(algorithm: &HashAlgorithm) -> Box<dyn DynDigest + Send + Sync> {
 	match algorithm {
 		HashAlgorithm::Sha1 => Box::new(sha1::Sha1::default()),
 		HashAlgorithm::Sha256 => Box::new(sha2::Sha256::default()),

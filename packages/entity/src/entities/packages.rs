@@ -3,7 +3,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::icon::Icon;
+use crate::{icon::Icon, package::{PackageType, Provider}};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "packages")]
@@ -17,8 +17,8 @@ pub struct Model {
 	pub display_name: String,
 	#[sea_orm(column_type = "Text")]
 	pub display_version: String,
-	pub type_id: u32,
-	pub provider_id: u32,
+	pub project_type_id: PackageType,
+	pub provider_id: Provider,
 	#[sea_orm(column_type = "Text")]
 	pub provider_version: String,
 	#[sea_orm(column_type = "Text")]

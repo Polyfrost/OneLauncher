@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 pub enum GameLoader {
 	#[default]
+	#[serde(alias = "minecraft")]
 	Vanilla = 0,
 	Forge = 1,
 	NeoForge = 2,

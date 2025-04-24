@@ -43,9 +43,7 @@ tracing-appender = { workspace = true }
 
 # serialization
 serde = { workspace = true }
-serde_json = { workspace = true }
-serde_ini = { workspace = true }
-serde_repr = { workspace = true }
+serde_json = { package = "serde_json_path_to_error", path = "../serde_json_path_to_error" }
 serde_with = { workspace = true }
 
 # utils

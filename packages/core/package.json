@@ -13,6 +13,7 @@
 	"scripts": {
 		"cargo": "cargo",
 		"binary": "cargo run --bin",
-		"example": "cargo run --example"
+		"example": "cargo run --example",
+		"test": "cargo test"
 	}
 }

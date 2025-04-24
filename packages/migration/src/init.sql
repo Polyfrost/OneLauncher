@@ -21,7 +21,7 @@ create table packages (
 	file_name text not null,
 	display_name text not null,
 	display_version text not null,
-	type_id integer not null,
+	project_type_id integer not null,
 	provider_id integer not null,
 	provider_version text not null,
 	mc_versions text not null,
@@ -29,6 +29,10 @@ create table packages (
 	icon_url text,
 	constraint packages_pk primary key (hash)
 );
+
+create index packages_project_type_id_idx on packages (project_type_id);
+create index packages_provider_id_idx on packages (provider_id);
+create index packages_mc_loader_mc_versions_idx on packages (mc_loader, mc_versions);
 
 create table setting_profiles (
 	name text not null,

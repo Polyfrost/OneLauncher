@@ -20,29 +20,11 @@
 		"**/.cargo": true,
 		"**/.crates": true
 	},
-	"rust-analyzer.files.excludeDirs": [
-		"_build",
-		".flatpak-builder",
-		".git",
-		".gitlab",
-		".gitlab-ci",
-		".gradle",
-		".idea",
-		".next",
-		".project",
-		".settings",
-		".venv",
-		"bin",
-		"hooks",
-		"node_modules",
-		"screenshots",
-		"target",
-		".cargo",
-		".rustup",
-		".crates"
-	],
 	"rust-analyzer.procMacro.enable": true,
 	"rust-analyzer.procMacro.attributes.enable": true,
+	"rust-analyzer.procMacro.ignored": {
+		"async-trait": ["async_trait"]
+	},
 	"rust-analyzer.check.command": "clippy",
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"rust-analyzer.linkedProjects": [],

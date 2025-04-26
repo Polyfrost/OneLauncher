@@ -30,7 +30,8 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 	let clusters = dao::get_all_clusters().await?;
 
 	let mut missing_ids = Vec::new();
-	let mut checked_paths = HashSet::new();
+	let mut checked_folders = HashSet::new();
+	let dirs = Dirs::get().await?;
 
 	for cluster in clusters {
 		if sync_cluster(&cluster)
@@ -40,14 +41,14 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 		{
 			missing_ids.push(cluster.id);
 
-			let path = cluster.path.clone();
+			let path = cluster.folder_name.clone();
 			send_error!(
 				"cluster {} is missing from the filesystem",
 				path.clone()
 			);
 		}
 
-		checked_paths.insert(PathBuf::from(cluster.path));
+		checked_folders.insert(dirs.clusters_dir().join(cluster.folder_name.clone()));
 	}
 
 	// Check for clusters in the filesystem that are not in the database
@@ -58,7 +59,7 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
  		let mut stream = io::read_dir(cluster_dir).await?;
  		while let Ok(Some(entry)) = stream.next_entry().await {
  			let path = entry.path();
- 			if !path.is_dir() || checked_paths.contains(&path) {
+ 			if !path.is_dir() || checked_folders.contains(&path) {
  				// Skip if it's not a directory or if we've already checked it
  				continue;
  			}
@@ -79,7 +80,7 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 /// Checks if the cluster in the database exists and if the directory exists.
 #[tracing::instrument]
 pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncAction> {
-	let path = PathBuf::from(cluster.path.clone());
+	let path = Dirs::get_clusters_dir().await?.join(cluster.folder_name.clone());
 	if !path.exists() {
 		return Ok(SyncAction::MissingFs);
 	}
@@ -104,7 +105,7 @@ pub async fn sync_cluster_by_id(id: ClusterId) -> LauncherResult<SyncAction> {
 /// Checks if the cluster in the database exists and if the directory exists.
 #[tracing::instrument]
 pub async fn sync_cluster_by_path(path: &PathBuf) -> LauncherResult<SyncAction> {
-	let Some(cluster) = dao::get_cluster_by_path(path).await? else {
+	let Some(cluster) = dao::get_cluster_by_folder_name(path).await? else {
 		tracing::warn!("cluster with path {path:?} not found in database");
 		return Ok(SyncAction::MissingDb);
 	};

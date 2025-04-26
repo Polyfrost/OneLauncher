@@ -10,7 +10,7 @@ pub type ClusterId = i64;
 /// Inserts a cluster in the database.
 pub async fn insert_cluster(
 	name: &str,
-	path: &str,
+	folder_name: &str,
 	mc_version: &str,
 	mc_loader: GameLoader,
 	mc_loader_version: Option<&str>,
@@ -21,7 +21,7 @@ pub async fn insert_cluster(
 
 	let model = clusters::ActiveModel {
 		name: Set(name.to_string()),
-		path: Set(path.to_string()),
+		folder_name: Set(folder_name.to_string()),
 		mc_version: Set(mc_version.to_string()),
 		mc_loader: Set(mc_loader),
 		mc_loader_version: Set(mc_loader_version.map(String::from)),
@@ -96,12 +96,12 @@ pub async fn get_cluster_by_id(id: ClusterId) -> LauncherResult<Option<clusters:
 }
 
 /// Gets a cluster by its path from the database.
-pub async fn get_cluster_by_path(path: &Path) -> LauncherResult<Option<clusters::Model>> {
+pub async fn get_cluster_by_folder_name(folder_name: &Path) -> LauncherResult<Option<clusters::Model>> {
 	let state = State::get().await?;
 	let db = &state.db;
 
 	let model = clusters::Entity::find()
-		.filter(clusters::Column::Path.eq(path.to_string_lossy().to_string()))
+		.filter(clusters::Column::FolderName.eq(folder_name.to_string_lossy().to_string()))
 		.one(db)
 		.await?;
 

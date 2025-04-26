@@ -4,3 +4,4 @@ pub mod loader;
 pub mod package;
 pub mod resolution;
 pub mod settings;
+pub mod utility;

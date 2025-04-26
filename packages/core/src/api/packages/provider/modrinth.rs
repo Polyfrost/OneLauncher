@@ -308,7 +308,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 	fn from(value: ModrinthPackage) -> Self {
 		Self {
 			provider: Provider::Modrinth,
-			provider_id: value.id,
+			id: value.id,
 			package_type: value.project_type,
 			name: value.title,
 			short_desc: value.description,

@@ -10,13 +10,9 @@ pub struct Model {
 	#[sea_orm(primary_key)]
 	pub id: i64,
 	pub major_version: u32,
-	#[sea_orm(column_type = "Text")]
 	pub vendor_name: String,
-	#[sea_orm(column_type = "Text")]
 	pub absolute_path: String,
-	#[sea_orm(column_type = "Text")]
 	pub full_version: String,
-	#[sea_orm(column_type = "Text")]
 	pub arch: String,
 }
 

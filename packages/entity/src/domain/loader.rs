@@ -44,6 +44,17 @@ impl GameLoader {
 		}
 	}
 
+	pub fn compatible_with(&self, other: &Self) -> bool {
+		match self {
+			Self::Vanilla => matches!(other, Self::Vanilla),
+			Self::Forge => matches!(other, Self::Forge),
+			Self::NeoForge => matches!(other, Self::NeoForge),
+			Self::Quilt => matches!(other, Self::Quilt | Self::Fabric),
+			Self::Fabric => matches!(other, Self::Fabric),
+			Self::LegacyFabric => matches!(other, Self::LegacyFabric),
+		}
+	}
+
 }
 
 impl TryFrom<String> for GameLoader {

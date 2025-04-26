@@ -13,8 +13,25 @@ impl Nullable for Icon {
 }
 
 impl Icon {
-	pub fn new(icon: String) -> Self {
-		Self(icon)
+	pub fn from_hash(hash: String) -> Self {
+		Self(format!("cache://{hash}"))
+	}
+
+	pub fn try_from_path(path: impl AsRef<std::path::Path>) -> Option<Self> {
+		let path = path.as_ref();
+		if !path.is_absolute() {
+			return None;
+		}
+
+		Some(Self(format!("file://{}", path.display())))
+	}
+
+	pub fn try_from_url(url: url::Url) -> Option<Self> {
+		if url.scheme() != "http" && url.scheme() != "https" {
+			return None;
+		}
+
+		Some(Self(url.as_str().to_string()))
 	}
 
 	pub fn get_type(&self) -> IconType {
@@ -22,29 +39,36 @@ impl Icon {
 			IconType::Path
 		} else if self.is_url() {
 			IconType::Url
+		} else if self.is_cached() {
+			IconType::Cache
 		} else {
-			IconType::Stored
+			IconType::Unknown
 		}
 	}
 
+	/// Returns true if the icon is a path to a file.
 	pub fn is_path(&self) -> bool {
 		self.0.starts_with("file://")
 	}
 
+	/// Returns true if the icon is a HTTP URL.
 	pub fn is_url(&self) -> bool {
 		self.0.starts_with("http://") || self.0.starts_with("https://")
 	}
 
-	pub fn is_stored(&self) -> bool {
-		!self.is_path() && !self.is_url()
+	/// Returns true if the icon is a cached icon. Relative to the cache directory.
+	pub fn is_cached(&self) -> bool {
+		self.0.starts_with("cache://")
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum IconType {
+	#[default]
+	Unknown,
 	Path,
 	Url,
-	Stored,
+	Cache,
 }
 
 impl Display for IconType {
@@ -63,7 +87,7 @@ impl Deref for Icon {
 
 impl From<String> for Icon {
 	fn from(s: String) -> Self {
-		Self::new(s)
+		Self(s)
 	}
 }
 
@@ -71,7 +95,7 @@ impl FromStr for Icon {
 	type Err = ();
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Ok(Self::new(s.to_string()))
+		Ok(Self(s.to_string()))
 	}
 }
 

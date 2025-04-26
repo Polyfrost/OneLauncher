@@ -40,8 +40,8 @@ pub struct SearchQuery {
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedPackage {
+	pub id: String,
 	pub provider: Provider,
-	pub provider_id: String,
 	pub package_type: PackageType,
 	pub name: String,
 	pub short_desc: String,

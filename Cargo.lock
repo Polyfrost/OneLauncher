@@ -3116,6 +3116,7 @@ name = "onelauncher_migration"
 version = "0.2.0-alpha.2"
 dependencies = [
  "async-trait",
+ "chrono",
  "sea-orm-migration",
  "tokio",
 ]

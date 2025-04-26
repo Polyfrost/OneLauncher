@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use onelauncher_entity::package::{PackageType, Provider};
 use tokio::sync::OnceCell;
 
 use crate::{utils, LauncherResult};
@@ -46,19 +47,19 @@ impl Dirs {
 }
 
 macro_rules! dirs_impl {
-	($($name:ident => |$self:ident| $path:expr),*$(,)?) => {
+	($($name:ident = |$self:ident$(, $param:ident : $type:ty )*| $path:expr),*$(,)?) => {
 		paste::paste! {
 			impl Dirs {
 				$(
 					#[must_use]
-					pub fn $name(&self) -> PathBuf {
+					pub fn $name(&self $(, $param: $type)*) -> PathBuf {
 						let $self = self;
 						$path
 					}
 
-					pub async fn [<get _ $name>]() -> LauncherResult<PathBuf> {
+					pub async fn [<get _ $name>]($($param: $type),*) -> LauncherResult<PathBuf> {
 						Dirs::get().await.map(|$self| {
-							$self.$name()
+							$self.$name($($param),*)
 						})
 					}
 				)*
@@ -68,22 +69,30 @@ macro_rules! dirs_impl {
 }
 
 dirs_impl! {
-	db_file => |this| this.base_dir.join("user_data.db"),
-	settings_file => |this| this.base_dir.join("settings.json"),
-	auth_file => |this| this.base_dir.join("auth.json"),
+	db_file = |this| this.base_dir.join("user_data.db"),
+	settings_file = |this| this.base_dir.join("settings.json"),
+	auth_file = |this| this.base_dir.join("auth.json"),
 
-	launcher_logs_dir => |this| this.base_dir.join("logs"),
-	clusters_dir => |this| this.base_dir.join("clusters"),
-	metadata_dir => |this| this.base_dir.join("metadata"),
+	launcher_logs_dir = |this| this.base_dir.join("logs"),
+	clusters_dir = |this| this.base_dir.join("clusters"),
+	metadata_dir = |this| this.base_dir.join("metadata"),
 
-	versions_dir => |this| this.metadata_dir().join("versions"),
-	libraries_dir => |this| this.metadata_dir().join("libraries"),
-	natives_dir => |this| this.metadata_dir().join("natives"),
-	java_dir => |this| this.metadata_dir().join("java"),
-	caches_dir => |this| this.metadata_dir().join("caches"),
+	versions_dir = |this| this.metadata_dir().join("versions"),
+	libraries_dir = |this| this.metadata_dir().join("libraries"),
+	natives_dir = |this| this.metadata_dir().join("natives"),
+	java_dir = |this| this.metadata_dir().join("java"),
+	caches_dir = |this| this.metadata_dir().join("caches"),
+	packages_dir = |this| this.metadata_dir().join("packages"),
 
-	assets_dir => |this| this.metadata_dir().join("assets"),
-	legacy_assets_dir => |this| this.metadata_dir().join("resources"),
-	assets_index_dir => |this| this.assets_dir().join("indexes"),
-	assets_object_dir => |this| this.assets_dir().join("objects"),
+	assets_dir = |this| this.metadata_dir().join("assets"),
+	legacy_assets_dir = |this| this.metadata_dir().join("resources"),
+	assets_index_dir = |this| this.assets_dir().join("indexes"),
+	assets_object_dir = |this| this.assets_dir().join("objects"),
+
+	package_dir = |this, package_type: &PackageType, provider: &Provider, project_id: &str| {
+		this.packages_dir()
+			.join(package_type.folder_name())
+			.join(provider.name())
+			.join(project_id)
+	}
 }

@@ -3,30 +3,26 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{icon::Icon, package::{PackageType, Provider}};
+use crate::{icon::Icon, loader::GameLoader, package::{PackageType, Provider}, utility::DbVec};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "packages")]
 #[onelauncher_macro::specta]
 pub struct Model {
-	#[sea_orm(primary_key, auto_increment = false, column_type = "Text")]
+	#[sea_orm(primary_key, auto_increment = false)]
 	pub hash: String,
-	#[sea_orm(column_type = "Text")]
 	pub file_name: String,
-	#[sea_orm(column_type = "Text")]
+	pub version_id: String,
+	pub published_at: DateTimeUtc,
 	pub display_name: String,
-	#[sea_orm(column_type = "Text")]
 	pub display_version: String,
-	pub project_type_id: PackageType,
-	pub provider_id: Provider,
-	#[sea_orm(column_type = "Text")]
-	pub provider_version: String,
-	#[sea_orm(column_type = "Text")]
-	pub mc_versions: String,
-	#[sea_orm(column_type = "Text")]
-	pub mc_loader: String,
-	#[sea_orm(column_type = "Text", nullable)]
-	pub icon_url: Option<Icon>,
+	pub package_type: PackageType,
+	pub provider: Provider,
+	pub package_id: String,
+	pub mc_versions: DbVec<String>,
+	pub mc_loader: DbVec<GameLoader>,
+	#[sea_orm(nullable)]
+	pub icon: Option<Icon>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -55,15 +55,17 @@ pub async fn create_cluster(
 	let cluster_dir = Dirs::get_clusters_dir().await?;
 
 	// Get the directory for the cluster
-	let mut path = cluster_dir.join(&name);
+	let mut folder_name = name.clone();
+	let mut path = cluster_dir.join(&folder_name);
 
 	// Folder name conflict resolution
 	if path.exists() {
 		let mut which = 1;
 		loop {
-			let new_name = format!("{name} ({which})");
+			let new_name = format!("{folder_name} ({which})");
 			path = cluster_dir.join(&new_name);
 			if !path.exists() {
+				folder_name = new_name;
 				break;
 			}
 			which += 1;
@@ -84,7 +86,7 @@ pub async fn create_cluster(
 		// Finally add the cluster to the database
 		dao::insert_cluster(
 			name.as_str(),
-			path.to_string_lossy().into_owned().as_str(),
+			&folder_name,
 			mc_version,
 			mc_loader,
 			mc_loader_version,
@@ -253,7 +255,7 @@ async fn run_forge_processors(
 			client => cluster.mc_version.clone(),
 			server => "";
 		"ROOT":
-			client => cluster.path.clone(),
+			client => dirs.clusters_dir().join(cluster.folder_name.clone()).to_string_lossy(),
 			server => "";
 		"LIBRARY_DIR":
 			client => libraries.to_string_lossy(),
@@ -314,7 +316,7 @@ pub async fn update_playtime(id: ClusterId, duration: i64) -> LauncherResult<clu
 		let overall_played = cluster.overall_played.take().unwrap_or_default().unwrap_or_default();
 
 		cluster.overall_played = Set(Some(overall_played + duration));
-		cluster.last_played = Set(Some(Utc::now().timestamp()));
+		cluster.last_played = Set(Some(Utc::now()));
 
 		Ok(cluster)
 	}).await

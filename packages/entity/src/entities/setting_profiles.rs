@@ -15,21 +15,21 @@ pub struct Model {
 	#[merge(skip)]
 	pub name: String,
 	pub java_id: Option<i64>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub res: Option<Resolution>,
 	pub force_fullscreen: Option<bool>,
 	pub mem_max: Option<u32>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub launch_args: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub launch_env: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub hook_pre: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub hook_wrapper: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub hook_post: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub os_extra: Option<SettingsOsExtra>
 }
 

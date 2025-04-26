@@ -139,7 +139,7 @@ pub async fn fetch_advanced(
 		}
 	}
 
-	tracing::debug!("finished downloading {url}");
+	tracing::debug!("finished fetching {url}");
 	Ok(bytes)
 }
 

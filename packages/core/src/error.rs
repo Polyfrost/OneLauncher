@@ -21,6 +21,8 @@ pub enum LauncherError {
 	#[error(transparent)]
 	ProcessError(#[from] crate::store::processes::ProcessError),
 	#[error(transparent)]
+	PackageError(#[from] crate::api::packages::PackageError),
+	#[error(transparent)]
 	DaoError(#[from] DaoError),
 
 	#[error(transparent)]

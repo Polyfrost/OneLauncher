@@ -19,3 +19,4 @@ path = "src/lib.rs"
 tokio = { workspace = true }
 async-trait = { workspace = true }
 sea-orm-migration = { workspace = true }
+chrono = { workspace = true }

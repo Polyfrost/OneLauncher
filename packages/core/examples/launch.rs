@@ -53,7 +53,7 @@ pub async fn main() -> LauncherResult<()> {
 	let cluster_name = "Launchable";
 	let path = dirs.clusters_dir().join(cluster_name);
 
-	let mut cluster = if let Some(cluster) = api::cluster::dao::get_cluster_by_path(&path).await? {
+	let mut cluster = if let Some(cluster) = api::cluster::dao::get_cluster_by_folder_name(&path).await? {
 		cluster
 	} else {
 		api::cluster::create_cluster(cluster_name, "1.20.4", GameLoader::Fabric, None, None).await?
@@ -66,7 +66,7 @@ pub async fn main() -> LauncherResult<()> {
 		Ok(cluster)
 	}).await?;
 
-	println!("Using cluster: {} at '{}'", cluster.name, cluster.path);
+	println!("Using cluster: {} at '{}'", cluster.name, cluster.folder_name);
 
 	// Launch the game
 	let process = api::game::launch::launch_minecraft(&mut cluster, creds, None).await?;

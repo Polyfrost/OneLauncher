@@ -9,25 +9,22 @@ use crate::{cluster_stage::ClusterStage, icon::Icon, loader::GameLoader};
 pub struct Model {
 	#[sea_orm(primary_key)]
 	pub id: i64,
-	#[sea_orm(column_type = "Text")]
-	pub path: String,
+	pub folder_name: String,
 	pub stage: ClusterStage,
-	pub created_at: i64,
+	pub created_at: DateTimeUtc,
 	pub group_id: Option<i64>,
-	#[sea_orm(column_type = "Text")]
 	pub name: String,
-	#[sea_orm(column_type = "Text")]
 	pub mc_version: String,
 	pub mc_loader: GameLoader,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub mc_loader_version: Option<String>,
-	pub last_played: Option<i64>,
+	pub last_played: Option<DateTimeUtc>,
 	pub overall_played: Option<i64>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub icon_url: Option<Icon>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub setting_profile_name: Option<String>,
-	#[sea_orm(column_type = "Text", nullable)]
+	#[sea_orm(nullable)]
 	pub linked_pack_id: Option<String>,
 	pub linked_pack_version: Option<String>,
 }

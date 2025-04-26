@@ -5,12 +5,10 @@ use chrono::Utc;
 use discord_rich_presence::activity::Timestamps;
 use merge::Merge;
 use onelauncher_entity::prelude::model::*;
-use sea_orm::ActiveValue::Set;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
-use crate::api::cluster::dao::update_cluster;
-use crate::api::cluster::{ClusterError, prepare_cluster};
+use crate::api::cluster::{prepare_cluster, update_playtime, ClusterError};
 use crate::api::game::{arguments, log, metadata};
 use crate::api::java::{self, JavaError};
 use crate::api::setting_profiles::dao::get_profile_by_name;
@@ -41,6 +39,7 @@ pub async fn launch_minecraft(
 	}
 
 	let state = State::get().await?;
+	let dirs = Dirs::get().await?;
 
 	if !state.settings.read().await.allow_parallel_running_clusters {
 		let running = state.processes.has_running(cluster.id).await;
@@ -49,7 +48,7 @@ pub async fn launch_minecraft(
 		}
 	}
 
-	let cwd = &io::canonicalize(&cluster.path)?;
+	let cwd = &io::canonicalize(dirs.clusters_dir().join(cluster.folder_name.clone()))?;
 
 	let metadata = state.metadata.read().await;
 	let versions = &metadata.get_vanilla()?.versions;
@@ -85,7 +84,6 @@ pub async fn launch_minecraft(
 	let java_path = PathBuf::from(&java.absolute_path);
 	java::check_java_runtime(&java_path, false).await?;
 
-	let dirs = Dirs::get().await?;
 	let client_jar_path = dirs
 		.versions_dir()
 		.join(&version_name)
@@ -187,19 +185,14 @@ pub async fn launch_minecraft(
 		io::write(&options_path, options_string).await?;
 	}
 
-	let start_time = Utc::now().timestamp();
-	update_cluster(cluster, async |mut cluster| {
-		cluster.last_played = Set(Some(start_time));
-		Ok(cluster)
-	})
-	.await?;
+	update_playtime(cluster.id, 0).await?;
 
 	let censors = log::create_censors(&creds);
 
 	if let Some(discord) = &state.rpc {
 		discord.set_message(
 			&format!("Playing {}", cluster.name),
-			Some(Timestamps::new().start(start_time)),
+			Some(Timestamps::new().start(Utc::now().timestamp())),
 		).await;
 	}
 

@@ -33,6 +33,8 @@ impl Dirs {
 			.or_else(|| Some(dirs::data_dir()?.join(Core::get().launcher_name.clone())))
 			.ok_or(DirectoryError::BaseDir)?;
 
+		tracing::info!("using base directory '{}'", base_dir.display());
+
 		Ok(Self {
 			base_dir
 		})

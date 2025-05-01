@@ -16,7 +16,11 @@ path = "src/lib.rs"
 
 [features]
 default = []
-specta = [ "dep:specta", "interpulse/specta" ]
+specta = [
+	"onelauncher_macro/specta",
+	"dep:specta",
+	"interpulse/specta"
+]
 
 [dependencies]
 onelauncher_macro = { workspace = true }

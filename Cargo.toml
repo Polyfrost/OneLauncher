@@ -63,7 +63,10 @@ specta = { version = "=2.0.0-rc.22", features = [
 	"tokio"
 ] }
 specta-typescript = { version = "=0.0.9" }
-tauri-specta = { version = "=2.0.0-rc.21", features = [ "derive" ] }
+tauri-specta = { version = "=2.0.0-rc.21", features = [
+	"derive",
+	"typescript"
+] }
 
 # logging
 tracing = { version = "0.1" }

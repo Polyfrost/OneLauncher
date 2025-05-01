@@ -1,10 +1,9 @@
-#![allow(trivial_casts)]
-use onelauncher::utils::window::set_window_styling;
+use onelauncher_core::{api::proxy::ProxyTauri, error::LauncherResult, store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State}};
 use tauri::{Emitter, Manager};
 
 pub mod api;
-pub mod error;
 pub mod ext;
+pub mod constants;
 
 #[derive(Clone, serde::Serialize)]
 pub struct SingleInstancePayload {
@@ -12,37 +11,29 @@ pub struct SingleInstancePayload {
 	cwd: String,
 }
 
-#[tracing::instrument(skip_all)]
-async fn initialize_state(handle: &tauri::AppHandle) -> api::Result<()> {
-	onelauncher::ProxyState::initialize(handle).await?;
-	let s = onelauncher::State::get().await?;
-	onelauncher::State::update();
-	s.processor.write().await.restore().await?;
+#[tracing::instrument]
+async fn initialize_core() -> LauncherResult<()> {
+	let opts = CoreOptions {
+		curseforge_api_key: Some(constants::CURSEFORGE_API_KEY.to_string()),
+		launcher_name: "OneLauncher".to_string(),
+		launcher_version: env!("CARGO_PKG_VERSION").to_string(),
+		launcher_website: "https://polyfrost.org/".to_string(),
+		discord_client_id: Some(constants::DISCORD_CLIENT_ID.to_string()),
+		fetch_attempts: 3,
+		..Default::default()
+	};
+
+	Core::initialize(opts).await?;
+	Dirs::get().await?;
+	onelauncher_core::start_logger().await;
+	SemaphoreStore::get().await;
+	tracing::info!("initialized core modules");
+
 	Ok(())
 }
 
-/// the main entrypoint to the desktop add (initializes the logger and runs the app)
-///
-/// if the logger fails to initialize then we will panic because
-/// nothing else can be debugged once the logger fails.
-///
-/// the only thing that can fail before the logger should be our [`tokio::main`] loop.
-pub async fn run() {
-	let _log_guard = onelauncher::start_logger();
-	tracing::info!("initialized logger. loading onelauncher/tauri...");
-
-	run_app(tauri::Builder::default(), |app| {
-		if let Err(err) = setup(app) {
-			tracing::error!("failed to setup app: {:?}", err);
-		}
-	})
-	.await;
-}
-
-pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
-	builder: tauri::Builder<tauri::Wry>,
-	setup: F,
-) {
+#[tracing::instrument(skip_all)]
+async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult<tauri::App> {
 	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
 		.commands(collect_commands!())
 		.events(collect_events!());
@@ -58,7 +49,6 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		.expect("failed to export debug bindings!");
 
 	let builder = builder
-		.plugin(tauri_plugin_shell::init())
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
 			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
@@ -70,12 +60,12 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		.manage(ext::updater::State::default())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
-		.plugin(api::init())
+		// .plugin(api::init())
 		.menu(tauri::menu::Menu::new)
 		.invoke_handler(prebuild.invoke_handler())
 		.setup(move |app| {
 			prebuild.mount_events(app.handle());
-			setup(app.handle());
+			setup_window(app.handle());
 			Ok(())
 		});
 
@@ -83,54 +73,39 @@ pub async fn run_app<F: FnOnce(&tauri::AppHandle<tauri::Wry>) + Send + 'static>(
 		.build(tauri::generate_context!())
 		.expect("failed to build tauri application");
 
-	if let Err(err) = initialize_state(app.handle()).await {
-		tracing::error!("{err}");
-	};
+	Ok(app)
+}
+
+#[tracing::instrument(skip_all)]
+async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
+	let proxy = ProxyTauri::new(handle.clone());
+	ProxyState::initialize(proxy).await?;
+
+	State::get().await?;
+
+	tracing::info!("initialized launcher successfully");
+	Ok(())
+}
+
+pub async fn run() {
+	initialize_core().await.expect("failed to initialize core");
+	let app = initialize_tauri(tauri::Builder::default()).await.expect("failed to initialize tauri");
+	initialize_state(app.handle()).await.expect("failed to initialize state");
 
 	app.run(|_, _| {});
 }
 
-fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 	let win = handle.get_webview_window("main").unwrap();
 
-	tokio::task::spawn(async move {
-		let state = onelauncher::State::get();
-		let state = match state.await {
-			Ok(state) => state,
-			Err(err) => {
-				tracing::error!("{err}");
-				return;
-			}
-		};
+	// tokio::task::spawn(async move {
+	// 	// let state = State::get().await.expect("failed to get state");
+	// 	// let settings = state.settings.read().await;
+	// 	// win.set_decorations(settings.);
+	// });
 
-		let settings = state.settings.read().await;
 
-		if let Err(err) = set_window_styling(&win, settings.custom_frame) {
-			tracing::error!(err);
-		};
-
-		win.show().unwrap();
-	});
+	win.show().unwrap();
 
 	Ok(())
 }
-
-// TODO: Add tests
-// #[cfg(test)]
-// mod tests {
-// 	use tauri::Manager;
-
-// 	#[tokio::test]
-// 	async fn run_app() {
-// 		super::run_app(tauri::test::mock_builder(), |app| {
-// 			super::setup(app);
-
-// 			let win = app.get_webview_window("main").unwrap();
-// 			tokio::spawn(async move {
-// 				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-// 				win.close().unwrap();
-// 			});
-// 		})
-// 		.await
-// 	}
-// }

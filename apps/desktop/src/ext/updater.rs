@@ -1,3 +1,4 @@
+use onelauncher_core::store::Core;
 use tauri::plugin::TauriPlugin;
 use tauri::{Emitter, Runtime};
 use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
@@ -32,7 +33,6 @@ async fn get_update(app: tauri::AppHandle) -> Result<Option<TauriPluginUpdate>, 
 		.map_err(|e| e.to_string())
 }
 
-// TODO: this should be a specta event
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum UpdateEvent {
@@ -111,7 +111,7 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
 		})
 		.js_init_script(format!(
 			r#"window.__ONELAUNCHER_VERSION__ = "{}";"#,
-			onelauncher::constants::VERSION,
+			Core::get().launcher_version,
 		))
 		.build()
 }

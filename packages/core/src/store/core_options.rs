@@ -50,6 +50,8 @@ impl Core {
 			Ok::<_, LauncherError>(Self::new(options))
 		}).await?;
 
+		tracing::info!("core initialized successfully");
+
 		Ok(())
 	}
 

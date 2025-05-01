@@ -4,7 +4,7 @@
 use api::proxy::LauncherProxy;
 use store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State};
 use error::LauncherResult;
-use logger::start_logger;
+pub use logger::start_logger;
 
 pub mod api;
 pub mod constants;
@@ -14,7 +14,7 @@ pub mod utils;
 
 mod logger;
 
-pub use onelauncher_macro as macros;
+pub use onelauncher_macro::*;
 pub use onelauncher_entity as entity;
 pub use onelauncher_migration as migration;
 

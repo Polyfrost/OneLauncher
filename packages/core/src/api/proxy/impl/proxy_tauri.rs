@@ -2,7 +2,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_specta::Event;
 use tracing::{error, warn};
 
-use crate::{constants::CLI_TOTAL_INGRESS, api::proxy::{event::LauncherEvent, LauncherProxy, message::MessageLevel}, LauncherResult};
+use crate::{api::proxy::{event::LauncherEvent, LauncherProxy, message::MessageLevel}, LauncherResult};
 
 #[derive(Debug)]
 pub struct ProxyTauri {
@@ -21,19 +21,16 @@ impl ProxyTauri {
 #[async_trait::async_trait]
 impl LauncherProxy for ProxyTauri {
 	async fn send_event(&self, event: LauncherEvent) -> LauncherResult<()> {
-		match event {
-			LauncherEvent::Message(message) => {
-				match message.level {
-					MessageLevel::Info => {},
-					MessageLevel::Warning => warn!("{}", message.message),
-					MessageLevel::Error => error!("{}", message.message),
-				};
-			},
-			_ => {}
+		if let LauncherEvent::Message(message) = &event {
+			match message.level {
+				MessageLevel::Info => {},
+				MessageLevel::Warn => warn!("{}", message.message),
+				MessageLevel::Error => error!("{}", message.message),
+			}
 		}
 
 		self.handle
-			.emit_all(LauncherEvent::NAME, event)
+			.emit(LauncherEvent::NAME, event)
 			.map_err(Into::into)
 	}
 

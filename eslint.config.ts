@@ -8,4 +8,10 @@ export default defineConfig({
 	rules: {
 		'ts/no-use-before-define': 'off',
 	},
+	toml: {
+		overrides: {
+			'toml/array-element-newline': ['error', 'always'],
+			'toml/no-mixed-type-in-array': ['off'],
+		},
+	},
 });

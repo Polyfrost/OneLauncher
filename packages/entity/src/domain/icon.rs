@@ -3,7 +3,8 @@ use std::{fmt::Display, ops::Deref, str::FromStr};
 use sea_orm::{sea_query::Nullable, DeriveValueType};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType)]
+// #[onelauncher_macro::specta]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType, specta::Type)]
 pub struct Icon(String);
 
 impl Nullable for Icon {
@@ -73,7 +74,7 @@ pub enum IconType {
 
 impl Display for IconType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:?}", self)
+		write!(f, "{self:?}")
 	}
 }
 

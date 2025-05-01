@@ -14,14 +14,18 @@ authors = { workspace = true }
 path = "src/lib.rs"
 
 [features]
-default = [ "cli" ]
+default = [ "tauri" ]
 tauri = [
 	"dep:tauri",
 	"dep:tauri-specta",
 	"specta",
 	"gui"
 ]
-specta = [ "dep:specta", "interpulse/specta", "onelauncher_entity/specta" ]
+specta = [
+	"dep:specta",
+	"interpulse/specta",
+	"onelauncher_entity/specta"
+]
 cli = [ "dep:indicatif" ]
 gui = []
 
@@ -80,7 +84,6 @@ md-5 = { workspace = true }
 p256 = { workspace = true }
 
 # io
-zip = { workspace = true }
 async_zip = { workspace = true }
 dirs = { workspace = true }
 bytes = { workspace = true }

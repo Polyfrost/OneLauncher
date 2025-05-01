@@ -1,6 +1,7 @@
 use sea_orm::{sea_query::{Nullable, ValueType}, TryGetableFromJson};
 use serde::{Deserialize, Serialize};
 
+#[onelauncher_macro::specta]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Resolution {
 	pub width: u32,

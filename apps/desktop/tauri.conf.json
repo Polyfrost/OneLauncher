@@ -13,8 +13,7 @@
 					"allow": [
 						"$DATA/OneLauncher/**",
 						"$RESOURCE/**"
-					],
-					"deny": ["$DATA/OneLauncher/db/*.stronghold"]
+					]
 				}
 			},
 			"freezePrototype": true,
@@ -79,7 +78,7 @@
 				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
 			},
 			"appimage": {
-				
+
 			}
 		},
 		"shortDescription": "OneLauncher",

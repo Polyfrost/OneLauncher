@@ -122,13 +122,10 @@ pub async fn get_recommended_java(
 	// Settings profile is an override (it has highest priority)
 	if let Some(profile) = profile
 		&& !profile.is_global()
-	{
-		if let Some(java_id) = profile.java_id {
-			if let Ok(Some(java)) = dao::get_java_by_id(java_id).await {
+		&& let Some(java_id) = profile.java_id
+			&& let Ok(Some(java)) = dao::get_java_by_id(java_id).await {
 				return Ok(Some(java));
 			}
-		}
-	}
 
 	// Check if the version info has a suggested version
 	let Some(supported_ver) = &info.java_version else {

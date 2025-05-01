@@ -32,11 +32,10 @@ pub async fn launch_minecraft(
 	prepare_cluster(cluster, force).await?;
 
 	let mut settings = get_global_profile().await;
-	if let Some(name) = &cluster.setting_profile_name {
-		if let Some(profile) = get_profile_by_name(name).await? {
+	if let Some(name) = &cluster.setting_profile_name
+		&& let Some(profile) = get_profile_by_name(name).await? {
 			settings.merge(profile);
 		}
-	}
 
 	let state = State::get().await?;
 	let dirs = Dirs::get().await?;

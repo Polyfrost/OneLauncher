@@ -14,6 +14,7 @@
 		"cargo": "cargo",
 		"binary": "cargo run --bin",
 		"example": "cargo run --example",
-		"test": "cargo test"
+		"test": "cargo test",
+		"lint:rs": "cargo clippy --all-targets"
 	}
 }

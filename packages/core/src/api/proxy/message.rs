@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use super::event::send_event;
 
-#[onelauncher_macro::specta(with_event)]
+#[onelauncher_macro::specta]
 #[derive(Serialize, Debug, Clone)]
 pub struct MessagePayload {
 	pub level: MessageLevel,

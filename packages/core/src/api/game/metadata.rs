@@ -285,12 +285,11 @@ pub async fn download_libraries(
 	ingress.set_ingress_message("fetching libraries").await?;
 
 	let requests = stream::iter(libraries.iter().map(|lib| async {
-		if let Some(rules) = &lib.rules {
-			if !super::rules::validate_rules(rules, java_arch, lib.natives.is_some()) {
+		if let Some(rules) = &lib.rules
+			&& !super::rules::validate_rules(rules, java_arch, lib.natives.is_some()) {
 				tracing::debug!("skipping library {} due to rules", lib.name);
 				return Ok::<(), LauncherError>(());
 			}
-		}
 
 		if !lib.downloadable {
 			tracing::debug!("skipping library {} due to downloadability", lib.name);
@@ -309,8 +308,8 @@ pub async fn download_libraries(
 			async {
 				if let Some(interpulse::api::minecraft::LibraryDownloads {
 					artifact: Some(ref artifact), ..
-				}) = lib.downloads {
-					if !artifact.url.is_empty() {
+				}) = lib.downloads
+					&& !artifact.url.is_empty() {
 						http::download(
 							Method::GET,
 							&artifact.url,
@@ -322,7 +321,6 @@ pub async fn download_libraries(
 						tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
 						return Ok::<_, LauncherError>(());
 					}
-				}
 
 				let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
 				http::download(

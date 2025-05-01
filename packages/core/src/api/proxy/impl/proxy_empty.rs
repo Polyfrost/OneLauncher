@@ -34,13 +34,13 @@ impl LauncherProxy for ProxyEmpty {
 	}
 
 	#[cfg(feature = "gui")]
-	fn hide_main_window(&self) -> crate::LauncherResult<()> {
+	fn hide_main_window(&self) -> LauncherResult<()> {
 		println!("hidden window");
 		Ok(())
 	}
 
 	#[cfg(feature = "gui")]
-	fn show_main_window(&self) -> crate::LauncherResult<()> {
+	fn show_main_window(&self) -> LauncherResult<()> {
 		println!("shown window");
 		Ok(())
 	}

@@ -26,7 +26,6 @@
 		"core:webview:allow-internal-toggle-devtools",
 
 		"core:event:default",
-		"shell:allow-open",
 		"clipboard-manager:allow-write-text",
 		"dialog:allow-open",
 		"dialog:allow-save",

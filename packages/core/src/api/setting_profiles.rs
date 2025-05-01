@@ -1,24 +1,26 @@
 use onelauncher_entity::setting_profiles;
 use sea_orm::ActiveValue::Set;
 
-use crate::{error::LauncherResult, store::State};
+use crate::error::LauncherResult;
+use crate::store::State;
 
 pub mod dao {
 	use onelauncher_entity::setting_profiles;
 	use sea_orm::{ActiveModelTrait, EntityTrait};
 
-	use crate::{error::{DaoError, LauncherResult}, store::State};
+	use crate::error::{DaoError, LauncherResult};
+	use crate::store::State;
 
 	pub async fn get_all_profiles() -> LauncherResult<Vec<setting_profiles::Model>> {
 		let state = State::get().await?;
 		let db = &state.db;
 
-		Ok(setting_profiles::Entity::find()
-			.all(db)
-			.await?)
+		Ok(setting_profiles::Entity::find().all(db).await?)
 	}
 
-	pub async fn get_profile_or_default(name: Option<&String>) -> LauncherResult<setting_profiles::Model> {
+	pub async fn get_profile_or_default(
+		name: Option<&String>,
+	) -> LauncherResult<setting_profiles::Model> {
 		if let Some(name) = name {
 			let profile = get_profile_by_name(name).await?;
 			if let Some(profile) = profile {
@@ -31,20 +33,22 @@ pub mod dao {
 		Ok(settings.global_game_settings.clone())
 	}
 
-	pub async fn get_profile_by_name(name: &str) -> LauncherResult<Option<setting_profiles::Model>> {
+	pub async fn get_profile_by_name(
+		name: &str,
+	) -> LauncherResult<Option<setting_profiles::Model>> {
 		let state = State::get().await?;
 		let db = &state.db;
 
-		Ok(setting_profiles::Entity::find_by_id(name)
-			.one(db)
-			.await?)
+		Ok(setting_profiles::Entity::find_by_id(name).one(db).await?)
 	}
 
-	pub async fn insert_profile(profile: setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::Model> {
-		if let Some(name) = profile.name.try_as_ref() {
-			if name.is_empty() || profile.is_global() {
-				return Err(DaoError::InvalidValue(name.to_string(), "name".into()).into());
-			}
+	pub async fn insert_profile(
+		profile: setting_profiles::ActiveModel,
+	) -> LauncherResult<setting_profiles::Model> {
+		if let Some(name) = profile.name.try_as_ref()
+			&& (name.is_empty() || profile.is_global())
+		{
+			return Err(DaoError::InvalidValue(name.to_string(), "name".into()).into());
 		}
 
 		let state = State::get().await?;
@@ -57,7 +61,9 @@ pub mod dao {
 		let state = State::get().await?;
 		let db = &state.db;
 
-		let deleted = setting_profiles::Entity::delete_by_id(name).exec(db).await?;
+		let deleted = setting_profiles::Entity::delete_by_id(name)
+			.exec(db)
+			.await?;
 
 		if deleted.rows_affected == 0 {
 			return Err(DaoError::NotFound.into());
@@ -78,7 +84,9 @@ pub async fn get_global_profile() -> setting_profiles::Model {
 
 /// Creates a new setting profile and inserts it into the database. Returns the inserted entry
 pub async fn create_profile<F>(name: &str, block: F) -> LauncherResult<setting_profiles::Model>
-where F: AsyncFnOnce(setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::ActiveModel> {
+where
+	F: AsyncFnOnce(setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::ActiveModel>,
+{
 	let model = setting_profiles::ActiveModel {
 		name: Set(name.to_string()),
 		..Default::default()

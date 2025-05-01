@@ -179,12 +179,11 @@ pub async fn main_class(path: String) -> LauncherResult<Option<String>> {
 
 		for line in buf.lines() {
 			let line = line.trim();
-			if line.starts_with("Main-Class:") {
-				if let Some(class) = line.split(':').nth(1) {
+			if line.starts_with("Main-Class:")
+				&& let Some(class) = line.split(':').nth(1) {
 					class_name = Some(class.to_string());
 					return Ok(());
 				}
-			}
 		}
 
 		Ok(())
@@ -272,11 +271,10 @@ pub fn classpaths(
 	let mut classpaths = libraries
 		.iter()
 		.filter_map(|lib| {
-			if let Some(rules) = &lib.rules {
-				if !super::rules::validate_rules(rules, java_arch, updated) {
+			if let Some(rules) = &lib.rules
+				&& !super::rules::validate_rules(rules, java_arch, updated) {
 					return None;
 				}
-			}
 
 			if !lib.include_in_classpath {
 				return None;

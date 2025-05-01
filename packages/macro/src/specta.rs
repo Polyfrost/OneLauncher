@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{meta::ParseNestedMeta, parse_macro_input, Item, Result};
+use syn::{meta::ParseNestedMeta, parse_macro_input, Item};
 
 pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
 	let mut attrs = SpectaAttributes::default();
@@ -8,12 +8,12 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 
 	let input = parse_macro_input!(item as Item);
 
-	let specta_event_type = if attrs.with_event {
+	let specta_event_type = if attrs.event {
 		quote! {
 			#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
 		}
 	} else {
-		quote! {}
+		proc_macro2::TokenStream::new()
 	};
 
 	let specta_type = quote! {
@@ -31,13 +31,13 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 
 #[derive(Default)]
 struct SpectaAttributes {
-    with_event: bool,
+    event: bool,
 }
 
 impl SpectaAttributes {
-    fn parse(&mut self, meta: ParseNestedMeta) -> Result<()> {
-		if meta.path.is_ident("with_event") {
-			self.with_event = true;
+    fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+		if meta.path.is_ident("event") {
+			self.event = true;
 		}
         Ok(())
     }

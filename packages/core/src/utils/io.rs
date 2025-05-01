@@ -23,8 +23,6 @@ pub enum IOError {
 		path: String,
 	},
 	#[error(transparent)]
-	ZipError(#[from] zip::result::ZipError),
-	#[error(transparent)]
 	IOError(#[from] std::io::Error),
 	#[error("json deserialization error: {0}")]
 	DeserializeError(#[from] serde_json::Error),
@@ -295,11 +293,10 @@ pub async fn unzip_bytes_filtered(
 	read_zip_entries_bytes(data, async |_, entry, entry_reader| {
 		let file_name = entry.filename().as_str()?;
 
-		if let Some(filter) = &filter_entries {
-			if !filter(file_name) {
+		if let Some(filter) = &filter_entries
+			&& !filter(file_name) {
 				return Ok(());
 			}
-		}
 
 		let path = dest_path.as_ref().join(sanitize_path(file_name));
 

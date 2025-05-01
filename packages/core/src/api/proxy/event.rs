@@ -2,8 +2,8 @@ use serde::Serialize;
 
 use crate::{error::LauncherResult, store::proxy::ProxyState};
 
-#[onelauncher_macro::specta(with_event)]
-#[derive(Debug, Serialize)]
+#[onelauncher_macro::specta(event)]
+#[derive(Debug, Clone, Serialize)]
 pub enum LauncherEvent {
 	Ingress(crate::api::ingress::IngressPayload),
 	Message(crate::api::proxy::message::MessagePayload),

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 cfg_match! {
 	target_os = "windows" => {
+		#[onelauncher_macro::specta]
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 		pub struct SettingsOsExtra {
 
@@ -17,6 +18,7 @@ cfg_match! {
 		}
 	}
 	target_os = "macos" => {
+		#[onelauncher_macro::specta]
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 		pub struct SettingsOsExtra {
 
@@ -31,6 +33,7 @@ cfg_match! {
 		}
 	}
 	not(any(target_os = "windows", target_os = "macos")) => {
+		#[onelauncher_macro::specta]
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 		pub struct SettingsOsExtra {
 			pub enable_gamemode: Option<bool>,

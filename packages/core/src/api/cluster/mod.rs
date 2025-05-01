@@ -108,10 +108,6 @@ pub async fn create_cluster(
 
 /// Make a cluster playable (installs all necessary game files and dependencies required to play)
 pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>) -> LauncherResult<&clusters::Model> {
-	const INGRESS_TOTAL: f64 = 100.0;
-	const INGRESS_TASKS: f64 = 4.0;
-	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
-
 	tracing::debug!("preparing cluster {}", cluster.name);
 
 	// if cluster.stage == ClusterStage::Ready {
@@ -119,14 +115,6 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>)
 	// 	return Ok(cluster);
 	// }
 
-	let ingress_id = init_ingress(
-		IngressType::PrepareCluster {
-			cluster_name: cluster.name.clone(),
-		},
-		"preparing cluster",
-		INGRESS_TOTAL,
-	)
-	.await?;
 
 	dao::update_cluster(cluster, async |mut cluster| {
 		cluster.stage = Set(ClusterStage::Downloading);
@@ -134,62 +122,7 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>)
 	})
 	.await?;
 
-	let result: LauncherResult<()> = {
-		// TASK 1
-		ingress_id.set_ingress_message("fetching data").await?;
-		let setting_profile =
-			setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
-
-		let state = State::get().await?;
-		let mut metadata = state.metadata.write().await;
-
-		let version = metadata
-			.get_vanilla_or_fetch()
-			.await?
-			.versions
-			.iter()
-			.find(|v| v.id == cluster.mc_version)
-			.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?
-			.clone();
-
-		drop(metadata);
-
-		let loader_version = metadata::get_loader_version(
-			&cluster.mc_version,
-			cluster.mc_loader,
-			cluster.mc_loader_version.as_deref(),
-		)
-		.await?;
-
-		// TASK 2
-		let mut version_info = metadata::download_version_info(
-			&version,
-			loader_version.as_ref(),
-			Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
-			force,
-		)
-		.await?;
-
-		let java_version = if let Some(version) = java::get_recommended_java(&version_info, Some(&setting_profile)).await? {
-			version
-		} else {
-			let Some(ver) = &version_info.java_version else {
-				return Err(ClusterError::MissingJavaVersion.into());
-			};
-
-			java::prepare_java(ver.major_version).await?
-		};
-
-		// TASK 3
-		download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), force).await?;
-
-		// TASK 4
-		run_forge_processors(cluster, &mut version_info, java_version, &SubIngress::new(&ingress_id, INGRESS_STEP)).await?;
-
-		Ok(())
-	};
-
-	if let Err(err) = result {
+	if let Err(err) = install_cluster(cluster, force).await {
 		tracing::error!("failed to prepare cluster: {}", err);
 		dao::update_cluster(cluster, async |mut cluster| {
 			cluster.stage = Set(ClusterStage::NotReady);
@@ -207,6 +140,74 @@ pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>)
 	tracing::debug!("cluster is ready");
 
 	Ok(cluster)
+}
+
+async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> LauncherResult<()> {
+	const INGRESS_TOTAL: f64 = 100.0;
+	const INGRESS_TASKS: f64 = 4.0;
+	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
+
+	let ingress_id = init_ingress(
+		IngressType::PrepareCluster {
+			cluster_name: cluster.name.clone(),
+		},
+		"preparing cluster",
+		INGRESS_TOTAL,
+	)
+	.await?;
+
+	// TASK 1
+	ingress_id.set_ingress_message("fetching data").await?;
+	let setting_profile =
+		setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
+
+	let state = State::get().await?;
+	let mut metadata = state.metadata.write().await;
+
+	let version = metadata
+		.get_vanilla_or_fetch()
+		.await?
+		.versions
+		.iter()
+		.find(|v| v.id == cluster.mc_version)
+		.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?
+		.clone();
+
+	drop(metadata);
+
+	let loader_version = metadata::get_loader_version(
+		&cluster.mc_version,
+		cluster.mc_loader,
+		cluster.mc_loader_version.as_deref(),
+	)
+	.await?;
+
+	// TASK 2
+	let mut version_info = metadata::download_version_info(
+		&version,
+		loader_version.as_ref(),
+		Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
+		force,
+	)
+	.await?;
+
+	let java_version = if let Some(version) = java::get_recommended_java(&version_info, Some(&setting_profile)).await? {
+		version
+	} else {
+		let Some(ver) = &version_info.java_version else {
+			return Err(ClusterError::MissingJavaVersion.into());
+		};
+
+		java::prepare_java(ver.major_version).await?
+	};
+
+	// TASK 3
+	download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), force).await?;
+
+	// TASK 4
+	run_forge_processors(cluster, &mut version_info, java_version, &SubIngress::new(&ingress_id, INGRESS_STEP)).await?;
+
+	Ok(())
 }
 
 /// Run forge processors
@@ -265,11 +266,10 @@ async fn run_forge_processors(
 	ingress.set_ingress_message("running forge processors").await?;
 	let total_length = processors.len();
 	for (index, processor) in processors.iter().enumerate() {
-		if let Some(sides) = &processor.sides {
-			if !sides.contains(&String::from("client")) {
+		if let Some(sides) = &processor.sides
+			&& !sides.contains(&String::from("client")) {
 				continue;
 			}
-		}
 
 		let mut cp = processor.classpath.clone();
 		cp.push(processor.jar.clone());

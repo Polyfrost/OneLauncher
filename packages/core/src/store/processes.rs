@@ -14,15 +14,15 @@ use uuid::Uuid;
 
 use crate::api::cluster;
 use crate::api::cluster::dao::ClusterId;
-use crate::api::game::log::{censor_line, CensorMap};
+use crate::api::game::log::{CensorMap, censor_line};
 use crate::api::processes::ProcessPayload;
-use crate::api::proxy::event::{send_event, LauncherEvent};
+use crate::api::proxy::event::{LauncherEvent, send_event};
 use crate::error::LauncherResult;
 use crate::send_error;
 use crate::utils::io::IOError;
 
-use super::credentials::MinecraftCredentials;
 use super::State;
+use super::credentials::MinecraftCredentials;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
@@ -37,7 +37,8 @@ pub struct ProcessStore {
 	processes: RwLock<HashMap<u32, Arc<RwLock<Process>>>>,
 }
 
-#[derive(Debug, Serialize)]
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, Serialize)]
 pub struct Process {
 	pub pid: u32,
 	pub started_at: DateTime<Utc>,
@@ -47,7 +48,7 @@ pub struct Process {
 	#[serde(skip)]
 	pub child_type: Arc<RwLock<ChildType>>,
 	#[serde(skip)]
-	process_loop: Option<JoinHandle<LauncherResult<i32>>>,
+	process_loop: Option<Arc<JoinHandle<LauncherResult<i32>>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -112,10 +113,7 @@ impl ProcessStore {
 	}
 
 	/// Returns a list of all running processes for a given cluster.
-	pub async fn get_running_by_cluster(
-		&self,
-		cluster_id: ClusterId,
-	) -> Vec<Arc<RwLock<Process>>> {
+	pub async fn get_running_by_cluster(&self, cluster_id: ClusterId) -> Vec<Arc<RwLock<Process>>> {
 		let mut list = Vec::new();
 		let read_guard = self.processes.read().await;
 
@@ -129,10 +127,7 @@ impl ProcessStore {
 	}
 
 	/// Returns a list of all running processes for a given account.
-	pub async fn get_running_by_account(
-		&self,
-		account_id: Uuid,
-	) -> Vec<Arc<RwLock<Process>>> {
+	pub async fn get_running_by_account(&self, account_id: Uuid) -> Vec<Arc<RwLock<Process>>> {
 		let mut list = Vec::new();
 		let read_guard = self.processes.read().await;
 
@@ -180,16 +175,18 @@ impl ProcessStore {
 		settings: &setting_profiles::Model,
 		mut command: Command,
 	) -> LauncherResult<Arc<RwLock<Process>>> {
-		send_event(LauncherEvent::Process(ProcessPayload::Starting { command: format!("{command:?}") })).await;
+		send_event(LauncherEvent::Process(ProcessPayload::Starting {
+			command: format!("{command:?}"),
+		}))
+		.await;
 
-		if let Some(pre_hook) = &settings.hook_pre {
-			if let Err(err) = run_hook(pre_hook, cwd.clone()).await {
-				send_error!("{err:?}");
-			}
+		if let Some(pre_hook) = &settings.hook_pre
+			&& let Err(err) = run_hook(pre_hook, cwd.clone()).await
+		{
+			send_error!("{err:?}");
 		}
 
-		command
-			.stdout(Stdio::piped())
+		command.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.stdin(Stdio::null());
 
@@ -205,10 +202,13 @@ impl ProcessStore {
 
 		#[cfg(target_os = "linux")]
 		{
-			if settings.os_extra.as_ref().is_some_and(|s| s.enable_gamemode.is_some_and(|x| x)) {
-				if let Err(err) = onelauncher_gamemode::request_start_for_wrapper(pid) {
-					tracing::warn!("failed to enable gamemode, continuing: {}", err);
-				}
+			if settings
+				.os_extra
+				.as_ref()
+				.is_some_and(|s| s.enable_gamemode.is_some_and(|x| x))
+				&& let Err(err) = onelauncher_gamemode::request_start_for_wrapper(pid)
+			{
+				tracing::warn!("failed to enable gamemode, continuing: {}", err);
 			}
 		}
 
@@ -225,7 +225,8 @@ impl ProcessStore {
 				send_event(LauncherEvent::Process(ProcessPayload::Output {
 					pid,
 					output: line,
-				})).await;
+				}))
+				.await;
 			}
 		});
 
@@ -237,9 +238,12 @@ impl ProcessStore {
 			post_hook: settings.hook_post.clone(),
 			account_id: creds.id,
 			child_type: child_type.clone(),
-			process_loop: Some(tokio::task::spawn(Self::process_loop(
-				cluster_id, cwd, settings.hook_post.clone(), child_type,
-			))),
+			process_loop: Some(Arc::new(tokio::task::spawn(Self::process_loop(
+				cluster_id,
+				cwd,
+				settings.hook_post.clone(),
+				child_type,
+			)))),
 		};
 
 		let process = Arc::new(RwLock::new(process));
@@ -262,27 +266,8 @@ impl ProcessStore {
 		child: Arc<RwLock<ChildType>>,
 	) -> LauncherResult<i32> {
 		let pid = child.read().await.id();
-		let mut last_updated = Utc::now();
 
-		let exit_code = loop {
-			let mut child = child.write().await;
-			if let Some(status) = child.try_wait()? {
-				tracing::info!("process exited with status: {:?}", status);
-				break status;
-			}
-
-			// Every 60 seconds, update the playtime of the process
-			let duration = Utc::now().signed_duration_since(last_updated).num_seconds();
-			if duration > 60 {
-				last_updated = Utc::now();
-
-				if let Err(err) = cluster::update_playtime(cluster_id, duration).await {
-					tracing::error!("failed to update playtime: {}", err);
-				}
-			}
-
-			tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-		};
+		let exit_code = wait_for_exit(cluster_id, &child).await?;
 
 		let state = State::get().await?;
 		let store = &state.processes;
@@ -292,13 +277,17 @@ impl ProcessStore {
 		write_guard.remove(&pid);
 		tracing::debug!("removed process with pid {}", pid);
 
-		if let Some(post_hook) = post_hook {
-			if let Err(err) = run_hook(&post_hook, cwd).await {
-				send_error!("{err:?}");
-			}
+		if let Some(post_hook) = post_hook
+			&& let Err(err) = run_hook(&post_hook, cwd).await
+		{
+			send_error!("{err:?}");
 		}
 
-		send_event(LauncherEvent::Process(ProcessPayload::Stopped { pid, exit_code })).await;
+		send_event(LauncherEvent::Process(ProcessPayload::Stopped {
+			pid,
+			exit_code,
+		}))
+		.await;
 
 		Ok(exit_code)
 	}
@@ -331,5 +320,29 @@ async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
 		Ok(Some(exit_code))
 	} else {
 		Err(ProcessError::HookUnsuccessful(exit_code).into())
+	}
+}
+
+async fn wait_for_exit(cluster_id: ClusterId, child: &Arc<RwLock<ChildType>>) -> LauncherResult<i32> {
+	let mut last_updated = Utc::now();
+
+	loop {
+		let mut child = child.write().await;
+		if let Some(status) = child.try_wait()? {
+			tracing::info!("process exited with status: {:?}", status);
+			return Ok(status);
+		}
+
+		// Every 60 seconds, update the playtime of the process
+		let duration = Utc::now().signed_duration_since(last_updated).num_seconds();
+		if duration > 60 {
+			last_updated = Utc::now();
+
+			if let Err(err) = cluster::update_playtime(cluster_id, duration).await {
+				tracing::error!("failed to update playtime: {}", err);
+			}
+		}
+
+		tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 	}
 }

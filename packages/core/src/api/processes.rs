@@ -2,7 +2,8 @@ use serde::Serialize;
 
 use crate::store::processes::Process;
 
-#[derive(Debug, Serialize)]
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, Serialize)]
 pub enum ProcessPayload {
 	Starting {
 		command: String,

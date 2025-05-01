@@ -5,7 +5,7 @@ use crate::LauncherResult;
 use crate::store::State;
 use crate::store::ingress::{IngressId, IngressType, SubIngress};
 
-#[onelauncher_macro::specta(with_event)]
+#[onelauncher_macro::specta]
 #[derive(Serialize, Debug, Clone)]
 pub struct IngressPayload {
 	pub id: Uuid,

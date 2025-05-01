@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+#[onelauncher_macro::specta]
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct DbVec<T>(pub Vec<T>);

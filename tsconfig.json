@@ -1,6 +1,6 @@
 {
 	"extends": "./tsconfig.base.json",
 	"compilerOptions": {
-		"types": ["vitest/globals", "vite/client", "node"]
+		"types": ["vite/client", "node"]
 	}
 }

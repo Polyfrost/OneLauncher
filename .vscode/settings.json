@@ -3,7 +3,8 @@
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
 	"files.readonlyInclude": {
-		"**/node_modules/**": true
+		"**/node_modules/**": true,
+		"**/routeTree.gen.ts": true
 	},
 	"files.watcherExclude": {
 		"**/_build": true,
@@ -18,7 +19,8 @@
 		"**/node_modules": true,
 		"**/.rustup": true,
 		"**/.cargo": true,
-		"**/.crates": true
+		"**/.crates": true,
+		"**/routeTree.gen.ts": true
 	},
 	"rust-analyzer.procMacro.enable": false,
 	"rust-analyzer.procMacro.attributes.enable": false,

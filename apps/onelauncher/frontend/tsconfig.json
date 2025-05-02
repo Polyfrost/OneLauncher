@@ -1,5 +1,5 @@
 {
-	"extends": "../../tsconfig.base.json",
+	"extends": "../../../tsconfig.base.json",
 	"compilerOptions": {
 		"target": "ESNext",
 		"jsx": "preserve",
@@ -12,11 +12,8 @@
 		"paths": {
 			"~*": ["./src/*"]
 		},
-
 		"resolveJsonModule": true,
 		"types": [
-			"vitest/globals",
-			"@testing-library/jest-dom",
 			"vite-plugin-solid-svg/types"
 		],
 		"allowImportingTsExtensions": true,

@@ -1,4 +1,5 @@
 packages:
-  - apps/*
+  - apps/oneclient/*
+  - apps/onelauncher/*
   - packages/*
   - .github/actions/*

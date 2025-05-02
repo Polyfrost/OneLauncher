@@ -44,10 +44,7 @@
 	},
 	"devDependencies": {
 		"@sentry/vite-plugin": "^2.22.4",
-		"@solidjs/testing-library": "^0.8.10",
 		"@tauri-apps/cli": "^2.0.4",
-		"@testing-library/jest-dom": "^6.5.0",
-		"jsdom": "^25.0.1",
 		"rollup-plugin-visualizer": "^5.12.0",
 		"sass": "^1.79.4",
 		"unocss": "^0.63.6",

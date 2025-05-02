@@ -1,14 +1,15 @@
 import { getProgramInfo } from '@onelauncher/client';
+import { type ParentProps, Show, createMemo } from 'solid-js';
+import { Transition  } from 'solid-transition-group';
+import type {TransitionProps} from 'solid-transition-group';
 import useSettings from '~ui/hooks/useSettings';
-import { createMemo, type ParentProps, Show } from 'solid-js';
-import { Transition, type TransitionProps } from 'solid-transition-group';
 
 type AnimationTypes = 'default' | 'fade';
 export interface AnimatedProps {
 	animation?: AnimationTypes;
 };
 
-const animations: { [key in AnimationTypes]: { before: Keyframe; after: Keyframe } } = {
+const animations: Record<AnimationTypes, { before: Keyframe; after: Keyframe }> = {
 	default: {
 		before: {
 			transform: 'translateX(-85px)',

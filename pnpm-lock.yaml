@@ -114,7 +114,7 @@ importers:
         version: 0.14.10(solid-js@1.9.3)
       '@t3-oss/env-core':
         specifier: ^0.11.0
-        version: 0.11.1(typescript@5.6.3)(zod@3.23.8)
+        version: 0.11.1(typescript@5.6.3)(zod@3.24.3)
       '@tanstack/solid-query':
         specifier: ^5.56.2
         version: 5.59.16(solid-js@1.9.3)
@@ -152,8 +152,8 @@ importers:
         specifier: ^0.2.3
         version: 0.2.3(solid-js@1.9.3)
       zod:
-        specifier: ^3.23.8
-        version: 3.23.8
+        specifier: ^3.24.3
+        version: 3.24.3
     devDependencies:
       '@sentry/vite-plugin':
         specifier: ^2.22.4
@@ -227,13 +227,9 @@ importers:
 
   packages/core: {}
 
-  packages/core-new: {}
-
   packages/distribution: {}
 
   packages/gamemode: {}
-
-  packages/macros: {}
 
   packages/scripts:
     dependencies:
@@ -2868,8 +2864,8 @@ packages:
     resolution: {integrity: sha512-bZsjR/iRjl1Nk1UkjGpAzLNfQtzuijhn2g+pbZb98HQ1Gk8vM9hfbxeMBP+M2/UUdwj0RqGG3mlvk2MsAqwvEw==}
     engines: {node: 20 || >=22}
 
-  jiti@1.21.6:
-    resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
+  jiti@1.21.7:
+    resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
   jiti@2.0.0-beta.3:
@@ -4216,8 +4212,8 @@ packages:
     resolution: {integrity: sha512-zK7YHHz4ZXpW89AHXUPbQVGKI7uvkd3hzusTdotCg1UxyaVtg0zFJSTfW/Dq5f7OBBVnq6cZIaC8Ti4hb6dtCA==}
     engines: {node: '>= 14'}
 
-  zod@3.23.8:
-    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
+  zod@3.24.3:
+    resolution: {integrity: sha512-HhY1oqzWCQWuUqvBFnsyrtZRhyPeR7SUGv+C4+MsisMuVfSPx8HpwWqH8tRahSlt6M3PiFAcoeFhZAqIXTxoSg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -5363,9 +5359,9 @@ snapshots:
       - supports-color
       - typescript
 
-  '@t3-oss/env-core@0.11.1(typescript@5.6.3)(zod@3.23.8)':
+  '@t3-oss/env-core@0.11.1(typescript@5.6.3)(zod@3.24.3)':
     dependencies:
-      zod: 3.23.8
+      zod: 3.24.3
     optionalDependencies:
       typescript: 5.6.3
 
@@ -6919,7 +6915,7 @@ snapshots:
       debug: 4.3.7
       esbuild: 0.23.1
       jiti: 2.0.0-beta.3
-      jiti-v1: jiti@1.21.6
+      jiti-v1: jiti@1.21.7
       pathe: 1.1.2
       tsx: 4.19.1
     transitivePeerDependencies:
@@ -7004,7 +7000,7 @@ snapshots:
     dependencies:
       '@isaacs/cliui': 8.0.2
 
-  jiti@1.21.6: {}
+  jiti@1.21.7: {}
 
   jiti@2.0.0-beta.3: {}
 
@@ -8481,6 +8477,6 @@ snapshots:
       compress-commons: 6.0.2
       readable-stream: 4.5.2
 
-  zod@3.23.8: {}
+  zod@3.24.3: {}
 
   zwitch@2.0.4: {}

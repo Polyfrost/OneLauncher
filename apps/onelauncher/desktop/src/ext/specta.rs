@@ -11,7 +11,7 @@ pub fn formatter(file: &Path) -> io::Result<()> {
 		.arg(file)
 		.output()
 		.map(|_| ())
-		.map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+		.map_err(io::Error::other)
 }
 
 const _: specta_typescript::FormatterFn = formatter;

@@ -1,9 +1,13 @@
-use onelauncher_core::{api::proxy::ProxyTauri, error::LauncherResult, store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State}};
+use onelauncher_core::api::proxy::ProxyTauri;
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::store::proxy::ProxyState;
+use onelauncher_core::store::semaphore::SemaphoreStore;
+use onelauncher_core::store::{Core, CoreOptions, Dirs, State};
 use tauri::{Emitter, Manager};
 
 pub mod api;
-pub mod ext;
 pub mod constants;
+pub mod ext;
 
 #[derive(Clone, serde::Serialize)]
 pub struct SingleInstancePayload {
@@ -44,7 +48,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
 				.formatter(ext::specta::formatter),
-			"../../packages/client/src/bindings.ts",
+			"../../frontend/src/bindings.ts",
 		)
 		.expect("failed to export debug bindings!");
 
@@ -65,7 +69,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.invoke_handler(prebuild.invoke_handler())
 		.setup(move |app| {
 			prebuild.mount_events(app.handle());
-			setup_window(app.handle());
+			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});
 
@@ -89,14 +93,20 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 
 pub async fn run() {
 	initialize_core().await.expect("failed to initialize core");
-	let app = initialize_tauri(tauri::Builder::default()).await.expect("failed to initialize tauri");
-	initialize_state(app.handle()).await.expect("failed to initialize state");
+	let app = initialize_tauri(tauri::Builder::default())
+		.await
+		.expect("failed to initialize tauri");
+	initialize_state(app.handle())
+		.await
+		.expect("failed to initialize state");
 
 	app.run(|_, _| {});
 }
 
 fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-	let win = handle.get_webview_window("main").unwrap();
+	let win = handle
+		.get_webview_window("main")
+		.ok_or_else(|| anyhow::anyhow!("no window called main was found"))?;
 
 	// tokio::task::spawn(async move {
 	// 	// let state = State::get().await.expect("failed to get state");
@@ -104,8 +114,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 	// 	// win.set_decorations(settings.);
 	// });
 
-
-	win.show().unwrap();
+	win.show()?;
 
 	Ok(())
 }

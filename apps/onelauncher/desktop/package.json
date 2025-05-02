@@ -19,8 +19,6 @@
 		"tauri-ext": "pnpm --filter @onelauncher/scripts -- tauri"
 	},
 	"dependencies": {
-		"@onelauncher/core": "workspace:*",
-		"@onelauncher/distribution": "workspace:*",
 		"@onelauncher/frontend": "workspace:*"
 	},
 	"devDependencies": {

@@ -55,11 +55,11 @@
 		],
 		"category": "Game",
 		"icon": [
-			"../../packages/distribution/icons/32x32.png",
-			"../../packages/distribution/icons/128x128.png",
-			"../../packages/distribution/icons/128x128@2x.png",
-			"../../packages/distribution/icons/icon.icns",
-			"../../packages/distribution/icons/icon.ico"
+			"../distribution/icons/32x32.png",
+			"../distribution/icons/128x128.png",
+			"../distribution/icons/128x128@2x.png",
+			"../distribution/icons/icon.icns",
+			"../distribution/icons/icon.ico"
 		],
 		"copyright": "Polyfrost",
 		"publisher": "Polyfrost",
@@ -72,10 +72,10 @@
 		"linux": {
 			"deb": {
 				"depends": [],
-				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
+				"desktopTemplate": "../distribution/linux/org.polyfrost.launcher.desktop.template"
 			},
 			"rpm": {
-				"desktopTemplate": "../../packages/distribution/linux/org.polyfrost.launcher.desktop.template"
+				"desktopTemplate": "../distribution/linux/org.polyfrost.launcher.desktop.template"
 			},
 			"appimage": {
 

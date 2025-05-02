@@ -1,23 +1,23 @@
-use interpulse::api::minecraft::Version;
-use tauri::{AppHandle, Manager};
+// use interpulse::api::minecraft::Version;
+// use tauri::{AppHandle, Manager};
 
 mod cluster;
-pub use crate::api::commands::cluster::*;
+// pub use crate::api::commands::cluster::*;
 
 mod users;
-pub use crate::api::commands::users::*;
+// pub use crate::api::commands::users::*;
 
 mod processor;
-pub use crate::api::commands::processor::*;
+// pub use crate::api::commands::processor::*;
 
 mod package;
-pub use crate::api::commands::package::*;
+// pub use crate::api::commands::package::*;
 
 #[macro_export]
 macro_rules! collect_commands {
 	() => {{
-		use $crate::api::commands::*;
-		use $crate::ext::updater::*;
+		// use $crate::api::commands::*;
+		// use $crate::ext::updater::*;
 		tauri_specta::collect_commands![
 			// User
 			// auth_login,
@@ -92,9 +92,10 @@ macro_rules! collect_commands {
 }
 
 #[onelauncher_core::command]
-pub fn open_dev_tools(_webview: tauri::WebviewWindow) {
+#[allow(unused_parens)]
+pub fn open_dev_tools(webview: &tauri::WebviewWindow) {
 	#[cfg(feature = "devtools")]
-	_webview.open_devtools();
+	webview.open_devtools();
 }
 
 // #[onelauncher_core::command]
@@ -102,40 +103,40 @@ pub fn open_dev_tools(_webview: tauri::WebviewWindow) {
 // 	Ok(onelauncher::java::get_zulu_packages().await?)
 // }
 
-#[onelauncher_core::command]
-pub async fn install_java_from_package(download: onelauncher::java::JavaZuluPackage) -> Result<std::path::PathBuf, String> {
-	Ok(onelauncher::java::install_java_from_package(download).await?)
-}
+// #[onelauncher_core::command]
+// pub async fn install_java_from_package(download: onelauncher::java::JavaZuluPackage) -> Result<std::path::PathBuf, String> {
+// 	Ok(onelauncher::java::install_java_from_package(download).await?)
+// }
 
-#[onelauncher_core::command]
-pub async fn get_featured_packages() -> Result<Vec<onelauncher::package::content::FeaturedPackage>, String> {
-	Ok(onelauncher::package::content::get_featured_packages().await?)
-}
+// #[onelauncher_core::command]
+// pub async fn get_featured_packages() -> Result<Vec<onelauncher::package::content::FeaturedPackage>, String> {
+// 	Ok(onelauncher::package::content::get_featured_packages().await?)
+// }
 
-#[onelauncher_core::command]
-pub fn get_program_info() -> Result<super::statics::ProgramInfo, String> {
-	Ok(super::statics::get_program_info())
-}
+// #[onelauncher_core::command]
+// pub fn get_program_info() -> Result<super::statics::ProgramInfo, String> {
+// 	Ok(super::statics::get_program_info())
+// }
 
-#[onelauncher_core::command]
-pub async fn get_minecraft_versions() -> Result<Vec<Version>, String> {
-	Ok(onelauncher::api::metadata::get_minecraft_versions()
-		.await?
-		.versions)
-}
+// #[onelauncher_core::command]
+// pub async fn get_minecraft_versions() -> Result<Vec<Version>, String> {
+// 	Ok(onelauncher::api::metadata::get_minecraft_versions()
+// 		.await?
+// 		.versions)
+// }
 
-#[onelauncher_core::command]
-pub async fn get_settings() -> Result<Settings, String> {
-	Ok(settings::get().await?)
-}
+// #[onelauncher_core::command]
+// pub async fn get_settings() -> Result<Settings, String> {
+// 	Ok(settings::get().await?)
+// }
 
-#[onelauncher_core::command]
-pub async fn set_settings(settings: Settings) -> Result<(), String> {
-	Ok(settings::set(settings).await?)
-}
+// #[onelauncher_core::command]
+// pub async fn set_settings(settings: Settings) -> Result<(), String> {
+// 	Ok(settings::set(settings).await?)
+// }
 
-#[onelauncher_core::command]
-pub fn set_window_style(handle: AppHandle, custom: bool) -> Result<(), String> {
-	let window = handle.get_webview_window("main").unwrap();
-	onelauncher::utils::window::set_window_styling(&window, custom).map_err(|e| e.to_string())
-}
+// #[onelauncher_core::command]
+// pub fn set_window_style(handle: AppHandle, custom: bool) -> Result<(), String> {
+// 	let window = handle.get_webview_window("main").unwrap();
+// 	onelauncher::utils::window::set_window_styling(&window, custom).map_err(|e| e.to_string())
+// }

@@ -20,7 +20,7 @@
 	"dependencies": {
 		"@fontsource/poppins": "^5.1.0",
 		"@formatjs/intl-durationformat": "^0.5.0",
-		"@leeoniya/ufuzzy": "^1.0.14",
+		"@leeoniya/ufuzzy": "^1.0.18",
 		"@onelauncher/client": "workspace:*",
 		"@solid-primitives/i18n": "^2.1.1",
 		"@solid-primitives/map": "^0.4.13",

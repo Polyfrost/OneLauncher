@@ -92,8 +92,8 @@ importers:
         specifier: ^0.5.0
         version: 0.5.0
       '@leeoniya/ufuzzy':
-        specifier: ^1.0.14
-        version: 1.0.14
+        specifier: ^1.0.18
+        version: 1.0.18
       '@onelauncher/client':
         specifier: workspace:*
         version: link:../../packages/client
@@ -227,13 +227,9 @@ importers:
 
   packages/core: {}
 
-  packages/core-new: {}
-
   packages/distribution: {}
 
   packages/gamemode: {}
-
-  packages/macros: {}
 
   packages/scripts:
     dependencies:
@@ -1010,8 +1006,8 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@leeoniya/ufuzzy@1.0.14':
-    resolution: {integrity: sha512-/xF4baYuCQMo+L/fMSUrZnibcu0BquEGnbxfVPiZhs/NbJeKj4c/UmFpQzW9Us0w45ui/yYW3vyaqawhNYsTzA==}
+  '@leeoniya/ufuzzy@1.0.18':
+    resolution: {integrity: sha512-5D54A86/VaPvJVf7UWJgy+UyhDtstUxq0iQd8UOZ2TG3NjV2oSoa9m4qW3VsotDD6dH2SNHDQwSPq+IAuudnag==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -2868,8 +2864,8 @@ packages:
     resolution: {integrity: sha512-bZsjR/iRjl1Nk1UkjGpAzLNfQtzuijhn2g+pbZb98HQ1Gk8vM9hfbxeMBP+M2/UUdwj0RqGG3mlvk2MsAqwvEw==}
     engines: {node: 20 || >=22}
 
-  jiti@1.21.6:
-    resolution: {integrity: sha512-2yTgeWTWzMWkHu6Jp9NKgePDaYHbntiwvYuuJLbbN9vl7DC9DvXKOB2BC3ZZ92D3cvV/aflH0osDfwpHepQ53w==}
+  jiti@1.21.7:
+    resolution: {integrity: sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A==}
     hasBin: true
 
   jiti@2.0.0-beta.3:
@@ -4974,7 +4970,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.0
 
-  '@leeoniya/ufuzzy@1.0.14': {}
+  '@leeoniya/ufuzzy@1.0.18': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -6919,7 +6915,7 @@ snapshots:
       debug: 4.3.7
       esbuild: 0.23.1
       jiti: 2.0.0-beta.3
-      jiti-v1: jiti@1.21.6
+      jiti-v1: jiti@1.21.7
       pathe: 1.1.2
       tsx: 4.19.1
     transitivePeerDependencies:
@@ -7004,7 +7000,7 @@ snapshots:
     dependencies:
       '@isaacs/cliui': 8.0.2
 
-  jiti@1.21.6: {}
+  jiti@1.21.7: {}
 
   jiti@2.0.0-beta.3: {}
 

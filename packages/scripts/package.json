@@ -27,7 +27,7 @@
 	},
 	"dependencies": {
 		"@pnpm/find-workspace-dir": "^7.0.1",
-		"consola": "^3.2.3",
+		"consola": "^3.4.2",
 		"dotenv": "^16.4.5",
 		"execa": "^9.4.0",
 		"mustache": "^4.2.0",

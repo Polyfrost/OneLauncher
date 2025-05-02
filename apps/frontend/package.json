@@ -32,7 +32,7 @@
 		"@tauri-apps/api": "^2.0.3",
 		"@tauri-apps/plugin-clipboard-manager": "^2.0.0",
 		"@tauri-apps/plugin-dialog": "^2.0.1",
-		"@tauri-apps/plugin-shell": "^2.0.1",
+		"@tauri-apps/plugin-shell": "^2.2.1",
 		"@unocss/reset": "^0.63.6",
 		"@untitled-theme/icons-solid": "^0.11.0",
 		"overlayscrollbars": "^2.10.0",

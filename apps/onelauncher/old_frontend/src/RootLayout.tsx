@@ -1,7 +1,7 @@
 import { getProgramInfo } from '@onelauncher/client';
+import { type ParentProps, onMount } from 'solid-js';
 import AnimatedRoutes from '~ui/components/AnimatedRoutes';
 import { NotificationProvider } from '~ui/hooks/useNotifications';
-import { onMount, type ParentProps } from 'solid-js';
 import { MultiProvider } from './ui/components/MultiProvider';
 import { AccountControllerProvider } from './ui/components/overlay/account/AddAccountModal';
 import { ClusterModalControllerProvider } from './ui/components/overlay/cluster/ClusterCreationModal';

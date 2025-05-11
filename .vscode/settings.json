@@ -4,7 +4,8 @@
 	},
 	"files.readonlyInclude": {
 		"**/node_modules/**": true,
-		"**/routeTree.gen.ts": true
+		"**/routeTree.gen.ts": true,
+		"**/bindings.gen.ts": true
 	},
 	"files.watcherExclude": {
 		"**/_build": true,
@@ -46,6 +47,7 @@
 		"source.organizeImports": "never"
 	},
 	"eslint.runtime": "node",
+
 	// Silent the stylistic rules in you IDE, but still auto fix them
 	"eslint.rules.customizations": [
 		{ "rule": "style/*", "severity": "off", "fixable": true },
@@ -85,6 +87,9 @@
 	"eslint.options": {
 		"flags": ["unstable_ts_config"]
 	},
+
+	// Tailwind CSS intellisense
+	"tailwindCSS.classFunctions": ["tv"],
 
 	// updated 2024-08-26 15:46
 	// https://github.com/antfu/vscode-file-nesting-config

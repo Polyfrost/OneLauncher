@@ -2,8 +2,8 @@
 
 use base64::Engine;
 use chrono::{DateTime, Utc};
-use p256::ecdsa::signature::Signer;
 use p256::ecdsa::SigningKey;
+use p256::ecdsa::signature::Signer;
 use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -36,9 +36,7 @@ impl CredentialsStore {
 	#[tracing::instrument]
 	pub async fn initialize() -> LauncherResult<Self> {
 		let path = Dirs::get_auth_file().await?;
-		let store = io::read_json(&path)
-			.await
-			.ok();
+		let store = io::read_json(&path).await.ok();
 
 		store.map_or_else(
 			|| {
@@ -201,7 +199,8 @@ impl CredentialsStore {
 			access_token: minecraft_token.access_token,
 			refresh_token: oauth_token.value.refresh_token,
 			#[allow(clippy::cast_possible_wrap)]
-			expires: oauth_token.date + chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
+			expires: oauth_token.date
+				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
 		};
 
 		self.users.insert(profile_id, credentials.clone());
@@ -246,7 +245,8 @@ impl CredentialsStore {
 			access_token: minecraft_token.access_token,
 			refresh_token: oauth_token.value.refresh_token,
 			#[allow(clippy::cast_possible_wrap)]
-			expires: oauth_token.date + chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
+			expires: oauth_token.date
+				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
 		};
 
 		self.users.insert(val.id, val.clone());
@@ -282,10 +282,9 @@ impl CredentialsStore {
 					Ok(val) => Ok(val),
 					Err(err) => {
 						match err {
-							LauncherError::MinecraftAuthError(MinecraftAuthError::RequestError {
-								ref source,
-								..
-							}) if source.is_connect() || source.is_timeout() => {
+							LauncherError::MinecraftAuthError(
+								MinecraftAuthError::RequestError { ref source, .. },
+							) if source.is_connect() || source.is_timeout() => {
 								return Ok(Some(old_creds));
 							}
 							_ => {}
@@ -996,7 +995,8 @@ fn generate_oauth_challenge() -> String {
 }
 
 /// An ordered list of all MSA authentication steps.
-#[derive(Debug, Clone, Copy)]
+#[onelauncher_macro::specta]
+#[derive(Debug, Serialize, Clone, Copy)]
 pub enum MinecraftAuthStep {
 	DeviceToken,
 	SisuAuthenicate,
@@ -1019,15 +1019,20 @@ pub enum MinecraftAuthError {
 	#[error("failed to serialize JSON during MSA step {step:?}: {source}")]
 	SerializeError {
 		step: MinecraftAuthStep,
+
 		#[source]
 		source: serde_json::Error,
 	},
-	#[error("failed to deserialize JSON during MSA step {step:?}: {source}! status code {status_code} - body: {raw}")]
+	#[error(
+		"failed to deserialize JSON during MSA step {step:?}: {source}! status code {status_code} - body: {raw}"
+	)]
 	DeserializeError {
 		step: MinecraftAuthStep,
 		raw: String,
+
 		#[source]
 		source: serde_json::Error,
+
 		status_code: reqwest::StatusCode,
 	},
 	#[error("failed to request using HTTP during MSA step {step:?}: {source}")]

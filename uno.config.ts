@@ -1,1 +1,1 @@
-export { default } from './apps/onelauncher/frontend/uno.config';
+export { default } from './apps/onelauncher/old_frontend/uno.config';

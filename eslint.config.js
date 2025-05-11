@@ -26,4 +26,11 @@ export default defineConfig(
 
 		return config;
 	}),
+	{
+		rules: {
+			'sort-imports': 'off', // Replaced by perfectionist/sort-named-imports',
+			'import/order': 'off', // Replaced by perfectionist/sort-named-imports',
+			'style/jsx-max-props-per-line': ['error', { maximum: 3}]
+		},
+	},
 );

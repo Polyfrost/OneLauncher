@@ -1,119 +1,112 @@
-// use onelauncher::data::MinecraftCredentials;
-// use onelauncher::minecraft;
-// use onelauncher::store::MinecraftLogin;
-// use tauri::{AppHandle, Manager};
-// use uuid::Uuid;
+use onelauncher_core::{api::credentials, error::LauncherResult, store::{credentials::{MinecraftCredentials, MinecraftLogin}, Core}};
+use tauri::{AppHandle, Manager};
+use uuid::Uuid;
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn get_users() -> Result<Vec<MinecraftCredentials>, String> {
-// 	Ok(minecraft::users().await?)
-// }
+use crate::api::error::SerializableResult;
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn get_user(uuid: Uuid) -> Result<MinecraftCredentials, String> {
-// 	Ok(minecraft::get_user(uuid).await?)
-// }
+#[specta::specta]
+#[tauri::command]
+pub async fn get_users() -> SerializableResult<Vec<MinecraftCredentials>> {
+	Ok(credentials::users().await?)
+}
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn remove_user(uuid: Uuid) -> Result<(), String> {
-// 	Ok(minecraft::remove_user(uuid).await?)
-// }
+#[specta::specta]
+#[tauri::command]
+pub async fn get_user(uuid: Uuid) -> SerializableResult<MinecraftCredentials> {
+	Ok(credentials::get_user(uuid).await?)
+}
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn get_default_user(
-// 	fallback: Option<bool>,
-// ) -> Result<Option<MinecraftCredentials>, String> {
-// 	let uuid = minecraft::get_default_user().await?;
+#[specta::specta]
+#[tauri::command]
+pub async fn remove_user(uuid: Uuid) -> SerializableResult<()> {
+	Ok(credentials::remove_user(uuid).await?)
+}
 
-// 	if let Some(fallback) = fallback {
-// 		if fallback && uuid.is_none() {
-// 			return Ok(minecraft::users().await?.first().cloned());
-// 		}
-// 	}
+#[specta::specta]
+#[tauri::command]
+pub async fn get_default_user(
+	fallback: Option<bool>,
+) -> SerializableResult<Option<MinecraftCredentials>> {
+	let uuid = credentials::get_default_user().await?;
 
-// 	match uuid {
-// 		Some(uuid) => Ok(Some(minecraft::get_user(uuid).await?)),
-// 		None => Ok(None),
-// 	}
-// }
+	if fallback.is_some_and(|fallback| fallback) && uuid.is_none() {
+		return Ok(credentials::users().await?.first().cloned());
+	}
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn set_default_user(uuid: Option<Uuid>) -> Result<(), String> {
-// 	minecraft::set_default_user(uuid).await?;
-// 	Ok(())
-// }
+	match uuid {
+		Some(uuid) => Ok(Some(credentials::get_user(uuid).await?)),
+		None => Ok(None),
+	}
+}
 
-// #[specta::specta]
-// #[tauri::command]
-// pub async fn auth_login(handle: AppHandle) -> Result<Option<MinecraftCredentials>, String> {
-// 	let flow = minecraft::begin().await?;
-// 	let result = spawn_webview(handle, flow).await?;
+#[specta::specta]
+#[tauri::command]
+pub async fn set_default_user(uuid: Option<Uuid>) -> SerializableResult<()> {
+	credentials::set_default_user(uuid).await?;
+	Ok(())
+}
 
-// 	Ok(result)
-// }
+#[specta::specta]
+#[tauri::command]
+pub async fn begin_ms_flow(handle: tauri::AppHandle) -> SerializableResult<Option<MinecraftCredentials>> {
+	let flow = credentials::begin().await?;
+	let result = spawn_webview(handle, flow).await?;
 
-// async fn spawn_webview(
-// 	handle: AppHandle,
-// 	flow: MinecraftLogin,
-// ) -> Result<Option<MinecraftCredentials>, String> {
-// 	let now = chrono::Utc::now();
+	Ok(result)
+}
 
-// 	if let Some(win) = handle.get_webview_window("login") {
-// 		win.close().map_err(|err| err.to_string())?;
-// 	}
+async fn spawn_webview(
+	handle: AppHandle,
+	flow: MinecraftLogin,
+) -> LauncherResult<Option<MinecraftCredentials>> {
+	let now = chrono::Utc::now();
 
-// 	let win = tauri::WebviewWindowBuilder::new(
-// 		&handle,
-// 		"login",
-// 		tauri::WebviewUrl::External(
-// 			flow.redirect_uri
-// 				.parse()
-// 				.map_err(|_| anyhow::anyhow!("failed to parse auth redirect url"))
-// 				.map_err(|err| err.to_string())?,
-// 		),
-// 	)
-// 	.title("Log into OneLauncher")
-// 	.always_on_top(true)
-// 	.center()
-// 	.build()
-// 	.map_err(|err| err.to_string())?;
+	if let Some(win) = handle.get_webview_window("login") {
+		win.close()?;
+	}
 
-// 	win.request_user_attention(Some(tauri::UserAttentionType::Critical))
-// 		.map_err(|err| err.to_string())?;
+	let win = tauri::WebviewWindowBuilder::new(
+		&handle,
+		"login",
+		tauri::WebviewUrl::External(
+			flow.redirect_uri
+				.parse()
+				.map_err(|_| anyhow::anyhow!("failed to parse auth redirect url"))?,
+		),
+	)
+		.title(format!("Login to {}", Core::get().launcher_name))
+		.center()
+		.focused(true)
+		.build()?;
 
-// 	while (chrono::Utc::now() - now) < chrono::Duration::minutes(10) {
-// 		if win.title().is_err() {
-// 			return Ok(None);
-// 		}
+	win.request_user_attention(Some(tauri::UserAttentionType::Critical))?;
 
-// 		if win
-// 			.url()
-// 			.map_err(|err| err.to_string())?
-// 			.as_str()
-// 			.starts_with("https://login.live.com/oauth20_desktop.srf")
-// 		{
-// 			if let Some((_, code)) = win
-// 				.url()
-// 				.map_err(|err| err.to_string())?
-// 				.query_pairs()
-// 				.find(|x| x.0 == "code")
-// 			{
-// 				win.close().map_err(|err| err.to_string())?;
-// 				let value = minecraft::finish(&code.clone(), flow).await?;
+	while (chrono::Utc::now() - now) < chrono::Duration::minutes(10) {
+		if win.title().is_err() {
+			return Ok(None);
+		}
 
-// 				return Ok(Some(value));
-// 			}
-// 		}
+		if win
+			.url()?
+			.as_str()
+			.starts_with("https://login.live.com/oauth20_desktop.srf")
+		{
+			if let Some((_, code)) = win
+				.url()?
+				.query_pairs()
+				.find(|x| x.0 == "code")
+			{
+				win.close()?;
+				let value = credentials::finish(&code.clone(), flow).await?;
 
-// 		tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-// 	}
+				return Ok(Some(value));
+			}
+		}
 
-// 	win.close().map_err(|err| err.to_string())?;
+		tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+	}
 
-// 	Ok(None)
-// }
+	win.close()?;
+
+	Ok(None)
+}

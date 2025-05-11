@@ -25,15 +25,15 @@ pub enum LauncherError {
 	#[error(transparent)]
 	DaoError(#[from] DaoError),
 
-	#[error(transparent)]
+	#[error("json error: {0}")]
 	SerdeError(#[from] serde_json::Error),
 	#[error(transparent)]
 	AnyhowError(#[from] anyhow::Error),
-	#[error(transparent)]
+	#[error("database error: {0}")]
 	DbError(#[from] sea_orm::DbErr),
-	#[error(transparent)]
+	#[error("http error: {0}")]
 	ReqwestError(#[from] reqwest::Error),
-	#[error(transparent)]
+	#[error("meta error: {0}")]
 	InterpulseError(#[from] interpulse::Error),
 	#[error(transparent)]
 	RegexError(#[from] regex::Error),

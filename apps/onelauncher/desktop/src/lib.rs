@@ -48,7 +48,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
 				.formatter(ext::specta::formatter),
-			"../../frontend/src/bindings.ts",
+			"../frontend/src/bindings.gen.ts",
 		)
 		.expect("failed to export debug bindings!");
 

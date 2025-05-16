@@ -41,6 +41,7 @@ export type ButtonProps = AriaButtonProps & RefAttributes<HTMLButtonElement> & {
 	color?: ButtonVariants['color'];
 	size?: ButtonVariants['size'];
 	className?: string;
+	isDisabled?: boolean;
 };
 
 function Button({
@@ -52,6 +53,7 @@ function Button({
 	return (
 		<AriaButton
 			className={buttonVariants({ color, size, className })}
+			isDisabled={props.isDisabled}
 			{...props}
 		/>
 	);

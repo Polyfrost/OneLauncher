@@ -6,7 +6,7 @@ export const Route = createFileRoute('/onboarding/')({
 
 function RouteComponent() {
   return (
-    <div className="grid grid-cols-2 h-full w-full flex-col items-center justify-center gap-x-16">
+    <div className="grid grid-cols-2 h-full w-full items-center gap-x-16">
       <h1 className="text-6xl">
         Welcome to
         {' '}

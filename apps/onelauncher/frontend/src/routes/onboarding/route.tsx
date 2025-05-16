@@ -8,24 +8,24 @@ export const Route = createFileRoute('/onboarding')({
 function RouteComponent() {
   const navigate = useNavigate()
   const routerState = useRouterState()
-  
+
   const steps = [
     '/onboarding/',
   ]
-  
+
   const currentPath = routerState.location.pathname
   const currentStepIndex = steps.findIndex(path => currentPath === path || currentPath.startsWith(path))
-  
-  const progressPercentage = steps.length > 1 
-    ? ((currentStepIndex + 1) / steps.length) * 100 
+
+  const progressPercentage = steps.length > 1
+    ? ((currentStepIndex + 1) / steps.length) * 100
     : (currentStepIndex === 0 ? 100 : 0)
-  
+
   const handleBack = () => {
     if (currentStepIndex > 0) {
       navigate({ to: steps[currentStepIndex - 1] })
     }
   }
-  
+
   const handleNext = () => {
     if (currentStepIndex < steps.length - 1) {
       navigate({ to: steps[currentStepIndex + 1] })
@@ -37,6 +37,7 @@ function RouteComponent() {
   
   return (
     // remind me 2 hours! i'll fix this
+    // update: it's fixed!
     <div className="w-full flex flex-col items-center h-screen">
       <div className="h-0.5 w-full">
         <div

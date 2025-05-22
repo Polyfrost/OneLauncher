@@ -1,7 +1,9 @@
-import type { MinecraftCredentials } from '@/bindings.gen'
+import { type MinecraftCredentials } from '@/bindings.gen'
 import Button from '@/components/base/Button'
 import { Show } from '@/components/base/Show'
 import PlayerHead from '@/components/content/PlayerHead'
+import useCommand from '@/hooks/useCommand'
+import { bindings } from '@/main'
 import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 
@@ -12,6 +14,26 @@ export const Route = createFileRoute('/onboarding/login')({
 function RouteComponent() {
   const [profile, setProfile] = useState<MinecraftCredentials>()
   const [errorMessage, setErrorMessage] = useState<string>('')
+  const result = useCommand("beginMsFlow", bindings.commands.beginMsFlow, {
+    enabled: false,
+    subscribed: false
+  })
+
+  function beginMsAuthFlow() {
+    result.refetch()
+
+    if (result.isError) {
+      setErrorMessage(result.error.message)
+      return;
+    }
+
+    if (!result.data) {
+      setErrorMessage('No account was found. Please try again.');
+      return;
+    }
+
+    setProfile(result.data);
+  }
 
   return (
     <>
@@ -33,6 +55,7 @@ function RouteComponent() {
 
         <Button
           children="Login with Microsoft"
+          onPress={beginMsAuthFlow}
         />
 
         <p className="text-danger">{errorMessage}</p>

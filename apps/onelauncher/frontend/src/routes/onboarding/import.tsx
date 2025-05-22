@@ -27,7 +27,7 @@ function RouteComponent() {
           <small className="pt-2 text-fg-secondary">
             Want to contribute a launcher import? Click
             {' '}
-            <a href="https://github.com/Polyfrost/OneLauncher">here</a>
+            <a className='text-brand-pressed' href="https://github.com/Polyfrost/OneLauncher">here</a>
             .
           </small>
         </div>

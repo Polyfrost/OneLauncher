@@ -16,6 +16,9 @@ macro_rules! collect_commands {
 			users::set_default_user,
 			users::begin_ms_flow,
 
+			cluster::create_cluster,
+			cluster::get_clusters,
+
 			other::open_dev_tools,
 		]
 	}};

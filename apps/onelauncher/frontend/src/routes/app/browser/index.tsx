@@ -1,3 +1,5 @@
+import { TextField } from '@/components/base/TextField';
+import { Modal } from '@/components/overlay/Modal';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/browser/')({
@@ -5,5 +7,13 @@ export const Route = createFileRoute('/app/browser/')({
 });
 
 function RouteComponent() {
-	return <div>Hello "/app/browser/"!</div>;
+	return (
+		<div>
+			<p>asdasdas</p>
+
+			<TextField />
+
+			<Modal />
+		</div>
+	);
 }

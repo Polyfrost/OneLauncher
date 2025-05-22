@@ -1,6 +1,6 @@
 import Button from '@/components/base/Button'
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
-import type { JSX } from 'react';
+import { createContext, useState, type JSX } from 'react';
 
 export const Route = createFileRoute('/onboarding')({
   component: RouteComponent,
@@ -15,6 +15,28 @@ const steps = [
   '/onboarding/summary',    // wip
   '/onboarding/complete',   // wip
 ] as const;
+
+type Language = {
+  lang: string,
+  percentage: number
+}
+
+interface ImportInstancesType {
+	basePath: string;
+	instances: string[];
+}
+
+interface OnboardingContextType {
+  setLanguage: (language: Language) => void;
+  language: () => Language;
+
+  setImportInstances: (type: string, basePath: string, instances: string[]) => void;
+  importInstances: (type: string) => ImportInstancesType | undefined;
+
+  setForwardButtonEnabled: (enabled: boolean) => void;
+
+  getTasks: () => string[];
+}
 
 function RouteComponent() {
   const navigate = useNavigate()
@@ -61,7 +83,7 @@ function RouteComponent() {
       console.log("Bir sonraki adım belirlenemedi.");
     }
   };
-  
+
   return (
     // remind me 2 hours! i'll fix this
     // update: it's fixed!
@@ -90,29 +112,29 @@ function RouteComponent() {
 }
 
 export interface OnboardingStepProps {
-	title: string;
-	paragraph: string;
-	illustration: JSX.Element;
+  title: string;
+  paragraph: string;
+  illustration: JSX.Element;
   children: JSX.Element;
 }
 
 export function OnboardingStep(props: OnboardingStepProps) {
-	return (
-		<div className="grid grid-cols-2 h-full w-full gap-x-16">
-			<div className="flex flex-col items-center justify-center">
-				{props.illustration}
-			</div>
+  return (
+    <div className="grid grid-cols-2 h-full w-full gap-x-16">
+      <div className="flex flex-col items-center justify-center">
+        {props.illustration}
+      </div>
 
-			<div className="flex flex-col justify-center gap-y-4">
-				<div className="w-full flex flex-col gap-y-2">
-					<h1 className="text-2xl">{props.title}</h1>
-					<p className="text-lg text-fg-secondary line-height-normal">{props.paragraph}</p>
-				</div>
+      <div className="flex flex-col justify-center gap-y-4">
+        <div className="w-full flex flex-col gap-y-2">
+          <h1 className="text-2xl">{props.title}</h1>
+          <p className="text-lg text-fg-secondary line-height-normal">{props.paragraph}</p>
+        </div>
 
-				<div className="max-h-96 w-full flex flex-1 flex-col gap-y-2">
-					{props.children}
-				</div>
-			</div>
-		</div>
-	);
+        <div className="max-h-96 w-full flex flex-1 flex-col gap-y-2">
+          {props.children}
+        </div>
+      </div>
+    </div>
+  );
 }

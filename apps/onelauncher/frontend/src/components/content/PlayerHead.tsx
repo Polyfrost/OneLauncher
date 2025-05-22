@@ -13,7 +13,7 @@ function PlayerHead({
 }: PlayerHeadProps & ImgHTMLAttributes<HTMLImageElement>) {
 	const src = useMemo(() => {
 		return uuid
-			? `https://crafatar.com/avatars/${uuid}?overlay&size=8`
+			? `https://crafatar.com/avatars/${uuid}?overlay&size=64`
 			: SteveHead;
 	}, [uuid]);
 

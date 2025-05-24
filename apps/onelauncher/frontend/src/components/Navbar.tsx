@@ -22,7 +22,7 @@ function Navbar() {
 			<div className="flex flex-row items-center gap-x-10 py-1">
 				<NavbarLink label="Home" path="/app" />
 				<NavbarLink label="Browser" path="/app/browser" />
-				<NavbarLink label="Settings" path="/app" />
+				<NavbarLink label="Settings" path="/app/settings" />
 			</div>
 			<div className="relative flex flex-row items-center justify-end gap-x-2">
 				<Button color="ghost" size="icon">

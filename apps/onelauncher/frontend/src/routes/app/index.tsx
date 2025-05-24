@@ -3,13 +3,19 @@ import type { Model } from '@/bindings.gen';
 import Button from '@/components/base/Button';
 import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
-import { useIsFetching } from '@tanstack/react-query';
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
+import DefaultInstancePhoto from "@/assets/images/default_instance_cover.jpg"
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
 });
 
+/*
+Please note this route has a very big issue related to scrolling
+and i am very angry rn so i will not be fixing it rn
+*/
 function RouteComponent() {
 	const result = useCommand("getClusters", bindings.commands.getClusters)
 
@@ -23,7 +29,7 @@ function RouteComponent() {
 				</div>
 			</div>
 
-			<div className='h-96 overflow-y-auto'>
+			<div className='flex flex-col'>
 				<ClusterGroup clusters={result.data} />
 			</div>
 		</div>
@@ -102,6 +108,8 @@ function Banner() {
 }
 
 function ClusterCreate() {
+	const queryClient = useQueryClient();
+
 	const result = useCommand("createCluster", () => bindings.commands.createCluster({
 		icon_url: "asd",
 		mc_loader: "vanilla",
@@ -121,7 +129,9 @@ function ClusterCreate() {
 			return;
 		}
 
-		return;
+		queryClient.invalidateQueries({
+			queryKey: ["getClusters"],
+		})
 	}
 
 	return (
@@ -143,54 +153,56 @@ function ClusterGroup(props: ClusterGroupProps) {
 
 	if (isFetching) {
 		return (
-			<div className='flex items-center justify-center h-fit'>
-                <div className="w-8 h-8 border-4 border-brand rounded-full border-t-transparent animate-spin" />
+			<div className='flex items-center justify-center h-full'>
+				<div className="w-8 h-8 border-4 border-brand rounded-full border-t-transparent animate-spin" />
 			</div>
 		)
 	}
 
 	return (
-		<>
-			<div className='grid grid-cols-4 gap-2'>
-				{props.clusters?.map((data) => (
-					<ClusterCard key={data.id} {...data} />
-				))}
-			</div>
-		</>
+		<div className="h-full w-full">
+			<OverlayScrollbarsComponent
+				className="h-full w-full"
+			>
+				<div className='grid grid-cols-4 gap-4 max-h-96 2xl:grid-cols-6 pb-4'>
+					{props.clusters?.map((data) => (
+						<ClusterCard key={data.id} {...data} />
+					))}
+				</div>
+			</OverlayScrollbarsComponent>
+		</div>
 	)
 }
 
 function ClusterCard(props: Model) {
 	return (
-		<>
-			<div
-				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
-			>
-				<div className="relative flex-1 overflow-hidden rounded-t-xl">
-					<div
-						className="absolute h-full w-full transition-transform group-hover:!scale-110"
-					>
-						<img
-							className="h-full w-full object-cover"
-							src='https://github.com/emirsassan.png'
-						/>
-					</div>
-				</div>
-				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-						<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{props.name}</p>
-						<p className="h-4 text-xs">
-							{props.mc_loader}
-							{' '}
-							{props.mc_version}
-							{/* {' '}
-							{props.packages.mods && `• ${props.mods} mods`} */}
-						</p>
-					</div>
-
-					{/* <LaunchButton cluster={props} iconOnly /> */}
+		<div
+			className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+		>
+			<div className="relative flex-1 overflow-hidden rounded-t-xl">
+				<div
+					className="absolute h-full w-full transition-transform group-hover:!scale-110"
+				>
+					<img
+						className="h-full w-full object-cover"
+						src={DefaultInstancePhoto}
+					/>
 				</div>
 			</div>
-		</>
+			<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+				<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+					<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{props.name}</p>
+					<p className="h-4 text-xs">
+						{props.mc_loader}
+						{' '}
+						{props.mc_version}
+						{/* {' '}
+						{props.packages.mods && `• ${props.mods} mods`} */}
+					</p>
+				</div>
+
+				{/* <LaunchButton cluster={props} iconOnly /> */}
+			</div>
+		</div>
 	);
 }

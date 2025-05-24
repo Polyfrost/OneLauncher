@@ -3,6 +3,7 @@ pub mod users;
 pub mod processor;
 pub mod package;
 pub mod other;
+pub mod settings;
 
 #[macro_export(local_inner_macros)]
 macro_rules! collect_commands {
@@ -18,6 +19,8 @@ macro_rules! collect_commands {
 
 			cluster::create_cluster,
 			cluster::get_clusters,
+
+			settings::get_global_profile,
 
 			other::open_dev_tools,
 		]

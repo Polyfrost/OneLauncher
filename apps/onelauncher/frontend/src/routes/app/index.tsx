@@ -4,7 +4,7 @@ import Button from '@/components/base/Button';
 import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import DefaultInstancePhoto from "@/assets/images/default_instance_cover.jpg"
 
@@ -176,33 +176,37 @@ function ClusterGroup(props: ClusterGroupProps) {
 
 function ClusterCard(props: Model) {
 	return (
-		<div
-			className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
-		>
-			<div className="relative flex-1 overflow-hidden rounded-t-xl">
-				<div
-					className="absolute h-full w-full transition-transform group-hover:!scale-110"
-				>
-					<img
-						className="h-full w-full object-cover"
-						src={DefaultInstancePhoto}
-					/>
+		<Link to='/app/cluster' search={{
+			id: props.id
+		}}>
+			<div
+				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+			>
+				<div className="relative flex-1 overflow-hidden rounded-t-xl">
+					<div
+						className="absolute h-full w-full transition-transform group-hover:!scale-110"
+					>
+						<img
+							className="h-full w-full object-cover"
+							src={DefaultInstancePhoto}
+						/>
+					</div>
 				</div>
-			</div>
-			<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-				<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-					<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{props.name}</p>
-					<p className="h-4 text-xs">
-						{props.mc_loader}
-						{' '}
-						{props.mc_version}
-						{/* {' '}
+				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+						<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{props.name}</p>
+						<p className="h-4 text-xs">
+							{props.mc_loader}
+							{' '}
+							{props.mc_version}
+							{/* {' '}
 						{props.packages.mods && `• ${props.mods} mods`} */}
-					</p>
-				</div>
+						</p>
+					</div>
 
-				{/* <LaunchButton cluster={props} iconOnly /> */}
+					{/* <LaunchButton cluster={props} iconOnly /> */}
+				</div>
 			</div>
-		</div>
+		</Link>
 	);
 }

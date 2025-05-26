@@ -216,7 +216,9 @@
 // 	Ok(())
 // }
 
-use onelauncher_core::{api::cluster, entity::{clusters::Model, icon::Icon, loader::GameLoader}};
+use std::ops::Deref;
+
+use onelauncher_core::{api::cluster, entity::{clusters::Model, icon::Icon, loader::GameLoader}, error::LauncherResult};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use crate::api::error::SerializableResult;
@@ -235,6 +237,8 @@ pub struct CreateCluster {
 pub async fn create_cluster(options: CreateCluster) -> SerializableResult<Model> {
     let thing = cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon_url).await?;
 
+	cluster::prepare_cluster(&mut thing.clone(), Some(false));
+
     Ok(thing)
 }
 
@@ -242,4 +246,10 @@ pub async fn create_cluster(options: CreateCluster) -> SerializableResult<Model>
 #[tauri::command]
 pub async fn get_clusters() -> SerializableResult<Vec<Model>> {
     Ok(cluster::dao::get_all_clusters().await?)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn get_cluster_by_id(id: i64) -> SerializableResult<Option<Model>> {
+    Ok(cluster::dao::get_cluster_by_id(id).await?)
 }

@@ -75,11 +75,11 @@ function Sidebar(props: SidebarProps) {
   return (
     <div className="w-56 flex flex-col pr-2">
       {Object.keys(props.links).map((section, i) => (
-        <div className="flex flex-col gap-y-2">
-          <div key={i}>
+        <div className="flex flex-col gap-y-2" key={i}>
+          <div>
             <h3 className="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</h3>
             <div className="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
-              {props.links[section].map((link) => {
+              {props.links[section].map((link, i) => {
                 if (!link)
                   return;
 
@@ -88,6 +88,7 @@ function Sidebar(props: SidebarProps) {
                     className={
                       `px-3 py-1 rounded-md text-md border border-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-border/05' : 'border-transparent'}`
                     }
+                    key={i}
                     onClick={() => goto(link[2], link[3])}
                   >
                     <span className="flex flex-row items-center gap-x-3 *:w-5">
@@ -113,7 +114,7 @@ interface SidebarPageProps {
 
 Sidebar.Page = function (props: SidebarPageProps) {
   return (
-    <div {...props} className={`flex flex-col flex-1 gap-y-1 ${props.className || ''}`}>
+    <div {...props} className={`flex flex-col flex-1 gap-y-1 overflow-y-auto h-full ${props.className || ''}`}>
       {props.children}
     </div>
   );

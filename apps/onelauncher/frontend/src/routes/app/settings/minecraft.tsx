@@ -11,7 +11,7 @@ export const Route = createFileRoute('/app/settings/minecraft')({
 function RouteComponent() {
   return (
     <Sidebar.Page>
-      <div>
+      <div className="h-full">
         <h1>Minecraft Settings</h1>
 
         <SettingsRow.Header>Game</SettingsRow.Header>

@@ -29,13 +29,13 @@ function RootRoute() {
 				navigate={(to, options) => router.navigate({ to, ...options })}
 				useHref={to => router.buildLocation({ to }).href}
 			>
-				<main className='max-h-screen min-h-screen flex flex-col'>
+				<div className="h-screen flex flex-col overflow-hidden px-0.5">
 					<WindowFrame />
 
 					<Outlet />
 
 					<TanStackRouterDevtools />
-				</main>
+				</div>
 			</RouterProvider>
 		</AnimatedOutletProvider>
 	);

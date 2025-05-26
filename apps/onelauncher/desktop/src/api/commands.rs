@@ -19,6 +19,7 @@ macro_rules! collect_commands {
 
 			cluster::create_cluster,
 			cluster::get_clusters,
+			cluster::get_cluster_by_id,
 
 			settings::get_global_profile,
 

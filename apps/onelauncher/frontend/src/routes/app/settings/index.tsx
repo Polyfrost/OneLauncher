@@ -16,7 +16,7 @@ function RouteComponent() {
 
     return (
         <Sidebar.Page>
-            <div>
+            <div className="h-full">
                 <h1>General Settings</h1>
 
                 <SettingsRow

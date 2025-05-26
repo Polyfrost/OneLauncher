@@ -60,6 +60,10 @@
 	--color-ghost-overlay: rgba(255, 255, 255, 0.05);
 	--color-ghost-overlay-hover: rgba(255, 255, 255, 0.10);
 
+	--color-scrollbar-bg: rgba(255, 255, 255, 0.05);
+	--color-scrollbar-bg-hover: rgba(255, 255, 255, 0.10);
+	--color-scrollbar-bg-pressed: rgba(255, 255, 255, 0.15);
+
 	/* other */
 	--font-sans: "Poppins", sans-serif;
 	--text-xs: 0.688rem;
@@ -83,3 +87,21 @@ body {
 	@apply bg-page text-fg-primary text-base;
 }
 
+.os-scrollbar {
+	--os-size: 10px;
+	--os-track-border-radius: var(--border-radius-lg);
+	--os-handle-bg: var(--color-scrollbar-bg);
+	--os-handle-bg-hover: var(--color-scrollbar-bg-hover);
+	--os-handle-bg-active: var(--color-scrollbar-bg-pressed);
+	--os-handle-perpendicular-size-hover: 140%;
+	--os-handle-perpendicular-size-active: 140%;
+	--os-handle-interactive-area-offset: 4px;
+}
+
+.os-scrollbar-offset-right {
+	--os-padding-axis: 10;
+}
+
+.os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
+	display: none;
+}

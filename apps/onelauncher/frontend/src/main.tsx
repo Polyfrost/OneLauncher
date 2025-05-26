@@ -8,6 +8,7 @@ import { routeTree } from './routeTree.gen';
 import './fonts';
 import './utils/nativeExperience';
 import './utils/devExperience';
+import 'overlayscrollbars/overlayscrollbars.css';
 import './styles/global.css';
 
 export * as bindings from './bindings.gen';

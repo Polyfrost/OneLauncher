@@ -12,7 +12,7 @@ function SettingsRow(props: SettingsRowProps) {
     return (
         <div
             className={`
-                flex flex-row items-center gap-3.5 rounded-xl p-4
+                flex flex-row items-center gap-3.5 rounded-xl p-4 my-2
                 ${props.disabled ? 'bg-component-bg-disabled' : 'bg-page-elevated hover:bg-component-bg-hover'}
             `}
         >

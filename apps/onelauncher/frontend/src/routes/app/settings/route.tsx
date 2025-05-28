@@ -66,10 +66,8 @@ function Sidebar(props: SidebarProps) {
     navigate({ to: url })
   }
 
-  function isActive(link: string, params: URLSearchParams | undefined) {
-    const pathnameMatch = location === `${props.base}${link}` || `${location}/` === `${props.base}${link}`;
-    const paramsMatch = params ? location.endsWith(params.toString()) : true;
-    return pathnameMatch && paramsMatch;
+  function isActive(link: string, _params: URLSearchParams | undefined) {
+    return location === `${props.base}${link}` || `${location}/` === `${props.base}${link}`;
   }
 
   return (
@@ -109,7 +107,7 @@ function Sidebar(props: SidebarProps) {
 
 interface SidebarPageProps {
   className?: string;
-  children: JSX.Element;
+  children: JSX.Element | JSX.Element[];
 }
 
 Sidebar.Page = function (props: SidebarPageProps) {

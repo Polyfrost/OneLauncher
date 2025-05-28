@@ -11,7 +11,7 @@ interface ModalProps extends DialogProps, ClassNameString { }
 function Modal({ className, ...props }: ModalProps) {
   return (
     <ModalOverlay isDismissable className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <AriaDialog className="min-w-md flex flex-col gap-y-2 border border-white/5 rounded-lg bg-page p-4 text-center focus:outline-none" {...props} />
+      <AriaDialog className="" {...props} />
     </ModalOverlay>
   );
 }

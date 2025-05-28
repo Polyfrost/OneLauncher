@@ -2,6 +2,16 @@ import useCommand from '@/hooks/useCommand'
 import { bindings } from '@/main'
 import { createFileRoute } from '@tanstack/react-router'
 import Sidebar from '../settings/route'
+import Button from '@/components/base/Button'
+import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react'
+import LoaderIcon from '@/components/launcher/LoaderIcon'
+import { Show } from '@/components/base/Show'
+import { TextField } from '@/components/base/TextField'
+import type { Model } from '@/bindings.gen'
+import ScrollableContainer from '@/components/ScrollableContainer'
+import { useState, type Dispatch, type SetStateAction } from 'react'
+import SettingsRow from '@/components/SettingsRow'
+import ToggleButton from '@/components/base/ToggleButton'
 
 export const Route = createFileRoute('/app/cluster/')({
   component: RouteComponent
@@ -9,15 +19,183 @@ export const Route = createFileRoute('/app/cluster/')({
 
 function RouteComponent() {
   const { id } = Route.useSearch()
+  const [newCover, setNewCover] = useState<string>("")
+  const [newName, setNewName] = useState<string>("")
 
   // dumbass fix ik
   const cluster = useCommand("getClusterById", () => bindings.commands.getClusterById(Number(id.toString()) as unknown as bigint))
 
   return (
     <Sidebar.Page>
-      <div className="h-full">
-        <pre>{JSON.stringify(cluster, null, 2)}</pre>
-      </div>
+      <h1>Overview</h1>
+      <ScrollableContainer>
+        <div className='h-full'>
+          <Banner
+            cluster={cluster.data}
+            newCover={newCover}
+            setNewCover={setNewCover}
+            editMode={false}
+            newName={newName}
+            setNewName={setNewName}
+            refetch={cluster.refetch}
+          />
+
+          <SettingsRow.Header>Folders and Files</SettingsRow.Header>
+          <SettingsRow
+            children={(
+              <Button
+                color="primary"
+                children="Open"
+                isDisabled={false}
+              />
+            )}
+            description={"burada path var işte yersen"}
+            disabled={false}
+            icon={<FolderIcon />}
+            title="Cluster Folder"
+          />
+
+          <SettingsRow.Header>Cluster Actions</SettingsRow.Header>
+          <SettingsRow
+            children={(
+              <ToggleButton color='secondary'>Edit</ToggleButton>
+            )}
+            description="Edit the cluster name and cover image."
+            icon={<Edit02Icon />}
+            title="Edit Cluster"
+          />
+          <SettingsRow
+            children={(
+              <Button
+                color="danger"
+                children="Delete"
+                isDisabled={false}
+              />
+            )}
+            description="Delete this cluster and all its data."
+            disabled={false}
+            icon={<Trash01Icon />}
+            title="Delete Cluster"
+          />
+          <SettingsRow
+            children={(
+              <Button
+                color="secondary"
+                children="Repair"
+              />
+            )}
+            description="Verifies whether all assets, libraries and natives were properly installed."
+            icon={<Tool02Icon />}
+            title="Verify Cluster"
+          />
+        </div>
+      </ScrollableContainer>
     </Sidebar.Page>
   )
+}
+
+interface BannerProps {
+  cluster: Model | null | undefined;
+  editMode: boolean;
+  newName: string;
+  setNewName: Dispatch<SetStateAction<string>>;
+  newCover: string;
+  setNewCover: Dispatch<SetStateAction<string>>;
+  refetch: () => void;
+}
+
+function Banner(props: BannerProps) {
+  // async function launchFilePicker() {
+  // 	const selected = await dialog.open({
+  // 		multiple: false,
+  // 		directory: false,
+  // 		filters: [{
+  // 			name: 'Image',
+  // 			extensions: ['png', 'jpg', 'jpeg', 'webp'],
+  // 		}],
+  // 	});
+
+  // 	if (selected === null)
+  // 		return;
+
+  // 	props.setNewCover(selected);
+  // }
+
+  function updateName(name: string) {
+    if (name.length > 30 || name.length <= 0)
+      return;
+
+    props.setNewName(name);
+  }
+
+  return (
+    <div className="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
+      <div className="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-component-bg/10 rounded-lg">
+        <Show when={props.editMode}>
+          <div
+            className="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
+          // onClick={launchFilePicker}
+          >
+            <ImagePlusIcon className="h-12 w-12" />
+          </div>
+        </Show>
+
+        {/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
+        <img src='https://github.com/emirsassan.png' />
+      </div>
+
+      <div className="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
+        <div>
+          <Show
+            fallback={
+              <h2 className="break-words text-wrap text-2xl">{props.cluster?.name}</h2>
+            }
+            when={props.editMode}
+          >
+            <TextField
+              className="text-xl font-bold"
+              onChange={e => updateName(e.target.value)}
+              placeholder={props.cluster?.name}
+            />
+          </Show>
+        </div>
+
+        <div className="flex flex-1 flex-row">
+          <div
+            className={"flex flex-1 flex-col items-start justify-between " + props.editMode ? "text-fg-primary-disabled" : ""}
+          >
+            <span className="flex flex-row items-center gap-x-1">
+              <LoaderIcon
+                className="w-5"
+                loader={props.cluster?.mc_loader}
+              />
+              <span>{props.cluster?.mc_version}</span>
+              <span>{props.cluster?.mc_loader || 'unknown'}</span>
+              {props.cluster?.mc_loader_version && <span>{props.cluster.mc_loader_version}</span>}
+            </span>
+            <span
+              className={"text-xs text-fg-secondary " + props.editMode ? "text-fg-secondary-disabled" : ""}
+            >
+              Played for
+              {' '}
+              <b>{props.cluster?.overall_played || 0}</b>
+              .
+            </span>
+          </div>
+
+          <div className="flex flex-row items-end gap-x-2.5 *:h-8">
+            <Button children="Launch" />
+
+            <Button
+              color="secondary"
+              children={<Share07Icon />}
+              // disabled={props.editMode()}
+              isDisabled={true}
+            />
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
 }

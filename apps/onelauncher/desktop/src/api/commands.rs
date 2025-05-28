@@ -22,6 +22,7 @@ macro_rules! collect_commands {
 			cluster::get_cluster_by_id,
 
 			settings::get_global_profile,
+			settings::get_profile_or_default,
 
 			other::open_dev_tools,
 		]

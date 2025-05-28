@@ -3,10 +3,12 @@ import type { Model } from '@/bindings.gen';
 import Button from '@/components/base/Button';
 import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
-import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import DefaultInstancePhoto from "@/assets/images/default_instance_cover.jpg"
+import Modal from '@/components/overlay/Modal';
+import { Server01Icon } from '@untitled-theme/icons-react';
+import HeaderImage from "@/assets/images/default_instance_cover.jpg";
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -30,7 +32,7 @@ function RouteComponent() {
 			</div>
 
 			<div className='flex flex-col'>
-				<ClusterGroup clusters={result.data} />
+				<ClusterGroup clusters={result.data} isFetching={result.isFetching} />
 			</div>
 		</div>
 	);
@@ -108,8 +110,6 @@ function Banner() {
 }
 
 function ClusterCreate() {
-	const queryClient = useQueryClient();
-
 	const result = useCommand("createCluster", () => bindings.commands.createCluster({
 		icon_url: "asd",
 		mc_loader: "vanilla",
@@ -128,30 +128,59 @@ function ClusterCreate() {
 			alert(result.error.message)
 			return;
 		}
-
-		queryClient.invalidateQueries({
-			queryKey: ["getClusters"],
-		})
 	}
 
 	return (
 		<>
-			<Button
-				children="New Cluster"
-				onClick={testThingy}
-			/>
+			<Modal.Trigger>
+				<Button
+					children="New Cluster"
+				// onClick={testThingy}
+				/>
+
+				<Modal>
+					<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
+						<div className="theme-OneLauncher-Dark relative h-25 flex">
+							<div className="absolute left-0 top-0 h-full w-full">
+								<img alt="Header Image" className="h-full w-full rounded-t-lg" src={HeaderImage} />
+							</div>
+							<div
+								className="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
+							>
+								<Server01Icon className="h-8 w-8 text-fg-primary" />
+								<div className="flex flex-col items-start justify-center">
+									<h1 className="h-10 text-fg-primary -mt-2">New Cluster</h1>
+									<span className="text-fg-primary">asd</span>
+								</div>
+							</div>
+						</div>
+						<div className="flex flex-col border border-white/5 rounded-b-lg">
+							<div className="p-3">
+								<pre>asdasdasdasds</pre>
+							</div>
+
+							<div className="flex flex-row justify-end gap-x-2 p-3 pt-0">
+								<Button
+									color="primary"
+									children="Create"
+									onClick={testThingy}
+								/>
+							</div>
+						</div>
+					</div>
+				</Modal>
+			</Modal.Trigger>
 		</>
 	)
 }
 
 interface ClusterGroupProps {
 	clusters: Model[] | undefined;
+	isFetching?: boolean;
 }
 
 function ClusterGroup(props: ClusterGroupProps) {
-	const isFetching = useIsFetching();
-
-	if (isFetching) {
+	if (props.isFetching) {
 		return (
 			<div className='flex items-center justify-center h-full'>
 				<div className="w-8 h-8 border-4 border-brand rounded-full border-t-transparent animate-spin" />

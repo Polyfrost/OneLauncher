@@ -9,6 +9,7 @@ use crate::{resolution::Resolution, settings::SettingsOsExtra};
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize, Merge)]
 #[sea_orm(table_name = "setting_profiles")]
 #[onelauncher_macro::specta]
+#[serde(rename = "SettingProfileModel")]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct Model {
 	#[sea_orm(primary_key, auto_increment = false, column_type = "Text")]

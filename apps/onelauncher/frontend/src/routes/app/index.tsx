@@ -8,7 +8,8 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import DefaultInstancePhoto from "@/assets/images/default_instance_cover.jpg"
 import Modal from '@/components/overlay/Modal';
 import { Server01Icon } from '@untitled-theme/icons-react';
-import HeaderImage from "@/assets/images/default_instance_cover.jpg";
+import HeaderImage from "@/assets/images/default_banner.png";
+import { TextField } from '@/components/base/TextField';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -150,13 +151,13 @@ function ClusterCreate() {
 								<Server01Icon className="h-8 w-8 text-fg-primary" />
 								<div className="flex flex-col items-start justify-center">
 									<h1 className="h-10 text-fg-primary -mt-2">New Cluster</h1>
-									<span className="text-fg-primary">asd</span>
+									{/* <span className="text-fg-primary">asd</span> */}
 								</div>
 							</div>
 						</div>
 						<div className="flex flex-col border border-white/5 rounded-b-lg">
 							<div className="p-3">
-								<pre>asdasdasdasds</pre>
+								<TextField placeholder='Epik cluster name' className={"px-2"} />
 							</div>
 
 							<div className="flex flex-row justify-end gap-x-2 p-3 pt-0">

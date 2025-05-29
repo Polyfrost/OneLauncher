@@ -16,9 +16,16 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 		proc_macro2::TokenStream::new()
 	};
 
-	let specta_type = quote! {
-		#[cfg_attr(feature = "specta", derive(specta::Type))]
-	};
+    let specta_type = if let Some(rename) = attrs.rename {
+        quote! {
+            #[cfg_attr(feature = "specta", derive(specta::Type))]
+            #[cfg_attr(feature = "specta", specta(rename = #rename))]
+        }
+    } else {
+        quote! {
+            #[cfg_attr(feature = "specta", derive(specta::Type))]
+        }
+    };
 
 	let expanded = quote! {
 		#specta_event_type
@@ -32,12 +39,15 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 #[derive(Default)]
 struct SpectaAttributes {
     event: bool,
+	rename: Option<String>,
 }
 
 impl SpectaAttributes {
     fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
 		if meta.path.is_ident("event") {
 			self.event = true;
+		} else if meta.path.is_ident("rename") {
+			self.rename = Some(meta.value()?.to_string());
 		}
         Ok(())
     }

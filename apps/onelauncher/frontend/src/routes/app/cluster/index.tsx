@@ -58,7 +58,7 @@ function RouteComponent() {
           <SettingsRow.Header>Cluster Actions</SettingsRow.Header>
           <SettingsRow
             children={(
-              <ToggleButton color='secondary'>Edit</ToggleButton>
+              <Button color='secondary'>Edit</Button>
             )}
             description="Edit the cluster name and cover image."
             icon={<Edit02Icon />}

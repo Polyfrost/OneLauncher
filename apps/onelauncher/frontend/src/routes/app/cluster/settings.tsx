@@ -3,6 +3,7 @@ import Sidebar from '../settings/route'
 import ScrollableContainer from '@/components/ScrollableContainer'
 import useCommand from '@/hooks/useCommand'
 import { bindings } from '@/main'
+import { GameSettings, ProcessSettings } from '../settings/minecraft'
 
 export const Route = createFileRoute('/app/cluster/settings')({
   component: RouteComponent,
@@ -11,14 +12,22 @@ export const Route = createFileRoute('/app/cluster/settings')({
 function RouteComponent() {
   const { id } = Route.useSearch()
 
-  const result = useCommand("getProfileOrDefault", () => bindings.commands.getProfileOrDefault(id.toString()))
+  const cluster = useCommand("getClusterById", () => bindings.commands.getClusterById(Number(id.toString()) as unknown as bigint))
+  const result = useCommand("getProfileOrDefault", () => bindings.commands.getProfileOrDefault(cluster.data?.name as string), {
+    enabled: !!cluster.data?.name
+  })
+
+  console.log(result.data)
 
   return (
     <Sidebar.Page>
-      <h1>Settings</h1>
       <ScrollableContainer>
         <div className="h-full">
-          <pre>{JSON.stringify(result.data, null, 2)}</pre>
+          <h1>Minecraft Settings</h1>
+
+          <GameSettings />
+
+          <ProcessSettings />
         </div>
       </ScrollableContainer>
     </Sidebar.Page>

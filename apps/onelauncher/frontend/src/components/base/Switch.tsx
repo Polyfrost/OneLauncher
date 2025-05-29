@@ -5,26 +5,37 @@ import { Switch as AriaSwitch } from 'react-aria-components';
 import { tv } from 'tailwind-variants';
 
 export const switchVariants = tv({
-	base: [
-		'w-[40px] h-[22px] p-3 flex flex-row relative rounded-full transition-colors overflow-hidden bg-brand',
-	],
-})
+    base: [
+        'group inline-flex h-6 w-11 items-center rounded-full transition-colors',
+        'bg-component-bg-pressed data-[selected]:bg-blue-600',
+        'focus:outline-none',
+        'disabled:cursor-not-allowed disabled:opacity-50',
+    ],
+});
+
+export const switchThumbVariants = tv({
+    base: [
+        'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform',
+        'translate-x-1 group-data-[selected]:translate-x-6',
+    ],
+});
 
 export type SwitchProps = AriaSwitchProps & RefAttributes<HTMLLabelElement> & {
-	className?: string;
+    className?: string;
     children?: React.ReactNode;
 };
 
 function Switch({
-	className,
-	...props
+    className,
+    children,
+    ...props
 }: SwitchProps) {
-	return (
-		<AriaSwitch className={switchVariants({ className })} {...props}>
-            <div className="bg-orange-400" />
-            {props.children}
+    return (
+        <AriaSwitch className={switchVariants({ className })} {...props}>
+            <span className={switchThumbVariants()} />
+            {children && <span className="ml-3 text-sm font-medium text-gray-900">{children}</span>}
         </AriaSwitch>
-	);
+    );
 }
 
 export default Switch;

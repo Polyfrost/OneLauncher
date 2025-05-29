@@ -218,7 +218,7 @@
 
 use std::ops::Deref;
 
-use onelauncher_core::{api::cluster, entity::{clusters::Model, icon::Icon, loader::GameLoader}, error::LauncherResult};
+use onelauncher_core::{api::{cluster, setting_profiles}, entity::{clusters::Model, icon::Icon, loader::GameLoader}, error::LauncherResult, migration::sea_orm};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use crate::api::error::SerializableResult;
@@ -237,7 +237,14 @@ pub struct CreateCluster {
 pub async fn create_cluster(options: CreateCluster) -> SerializableResult<Model> {
     let thing = cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon_url).await?;
 
-	cluster::prepare_cluster(&mut thing.clone(), Some(false));
+	// cluster::prepare_cluster(&mut thing.clone(), Some(false));
+
+	if setting_profiles::dao::get_profile_by_name(&options.name).await?.is_none() {
+		setting_profiles::create_profile(&options.name, async |mut profile| {
+			profile.mem_max = sea_orm::ActiveValue::Set(Some(2048));
+			Ok(profile)
+		}).await?;
+	}
 
     Ok(thing)
 }

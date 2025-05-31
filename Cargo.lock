@@ -3345,6 +3345,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
+name = "oneclient_gui"
+version = "0.2.0-alpha.2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "interpulse",
+ "onelauncher_core",
+ "serde",
+ "serde_json",
+ "specta",
+ "specta-typescript",
+ "strum 0.27.1",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tauri-specta",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-error",
+ "uuid 1.16.0",
+]
+
+[[package]]
 name = "onelauncher_core"
 version = "0.2.0-alpha.2"
 dependencies = [

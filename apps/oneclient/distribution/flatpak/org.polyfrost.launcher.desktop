@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=OneLauncher
+Comment=Next-generation open source Minecraft launcher
+Exec=onelauncher
+Icon=org.polyfrost.launcher
+Type=Application
+Terminal=false
+StartupNotify=true
+Categories=Game;
+Keywords=game;launcher;mc;minecraft;
+StartupWMClass=OneLauncher
+Version=1.4

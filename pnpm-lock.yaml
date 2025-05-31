@@ -75,6 +75,12 @@ importers:
 
   apps/oneclient/frontend:
     dependencies:
+      '@fontsource/poppins':
+        specifier: ^5.2.6
+        version: 5.2.6
+      '@formatjs/intl-durationformat':
+        specifier: ^0.7.4
+        version: 0.7.4
       '@tailwindcss/vite':
         specifier: ^4.0.6
         version: 4.1.5(vite@6.3.4(@types/node@22.7.9)(jiti@2.4.2)(lightningcss@1.29.2)(sass@1.80.3)(tsx@4.19.4)(yaml@2.6.0))
@@ -99,15 +105,54 @@ importers:
       '@tanstack/router-plugin':
         specifier: ^1.114.3
         version: 1.119.0(@tanstack/react-router@1.119.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(vite-plugin-solid@2.11.6(solid-js@1.9.6)(vite@6.3.4(@types/node@22.7.9)(jiti@2.4.2)(lightningcss@1.29.2)(sass@1.80.3)(tsx@4.19.4)(yaml@2.6.0)))(vite@6.3.4(@types/node@22.7.9)(jiti@2.4.2)(lightningcss@1.29.2)(sass@1.80.3)(tsx@4.19.4)(yaml@2.6.0))
+      '@tauri-apps/api':
+        specifier: ^2.5.0
+        version: 2.5.0
+      '@tauri-apps/plugin-clipboard-manager':
+        specifier: ^2.2.2
+        version: 2.2.2
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.2.1
+        version: 2.2.1
+      '@tauri-apps/plugin-shell':
+        specifier: ^2.2.1
+        version: 2.2.1
+      '@untitled-theme/icons-react':
+        specifier: ^0.14.0
+        version: 0.14.0(@types/react@19.1.2)(react@19.1.0)
+      motion:
+        specifier: ^12.10.5
+        version: 12.10.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      overlayscrollbars:
+        specifier: ^2.11.2
+        version: 2.11.2
+      overlayscrollbars-react:
+        specifier: ^0.5.6
+        version: 0.5.6(overlayscrollbars@2.11.2)(react@19.1.0)
       react:
         specifier: ^19.0.0
         version: 19.1.0
+      react-aria-components:
+        specifier: ^1.8.0
+        version: 1.8.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       react-dom:
         specifier: ^19.0.0
         version: 19.1.0(react@19.1.0)
+      tailwind-merge:
+        specifier: ^3.2.0
+        version: 3.2.0
+      tailwind-variants:
+        specifier: ^1.0.0
+        version: 1.0.0(tailwindcss@4.1.5)
       tailwindcss:
         specifier: ^4.0.6
         version: 4.1.5
+      tailwindcss-animated:
+        specifier: ^2.0.0
+        version: 2.0.0(tailwindcss@4.1.5)
+      tailwindcss-react-aria-components:
+        specifier: ^2.0.0
+        version: 2.0.0(tailwindcss@4.1.5)
     devDependencies:
       '@tanstack/eslint-config':
         specifier: ^0.1.0
@@ -121,9 +166,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^4.3.4
         version: 4.4.1(vite@6.3.4(@types/node@22.7.9)(jiti@2.4.2)(lightningcss@1.29.2)(sass@1.80.3)(tsx@4.19.4)(yaml@2.6.0))
-      prettier:
-        specifier: ^3.5.3
-        version: 3.5.3
       typescript:
         specifier: ^5.7.2
         version: 5.8.3

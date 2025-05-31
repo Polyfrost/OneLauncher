@@ -1,0 +1,125 @@
+{
+	"$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-cli/schema.json",
+	"productName": "OneClient",
+	"identifier": "org.polyfrost.oneclient",
+	"app": {
+		"withGlobalTauri": true,
+		"macOSPrivateApi": true,
+		"security": {
+			"csp": null,
+			"assetProtocol": {
+				"enable": true,
+				"scope": {
+					"allow": [
+						"$DATA/OneClient/**",
+						"$RESOURCE/**"
+					]
+				}
+			},
+			"freezePrototype": true,
+			"capabilities": []
+		},
+		"windows": [
+			{
+				"title": "OneClient",
+				"titleBarStyle": "Overlay",
+				"hiddenTitle": true,
+				"width": 1280,
+				"height": 802,
+				"minWidth": 1020,
+				"minHeight": 600,
+				"resizable": true,
+				"center": true,
+				"decorations": false,
+				"fullscreen": false,
+				"shadow": true,
+				"visible": false
+			}
+		]
+	},
+	"build": {
+		"beforeDevCommand": "pnpm --filter @oneclient/frontend run dev",
+		"beforeBuildCommand": "pnpm --filter @oneclient/frontend run build",
+		"frontendDist": "../frontend/dist",
+		"devUrl": "http://localhost:8001"
+	},
+	"bundle": {
+		"active": true,
+		"targets": [
+			"app",
+			"dmg",
+			"deb",
+			"rpm",
+			"appimage",
+			"nsis"
+		],
+		"category": "Game",
+		"icon": [
+			"../distribution/icons/32x32.png",
+			"../distribution/icons/128x128.png",
+			"../distribution/icons/128x128@2x.png",
+			"../distribution/icons/icon.icns",
+			"../distribution/icons/icon.ico"
+		],
+		"copyright": "Polyfrost",
+		"publisher": "Polyfrost",
+		"license": "GPL-3.0-only",
+		"homepage": "https://polyfrost.org/",
+		"longDescription": "Next-generation open source Minecraft launcher",
+		"createUpdaterArtifacts": true,
+		"resources": [],
+		"externalBin": [],
+		"linux": {
+			"deb": {
+				"depends": [],
+				"desktopTemplate": "../distribution/linux/org.polyfrost.oneclient.desktop.template"
+			},
+			"rpm": {
+				"desktopTemplate": "../distribution/linux/org.polyfrost.oneclient.desktop.template"
+			},
+			"appimage": {
+
+			}
+		},
+		"shortDescription": "OneClient",
+		"macOS": {
+			"entitlements": "App.entitlements",
+			"exceptionDomain": null,
+			"frameworks": [],
+			"dmg": {
+				"appPosition": {
+					"x": 190,
+					"y": 190
+				},
+				"applicationFolderPosition": {
+					"x": 470,
+					"y": 190
+				}
+			},
+			"providerShortName": null,
+			"signingIdentity": null,
+			"minimumSystemVersion": "10.15"
+		},
+		"windows": {
+			"certificateThumbprint": null,
+			"webviewInstallMode": {
+				"silent": true,
+				"type": "downloadBootstrapper"
+			},
+			"digestAlgorithm": "sha256",
+			"timestampUrl": "https://timestamp.digicert.com"
+		}
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "",
+			"endpoints": ["https://polyfrost.org/releases/oneclient/{{current_version}}/{{target}}/{{arch}}"]
+		},
+		"deep-link": {
+			"mobile": [],
+			"desktop": {
+				"schemes": ["oneclient"]
+			}
+		}
+	}
+}

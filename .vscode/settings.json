@@ -23,7 +23,7 @@
 		"**/.crates": true,
 		"**/routeTree.gen.ts": true
 	},
-	"rust-analyzer.procMacro.enable": false,
+	"rust-analyzer.procMacro.enable": true,
 	"rust-analyzer.procMacro.attributes.enable": false,
 	"rust-analyzer.procMacro.ignored": {
 		"async-trait": ["async_trait"],

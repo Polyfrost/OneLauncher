@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <!-- registers our uri handler on macos -->
+        <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleURLName</key>
+                <string>OneClient</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>oneclient</string>
+                </array>
+            </dict>
+        </array>
+        <!-- allows us to request camera permissions (for things like voice chat) -->
+		<key>NSCameraUsageDescription</key>
+		<string>A Minecraft mod is requesting access to your camera.</string>
+        <!-- allows us to request microphone permissions (for things like voice chat) -->
+		<key>NSMicrophoneUsageDescription</key>
+		<string>A Minecraft mod is requesting access to your microphone.</string>
+    </dict>
+</plist>

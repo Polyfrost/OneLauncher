@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.5.0.schema.json
+
+PackageIdentifier: Polyfrost.OneLauncher
+PackageVersion: 0.1.0
+InstallerLocale: en-US
+InstallerType: wix
+ProductCode: '{}'
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://launcher.polyfrost.org/versions/0.1.0/windows/OneLauncher_0.1.0_x64_en-US.msi
+    InstallerSha256: '1111111111111111111111111111318274823726424624666666666666666666666666666666661111E1235666'
+ManifestType: installer
+ManifestVersion: 1.5.0

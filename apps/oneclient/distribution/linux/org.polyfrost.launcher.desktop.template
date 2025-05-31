@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=OneLauncher
+Comment=Next-generation open source Minecraft launcher
+Exec={{exec}}
+Icon={{icon}}
+Type=Application
+Terminal=false
+StartupNotify=true
+Categories=Game;ActionGame;AdventureGame;Simulation;
+Keywords=mc;minecraft;game
+StartupWMClass={{exec}}
+Version=1.4

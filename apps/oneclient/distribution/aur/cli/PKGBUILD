@@ -1,0 +1,29 @@
+pkgname=onelauncher-bin
+pkgver=0.1.0
+pkgrel=2
+pkgdesc='Next-generation open source Minecraft launcher'
+url='https://polyfrost.org/launcher'
+arch=('x86_64')
+license=('GPL3')
+
+makedepends=('rust' 'pnpm')
+depends=(
+    'openssl-1.1' 'dbus' 'freetype2' 'gtk3' 'libappindicator-gtk3' 'librsvg' 'libsoup' 'webkit2gtk'
+    'libgl' 'libpulse' 'libx11' 'libxcursor' 'libxext' 'libxxf86vm'
+)
+optdepends=(
+    'xorg-xrandr: very legacy minecraft versions'
+)
+provides=('onelauncher')
+conflicts=('onelauncher')
+source=("https://launcher.polyfrost.org/versions/${pkgver}/linux/onelauncher_${pkgver}_amd64.deb")
+sha256sums=('')
+
+build() {
+    cd "$srcdir/"
+    tar xf data.tar.gz
+}
+
+package() {
+    cp -r "${srcdir}/usr/" "${pkgdir}"
+}

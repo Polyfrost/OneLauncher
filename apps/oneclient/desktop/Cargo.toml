@@ -1,0 +1,80 @@
+[package]
+name = "oneclient_gui"
+default-run = "oneclient_gui"
+description = "Next-generation open source Minecraft launcher"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+readme = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+
+[lib]
+name = "oneclient_gui"
+crate-type = [
+	"staticlib",
+	"cdylib",
+	"lib"
+]
+
+[lints]
+workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+# core
+onelauncher_core = { workspace = true, features = [ "tauri" ] }
+interpulse = { workspace = true }
+
+# tauri
+tauri-plugin-window-state = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-clipboard-manager = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-deep-link = { workspace = true }
+
+# code gen
+tauri-specta = { workspace = true }
+specta = { workspace = true }
+specta-typescript = { workspace = true }
+strum = { workspace = true }
+
+# logging
+tracing = { workspace = true }
+tracing-error = { workspace = true }
+
+# serialization & text
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# io
+tokio = { workspace = true }
+
+# utils
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+[dependencies.tauri]
+workspace = true
+features = [
+	"macos-private-api",
+	"image-ico",
+	"image-png",
+	"protocol-asset",
+	"specta"
+]
+
+[features]
+default = [
+	"custom-protocol",
+	"devtools"
+]
+devtools = [ "tauri/devtools" ]
+custom-protocol = [ "tauri/custom-protocol" ]

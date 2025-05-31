@@ -3,7 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use onelauncher_migration::MigratorTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 
-use crate::{utils::io::IOError, LauncherResult};
+use crate::{utils::io::{self, IOError}, LauncherResult};
 
 use super::Dirs;
 

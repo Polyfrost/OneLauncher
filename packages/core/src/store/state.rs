@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sea_orm::DatabaseConnection;
 use tokio::sync::{OnceCell, RwLock};
 
+use crate::store::Dirs;
 use crate::LauncherResult;
 
 use super::credentials::CredentialsStore;
@@ -41,6 +42,8 @@ impl State {
 
 	#[tracing::instrument]
 	async fn initialize() -> LauncherResult<Arc<Self>> {
+		crate::utils::io::create_dir_all(Dirs::get().await?.base_dir()).await?;
+
 		let ingress_processor = IngressProcessor::new();
 		let settings = Settings::new().await;
 		let db = super::db::create_pool().await?;

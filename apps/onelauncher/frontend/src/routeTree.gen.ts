@@ -11,12 +11,35 @@
 // Import Routes
 
 import { Route as rootRoute } from './routes/__root'
+import { Route as OnboardingRouteImport } from './routes/onboarding/route'
 import { Route as AppRouteImport } from './routes/app/route'
 import { Route as IndexImport } from './routes/index'
+import { Route as OnboardingIndexImport } from './routes/onboarding/index'
 import { Route as AppIndexImport } from './routes/app/index'
+import { Route as OnboardingSummaryImport } from './routes/onboarding/summary'
+import { Route as OnboardingLoginImport } from './routes/onboarding/login'
+import { Route as OnboardingLanguageImport } from './routes/onboarding/language'
+import { Route as OnboardingImportImport } from './routes/onboarding/import'
+import { Route as OnboardingCompleteImport } from './routes/onboarding/complete'
+import { Route as AppSettingsRouteImport } from './routes/app/settings/route'
+import { Route as AppClusterRouteImport } from './routes/app/cluster/route'
+import { Route as AppSettingsIndexImport } from './routes/app/settings/index'
+import { Route as AppClusterIndexImport } from './routes/app/cluster/index'
 import { Route as AppBrowserIndexImport } from './routes/app/browser/index'
+import { Route as AppSettingsMinecraftImport } from './routes/app/settings/minecraft'
+import { Route as AppSettingsAppearanceImport } from './routes/app/settings/appearance'
+import { Route as AppSettingsAccountsImport } from './routes/app/settings/accounts'
+import { Route as AppClusterWorldsImport } from './routes/app/cluster/worlds'
+import { Route as AppClusterSettingsImport } from './routes/app/cluster/settings'
+import { Route as AppClusterScreenshotsImport } from './routes/app/cluster/screenshots'
 
 // Create/Update Routes
+
+const OnboardingRouteRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRoute,
+} as any)
 
 const AppRouteRoute = AppRouteImport.update({
   id: '/app',
@@ -30,16 +53,112 @@ const IndexRoute = IndexImport.update({
   getParentRoute: () => rootRoute,
 } as any)
 
+const OnboardingIndexRoute = OnboardingIndexImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
 const AppIndexRoute = AppIndexImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 
+const OnboardingSummaryRoute = OnboardingSummaryImport.update({
+  id: '/summary',
+  path: '/summary',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
+const OnboardingLoginRoute = OnboardingLoginImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
+const OnboardingLanguageRoute = OnboardingLanguageImport.update({
+  id: '/language',
+  path: '/language',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
+const OnboardingImportRoute = OnboardingImportImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
+const OnboardingCompleteRoute = OnboardingCompleteImport.update({
+  id: '/complete',
+  path: '/complete',
+  getParentRoute: () => OnboardingRouteRoute,
+} as any)
+
+const AppSettingsRouteRoute = AppSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+
+const AppClusterRouteRoute = AppClusterRouteImport.update({
+  id: '/cluster',
+  path: '/cluster',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+
+const AppSettingsIndexRoute = AppSettingsIndexImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
+
+const AppClusterIndexRoute = AppClusterIndexImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppClusterRouteRoute,
+} as any)
+
 const AppBrowserIndexRoute = AppBrowserIndexImport.update({
   id: '/browser/',
   path: '/browser/',
   getParentRoute: () => AppRouteRoute,
+} as any)
+
+const AppSettingsMinecraftRoute = AppSettingsMinecraftImport.update({
+  id: '/minecraft',
+  path: '/minecraft',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
+
+const AppSettingsAppearanceRoute = AppSettingsAppearanceImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
+
+const AppSettingsAccountsRoute = AppSettingsAccountsImport.update({
+  id: '/accounts',
+  path: '/accounts',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
+
+const AppClusterWorldsRoute = AppClusterWorldsImport.update({
+  id: '/worlds',
+  path: '/worlds',
+  getParentRoute: () => AppClusterRouteRoute,
+} as any)
+
+const AppClusterSettingsRoute = AppClusterSettingsImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppClusterRouteRoute,
+} as any)
+
+const AppClusterScreenshotsRoute = AppClusterScreenshotsImport.update({
+  id: '/screenshots',
+  path: '/screenshots',
+  getParentRoute: () => AppClusterRouteRoute,
 } as any)
 
 // Populate the FileRoutesByPath interface
@@ -60,12 +179,117 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRoute
     }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRoute
+    }
+    '/app/cluster': {
+      id: '/app/cluster'
+      path: '/cluster'
+      fullPath: '/app/cluster'
+      preLoaderRoute: typeof AppClusterRouteImport
+      parentRoute: typeof AppRouteImport
+    }
+    '/app/settings': {
+      id: '/app/settings'
+      path: '/settings'
+      fullPath: '/app/settings'
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRouteImport
+    }
+    '/onboarding/complete': {
+      id: '/onboarding/complete'
+      path: '/complete'
+      fullPath: '/onboarding/complete'
+      preLoaderRoute: typeof OnboardingCompleteImport
+      parentRoute: typeof OnboardingRouteImport
+    }
+    '/onboarding/import': {
+      id: '/onboarding/import'
+      path: '/import'
+      fullPath: '/onboarding/import'
+      preLoaderRoute: typeof OnboardingImportImport
+      parentRoute: typeof OnboardingRouteImport
+    }
+    '/onboarding/language': {
+      id: '/onboarding/language'
+      path: '/language'
+      fullPath: '/onboarding/language'
+      preLoaderRoute: typeof OnboardingLanguageImport
+      parentRoute: typeof OnboardingRouteImport
+    }
+    '/onboarding/login': {
+      id: '/onboarding/login'
+      path: '/login'
+      fullPath: '/onboarding/login'
+      preLoaderRoute: typeof OnboardingLoginImport
+      parentRoute: typeof OnboardingRouteImport
+    }
+    '/onboarding/summary': {
+      id: '/onboarding/summary'
+      path: '/summary'
+      fullPath: '/onboarding/summary'
+      preLoaderRoute: typeof OnboardingSummaryImport
+      parentRoute: typeof OnboardingRouteImport
+    }
     '/app/': {
       id: '/app/'
       path: '/'
       fullPath: '/app/'
       preLoaderRoute: typeof AppIndexImport
       parentRoute: typeof AppRouteImport
+    }
+    '/onboarding/': {
+      id: '/onboarding/'
+      path: '/'
+      fullPath: '/onboarding/'
+      preLoaderRoute: typeof OnboardingIndexImport
+      parentRoute: typeof OnboardingRouteImport
+    }
+    '/app/cluster/screenshots': {
+      id: '/app/cluster/screenshots'
+      path: '/screenshots'
+      fullPath: '/app/cluster/screenshots'
+      preLoaderRoute: typeof AppClusterScreenshotsImport
+      parentRoute: typeof AppClusterRouteImport
+    }
+    '/app/cluster/settings': {
+      id: '/app/cluster/settings'
+      path: '/settings'
+      fullPath: '/app/cluster/settings'
+      preLoaderRoute: typeof AppClusterSettingsImport
+      parentRoute: typeof AppClusterRouteImport
+    }
+    '/app/cluster/worlds': {
+      id: '/app/cluster/worlds'
+      path: '/worlds'
+      fullPath: '/app/cluster/worlds'
+      preLoaderRoute: typeof AppClusterWorldsImport
+      parentRoute: typeof AppClusterRouteImport
+    }
+    '/app/settings/accounts': {
+      id: '/app/settings/accounts'
+      path: '/accounts'
+      fullPath: '/app/settings/accounts'
+      preLoaderRoute: typeof AppSettingsAccountsImport
+      parentRoute: typeof AppSettingsRouteImport
+    }
+    '/app/settings/appearance': {
+      id: '/app/settings/appearance'
+      path: '/appearance'
+      fullPath: '/app/settings/appearance'
+      preLoaderRoute: typeof AppSettingsAppearanceImport
+      parentRoute: typeof AppSettingsRouteImport
+    }
+    '/app/settings/minecraft': {
+      id: '/app/settings/minecraft'
+      path: '/minecraft'
+      fullPath: '/app/settings/minecraft'
+      preLoaderRoute: typeof AppSettingsMinecraftImport
+      parentRoute: typeof AppSettingsRouteImport
     }
     '/app/browser/': {
       id: '/app/browser/'
@@ -74,17 +298,70 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppBrowserIndexImport
       parentRoute: typeof AppRouteImport
     }
+    '/app/cluster/': {
+      id: '/app/cluster/'
+      path: '/'
+      fullPath: '/app/cluster/'
+      preLoaderRoute: typeof AppClusterIndexImport
+      parentRoute: typeof AppClusterRouteImport
+    }
+    '/app/settings/': {
+      id: '/app/settings/'
+      path: '/'
+      fullPath: '/app/settings/'
+      preLoaderRoute: typeof AppSettingsIndexImport
+      parentRoute: typeof AppSettingsRouteImport
+    }
   }
 }
 
 // Create and export the route tree
 
+interface AppClusterRouteRouteChildren {
+  AppClusterScreenshotsRoute: typeof AppClusterScreenshotsRoute
+  AppClusterSettingsRoute: typeof AppClusterSettingsRoute
+  AppClusterWorldsRoute: typeof AppClusterWorldsRoute
+  AppClusterIndexRoute: typeof AppClusterIndexRoute
+}
+
+const AppClusterRouteRouteChildren: AppClusterRouteRouteChildren = {
+  AppClusterScreenshotsRoute: AppClusterScreenshotsRoute,
+  AppClusterSettingsRoute: AppClusterSettingsRoute,
+  AppClusterWorldsRoute: AppClusterWorldsRoute,
+  AppClusterIndexRoute: AppClusterIndexRoute,
+}
+
+const AppClusterRouteRouteWithChildren = AppClusterRouteRoute._addFileChildren(
+  AppClusterRouteRouteChildren,
+)
+
+interface AppSettingsRouteRouteChildren {
+  AppSettingsAccountsRoute: typeof AppSettingsAccountsRoute
+  AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsMinecraftRoute: typeof AppSettingsMinecraftRoute
+  AppSettingsIndexRoute: typeof AppSettingsIndexRoute
+}
+
+const AppSettingsRouteRouteChildren: AppSettingsRouteRouteChildren = {
+  AppSettingsAccountsRoute: AppSettingsAccountsRoute,
+  AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsMinecraftRoute: AppSettingsMinecraftRoute,
+  AppSettingsIndexRoute: AppSettingsIndexRoute,
+}
+
+const AppSettingsRouteRouteWithChildren =
+  AppSettingsRouteRoute._addFileChildren(AppSettingsRouteRouteChildren)
+
 interface AppRouteRouteChildren {
+  AppClusterRouteRoute: typeof AppClusterRouteRouteWithChildren
+  AppSettingsRouteRoute: typeof AppSettingsRouteRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppBrowserIndexRoute: typeof AppBrowserIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppClusterRouteRoute: AppClusterRouteRouteWithChildren,
+  AppSettingsRouteRoute: AppSettingsRouteRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppBrowserIndexRoute: AppBrowserIndexRoute,
 }
@@ -93,44 +370,176 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
   AppRouteRouteChildren,
 )
 
+interface OnboardingRouteRouteChildren {
+  OnboardingCompleteRoute: typeof OnboardingCompleteRoute
+  OnboardingImportRoute: typeof OnboardingImportRoute
+  OnboardingLanguageRoute: typeof OnboardingLanguageRoute
+  OnboardingLoginRoute: typeof OnboardingLoginRoute
+  OnboardingSummaryRoute: typeof OnboardingSummaryRoute
+  OnboardingIndexRoute: typeof OnboardingIndexRoute
+}
+
+const OnboardingRouteRouteChildren: OnboardingRouteRouteChildren = {
+  OnboardingCompleteRoute: OnboardingCompleteRoute,
+  OnboardingImportRoute: OnboardingImportRoute,
+  OnboardingLanguageRoute: OnboardingLanguageRoute,
+  OnboardingLoginRoute: OnboardingLoginRoute,
+  OnboardingSummaryRoute: OnboardingSummaryRoute,
+  OnboardingIndexRoute: OnboardingIndexRoute,
+}
+
+const OnboardingRouteRouteWithChildren = OnboardingRouteRoute._addFileChildren(
+  OnboardingRouteRouteChildren,
+)
+
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/onboarding': typeof OnboardingRouteRouteWithChildren
+  '/app/cluster': typeof AppClusterRouteRouteWithChildren
+  '/app/settings': typeof AppSettingsRouteRouteWithChildren
+  '/onboarding/complete': typeof OnboardingCompleteRoute
+  '/onboarding/import': typeof OnboardingImportRoute
+  '/onboarding/language': typeof OnboardingLanguageRoute
+  '/onboarding/login': typeof OnboardingLoginRoute
+  '/onboarding/summary': typeof OnboardingSummaryRoute
   '/app/': typeof AppIndexRoute
+  '/onboarding/': typeof OnboardingIndexRoute
+  '/app/cluster/screenshots': typeof AppClusterScreenshotsRoute
+  '/app/cluster/settings': typeof AppClusterSettingsRoute
+  '/app/cluster/worlds': typeof AppClusterWorldsRoute
+  '/app/settings/accounts': typeof AppSettingsAccountsRoute
+  '/app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/app/settings/minecraft': typeof AppSettingsMinecraftRoute
   '/app/browser': typeof AppBrowserIndexRoute
+  '/app/cluster/': typeof AppClusterIndexRoute
+  '/app/settings/': typeof AppSettingsIndexRoute
 }
 
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/onboarding/complete': typeof OnboardingCompleteRoute
+  '/onboarding/import': typeof OnboardingImportRoute
+  '/onboarding/language': typeof OnboardingLanguageRoute
+  '/onboarding/login': typeof OnboardingLoginRoute
+  '/onboarding/summary': typeof OnboardingSummaryRoute
   '/app': typeof AppIndexRoute
+  '/onboarding': typeof OnboardingIndexRoute
+  '/app/cluster/screenshots': typeof AppClusterScreenshotsRoute
+  '/app/cluster/settings': typeof AppClusterSettingsRoute
+  '/app/cluster/worlds': typeof AppClusterWorldsRoute
+  '/app/settings/accounts': typeof AppSettingsAccountsRoute
+  '/app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/app/settings/minecraft': typeof AppSettingsMinecraftRoute
   '/app/browser': typeof AppBrowserIndexRoute
+  '/app/cluster': typeof AppClusterIndexRoute
+  '/app/settings': typeof AppSettingsIndexRoute
 }
 
 export interface FileRoutesById {
   __root__: typeof rootRoute
   '/': typeof IndexRoute
   '/app': typeof AppRouteRouteWithChildren
+  '/onboarding': typeof OnboardingRouteRouteWithChildren
+  '/app/cluster': typeof AppClusterRouteRouteWithChildren
+  '/app/settings': typeof AppSettingsRouteRouteWithChildren
+  '/onboarding/complete': typeof OnboardingCompleteRoute
+  '/onboarding/import': typeof OnboardingImportRoute
+  '/onboarding/language': typeof OnboardingLanguageRoute
+  '/onboarding/login': typeof OnboardingLoginRoute
+  '/onboarding/summary': typeof OnboardingSummaryRoute
   '/app/': typeof AppIndexRoute
+  '/onboarding/': typeof OnboardingIndexRoute
+  '/app/cluster/screenshots': typeof AppClusterScreenshotsRoute
+  '/app/cluster/settings': typeof AppClusterSettingsRoute
+  '/app/cluster/worlds': typeof AppClusterWorldsRoute
+  '/app/settings/accounts': typeof AppSettingsAccountsRoute
+  '/app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/app/settings/minecraft': typeof AppSettingsMinecraftRoute
   '/app/browser/': typeof AppBrowserIndexRoute
+  '/app/cluster/': typeof AppClusterIndexRoute
+  '/app/settings/': typeof AppSettingsIndexRoute
 }
 
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/app' | '/app/' | '/app/browser'
+  fullPaths:
+    | '/'
+    | '/app'
+    | '/onboarding'
+    | '/app/cluster'
+    | '/app/settings'
+    | '/onboarding/complete'
+    | '/onboarding/import'
+    | '/onboarding/language'
+    | '/onboarding/login'
+    | '/onboarding/summary'
+    | '/app/'
+    | '/onboarding/'
+    | '/app/cluster/screenshots'
+    | '/app/cluster/settings'
+    | '/app/cluster/worlds'
+    | '/app/settings/accounts'
+    | '/app/settings/appearance'
+    | '/app/settings/minecraft'
+    | '/app/browser'
+    | '/app/cluster/'
+    | '/app/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/app' | '/app/browser'
-  id: '__root__' | '/' | '/app' | '/app/' | '/app/browser/'
+  to:
+    | '/'
+    | '/onboarding/complete'
+    | '/onboarding/import'
+    | '/onboarding/language'
+    | '/onboarding/login'
+    | '/onboarding/summary'
+    | '/app'
+    | '/onboarding'
+    | '/app/cluster/screenshots'
+    | '/app/cluster/settings'
+    | '/app/cluster/worlds'
+    | '/app/settings/accounts'
+    | '/app/settings/appearance'
+    | '/app/settings/minecraft'
+    | '/app/browser'
+    | '/app/cluster'
+    | '/app/settings'
+  id:
+    | '__root__'
+    | '/'
+    | '/app'
+    | '/onboarding'
+    | '/app/cluster'
+    | '/app/settings'
+    | '/onboarding/complete'
+    | '/onboarding/import'
+    | '/onboarding/language'
+    | '/onboarding/login'
+    | '/onboarding/summary'
+    | '/app/'
+    | '/onboarding/'
+    | '/app/cluster/screenshots'
+    | '/app/cluster/settings'
+    | '/app/cluster/worlds'
+    | '/app/settings/accounts'
+    | '/app/settings/appearance'
+    | '/app/settings/minecraft'
+    | '/app/browser/'
+    | '/app/cluster/'
+    | '/app/settings/'
   fileRoutesById: FileRoutesById
 }
 
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRouteRoute: typeof AppRouteRouteWithChildren
+  OnboardingRouteRoute: typeof OnboardingRouteRouteWithChildren
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRouteRoute: AppRouteRouteWithChildren,
+  OnboardingRouteRoute: OnboardingRouteRouteWithChildren,
 }
 
 export const routeTree = rootRoute
@@ -144,7 +553,8 @@ export const routeTree = rootRoute
       "filePath": "__root.tsx",
       "children": [
         "/",
-        "/app"
+        "/app",
+        "/onboarding"
       ]
     },
     "/": {
@@ -153,17 +563,106 @@ export const routeTree = rootRoute
     "/app": {
       "filePath": "app/route.tsx",
       "children": [
+        "/app/cluster",
+        "/app/settings",
         "/app/",
         "/app/browser/"
       ]
+    },
+    "/onboarding": {
+      "filePath": "onboarding/route.tsx",
+      "children": [
+        "/onboarding/complete",
+        "/onboarding/import",
+        "/onboarding/language",
+        "/onboarding/login",
+        "/onboarding/summary",
+        "/onboarding/"
+      ]
+    },
+    "/app/cluster": {
+      "filePath": "app/cluster/route.tsx",
+      "parent": "/app",
+      "children": [
+        "/app/cluster/screenshots",
+        "/app/cluster/settings",
+        "/app/cluster/worlds",
+        "/app/cluster/"
+      ]
+    },
+    "/app/settings": {
+      "filePath": "app/settings/route.tsx",
+      "parent": "/app",
+      "children": [
+        "/app/settings/accounts",
+        "/app/settings/appearance",
+        "/app/settings/minecraft",
+        "/app/settings/"
+      ]
+    },
+    "/onboarding/complete": {
+      "filePath": "onboarding/complete.tsx",
+      "parent": "/onboarding"
+    },
+    "/onboarding/import": {
+      "filePath": "onboarding/import.tsx",
+      "parent": "/onboarding"
+    },
+    "/onboarding/language": {
+      "filePath": "onboarding/language.tsx",
+      "parent": "/onboarding"
+    },
+    "/onboarding/login": {
+      "filePath": "onboarding/login.tsx",
+      "parent": "/onboarding"
+    },
+    "/onboarding/summary": {
+      "filePath": "onboarding/summary.tsx",
+      "parent": "/onboarding"
     },
     "/app/": {
       "filePath": "app/index.tsx",
       "parent": "/app"
     },
+    "/onboarding/": {
+      "filePath": "onboarding/index.tsx",
+      "parent": "/onboarding"
+    },
+    "/app/cluster/screenshots": {
+      "filePath": "app/cluster/screenshots.tsx",
+      "parent": "/app/cluster"
+    },
+    "/app/cluster/settings": {
+      "filePath": "app/cluster/settings.tsx",
+      "parent": "/app/cluster"
+    },
+    "/app/cluster/worlds": {
+      "filePath": "app/cluster/worlds.tsx",
+      "parent": "/app/cluster"
+    },
+    "/app/settings/accounts": {
+      "filePath": "app/settings/accounts.tsx",
+      "parent": "/app/settings"
+    },
+    "/app/settings/appearance": {
+      "filePath": "app/settings/appearance.tsx",
+      "parent": "/app/settings"
+    },
+    "/app/settings/minecraft": {
+      "filePath": "app/settings/minecraft.tsx",
+      "parent": "/app/settings"
+    },
     "/app/browser/": {
       "filePath": "app/browser/index.tsx",
       "parent": "/app"
+    },
+    "/app/cluster/": {
+      "filePath": "app/cluster/index.tsx",
+      "parent": "/app/cluster"
+    },
+    "/app/settings/": {
+      "filePath": "app/settings/index.tsx",
+      "parent": "/app/settings"
     }
   }
 }

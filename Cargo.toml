@@ -1,5 +1,6 @@
 [workspace]
 members = [
+	"apps/oneclient/desktop",
 	"apps/onelauncher/desktop",
 	"packages/core",
 	"packages/entity",

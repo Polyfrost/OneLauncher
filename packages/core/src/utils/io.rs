@@ -11,7 +11,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum IOError {
 	#[error("invalid absolute path '{0}'")]
 	InvalidAbsolutePath(PathBuf),
@@ -19,15 +20,16 @@ pub enum IOError {
 	#[error("error acessing path: {source}, path: {path}")]
 	IOErrorWrapper {
 		#[source]
+		#[serde(skip)]
 		source: std::io::Error,
 		path: String,
 	},
 	#[error(transparent)]
-	IOError(#[from] std::io::Error),
+	IOError(#[from] #[serde(skip)] std::io::Error),
 	#[error("json deserialization error: {0}")]
-	DeserializeError(#[from] serde_json::Error),
+	DeserializeError(#[from] #[serde(skip)] serde_json::Error),
 	#[error(transparent)]
-	AsyncZipError(#[from] async_zip::error::ZipError),
+	AsyncZipError(#[from] #[serde(skip)] async_zip::error::ZipError),
 }
 
 impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {

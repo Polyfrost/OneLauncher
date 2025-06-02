@@ -1,6 +1,7 @@
 use std::sync::{atomic::AtomicBool, Arc};
 
 use discord_rich_presence::{activity::{Activity, Assets, Button, Timestamps}, DiscordIpc, DiscordIpcClient};
+use serde::Serialize;
 use tokio::sync::RwLock;
 
 use crate::error::LauncherResult;
@@ -106,7 +107,8 @@ impl DiscordRPC {
 	}
 }
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum DiscordError {
 	#[error("Discord client ID is missing")]
 	MissingClientId,

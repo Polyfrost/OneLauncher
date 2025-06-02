@@ -1,4 +1,8 @@
-#[derive(thiserror::Error, Debug)]
+use serde::Serialize;
+
+#[onelauncher_macro::specta]
+#[derive(thiserror::Error, Debug, Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum LauncherError {
 	#[error(transparent)]
 	DirError(#[from] crate::store::DirectoryError),
@@ -26,30 +30,41 @@ pub enum LauncherError {
 	DaoError(#[from] DaoError),
 
 	#[error("json error: {0}")]
-	SerdeError(#[from] serde_json::Error),
+	SerdeError(#[from] #[serde(skip)] serde_json::Error),
 	#[error(transparent)]
-	AnyhowError(#[from] anyhow::Error),
+	AnyhowError(#[from] #[serde(skip)] anyhow::Error),
 	#[error("database error: {0}")]
-	DbError(#[from] sea_orm::DbErr),
+	DbError(#[from] #[serde(skip)] sea_orm::DbErr),
 	#[error("http error: {0}")]
-	ReqwestError(#[from] reqwest::Error),
+	ReqwestError(#[from] #[serde(skip)] reqwest::Error),
 	#[error("meta error: {0}")]
-	InterpulseError(#[from] interpulse::Error),
+	InterpulseError(#[from] #[serde(skip)] interpulse::Error),
 	#[error(transparent)]
-	RegexError(#[from] regex::Error),
+	RegexError(#[from] #[serde(skip)] regex::Error),
 	#[error("couldn't acquire semaphore: {0}")]
-	SemaphoreError(#[from] tokio::sync::AcquireError),
+	SemaphoreError(#[from] #[serde(skip)] tokio::sync::AcquireError),
 	#[error(transparent)]
-	UrlError(#[from] url::ParseError),
+	UrlError(#[from] #[serde(skip)] url::ParseError),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]
-	TauriError(#[from] tauri::Error),
+	TauriError(#[from] #[serde(skip)] tauri::Error),
 }
+
+// impl serde::Serialize for LauncherError {
+// 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+// 	where
+// 		S: serde::Serializer,
+// 	{
+// 		// Serialize the error as a string
+// 		serializer.serialize_str(&self.to_string())
+// 	}
+// }
 
 pub type LauncherResult<T> = Result<T, LauncherError>;
 
-#[derive(thiserror::Error, Debug)]
+#[onelauncher_macro::specta]
+#[derive(thiserror::Error, Debug, Serialize)]
 pub enum DaoError {
 	#[error("entity was not found")]
 	NotFound,

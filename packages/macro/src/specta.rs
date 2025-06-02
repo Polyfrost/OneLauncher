@@ -1,3 +1,4 @@
+use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{meta::ParseNestedMeta, parse_macro_input, Item};
 
@@ -8,28 +9,17 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 
 	let input = parse_macro_input!(item as Item);
 
-	let specta_event_type = if attrs.event {
-		quote! {
-			#[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
-		}
-	} else {
-		proc_macro2::TokenStream::new()
-	};
-
-    let specta_type = if let Some(rename) = attrs.rename {
+    let specta_rename = if let Some(rename) = attrs.rename {
         quote! {
-            #[cfg_attr(feature = "specta", derive(specta::Type))]
             #[cfg_attr(feature = "specta", specta(rename = #rename))]
         }
     } else {
-        quote! {
-            #[cfg_attr(feature = "specta", derive(specta::Type))]
-        }
+        TokenStream::new()
     };
 
 	let expanded = quote! {
-		#specta_event_type
-		#specta_type
+		#[cfg_attr(feature = "specta", derive(specta::Type))]
+		#specta_rename
 		#input
 	};
 
@@ -38,15 +28,12 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 
 #[derive(Default)]
 struct SpectaAttributes {
-    event: bool,
 	rename: Option<String>,
 }
 
 impl SpectaAttributes {
     fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
-		if meta.path.is_ident("event") {
-			self.event = true;
-		} else if meta.path.is_ident("rename") {
+		if meta.path.is_ident("rename") {
 			self.rename = Some(meta.value()?.to_string());
 		}
         Ok(())

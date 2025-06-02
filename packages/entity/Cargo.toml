@@ -17,8 +17,8 @@ path = "src/lib.rs"
 [features]
 default = []
 specta = [
-	"onelauncher_macro/specta",
 	"dep:specta",
+	"onelauncher_macro/specta",
 	"interpulse/specta"
 ]
 
@@ -33,3 +33,6 @@ url = { workspace = true }
 interpulse = { workspace = true }
 merge = { workspace = true }
 specta = { workspace = true, optional = true }
+
+[lints]
+workspace = true

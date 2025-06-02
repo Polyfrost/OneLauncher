@@ -1,19 +1,20 @@
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_specta::Event;
+use tauri::{AppHandle, Manager};
 use tracing::{error, warn};
 
-use crate::{api::proxy::{event::LauncherEvent, LauncherProxy, message::MessageLevel}, LauncherResult};
+use crate::{api::{proxy::{event::LauncherEvent, message::MessageLevel, LauncherProxy}, tauri::LauncherEventEmitter}, LauncherResult};
 
 #[derive(Debug)]
 pub struct ProxyTauri {
+	emitter: LauncherEventEmitter<tauri::Wry>,
 	handle: AppHandle,
 }
 
 impl ProxyTauri {
 	#[must_use]
-	pub const fn new(handle: AppHandle) -> Self {
+	pub fn new(handle: AppHandle) -> Self {
 		Self {
-			handle
+			emitter: LauncherEventEmitter::new(handle.clone()),
+			handle,
 		}
 	}
 }
@@ -29,9 +30,7 @@ impl LauncherProxy for ProxyTauri {
 			}
 		}
 
-		self.handle
-			.emit(LauncherEvent::NAME, event)
-			.map_err(Into::into)
+		Ok(self.emitter.send_event(event)?)
 	}
 
 	#[tracing::instrument]

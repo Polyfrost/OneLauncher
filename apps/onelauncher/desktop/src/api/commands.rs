@@ -1,30 +1,27 @@
-pub mod cluster;
-pub mod users;
-pub mod processor;
-pub mod package;
-pub mod other;
-pub mod settings;
+use onelauncher_core::error::{DaoError, LauncherResult};
+use tauri::Runtime;
 
-#[macro_export(local_inner_macros)]
-macro_rules! collect_commands {
-	() => {{
-		use $crate::api::commands::*;
-		tauri_specta::collect_commands![
-			users::get_users,
-			users::get_user,
-			users::remove_user,
-			users::get_default_user,
-			users::set_default_user,
-			users::begin_ms_flow,
+#[taurpc::procedures(path = "onelauncher", export_to = "../frontend/src/bindings.gen.ts")]
+pub trait OneLauncherApi {
+	async fn return_error() -> LauncherResult<()>;
 
-			cluster::create_cluster,
-			cluster::get_clusters,
-			cluster::get_cluster_by_id,
+	async fn open_dev_tools<R: Runtime>(webview_window: tauri::WebviewWindow<R>);
+}
 
-			settings::get_global_profile,
-			settings::get_profile_or_default,
+#[taurpc::ipc_type]
+pub struct OneLauncherApiImpl;
 
-			other::open_dev_tools,
-		]
-	}};
+#[taurpc::resolvers]
+impl OneLauncherApi for OneLauncherApiImpl {
+
+	async fn return_error(self) -> LauncherResult<()> {
+		let err = DaoError::NotFound.into();
+		Err(err)
+	}
+
+	async fn open_dev_tools<R: Runtime>(self, webview_window: tauri::WebviewWindow<R>) {
+		#[cfg(feature = "devtools")]
+		webview_window.open_devtools();
+	}
+
 }

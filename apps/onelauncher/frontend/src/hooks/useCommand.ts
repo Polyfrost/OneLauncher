@@ -1,22 +1,19 @@
-import type { Result } from '@/bindings.gen';
 import type { bindings } from '@/main';
 import type { UndefinedInitialDataOptions } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 
-type CacheKey = keyof typeof bindings.commands;
+type CacheKey = (keyof typeof bindings.core) | (keyof typeof bindings.onelauncher);
 
-function useCommand<T, TError>(cacheKey: CacheKey | (string & {}), command: () => Promise<Result<T, TError>>, options?: Omit<UndefinedInitialDataOptions<T>, 'queryKey' | 'queryFn'>) {
+function useCommand<T>(cacheKey: CacheKey | (string & {}), command: () => Promise<T>, options?: Omit<UndefinedInitialDataOptions<T>, 'queryKey' | 'queryFn'>) {
 	return useQuery({
 		queryKey: [cacheKey],
 		queryFn: async () => {
 			try {
 				const result = await command();
-				if (result.status === 'error')
-					return Promise.reject(result.error);
-
-				return result.data;
+				return result;
 			}
 			catch (e) {
+				console.error(e);
 				if (e instanceof Error)
 					return Promise.reject(e);
 				else

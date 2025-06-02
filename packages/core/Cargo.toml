@@ -17,7 +17,7 @@ path = "src/lib.rs"
 default = [ "tauri" ]
 tauri = [
 	"dep:tauri",
-	"dep:tauri-specta",
+	"dep:taurpc",
 	"specta",
 	"gui",
 	"onelauncher_macro/tauri",
@@ -97,7 +97,7 @@ sanitize-filename = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }
-tauri-specta = { workspace = true, optional = true }
+taurpc = { workspace = true, optional = true }
 
 # features[specta]
 specta = { workspace = true, optional = true }

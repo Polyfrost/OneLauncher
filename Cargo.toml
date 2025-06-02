@@ -61,13 +61,10 @@ specta = { version = "=2.0.0-rc.22", features = [
 	"serde_json",
 	"function",
 	"derive",
-	"tokio"
+	"tokio",
 ] }
 specta-typescript = { version = "=0.0.9" }
-tauri-specta = { version = "=2.0.0-rc.21", features = [
-	"derive",
-	"typescript"
-] }
+taurpc = { version = "=0.5.0" }
 
 # logging
 tracing = { version = "0.1" }
@@ -182,8 +179,11 @@ proc-macro2 = { version = "1" }
 
 [patch.crates-io]
 # tauri-specta = { git = "https://github.com/specta-rs/tauri-specta", rev = "6fe9532a44b8b683b4dacd178b0120ee585bea23" }
-specta = { git = "https://github.com/specta-rs/specta", rev = "30661263250e7b6f9b36cdc56e6c843ac5abb226" }
-specta-typescript = { git = "https://github.com/specta-rs/specta", rev = "30661263250e7b6f9b36cdc56e6c843ac5abb226" }
+specta = { git = "https://github.com/specta-rs/specta", rev = "5758221bc9a11d6e827851273fd665662e90ceef" }
+specta-typescript = { git = "https://github.com/specta-rs/specta", rev = "5758221bc9a11d6e827851273fd665662e90ceef" }
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [ 'cfg(feature, values("used_linker"))' ] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
@@ -253,4 +253,4 @@ codegen-units = 1 # compile crate one after another for better optimization
 lto = true # enable link time optimization
 opt-level = "s" # optimize binary
 panic = "abort" # strip panic cleanup logic
-strip = true # remove debug symbols
+strip = true

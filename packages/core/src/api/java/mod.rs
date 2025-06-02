@@ -12,12 +12,13 @@ use crate::utils::io;
 
 pub mod dao;
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum JavaError {
 	#[error("failed to parse version '{0}'")]
-	ParseVersion(String, #[source] std::num::ParseIntError),
+	ParseVersion(String, #[source] #[serde(skip)] std::num::ParseIntError),
 	#[error("failed to execute java command")]
-	Execute(#[from] std::io::Error),
+	Execute(#[from] #[serde(skip)] std::io::Error),
 	#[error("no java installations found")]
 	MissingJava,
 }

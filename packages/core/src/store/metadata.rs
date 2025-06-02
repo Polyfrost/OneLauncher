@@ -31,7 +31,8 @@ struct MetadataInner {
 	// legacyfabric: Option<ModdedManifest>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum MetadataError {
 	#[error("failed to fetch metadata")]
 	FetchError,
@@ -39,8 +40,8 @@ pub enum MetadataError {
 	NotModdedManifest(GameLoader),
 	#[error("loader {0} does not use a vanilla manifest")]
 	NotVanillaManifest(GameLoader),
-	#[error("failed to parse metadata")]
-	ParseError(#[from] serde_json::Error),
+	#[error("failed to parse metadata: {0}")]
+	ParseError(#[from] #[serde(skip)] serde_json::Error),
 	#[error("no matching loader found")]
 	NoMatchingLoader,
 	#[error("no matching version found")]

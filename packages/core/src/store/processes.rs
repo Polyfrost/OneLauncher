@@ -24,7 +24,8 @@ use crate::utils::io::IOError;
 use super::State;
 use super::credentials::MinecraftCredentials;
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum ProcessError {
 	#[error("launch hook exited with non-zero code {0}")]
 	HookUnsuccessful(i32),

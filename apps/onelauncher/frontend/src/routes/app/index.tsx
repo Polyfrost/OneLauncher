@@ -1,15 +1,15 @@
-import DefaultBanner from '@/assets/images/default_banner.png';
 import type { Model } from '@/bindings.gen';
+import DefaultBanner from '@/assets/images/default_banner.png';
+import HeaderImage from '@/assets/images/default_banner.png';
+import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import Button from '@/components/base/Button';
+import { TextField } from '@/components/base/TextField';
+import Modal from '@/components/overlay/Modal';
 import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import DefaultInstancePhoto from "@/assets/images/default_instance_cover.jpg"
-import Modal from '@/components/overlay/Modal';
 import { Server01Icon } from '@untitled-theme/icons-react';
-import HeaderImage from "@/assets/images/default_banner.png";
-import { TextField } from '@/components/base/TextField';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -20,7 +20,11 @@ Please note this route has a very big issue related to scrolling
 and i am very angry rn so i will not be fixing it rn
 */
 function RouteComponent() {
-	const result = useCommand("getClusters", bindings.commands.getClusters)
+	const result = useCommand('getClusters', bindings.core.get_clusters);
+	const test = useCommand('ajgiagwo', bindings.onelauncher.return_error, {
+		enabled: true,
+		retry: false,
+	});
 
 	return (
 		<div className="h-full flex flex-col gap-y-4 text-fg-primary">
@@ -32,7 +36,7 @@ function RouteComponent() {
 				</div>
 			</div>
 
-			<div className='flex flex-col'>
+			<div className="flex flex-col">
 				<ClusterGroup clusters={result.data} isFetching={result.isFetching} />
 			</div>
 		</div>
@@ -111,25 +115,23 @@ function Banner() {
 }
 
 function ClusterCreate() {
-	const result = useCommand("createCluster", () => bindings.commands.createCluster({
-		icon_url: "asd",
-		mc_loader: "vanilla",
-		mc_version: "1.20.1",
-		name: "Test Cluster",
-		mc_loader_version: "0.13.5",
+	const result = useCommand('createCluster', () => bindings.commands.createCluster({
+		icon_url: 'asd',
+		mc_loader: 'vanilla',
+		mc_version: '1.20.1',
+		name: 'Test Cluster',
+		mc_loader_version: '0.13.5',
 	}), {
 		enabled: false,
-		subscribed: false
-	})
+		subscribed: false,
+	});
 
 	const testThingy = () => {
-		result.refetch()
+		result.refetch();
 
-		if (result.isError) {
-			alert(result.error.message)
-			return;
-		}
-	}
+		if (result.isError)
+			alert(result.error.message);
+	};
 
 	return (
 		<>
@@ -157,13 +159,13 @@ function ClusterCreate() {
 						</div>
 						<div className="flex flex-col border border-white/5 rounded-b-lg">
 							<div className="p-3">
-								<TextField placeholder='Epik cluster name' className={"px-2"} />
+								<TextField className="px-2" placeholder="Epik cluster name" />
 							</div>
 
 							<div className="flex flex-row justify-end gap-x-2 p-3 pt-0">
 								<Button
-									color="primary"
 									children="Create"
+									color="primary"
 									onClick={testThingy}
 								/>
 							</div>
@@ -172,43 +174,44 @@ function ClusterCreate() {
 				</Modal>
 			</Modal.Trigger>
 		</>
-	)
+	);
 }
 
 interface ClusterGroupProps {
-	clusters: Model[] | undefined;
+	clusters: Array<Model> | undefined;
 	isFetching?: boolean;
 }
 
 function ClusterGroup(props: ClusterGroupProps) {
-	if (props.isFetching) {
+	if (props.isFetching)
 		return (
-			<div className='flex items-center justify-center h-full'>
+			<div className="flex items-center justify-center h-full">
 				<div className="w-8 h-8 border-4 border-brand rounded-full border-t-transparent animate-spin" />
 			</div>
-		)
-	}
+		);
 
 	return (
 		<div className="h-full w-full">
 			<OverlayScrollbarsComponent
 				className="h-full w-full"
 			>
-				<div className='grid grid-cols-4 gap-4 max-h-96 2xl:grid-cols-6 pb-4'>
-					{props.clusters?.map((data) => (
+				<div className="grid grid-cols-4 gap-4 max-h-96 2xl:grid-cols-6 pb-4">
+					{props.clusters?.map(data => (
 						<ClusterCard key={data.id} {...data} />
 					))}
 				</div>
 			</OverlayScrollbarsComponent>
 		</div>
-	)
+	);
 }
 
 function ClusterCard(props: Model) {
 	return (
-		<Link to='/app/cluster' search={{
-			id: props.id
-		}}>
+		<Link
+			search={{
+				id: props.id,
+			}} to="/app/cluster"
+		>
 			<div
 				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			>

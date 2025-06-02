@@ -1010,17 +1010,19 @@ pub enum MinecraftAuthStep {
 }
 
 /// Wrapper around all `Error`s that can occur during the Microsoft authentication process.
-#[derive(thiserror::Error, Debug)]
+#[onelauncher_macro::specta]
+#[derive(thiserror::Error, Debug, Serialize)]
 pub enum MinecraftAuthError {
 	#[error("failed to read public key during key generation")]
 	PublicKeyReading,
 	#[error("failed to serialize private key using PKCS8: {0}")]
-	PKCS8Error(#[from] p256::pkcs8::Error),
+	PKCS8Error(#[from] #[serde(skip)] p256::pkcs8::Error),
 	#[error("failed to serialize JSON during MSA step {step:?}: {source}")]
 	SerializeError {
 		step: MinecraftAuthStep,
 
 		#[source]
+		#[serde(skip)]
 		source: serde_json::Error,
 	},
 	#[error(
@@ -1031,20 +1033,24 @@ pub enum MinecraftAuthError {
 		raw: String,
 
 		#[source]
+		#[serde(skip)]
 		source: serde_json::Error,
 
+		#[serde(skip)]
 		status_code: reqwest::StatusCode,
 	},
 	#[error("failed to request using HTTP during MSA step {step:?}: {source}")]
 	RequestError {
 		step: MinecraftAuthStep,
 		#[source]
+		#[serde(skip)]
 		source: reqwest::Error,
 	},
 	#[error("failed to create signed buffer during MSA step {step:?}: {source}")]
 	SigningError {
 		step: MinecraftAuthStep,
 		#[source]
+		#[serde(skip)]
 		source: std::io::Error,
 	},
 	#[error("failed to read user hash")]

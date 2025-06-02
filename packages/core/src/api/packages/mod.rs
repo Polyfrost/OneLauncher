@@ -3,6 +3,7 @@ use onelauncher_entity::icon::Icon;
 use onelauncher_entity::package::PackageType;
 use onelauncher_entity::{clusters, packages};
 use reqwest::Method;
+use serde::Serialize;
 
 use crate::error::{LauncherError, LauncherResult};
 use crate::store::Dirs;
@@ -18,7 +19,8 @@ pub mod provider;
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum PackageError {
 	#[error("no file marked for download")]
 	NoPrimaryFile,
@@ -28,7 +30,8 @@ pub enum PackageError {
 	Incompatible(#[from] IncompatiblePackageType),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum IncompatiblePackageType {
 	#[error("package is not compatible with the current version")]
 	McVersion,

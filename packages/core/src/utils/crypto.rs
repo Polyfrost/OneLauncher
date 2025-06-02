@@ -3,11 +3,13 @@ use std::io::Read;
 use std::str::FromStr;
 
 use digest::DynDigest;
+use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 
 use super::io::IOError;
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum CryptoError {
 	#[error("expected {algorithm} hash {expected}, but got {actual}")]
 	InvalidHash {
@@ -19,7 +21,8 @@ pub enum CryptoError {
 	InvalidAlgorithm,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashAlgorithm {
 	Sha1,
 	Sha256,

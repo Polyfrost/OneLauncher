@@ -1,9 +1,12 @@
 use onelauncher_core::api::proxy::ProxyTauri;
+use onelauncher_core::api::tauri::{TauriLauncherEventApi, TauriLauncherApi};
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::store::proxy::ProxyState;
 use onelauncher_core::store::semaphore::SemaphoreStore;
 use onelauncher_core::store::{Core, CoreOptions, Dirs, State};
 use tauri::{Emitter, Manager};
+
+use crate::api::commands::OneLauncherApi;
 
 pub mod api;
 pub mod constants;
@@ -38,19 +41,15 @@ async fn initialize_core() -> LauncherResult<()> {
 
 #[tracing::instrument(skip_all)]
 async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult<tauri::App> {
-	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
-		.commands(collect_commands!())
-		.events(collect_events!());
-
-	#[cfg(debug_assertions)]
-	prebuild
-		.export(
+	let router = taurpc::Router::new()
+		.export_config(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
 				.formatter(ext::specta::formatter),
-			"../frontend/src/bindings.gen.ts",
 		)
-		.expect("failed to export debug bindings!");
+		.merge(api::commands::OneLauncherApiImpl.into_handler())
+		.merge(onelauncher_core::api::tauri::TauriLauncherApiImpl.into_handler())
+		.merge(onelauncher_core::api::tauri::TauriLauncherEventApiImpl.into_handler());
 
 	let builder = builder
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -60,15 +59,11 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		}))
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_clipboard_manager::init())
-		.plugin(ext::updater::plugin())
-		.manage(ext::updater::State::default())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
-		// .plugin(api::init())
 		.menu(tauri::menu::Menu::new)
-		.invoke_handler(prebuild.invoke_handler())
+		.invoke_handler(router.into_handler())
 		.setup(move |app| {
-			prebuild.mount_events(app.handle());
 			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});
@@ -93,9 +88,11 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 
 pub async fn run() {
 	initialize_core().await.expect("failed to initialize core");
+
 	let app = initialize_tauri(tauri::Builder::default())
 		.await
 		.expect("failed to initialize tauri");
+
 	initialize_state(app.handle())
 		.await
 		.expect("failed to initialize state");

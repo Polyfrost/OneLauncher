@@ -1,14 +1,15 @@
-import { bindings } from "@/main";
-import useCommand from "./useCommand";
-import { useEffect, useState } from "react";
-import type { Model } from "@/bindings.gen";
+import type { Model } from '@/bindings.gen';
+import { bindings } from '@/main';
+import { useEffect, useState } from 'react';
+import useCommand from './useCommand';
 
 function useRecentCluster() {
-	const result = useCommand("getClusters", bindings.commands.getClusters);
+	const result = useCommand('getClusters', bindings.core.get_clusters);
 	const [cluster, setCluster] = useState<Model | undefined>();
 
 	useEffect(() => {
-		if (!result.data) return;
+		if (!result.data)
+			return;
 
 		let mostRecentCluster: Model | undefined;
 
@@ -23,13 +24,13 @@ function useRecentCluster() {
 
 			if (typeof currentPlayed !== 'string' && typeof newPlayed === 'string') {
 				mostRecentCluster = c;
-			} else if (typeof currentPlayed === 'string' && typeof newPlayed === 'string') {
+			}
+			else if (typeof currentPlayed === 'string' && typeof newPlayed === 'string') {
 				const playedAt = new Date(currentPlayed);
 				const clusterPlayedAt = new Date(newPlayed);
 
-				if (clusterPlayedAt > playedAt) {
+				if (clusterPlayedAt > playedAt)
 					mostRecentCluster = c;
-				}
 			}
 		}
 

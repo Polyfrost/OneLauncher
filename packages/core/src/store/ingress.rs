@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -15,7 +15,8 @@ pub struct IngressProcessor {
 	ingress_feeds: RwLock<HashMap<Uuid, Ingress>>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[onelauncher_macro::specta]
+#[derive(Debug, thiserror::Error, Serialize)]
 pub enum IngressError {
 	#[error("ingress not found")]
 	NotFound,
@@ -113,8 +114,8 @@ pub struct Ingress {
 	pub last_sent: f64,
 }
 
-#[onelauncher_macro::specta]
-#[derive(Serialize, Debug, Clone)]
+// #[onelauncher_macro::specta]
+#[derive(Serialize, Deserialize, specta::Type, Debug, Clone)]
 pub enum IngressType {
 	Download { file_name: String },
 	JavaPrepare,

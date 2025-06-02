@@ -33,7 +33,7 @@ pub async fn get_default_user() -> LauncherResult<Option<uuid::Uuid>> {
 #[tracing::instrument]
 pub async fn set_default_user(user: Option<uuid::Uuid>) -> LauncherResult<()> {
 	let user = match user {
-		Some(user) => Some(get_user(user).await?.id),
+		Some(user) => get_user(user).await?.map(|user| user.id),
 		None => None,
 	};
 
@@ -63,7 +63,7 @@ pub async fn remove_user(user: uuid::Uuid) -> LauncherResult<()> {
 
 /// Get a list of user [`MinecraftCredentials`].
 #[tracing::instrument]
-pub async fn users() -> LauncherResult<Vec<MinecraftCredentials>> {
+pub async fn get_users() -> LauncherResult<Vec<MinecraftCredentials>> {
 	let state = State::get().await?;
 	let store = state.credentials.read().await;
 
@@ -73,15 +73,14 @@ pub async fn users() -> LauncherResult<Vec<MinecraftCredentials>> {
 /// Get a specifc user's [`MinecraftCredentials`] by their [`uuid::Uuid`].
 /// Use [`crate::store::MinecraftState#refresh`] instead.
 #[tracing::instrument]
-pub async fn get_user(user: uuid::Uuid) -> LauncherResult<MinecraftCredentials> {
+pub async fn get_user(user: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>> {
 	let state = State::get().await?;
 	let store = state.credentials.read().await;
 
 	let user = store
 		.users
 		.get(&user)
-		.ok_or_else(|| anyhow::anyhow!("failed to get nonexistent user with uuid {user}"))?
-		.clone();
+		.cloned();
 
 	Ok(user)
 }

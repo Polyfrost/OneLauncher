@@ -3,15 +3,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
-import { routeTree } from './routeTree.gen';
+import { createTauRPCProxy } from './bindings.gen';
 
+import { routeTree } from './routeTree.gen';
 import './fonts';
 import './utils/nativeExperience';
 import './utils/devExperience';
 import 'overlayscrollbars/overlayscrollbars.css';
 import './styles/global.css';
 
-export * as bindings from './bindings.gen';
+// Tauri bindings
+export const bindings = createTauRPCProxy();
 
 // Tanstack Query Client
 const queryClient = new QueryClient({

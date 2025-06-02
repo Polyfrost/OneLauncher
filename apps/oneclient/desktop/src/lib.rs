@@ -7,7 +7,7 @@ use tauri::{Emitter, Manager};
 
 pub mod api;
 pub mod constants;
-pub mod ext;
+// pub mod ext;
 
 #[derive(Clone, serde::Serialize)]
 pub struct SingleInstancePayload {
@@ -38,19 +38,19 @@ async fn initialize_core() -> LauncherResult<()> {
 
 #[tracing::instrument(skip_all)]
 async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult<tauri::App> {
-	let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
-		.commands(collect_commands!())
-		.events(collect_events!());
+	// let prebuild = tauri_specta::Builder::<tauri::Wry>::new()
+	// 	.commands(collect_commands!())
+	// 	.events(collect_events!());
 
-	#[cfg(debug_assertions)]
-	prebuild
-		.export(
-			specta_typescript::Typescript::default()
-				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
-				.formatter(ext::specta::formatter),
-			"../frontend/src/bindings.gen.ts",
-		)
-		.expect("failed to export debug bindings!");
+	// #[cfg(debug_assertions)]
+	// prebuild
+	// 	.export(
+	// 		specta_typescript::Typescript::default()
+	// 			.bigint(specta_typescript::BigIntExportBehavior::BigInt)
+	// 			.formatter(ext::specta::formatter),
+	// 		"../frontend/src/bindings.gen.ts",
+	// 	)
+	// 	.expect("failed to export debug bindings!");
 
 	let builder = builder
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -60,15 +60,15 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		}))
 		.plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_clipboard_manager::init())
-		.plugin(ext::updater::plugin())
-		.manage(ext::updater::State::default())
+		// .plugin(ext::updater::plugin())
+		// .manage(ext::updater::State::default())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
 		// .plugin(api::init())
 		.menu(tauri::menu::Menu::new)
-		.invoke_handler(prebuild.invoke_handler())
+		// .invoke_handler(prebuild.invoke_handler())
 		.setup(move |app| {
-			prebuild.mount_events(app.handle());
+			// prebuild.mount_events(app.handle());
 			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});

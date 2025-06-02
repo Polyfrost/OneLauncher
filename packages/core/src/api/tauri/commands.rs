@@ -1,0 +1,167 @@
+use onelauncher_entity::{icon::Icon, loader::GameLoader};
+use tauri::{AppHandle, Runtime};
+
+use crate::{api::{self, cluster::dao::ClusterId}, error::LauncherResult, store::{credentials::MinecraftCredentials, Core}};
+
+use onelauncher_entity::prelude::model::*;
+
+#[taurpc::procedures(path = "core")]
+pub trait TauriLauncherApi {
+
+	// Clusters
+	async fn get_clusters() -> LauncherResult<Vec<Cluster>>;
+	async fn get_cluster(id: ClusterId) -> LauncherResult<Option<Cluster>>;
+	async fn remove_cluster(id: ClusterId) -> LauncherResult<()>;
+	async fn create_cluster(options: CreateCluster) -> LauncherResult<Cluster>;
+
+	// Setting Profiles
+	async fn get_profile_or_default(name: Option<String>) -> LauncherResult<SettingsProfile>;
+	async fn get_global_profile() -> SettingsProfile;
+
+	// Users
+	async fn get_users() -> LauncherResult<Vec<MinecraftCredentials>>;
+	async fn get_user(uuid: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>>;
+	async fn remove_user(uuid: uuid::Uuid) -> LauncherResult<()>;
+	async fn get_default_user(fallback: Option<bool>) -> LauncherResult<Option<MinecraftCredentials>>;
+	async fn set_default_user(uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
+	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
+
+}
+
+
+#[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
+pub struct CreateCluster {
+	name: String,
+	mc_version: String,
+	mc_loader: GameLoader,
+	mc_loader_version: Option<String>,
+	icon: Option<Icon>,
+}
+
+
+#[taurpc::ipc_type]
+pub struct TauriLauncherApiImpl;
+
+#[taurpc::resolvers]
+impl TauriLauncherApi for TauriLauncherApiImpl {
+	async fn get_clusters(self) -> LauncherResult<Vec<Cluster>> {
+		api::cluster::dao::get_all_clusters().await
+	}
+
+	async fn get_cluster(self, id: ClusterId) -> LauncherResult<Option<Cluster>> {
+		api::cluster::dao::get_cluster_by_id(id).await
+	}
+
+	async fn remove_cluster(self, id: ClusterId) -> LauncherResult<()> {
+		api::cluster::dao::delete_cluster_by_id(id).await
+	}
+
+	async fn create_cluster(self, options: CreateCluster) -> LauncherResult<Cluster> {
+		let cluster = api::cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon).await?;
+
+		// if api::setting_profiles::dao::get_profile_by_name(&options.name).await?.is_none() {
+		// 	api::setting_profiles::create_profile(&options.name, async |mut profile| {
+		// 		profile.mem_max = sea_orm::ActiveValue::Set(Some(2048));
+		// 		Ok(profile)
+		// 	}).await?;
+		// }
+
+		Ok(cluster)
+	}
+
+	async fn get_profile_or_default(self, name: Option<String>) -> LauncherResult<SettingsProfile> {
+		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
+	}
+
+	async fn get_global_profile(self) -> SettingsProfile {
+		api::setting_profiles::get_global_profile().await
+	}
+
+	async fn get_users(self) -> LauncherResult<Vec<MinecraftCredentials>> {
+		api::credentials::get_users().await
+	}
+
+	async fn get_user(self, uuid: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>> {
+		api::credentials::get_user(uuid).await
+	}
+
+	async fn remove_user(self, uuid: uuid::Uuid) -> LauncherResult<()> {
+		api::credentials::remove_user(uuid).await
+	}
+
+	async fn get_default_user(self, fallback: Option<bool>) -> LauncherResult<Option<MinecraftCredentials>> {
+		let uuid = api::credentials::get_default_user().await?;
+
+		if fallback.is_some_and(|fallback| fallback) && uuid.is_none() {
+			return Ok(api::credentials::get_users().await?.first().cloned());
+		}
+
+		match uuid {
+			Some(uuid) => Ok(api::credentials::get_user(uuid).await?),
+			None => Ok(None),
+		}
+	}
+
+	async fn set_default_user(self, uuid: Option<uuid::Uuid>) -> LauncherResult<()> {
+		api::credentials::set_default_user(uuid).await
+	}
+
+	async fn open_msa_login<R: Runtime>(self, app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>> {
+		use tauri::Manager;
+
+		let flow = api::credentials::begin().await?;
+
+		let now = chrono::Utc::now();
+
+		if let Some(win) = app_handle.get_webview_window("login") {
+			win.close()?;
+		}
+
+		let win = tauri::WebviewWindowBuilder::new(
+			&app_handle,
+			"login",
+			tauri::WebviewUrl::External(
+				flow.redirect_uri
+					.parse()
+					.map_err(|_| anyhow::anyhow!("failed to parse auth redirect url"))?,
+			),
+		)
+			.title(format!("Login to {}", Core::get().launcher_name))
+			.center()
+			.focused(true)
+			.build()?;
+
+		win.request_user_attention(Some(tauri::UserAttentionType::Critical))?;
+
+		while (chrono::Utc::now() - now) < chrono::Duration::minutes(10) {
+			if win.title().is_err() {
+				return Ok(None);
+			}
+
+			if win
+				.url()?
+				.as_str()
+				.starts_with("https://login.live.com/oauth20_desktop.srf")
+			{
+				if let Some((_, code)) = win
+					.url()?
+					.query_pairs()
+					.find(|x| x.0 == "code")
+				{
+					win.close()?;
+					let value = api::credentials::finish(&code.clone(), flow).await?;
+
+					return Ok(Some(value));
+				}
+			}
+
+			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+		}
+
+		win.close()?;
+
+		Ok(None)
+	}
+
+}
+

@@ -10,7 +10,7 @@ import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
 
 function Navbar() {
-	const defaultUser = useCommand('getDefaultUser', () => bindings.commands.getDefaultUser(false));
+	const defaultUser = useCommand('getDefaultUser', () => bindings.core.get_default_user(false));
 
 	return (
 		<div className="h-15 min-h-15 flex flex-row items-center *:flex-1">

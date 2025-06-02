@@ -1,117 +1,117 @@
-use onelauncher_core::store::Core;
-use tauri::plugin::TauriPlugin;
-use tauri::{Emitter, Runtime};
-use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
-use tokio::sync::Mutex;
+// use onelauncher_core::store::Core;
+// use tauri::plugin::TauriPlugin;
+// use tauri::{Emitter, Runtime};
+// use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
+// use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, specta::Type, serde::Serialize)]
-pub struct Update {
-	pub version: String,
-}
+// #[derive(Debug, Clone, specta::Type, serde::Serialize)]
+// pub struct Update {
+// 	pub version: String,
+// }
 
-impl Update {
-	fn new(update: &TauriPluginUpdate) -> Self {
-		Self {
-			version: update.version.clone(),
-		}
-	}
-}
+// impl Update {
+// 	fn new(update: &TauriPluginUpdate) -> Self {
+// 		Self {
+// 			version: update.version.clone(),
+// 		}
+// 	}
+// }
 
-#[derive(Default)]
-pub struct State {
-	install_lock: Mutex<()>,
-}
+// #[derive(Default)]
+// pub struct State {
+// 	install_lock: Mutex<()>,
+// }
 
-async fn get_update(app: tauri::AppHandle) -> Result<Option<TauriPluginUpdate>, String> {
-	app.updater_builder()
-		.header("X-OneLauncher-Version", "stable")
-		.map_err(|e| e.to_string())?
-		.build()
-		.map_err(|e| e.to_string())?
-		.check()
-		.await
-		.map_err(|e| e.to_string())
-}
+// async fn get_update(app: tauri::AppHandle) -> Result<Option<TauriPluginUpdate>, String> {
+// 	app.updater_builder()
+// 		.header("X-OneLauncher-Version", "stable")
+// 		.map_err(|e| e.to_string())?
+// 		.build()
+// 		.map_err(|e| e.to_string())?
+// 		.check()
+// 		.await
+// 		.map_err(|e| e.to_string())
+// }
 
-#[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-#[serde(rename_all = "camelCase", tag = "status")]
-pub enum UpdateEvent {
-	Loading,
-	Error(String),
-	UpdateAvailable { update: Update },
-	NoUpdateAvailable,
-	Installing,
-}
+// #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+// #[serde(rename_all = "camelCase", tag = "status")]
+// pub enum UpdateEvent {
+// 	Loading,
+// 	Error(String),
+// 	UpdateAvailable { update: Update },
+// 	NoUpdateAvailable,
+// 	Installing,
+// }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<Update>, String> {
-	app.emit("updater", UpdateEvent::Loading).ok();
+// #[tauri::command]
+// #[specta::specta]
+// pub async fn check_for_update(app: tauri::AppHandle) -> Result<Option<Update>, String> {
+// 	app.emit("updater", UpdateEvent::Loading).ok();
 
-	let update = match get_update(app.clone()).await {
-		Ok(update) => update,
-		Err(e) => {
-			app.emit("updater", UpdateEvent::Error(e.clone())).ok();
-			return Err(e);
-		}
-	};
+// 	let update = match get_update(app.clone()).await {
+// 		Ok(update) => update,
+// 		Err(e) => {
+// 			app.emit("updater", UpdateEvent::Error(e.clone())).ok();
+// 			return Err(e);
+// 		}
+// 	};
 
-	let update = update.map(|u| Update::new(&u));
+// 	let update = update.map(|u| Update::new(&u));
 
-	app.emit(
-		"updater",
-		update.clone().map_or(UpdateEvent::NoUpdateAvailable, |u| {
-			UpdateEvent::UpdateAvailable { update: u }
-		}),
-	)
-	.ok();
+// 	app.emit(
+// 		"updater",
+// 		update.clone().map_or(UpdateEvent::NoUpdateAvailable, |u| {
+// 			UpdateEvent::UpdateAvailable { update: u }
+// 		}),
+// 	)
+// 	.ok();
 
-	Ok(update)
-}
+// 	Ok(update)
+// }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn install_update(
-	app: tauri::AppHandle,
-	state: tauri::State<'_, State>,
-) -> Result<(), String> {
-	let Ok(lock) = state.install_lock.try_lock() else {
-		return Err("Update already installing".into());
-	};
+// #[tauri::command]
+// #[specta::specta]
+// pub async fn install_update(
+// 	app: tauri::AppHandle,
+// 	state: tauri::State<'_, State>,
+// ) -> Result<(), String> {
+// 	let Ok(lock) = state.install_lock.try_lock() else {
+// 		return Err("Update already installing".into());
+// 	};
 
-	app.emit("updater", UpdateEvent::Installing).ok();
+// 	app.emit("updater", UpdateEvent::Installing).ok();
 
-	get_update(app.clone())
-		.await?
-		.ok_or_else(|| "No update required".to_string())?
-		.download_and_install(|_, _| {}, || {})
-		.await
-		.map_err(|e| e.to_string())?;
+// 	get_update(app.clone())
+// 		.await?
+// 		.ok_or_else(|| "No update required".to_string())?
+// 		.download_and_install(|_, _| {}, || {})
+// 		.await
+// 		.map_err(|e| e.to_string())?;
 
-	drop(lock);
+// 	drop(lock);
 
-	Ok(())
-}
+// 	Ok(())
+// }
 
-#[must_use]
-pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
-	tauri::plugin::Builder::new("onelauncher-updater")
-		.on_page_load(|window, _| {
-			#[cfg(target_os = "linux")]
-			let updater_available = false;
+// #[must_use]
+// pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
+// 	tauri::plugin::Builder::new("onelauncher-updater")
+// 		.on_page_load(|window, _| {
+// 			#[cfg(target_os = "linux")]
+// 			let updater_available = false;
 
-			#[cfg(not(target_os = "linux"))]
-			let updater_available = true;
+// 			#[cfg(not(target_os = "linux"))]
+// 			let updater_available = true;
 
-			if updater_available {
-				window
-					.eval("window.__LAUNCHER_UPDATER__ = true;")
-					.expect("Failed to inject updater JS");
-			}
-		})
-		.js_init_script(format!(
-			r#"window.__ONELAUNCHER_VERSION__ = "{}";"#,
-			Core::get().launcher_version,
-		))
-		.build()
-}
+// 			if updater_available {
+// 				window
+// 					.eval("window.__LAUNCHER_UPDATER__ = true;")
+// 					.expect("Failed to inject updater JS");
+// 			}
+// 		})
+// 		.js_init_script(format!(
+// 			r#"window.__ONELAUNCHER_VERSION__ = "{}";"#,
+// 			Core::get().launcher_version,
+// 		))
+// 		.build()
+// }

@@ -1,7 +1,7 @@
 use sea_orm::{sea_query::{self, Nullable, ValueType}, TryGetableFromJson};
 use serde::{Deserialize, Serialize};
 
-cfg_match! {
+cfg_select! {
 	target_os = "windows" => {
 		#[onelauncher_macro::specta]
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -2,11 +2,10 @@ import type { Model } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import HeaderImage from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
-import Button from '@/components/base/Button';
-import { TextField } from '@/components/base/TextField';
 import Modal from '@/components/overlay/Modal';
-import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
+import { Button, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -21,10 +20,6 @@ and i am very angry rn so i will not be fixing it rn
 */
 function RouteComponent() {
 	const result = useCommand('getClusters', bindings.core.get_clusters);
-	const test = useCommand('ajgiagwo', bindings.onelauncher.return_error, {
-		enabled: true,
-		retry: false,
-	});
 
 	return (
 		<div className="h-full flex flex-col gap-y-4 text-fg-primary">

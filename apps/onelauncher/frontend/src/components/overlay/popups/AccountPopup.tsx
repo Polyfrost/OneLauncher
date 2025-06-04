@@ -1,7 +1,6 @@
-import Button from '@/components/base/Button';
-import Menu from '@/components/base/Menu';
 import PlayerHead from '@/components/content/PlayerHead';
-import useCommand from '@/hooks/useCommand';
+import {useCommand} from '@onelauncher/common';
+import { Button, Menu } from '@onelauncher/common/components';
 import { bindings } from '@/main';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
 import { Separator } from 'react-aria-components';

@@ -103,11 +103,11 @@ export interface SettingProfileModel { name: string; java_id: bigint | null; res
 
 export interface SettingsOsExtra { enable_gamemode: boolean | null }
 
-const ARGS_MAP = { 'onelauncher': '{"open_dev_tools":[],"return_error":[]}', '': '{"send_event":["event"]}', 'core': '{"get_clusters":[],"get_user":["uuid"],"remove_user":["uuid"],"create_cluster":["options"],"get_profile_or_default":["name"],"get_default_user":["fallback"],"set_default_user":["uuid"],"get_global_profile":[],"open_msa_login":[],"get_users":[],"get_cluster":["id"],"remove_cluster":["id"]}' };
+const ARGS_MAP = { '': '{"send_event":["event"]}', 'onelauncher': '{"return_error":[],"open_dev_tools":[]}', 'core': '{"get_user":["uuid"],"get_default_user":["fallback"],"set_default_user":["uuid"],"get_global_profile":[],"get_clusters":[],"remove_cluster":["id"],"get_profile_or_default":["name"],"get_users":[],"remove_user":["uuid"],"open_msa_login":[],"create_cluster":["options"],"get_cluster":["id"]}' };
 export interface Router {
 	'onelauncher': { return_error: () => Promise<null>; open_dev_tools: () => Promise<void> };
-	'': { send_event: (event: LauncherEvent) => Promise<void> };
 	'core': { get_clusters: () => Promise<Array<Model>>; get_cluster: (id: bigint) => Promise<Model | null>; remove_cluster: (id: bigint) => Promise<null>; create_cluster: (options: CreateCluster) => Promise<Model>; get_profile_or_default: (name: string | null) => Promise<SettingProfileModel>; get_global_profile: () => Promise<SettingProfileModel>; get_users: () => Promise<Array<MinecraftCredentials>>; get_user: (uuid: string) => Promise<MinecraftCredentials | null>; remove_user: (uuid: string) => Promise<null>; get_default_user: (fallback: boolean | null) => Promise<MinecraftCredentials | null>; set_default_user: (uuid: string | null) => Promise<null>; open_msa_login: () => Promise<MinecraftCredentials | null> };
+	'': { send_event: (event: LauncherEvent) => Promise<void> };
 }
 
 export type { InferCommandOutput };

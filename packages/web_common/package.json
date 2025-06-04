@@ -1,0 +1,42 @@
+{
+	"name": "@onelauncher/common",
+	"type": "module",
+	"version": "1.0.0",
+	"description": "Common web utilities for this monorepo",
+	"authors": "Polyfrost",
+	"exports": {
+		".": {
+			"types": "./lib/index.d.ts",
+			"import": "./lib/index.js"
+		},
+		"./components": {
+			"types": "./lib/components.d.ts",
+			"import": "./lib/components.js"
+		}
+	},
+	"main": "./lib/index.js",
+	"typings": "./lib/index.d.ts",
+	"scripts": {
+		"build": "rollup -c"
+	},
+	"peerDependencies": {
+		"@tanstack/react-query": "^5.66.5",
+		"@tanstack/react-router": "^1.114.3",
+		"motion": "^12.10.5",
+		"react": "^19.0.0",
+		"react-aria-components": "^1.8.0",
+		"tailwind-merge": "^3.2.0",
+		"tailwind-variants": "^1.0.0",
+		"tailwindcss": "^4.0.6",
+		"tailwindcss-animated": "^2.0.0",
+		"tailwindcss-react-aria-components": "^2.0.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.0.8",
+		"esbuild": "^0.25.5",
+		"rollup": "^4.41.1",
+		"rollup-plugin-dts": "^6.2.1",
+		"rollup-plugin-esbuild": "^6.2.1",
+		"typescript": "^5.8.3"
+	}
+}

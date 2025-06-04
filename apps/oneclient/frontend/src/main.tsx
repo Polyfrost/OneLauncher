@@ -1,47 +1,62 @@
-import { StrictMode } from 'react'
-import ReactDOM from 'react-dom/client'
-import { RouterProvider, createRouter } from '@tanstack/react-router'
+import { isDev, registerDevExperience, registerNativeExperience } from '@onelauncher/common';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createRouter, RouterProvider } from '@tanstack/react-router';
+import { StrictMode } from 'react';
+import ReactDOM from 'react-dom/client';
+import { createTauRPCProxy } from './bindings.gen';
+import { routeTree } from './routeTree.gen';
 
-import * as TanstackQuery from './integrations/tanstack-query/root-provider'
+import './fonts';
+import 'overlayscrollbars/overlayscrollbars.css';
+import './styles/global.css';
 
-// Import the generated route tree
-import { routeTree } from './routeTree.gen'
+// Tauri bindings
+export const bindings = createTauRPCProxy();
 
-import './styles.css'
+// Tanstack Query Client
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			retry: false,
+			enabled: false,
+		},
+	},
+});
 
-// Create a new router instance
+// Tanstack Router
 const router = createRouter({
-  routeTree,
-  context: {
-    ...TanstackQuery.getContext(),
-  },
-  defaultPreload: 'intent',
-  scrollRestoration: true,
-  defaultStructuralSharing: true,
-  defaultPreloadStaleTime: 0,
-})
+	routeTree,
+	context: {
+		queryClient,
+	},
+	defaultPreload: 'intent',
+	scrollRestoration: true,
+	defaultStructuralSharing: true,
+	defaultPreloadStaleTime: 0,
+	defaultNotFoundComponent: () => <div>Not Found</div>,
+});
 
-// Register the router instance for type safety
 declare module '@tanstack/react-router' {
-  interface Register {
-    router: typeof router
-  }
+	interface Register {
+		router: typeof router;
+	}
 }
+
+// Register UX changes
+if (isDev)
+	registerDevExperience();
+
+registerNativeExperience();
 
 // Render the app
-const rootElement = document.getElementById('app')
+const rootElement = document.getElementById('app');
 if (rootElement && !rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement)
-  root.render(
-    <StrictMode>
-      <TanstackQuery.Provider>
-        <RouterProvider router={router} />
-      </TanstackQuery.Provider>
-    </StrictMode>,
-  )
+	const root = ReactDOM.createRoot(rootElement);
+	root.render(
+		<StrictMode>
+			<QueryClientProvider client={queryClient}>
+				<RouterProvider router={router} />
+			</QueryClientProvider>
+		</StrictMode>,
+	);
 }
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals()

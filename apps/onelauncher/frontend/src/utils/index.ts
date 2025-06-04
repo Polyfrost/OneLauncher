@@ -1,4 +1,4 @@
-export const LAUNCHER_IMPORT_TYPES: string[] = [
+export const LAUNCHER_IMPORT_TYPES: Array<string> = [
 	'PrismLauncher',
 	'Curseforge',
 	// 'Modrinth',

@@ -1,14 +1,12 @@
+import { isDev, registerDevExperience, registerNativeExperience } from '@onelauncher/common';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createTauRPCProxy } from './bindings.gen';
-
 import { routeTree } from './routeTree.gen';
+
 import './fonts';
-import './utils/nativeExperience';
-import './utils/devExperience';
 import 'overlayscrollbars/overlayscrollbars.css';
 import './styles/global.css';
 
@@ -43,6 +41,12 @@ declare module '@tanstack/react-router' {
 		router: typeof router;
 	}
 }
+
+// Register UX changes
+if (isDev)
+	registerDevExperience();
+
+registerNativeExperience();
 
 // Render the app
 const rootElement = document.getElementById('app');

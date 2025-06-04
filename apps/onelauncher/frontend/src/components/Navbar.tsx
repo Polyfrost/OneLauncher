@@ -1,11 +1,10 @@
 import type { ToOptions } from '@tanstack/react-router';
-import useCommand from '@/hooks/useCommand';
+import {useCommand} from '@onelauncher/common';
 import { bindings } from '@/main';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
 import { MenuTrigger } from 'react-aria-components';
-import Button from './base/Button';
-import Menu from './base/Menu';
+import { Button, Menu } from '@onelauncher/common/components';
 import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
 

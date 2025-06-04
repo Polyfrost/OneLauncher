@@ -3374,6 +3374,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "taurpc",
  "thiserror 2.0.12",
  "tokio",
  "tracing",

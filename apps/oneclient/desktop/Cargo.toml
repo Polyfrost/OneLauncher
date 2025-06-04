@@ -39,6 +39,7 @@ tauri-plugin-dialog = { workspace = true }
 tauri-plugin-deep-link = { workspace = true }
 
 # code gen
+taurpc = { workspace = true }
 specta = { workspace = true }
 specta-typescript = { workspace = true }
 strum = { workspace = true }

@@ -1,10 +1,10 @@
 import type { ComponentType, JSX } from 'react';
 import type { PressEvent } from 'react-aria-components';
+import { Button } from '@onelauncher/common/components';
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, Minimize01Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
-import Button from './base/Button';
 
 function WindowFrame() {
 	const [isMaximized, setIsMaximized] = useState(false);

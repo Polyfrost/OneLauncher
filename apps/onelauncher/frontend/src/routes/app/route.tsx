@@ -1,5 +1,5 @@
-import { AnimatedOutlet } from '@/components/AnimatedOutlet';
 import Navbar from '@/components/Navbar';
+import { AnimatedOutlet } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 

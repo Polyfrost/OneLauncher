@@ -14,6 +14,7 @@
 	"dependencies": {
 		"@fontsource/poppins": "^5.2.6",
 		"@formatjs/intl-durationformat": "^0.7.4",
+		"@onelauncher/common": "workspace:*",
 		"@tailwindcss/vite": "^4.0.6",
 		"@tanstack/match-sorter-utils": "^8.19.4",
 		"@tanstack/react-query": "^5.66.5",
@@ -37,7 +38,8 @@
 		"tailwind-variants": "^1.0.0",
 		"tailwindcss": "^4.0.6",
 		"tailwindcss-animated": "^2.0.0",
-		"tailwindcss-react-aria-components": "^2.0.0"
+		"tailwindcss-react-aria-components": "^2.0.0",
+		"taurpc": "^1.8.1"
 	},
 	"devDependencies": {
 		"@tanstack/eslint-config": "^0.1.0",

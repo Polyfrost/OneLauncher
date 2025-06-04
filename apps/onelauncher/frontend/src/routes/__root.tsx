@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { AnimatedOutletProvider } from '@/components/AnimatedOutlet';
 import WindowFrame from '@/components/WindowFrame';
+import { AnimatedOutletProvider } from '@onelauncher/common/components';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
 import { RouterProvider } from 'react-aria-components';

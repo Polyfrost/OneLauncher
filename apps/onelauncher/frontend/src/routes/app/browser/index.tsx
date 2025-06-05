@@ -1,5 +1,5 @@
-import { Button, TextField } from '@onelauncher/common/components';
 import Modal from '@/components/overlay/Modal';
+import { Button, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/browser/')({

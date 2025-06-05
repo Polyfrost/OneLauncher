@@ -26,7 +26,7 @@ interface ImportInstancesType {
 	instances: Array<string>;
 }
 
-interface OnboardingContextType {
+interface _OnboardingContextType {
 	setLanguage: (language: Language) => void;
 	language: () => Language;
 
@@ -45,28 +45,18 @@ function RouteComponent() {
 	const currentPath = routerState.location.pathname;
 	const currentStepIndex = steps.findIndex(path => currentPath === path || currentPath.startsWith(path));
 
-	const progressPercentage = currentStepIndex >= 0 && steps.length > 1
+	const progressPercentage = currentStepIndex >= 0
 		? (currentStepIndex / (steps.length - 1)) * 100
 		: 0;
 
 	const handleBack = () => {
-		console.log('Geri için mevcut yol:', currentPath);
-		console.log('Geri için mevcut adım indeksi:', currentStepIndex);
-
 		if (currentStepIndex > 0) {
 			const previousStep = steps[currentStepIndex - 1];
-			console.log('Geri gidiliyor:', previousStep);
 			navigate({ to: previousStep as any });
-		}
-		else {
-			console.log('Zaten ilk adımda veya adım bulunamadı, geri gidilemez.');
 		}
 	};
 
 	const handleNext = () => {
-		console.log('İleri için mevcut yol:', currentPath);
-		console.log('İleri için mevcut adım indeksi:', currentStepIndex);
-
 		if (currentStepIndex === -1) {
 			navigate({ to: steps[0] as any });
 			return;
@@ -74,15 +64,10 @@ function RouteComponent() {
 
 		if (currentStepIndex < steps.length - 1) {
 			const nextStep = steps[currentStepIndex + 1];
-			console.log('İleri gidiliyor:', nextStep);
 			navigate({ to: nextStep as any });
 		}
 		else if (currentStepIndex === steps.length - 1) {
-			console.log('Onboarding tamamlandı, /app adresine gidiliyor');
 			navigate({ to: '/app' as any });
-		}
-		else {
-			console.log('Bir sonraki adım belirlenemedi.');
 		}
 	};
 
@@ -121,20 +106,22 @@ export interface OnboardingStepProps {
 }
 
 export function OnboardingStep(props: OnboardingStepProps) {
+	const { illustration, title, paragraph, children } = props;
+
 	return (
 		<div className="grid grid-cols-2 h-full w-full gap-x-16">
 			<div className="flex flex-col items-center justify-center">
-				{props.illustration}
+				{illustration}
 			</div>
 
 			<div className="flex flex-col justify-center gap-y-4">
 				<div className="w-full flex flex-col gap-y-2">
-					<h1 className="text-2xl">{props.title}</h1>
-					<p className="text-lg text-fg-secondary line-height-normal">{props.paragraph}</p>
+					<h1 className="text-2xl">{title}</h1>
+					<p className="text-lg text-fg-secondary line-height-normal">{paragraph}</p>
 				</div>
 
 				<div className="max-h-96 w-full flex flex-1 flex-col gap-y-2">
-					{props.children}
+					{children}
 				</div>
 			</div>
 		</div>

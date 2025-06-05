@@ -13,7 +13,7 @@ export const Route = createFileRoute('/onboarding/login')({
 function RouteComponent() {
 	const [profile, setProfile] = useState<MinecraftCredentials>();
 	const [errorMessage, setErrorMessage] = useState<string>('');
-	const result = useCommand('beginMsFlow', bindings.commands.beginMsFlow, {
+	const result = useCommand('beginMsFlow', bindings.core.open_msa_login, {
 		enabled: false,
 		subscribed: false,
 	});

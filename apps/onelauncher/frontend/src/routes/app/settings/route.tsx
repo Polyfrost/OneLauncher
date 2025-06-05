@@ -15,19 +15,19 @@ function RouteComponent() {
 					base="/app/settings"
 					links={{
 						'Launcher Settings': [
-							[<Rocket02Icon />, 'General', '/'],
-							[<Brush01Icon />, 'Appearance', '/appearance'],
+							[<Rocket02Icon key="general" />, 'General', '/'],
+							[<Brush01Icon key="appearence" />, 'Appearance', '/appearance'],
 							// [<Key01Icon />, 'APIs', '/apis'],
 							// [<Globe01Icon />, 'Language', '/language'],
 						],
 						'Game Settings': [
-							[<Sliders04Icon />, 'Minecraft settings', '/minecraft'],
-							[<Users01Icon />, 'Accounts', '/accounts'],
+							[<Sliders04Icon key="mcsettings" />, 'Minecraft settings', '/minecraft'],
+							[<Users01Icon key="accounts" />, 'Accounts', '/accounts'],
 						],
 						'About': [
-							[<RefreshCcw02Icon />, 'Changelog', '/changelog'],
-							[<MessageTextSquare01Icon />, 'Feedback', '/feedback'],
-							[<CodeSnippet02Icon />, 'Developer Options', '/developer'],
+							[<RefreshCcw02Icon key="changelog" />, 'Changelog', '/changelog'],
+							[<MessageTextSquare01Icon key="feedback" />, 'Feedback', '/feedback'],
+							[<CodeSnippet02Icon key="dev" />, 'Developer Options', '/developer'],
 						],
 					}}
 				/>
@@ -47,13 +47,15 @@ interface SidebarProps {
 }
 
 function Sidebar(props: SidebarProps) {
+	const { base, links } = props;
+
 	const navigate = useNavigate();
 	const routerState = useRouterState();
 
 	const location = routerState.location.pathname;
 
 	useEffect(() => {
-		if (props.base.endsWith('/'))
+		if (base.endsWith('/'))
 			throw new Error('Base should not end with a slash');
 	});
 
@@ -63,24 +65,25 @@ function Sidebar(props: SidebarProps) {
 			for (const [key, value] of params)
 				currParams.set(key, value);
 
-		const url = `${props.base}${href}`;
+		const url = `${base}${href}`;
 		navigate({ to: url });
 	}
 
 	function isActive(link: string, _params: URLSearchParams | undefined) {
-		return location === `${props.base}${link}` || `${location}/` === `${props.base}${link}`;
+		return location === `${base}${link}` || `${location}/` === `${base}${link}`;
 	}
 
 	return (
 		<div className="w-56 flex flex-col pr-2">
-			{Object.keys(props.links).map((section, i) => (
+			{Object.keys(links).map((section, i) => (
 				<div className="flex flex-col gap-y-2" key={i}>
 					<div>
 						<h3 className="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</h3>
 						<div className="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
-							{props.links[section].map((link, i) => {
+							{links[section].map((link, i) => {
+								// eslint yaps too much tbh
 								if (!link)
-									return;
+									return '';
 
 								return (
 									<a

@@ -1,15 +1,15 @@
 import type { ToOptions } from '@tanstack/react-router';
-import {useCommand} from '@onelauncher/common';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
+import { Button, Menu } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
 import { MenuTrigger } from 'react-aria-components';
-import { Button, Menu } from '@onelauncher/common/components';
 import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
 
 function Navbar() {
-	const defaultUser = useCommand('getDefaultUser', () => bindings.core.get_default_user(false));
+	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
 	return (
 		<div className="h-15 min-h-15 flex flex-row items-center *:flex-1">

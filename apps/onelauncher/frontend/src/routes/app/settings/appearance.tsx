@@ -77,9 +77,12 @@ interface ThemeCardProps {
 	setTheme: (merged: string) => void;
 };
 
-function ThemeCard(props: ThemeCardProps) {
+function ThemeCard({
+	themeSelector,
+	setTheme,
+}: ThemeCardProps) {
 	return (
-		<div className={`h-min theme-${props.themeSelector}`} onClick={() => props.setTheme(props.themeSelector)}>
+		<div className={`h-min theme-${themeSelector}`} onClick={() => setTheme(themeSelector)}>
 			<svg
 				fill="none"
 				height="78"

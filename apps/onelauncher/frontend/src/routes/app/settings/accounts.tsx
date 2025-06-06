@@ -1,7 +1,7 @@
 import PlayerHead from '@/components/content/PlayerHead';
 import ScrollableContainer from '@/components/ScrollableContainer';
-import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
 import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { InfoCircleIcon, Trash01Icon, UserPlus02Icon } from '@untitled-theme/icons-react';
@@ -18,8 +18,8 @@ interface Account {
 }
 
 function RouteComponent() {
-	const { data: usersData, isLoading: usersLoading } = useCommand('getUsers', bindings.commands.getUsers);
-	const { data: defaultUserData, isLoading: defaultUserLoading } = useCommand('getDefaultUser', () => bindings.commands.getDefaultUser(false));
+	const { data: usersData, isLoading: usersLoading } = useCommand('getUsers', bindings.core.getUsers);
+	const { data: defaultUserData, isLoading: defaultUserLoading } = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
 	if (usersLoading || defaultUserLoading)
 		return (
@@ -67,7 +67,7 @@ function AccountRow({ account, isCurrent }: AccountRowProps) {
 
 	const setDefaultUserCommand = useCommand(
 		'setDefaultUser',
-		() => bindings.commands.setDefaultUser(account.id),
+		() => bindings.core.setDefaultUser(account.id),
 		{
 			enabled: false,
 			subscribed: false,
@@ -76,7 +76,7 @@ function AccountRow({ account, isCurrent }: AccountRowProps) {
 
 	const removeUserCommand = useCommand(
 		'removeUser',
-		() => bindings.commands.removeUser(account.id),
+		() => bindings.core.removeUser(account.id),
 		{
 			enabled: false,
 			subscribed: false,

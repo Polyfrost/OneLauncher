@@ -1,10 +1,10 @@
 import type { Model } from '@/bindings.gen';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
 import { useEffect, useState } from 'react';
-import useCommand from './useCommand';
 
 function useRecentCluster() {
-	const result = useCommand('getClusters', bindings.core.get_clusters);
+	const result = useCommand('getClusters', bindings.core.getClusters);
 	const [cluster, setCluster] = useState<Model | undefined>();
 
 	useEffect(() => {

@@ -1,5 +1,5 @@
+import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { Button } from "@onelauncher/common/components";
 
 export const Route = createFileRoute('/')({
 	component: App,

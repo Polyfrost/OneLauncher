@@ -120,21 +120,26 @@ export interface OnboardingStepProps {
 	children: JSX.Element;
 }
 
-export function OnboardingStep(props: OnboardingStepProps) {
+export function OnboardingStep({
+	title,
+	paragraph,
+	illustration,
+	children,
+}: OnboardingStepProps) {
 	return (
 		<div className="grid grid-cols-2 h-full w-full gap-x-16">
 			<div className="flex flex-col items-center justify-center">
-				{props.illustration}
+				{illustration}
 			</div>
 
 			<div className="flex flex-col justify-center gap-y-4">
 				<div className="w-full flex flex-col gap-y-2">
-					<h1 className="text-2xl">{props.title}</h1>
-					<p className="text-lg text-fg-secondary line-height-normal">{props.paragraph}</p>
+					<h1 className="text-2xl">{title}</h1>
+					<p className="text-lg text-fg-secondary line-height-normal">{paragraph}</p>
 				</div>
 
 				<div className="max-h-96 w-full flex flex-1 flex-col gap-y-2">
-					{props.children}
+					{children}
 				</div>
 			</div>
 		</div>

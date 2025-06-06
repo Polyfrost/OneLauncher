@@ -1,17 +1,18 @@
+import type { MinecraftCredentials } from '@/bindings.gen';
 import PlayerHead from '@/components/content/PlayerHead';
-import {useCommand} from '@onelauncher/common';
-import { Button, Menu } from '@onelauncher/common/components';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
+import { Button, Menu } from '@onelauncher/common/components';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
 import { Separator } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 function AccountPopup() {
-	const users = useCommand('getUsers', bindings.commands.getUsers);
-	const defaultUser = useCommand('getDefaultUser', () => bindings.commands.getDefaultUser(false));
+	const users = useCommand('getUsers', bindings.core.getUsers);
+	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
-	const setDefaultUser = (user: bindings.MinecraftCredentials) => {
-		bindings.commands.setDefaultUser(user.id);
+	const setDefaultUser = (user: MinecraftCredentials) => {
+		bindings.core.setDefaultUser(user.id);
 	};
 
 	return (
@@ -64,7 +65,7 @@ function AccountEntry({
 	loggedIn = false,
 }: {
 	onClick: () => void;
-	user: bindings.MinecraftCredentials;
+	user: MinecraftCredentials;
 	loggedIn?: boolean;
 }) {
 	return (

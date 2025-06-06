@@ -6,7 +6,7 @@ import Modal from '@/components/overlay/Modal';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
@@ -19,7 +19,7 @@ Please note this route has a very big issue related to scrolling
 and i am very angry rn so i will not be fixing it rn
 */
 function RouteComponent() {
-	const result = useCommand('getClusters', bindings.core.get_clusters);
+	const result = useCommand('getClusters', bindings.core.getClusters);
 
 	return (
 		<div className="h-full flex flex-col gap-y-4 text-fg-primary">
@@ -49,7 +49,7 @@ function Banner() {
 	 */
 	// const cluster = useRecentCluster();
 	// const launch = useLaunchCluster(() => cluster()?.uuid);
-	const navigate = useNavigate();
+	// const navigate = useNavigate();
 
 	return (
 		<div className="relative h-52 min-h-52 w-full overflow-hidden rounded-xl border border-component-border">
@@ -110,8 +110,8 @@ function Banner() {
 }
 
 function ClusterCreate() {
-	const result = useCommand('createCluster', () => bindings.commands.createCluster({
-		icon_url: 'asd',
+	const result = useCommand('createCluster', () => bindings.core.createCluster({
+		icon: 'asd',
 		mc_loader: 'vanilla',
 		mc_version: '1.20.1',
 		name: 'Test Cluster',
@@ -177,8 +177,11 @@ interface ClusterGroupProps {
 	isFetching?: boolean;
 }
 
-function ClusterGroup(props: ClusterGroupProps) {
-	if (props.isFetching)
+function ClusterGroup({
+	isFetching,
+	clusters,
+}: ClusterGroupProps) {
+	if (isFetching)
 		return (
 			<div className="flex items-center justify-center h-full">
 				<div className="w-8 h-8 border-4 border-brand rounded-full border-t-transparent animate-spin" />
@@ -191,7 +194,7 @@ function ClusterGroup(props: ClusterGroupProps) {
 				className="h-full w-full"
 			>
 				<div className="grid grid-cols-4 gap-4 max-h-96 2xl:grid-cols-6 pb-4">
-					{props.clusters?.map(data => (
+					{clusters?.map(data => (
 						<ClusterCard key={data.id} {...data} />
 					))}
 				</div>
@@ -200,11 +203,16 @@ function ClusterGroup(props: ClusterGroupProps) {
 	);
 }
 
-function ClusterCard(props: Model) {
+function ClusterCard({
+	id,
+	name,
+	mc_loader,
+	mc_version,
+}: Model) {
 	return (
 		<Link
 			search={{
-				id: props.id,
+				id,
 			}} to="/app/cluster"
 		>
 			<div
@@ -222,11 +230,11 @@ function ClusterCard(props: Model) {
 				</div>
 				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-						<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{props.name}</p>
+						<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
 						<p className="h-4 text-xs">
-							{props.mc_loader}
+							{mc_loader}
 							{' '}
-							{props.mc_version}
+							{mc_version}
 							{/* {' '}
 						{props.packages.mods && `• ${props.mods} mods`} */}
 						</p>

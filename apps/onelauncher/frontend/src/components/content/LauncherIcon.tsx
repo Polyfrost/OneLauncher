@@ -1,4 +1,5 @@
 import type { ImgHTMLAttributes, JSX } from 'react';
+import { Show } from '@onelauncher/common/components';
 import CurseforgeIcon from '../../assets/logos/curseforge.svg';
 import AtLauncherIcon from '../../assets/logos/launchers/atlauncher.svg';
 import FTBIcon from '../../assets/logos/launchers/ftb.svg';
@@ -9,7 +10,6 @@ import TechnicImage from '../../assets/logos/launchers/technic.png';
 import TLauncherImage from '../../assets/logos/launchers/tlauncher.png';
 import UnknownImage from '../../assets/logos/minecraft.png';
 import ModrinthIcon from '../../assets/logos/modrinth.svg';
-import { Show } from '../base/Show';
 
 type ElementType = (props: any) => JSX.Element;
 
@@ -45,8 +45,8 @@ type LauncherIconProps = ImgHTMLAttributes<HTMLImageElement> & {
 };
 
 function LauncherIcon({
-    launcher,
-    ...props
+	launcher,
+	...props
 }: LauncherIconProps) {
 	return (
 		<Show

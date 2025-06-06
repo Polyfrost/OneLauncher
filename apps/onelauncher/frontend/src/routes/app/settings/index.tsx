@@ -12,7 +12,7 @@ export const Route = createFileRoute('/app/settings/')({
 });
 
 function RouteComponent() {
-	const result = useCommand('getGlobalProfile', bindings.commands.getGlobalProfile);
+	const result = useCommand('getGlobalProfile', bindings.core.getGlobalProfile);
 
 	return (
 		<Sidebar.Page>

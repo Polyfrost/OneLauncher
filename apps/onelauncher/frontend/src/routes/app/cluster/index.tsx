@@ -3,12 +3,13 @@ import type { Dispatch, SetStateAction } from 'react';
 import LoaderIcon from '@/components/launcher/LoaderIcon';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
-import useCommand from '@/hooks/useCommand';
 import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
+import { twMerge } from 'tailwind-merge';
 import Sidebar from '../settings/route';
 
 export const Route = createFileRoute('/app/cluster/')({
@@ -21,7 +22,7 @@ function RouteComponent() {
 	const [newName, setNewName] = useState<string>('');
 
 	// dumbass fix ik
-	const cluster = useCommand('getClusterById', () => bindings.commands.getClusterById(Number(id.toString()) as unknown as bigint));
+	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
 
 	return (
 		<Sidebar.Page>
@@ -102,7 +103,11 @@ interface BannerProps {
 	refetch: () => void;
 }
 
-function Banner(props: BannerProps) {
+function Banner({
+	cluster,
+	editMode,
+	setNewName,
+}: BannerProps) {
 	// async function launchFilePicker() {
 	// 	const selected = await dialog.open({
 	// 		multiple: false,
@@ -123,13 +128,13 @@ function Banner(props: BannerProps) {
 		if (name.length > 30 || name.length <= 0)
 			return;
 
-		props.setNewName(name);
+		setNewName(name);
 	}
 
 	return (
 		<div className="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
 			<div className="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-component-bg/10 rounded-lg">
-				<Show when={props.editMode}>
+				<Show when={editMode}>
 					<div
 						className="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
 						// onClick={launchFilePicker}
@@ -146,37 +151,37 @@ function Banner(props: BannerProps) {
 				<div>
 					<Show
 						fallback={
-							<h2 className="break-words text-wrap text-2xl">{props.cluster?.name}</h2>
+							<h2 className="break-words text-wrap text-2xl">{cluster?.name}</h2>
 						}
-						when={props.editMode}
+						when={editMode}
 					>
 						<TextField
 							className="text-xl font-bold"
 							onChange={e => updateName(e.target.value)}
-							placeholder={props.cluster?.name}
+							placeholder={cluster?.name}
 						/>
 					</Show>
 				</div>
 
 				<div className="flex flex-1 flex-row">
 					<div
-						className={`flex flex-1 flex-col items-start justify-between ${props.editMode}` ? 'text-fg-primary-disabled' : ''}
+						className={twMerge(`flex flex-1 flex-col items-start justify-between`, editMode && 'text-fg-primary-disabled')}
 					>
 						<span className="flex flex-row items-center gap-x-1">
 							<LoaderIcon
 								className="w-5"
-								loader={props.cluster?.mc_loader}
+								loader={cluster?.mc_loader}
 							/>
-							<span>{props.cluster?.mc_version}</span>
-							<span>{props.cluster?.mc_loader || 'unknown'}</span>
-							{props.cluster?.mc_loader_version && <span>{props.cluster.mc_loader_version}</span>}
+							<span>{cluster?.mc_version}</span>
+							<span>{cluster?.mc_loader || 'unknown'}</span>
+							{cluster?.mc_loader_version && <span>{cluster.mc_loader_version}</span>}
 						</span>
 						<span
-							className={`text-xs text-fg-secondary ${props.editMode}` ? 'text-fg-secondary-disabled' : ''}
+							className={twMerge(`text-xs text-fg-secondary`, editMode && 'text-fg-secondary-disabled')}
 						>
 							Played for
 							{' '}
-							<b>{props.cluster?.overall_played || 0}</b>
+							<b>{cluster?.overall_played || 0}</b>
 							.
 						</span>
 					</div>

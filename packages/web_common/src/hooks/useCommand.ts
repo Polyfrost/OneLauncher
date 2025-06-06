@@ -1,11 +1,18 @@
 import type { UndefinedInitialDataOptions, UseQueryResult } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 
-type CacheKey = string;
+// this gets overwritten by the consumer project
+export interface Register {
+	// commands
+}
 
-export function useCommand<T>(cacheKey: CacheKey | (string & {}), command: () => Promise<T>, options?: Omit<UndefinedInitialDataOptions<T>, 'queryKey' | 'queryFn'>): UseQueryResult<T, Error> {
+type RegisterConfig = Register extends {
+	commands: infer Keys;
+} ? Keys : never;
+
+export function useCommand<T>(cacheKey: RegisterConfig[number] | (string & {}) | false, command: () => Promise<T>, options?: Omit<UndefinedInitialDataOptions<T>, 'queryKey' | 'queryFn'>): UseQueryResult<T, Error> {
 	return useQuery({
-		queryKey: [cacheKey],
+		queryKey: cacheKey === false ? [] : [cacheKey],
 		queryFn: async () => {
 			try {
 				const result = await command();
@@ -24,5 +31,3 @@ export function useCommand<T>(cacheKey: CacheKey | (string & {}), command: () =>
 		...options,
 	});
 }
-
-// export useCommand;

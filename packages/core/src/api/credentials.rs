@@ -84,3 +84,14 @@ pub async fn get_user(user: uuid::Uuid) -> LauncherResult<Option<MinecraftCreden
 
 	Ok(user)
 }
+
+/// Get a fake user for testing or offline mode.
+pub fn get_fake_user() -> MinecraftCredentials {
+	MinecraftCredentials {
+		id: uuid::Uuid::new_v4(),
+		username: "Player".to_string(),
+		access_token: "0".to_string(),
+		refresh_token: "0".to_string(),
+		expires: chrono::Utc::now() + chrono::Duration::days(1),
+	}
+}

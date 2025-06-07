@@ -70,6 +70,7 @@ whoami = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
 async-trait = { workspace = true }
+async-stream = { workspace = true }
 paste = { workspace = true }
 byteorder = { workspace = true }
 merge = { workspace = true }

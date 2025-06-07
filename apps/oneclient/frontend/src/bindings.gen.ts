@@ -42,8 +42,6 @@ export type JavaError = { ParseVersion: [string] } | 'Execute' | 'MissingJava';
 
 export type LauncherError = { type: 'DirError'; data: DirectoryError } | { type: 'IOError'; data: IOError } | { type: 'IngressError'; data: IngressError } | { type: 'JavaError'; data: JavaError } | { type: 'CryptoError'; data: CryptoError } | { type: 'DiscordError'; data: DiscordError } | { type: 'MetadataError'; data: MetadataError } | { type: 'ClusterError'; data: ClusterError } | { type: 'MinecraftAuthError'; data: MinecraftAuthError } | { type: 'ProcessError'; data: ProcessError } | { type: 'PackageError'; data: PackageError } | { type: 'DaoError'; data: DaoError } | { type: 'SerdeError' } | { type: 'AnyhowError' } | { type: 'DbError' } | { type: 'ReqwestError' } | { type: 'InterpulseError' } | { type: 'RegexError' } | { type: 'SemaphoreError' } | { type: 'UrlError' } | { type: 'TauriError' };
 
-export type LauncherEvent = { Ingress: IngressPayload } | { Message: MessagePayload } | { Process: ProcessPayload };
-
 export type MessageLevel = 'Info' | 'Warn' | 'Error';
 
 export interface MessagePayload { level: MessageLevel; message: string }
@@ -95,7 +93,7 @@ export interface Process { pid: number; started_at: string; cluster_id: bigint; 
 
 export type ProcessError = { HookUnsuccessful: number } | 'NoPid';
 
-export type ProcessPayload = { Starting: { command: string } } | { Started: { process: Process } } | { Stopped: { pid: number; exit_code: number } } | { Output: { pid: number; output: string } };
+export type ProcessPayload = { type: 'Starting'; command: string } | { type: 'Started'; process: Process } | { type: 'Stopped'; pid: number; exit_code: number } | { type: 'Output'; pid: number; output: string };
 
 export interface Resolution { width: number; height: number }
 
@@ -103,11 +101,11 @@ export interface SettingProfileModel { name: string; java_id: bigint | null; res
 
 export interface SettingsOsExtra { enable_gamemode: boolean | null }
 
-const ARGS_MAP = { 'core': '{"openMsaLogin":[],"getClusters":[],"getClusterById":["id"],"getUsers":[],"removeUser":["uuid"],"removeCluster":["id"],"getGlobalProfile":[],"getUser":["uuid"],"setDefaultUser":["uuid"],"createCluster":["options"],"getDefaultUser":["fallback"],"getProfileOrDefault":["name"]}', 'oneclient': '{"return_error":[],"open_dev_tools":[]}', '': '{"send_event":["event"]}' };
+const ARGS_MAP = { oneclient: '{"open_dev_tools":[],"return_error":[]}', core: '{"getClusters":[],"createCluster":["options"],"getGlobalProfile":[],"getClusterById":["id"],"openMsaLogin":[],"getUsers":[],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"],"getUser":["uuid"],"getProfileOrDefault":["name"],"removeUser":["uuid"],"removeCluster":["id"],"launchCluster":["id","uuid"]}', events: '{"message":["event"],"process":["event"],"ingress":["event"]}' };
 export interface Router {
-	'': { send_event: (event: LauncherEvent) => Promise<void> };
-	'core': { getClusters: () => Promise<Array<Model>>; getClusterById: (id: bigint) => Promise<Model | null>; removeCluster: (id: bigint) => Promise<null>; createCluster: (options: CreateCluster) => Promise<Model>; getProfileOrDefault: (name: string | null) => Promise<SettingProfileModel>; getGlobalProfile: () => Promise<SettingProfileModel>; getUsers: () => Promise<Array<MinecraftCredentials>>; getUser: (uuid: string) => Promise<MinecraftCredentials | null>; removeUser: (uuid: string) => Promise<null>; getDefaultUser: (fallback: boolean | null) => Promise<MinecraftCredentials | null>; setDefaultUser: (uuid: string | null) => Promise<null>; openMsaLogin: () => Promise<MinecraftCredentials | null> };
-	'oneclient': { return_error: () => Promise<null>; open_dev_tools: () => Promise<void> };
+	events: { ingress: (event: IngressPayload) => Promise<void>; message: (event: MessagePayload) => Promise<void>; process: (event: ProcessPayload) => Promise<void> };
+	core: { getClusters: () => Promise<Array<Model>>; getClusterById: (id: bigint) => Promise<Model | null>; removeCluster: (id: bigint) => Promise<null>; createCluster: (options: CreateCluster) => Promise<Model>; launchCluster: (id: bigint, uuid: string | null) => Promise<null>; getProfileOrDefault: (name: string | null) => Promise<SettingProfileModel>; getGlobalProfile: () => Promise<SettingProfileModel>; getUsers: () => Promise<Array<MinecraftCredentials>>; getUser: (uuid: string) => Promise<MinecraftCredentials | null>; removeUser: (uuid: string) => Promise<null>; getDefaultUser: (fallback: boolean | null) => Promise<MinecraftCredentials | null>; setDefaultUser: (uuid: string | null) => Promise<null>; openMsaLogin: () => Promise<MinecraftCredentials | null> };
+	oneclient: { return_error: () => Promise<null>; open_dev_tools: () => Promise<void> };
 }
 
 export type { InferCommandOutput };

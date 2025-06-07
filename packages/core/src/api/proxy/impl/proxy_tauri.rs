@@ -30,7 +30,11 @@ impl LauncherProxy for ProxyTauri {
 			}
 		}
 
-		Ok(self.emitter.send_event(event)?)
+		Ok(match event {
+			LauncherEvent::Ingress(ingress) => self.emitter.ingress(ingress),
+			LauncherEvent::Message(message) => self.emitter.message(message),
+			LauncherEvent::Process(process) => self.emitter.process(process),
+		}?)
 	}
 
 	#[tracing::instrument]

@@ -41,9 +41,9 @@ pub async fn download_minecraft(
 
 	let asset_index = download_assets_index(version, sub_ingress, force).await?;
 	tokio::try_join! {
-		download_assets(version.assets == "legacy", &asset_index, sub_ingress, force),
+		download_assets(version.assets == "legacy", asset_index, sub_ingress, force),
 		download_client(version, sub_ingress, force),
-		download_libraries(&version.id, &version.libraries, java_arch, sub_ingress, force),
+		download_libraries(version.id.clone(), version.libraries.clone(), java_arch.to_string(), sub_ingress, force),
 	}?;
 
 	Ok(())
@@ -122,9 +122,6 @@ pub async fn download_assets_index(
 		.await?
 		.join(format!("{}.json", version.asset_index.id));
 
-	// let ingress_ref = ingress_ref.map(|i| i.with_increment(i.increment_by / 2.0));
-	// let ingress_ref = ingress_ref.as_ref();
-	// ingress_ref.map(async |i| send_ingress_ref_message(i, Some("fetching assets index")).await);
 	let ingress_step = ingress.ingress_total().map(|i| i / 2.0).unwrap_or_default();
 	ingress.set_ingress_message("fetching assets index").await?;
 
@@ -159,9 +156,9 @@ pub async fn download_assets_index(
 // MARK: Assets
 /// Downloads the assets for a given asset index, returns the number of failed downloads
 #[tracing::instrument(skip_all)]
-pub async fn download_assets(
+pub async fn download_assets<'a>(
 	legacy: bool,
-	assets_index: &AssetsIndex,
+	assets_index: AssetsIndex,
 	ingress: Option<&SubIngress<'_>>,
 	force: Option<bool>,
 ) -> LauncherResult<usize> {
@@ -178,30 +175,33 @@ pub async fn download_assets(
 
 	ingress.set_ingress_message("fetching assets").await?;
 
-	let requests = stream::iter(assets_index.objects.iter().map(|(name, asset)| async {
-		let hash = &asset.hash;
-		let subhash = &hash[0..2];
-		let path = if legacy {
-			dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
-		} else {
-			dir.join(subhash).join(hash)
-		};
+	let requests = stream::iter(assets_index.objects.into_iter().map(|(name, asset)| {
+		let dir = dir.clone();
+		async move {
+			let hash = &asset.hash;
+			let subhash = &hash[0..2];
+			let path = if legacy {
+				dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
+			} else {
+				dir.join(subhash).join(hash)
+			};
 
-		if !path.exists() || force.unwrap_or(false) {
-			http::download_advanced(
-				Method::GET,
-				&format!("https://resources.download.minecraft.net/{subhash}/{hash}"),
-				path,
-				None,
-				None,
-				Some((HashAlgorithm::Sha1, hash)),
-				ingress.ingress_sub(|total| total / len as f64).as_ref(),
-			)
-			.await
-			.map(|_| ())
-		} else {
-			// TODO: Possibly check hash? (not sure if this is a good idea here)
-			Ok(())
+			if !path.exists() || force.unwrap_or(false) {
+				http::download_advanced(
+					Method::GET,
+					&format!("https://resources.download.minecraft.net/{subhash}/{hash}"),
+					path,
+					None,
+					None,
+					Some((HashAlgorithm::Sha1, hash)),
+					ingress.ingress_sub(|total| total / len as f64).as_ref(),
+				)
+				.await
+				.map(|_| ())
+			} else {
+				// TODO: Possibly check hash? (not sure if this is a good idea here)
+				Ok(())
+			}
 		}
 	}))
 	.buffer_unordered(Core::get().fetch_attempts.min(7))
@@ -265,9 +265,9 @@ pub async fn download_client(
 // MARK: Libraries
 /// Downloads the libraries and returns the number of failed downloads
 pub async fn download_libraries(
-	version: &str,
-	libraries: &[Library],
-	java_arch: &str,
+	version: String,
+	libraries: Vec<Library>,
+	java_arch: String,
 	ingress: Option<&SubIngress<'_>>,
 	force: Option<bool>,
 ) -> LauncherResult<usize> {
@@ -284,88 +284,95 @@ pub async fn download_libraries(
 	let ingress = ingress.as_ref();
 	ingress.set_ingress_message("fetching libraries").await?;
 
-	let requests = stream::iter(libraries.iter().map(|lib| async {
-		if let Some(rules) = &lib.rules
-			&& !super::rules::validate_rules(rules, java_arch, lib.natives.is_some()) {
-				tracing::debug!("skipping library {} due to rules", lib.name);
-				return Ok::<(), LauncherError>(());
-			}
+	let requests = stream::iter(libraries.into_iter().map(|lib| {
+		let lib_dir = lib_dir.clone();
+		let natives_dest = natives_dest.clone();
+		let java_arch = java_arch.clone();
 
-		if !lib.downloadable {
-			tracing::debug!("skipping library {} due to downloadability", lib.name);
-			return Ok(());
-		}
-
-		let artifact_path = interpulse::utils::get_path_from_artifact(&lib.name)?;
-		let path = lib_dir.join(&artifact_path);
-
-		if path.exists() && !force.unwrap_or(false) {
-			tracing::debug!("library {} is installed, skipping", &lib.name);
-			return Ok(());
-		}
-
-		tokio::try_join! {
-			async {
-				if let Some(interpulse::api::minecraft::LibraryDownloads {
-					artifact: Some(ref artifact), ..
-				}) = lib.downloads
-					&& !artifact.url.is_empty() {
-						http::download(
-							Method::GET,
-							&artifact.url,
-							&path,
-							Some((HashAlgorithm::Sha1, &artifact.sha1)),
-							ingress,
-						).await?;
-
-						tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
-						return Ok::<_, LauncherError>(());
-					}
-
-				let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
-				http::download(
-					Method::GET,
-					&url,
-					&path,
-					None,
-					ingress,
-				).await?;
-
-				tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
-				Ok::<_, LauncherError>(())
-			},
-			async {
-				if let Some((os_key, classifiers)) = None.or_else(|| Some((
-					lib.natives.as_ref()?.get(&Os::native_arch(java_arch))?,
-					lib.downloads.as_ref()?.classifiers.as_ref()?
-				))) {
-					let parsed = os_key.replace("${arch}", crate::constants::ARCH_WIDTH);
-					if let Some(native) = classifiers.get(&parsed) {
-						tracing::trace!("found native library {}", &lib.name);
-
-						let data = http::fetch_advanced(
-							Method::GET,
-							&native.url,
-							None,
-							Some((HashAlgorithm::Sha1, &native.sha1)),
-							None,
-							ingress,
-						).await?;
-
-						io::unzip_bytes_filtered(
-							data.to_vec(),
-							Some(|name: &str| !name.starts_with("META-INF")),
-							&natives_dest
-						).await?;
-						tracing::trace!("extracted native {} to path {:?}", &lib.name, &natives_dest);
-					}
+		async move {
+			if let Some(rules) = &lib.rules
+				&& !super::rules::validate_rules(rules, &java_arch, lib.natives.is_some()) {
+					tracing::debug!("skipping library {} due to rules", lib.name);
+					return Ok::<(), LauncherError>(());
 				}
 
-				Ok(())
+			if !lib.downloadable {
+				tracing::debug!("skipping library {} due to downloadability", lib.name);
+				return Ok(());
 			}
-		}?;
 
-		Ok(())
+			let artifact_path = interpulse::utils::get_path_from_artifact(&lib.name)?;
+			let path = lib_dir.join(&artifact_path);
+
+			if path.exists() && !force.unwrap_or(false) {
+				tracing::debug!("library {} is installed, skipping", &lib.name);
+				return Ok(());
+			}
+
+			tokio::try_join! {
+				async {
+					if let Some(interpulse::api::minecraft::LibraryDownloads {
+						artifact: Some(ref artifact), ..
+					}) = lib.downloads
+						&& !artifact.url.is_empty() {
+							http::download(
+								Method::GET,
+								&artifact.url,
+								&path,
+								Some((HashAlgorithm::Sha1, &artifact.sha1)),
+								ingress,
+							).await?;
+
+							tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
+							return Ok::<_, LauncherError>(());
+						}
+
+					let url = [lib.url.as_deref().unwrap_or("https://libraries.minecraft.net/"), &artifact_path].concat();
+					http::download(
+						Method::GET,
+						&url,
+						&path,
+						None,
+						ingress,
+					).await?;
+
+					tracing::trace!("fetched library {} to path {:?}", &lib.name, &path);
+					Ok::<_, LauncherError>(())
+				},
+				async {
+					if let Some((os_key, classifiers)) = None.or_else(|| Some((
+						lib.natives.as_ref()?.get(&Os::native_arch(&java_arch))?,
+						lib.downloads.as_ref()?.classifiers.as_ref()?
+					))) {
+						let parsed = os_key.replace("${arch}", crate::constants::ARCH_WIDTH);
+						if let Some(native) = classifiers.get(&parsed) {
+							tracing::trace!("found native library {}", &lib.name);
+
+							let data = http::fetch_advanced(
+								Method::GET,
+								&native.url,
+								None,
+								Some((HashAlgorithm::Sha1, &native.sha1)),
+								None,
+								ingress,
+							).await?;
+
+							io::unzip_bytes_filtered(
+								data.to_vec(),
+								Some(|name: &str| !name.starts_with("META-INF")),
+								&natives_dest
+							).await?;
+
+							tracing::trace!("extracted native {} to path {:?}", &lib.name, &natives_dest);
+						}
+					}
+
+					Ok(())
+				}
+			}?;
+
+			Ok(())
+		}
 	})).buffer_unordered(7).collect::<Vec<_>>();
 
 	let mut failed = 0;

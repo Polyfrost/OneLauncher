@@ -1,8 +1,10 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use async_compression::tokio::bufread::GzipDecoder;
+use async_stream::try_stream;
 use async_zip::StoredZipEntry;
 use async_zip::base::read::WithoutEntry;
+use futures::{pin_mut, Stream, TryStreamExt};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tempfile::TempDir;
@@ -278,6 +280,24 @@ where
 	Ok(())
 }
 
+/// Reads a zip archive from a byte array and returns a stream of entries.
+pub fn stream_zip_entries_bytes(
+	data: Vec<u8>,
+) -> impl Stream<Item = Result<(
+	usize, StoredZipEntry, Arc<async_zip::base::read::mem::ZipFileReader>
+), IOError>> {
+	try_stream! {
+		let reader = Arc::new(async_zip::base::read::mem::ZipFileReader::new(data).await?);
+		let entries = reader.file().entries();
+
+		for index in 0..entries.len() {
+			let entry = entries.get(index).expect("expected more zip entries");
+
+			yield (index, entry.clone(), reader.clone());
+		}
+	}
+}
+
 /// Unzips a zip archive from a byte array
 pub async fn unzip_bytes(
 	data: Vec<u8>,
@@ -289,15 +309,18 @@ pub async fn unzip_bytes(
 /// Unzips a zip archive from a byte array
 pub async fn unzip_bytes_filtered(
 	data: Vec<u8>,
-	filter_entries: Option<impl Fn(&str) -> bool>,
+	filter_entries: Option<impl Fn(&str) -> bool + Send + Sync>,
 	dest_path: impl AsRef<std::path::Path>,
 ) -> Result<(), IOError> {
-	read_zip_entries_bytes(data, async |_, entry, entry_reader| {
+	let stream = stream_zip_entries_bytes(data);
+	pin_mut!(stream);
+
+	while let Some((index, entry, reader)) = stream.try_next().await? {
 		let file_name = entry.filename().as_str()?;
 
 		if let Some(filter) = &filter_entries
 			&& !filter(file_name) {
-				return Ok(());
+				continue;
 			}
 
 		let path = dest_path.as_ref().join(sanitize_path(file_name));
@@ -311,15 +334,14 @@ pub async fn unzip_bytes_filtered(
 				create_dir_all(parent).await?;
 			}
 
+			let entry_reader = reader.reader_without_entry(index).await?;
+
 			let file = tokio::fs::File::create(&path).await?;
 			let writer = tokio::io::BufWriter::new(file);
 
 			futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
 		}
-
-		Ok(())
-	})
-	.await?;
+	}
 
 	Ok(())
 }

@@ -32,76 +32,54 @@ pub enum HashAlgorithm {
 const BUFFER_SIZE: usize = 1024 * 256; // 16 KiB
 
 impl HashAlgorithm {
-	pub fn hasher_sync<F>(&self, closure: F) -> Result<String, IOError>
-	where
-		F: Fn(&mut (dyn DynDigest)) -> Result<(), IOError>,
-	{
-		let mut hasher = get_inner(self);
-		closure(&mut *hasher)?;
-		Ok(to_hex(&hasher.finalize()))
-	}
-
-	pub async fn hasher<F>(&self, closure: F) -> Result<String, IOError>
-	where
-		F: AsyncFn(&mut (dyn DynDigest + Send + Sync)) -> Result<(), IOError> + Send + Sync,
-	{
-		let mut hasher = get_inner(self);
-		closure(&mut *hasher).await?;
-		Ok(to_hex(&hasher.finalize()))
-	}
-
 	pub async fn hash(&self, data: &[u8]) -> Result<String, IOError> {
-		self.hasher(async move |hasher| {
-			hasher.update(data);
-			Ok(())
-		}).await
+		let mut hasher = get_inner(self);
+		hasher.update(data);
+		Ok(to_hex(&hasher.finalize()))
 	}
 
 	pub fn hash_sync(&self, data: &[u8]) -> Result<String, IOError> {
-		self.hasher_sync(move |hasher| {
-			hasher.update(data);
-			Ok(())
-		})
+		let mut hasher = get_inner(self);
+		hasher.update(data);
+		Ok(to_hex(&hasher.finalize()))
 	}
 
 	pub async fn hash_file(&self, path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
 		let path = path.as_ref();
-		self.hasher(async |hasher: &mut (dyn DynDigest + Send + Sync)| {
-			let file = tokio::fs::File::open(path).await?;
-			let mut reader = tokio::io::BufReader::new(file);
 
-			let mut buffer = vec![0; BUFFER_SIZE].into_boxed_slice();
-			loop {
-				let bytes_read = reader.read(&mut buffer).await?;
-				if bytes_read == 0 {
-					break;
-				}
+		let mut hasher = get_inner(self);
 
-				hasher.update(&buffer[..bytes_read]);
+		let file = tokio::fs::File::open(path).await?;
+		let mut reader = tokio::io::BufReader::new(file);
+
+		let mut buffer = vec![0; BUFFER_SIZE].into_boxed_slice();
+		loop {
+			let bytes_read = reader.read(&mut buffer).await?;
+			if bytes_read == 0 {
+				break;
 			}
 
-			Ok(())
-		}).await
+			hasher.update(&buffer[..bytes_read]);
+		}
+
+		Ok(to_hex(&hasher.finalize()))
 	}
 
 	pub fn hash_file_sync(&self, path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
-		self.hasher_sync(|hasher: &mut dyn DynDigest| {
-			let path = path.as_ref();
-			let file = std::fs::File::open(path)?;
-			let mut reader = std::io::BufReader::new(file);
+		let path = path.as_ref();
+		let mut hasher = get_inner(self);
+		let mut file = std::fs::File::open(path)?;
 
-			let mut buffer = vec![0; BUFFER_SIZE].into_boxed_slice();
-			loop {
-				let bytes_read = reader.read(&mut buffer)?;
-				if bytes_read == 0 {
-					break;
-				}
-
-				hasher.update(&buffer[..bytes_read]);
+		let mut buffer = vec![0; BUFFER_SIZE].into_boxed_slice();
+		loop {
+			let bytes_read = file.read(&mut buffer)?;
+			if bytes_read == 0 {
+				break;
 			}
 
-			Ok(())
-		})
+			hasher.update(&buffer[..bytes_read]);
+		}
+		Ok(to_hex(&hasher.finalize()))
 	}
 }
 

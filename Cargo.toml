@@ -160,6 +160,7 @@ sea-orm-migration = { version = "1.1", features = [
 # utils
 anyhow = { version = "1" }
 async-trait = { version = "=0.1.88" }
+async-stream = { version = "=0.3.6" }
 cc = { version = "1" }
 discord-rich-presence = { version = "=0.2.5" }
 futures = { version = "0.3" }

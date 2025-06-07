@@ -4,8 +4,7 @@
 	},
 	"files.readonlyInclude": {
 		"**/node_modules/**": true,
-		"**/routeTree.gen.ts": true,
-		"**/bindings.gen.ts": true
+		"**/*.gen.ts": true
 	},
 	"files.watcherExclude": {
 		"**/_build": true,
@@ -21,7 +20,7 @@
 		"**/.rustup": true,
 		"**/.cargo": true,
 		"**/.crates": true,
-		"**/routeTree.gen.ts": true
+		"**/*.gen.ts": true
 	},
 	"rust-analyzer.procMacro.enable": true,
 	"rust-analyzer.procMacro.attributes.enable": true,

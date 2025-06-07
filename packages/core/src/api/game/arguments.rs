@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use futures::AsyncReadExt;
+use futures::{pin_mut, AsyncReadExt, TryStreamExt};
 use interpulse::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
 use interpulse::api::modded::SidedDataEntry;
 use interpulse::utils::get_path_from_artifact;
@@ -156,38 +156,48 @@ pub fn processor_arguments<T: AsRef<str>, S: ::std::hash::BuildHasher>(
 }
 
 pub async fn main_class(path: String) -> LauncherResult<Option<String>> {
-	// let zipfs = std::fs::File::open(&path).map_err(|e| IOError::with_path(e, &path))?;
-	// let mut archive = zip::ZipArchive::new(zipfs)
-	// 	.map_err(|_| anyhow::anyhow!("failed to read main class {}", path))?;
-	// let file = archive
-	// 	.by_name("META-INF/MANIFEST.MF")
-	// 	.map_err(|_| anyhow::anyhow!("failed to read manifest {}", path))?;
 	let data = io::read(path).await?;
 	let mut class_name: Option<String> = None;
+	let reader = io::stream_zip_entries_bytes(data);
 
-	io::read_zip_entries_bytes(data, async |_, entry, entry_reader| {
-		if entry.dir()? {
-			return Ok(());
+	pin_mut!(reader);
+	while let Ok(item) = reader.try_next().await {
+		let Some((index, entry, reader)) = item else {
+			continue;
+		};
+
+		if entry.dir().unwrap_or(true) {
+			continue;
 		}
 
-		if entry.filename().as_str()? != "META-INF/MANIFEST.MF" {
-			return Ok(());
+		if entry.filename().as_str().unwrap_or_default() != "META-INF/MANIFEST.MF" {
+			continue;
 		}
 
 		let mut buf = String::new();
-		entry_reader.read_to_string(&mut buf).await?;
+		let mut entry_reader = match reader.reader_without_entry(index).await {
+			Ok(reader) => reader,
+			Err(err) => {
+				tracing::error!("failed to get entry reader for {}: {}", entry.filename().as_str().unwrap_or_default(), err);
+				continue;
+			}
+		};
+
+		if let Err(err) = entry_reader.read_to_string(&mut buf).await {
+			tracing::error!("failed to read entry {}: {}", entry.filename().as_str().unwrap_or_default(), err);
+			continue;
+		}
 
 		for line in buf.lines() {
 			let line = line.trim();
-			if line.starts_with("Main-Class:")
-				&& let Some(class) = line.split(':').nth(1) {
-					class_name = Some(class.to_string());
-					return Ok(());
+			if line.starts_with("Main-Class:") {
+				if let Some(class) = line.split(':').nth(1) {
+					class_name = Some(class.trim().to_string());
+					break;
 				}
+			}
 		}
-
-		Ok(())
-	}).await?;
+	}
 
 	Ok(class_name)
 }

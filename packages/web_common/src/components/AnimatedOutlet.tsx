@@ -116,8 +116,7 @@ export function AnimatedOutlet({
 
 	const handleAnimationComplete = (id: number) => {
 		setSnapshots(prevSnapshots =>
-			prevSnapshots.filter(snapshot => snapshot.id !== id),
-		);
+			prevSnapshots.filter(snapshot => snapshot.id !== id));
 	};
 
 	return (

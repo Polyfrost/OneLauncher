@@ -30,7 +30,6 @@ pub async fn launch_minecraft(
 	}
 
 	prepare_cluster(cluster, force).await?;
-
 	let mut settings = get_global_profile().await;
 	if let Some(name) = &cluster.setting_profile_name
 		&& let Some(profile) = get_profile_by_name(name).await? {

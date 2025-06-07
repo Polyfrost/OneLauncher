@@ -30,12 +30,15 @@ function RouteComponent() {
 	);
 }
 
-function ScreenshotEntry(props: { path: string; cluster_path: string }) {
+function ScreenshotEntry({
+	path,
+}: {
+	path: string;
+	cluster_path: string;
+}) {
 	function onClick() {
 		// screen shot viewer overlay
 	}
-
-	const { path } = props;
 
 	return (
 		<div

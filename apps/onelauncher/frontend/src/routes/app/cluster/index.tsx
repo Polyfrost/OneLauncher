@@ -9,6 +9,7 @@ import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
+import { twMerge } from 'tailwind-merge';
 import Sidebar from '../settings/route';
 
 export const Route = createFileRoute('/app/cluster/')({
@@ -21,7 +22,7 @@ function RouteComponent() {
 	const [newName, setNewName] = useState<string>('');
 
 	// dumbass fix ik
-	const cluster = useCommand('getClusterById', () => bindings.core.get_cluster(Number(id.toString()) as unknown as bigint));
+	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
 
 	return (
 		<Sidebar.Page>
@@ -102,7 +103,11 @@ interface BannerProps {
 	refetch: () => void;
 }
 
-function Banner(props: BannerProps) {
+function Banner({
+	cluster,
+	editMode,
+	setNewName,
+}: BannerProps) {
 	// async function launchFilePicker() {
 	// 	const selected = await dialog.open({
 	// 		multiple: false,
@@ -162,7 +167,7 @@ function Banner(props: BannerProps) {
 
 				<div className="flex flex-1 flex-row">
 					<div
-						className={`flex flex-1 flex-col items-start justify-between ${editMode ? 'text-fg-primary-disabled' : ''}`}
+						className={twMerge(`flex flex-1 flex-col items-start justify-between`, editMode && 'text-fg-primary-disabled')}
 					>
 						<span className="flex flex-row items-center gap-x-1">
 							<LoaderIcon
@@ -174,7 +179,7 @@ function Banner(props: BannerProps) {
 							{cluster?.mc_loader_version && <span>{cluster.mc_loader_version}</span>}
 						</span>
 						<span
-							className={`text-xs text-fg-secondary ${editMode ? 'text-fg-secondary-disabled' : ''}`}
+							className={twMerge(`text-xs text-fg-secondary`, editMode && 'text-fg-secondary-disabled')}
 						>
 							Played for
 							{' '}

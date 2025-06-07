@@ -9,21 +9,47 @@ use onelauncher_entity::prelude::model::*;
 pub trait TauriLauncherApi {
 
 	// Clusters
+	#[taurpc(alias = "getClusters")]
 	async fn get_clusters() -> LauncherResult<Vec<Cluster>>;
-	async fn get_cluster(id: ClusterId) -> LauncherResult<Option<Cluster>>;
+
+	#[taurpc(alias = "getClusterById")]
+	async fn get_cluster_by_id(id: ClusterId) -> LauncherResult<Option<Cluster>>;
+
+	#[taurpc(alias = "removeCluster")]
 	async fn remove_cluster(id: ClusterId) -> LauncherResult<()>;
+
+	#[taurpc(alias = "createCluster")]
 	async fn create_cluster(options: CreateCluster) -> LauncherResult<Cluster>;
 
+	#[taurpc(alias = "launchCluster")]
+	async fn launch_cluster(id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
+
+
 	// Setting Profiles
+	#[taurpc(alias = "getProfileOrDefault")]
 	async fn get_profile_or_default(name: Option<String>) -> LauncherResult<SettingsProfile>;
+
+	#[taurpc(alias = "getGlobalProfile")]
 	async fn get_global_profile() -> SettingsProfile;
 
+
 	// Users
+	#[taurpc(alias = "getUsers")]
 	async fn get_users() -> LauncherResult<Vec<MinecraftCredentials>>;
+
+	#[taurpc(alias = "getUser")]
 	async fn get_user(uuid: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>>;
+
+	#[taurpc(alias = "removeUser")]
 	async fn remove_user(uuid: uuid::Uuid) -> LauncherResult<()>;
+
+	#[taurpc(alias = "getDefaultUser")]
 	async fn get_default_user(fallback: Option<bool>) -> LauncherResult<Option<MinecraftCredentials>>;
+
+	#[taurpc(alias = "setDefaultUser")]
 	async fn set_default_user(uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
+
+	#[taurpc(alias = "openMsaLogin")]
 	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
 
 }
@@ -48,7 +74,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::cluster::dao::get_all_clusters().await
 	}
 
-	async fn get_cluster(self, id: ClusterId) -> LauncherResult<Option<Cluster>> {
+	async fn get_cluster_by_id(self, id: ClusterId) -> LauncherResult<Option<Cluster>> {
 		api::cluster::dao::get_cluster_by_id(id).await
 	}
 
@@ -67,6 +93,25 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		// }
 
 		Ok(cluster)
+	}
+
+	async fn launch_cluster(self, id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()> {
+		let mut cluster = api::cluster::dao::get_cluster_by_id(id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		let uuid = match uuid {
+			Some(uuid) => uuid,
+			None => api::credentials::get_default_user().await?.ok_or_else(|| anyhow::anyhow!("no default user set"))?,
+		};
+
+		let user = api::credentials::get_user(uuid).await?
+			.ok_or_else(|| anyhow::anyhow!("user with uuid {} not found", uuid))?;
+
+		// let user = api::credentials::get_fake_user();
+
+		let _ = api::game::launch::launch_minecraft(&mut cluster, user, None).await?;
+
+		Ok(())
 	}
 
 	async fn get_profile_or_default(self, name: Option<String>) -> LauncherResult<SettingsProfile> {
@@ -164,4 +209,3 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 }
-

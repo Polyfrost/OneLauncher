@@ -3388,6 +3388,7 @@ version = "0.2.0-alpha.2"
 dependencies = [
  "anyhow",
  "async-compression",
+ "async-stream",
  "async-trait",
  "async_zip",
  "base64 0.22.1",

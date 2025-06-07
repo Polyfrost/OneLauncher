@@ -8,11 +8,11 @@ import { Separator } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 function AccountPopup() {
-	const users = useCommand('getUsers', bindings.core.get_users);
-	const defaultUser = useCommand('getDefaultUser', () => bindings.core.get_default_user(false));
+	const users = useCommand('getUsers', bindings.core.getUsers);
+	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
 	const setDefaultUser = (user: MinecraftCredentials) => {
-		bindings.core.set_default_user(user.id);
+		bindings.core.setDefaultUser(user.id);
 	};
 
 	return (

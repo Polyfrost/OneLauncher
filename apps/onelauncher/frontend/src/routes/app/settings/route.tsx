@@ -103,8 +103,7 @@ function Sidebar(props: SidebarProps) {
 						</div>
 					</div>
 				</div>
-			),
-			)}
+			))}
 		</div>
 	);
 }

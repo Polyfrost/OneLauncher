@@ -105,9 +105,12 @@ export interface OnboardingStepProps {
 	children: JSX.Element;
 }
 
-export function OnboardingStep(props: OnboardingStepProps) {
-	const { illustration, title, paragraph, children } = props;
-
+export function OnboardingStep({
+	title,
+	paragraph,
+	illustration,
+	children,
+}: OnboardingStepProps) {
 	return (
 		<div className="grid grid-cols-2 h-full w-full gap-x-16">
 			<div className="flex flex-col items-center justify-center">

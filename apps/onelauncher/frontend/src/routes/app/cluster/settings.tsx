@@ -13,7 +13,7 @@ function RouteComponent() {
 	const { id } = Route.useSearch();
 
 	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
-	const result = useCommand('getProfileOrDefault', () => bindings.core.getProfileOrDefault(cluster.data?.name as string), {
+	const _result = useCommand('getProfileOrDefault', () => bindings.core.getProfileOrDefault(cluster.data?.name as string), {
 		enabled: !!cluster.data?.name,
 	});
 

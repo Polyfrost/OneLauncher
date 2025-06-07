@@ -5,12 +5,14 @@ import { useCommand } from '@onelauncher/common';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
+import { useOnboardingContext } from './route';
 
 export const Route = createFileRoute('/onboarding/login')({
 	component: RouteComponent,
 });
 
 function RouteComponent() {
+	const ctx = useOnboardingContext();
 	const [profile, setProfile] = useState<MinecraftCredentials>();
 	const [errorMessage, setErrorMessage] = useState<string>('');
 	const result = useCommand('openMsaLogin', bindings.core.openMsaLogin, {
@@ -19,19 +21,21 @@ function RouteComponent() {
 	});
 
 	function beginMsAuthFlow() {
-		result.refetch();
+		result.refetch().then((data) => {
+			if (data.isError) {
+				setErrorMessage(data.error.message);
+				return;
+			}
 
-		if (result.isError) {
-			setErrorMessage(result.error.message);
-			return;
-		}
+			if (!data.data) {
+				setErrorMessage('No account was found. Please try again.');
+				return;
+			}
 
-		if (!result.data) {
-			setErrorMessage('No account was found. Please try again.');
-			return;
-		}
+			setProfile(data.data);
 
-		setProfile(result.data);
+			ctx.setIsForwardButtonEnabled(false);
+		});
 	}
 
 	return (
@@ -51,12 +55,10 @@ function RouteComponent() {
 						</div>
 					</div>
 				</Show>
-
 				<Button
 					children="Login with Microsoft"
 					onPress={beginMsAuthFlow}
 				/>
-
 				<p className="text-danger">{errorMessage}</p>
 
 			</div>

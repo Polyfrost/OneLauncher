@@ -1,13 +1,12 @@
 import type { Model } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
-import HeaderImage from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import Modal from '@/components/overlay/Modal';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Server01Icon } from '@untitled-theme/icons-react';
+import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
 export const Route = createFileRoute('/app/')({
@@ -17,6 +16,8 @@ export const Route = createFileRoute('/app/')({
 /*
 Please note this route has a very big issue related to scrolling
 and i am very angry rn so i will not be fixing it rn
+
+hey future sassan here i guess the issue is solved idk
 */
 function RouteComponent() {
 	const result = useCommand('getClusters', bindings.core.getClusters);
@@ -111,11 +112,11 @@ function Banner() {
 
 function ClusterCreate() {
 	const result = useCommand('createCluster', () => bindings.core.createCluster({
-		icon: 'asd',
+		icon: null,
 		mc_loader: 'vanilla',
 		mc_version: '1.20.1',
 		name: 'Test Cluster',
-		mc_loader_version: '0.13.5',
+		mc_loader_version: null,
 	}), {
 		enabled: false,
 		subscribed: false,
@@ -125,7 +126,7 @@ function ClusterCreate() {
 		result.refetch();
 
 		if (result.isError)
-			alert(result.error.message);
+			console.error(result.error.message);
 	};
 
 	return (
@@ -140,7 +141,7 @@ function ClusterCreate() {
 					<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
 						<div className="theme-OneLauncher-Dark relative h-25 flex">
 							<div className="absolute left-0 top-0 h-full w-full">
-								<img alt="Header Image" className="h-full w-full rounded-t-lg" src={HeaderImage} />
+								<img alt="Header Image" className="h-full w-full rounded-t-lg" src={DefaultBanner} />
 							</div>
 							<div
 								className="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
@@ -209,6 +210,18 @@ function ClusterCard({
 	mc_loader,
 	mc_version,
 }: Model) {
+	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	const handleLaunch = () => {
+		launch.refetch();
+
+		if (launch.error)
+			console.error(launch.error.message);
+	};
+
 	return (
 		<Link
 			search={{
@@ -241,6 +254,7 @@ function ClusterCard({
 					</div>
 
 					{/* <LaunchButton cluster={props} iconOnly /> */}
+					<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
 				</div>
 			</div>
 		</Link>

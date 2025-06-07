@@ -124,8 +124,6 @@ function Banner({
 	// 	props.setNewCover(selected);
 	// }
 
-	const { setNewName, editMode, cluster } = props;
-
 	function updateName(name: string) {
 		if (name.length > 30 || name.length <= 0)
 			return;

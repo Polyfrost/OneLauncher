@@ -1,23 +1,15 @@
 import Illustration from '@/assets/illustrations/onboarding/language.svg';
 import { createFileRoute } from '@tanstack/react-router';
-import { OnboardingStep } from './route';
+import { languageList, OnboardingStep } from './route';
 
 export const Route = createFileRoute('/onboarding/language')({
 	component: RouteComponent,
 });
 
-const languages = [
-	{
-		lang: 'English',
-		percentage: 100,
-	},
-];
-
 function RouteComponent() {
 	return (
 		<>
 			<OnboardingStep
-				// importing and using it as a react component was not working
 				illustration={<img src={Illustration} />}
 				paragraph="Choose your preferred language."
 				title="Language"
@@ -27,7 +19,7 @@ function RouteComponent() {
 						<div className="max-h-84 overflow-hidden">
 							<div className="flex flex-col gap-y-1 p-2">
 								<aside>
-									{languages.map(x => (
+									{languageList.map(x => (
 										<div
 											className="flex flex-row items-center rounded-lg px-6 py-5"
 											key={x.lang}

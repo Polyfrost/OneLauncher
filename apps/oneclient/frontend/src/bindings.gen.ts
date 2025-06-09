@@ -5,58 +5,45 @@ import { createTauRPCProxy as createProxy } from 'taurpc';
 
 type TAURI_CHANNEL<T> = (response: T) => void;
 
-export type ClusterError = { InvalidVersion: string } | 'MissingJavaVersion' | 'ClusterDownloading' | 'ClusterAlreadyRunning';
+export type ClusterError = { type: 'InvalidVersion'; data: string } | { type: 'MissingJavaVersion'; data: string } | { type: 'ClusterDownloading'; data: string } | { type: 'ClusterAlreadyRunning'; data: string };
 
 export type ClusterStage = 'notready' | 'downloading' | 'repairing' | 'ready';
 
 export interface CreateCluster { name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; icon: Icon | null }
 
-export type CryptoError = { InvalidHash: { algorithm: HashAlgorithm; expected: string; actual: string } } | 'InvalidAlgorithm';
+export type CryptoError = { type: 'InvalidHash'; data: string } | { type: 'InvalidAlgorithm'; data: string };
 
-export type DaoError = 'NotFound' | 'AlreadyExists' | { InvalidValue: [string, string] };
+export type DaoError = { type: 'NotFound'; data: string } | { type: 'AlreadyExists'; data: string } | { type: 'InvalidValue'; data: string };
 
-export type DirectoryError = 'BaseDir';
+export interface DirectoryError { type: 'BaseDir'; data: string }
 
-export type DiscordError = 'MissingClientId' | 'ConnectError';
+export type DiscordError = { type: 'MissingClientId'; data: string } | { type: 'ConnectError'; data: string };
 
 export type GameLoader = 'vanilla' | 'forge' | 'neoforge' | 'quilt' | 'fabric' | 'legacyfabric';
 
-export type HashAlgorithm = 'Sha1' | 'Sha256' | 'Md5';
-
-/**
- * A wrapper around generic and unhelpful [`std::io::Error`] messages.
- */
-export type IOError = { InvalidAbsolutePath: string } | { IOErrorWrapper: { path: string } } | 'IOError' | 'DeserializeError' | 'AsyncZipError';
+export type IOError = { type: 'InvalidAbsolutePath'; data: string } | { type: 'IOErrorWrapper'; data: string } | { type: 'IOError'; data: string } | { type: 'DeserializeError'; data: string } | { type: 'AsyncZipError'; data: string };
 
 export type Icon = string;
 
-export type IncompatiblePackageType = 'McVersion' | 'Loader';
+export type IncompatiblePackageType = { type: 'McVersion'; data: string } | { type: 'Loader'; data: string };
 
-export type IngressError = 'NotFound';
+export interface IngressError { type: 'NotFound'; data: string }
 
 export interface IngressPayload { id: string; message: string; ingress_type: IngressType; percent: number | null; total: number }
 
 export type IngressType = { Download: { file_name: string } } | 'JavaPrepare' | 'JavaCheck' | 'JavaLocate' | 'MinecraftDownload' | { PrepareCluster: { cluster_name: string } };
 
-export type JavaError = { ParseVersion: [string] } | 'Execute' | 'MissingJava';
+export type JavaError = { type: 'ParseVersion'; data: string } | { type: 'Execute'; data: string } | { type: 'MissingJava'; data: string };
 
-export type LauncherError = { type: 'DirError'; data: DirectoryError } | { type: 'IOError'; data: IOError } | { type: 'IngressError'; data: IngressError } | { type: 'JavaError'; data: JavaError } | { type: 'CryptoError'; data: CryptoError } | { type: 'DiscordError'; data: DiscordError } | { type: 'MetadataError'; data: MetadataError } | { type: 'ClusterError'; data: ClusterError } | { type: 'MinecraftAuthError'; data: MinecraftAuthError } | { type: 'ProcessError'; data: ProcessError } | { type: 'PackageError'; data: PackageError } | { type: 'DaoError'; data: DaoError } | { type: 'SerdeError' } | { type: 'AnyhowError' } | { type: 'DbError' } | { type: 'ReqwestError' } | { type: 'InterpulseError' } | { type: 'RegexError' } | { type: 'SemaphoreError' } | { type: 'UrlError' } | { type: 'TauriError' };
+export type LauncherError = { type: 'DirError'; data: DirectoryError } | { type: 'IOError'; data: IOError } | { type: 'IngressError'; data: IngressError } | { type: 'JavaError'; data: JavaError } | { type: 'CryptoError'; data: CryptoError } | { type: 'DiscordError'; data: DiscordError } | { type: 'MetadataError'; data: MetadataError } | { type: 'ClusterError'; data: ClusterError } | { type: 'MinecraftAuthError'; data: MinecraftAuthError } | { type: 'ProcessError'; data: ProcessError } | { type: 'PackageError'; data: PackageError } | { type: 'DaoError'; data: DaoError } | { type: 'SerdeError'; data: string } | { type: 'AnyhowError'; data: string } | { type: 'DbError'; data: string } | { type: 'ReqwestError'; data: string } | { type: 'InterpulseError'; data: string } | { type: 'RegexError'; data: string } | { type: 'SemaphoreError'; data: string } | { type: 'UrlError'; data: string } | { type: 'TauriError'; data: string };
 
 export type MessageLevel = 'Info' | 'Warn' | 'Error';
 
 export interface MessagePayload { level: MessageLevel; message: string }
 
-export type MetadataError = 'FetchError' | { NotModdedManifest: GameLoader } | { NotVanillaManifest: GameLoader } | 'ParseError' | 'NoMatchingLoader' | 'NoMatchingVersion';
+export type MetadataError = { type: 'FetchError'; data: string } | { type: 'NotModdedManifest'; data: string } | { type: 'NotVanillaManifest'; data: string } | { type: 'ParseError'; data: string } | { type: 'NoMatchingLoader'; data: string } | { type: 'NoMatchingVersion'; data: string };
 
-/**
- * Wrapper around all `Error`s that can occur during the Microsoft authentication process.
- */
-export type MinecraftAuthError = 'PublicKeyReading' | 'PKCS8Error' | { SerializeError: { step: MinecraftAuthStep } } | { DeserializeError: { step: MinecraftAuthStep; raw: string } } | { RequestError: { step: MinecraftAuthStep } } | { SigningError: { step: MinecraftAuthStep } } | 'HashError' | 'SessionIdError';
-
-/**
- * An ordered list of all MSA authentication steps.
- */
-export type MinecraftAuthStep = 'DeviceToken' | 'SisuAuthenicate' | 'OAuthToken' | 'RefreshOAuthToken' | 'SisuAuthorize' | 'XstsAuthorize' | 'MinecraftToken' | 'MinecraftEntitlements' | 'MinecraftProfile';
+export type MinecraftAuthError = { type: 'PublicKeyReading'; data: string } | { type: 'PKCS8Error'; data: string } | { type: 'SerializeError'; data: string } | { type: 'DeserializeError'; data: string } | { type: 'RequestError'; data: string } | { type: 'SigningError'; data: string } | { type: 'HashError'; data: string } | { type: 'SessionIdError'; data: string };
 
 /**
  * A structure of all needed Minecraft credentials for logging in and account management.
@@ -87,11 +74,11 @@ export interface MinecraftCredentials {
 
 export interface Model { id: bigint; folder_name: string; stage: ClusterStage; created_at: string; group_id: bigint | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: bigint | null; icon_url: Icon | null; setting_profile_name: string | null; linked_pack_id: string | null; linked_pack_version: string | null }
 
-export type PackageError = 'NoPrimaryFile' | 'IsModPack' | { Incompatible: IncompatiblePackageType };
+export type PackageError = { type: 'NoPrimaryFile'; data: string } | { type: 'IsModPack'; data: string } | { type: 'Incompatible'; data: IncompatiblePackageType };
 
 export interface Process { pid: number; started_at: string; cluster_id: bigint; post_hook: string | null; account_id: string }
 
-export type ProcessError = { HookUnsuccessful: number } | 'NoPid';
+export type ProcessError = { type: 'HookUnsuccessful'; data: string } | { type: 'NoPid'; data: string };
 
 export type ProcessPayload = { type: 'Starting'; command: string } | { type: 'Started'; process: Process } | { type: 'Stopped'; pid: number; exit_code: number } | { type: 'Output'; pid: number; output: string };
 
@@ -101,11 +88,11 @@ export interface SettingProfileModel { name: string; java_id: bigint | null; res
 
 export interface SettingsOsExtra { enable_gamemode: boolean | null }
 
-const ARGS_MAP = { oneclient: '{"open_dev_tools":[],"return_error":[]}', core: '{"getClusters":[],"createCluster":["options"],"getGlobalProfile":[],"getClusterById":["id"],"openMsaLogin":[],"getUsers":[],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"],"getUser":["uuid"],"getProfileOrDefault":["name"],"removeUser":["uuid"],"removeCluster":["id"],"launchCluster":["id","uuid"]}', events: '{"message":["event"],"process":["event"],"ingress":["event"]}' };
+const ARGS_MAP = { events: '{"message":["event"],"ingress":["event"],"process":["event"]}', core: '{"getUser":["uuid"],"getDefaultUser":["fallback"],"createCluster":["options"],"getClusters":[],"launchCluster":["id","uuid"],"setDefaultUser":["uuid"],"getGlobalProfile":[],"getProfileOrDefault":["name"],"getUsers":[],"openMsaLogin":[],"removeUser":["uuid"],"removeCluster":["id"],"getClusterById":["id"]}', oneclient: '{"return_error":[],"open_dev_tools":[]}' };
 export interface Router {
-	events: { ingress: (event: IngressPayload) => Promise<void>; message: (event: MessagePayload) => Promise<void>; process: (event: ProcessPayload) => Promise<void> };
-	core: { getClusters: () => Promise<Array<Model>>; getClusterById: (id: bigint) => Promise<Model | null>; removeCluster: (id: bigint) => Promise<null>; createCluster: (options: CreateCluster) => Promise<Model>; launchCluster: (id: bigint, uuid: string | null) => Promise<null>; getProfileOrDefault: (name: string | null) => Promise<SettingProfileModel>; getGlobalProfile: () => Promise<SettingProfileModel>; getUsers: () => Promise<Array<MinecraftCredentials>>; getUser: (uuid: string) => Promise<MinecraftCredentials | null>; removeUser: (uuid: string) => Promise<null>; getDefaultUser: (fallback: boolean | null) => Promise<MinecraftCredentials | null>; setDefaultUser: (uuid: string | null) => Promise<null>; openMsaLogin: () => Promise<MinecraftCredentials | null> };
 	oneclient: { return_error: () => Promise<null>; open_dev_tools: () => Promise<void> };
+	core: { getClusters: () => Promise<Array<Model>>; getClusterById: (id: bigint) => Promise<Model | null>; removeCluster: (id: bigint) => Promise<null>; createCluster: (options: CreateCluster) => Promise<Model>; launchCluster: (id: bigint, uuid: string | null) => Promise<null>; getProfileOrDefault: (name: string | null) => Promise<SettingProfileModel>; getGlobalProfile: () => Promise<SettingProfileModel>; getUsers: () => Promise<Array<MinecraftCredentials>>; getUser: (uuid: string) => Promise<MinecraftCredentials | null>; removeUser: (uuid: string) => Promise<null>; getDefaultUser: (fallback: boolean | null) => Promise<MinecraftCredentials | null>; setDefaultUser: (uuid: string | null) => Promise<null>; openMsaLogin: () => Promise<MinecraftCredentials | null> };
+	events: { ingress: (event: IngressPayload) => Promise<void>; message: (event: MessagePayload) => Promise<void>; process: (event: ProcessPayload) => Promise<void> };
 }
 
 export type { InferCommandOutput };

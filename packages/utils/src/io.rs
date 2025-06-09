@@ -10,6 +10,7 @@ use tokio::task::spawn_blocking;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
 #[derive(Debug, thiserror::Error)]
+#[serde(tag = "type", content = "data")]
 pub enum IOError {
 	/// A wrapped [`std::io::Error`] along with the path involved in the error.
 	#[error("error acessing path: {source}, path: {path}")]
@@ -36,6 +37,7 @@ impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[serde(tag = "type", content = "data")]
 #[error("received a non UTF-8 path: <lossy_path='{}'>", .0.to_string_lossy())]
 pub struct NonUtf8PathError(pub Box<std::path::Path>);
 

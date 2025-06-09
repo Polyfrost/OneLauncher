@@ -15,8 +15,8 @@ pub struct IngressProcessor {
 	ingress_feeds: RwLock<HashMap<Uuid, Ingress>>,
 }
 
-#[onelauncher_macro::specta]
-#[derive(Debug, thiserror::Error, Serialize)]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum IngressError {
 	#[error("ingress not found")]
 	NotFound,

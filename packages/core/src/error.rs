@@ -1,8 +1,5 @@
-use serde::Serialize;
-
-#[onelauncher_macro::specta]
-#[derive(thiserror::Error, Debug, Serialize)]
-#[serde(tag = "type", content = "data")]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum LauncherError {
 	#[error(transparent)]
 	DirError(#[from] crate::store::DirectoryError),
@@ -30,41 +27,31 @@ pub enum LauncherError {
 	DaoError(#[from] DaoError),
 
 	#[error("json error: {0}")]
-	SerdeError(#[from] #[serde(skip)] serde_json::Error),
+	SerdeError(#[from] #[skip] serde_json::Error),
 	#[error(transparent)]
-	AnyhowError(#[from] #[serde(skip)] anyhow::Error),
+	AnyhowError(#[from] #[skip] anyhow::Error),
 	#[error("database error: {0}")]
-	DbError(#[from] #[serde(skip)] sea_orm::DbErr),
+	DbError(#[from] #[skip] sea_orm::DbErr),
 	#[error("http error: {0}")]
-	ReqwestError(#[from] #[serde(skip)] reqwest::Error),
+	ReqwestError(#[from] #[skip] reqwest::Error),
 	#[error("meta error: {0}")]
-	InterpulseError(#[from] #[serde(skip)] interpulse::Error),
+	InterpulseError(#[from] #[skip] interpulse::Error),
 	#[error(transparent)]
-	RegexError(#[from] #[serde(skip)] regex::Error),
+	RegexError(#[from] #[skip] regex::Error),
 	#[error("couldn't acquire semaphore: {0}")]
-	SemaphoreError(#[from] #[serde(skip)] tokio::sync::AcquireError),
+	SemaphoreError(#[from] #[skip] tokio::sync::AcquireError),
 	#[error(transparent)]
-	UrlError(#[from] #[serde(skip)] url::ParseError),
+	UrlError(#[from] #[skip] url::ParseError),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]
-	TauriError(#[from] #[serde(skip)] tauri::Error),
+	TauriError(#[from] #[skip] tauri::Error),
 }
-
-// impl serde::Serialize for LauncherError {
-// 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-// 	where
-// 		S: serde::Serializer,
-// 	{
-// 		// Serialize the error as a string
-// 		serializer.serialize_str(&self.to_string())
-// 	}
-// }
 
 pub type LauncherResult<T> = Result<T, LauncherError>;
 
-#[onelauncher_macro::specta]
-#[derive(thiserror::Error, Debug, Serialize)]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum DaoError {
 	#[error("entity was not found")]
 	NotFound,

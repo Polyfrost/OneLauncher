@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use onelauncher_entity::package::{PackageType, Provider};
-use serde::Serialize;
 use tokio::sync::OnceCell;
 
 use crate::{utils, LauncherResult};
@@ -16,8 +15,8 @@ pub struct Dirs {
 	base_dir: PathBuf,
 }
 
-#[onelauncher_macro::specta]
-#[derive(Debug, thiserror::Error, Serialize)]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum DirectoryError {
 	#[error("Failed to get the base directory for the launcher.")]
 	BaseDir,

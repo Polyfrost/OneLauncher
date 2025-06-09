@@ -2,7 +2,7 @@
 mod specta;
 
 #[cfg(feature = "tauri")]
-mod tauri;
+mod error;
 
 mod pin;
 
@@ -14,13 +14,13 @@ mod pin;
 /// #[cfg_attr(feature = "specta", derive(specta::Type))]
 /// ```
 ///
-/// ## `with_event` argument
-/// Add `#[specta(with_event)]` to add the `tauri_specta::Event` derive.
+/// ## `rename` attribute
+/// Add `rename = ''` attribute to rename the type.
 ///
 /// #### Expands to:
 /// ```
 /// #[cfg_attr(feature = "specta", derive(specta::Type))]
-/// #[cfg_attr(feature = "tauri", derive(tauri_specta::Event))]
+/// #[cfg_attr(feature = "specta", specta(rename = #rename))]
 /// ```
 #[proc_macro_attribute]
 #[cfg(feature = "specta")]
@@ -28,16 +28,16 @@ pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> p
 	specta::specta(attr, item)
 }
 
-/// This macro is used to derive the `tauri::command` as well as the `specta::specta` attribute for the annotated item.
-/// #### Expands to:
-/// ```
-/// #[specta::specta]
-/// #[tauri::command]
-/// ```
+/// This macro is used to implement the `serde::Serialize` trait for the annotated item.
+/// It only works for enums and tries to serialize them so that taurpc can use them properly.
+#[proc_macro_derive(SerializedError, attributes(from, skip))]
+pub fn serialized_error_derive(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	error::error_derive(item)
+}
+
 #[proc_macro_attribute]
-#[cfg(feature = "tauri")]
-pub fn command(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	tauri::tauri_command(attr, item)
+pub fn error(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	error::error_attr(attr, item)
 }
 
 /// This macro Box::Pin a function

@@ -6,7 +6,6 @@ use onelauncher_entity::{clusters, java_versions};
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
 use sea_orm::ActiveValue::Set;
-use serde::Serialize;
 use tokio::process::Command;
 
 use crate::api::game::arguments;
@@ -25,8 +24,8 @@ pub use sync::*;
 
 use super::ingress::init_ingress;
 
-#[onelauncher_macro::specta]
-#[derive(Debug, thiserror::Error, Serialize)]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum ClusterError {
 	#[error("version '{0}' was not found")]
 	InvalidVersion(String),

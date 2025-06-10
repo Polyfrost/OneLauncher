@@ -1,5 +1,5 @@
 import Modal from '@/components/overlay/Modal';
-import { Button, TextField } from '@onelauncher/common/components';
+import { Button, Dropdown, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/browser/')({
@@ -22,10 +22,10 @@ function RouteComponent() {
 				</Modal>
 			</Modal.Trigger>
 
-			{/* <Dropdown>
+			<Dropdown label="Select a version">
 				<Dropdown.Item>Slmalr</Dropdown.Item>
 				<Dropdown.Item>Slmalr 2</Dropdown.Item>
-			</Dropdown> */}
+			</Dropdown>
 		</div>
 	);
 }

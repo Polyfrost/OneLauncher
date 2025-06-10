@@ -12,7 +12,7 @@
 				"args": [
 					"build",
 					"--profile=dev-debug",
-					"--manifest-path=./apps/desktop/Cargo.toml",
+					"--manifest-path=./apps/onelauncher/desktop/Cargo.toml",
 					"--no-default-features"
 				],
 				"problemMatcher": "$rustc"

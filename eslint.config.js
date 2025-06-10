@@ -27,9 +27,10 @@ export default defineConfig(
 		rules: {
 			'sort-imports': 'off', // Replaced by perfectionist/sort-named-imports',
 			'import/order': 'off', // Replaced by perfectionist/sort-named-imports',
-			'style/jsx-max-props-per-line': ['error', { maximum: 3}],
+			'style/jsx-max-props-per-line': ['error', { maximum: 3 }],
 			'ts/no-use-before-define': 'off',
-			'style/function-paren-newline': ['error', 'consistent']
+			'style/function-paren-newline': ['error', 'consistent'],
+			'react/no-context-provider': 'off',
 		},
 	},
 );

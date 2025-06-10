@@ -1,5 +1,4 @@
-use interpulse::api::minecraft::Version;
-use onelauncher_entity::{icon::Icon, loader::GameLoader};
+use onelauncher_entity::{icon::Icon, loader::GameLoader, prelude::entity};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::LauncherResult, store::{credentials::MinecraftCredentials, Core}};
@@ -59,7 +58,6 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "openMsaLogin")]
 	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
-
 }
 
 
@@ -224,5 +222,4 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(None)
 	}
-
 }

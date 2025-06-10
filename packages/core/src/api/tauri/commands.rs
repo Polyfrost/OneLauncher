@@ -1,3 +1,4 @@
+use interpulse::api::minecraft::Version;
 use onelauncher_entity::{icon::Icon, loader::GameLoader, prelude::entity};
 use tauri::{AppHandle, Runtime};
 

@@ -32,6 +32,13 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "getGlobalProfile")]
 	async fn get_global_profile() -> SettingsProfile;
 
+	// Game Metadata
+	#[taurpc(alias = "getGameVersions")]
+	async fn get_game_versions() -> LauncherResult<Vec<Version>>;
+
+	#[taurpc(alias = "getLoadersForVersion")]
+	async fn get_loaders_for_version(mc_version: String) -> LauncherResult<Vec<GameLoader>>;
+
 
 	// Users
 	#[taurpc(alias = "getUsers")]
@@ -69,6 +76,8 @@ pub struct TauriLauncherApiImpl;
 
 #[taurpc::resolvers]
 impl TauriLauncherApi for TauriLauncherApiImpl {
+
+	// Clusters
 	async fn get_clusters(self) -> LauncherResult<Vec<Cluster>> {
 		api::cluster::dao::get_all_clusters().await
 	}
@@ -83,13 +92,6 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 	async fn create_cluster(self, options: CreateCluster) -> LauncherResult<Cluster> {
 		let cluster = api::cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon).await?;
-
-		// if api::setting_profiles::dao::get_profile_by_name(&options.name).await?.is_none() {
-		// 	api::setting_profiles::create_profile(&options.name, async |mut profile| {
-		// 		profile.mem_max = sea_orm::ActiveValue::Set(Some(2048));
-		// 		Ok(profile)
-		// 	}).await?;
-		// }
 
 		Ok(cluster)
 	}
@@ -113,14 +115,28 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(())
 	}
 
-	async fn get_profile_or_default(self, name: Option<String>) -> LauncherResult<SettingsProfile> {
-		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
-	}
 
+	// Setting Profiles
 	async fn get_global_profile(self) -> SettingsProfile {
 		api::setting_profiles::get_global_profile().await
 	}
 
+	async fn get_profile_or_default(self, name: Option<String>) -> LauncherResult<SettingsProfile> {
+		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
+	}
+
+
+	// Game Metadata
+	async fn get_loaders_for_version(self, mc_version: String) -> LauncherResult<Vec<GameLoader>> {
+		api::game::metadata::get_loaders_for_version(&mc_version).await
+	}
+
+	async fn get_game_versions(self) -> LauncherResult<Vec<Version>> {
+		api::game::metadata::get_game_versions().await
+	}
+
+
+	// Users
 	async fn get_users(self) -> LauncherResult<Vec<MinecraftCredentials>> {
 		api::credentials::get_users().await
 	}

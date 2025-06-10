@@ -119,7 +119,7 @@ pub async fn launch_minecraft(
 			arguments::java_arguments(
 				args.get(&interpulse::api::minecraft::ArgumentType::Jvm)
 					.map(Vec::as_slice),
-				&dirs.natives_dir().join(&version_name),
+				&dirs.natives_dir().join(&version.id),
 				&dirs.libraries_dir(),
 				&arguments::classpaths(
 					&dirs.libraries_dir(),

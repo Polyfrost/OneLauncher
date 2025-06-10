@@ -386,7 +386,7 @@ pub async fn download_libraries(
 	Ok(failed)
 }
 
-// MARK: Loader Version
+// MARK: Get Loader
 /// Gets the loader version for a given Minecraft version and loader
 /// If `loader_version` is `None`, it will return the latest stable version else
 /// it will return the specified version if found
@@ -402,7 +402,7 @@ pub async fn get_loader_version(
 
 	let state = State::get().await?;
 	let metadata = state.metadata.read().await;
-	let manifest = metadata.get_modded(loader)?;
+	let manifest = metadata.get_modded(&loader)?;
 
 	let Some(loaders) = manifest.game_versions.iter().find(|it| {
 		it.id
@@ -421,4 +421,24 @@ pub async fn get_loader_version(
 		.ok_or(MetadataError::NoMatchingLoader)?;
 
 	Ok(Some(loader_version))
+}
+
+// MARK: Get Versions
+/// Gets the list of Minecraft versions from the metadata store
+#[tracing::instrument]
+pub async fn get_game_versions() -> LauncherResult<Vec<Version>> {
+	let state = State::get().await?;
+	let metadata = state.metadata.read().await;
+
+	let manifest = metadata.get_vanilla()?;
+	Ok(manifest.versions.clone())
+}
+
+/// Gets the list of modded loaders and their versions from the metadata store
+#[tracing::instrument]
+pub async fn get_loaders_for_version(mc_version: &str) -> LauncherResult<Vec<GameLoader>> {
+	let state = State::get().await?;
+	let mut metadata = state.metadata.write().await;
+
+	Ok(metadata.get_loaders_for_version(mc_version).await?)
 }

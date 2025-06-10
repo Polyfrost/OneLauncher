@@ -8,8 +8,8 @@ use tokio::io::AsyncReadExt;
 
 use super::io::IOError;
 
-#[onelauncher_macro::specta]
-#[derive(Debug, thiserror::Error, Serialize)]
+#[onelauncher_macro::error]
+#[derive(Debug, thiserror::Error)]
 pub enum CryptoError {
 	#[error("expected {algorithm} hash {expected}, but got {actual}")]
 	InvalidHash {

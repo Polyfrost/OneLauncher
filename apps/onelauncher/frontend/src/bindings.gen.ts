@@ -98,12 +98,9 @@ export type SettingProfileModel = { name: string; java_id: bigint | null; res: R
 
 export type SettingsOsExtra = Record<string, never>
 
-const ARGS_MAP = { 'core':'{"getClusters":[],"getGlobalProfile":[],"getClusterById":["id"],"getProfileOrDefault":["name"],"removeCluster":["id"],"openMsaLogin":[],"createCluster":["options"],"getUser":["uuid"],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"],"launchCluster":["id","uuid"],"getUsers":[],"removeUser":["uuid"]}', 'onelauncher':'{"open_dev_tools":[],"return_error":[]}', 'events':'{"ingress":["event"],"process":["event"],"message":["event"]}' }
+const ARGS_MAP = { 'events':'{"process":["event"],"message":["event"],"ingress":["event"]}', 'onelauncher':'{"return_error":[],"open_dev_tools":[]}', 'core':'{"getProfileOrDefault":["name"],"setDefaultUser":["uuid"],"launchCluster":["id","uuid"],"getClusterById":["id"],"removeCluster":["id"],"createCluster":["options"],"getUsers":[],"getUser":["uuid"],"getGlobalProfile":[],"getDefaultUser":["fallback"],"getClusters":[],"removeUser":["uuid"],"openMsaLogin":[]}' }
 export type Router = { 'onelauncher': { return_error: () => Promise<null>, 
 open_dev_tools: () => Promise<void> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
 'core': { getClusters: () => Promise<Model[]>, 
 getClusterById: (id: bigint) => Promise<Model | null>, 
 removeCluster: (id: bigint) => Promise<null>, 
@@ -116,7 +113,10 @@ getUser: (uuid: string) => Promise<MinecraftCredentials | null>,
 removeUser: (uuid: string) => Promise<null>, 
 getDefaultUser: (fallback: boolean | null) => Promise<MinecraftCredentials | null>, 
 setDefaultUser: (uuid: string | null) => Promise<null>, 
-openMsaLogin: () => Promise<MinecraftCredentials | null> } };
+openMsaLogin: () => Promise<MinecraftCredentials | null> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> } };
 
 
 export type { InferCommandOutput }

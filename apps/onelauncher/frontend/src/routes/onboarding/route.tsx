@@ -239,7 +239,7 @@ function RouteComponent() {
 	]);
 
 	return (
-		<OnboardingContext value={ctxValue}>
+		<OnboardingContext.Provider value={ctxValue}>
 			<div className="w-full flex flex-col items-center h-screen bg-background-primary text-text-primary">
 				<div className="h-0.5 w-full">
 					<div
@@ -263,7 +263,7 @@ function RouteComponent() {
 					</div>
 				</div>
 			</div>
-		</OnboardingContext>
+		</OnboardingContext.Provider>
 	);
 }
 

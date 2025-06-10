@@ -12,7 +12,6 @@ export const Route = createFileRoute('/onboarding/login')({
 });
 
 function RouteComponent() {
-	const ctx = useOnboardingContext();
 	const [profile, setProfile] = useState<MinecraftCredentials>();
 	const [errorMessage, setErrorMessage] = useState<string>('');
 	const result = useCommand('openMsaLogin', bindings.core.openMsaLogin, {
@@ -33,8 +32,6 @@ function RouteComponent() {
 			}
 
 			setProfile(data.data);
-
-			ctx.setIsForwardButtonEnabled(false);
 		});
 	}
 

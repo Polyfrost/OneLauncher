@@ -1,6 +1,7 @@
 import type { Model } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
+import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
 import Modal from '@/components/overlay/Modal';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
@@ -28,7 +29,7 @@ function RouteComponent() {
 
 			<div className="flex flex-row items-center justify-between">
 				<div className="flex flex-row items-center gap-x-2">
-					<ClusterCreate />
+					<NewClusterCreate />
 				</div>
 			</div>
 
@@ -114,7 +115,7 @@ function ClusterCreate() {
 	const result = useCommand('createCluster', () => bindings.core.createCluster({
 		icon: null,
 		mc_loader: 'vanilla',
-		mc_version: '1.20.1',
+		mc_version: '1.8.9',
 		name: 'Test Cluster',
 		mc_loader_version: null,
 	}), {
@@ -223,40 +224,44 @@ function ClusterCard({
 	};
 
 	return (
-		<Link
-			search={{
-				id,
-			}} to="/app/cluster"
-		>
-			<div
-				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+		<>
+			<Link
+				search={{
+					id,
+				}} to="/app/cluster"
 			>
-				<div className="relative flex-1 overflow-hidden rounded-t-xl">
-					<div
-						className="absolute h-full w-full transition-transform group-hover:!scale-110"
-					>
-						<img
-							className="h-full w-full object-cover"
-							src={DefaultInstancePhoto}
-						/>
+				<div
+					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				>
+					<div className="relative flex-1 overflow-hidden rounded-t-xl">
+						<div
+							className="absolute h-full w-full transition-transform group-hover:!scale-110"
+						>
+							<img
+								className="h-full w-full object-cover"
+								src={DefaultInstancePhoto}
+							/>
+						</div>
 					</div>
-				</div>
-				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-						<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
-						<p className="h-4 text-xs">
-							{mc_loader}
-							{' '}
-							{mc_version}
-							{/* {' '}
+					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
+							<p className="h-4 text-xs">
+								{mc_loader}
+								{' '}
+								{mc_version}
+								{/* {' '}
 						{props.packages.mods && `• ${props.mods} mods`} */}
-						</p>
-					</div>
+							</p>
+						</div>
 
-					{/* <LaunchButton cluster={props} iconOnly /> */}
-					<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+						{/* <LaunchButton cluster={props} iconOnly /> */}
+
+					</div>
 				</div>
-			</div>
-		</Link>
+			</Link>
+
+			<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+		</>
 	);
 }

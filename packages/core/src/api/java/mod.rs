@@ -206,26 +206,57 @@ pub async fn locate_java() -> LauncherResult<HashMap<PathBuf, JavaInfo>> {
 
 #[cfg(target_os = "windows")]
 fn internal_locate_java() -> Vec<PathBuf> {
-	let mut found = Vec::new();
+    let mut java_homes = Vec::new();
+    
+    // epic common paths
+    let common_paths = [
+        r"C:\Program Files\Java",
+        r"C:\Program Files (x86)\Java",
+        r"C:\Program Files\OpenJDK",
+        r"C:\Program Files\Eclipse Adoptium",
+        r"C:\Program Files\Zulu",
+        r"C:\Program Files\Amazon Corretto",
+    ];
+    
+    for base_path in common_paths {
+        if let Ok(entries) = std::fs::read_dir(base_path) {
+            for entry in entries.flatten() {
+                if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+                    let java_exe = entry.path().join("bin").join("java.exe");
+					if java_exe.exists() {
+                        java_homes.push(java_exe);
+                    }
+                }
+            }
+        }
+    }
+    
+    // env vars
+    if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        let path_buf = PathBuf::from(java_home);
+        if path_buf.join("bin").join("java.exe").exists() {
+            java_homes.push(path_buf);
+        }
+    }
 
-	// TODO: Implement Registry scanning
-	// TODO(windows): More paths for Java installations
-
-	let paths = vec![
-		r"C:/Program Files/Java",
-		r"C:/Program Files/Eclipse Adoptium",
-		r"C:/Program Files (x86)/Java",
-		r"C:/Program Files (x86)/Eclipse Adoptium",
-	];
-
-	for path in paths {
-		let path = PathBuf::from(path).join(get_java_bin());
-		if path.exists() {
-			found.push(path);
-		}
-	}
-
-	found
+	if let Ok(path) = std::env::var("PATH") {
+        for path_entry in path.split(';') {
+            let java_exe = PathBuf::from(path_entry).join("java.exe");
+            if java_exe.exists() {
+				
+                if let Some(bin_dir) = java_exe.parent() {
+                    if let Some(java_home) = bin_dir.parent() {
+                        let java_home_path = java_home.to_path_buf();
+                        if !java_homes.contains(&java_home_path) {
+                            java_homes.push(java_home_path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    java_homes
 }
 
 #[cfg(target_os = "macos")]

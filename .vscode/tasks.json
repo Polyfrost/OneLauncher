@@ -41,7 +41,7 @@
 			},
 			"isBackground": true,
 			"command": "pnpm",
-			"args": ["frontend", "dev", "--mode=development"],
+			"args": ["onelauncher:frontend", "dev", "--mode=development"],
 			"runOptions": {
 				"instanceLimit": 1
 			}

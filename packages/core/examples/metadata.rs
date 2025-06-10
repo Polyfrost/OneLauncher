@@ -10,11 +10,11 @@ async fn main() -> LauncherResult<()> {
 
 	println!("Initialized: {}", metadata.initialized());
 	println!("Minecraft: {:?}", metadata.get_vanilla_or_fetch().await.is_ok());
-	println!("Forge: {:?}", metadata.get_modded_or_fetch(GameLoader::Forge).await.is_ok());
+	println!("Forge: {:?}", metadata.get_modded_or_fetch(&GameLoader::Forge).await.is_ok());
 	println!("Initialized: {}", metadata.initialized());
-	println!("NeoForge: {:?}", metadata.get_modded_or_fetch(GameLoader::NeoForge).await.is_ok());
-	println!("Fabric: {:?}", metadata.get_modded_or_fetch(GameLoader::Fabric).await.is_ok());
-	println!("Quilt: {:?}", metadata.get_modded_or_fetch(GameLoader::Quilt).await.is_ok());
+	println!("NeoForge: {:?}", metadata.get_modded_or_fetch(&GameLoader::NeoForge).await.is_ok());
+	println!("Fabric: {:?}", metadata.get_modded_or_fetch(&GameLoader::Fabric).await.is_ok());
+	println!("Quilt: {:?}", metadata.get_modded_or_fetch(&GameLoader::Quilt).await.is_ok());
 
 	Ok(())
 }

@@ -55,6 +55,16 @@ impl GameLoader {
 		}
 	}
 
+	pub const fn modded_loaders() -> &'static [Self] {
+		&[
+			Self::Forge,
+			Self::NeoForge,
+			Self::Quilt,
+			Self::Fabric,
+			Self::LegacyFabric,
+		]
+	}
+
 }
 
 impl TryFrom<String> for GameLoader {

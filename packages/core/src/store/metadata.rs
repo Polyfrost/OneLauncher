@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 
 use interpulse::api::minecraft::VersionManifest as VanillaManifest;
@@ -8,7 +9,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::constants;
-use crate::error::LauncherResult;
+use crate::error::{LauncherError, LauncherResult};
 use crate::utils::http::fetch_json;
 use crate::utils::io;
 
@@ -19,6 +20,7 @@ use super::Dirs;
 pub struct Metadata {
 	initialized: bool,
 	inner: MetadataInner,
+	version_loader_cache: HashMap<String, Vec<GameLoader>>
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -74,9 +76,9 @@ impl Metadata {
 	}
 
 	#[tracing::instrument(skip(self))]
-	pub async fn get_modded_or_fetch(&mut self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
+	pub async fn get_modded_or_fetch(&mut self, loader: &GameLoader) -> LauncherResult<&ModdedManifest> {
 		if !loader.is_modded() {
-			return Err(MetadataError::NotModdedManifest(loader).into());
+			return Err(MetadataError::NotModdedManifest(*loader).into());
 		}
 
 		if !self.initialized() {
@@ -90,9 +92,9 @@ impl Metadata {
 		self.inner.minecraft.as_ref().ok_or_else(|| MetadataError::FetchError.into())
 	}
 
-	pub fn get_modded(&self, loader: GameLoader) -> LauncherResult<&ModdedManifest> {
+	pub fn get_modded(&self, loader: &GameLoader) -> LauncherResult<&ModdedManifest> {
 		if !loader.is_modded() {
-			return Err(MetadataError::NotModdedManifest(loader).into());
+			return Err(MetadataError::NotModdedManifest(*loader).into());
 		}
 
 		match loader {
@@ -219,17 +221,48 @@ impl Metadata {
 			(quilt, true)
 		};
 	}
+
+	/// Returns a list of loaders that are compatible with the given Minecraft version.
+	///
+	/// WARNING: Can be heavy in certain cases!
+	pub async fn get_loaders_for_version(&mut self, mc_version: &str) -> LauncherResult<Vec<GameLoader>> {
+		if !self.initialized() {
+			self.initialize().await?;
+		}
+
+		if let Some(hit) = self.version_loader_cache.get(mc_version) {
+			return Ok(hit.clone());
+		}
+
+		let mut loaders = Vec::<GameLoader>::new();
+		for loader in GameLoader::modded_loaders() {
+			let manifest = match self.get_modded(loader) {
+				Ok(manifest) => manifest,
+				Err(LauncherError::MetadataError(MetadataError::NotModdedManifest(_))) => continue,
+				Err(e) => return Err(e),
+			};
+
+			let found = manifest.game_versions.iter().find(|it| it.id == mc_version);
+			if found.is_some() {
+				loaders.push(*loader);
+			}
+		}
+
+		self.version_loader_cache.insert(mc_version.to_owned(), loaders.clone());
+
+		Ok(loaders)
+	}
 }
 
-pub async fn fetch_vanilla_manifest(loader: GameLoader) -> LauncherResult<VanillaManifest> {
+async fn fetch_vanilla_manifest(loader: GameLoader) -> LauncherResult<VanillaManifest> {
 	fetch_manifest(loader).await
 }
 
-pub async fn fetch_modded_manifest(loader: GameLoader) -> LauncherResult<ModdedManifest> {
+async fn fetch_modded_manifest(loader: GameLoader) -> LauncherResult<ModdedManifest> {
 	fetch_manifest(loader).await
 }
 
-pub async fn fetch_manifest<T: DeserializeOwned>(loader: GameLoader) -> LauncherResult<T> {
+async fn fetch_manifest<T: DeserializeOwned>(loader: GameLoader) -> LauncherResult<T> {
 	fetch_json::<T>(
 		Method::GET,
 		format!(

@@ -1,5 +1,5 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{icon::Icon, loader::GameLoader, prelude::entity};
+use onelauncher_entity::{icon::Icon, loader::GameLoader};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::LauncherResult, store::{credentials::MinecraftCredentials, Core}};

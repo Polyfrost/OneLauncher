@@ -1,0 +1,110 @@
+@source "./**/*.{js,jsx,ts,tsx}";
+@plugin "tailwindcss-react-aria-components";
+@plugin "tailwindcss-animated";
+
+@theme {
+	/* foreground colors */
+	--color-fg-primary: #d5dbff;
+	--color-fg-primary-hover: #dae0ff;
+	--color-fg-primary-pressed: #e1e5ff;
+	--color-fg-primary-disabled: #cdd1eb;
+
+	--color-fg-secondary: #78818d;
+	--color-fg-secondary-hover: #5f6874;
+	--color-fg-secondary-pressed: #828d9b;
+	--color-fg-secondary-disabled: #646d79;
+
+	--color-link: #61afef;
+	--color-link-hover: #5f87ff;
+	--color-link-pressed: #72afff;
+	--color-link-disabled: #7597b3;
+
+	/* background colors */
+	--color-brand: #2b4bff;
+	--color-brand-hover: #2843dd;
+	--color-brand-pressed: #3957ff;
+	--color-brand-disabled: #2543eb;
+
+	--color-component-bg: #1a2228;
+	--color-component-bg-hover: #1d242b;
+	--color-component-bg-pressed: #222c35;
+	--color-component-bg-disabled: #10181f;
+
+	--color-page: #11171c;
+	--color-page-elevated: #151c22;
+	--color-page-overlay: #ffffff1a;
+	--color-window-frame: #151b20;
+
+	/* general colors */
+	--color-danger: #ff4444;
+	--color-danger-hover: #d63434;
+	--color-danger-pressed: #ff5656;
+	--color-danger-disabled: #eb3030;
+
+	--color-success: #239a60;
+	--color-success-hover: #1a8752;
+	--color-success-pressed: #2cac6e;
+	--color-success-disabled: #0f864c;
+
+	--color-code-info: #61afef;
+	--color-code-warn: #e5c07b;
+	--color-code-error: #be5046;
+	--color-code-debug: #2b4bff;
+	--color-code-trace: #fdfdfd;
+
+	/* border */
+	--color-component-border: rgba(255, 255, 255, 0.05);
+	--color-component-border-hover: rgba(255, 255, 255, 0.10);
+	--color-component-border-pressed: rgba(255, 255, 255, 0.15);
+
+	/* overlay */
+	--color-ghost-overlay: rgba(255, 255, 255, 0.05);
+	--color-ghost-overlay-hover: rgba(255, 255, 255, 0.10);
+	--color-ghost-overlay-pressed: rgba(255, 255, 255, 0.15);
+
+	--color-scrollbar-bg: rgba(255, 255, 255, 0.05);
+	--color-scrollbar-bg-hover: rgba(255, 255, 255, 0.10);
+	--color-scrollbar-bg-pressed: rgba(255, 255, 255, 0.15);
+
+	/* other */
+	--font-sans: "Poppins", sans-serif;
+	--text-xs: 0.688rem;
+	--text-sm: 0.75rem;
+	--text-base: 0.875rem;
+	--text-lg: 1rem;
+	--text-2lg: 1.125rem;
+	--text-xl: 1.25rem;
+	--text-xxl: 1.5rem;
+	--text-2xl: 2rem;
+	--text-3xl: 2.5rem;
+	--text-4xl: 3rem;
+}
+
+* {
+	user-select: none !important;
+	-webkit-user-select: none !important;
+	cursor: default !important;
+}
+
+body {
+	@apply bg-page text-fg-primary text-base;
+}
+
+.os-scrollbar {
+	--os-size: 10px;
+	--os-track-border-radius: var(--border-radius-lg);
+	--os-handle-bg: var(--color-scrollbar-bg);
+	--os-handle-bg-hover: var(--color-scrollbar-bg-hover);
+	--os-handle-bg-active: var(--color-scrollbar-bg-pressed);
+	--os-handle-perpendicular-size-hover: 140%;
+	--os-handle-perpendicular-size-active: 140%;
+	--os-handle-interactive-area-offset: 4px;
+}
+
+.os-scrollbar-offset-right {
+	--os-padding-axis: 10;
+}
+
+.os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
+	display: none;
+}

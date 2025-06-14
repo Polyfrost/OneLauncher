@@ -428,9 +428,9 @@ pub async fn get_loader_version(
 #[tracing::instrument]
 pub async fn get_game_versions() -> LauncherResult<Vec<Version>> {
 	let state = State::get().await?;
-	let metadata = state.metadata.read().await;
+	let mut metadata = state.metadata.write().await;
 
-	let manifest = metadata.get_vanilla()?;
+	let manifest = metadata.get_vanilla_or_fetch().await?;
 	Ok(manifest.versions.clone())
 }
 

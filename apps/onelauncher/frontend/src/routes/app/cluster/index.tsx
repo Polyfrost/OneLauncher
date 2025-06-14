@@ -20,6 +20,7 @@ function RouteComponent() {
 	const { id } = Route.useSearch();
 	const [newCover, setNewCover] = useState<string>('');
 	const [newName, setNewName] = useState<string>('');
+	const [edit, setEdit] = useState<boolean>(false);
 
 	// dumbass fix ik
 	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
@@ -31,7 +32,7 @@ function RouteComponent() {
 				<div className="h-full">
 					<Banner
 						cluster={cluster.data}
-						editMode={false}
+						editMode={edit}
 						newCover={newCover}
 						newName={newName}
 						refetch={cluster.refetch}
@@ -57,7 +58,7 @@ function RouteComponent() {
 					<SettingsRow.Header>Cluster Actions</SettingsRow.Header>
 					<SettingsRow
 						children={(
-							<Button color="secondary">Edit</Button>
+							<Button color="secondary" onClick={() => setEdit(!edit)}>{edit ? 'Save' : 'Edit'}</Button>
 						)}
 						description="Edit the cluster name and cover image."
 						icon={<Edit02Icon />}
@@ -123,6 +124,17 @@ function Banner({
 
 	// 	props.setNewCover(selected);
 	// }
+	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(cluster?.id as bigint, null), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	const handleLaunch = () => {
+		launch.refetch();
+
+		if (launch.error)
+			console.error(launch.error.message);
+	};
 
 	function updateName(name: string) {
 		if (name.length > 30 || name.length <= 0)
@@ -187,7 +199,7 @@ function Banner({
 					</div>
 
 					<div className="flex flex-row items-end gap-x-2.5 *:h-8">
-						<Button children="Launch" />
+						<Button children="Launch" onClick={handleLaunch} />
 
 						<Button
 							children={<Share07Icon />}

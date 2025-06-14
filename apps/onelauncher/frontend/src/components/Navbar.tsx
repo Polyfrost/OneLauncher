@@ -5,6 +5,7 @@ import { Button, Menu } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
 import { MenuTrigger } from 'react-aria-components';
+import OneLauncherText from '../assets/logos/onelauncher_text.svg';
 import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
 
@@ -16,6 +17,7 @@ function Navbar() {
 			<div className="flex items-start justify-start">
 				<div className="flex items-start justify-start transition-transform active:scale-90">
 					{/* <OneLauncherText width={260} /> */}
+					<img src={OneLauncherText} width={260} />
 				</div>
 			</div>
 			<div className="flex flex-row items-center gap-x-10 py-1">

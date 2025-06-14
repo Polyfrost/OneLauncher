@@ -3,6 +3,7 @@ export * from './Button';
 export * from './ContextMenu';
 export * from './Dropdown';
 export * from './Menu';
+export * from './SelectList';
 export * from './Show';
 export * from './Switch';
 export * from './TextField';

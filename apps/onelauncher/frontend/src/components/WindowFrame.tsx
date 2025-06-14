@@ -32,10 +32,6 @@ function WindowFrame() {
 				<TitlebarButton icon={ChevronLeftIcon} onClick={back} />
 			</div>
 
-			<div className="flex-1 flex flex-row items-center justify-center pointer-events-none">
-				<span className="text-base text-center">OneLauncher</span>
-			</div>
-
 			<div className="flex-1 flex flex-row items-center justify-end pointer-events-none">
 				<TitlebarButton icon={MinusIcon} onClick={minimize} />
 				<TitlebarButton icon={isMaximized ? Minimize01Icon : Maximize02Icon} onClick={toggleMaximize} />

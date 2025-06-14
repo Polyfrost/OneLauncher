@@ -3,9 +3,11 @@ import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
 import Modal from '@/components/overlay/Modal';
+import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
+import { upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { Button, TextField } from '@onelauncher/common/components';
+import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -28,9 +30,7 @@ function RouteComponent() {
 			<Banner />
 
 			<div className="flex flex-row items-center justify-between">
-				<div className="flex flex-row items-center gap-x-2">
-					<NewClusterCreate />
-				</div>
+				<NewClusterCreate />
 			</div>
 
 			<div className="flex flex-col">
@@ -49,7 +49,8 @@ function Banner() {
 	 *
 	 * If there are no clusters, display a generic background with the button action creating a new cluster.
 	 */
-	// const cluster = useRecentCluster();
+	const cluster = useRecentCluster();
+
 	// const launch = useLaunchCluster(() => cluster()?.uuid);
 	// const navigate = useNavigate();
 
@@ -58,30 +59,30 @@ function Banner() {
 			<div className="absolute h-52 min-h-52 w-full">
 				<img
 					alt="Default Banner"
-					className="top-0 left-0 h-full w-full object-cover"
-					src={DefaultBanner}
+					className="top-0 left-0 h-full rounded-xl w-full object-cover"
+					src={cluster?.icon_url || DefaultBanner}
 				/>
 			</div>
 
 			<div className="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6">
 				<div className="theme-OneLauncher-Dark flex flex-col gap-y-2 text-fg-primary">
 					<h1 className="text-2xl font-medium text-shadow-black text-shadow-2xs">Create a cluster</h1>
-					{/* <Show when={cluster() !== undefined}>
+					<Show when={cluster !== undefined}>
 						<p>
 							You've played
 							{' '}
 							<strong>
-								{cluster()!.meta.mc_version}
+								{cluster?.name}
 								{' '}
-								{upperFirst(cluster()!.meta.loader || 'Unknown')}
+								{upperFirst(cluster?.mc_loader || 'Unknown')}
 							</strong>
 							{' '}
 							for
 							{' '}
-							<strong>{formatAsDuration((cluster()!.meta.overall_played || 0))}</strong>
+							<strong>{cluster?.overall_played || 0}</strong>
 							.
 						</p>
-					</Show> */}
+					</Show>
 				</div>
 				<div className="w-full flex flex-row items-end justify-between">
 					<div className="flex flex-row items-center gap-x-4">
@@ -108,69 +109,6 @@ function Banner() {
 				</div>
 			</div>
 		</div>
-	);
-}
-
-function ClusterCreate() {
-	const result = useCommand('createCluster', () => bindings.core.createCluster({
-		icon: null,
-		mc_loader: 'vanilla',
-		mc_version: '1.8.9',
-		name: 'Test Cluster',
-		mc_loader_version: null,
-	}), {
-		enabled: false,
-		subscribed: false,
-	});
-
-	const testThingy = () => {
-		result.refetch();
-
-		if (result.isError)
-			console.error(result.error.message);
-	};
-
-	return (
-		<>
-			<Modal.Trigger>
-				<Button
-					children="New Cluster"
-				// onClick={testThingy}
-				/>
-
-				<Modal>
-					<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
-						<div className="theme-OneLauncher-Dark relative h-25 flex">
-							<div className="absolute left-0 top-0 h-full w-full">
-								<img alt="Header Image" className="h-full w-full rounded-t-lg" src={DefaultBanner} />
-							</div>
-							<div
-								className="absolute left-0 top-0 h-full flex flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10"
-							>
-								<Server01Icon className="h-8 w-8 text-fg-primary" />
-								<div className="flex flex-col items-start justify-center">
-									<h1 className="h-10 text-fg-primary -mt-2">New Cluster</h1>
-									{/* <span className="text-fg-primary">asd</span> */}
-								</div>
-							</div>
-						</div>
-						<div className="flex flex-col border border-white/5 rounded-b-lg">
-							<div className="p-3">
-								<TextField className="px-2" placeholder="Epik cluster name" />
-							</div>
-
-							<div className="flex flex-row justify-end gap-x-2 p-3 pt-0">
-								<Button
-									children="Create"
-									color="primary"
-									onClick={testThingy}
-								/>
-							</div>
-						</div>
-					</div>
-				</Modal>
-			</Modal.Trigger>
-		</>
 	);
 }
 
@@ -256,12 +194,10 @@ function ClusterCard({
 						</div>
 
 						{/* <LaunchButton cluster={props} iconOnly /> */}
-
+						<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
 					</div>
 				</div>
 			</Link>
-
-			<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
 		</>
 	);
 }

@@ -204,9 +204,6 @@ importers:
       '@fontsource/poppins':
         specifier: ^5.2.6
         version: 5.2.6
-      '@formatjs/intl-durationformat':
-        specifier: ^0.7.4
-        version: 0.7.4
       '@onelauncher/common':
         specifier: workspace:*
         version: link:../../../packages/web_common
@@ -353,6 +350,9 @@ importers:
       '@tanstack/react-router':
         specifier: ^1.114.3
         version: 1.119.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@untitled-theme/icons-react':
+        specifier: ^0.14.0
+        version: 0.14.0(@types/react@19.1.2)(react@19.1.0)
       motion:
         specifier: ^12.10.5
         version: 12.10.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)

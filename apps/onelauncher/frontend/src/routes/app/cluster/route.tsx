@@ -22,7 +22,7 @@ function RouteComponent() {
 
 	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
 
-	const isModded = cluster.data?.mc_loader != 'vanilla';
+	const isModded = cluster.data?.mc_loader !== 'vanilla';
 
 	return (
 		<div className="h-full flex flex-row overflow-hidden">
@@ -32,12 +32,12 @@ function RouteComponent() {
 					links={{
 						'Cluster Settings': [
 							// if someone has a better way to do this, please let me know
-							[<EyeIcon />, 'Overview', `/?id=${id}`],
-							(isModded ? [<PackagePlusIcon />, 'Mods', `/mods?id=${id}`] : undefined),
-							[<Image03Icon />, 'Screenshots', `/screenshots?id=${id}`],
-							[<Globe04Icon />, 'Worlds', `/worlds?id=${id}`],
-							[<File06Icon />, 'Logs', `/logs?id=${id}`],
-							[<Settings04Icon />, 'Game Settings', `/settings?id=${id}`],
+							[<EyeIcon key="overview" />, 'Overview', `/?id=${id}`],
+							(isModded ? [<PackagePlusIcon key="mods" />, 'Mods', `/mods?id=${id}`] : undefined),
+							[<Image03Icon key="screenshots" />, 'Screenshots', `/screenshots?id=${id}`],
+							[<Globe04Icon key="worlds" />, 'Worlds', `/worlds?id=${id}`],
+							[<File06Icon key="logs" />, 'Logs', `/logs?id=${id}`],
+							[<Settings04Icon key="gamesettings" />, 'Game Settings', `/settings?id=${id}`],
 						],
 					}}
 				/>

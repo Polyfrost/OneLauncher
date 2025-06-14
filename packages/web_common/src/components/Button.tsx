@@ -24,7 +24,7 @@ export const buttonVariants = tv({
 				'bg-danger hover:bg-danger-hover pressed:bg-danger-pressed disabled:bg-danger-disabled',
 			],
 			ghost: [
-				'hover:bg-component-bg-hover pressed:bg-component-bg-pressed checked:selected:bg-component-bg-hover',
+				'hover:bg-ghost-overlay-hover pressed:bg-ghost-overlay-pressed checked:selected:bg-ghost-overlay-pressed',
 			],
 		},
 		size: {

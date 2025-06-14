@@ -12,7 +12,7 @@ function AccountPopup() {
 	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
 	const setDefaultUser = (user: MinecraftCredentials) => {
-		bindings.core.setDefaultUser(user.id);
+		bindings.commands.setDefaultUser(user.id);
 	};
 
 	return (

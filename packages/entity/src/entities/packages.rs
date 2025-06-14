@@ -7,6 +7,7 @@ use crate::{icon::Icon, loader::GameLoader, package::{PackageType, Provider}, ut
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "packages")]
+#[serde(rename = "PackageModel")]
 #[onelauncher_macro::specta]
 pub struct Model {
 	#[sea_orm(primary_key, auto_increment = false)]

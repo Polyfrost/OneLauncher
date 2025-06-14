@@ -1,6 +1,7 @@
 import type {
 	ListBoxItemProps as AriaListBoxItemProps,
 	SelectProps as AriaSelectProps,
+
 } from 'react-aria-components';
 import type { VariantProps } from 'tailwind-variants';
 import type { ClassNameString } from '../types/global';

@@ -5,6 +5,7 @@ use crate::{cluster_stage::ClusterStage, icon::Icon, loader::GameLoader};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "clusters")]
+#[serde(rename = "ClusterModel")]
 #[onelauncher_macro::specta]
 pub struct Model {
 	#[sea_orm(primary_key)]

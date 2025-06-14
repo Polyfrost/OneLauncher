@@ -2,6 +2,7 @@ import type { Model } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
+import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
 import Modal from '@/components/overlay/Modal';
 import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
@@ -9,6 +10,7 @@ import { upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
+import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
 import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
@@ -19,6 +21,8 @@ export const Route = createFileRoute('/app/')({
 /*
 Please note this route has a very big issue related to scrolling
 and i am very angry rn so i will not be fixing it rn
+
+hey future sassan here i guess the issue is solved idk
 
 hey future sassan here i guess the issue is solved idk
 */
@@ -161,6 +165,18 @@ function ClusterCard({
 			console.error(launch.error.message);
 	};
 
+	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	const handleLaunch = () => {
+		launch.refetch();
+
+		if (launch.error)
+			console.error(launch.error.message);
+	};
+
 	return (
 		<>
 			<Link
@@ -189,7 +205,36 @@ function ClusterCard({
 								{' '}
 								{mc_version}
 								{/* {' '}
+		<>
+			<Link
+				search={{
+					id,
+				}} to="/app/cluster"
+			>
+				<div
+					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				>
+					<div className="relative flex-1 overflow-hidden rounded-t-xl">
+						<div
+							className="absolute h-full w-full transition-transform group-hover:!scale-110"
+						>
+							<img
+								className="h-full w-full object-cover"
+								src={DefaultInstancePhoto}
+							/>
+						</div>
+					</div>
+					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
+							<p className="h-4 text-xs">
+								{mc_loader}
+								{' '}
+								{mc_version}
+								{/* {' '}
 						{props.packages.mods && `• ${props.mods} mods`} */}
+							</p>
+						</div>
 							</p>
 						</div>
 

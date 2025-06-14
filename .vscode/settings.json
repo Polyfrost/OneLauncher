@@ -93,7 +93,7 @@
 
 	// updated 2024-08-26 15:46
 	// https://github.com/antfu/vscode-file-nesting-config
-	"explorer.fileNesting.enabled": true,
+	"explorer.fileNesting.enabled": false,
 	"explorer.fileNesting.expand": false,
 	"explorer.fileNesting.patterns": {
 		".clang-tidy": ".clang-format, .clangd, compile_commands.json",

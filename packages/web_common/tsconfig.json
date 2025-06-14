@@ -11,5 +11,5 @@
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true
 	},
-	"include": ["src/**/*", "rollup.config.mjs"]
+	"include": ["src/**/*", "vite.config.ts"]
 }

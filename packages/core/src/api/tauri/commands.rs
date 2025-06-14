@@ -122,10 +122,6 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 	async fn update_cluster_by_id(id: ClusterId, request: clusters::ActiveModel) -> LauncherResult<()> {
 		let updated_cluster = api::cluster::dao::update_cluster_by_id(id, |mut active_model| async move {
-			if let Some(name) = request.name {
-				active_model.name = Set(name);
-			}
-
 			active_model.updated_at = Set(chrono::Utc::now().naive_utc());
 
 			Ok(active_model)

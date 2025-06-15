@@ -1,0 +1,18 @@
+@layer utilities {
+	@keyframes custom-anim-fade-scale {
+		0% {
+			transform: scale(0);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(1);
+			opacity: 0;
+		}
+	}
+}
+
+@utility animate-fade-scale {
+	transform: scale(0);
+	opacity: 1;
+	animation: custom-anim-fade-scale var(--default-animation-duration, 1s) var(--default-animation-timing-function, cubic-bezier(0, 0, 0.2, 1)) var(--default-animation-delay, 0s) forwards;
+}

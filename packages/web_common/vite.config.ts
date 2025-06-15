@@ -25,8 +25,8 @@ export default defineConfig({
 		minify: false,
 		lib: {
 			entry: {
-				'index': path.resolve(__dirname, 'src/index.ts'),
-				'components': path.resolve(__dirname, 'src/components/index.ts'),
+				index: path.resolve(__dirname, 'src/index.ts'),
+				components: path.resolve(__dirname, 'src/components/index.ts'),
 			},
 			formats: ['es'],
 			fileName: (_, entryName) => `${entryName}.js`,
@@ -44,6 +44,7 @@ export default defineConfig({
 				'tailwindcss',
 				'tailwind-merge',
 				'tailwind-variants',
+				'@untitled-theme/icons-react',
 				// 'tailwindcss-animated',
 				// 'tailwindcss-react-aria-components',
 			],

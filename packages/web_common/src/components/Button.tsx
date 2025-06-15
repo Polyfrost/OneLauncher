@@ -29,8 +29,9 @@ export const buttonVariants = tv({
 		},
 		size: {
 			normal: 'py-1.5 px-3',
+			large: 'py-2 px-6 text-lg',
 			icon: 'p-1.5 aspect-square box-border w-8 h-8',
-			iconLarge: 'w-9 h-9 [&>*]:p-0.5',
+			iconLarge: 'w-10 h-10 [&>*]:p-0.5',
 		},
 	},
 });

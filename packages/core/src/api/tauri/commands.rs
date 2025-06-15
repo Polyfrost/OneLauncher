@@ -1,6 +1,5 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, prelude::entity};
-use sea_orm::ActiveValue::Set;
+use onelauncher_entity::{icon::Icon, loader::GameLoader};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::LauncherResult, store::{credentials::MinecraftCredentials, Core}};
@@ -26,8 +25,8 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "launchCluster")]
 	async fn launch_cluster(id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
 
-	#[taurpc(alias = "updateClusterById")]
-	async fn update_cluster_by_id(id: ClusterId, request: Cluster) -> LauncherResult<()>;
+	// #[taurpc(alias = "updateClusterById")]
+	// async fn update_cluster_by_id(id: ClusterId, request: Cluster) -> LauncherResult<()>;
 
 
 	// Setting Profiles
@@ -120,21 +119,21 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(())
 	}
 
-	async fn update_cluster_by_id(id: ClusterId, request: clusters::ActiveModel) -> LauncherResult<()> {
-		let updated_cluster = api::cluster::dao::update_cluster_by_id(id, |mut active_model| async move {
-			if let Some(name) = request.name {
-				active_model.name = Set(name);
-			}
+	// async fn update_cluster_by_id(self, id: ClusterId, request: clusters::ActiveModel) -> LauncherResult<()> {
+	// 	// let updated_cluster = api::cluster::dao::update_cluster_by_id(id, |mut active_model| async move {
+	// 	// 	if let Some(name) = request.name {
+	// 	// 		active_model.name = Set(name);
+	// 	// 	}
 
-			active_model.updated_at = Set(chrono::Utc::now().naive_utc());
+	// 	// 	active_model.updated_at = Set(chrono::Utc::now().naive_utc());
 
-			Ok(active_model)
-		})
-		.await
-		.map_err(|e| e.to_string())?;
+	// 	// 	Ok(active_model)
+	// 	// })
+	// 	// .await
+	// 	// .map_err(|e| e.to_string())?;
 
-		Ok(())
-	}
+	// 	Ok(())
+	// }
 
 
 	// Setting Profiles

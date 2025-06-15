@@ -24,6 +24,7 @@
 	"peerDependencies": {
 		"@tanstack/react-query": "^5.66.5",
 		"@tanstack/react-router": "^1.114.3",
+		"@untitled-theme/icons-react": "^0.14.0",
 		"motion": "^12.10.5",
 		"react": "^19.0.0",
 		"react-aria-components": "^1.8.0",

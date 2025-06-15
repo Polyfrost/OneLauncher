@@ -3,7 +3,7 @@
 @plugin "tailwindcss-animated";
 
 @theme {
-	/* foreground colors */
+	/** foreground colors */
 	--color-fg-primary: #d5dbff;
 	--color-fg-primary-hover: #dae0ff;
 	--color-fg-primary-pressed: #e1e5ff;
@@ -19,7 +19,7 @@
 	--color-link-pressed: #72afff;
 	--color-link-disabled: #7597b3;
 
-	/* background colors */
+	/** background colors */
 	--color-brand: #2b4bff;
 	--color-brand-hover: #2843dd;
 	--color-brand-pressed: #3957ff;
@@ -35,7 +35,7 @@
 	--color-page-overlay: #ffffff1a;
 	--color-window-frame: #151b20;
 
-	/* general colors */
+	/** general colors */
 	--color-danger: #ff4444;
 	--color-danger-hover: #d63434;
 	--color-danger-pressed: #ff5656;
@@ -52,12 +52,12 @@
 	--color-code-debug: #2b4bff;
 	--color-code-trace: #fdfdfd;
 
-	/* border */
+	/** border */
 	--color-component-border: rgba(255, 255, 255, 0.05);
 	--color-component-border-hover: rgba(255, 255, 255, 0.10);
 	--color-component-border-pressed: rgba(255, 255, 255, 0.15);
 
-	/* overlay */
+	/** overlay */
 	--color-ghost-overlay: rgba(255, 255, 255, 0.05);
 	--color-ghost-overlay-hover: rgba(255, 255, 255, 0.10);
 	--color-ghost-overlay-pressed: rgba(255, 255, 255, 0.15);
@@ -66,11 +66,11 @@
 	--color-scrollbar-bg-hover: rgba(255, 255, 255, 0.10);
 	--color-scrollbar-bg-pressed: rgba(255, 255, 255, 0.15);
 
-	/* other */
+	/** other */
 	--font-sans: "Poppins", sans-serif;
 	--text-xs: 0.688rem;
 	--text-sm: 0.75rem;
-	--text-base: 0.875rem;
+	--text-base: 0.875rem; /** body text is 14px */
 	--text-lg: 1rem;
 	--text-2lg: 1.125rem;
 	--text-xl: 1.25rem;

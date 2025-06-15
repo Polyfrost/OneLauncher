@@ -1,6 +1,7 @@
+import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app')({
 	component: RouteComponent,
@@ -8,24 +9,29 @@ export const Route = createFileRoute('/app')({
 
 function RouteComponent() {
 	return (
-		<div className="h-full w-full">
-			<Background />
+		<LoaderSuspense spinner={{ size: 'large' }}>
+			<div className="flex flex-col h-full w-full">
+				<Navbar />
 
-			<div className="h-full w-full">
-				<AnimatedOutlet
-					enter={{
-						initial: { opacity: 0, transform: 'translateX(-20%)' },
-						animate: { opacity: 1, transform: 'translateX(0)' },
-					}}
-					exit={{
-						initial: { opacity: 1, transform: 'translateX(0)' },
-						animate: { opacity: 0, transform: 'translateX(-20%)' },
-					}}
-					from={Route.id}
-					transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
-				/>
+				<Background />
+
+				<div className="h-full w-full pb-12">
+					{/* <AnimatedOutlet
+						enter={{
+							initial: { opacity: 1, left: '-100%' },
+							animate: { opacity: 1, left: 0 },
+						}}
+						exit={{
+							initial: { opacity: 1, left: 0 },
+							animate: { opacity: 1, left: '150%' },
+						}}
+						from={Route.id}
+						transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
+					/> */}
+					<Outlet />
+				</div>
 			</div>
-		</div>
+		</LoaderSuspense>
 	);
 }
 

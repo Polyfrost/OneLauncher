@@ -12,6 +12,9 @@ pub struct ProxyTauri {
 impl ProxyTauri {
 	#[must_use]
 	pub fn new(handle: AppHandle) -> Self {
+		tracing::debug!("using tauri bridge");
+		tracing::debug!("webview version: {}", tauri::webview_version().unwrap_or("unknown".into()));
+
 		Self {
 			emitter: LauncherEventEmitter::new(handle.clone()),
 			handle,

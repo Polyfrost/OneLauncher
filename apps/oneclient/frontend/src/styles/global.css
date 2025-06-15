@@ -2,6 +2,7 @@
 @plugin "tailwindcss-react-aria-components";
 @plugin "tailwindcss-animated";
 @import "../../node_modules/@onelauncher/common/dist/theme.css";
+@import "./animations.css";
 
 @utility partial-underline-* {
 	position: relative;
@@ -17,4 +18,17 @@
 		width: --value(percentage, [percentage]);
 		border-radius: 10px;
 	}
+}
+
+@theme {
+	/** border */
+	--color-component-border: #ffffff1A;
+
+	/** rounding */
+	--radius-sm: 0.25rem;
+	--radius-md: 0.438rem;
+	--radius-lg: 0.625rem;
+	--radius-xl: 1rem;
+	--radius-2xl: 1.5rem;
+	--radius-3xl: 2rem;
 }

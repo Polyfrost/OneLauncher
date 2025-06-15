@@ -24,7 +24,7 @@ export function Navbar() {
 				<NavbarLink to="/">Accounts</NavbarLink>
 			</div>
 
-			<div className="flex flex-1 items-center justify-end gap-2">
+			<div className="flex flex-1 items-center justify-end gap-2 pointer-events-none">
 				<NavbarButton
 					children={<MinusIcon />}
 					onClick={onMinimize}

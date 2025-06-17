@@ -15,36 +15,43 @@ export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
 });
 
+const clusters = [
+	{
+		mc_version: '1.8.9',
+	},
+	undefined,
+	{
+		mc_version: '1.21.4',
+	},
+];
+
 function RouteComponent() {
-	const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
-		'getClusters',
-		async () => {
-			await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate loading delay
-			return bindings.core.getClusters();
-		},
-		{
-			select: ((data: Array<ClusterModel>) => {
-				const sorted = data.sort((a, b) => {
-					if (a.last_played && b.last_played)
-						return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
-					else if (a.last_played)
-						return -1; // a has last_played, b does not
-					else if (b.last_played)
-						return 1; // b has last_played, a does not
+	// const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
+	// 	'getClusters',
+	// 	bindings.core.getClusters,
+	// 	{
+	// 		select: ((data: Array<ClusterModel>) => {
+	// 			const sorted = data.sort((a, b) => {
+	// 				if (a.last_played && b.last_played)
+	// 					return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
+	// 				else if (a.last_played)
+	// 					return -1; // a has last_played, b does not
+	// 				else if (b.last_played)
+	// 					return 1; // b has last_played, a does not
 
-					const aVersion = a.mc_version.replaceAll('.', '');
-					const bVersion = b.mc_version.replaceAll('.', '');
-					return Number.parseInt(bVersion) - Number.parseInt(aVersion);
-				});
+	// 				const aVersion = a.mc_version.replaceAll('.', '');
+	// 				const bVersion = b.mc_version.replaceAll('.', '');
+	// 				return Number.parseInt(bVersion) - Number.parseInt(aVersion);
+	// 			});
 
-				return [
-					sorted[0],
-					sorted[1],
-					undefined,
-				];
-			}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
-		},
-	);
+	// 			return [
+	// 				sorted[0],
+	// 				sorted[1],
+	// 				undefined,
+	// 			];
+	// 		}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
+	// 	},
+	// );
 
 	return (
 		<div className="flex h-full w-full flex-col justify-center">

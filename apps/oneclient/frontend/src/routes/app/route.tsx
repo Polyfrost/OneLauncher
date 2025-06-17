@@ -1,7 +1,7 @@
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app')({
 	component: RouteComponent,
@@ -16,19 +16,18 @@ function RouteComponent() {
 				<Background />
 
 				<div className="h-full w-full pb-12">
-					{/* <AnimatedOutlet
+					<AnimatedOutlet
 						enter={{
-							initial: { opacity: 1, left: '-100%' },
-							animate: { opacity: 1, left: 0 },
+							initial: { opacity: 0 },
+							animate: { opacity: 1 },
 						}}
 						exit={{
-							initial: { opacity: 1, left: 0 },
-							animate: { opacity: 1, left: '150%' },
+							initial: { opacity: 1 },
+							animate: { opacity: 0 },
 						}}
 						from={Route.id}
 						transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
-					/> */}
-					<Outlet />
+					/>
 				</div>
 			</div>
 		</LoaderSuspense>

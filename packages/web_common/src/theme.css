@@ -83,6 +83,7 @@
 * {
 	user-select: none !important;
 	-webkit-user-select: none !important;
+	-webkit-user-drag: none !important;
 	cursor: default !important;
 }
 

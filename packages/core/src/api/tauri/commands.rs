@@ -143,8 +143,8 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		.await
 		.map_err(|e| LauncherError::from(e))?;
 
-	// 	Ok(())
-	// }
+	 	Ok(())
+	}
 
 
 	// Setting Profiles

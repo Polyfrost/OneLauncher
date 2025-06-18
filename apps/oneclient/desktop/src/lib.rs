@@ -20,6 +20,12 @@ pub struct SingleInstancePayload {
 
 #[tracing::instrument]
 async fn initialize_core() -> LauncherResult<()> {
+	let level = if cfg!(debug_assertions) {
+		tracing::Level::DEBUG
+	} else {
+		tracing::Level::INFO
+	};
+
 	let opts = CoreOptions {
 		curseforge_api_key: Some(constants::CURSEFORGE_API_KEY.to_string()),
 		launcher_name: "OneClient".to_string(),
@@ -27,6 +33,9 @@ async fn initialize_core() -> LauncherResult<()> {
 		launcher_website: "https://polyfrost.org/".to_string(),
 		discord_client_id: None, //Some(constants::DISCORD_CLIENT_ID.to_string()), // disabled for now
 		fetch_attempts: 3,
+		logger_filter: Some(
+			format!("{}={level},onelauncher_core={level}", env!("CARGO_PKG_NAME")),
+		),
 		..Default::default()
 	};
 

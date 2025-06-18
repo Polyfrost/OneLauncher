@@ -7,7 +7,7 @@
 import type { AnyRoute } from '@tanstack/react-router';
 import type { MotionProps } from 'motion/react';
 import { Outlet, useMatch, useRouter } from '@tanstack/react-router';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 interface TransitionProps {

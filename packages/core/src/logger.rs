@@ -6,7 +6,15 @@ use crate::store::Core;
 #[cfg(debug_assertions)]
 pub async fn start_logger() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-		.unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
+		.unwrap_or_else(|_| {
+			tracing_subscriber::EnvFilter::new(
+				Core::get().logger_filter
+					.as_ref()
+					.unwrap_or(
+						&format!("{}=info", env!("CARGO_PKG_NAME"))
+					)
+			)
+		});
 
 	let mut fmt_layer = tracing_subscriber::fmt::layer()
 		.with_ansi(true)
@@ -16,7 +24,7 @@ pub async fn start_logger() {
 		.with_thread_names(true)
 		.pretty();
 
-	if let Some(span) = Core::get().span_formatting.clone() {
+	if let Some(span) = Core::get().logger_span_formatting.clone() {
 		fmt_layer = fmt_layer.with_span_events(span);
 	}
 
@@ -62,7 +70,15 @@ pub async fn start_logger() {
     };
 
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(format!("{}=info", env!("CARGO_PKG_NAME"))));
+        .unwrap_or_else(|_| {
+			tracing_subscriber::EnvFilter::new(
+				Core::get().logger_filter
+					.as_ref()
+					.unwrap_or(
+						&format!("{}=info", env!("CARGO_PKG_NAME"))
+					)
+			)
+		});
 
 	let mut fmt_layer = tracing_subscriber::fmt::layer()
 		.compact()

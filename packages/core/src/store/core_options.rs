@@ -16,11 +16,12 @@ pub struct CoreOptions {
 	pub launcher_version: String,
 	pub launcher_website: String,
 	pub fetch_attempts: usize,
-	pub span_formatting: Option<FmtSpan>,
 	/// Default client id is the same as the one used by the official launcher
 	pub msa_client_id: String,
 	pub msa_redirect_uri: String,
 	pub curseforge_api_key: Option<String>,
+	pub logger_span_formatting: Option<FmtSpan>,
+	pub logger_filter: Option<String>,
 }
 
 impl Default for CoreOptions {
@@ -31,10 +32,11 @@ impl Default for CoreOptions {
 			launcher_version: String::from(env!("CARGO_PKG_VERSION")),
 			launcher_website: String::from("https://polyfrost.org/"),
 			fetch_attempts: 3,
-			span_formatting: None,
 			msa_client_id: String::from("00000000402b5328"),
 			msa_redirect_uri: String::from("https://login.live.com/oauth20_desktop.srf"),
 			curseforge_api_key: None,
+			logger_span_formatting: None,
+			logger_filter: None,
 		}
 	}
 }

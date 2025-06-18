@@ -44,6 +44,7 @@ export default defineConfig({
 				'tailwindcss',
 				'tailwind-merge',
 				'tailwind-variants',
+				'@untitled-theme/icons-react',
 				// 'tailwindcss-animated',
 				// 'tailwindcss-react-aria-components',
 			],

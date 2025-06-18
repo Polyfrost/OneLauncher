@@ -20,11 +20,11 @@ export function Navbar() {
 
 			<div className="flex flex-1 items-center justify-center pointer-events-none gap-6">
 				<NavbarLink to="/app">Home</NavbarLink>
-				<NavbarLink to="/app/test">Clusters</NavbarLink>
+				<NavbarLink to="/app/clusters">Clusters</NavbarLink>
 				<NavbarLink to="/">Accounts</NavbarLink>
 			</div>
 
-			<div className="flex flex-1 items-center justify-end gap-2">
+			<div className="flex flex-1 items-center justify-end gap-2 pointer-events-none">
 				<NavbarButton
 					children={<MinusIcon />}
 					onClick={onMinimize}

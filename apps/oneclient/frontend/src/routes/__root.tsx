@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { Navbar } from '@/components';
 import { AnimatedOutletProvider } from '@onelauncher/common/components';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
@@ -30,8 +29,6 @@ function RootRoute() {
 				useHref={to => router.buildLocation({ to }).href}
 			>
 				<div className="h-screen flex flex-col overflow-hidden text-fg-primary px-12">
-					<Navbar />
-
 					<Outlet />
 
 					<TanStackRouterDevtools />

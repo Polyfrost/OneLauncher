@@ -1,5 +1,6 @@
-import type { Model } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import type { Dispatch, SetStateAction } from 'react';
+import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import LoaderIcon from '@/components/launcher/LoaderIcon';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
@@ -7,6 +8,7 @@ import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
+import { dataDir } from '@tauri-apps/api/path';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
 import { twMerge } from 'tailwind-merge';
@@ -24,6 +26,22 @@ function RouteComponent() {
 
 	// dumbass fix ik
 	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
+
+	const editing = useCommand('updateClusterById', () => bindings.core.updateClusterById(Number(id.toString()) as unknown as bigint, {
+		icon_url: newCover,
+		name: newName,
+	}), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	function handleEditMode() {
+		if (edit)
+			editing.refetch();
+		cluster.refetch();
+
+		setEdit(!edit);
+	}
 
 	return (
 		<Sidebar.Page>
@@ -49,7 +67,7 @@ function RouteComponent() {
 								isDisabled={false}
 							/>
 						)}
-						description="burada path var işte yersen"
+						description="asdsad"
 						disabled={false}
 						icon={<FolderIcon />}
 						title="Cluster Folder"
@@ -58,7 +76,7 @@ function RouteComponent() {
 					<SettingsRow.Header>Cluster Actions</SettingsRow.Header>
 					<SettingsRow
 						children={(
-							<Button color="secondary" onClick={() => setEdit(!edit)}>{edit ? 'Save' : 'Edit'}</Button>
+							<Button color="secondary" onClick={handleEditMode}>{edit ? 'Save' : 'Edit'}</Button>
 						)}
 						description="Edit the cluster name and cover image."
 						icon={<Edit02Icon />}
@@ -95,7 +113,7 @@ function RouteComponent() {
 }
 
 interface BannerProps {
-	cluster: Model | null | undefined;
+	cluster: ClusterModel | null | undefined;
 	editMode: boolean;
 	newName: string;
 	setNewName: Dispatch<SetStateAction<string>>;
@@ -149,14 +167,14 @@ function Banner({
 				<Show when={editMode}>
 					<div
 						className="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
-						// onClick={launchFilePicker}
+					// onClick={launchFilePicker}
 					>
 						<ImagePlusIcon className="h-12 w-12" />
 					</div>
 				</Show>
 
 				{/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
-				<img src="https://github.com/emirsassan.png" />
+				<img src={cluster?.icon_url || DefaultInstancePhoto} />
 			</div>
 
 			<div className="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">

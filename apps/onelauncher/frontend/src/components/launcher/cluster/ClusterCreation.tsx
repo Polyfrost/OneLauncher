@@ -258,7 +258,7 @@ function ClusterInformation({
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown className="w-full" defaultSelectedKey="vanilla">
+				<Dropdown defaultSelectedKey="vanilla">
 					<Dropdown.Item>
 						<div className="flex flex-row">
 							<LoaderIcon className="size-5" loader="vanilla" />

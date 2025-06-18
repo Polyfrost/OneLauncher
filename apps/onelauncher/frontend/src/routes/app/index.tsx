@@ -1,8 +1,7 @@
-import type { Model } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
-import Modal from '@/components/overlay/Modal';
 import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { upperFirst } from '@/utils';
@@ -115,7 +114,7 @@ function Banner() {
 }
 
 interface ClusterGroupProps {
-	clusters: Array<Model> | undefined;
+	clusters: Array<ClusterModel> | undefined;
 	isFetching?: boolean;
 }
 
@@ -150,7 +149,7 @@ function ClusterCard({
 	name,
 	mc_loader,
 	mc_version,
-}: Model) {
+}: ClusterModel) {
 	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
 		enabled: false,
 		subscribed: false,

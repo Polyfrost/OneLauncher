@@ -105,6 +105,15 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	async fn create_cluster(self, options: CreateCluster) -> LauncherResult<Cluster> {
 		let cluster = api::cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon).await?;
 
+		api::setting_profiles::create_profile(&options.name, |mut active_model: SettingsProfilePartial| async move {
+			active_model.force_fullscreen = Set(Some(false));
+
+			active_model.mem_max = Set(Some(2048));
+
+			Ok(active_model)
+		})
+		.await?;
+
 		Ok(cluster)
 	}
 

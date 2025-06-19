@@ -8,7 +8,9 @@ import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { dataDir } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-dialog';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
 import { twMerge } from 'tailwind-merge';
@@ -20,12 +22,12 @@ export const Route = createFileRoute('/app/cluster/')({
 
 function RouteComponent() {
 	const { id } = Route.useSearch();
-	const [newCover, setNewCover] = useState<string>('');
-	const [newName, setNewName] = useState<string>('');
-	const [edit, setEdit] = useState<boolean>(false);
+	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
 
 	// dumbass fix ik
-	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
+	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
+	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
+	const [edit, setEdit] = useState<boolean>(false);
 
 	const editing = useCommand('updateClusterById', () => bindings.core.updateClusterById(Number(id.toString()) as unknown as bigint, {
 		icon_url: newCover,
@@ -33,6 +35,11 @@ function RouteComponent() {
 	}), {
 		enabled: false,
 		subscribed: false,
+	});
+
+	bindings.events.process.on((e) => {
+		// eslint-disable-next-line no-console -- ok
+		console.log(e);
 	});
 
 	function handleEditMode() {
@@ -126,22 +133,24 @@ function Banner({
 	cluster,
 	editMode,
 	setNewName,
+	setNewCover,
 }: BannerProps) {
-	// async function launchFilePicker() {
-	// 	const selected = await dialog.open({
-	// 		multiple: false,
-	// 		directory: false,
-	// 		filters: [{
-	// 			name: 'Image',
-	// 			extensions: ['png', 'jpg', 'jpeg', 'webp'],
-	// 		}],
-	// 	});
+	async function launchFilePicker() {
+		const selected = await open({
+			multiple: false,
+			directory: false,
+			filters: [{
+				name: 'Image',
+				extensions: ['png', 'jpg', 'jpeg', 'webp'],
+			}],
+		});
 
-	// 	if (selected === null)
-	// 		return;
+		if (selected === null)
+			return;
 
-	// 	props.setNewCover(selected);
-	// }
+		setNewCover(selected);
+	}
+
 	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(cluster?.id as bigint, null), {
 		enabled: false,
 		subscribed: false,
@@ -161,20 +170,29 @@ function Banner({
 		setNewName(name);
 	}
 
+	const image = () => {
+		const url = cluster?.icon_url;
+
+		if (url === undefined || url === null)
+			return DefaultInstancePhoto;
+
+		return convertFileSrc(url);
+	};
+
 	return (
 		<div className="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
 			<div className="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-component-bg/10 rounded-lg">
 				<Show when={editMode}>
 					<div
 						className="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
-					// onClick={launchFilePicker}
+						onClick={launchFilePicker}
 					>
 						<ImagePlusIcon className="h-12 w-12" />
 					</div>
 				</Show>
 
 				{/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
-				<img src={cluster?.icon_url || DefaultInstancePhoto} />
+				<img src={image()} />
 			</div>
 
 			<div className="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
@@ -222,8 +240,7 @@ function Banner({
 						<Button
 							children={<Share07Icon />}
 							color="secondary"
-							// disabled={props.editMode()}
-							isDisabled
+							isDisabled={editMode}
 						/>
 					</div>
 				</div>

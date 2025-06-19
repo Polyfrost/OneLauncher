@@ -24,6 +24,7 @@
 		"@tauri-apps/api": "^2.5.0",
 		"@tauri-apps/plugin-clipboard-manager": "^2.2.2",
 		"@tauri-apps/plugin-dialog": "^2.2.1",
+		"@tauri-apps/plugin-opener": "^2.3.0",
 		"@tauri-apps/plugin-shell": "^2.2.1",
 		"@untitled-theme/icons-react": "^0.14.0",
 		"motion": "^12.10.5",

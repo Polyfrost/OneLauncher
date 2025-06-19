@@ -4,6 +4,8 @@ import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
+import { dataDir } from '@tauri-apps/api/path';
+import { openPath as open } from '@tauri-apps/plugin-opener';
 import { FolderIcon, LinkExternal01Icon, XIcon } from '@untitled-theme/icons-react';
 import Sidebar from './route';
 
@@ -13,6 +15,12 @@ export const Route = createFileRoute('/app/settings/')({
 
 function RouteComponent() {
 	const _result = useCommand('getGlobalProfile', bindings.core.getGlobalProfile);
+
+	const openLauncherDir = async () => {
+		const dir = await dataDir();
+
+		open(`${dir}/OneLauncher`);
+	};
 
 	return (
 		<Sidebar.Page>
@@ -52,7 +60,7 @@ function RouteComponent() {
 					icon={<FolderIcon />}
 					title="Launcher Folder"
 				>
-					<Button size="normal">
+					<Button onClick={openLauncherDir} size="normal">
 						<LinkExternal01Icon />
 						{' '}
 						Open

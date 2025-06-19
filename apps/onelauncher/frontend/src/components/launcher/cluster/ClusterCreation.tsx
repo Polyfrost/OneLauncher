@@ -1,4 +1,4 @@
-import type { IngressPayload, Version, VersionType } from '@/bindings.gen';
+import type { GameLoader, IngressPayload, Version, VersionType } from '@/bindings.gen';
 import type { JSX, RefAttributes } from 'react';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultClusterBanner from '@/assets/images/default_instance_cover.jpg';
@@ -6,7 +6,7 @@ import LauncherIcon from '@/components/content/LauncherIcon';
 import Modal from '@/components/overlay/Modal';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import { bindings } from '@/main';
-import { LAUNCHER_IMPORT_TYPES } from '@/utils';
+import { LAUNCHER_IMPORT_TYPES, LOADERS, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Dropdown, SelectList, TextField } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,7 +36,7 @@ export function NewClusterCreate() {
 
 	const create = useCommand('createCluster', () => bindings.core.createCluster({
 		icon: DefaultClusterBanner,
-		mc_loader: 'vanilla',
+		mc_loader: formData.loader as GameLoader,
 		mc_loader_version: null,
 		mc_version: formData.clusterVersion,
 		name: formData.clusterName,
@@ -91,6 +91,7 @@ export function NewClusterCreate() {
 				<ClusterInformation
 					clusterName={formData.clusterName}
 					clusterVersion={formData.clusterVersion}
+					onClusterLoaderChange={loader => setFormData(prev => ({ ...prev, loader }))}
 					onClusterNameChange={name => setFormData(prev => ({ ...prev, clusterName: name }))}
 					onClusterVersionChange={version =>
 						setFormData(prev => ({ ...prev, clusterVersion: version }))}
@@ -231,6 +232,7 @@ interface ClusterInformationProps {
 	onClusterNameChange: (name: string) => void;
 	clusterVersion: string;
 	onClusterVersionChange: (version: string) => void;
+	onClusterLoaderChange: (loader: GameLoader) => void;
 }
 
 function ClusterInformation({
@@ -238,6 +240,7 @@ function ClusterInformation({
 	onClusterNameChange,
 	clusterVersion,
 	onClusterVersionChange,
+	onClusterLoaderChange,
 }: ClusterInformationProps) {
 	const versions = useCommand('getGameVersions', bindings.core.getGameVersions);
 
@@ -258,35 +261,17 @@ function ClusterInformation({
 			</Option>
 
 			<Option header="Loader">
-				<Dropdown defaultSelectedKey="vanilla">
-					<Dropdown.Item>
-						<div className="flex flex-row">
-							<LoaderIcon className="size-5" loader="vanilla" />
-							{' '}
-							Vanilla
-						</div>
-					</Dropdown.Item>
-					<Dropdown.Item>
-						<div className="flex flex-row">
-							<LoaderIcon className="size-5" loader="fabric" />
-							{' '}
-							Fabric
-						</div>
-					</Dropdown.Item>
-					<Dropdown.Item>
-						<div className="flex flex-row">
-							<LoaderIcon className="size-5" loader="quilt" />
-							{' '}
-							Quilt
-						</div>
-					</Dropdown.Item>
-					<Dropdown.Item>
-						<div className="flex flex-row">
-							<LoaderIcon className="size-5" loader="forge" />
-							{' '}
-							Forge
-						</div>
-					</Dropdown.Item>
+				{/* TODO: fixme */}
+				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e)}>
+					{LOADERS.map(loader => (
+						<Dropdown.Item key={loader}>
+							<div className="flex flex-row">
+								<LoaderIcon className="size-5" loader={loader as GameLoader} />
+								{' '}
+								{upperFirst(loader)}
+							</div>
+						</Dropdown.Item>
+					))}
 				</Dropdown>
 			</Option>
 		</div>

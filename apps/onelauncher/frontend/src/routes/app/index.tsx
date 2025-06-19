@@ -1,4 +1,4 @@
-import type { ClusterModel } from '@/bindings.gen';
+import type { ClusterModel, IngressType } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
@@ -7,7 +7,8 @@ import { bindings } from '@/main';
 import { upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
@@ -25,6 +26,13 @@ hey future sassan here i guess the issue is solved idk
 */
 function RouteComponent() {
 	const result = useCommand('getClusters', bindings.core.getClusters);
+
+	bindings.events.ingress.on((e) => {
+		if (typeof e.ingress_type === 'object')
+			if ('PrepareCluster' in e.ingress_type)
+				// eslint-disable-next-line no-console -- ok
+				console.log(`Preparing cluster: ${e.ingress_type.PrepareCluster.cluster_name} %${e.percent}`);
+	});
 
 	return (
 		<div className="h-full flex flex-col gap-y-4 text-fg-primary">
@@ -149,6 +157,7 @@ function ClusterCard({
 	name,
 	mc_loader,
 	mc_version,
+	icon_url,
 }: ClusterModel) {
 	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
 		enabled: false,
@@ -160,6 +169,15 @@ function ClusterCard({
 
 		if (launch.error)
 			console.error(launch.error.message);
+	};
+
+	const image = () => {
+		const url = icon_url;
+
+		if (url === null)
+			return DefaultInstancePhoto;
+
+		return convertFileSrc(url);
 	};
 
 	return (
@@ -178,7 +196,7 @@ function ClusterCard({
 						>
 							<img
 								className="h-full w-full object-cover"
-								src={DefaultInstancePhoto}
+								src={image()}
 							/>
 						</div>
 					</div>

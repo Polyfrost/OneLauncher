@@ -10,6 +10,15 @@ export const LAUNCHER_IMPORT_TYPES: Array<string> = [
 	// 'Technic'
 ] as const;
 
+export const LOADERS: Array<string> = [
+	'vanilla',
+	'forge',
+	'neoforge',
+	'quilt',
+	'fabric',
+	'legacyfabric',
+] as const;
+
 export function pluralize(n: number, word: string, locale: string = 'en'): string {
 	const pluralRules = new Intl.PluralRules(locale);
 	const pluralForm = pluralRules.select(n);

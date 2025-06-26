@@ -1,7 +1,10 @@
+import { useEffect, type PropsWithChildren } from 'react';
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
+import useAppShellStore from '@/stores/appShellStore';
 import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
+import { AnimatePresence } from 'motion/react';
 
 export const Route = createFileRoute('/app')({
 	component: RouteComponent,
@@ -10,12 +13,8 @@ export const Route = createFileRoute('/app')({
 function RouteComponent() {
 	return (
 		<LoaderSuspense spinner={{ size: 'large' }}>
-			<div className="flex flex-col h-full w-full">
-				<Navbar />
-
-				<Background />
-
-				<div className="h-full w-full pb-12">
+			<AppShell>
+				<div className="h-full w-full">
 					<AnimatedOutlet
 						enter={{
 							initial: { opacity: 0 },
@@ -29,15 +28,49 @@ function RouteComponent() {
 						transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
 					/>
 				</div>
-			</div>
+			</AppShell>
 		</LoaderSuspense>
 	);
 }
 
-function Background() {
+function AppShell({
+	children,
+}: PropsWithChildren) {
+	const router = useRouter();
+	const setPrevLocation = useAppShellStore(state => state.setPrevLocation);
+
+	useEffect(() => {
+		const unsub = router.subscribe("onBeforeNavigate", (e) => {
+			setPrevLocation(e.fromLocation ?? null);
+		});
+
+		return () => unsub();
+	}, [router]);
+
+	return (
+		<div className="flex flex-col h-full w-full">
+			<AnimatePresence>
+				<BackgroundGradient />
+			</AnimatePresence>
+
+			<Navbar />
+
+			<div className="flex flex-col w-full h-full">
+				{children}
+			</div>
+		</div>
+	);
+}
+
+function BackgroundGradient() {
+	const background = useAppShellStore(state => state.background);
+
+	if (background === 'none')
+		return undefined;
+
 	return (
 		<div>
-			{/* Linear gradient: left -> right */}
+			{/* Linear black gradient: left -> right */}
 			<div
 				className="absolute top-0 left-0 w-screen h-screen -z-10"
 				style={{
@@ -46,7 +79,7 @@ function Background() {
 			>
 			</div>
 
-			{/* Radial Gradient */}
+			{/* Radial black gradient */}
 			<div
 				className="absolute top-0 left-0 w-screen h-screen -z-10" style={{
 					background: 'radial-gradient(48.29% 48.29% at 77.29% 50%, rgba(0, 0, 0, 0.00) 0%, rgba(0, 0, 0, 0.64) 100%)',
@@ -54,7 +87,7 @@ function Background() {
 			>
 			</div>
 
-			{/* Linear gradient: bottom -> 200 px up */}
+			{/* Linear black gradient: bottom -> 200 px up */}
 			<div
 				className="absolute bottom-0 left-0 w-screen h-50 -z-10" style={{
 					background: 'linear-gradient(180deg, rgba(17, 23, 28, 0.00) 0%, rgba(0, 0, 0, 0.68) 60%)',

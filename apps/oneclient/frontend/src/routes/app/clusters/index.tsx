@@ -5,5 +5,13 @@ export const Route = createFileRoute('/app/clusters/')({
 });
 
 function RouteComponent() {
-	return <div>Hello "/app/clusters/"!</div>;
+	return (
+		<div>
+			<div>Hello "/app/clusters/"!</div>
+
+			<div className="w-px h-screen bg-red-100/10"></div>
+
+			<div>Hello "/app/clusters/"!</div>
+		</div>
+	);
 }

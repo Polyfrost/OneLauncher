@@ -13,7 +13,7 @@ export function Navbar() {
 	const onClose = () => Window.getCurrent().close();
 
 	return (
-		<nav className="flex flex-row items-center justify-between h-20" data-tauri-drag-region="true">
+		<nav className="flex flex-row items-center justify-between h-20 px-12 z-50" data-tauri-drag-region="true">
 			<div className="flex flex-1 pointer-events-none">
 				<LauncherLogo height={47} width={230} />
 			</div>

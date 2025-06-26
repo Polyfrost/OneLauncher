@@ -15,46 +15,36 @@ export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
 });
 
-const clusters = [
-	{
-		mc_version: '1.8.9',
-	},
-	undefined,
-	{
-		mc_version: '1.21.4',
-	},
-];
-
 function RouteComponent() {
-	// const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
-	// 	'getClusters',
-	// 	bindings.core.getClusters,
-	// 	{
-	// 		select: ((data: Array<ClusterModel>) => {
-	// 			const sorted = data.sort((a, b) => {
-	// 				if (a.last_played && b.last_played)
-	// 					return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
-	// 				else if (a.last_played)
-	// 					return -1; // a has last_played, b does not
-	// 				else if (b.last_played)
-	// 					return 1; // b has last_played, a does not
+	const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
+		'getClusters',
+		bindings.core.getClusters,
+		{
+			select: ((data: Array<ClusterModel>) => {
+				const sorted = data.sort((a, b) => {
+					if (a.last_played && b.last_played)
+						return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
+					else if (a.last_played)
+						return -1; // a has last_played, b does not
+					else if (b.last_played)
+						return 1; // b has last_played, a does not
 
-	// 				const aVersion = a.mc_version.replaceAll('.', '');
-	// 				const bVersion = b.mc_version.replaceAll('.', '');
-	// 				return Number.parseInt(bVersion) - Number.parseInt(aVersion);
-	// 			});
+					const aVersion = a.mc_version.replaceAll('.', '');
+					const bVersion = b.mc_version.replaceAll('.', '');
+					return Number.parseInt(bVersion) - Number.parseInt(aVersion);
+				});
 
-	// 			return [
-	// 				sorted[0],
-	// 				sorted[1],
-	// 				undefined,
-	// 			];
-	// 		}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
-	// 	},
-	// );
+				return [
+					sorted[0],
+					sorted[1],
+					undefined,
+				];
+			}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
+		},
+	);
 
 	return (
-		<div className="flex h-full w-full flex-col justify-center">
+		<div className="flex h-full w-full flex-col justify-center p-12">
 			<motion.div {...animations.slideInLeft} className="flex flex-1 flex-col justify-center items-start gap-2" transition={{ ...transitions.spring, delay: 0.2 }}>
 				<h1 className="text-6xl font-bold text-fg-primary">1.8.9</h1>
 				<p className="text-lg font-medium text-fg-secondary">The Bountiful Update</p>
@@ -65,9 +55,9 @@ function RouteComponent() {
 				</div>
 			</motion.div>
 
-			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] max-h-84 h-[28vh] max-xl:h-52 gap-6">
-				{clusters.map(cluster => (
-					<RecentsCard key={cluster?.mc_version} version={cluster?.mc_version} />
+			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
+				{clusters.map((cluster, index) => (
+					<RecentsCard key={cluster?.folder_name ?? index} version={cluster?.mc_version} />
 				))}
 
 				<Card blur className="flex flex-col justify-center items-center max-w-24">

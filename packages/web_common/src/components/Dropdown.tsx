@@ -36,8 +36,8 @@ const dropdownStyles = tv({
 		triggerCustomIcon: 'w-4 h-4',
 
 		popover: [
-			// width is not full instead it behaves like w-screen for some fucking reason
-			'mt-1 rounded-lg shadow-md',
+			// i'll fix this if i dont forget
+			'mt-1 w-full rounded-lg shadow-md',
 			'bg-component-bg border border-component-border',
 			'data-[entering]:animate-in data-[entering]:fade-in data-[entering]:zoom-in-95',
 			'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95',

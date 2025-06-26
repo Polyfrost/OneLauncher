@@ -2,6 +2,7 @@ use interpulse::api::minecraft::Version;
 use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, prelude::entity};
 use sea_orm::ActiveValue::Set;
 use serde::Serialize;
+use crate::store::{Settings, State};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
@@ -64,6 +65,13 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "openMsaLogin")]
 	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
+
+	// Settings
+	#[taurpc(alias = "readSettings")]
+	async fn read_settings() -> LauncherResult<Settings>;
+
+	#[taurpc(alias = "writeSettings")]
+	async fn write_settings(setting: Settings) -> LauncherResult<()>;
 }
 
 
@@ -261,5 +269,23 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		win.close()?;
 
 		Ok(None)
+	}
+
+	async fn read_settings(self) -> LauncherResult<Settings> {
+		let state = State::get().await?;
+		let settings = state.settings.read().await;
+
+		Ok(settings.clone())
+	}
+
+	async fn write_settings(self, setting: Settings) -> LauncherResult<()> {
+		let state = State::get().await?;
+		let mut settings = state.settings.write().await;
+
+		*settings = setting;
+
+		settings.save().await?;
+
+		Ok(())
 	}
 }

@@ -1,5 +1,6 @@
 import DiscordIcon from '@/assets/logos/discord.svg';
 import SettingsRow from '@/components/SettingsRow';
+import usePopState from '@/hooks/usePopState';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Switch } from '@onelauncher/common/components';
@@ -14,7 +15,16 @@ export const Route = createFileRoute('/app/settings/')({
 });
 
 function RouteComponent() {
-	const _result = useCommand('getGlobalProfile', bindings.core.getGlobalProfile);
+	const result = useCommand('readSettings', bindings.core.readSettings);
+
+	const save = useCommand('writeSettings', () => bindings.core.writeSettings(result.data!), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	usePopState(() => {
+		save.refetch();
+	});
 
 	const openLauncherDir = async () => {
 		const dir = await dataDir();
@@ -32,7 +42,13 @@ function RouteComponent() {
 					icon={<img className="w-6 invert-100" src={DiscordIcon} />}
 					title="Discord RPC"
 				>
-					<Switch />
+					<Switch
+						defaultSelected={result.data?.discord_enabled}
+						onChange={(val) => {
+							if (result.data)
+								result.data.discord_enabled = val;
+						}}
+					/>
 				</SettingsRow>
 
 				<SettingsRow

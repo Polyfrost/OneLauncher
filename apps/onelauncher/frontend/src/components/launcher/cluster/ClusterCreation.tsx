@@ -262,9 +262,9 @@ function ClusterInformation({
 
 			<Option header="Loader">
 				{/* TODO: fixme */}
-				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e)}>
+				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e.toString() as GameLoader)}>
 					{LOADERS.map(loader => (
-						<Dropdown.Item key={loader}>
+						<Dropdown.Item id={loader} key={loader}>
 							<div className="flex flex-row">
 								<LoaderIcon className="size-5" loader={loader as GameLoader} />
 								{' '}

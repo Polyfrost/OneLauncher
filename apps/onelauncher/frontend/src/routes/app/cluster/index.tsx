@@ -37,11 +37,6 @@ function RouteComponent() {
 		subscribed: false,
 	});
 
-	bindings.events.process.on((e) => {
-		// eslint-disable-next-line no-console -- ok
-		console.log(e);
-	});
-
 	function handleEditMode() {
 		if (edit)
 			editing.refetch();
@@ -192,7 +187,12 @@ function Banner({
 				</Show>
 
 				{/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
-				<img src={image()} />
+				<img
+					onError={(e) => {
+						(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+					}}
+					src={image()}
+				/>
 			</div>
 
 			<div className="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">

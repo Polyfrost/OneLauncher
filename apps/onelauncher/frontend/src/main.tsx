@@ -4,8 +4,9 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createTauRPCProxy } from './bindings.gen';
-import { routeTree } from './routeTree.gen';
+import { NotificationProvider } from './hooks/useNotification';
 
+import { routeTree } from './routeTree.gen';
 import './fonts';
 import 'overlayscrollbars/overlayscrollbars.css';
 import './styles/global.css';
@@ -55,7 +56,9 @@ if (rootElement && !rootElement.innerHTML) {
 	root.render(
 		<StrictMode>
 			<QueryClientProvider client={queryClient}>
-				<RouterProvider router={router} />
+				<NotificationProvider>
+					<RouterProvider router={router} />
+				</NotificationProvider>
 			</QueryClientProvider>
 		</StrictMode>,
 	);

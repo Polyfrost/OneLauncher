@@ -1,4 +1,4 @@
-import type { ClusterModel, IngressType } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
@@ -6,10 +6,10 @@ import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { Button, Show, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { Button, Show } from '@onelauncher/common/components';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
+import { PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
 export const Route = createFileRoute('/app/')({
@@ -69,6 +69,9 @@ function Banner() {
 				<img
 					alt="Default Banner"
 					className="top-0 left-0 h-full rounded-xl w-full object-cover"
+					onError={(e) => {
+						(e.target as HTMLImageElement).src = DefaultBanner;
+					}}
 					src={cluster?.icon_url || DefaultBanner}
 				/>
 			</div>
@@ -174,11 +177,14 @@ function ClusterCard({
 	const image = () => {
 		const url = icon_url;
 
-		if (url === null)
+		if (!url)
 			return DefaultInstancePhoto;
 
 		return convertFileSrc(url);
 	};
+
+	// eslint-disable-next-line no-console -- ok
+	console.log(image());
 
 	return (
 		<>
@@ -196,13 +202,18 @@ function ClusterCard({
 						>
 							<img
 								className="h-full w-full object-cover"
+								onError={(e) => {
+									(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+								}}
 								src={image()}
 							/>
 						</div>
 					</div>
 					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
+							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
+								{name}
+							</p>
 							<p className="h-4 text-xs">
 								{mc_loader}
 								{' '}

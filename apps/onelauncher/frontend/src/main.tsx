@@ -6,6 +6,7 @@ import ReactDOM from 'react-dom/client';
 import { createTauRPCProxy } from './bindings.gen';
 import { NotificationProvider } from './hooks/useNotification';
 
+import { SettingsProvider } from './hooks/useSettings';
 import { routeTree } from './routeTree.gen';
 import './fonts';
 import 'overlayscrollbars/overlayscrollbars.css';
@@ -56,9 +57,11 @@ if (rootElement && !rootElement.innerHTML) {
 	root.render(
 		<StrictMode>
 			<QueryClientProvider client={queryClient}>
-				<NotificationProvider>
-					<RouterProvider router={router} />
-				</NotificationProvider>
+				<SettingsProvider>
+					<NotificationProvider>
+						<RouterProvider router={router} />
+					</NotificationProvider>
+				</SettingsProvider>
 			</QueryClientProvider>
 		</StrictMode>,
 	);

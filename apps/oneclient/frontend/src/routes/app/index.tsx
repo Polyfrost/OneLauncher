@@ -9,6 +9,7 @@ import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsGridIcon, Settings04Icon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
+import { MouseParallax } from 'react-just-parallax';
 import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/')({
@@ -80,7 +81,9 @@ function RecentsCard({ version }: RecentsCardProps) {
 		<Card blur={versionInfo === undefined}>
 			{versionInfo && (
 				<div className="flex w-full h-full justify-start items-end px-6 py-3">
-					<GameBackground className="-z-10" name={versionInfo.backgroundName} />
+					<MouseParallax isAbsolutelyPositioned strength={0.005} zIndex={-10}>
+						<GameBackground className="absolute left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
+					</MouseParallax>
 
 					<div
 						className="absolute top-0 left-0 -z-10 w-full h-full"

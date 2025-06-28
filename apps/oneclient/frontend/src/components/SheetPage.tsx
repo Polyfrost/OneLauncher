@@ -1,19 +1,22 @@
-import type { MotionValue } from 'motion/react';
+import type { HTMLMotionProps, MotionValue } from 'motion/react';
 import useAppShellStore from '@/stores/appShellStore';
 import { getLocationName } from '@/utils/locationMapping';
 import { Button } from '@onelauncher/common/components';
-import { Outlet, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeftIcon } from '@untitled-theme/icons-react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import React, { useRef } from 'react';
+import { twMerge } from 'tailwind-merge';
 
 export function SheetPage({
 	headerSmall,
 	headerLarge,
+	children,
 }: {
 	headerSmall: React.ReactNode;
 	headerLarge: React.ReactNode;
+	children?: React.ReactNode;
 }) {
 	const scrollContainer = useRef<HTMLElement>(null);
 	const headerLargeRef = useRef<HTMLDivElement>(null);
@@ -51,23 +54,31 @@ export function SheetPage({
 				<OverlayScrollbarsComponent className="flex flex-col flex-1 mask-t-from-97% pt-4 relative" ref={ref => scrollContainer.current = ref?.osInstance()?.elements().content ?? null}>
 					<div className="flex flex-col mx-12 gap-4">
 						<motion.div className="w-full" ref={headerLargeRef} style={{ opacity: largeOpacity }}>
-							{/* <headerLarge ref={headerLargeRef as React.RefObject<HTMLDivElement>} /> */}
 							{headerLarge}
 						</motion.div>
 
-						<motion.div
-							animate={{ bottom: 0 }}
-							className="relative flex flex-col px-10 py-6 mb-8 bg-page-elevated rounded-2xl"
-							initial={{ bottom: '-80px' }}
-						>
-							<Outlet />
-						</motion.div>
+						{children}
 					</div>
 				</OverlayScrollbarsComponent>
 			</div>
 		</div>
 	);
 }
+
+SheetPage.Content = ({
+	children,
+	className,
+	...rest
+}: Omit<HTMLMotionProps<'div'>, 'animate' | 'initial'>) => (
+	<motion.div
+		animate={{ bottom: 0 }}
+		className={twMerge('relative flex flex-col px-10 py-6 mb-8 bg-page-elevated rounded-2xl', className)}
+		initial={{ bottom: '-80px' }}
+		{...rest}
+	>
+		{children}
+	</motion.div>
+);
 
 function GoBackButton() {
 	const prevLocation = useAppShellStore(state => state.prevLocation);

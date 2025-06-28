@@ -1,4 +1,3 @@
-/* eslint-disable no-console -- ok */
 /* eslint-disable react-hooks/rules-of-hooks -- stfu */
 /* eslint-disable ts/naming-convention -- please shut the fuck up i need to see if its working or not */
 import type { Settings } from '@/bindings.gen';
@@ -56,9 +55,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		if (!settings)
 			return;
 
-		console.log(settings);
-		console.log(settingsToSave);
-
 		writeQuery.refetch();
 
 		setSettingsChanged(false);
@@ -77,7 +73,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
 		useEffect(() => {
 			const didChange = settings?.[name] !== value;
-			console.log(`did change? ${didChange}`);
 
 			if (didChange && settings) {
 				setSettingsToSave(prev => ({

@@ -7,7 +7,7 @@
 import type { AnyRoute } from '@tanstack/react-router';
 import type { MotionProps } from 'motion/react';
 import { Outlet, useMatch, useRouter } from '@tanstack/react-router';
-import { AnimatePresence, motion } from 'motion/react';
+import { motion } from 'motion/react';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 interface TransitionProps {
@@ -21,6 +21,7 @@ interface AnimatedOutletProps {
 	transition?: MotionProps['transition'];
 	from: AnyRoute['id'];
 	clone?: boolean;
+	children?: (children: React.ReactNode) => React.ReactNode;
 }
 
 interface AnimatedOutletWrapperProps {
@@ -82,6 +83,7 @@ export function AnimatedOutlet({
 	transition = { duration: 0.3 },
 	from,
 	clone = true,
+	children,
 }: AnimatedOutletProps) {
 	const [snapshots, setSnapshots] = useState<Array<{ node: HTMLElement; id: number }>>([]);
 	const [pathname, setPathname] = useState<string | null>(null);
@@ -148,7 +150,7 @@ export function AnimatedOutlet({
 					transition={transition}
 				>
 					<div className="w-full h-full">
-						<Outlet />
+						{children?.(<Outlet />) ?? <Outlet />}
 					</div>
 				</motion.div>
 			</div>

@@ -1,14 +1,17 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{self, PathBuf};
 
+use async_zip::base::read::mem::ZipFileReader;
 use interpulse::api::minecraft::VersionInfo;
 use onelauncher_entity::{java_versions, setting_profiles};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::api::ingress::{init_ingress, init_ingress_opt, send_ingress};
 use crate::error::LauncherResult;
-use crate::store::ingress::IngressType;
-use crate::utils::io;
+use crate::store::ingress::{IngressType, SubIngress};
+use crate::store::{Dirs, State};
+use crate::utils::http::{fetch_advanced, fetch_json};
+use crate::utils::io::{self, IOError};
 
 pub mod dao;
 
@@ -16,9 +19,18 @@ pub mod dao;
 #[derive(Debug, thiserror::Error)]
 pub enum JavaError {
 	#[error("failed to parse version '{0}'")]
-	ParseVersion(String, #[source] #[skip] std::num::ParseIntError),
+	ParseVersion(
+		String,
+		#[source]
+		#[skip]
+		std::num::ParseIntError,
+	),
 	#[error("failed to execute java command")]
-	Execute(#[from] #[skip] std::io::Error),
+	Execute(
+		#[from]
+		#[skip]
+		std::io::Error,
+	),
 	#[error("no java installations found")]
 	MissingJava,
 }
@@ -50,6 +62,14 @@ pub struct JavaInfo {
 	pub os_arch: String,
 	pub java_version: String,
 	pub java_vendor: String,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Serialize, Deserialize)]
+pub struct JavaPackage {
+	pub download_url: String,
+	pub name: PathBuf,
+	pub jav_version: Vec<u32>,
 }
 
 const JAVA_INFO_CLASS: &[u8] = include_bytes!("../../../assets/java/JavaInfo.class");
@@ -124,9 +144,10 @@ pub async fn get_recommended_java(
 	if let Some(profile) = profile
 		&& !profile.is_global()
 		&& let Some(java_id) = profile.java_id
-			&& let Ok(Some(java)) = dao::get_java_by_id(java_id).await {
-				return Ok(Some(java));
-			}
+		&& let Ok(Some(java)) = dao::get_java_by_id(java_id).await
+	{
+		return Ok(Some(java));
+	}
 
 	// Check if the version info has a suggested version
 	let Some(supported_ver) = &info.java_version else {
@@ -136,15 +157,8 @@ pub async fn get_recommended_java(
 	dao::get_latest_java_by_major(supported_ver.major_version).await
 }
 
-pub async fn prepare_java(
-	major: u32,
-) -> LauncherResult<java_versions::Model> {
-	let id = init_ingress(
-		IngressType::JavaPrepare,
-		"preparing java",
-		100.0,
-	)
-	.await?;
+pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
+	let id = init_ingress(IngressType::JavaPrepare, "preparing java", 100.0).await?;
 
 	let java = dao::get_latest_java_by_major(major).await?;
 	if let Some(java) = &java {
@@ -206,57 +220,56 @@ pub async fn locate_java() -> LauncherResult<HashMap<PathBuf, JavaInfo>> {
 
 #[cfg(target_os = "windows")]
 fn internal_locate_java() -> Vec<PathBuf> {
-    let mut java_homes = Vec::new();
-    
-    // epic common paths
-    let common_paths = [
-        r"C:\Program Files\Java",
-        r"C:\Program Files (x86)\Java",
-        r"C:\Program Files\OpenJDK",
-        r"C:\Program Files\Eclipse Adoptium",
-        r"C:\Program Files\Zulu",
-        r"C:\Program Files\Amazon Corretto",
-    ];
-    
-    for base_path in common_paths {
-        if let Ok(entries) = std::fs::read_dir(base_path) {
-            for entry in entries.flatten() {
-                if entry.file_type().map_or(false, |ft| ft.is_dir()) {
-                    let java_exe = entry.path().join("bin").join("java.exe");
+	let mut java_homes = Vec::new();
+
+	// epic common paths
+	let common_paths = [
+		r"C:\Program Files\Java",
+		r"C:\Program Files (x86)\Java",
+		r"C:\Program Files\OpenJDK",
+		r"C:\Program Files\Eclipse Adoptium",
+		r"C:\Program Files\Zulu",
+		r"C:\Program Files\Amazon Corretto",
+	];
+
+	for base_path in common_paths {
+		if let Ok(entries) = std::fs::read_dir(base_path) {
+			for entry in entries.flatten() {
+				if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+					let java_exe = entry.path().join("bin").join("java.exe");
 					if java_exe.exists() {
-                        java_homes.push(java_exe);
-                    }
-                }
-            }
-        }
-    }
-    
-    // env vars
-    if let Ok(java_home) = std::env::var("JAVA_HOME") {
-        let path_buf = PathBuf::from(java_home);
-        if path_buf.join("bin").join("java.exe").exists() {
-            java_homes.push(path_buf);
-        }
-    }
+						java_homes.push(java_exe);
+					}
+				}
+			}
+		}
+	}
+
+	// env vars
+	if let Ok(java_home) = std::env::var("JAVA_HOME") {
+		let path_buf = PathBuf::from(java_home);
+		if path_buf.join("bin").join("java.exe").exists() {
+			java_homes.push(path_buf);
+		}
+	}
 
 	if let Ok(path) = std::env::var("PATH") {
-        for path_entry in path.split(';') {
-            let java_exe = PathBuf::from(path_entry).join("java.exe");
-            if java_exe.exists() {
-				
-                if let Some(bin_dir) = java_exe.parent() {
-                    if let Some(java_home) = bin_dir.parent() {
-                        let java_home_path = java_home.to_path_buf();
-                        if !java_homes.contains(&java_home_path) {
-                            java_homes.push(java_home_path);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    java_homes
+		for path_entry in path.split(';') {
+			let java_exe = PathBuf::from(path_entry).join("java.exe");
+			if java_exe.exists() {
+				if let Some(bin_dir) = java_exe.parent() {
+					if let Some(java_home) = bin_dir.parent() {
+						let java_home_path = java_home.to_path_buf();
+						if !java_homes.contains(&java_home_path) {
+							java_homes.push(java_home_path);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	java_homes
 }
 
 #[cfg(target_os = "macos")]
@@ -313,4 +326,101 @@ fn internal_locate_java() -> Vec<PathBuf> {
 	}
 
 	found
+}
+
+pub async fn get_zulu_packages() -> LauncherResult<Vec<JavaPackage>> {
+	fetch_json::<Vec<JavaPackage>>(
+		reqwest::Method::GET,
+		format!(
+			"https://api.azul.com/metadata/v1/zulu/packages/?os={}&arch={}&archive_type=zip&java_package_type=jre&javafx_bundled=false&latest=true&release_status=ga&availability_types=CA&certifications=tck&page=1&page_size=100",
+			std::env::consts::OS,
+			std::env::consts::ARCH
+		).as_str(),
+		None,
+		None,
+	)
+	.await
+}
+
+pub async fn install_java_from_major(version: u32) -> LauncherResult<PathBuf> {
+	let packages = get_zulu_packages().await?;
+
+	let package =  packages.into_iter()
+		.find(|p| p.jav_version.contains(&version))
+		.ok_or_else(|| anyhow::anyhow!(
+			"Could not find a java package for version {}",
+			version
+		))?;
+
+	install_java_package(package).await
+}
+
+pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBuf> {
+	const INGRESS_TOTAL: f64 = 100.0;
+	const INGRESS_TASKS: f64 = 4.0;
+	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
+
+	let version = package.download_url;
+
+	let ingress_id =
+		init_ingress(IngressType::JavaPrepare, "preparing java", INGRESS_TOTAL).await?;
+
+	let file = fetch_advanced(
+		reqwest::Method::GET,
+		&version,
+		None,
+		None,
+		None,
+		Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
+	)
+	.await?;
+
+	let java_dir = Dirs::get_java_dir().await?;
+	let archive = ZipFileReader::new(file.to_vec())
+		.await
+		.map_err(IOError::AsyncZipError)?;
+
+	if let Some(entry) = archive.file().entries().first() {
+		if let Some(dir) = entry
+			.filename()
+			.clone()
+			.into_string()
+			.unwrap()
+			.split('/')
+			.next()
+		{
+			let path = java_dir.join(dir);
+			if path.exists() {
+				io::remove_dir_all(&path).await?;
+			}
+		}
+	}
+
+	io::unzip_bytes(archive.data().to_vec(), &java_dir).await?;
+
+	let mut base_path = java_dir.join(
+		package
+			.name
+			.file_stem()
+			.unwrap_or_default()
+			.to_string_lossy()
+			.to_string(),
+	);
+
+	#[cfg(target_os = "macos")]
+	{
+		base_path = base_path
+			.join(format!("zulu-{java_version}.jre"))
+			.join("Contents")
+			.join("Home")
+			.join("bin")
+			.join("java");
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	{
+		base_path = base_path.join("bin").join(crate::constants::JAVA_BIN);
+	}
+
+	Ok(base_path)
 }

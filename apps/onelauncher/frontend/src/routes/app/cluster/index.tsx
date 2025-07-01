@@ -168,7 +168,7 @@ function Banner({
 	const image = () => {
 		const url = cluster?.icon_url;
 
-		if (url === undefined || url === null)
+		if (!url)
 			return DefaultInstancePhoto;
 
 		return convertFileSrc(url);
@@ -188,6 +188,7 @@ function Banner({
 
 				{/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
 				<img
+					className="h-full w-full"
 					onError={(e) => {
 						(e.target as HTMLImageElement).src = DefaultInstancePhoto;
 					}}

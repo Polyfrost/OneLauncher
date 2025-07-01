@@ -54,10 +54,12 @@ function RouteComponent() {
 				</Modal>
 			</Modal.Trigger>
 
-			<Dropdown label="Select a version">
-				<Dropdown.Item>Slmalr</Dropdown.Item>
-				<Dropdown.Item>Slmalr 2</Dropdown.Item>
-			</Dropdown>
+			<div className="max-w-96">
+				<Dropdown label="Select a version">
+					<Dropdown.Item>Slmalr</Dropdown.Item>
+					<Dropdown.Item>Slmalr 2</Dropdown.Item>
+				</Dropdown>
+			</div>
 
 			<div className="flex gap-2 flex-wrap">
 				<Button onClick={addSimpleNotif}>Add Simple Notification</Button>

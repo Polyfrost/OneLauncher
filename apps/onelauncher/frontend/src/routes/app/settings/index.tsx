@@ -1,13 +1,11 @@
 import DiscordIcon from '@/assets/logos/discord.svg';
 import SettingsRow from '@/components/SettingsRow';
-import usePopState from '@/hooks/usePopState';
-import { bindings } from '@/main';
-import { useCommand } from '@onelauncher/common';
+import useSettings from '@/hooks/useSettings';
 import { Button, Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir } from '@tauri-apps/api/path';
 import { openPath as open } from '@tauri-apps/plugin-opener';
-import { FolderIcon, LinkExternal01Icon, XIcon } from '@untitled-theme/icons-react';
+import { FolderIcon, LinkExternal01Icon } from '@untitled-theme/icons-react';
 import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/')({
@@ -15,22 +13,15 @@ export const Route = createFileRoute('/app/settings/')({
 });
 
 function RouteComponent() {
-	const result = useCommand('readSettings', bindings.core.readSettings);
-
-	const save = useCommand('writeSettings', () => bindings.core.writeSettings(result.data!), {
-		enabled: false,
-		subscribed: false,
-	});
-
-	usePopState(() => {
-		save.refetch();
-	});
+	const { settings, createSetting } = useSettings();
 
 	const openLauncherDir = async () => {
 		const dir = await dataDir();
 
 		open(`${dir}/OneLauncher`);
 	};
+
+	const [discordRpc, setDiscordRpc] = createSetting('discord_enabled', settings?.discord_enabled);
 
 	return (
 		<Sidebar.Page>
@@ -43,15 +34,12 @@ function RouteComponent() {
 					title="Discord RPC"
 				>
 					<Switch
-						defaultSelected={result.data?.discord_enabled}
-						onChange={(val) => {
-							if (result.data)
-								result.data.discord_enabled = val;
-						}}
+						defaultSelected={discordRpc}
+						onChange={val => setDiscordRpc(val)}
 					/>
 				</SettingsRow>
 
-				<SettingsRow
+				{/* <SettingsRow
 					description="Hide the confirmation dialog when closing the launcher."
 					icon={<XIcon />}
 					title="Hide Close Dialog"
@@ -59,7 +47,7 @@ function RouteComponent() {
 					<Switch />
 				</SettingsRow>
 
-				{/* <SettingsRow
+				<SettingsRow
 					description="Sends errors and crash logs using Sentry to help developers fix issues. (// TODO)"
 					icon={<AlertSquareIcon />}
 					title="Error Analytics"

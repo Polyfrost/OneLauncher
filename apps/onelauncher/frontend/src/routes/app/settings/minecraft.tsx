@@ -105,7 +105,7 @@ export function GameSettings(props: GameSettingProps) {
 								settings.mem_max = Number(e.target.value);
 							}}
 							type="number"
-							value={settings.mem_max ?? 2048}
+							value={settings.mem_max?.toString()}
 						/>
 					</div>
 				</div>

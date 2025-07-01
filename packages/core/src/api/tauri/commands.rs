@@ -151,8 +151,8 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			}
 
 			// ok i know this is so wrong but im not a rust guy
-			if let icon_url = request.icon_url {
-				active_model.icon_url = Set(icon_url)
+			if let Some(icon_url) = request.icon_url {
+				api::cluster::dao::set_icon_by_id(id, &icon_url).await?;
 			}
 
 			Ok(active_model)

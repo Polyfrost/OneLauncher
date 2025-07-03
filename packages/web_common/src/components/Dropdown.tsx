@@ -134,7 +134,7 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 						}
 					</Button>
 
-					<AriaPopover className={twMerge(styles.popover(), popoverClassName)}>
+					<AriaPopover className={twMerge(styles.popover(), popoverClassName, 'react-aria-Popover')}>
 						<div className={styles.popoverContentWrapper()}>
 							<AriaListBox className={styles.listBox()}>
 								{children}

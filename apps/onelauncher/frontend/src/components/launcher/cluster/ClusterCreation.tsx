@@ -265,9 +265,8 @@ function ClusterInformation({
 				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e.toString() as GameLoader)}>
 					{LOADERS.map(loader => (
 						<Dropdown.Item id={loader} key={loader}>
-							<div className="flex flex-row">
+							<div className="flex flex-row gap-2">
 								<LoaderIcon className="size-5" loader={loader as GameLoader} />
-								{' '}
 								{upperFirst(loader)}
 							</div>
 						</Dropdown.Item>

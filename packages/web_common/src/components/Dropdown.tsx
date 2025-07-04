@@ -42,7 +42,7 @@ const dropdownStyles = tv({
 			'bg-component-bg border border-component-border',
 			'data-[entering]:animate-in data-[entering]:fade-in data-[entering]:zoom-in-95',
 			'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95',
-			'react-aria-Popover',
+			'w-(--trigger-width)',
 		],
 
 		popoverContentWrapper: 'flex flex-col gap-1',

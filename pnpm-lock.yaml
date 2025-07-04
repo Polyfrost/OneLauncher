@@ -365,6 +365,9 @@ importers:
       motion:
         specifier: ^12.10.5
         version: 12.10.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      overlayscrollbars-react:
+        specifier: ^0.5.6
+        version: 0.5.6(overlayscrollbars@2.11.2)(react@19.1.0)
       react:
         specifier: ^19.0.0
         version: 19.1.0

@@ -44,6 +44,7 @@
 		"vite-plugin-static-copy": "^3.0.0"
 	},
 	"dependencies": {
-		"@untitled-theme/icons-react": "^0.14.0"
+		"@untitled-theme/icons-react": "^0.14.0",
+		"overlayscrollbars-react": "^0.5.6"
 	}
 }

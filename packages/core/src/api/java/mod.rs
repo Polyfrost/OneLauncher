@@ -69,7 +69,7 @@ pub struct JavaInfo {
 pub struct JavaPackage {
 	pub download_url: String,
 	pub name: PathBuf,
-	pub jav_version: Vec<u32>,
+	pub java_version: Vec<u32>,
 }
 
 const JAVA_INFO_CLASS: &[u8] = include_bytes!("../../../assets/java/JavaInfo.class");
@@ -346,7 +346,7 @@ pub async fn install_java_from_major(version: u32) -> LauncherResult<PathBuf> {
 	let packages = get_zulu_packages().await?;
 
 	let package =  packages.into_iter()
-		.find(|p| p.jav_version.contains(&version))
+		.find(|p| p.java_version.contains(&version))
 		.ok_or_else(|| anyhow::anyhow!(
 			"Could not find a java package for version {}",
 			version

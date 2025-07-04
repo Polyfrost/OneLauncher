@@ -59,7 +59,7 @@ export function GameSettings(props: GameSettingProps) {
 				title="Force Fullscreen"
 			>
 				<Switch
-					defaultSelected={settings.force_fullscreen ?? false}
+					defaultSelected={settings.force_fullscreen!}
 					onChange={(val) => {
 						settings.force_fullscreen = val;
 					}}
@@ -101,11 +101,11 @@ export function GameSettings(props: GameSettingProps) {
 					<div className="flex flex-row items-center gap-x-2">
 						<TextField
 							className="text-center"
+							defaultValue={settings.mem_max?.toString()}
 							onChange={(e) => {
 								settings.mem_max = Number(e.target.value);
 							}}
 							type="number"
-							value={settings.mem_max?.toString()}
 						/>
 					</div>
 				</div>

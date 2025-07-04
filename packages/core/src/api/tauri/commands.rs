@@ -1,5 +1,5 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, prelude::entity};
+use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, prelude::entity, resolution::Resolution};
 use sea_orm::ActiveValue::Set;
 use serde::Serialize;
 use crate::store::{Settings, State};
@@ -38,6 +38,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getGlobalProfile")]
 	async fn get_global_profile() -> SettingsProfile;
+
+	#[taurpc(alias = "updateClusterProfile")]
+	async fn update_cluster_profile(name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile>;
 
 	// Game Metadata
 	#[taurpc(alias = "getGameVersions")]
@@ -90,6 +93,17 @@ pub struct ClusterUpdate {
 	icon_url: Option<Icon>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
+pub struct ProfileUpdate {
+	pub res: Option<Resolution>,
+	pub force_fullscreen: Option<bool>,
+	pub mem_max: Option<u32>,
+	pub launch_args: Option<String>,
+	pub launch_env: Option<String>,
+	pub hook_pre: Option<String>,
+	pub hook_wrapper: Option<String>,
+	pub hook_post: Option<String>,
+}
 
 #[taurpc::ipc_type]
 pub struct TauriLauncherApiImpl;
@@ -117,6 +131,13 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			active_model.force_fullscreen = Set(Some(false));
 
 			active_model.mem_max = Set(Some(2048));
+
+			Ok(active_model)
+		})
+		.await?;
+
+		api::cluster::dao::update_cluster_by_id(cluster.id, |mut active_model: ClusterPartial| async move {
+			active_model.setting_profile_name = Set(Some(options.name.clone()));
 
 			Ok(active_model)
 		})
@@ -173,6 +194,47 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
 	}
 
+	// please kill this with fire
+	async fn update_cluster_profile(self, name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile> {
+		let profile = api::setting_profiles::dao::update_profile_by_name(&name, |mut active_model: SettingsProfilePartial| async move {
+			if let Some(res) = profile.res {
+				active_model.res = Set(Some(res));
+			}
+
+			if let Some(force_fullscreen) = profile.force_fullscreen {
+				active_model.force_fullscreen = Set(Some(force_fullscreen));
+			}
+
+			if let Some(mem_max) = profile.mem_max {
+				active_model.mem_max = Set(Some(mem_max));
+			}
+
+			if let Some(launch_args) = profile.launch_args {
+				active_model.launch_args = Set(Some(launch_args));
+			}
+
+			if let Some(launch_env) = profile.launch_env {
+				active_model.launch_env = Set(Some(launch_env));
+			}
+
+			if let Some(hook_pre) = profile.hook_pre {
+				active_model.hook_pre = Set(Some(hook_pre));
+			}
+
+			if let Some(hook_wrapper) = profile.hook_wrapper {
+				active_model.hook_wrapper = Set(Some(hook_wrapper));
+			}
+
+			if let Some(hook_post) = profile.hook_post {
+				active_model.hook_post = Set(Some(hook_post));
+			}
+
+			Ok(active_model)
+		})
+		.await?;
+
+		Ok(profile)
+	}
 
 	// Game Metadata
 	async fn get_loaders_for_version(self, mc_version: String) -> LauncherResult<Vec<GameLoader>> {

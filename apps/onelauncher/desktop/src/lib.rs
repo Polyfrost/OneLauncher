@@ -54,7 +54,8 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.export_config(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
-				.formatter(ext::specta::formatter),
+				.formatter(ext::specta::formatter)
+				.header("// @ts-nocheck \n"),
 		)
 		.merge(api::commands::OneLauncherApiImpl.into_handler())
 		.merge(onelauncher_core::api::tauri::TauriLauncherApiImpl.into_handler())

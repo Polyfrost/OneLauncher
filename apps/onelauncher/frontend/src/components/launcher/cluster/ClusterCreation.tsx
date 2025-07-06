@@ -1,4 +1,4 @@
-import type { GameLoader, IngressPayload, Version, VersionType } from '@/bindings.gen';
+import type { GameLoader, Version, VersionType } from '@/bindings.gen';
 import type { JSX, RefAttributes } from 'react';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultClusterBanner from '@/assets/images/default_instance_cover.jpg';

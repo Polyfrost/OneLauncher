@@ -1,4 +1,3 @@
-import type { ClassNameString } from '@onelauncher/common';
 import type { DialogProps } from 'react-aria-components';
 import {
 	Dialog as AriaDialog,
@@ -7,7 +6,7 @@ import {
 	ModalOverlay,
 } from 'react-aria-components';
 
-interface ModalProps extends DialogProps, ClassNameString { }
+interface ModalProps extends DialogProps { }
 
 function Modal({ className, ...props }: ModalProps) {
 	return (

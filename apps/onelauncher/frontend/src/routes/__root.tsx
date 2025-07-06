@@ -1,4 +1,3 @@
-import type { HookReturn } from '@/hooks/useNotification';
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import NotificationToasts from '@/components/overlay/NotificationToasts';

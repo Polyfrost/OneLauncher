@@ -9,7 +9,6 @@ import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { dataDir } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';

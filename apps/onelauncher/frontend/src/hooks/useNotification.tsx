@@ -1,8 +1,7 @@
-import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { ReactNode } from 'react';
 import { bindings } from '@/main';
 import { randomString } from '@/utils/index';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 export interface NotificationData {
 	title: string;

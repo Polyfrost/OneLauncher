@@ -1,9 +1,7 @@
-import type { ProfileUpdate } from '@/bindings.gen';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import usePopState from '@/hooks/usePopState';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { GameSettings, ProcessSettings } from '../settings/minecraft';
 import Sidebar from '../settings/route';

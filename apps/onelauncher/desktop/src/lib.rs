@@ -116,11 +116,16 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 		.get_webview_window("main")
 		.ok_or_else(|| anyhow::anyhow!("no window called main was found"))?;
 
-	// tokio::task::spawn(async move {
-	// 	// let state = State::get().await.expect("failed to get state");
-	// 	// let settings = state.settings.read().await;
-	// 	// win.set_decorations(settings.);
-	// });
+	// Initialize window decorations based on settings
+	let win_clone = win.clone();
+	tokio::task::spawn(async move {
+		if let Ok(state) = State::get().await {
+			let settings = state.settings.read().await;
+			// native_window_frame=true means use native decorations
+			// native_window_frame=false means use custom frame (no decorations)
+			win_clone.set_decorations(settings.native_window_frame).ok();
+		}
+	});
 
 	win.show()?;
 

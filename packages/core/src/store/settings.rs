@@ -15,6 +15,7 @@ pub struct Settings {
 	pub discord_enabled: bool,
 	pub max_concurrent_requests: usize,
 	pub settings_version: u32,
+	pub native_window_frame: bool
 }
 
 impl Default for Settings {
@@ -26,6 +27,7 @@ impl Default for Settings {
 			enable_gamemode: false,
 			max_concurrent_requests: 25,
 			settings_version: 1,
+			native_window_frame: false,
 		}
 	}
 }

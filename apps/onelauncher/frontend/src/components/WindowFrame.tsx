@@ -1,6 +1,7 @@
 import type { ComponentType, JSX } from 'react';
 import type { PressEvent } from 'react-aria-components';
-import { Button } from '@onelauncher/common/components';
+import useSettings from '@/hooks/useSettings';
+import { Button, Show } from '@onelauncher/common/components';
 import { Window } from '@tauri-apps/api/window';
 import { ChevronLeftIcon, Maximize02Icon, Minimize01Icon, MinusIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
@@ -8,6 +9,7 @@ import { twMerge } from 'tailwind-merge';
 
 function WindowFrame() {
 	const [isMaximized, setIsMaximized] = useState(false);
+	const { settings } = useSettings();
 
 	const back = () => history.back();
 	const minimize = () => Window.getCurrent().minimize();
@@ -27,17 +29,19 @@ function WindowFrame() {
 	}, []);
 
 	return (
-		<div className="z-[99999] w-screen flex flex-row items-center justify-between gap-0.5 bg-window-frame" data-tauri-drag-region>
-			<div className="flex-1 flex flex-row items-center pointer-events-none">
-				<TitlebarButton icon={ChevronLeftIcon} onClick={back} />
-			</div>
+		<Show when={settings?.native_window_frame === false}>
+			<div className="z-[99999] w-screen flex flex-row items-center justify-between gap-0.5 bg-window-frame" data-tauri-drag-region>
+				<div className="flex-1 flex flex-row items-center pointer-events-none">
+					<TitlebarButton icon={ChevronLeftIcon} onClick={back} />
+				</div>
 
-			<div className="flex-1 flex flex-row items-center justify-end pointer-events-none">
-				<TitlebarButton icon={MinusIcon} onClick={minimize} />
-				<TitlebarButton icon={isMaximized ? Minimize01Icon : Maximize02Icon} onClick={toggleMaximize} />
-				<TitlebarButton danger icon={XCloseIcon} onClick={quit} />
+				<div className="flex-1 flex flex-row items-center justify-end pointer-events-none">
+					<TitlebarButton icon={MinusIcon} onClick={minimize} />
+					<TitlebarButton icon={isMaximized ? Minimize01Icon : Maximize02Icon} onClick={toggleMaximize} />
+					<TitlebarButton danger icon={XCloseIcon} onClick={quit} />
+				</div>
 			</div>
-		</div>
+		</Show>
 	);
 }
 

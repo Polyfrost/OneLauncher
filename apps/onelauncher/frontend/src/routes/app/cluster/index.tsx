@@ -4,6 +4,7 @@ import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import LoaderIcon from '@/components/launcher/LoaderIcon';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
+import useNotifications from '@/hooks/useNotification';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
@@ -129,6 +130,8 @@ function Banner({
 	setNewName,
 	setNewCover,
 }: BannerProps) {
+	const { set, list } = useNotifications();
+
 	async function launchFilePicker() {
 		const selected = await open({
 			multiple: false,
@@ -153,8 +156,17 @@ function Banner({
 	const handleLaunch = () => {
 		launch.refetch();
 
-		if (launch.error)
-			console.error(launch.error.message);
+		// eslint-disable-next-line no-console -- debug
+		console.log(list);
+
+		if (launch.isError)
+			set('launch_cluster', {
+				title: 'Failed to launch cluster',
+				message: launch.error.message,
+			});
+
+		// eslint-disable-next-line no-console -- debug
+		console.log(list);
 	};
 
 	function updateName(name: string) {

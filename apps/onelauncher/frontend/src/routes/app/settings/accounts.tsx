@@ -21,6 +21,11 @@ function RouteComponent() {
 	const { data: usersData, isLoading: usersLoading } = useCommand('getUsers', bindings.core.getUsers);
 	const { data: defaultUserData, isLoading: defaultUserLoading } = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
+	const addAccount = useCommand('openMsaLogin', bindings.core.openMsaLogin, {
+		enabled: false,
+		subscribed: false,
+	});
+
 	if (usersLoading || defaultUserLoading)
 		return (
 			<Sidebar.Page>
@@ -47,7 +52,7 @@ function RouteComponent() {
 			</ScrollableContainer>
 
 			<div className="mt-auto pt-2 flex flex-row items-end justify-end">
-				<Button color="primary">
+				<Button color="primary" onClick={() => addAccount.refetch()}>
 					<UserPlus02Icon />
 					{' '}
 					Add Account

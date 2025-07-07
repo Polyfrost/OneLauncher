@@ -1,8 +1,8 @@
 import type { ToOptions } from '@tanstack/react-router';
-import { bindings } from '@/main';
 import useNotifications from '@/hooks/useNotification';
+import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button, Menu } from '@onelauncher/common/components';
+import { Button, Menu, Popup } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
 import { MenuTrigger } from 'react-aria-components';
@@ -40,7 +40,7 @@ function Navbar() {
 
 				{/* Notification Manager Button */}
 				<div className="relative">
-					<MenuTrigger>
+					<Popup.Trigger>
 						<Button className="relative" color="ghost" size="icon">
 							<Bell01Icon />
 							{notificationCount > 0 && (
@@ -49,22 +49,21 @@ function Navbar() {
 								</span>
 							)}
 						</Button>
-
-						<Menu.Popover placement="bottom right">
+						<Popup>
 							<NotificationPopup />
-						</Menu.Popover>
-					</MenuTrigger>
+						</Popup>
+					</Popup.Trigger>
 				</div>
 
-				<MenuTrigger>
+				<Popup.Trigger>
 					<Button className="p-0" color="ghost" size="icon">
 						<PlayerHead className="h-full rounded-md hover:opacity-70" uuid={defaultUser.data?.id} />
 					</Button>
 
-					<Menu.Popover>
+					<Popup>
 						<AccountPopup />
-					</Menu.Popover>
-				</MenuTrigger>
+					</Popup>
+				</Popup.Trigger>
 			</div>
 		</div>
 	);

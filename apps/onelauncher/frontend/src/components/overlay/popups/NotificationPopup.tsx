@@ -1,7 +1,8 @@
 import type { NotificationData } from '@/hooks/useNotification';
 import useNotifications from '@/hooks/useNotification';
-import { Button, Menu } from '@onelauncher/common/components';
+import { Button, Menu, Popup } from '@onelauncher/common/components';
 import { XIcon } from '@untitled-theme/icons-react';
+import { Popover } from 'react-aria-components';
 
 interface NotificationItemProps {
 	id: string;
@@ -53,35 +54,29 @@ function NotificationPopup() {
 
 	if (notificationEntries.length === 0)
 		return (
-			<Menu className="min-w-80 max-w-96">
-				<Menu.Item>
-					<div className="p-4 text-center">
-						<p className="text-fg-secondary text-sm">No notifications</p>
-					</div>
-				</Menu.Item>
-			</Menu>
+			<div className="p-3 text-center">
+				<p className="text-fg-secondary text-sm">No notifications</p>
+			</div>
 		);
 
 	return (
-		<Menu className="min-w-80 max-w-96 max-h-96 overflow-y-auto">
-			<Menu.Item>
-				<div className="flex items-center justify-between p-3 border-b border-component-border">
-					<h3 className="font-semibold text-fg-primary">Notifications</h3>
-					{notificationEntries.length > 0 && (
-						<Button
-							className="text-xs"
-							color="ghost"
-							onClick={clear}
-							size="normal"
-						>
-							Clear All
-						</Button>
-					)}
-				</div>
-			</Menu.Item>
+		<Popup className="min-w-80 w-full max-w-96 max-h-96 overflow-y-auto">
+			<div className="flex items-center justify-between border-b border-component-border">
+				<h3 className="font-semibold text-fg-primary">Notifications</h3>
+				{notificationEntries.length > 0 && (
+					<Button
+						className="text-xs"
+						color="ghost"
+						onClick={clear}
+						size="normal"
+					>
+						Clear All
+					</Button>
+				)}
+			</div>
 
 			{notificationEntries.map(([id, data]) => (
-				<Menu.Item key={id}>
+				<div key={id}>
 					<div className="p-2">
 						<NotificationItem
 							data={data}
@@ -89,9 +84,9 @@ function NotificationPopup() {
 							onRemove={removeNotification}
 						/>
 					</div>
-				</Menu.Item>
+				</div>
 			))}
-		</Menu>
+		</Popup>
 	);
 }
 

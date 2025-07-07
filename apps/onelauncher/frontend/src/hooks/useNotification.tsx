@@ -43,13 +43,8 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
 		}));
 	}).then(u => u());
 
-	const ctx = {
-		notifications,
-		setNotifications,
-	};
-
 	return (
-		<NotificationContext.Provider value={ctx}>
+		<NotificationContext.Provider value={{ notifications, setNotifications }}>
 			{children}
 		</NotificationContext.Provider>
 	);

@@ -7,9 +7,8 @@ import Modal from '@/components/overlay/Modal';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import { bindings } from '@/main';
 import { LAUNCHER_IMPORT_TYPES, LOADERS, upperFirst } from '@/utils';
-import { useCommand } from '@onelauncher/common';
+import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, Dropdown, SelectList, TextField } from '@onelauncher/common/components';
-import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRightIcon, PlusIcon, SearchMdIcon, Server01Icon, TextInputIcon, User03Icon } from '@untitled-theme/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Checkbox } from 'react-aria-components';
@@ -34,29 +33,22 @@ export function NewClusterCreate() {
 		clusterVersion: '',
 	});
 
-	const create = useCommand('createCluster', () => bindings.core.createCluster({
+	const create = useCommandMut(() => bindings.core.createCluster({
 		icon: DefaultClusterBanner,
 		mc_loader: formData.loader as GameLoader,
 		mc_loader_version: null,
 		mc_version: formData.clusterVersion,
 		name: formData.clusterName,
-	}), {
-		enabled: false,
-		subscribed: false,
-	});
-
-	const queryClient = useQueryClient();
+	}));
 
 	function handleCreate() {
 		if (!isLastInputStep)
 			return;
 
-		create.refetch();
+		create.mutate();
 
 		if (create.isError)
 			console.error(create.error.message);
-
-		queryClient.invalidateQueries({ queryKey: ['getClusters'], exact: true });
 	}
 
 	const handleNext = useCallback(async () => {

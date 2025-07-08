@@ -54,13 +54,13 @@ function NotificationPopup() {
 
 	if (notificationEntries.length === 0)
 		return (
-			<div className="p-3 text-center">
+			<div className="p-3 w-80 text-center">
 				<p className="text-fg-secondary text-sm">No notifications</p>
 			</div>
 		);
 
 	return (
-		<Popup className="min-w-80 w-full max-w-96 max-h-96 overflow-y-auto">
+		<Popup className="min-w-80 w-80 max-w-96 max-h-96 overflow-y-auto">
 			<div className="flex items-center justify-between border-b border-component-border">
 				<h3 className="font-semibold text-fg-primary">Notifications</h3>
 				{notificationEntries.length > 0 && (

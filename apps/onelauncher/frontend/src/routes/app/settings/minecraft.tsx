@@ -35,7 +35,7 @@ function RouteComponent() {
 
 					{/* <LauncherSettings /> */}
 
-					<ProcessSettings />
+					<ProcessSettings settings={result.data!.global_game_settings} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>
@@ -129,7 +129,13 @@ export function GameSettings(props: GameSettingProps) {
 // 	);
 // }
 
-export function ProcessSettings() {
+interface ProcessSettingsProps {
+	settings: SettingProfileModel;
+}
+
+export function ProcessSettings(props: ProcessSettingsProps) {
+	const { settings } = props;
+
 	return (
 		<>
 			<SettingsRow.Header>Process</SettingsRow.Header>
@@ -140,6 +146,10 @@ export function ProcessSettings() {
 				title="Pre-Launch Command"
 			>
 				<TextField
+					defaultValue={settings.hook_pre || ''}
+					onChange={(e) => {
+						settings.hook_pre = e.target.value || null;
+					}}
 					placeholder="echo 'Game started'"
 				/>
 			</SettingsRow>
@@ -150,6 +160,10 @@ export function ProcessSettings() {
 				title="Wrapper Command"
 			>
 				<TextField
+					defaultValue={settings.hook_wrapper || ''}
+					onChange={(e) => {
+						settings.hook_wrapper = e.target.value || null;
+					}}
 					placeholder="gamescope"
 				/>
 			</SettingsRow>
@@ -160,6 +174,10 @@ export function ProcessSettings() {
 				title="Post-Exit Command"
 			>
 				<TextField
+					defaultValue={settings.hook_post || ''}
+					onChange={(e) => {
+						settings.hook_post = e.target.value || null;
+					}}
 					placeholder="echo 'Game exited'"
 				/>
 			</SettingsRow>

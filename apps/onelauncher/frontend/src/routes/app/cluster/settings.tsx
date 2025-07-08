@@ -38,7 +38,7 @@ function RouteComponent() {
 
 					<GameSettings key={_result.data?.name} settings={_result.data!} />
 
-					<ProcessSettings />
+					<ProcessSettings key={_result.data?.name} settings={_result.data!} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>

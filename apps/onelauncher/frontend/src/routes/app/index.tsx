@@ -28,20 +28,6 @@ hey future sassan here i guess the issue is solved idk
 function RouteComponent() {
 	const result = useCommand('getClusters', bindings.core.getClusters);
 
-	useEffect(() => {
-		let unlisten: (() => void) | undefined;
-		(async () => {
-			unlisten = await bindings.events.ingress.on((e) => {
-				if (typeof e.ingress_type === 'object')
-					if ('PrepareCluster' in e.ingress_type)
-						// eslint-disable-next-line no-console -- ok
-						console.log(`Preparing cluster: ${e.ingress_type.PrepareCluster.cluster_name} %${e.percent}`);
-			});
-		})();
-
-		return () => unlisten?.();
-	}, []);
-
 	return (
 		<div className="h-full flex flex-col gap-y-4 text-fg-primary">
 			<Banner />

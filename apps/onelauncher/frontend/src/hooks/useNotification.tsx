@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { bindings } from '@/main';
 import { randomString } from '@/utils/index';
-import { createContext, useContext, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useMemo, useState } from 'react';
 
 export interface NotificationData {
 	title: string;
@@ -24,39 +24,71 @@ interface NotificationContextValue {
 	setNotifications: React.Dispatch<React.SetStateAction<Notifications>>;
 }
 
-const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
+const defaultContextValue: NotificationContextValue = {
+	notifications: {},
+	setNotifications: () => {},
+};
+
+const NotificationContext = createContext<NotificationContextValue>(defaultContextValue);
 
 interface NotificationProviderProps {
 	children: ReactNode;
 }
 
-export function NotificationProvider({ children }: NotificationProviderProps) {
+export const NotificationProvider = memo(({ children }: NotificationProviderProps) => {
 	const [notifications, setNotifications] = useState<Notifications>({});
 
-	bindings.events.ingress.on((e) => {
-		setNotifications(prev => ({
-			...prev,
-			[e.id]: {
-				title: `${e.ingress_type}`,
-				message: e.message,
-			},
-		}));
-	}).then(u => u());
+	useEffect(() => {
+		let cleanup: (() => void) | undefined;
+
+		bindings.events.ingress.on((e) => {
+			setNotifications(prev => ({
+				...prev,
+				[e.id]: {
+					title: `${e.ingress_type}`,
+					message: e.message,
+				},
+			}));
+		}).then((u) => {
+			cleanup = u;
+		}).catch(console.error);
+
+		return () => {
+			cleanup?.();
+		};
+	}, []);
+
+	const contextValue = useMemo(() => ({
+		notifications,
+		setNotifications,
+	}), [notifications, setNotifications]);
 
 	return (
-		<NotificationContext.Provider value={{ notifications, setNotifications }}>
+		<NotificationContext.Provider value={contextValue}>
 			{children}
 		</NotificationContext.Provider>
 	);
-}
+});
 
 function useNotifications(): HookReturn {
 	const context = useContext(NotificationContext);
-
-	if (!context)
-		throw new Error('useNotifications must be used within a NotificationProvider');
-
 	const { notifications, setNotifications } = context;
+
+	const isDefaultContext = setNotifications === defaultContextValue.setNotifications;
+
+	if (isDefaultContext) {
+		if (import.meta.env.DEV) {
+			console.warn('useNotifications: Using default context (likely due to HMR or missing provider)');
+			return {
+				list: {},
+				set: () => {},
+				create: () => {},
+				remove: () => {},
+				clear: () => {},
+			};
+		}
+		throw new Error('useNotifications must be used within a NotificationProvider');
+	}
 
 	const ctx: HookReturn = {
 		list: notifications,

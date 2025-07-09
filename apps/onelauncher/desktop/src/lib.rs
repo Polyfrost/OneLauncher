@@ -75,6 +75,12 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.menu(tauri::menu::Menu::new)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
+			let launcher_path = app.path().data_dir().ok().expect("ok").join("OneLauncher");
+
+			app.asset_protocol_scope()
+				.allow_directory(&launcher_path, true)
+				.unwrap();
+
 			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});

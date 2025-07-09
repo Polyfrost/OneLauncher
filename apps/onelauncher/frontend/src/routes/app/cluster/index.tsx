@@ -37,10 +37,12 @@ function RouteComponent() {
 		subscribed: false,
 	});
 
-	function handleEditMode() {
-		if (edit)
-			editing.refetch();
-		cluster.refetch();
+	async function handleEditMode() {
+		if (edit) {
+			await editing.refetch();
+
+			await cluster.refetch();
+		}
 
 		setEdit(!edit);
 	}
@@ -127,10 +129,11 @@ interface BannerProps {
 function Banner({
 	cluster,
 	editMode,
+	newCover,
 	setNewName,
 	setNewCover,
 }: BannerProps) {
-	const { set, list } = useNotifications();
+	const { set } = useNotifications();
 
 	async function launchFilePicker() {
 		const selected = await open({
@@ -156,17 +159,11 @@ function Banner({
 	const handleLaunch = () => {
 		launch.refetch();
 
-		// eslint-disable-next-line no-console -- debug
-		console.log(list);
-
 		if (launch.isError)
 			set('launch_cluster', {
 				title: 'Failed to launch cluster',
 				message: launch.error.message,
 			});
-
-		// eslint-disable-next-line no-console -- debug
-		console.log(list);
 	};
 
 	function updateName(name: string) {
@@ -177,11 +174,23 @@ function Banner({
 	}
 
 	const image = () => {
+		if (editMode && newCover && newCover !== cluster?.icon_url)
+			if (newCover.includes('\\') || newCover.includes('/')) {
+				console.warn('Using preview image:', newCover);
+				return convertFileSrc(newCover);
+			}
+
 		const url = cluster?.icon_url;
 
-		if (!url)
-			return DefaultInstancePhoto;
+		// eslint-disable-next-line no-console -- ok
+		console.log(url);
 
+		if (!url) {
+			console.warn('No icon URL, using default');
+			return DefaultInstancePhoto;
+		}
+
+		console.warn('Using cached icon:', url);
 		return convertFileSrc(url);
 	};
 
@@ -201,7 +210,8 @@ function Banner({
 				<img
 					className="h-full w-full"
 					onError={(e) => {
-						(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+						console.error('Failed to load cluster icon:', image(), e);
+						// (e.target as HTMLImageElement).src = DefaultInstancePhoto;
 					}}
 					src={image()}
 				/>

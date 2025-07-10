@@ -31,6 +31,12 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "updateClusterById")]
 	async fn update_cluster_by_id(id: ClusterId, request: ClusterUpdate) -> LauncherResult<()>;
 
+	#[taurpc(alias = "getScreenshots")]
+	async fn get_screenshots(id: ClusterId) -> LauncherResult<Vec<String>>;
+
+	#[taurpc(alias = "getWorlds")]
+	async fn get_worlds(id: ClusterId) -> LauncherResult<Vec<String>>;
+
 
 	// Setting Profiles
 	#[taurpc(alias = "getProfileOrDefault")]
@@ -184,6 +190,19 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	 	Ok(())
 	}
 
+	async fn get_screenshots(self, id: ClusterId) -> LauncherResult<Vec<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_screenshots(&cluster).await
+	}
+
+	async fn get_worlds(self, id: ClusterId) -> LauncherResult<Vec<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_worlds(&cluster).await
+	}
 
 	// Setting Profiles
 	async fn get_global_profile(self) -> SettingsProfile {

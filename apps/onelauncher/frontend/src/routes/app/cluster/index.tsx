@@ -12,7 +12,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 import Sidebar from '../settings/route';
 
@@ -38,14 +38,36 @@ function RouteComponent() {
 	});
 
 	async function handleEditMode() {
-		if (edit) {
+		if (edit)
 			await editing.refetch();
-
-			await cluster.refetch();
-		}
 
 		setEdit(!edit);
 	}
+
+	const { set, remove } = useNotifications();
+
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		(async () => {
+			unlisten = await bindings.events.ingress.on((e) => {
+				if (typeof e.ingress_type === 'object')
+					if ('PrepareCluster' in e.ingress_type) {
+						const { cluster_name } = e.ingress_type.PrepareCluster;
+						let cid = `cluster-${cluster_name}`;
+
+						set(cid, {
+							title: 'Preparing Cluster',
+							message: e.message,
+						});
+
+						if (e.percent === e.total)
+							remove(cid);
+					}
+			});
+		})();
+
+		return () => unlisten?.();
+	}, [set, remove]);
 
 	return (
 		<Sidebar.Page>
@@ -182,15 +204,11 @@ function Banner({
 
 		const url = cluster?.icon_url;
 
-		// eslint-disable-next-line no-console -- ok
-		console.log(url);
-
 		if (!url) {
 			console.warn('No icon URL, using default');
 			return DefaultInstancePhoto;
 		}
 
-		console.warn('Using cached icon:', url);
 		return convertFileSrc(url);
 	};
 
@@ -211,7 +229,7 @@ function Banner({
 					className="h-full w-full"
 					onError={(e) => {
 						console.error('Failed to load cluster icon:', image(), e);
-						// (e.target as HTMLImageElement).src = DefaultInstancePhoto;
+						(e.target as HTMLImageElement).src = DefaultInstancePhoto;
 					}}
 					src={image()}
 				/>

@@ -43,7 +43,7 @@ function RouteComponent() {
 
 		setEdit(!edit);
 	}
-
+	/*
 	const { set, remove } = useNotifications();
 
 	useEffect(() => {
@@ -55,20 +55,23 @@ function RouteComponent() {
 						const { cluster_name } = e.ingress_type.PrepareCluster;
 						let cid = `cluster-${cluster_name}`;
 
+						if (e.percent === null) {
+							remove(cid);
+							return;
+						}
+
 						set(cid, {
 							title: 'Preparing Cluster',
 							message: e.message,
+							fraction: e.percent,
 						});
-
-						if (e.percent === e.total)
-							remove(cid);
 					}
 			});
 		})();
 
 		return () => unlisten?.();
 	}, [set, remove]);
-
+*/
 	return (
 		<Sidebar.Page>
 			<h1>Overview</h1>

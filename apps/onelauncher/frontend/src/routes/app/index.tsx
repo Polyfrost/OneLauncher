@@ -155,6 +155,7 @@ function ClusterCard({
 	mc_loader,
 	mc_version,
 	icon_url,
+	stage,
 }: ClusterModel) {
 	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
 		enabled: false,
@@ -183,9 +184,11 @@ function ClusterCard({
 	return (
 		<>
 			<Link
+				disabled={stage === 'downloading'}
 				search={{
 					id,
-				}} to="/app/cluster"
+				}}
+				to="/app/cluster"
 			>
 				<div
 					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"

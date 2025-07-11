@@ -179,9 +179,17 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 		}
 	}
 
-	tracing::warn!("no java installations found on the system, please install java manually or use the launcher to download it");
+	tracing::warn!("no java installations found on the system, attempting to download java {}", major);
 
-	// TODO: java runtime not found - should prob download
+	let java_path = install_java_from_major(major).await?;
+	let java_info = check_java_runtime(&java_path, false).await?;
+
+	dao::insert_java(java_path, java_info).await?;
+
+	if let Some(java) = dao::get_latest_java_by_major(major).await? {
+		send_ingress(&id, 100.0).await?;
+		return Ok(java);
+	}
 
 	Err(JavaError::MissingJava.into())
 }
@@ -409,6 +417,7 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 
 	#[cfg(target_os = "macos")]
 	{
+		let java_version = package.java_version.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
 		base_path = base_path
 			.join(format!("zulu-{java_version}.jre"))
 			.join("Contents")

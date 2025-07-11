@@ -26,7 +26,7 @@ interface NotificationContextValue {
 
 const defaultContextValue: NotificationContextValue = {
 	notifications: {},
-	setNotifications: () => {},
+	setNotifications: () => { },
 };
 
 const NotificationContext = createContext<NotificationContextValue>(defaultContextValue);
@@ -42,13 +42,29 @@ export const NotificationProvider = memo(({ children }: NotificationProviderProp
 		let cleanup: (() => void) | undefined;
 
 		bindings.events.ingress.on((e) => {
-			setNotifications(prev => ({
-				...prev,
-				[e.id]: {
-					title: `${e.ingress_type}`,
-					message: e.message,
-				},
-			}));
+			if (typeof e.ingress_type === 'object') {
+				if ('PrepareCluster' in e.ingress_type) {
+					const { cluster_name } = e.ingress_type.PrepareCluster;
+					setNotifications(prev => ({
+						...prev,
+						[e.id]: {
+							title: `Preparing ${cluster_name}`,
+							message: e.message,
+							fraction: e.percent ?? undefined,
+						},
+					}));
+				}
+			}
+			else {
+				setNotifications(prev => ({
+					...prev,
+					[e.id]: {
+						title: `${e.ingress_type}`,
+						message: e.message,
+						fraction: e.percent ?? undefined,
+					},
+				}));
+			}
 		}).then((u) => {
 			cleanup = u;
 		}).catch(console.error);
@@ -81,10 +97,10 @@ function useNotifications(): HookReturn {
 			console.warn('useNotifications: Using default context (likely due to HMR or missing provider)');
 			return {
 				list: {},
-				set: () => {},
-				create: () => {},
-				remove: () => {},
-				clear: () => {},
+				set: () => { },
+				create: () => { },
+				remove: () => { },
+				clear: () => { },
 			};
 		}
 		throw new Error('useNotifications must be used within a NotificationProvider');

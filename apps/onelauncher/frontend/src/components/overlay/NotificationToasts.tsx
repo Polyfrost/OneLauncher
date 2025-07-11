@@ -1,7 +1,7 @@
 import type { NotificationData } from '@/hooks/useNotification';
 import useNotifications from '@/hooks/useNotification';
-import { Button } from '@onelauncher/common/components';
-import { XIcon } from '@untitled-theme/icons-react';
+import { Button, Show } from '@onelauncher/common/components';
+import { InfoCircleIcon, XIcon } from '@untitled-theme/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 
@@ -14,6 +14,8 @@ interface NotificationToastProps {
 	notification: ToastNotification;
 	onRemove: (id: string) => void;
 }
+
+const fractionEnded = (fraction: number | undefined) => fraction !== undefined && fraction >= 0.97;
 
 function NotificationToast({ notification, onRemove }: NotificationToastProps) {
 	const [isVisible, setIsVisible] = useState(false);
@@ -41,22 +43,13 @@ function NotificationToast({ notification, onRemove }: NotificationToastProps) {
 	}, [notification.fraction, handleRemove]);
 
 	return (
-		<div
-			className={twMerge(
-				'transform transition-all duration-300 ease-in-out',
-				'bg-component-bg border border-component-border rounded-lg shadow-lg',
-				'p-4 mb-3 max-w-sm',
-				isVisible && !isRemoving ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
-			)}
-		>
-			<div className="flex items-start justify-between gap-3">
-				<div className="flex-1 min-w-0">
-					<h4 className="font-semibold text-fg-primary text-sm truncate">
-						{notification.title}
-					</h4>
-					<p className="text-fg-secondary text-xs mt-1 break-words">
-						{notification.message}
-					</p>
+		<div className={twMerge('flex flex-col gap-y-1 p-2 bg-component-bg border border-component-border rounded-lg shadow-lg', isVisible && !isRemoving ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0')}>
+			<div className="grid grid-cols-[24px_1fr_auto] min-h-10 place-items-center gap-3">
+				<InfoCircleIcon className="h-6 w-6 text-fg-primary" />
+
+				<div className="w-full flex flex-col gap-y-1">
+					<span className="text-fg-primary font-medium capitalize">{notification.title}</span>
+					<span className="text-sm text-fg-secondary/60 capitalize">{notification.message}</span>
 				</div>
 				<Button
 					className="flex-shrink-0 h-6 w-6 p-0"
@@ -68,14 +61,16 @@ function NotificationToast({ notification, onRemove }: NotificationToastProps) {
 				</Button>
 			</div>
 
-			{notification.fraction !== undefined && (
-				<div className="w-full bg-component-bg-hover rounded-full h-2 mt-3">
+			<Show when={notification.fraction !== undefined && !fractionEnded(notification.fraction)}>
+				<div className="h-1.5 w-full overflow-hidden rounded-full bg-brand-disabled/10">
 					<div
-						className="bg-brand h-2 rounded-full transition-all duration-300"
-						style={{ width: `${Math.max(0, Math.min(100, notification.fraction))}%` }}
+						className="h-full max-w-full min-w-0 rounded-full bg-brand transition-width"
+						style={{
+							width: `${Math.floor(notification.fraction! * 100)}%`,
+						}}
 					/>
 				</div>
-			)}
+			</Show>
 		</div>
 	);
 }

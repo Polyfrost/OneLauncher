@@ -1,7 +1,6 @@
 import type { GameLoader, Version, VersionType } from '@/bindings.gen';
 import type { JSX, RefAttributes } from 'react';
 import DefaultBanner from '@/assets/images/default_banner.png';
-import DefaultClusterBanner from '@/assets/images/default_instance_cover.jpg';
 import LauncherIcon from '@/components/content/LauncherIcon';
 import Modal from '@/components/overlay/Modal';
 import ScrollableContainer from '@/components/ScrollableContainer';
@@ -9,6 +8,7 @@ import { bindings } from '@/main';
 import { LAUNCHER_IMPORT_TYPES, LOADERS, upperFirst } from '@/utils';
 import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, Dropdown, SelectList, TextField } from '@onelauncher/common/components';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRightIcon, PlusIcon, SearchMdIcon, Server01Icon, TextInputIcon, User03Icon } from '@untitled-theme/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Checkbox } from 'react-aria-components';
@@ -25,24 +25,37 @@ const STEPS = [
 	},
 ] as const;
 
+interface ClusterFormData {
+	loader: GameLoader;
+	clusterName: string;
+	clusterVersion: string;
+	clusterProvider: string;
+}
+
 export function NewClusterCreate() {
+	const queryClient = useQueryClient();
 	const [currentStepIndex, setCurrentStepIndex] = useState(0);
-	const [formData, setFormData] = useState({
-		loader: '',
+	const [formData, setFormData] = useState<ClusterFormData>({
+		loader: 'vanilla',
 		clusterName: '',
 		clusterVersion: '',
+		clusterProvider: '',
 	});
 
 	const create = useCommandMut(() => bindings.core.createCluster({
-		icon: DefaultClusterBanner,
-		mc_loader: formData.loader as GameLoader,
+		icon: null,
+		mc_loader: formData.loader,
 		mc_loader_version: null,
 		mc_version: formData.clusterVersion,
 		name: formData.clusterName,
-	}));
+	}), {
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['getClusters'] });
+		},
+	});
 
 	function handleCreate() {
-		if (!isLastInputStep)
+		if (!isLastInputStep && !formData.clusterName)
 			return;
 
 		create.mutate();
@@ -70,10 +83,7 @@ export function NewClusterCreate() {
 	switch (currentStepConfig.id) {
 		case 'loader': {
 			stepContent = (
-				<ClusterLoader
-					onSelectLoader={loader => setFormData(prev => ({ ...prev, loader }))}
-					selectedLoader={formData.loader}
-				/>
+				<ClusterLoader onSelectProvider={provider => setFormData(prev => ({ ...prev, clusterProvider: provider }))} selectedProvider={formData.clusterProvider} />
 			);
 			break;
 		}
@@ -81,6 +91,7 @@ export function NewClusterCreate() {
 		case 'info': {
 			stepContent = (
 				<ClusterInformation
+					clusterLoader={formData.loader}
 					clusterName={formData.clusterName}
 					clusterVersion={formData.clusterVersion}
 					onClusterLoaderChange={loader => setFormData(prev => ({ ...prev, loader }))}
@@ -98,7 +109,7 @@ export function NewClusterCreate() {
 	const nextButtonText = isLastInputStep ? 'Create' : 'Next';
 
 	let isNextDisabled = false;
-	if (currentStepConfig.id === 'loader' && !formData.loader)
+	if (currentStepConfig.id === 'loader' && !formData.clusterProvider)
 		isNextDisabled = true;
 	else if (
 		currentStepConfig.id === 'info'
@@ -167,19 +178,19 @@ export function NewClusterCreate() {
 }
 
 interface ClusterLoaderProps {
-	selectedLoader: string;
-	onSelectLoader: (loader: string) => void;
+	selectedProvider: string;
+	onSelectProvider: (provider: string) => void;
 }
 
-function ClusterLoader({ selectedLoader, onSelectLoader }: ClusterLoaderProps) {
+function ClusterLoader({ selectedProvider, onSelectProvider }: ClusterLoaderProps) {
 	return (
 		<>
 			<div className="grid grid-cols-3 gap-2">
 				<ProviderCard
 					icon={<User03Icon />}
 					name="New"
-					selected={selectedLoader === 'new'}
-					setSelected={() => onSelectLoader('new')}
+					selected={selectedProvider === 'new'}
+					setSelected={() => onSelectProvider('new')}
 				/>
 
 				{LAUNCHER_IMPORT_TYPES.map((data, i) => (
@@ -187,8 +198,8 @@ function ClusterLoader({ selectedLoader, onSelectLoader }: ClusterLoaderProps) {
 						icon={<LauncherIcon launcher={data} />}
 						key={i}
 						name={data}
-						selected={selectedLoader === data}
-						setSelected={() => onSelectLoader(data)}
+						selected={selectedProvider === data}
+						setSelected={() => onSelectProvider(data)}
 					/>
 				))}
 			</div>
@@ -224,6 +235,7 @@ interface ClusterInformationProps {
 	onClusterNameChange: (name: string) => void;
 	clusterVersion: string;
 	onClusterVersionChange: (version: string) => void;
+	clusterLoader: GameLoader;
 	onClusterLoaderChange: (loader: GameLoader) => void;
 }
 
@@ -232,6 +244,7 @@ function ClusterInformation({
 	onClusterNameChange,
 	clusterVersion,
 	onClusterVersionChange,
+	clusterLoader,
 	onClusterLoaderChange,
 }: ClusterInformationProps) {
 	const versions = useCommand('getGameVersions', bindings.core.getGameVersions);
@@ -244,6 +257,7 @@ function ClusterInformation({
 					iconLeft={<TextInputIcon className="size-4" />}
 					onChange={e => onClusterNameChange(e.target.value)}
 					placeholder="Name"
+					required
 					value={clusterName}
 				/>
 			</Option>
@@ -254,7 +268,7 @@ function ClusterInformation({
 
 			<Option header="Loader">
 				{/* TODO: fixme */}
-				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e.toString() as GameLoader)}>
+				<Dropdown defaultSelectedKey="vanilla" onSelectionChange={e => onClusterLoaderChange(e.toString() as GameLoader)} selectedKey={clusterLoader}>
 					{LOADERS.map(loader => (
 						<Dropdown.Item id={loader} key={loader}>
 							<div className="flex flex-row gap-2">

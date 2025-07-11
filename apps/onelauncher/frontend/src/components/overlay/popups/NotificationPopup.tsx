@@ -1,8 +1,7 @@
 import type { NotificationData } from '@/hooks/useNotification';
 import useNotifications from '@/hooks/useNotification';
-import { Button, Menu, Popup } from '@onelauncher/common/components';
+import { Button, Popup } from '@onelauncher/common/components';
 import { XIcon } from '@untitled-theme/icons-react';
-import { Popover } from 'react-aria-components';
 
 interface NotificationItemProps {
 	id: string;
@@ -60,7 +59,7 @@ function NotificationPopup() {
 		);
 
 	return (
-		<Popup className="min-w-80 w-80 max-w-96 max-h-96 overflow-y-auto">
+		<div className="min-w-80 w-80 max-w-96 max-h-96 overflow-y-auto">
 			<div className="flex items-center justify-between border-b border-component-border">
 				<h3 className="font-semibold text-fg-primary">Notifications</h3>
 				{notificationEntries.length > 0 && (
@@ -86,7 +85,7 @@ function NotificationPopup() {
 					</div>
 				</div>
 			))}
-		</Popup>
+		</div>
 	);
 }
 

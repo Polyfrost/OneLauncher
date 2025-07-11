@@ -2,10 +2,9 @@ import type { ToOptions } from '@tanstack/react-router';
 import useNotifications from '@/hooks/useNotification';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button, Menu, Popup } from '@onelauncher/common/components';
+import { Button, Popup } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
-import { MenuTrigger } from 'react-aria-components';
 import OneLauncherText from '../assets/logos/onelauncher_text.svg';
 import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
@@ -49,6 +48,7 @@ function Navbar() {
 								</span>
 							)}
 						</Button>
+
 						<Popup>
 							<NotificationPopup />
 						</Popup>

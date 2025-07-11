@@ -11,7 +11,6 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useEffect } from 'react';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,

@@ -6,13 +6,16 @@ import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
 import useNotifications from '@/hooks/useNotification';
 import { bindings } from '@/main';
+import { formatAsDuration } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { dataDir, join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 import Sidebar from '../settings/route';
 
@@ -36,6 +39,18 @@ function RouteComponent() {
 		enabled: false,
 		subscribed: false,
 	});
+
+	const [launcherDir, setLauncherDir] = useState('');
+
+	useEffect(() => {
+		(async () => {
+			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data?.folder_name as string));
+		})();
+	}, [cluster.data?.folder_name]);
+
+	const openClusterDir = async () => {
+		openPath(launcherDir);
+	};
 
 	async function handleEditMode() {
 		if (edit)
@@ -94,9 +109,10 @@ function RouteComponent() {
 								children="Open"
 								color="primary"
 								isDisabled={false}
+								onClick={openClusterDir}
 							/>
 						)}
-						description="asdsad"
+						description={launcherDir}
 						disabled={false}
 						icon={<FolderIcon />}
 						title="Cluster Folder"
@@ -207,10 +223,8 @@ function Banner({
 
 		const url = cluster?.icon_url;
 
-		if (!url) {
-			console.warn('No icon URL, using default');
+		if (!url)
 			return DefaultInstancePhoto;
-		}
 
 		return convertFileSrc(url);
 	};
@@ -272,7 +286,7 @@ function Banner({
 						>
 							Played for
 							{' '}
-							<b>{cluster?.overall_played || 0}</b>
+							<b>{formatAsDuration(cluster?.overall_played || 0)}</b>
 							.
 						</span>
 					</div>

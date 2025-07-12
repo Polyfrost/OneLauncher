@@ -2,6 +2,7 @@ import type { NotificationData } from '@/hooks/useNotification';
 import useNotifications from '@/hooks/useNotification';
 import { Button, Popup } from '@onelauncher/common/components';
 import { XIcon } from '@untitled-theme/icons-react';
+import { NotificationToast } from '../NotificationToasts';
 
 interface NotificationItemProps {
 	id: string;
@@ -9,6 +10,7 @@ interface NotificationItemProps {
 	onRemove: (id: string) => void;
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars -- deprecated
 function NotificationItem({ id, data, onRemove }: NotificationItemProps) {
 	return (
 		<div className="flex flex-col gap-2 p-3 bg-component-bg border border-component-border rounded-lg">
@@ -77,11 +79,7 @@ function NotificationPopup() {
 			{notificationEntries.map(([id, data]) => (
 				<div key={id}>
 					<div className="p-2">
-						<NotificationItem
-							data={data}
-							id={id}
-							onRemove={removeNotification}
-						/>
+						<NotificationToast key={id} notification={{ ...data, timestamp: Date.now(), id }} onRemove={removeNotification} />
 					</div>
 				</div>
 			))}

@@ -86,3 +86,35 @@ export function formatAsRelative(
 
 	return 'now';
 }
+
+function convertSeconds(secondsInput: number): string {
+	let remaining = secondsInput;
+
+	const hours = Math.floor(remaining / 3600);
+	remaining %= 3600;
+
+	const minutes = Math.floor(remaining / 60);
+	remaining %= 60;
+
+	const seconds = remaining;
+
+	const parts: Array<string> = [];
+
+	if (hours)
+		parts.push(`${hours} hours`);
+	if (minutes)
+		parts.push(`${minutes} minutes`);
+	if (seconds)
+		parts.push(`${seconds} seconds`);
+
+	return parts.join(' ');
+}
+
+export function formatAsDuration(seconds: number | bigint | Date): string {
+	if (seconds instanceof Date)
+		seconds = seconds.getTime() / 1000;
+	else
+		seconds = Number(seconds);
+
+	return convertSeconds(seconds);
+}

@@ -13,3 +13,20 @@
 	--radius-3xl: 1.5rem;
 	--radius-4xl: 2rem;
 }
+
+/* i dont know where to put this */
+.linearBlur::after {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	-webkit-backdrop-filter: blur(30);
+	backdrop-filter: blur(30);
+
+	-webkit-mask: linear-gradient(270deg, transparent, black 50%);
+	mask: linear-gradient(270deg, transparent, black 50%);
+
+	background: linear-gradient(270deg, transparent, rgba(0, 0, 0, 0.85) 80%);
+}

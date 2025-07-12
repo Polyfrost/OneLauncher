@@ -17,7 +17,7 @@ interface NotificationToastProps {
 
 const fractionEnded = (fraction: number | undefined) => fraction !== undefined && fraction >= 0.97;
 
-function NotificationToast({ notification, onRemove }: NotificationToastProps) {
+export function NotificationToast({ notification, onRemove }: NotificationToastProps) {
 	const [isVisible, setIsVisible] = useState(false);
 	const [isRemoving, setIsRemoving] = useState(false);
 

@@ -3,9 +3,10 @@ import SettingsRow from '@/components/SettingsRow';
 import useSettings from '@/hooks/useSettings';
 import { Button, Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { dataDir } from '@tauri-apps/api/path';
-import { openPath as open } from '@tauri-apps/plugin-opener';
+import { dataDir, join } from '@tauri-apps/api/path';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { FolderIcon, LinkExternal01Icon } from '@untitled-theme/icons-react';
+import { useEffect, useState } from 'react';
 import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/')({
@@ -14,11 +15,16 @@ export const Route = createFileRoute('/app/settings/')({
 
 function RouteComponent() {
 	const { settings, createSetting } = useSettings();
+	const [launcherDir, setLauncherDir] = useState('');
+
+	useEffect(() => {
+		(async () => {
+			setLauncherDir(await join(await dataDir(), 'OneLauncher'));
+		})();
+	}, []);
 
 	const openLauncherDir = async () => {
-		const dir = await dataDir();
-
-		open(`${dir}/OneLauncher`);
+		openPath(launcherDir);
 	};
 
 	const [discordRpc, setDiscordRpc] = createSetting('discord_enabled', settings?.discord_enabled);
@@ -60,7 +66,7 @@ function RouteComponent() {
 
 				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
 				<SettingsRow
-					description="Unknown for now"
+					description={launcherDir}
 					icon={<FolderIcon />}
 					title="Launcher Folder"
 				>

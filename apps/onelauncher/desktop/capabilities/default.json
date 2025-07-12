@@ -36,6 +36,9 @@
 			"identifier": "opener:allow-open-path",
 			"allow": [
 				{
+					"path": "$DATA/OneLauncher/**"
+				},
+				{
 					"path": "$DATA/OneLauncher"
 				}
 			]

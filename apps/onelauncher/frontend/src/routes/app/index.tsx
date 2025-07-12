@@ -4,7 +4,7 @@ import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
 import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
-import { upperFirst } from '@/utils';
+import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
@@ -56,35 +56,46 @@ function Banner() {
 	// const launch = useLaunchCluster(() => cluster()?.uuid);
 	// const navigate = useNavigate();
 
+	const image = () => {
+		const url = cluster?.icon_url;
+
+		if (!url)
+			return DefaultBanner;
+
+		return convertFileSrc(url);
+	};
+
 	return (
 		<div className="relative h-52 min-h-52 w-full overflow-hidden rounded-xl border border-component-border">
 			<div className="absolute h-52 min-h-52 w-full">
-				<img
-					alt="Default Banner"
-					className="top-0 left-0 h-full rounded-xl w-full object-cover"
-					onError={(e) => {
-						(e.target as HTMLImageElement).src = DefaultBanner;
-					}}
-					src={cluster?.icon_url || DefaultBanner}
-				/>
+				<div className="linearBlur after:right-1/3">
+					<img
+						alt="Default Banner"
+						className="top-0 left-0 h-full rounded-xl w-full object-cover"
+						onError={(e) => {
+							(e.target as HTMLImageElement).src = DefaultBanner;
+						}}
+						src={image()}
+					/>
+				</div>
 			</div>
 
 			<div className="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6">
 				<div className="theme-OneLauncher-Dark flex flex-col gap-y-2 text-fg-primary">
-					<h1 className="text-2xl font-medium text-shadow-black text-shadow-2xs">Create a cluster</h1>
+					<h1 className="text-2xl font-medium text-shadow-black text-shadow-2xs">{cluster?.name || 'Create a cluster'}</h1>
 					<Show when={cluster !== undefined}>
 						<p>
 							You've played
 							{' '}
 							<strong>
-								{cluster?.name}
+								{cluster?.mc_version}
 								{' '}
 								{upperFirst(cluster?.mc_loader || 'Unknown')}
 							</strong>
 							{' '}
 							for
 							{' '}
-							<strong>{cluster?.overall_played || 0}</strong>
+							<strong>{formatAsDuration(cluster?.overall_played || 0)}</strong>
 							.
 						</p>
 					</Show>
@@ -176,9 +187,6 @@ function ClusterCard({
 
 		return convertFileSrc(url);
 	};
-
-	// eslint-disable-next-line no-console -- ok
-	console.log(image());
 
 	return (
 		<>

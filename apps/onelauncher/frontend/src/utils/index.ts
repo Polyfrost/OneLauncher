@@ -18,6 +18,8 @@ export const LOADERS: Array<string> = [
 	'fabric',
 	'legacyfabric',
 ] as const;
+export const PROVIDERS: Array<string> = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
+export const PACKAGE_TYPES: Array<string> = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 
 export function pluralize(n: number, word: string, locale: string = 'en'): string {
 	const pluralRules = new Intl.PluralRules(locale);

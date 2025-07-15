@@ -12,9 +12,11 @@ export const Route = createFileRoute('/app/browser')({
 
 function RouteComponent() {
 	return (
-		<div>
-			<Outlet />
-		</div>
+		<BrowserProvider>
+			<div>
+				<Outlet />
+			</div>
+		</BrowserProvider>
 	);
 }
 
@@ -45,16 +47,26 @@ export function BrowserLayout(props: any) {
 }
 
 function BrowserSidebar() {
+	const context = useBrowserContext();
+	const clusters = useClusters();
 	return (
 		<div className="flex flex-col gap-y-4">
 			<div className="flex flex-col gap-y-4">
 				<div className="flex flex-col gap-y-1">
 					<h6 className="my-1">Active Cluster</h6>
-					<Button
-						children="None"
-						className="h-9.5"
-						color="secondary"
-					/>
+					<Dropdown
+						onSelectionChange={(id) => {
+							const cluster = clusters?.find(cluster => cluster.id.toString() === id);
+							context.setCluster(cluster);
+						}}
+						selectedKey={context.cluster?.id.toString()}
+					>
+						{clusters?.map(cluster => (
+							<Dropdown.Item id={cluster.id.toString()} key={cluster.id}>
+								{cluster.name}
+							</Dropdown.Item>
+						))}
+					</Dropdown>
 				</div>
 				<div className="flex flex-col gap-y-1">
 					<h6 className="my-1">Provider</h6>

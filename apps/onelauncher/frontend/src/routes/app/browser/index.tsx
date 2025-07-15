@@ -1,7 +1,7 @@
 import OneConfigLogo from '@/assets/logos/oneconfig.svg';
-import { useBrowserContext } from '@/hooks/useBrowser';
+import { useBrowserContext, useBrowserSearch } from '@/hooks/useBrowser';
 import { Button, Show } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useSearch } from '@tanstack/react-router';
 import { ChevronRightIcon } from '@untitled-theme/icons-react';
 import { BrowserLayout } from './route';
 
@@ -20,6 +20,8 @@ function RouteComponent() {
 }
 
 function Featured() {
+	const context = useBrowserContext();
+	const search = useBrowserSearch(context.provider, context.query);
 	return (
 		<Show when>
 			<div className="flex flex-col gap-y-1">
@@ -48,6 +50,12 @@ function Featured() {
 						</div>
 					</div>
 				</div>
+				{search.status}
+				{search.isSuccess && (
+					<>
+						{search.data.items.map(item => <p key={item.id}>{item.name}</p>)}
+					</>
+				)}
 			</div>
 		</Show>
 	);

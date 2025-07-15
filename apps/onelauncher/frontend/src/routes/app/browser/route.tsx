@@ -1,10 +1,12 @@
+import type { Filters } from '@/bindings.gen';
 import ProviderIcon from '@/components/content/ProviderIcon';
+import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
+import { useClusters } from '@/hooks/useCluster';
 import { PROVIDERS } from '@/utils';
 import { browserCategories } from '@/utils/browser';
-import { Button, Dropdown, Show, TextField } from '@onelauncher/common/components';
+import { Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
-import { memo } from 'react';
 
 export const Route = createFileRoute('/app/browser')({
 	component: RouteComponent,
@@ -70,9 +72,9 @@ function BrowserSidebar() {
 				</div>
 				<div className="flex flex-col gap-y-1">
 					<h6 className="my-1">Provider</h6>
-					<Dropdown>
+					<Dropdown onSelectionChange={id => context.setProvider(id as typeof context.provider)} selectedKey={context.provider}>
 						{PROVIDERS.map(provider => (
-							<Dropdown.Item key={provider}>
+							<Dropdown.Item id={provider} key={provider}>
 								<div className="flex flex-row">
 									<ProviderIcon className="size-4 mr-2 self-center" provider={provider} />
 									{provider}
@@ -86,8 +88,23 @@ function BrowserSidebar() {
 	);
 }
 
+const defaultFilters:Filters = {
+	categories: null,
+	game_versions: null,
+	loaders: null,
+	package_types: null
+}
+
 function BrowserCategories() {
-	const categories = browserCategories.byPackageType('mod', 'Modrinth');
+	const context = useBrowserContext();
+	const categories = browserCategories.byPackageType('mod', context.provider);
+
+	function switchCategory(category:string){
+		if(context.query.filters?.categories?.includes(category))
+			context.setQuery({...context.query, filters: {...defaultFilters, ...context.query.filters, categories: (context.query.filters?.categories ?? []).filter(cat=>cat!==category)}})
+		else
+			context.setQuery({...context.query, filters: {...defaultFilters, ...context.query.filters, categories: [...(context.query.filters?.categories ?? []), category]}})
+	}
 
 	return (
 		<div className="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
@@ -95,11 +112,13 @@ function BrowserCategories() {
 			<div className="flex flex-col gap-y-6">
 				<Show when>
 					<div className="flex flex-col gap-y-2">
-						<h6 className="my-1">Categories</h6>
+						<h6 className="my-1 uppercase">Categories</h6>
 						{categories.map(category => (
 							<p
-								className="text-md capitalize opacity-100 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover"
+								aria-selected={context.query.filters?.categories?.includes(category.id)}
+								className="text-md capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
 								key={category.id}
+								onClick={()=>switchCategory(category.id)}
 							>
 								{category.display}
 							</p>

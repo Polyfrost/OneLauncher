@@ -1,8 +1,8 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, prelude::entity, resolution::Resolution};
+use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, package::Provider, prelude::entity, resolution::Resolution};
 use sea_orm::ActiveValue::Set;
 use serde::Serialize;
-use crate::store::{Settings, State};
+use crate::{api::packages::data::{ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
@@ -81,6 +81,22 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "writeSettings")]
 	async fn write_settings(setting: Settings) -> LauncherResult<()>;
+
+	// Packages
+	#[taurpc(alias = "searchPackages")]
+	async fn search_packages(provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<ManagedPackage>>;
+
+	#[taurpc(alias = "getPackage")]
+	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
+
+	#[taurpc(alias = "getMultiplePackages")]
+	async fn get_multiple_packages(provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>>;
+
+	#[taurpc(alias = "getPackageVersions")]
+	async fn get_package_versions(provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>>;
+
+	#[taurpc(alias = "getPackageUser")]
+	async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
 }
 
 
@@ -369,4 +385,6 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(())
 	}
+
+	// Packages
 }

@@ -1,7 +1,10 @@
+import ProviderIcon from '@/components/content/ProviderIcon';
 import { PROVIDERS } from '@/utils';
+import { browserCategories } from '@/utils/browser';
 import { Button, Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
+import { memo } from 'react';
 
 export const Route = createFileRoute('/app/browser')({
 	component: RouteComponent,
@@ -56,16 +59,13 @@ function BrowserSidebar() {
 				<div className="flex flex-col gap-y-1">
 					<h6 className="my-1">Provider</h6>
 					<Dropdown>
-						{/* <For each={PROVIDERS}>
-							{provider => (
-								<Dropdown.Row>
-									<ProviderIcon class="h-4 w-4" provider={provider} />
-									{provider}
-								</Dropdown.Row>
-							)}
-						</For> */}
 						{PROVIDERS.map(provider => (
-							<Dropdown.Item key={provider}>{provider}</Dropdown.Item>
+							<Dropdown.Item key={provider}>
+								<div className="flex flex-row">
+									<ProviderIcon className="size-4 mr-2 self-center" provider={provider} />
+									{provider}
+								</div>
+							</Dropdown.Item>
 						))}
 					</Dropdown>
 				</div>
@@ -75,6 +75,8 @@ function BrowserSidebar() {
 }
 
 function BrowserCategories() {
+	const categories = browserCategories.byPackageType('mod', 'Modrinth');
+
 	return (
 		<div className="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
 			<div />
@@ -82,21 +84,14 @@ function BrowserCategories() {
 				<Show when>
 					<div className="flex flex-col gap-y-2">
 						<h6 className="my-1">Categories</h6>
-						{/* <For each={categories()}>
-              {category => (
-                <p
-                  class={`text-md capitalize text-fg-primary hover:text-fg-primary-hover line-height-snug ${isEnabled(category.id) ? 'text-opacity-100! hover:text-opacity-90!' : 'text-opacity-60! hover:text-opacity-70!'}`}
-                  onClick={() => toggleCategory(category.id)}
-                >
-                  {category.display}
-                </p>
-              )}
-            </For> */}
-						<p
-							className="text-md capitalize opacity-100 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover"
-						>
-							Jennie
-						</p>
+						{categories.map(category => (
+							<p
+								className="text-md capitalize opacity-100 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover"
+								key={category.id}
+							>
+								{category.display}
+							</p>
+						))}
 					</div>
 				</Show>
 			</div>

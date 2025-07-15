@@ -118,5 +118,5 @@ h5 { @apply text-[0.875rem] text-fg-secondary font-bold uppercase; }
 h6 { @apply text-[0.75rem] text-fg-secondary font-medium uppercase; }
 
 code {
-	@apply rounded-md bg-component-bg p-2 text-left;
+	@apply rounded-md p-2 text-left;
 }

@@ -7,7 +7,7 @@ interface MyPopoverProps extends Omit<PopoverProps, 'children'> {
 
 export function Popup({ children, ...props }: MyPopoverProps) {
 	return (
-		<Popover {...props} className="flex flex-col gap-0.5 rounded-lg border border-component-border">
+		<Popover {...props} className="flex flex-col gap-0.5 rounded-lg border border-component-border-hover">
 			<Dialog className="bg-page-elevated p-2 shadow-md rounded-lg">
 				{children}
 			</Dialog>

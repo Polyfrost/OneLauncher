@@ -5,7 +5,7 @@ import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation'
 import useRecentCluster from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
-import { useCommand } from '@onelauncher/common';
+import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -167,13 +167,10 @@ function ClusterCard({
 	icon_url,
 	stage,
 }: ClusterModel) {
-	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
-		enabled: false,
-		subscribed: false,
-	});
+	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 
 	const handleLaunch = () => {
-		launch.refetch();
+		launch.mutate();
 
 		if (launch.error)
 			console.error(launch.error.message);

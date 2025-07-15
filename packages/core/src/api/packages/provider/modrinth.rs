@@ -37,7 +37,7 @@ impl ModrinthProviderImpl {
 	}
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ProviderExt for ModrinthProviderImpl {
 	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
 		let mut url = Url::parse(url!("/search"))?;

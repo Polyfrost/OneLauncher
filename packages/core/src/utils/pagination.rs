@@ -1,18 +1,18 @@
 use std::fmt::Debug;
-
+use std::marker::Send;
 use serde::{Deserialize, Serialize};
 
 #[onelauncher_macro::specta]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Paginated<T>
-where T: Clone + Serialize {
+where T: Clone + Serialize + Send {
 	pub total: usize,
 	pub offset: usize,
 	pub limit: usize,
 	pub items: Vec<T>,
 }
 
-impl<T: Clone + Serialize> Debug for Paginated<T> {
+impl<T: Clone + Serialize + Send> Debug for Paginated<T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Paginated")
 			.field("total", &self.total)
@@ -23,7 +23,7 @@ impl<T: Clone + Serialize> Debug for Paginated<T> {
 	}
 }
 
-impl <T: Clone + Serialize> Paginated<T> {
+impl <T: Clone + Serialize + Send> Paginated<T> {
 	#[must_use]
 	pub const fn new(total: usize, offset: usize, limit: usize, items: Vec<T>) -> Self {
 		Self { total, offset, limit, items }

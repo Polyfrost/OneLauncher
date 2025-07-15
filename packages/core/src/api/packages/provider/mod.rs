@@ -10,7 +10,7 @@ mod modrinth;
 
 pub use modrinth::ModrinthProviderImpl;
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 pub trait ProviderExt {
 	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>>;
 	async fn get(&self, slug: &str) -> LauncherResult<ManagedPackage>;
@@ -42,7 +42,7 @@ pub trait ProviderExt {
 	async fn get_versions(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedVersion>>;
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ProviderExt for Provider {
 	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
 		match self {

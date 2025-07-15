@@ -1,8 +1,8 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, package::Provider, prelude::entity, resolution::Resolution};
+use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, package::Provider, packages, prelude::entity, resolution::Resolution};
 use sea_orm::ActiveValue::Set;
 use serde::Serialize;
-use crate::{api::packages::data::{ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, store::{Settings, State}, utils::pagination::Paginated};
+use crate::{api::packages::{data::{ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
@@ -97,6 +97,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getPackageUser")]
 	async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
+
+	#[taurpc(alias = "downloadPackage")]
+	async fn download_package(provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model>;
 }
 
 
@@ -387,4 +390,40 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 	// Packages
+	async fn search_packages(self, provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
+    	Ok(provider.search(&query).await?)
+	}
+
+	async fn get_package(self, provider: Provider, slug: String) -> LauncherResult<ManagedPackage> {
+    	Ok(provider.get(&slug).await?)
+	}
+
+	async fn get_multiple_packages(self, provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>> {
+    	Ok(provider.get_multiple(&slugs).await?)
+	}
+
+	async fn get_package_versions(self, provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>> {
+    	Ok(provider.get_versions_paginated(&slug, mc_versions, loaders, offset, limit).await?)
+	}
+
+	async fn get_package_user(self, provider: Provider, slug: String) -> LauncherResult<ManagedUser> {
+    	Ok(provider.get_user(&slug).await?)
+	}
+
+	async fn download_package(self, provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		let package = provider.get(&package_id).await?;
+
+		let versions = provider.get_versions(&[version_id]).await?;
+		let version = versions.into_iter().next()
+			.ok_or_else(|| anyhow::anyhow!("Version not found"))?;
+
+		let model = api::packages::download_package(&package, &version, None).await?;
+
+		api::packages::link_package(&model, &cluster, skip_compatibility).await?;
+
+		Ok(model)
+	}
 }

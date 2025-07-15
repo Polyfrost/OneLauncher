@@ -43,7 +43,3 @@ export function BrowserProvider(props: any) {
 		</BrowserContext.Provider>
 	);
 }
-
-export function useFeatured() {
-	useCommand();
-}

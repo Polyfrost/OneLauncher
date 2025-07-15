@@ -1,4 +1,5 @@
 import OneConfigLogo from '@/assets/logos/oneconfig.svg';
+import { useBrowserContext } from '@/hooks/useBrowser';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { ChevronRightIcon } from '@untitled-theme/icons-react';

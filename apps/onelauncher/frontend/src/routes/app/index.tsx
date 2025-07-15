@@ -2,7 +2,7 @@ import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
-import useRecentCluster from '@/hooks/useCluster';
+import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';

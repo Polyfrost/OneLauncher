@@ -1,4 +1,4 @@
-export const LAUNCHER_IMPORT_TYPES: Array<string> = [
+export const LAUNCHER_IMPORT_TYPES = [
 	'PrismLauncher',
 	'Curseforge',
 	// 'Modrinth',
@@ -10,7 +10,7 @@ export const LAUNCHER_IMPORT_TYPES: Array<string> = [
 	// 'Technic'
 ] as const;
 
-export const LOADERS: Array<string> = [
+export const LOADERS = [
 	'vanilla',
 	'forge',
 	'neoforge',
@@ -18,8 +18,8 @@ export const LOADERS: Array<string> = [
 	'fabric',
 	'legacyfabric',
 ] as const;
-export const PROVIDERS: Array<string> = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
-export const PACKAGE_TYPES: Array<string> = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
+export const PROVIDERS = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
+export const PACKAGE_TYPES = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 
 export function pluralize(n: number, word: string, locale: string = 'en'): string {
 	const pluralRules = new Intl.PluralRules(locale);

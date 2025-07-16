@@ -7,10 +7,12 @@ use onelauncher_core::store::{Core, CoreOptions, Dirs, State};
 use tauri::{Emitter, Manager};
 
 use crate::api::commands::OneClientApi;
+use crate::oneclient::initialize_oneclient;
 
 pub mod api;
 pub mod constants;
 pub mod ext;
+pub mod oneclient;
 
 #[derive(Clone, serde::Serialize)]
 pub struct SingleInstancePayload {
@@ -96,13 +98,20 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 }
 
 pub async fn run() {
-	initialize_core().await.expect("failed to initialize core");
+	initialize_core()
+		.await
+		.expect("failed to initialize core");
+
 	let app = initialize_tauri(tauri::Builder::default())
 		.await
 		.expect("failed to initialize tauri");
+
 	initialize_state(app.handle())
 		.await
 		.expect("failed to initialize state");
+
+	initialize_oneclient()
+		.await;
 
 	app.run(|_, _| {});
 }

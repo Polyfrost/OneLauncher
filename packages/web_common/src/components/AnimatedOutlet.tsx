@@ -16,8 +16,8 @@ interface TransitionProps {
 }
 
 interface AnimatedOutletProps {
-	enter: TransitionProps;
-	exit: TransitionProps;
+	enter?: TransitionProps;
+	exit?: TransitionProps;
 	transition?: MotionProps['transition'];
 	from: AnyRoute['id'];
 	clone?: boolean;
@@ -127,10 +127,10 @@ export function AnimatedOutlet({
 			<div className="relative w-full h-full">
 				{snapshots.map(snapshot => (
 					<motion.div
-						animate={exit.animate}
+						animate={exit?.animate || { opacity: 1 }}
 						aria-hidden="true"
 						className="absolute inset-0 pointer-events-none w-full h-full"
-						initial={exit.initial}
+						initial={exit?.initial || { opacity: 1 }}
 						key={snapshot.id}
 						onAnimationComplete={() => handleAnimationComplete(snapshot.id)}
 						ref={(el) => {
@@ -142,9 +142,9 @@ export function AnimatedOutlet({
 				))}
 
 				<motion.div
-					animate={enter.animate}
+					animate={enter?.animate}
 					className="relative w-full h-full"
-					initial={enter.initial}
+					initial={enter?.initial}
 					key={nextId.current}
 					ref={outletRef}
 					transition={transition}

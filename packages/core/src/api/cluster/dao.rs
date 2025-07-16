@@ -108,6 +108,19 @@ pub async fn get_cluster_by_folder_name(folder_name: &Path) -> LauncherResult<Op
 	Ok(model)
 }
 
+/// Gets all clusters by version from the database.
+pub async fn get_clusters_by_version(version: &str) -> LauncherResult<Vec<clusters::Model>> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	let clusters = clusters::Entity::find()
+		.filter(clusters::Column::McVersion.eq(version))
+		.all(db)
+		.await?;
+
+	Ok(clusters)
+}
+
 /// Gets all clusters from the database.
 pub async fn get_all_clusters() -> LauncherResult<Vec<clusters::Model>> {
 	let state = State::get().await?;

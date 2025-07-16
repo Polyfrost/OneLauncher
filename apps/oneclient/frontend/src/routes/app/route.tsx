@@ -3,8 +3,7 @@ import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import useAppShellStore from '@/stores/appShellStore';
 import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { createFileRoute } from '@tanstack/react-router';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/app')({
@@ -26,7 +25,7 @@ function RouteComponent() {
 							animate: { opacity: 0 },
 						}}
 						from={Route.id}
-						transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
+						transition={{ duration: 0.25, bounce: 0.1, power: 0.2, type: 'spring' }}
 					/>
 				</div>
 			</AppShell>
@@ -37,17 +36,6 @@ function RouteComponent() {
 function AppShell({
 	children,
 }: PropsWithChildren) {
-	const router = useRouter();
-	const setPrevLocation = useAppShellStore(state => state.setPrevLocation);
-
-	useEffect(() => {
-		const unsub = router.subscribe('onBeforeNavigate', (e) => {
-			setPrevLocation(e.fromLocation ?? null);
-		});
-
-		return () => unsub();
-	}, [router, setPrevLocation]);
-
 	return (
 		<div className="flex flex-col h-full w-full">
 			<BackgroundGradient />

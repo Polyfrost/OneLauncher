@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@onelauncher/common/components';
-import type { LinkProps } from '@tanstack/react-router';
+import type { LinkProps, RegisteredRouter } from '@tanstack/react-router';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
@@ -19,9 +19,9 @@ export function Navbar() {
 			</div>
 
 			<div className="flex flex-1 items-center justify-center pointer-events-none gap-6">
-				<NavbarLink to="/app">Home</NavbarLink>
-				<NavbarLink to="/app/clusters">Clusters</NavbarLink>
-				<NavbarLink to="/">Accounts</NavbarLink>
+				<NavbarLink to=".">Home</NavbarLink>
+				<NavbarLink to="./clusters">Clusters</NavbarLink>
+				<NavbarLink to=".">Accounts</NavbarLink>
 			</div>
 
 			<div className="flex flex-1 items-center justify-end gap-2 pointer-events-none">
@@ -54,7 +54,7 @@ export function Navbar() {
 function NavbarLink({
 	to,
 	children,
-}: LinkProps) {
+}: LinkProps<'a', RegisteredRouter, '/app'>) {
 	return (
 		<div className="flex-1 flex justify-center items-center">
 			<Link
@@ -65,8 +65,9 @@ function NavbarLink({
 					className: 'text-fg-primary font-semibold partial-underline-75% pointer-events-none',
 				}}
 				className="text-center text-2lg transition-all duration-100 after:duration-100 after:transition-all"
+				from="/app"
 				inactiveProps={{
-					className: 'text-fg-secondary font-normal partial-underline-0% hover:partial-underline-50% hover:font-medium hover:text-fg-secondary-hover after:text-fg-secondary-hover pointer-events-auto',
+					className: 'text-fg-secondary font-normal partial-underline-0% hover:partial-underline-60% hover:text-fg-secondary-hover after:text-fg-secondary-hover pointer-events-auto',
 				}}
 				to={to}
 			>

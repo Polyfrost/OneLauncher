@@ -31,7 +31,9 @@ export default defineConfig(
 			'ts/no-use-before-define': 'off',
 			'style/function-paren-newline': ['error', 'consistent'],
 			'react/no-context-provider': 'off',
-			"prefer-const": "off" // disabled due to maximum call stack size
+			"prefer-const": "off", // disabled due to maximum call stack size,
+			"style/jsx-one-expression-per-line": ["error", { allow: "non-jsx" }],
+			"unused-imports/no-unused-imports": "off"
 		},
 	},
 );

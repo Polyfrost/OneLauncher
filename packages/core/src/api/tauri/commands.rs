@@ -1,8 +1,7 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{clusters, icon::Icon, loader::GameLoader, package::Provider, packages, prelude::entity, resolution::Resolution};
+use onelauncher_entity::{icon::Icon, loader::GameLoader, package::Provider, packages, resolution::Resolution};
 use sea_orm::ActiveValue::Set;
-use serde::Serialize;
-use crate::{api::packages::{data::{ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
+use crate::{api::packages::{data::{SearchResult, ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
@@ -84,7 +83,7 @@ pub trait TauriLauncherApi {
 
 	// Packages
 	#[taurpc(alias = "searchPackages")]
-	async fn search_packages(provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<ManagedPackage>>;
+	async fn search_packages(provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>>;
 
 	#[taurpc(alias = "getPackage")]
 	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
@@ -390,7 +389,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 	// Packages
-	async fn search_packages(self, provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
+	async fn search_packages(self, provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>> {
     	Ok(provider.search(&query).await?)
 	}
 

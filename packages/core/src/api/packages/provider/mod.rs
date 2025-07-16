@@ -1,7 +1,7 @@
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::Provider;
 
-use crate::error::LauncherResult;
+use crate::{api::packages::data::SearchResult, error::LauncherResult};
 use crate::utils::pagination::Paginated;
 
 use super::data::{ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery};
@@ -12,7 +12,7 @@ pub use modrinth::ModrinthProviderImpl;
 
 #[async_trait::async_trait]
 pub trait ProviderExt {
-	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>>;
+	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<SearchResult>>;
 	async fn get(&self, slug: &str) -> LauncherResult<ManagedPackage>;
 	async fn get_multiple(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedPackage>>;
 	async fn get_versions_by_hashes(
@@ -44,7 +44,7 @@ pub trait ProviderExt {
 
 #[async_trait::async_trait]
 impl ProviderExt for Provider {
-	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
+	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<SearchResult>> {
 		match self {
 			Self::Modrinth => ModrinthProviderImpl.search(query).await,
 			_ => todo!("unimplemented provider"),

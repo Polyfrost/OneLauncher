@@ -26,14 +26,50 @@ pub enum Sort {
 	Updated
 }
 
+impl std::fmt::Display for Sort {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", match self {
+			Self::Relevance => "relevance",
+			Self::Downloads => "downloads",
+			Self::Newest => "newest",
+			Self::Updated => "updated",
+		})
+	}
+}
+
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchQuery {
 	pub query: Option<String>,
 	pub offset: Option<usize>,
 	pub limit: Option<usize>,
-	pub sort: Option<String>,
+	pub sort: Option<Sort>,
 	pub filters: Option<Filters>,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub project_id: String,
+    pub project_type: String,
+    pub slug: String,
+    pub author: String,
+    pub title: String,
+    pub description: String,
+    pub categories: Vec<String>,
+    pub display_categories: Vec<String>,
+    pub versions: Vec<String>,
+    pub downloads: usize,
+    pub icon_url: String,
+    pub date_created: DateTime<Utc>,
+    pub date_modified: DateTime<Utc>,
+    pub latest_version: String,
+    pub license: String,
+    pub client_side: PackageSide,
+    pub server_side: PackageSide,
+	/// List of URLs to images
+    pub gallery: Vec<String>,
+    // pub color: i64,
 }
 
 #[onelauncher_macro::specta]

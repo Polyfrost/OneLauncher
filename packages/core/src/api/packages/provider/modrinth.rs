@@ -70,11 +70,11 @@ impl ProviderExt for ModrinthProviderImpl {
 
 				if let Some(loaders) = &filters.loaders {
 					for loader in loaders {
-						builder.and(Facet("loaders".to_string(), FacetOperation::Eq, loader.to_string()));
+						builder.and(Facet("categories".to_string(), FacetOperation::Eq, loader.to_string()));
 					}
 				}
 
-				params.append_pair("facets", &builder.build());
+				params.append_pair("facets", &format!("[{}]", &builder.build()));
 			}
 
 			if let Some(sort) = &query.sort {

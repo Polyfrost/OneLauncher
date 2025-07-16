@@ -1,8 +1,9 @@
-import type { ClusterModel, Provider, SearchQuery } from '@/bindings.gen';
+import type { ClusterModel, Paginated, Provider, SearchQuery, SearchResult } from '@/bindings.gen';
+import type { UndefinedInitialDataOptions } from '@tanstack/react-query';
 import { bindings } from '@/main';
 import { PROVIDERS } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 export interface BrowserControllerType {
 	cluster: ClusterModel | undefined;
@@ -52,6 +53,7 @@ export function BrowserProvider(props: any) {
 	);
 }
 
-export function useBrowserSearch(provider: Provider, query: SearchQuery) {
-	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, query));
+export function useBrowserSearch(provider: Provider, query: SearchQuery, options?: Omit<UndefinedInitialDataOptions<Paginated<SearchResult>>, 'queryKey' | 'queryFn'> | undefined) {
+	const validFilters = useMemo(() => Object.values(query.filters ?? {}).filter(a => a).length > 0, [query.filters]);
+	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
 }

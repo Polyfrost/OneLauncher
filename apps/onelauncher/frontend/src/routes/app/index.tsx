@@ -1,17 +1,15 @@
-import type { Model } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
-import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
-import Modal from '@/components/overlay/Modal';
-import useRecentCluster from '@/hooks/useCluster';
+import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
-import { upperFirst } from '@/utils';
-import { useCommand } from '@onelauncher/common';
-import { Button, Show, TextField } from '@onelauncher/common/components';
+import { formatAsDuration, upperFirst } from '@/utils';
+import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
+import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
-import { PlayIcon, Server01Icon } from '@untitled-theme/icons-react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 
 export const Route = createFileRoute('/app/')({
@@ -58,32 +56,46 @@ function Banner() {
 	// const launch = useLaunchCluster(() => cluster()?.uuid);
 	// const navigate = useNavigate();
 
+	const image = () => {
+		const url = cluster?.icon_url;
+
+		if (!url)
+			return DefaultBanner;
+
+		return convertFileSrc(url);
+	};
+
 	return (
 		<div className="relative h-52 min-h-52 w-full overflow-hidden rounded-xl border border-component-border">
 			<div className="absolute h-52 min-h-52 w-full">
-				<img
-					alt="Default Banner"
-					className="top-0 left-0 h-full rounded-xl w-full object-cover"
-					src={cluster?.icon_url || DefaultBanner}
-				/>
+				<div className="linearBlur after:right-1/3">
+					<img
+						alt="Default Banner"
+						className="top-0 left-0 h-full rounded-xl w-full object-cover"
+						onError={(e) => {
+							(e.target as HTMLImageElement).src = DefaultBanner;
+						}}
+						src={image()}
+					/>
+				</div>
 			</div>
 
 			<div className="relative z-10 h-full flex flex-col items-start justify-between px-8 py-6">
 				<div className="theme-OneLauncher-Dark flex flex-col gap-y-2 text-fg-primary">
-					<h1 className="text-2xl font-medium text-shadow-black text-shadow-2xs">Create a cluster</h1>
+					<h1 className="text-2xl font-medium text-shadow-black text-shadow-2xs">{cluster?.name || 'Create a cluster'}</h1>
 					<Show when={cluster !== undefined}>
 						<p>
 							You've played
 							{' '}
 							<strong>
-								{cluster?.name}
+								{cluster?.mc_version}
 								{' '}
 								{upperFirst(cluster?.mc_loader || 'Unknown')}
 							</strong>
 							{' '}
 							for
 							{' '}
-							<strong>{cluster?.overall_played || 0}</strong>
+							<strong>{formatAsDuration(cluster?.overall_played || 0)}</strong>
 							.
 						</p>
 					</Show>
@@ -117,7 +129,7 @@ function Banner() {
 }
 
 interface ClusterGroupProps {
-	clusters: Array<Model> | undefined;
+	clusters: Array<ClusterModel> | undefined;
 	isFetching?: boolean;
 }
 
@@ -152,37 +164,35 @@ function ClusterCard({
 	name,
 	mc_loader,
 	mc_version,
-}: Model) {
-	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
-		enabled: false,
-		subscribed: false,
-	});
+	icon_url,
+	stage,
+}: ClusterModel) {
+	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 
 	const handleLaunch = () => {
-		launch.refetch();
+		launch.mutate();
 
 		if (launch.error)
 			console.error(launch.error.message);
 	};
 
-	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(id, null), {
-		enabled: false,
-		subscribed: false,
-	});
+	const image = () => {
+		const url = icon_url;
 
-	const handleLaunch = () => {
-		launch.refetch();
+		if (!url)
+			return DefaultInstancePhoto;
 
-		if (launch.error)
-			console.error(launch.error.message);
+		return convertFileSrc(url);
 	};
 
 	return (
 		<>
 			<Link
+				disabled={stage === 'downloading'}
 				search={{
 					id,
-				}} to="/app/cluster"
+				}}
+				to="/app/cluster"
 			>
 				<div
 					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
@@ -193,48 +203,22 @@ function ClusterCard({
 						>
 							<img
 								className="h-full w-full object-cover"
-								src={DefaultInstancePhoto}
+								onError={(e) => {
+									(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+								}}
+								src={image()}
 							/>
 						</div>
 					</div>
 					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
-							<p className="h-4 text-xs">
-								{mc_loader}
-								{' '}
-								{mc_version}
-								{/* {' '}
-		<>
-			<Link
-				search={{
-					id,
-				}} to="/app/cluster"
-			>
-				<div
-					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
-				>
-					<div className="relative flex-1 overflow-hidden rounded-t-xl">
-						<div
-							className="absolute h-full w-full transition-transform group-hover:!scale-110"
-						>
-							<img
-								className="h-full w-full object-cover"
-								src={DefaultInstancePhoto}
-							/>
-						</div>
-					</div>
-					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">{name}</p>
-							<p className="h-4 text-xs">
-								{mc_loader}
-								{' '}
-								{mc_version}
-								{/* {' '}
-						{props.packages.mods && `• ${props.mods} mods`} */}
+							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
+								{name}
 							</p>
-						</div>
+							<p className="h-4 text-xs">
+								{mc_loader}
+								{' '}
+								{mc_version}
 							</p>
 						</div>
 

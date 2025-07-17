@@ -109,3 +109,14 @@ body {
 .os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
 	display: none;
 }
+
+h1 { @apply text-[2rem] font-semibold; line-height: 1.5 !important; }
+h2 { @apply text-[1.5rem] font-semibold; line-height: 1.25 !important; }
+h3 { @apply text-[1.25rem] font-medium; }
+h4 { @apply text-[1rem] font-medium; }
+h5 { @apply text-[0.875rem] text-fg-secondary font-bold uppercase; }
+h6 { @apply text-[0.75rem] text-fg-secondary font-medium uppercase; }
+
+code {
+	@apply rounded-md p-2 text-left;
+}

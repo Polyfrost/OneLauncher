@@ -1,8 +1,6 @@
 use super::ProviderExt;
 use crate::api::packages::data::{
-	ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency, ManagedVersionFile,
-	PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageLicense, PackageLinks,
-	PackageReleaseType, PackageSide, PackageStatus, SearchQuery, DEFAULT_LIMIT,
+	ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency, ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery, SearchResult, DEFAULT_LIMIT
 };
 use crate::error::LauncherResult;
 use crate::utils::http;
@@ -37,16 +35,71 @@ impl ModrinthProviderImpl {
 	}
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl ProviderExt for ModrinthProviderImpl {
-	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<ManagedPackage>> {
+	async fn search(&self, query: &SearchQuery) -> LauncherResult<Paginated<SearchResult>> {
 		let mut url = Url::parse(url!("/search"))?;
-		let mut params = url.query_pairs_mut();
 
-		params.append_pair("limit", &query.limit.unwrap_or(DEFAULT_LIMIT).to_string());
-		params.append_pair("offset", &query.offset.unwrap_or(0).to_string());
+		{
+			let mut params = url.query_pairs_mut();
 
-		todo!()
+			params.append_pair("limit", &query.limit.unwrap_or(DEFAULT_LIMIT).to_string());
+			params.append_pair("offset", &query.offset.unwrap_or(0).to_string());
+			params.append_pair("query", query.query.clone().unwrap_or_default().as_ref());
+
+			if let Some(filters) = &query.filters {
+				let mut builder = FacetBuilder::builder();
+
+				if let Some(categories) = &filters.categories {
+					for category in categories {
+						builder.and(Facet("categories".to_string(), FacetOperation::Eq, category.to_string()));
+					}
+				}
+
+				if let Some(mc_versions) = &filters.game_versions {
+					for mc_version in mc_versions {
+						builder.and(Facet("versions".to_string(), FacetOperation::Eq, mc_version.to_string()));
+					}
+				}
+
+				if let Some(package_types) = &filters.package_types {
+					for package_type in package_types {
+						builder.and(Facet("project_type".to_string(), FacetOperation::Eq, package_type_to_string(package_type)));
+					}
+				}
+
+				if let Some(loaders) = &filters.loaders {
+					for loader in loaders {
+						builder.and(Facet("loaders".to_string(), FacetOperation::Eq, loader.to_string()));
+					}
+				}
+
+				params.append_pair("facets", &builder.build());
+			}
+
+			if let Some(sort) = &query.sort {
+				params.append_pair("index", &sort.to_string());
+			}
+		}
+
+		let url = url.as_str();
+
+		#[derive(Deserialize)]
+		struct SearchResults {
+			pub hits: Vec<SearchResult>,
+			pub offset: usize,
+			pub limit: usize,
+			pub total_hits: usize,
+		}
+
+		let response = http::fetch_json::<SearchResults>(Method::GET, url, None, None).await?;
+
+		Ok(Paginated {
+			offset: response.offset,
+			limit: response.limit,
+			total: response.total_hits,
+			items: response.hits,
+		})
 	}
 
 	async fn get(&self, slug: &str) -> LauncherResult<ManagedPackage> {
@@ -248,6 +301,17 @@ impl ProviderExt for ModrinthProviderImpl {
 		.map(Into::into)
 		.collect())
 	}
+}
+
+fn package_type_to_string(package_type: &PackageType) -> String {
+	match package_type {
+		PackageType::Mod => "mod",
+		PackageType::ResourcePack => "resourcepack",
+		PackageType::Shader => "shader",
+		PackageType::DataPack => "datapack",
+		PackageType::ModPack => "modpack",
+	}
+	.to_string()
 }
 
 #[serde_as]
@@ -469,5 +533,79 @@ impl From<ModrinthUser> for ManagedUser {
 			is_organization_user: false,
 			role: None,
 		}
+	}
+}
+
+#[allow(dead_code)]
+enum FacetOperation {
+	NotEq,
+	LargeEq,
+	Large,
+	SmallEq,
+	Small,
+	Eq,
+}
+
+impl std::fmt::Display for FacetOperation {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Self::NotEq => "!=",
+			Self::LargeEq => ">=",
+			Self::Large => ">",
+			Self::SmallEq => "<=",
+			Self::Small => "<",
+			Self::Eq => "=",
+		})
+	}
+}
+
+struct Facet(pub String, pub FacetOperation, pub String);
+
+impl std::fmt::Display for Facet {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(format!("{}{}{}", self.0, self.1, self.2).as_str())
+	}
+}
+
+struct FacetBuilder {
+	pub facets: Vec<Vec<Facet>>,
+}
+
+impl FacetBuilder {
+	pub const fn builder() -> Self {
+		Self { facets: vec![] }
+	}
+
+	pub fn and(&mut self, facet: Facet) -> &Self {
+		self.facets.push(vec![facet]);
+		self
+	}
+
+	#[allow(dead_code)]
+	pub fn or(&mut self, facet: Facet) -> &Self {
+		let mut last_facet = self.facets.pop().unwrap_or_default();
+		last_facet.push(facet);
+		self.facets.push(last_facet);
+		self
+	}
+
+	pub fn build(&self) -> String {
+		let mut builder: Vec<String> = vec![];
+
+		for facet in &self.facets {
+			let mut stringified = String::new();
+			stringified.push('[');
+			for (i, f) in facet.iter().enumerate() {
+				if i != 0 {
+					stringified.push(',');
+				}
+				stringified.push_str(format!("\"{f}\"").as_str());
+			}
+			stringified.push(']');
+
+			builder.push(stringified);
+		}
+
+		builder.join(",")
 	}
 }

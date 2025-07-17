@@ -69,8 +69,19 @@ function Sidebar(props: SidebarProps) {
 		navigate({ to: url });
 	}
 
-	function isActive(link: string, _params: URLSearchParams | undefined) {
-		return location === `${base}${link}` || `${location}/` === `${base}${link}`;
+	function isActive(link: string, params: URLSearchParams | undefined) {
+		const fullBasePath = `${base}${link}`;
+		const pathnameMatch = location.startsWith(fullBasePath) || `${location}/`.startsWith(fullBasePath);
+
+		if (!params)
+			return pathnameMatch;
+
+		const searchParams = new URLSearchParams(routerState.location.searchStr);
+		for (const [key, value] of params)
+			if (searchParams.get(key) !== value)
+				return false;
+
+		return pathnameMatch;
 	}
 
 	return (
@@ -78,7 +89,7 @@ function Sidebar(props: SidebarProps) {
 			{Object.keys(links).map((section, i) => (
 				<div className="flex flex-col gap-y-2" key={i}>
 					<div>
-						<h3 className="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</h3>
+						<p className="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</p>
 						<div className="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
 							{links[section].map((link, i) => {
 								// eslint yaps too much tbh
@@ -88,7 +99,7 @@ function Sidebar(props: SidebarProps) {
 								return (
 									<a
 										className={
-											`px-3 py-1 rounded-md text-md border border-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-border/05' : 'border-transparent'}`
+											`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-component-bg-pressed' : 'border-transparent'}`
 										}
 										key={i}
 										onClick={() => goto(link[2], link[3])}

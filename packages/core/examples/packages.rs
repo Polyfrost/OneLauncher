@@ -1,4 +1,4 @@
-use onelauncher_core::{api::{cluster, packages::{self, download_package, provider::ProviderExt}, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::{CoreOptions, Dirs}};
+use onelauncher_core::{api::{cluster, packages::{self, data::{SearchQuery, Sort}, download_package, provider::ProviderExt}, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::{CoreOptions, Dirs}};
 use onelauncher_entity::{loader::GameLoader, package::Provider};
 
 #[tokio::main]
@@ -19,6 +19,15 @@ pub async fn main() -> LauncherResult<()> {
 
 	// Fetch our package and its versions
 	let provider = Provider::Modrinth;
+
+	println!("search results: {:#?}", provider.search(&SearchQuery {
+		query: Some("chatting".to_string()),
+		offset: Some(0),
+		limit: Some(10),
+		sort: Some(Sort::Newest),
+		filters: None,
+	}).await?);
+
 	let package = &provider.get("chatting").await?;
 	let versions = provider.get_versions(package.version_ids.as_slice()).await?;
 

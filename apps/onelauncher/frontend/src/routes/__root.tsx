@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
+import NotificationToasts from '@/components/overlay/NotificationToasts';
 import WindowFrame from '@/components/WindowFrame';
 import { AnimatedOutletProvider } from '@onelauncher/common/components';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
@@ -34,6 +35,7 @@ function RootRoute() {
 
 					<Outlet />
 
+					<NotificationToasts />
 					<TanStackRouterDevtools />
 				</div>
 			</RouterProvider>

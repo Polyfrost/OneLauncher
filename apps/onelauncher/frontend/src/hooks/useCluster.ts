@@ -1,17 +1,17 @@
-import type { Model } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { useEffect, useState } from 'react';
 
-function useRecentCluster() {
+export function useRecentCluster() {
 	const result = useCommand('getClusters', bindings.core.getClusters);
-	const [cluster, setCluster] = useState<Model | undefined>();
+	const [cluster, setCluster] = useState<ClusterModel | undefined>();
 
 	useEffect(() => {
 		if (!result.data)
 			return;
 
-		let mostRecentCluster: Model | undefined;
+		let mostRecentCluster: ClusterModel | undefined;
 
 		for (const c of result.data) {
 			if (!mostRecentCluster) {
@@ -40,4 +40,15 @@ function useRecentCluster() {
 	return cluster;
 }
 
-export default useRecentCluster;
+export function useClusters() {
+	const result = useCommand('getClusters', bindings.core.getClusters);
+	const [clusters, setClusters] = useState<Array<ClusterModel> | undefined>();
+
+	useEffect(() => {
+		if (!result.data)
+			return;
+		setClusters(result.data);
+	}, [result.data]);
+
+	return clusters;
+}

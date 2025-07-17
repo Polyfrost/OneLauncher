@@ -1,4 +1,4 @@
-export const LAUNCHER_IMPORT_TYPES: Array<string> = [
+export const LAUNCHER_IMPORT_TYPES = [
 	'PrismLauncher',
 	'Curseforge',
 	// 'Modrinth',
@@ -9,6 +9,17 @@ export const LAUNCHER_IMPORT_TYPES: Array<string> = [
 	// 'TLauncher',
 	// 'Technic'
 ] as const;
+
+export const LOADERS = [
+	'vanilla',
+	'forge',
+	'neoforge',
+	'quilt',
+	'fabric',
+	'legacyfabric',
+] as const;
+export const PROVIDERS = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
+export const PACKAGE_TYPES = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 
 export function pluralize(n: number, word: string, locale: string = 'en'): string {
 	const pluralRules = new Intl.PluralRules(locale);
@@ -76,4 +87,36 @@ export function formatAsRelative(
 			return formatter.format(Math.round(elapsed / ms), unit as Intl.RelativeTimeFormatUnit);
 
 	return 'now';
+}
+
+function convertSeconds(secondsInput: number): string {
+	let remaining = secondsInput;
+
+	const hours = Math.floor(remaining / 3600);
+	remaining %= 3600;
+
+	const minutes = Math.floor(remaining / 60);
+	remaining %= 60;
+
+	const seconds = remaining;
+
+	const parts: Array<string> = [];
+
+	if (hours)
+		parts.push(`${hours} hours`);
+	if (minutes)
+		parts.push(`${minutes} minutes`);
+	if (seconds)
+		parts.push(`${seconds} seconds`);
+
+	return parts.join(' ');
+}
+
+export function formatAsDuration(seconds: number | bigint | Date): string {
+	if (seconds instanceof Date)
+		seconds = seconds.getTime() / 1000;
+	else
+		seconds = Number(seconds);
+
+	return convertSeconds(seconds);
 }

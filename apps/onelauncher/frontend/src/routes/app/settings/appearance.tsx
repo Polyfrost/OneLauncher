@@ -1,5 +1,7 @@
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
+import useSettings from '@/hooks/useSettings';
+import { bindings } from '@/main';
 import { THEMES } from '@/utils/theming';
 import { Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
@@ -11,6 +13,15 @@ export const Route = createFileRoute('/app/settings/appearance')({
 });
 
 function RouteComponent() {
+	const { settings, createSetting } = useSettings();
+
+	const [windowFrame, setFrameStyle] = createSetting('native_window_frame', settings?.native_window_frame);
+
+	const handleWindowFrameChange = async (value: boolean) => {
+		await bindings.onelauncher.set_window_style(value);
+		setFrameStyle(value);
+	};
+
 	return (
 		<Sidebar.Page>
 			<ScrollableContainer>
@@ -56,7 +67,7 @@ function RouteComponent() {
 						icon={<Monitor01Icon />}
 						title="Custom Window Frame"
 					>
-						<Switch />
+						<Switch defaultSelected={windowFrame} onChange={handleWindowFrameChange} />
 					</SettingsRow>
 
 					<SettingsRow

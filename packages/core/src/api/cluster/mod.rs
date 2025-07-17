@@ -18,6 +18,7 @@ use crate::store::{Dirs, State};
 use crate::utils::io::{self, IOError};
 
 pub mod dao;
+pub mod content;
 
 mod sync;
 pub use sync::*;

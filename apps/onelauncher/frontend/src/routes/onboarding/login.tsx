@@ -5,7 +5,6 @@ import { useCommand } from '@onelauncher/common';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
-import { useOnboardingContext } from './route';
 
 export const Route = createFileRoute('/onboarding/login')({
 	component: RouteComponent,

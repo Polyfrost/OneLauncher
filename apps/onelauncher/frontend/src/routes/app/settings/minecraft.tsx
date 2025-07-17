@@ -1,5 +1,9 @@
+import type { SettingProfileModel } from '@/bindings.gen';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
+import usePopState from '@/hooks/usePopState';
+import { bindings } from '@/main';
+import { useCommand } from '@onelauncher/common';
 import { Switch, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, XIcon } from '@untitled-theme/icons-react';
@@ -10,24 +14,41 @@ export const Route = createFileRoute('/app/settings/minecraft')({
 });
 
 function RouteComponent() {
+	const result = useCommand('readSettings', bindings.core.readSettings);
+
+	const save = useCommand('writeSettings', () => bindings.core.writeSettings(result.data!), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	usePopState(() => {
+		save.refetch();
+	});
+
 	return (
 		<Sidebar.Page>
 			<ScrollableContainer>
 				<div className="h-full">
 					<h1>Minecraft Settings</h1>
 
-					<GameSettings />
+					<GameSettings settings={result.data!.global_game_settings} />
 
 					{/* <LauncherSettings /> */}
 
-					<ProcessSettings />
+					<ProcessSettings settings={result.data!.global_game_settings} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>
 	);
 }
 
-export function GameSettings() {
+interface GameSettingProps {
+	settings: SettingProfileModel;
+}
+
+export function GameSettings(props: GameSettingProps) {
+	const { settings } = props;
+
 	return (
 		<>
 			<SettingsRow.Header>Game</SettingsRow.Header>
@@ -37,7 +58,12 @@ export function GameSettings() {
 				icon={<Maximize01Icon />}
 				title="Force Fullscreen"
 			>
-				<Switch />
+				<Switch
+					defaultSelected={settings.force_fullscreen!}
+					onChange={(val) => {
+						settings.force_fullscreen = val;
+					}}
+				/>
 			</SettingsRow>
 
 			<SettingsRow
@@ -48,11 +74,19 @@ export function GameSettings() {
 				<div className="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField
 						className="text-center"
+						defaultValue={settings.res?.width.toString()}
+						onChange={(e) => {
+							settings.res!.width = Number(e.target.value);
+						}}
 						type="number"
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
 						className="text-center"
+						defaultValue={settings.res?.height.toString()}
+						onChange={(e) => {
+							settings.res!.height = Number(e.target.value);
+						}}
 						type="number"
 					/>
 				</div>
@@ -65,21 +99,12 @@ export function GameSettings() {
 			>
 				<div className="flex items-center gap-x-4 flex-justify-center">
 					<div className="flex flex-row items-center gap-x-2">
-						<span>Min:</span>
 						<TextField
 							className="text-center"
-							max={2024}
-							min={1}
-							type="number"
-						/>
-					</div>
-
-					<div className="flex flex-row items-center gap-x-2">
-						<span>Max:</span>
-						<TextField
-							className="text-center"
-							max={2024}
-							min={1}
+							defaultValue={settings.mem_max?.toString()}
+							onChange={(e) => {
+								settings.mem_max = Number(e.target.value);
+							}}
 							type="number"
 						/>
 					</div>
@@ -104,7 +129,13 @@ export function GameSettings() {
 // 	);
 // }
 
-export function ProcessSettings() {
+interface ProcessSettingsProps {
+	settings: SettingProfileModel;
+}
+
+export function ProcessSettings(props: ProcessSettingsProps) {
+	const { settings } = props;
+
 	return (
 		<>
 			<SettingsRow.Header>Process</SettingsRow.Header>
@@ -115,6 +146,10 @@ export function ProcessSettings() {
 				title="Pre-Launch Command"
 			>
 				<TextField
+					defaultValue={settings.hook_pre || ''}
+					onChange={(e) => {
+						settings.hook_pre = e.target.value || null;
+					}}
 					placeholder="echo 'Game started'"
 				/>
 			</SettingsRow>
@@ -125,6 +160,10 @@ export function ProcessSettings() {
 				title="Wrapper Command"
 			>
 				<TextField
+					defaultValue={settings.hook_wrapper || ''}
+					onChange={(e) => {
+						settings.hook_wrapper = e.target.value || null;
+					}}
 					placeholder="gamescope"
 				/>
 			</SettingsRow>
@@ -135,6 +174,10 @@ export function ProcessSettings() {
 				title="Post-Exit Command"
 			>
 				<TextField
+					defaultValue={settings.hook_post || ''}
+					onChange={(e) => {
+						settings.hook_post = e.target.value || null;
+					}}
 					placeholder="echo 'Game exited'"
 				/>
 			</SettingsRow>

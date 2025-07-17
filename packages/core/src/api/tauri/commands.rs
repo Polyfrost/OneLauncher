@@ -1,8 +1,10 @@
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{icon::Icon, loader::GameLoader};
+use onelauncher_entity::{icon::Icon, loader::GameLoader, package::Provider, packages, resolution::Resolution};
+use sea_orm::ActiveValue::Set;
+use crate::{api::packages::{data::{SearchResult, ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
-use crate::{api::{self, cluster::dao::ClusterId}, error::LauncherResult, store::{credentials::MinecraftCredentials, Core}};
+use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
 
 use onelauncher_entity::prelude::model::*;
 
@@ -25,8 +27,14 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "launchCluster")]
 	async fn launch_cluster(id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
 
-	// #[taurpc(alias = "updateClusterById")]
-	// async fn update_cluster_by_id(id: ClusterId, request: Cluster) -> LauncherResult<()>;
+	#[taurpc(alias = "updateClusterById")]
+	async fn update_cluster_by_id(id: ClusterId, request: ClusterUpdate) -> LauncherResult<()>;
+
+	#[taurpc(alias = "getScreenshots")]
+	async fn get_screenshots(id: ClusterId) -> LauncherResult<Vec<String>>;
+
+	#[taurpc(alias = "getWorlds")]
+	async fn get_worlds(id: ClusterId) -> LauncherResult<Vec<String>>;
 
 
 	// Setting Profiles
@@ -35,6 +43,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getGlobalProfile")]
 	async fn get_global_profile() -> SettingsProfile;
+
+	#[taurpc(alias = "updateClusterProfile")]
+	async fn update_cluster_profile(name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile>;
 
 	// Game Metadata
 	#[taurpc(alias = "getGameVersions")]
@@ -62,6 +73,32 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "openMsaLogin")]
 	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
+
+	// Settings
+	#[taurpc(alias = "readSettings")]
+	async fn read_settings() -> LauncherResult<Settings>;
+
+	#[taurpc(alias = "writeSettings")]
+	async fn write_settings(setting: Settings) -> LauncherResult<()>;
+
+	// Packages
+	#[taurpc(alias = "searchPackages")]
+	async fn search_packages(provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>>;
+
+	#[taurpc(alias = "getPackage")]
+	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
+
+	#[taurpc(alias = "getMultiplePackages")]
+	async fn get_multiple_packages(provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>>;
+
+	#[taurpc(alias = "getPackageVersions")]
+	async fn get_package_versions(provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>>;
+
+	#[taurpc(alias = "getPackageUser")]
+	async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
+
+	#[taurpc(alias = "downloadPackage")]
+	async fn download_package(provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model>;
 }
 
 
@@ -74,6 +111,23 @@ pub struct CreateCluster {
 	icon: Option<Icon>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
+pub struct ClusterUpdate {
+	name: Option<String>,
+	icon_url: Option<Icon>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
+pub struct ProfileUpdate {
+	pub res: Option<Resolution>,
+	pub force_fullscreen: Option<bool>,
+	pub mem_max: Option<u32>,
+	pub launch_args: Option<String>,
+	pub launch_env: Option<String>,
+	pub hook_pre: Option<String>,
+	pub hook_wrapper: Option<String>,
+	pub hook_post: Option<String>,
+}
 
 #[taurpc::ipc_type]
 pub struct TauriLauncherApiImpl;
@@ -97,6 +151,22 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	async fn create_cluster(self, options: CreateCluster) -> LauncherResult<Cluster> {
 		let cluster = api::cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon).await?;
 
+		api::setting_profiles::create_profile(&options.name, |mut active_model: SettingsProfilePartial| async move {
+			active_model.force_fullscreen = Set(Some(false));
+
+			active_model.mem_max = Set(Some(2048));
+
+			Ok(active_model)
+		})
+		.await?;
+
+		api::cluster::dao::update_cluster_by_id(cluster.id, |mut active_model: ClusterPartial| async move {
+			active_model.setting_profile_name = Set(Some(options.name.clone()));
+
+			Ok(active_model)
+		})
+		.await?;
+
 		Ok(cluster)
 	}
 
@@ -119,22 +189,38 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(())
 	}
 
-	// async fn update_cluster_by_id(self, id: ClusterId, request: clusters::ActiveModel) -> LauncherResult<()> {
-	// 	// let updated_cluster = api::cluster::dao::update_cluster_by_id(id, |mut active_model| async move {
-	// 	// 	if let Some(name) = request.name {
-	// 	// 		active_model.name = Set(name);
-	// 	// 	}
+	async fn update_cluster_by_id(self, id: ClusterId, request: ClusterUpdate) -> LauncherResult<()> {
+		api::cluster::dao::update_cluster_by_id(id, |mut active_model: ClusterPartial| async move {
+			if let Some(name) = request.name {
+				active_model.name = Set(name)
+			}
 
-	// 	// 	active_model.updated_at = Set(chrono::Utc::now().naive_utc());
+			// ok i know this is so wrong but im not a rust guy
+			if let Some(icon_url) = request.icon_url {
+				api::cluster::dao::set_icon_by_id(id, &icon_url).await?;
+			}
 
-	// 	// 	Ok(active_model)
-	// 	// })
-	// 	// .await
-	// 	// .map_err(|e| e.to_string())?;
+			Ok(active_model)
+		})
+		.await
+		.map_err(|e| LauncherError::from(e))?;
 
-	// 	Ok(())
-	// }
+	 	Ok(())
+	}
 
+	async fn get_screenshots(self, id: ClusterId) -> LauncherResult<Vec<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_screenshots(&cluster).await
+	}
+
+	async fn get_worlds(self, id: ClusterId) -> LauncherResult<Vec<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_worlds(&cluster).await
+	}
 
 	// Setting Profiles
 	async fn get_global_profile(self) -> SettingsProfile {
@@ -145,6 +231,47 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
 	}
 
+	// please kill this with fire
+	async fn update_cluster_profile(self, name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile> {
+		let profile = api::setting_profiles::dao::update_profile_by_name(&name, |mut active_model: SettingsProfilePartial| async move {
+			if let Some(res) = profile.res {
+				active_model.res = Set(Some(res));
+			}
+
+			if let Some(force_fullscreen) = profile.force_fullscreen {
+				active_model.force_fullscreen = Set(Some(force_fullscreen));
+			}
+
+			if let Some(mem_max) = profile.mem_max {
+				active_model.mem_max = Set(Some(mem_max));
+			}
+
+			if let Some(launch_args) = profile.launch_args {
+				active_model.launch_args = Set(Some(launch_args));
+			}
+
+			if let Some(launch_env) = profile.launch_env {
+				active_model.launch_env = Set(Some(launch_env));
+			}
+
+			if let Some(hook_pre) = profile.hook_pre {
+				active_model.hook_pre = Set(Some(hook_pre));
+			}
+
+			if let Some(hook_wrapper) = profile.hook_wrapper {
+				active_model.hook_wrapper = Set(Some(hook_wrapper));
+			}
+
+			if let Some(hook_post) = profile.hook_post {
+				active_model.hook_post = Set(Some(hook_post));
+			}
+
+			Ok(active_model)
+		})
+		.await?;
+
+		Ok(profile)
+	}
 
 	// Game Metadata
 	async fn get_loaders_for_version(self, mc_version: String) -> LauncherResult<Vec<GameLoader>> {
@@ -241,5 +368,61 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		win.close()?;
 
 		Ok(None)
+	}
+
+	async fn read_settings(self) -> LauncherResult<Settings> {
+		let state = State::get().await?;
+		let settings = state.settings.read().await;
+
+		Ok(settings.clone())
+	}
+
+	async fn write_settings(self, setting: Settings) -> LauncherResult<()> {
+		let state = State::get().await?;
+		let mut settings = state.settings.write().await;
+
+		*settings = setting;
+
+		settings.save().await?;
+
+		Ok(())
+	}
+
+	// Packages
+	async fn search_packages(self, provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>> {
+    	Ok(provider.search(&query).await?)
+	}
+
+	async fn get_package(self, provider: Provider, slug: String) -> LauncherResult<ManagedPackage> {
+    	Ok(provider.get(&slug).await?)
+	}
+
+	async fn get_multiple_packages(self, provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>> {
+    	Ok(provider.get_multiple(&slugs).await?)
+	}
+
+	async fn get_package_versions(self, provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>> {
+    	Ok(provider.get_versions_paginated(&slug, mc_versions, loaders, offset, limit).await?)
+	}
+
+	async fn get_package_user(self, provider: Provider, slug: String) -> LauncherResult<ManagedUser> {
+    	Ok(provider.get_user(&slug).await?)
+	}
+
+	async fn download_package(self, provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id).await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		let package = provider.get(&package_id).await?;
+
+		let versions = provider.get_versions(&[version_id]).await?;
+		let version = versions.into_iter().next()
+			.ok_or_else(|| anyhow::anyhow!("Version not found"))?;
+
+		let model = api::packages::download_package(&package, &version, None).await?;
+
+		api::packages::link_package(&model, &cluster, skip_compatibility).await?;
+
+		Ok(model)
 	}
 }

@@ -1,14 +1,21 @@
-import type { Model } from '@/bindings.gen';
+import type { ClusterModel } from '@/bindings.gen';
 import type { Dispatch, SetStateAction } from 'react';
+import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import LoaderIcon from '@/components/launcher/LoaderIcon';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import SettingsRow from '@/components/SettingsRow';
+import useNotifications from '@/hooks/useNotification';
 import { bindings } from '@/main';
+import { formatAsDuration } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { dataDir, join } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { Edit02Icon, FolderIcon, ImagePlusIcon, Share07Icon, Tool02Icon, Trash01Icon } from '@untitled-theme/icons-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 import Sidebar from '../settings/route';
 
@@ -18,13 +25,68 @@ export const Route = createFileRoute('/app/cluster/')({
 
 function RouteComponent() {
 	const { id } = Route.useSearch();
-	const [newCover, setNewCover] = useState<string>('');
-	const [newName, setNewName] = useState<string>('');
-	const [edit, setEdit] = useState<boolean>(false);
-
-	// dumbass fix ik
 	const cluster = useCommand('getClusterById', () => bindings.core.getClusterById(Number(id.toString()) as unknown as bigint));
 
+	// dumbass fix ik
+	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
+	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
+	const [edit, setEdit] = useState<boolean>(false);
+
+	const editing = useCommand('updateClusterById', () => bindings.core.updateClusterById(Number(id.toString()) as unknown as bigint, {
+		icon_url: newCover,
+		name: newName,
+	}), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	const [launcherDir, setLauncherDir] = useState('');
+
+	useEffect(() => {
+		(async () => {
+			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data?.folder_name as string));
+		})();
+	}, [cluster.data?.folder_name]);
+
+	const openClusterDir = async () => {
+		openPath(launcherDir);
+	};
+
+	async function handleEditMode() {
+		if (edit)
+			await editing.refetch();
+
+		setEdit(!edit);
+	}
+	/*
+	const { set, remove } = useNotifications();
+
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		(async () => {
+			unlisten = await bindings.events.ingress.on((e) => {
+				if (typeof e.ingress_type === 'object')
+					if ('PrepareCluster' in e.ingress_type) {
+						const { cluster_name } = e.ingress_type.PrepareCluster;
+						let cid = `cluster-${cluster_name}`;
+
+						if (e.percent === null) {
+							remove(cid);
+							return;
+						}
+
+						set(cid, {
+							title: 'Preparing Cluster',
+							message: e.message,
+							fraction: e.percent,
+						});
+					}
+			});
+		})();
+
+		return () => unlisten?.();
+	}, [set, remove]);
+*/
 	return (
 		<Sidebar.Page>
 			<h1>Overview</h1>
@@ -47,9 +109,10 @@ function RouteComponent() {
 								children="Open"
 								color="primary"
 								isDisabled={false}
+								onClick={openClusterDir}
 							/>
 						)}
-						description="burada path var işte yersen"
+						description={launcherDir}
 						disabled={false}
 						icon={<FolderIcon />}
 						title="Cluster Folder"
@@ -58,7 +121,7 @@ function RouteComponent() {
 					<SettingsRow.Header>Cluster Actions</SettingsRow.Header>
 					<SettingsRow
 						children={(
-							<Button color="secondary" onClick={() => setEdit(!edit)}>{edit ? 'Save' : 'Edit'}</Button>
+							<Button color="secondary" onClick={handleEditMode}>{edit ? 'Save' : 'Edit'}</Button>
 						)}
 						description="Edit the cluster name and cover image."
 						icon={<Edit02Icon />}
@@ -95,7 +158,7 @@ function RouteComponent() {
 }
 
 interface BannerProps {
-	cluster: Model | null | undefined;
+	cluster: ClusterModel | null | undefined;
 	editMode: boolean;
 	newName: string;
 	setNewName: Dispatch<SetStateAction<string>>;
@@ -107,23 +170,28 @@ interface BannerProps {
 function Banner({
 	cluster,
 	editMode,
+	newCover,
 	setNewName,
+	setNewCover,
 }: BannerProps) {
-	// async function launchFilePicker() {
-	// 	const selected = await dialog.open({
-	// 		multiple: false,
-	// 		directory: false,
-	// 		filters: [{
-	// 			name: 'Image',
-	// 			extensions: ['png', 'jpg', 'jpeg', 'webp'],
-	// 		}],
-	// 	});
+	const { set } = useNotifications();
 
-	// 	if (selected === null)
-	// 		return;
+	async function launchFilePicker() {
+		const selected = await open({
+			multiple: false,
+			directory: false,
+			filters: [{
+				name: 'Image',
+				extensions: ['png', 'jpg', 'jpeg', 'webp'],
+			}],
+		});
 
-	// 	props.setNewCover(selected);
-	// }
+		if (selected === null)
+			return;
+
+		setNewCover(selected);
+	}
+
 	const launch = useCommand('launchCluster', () => bindings.core.launchCluster(cluster?.id as bigint, null), {
 		enabled: false,
 		subscribed: false,
@@ -132,8 +200,11 @@ function Banner({
 	const handleLaunch = () => {
 		launch.refetch();
 
-		if (launch.error)
-			console.error(launch.error.message);
+		if (launch.isError)
+			set('launch_cluster', {
+				title: 'Failed to launch cluster',
+				message: launch.error.message,
+			});
 	};
 
 	function updateName(name: string) {
@@ -143,20 +214,42 @@ function Banner({
 		setNewName(name);
 	}
 
+	const image = () => {
+		if (editMode && newCover && newCover !== cluster?.icon_url)
+			if (newCover.includes('\\') || newCover.includes('/')) {
+				console.warn('Using preview image:', newCover);
+				return convertFileSrc(newCover);
+			}
+
+		const url = cluster?.icon_url;
+
+		if (!url)
+			return DefaultInstancePhoto;
+
+		return convertFileSrc(url);
+	};
+
 	return (
 		<div className="h-37 flex flex-row gap-x-2.5 rounded-xl bg-page-elevated p-2.5">
 			<div className="relative aspect-ratio-video h-full min-w-57 w-57 overflow-hidden border border-component-bg/10 rounded-lg">
 				<Show when={editMode}>
 					<div
 						className="absolute z-1 h-full w-full flex items-center justify-center bg-black/50 opacity-50 hover:opacity-100"
-						// onClick={launchFilePicker}
+						onClick={launchFilePicker}
 					>
 						<ImagePlusIcon className="h-12 w-12" />
 					</div>
 				</Show>
 
 				{/* <ClusterCover class="h-full w-full object-cover" cluster={props.cluster} override={props.newCover()} /> */}
-				<img src="https://github.com/emirsassan.png" />
+				<img
+					className="h-full w-full"
+					onError={(e) => {
+						console.error('Failed to load cluster icon:', image(), e);
+						(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+					}}
+					src={image()}
+				/>
 			</div>
 
 			<div className="w-full flex flex-col justify-between gap-y-.5 overflow-hidden text-fg-primary">
@@ -193,7 +286,7 @@ function Banner({
 						>
 							Played for
 							{' '}
-							<b>{cluster?.overall_played || 0}</b>
+							<b>{formatAsDuration(cluster?.overall_played || 0)}</b>
 							.
 						</span>
 					</div>
@@ -204,8 +297,7 @@ function Banner({
 						<Button
 							children={<Share07Icon />}
 							color="secondary"
-							// disabled={props.editMode()}
-							isDisabled
+							isDisabled={editMode}
 						/>
 					</div>
 				</div>

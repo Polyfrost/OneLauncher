@@ -1,16 +1,19 @@
 import type { ToOptions } from '@tanstack/react-router';
+import useNotifications from '@/hooks/useNotification';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button, Menu } from '@onelauncher/common/components';
+import { Button, Popup } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Bell01Icon, Cloud01Icon, TerminalBrowserIcon } from '@untitled-theme/icons-react';
-import { MenuTrigger } from 'react-aria-components';
 import OneLauncherText from '../assets/logos/onelauncher_text.svg';
 import PlayerHead from './content/PlayerHead';
 import AccountPopup from './overlay/popups/AccountPopup';
+import NotificationPopup from './overlay/popups/NotificationPopup';
 
 function Navbar() {
 	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
+	const { list } = useNotifications();
+	const notificationCount = Object.keys(list).length;
 
 	return (
 		<div className="h-15 min-h-15 flex flex-row items-center *:flex-1">
@@ -36,36 +39,31 @@ function Navbar() {
 
 				{/* Notification Manager Button */}
 				<div className="relative">
-					<MenuTrigger>
-						<Button color="ghost" size="icon">
+					<Popup.Trigger>
+						<Button className="relative" color="ghost" size="icon">
 							<Bell01Icon />
+							{notificationCount > 0 && (
+								<span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+									{notificationCount > 99 ? '99+' : notificationCount}
+								</span>
+							)}
 						</Button>
 
-						<Menu.Popover placement="bottom right">
-							<Menu>
-								<Menu.Item>Hello World</Menu.Item>
-							</Menu>
-						</Menu.Popover>
-					</MenuTrigger>
-
-					{/* <NotificationPopup
-						className="mt-2"
-						mount={notificationButtonContainer}
-						ref={el => el.classList.add('right-0')}
-						setVisible={setNotificationMenuOpen}
-						visible={notificationMenuOpen}
-					/> */}
+						<Popup>
+							<NotificationPopup />
+						</Popup>
+					</Popup.Trigger>
 				</div>
 
-				<MenuTrigger>
+				<Popup.Trigger>
 					<Button className="p-0" color="ghost" size="icon">
 						<PlayerHead className="h-full rounded-md hover:opacity-70" uuid={defaultUser.data?.id} />
 					</Button>
 
-					<Menu.Popover>
+					<Popup>
 						<AccountPopup />
-					</Menu.Popover>
-				</MenuTrigger>
+					</Popup>
+				</Popup.Trigger>
 			</div>
 		</div>
 	);

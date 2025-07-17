@@ -3,7 +3,7 @@ use std::path::Path;
 use onelauncher_entity::{cluster_groups, clusters, icon::Icon, loader::GameLoader};
 use sea_orm::{ActiveValue::Set, IntoActiveModel, prelude::*};
 
-use crate::{error::{DaoError, LauncherResult}, store::State};
+use crate::{error::{DaoError, LauncherResult}, store::State, utils::io};
 
 pub type ClusterId = i64;
 
@@ -154,4 +154,72 @@ pub async fn get_clusters_grouped() -> LauncherResult<Vec<(cluster_groups::Model
 	}
 
 	Ok(grouped)
+}
+
+/// Caches an icon from a file path and updates the cluster to use the cached icon.
+/// This function copies the image to the icon cache directory and sets the cluster's icon_url
+/// to reference the cached version.
+pub async fn set_cluster_icon_by_path(
+	cluster: &mut clusters::Model,
+	icon_path: &str,
+) -> LauncherResult<()> {
+	let icon_path = Path::new(icon_path);
+
+	if !icon_path.exists() {
+		return Err(anyhow::anyhow!("Icon file does not exist: {}", icon_path.display()).into());
+	}
+
+	let image_bytes = io::read(icon_path).await?;
+
+	let hash = crate::utils::crypto::HashAlgorithm::Sha1.hash(&image_bytes).await?;
+
+	let cache_dir = crate::store::Dirs::get_caches_dir().await?.join("icons");
+	io::create_dir_all(&cache_dir).await?;
+
+	let cached_file_path = cache_dir.join(format!("{}.png", hash));
+	io::write(&cached_file_path, &image_bytes).await?;
+
+	let file_icon = Icon::try_from_path(&cached_file_path)
+		.ok_or_else(|| anyhow::anyhow!("Failed to create file icon from path: {}", cached_file_path.display()))?;
+
+	update_cluster(cluster, |mut active_model: clusters::ActiveModel| async move {
+		active_model.icon_url = Set(Some(file_icon));
+		Ok(active_model)
+	}).await?;
+
+	Ok(())
+}
+
+/// Caches an icon from a file path and updates the cluster by ID to use the cached icon.
+/// This function copies the image to the icon cache directory and sets the cluster's icon_url
+/// to reference the cached version.
+pub async fn set_icon_by_id(
+	cluster_id: ClusterId,
+	icon_path: &str,
+) -> LauncherResult<clusters::Model> {
+	let icon_path = Path::new(icon_path);
+
+	if !icon_path.exists() {
+		return Err(anyhow::anyhow!("Icon file does not exist: {}", icon_path.display()).into());
+	}
+
+	let image_bytes = io::read(icon_path).await?;
+
+	let hash = crate::utils::crypto::HashAlgorithm::Sha1.hash(&image_bytes).await?;
+
+	let cache_dir = crate::store::Dirs::get_caches_dir().await?.join("icons");
+	io::create_dir_all(&cache_dir).await?;
+
+	let cached_file_path = cache_dir.join(format!("{}.png", hash));
+	io::write(&cached_file_path, &image_bytes).await?;
+
+	let file_icon = Icon::try_from_path(&cached_file_path)
+		.ok_or_else(|| anyhow::anyhow!("Failed to create file icon from path: {}", cached_file_path.display()))?;
+
+	let updated_cluster = update_cluster_by_id(cluster_id, |mut active_model: clusters::ActiveModel| async move {
+		active_model.icon_url = Set(Some(file_icon));
+		Ok(active_model)
+	}).await?;
+
+	Ok(updated_cluster)
 }

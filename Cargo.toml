@@ -51,6 +51,7 @@ tauri-plugin-dialog = { version = "=2.2.1" }
 tauri-plugin-single-instance = { version = "=2.2.3" }
 tauri-plugin-updater = { version = "=2.7.1" }
 tauri-plugin-window-state = { version = "=2.2.2" }
+tauri-plugin-opener = { version = "=2.3.0" }
 
 # code gen
 strum = { version = "=0.27.1", features = [ "derive" ] }

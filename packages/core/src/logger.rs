@@ -41,14 +41,15 @@ pub async fn start_logger() {
 // This will log to a file in the logs directory, and will not show any logs in the console
 #[cfg(not(debug_assertions))]
 pub async fn start_logger() {
-    use chrono::Local;
+	use chrono::Local;
     use std::fs::OpenOptions;
     use tracing_subscriber::fmt::time::ChronoLocal;
-
-    use crate::io::Dirs;
+	
+    use crate::store::Dirs;
+	use crate::store::Core;
 
     // Initialize and get logs directory path
-    let logs_dir = Dirs::get().await?.launcher_logs_dir();
+    let logs_dir = Dirs::get_launcher_logs_dir().await.unwrap_or_default();
 
     let log_file_name = format!("launcher_{}.log", Local::now().format("%Y%m%d_%H%M%S"));
     let log_file_path = logs_dir.join(log_file_name);
@@ -65,7 +66,7 @@ pub async fn start_logger() {
         Ok(file) => file,
         Err(e) => {
             eprintln!("Could not start open log file: {e}");
-            return None;
+            return;
         }
     };
 
@@ -86,7 +87,7 @@ pub async fn start_logger() {
 		.with_ansi(false)
 		.with_timer(ChronoLocal::rfc_3339());
 
-	if let Some(span) = Core::get().span_formatting.clone() {
+	if let Some(span) = Core::get().logger_span_formatting.clone() {
 		fmt_layer = fmt_layer.with_span_events(span);
 	}
 

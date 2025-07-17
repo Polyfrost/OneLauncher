@@ -24,7 +24,7 @@ impl Icon {
 			return None;
 		}
 
-		Some(Self(format!("file://{}", path.display())))
+		Some(Self(format!("{}", path.display())))
 	}
 
 	pub fn try_from_url(url: url::Url) -> Option<Self> {

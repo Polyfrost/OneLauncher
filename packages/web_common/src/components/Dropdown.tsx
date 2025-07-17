@@ -6,6 +6,7 @@ import type {
 import type { VariantProps } from 'tailwind-variants';
 import type { ClassNameString } from '../types/global';
 import { ChevronDownIcon, ChevronUpIcon } from '@untitled-theme/icons-react';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import React from 'react';
 import {
 	Label as AriaLabel,
@@ -36,15 +37,19 @@ const dropdownStyles = tv({
 		triggerCustomIcon: 'w-4 h-4',
 
 		popover: [
-			'mt-1 rounded-lg shadow-md',
+			// i'll fix this if i dont forget
+			'mt-1 w-full rounded-lg shadow-md',
 			'bg-component-bg border border-component-border',
 			'data-[entering]:animate-in data-[entering]:fade-in data-[entering]:zoom-in-95',
 			'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95',
+			'w-(--trigger-width)',
 		],
 
 		popoverContentWrapper: 'flex flex-col gap-1',
 
-		listBox: 'max-h-46 overflow-auto outline-none flex flex-col gap-0.5',
+		listBox: 'outline-none flex flex-col gap-0.5',
+
+		overlayScrollbars: 'max-h-46 overflow-auto',
 
 		listToolRowWrapper: 'p-1 mt-1',
 	},
@@ -135,9 +140,11 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 
 					<AriaPopover className={twMerge(styles.popover(), popoverClassName)}>
 						<div className={styles.popoverContentWrapper()}>
-							<AriaListBox className={styles.listBox()}>
-								{children}
-							</AriaListBox>
+							<OverlayScrollbarsComponent className={styles.overlayScrollbars()}>
+								<AriaListBox className={styles.listBox()}>
+									{children}
+								</AriaListBox>
+							</OverlayScrollbarsComponent>
 							{listToolRow && (
 								<div className={styles.listToolRowWrapper()}>
 									{listToolRow}

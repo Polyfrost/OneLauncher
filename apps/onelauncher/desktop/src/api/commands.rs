@@ -6,6 +6,8 @@ pub trait OneLauncherApi {
 	async fn return_error() -> LauncherResult<()>;
 
 	async fn open_dev_tools<R: Runtime>(webview_window: tauri::WebviewWindow<R>);
+
+	async fn set_window_style<R: Runtime>(webview_window: tauri::WebviewWindow<R>, decorations: bool);
 }
 
 #[taurpc::ipc_type]
@@ -24,4 +26,7 @@ impl OneLauncherApi for OneLauncherApiImpl {
 		webview_window.open_devtools();
 	}
 
+	async fn set_window_style<R: Runtime>(self, webview_window: tauri::WebviewWindow<R>, decorations: bool) {
+		webview_window.set_decorations(decorations).ok();
+	}
 }

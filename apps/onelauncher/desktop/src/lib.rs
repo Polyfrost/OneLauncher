@@ -54,7 +54,8 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.export_config(
 			specta_typescript::Typescript::default()
 				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
-				.formatter(ext::specta::formatter),
+				.formatter(ext::specta::formatter)
+				.header("// @ts-nocheck \n"),
 		)
 		.merge(api::commands::OneLauncherApiImpl.into_handler())
 		.merge(onelauncher_core::api::tauri::TauriLauncherApiImpl.into_handler())
@@ -70,9 +71,16 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
+		.plugin(tauri_plugin_opener::init())
 		.menu(tauri::menu::Menu::new)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
+			let launcher_path = app.path().data_dir().ok().expect("ok").join("OneLauncher");
+
+			app.asset_protocol_scope()
+				.allow_directory(&launcher_path, true)
+				.unwrap();
+
 			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});
@@ -114,11 +122,16 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 		.get_webview_window("main")
 		.ok_or_else(|| anyhow::anyhow!("no window called main was found"))?;
 
-	// tokio::task::spawn(async move {
-	// 	// let state = State::get().await.expect("failed to get state");
-	// 	// let settings = state.settings.read().await;
-	// 	// win.set_decorations(settings.);
-	// });
+	// Initialize window decorations based on settings
+	let win_clone = win.clone();
+	tokio::task::spawn(async move {
+		if let Ok(state) = State::get().await {
+			let settings = state.settings.read().await;
+			// native_window_frame=true means use native decorations
+			// native_window_frame=false means use custom frame (no decorations)
+			win_clone.set_decorations(settings.native_window_frame).ok();
+		}
+	});
 
 	win.show()?;
 

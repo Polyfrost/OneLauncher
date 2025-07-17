@@ -24,6 +24,7 @@
 		"@tauri-apps/api": "^2.5.0",
 		"@tauri-apps/plugin-clipboard-manager": "^2.2.2",
 		"@tauri-apps/plugin-dialog": "^2.2.1",
+		"@tauri-apps/plugin-opener": "^2.3.0",
 		"@tauri-apps/plugin-shell": "^2.2.1",
 		"@untitled-theme/icons-react": "^0.14.0",
 		"motion": "^12.10.5",
@@ -37,7 +38,8 @@
 		"tailwindcss": "^4.0.6",
 		"tailwindcss-animated": "^2.0.0",
 		"tailwindcss-react-aria-components": "^2.0.0",
-		"taurpc": "^1.8.1"
+		"taurpc": "^1.8.1",
+		"valtio": "^2.1.5"
 	},
 	"devDependencies": {
 		"@tanstack/eslint-config": "^0.1.0",

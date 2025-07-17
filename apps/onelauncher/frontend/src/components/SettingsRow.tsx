@@ -21,7 +21,7 @@ function SettingsRow({ disabled, description, icon, title, children }: SettingsR
 			</div>
 
 			<div className="flex flex-1 flex-col gap-2">
-				<h3 className="text-lg capitalize leading-tight">{title}</h3>
+				<p className="text-lg capitalize leading-tight">{title}</p>
 				<p className="text-sm text-fg-secondary">{description}</p>
 			</div>
 

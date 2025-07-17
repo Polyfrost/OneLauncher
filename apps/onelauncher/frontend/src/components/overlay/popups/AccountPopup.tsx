@@ -2,58 +2,61 @@ import type { MinecraftCredentials } from '@/bindings.gen';
 import PlayerHead from '@/components/content/PlayerHead';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button, Menu } from '@onelauncher/common/components';
+import { Button } from '@onelauncher/common/components';
+import { Link } from '@tanstack/react-router';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
-import { Separator } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 function AccountPopup() {
 	const users = useCommand('getUsers', bindings.core.getUsers);
 	const defaultUser = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
+	const addAccount = useCommand('openMsaLogin', bindings.core.openMsaLogin, {
+		enabled: false,
+		subscribed: false,
+	});
+
 	const setDefaultUser = (user: MinecraftCredentials) => {
-		bindings.commands.setDefaultUser(user.id);
+		bindings.core.setDefaultUser(user.id);
 	};
 
 	return (
-		<Menu className="min-w-3xs">
+		<div className="min-w-3xs">
 			{defaultUser.data && (
-				<Menu.Item>
+				<div>
 					<AccountEntry
 						loggedIn
-						onClick={() => {}}
+						onClick={() => { }}
 						user={defaultUser.data}
 					/>
-				</Menu.Item>
+				</div>
 			)}
 
-			{users.data?.filter(user => user.id === defaultUser.data?.id).map(user => (
-				<Menu.Item key={user.id}>
+			{users.data?.filter(user => user.id !== defaultUser.data?.id).map(user => (
+				<div key={user.id}>
 					<AccountEntry
 						onClick={() => setDefaultUser(user)}
 						user={user}
 					/>
-				</Menu.Item>
+				</div>
 			))}
 
-			{(users.data?.length ?? 0) > 0 && (
-				<Separator />
-			)}
-
-			<Menu.Item className="flex flex-row justify-between">
-				<div>
-					<Button color="ghost">
+			<div className="flex flex-row justify-between">
+				<div className="self-center">
+					<Button color="ghost" onClick={() => addAccount.refetch()}>
 						<PlusIcon />
 						Add Account
 					</Button>
 				</div>
 				<div className="flex flex-row">
-					<Button color="ghost" size="iconLarge">
-						<Settings01Icon className="stroke-fg-primary" />
-					</Button>
+					<Link to="/app/settings/accounts">
+						<Button color="ghost" size="iconLarge">
+							<Settings01Icon className="stroke-fg-primary" />
+						</Button>
+					</Link>
 				</div>
-			</Menu.Item>
-		</Menu>
+			</div>
+		</div>
 	);
 }
 

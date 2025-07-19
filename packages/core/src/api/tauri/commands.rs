@@ -1,7 +1,7 @@
 use interpulse::api::minecraft::Version;
 use onelauncher_entity::{icon::Icon, loader::GameLoader, package::Provider, packages, resolution::Resolution};
 use sea_orm::ActiveValue::Set;
-use crate::{api::packages::{data::{SearchResult, ManagedPackage, ManagedUser, ManagedVersion, SearchQuery}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
+use crate::{api::packages::{data::{ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
 use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
@@ -99,6 +99,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "downloadPackage")]
 	async fn download_package(provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model>;
+
+	#[taurpc(alias = "getUsersFromAuthor")]
+	async fn get_users_from_author(provider: Provider, author: PackageAuthor) -> LauncherResult<Vec<ManagedUser>>;
 }
 
 
@@ -424,5 +427,9 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::packages::link_package(&model, &cluster, skip_compatibility).await?;
 
 		Ok(model)
+	}
+
+	async fn get_users_from_author(self, provider: Provider, author: PackageAuthor) -> LauncherResult<Vec<ManagedUser>> {
+		Ok(provider.get_users_from_author(author).await?)
 	}
 }

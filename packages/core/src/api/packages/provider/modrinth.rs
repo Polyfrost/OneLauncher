@@ -510,8 +510,8 @@ impl From<TeamMember> for ManagedUser {
 struct ModrinthUser {
 	pub id: String,
 	pub username: String,
-	pub avatar_url: String,
-	pub bio: String,
+	pub avatar_url: Option<String>,
+	pub bio: Option<String>,
 }
 
 impl From<ModrinthUser> for ManagedUser {
@@ -520,16 +520,12 @@ impl From<ModrinthUser> for ManagedUser {
 			id: value.id.clone(),
 			username: value.username,
 			url: Some(format!(
-				"{}/user/{}",
+				"{}user/{}",
 				Provider::Modrinth.website(),
 				value.id
 			)),
-			avatar_url: Some(value.avatar_url),
-			bio: if value.bio.is_empty() || value.bio.eq_ignore_ascii_case("a modrinth creator.") {
-				None
-			} else {
-				Some(value.bio)
-			},
+			avatar_url: value.avatar_url,
+			bio: value.bio,
 			is_organization_user: false,
 			role: None,
 		}

@@ -25,11 +25,15 @@ function Search() {
 	});
 	useEffect(() => {
 		search.refetch();
-	}, [context.provider, context.query]);
+	}, [context.provider, context.query, context.cluster]);
 
 	return (
-		<Show when={search.isSuccess}>
-			<PackageGrid items={search.data!.items} provider={context.provider} />
-		</Show>
+		<>
+			{
+			search.data
+				? <PackageGrid items={search.data.items} provider={context.provider} />
+				: <h1>Loading</h1>
+			}
+		</>
 	);
 }

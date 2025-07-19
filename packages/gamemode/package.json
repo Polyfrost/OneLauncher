@@ -1,6 +1,6 @@
 {
 	"name": "@onelauncher/gamemode",
-	"version": "0.1.0-alpha.2",
+	"version": "0.1.0-beta.1",
 	"description": "Next-generation open source Minecraft launcher feral gamemode bindings",
 	"license": "GPL-3.0-only",
 	"repository": {

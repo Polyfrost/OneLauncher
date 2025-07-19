@@ -17,7 +17,7 @@ documentation = "https://docs.polyfrost.org/onelauncher"
 readme = "README.md"
 homepage = "https://polyfrost.org/projects/onelauncher"
 authors = [ "Polyfrost", "Polyfrost Contributors" ]
-version = "0.1.0-alpha.2" # bump this manually for now
+version = "0.1.0-beta.1" # bump this manually for now
 
 [workspace.dependencies]
 # # ============= WORKSPACE ============= # #

@@ -1,6 +1,7 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
 import { abbreviateNumber } from '@/utils';
 import { Show } from '@onelauncher/common/components';
+import { useNavigate } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
@@ -14,7 +15,9 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
+	const navigate = useNavigate()
 	function redirect() {
+		navigate({to: "/app/browser/package/$provider/$slug", params: {provider, slug: item.slug}})
 	}
 
 	return (

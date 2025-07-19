@@ -4,10 +4,10 @@ import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
 import { PROVIDERS } from '@/utils';
 import { browserCategories } from '@/utils/browser';
-import { Dropdown, Show, TextField } from '@onelauncher/common/components';
+import { AnimatedOutlet, Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export const Route = createFileRoute('/app/browser')({
 	component: RouteComponent,
@@ -17,7 +17,11 @@ function RouteComponent() {
 	return (
 		<BrowserProvider>
 			<div>
-				<Outlet />
+				<AnimatedOutlet
+				enter={{animate: {opacity: 1}, initial: {opacity: 1}}}
+				exit={{animate: {opacity: 0}, initial: {opacity: 0}}}
+				from={Route.id}
+				/>
 			</div>
 		</BrowserProvider>
 	);
@@ -138,13 +142,16 @@ function BrowserCategories() {
 
 function BrowserToolbar() {
 	const context = useBrowserContext();
+	const [query, setQuery] = useState(context.query.query ?? "")
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
 			<div className="flex flex-row gap-2" />
 
 			<div className="flex flex-row gap-2">
 				<TextField
+					value={query}
 					iconLeft={<SearchMdIcon />}
+					onChange={e=>setQuery(e.currentTarget.value)}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter')
 							return;

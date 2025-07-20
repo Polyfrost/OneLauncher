@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ESNext",
 		"jsx": "preserve",
-		"jsxImportSource": "solid-js",
+		"jsxImportSource": "react",
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
 		"useDefineForClassFields": true,
 		"module": "ESNext",

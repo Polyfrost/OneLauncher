@@ -3,8 +3,7 @@
 		"tauri-apps.tauri-vscode", // Provides Tauri framework support.
 		"rust-lang.rust-analyzer", // Provides Rust language support.
 		"vadimcn.vscode-lldb", // Provides Rust debugging support.
-		"oscarbeaumont.rspc-vscode", // RSPC is a framework for Routers.
-		"antfu.unocss", // Provides UnoCSS intellisense.
+		"bradlc.vscode-tailwindcss", // Provides UnoCSS intellisense.
 		"EditorConfig.EditorConfig", // Maintains consistent coding styles.
 		"dbaeumer.vscode-eslint" // Code formatting using ESLint.
 	]

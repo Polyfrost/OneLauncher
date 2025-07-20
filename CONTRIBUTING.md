@@ -47,17 +47,14 @@ To make changes locally, follow these steps:
 4. Install dependencies: `pnpm i`
 5. Prepare your cargo installation: `pnpm prep`
 
-To quickly run only the desktop app after `prep`, you can use:
+### Running
+The most common scripts you will use are:
 
-- `pnpm desktop dev`
+- `pnpm onelauncher:desktop dev` - Runs the **OneLauncher** desktop application with watch mode enabled and starts up the frontend's vite dev server.
 
-  If necessary, the webview devtools can be opened by pressing `Ctrl + Shift + I` (Linux and Windows) or `Command + Option + I` (macOS) in the desktop app.
+- `pnpm oneclient:desktop dev` - Runs the **OneClient** desktop application with watch mode enabled and starts up the frontend's vite dev server.
 
-If you encounter any issues, ensure that you are using the following versions (or later) of Rust, Node and Pnpm:
-
-- `rustc` version: **1.80**
-- `node` version: **20.15**
-- `pnpm` version: **9.6.0**
+If necessary, the webview devtools can be opened by pressing `Ctrl + Shift + I` (Linux and Windows) or `Command + Option + I` (macOS) in the desktop app.
 
 After cleaning out your build artifacts using `pnpm clean`, `git clean`, or `cargo clean`, it is necessary to re-run the `setup` script.
 

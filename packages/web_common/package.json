@@ -22,29 +22,29 @@
 		"build": "vite build"
 	},
 	"peerDependencies": {
-		"@tanstack/react-query": "^5.66.5",
-		"@tanstack/react-router": "^1.114.3",
-		"@untitled-theme/icons-react": "^0.14.0",
-		"motion": "^12.10.5",
-		"react": "^19.0.0",
-		"react-aria-components": "^1.8.0",
-		"tailwind-merge": "^3.2.0",
-		"tailwind-variants": "^1.0.0",
-		"tailwindcss": "^4.0.6",
-		"tailwindcss-animated": "^2.0.0",
-		"tailwindcss-react-aria-components": "^2.0.0"
-	},
-	"devDependencies": {
-		"@tailwindcss/vite": "^4.0.6",
-		"@types/react": "^19.0.8",
-		"@vitejs/plugin-react": "^4.3.4",
-		"typescript": "^5.8.3",
-		"vite": "^6.1.0",
-		"vite-plugin-dts": "^4.5.4",
-		"vite-plugin-static-copy": "^3.0.0"
+		"@tanstack/react-query": "catalog:",
+		"@tanstack/react-router": "catalog:",
+		"@untitled-theme/icons-react": "catalog:",
+		"motion": "catalog:",
+		"react": "catalog:",
+		"react-aria-components": "catalog:",
+		"tailwind-merge": "catalog:",
+		"tailwind-variants": "catalog:",
+		"tailwindcss": "catalog:",
+		"tailwindcss-animated": "catalog:",
+		"tailwindcss-react-aria-components": "catalog:"
 	},
 	"dependencies": {
-		"@untitled-theme/icons-react": "^0.14.0",
-		"overlayscrollbars-react": "^0.5.6"
+		"@untitled-theme/icons-react": "catalog:",
+		"overlayscrollbars-react": "catalog:"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "catalog:",
+		"@types/react": "catalog:",
+		"@vitejs/plugin-react": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vite-plugin-dts": "catalog:",
+		"vite-plugin-static-copy": "catalog:"
 	}
 }

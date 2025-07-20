@@ -184,7 +184,7 @@ esac
 if [ "${CI:-}" != "true" ]; then
 	echo "installing rust tools..."
 	_tools="cargo-watch sqlx-cli"
-	echo "$_tools" | xargs cargo install
+	echo "$_tools" | xargs cargo $(has cargo-binstall && echo binstall || echo install)
 fi
 
 echo 'your machine has been setup for onelauncher development!'

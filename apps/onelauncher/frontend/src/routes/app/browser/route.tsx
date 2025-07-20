@@ -4,9 +4,10 @@ import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
 import { PROVIDERS } from '@/utils';
 import { browserCategories } from '@/utils/browser';
-import { Dropdown, Show, TextField } from '@onelauncher/common/components';
+import { AnimatedOutlet, Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
+import { useEffect, useState } from 'react';
 
 export const Route = createFileRoute('/app/browser')({
 	component: RouteComponent,
@@ -16,7 +17,11 @@ function RouteComponent() {
 	return (
 		<BrowserProvider>
 			<div>
-				<Outlet />
+				<AnimatedOutlet
+				enter={{animate: {opacity: 1}, initial: {opacity: 1}}}
+				exit={{animate: {opacity: 0}, initial: {opacity: 0}}}
+				from={Route.id}
+				/>
 			</div>
 		</BrowserProvider>
 	);
@@ -51,11 +56,16 @@ export function BrowserLayout(props: any) {
 function BrowserSidebar() {
 	const context = useBrowserContext();
 	const clusters = useClusters();
+	useEffect(() => {
+		const game_versions = context.cluster?.mc_version ? [context.cluster.mc_version] : null;
+		const loaders = context.cluster?.mc_loader ? [context.cluster.mc_loader] : null;
+		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, game_versions, loaders } });
+	}, [context.cluster]);
 	return (
 		<div className="flex flex-col gap-y-4">
 			<div className="flex flex-col gap-y-4">
 				<div className="flex flex-col gap-y-1">
-					<h6 className="my-1">Active Cluster</h6>
+					<h6 className="my-1 uppercase  opacity-60">Active Cluster</h6>
 					<Dropdown
 						onSelectionChange={(id) => {
 							const cluster = clusters?.find(cluster => cluster.id.toString() === id);
@@ -71,7 +81,7 @@ function BrowserSidebar() {
 					</Dropdown>
 				</div>
 				<div className="flex flex-col gap-y-1">
-					<h6 className="my-1">Provider</h6>
+					<h6 className="my-1 uppercase opacity-60">Provider</h6>
 					<Dropdown onSelectionChange={id => context.setProvider(id as typeof context.provider)} selectedKey={context.provider}>
 						{PROVIDERS.map(provider => (
 							<Dropdown.Item id={provider} key={provider}>
@@ -88,22 +98,22 @@ function BrowserSidebar() {
 	);
 }
 
-const defaultFilters:Filters = {
+const defaultFilters: Filters = {
 	categories: null,
 	game_versions: null,
 	loaders: null,
-	package_types: null
-}
+	package_types: null,
+};
 
 function BrowserCategories() {
 	const context = useBrowserContext();
 	const categories = browserCategories.byPackageType('mod', context.provider);
 
-	function switchCategory(category:string){
-		if(context.query.filters?.categories?.includes(category))
-			context.setQuery({...context.query, filters: {...defaultFilters, ...context.query.filters, categories: (context.query.filters?.categories ?? []).filter(cat=>cat!==category)}})
-		else
-			context.setQuery({...context.query, filters: {...defaultFilters, ...context.query.filters, categories: [...(context.query.filters?.categories ?? []), category]}})
+	function switchCategory(category: string) {
+		const newCategories = context.query.filters?.categories?.includes(category)
+			? context.query.filters.categories.filter(cat => cat !== category)
+			: [...(context.query.filters?.categories ?? []), category];
+		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, categories: newCategories.length > 0 ? newCategories : null } });
 	}
 
 	return (
@@ -112,13 +122,13 @@ function BrowserCategories() {
 			<div className="flex flex-col gap-y-6">
 				<Show when>
 					<div className="flex flex-col gap-y-2">
-						<h6 className="my-1 uppercase">Categories</h6>
+						<h6 className="my-1 uppercase opacity-60">Categories</h6>
 						{categories.map(category => (
 							<p
 								aria-selected={context.query.filters?.categories?.includes(category.id)}
 								className="text-md capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
 								key={category.id}
-								onClick={()=>switchCategory(category.id)}
+								onClick={() => switchCategory(category.id)}
 							>
 								{category.display}
 							</p>
@@ -131,13 +141,23 @@ function BrowserCategories() {
 }
 
 function BrowserToolbar() {
+	const context = useBrowserContext();
+	const [query, setQuery] = useState(context.query.query ?? "")
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
 			<div className="flex flex-row gap-2" />
 
 			<div className="flex flex-row gap-2">
 				<TextField
+					value={query}
 					iconLeft={<SearchMdIcon />}
+					onChange={e=>setQuery(e.currentTarget.value)}
+					onKeyDown={(e) => {
+						if (e.key !== 'Enter')
+							return;
+						e.preventDefault();
+						context.setQuery({ ...context.query, query: e.currentTarget.value });
+					}}
 					placeholder="Search for content"
 				/>
 			</div>

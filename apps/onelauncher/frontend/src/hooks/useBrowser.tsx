@@ -1,8 +1,10 @@
-import type { ClusterModel, Provider, SearchQuery } from '@/bindings.gen';
+import type { ClusterModel, GameLoader, ManagedPackage, ManagedVersion, Paginated, Provider, SearchQuery, SearchResult } from '@/bindings.gen';
+import type { UndefinedInitialDataOptions } from '@tanstack/react-query';
 import { bindings } from '@/main';
 import { PROVIDERS } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 
 export interface BrowserControllerType {
 	cluster: ClusterModel | undefined;
@@ -27,6 +29,7 @@ export function BrowserProvider(props: any) {
 	const { children } = props;
 	const [cluster, setCluster] = useState<ClusterModel | undefined>(undefined);
 	const [provider, setProvider] = useState<Provider>(PROVIDERS[0]);
+	const navigate = useNavigate()
 	const [query, setQuery] = useState<SearchQuery>({
 		filters: null,
 		query: null,
@@ -34,6 +37,11 @@ export function BrowserProvider(props: any) {
 		offset: null,
 		sort: null,
 	});
+
+	useEffect(()=>{
+		if(query.filters?.categories || query.query)
+			navigate({to: "/app/browser/search"})
+	},[query])
 
 	const context = useMemo<BrowserControllerType>(() => ({
 		cluster,
@@ -52,6 +60,15 @@ export function BrowserProvider(props: any) {
 	);
 }
 
-export function useBrowserSearch(provider: Provider, query: SearchQuery) {
-	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, query));
+export function useBrowserSearch(provider: Provider, query: SearchQuery, options?: Omit<UndefinedInitialDataOptions<Paginated<SearchResult>>, 'queryKey' | 'queryFn'> | undefined) {
+	const validFilters = useMemo(() => Object.values(query.filters ?? {}).filter(a => a).length > 0, [query.filters]);
+	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
+}
+
+export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, "queryKey" | "queryFn"> | undefined){
+	return useCommand("getPackage", () => bindings.core.getPackage(provider, slug), options)
+}
+
+export function usePackageVersions(provider: Provider, slug: string, {mc_versions, loaders, offset, limit, ...options}:{mc_versions?:Array<string>|null, loaders?:Array<GameLoader>|null, offset?:number, limit: number} & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, "queryKey" | "queryFn">){
+	return useCommand("getPackageVersions", ()=>bindings.core.getPackageVersions(provider, slug, mc_versions??null, loaders??null, (offset??0) as unknown as bigint, limit as unknown as bigint), options)
 }

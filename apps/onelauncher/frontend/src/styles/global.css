@@ -41,3 +41,7 @@ code {
 
 	background: linear-gradient(270deg, transparent, rgba(0, 0, 0, 0.85) 80%);
 }
+
+@utility text-trim{
+	text-box: trim-both cap alphabetic
+}

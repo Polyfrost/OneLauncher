@@ -201,14 +201,14 @@ pub struct PackageLinks {
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageDonationUrl {
-	#[serde(alias = "id")]
-	pub platform: PackageDonationPlatform,
+	pub id: PackageDonationPlatform,
 	pub url: String,
 }
 
 /// https://api.modrinth.com/v2/tag/donation_platform
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PackageDonationPlatform {
 	Patreon,
 	#[serde(alias = "bmac")]

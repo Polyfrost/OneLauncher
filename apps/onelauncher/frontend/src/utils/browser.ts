@@ -6,7 +6,7 @@ export interface CategoryItem {
 }
 
 export const browserCategories = {
-	byPackageType(packageType: 'mod' | string, provider: string): Array<CategoryItem> {
+	byPackageType(packageType: 'mod' | string & {}, provider: string): Array<CategoryItem> {
 		switch (packageType) {
 			case 'mod':
 				return this.mod(provider);

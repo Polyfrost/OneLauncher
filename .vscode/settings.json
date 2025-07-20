@@ -27,9 +27,6 @@
 	"rust-analyzer.diagnostics.disabled": [
 		"macro-error" // TODO: Remove this once taurpc upgrades to latest specta
 	],
-	"rust-analyzer.procMacro.ignored": {
-		"tauri-specta": ["command"]
-	},
 	"rust-analyzer.check.command": "check",
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"rust-analyzer.linkedProjects": [],

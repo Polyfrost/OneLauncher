@@ -76,7 +76,7 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 		<div className="sticky top-0 z-1 max-w-60 min-w-54 flex flex-col gap-y-4">
 			<div className="min-h-72 flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div className="relative h-28 flex items-center justify-center overflow-hidden">
-					<img alt={`Icon for ${pkg.name}`} className="absolute z-0 max-w-none w-7/6 filter-blur-xl" src={pkg.icon_url || ''} />
+					<img alt={`Icon for ${pkg.name}`} className="absolute z-0 max-w-none w-7/6 blur-xl" src={pkg.icon_url || ''} />
 					<img alt={`Icon for ${pkg.name}`} className="relative z-1 aspect-ratio-square w-2/5 rounded-md image-render-auto" src={pkg.icon_url || ''} />
 				</div>
 				<div className="flex flex-1 flex-col gap-2 p-3">

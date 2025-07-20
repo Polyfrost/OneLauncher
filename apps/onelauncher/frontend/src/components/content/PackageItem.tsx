@@ -15,9 +15,9 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	const navigate = useNavigate()
+	const navigate = useNavigate();
 	function redirect() {
-		navigate({to: "/app/browser/package/$provider/$slug", params: {provider, slug: item.slug}})
+		navigate({ to: '/app/browser/package/$provider/$slug', params: { provider, slug: item.slug } });
 	}
 
 	return (
@@ -37,7 +37,7 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 					)}
 					when={item.icon_url}
 				>
-					<img alt={`Icon for ${item.title}`} className="absolute z-0 max-w-none w-7/6 opacity-50 filter-blur-xl" src={item.icon_url} />
+					<img alt={`Icon for ${item.title}`} className="absolute z-0 max-w-none w-7/6 opacity-50 blur-xl" src={item.icon_url} />
 					<img
 						alt={`Icon for ${item.title}`}
 						className="relative z-1 aspect-ratio-square rounded-md image-render-auto w-2/5"

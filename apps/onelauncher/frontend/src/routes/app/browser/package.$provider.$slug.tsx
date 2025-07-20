@@ -1,15 +1,18 @@
 import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, Paginated, Provider } from '@/bindings.gen';
+import Modal from '@/components/overlay/Modal';
 import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, PROVIDERS } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { Button, Show, Tooltip } from '@onelauncher/common/components';
+import { Button, Popup, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { CalendarIcon, ChevronDownIcon, ChevronUpIcon, ClockRewindIcon, Download01Icon, File02Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Collection, ListBox, ListBoxItem, Popover, Select } from 'react-aria-components';
+import { Collection, ListBox, ListBoxItem, Popover, Pressable, Select, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
+import Markdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 
 export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
 	component: RouteComponent,
@@ -33,7 +36,7 @@ function RouteComponent() {
 	const { provider, slug } = Route.useParams();
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
-	const packageData = usePackageData(provider, slug, {}, `getPackage.${provider}.${slug}`);
+	const packageData = usePackageData(provider, slug, {});
 	const browserContext = useBrowserContext();
 	const { data: versions } = usePackageVersions(provider, slug, {
 		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : null,
@@ -47,17 +50,39 @@ function RouteComponent() {
 				<div className="h-full flex flex-1 flex-row items-start gap-x-4">
 					<BrowserSidebar package={packageData.data!} />
 
-					<div className="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
-						<div className="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1">
-							<Link params={{ provider, slug }} to="/app/browser/package/$provider/$slug">About</Link>
-							<Link params={{ provider, slug }} to="/app/browser/package/$provider/$slug">Versions</Link>
+					<Tabs className="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
+						<TabList className="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1 w-min">
+							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="about">About</Tab>
+							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="versions">Versions</Tab>
+							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data?.gallery.length === 0}>Gallery</Tab>
+						</TabList>
+						<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
+							<TabPanel className="prose prose-invert prose-sm max-w-none" id="about">
+								<Markdown rehypePlugins={[rehypeRaw]}>{packageData.data?.body}</Markdown>
+							</TabPanel>
+							<TabPanel id="versions">
+								versions
+							</TabPanel>
+							<TabPanel id="gallery" className="flex flex-wrap gap-2 justify-center">
 
+								{packageData.data?.gallery.map(item => (
+									<Modal.Trigger key={item.url}>
+										<Pressable>
+											<div className='rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative'>
+												<img className='h-full' src={item.thumbnail_url} />
+												{item.title && <div className='absolute w-full bottom-0 bg-component-bg-disabled/80 p-2'>{item.title}</div>}
+											</div>
+										</Pressable>
+										<Modal className='w-full' >
+											<img className='rounded-xl' src={item.url} />
+										</Modal>
+									</Modal.Trigger>
+								))}
+
+							</TabPanel>
 						</div>
+					</Tabs>
 
-						<div className="h-full min-h-full w-full flex-1">
-
-						</div>
-					</div>
 				</div>
 			</Show>
 		</PackageContext>
@@ -74,7 +99,7 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 	return (
 		<div className="sticky top-0 z-1 max-w-60 min-w-54 flex flex-col gap-y-4">
-			<div className="min-h-72 flex flex-col overflow-hidden rounded-lg bg-component-bg">
+			<div className="flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div className="relative h-28 flex items-center justify-center overflow-hidden">
 					<img alt={`Icon for ${pkg.name}`} className="absolute z-0 max-w-none w-7/6 blur-xl" src={pkg.icon_url || ''} />
 					<img alt={`Icon for ${pkg.name}`} className="relative z-1 aspect-ratio-square w-2/5 rounded-md image-render-auto" src={pkg.icon_url || ''} />

@@ -8,12 +8,11 @@ import {
 
 interface ModalProps extends DialogProps { }
 
-function Modal({ className, ...props }: ModalProps) {
+function Modal({ ...props }: ModalProps) {
 	return (
 		<ModalOverlay className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" isDismissable>
 			<AriaModal>
-				<AriaDialog className="" {...props} />
-
+				<AriaDialog {...props} />
 			</AriaModal>
 		</ModalOverlay>
 	);

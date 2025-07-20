@@ -66,7 +66,7 @@ export function useBrowserSearch(provider: Provider, query: SearchQuery, options
 	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
 }
 
-export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, 'queryKey' | 'queryFn'> | undefined, key: false | BindingCommands | (string & {}) = 'getPackage') {
+export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, 'queryKey' | 'queryFn'> | undefined, key: false | BindingCommands | (string & {}) = `getPackage.${provider}.${slug}`) {
 	return useCommand(key, () => bindings.core.getPackage(provider, slug), options);
 }
 

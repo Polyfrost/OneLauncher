@@ -33,6 +33,8 @@
 		"react": "catalog:",
 		"react-aria-components": "catalog:",
 		"react-dom": "catalog:",
+		"react-markdown": "^10.1.0",
+		"rehype-raw": "^7.0.0",
 		"tailwind-merge": "catalog:",
 		"tailwind-variants": "catalog:",
 		"tailwindcss": "catalog:",
@@ -42,6 +44,7 @@
 		"valtio": "catalog:"
 	},
 	"devDependencies": {
+		"@tailwindcss/typography": "^0.5.16",
 		"@tanstack/eslint-config": "catalog:",
 		"@types/react": "catalog:",
 		"@types/react-dom": "catalog:",

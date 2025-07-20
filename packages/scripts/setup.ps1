@@ -198,8 +198,7 @@ https://learn.microsoft.com/windows/package-manager/winget/
 
     Write-Host
     Write-Host 'Installing Rust tools...' -ForegroundColor Yellow
-    cargo install cargo-watch
-	cargo install sqlx-cli
+    if (Get-Command cargo-binstall -ea 0) { cargo binstall cargo-watch sqlx-cli } else { cargo install cargo-watch sqlx-cli }
     if ($LASTEXITCODE -ne 0) {
         Exit-WithError 'Failed to install Rust tools'
     }

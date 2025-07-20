@@ -2,9 +2,10 @@ import type { MinecraftCredentials } from '@/bindings.gen';
 import PlayerHead from '@/components/content/PlayerHead';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { Button } from '@onelauncher/common/components';
+import { Button, ContextMenu } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
+import { useRef, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 function AccountPopup() {
@@ -71,10 +72,23 @@ function AccountEntry({
 	user: MinecraftCredentials;
 	loggedIn?: boolean;
 }) {
+	const ref = useRef<HTMLDivElement>(null);
+	const [isOpen, setOpen] = useState(false);
+
+	const removeUserCommand = useCommand(
+		'removeUser',
+		() => bindings.core.removeUser(user.id),
+		{
+			enabled: false,
+			subscribed: false,
+		},
+	);
+
 	return (
 		<div
 			className={twMerge('flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')}
 			onClick={onClick}
+			ref={ref}
 		>
 			<div className="flex flex-1 flex-row justify-start gap-x-3">
 				<PlayerHead className="h-8 w-8 rounded-md" uuid={user.id} />
@@ -85,6 +99,16 @@ function AccountEntry({
 					</div>
 				</div>
 			</div>
+
+			<ContextMenu
+				isOpen={isOpen}
+				setOpen={setOpen}
+				triggerRef={ref}
+			>
+				<ContextMenu.Item className="text-red-500 rounded-sm px-3 py-1 hover:bg-component-bg-hover" onAction={removeUserCommand.refetch}>
+					Delete
+				</ContextMenu.Item>
+			</ContextMenu>
 		</div>
 	);
 }

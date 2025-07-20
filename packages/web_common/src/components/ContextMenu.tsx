@@ -87,4 +87,4 @@ export function ContextMenu<T extends object>({
 	);
 }
 
-ContextMenu.Item = <T extends object>({ className, ...rest }: MenuItemProps<T>) => <MenuItem {...rest} />;
+ContextMenu.Item = <T extends object>({ className, ...rest }: MenuItemProps<T>) => <MenuItem {...rest} className={className} />;

@@ -28,7 +28,7 @@ function RouteComponent() {
 function Featured() {
 	// const context = useBrowserContext();
 	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'sodium'], []);
-	const featuredPackage = usePackageData(provider, slug);
+	const featuredPackage = usePackageData(provider, slug, {}, 'getFeatured');
 	const navigate = useNavigate();
 
 	return (

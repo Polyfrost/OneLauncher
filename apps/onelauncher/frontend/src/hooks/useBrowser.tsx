@@ -1,4 +1,5 @@
 import type { ClusterModel, GameLoader, ManagedPackage, ManagedVersion, Paginated, Provider, SearchQuery, SearchResult } from '@/bindings.gen';
+import type { BindingCommands } from '@/types/global';
 import type { UndefinedInitialDataOptions } from '@tanstack/react-query';
 import { bindings } from '@/main';
 import { PROVIDERS } from '@/utils';
@@ -65,8 +66,8 @@ export function useBrowserSearch(provider: Provider, query: SearchQuery, options
 	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
 }
 
-export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, 'queryKey' | 'queryFn'> | undefined) {
-	return useCommand('getPackage', () => bindings.core.getPackage(provider, slug), options);
+export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, 'queryKey' | 'queryFn'> | undefined, key: false | BindingCommands | (string & {}) = 'getPackage') {
+	return useCommand(key, () => bindings.core.getPackage(provider, slug), options);
 }
 
 export function usePackageVersions(provider: Provider, slug: string, { mc_versions, loaders, offset, limit, ...options }: { mc_versions?: Array<string> | null; loaders?: Array<GameLoader> | null; offset?: number; limit: number } & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, 'queryKey' | 'queryFn'>) {

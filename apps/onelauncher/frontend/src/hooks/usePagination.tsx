@@ -1,5 +1,5 @@
 import { Button, Show } from '@onelauncher/common/components';
-import { ChevronRightIcon, ChevronLeftIcon } from '@untitled-theme/icons-react';
+import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
 
 export interface PaginationOptions {
@@ -16,7 +16,7 @@ function usePagination(options: PaginationOptions) {
 	const next = () => setPage(page => page + 1);
 	const prev = () => setPage(page => page - 1);
 
-	const totalPages =  Math.ceil(options.itemsCount / options.itemsPerPage);
+	const totalPages = Math.ceil(options.itemsCount / options.itemsPerPage);
 
 	const hasNext = page < totalPages;
 	const hasPrev = page > 1;
@@ -24,12 +24,12 @@ function usePagination(options: PaginationOptions) {
 	const offset = (page - 1) * options.itemsPerPage;
 
 	// Exported
-	function reset(/*options: PaginationOptions*/) {
+	function reset(/* options: PaginationOptions */) {
 		setPage(1);
 	}
 
 	function getVisiblePageNumbers(page: number) {
-		const pages: number[] = [];
+		const pages: Array<number> = [];
 
 		const left = page - 1 > 1 ? page - 1 : null;
 		const right = page + 1 < totalPages ? page + 1 : null;
@@ -59,7 +59,7 @@ function usePagination(options: PaginationOptions) {
 					setPage(props.page);
 				}}
 			>
-				<span className='text-trim'>{props.page}</span>
+				<span className="text-trim">{props.page}</span>
 			</Button>
 		);
 	}
@@ -68,11 +68,11 @@ function usePagination(options: PaginationOptions) {
 		<div className="flex flex-row items-center justify-center gap-x-1">
 
 			<Button
-				size='icon'
-				color='secondary'
 				children={<ChevronLeftIcon />}
+				color="secondary"
 				isDisabled={page <= 1}
-				onClick={() => setPage(page => page - 1)}
+				onClick={prev}
+				size="icon"
 			/>
 
 			<PaginationBtn page={1} />
@@ -81,7 +81,7 @@ function usePagination(options: PaginationOptions) {
 				<span>...</span>
 			</Show>
 
-			{getVisiblePageNumbers(page).map(page=><PaginationBtn page={page} />)}
+			{getVisiblePageNumbers(page).map(page => <PaginationBtn key={page} page={page} />)}
 
 			<Show when={page < totalPages - 2}>
 				<span>...</span>
@@ -92,11 +92,11 @@ function usePagination(options: PaginationOptions) {
 			</Show>
 
 			<Button
-				size="icon"
-				color='secondary'
 				children={<ChevronRightIcon />}
+				color="secondary"
 				isDisabled={page >= totalPages}
-				onClick={() => setPage(page => page + 1)}
+				onClick={next}
+				size="icon"
 			/>
 		</div>
 	);

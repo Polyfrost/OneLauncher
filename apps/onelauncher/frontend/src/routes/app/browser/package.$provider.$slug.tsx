@@ -8,7 +8,7 @@ import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { CalendarIcon, ChevronDownIcon, ChevronUpIcon, ClockRewindIcon, Download01Icon, File02Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
-import { createContext, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Collection, ListBox, ListBoxItem, Popover, Select } from 'react-aria-components';
 
 export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
@@ -33,7 +33,7 @@ function RouteComponent() {
 	const { provider, slug } = Route.useParams();
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
-	const packageData = usePackageData(provider, slug);
+	const packageData = usePackageData(provider, slug, {}, `getPackage.${provider}.${slug}`);
 	const browserContext = useBrowserContext();
 	const { data: versions } = usePackageVersions(provider, slug, {
 		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : null,
@@ -214,7 +214,7 @@ function InstallButton() {
 				</div>
 			</Button>
 
-			<Button className="w-8 h-full rounded-l-none border-l border-white/10" onClick={() => setOpen(true)}>
+			<Button className="w-8 h-full rounded-l-none border-l border-white/10 px-2" onClick={() => setOpen(true)}>
 				{open
 					? <ChevronUpIcon />
 					: <ChevronDownIcon />}

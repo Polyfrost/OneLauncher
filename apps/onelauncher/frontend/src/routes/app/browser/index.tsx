@@ -53,7 +53,7 @@ function Featured() {
 
 						<div className="flex flex-row justify-end">
 							<Button color="ghost" onClick={() => navigate({ to: '/app/browser/package/$provider/$slug', params: { provider, slug } })}>
-								View Package
+								View
 								<ChevronRightIcon />
 							</Button>
 						</div>
@@ -85,7 +85,7 @@ function List({ provider }: { provider: Provider }) {
 	const [expanded, setExpanded] = useState(false);
 	return (
 		<div>
-			<h3 className="uppercase p-3 opacity-60">{provider}</h3>
+			<h5 className="uppercase p-3 opacity-60">{provider}</h5>
 			<div className={`relative overflow-hidden ${expanded ? '' : 'h-128'}`}>
 				{search.isSuccess
 					? <PackageGrid items={search.data.items} provider={provider} />

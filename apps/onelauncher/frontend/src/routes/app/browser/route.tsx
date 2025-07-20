@@ -18,9 +18,9 @@ function RouteComponent() {
 		<BrowserProvider>
 			<div>
 				<AnimatedOutlet
-				enter={{animate: {opacity: 1}, initial: {opacity: 1}}}
-				exit={{animate: {opacity: 0}, initial: {opacity: 0}}}
-				from={Route.id}
+					enter={{ animate: { opacity: 1 }, initial: { opacity: 1 } }}
+					exit={{ animate: { opacity: 0 }, initial: { opacity: 0 } }}
+					from={Route.id}
 				/>
 			</div>
 		</BrowserProvider>
@@ -122,7 +122,7 @@ function BrowserCategories() {
 			<div className="flex flex-col gap-y-6">
 				<Show when>
 					<div className="flex flex-col gap-y-2">
-						<h6 className="my-1 uppercase opacity-60">Categories</h6>
+						<h5 className="my-1 uppercase opacity-60">Categories</h5>
 						{categories.map(category => (
 							<p
 								aria-selected={context.query.filters?.categories?.includes(category.id)}
@@ -142,16 +142,15 @@ function BrowserCategories() {
 
 function BrowserToolbar() {
 	const context = useBrowserContext();
-	const [query, setQuery] = useState(context.query.query ?? "")
+	const [query, setQuery] = useState(context.query.query ?? '');
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
 			<div className="flex flex-row gap-2" />
 
 			<div className="flex flex-row gap-2">
 				<TextField
-					value={query}
 					iconLeft={<SearchMdIcon />}
-					onChange={e=>setQuery(e.currentTarget.value)}
+					onChange={e => setQuery(e.currentTarget.value)}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter')
 							return;
@@ -159,6 +158,7 @@ function BrowserToolbar() {
 						context.setQuery({ ...context.query, query: e.currentTarget.value });
 					}}
 					placeholder="Search for content"
+					value={query}
 				/>
 			</div>
 		</div>

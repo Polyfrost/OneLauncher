@@ -12,7 +12,15 @@ export function TabList({
 	ref?: React.Ref<HTMLDivElement>;
 }) {
 	return (
-		<div className={twMerge('flex flex-row gap-2 px-10 border border-transparent bg-page-elevated transition-all', floating ? 'py-3 shadow-lg border-ghost-overlay rounded-xl' : 'py-6 rounded-2xl', className)} ref={ref}>
+		<div
+			className={twMerge(
+				'flex flex-row gap-2 border border-transparent bg-page-elevated transition-all',
+				floating
+					? 'px-6 mx-4 py-3 shadow-lg border-ghost-overlay rounded-xl'
+					: 'px-10 py-6 rounded-2xl',
+				className,
+			)} ref={ref}
+		>
 			{children}
 		</div>
 	);

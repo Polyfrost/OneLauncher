@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{self, PathBuf};
+use std::path::PathBuf;
 
 use async_zip::base::read::mem::ZipFileReader;
 use interpulse::api::minecraft::VersionInfo;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::ingress::{init_ingress, init_ingress_opt, send_ingress};
 use crate::error::LauncherResult;
 use crate::store::ingress::{IngressType, SubIngress};
-use crate::store::{Dirs, State};
+use crate::store::Dirs;
 use crate::utils::http::{fetch_advanced, fetch_json};
 use crate::utils::io::{self, IOError};
 

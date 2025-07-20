@@ -41,7 +41,7 @@ function Featured() {
 						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data?.gallery[selectedImage].url} />
 					</div>
 					<div className="max-w-64 min-w-52 flex flex-col gap-y-1 p-4">
-						<h2>{featuredPackage.data?.name}</h2>
+						<h2 className="text-[1.5rem] font-semibold">{featuredPackage.data?.name}</h2>
 
 						<Show when={false}>
 							<div className="w-fit flex flex-row items-center gap-x-1 rounded-lg bg-border/10 px-1.5 py-1 text-fg-primary transition hover:opacity-80">

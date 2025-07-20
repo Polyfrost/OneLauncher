@@ -1,8 +1,13 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
-import { abbreviateNumber } from '@/utils';
+import { abbreviateNumber, LOADERS } from '@/utils';
 import { Show } from '@onelauncher/common/components';
 import { useNavigate } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
+import LoaderIcon from '../launcher/LoaderIcon';
+
+function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
+	return list.includes(element as unknown as TArray);
+}
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
 	return (
@@ -44,6 +49,9 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 						src={item.icon_url}
 					/>
 				</Show>
+				<div className="flex flex-col rounded-full bg-component-bg/70 border-component-border/70 border gap-2 p-2 absolute top-0 right-0 m-2">
+					{item.categories.filter(cat => includes(LOADERS, cat)).map(loader => <LoaderIcon className="w-5" key={loader} loader={loader} />)}
+				</div>
 			</div>
 			<div className="flex flex-1 flex-col gap-2 p-3">
 				<div className="flex flex-col gap-2">

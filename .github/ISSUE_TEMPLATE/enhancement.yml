@@ -5,12 +5,23 @@ body:
   - type: markdown
     attributes:
       value: Before raising an issue, please search for existing issues and [Discord](https://polyfrost.org/discord) suggestions to avoid creating duplicates.
-  - type: textarea
+  - type: input
     attributes:
       label: Original reporter/ticket ID
       description: If you are rewording a ticket, put the original reporter(s) and ticket ID(s). If not, leave this blank.
     validations:
       required: false
+  - type: dropdown
+    attributes:
+      label: Project
+      description: Select the project this issue is related to.
+      multiple: true
+      default: General
+      options:
+        - General
+        - Core
+        - OneClient
+        - OneLauncher
   - type: textarea
     attributes:
       label: Is your suggested enhancement related to a problem? Please describe, or link another Issue.

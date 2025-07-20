@@ -97,6 +97,7 @@ pub struct ManagedPackage {
 	pub links: PackageLinks,
 	pub status: PackageStatus,
 	pub downloads: usize,
+	pub gallery: Vec<PackageGallery>
 }
 
 #[onelauncher_macro::specta]
@@ -203,6 +204,16 @@ pub struct PackageLinks {
 pub struct PackageDonationUrl {
 	pub id: PackageDonationPlatform,
 	pub url: String,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageGallery {
+	pub url: String,
+	pub thumbnail_url: String,
+	pub title: Option<String>,
+	pub description: Option<String>,
+	pub featured: Option<bool>
 }
 
 /// https://api.modrinth.com/v2/tag/donation_platform

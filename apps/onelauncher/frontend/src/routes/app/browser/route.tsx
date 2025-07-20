@@ -30,14 +30,14 @@ function RouteComponent() {
 export function BrowserLayout(props: any) {
 	return (
 		<div className="relative h-full flex flex-1 flex-col items-center gap-2">
-			<div className="h-full w-full max-w-screen-xl flex flex-1 flex-col items-center gap-y-2">
+			<div className="h-full w-full max-w-screen-2xl flex flex-1 flex-col items-center gap-y-2">
 				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6">
 					<div />
 					<BrowserToolbar />
 					<div />
 				</div>
 
-				<div className="grid grid-cols-[220px_auto_220px] w-full max-w-screen-xl gap-x-6 pb-8">
+				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6 pb-8">
 					<BrowserCategories />
 
 					<div className="h-full flex flex-col gap-y-4">

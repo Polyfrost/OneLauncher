@@ -13,7 +13,7 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
 	return (
-		<div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
+		<div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
 			{items.map(item => (
 				<PackageItem key={item.project_id} {...item} provider={provider} />
 			))}
@@ -45,11 +45,11 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 					<img alt={`Icon for ${item.title}`} className="absolute z-0 max-w-none w-7/6 opacity-50 blur-xl" src={item.icon_url} />
 					<img
 						alt={`Icon for ${item.title}`}
-						className="relative z-1 aspect-ratio-square rounded-md image-render-auto w-2/5"
+						className="relative z-1 aspect-ratio-square rounded-lg image-render-auto h-5/6"
 						src={item.icon_url}
 					/>
 				</Show>
-				<Tooltip text={loaders.map(upperFirst).join(', ')}>
+				<Tooltip className="bg-component-bg-disabled" text={loaders.map(upperFirst).join(', ')}>
 					<Focusable>
 						<div className="flex flex-col rounded-full bg-component-bg/70 border-component-border/70 border p-1 absolute top-0 right-0 m-2">
 							{loaders.toSpliced(loaders.length > 3 ? 2 : 3).map(loader => <LoaderIcon className="w-5 m-1" key={loader} loader={loader} />)}

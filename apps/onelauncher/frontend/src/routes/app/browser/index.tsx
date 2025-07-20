@@ -27,19 +27,20 @@ function RouteComponent() {
 
 function Featured() {
 	// const context = useBrowserContext();
-	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'sodium'], []);
+	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'iris'], []);
 	const featuredPackage = usePackageData(provider, slug, {}, 'getFeatured');
 	const navigate = useNavigate();
-
+	const featuredImageIndex = useMemo(() => featuredPackage.data?.gallery.findIndex(image => image.featured), [featuredPackage.data]);
+	const [selectedImage, setSelectedImage] = useState(featuredImageIndex ?? 0);
 	return (
 		<Show when={featuredPackage.isSuccess}>
 			<div className="flex flex-col gap-y-1">
-				<h5 className="ml-2">Featured</h5>
-				<div className="w-full flex flex-row overflow-hidden rounded-lg bg-page-elevated">
+				<h5 className="ml-2 uppercase opacity-60">Featured</h5>
+				<div className="w-full flex flex-col lg:flex-row overflow-hidden rounded-lg bg-page-elevated">
 					<div className="w-full p-1">
-						<img alt="thumbnail" className="aspect-ratio-video h-full rounded-md object-cover object-center" src={featuredPackage.data?.icon_url ?? ''} />
+						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data?.gallery[selectedImage].url} />
 					</div>
-					<div className="max-w-84 min-w-52 flex flex-col gap-y-1 p-4">
+					<div className="max-w-64 min-w-52 flex flex-col gap-y-1 p-4">
 						<h2>{featuredPackage.data?.name}</h2>
 
 						<Show when={false}>
@@ -49,7 +50,20 @@ function Featured() {
 							</div>
 						</Show>
 
-						<p className="mt-1 flex-1 leading-normal">{featuredPackage.data?.short_desc}</p>
+						<p className="my-1 flex-1 leading-normal">{featuredPackage.data?.short_desc}</p>
+
+						<div className="grid grid-cols-3 gap-2 h-full">
+							{featuredPackage.data?.gallery.map(
+								(image, index) => (
+									<img
+										className="aspect-video object-center object-cover rounded-md"
+										key={image.url}
+										onClick={() => setSelectedImage(index)}
+										src={image.url}
+									/>
+								),
+							)}
+						</div>
 
 						<div className="flex flex-row justify-end">
 							<Button color="ghost" onClick={() => navigate({ to: '/app/browser/package/$provider/$slug', params: { provider, slug } })}>
@@ -77,7 +91,7 @@ function Lists() {
 function List({ provider }: { provider: Provider }) {
 	const search = useBrowserSearch(provider, {
 		filters: null,
-		limit: 18 as unknown as bigint,
+		limit: 24 as unknown as bigint,
 		offset: null,
 		query: null,
 		sort: null,
@@ -85,7 +99,7 @@ function List({ provider }: { provider: Provider }) {
 	const [expanded, setExpanded] = useState(false);
 	return (
 		<div>
-			<h5 className="uppercase p-3 opacity-60">{provider}</h5>
+			<h5 className="uppercase m-2 opacity-60">{provider}</h5>
 			<div className={`relative overflow-hidden ${expanded ? '' : 'h-128'}`}>
 				{search.isSuccess
 					? <PackageGrid items={search.data.items} provider={provider} />

@@ -6,11 +6,12 @@ import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
-import { Button, Show } from '@onelauncher/common/components';
+import { Button, ContextMenu, Show } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
+import { useRef, useState } from 'react';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -167,6 +168,8 @@ function ClusterCard({
 	icon_url,
 	stage,
 }: ClusterModel) {
+	const ref = useRef<HTMLDivElement>(null);
+	const [isOpen, setOpen] = useState(false);
 	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 
 	const handleLaunch = () => {
@@ -186,7 +189,7 @@ function ClusterCard({
 	};
 
 	return (
-		<>
+		<div ref={ref}>
 			<Link
 				disabled={stage === 'downloading'}
 				search={{
@@ -227,6 +230,33 @@ function ClusterCard({
 					</div>
 				</div>
 			</Link>
-		</>
+
+			<ContextMenu
+				isOpen={isOpen}
+				setOpen={setOpen}
+				triggerRef={ref}
+			>
+				<ContextMenu.Item className="">
+					Launch
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+				<ContextMenu.Item className="">
+					Rename
+				</ContextMenu.Item>
+				<ContextMenu.Item className="">
+					Change Icon
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+				<ContextMenu.Item className="">
+					Properties
+				</ContextMenu.Item>
+				<ContextMenu.Item className="text-red-500">
+					Delete
+				</ContextMenu.Item>
+				{/* <ContextMenu.Item className="">
+					Export
+				</ContextMenu.Item> */}
+			</ContextMenu>
+		</div>
 	);
 }

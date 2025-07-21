@@ -28,7 +28,7 @@ function RouteComponent() {
 function Featured() {
 	// const context = useBrowserContext();
 	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'iris'], []);
-	const featuredPackage = usePackageData(provider, slug, {}, 'getFeatured');
+	const featuredPackage = usePackageData(provider, slug, {});
 	const navigate = useNavigate();
 	const featuredImageIndex = useMemo(() => featuredPackage.data?.gallery.findIndex(image => image.featured), [featuredPackage.data]);
 	const [selectedImage, setSelectedImage] = useState(featuredImageIndex ?? 0);

@@ -1,4 +1,5 @@
 import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, Paginated, Provider } from '@/bindings.gen';
+import type { JSX } from 'react';
 import Modal from '@/components/overlay/Modal';
 import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
@@ -20,6 +21,21 @@ export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
 
 function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
 	return list.includes(element as unknown as TArray);
+}
+
+function CustomA({ href, children }: { href: string; children: any }) {
+	return (
+		<a
+			className="text-fg-primary underline"
+			href={href}
+			onClick={(e) => {
+				e.preventDefault();
+				openUrl(href);
+			}}
+		>
+			{children}
+		</a>
+	);
 }
 
 interface PackageContextType {
@@ -58,23 +74,29 @@ function RouteComponent() {
 						</TabList>
 						<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
 							<TabPanel className="prose prose-invert prose-sm max-w-none" id="about">
-								<Markdown rehypePlugins={[rehypeRaw]}>{packageData.data?.body}</Markdown>
+								<Markdown
+									components={{
+										a: ({ node, children, ...props }) => <CustomA children={children} href={props.href as string} />,
+									}} rehypePlugins={[rehypeRaw]}
+								>
+									{packageData.data?.body}
+								</Markdown>
 							</TabPanel>
 							<TabPanel id="versions">
 								versions
 							</TabPanel>
-							<TabPanel id="gallery" className="flex flex-wrap gap-2 justify-center">
+							<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
 
 								{packageData.data?.gallery.map(item => (
 									<Modal.Trigger key={item.url}>
 										<Pressable>
-											<div className='rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative'>
-												<img className='h-full' src={item.thumbnail_url} />
-												{item.title && <div className='absolute w-full bottom-0 bg-component-bg-disabled/80 p-2'>{item.title}</div>}
+											<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative">
+												<img className="h-full" src={item.thumbnail_url} />
+												{item.title && <div className="absolute w-full bottom-0 bg-component-bg-disabled/80 p-2">{item.title}</div>}
 											</div>
 										</Pressable>
-										<Modal className='w-full' >
-											<img className='rounded-xl' src={item.url} />
+										<Modal className="w-full">
+											<img className="rounded-xl" src={item.url} />
 										</Modal>
 									</Modal.Trigger>
 								))}

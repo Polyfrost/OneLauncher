@@ -6,12 +6,15 @@ import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
-import { Button, ContextMenu, Show } from '@onelauncher/common/components';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { Button, ContextMenu, Show, TextField } from '@onelauncher/common/components';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { PlayIcon } from '@untitled-theme/icons-react';
+import { CheckIcon, PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { join, dataDir } from '@tauri-apps/api/path';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { open } from '@tauri-apps/plugin-dialog';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -165,12 +168,17 @@ function ClusterCard({
 	name,
 	mc_loader,
 	mc_version,
-	icon_url,
 	stage,
 }: ClusterModel) {
+	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 	const ref = useRef<HTMLDivElement>(null);
 	const [isOpen, setOpen] = useState(false);
-	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
+	const navigate = useNavigate({ from: '/app' })
+	const [launcherDir, setLauncherDir] = useState('');
+	const cluster = useCommand(`getClusterById-${id}`, () => bindings.core.getClusterById(id));
+	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
+	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
+	const [edit, setEdit] = useState(false);
 
 	const handleLaunch = () => {
 		launch.mutate();
@@ -179,8 +187,53 @@ function ClusterCard({
 			console.error(launch.error.message);
 	};
 
+	useEffect(() => {
+		(async () => {
+			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data!.folder_name as string));
+		})();
+	}, [cluster.data?.folder_name]);
+
+	const openClusterDir = async () => {
+		openPath(launcherDir);
+	};
+
+	const editing = useCommand(`updateClusterById-${id}`, () => bindings.core.updateClusterById(id, {
+		icon_url: newCover,
+		name: newName,
+	}), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	async function launchFilePicker() {		
+		const selected = await open({
+			multiple: false,
+			directory: false,
+			filters: [{
+				name: 'Image',
+				extensions: ['png', 'jpg', 'jpeg', 'webp'],
+			}],
+		});
+
+		if (!selected) return;
+		
+		setNewCover(selected);
+	}
+
+	useEffect(() => {
+		if ((newCover && newCover !== cluster.data?.icon_url) || (newName && newName !== cluster.data?.name)) {
+			editing.refetch();
+		}
+	}, [newCover, newName]);
+
 	const image = () => {
-		const url = icon_url;
+		if (newCover && newCover !== cluster.data?.icon_url)
+			if (newCover.includes('\\') || newCover.includes('/')) {
+				console.warn('Using preview image:', newCover);
+				return convertFileSrc(newCover);
+			}
+
+		const url = cluster.data?.icon_url;
 
 		if (!url)
 			return DefaultInstancePhoto;
@@ -188,72 +241,91 @@ function ClusterCard({
 		return convertFileSrc(url);
 	};
 
+	function updateName(name: string) {
+		if (name.length > 30 || name.length <= 0)
+			return;
+
+		setNewName(name);
+	}
+
 	return (
 		<div ref={ref}>
-			<Link
-				disabled={stage === 'downloading'}
-				search={{
-					id,
-				}}
-				to="/app/cluster"
+			<div
+				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			>
-				<div
-					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
-				>
-					<div className="relative flex-1 overflow-hidden rounded-t-xl">
-						<div
-							className="absolute h-full w-full transition-transform group-hover:!scale-110"
-						>
-							<img
-								className="h-full w-full object-cover"
-								onError={(e) => {
-									(e.target as HTMLImageElement).src = DefaultInstancePhoto;
-								}}
-								src={image()}
-							/>
-						</div>
-					</div>
-					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
-								{name}
-							</p>
-							<p className="h-4 text-xs">
-								{mc_loader}
-								{' '}
-								{mc_version}
-							</p>
-						</div>
-
-						{/* <LaunchButton cluster={props} iconOnly /> */}
-						<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+				<div className="relative flex-1 overflow-hidden rounded-t-xl">
+					<div
+						className="absolute h-full w-full transition-transform group-hover:!scale-110"
+					>
+						<img
+							className="h-full w-full object-cover"
+							onError={(e) => {
+								(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+							}}
+							src={image()}
+						/>
 					</div>
 				</div>
-			</Link>
+				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+						<Show
+							fallback={
+								<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
+									{name}
+								</p>
+							}
+							when={edit}
+						>
+							<TextField
+								className="text-xl font-bold"
+								onChange={e => updateName(e.target.value)}
+								iconRight={
+									<Button className='px-1.5' onClick={() => setEdit(false)}>
+										<CheckIcon width={10} height={10} />
+									</Button>
+								}
+								placeholder={name}
+							/>
+						</Show>
+						<p className="h-4 text-xs">
+							{mc_loader}
+							{' '}
+							{mc_version}
+						</p>
+					</div>
+
+					{/* <LaunchButton cluster={props} iconOnly /> */}
+					<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+				</div>
+			</div>
 
 			<ContextMenu
 				isOpen={isOpen}
 				setOpen={setOpen}
 				triggerRef={ref}
 			>
-				<ContextMenu.Item className="">
-					Launch
+				<ContextMenu.Item className="flex items-center gap-1" onAction={handleLaunch}>
+					<span>Launch</span>
+					<PlayIcon width={14} height={14} className='pb-0.5' />
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
-				<ContextMenu.Item className="">
+				<ContextMenu.Item onAction={() => setEdit(true)}>
 					Rename
 				</ContextMenu.Item>
-				<ContextMenu.Item className="">
+				<ContextMenu.Item onAction={launchFilePicker}>
 					Change Icon
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
-				<ContextMenu.Item className="">
+				<ContextMenu.Item onAction={() => {navigate({to: '/app/cluster', search: {id}})}}>
 					Properties
+				</ContextMenu.Item>
+				<ContextMenu.Item onAction={openClusterDir}>
+					Open Folder
 				</ContextMenu.Item>
 				<ContextMenu.Item className="text-red-500">
 					Delete
 				</ContextMenu.Item>
-				{/* <ContextMenu.Item className="">
+				{/* <ContextMenu.Item>
 					Export
 				</ContextMenu.Item> */}
 			</ContextMenu>

@@ -1,21 +1,22 @@
-import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Paginated, Provider } from '@/bindings.gen';
-import type { HTMLProps, JSX } from 'react';
+import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
+import type { HTMLProps } from 'react';
 import Modal from '@/components/overlay/Modal';
 import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
-import { useClusters } from '@/hooks/useCluster';
+import { ChooseClusterModal, useClusters } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, PROVIDERS, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
-import { Button, Popup, Show, Tooltip } from '@onelauncher/common/components';
+import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { CalendarIcon, ChevronDownIcon, ChevronUpIcon, ClockRewindIcon, Download01Icon, File02Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Collection, ListBox, ListBoxItem, Popover, Pressable, Select, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
+import { createContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Cell, Collection, Column, ListBox, ListBoxItem, Popover, Pressable, Row, Select, Tab, Table, TableBody, TableHeader, TabList, TabPanel, Tabs } from 'react-aria-components';
 import Markdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { twMerge } from 'tailwind-merge';
+import usePagination from '@/hooks/usePagination';
 
 export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
 	component: RouteComponent,
@@ -44,12 +45,10 @@ function CustomA({ href, children, includeIcon, className, ...rest }: { href: st
 
 interface PackageContextType {
 	pkg: ManagedPackage | undefined;
-	versions: Paginated<ManagedVersion> | undefined;
 }
 
 const PackageContext = createContext<PackageContextType>({
 	pkg: undefined,
-	versions: undefined,
 });
 
 function RouteComponent() {
@@ -58,14 +57,9 @@ function RouteComponent() {
 		throw new Error('Invalid provider');
 	const packageData = usePackageData(provider, slug, {});
 	const browserContext = useBrowserContext();
-	const { data: versions } = usePackageVersions(provider, slug, {
-		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : null,
-		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : null,
-		limit: 50,
-	});
 
 	return (
-		<PackageContext value={{ pkg: packageData.data, versions }}>
+		<PackageContext value={{ pkg: packageData.data }}>
 			<Show when={packageData.isSuccess && !packageData.isFetching}>
 				<div className="h-full flex flex-1 flex-row items-start gap-x-4">
 					<BrowserSidebar package={packageData.data!} />
@@ -76,8 +70,8 @@ function RouteComponent() {
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="versions">Versions</Tab>
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data?.gallery.length === 0}>Gallery</Tab>
 						</TabList>
-						<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
-							<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block" id="about">
+						<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block" id="about">
+							<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
 								<Markdown
 									components={{
 										a: ({ node, children, ...props }) => <CustomA children={children} href={props.href as string} />,
@@ -87,28 +81,28 @@ function RouteComponent() {
 								>
 									{packageData.data?.body}
 								</Markdown>
-							</TabPanel>
-							<TabPanel id="versions">
-								versions
-							</TabPanel>
-							<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
+							</div>
+						</TabPanel>
+						<TabPanel id="versions">
+							<Versions/>
+						</TabPanel>
+						<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
 
-								{packageData.data?.gallery.map(item => (
-									<Modal.Trigger key={item.url}>
-										<Pressable>
-											<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative" aria-label='Loaders'>
-												<img className="h-full" src={item.thumbnail_url} />
-												{item.title && <div className="absolute w-full bottom-0 bg-component-bg-disabled/80 p-2">{item.title}</div>}
-											</div>
-										</Pressable>
-										<Modal className="w-full">
-											<img className="rounded-xl" src={item.url} />
-										</Modal>
-									</Modal.Trigger>
-								))}
+							{packageData.data?.gallery.map(item => (
+								<Modal.Trigger key={item.url}>
+									<Pressable>
+										<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative" aria-label='Loaders'>
+											<img className="h-full" src={item.thumbnail_url} />
+											{item.title && <div className="absolute w-full bottom-0 bg-component-bg-disabled/80 p-2">{item.title}</div>}
+										</div>
+									</Pressable>
+									<Modal className="w-full">
+										<img className="rounded-xl" src={item.url} />
+									</Modal>
+								</Modal.Trigger>
+							))}
 
-							</TabPanel>
-						</div>
+						</TabPanel>
 					</Tabs>
 
 				</div>
@@ -237,17 +231,20 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 function InstallButton() {
 	const triggerRef = useRef<HTMLDivElement>(null);
-	const { provider } = Route.useParams();
+	const { provider, slug } = Route.useParams();
+	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
 	const [open, setOpen] = useState(false);
 	const clusters = useClusters();
 	const browserContext = useBrowserContext();
-	const { versions } = useContext(PackageContext);
+	const { data: versions } = usePackageVersions(provider, slug, {
+		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : [],
+		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : [],
+		limit: 1
+	});
 	const version = useMemo(() => {
 		if (!versions || !browserContext.cluster)
 			return undefined;
-		return versions.items.findLast(version =>
-			version.mc_versions.includes(browserContext.cluster!.mc_version)
-			&& version.loaders.includes(browserContext.cluster!.mc_loader));
+		return versions.items[0]
 	}, [browserContext.cluster, versions]);
 
 	function download() {
@@ -345,6 +342,100 @@ function Author({ author }: { author: ManagedUser }) {
 		</a>
 
 	);
+}
+
+function colorForType(type: string) {
+	switch (type.toLowerCase()) {
+		case 'release':
+			return 'bg-code-trace/30';
+		case 'snapshot':
+			return 'bg-code-debug/30';
+		case 'beta':
+			return 'bg-code-warn/30';
+		case 'alpha':
+			return 'bg-code-error/30';
+		default:
+			return 'bg-border/30';
+	}
+}
+
+function Versions(){
+	const {provider, slug} = Route.useParams()
+	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
+	const clusters = useClusters()
+	const [offset, setOffset] = useState(0)
+	const browserContext = useBrowserContext()
+	const { data: versions } = usePackageVersions(provider, slug, {
+		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : null,
+		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : null,
+		limit: 20,
+		offset
+	});
+	const pagination = usePagination({
+		itemsCount: versions?.total as unknown as number,
+		itemsPerPage: versions?.limit as unknown as number
+	})
+	useEffect(()=>{
+		setOffset(pagination.offset)
+	},[pagination.offset])
+	useEffect(()=>{
+		console.log(versions?.total)
+		pagination.reset()
+	},[versions?.total])
+	return <div className='flex flex-col'>
+		<div className='flex justify-between'>
+			<pagination.Navigation/>
+		</div>
+		<Table className="border-separate border-spacing-x-none border-spacing-y-1">
+			<TableHeader className="text-left">
+				<Column className="pr-2"/>
+				<Column className="pr-4" isRowHeader>Name</Column>
+				<Column className="pr-4">Game Versions</Column>
+				<Column className="pr-4">Loaders</Column>
+				<Column className="pr-4">Created</Column>
+				<Column className="pr-4">Downloads</Column>
+				<Column className="pr-4"/>
+			</TableHeader>
+			<TableBody className="">
+				{versions?.items.map(item=>
+					<VersionRow version={item} clusters={clusters}/>
+				)}
+			</TableBody>
+		</Table>
+	</div>
+}
+
+function VersionRow({version, clusters}:{version:ManagedVersion, clusters?: Array<ClusterModel>}){
+	const {provider} = Route.useParams()
+	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
+	const browserContext = useBrowserContext()
+	const [selectedCluster, setSelectedCluster] = useState(browserContext.cluster)
+	return (
+		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4">
+			<Cell className="p-4 my-2 bg-component-bg rounded-l-xl">
+				<Tooltip text={upperFirst(version.release_type)}>
+					<div className={`${colorForType(version.release_type)} h-8 w-8 flex items-center justify-center rounded-md`}>
+						<span className="font-bold">{version.release_type.charAt(0).toUpperCase()}</span>
+					</div>
+				</Tooltip>
+			</Cell>
+			<Cell className="p-4 px-2 bg-component-bg">{version.display_name}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{version.mc_versions.join(", ")}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{version.loaders.map(upperFirst).join(", ")}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{formatAsRelative(Date.parse(version.published))}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{version.downloads}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg rounded-r-xl">
+				<Modal.Trigger>
+						<Button
+						size='icon'
+						color='secondary'
+						children={<Download01Icon />}
+					/>
+					<ChooseClusterModal confirmText='Download' onSelected={cluster=>downloadPackage(cluster, provider, version, true)}/>
+				</Modal.Trigger>
+			</Cell>
+		</Row>
+	)
 }
 
 function downloadPackage(cluster: ClusterModel, provider: Provider, version: ManagedVersion, skipCompatibility = false) {

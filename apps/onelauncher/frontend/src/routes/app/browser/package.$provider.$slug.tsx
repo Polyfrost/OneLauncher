@@ -1,10 +1,10 @@
-import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, Paginated, Provider } from '@/bindings.gen';
-import type { JSX } from 'react';
+import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Paginated, Provider } from '@/bindings.gen';
+import type { HTMLProps, JSX } from 'react';
 import Modal from '@/components/overlay/Modal';
 import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
 import { bindings } from '@/main';
-import { abbreviateNumber, formatAsRelative, PROVIDERS } from '@/utils';
+import { abbreviateNumber, formatAsRelative, PROVIDERS, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Popup, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
@@ -14,6 +14,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { Collection, ListBox, ListBoxItem, Popover, Pressable, Select, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 import Markdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
+import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
 	component: RouteComponent,
@@ -23,17 +25,19 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 	return list.includes(element as unknown as TArray);
 }
 
-function CustomA({ href, children }: { href: string; children: any }) {
+function CustomA({ href, children, includeIcon, className, ...rest }: { href: string; children: any, includeIcon?: boolean } & HTMLProps<HTMLAnchorElement>) {
 	return (
 		<a
-			className="text-fg-primary underline"
+			className={twMerge("text-fg-primary underline", className)}
 			href={href}
 			onClick={(e) => {
 				e.preventDefault();
 				openUrl(href);
 			}}
+			{...rest}
 		>
 			{children}
+			{includeIcon && <LinkExternal01Icon className='inline w-4 ml-1'/>}
 		</a>
 	);
 }
@@ -73,11 +77,13 @@ function RouteComponent() {
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data?.gallery.length === 0}>Gallery</Tab>
 						</TabList>
 						<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
-							<TabPanel className="prose prose-invert prose-sm max-w-none" id="about">
+							<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim" id="about">
 								<Markdown
 									components={{
 										a: ({ node, children, ...props }) => <CustomA children={children} href={props.href as string} />,
-									}} rehypePlugins={[rehypeRaw]}
+									}}
+									rehypePlugins={[rehypeRaw]}
+									remarkPlugins={[remarkGfm]}
 								>
 									{packageData.data?.body}
 								</Markdown>
@@ -111,6 +117,14 @@ function RouteComponent() {
 	);
 }
 
+function getPackageUrl(pkg: ManagedPackage): string {
+	switch (pkg.provider){
+		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`
+		case 'Curseforge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`
+		case 'SkyClient': return ``
+	}
+}
+
 function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 	const { provider } = Route.useParams();
 
@@ -120,7 +134,7 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 	const authors = useCommand('getUsersFromAuthor', () => bindings.core.getUsersFromAuthor(provider as Provider, pkg.author));
 
 	return (
-		<div className="sticky top-0 z-1 max-w-60 min-w-54 flex flex-col gap-y-4">
+		<div className="z-1 max-w-60 min-w-54 flex flex-col gap-y-4 mb-6">
 			<div className="flex flex-col overflow-hidden rounded-lg bg-component-bg">
 				<div className="relative h-28 flex items-center justify-center overflow-hidden">
 					<img alt={`Icon for ${pkg.name}`} className="absolute z-0 max-w-none w-7/6 blur-xl" src={pkg.icon_url || ''} />
@@ -153,14 +167,23 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 			<InstallButton />
 
-			{/* <div className="flex flex-col gap-2 rounded-lg bg-component-bg p-3">
+			<div className="flex flex-col rounded-lg bg-component-bg p-3">
 				<h4 className="text-fg-primary font-bold">Links</h4>
-				<Link href={getPackageUrl(contentPackage)} includeIcon>
-					{contentPackage.provider}
-					{' '}
-					Page
-				</Link>
-			</div> */}
+				<div className='flex flex-col'>
+					<CustomA href={getPackageUrl(pkg)} includeIcon className='text-link hover:text-link-hover'>
+						{provider}
+						{' '}
+						Page
+					</CustomA>
+					{(Object.entries(pkg.links) as [keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]][]).filter(a=>a[1]).map(link=>
+						typeof link[1] == "string"
+							? <CustomA href={link[1]} children={upperFirst(link[0])} className='text-link hover:text-link-hover' includeIcon/>
+							: <div>
+								{(link[1] as PackageDonationUrl[]).map(donationLink=><CustomA href={donationLink.url} className='text-link hover:text-link-hover' children={upperFirst(donationLink.id)} includeIcon/>)}
+							</div>
+					)}
+				</div>
+			</div>
 
 			<div className="flex flex-col gap-2 rounded-lg bg-component-bg p-3">
 				<h4 className="text-fg-primary font-bold">Authors</h4>

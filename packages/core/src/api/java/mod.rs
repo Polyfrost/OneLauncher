@@ -201,16 +201,11 @@ fn find_java_in_path(mut found: Vec<PathBuf>) -> Vec<PathBuf> {
         for path_entry in path.split(':') {
             let java = PathBuf::from(path_entry).join("java");
             if java.exists() {
-                if let Some(bin_dir) = java.parent() {
-                    if let Some(java_home) = bin_dir.parent() {
-                        let java_home_path = java_home.to_path_buf();
-                        // java executable should always be under bin/java of root
-                        let java_path = java_home_path.join("bin").join("java");
-                        if !found.contains(&java_path) {
-                            found.push(java_path);
-                        }
-                    }
-                }
+				if java.is_file() {
+					if !found.contains(&java) {
+						found.push(java);
+					}
+				}
             }
         }
     }
@@ -321,7 +316,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 	}
 
 
-	find_java_in_path(found);
+	found = find_java_in_path(found);
 
 	found
 }
@@ -359,7 +354,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 
 	// check env vars
 	// woowoooo mutation
-	let found = find_java_in_path(found);
+	found = find_java_in_path(found);
 
 	found
 }

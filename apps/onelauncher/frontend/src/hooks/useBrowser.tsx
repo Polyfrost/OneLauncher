@@ -75,6 +75,6 @@ export function usePackageData(provider: Provider, slug: string, options?: Omit<
 	return useCommand(key, () => bindings.core.getPackage(provider, slug), options);
 }
 
-export function usePackageVersions(provider: Provider, slug: string, { mc_versions, loaders, offset, limit, ...options }: { mc_versions?: Array<string> | null; loaders?: Array<GameLoader> | null; offset?: number; limit: number } & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, 'queryKey' | 'queryFn'>) {
-	return useCommand('getPackageVersions', () => bindings.core.getPackageVersions(provider, slug, mc_versions ?? null, loaders ?? null, (offset ?? 0) as unknown as bigint, limit as unknown as bigint), options);
+export function usePackageVersions(provider: Provider, slug: string, { mc_versions, loaders, offset, limit, ...options }: { mc_versions?: Array<string> | null; loaders?: Array<GameLoader> | null; offset?: number; limit: number } & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, 'queryKey' | 'queryFn'>, key: false | BindingCommands | (string & {}) = `getPackageVersions.${provider}.${slug}.${mc_versions?.join('')}.${loaders?.join('')}`) {
+	return useCommand(key, () => bindings.core.getPackageVersions(provider, slug, mc_versions ?? null, loaders ?? null, (offset ?? 0) as unknown as bigint, limit as unknown as bigint), options);
 }

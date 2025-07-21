@@ -362,12 +362,8 @@ function colorForType(type: string) {
 function Versions(){
 	const {provider, slug} = Route.useParams()
 	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
-	const clusters = useClusters()
 	const [offset, setOffset] = useState(0)
-	const browserContext = useBrowserContext()
 	const { data: versions } = usePackageVersions(provider, slug, {
-		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : null,
-		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : null,
 		limit: 20,
 		offset
 	});
@@ -379,7 +375,6 @@ function Versions(){
 		setOffset(pagination.offset)
 	},[pagination.offset])
 	useEffect(()=>{
-		console.log(versions?.total)
 		pagination.reset()
 	},[versions?.total])
 	return <div className='flex flex-col'>
@@ -398,18 +393,16 @@ function Versions(){
 			</TableHeader>
 			<TableBody className="">
 				{versions?.items.map(item=>
-					<VersionRow version={item} clusters={clusters}/>
+					<VersionRow version={item}/>
 				)}
 			</TableBody>
 		</Table>
 	</div>
 }
 
-function VersionRow({version, clusters}:{version:ManagedVersion, clusters?: Array<ClusterModel>}){
+function VersionRow({version}:{version:ManagedVersion}){
 	const {provider} = Route.useParams()
 	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
-	const browserContext = useBrowserContext()
-	const [selectedCluster, setSelectedCluster] = useState(browserContext.cluster)
 	return (
 		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4">
 			<Cell className="p-4 my-2 bg-component-bg rounded-l-xl">

@@ -32,7 +32,12 @@ export function BrowserProvider(props: any) {
 	const [provider, setProvider] = useState<Provider>(PROVIDERS[0]);
 	const navigate = useNavigate();
 	const [query, setQuery] = useState<SearchQuery>({
-		filters: null,
+		filters: {
+			categories: null,
+			game_versions: null,
+			loaders: null,
+			package_types: ["mod"]
+		},
 		query: null,
 		limit: 18 as unknown as bigint,
 		offset: null,

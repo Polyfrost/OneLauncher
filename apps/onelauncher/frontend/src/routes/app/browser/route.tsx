@@ -107,7 +107,7 @@ const defaultFilters: Filters = {
 
 function BrowserCategories() {
 	const context = useBrowserContext();
-	const categories = browserCategories.byPackageType('mod', context.provider);
+	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ["mod"])[0], context.provider);
 
 	function switchCategory(category: string) {
 		const newCategories = context.query.filters?.categories?.includes(category)

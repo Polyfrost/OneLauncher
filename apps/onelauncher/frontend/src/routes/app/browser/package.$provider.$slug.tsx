@@ -37,7 +37,7 @@ function CustomA({ href, children, includeIcon, className, ...rest }: { href: st
 			{...rest}
 		>
 			{children}
-			{includeIcon && <LinkExternal01Icon className='inline w-4 ml-1'/>}
+			{includeIcon && <LinkExternal01Icon className='inline w-4 ml-1' />}
 		</a>
 	);
 }
@@ -77,7 +77,7 @@ function RouteComponent() {
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data?.gallery.length === 0}>Gallery</Tab>
 						</TabList>
 						<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
-							<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim" id="about">
+							<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block" id="about">
 								<Markdown
 									components={{
 										a: ({ node, children, ...props }) => <CustomA children={children} href={props.href as string} />,
@@ -96,7 +96,7 @@ function RouteComponent() {
 								{packageData.data?.gallery.map(item => (
 									<Modal.Trigger key={item.url}>
 										<Pressable>
-											<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative">
+											<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative" aria-label='Loaders'>
 												<img className="h-full" src={item.thumbnail_url} />
 												{item.title && <div className="absolute w-full bottom-0 bg-component-bg-disabled/80 p-2">{item.title}</div>}
 											</div>
@@ -118,7 +118,7 @@ function RouteComponent() {
 }
 
 function getPackageUrl(pkg: ManagedPackage): string {
-	switch (pkg.provider){
+	switch (pkg.provider) {
 		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`
 		case 'Curseforge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`
 		case 'SkyClient': return ``
@@ -175,12 +175,11 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 						{' '}
 						Page
 					</CustomA>
-					{(Object.entries(pkg.links) as [keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]][]).filter(a=>a[1]).map(link=>
+					{(Object.entries(pkg.links) as [keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]][]).filter(a => a[1]).map(link =>
 						typeof link[1] == "string"
-							? <CustomA href={link[1]} children={upperFirst(link[0])} className='text-link hover:text-link-hover' includeIcon/>
-							: <div>
-								{(link[1] as PackageDonationUrl[]).map(donationLink=><CustomA href={donationLink.url} className='text-link hover:text-link-hover' children={upperFirst(donationLink.id)} includeIcon/>)}
-							</div>
+							? <CustomA href={link[1]} children={upperFirst(link[0])} className='text-link hover:text-link-hover' includeIcon />
+							: (link[1] as PackageDonationUrl[]).map(donationLink => <CustomA href={donationLink.url} className='text-link hover:text-link-hover' children={upperFirst(donationLink.id)} includeIcon />)
+
 					)}
 				</div>
 			</div>
@@ -272,12 +271,12 @@ function InstallButton() {
 						browserContext.cluster
 							? version
 								? (
-										<span>
-											Download latest to
-											<br />
-											<span className="text-md font-semibold">{browserContext.cluster.name}</span>
-										</span>
-									)
+									<span>
+										Download latest to
+										<br />
+										<span className="text-md font-semibold">{browserContext.cluster.name}</span>
+									</span>
+								)
 								: `No matching version found`
 							: 'Select a Cluster'
 					}

@@ -56,9 +56,12 @@ function RouteComponent() {
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
 	const packageData = usePackageData(provider, slug, {});
+	const packageContextValue = useMemo(() => ({
+		pkg: packageData.data,
+	}), [packageData.data]);
 
 	return (
-		<PackageContext value={{ pkg: packageData.data }}>
+		<PackageContext value={packageContextValue}>
 			<Show when={packageData.isSuccess && !packageData.isFetching}>
 				<div className="h-full flex flex-1 flex-row items-start gap-x-4">
 					<BrowserSidebar package={packageData.data!} />
@@ -121,8 +124,8 @@ function getPackageUrl(pkg: ManagedPackage): string {
 function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 	const { provider } = Route.useParams();
 
-	const createdAt = useMemo(() => pkg.created ? new Date(pkg.created) : null, []);
-	const updatedAt = useMemo(() => pkg.updated ? new Date(pkg.updated) : null, []);
+	const createdAt = useMemo(() => pkg.created ? new Date(pkg.created) : null, [pkg.created]);
+	const updatedAt = useMemo(() => pkg.updated ? new Date(pkg.updated) : null, [pkg.updated]);
 
 	const authors = useCommand('getUsersFromAuthor', () => bindings.core.getUsersFromAuthor(provider as Provider, pkg.author));
 
@@ -303,7 +306,7 @@ function InstallButton() {
 				aria-label="cluster" isOpen={open}
 				onOpenChange={setOpen}
 				onSelectionChange={(e) => {
-					const cluster = clusters?.find(cluster => cluster.id as unknown as number === e);
+					const cluster = clusters?.find(item => item.id as unknown as number === e);
 					if (cluster)
 						browserContext.setCluster(cluster);
 				}}
@@ -382,6 +385,7 @@ function Versions() {
 		limit: 20,
 		offset,
 	});
+
 	const pagination = usePagination({
 		itemsCount: versions?.total as unknown as number,
 		itemsPerPage: versions?.limit as unknown as number,

@@ -48,9 +48,7 @@ function RouteComponent() {
 		})();
 	}, [cluster.data?.folder_name]);
 
-	const openClusterDir = async () => {
-		openPath(launcherDir);
-	};
+	const openClusterDir = () => openPath(launcherDir);
 
 	async function handleEditMode() {
 		if (edit)

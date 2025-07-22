@@ -8,8 +8,7 @@
 		"build": "vite build && tsc",
 		"serve": "vite preview",
 		"lint": "eslint",
-		"format": "prettier",
-		"check": "prettier --write . && eslint --fix"
+		"check": "eslint --fix"
 	},
 	"dependencies": {
 		"@fontsource/poppins": "catalog:",

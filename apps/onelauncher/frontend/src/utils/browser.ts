@@ -1,4 +1,4 @@
-import type { PackageType, Provider } from "@/bindings.gen";
+import type { PackageType, Provider } from '@/bindings.gen';
 
 export const BROWSER_VIEWS: Array<string> = ['grid', 'list'] as const;
 

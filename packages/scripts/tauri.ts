@@ -29,7 +29,7 @@ if (cargoConfig.env && typeof cargoConfig.env === 'object')
 
 function targetFilter(filter: 'b' | 't') {
 	const filters = filter === 'b' ? ['-b', '--bundles'] : ['-t', '--target'];
-	return (_: string, idx: number, args: string[]) => {
+	return (_: string, idx: number, args: Array<string>) => {
 		if (idx === 0)
 			return false;
 		const prev = args[idx - 1] ?? '';

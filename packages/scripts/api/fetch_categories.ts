@@ -7,7 +7,7 @@ interface MappedCategoryItem {
 	id: string;
 }
 
-type MappingList = Record<string, MappedCategoryItem[]>;
+type MappingList = Record<string, Array<MappedCategoryItem>>;
 
 const packageTypes = ['mod', 'modpack', 'shader', 'resourcepack'] as const;
 type PackageType = typeof packageTypes[number];
@@ -43,7 +43,7 @@ async function fetchCategoriesCurseforge(packageType: PackageType): Promise<Mapp
 		parentCategoryId?: number;
 	};
 
-	const data = (await response.json() as { data: CFCategory[] }).data;
+	const data = (await response.json() as { data: Array<CFCategory> }).data;
 
 	// TODO: Add more calssIds
 	const classIds: Record<PackageType, number> = {
@@ -79,7 +79,7 @@ async function fetchCategoriesModrinth(packageType: PackageType): Promise<Mappin
 		header: string;
 	}
 
-	const data = await response.json() as ModrinthCategory[];
+	const data = await response.json() as Array<ModrinthCategory>;
 
 	const mapping: MappingList = {};
 

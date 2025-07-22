@@ -1,5 +1,5 @@
-import type { JSX, ReactNode } from 'react';
-import React, { createContext, useContext } from 'react';
+import type { JSX } from 'react';
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
 
 interface SelectListContextType {
 	onSelect: (value: string) => void;
@@ -30,7 +30,7 @@ export const SelectList: React.FC<SelectListProps> & { Item: React.FC<SelectList
 	multiple = false,
 	children,
 }) => {
-	const handleSelect = (itemValue: string): void => {
+	const handleSelect = useCallback((itemValue: string): void => {
 		if (multiple) {
 			const currentValues = Array.isArray(value) ? value : [];
 			const newValues = currentValues.includes(itemValue)
@@ -41,20 +41,20 @@ export const SelectList: React.FC<SelectListProps> & { Item: React.FC<SelectList
 		else {
 			onChange(itemValue);
 		}
-	};
+	}, [multiple, onChange, value]);
 
-	const isSelected = (itemValue: string): boolean => {
+	const isSelected = useCallback((itemValue: string): boolean => {
 		if (multiple)
 			return Array.isArray(value) && value.includes(itemValue);
 
 		return value === itemValue;
-	};
+	}, [multiple, value]);
 
-	const contextValue: SelectListContextType = {
+	const contextValue: SelectListContextType = useMemo(() => ({
 		onSelect: handleSelect,
 		isSelected,
 		multiple,
-	};
+	}), [handleSelect, isSelected, multiple]);
 
 	return (
 		<SelectListContext.Provider value={contextValue}>

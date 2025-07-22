@@ -104,7 +104,7 @@ function RouteComponent() {
 			setIsForwardButtonEnabled(true);
 	}, [currentStepIndex, tasksStage, tasksCompleted]);
 
-	const next = useCallback(async () => {
+	const next = useCallback(() => {
 		const isLast = currentStepIndex === steps.length - 1;
 
 		if (isLast) {
@@ -140,14 +140,17 @@ function RouteComponent() {
 		setTasksMessage('Starting setup...');
 
 		const tasksToRun = [
-			async () => {
+			() => new Promise<void>((resolve) => {
 				setTasksMessage(`Setting language to ${language?.lang}...`);
 
 				console.log('Language task completed for:', language?.lang);
-			},
-			async () => {
+
+				resolve();
+			}),
+			() => new Promise<void>((resolve) => {
 				if (importInstancesMap.size === 0) {
 					console.log('No instances selected for import.');
+					resolve();
 					return;
 				}
 
@@ -165,7 +168,9 @@ function RouteComponent() {
 						throw e;
 					}
 				}
-			},
+
+				resolve();
+			}),
 		];
 
 		const results = await Promise.allSettled(tasksToRun.map(task => task()));

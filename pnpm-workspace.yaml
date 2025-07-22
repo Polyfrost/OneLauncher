@@ -36,7 +36,7 @@ catalog:
   # ---
   #  dependencies
   # ---
-  
+
   # react + libraries
   react: ^19.0.0
   react-aria-components: ^1.8.0

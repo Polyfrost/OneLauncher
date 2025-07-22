@@ -32,6 +32,7 @@ function Featured() {
 	const navigate = useNavigate();
 	const featuredImageIndex = useMemo(() => featuredPackage.data?.gallery.findIndex(image => image.featured), [featuredPackage.data]);
 	const [selectedImage, setSelectedImage] = useState(featuredImageIndex ?? 0);
+
 	return (
 		<Show when={featuredPackage.isSuccess}>
 			<div className="flex flex-col gap-y-1">

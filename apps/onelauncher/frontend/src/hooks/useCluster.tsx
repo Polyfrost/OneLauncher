@@ -1,10 +1,10 @@
 import type { ClusterModel } from '@/bindings.gen';
 import type { ModalProps } from '@/components/overlay/Modal';
+import Modal from '@/components/overlay/Modal';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import { useEffect, useState } from 'react';
-import Modal from '@/components/overlay/Modal';
 import { Button, Dropdown } from '@onelauncher/common/components';
+import { useEffect, useState } from 'react';
 import { Heading } from 'react-aria-components';
 
 export function useRecentCluster() {
@@ -58,26 +58,29 @@ export function useClusters() {
 }
 
 type ChooseClusterModalProps = ModalProps & {
-	clusters?: ClusterModel[];
+	clusters?: Array<ClusterModel>;
 	confirmText?: string;
-	selected?: (clusters: ClusterModel[]) => number;
+	selected?: (clusters: Array<ClusterModel>) => number;
 	onSelected?: (cluster: ClusterModel) => void;
 };
 
-
-export function ChooseClusterModal({clusters: clusterList, selected: defaultSelected, onSelected, confirmText, ...props}: ChooseClusterModalProps) {
-	const clusters = useClusters()
+export function ChooseClusterModal({ clusters: clusterList, selected: defaultSelected, onSelected, confirmText, ...props }: ChooseClusterModalProps) {
+	const clusters = useClusters();
 	const [selected, setSelected] = useState(0);
 
 	useEffect(() => {
-		if (!clusters) return;
-		const newSelected = defaultSelected?.(clusters)
-		if (newSelected) setSelected(newSelected)
-	}, [clusters])
+		if (!clusters)
+			return;
+
+		const newSelected = defaultSelected?.(clusters);
+
+		if (newSelected)
+			setSelected(newSelected);
+	}, [clusters, defaultSelected]);
 
 	function chooseCluster() {
-		if (clusters !== undefined && selected !== undefined) {
-			const cluster = clusters[selected];
+		if (clusters !== undefined) {
+			const cluster = clusters[selected] as ClusterModel | undefined;
 			if (cluster !== undefined)
 				onSelected?.(cluster);
 		}
@@ -87,35 +90,35 @@ export function ChooseClusterModal({clusters: clusterList, selected: defaultSele
 		<Modal {...props}>
 			<div className="min-w-sm flex flex-col rounded-lg bg-page text-center p-4 gap-2">
 
-				<Heading slot='title' className='text-xl font-semibold'>Select a Cluster</Heading>
-					<Dropdown
-						onSelectionChange={(index) => {
-							setSelected(index as number)
-						}}
-						selectedKey={selected}
-					>
-						{clusters?.map((cluster, index) => (
-							<Dropdown.Item id={index} key={cluster.id}>
-								{cluster.name}
-							</Dropdown.Item>
-						))}
-					</Dropdown>
+				<Heading className="text-xl font-semibold" slot="title">Select a Cluster</Heading>
+				<Dropdown
+					onSelectionChange={(index) => {
+						setSelected(index as number);
+					}}
+					selectedKey={selected}
+				>
+					{clusters?.map((cluster, index) => (
+						<Dropdown.Item id={index} key={cluster.id}>
+							{cluster.name}
+						</Dropdown.Item>
+					))}
+				</Dropdown>
 
-					<div className='flex gap-2'>
-						<Button
-							color="secondary"
-							children="Close"
-							slot="close"
-						/>
-						<Button
-							children={confirmText ?? "Save"}
-							slot="close"
-							onClick={chooseCluster}
-						/>
-					</div>
+				<div className="flex gap-2">
+					<Button
+						children="Close"
+						color="secondary"
+						slot="close"
+					/>
+					<Button
+						children={confirmText ?? 'Save'}
+						onClick={chooseCluster}
+						slot="close"
+					/>
+				</div>
 			</div>
 		</Modal>
-	)
+	);
 
 	// return (
 	// 	<Modal

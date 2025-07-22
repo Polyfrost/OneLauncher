@@ -36,7 +36,7 @@ export function BrowserProvider(props: any) {
 			categories: null,
 			game_versions: null,
 			loaders: null,
-			package_types: ["mod"]
+			package_types: ['mod'],
 		},
 		query: null,
 		limit: 18 as unknown as bigint,
@@ -47,7 +47,7 @@ export function BrowserProvider(props: any) {
 	useEffect(() => {
 		if (query.filters?.categories || query.query)
 			navigate({ to: '/app/browser/search' });
-	}, [query]);
+	}, [navigate, query]);
 
 	const context = useMemo<BrowserControllerType>(() => ({
 		cluster,

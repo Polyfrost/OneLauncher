@@ -1,7 +1,7 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
 import { abbreviateNumber, LOADERS, upperFirst } from '@/utils';
 import { Show, Tooltip } from '@onelauncher/common/components';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Focusable } from 'react-aria-components';
@@ -22,7 +22,7 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), []);
+	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), [item.categories]);
 
 	return (
 		<Link

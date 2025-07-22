@@ -47,7 +47,7 @@ export async function tauriUpdateKey(env: CheckedEnvironment): Promise<string | 
 	return keys.publicKey;
 }
 
-export async function patchTauri(env: CheckedEnvironment, targets: string[], args: string[]): Promise<string[]> {
+export async function patchTauri(env: CheckedEnvironment, targets: Array<string>, args: Array<string>): Promise<Array<string>> {
 	consola.start('patching tauri configuration...');
 	if (args.findIndex(a => ['--config', '-c'].includes(a)) !== -1)
 		throw new Error('custom tauri build configuration is not supported!');
@@ -55,7 +55,7 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 	const osType = type();
 	const tauriPatch: {
 		build: {
-			features: string[];
+			features: Array<string>;
 		};
 		bundle: {
 			macOS: { minimumSystemVersion: string };
@@ -107,10 +107,10 @@ export async function patchTauri(env: CheckedEnvironment, targets: string[], arg
 		if (
 			(targets.includes('aarch64-apple-darwin')
 				|| (targets.length === 0 && process.arch === 'arm64'))
-				&& (macOSStore.minimumVersion == null || semver.lt(
-					semver.coerce(macOSStore.minimumVersion)!,
-					semver.coerce(macOSStore.defaultArm64)!,
-				))
+			&& (macOSStore.minimumVersion == null || semver.lt(
+				semver.coerce(macOSStore.minimumVersion)!,
+				semver.coerce(macOSStore.defaultArm64)!,
+			))
 		) {
 			macOSStore.minimumVersion = macOSStore.defaultArm64;
 			consola.debug(`setting minimum macOS version to ${macOSStore.minimumVersion}...`);

@@ -40,7 +40,7 @@ function Featured() {
 					<div className="w-full p-1">
 						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data?.gallery[selectedImage].url} />
 					</div>
-					<div className="max-w-64 min-w-52 flex flex-col gap-y-1 p-4">
+					<div className="max-w-64 min-[1900px]:max-w-96 min-w-52 flex flex-col gap-y-1 p-4">
 						<h2 className="text-[1.5rem] font-semibold">{featuredPackage.data?.name}</h2>
 
 						<Show when={false}>

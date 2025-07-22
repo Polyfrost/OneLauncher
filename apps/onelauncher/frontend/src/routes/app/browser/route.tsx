@@ -30,7 +30,7 @@ function RouteComponent() {
 export function BrowserLayout(props: any) {
 	return (
 		<div className="relative h-full flex flex-1 flex-col items-center gap-2">
-			<div className="h-full w-full max-w-screen-2xl flex flex-1 flex-col items-center gap-y-2">
+			<div className="h-full w-full flex flex-1 flex-col items-center gap-y-2">
 				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6">
 					<div />
 					<BrowserToolbar />
@@ -107,7 +107,7 @@ const defaultFilters: Filters = {
 
 function BrowserCategories() {
 	const context = useBrowserContext();
-	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ["mod"])[0], context.provider);
+	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ['mod'])[0], context.provider);
 
 	function switchCategory(category: string) {
 		const newCategories = context.query.filters?.categories?.includes(category)

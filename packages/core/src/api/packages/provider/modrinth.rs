@@ -1,6 +1,6 @@
 use super::ProviderExt;
 use crate::api::packages::data::{
-	ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency, ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery, SearchResult, DEFAULT_LIMIT
+	ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency, ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageGallery, PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery, SearchResult, DEFAULT_LIMIT
 };
 use crate::error::LauncherResult;
 use crate::utils::http;
@@ -346,6 +346,7 @@ struct ModrinthPackage {
 	pub icon_url: Option<String>,
 	#[serde(alias = "project_id")]
 	pub id: String,
+	pub slug: String,
 	pub team: String,
 	#[serde(default)]
 	pub organization: Option<String>,
@@ -363,7 +364,7 @@ struct ModrinthPackage {
 	#[serde(default)]
 	pub license: Option<PackageLicense>,
 	// #[serde(default)]
-	// pub gallery: Vec<Gallery>,
+	pub gallery: Vec<ModrinthGallery>,
 	#[serde(default)]
 	pub status: PackageStatus,
 }
@@ -373,6 +374,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 		Self {
 			provider: Provider::Modrinth,
 			id: value.id,
+			slug: value.slug,
 			package_type: value.project_type,
 			name: value.title,
 			short_desc: value.description,
@@ -405,6 +407,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			},
 			status: value.status,
 			downloads: value.downloads,
+			gallery: value.gallery.into_iter().map(Into::into).collect()
 		}
 	}
 }
@@ -530,6 +533,29 @@ impl From<ModrinthUser> for ManagedUser {
 			role: None,
 		}
 	}
+}
+
+#[derive(Deserialize)]
+pub struct ModrinthGallery {
+	#[serde(rename = "raw_url")]
+    pub url: String,
+	#[serde(rename = "url")]
+    pub thumbnail_url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub featured: Option<bool>
+}
+
+impl From<ModrinthGallery> for PackageGallery {
+  fn from(value: ModrinthGallery) -> Self {
+    Self {
+      url: value.url,
+      thumbnail_url: value.thumbnail_url,
+	  title: value.title,
+	  description: value.description,
+	  featured: value.featured
+    }
+  }
 }
 
 #[allow(dead_code)]

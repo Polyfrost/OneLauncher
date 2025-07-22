@@ -109,3 +109,7 @@ body {
 .os-hide-horizontal-scrollbar > .os-scrollbar-horizontal {
 	display: none;
 }
+
+code {
+	@apply rounded-md p-2 text-left;
+}

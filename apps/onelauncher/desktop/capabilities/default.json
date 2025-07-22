@@ -42,6 +42,8 @@
 					"path": "$DATA/OneLauncher"
 				}
 			]
-		}
+		},
+		"opener:allow-open-url",
+		"opener:default"
 	]
 }

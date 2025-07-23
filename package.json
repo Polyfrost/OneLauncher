@@ -24,7 +24,6 @@
 		"prep": "pnpm scripts prep",
 		"typecheck": "pnpm -r typecheck",
 		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
-
 		"core": "pnpm --filter @onelauncher/core -- ",
 		"migrate": "sea-orm-cli migrate -d ./packages/migration",
 		"entity:gen": "sea-orm-cli generate entity -o packages/entity/src/entities --with-serde both --model-extra-attributes 'onelauncher_macro::specta' -t",
@@ -34,13 +33,13 @@
 		"oneclient:desktop": "pnpm --filter @oneclient/desktop -- ",
 		"web_common": "pnpm --filter @onelauncher/common -- ",
 		"scripts": "pnpm --filter @onelauncher/scripts -- ",
-
 		"format": "pnpm format:es && pnpm format:rs",
 		"format:es": "pnpm lint:es --fix",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
 		"lint": "pnpm lint:es && pnpm lint:rs",
-		"lint:es": "eslint . --cache --flag unstable_ts_config",
-		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings"
+		"lint:es": "eslint . --cache",
+		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
+		"prepare": "husky"
 	},
 	"workspaces": {
 		"packages": [
@@ -54,6 +53,8 @@
 		"@tanstack/eslint-config": "catalog:",
 		"@types/node": "catalog:",
 		"eslint": "catalog:",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.1.2",
 		"rimraf": "catalog:",
 		"tsx": "catalog:",
 		"typescript": "catalog:",

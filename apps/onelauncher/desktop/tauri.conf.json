@@ -45,7 +45,7 @@
 	},
 	"bundle": {
 		"active": true,
-		"createUpdaterArtifacts": false
+		"createUpdaterArtifacts": false,
 		"targets": [
 			"app",
 			"dmg",

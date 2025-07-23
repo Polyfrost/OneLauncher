@@ -2,12 +2,13 @@ import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
+import Modal from '@/components/overlay/Modal';
 import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, ContextMenu, Show, TextField } from '@onelauncher/common/components';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -167,6 +168,7 @@ function ClusterCard({
 	id,
 	mc_loader,
 	mc_version,
+	stage,
 }: ClusterModel) {
 	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 	const ref = useRef<HTMLDivElement>(null);
@@ -176,8 +178,7 @@ function ClusterCard({
 	const cluster = useCommand(`getClusterById-${id}`, () => bindings.core.getClusterById(id));
 	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
 	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
-	const [edit, setEdit] = useState(false);
-	const [hover, setHover] = useState(false);
+	const [modalOpen, setModalOpen] = useState(false);
 
 	const handleLaunch = () => {
 		launch.mutate();
@@ -248,55 +249,48 @@ function ClusterCard({
 	}
 
 	return (
-		<div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} ref={ref}>
-			<div
-				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+		<div ref={ref}>
+			<Link
+				disabled={stage === 'downloading'}
+				search={{
+					id,
+				}}
+				to="/app/cluster"
 			>
-				<div className="relative flex-1 overflow-hidden rounded-t-xl">
-					<div
-						className="absolute h-full w-full transition-transform group-hover:!scale-110"
-					>
-						<img
-							className="h-full w-full object-cover"
-							onError={(e) => {
-								(e.target as HTMLImageElement).src = DefaultInstancePhoto;
-							}}
-							src={image()}
-						/>
-					</div>
-				</div>
-				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
-					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
-						<Show
-							fallback={(
-								<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
-									{cluster.data?.name}
-								</p>
-							)}
-							when={edit}
+				<div
+					className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
+				>
+					<div className="relative flex-1 overflow-hidden rounded-t-xl">
+						<div
+							className="absolute h-full w-full transition-transform group-hover:!scale-110"
 						>
-							<TextField
-								className="text-xl font-bold"
-								iconRight={(
-									<Button className="px-1.5" onClick={() => setEdit(false)}>
-										<CheckIcon height={10} width={10} />
-									</Button>
-								)}
-								onChange={e => updateName(e.target.value)}
-								placeholder={cluster.data?.name}
+							<img
+								className="h-full w-full object-cover"
+								onError={(e) => {
+									(e.target as HTMLImageElement).src = DefaultInstancePhoto;
+								}}
+								src={image()}
 							/>
-						</Show>
-						<p className="h-4 text-xs">
-							{mc_loader}
-							{' '}
-							{mc_version}
-						</p>
+						</div>
 					</div>
+					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
+						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
+							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
+								{cluster.data?.name}
+							</p>
 
-					{/* <LaunchButton cluster={props} iconOnly /> */}
-					<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+							<p className="h-4 text-xs">
+								{mc_loader}
+								{' '}
+								{mc_version}
+							</p>
+						</div>
+
+						{/* <LaunchButton cluster={props} iconOnly /> */}
+						<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+					</div>
 				</div>
-			</div>
+			</Link>
 
 			<ContextMenu
 				isOpen={isOpen}
@@ -308,14 +302,14 @@ function ClusterCard({
 					<PlayIcon className="pb-0.5" height={14} width={14} />
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
-				<ContextMenu.Item onAction={() => setEdit(true)}>
+				<ContextMenu.Item onAction={() => setModalOpen(true)}>
 					Rename
 				</ContextMenu.Item>
 				<ContextMenu.Item onAction={launchFilePicker}>
 					Change Icon
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
-				<ContextMenu.Item onAction={() => { navigate({ to: '/app/cluster', search: { id } }); }}>
+				<ContextMenu.Item isDisabled={stage === 'downloading'} onAction={() => { navigate({ to: '/app/cluster', search: { id } }); }}>
 					Properties
 				</ContextMenu.Item>
 				<ContextMenu.Item onAction={openClusterDir}>
@@ -328,6 +322,22 @@ function ClusterCard({
 					Export
 				</ContextMenu.Item> */}
 			</ContextMenu>
+
+			<Modal isDismissable isOpen={modalOpen}>
+				<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
+					<Modal.Header name="New Cluster name:" />
+					<TextField
+						className="text-xl font-bold m-3"
+						iconRight={(
+							<Button className="px-1.5" onClick={() => setModalOpen(false)}>
+								<CheckIcon height={10} width={10} />
+							</Button>
+						)}
+						onChange={e => updateName(e.target.value)}
+						placeholder={cluster.data?.name}
+					/>
+				</div>
+			</Modal>
 		</div>
 	);
 }

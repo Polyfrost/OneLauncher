@@ -76,7 +76,7 @@ Modal.Trigger = DialogTrigger;
 
 export interface ModalHeaderProps {
 	name: string;
-	fontsize?: number;
+	fontsize?: string;
 	icon?: ComponentType<SVGProps<SVGSVGElement>>;
 	banner?: string;
 	currentStep?: {
@@ -101,7 +101,7 @@ Modal.Header = ({ name, banner, fontsize, icon, currentStep }: ModalHeaderProps)
 		<div className="absolute left-0 top-0 h-full flex w-full flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10">
 			{icon && createElement(icon, { className: 'h-8 w-8 text-fg-primary' })}
 			<div className="flex flex-col items-start justify-center">
-				<h1 className={`h-10 text-fg-primary text-[${fontsize ?? '32'}px] font-semibold`}>{name}</h1>
+				<h1 className={`h-10 text-fg-primary ${fontsize ?? 'text-2xl'} font-semibold`}>{name}</h1>
 				{currentStep ? <span className="text-fg-primary">{currentStep.title}</span> : null}
 			</div>
 		</div>

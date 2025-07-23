@@ -45,6 +45,7 @@
 	},
 	"bundle": {
 		"active": true,
+		"createUpdaterArtifacts": false,
 		"targets": [
 			"app",
 			"dmg",
@@ -66,7 +67,6 @@
 		"license": "GPL-3.0-only",
 		"homepage": "https://polyfrost.org/",
 		"longDescription": "Next-generation open source Minecraft launcher",
-		"createUpdaterArtifacts": true,
 		"resources": [],
 		"externalBin": [],
 		"linux": {

@@ -1,6 +1,7 @@
 import type { ClusterModel, GameLoader, ManagedPackage, ManagedVersion, Paginated, Provider, SearchQuery, SearchResult } from '@/bindings.gen';
 import type { BindingCommands } from '@/types/global';
 import type { UndefinedInitialDataOptions } from '@tanstack/react-query';
+import type { Dispatch, SetStateAction } from 'react';
 import { bindings } from '@/main';
 import { PROVIDERS } from '@/utils';
 import { useCommand } from '@onelauncher/common';
@@ -9,11 +10,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 export interface BrowserControllerType {
 	cluster: ClusterModel | undefined;
-	setCluster: (cluster: ClusterModel | undefined) => void;
+	setCluster: Dispatch<SetStateAction<ClusterModel | undefined>>;
 	provider: Provider;
-	setProvider: (provider: Provider) => void;
+	setProvider: Dispatch<SetStateAction<Provider>>;
 	query: SearchQuery;
-	setQuery: (query: SearchQuery) => void;
+	setQuery: Dispatch<SetStateAction<SearchQuery>>;
 	search: () => void;
 }
 

@@ -71,14 +71,16 @@ function BrowserSidebar() {
 				<div className="flex flex-col gap-y-1">
 					<h6 className="my-1 uppercase  opacity-60">Active Cluster</h6>
 					<Dropdown
-						onSelectionChange={(id) => {
-							const cluster = clusters?.find(item => item.id.toString() === id);
+						onSelectionChange={(index) => {
+							if (!clusters)
+								return;
+							const cluster = clusters[index as number];
 							context.setCluster(cluster);
 						}}
 						selectedKey={context.cluster?.id.toString()}
 					>
-						{clusters?.map(cluster => (
-							<Dropdown.Item id={cluster.id.toString()} key={cluster.id}>
+						{clusters?.map((cluster, index) => (
+							<Dropdown.Item id={index} key={cluster.id}>
 								{cluster.name}
 							</Dropdown.Item>
 						))}

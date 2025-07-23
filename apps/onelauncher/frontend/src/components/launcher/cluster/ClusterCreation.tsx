@@ -9,7 +9,7 @@ import { LAUNCHER_IMPORT_TYPES, LOADERS, upperFirst } from '@/utils';
 import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, Dropdown, SelectList, TextField } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowRightIcon, PlusIcon, SearchMdIcon, Server01Icon, TextInputIcon, User03Icon } from '@untitled-theme/icons-react';
+import { PlusIcon, SearchMdIcon, Server01Icon, TextInputIcon, User03Icon } from '@untitled-theme/icons-react';
 import { useCallback, useMemo, useState } from 'react';
 import { Checkbox } from 'react-aria-components';
 import LoaderIcon from '../LoaderIcon';
@@ -171,14 +171,19 @@ export function NewClusterCreate() {
 
 			<Modal isDismissable isOpen={isModalOpen} onOpenChange={setIsModalOpen}>
 				<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
-					<ModalHeader currentStep={currentStepConfig} />
+					<Modal.Header
+						banner={DefaultBanner}
+						currentStep={currentStepConfig}
+						icon={Server01Icon}
+						name="New Cluster"
+					/>
 
 					<div className="flex flex-col rounded-b-lg border border-white/5">
 						<div className="p-3">
 							{stepContent}
 						</div>
 
-						<ModalFooter
+						<Modal.Footer
 							isFirstStep={isFirstStep}
 							isNextDisabled={isNextDisabled}
 							nextButtonText={nextButtonText}
@@ -188,68 +193,6 @@ export function NewClusterCreate() {
 					</div>
 				</div>
 			</Modal>
-		</div>
-	);
-}
-
-interface ModalHeaderProps {
-	currentStep: typeof STEPS[number];
-}
-
-function ModalHeader({ currentStep }: ModalHeaderProps) {
-	return (
-		<div className="theme-OneLauncher-Dark relative h-25 flex">
-			<div className="absolute left-0 top-0 h-full w-full">
-				<img
-					alt="Header Image"
-					className="h-full w-full rounded-t-lg"
-					src={DefaultBanner}
-				/>
-			</div>
-			<div className="absolute left-0 top-0 h-full flex w-full flex-row items-center justify-start gap-x-4 bg-[radial-gradient(at_center,#00000077,transparent)] px-10">
-				<Server01Icon className="h-8 w-8 text-fg-primary" />
-				<div className="flex flex-col items-start justify-center">
-					<h1 className="h-10 text-fg-primary text-2xl font-semibold">New Cluster</h1>
-					<span className="text-fg-primary">{currentStep.title}</span>
-				</div>
-			</div>
-		</div>
-	);
-}
-
-interface ModalFooterProps {
-	isFirstStep: boolean;
-	isNextDisabled: boolean;
-	nextButtonText: string;
-	onBack: () => void;
-	onNext: () => void;
-}
-
-function ModalFooter({
-	isFirstStep,
-	isNextDisabled,
-	nextButtonText,
-	onBack,
-	onNext,
-}: ModalFooterProps) {
-	return (
-		<div className="flex flex-row justify-end gap-x-2 p-3 pt-0">
-			<Button
-				color="ghost"
-				isDisabled={isFirstStep}
-				onClick={onBack}
-			>
-				Previous
-			</Button>
-			<Button
-				color="primary"
-				isDisabled={isNextDisabled}
-				onClick={onNext}
-			>
-				{nextButtonText}
-				{' '}
-				<ArrowRightIcon />
-			</Button>
 		</div>
 	);
 }

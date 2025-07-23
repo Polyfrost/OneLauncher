@@ -165,7 +165,6 @@ function ClusterGroup({
 
 function ClusterCard({
 	id,
-	name,
 	mc_loader,
 	mc_version,
 }: ClusterModel) {
@@ -178,6 +177,7 @@ function ClusterCard({
 	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
 	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
 	const [edit, setEdit] = useState(false);
+	const [hover, setHover] = useState(false);
 
 	const handleLaunch = () => {
 		launch.mutate();
@@ -190,10 +190,10 @@ function ClusterCard({
 		(async () => {
 			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data!.folder_name));
 		})();
-	}, [cluster.data?.folder_name]);
+	}, [cluster.data, cluster.data?.folder_name]);
 
 	const openClusterDir = async () => {
-		openPath(launcherDir);
+		await openPath(launcherDir);
 	};
 
 	const editing = useCommand(`updateClusterById-${id}`, () => bindings.core.updateClusterById(id, {
@@ -223,7 +223,7 @@ function ClusterCard({
 	useEffect(() => {
 		if ((newCover && newCover !== cluster.data?.icon_url) || (newName && newName !== cluster.data?.name))
 			editing.refetch();
-	}, [newCover, newName]);
+	}, [cluster.data?.icon_url, cluster.data?.name, editing, newCover, newName]);
 
 	const image = () => {
 		if (newCover && newCover !== cluster.data?.icon_url)
@@ -248,7 +248,7 @@ function ClusterCard({
 	}
 
 	return (
-		<div ref={ref}>
+		<div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} ref={ref}>
 			<div
 				className="group relative h-[152px] flex flex-col rounded-xl border border-component-border/5 bg-component-bg active:bg-component-bg-pressed hover:bg-component-bg-hover"
 			>
@@ -270,7 +270,7 @@ function ClusterCard({
 						<Show
 							fallback={(
 								<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
-									{name}
+									{cluster.data?.name}
 								</p>
 							)}
 							when={edit}
@@ -283,7 +283,7 @@ function ClusterCard({
 									</Button>
 								)}
 								onChange={e => updateName(e.target.value)}
-								placeholder={name}
+								placeholder={cluster.data?.name}
 							/>
 						</Show>
 						<p className="h-4 text-xs">

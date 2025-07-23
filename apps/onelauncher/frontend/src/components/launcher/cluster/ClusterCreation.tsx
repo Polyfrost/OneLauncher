@@ -1,6 +1,5 @@
 import type { GameLoader, Version } from '@/bindings.gen';
 import type { JSX, RefAttributes } from 'react';
-import DefaultBanner from '@/assets/images/default_banner.png';
 import LauncherIcon from '@/components/content/LauncherIcon';
 import Modal from '@/components/overlay/Modal';
 import ScrollableContainer from '@/components/ScrollableContainer';
@@ -171,8 +170,7 @@ export function NewClusterCreate() {
 
 			<Modal isDismissable isOpen={isModalOpen} onOpenChange={setIsModalOpen}>
 				<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
-					<Modal.Header
-						banner={DefaultBanner}
+					<Modal.Banner
 						currentStep={currentStepConfig}
 						icon={Server01Icon}
 						name="New Cluster"

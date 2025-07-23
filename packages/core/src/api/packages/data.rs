@@ -77,6 +77,7 @@ pub struct SearchResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedPackage {
 	pub id: String,
+	pub slug: String,
 	pub provider: Provider,
 	pub package_type: PackageType,
 	pub name: String,

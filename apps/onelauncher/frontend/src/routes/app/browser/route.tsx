@@ -1,11 +1,12 @@
 import type { Filters } from '@/bindings.gen';
+import type { PropsWithChildren } from 'react';
 import ProviderIcon from '@/components/content/ProviderIcon';
 import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
 import { PROVIDERS } from '@/utils';
 import { browserCategories } from '@/utils/browser';
 import { AnimatedOutlet, Dropdown, Show, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 
@@ -27,10 +28,10 @@ function RouteComponent() {
 	);
 }
 
-export function BrowserLayout(props: any) {
+export function BrowserLayout({ children }: PropsWithChildren) {
 	return (
 		<div className="relative h-full flex flex-1 flex-col items-center gap-2">
-			<div className="h-full w-full max-w-screen-2xl flex flex-1 flex-col items-center gap-y-2">
+			<div className="h-full w-full flex flex-1 flex-col items-center gap-y-2">
 				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6">
 					<div />
 					<BrowserToolbar />
@@ -42,7 +43,7 @@ export function BrowserLayout(props: any) {
 
 					<div className="h-full flex flex-col gap-y-4">
 						<div className="h-full flex-1">
-							{props.children}
+							{children}
 						</div>
 					</div>
 
@@ -56,11 +57,14 @@ export function BrowserLayout(props: any) {
 function BrowserSidebar() {
 	const context = useBrowserContext();
 	const clusters = useClusters();
+
 	useEffect(() => {
 		const game_versions = context.cluster?.mc_version ? [context.cluster.mc_version] : null;
 		const loaders = context.cluster?.mc_loader ? [context.cluster.mc_loader] : null;
 		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, game_versions, loaders } });
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- loop
 	}, [context.cluster]);
+
 	return (
 		<div className="flex flex-col gap-y-4">
 			<div className="flex flex-col gap-y-4">
@@ -68,7 +72,7 @@ function BrowserSidebar() {
 					<h6 className="my-1 uppercase  opacity-60">Active Cluster</h6>
 					<Dropdown
 						onSelectionChange={(id) => {
-							const cluster = clusters?.find(cluster => cluster.id.toString() === id);
+							const cluster = clusters?.find(item => item.id.toString() === id);
 							context.setCluster(cluster);
 						}}
 						selectedKey={context.cluster?.id.toString()}
@@ -107,7 +111,7 @@ const defaultFilters: Filters = {
 
 function BrowserCategories() {
 	const context = useBrowserContext();
-	const categories = browserCategories.byPackageType('mod', context.provider);
+	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ['mod'])[0], context.provider);
 
 	function switchCategory(category: string) {
 		const newCategories = context.query.filters?.categories?.includes(category)

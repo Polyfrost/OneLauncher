@@ -41,6 +41,7 @@ interface FormValidation {
 export function NewClusterCreate() {
 	const queryClient = useQueryClient();
 	const [currentStepIndex, setCurrentStepIndex] = useState(0);
+	const [isModalOpen, setIsModalOpen] = useState(false);
 	const [formData, setFormData] = useState<ClusterFormData>({
 		loader: 'vanilla',
 		clusterName: '',
@@ -63,6 +64,15 @@ export function NewClusterCreate() {
 	}), {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['getClusters'] });
+			// Modal'ı kapat ve formu sıfırla
+			setIsModalOpen(false);
+			setCurrentStepIndex(0);
+			setFormData({
+				loader: 'vanilla',
+				clusterName: '',
+				clusterVersion: '',
+				clusterProvider: '',
+			});
 		},
 	});
 
@@ -154,32 +164,30 @@ export function NewClusterCreate() {
 				/>
 			</div>
 
-			<Modal.Trigger>
-				<Button>
-					<PlusIcon className="stroke-width-[2.2] size-5" />
-					New cluster
-				</Button>
+			<Button onPress={() => setIsModalOpen(true)}>
+				<PlusIcon className="stroke-width-[2.2] size-5" />
+				New cluster
+			</Button>
 
-				<Modal>
-					<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
-						<ModalHeader currentStep={currentStepConfig} />
+			<Modal isDismissable isOpen={isModalOpen} onOpenChange={setIsModalOpen}>
+				<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
+					<ModalHeader currentStep={currentStepConfig} />
 
-						<div className="flex flex-col rounded-b-lg border border-white/5">
-							<div className="p-3">
-								{stepContent}
-							</div>
-
-							<ModalFooter
-								isFirstStep={isFirstStep}
-								isNextDisabled={isNextDisabled}
-								nextButtonText={nextButtonText}
-								onBack={handleBack}
-								onNext={handleNext}
-							/>
+					<div className="flex flex-col rounded-b-lg border border-white/5">
+						<div className="p-3">
+							{stepContent}
 						</div>
+
+						<ModalFooter
+							isFirstStep={isFirstStep}
+							isNextDisabled={isNextDisabled}
+							nextButtonText={nextButtonText}
+							onBack={handleBack}
+							onNext={handleNext}
+						/>
 					</div>
-				</Modal>
-			</Modal.Trigger>
+				</div>
+			</Modal>
 		</div>
 	);
 }

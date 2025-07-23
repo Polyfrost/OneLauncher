@@ -1,3 +1,5 @@
+import type { PackageType, Provider } from '@/bindings.gen';
+
 export const BROWSER_VIEWS: Array<string> = ['grid', 'list'] as const;
 
 export interface CategoryItem {
@@ -6,7 +8,7 @@ export interface CategoryItem {
 }
 
 export const browserCategories = {
-	byPackageType(packageType: 'mod' | string & {}, provider: string): Array<CategoryItem> {
+	byPackageType(packageType: PackageType, provider: Provider): Array<CategoryItem> {
 		switch (packageType) {
 			case 'mod':
 				return this.mod(provider);

@@ -1,10 +1,11 @@
-import { useEffect, type PropsWithChildren } from 'react';
+import type { PropsWithChildren } from 'react';
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import useAppShellStore from '@/stores/appShellStore';
 import { AnimatedOutlet } from '@onelauncher/common/components';
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { AnimatePresence } from 'motion/react';
+import { useEffect } from 'react';
 
 export const Route = createFileRoute('/app')({
 	component: RouteComponent,
@@ -40,12 +41,12 @@ function AppShell({
 	const setPrevLocation = useAppShellStore(state => state.setPrevLocation);
 
 	useEffect(() => {
-		const unsub = router.subscribe("onBeforeNavigate", (e) => {
+		const unsub = router.subscribe('onBeforeNavigate', (e) => {
 			setPrevLocation(e.fromLocation ?? null);
 		});
 
 		return () => unsub();
-	}, [router]);
+	}, [router, setPrevLocation]);
 
 	return (
 		<div className="flex flex-col h-full w-full">

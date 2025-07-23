@@ -45,9 +45,9 @@ export async function which(cmd: TemplateStringsArray): Promise<boolean> {
 	return type() === 'Windows_NT'
 		? where(cmd[0]!)
 		: Promise.any(
-			Array.from(new Set(process.env.PATH?.split(':')))
-				.map(p => fs.access(join(p, cmd[0]!), fs.constants.X_OK)),
-		).then(_ => true, _ => false);
+				Array.from(new Set(process.env.PATH?.split(':')))
+					.map(p => fs.access(join(p, cmd[0]!), fs.constants.X_OK)),
+			).then(_ => true, _ => false);
 }
 
 export async function awaitLock(file: string): Promise<void> {

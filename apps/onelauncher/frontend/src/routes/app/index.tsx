@@ -5,7 +5,7 @@ import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation'
 import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
-import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
+import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, Show } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';

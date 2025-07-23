@@ -23,7 +23,7 @@
 	"scripts": {
 		"prep": "pnpm scripts prep",
 		"typecheck": "pnpm -r typecheck",
-		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep && pnpm codegen",
+		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
 
 		"core": "pnpm --filter @onelauncher/core -- ",
 		"migrate": "sea-orm-cli migrate -d ./packages/migration",

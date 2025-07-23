@@ -346,6 +346,7 @@ struct ModrinthPackage {
 	pub icon_url: Option<String>,
 	#[serde(alias = "project_id")]
 	pub id: String,
+	pub slug: String,
 	pub team: String,
 	#[serde(default)]
 	pub organization: Option<String>,
@@ -373,6 +374,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 		Self {
 			provider: Provider::Modrinth,
 			id: value.id,
+			slug: value.slug,
 			package_type: value.project_type,
 			name: value.title,
 			short_desc: value.description,

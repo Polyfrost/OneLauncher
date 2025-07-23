@@ -5,16 +5,16 @@ import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation'
 import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
-import { useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
+import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button, ContextMenu, Show, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { dataDir, join } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
 import { CheckIcon, PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useEffect, useRef, useState } from 'react';
-import { join, dataDir } from '@tauri-apps/api/path';
-import { openPath } from '@tauri-apps/plugin-opener';
-import { open } from '@tauri-apps/plugin-dialog';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -168,12 +168,11 @@ function ClusterCard({
 	name,
 	mc_loader,
 	mc_version,
-	stage,
 }: ClusterModel) {
 	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
 	const ref = useRef<HTMLDivElement>(null);
 	const [isOpen, setOpen] = useState(false);
-	const navigate = useNavigate({ from: '/app' })
+	const navigate = useNavigate({ from: '/app' });
 	const [launcherDir, setLauncherDir] = useState('');
 	const cluster = useCommand(`getClusterById-${id}`, () => bindings.core.getClusterById(id));
 	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
@@ -189,7 +188,7 @@ function ClusterCard({
 
 	useEffect(() => {
 		(async () => {
-			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data!.folder_name as string));
+			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data!.folder_name));
 		})();
 	}, [cluster.data?.folder_name]);
 
@@ -205,7 +204,7 @@ function ClusterCard({
 		subscribed: false,
 	});
 
-	async function launchFilePicker() {		
+	async function launchFilePicker() {
 		const selected = await open({
 			multiple: false,
 			directory: false,
@@ -215,15 +214,15 @@ function ClusterCard({
 			}],
 		});
 
-		if (!selected) return;
-		
+		if (!selected)
+			return;
+
 		setNewCover(selected);
 	}
 
 	useEffect(() => {
-		if ((newCover && newCover !== cluster.data?.icon_url) || (newName && newName !== cluster.data?.name)) {
+		if ((newCover && newCover !== cluster.data?.icon_url) || (newName && newName !== cluster.data?.name))
 			editing.refetch();
-		}
 	}, [newCover, newName]);
 
 	const image = () => {
@@ -269,21 +268,21 @@ function ClusterCard({
 				<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 					<div className="h-full flex flex-col gap-1.5 overflow-hidden">
 						<Show
-							fallback={
+							fallback={(
 								<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
 									{name}
 								</p>
-							}
+							)}
 							when={edit}
 						>
 							<TextField
 								className="text-xl font-bold"
-								onChange={e => updateName(e.target.value)}
-								iconRight={
-									<Button className='px-1.5' onClick={() => setEdit(false)}>
-										<CheckIcon width={10} height={10} />
+								iconRight={(
+									<Button className="px-1.5" onClick={() => setEdit(false)}>
+										<CheckIcon height={10} width={10} />
 									</Button>
-								}
+								)}
+								onChange={e => updateName(e.target.value)}
 								placeholder={name}
 							/>
 						</Show>
@@ -306,7 +305,7 @@ function ClusterCard({
 			>
 				<ContextMenu.Item className="flex items-center gap-1" onAction={handleLaunch}>
 					<span>Launch</span>
-					<PlayIcon width={14} height={14} className='pb-0.5' />
+					<PlayIcon className="pb-0.5" height={14} width={14} />
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
 				<ContextMenu.Item onAction={() => setEdit(true)}>
@@ -316,7 +315,7 @@ function ClusterCard({
 					Change Icon
 				</ContextMenu.Item>
 				<ContextMenu.Separator />
-				<ContextMenu.Item onAction={() => {navigate({to: '/app/cluster', search: {id}})}}>
+				<ContextMenu.Item onAction={() => { navigate({ to: '/app/cluster', search: { id } }); }}>
 					Properties
 				</ContextMenu.Item>
 				<ContextMenu.Item onAction={openClusterDir}>

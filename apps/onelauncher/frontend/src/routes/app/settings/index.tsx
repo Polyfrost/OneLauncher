@@ -23,9 +23,7 @@ function RouteComponent() {
 		})();
 	}, []);
 
-	const openLauncherDir = async () => {
-		openPath(launcherDir);
-	};
+	const openLauncherDir = () => openPath(launcherDir);
 
 	const [discordRpc, setDiscordRpc] = createSetting('discord_enabled', settings?.discord_enabled);
 

@@ -11,8 +11,8 @@ import { tv } from 'tailwind-variants';
 
 export const tooltipVariants = tv({
 	base: [
-		'px-3 py-2 text-sm font-medium text-white bg-gray-900 rounded-lg shadow-lg',
-		'border border-gray-700 max-w-xs z-50',
+		'px-3 py-2 text-sm font-medium text-white bg-component-bg rounded-lg shadow-lg',
+		'border border-component-border max-w-xs z-50',
 		'data-[entering]:animate-in data-[entering]:fade-in data-[entering]:zoom-in-95',
 		'data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95',
 	],

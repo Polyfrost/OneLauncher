@@ -28,10 +28,11 @@ function RouteComponent() {
 function Featured() {
 	// const context = useBrowserContext();
 	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'iris'], []);
-	const featuredPackage = usePackageData(provider, slug, {}, 'getFeatured');
+	const featuredPackage = usePackageData(provider, slug, {});
 	const navigate = useNavigate();
 	const featuredImageIndex = useMemo(() => featuredPackage.data?.gallery.findIndex(image => image.featured), [featuredPackage.data]);
 	const [selectedImage, setSelectedImage] = useState(featuredImageIndex ?? 0);
+
 	return (
 		<Show when={featuredPackage.isSuccess}>
 			<div className="flex flex-col gap-y-1">
@@ -40,7 +41,7 @@ function Featured() {
 					<div className="w-full p-1">
 						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data?.gallery[selectedImage].url} />
 					</div>
-					<div className="max-w-64 min-w-52 flex flex-col gap-y-1 p-4">
+					<div className="max-w-64 min-[1900px]:max-w-96 min-w-52 flex flex-col gap-y-1 p-4">
 						<h2 className="text-[1.5rem] font-semibold">{featuredPackage.data?.name}</h2>
 
 						<Show when={false}>

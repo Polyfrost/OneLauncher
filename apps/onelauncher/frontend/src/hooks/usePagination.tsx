@@ -46,20 +46,20 @@ function usePagination(options: PaginationOptions) {
 		return pages;
 	}
 
-	function PaginationBtn(props: { page: number }) {
+	function PaginationBtn({ page: pageIndex }: { page: number }) {
 		return (
 			<Button
 				className="p-2 text-lg min-w-8"
-				color={props.page === page ? 'primary' : 'secondary'}
+				color={pageIndex === page ? 'primary' : 'secondary'}
 
 				onClick={() => {
-					if (props.page === page)
+					if (pageIndex === page)
 						return;
 
-					setPage(props.page);
+					setPage(pageIndex);
 				}}
 			>
-				<span className="text-trim">{props.page}</span>
+				<span className="text-trim">{pageIndex}</span>
 			</Button>
 		);
 	}

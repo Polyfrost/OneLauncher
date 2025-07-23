@@ -1,3 +1,4 @@
+import { exec } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import { consola } from 'consola';
 import mustache from 'mustache';
@@ -77,3 +78,16 @@ catch (error) {
 		consola.error(error);
 	env.__exit(1);
 }
+
+consola.start('building the web_commons package...');
+exec('pnpm -w web_common build', { cwd: env.__root }, (error, stdout, stderr) => {
+	if (error) {
+		consola.error(`web_commons build failed: ${error.message}`);
+		env.__exit(1);
+	}
+	if (stderr)
+		consola.error(stderr);
+
+	consola.success('web_commons package built successfully!');
+	env.__exit(0);
+});

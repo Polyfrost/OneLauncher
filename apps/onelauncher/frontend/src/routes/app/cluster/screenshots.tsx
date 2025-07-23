@@ -1,3 +1,4 @@
+import Modal from '@/components/overlay/Modal';
 import ScrollableContainer from '@/components/ScrollableContainer';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
@@ -6,6 +7,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { useEffect, useState } from 'react';
+import { Pressable } from 'react-aria-components';
 import Sidebar from '../settings/route';
 
 export const Route = createFileRoute('/app/cluster/screenshots')({
@@ -60,15 +62,20 @@ function ScreenshotEntry({
 
 	return (
 		<>
-			<div
-				className="flex flex-col items-center gap-3 rounded-xl bg-component-bg p-3 active:bg-component-bg-pressed hover:bg-component-bg-hover hover:opacity-80 cursor-pointer"
-			>
-				<img
-					alt={path}
-					className="aspect-video w-full rounded-lg"
-					src={imagePath}
-				/>
-			</div>
+			<Modal.Trigger>
+				<Pressable>
+					<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative">
+						<img
+							alt={path}
+							className="aspect-video w-full rounded-lg"
+							src={imagePath}
+						/>
+					</div>
+				</Pressable>
+				<Modal className="w-full">
+					<img className="rounded-xl" src={imagePath} />
+				</Modal>
+			</Modal.Trigger>
 		</>
 	);
 }

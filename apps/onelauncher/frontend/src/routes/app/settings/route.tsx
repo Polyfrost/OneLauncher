@@ -86,27 +86,28 @@ function Sidebar(props: SidebarProps) {
 
 	return (
 		<div className="w-56 flex flex-col pr-2">
-			{Object.keys(links).map((section, i) => (
-				<div className="flex flex-col gap-y-2" key={i}>
+			{Object.keys(links).map(section => (
+				<div className="flex flex-col gap-y-2" key={section}>
 					<div>
 						<p className="m-1.5 mt-5 text-xs text-fg-secondary font-medium">{section.toUpperCase()}</p>
 						<div className="flex flex-col gap-y-1 fill-fg-primary text-fg-primary font-medium">
-							{links[section].map((link, i) => {
-								// eslint yaps too much tbh
-								if (!link)
+							{links[section].map((entry) => {
+								if (!entry)
 									return '';
+
+								const [Component, label, link, params] = entry;
 
 								return (
 									<a
 										className={
-											`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link[2], link[3]) ? 'bg-component-bg border-component-bg-pressed' : 'border-transparent'}`
+											`px-3 py-1 rounded-md text-md border hover:bg-component-bg-hover active:bg-component-bg-pressed ${isActive(link, params) ? 'bg-component-bg border-component-bg-pressed' : 'border-transparent'}`
 										}
-										key={i}
-										onClick={() => goto(link[2], link[3])}
+										key={link}
+										onClick={() => goto(link, params)}
 									>
 										<span className="flex flex-row items-center gap-x-3 *:w-5">
-											{link[0]}
-											{link[1]}
+											{Component}
+											{label}
 										</span>
 									</a>
 								);

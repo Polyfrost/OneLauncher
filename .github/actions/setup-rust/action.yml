@@ -31,7 +31,7 @@ runs:
 
     - name: Cache Rust
       if: ${{ inputs.restore-cache == 'true' }}
-      uses: Swatinem/rust-cache@9bdad043e88c75890e36ad3bbc8d27f0090dd609
+      uses: Swatinem/rust-cache@master
       with:
         key: ${{ inputs.target }}
         save-if: ${{ inputs.save-cache }}

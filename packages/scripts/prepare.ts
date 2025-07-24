@@ -80,7 +80,7 @@ catch (error) {
 }
 
 consola.start('building the web_commons package...');
-exec('pnpm -w web_common build', { cwd: env.__root }, (error, stdout, stderr) => {
+exec('NODE_ENV=production pnpm -w web_common build', { cwd: env.__root }, (error, stdout, stderr) => {
 	if (error) {
 		consola.error(`web_commons build failed: ${error.message}`);
 		env.__exit(1);

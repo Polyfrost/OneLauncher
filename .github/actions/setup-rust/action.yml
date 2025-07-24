@@ -15,19 +15,19 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install Rust Stable
-      uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
-      with:
-        toolchain: stable
-        targets: ${{ inputs.target }}
-        components: clippy, rustfmt
+    # - name: Install Rust Stable
+    #   uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
+    #   with:
+    #     toolchain: stable
+    #     targets: ${{ inputs.target }}
+    #     components: clippy, rustfmt
 
     - name: Install Rust Nightly
-      uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
+      uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: nightly
+        toolchain: nightly-2025-07-23
         targets: ${{ inputs.target }}
-        components: clippy, rustfmt
+        components: cargo, clippy, rustc, rustfmt
 
     - name: Cache Rust
       if: ${{ inputs.restore-cache == 'true' }}

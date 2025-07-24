@@ -66,7 +66,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
 				.unwrap();
 		}))
-		.plugin(tauri_plugin_updater::Builder::new().build())
+		// .plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())

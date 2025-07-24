@@ -77,7 +77,7 @@ function BrowserSidebar() {
 							const cluster = clusters[index as number];
 							context.setCluster(cluster);
 						}}
-						selectedKey={context.cluster?.id.toString()}
+						selectedKey={context.cluster ? clusters?.indexOf(context.cluster) : undefined}
 					>
 						{clusters?.map((cluster, index) => (
 							<Dropdown.Item id={index} key={cluster.id}>

@@ -1,7 +1,7 @@
 import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
 import type { HTMLProps } from 'react';
 import Modal from '@/components/overlay/Modal';
-import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
+import { useBrowserContext, useDownloadPackage, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { ChooseClusterModal, useClusters } from '@/hooks/useCluster';
 import usePagination from '@/hooks/usePagination';
 import { bindings } from '@/main';
@@ -253,7 +253,7 @@ function InstallButton() {
 	const [open, setOpen] = useState(false);
 	const clusters = useClusters();
 	const browserContext = useBrowserContext();
-	const { data: versions } = usePackageVersions(provider, slug, {
+	const { data: versions, isLoading: versionsLoading } = usePackageVersions(provider, slug, {
 		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : [],
 		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : [],
 		limit: 1,
@@ -264,11 +264,17 @@ function InstallButton() {
 		return versions.items[0];
 	}, [browserContext.cluster, versions]);
 
-	function download() {
-		if (!version || !browserContext.cluster || !includes(PROVIDERS, provider))
-			return false;
-		downloadPackage(browserContext.cluster, provider, version);
-	}
+	const download = useDownloadPackage(browserContext.cluster!, provider, version!, true);
+	const downloadRef = useRef(download);
+	useEffect(() => {
+		downloadRef.current.reset();
+	}, [browserContext.cluster]);
+
+	// function download() {
+	// 	if (!version || !browserContext.cluster || !includes(PROVIDERS, provider))
+	// 		return false;
+	// 	downloadPackage(browserContext.cluster, provider, version);
+	// }
 
 	return (
 
@@ -276,13 +282,13 @@ function InstallButton() {
 			<Button
 				className="max-w-full flex-1 rounded-r-none disabled:text-white/50 disabled:bg-blue-900"
 				color="primary"
-				isDisabled={!version}
-				onClick={download}
+				isDisabled={!version || download.isPending || download.isSuccess}
+				onClick={() => download.mutate()}
 			>
 				<Download01Icon />
 				<div className="w-full text-sm">
-					{
-						browserContext.cluster
+					<Show when={download.isIdle}>
+						{browserContext.cluster
 							? version
 								? (
 										<span>
@@ -291,9 +297,24 @@ function InstallButton() {
 											<span className="text-md font-semibold">{browserContext.cluster.name}</span>
 										</span>
 									)
-								: `No matching version found`
-							: 'Select a Cluster'
-					}
+								: versionsLoading ? 'Looking for a version...' : 'No matching version found'
+							: 'Select a Cluster'}
+					</Show>
+					<Show when={download.isPending}>
+						<span>
+							Downloading latest to
+							<br />
+							<span className="text-md font-semibold">{browserContext.cluster?.name ?? 'Unknown'}</span>
+						</span>
+					</Show>
+					<Show when={download.isSuccess}>
+						<span>
+							Installed latest into
+							<br />
+							<span className="text-md font-semibold">{browserContext.cluster?.name ?? 'Unknown'}</span>
+						</span>
+					</Show>
+
 				</div>
 			</Button>
 
@@ -390,18 +411,19 @@ function Versions() {
 		itemsCount: versions?.total as unknown as number,
 		itemsPerPage: versions?.limit as unknown as number,
 	});
+	const paginationRef = useRef(pagination);
 	useEffect(() => {
 		setOffset(pagination.offset);
 	}, [pagination.offset]);
 	useEffect(() => {
-		pagination.reset();
+		paginationRef.current.reset();
 	}, [versions?.total]);
 	return (
-		<div className="flex flex-col">
+		<div className="flex flex-col w-full">
 			<div className="flex justify-between">
 				<pagination.Navigation />
 			</div>
-			<Table className="border-separate border-spacing-x-none border-spacing-y-1">
+			<Table className="border-separate border-spacing-x-none border-spacing-y-1 w-full">
 				<TableHeader className="text-left">
 					<Column className="pr-2" />
 					<Column className="pr-4" isRowHeader>Name</Column>
@@ -425,7 +447,7 @@ function VersionRow({ version }: { version: ManagedVersion }) {
 	if (!includes(PROVIDERS, provider))
 		throw new Error('invalid provider');
 	return (
-		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4">
+		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4 w-full">
 			<Cell className="p-4 my-2 bg-component-bg rounded-l-xl">
 				<Tooltip text={upperFirst(version.release_type)}>
 					<div className={`${colorForType(version.release_type)} h-8 w-8 flex items-center justify-center rounded-md`}>

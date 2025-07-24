@@ -212,14 +212,8 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'core':'{"removeUser":["uuid"],"writeSettings":["setting"],"updateClusterById":["id","request"],"getScreenshots":["id"],"getClusters":[],"getWorlds":["id"],"getGameVersions":[],"getPackage":["provider","slug"],"getLoadersForVersion":["mc_version"],"getMultiplePackages":["provider","slugs"],"getPackageUser":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"searchPackages":["provider","query"],"getUser":["uuid"],"getProfileOrDefault":["name"],"updateClusterProfile":["name","profile"],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"launchCluster":["id","uuid"],"setDefaultUser":["uuid"],"openMsaLogin":[],"getGlobalProfile":[],"getClusterById":["id"],"getDefaultUser":["fallback"],"readSettings":[],"removeCluster":["id"],"createCluster":["options"],"getUsers":[]}', 'onelauncher':'{"set_window_style":["decorations"],"return_error":[],"open_dev_tools":[]}', 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}' }
-export type Router = { 'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'onelauncher': { return_error: () => Promise<null>, 
-open_dev_tools: () => Promise<void>, 
-set_window_style: (decorations: boolean) => Promise<void> },
-'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'core':'{"removeUser":["uuid"],"writeSettings":["setting"],"updateClusterById":["id","request"],"getScreenshots":["id"],"getClusters":[],"getWorlds":["id"],"getGameVersions":[],"getPackage":["provider","slug"],"getLoadersForVersion":["mc_version"],"getMultiplePackages":["provider","slugs"],"getPackageUser":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"searchPackages":["provider","query"],"getUser":["uuid"],"getProfileOrDefault":["name"],"updateClusterProfile":["name","profile"],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"launchCluster":["id","uuid"],"setDefaultUser":["uuid"],"openMsaLogin":[],"getGlobalProfile":[],"getClusterById":["id"],"getDefaultUser":["fallback"],"readSettings":[],"removeCluster":["id"],"createCluster":["options"],"getUsers":[]}', 'onelauncher':'{"set_window_style":["decorations"],"return_error":[],"open_dev_tools":[]}' }
+export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: bigint) => Promise<ClusterModel | null>, 
 removeCluster: (id: bigint) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -246,7 +240,13 @@ getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPac
 getPackageVersions: (provider: Provider, slug: string, mcVersions: string[] | null, loaders: GameLoader[] | null, offset: bigint, limit: bigint) => Promise<Paginated<ManagedVersion>>, 
 getPackageUser: (provider: Provider, slug: string) => Promise<ManagedUser>, 
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: bigint, skipCompatibility: boolean | null) => Promise<PackageModel>, 
-getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> } };
+getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> },
+'onelauncher': { return_error: () => Promise<null>, 
+open_dev_tools: () => Promise<void>, 
+set_window_style: (decorations: boolean) => Promise<void> } };
 
 
 export type { InferCommandOutput }

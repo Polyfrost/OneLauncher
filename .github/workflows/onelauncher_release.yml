@@ -43,6 +43,6 @@ jobs:
           releaseName: OneLauncher __VERSION__
           releaseDraft: true
           prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-alpha') || false }}
-          tauriScript: pnpm onelauncher:desktop
+          tauriScript: pnpm -w onelauncher:desktop
           args: ${{ matrix.args }}
           projectPath: ./apps/onelauncher/desktop/

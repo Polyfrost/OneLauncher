@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::{self, PathBuf};
+use std::path::PathBuf;
 
 use async_zip::base::read::mem::ZipFileReader;
 use interpulse::api::minecraft::VersionInfo;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::ingress::{init_ingress, init_ingress_opt, send_ingress};
 use crate::error::LauncherResult;
 use crate::store::ingress::{IngressType, SubIngress};
-use crate::store::{Dirs, State};
+use crate::store::Dirs;
 use crate::utils::http::{fetch_advanced, fetch_json};
 use crate::utils::io::{self, IOError};
 
@@ -94,7 +94,6 @@ pub async fn check_java_runtime(
 
 	io::write(&file, JAVA_INFO_CLASS).await?;
 	id.map(async |id| send_ingress(id, 25.0).await);
-
 	let java_info = tokio::process::Command::new(absolute_path)
 		.arg("-cp")
 		.arg(dir.path())
@@ -194,6 +193,24 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 	Err(JavaError::MissingJava.into())
 }
 
+// share the code that I stole from the windows one anyway to use in UNIX settings
+
+#[cfg(unix)]
+fn find_java_in_path(mut found: Vec<PathBuf>) -> Vec<PathBuf> {
+    if let Ok(path) = std::env::var("PATH") {
+        for path_entry in path.split(':') {
+            let java = PathBuf::from(path_entry).join("java");
+            if java.exists() {
+				if java.is_file() {
+					if !found.contains(&java) {
+						found.push(java);
+					}
+				}
+            }
+        }
+    }
+    found
+}
 /// Attempts to scan common paths for Java installations.
 ///
 /// **Can be heavy on I/O, don't run often!**
@@ -219,7 +236,6 @@ pub async fn locate_java() -> LauncherResult<HashMap<PathBuf, JavaInfo>> {
 			tracing::warn!("java installation at '{}' is not valid", path.display());
 			continue;
 		};
-
 		valid.insert(path, info);
 	}
 
@@ -299,6 +315,9 @@ fn internal_locate_java() -> Vec<PathBuf> {
 		}
 	}
 
+
+	found = find_java_in_path(found);
+
 	found
 }
 
@@ -332,6 +351,10 @@ fn internal_locate_java() -> Vec<PathBuf> {
 			}
 		}
 	}
+
+	// check env vars
+	// woowoooo mutation
+	found = find_java_in_path(found);
 
 	found
 }

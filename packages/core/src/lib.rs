@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![feature(slice_as_array)]
 
 use api::proxy::LauncherProxy;

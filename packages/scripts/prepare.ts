@@ -83,6 +83,7 @@ consola.start('building the web_commons package...');
 exec('pnpm -w web_common build', {
 	cwd: env.__root,
 	env: {
+		...process.env,
 		NODE_ENV: 'production',
 	},
 }, (error, stdout, stderr) => {

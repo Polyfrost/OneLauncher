@@ -1,5 +1,6 @@
 import { exec } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
+import process from 'node:process';
 import { consola } from 'consola';
 import mustache from 'mustache';
 import { join } from 'pathe';

@@ -1,6 +1,8 @@
 //! Authentication flow manager
 
-use crate::{error::LauncherResult, store::{credentials::{MinecraftCredentials, MinecraftLogin}, State}};
+use crate::error::LauncherResult;
+use crate::store::State;
+use crate::store::credentials::{MinecraftCredentials, MinecraftLogin};
 
 /// Begin a Microsoft authentication flow.
 #[tracing::instrument]
@@ -77,15 +79,13 @@ pub async fn get_user(user: uuid::Uuid) -> LauncherResult<Option<MinecraftCreden
 	let state = State::get().await?;
 	let store = state.credentials.read().await;
 
-	let user = store
-		.users
-		.get(&user)
-		.cloned();
+	let user = store.users.get(&user).cloned();
 
 	Ok(user)
 }
 
 /// Get a fake user for testing or offline mode.
+#[must_use]
 pub fn get_fake_user() -> MinecraftCredentials {
 	MinecraftCredentials {
 		id: uuid::Uuid::new_v4(),

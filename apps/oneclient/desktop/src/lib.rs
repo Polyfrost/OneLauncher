@@ -35,9 +35,10 @@ async fn initialize_core() -> LauncherResult<()> {
 		launcher_website: "https://polyfrost.org/".to_string(),
 		discord_client_id: None, //Some(constants::DISCORD_CLIENT_ID.to_string()), // disabled for now
 		fetch_attempts: 3,
-		logger_filter: Some(
-			format!("{}={level},onelauncher_core={level}", env!("CARGO_PKG_NAME")),
-		),
+		logger_filter: Some(format!(
+			"{}={level},onelauncher_core={level}",
+			env!("CARGO_PKG_NAME")
+		)),
 		..Default::default()
 	};
 
@@ -68,7 +69,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
 				.unwrap();
 		}))
-		.plugin(tauri_plugin_updater::Builder::new().build())
+		// .plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
@@ -98,9 +99,7 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 }
 
 pub async fn run() {
-	initialize_core()
-		.await
-		.expect("failed to initialize core");
+	initialize_core().await.expect("failed to initialize core");
 
 	let app = initialize_tauri(tauri::Builder::default())
 		.await
@@ -110,8 +109,7 @@ pub async fn run() {
 		.await
 		.expect("failed to initialize state");
 
-	initialize_oneclient()
-		.await;
+	initialize_oneclient().await;
 
 	app.run(|_, _| {});
 }

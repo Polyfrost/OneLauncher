@@ -41,12 +41,12 @@ export function int32ToBigInt([high, low]: [number, number]): bigint {
 }
 
 export function randomString(len: number = 6, charSet: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789') {
-	let randomString = '';
+	let str = '';
 	for (let i = 0; i < len; i++) {
 		const randomPos = Math.floor(Math.random() * charSet.length);
-		randomString += charSet.substring(randomPos, randomPos + 1);
+		str += charSet.substring(randomPos, randomPos + 1);
 	}
-	return randomString;
+	return str;
 }
 
 export function abbreviateNumber(n: number | bigint, locale: string = 'en-US'): string {

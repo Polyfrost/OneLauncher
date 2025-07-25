@@ -3,7 +3,7 @@
 import type { Settings } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 interface SettingsControllerType {
 	settings: Settings | undefined;
@@ -12,7 +12,7 @@ interface SettingsControllerType {
 	setSettingsToSave: (settings: Partial<Settings> | null) => void;
 	settingsChanged: boolean;
 	setSettingsChanged: (changed: boolean) => void;
-	createSetting: <K extends keyof Settings, V = Settings[K]>(name: K, value: V) => [V, (value: V) => void];
+	createSetting: <K extends keyof Settings, V = Settings[K]>(name: K, value: V) => [V, (v: V) => void];
 }
 
 const SettingsContext = createContext<SettingsControllerType | null>(null);
@@ -51,14 +51,14 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
 	}, []);
 
-	const saveChangedSettings = () => {
+	const saveChangedSettings = useCallback(() => {
 		if (!settings)
 			return;
 
 		writeQuery.refetch();
 
 		setSettingsChanged(false);
-	};
+	}, [settings, writeQuery]);
 
 	const handleSetSettingsToSave = useCallback((newSettings: Partial<Settings> | null) => {
 		setSettingsToSave(newSettings);
@@ -86,7 +86,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		return [value, setValue];
 	}, [settings]);
 
-	const controller: SettingsControllerType = {
+	const controller: SettingsControllerType = useMemo(() => ({
 		settings,
 		saveChangedSettings,
 		settingsToSave,
@@ -94,7 +94,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		settingsChanged,
 		setSettingsChanged,
 		createSetting,
-	};
+	}), [createSetting, handleSetSettingsToSave, saveChangedSettings, settings, settingsChanged, settingsToSave]);
 
 	if (settings === undefined)
 		return null;

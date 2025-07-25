@@ -24,6 +24,22 @@ export default defineConfig(
 		return config;
 	}),
 	{
+		ignores: [
+			'apps/onelauncher/old_frontend',
+			'apps/*/desktop/capabilities',
+			'apps/*/desktop/gen',
+			'**/*.gen.*',
+		],
+		// overrides: [
+		// 	{
+		// 		files: ['vite.config.js'],
+		// 		parserOptions: {
+		// 			project: null, // disables type-aware linting for this file
+		// 		},
+		// 	},
+		// ],
+	},
+	{
 		rules: {
 			'sort-imports': 'off', // Replaced by perfectionist/sort-named-imports',
 			'import/order': 'off', // Replaced by perfectionist/sort-named-imports',
@@ -31,9 +47,16 @@ export default defineConfig(
 			'ts/no-use-before-define': 'off',
 			'style/function-paren-newline': ['error', 'consistent'],
 			'react/no-context-provider': 'off',
-			"prefer-const": "off", // disabled due to maximum call stack size,
-			"style/jsx-one-expression-per-line": ["error", { allow: "non-jsx" }],
-			"unused-imports/no-unused-imports": "off"
+			'prefer-const': 'off', // disabled due to maximum call stack size,
+			'style/jsx-one-expression-per-line': ['error', { allow: 'non-jsx' }],
+			'unused-imports/no-unused-imports': 'off',
+			'eslint-comments/no-unlimited-disable': 'off',
+			'eslint-comments/require-description': ['error', {
+				ignore: [
+					'eslint-disable',
+				],
+			}],
+			'no-shadow': 'off',
 		},
 	},
 );

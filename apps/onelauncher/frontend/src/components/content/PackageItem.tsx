@@ -1,7 +1,7 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
 import { abbreviateNumber, LOADERS, upperFirst } from '@/utils';
 import { Show, Tooltip } from '@onelauncher/common/components';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Focusable } from 'react-aria-components';
@@ -13,7 +13,7 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
 	return (
-		<div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
+		<div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5! gap-2">
 			{items.map(item => (
 				<PackageItem key={item.project_id} {...item} provider={provider} />
 			))}
@@ -22,7 +22,7 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), []);
+	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), [item.categories]);
 
 	return (
 		<Link

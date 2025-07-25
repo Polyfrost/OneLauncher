@@ -1,16 +1,28 @@
+use crate::api::packages::data::{
+	ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult,
+};
+use crate::api::packages::provider::ProviderExt;
+use crate::store::{Settings, State};
+use crate::utils::pagination::Paginated;
 use interpulse::api::minecraft::Version;
-use onelauncher_entity::{icon::Icon, loader::GameLoader, package::Provider, packages, resolution::Resolution};
+use onelauncher_entity::icon::Icon;
+use onelauncher_entity::loader::GameLoader;
+use onelauncher_entity::package::Provider;
+use onelauncher_entity::packages;
+use onelauncher_entity::resolution::Resolution;
 use sea_orm::ActiveValue::Set;
-use crate::{api::packages::{data::{ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult}, provider::ProviderExt}, store::{Settings, State}, utils::pagination::Paginated};
 use tauri::{AppHandle, Runtime};
 
-use crate::{api::{self, cluster::dao::ClusterId}, error::{LauncherError, LauncherResult}, store::{credentials::MinecraftCredentials, Core}};
+use crate::api::cluster::dao::ClusterId;
+use crate::api::{self};
+use crate::error::LauncherResult;
+use crate::store::Core;
+use crate::store::credentials::MinecraftCredentials;
 
 use onelauncher_entity::prelude::model::*;
 
 #[taurpc::procedures(path = "core")]
 pub trait TauriLauncherApi {
-
 	// Clusters
 	#[taurpc(alias = "getClusters")]
 	async fn get_clusters() -> LauncherResult<Vec<Cluster>>;
@@ -36,7 +48,6 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "getWorlds")]
 	async fn get_worlds(id: ClusterId) -> LauncherResult<Vec<String>>;
 
-
 	// Setting Profiles
 	#[taurpc(alias = "getProfileOrDefault")]
 	async fn get_profile_or_default(name: Option<String>) -> LauncherResult<SettingsProfile>;
@@ -45,7 +56,10 @@ pub trait TauriLauncherApi {
 	async fn get_global_profile() -> SettingsProfile;
 
 	#[taurpc(alias = "updateClusterProfile")]
-	async fn update_cluster_profile(name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile>;
+	async fn update_cluster_profile(
+		name: String,
+		profile: ProfileUpdate,
+	) -> LauncherResult<SettingsProfile>;
 
 	// Game Metadata
 	#[taurpc(alias = "getGameVersions")]
@@ -53,7 +67,6 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLoadersForVersion")]
 	async fn get_loaders_for_version(mc_version: String) -> LauncherResult<Vec<GameLoader>>;
-
 
 	// Users
 	#[taurpc(alias = "getUsers")]
@@ -66,13 +79,17 @@ pub trait TauriLauncherApi {
 	async fn remove_user(uuid: uuid::Uuid) -> LauncherResult<()>;
 
 	#[taurpc(alias = "getDefaultUser")]
-	async fn get_default_user(fallback: Option<bool>) -> LauncherResult<Option<MinecraftCredentials>>;
+	async fn get_default_user(
+		fallback: Option<bool>,
+	) -> LauncherResult<Option<MinecraftCredentials>>;
 
 	#[taurpc(alias = "setDefaultUser")]
 	async fn set_default_user(uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
 
 	#[taurpc(alias = "openMsaLogin")]
-	async fn open_msa_login<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>>;
+	async fn open_msa_login<R: Runtime>(
+		app_handle: AppHandle<R>,
+	) -> LauncherResult<Option<MinecraftCredentials>>;
 
 	// Settings
 	#[taurpc(alias = "readSettings")]
@@ -83,27 +100,48 @@ pub trait TauriLauncherApi {
 
 	// Packages
 	#[taurpc(alias = "searchPackages")]
-	async fn search_packages(provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>>;
+	async fn search_packages(
+		provider: Provider,
+		query: SearchQuery,
+	) -> LauncherResult<Paginated<SearchResult>>;
 
 	#[taurpc(alias = "getPackage")]
 	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
 
 	#[taurpc(alias = "getMultiplePackages")]
-	async fn get_multiple_packages(provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>>;
+	async fn get_multiple_packages(
+		provider: Provider,
+		slugs: Vec<String>,
+	) -> LauncherResult<Vec<ManagedPackage>>;
 
 	#[taurpc(alias = "getPackageVersions")]
-	async fn get_package_versions(provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>>;
+	async fn get_package_versions(
+		provider: Provider,
+		slug: String,
+		mc_versions: Option<Vec<String>>,
+		loaders: Option<Vec<GameLoader>>,
+		offset: usize,
+		limit: usize,
+	) -> LauncherResult<Paginated<ManagedVersion>>;
 
 	#[taurpc(alias = "getPackageUser")]
 	async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
 
 	#[taurpc(alias = "downloadPackage")]
-	async fn download_package(provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model>;
+	async fn download_package(
+		provider: Provider,
+		package_id: String,
+		version_id: String,
+		cluster_id: ClusterId,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<packages::Model>;
 
 	#[taurpc(alias = "getUsersFromAuthor")]
-	async fn get_users_from_author(provider: Provider, author: PackageAuthor) -> LauncherResult<Vec<ManagedUser>>;
+	async fn get_users_from_author(
+		provider: Provider,
+		author: PackageAuthor,
+	) -> LauncherResult<Vec<ManagedUser>>;
 }
-
 
 #[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
 pub struct CreateCluster {
@@ -137,7 +175,6 @@ pub struct TauriLauncherApiImpl;
 
 #[taurpc::resolvers]
 impl TauriLauncherApi for TauriLauncherApiImpl {
-
 	// Clusters
 	async fn get_clusters(self) -> LauncherResult<Vec<Cluster>> {
 		api::cluster::dao::get_all_clusters().await
@@ -152,37 +189,54 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 	async fn create_cluster(self, options: CreateCluster) -> LauncherResult<Cluster> {
-		let cluster = api::cluster::create_cluster(&options.name, &options.mc_version, options.mc_loader, options.mc_loader_version.as_deref(), options.icon).await?;
-
-		api::setting_profiles::create_profile(&options.name, |mut active_model: SettingsProfilePartial| async move {
-			active_model.force_fullscreen = Set(Some(false));
-
-			active_model.mem_max = Set(Some(2048));
-
-			Ok(active_model)
-		})
+		let cluster = api::cluster::create_cluster(
+			&options.name,
+			&options.mc_version,
+			options.mc_loader,
+			options.mc_loader_version.as_deref(),
+			options.icon,
+		)
 		.await?;
 
-		api::cluster::dao::update_cluster_by_id(cluster.id, |mut active_model: ClusterPartial| async move {
-			active_model.setting_profile_name = Set(Some(options.name.clone()));
+		api::setting_profiles::create_profile(
+			&options.name,
+			|mut active_model: SettingsProfilePartial| async move {
+				active_model.force_fullscreen = Set(Some(false));
 
-			Ok(active_model)
-		})
+				active_model.mem_max = Set(Some(2048));
+
+				Ok(active_model)
+			},
+		)
+		.await?;
+
+		api::cluster::dao::update_cluster_by_id(
+			cluster.id,
+			|mut active_model: ClusterPartial| async move {
+				active_model.setting_profile_name = Set(Some(options.name.clone()));
+
+				Ok(active_model)
+			},
+		)
 		.await?;
 
 		Ok(cluster)
 	}
 
 	async fn launch_cluster(self, id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()> {
-		let mut cluster = api::cluster::dao::get_cluster_by_id(id).await?
+		let mut cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		let uuid = match uuid {
 			Some(uuid) => uuid,
-			None => api::credentials::get_default_user().await?.ok_or_else(|| anyhow::anyhow!("no default user set"))?,
+			None => api::credentials::get_default_user()
+				.await?
+				.ok_or_else(|| anyhow::anyhow!("no default user set"))?,
 		};
 
-		let user = api::credentials::get_user(uuid).await?
+		let user = api::credentials::get_user(uuid)
+			.await?
 			.ok_or_else(|| anyhow::anyhow!("user with uuid {} not found", uuid))?;
 
 		// let user = api::credentials::get_fake_user();
@@ -192,34 +246,42 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(())
 	}
 
-	async fn update_cluster_by_id(self, id: ClusterId, request: ClusterUpdate) -> LauncherResult<()> {
-		api::cluster::dao::update_cluster_by_id(id, |mut active_model: ClusterPartial| async move {
-			if let Some(name) = request.name {
-				active_model.name = Set(name)
-			}
+	async fn update_cluster_by_id(
+		self,
+		id: ClusterId,
+		request: ClusterUpdate,
+	) -> LauncherResult<()> {
+		api::cluster::dao::update_cluster_by_id(
+			id,
+			|mut active_model: ClusterPartial| async move {
+				if let Some(name) = request.name {
+					active_model.name = Set(name);
+				}
 
-			// ok i know this is so wrong but im not a rust guy
-			if let Some(icon_url) = request.icon_url {
-				api::cluster::dao::set_icon_by_id(id, &icon_url).await?;
-			}
+				// ok i know this is so wrong but im not a rust guy
+				if let Some(icon_url) = request.icon_url {
+					api::cluster::dao::set_icon_by_id(id, &icon_url).await?;
+				}
 
-			Ok(active_model)
-		})
-		.await
-		.map_err(|e| LauncherError::from(e))?;
+				Ok(active_model)
+			},
+		)
+		.await?;
 
-	 	Ok(())
+		Ok(())
 	}
 
 	async fn get_screenshots(self, id: ClusterId) -> LauncherResult<Vec<String>> {
-		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+		let cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_screenshots(&cluster).await
 	}
 
 	async fn get_worlds(self, id: ClusterId) -> LauncherResult<Vec<String>> {
-		let cluster = api::cluster::dao::get_cluster_by_id(id).await?
+		let cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_worlds(&cluster).await
@@ -235,42 +297,49 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 	// please kill this with fire
-	async fn update_cluster_profile(self, name: String, profile: ProfileUpdate) -> LauncherResult<SettingsProfile> {
-		let profile = api::setting_profiles::dao::update_profile_by_name(&name, |mut active_model: SettingsProfilePartial| async move {
-			if let Some(res) = profile.res {
-				active_model.res = Set(Some(res));
-			}
+	async fn update_cluster_profile(
+		self,
+		name: String,
+		profile: ProfileUpdate,
+	) -> LauncherResult<SettingsProfile> {
+		let profile = api::setting_profiles::dao::update_profile_by_name(
+			&name,
+			|mut active_model: SettingsProfilePartial| async move {
+				if let Some(res) = profile.res {
+					active_model.res = Set(Some(res));
+				}
 
-			if let Some(force_fullscreen) = profile.force_fullscreen {
-				active_model.force_fullscreen = Set(Some(force_fullscreen));
-			}
+				if let Some(force_fullscreen) = profile.force_fullscreen {
+					active_model.force_fullscreen = Set(Some(force_fullscreen));
+				}
 
-			if let Some(mem_max) = profile.mem_max {
-				active_model.mem_max = Set(Some(mem_max));
-			}
+				if let Some(mem_max) = profile.mem_max {
+					active_model.mem_max = Set(Some(mem_max));
+				}
 
-			if let Some(launch_args) = profile.launch_args {
-				active_model.launch_args = Set(Some(launch_args));
-			}
+				if let Some(launch_args) = profile.launch_args {
+					active_model.launch_args = Set(Some(launch_args));
+				}
 
-			if let Some(launch_env) = profile.launch_env {
-				active_model.launch_env = Set(Some(launch_env));
-			}
+				if let Some(launch_env) = profile.launch_env {
+					active_model.launch_env = Set(Some(launch_env));
+				}
 
-			if let Some(hook_pre) = profile.hook_pre {
-				active_model.hook_pre = Set(Some(hook_pre));
-			}
+				if let Some(hook_pre) = profile.hook_pre {
+					active_model.hook_pre = Set(Some(hook_pre));
+				}
 
-			if let Some(hook_wrapper) = profile.hook_wrapper {
-				active_model.hook_wrapper = Set(Some(hook_wrapper));
-			}
+				if let Some(hook_wrapper) = profile.hook_wrapper {
+					active_model.hook_wrapper = Set(Some(hook_wrapper));
+				}
 
-			if let Some(hook_post) = profile.hook_post {
-				active_model.hook_post = Set(Some(hook_post));
-			}
+				if let Some(hook_post) = profile.hook_post {
+					active_model.hook_post = Set(Some(hook_post));
+				}
 
-			Ok(active_model)
-		})
+				Ok(active_model)
+			},
+		)
 		.await?;
 
 		Ok(profile)
@@ -285,7 +354,6 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::game::metadata::get_game_versions().await
 	}
 
-
 	// Users
 	async fn get_users(self) -> LauncherResult<Vec<MinecraftCredentials>> {
 		api::credentials::get_users().await
@@ -299,7 +367,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::credentials::remove_user(uuid).await
 	}
 
-	async fn get_default_user(self, fallback: Option<bool>) -> LauncherResult<Option<MinecraftCredentials>> {
+	async fn get_default_user(
+		self,
+		fallback: Option<bool>,
+	) -> LauncherResult<Option<MinecraftCredentials>> {
 		let uuid = api::credentials::get_default_user().await?;
 
 		if fallback.is_some_and(|fallback| fallback) && uuid.is_none() {
@@ -316,7 +387,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::credentials::set_default_user(uuid).await
 	}
 
-	async fn open_msa_login<R: Runtime>(self, app_handle: AppHandle<R>) -> LauncherResult<Option<MinecraftCredentials>> {
+	async fn open_msa_login<R: Runtime>(
+		self,
+		app_handle: AppHandle<R>,
+	) -> LauncherResult<Option<MinecraftCredentials>> {
 		use tauri::Manager;
 
 		let flow = api::credentials::begin().await?;
@@ -336,10 +410,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 					.map_err(|_| anyhow::anyhow!("failed to parse auth redirect url"))?,
 			),
 		)
-			.title(format!("Login to {}", Core::get().launcher_name))
-			.center()
-			.focused(true)
-			.build()?;
+		.title(format!("Login to {}", Core::get().launcher_name))
+		.center()
+		.focused(true)
+		.build()?;
 
 		win.request_user_attention(Some(tauri::UserAttentionType::Critical))?;
 
@@ -352,17 +426,12 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 				.url()?
 				.as_str()
 				.starts_with("https://login.live.com/oauth20_desktop.srf")
+				&& let Some((_, code)) = win.url()?.query_pairs().find(|x| x.0 == "code")
 			{
-				if let Some((_, code)) = win
-					.url()?
-					.query_pairs()
-					.find(|x| x.0 == "code")
-				{
-					win.close()?;
-					let value = api::credentials::finish(&code.clone(), flow).await?;
+				win.close()?;
+				let value = api::credentials::finish(&code.clone(), flow).await?;
 
-					return Ok(Some(value));
-				}
+				return Ok(Some(value));
 			}
 
 			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -392,34 +461,66 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	}
 
 	// Packages
-	async fn search_packages(self, provider: Provider, query: SearchQuery) -> LauncherResult<Paginated<SearchResult>> {
-    	Ok(provider.search(&query).await?)
+	async fn search_packages(
+		self,
+		provider: Provider,
+		query: SearchQuery,
+	) -> LauncherResult<Paginated<SearchResult>> {
+		provider.search(&query).await
 	}
 
 	async fn get_package(self, provider: Provider, slug: String) -> LauncherResult<ManagedPackage> {
-    	Ok(provider.get(&slug).await?)
+		provider.get(&slug).await
 	}
 
-	async fn get_multiple_packages(self, provider: Provider, slugs: Vec<String>) -> LauncherResult<Vec<ManagedPackage>> {
-    	Ok(provider.get_multiple(&slugs).await?)
+	async fn get_multiple_packages(
+		self,
+		provider: Provider,
+		slugs: Vec<String>,
+	) -> LauncherResult<Vec<ManagedPackage>> {
+		provider.get_multiple(&slugs).await
 	}
 
-	async fn get_package_versions(self, provider: Provider, slug: String, mc_versions: Option<Vec<String>>, loaders: Option<Vec<GameLoader>>, offset: usize, limit: usize) -> LauncherResult<Paginated<ManagedVersion>> {
-    	Ok(provider.get_versions_paginated(&slug, mc_versions, loaders, offset, limit).await?)
+	async fn get_package_versions(
+		self,
+		provider: Provider,
+		slug: String,
+		mc_versions: Option<Vec<String>>,
+		loaders: Option<Vec<GameLoader>>,
+		offset: usize,
+		limit: usize,
+	) -> LauncherResult<Paginated<ManagedVersion>> {
+		provider
+			.get_versions_paginated(&slug, mc_versions, loaders, offset, limit)
+			.await
 	}
 
-	async fn get_package_user(self, provider: Provider, slug: String) -> LauncherResult<ManagedUser> {
-    	Ok(provider.get_user(&slug).await?)
+	async fn get_package_user(
+		self,
+		provider: Provider,
+		slug: String,
+	) -> LauncherResult<ManagedUser> {
+		provider.get_user(&slug).await
 	}
 
-	async fn download_package(self, provider: Provider, package_id: String, version_id: String, cluster_id: ClusterId, skip_compatibility: Option<bool>) -> LauncherResult<packages::Model> {
-		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id).await?
+	async fn download_package(
+		self,
+		provider: Provider,
+		package_id: String,
+		version_id: String,
+		cluster_id: ClusterId,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<packages::Model> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
 
 		let package = provider.get(&package_id).await?;
 
 		let versions = provider.get_versions(&[version_id]).await?;
-		let version = versions.into_iter().next()
+		let version = versions
+			.into_iter()
+			.next()
 			.ok_or_else(|| anyhow::anyhow!("Version not found"))?;
 
 		let model = api::packages::download_package(&package, &version, None).await?;
@@ -429,7 +530,11 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(model)
 	}
 
-	async fn get_users_from_author(self, provider: Provider, author: PackageAuthor) -> LauncherResult<Vec<ManagedUser>> {
-		Ok(provider.get_users_from_author(author).await?)
+	async fn get_users_from_author(
+		self,
+		provider: Provider,
+		author: PackageAuthor,
+	) -> LauncherResult<Vec<ManagedUser>> {
+		provider.get_users_from_author(author).await
 	}
 }

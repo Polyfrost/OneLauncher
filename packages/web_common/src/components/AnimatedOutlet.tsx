@@ -1,4 +1,3 @@
-/* eslint-disable eslint-comments/require-description -- i trust that one github discussion user on this */
 /* eslint-disable react/no-unstable-default-props */
 
 // Taken from https://github.com/TanStack/router/discussions/823#discussioncomment-12765059

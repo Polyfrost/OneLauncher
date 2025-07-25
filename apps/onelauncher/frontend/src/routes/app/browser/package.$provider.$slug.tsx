@@ -1,8 +1,9 @@
 import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
 import type { HTMLProps } from 'react';
 import Modal from '@/components/overlay/Modal';
-import { useBrowserContext, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
+import { useBrowserContext, useDownloadPackage, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { ChooseClusterModal, useClusters } from '@/hooks/useCluster';
+import usePagination from '@/hooks/usePagination';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, PROVIDERS, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
@@ -16,7 +17,6 @@ import Markdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { twMerge } from 'tailwind-merge';
-import usePagination from '@/hooks/usePagination';
 
 export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
 	component: RouteComponent,
@@ -26,10 +26,10 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 	return list.includes(element as unknown as TArray);
 }
 
-function CustomA({ href, children, includeIcon, className, ...rest }: { href: string; children: any, includeIcon?: boolean } & HTMLProps<HTMLAnchorElement>) {
+function CustomA({ href, children, includeIcon, className, ...rest }: { href: string; children: any; includeIcon?: boolean } & HTMLProps<HTMLAnchorElement>) {
 	return (
 		<a
-			className={twMerge("text-fg-primary underline", className)}
+			className={twMerge('text-fg-primary underline', className)}
 			href={href}
 			onClick={(e) => {
 				e.preventDefault();
@@ -38,7 +38,7 @@ function CustomA({ href, children, includeIcon, className, ...rest }: { href: st
 			{...rest}
 		>
 			{children}
-			{includeIcon && <LinkExternal01Icon className='inline w-4 ml-1' />}
+			{includeIcon && <LinkExternal01Icon className="inline w-4 ml-1" />}
 		</a>
 	);
 }
@@ -56,10 +56,12 @@ function RouteComponent() {
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
 	const packageData = usePackageData(provider, slug, {});
-	const browserContext = useBrowserContext();
+	const packageContextValue = useMemo(() => ({
+		pkg: packageData.data,
+	}), [packageData.data]);
 
 	return (
-		<PackageContext value={{ pkg: packageData.data }}>
+		<PackageContext value={packageContextValue}>
 			<Show when={packageData.isSuccess && !packageData.isFetching}>
 				<div className="h-full flex flex-1 flex-row items-start gap-x-4">
 					<BrowserSidebar package={packageData.data!} />
@@ -84,14 +86,14 @@ function RouteComponent() {
 							</div>
 						</TabPanel>
 						<TabPanel id="versions">
-							<Versions/>
+							<Versions />
 						</TabPanel>
 						<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
 
 							{packageData.data?.gallery.map(item => (
 								<Modal.Trigger key={item.url}>
 									<Pressable>
-										<div className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative" aria-label='Loaders'>
+										<div aria-label="Loaders" className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative">
 											<img className="h-full" src={item.thumbnail_url} />
 											{item.title && <div className="absolute w-full bottom-0 bg-component-bg-disabled/80 p-2">{item.title}</div>}
 										</div>
@@ -113,17 +115,17 @@ function RouteComponent() {
 
 function getPackageUrl(pkg: ManagedPackage): string {
 	switch (pkg.provider) {
-		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`
-		case 'Curseforge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`
-		case 'SkyClient': return ``
+		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`;
+		case 'Curseforge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`;
+		case 'SkyClient': return ``;
 	}
 }
 
 function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 	const { provider } = Route.useParams();
 
-	const createdAt = useMemo(() => pkg.created ? new Date(pkg.created) : null, []);
-	const updatedAt = useMemo(() => pkg.updated ? new Date(pkg.updated) : null, []);
+	const createdAt = useMemo(() => pkg.created ? new Date(pkg.created) : null, [pkg.created]);
+	const updatedAt = useMemo(() => pkg.updated ? new Date(pkg.updated) : null, [pkg.updated]);
 
 	const authors = useCommand('getUsersFromAuthor', () => bindings.core.getUsersFromAuthor(provider as Provider, pkg.author));
 
@@ -163,18 +165,32 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 			<div className="flex flex-col rounded-lg bg-component-bg p-3">
 				<h4 className="text-fg-primary font-bold">Links</h4>
-				<div className='flex flex-col'>
-					<CustomA href={getPackageUrl(pkg)} includeIcon className='text-link hover:text-link-hover'>
+				<div className="flex flex-col">
+					<CustomA className="text-link hover:text-link-hover" href={getPackageUrl(pkg)} includeIcon>
 						{provider}
 						{' '}
 						Page
 					</CustomA>
-					{(Object.entries(pkg.links) as [keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]][]).filter(a => a[1]).map(link =>
-						typeof link[1] == "string"
-							? <CustomA href={link[1]} children={upperFirst(link[0])} className='text-link hover:text-link-hover' includeIcon />
-							: (link[1] as PackageDonationUrl[]).map(donationLink => <CustomA href={donationLink.url} className='text-link hover:text-link-hover' children={upperFirst(donationLink.id)} includeIcon />)
-
-					)}
+					{(Object.entries(pkg.links) as Array<[keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]]>).filter(a => a[1]).map(link =>
+						typeof link[1] == 'string'
+							? (
+									<CustomA
+										children={upperFirst(link[0])}
+										className="text-link hover:text-link-hover"
+										href={link[1]}
+										includeIcon
+										key={link[0]}
+									/>
+								)
+							: (link[1] as Array<PackageDonationUrl>).map(donationLink => (
+									<CustomA
+										children={upperFirst(donationLink.id)}
+										className="text-link hover:text-link-hover"
+										href={donationLink.url}
+										includeIcon
+										key={donationLink.id}
+									/>
+								)))}
 				</div>
 			</div>
 
@@ -232,26 +248,33 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 function InstallButton() {
 	const triggerRef = useRef<HTMLDivElement>(null);
 	const { provider, slug } = Route.useParams();
-	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
+	if (!includes(PROVIDERS, provider))
+		throw new Error('invalid provider');
 	const [open, setOpen] = useState(false);
 	const clusters = useClusters();
 	const browserContext = useBrowserContext();
-	const { data: versions } = usePackageVersions(provider, slug, {
+	const { data: versions, isLoading: versionsLoading } = usePackageVersions(provider, slug, {
 		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : [],
 		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : [],
-		limit: 1
+		limit: 1,
 	});
 	const version = useMemo(() => {
 		if (!versions || !browserContext.cluster)
 			return undefined;
-		return versions.items[0]
+		return versions.items[0];
 	}, [browserContext.cluster, versions]);
 
-	function download() {
-		if (!version || !browserContext.cluster || !includes(PROVIDERS, provider))
-			return false;
-		downloadPackage(browserContext.cluster, provider, version);
-	}
+	const download = useDownloadPackage(browserContext.cluster!, provider, version!, true);
+	const downloadRef = useRef(download);
+	useEffect(() => {
+		downloadRef.current.reset();
+	}, [browserContext.cluster]);
+
+	// function download() {
+	// 	if (!version || !browserContext.cluster || !includes(PROVIDERS, provider))
+	// 		return false;
+	// 	downloadPackage(browserContext.cluster, provider, version);
+	// }
 
 	return (
 
@@ -259,24 +282,39 @@ function InstallButton() {
 			<Button
 				className="max-w-full flex-1 rounded-r-none disabled:text-white/50 disabled:bg-blue-900"
 				color="primary"
-				isDisabled={!version}
-				onClick={download}
+				isDisabled={!version || download.isPending || download.isSuccess}
+				onClick={() => download.mutate()}
 			>
 				<Download01Icon />
 				<div className="w-full text-sm">
-					{
-						browserContext.cluster
+					<Show when={download.isIdle}>
+						{browserContext.cluster
 							? version
 								? (
-									<span>
-										Download latest to
-										<br />
-										<span className="text-md font-semibold">{browserContext.cluster.name}</span>
-									</span>
-								)
-								: `No matching version found`
-							: 'Select a Cluster'
-					}
+										<span>
+											Download latest to
+											<br />
+											<span className="text-md font-semibold">{browserContext.cluster.name}</span>
+										</span>
+									)
+								: versionsLoading ? 'Looking for a version...' : 'No matching version found'
+							: 'Select a Cluster'}
+					</Show>
+					<Show when={download.isPending}>
+						<span>
+							Downloading latest to
+							<br />
+							<span className="text-md font-semibold">{browserContext.cluster?.name ?? 'Unknown'}</span>
+						</span>
+					</Show>
+					<Show when={download.isSuccess}>
+						<span>
+							Installed latest into
+							<br />
+							<span className="text-md font-semibold">{browserContext.cluster?.name ?? 'Unknown'}</span>
+						</span>
+					</Show>
+
 				</div>
 			</Button>
 
@@ -289,7 +327,7 @@ function InstallButton() {
 				aria-label="cluster" isOpen={open}
 				onOpenChange={setOpen}
 				onSelectionChange={(e) => {
-					const cluster = clusters?.find(cluster => cluster.id as unknown as number === e);
+					const cluster = clusters?.find(item => item.id as unknown as number === e);
 					if (cluster)
 						browserContext.setCluster(cluster);
 				}}
@@ -359,52 +397,57 @@ function colorForType(type: string) {
 	}
 }
 
-function Versions(){
-	const {provider, slug} = Route.useParams()
-	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
-	const [offset, setOffset] = useState(0)
+function Versions() {
+	const { provider, slug } = Route.useParams();
+	if (!includes(PROVIDERS, provider))
+		throw new Error('invalid provider');
+	const [offset, setOffset] = useState(0);
 	const { data: versions } = usePackageVersions(provider, slug, {
 		limit: 20,
-		offset
+		offset,
 	});
+
 	const pagination = usePagination({
 		itemsCount: versions?.total as unknown as number,
-		itemsPerPage: versions?.limit as unknown as number
-	})
-	useEffect(()=>{
-		setOffset(pagination.offset)
-	},[pagination.offset])
-	useEffect(()=>{
-		pagination.reset()
-	},[versions?.total])
-	return <div className='flex flex-col'>
-		<div className='flex justify-between'>
-			<pagination.Navigation/>
+		itemsPerPage: versions?.limit as unknown as number,
+	});
+	const paginationRef = useRef(pagination);
+	useEffect(() => {
+		setOffset(pagination.offset);
+	}, [pagination.offset]);
+	useEffect(() => {
+		paginationRef.current.reset();
+	}, [versions?.total]);
+	return (
+		<div className="flex flex-col w-full">
+			<div className="flex justify-between">
+				<pagination.Navigation />
+			</div>
+			<Table className="border-separate border-spacing-x-none border-spacing-y-1 w-full">
+				<TableHeader className="text-left">
+					<Column className="pr-2" />
+					<Column className="pr-4" isRowHeader>Name</Column>
+					<Column className="pr-4">Game Versions</Column>
+					<Column className="pr-4">Loaders</Column>
+					<Column className="pr-4">Created</Column>
+					<Column className="pr-4">Downloads</Column>
+					<Column className="pr-4" />
+				</TableHeader>
+				<TableBody className="">
+					{versions?.items.map(item =>
+						<VersionRow key={item.version_id} version={item} />)}
+				</TableBody>
+			</Table>
 		</div>
-		<Table className="border-separate border-spacing-x-none border-spacing-y-1">
-			<TableHeader className="text-left">
-				<Column className="pr-2"/>
-				<Column className="pr-4" isRowHeader>Name</Column>
-				<Column className="pr-4">Game Versions</Column>
-				<Column className="pr-4">Loaders</Column>
-				<Column className="pr-4">Created</Column>
-				<Column className="pr-4">Downloads</Column>
-				<Column className="pr-4"/>
-			</TableHeader>
-			<TableBody className="">
-				{versions?.items.map(item=>
-					<VersionRow version={item}/>
-				)}
-			</TableBody>
-		</Table>
-	</div>
+	);
 }
 
-function VersionRow({version}:{version:ManagedVersion}){
-	const {provider} = Route.useParams()
-	if(!includes(PROVIDERS, provider)) throw new Error("invalid provider")
+function VersionRow({ version }: { version: ManagedVersion }) {
+	const { provider } = Route.useParams();
+	if (!includes(PROVIDERS, provider))
+		throw new Error('invalid provider');
 	return (
-		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4">
+		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4 w-full">
 			<Cell className="p-4 my-2 bg-component-bg rounded-l-xl">
 				<Tooltip text={upperFirst(version.release_type)}>
 					<div className={`${colorForType(version.release_type)} h-8 w-8 flex items-center justify-center rounded-md`}>
@@ -413,22 +456,22 @@ function VersionRow({version}:{version:ManagedVersion}){
 				</Tooltip>
 			</Cell>
 			<Cell className="p-4 px-2 bg-component-bg">{version.display_name}</Cell>
-			<Cell className="p-4 pl-0 bg-component-bg">{version.mc_versions.join(", ")}</Cell>
-			<Cell className="p-4 pl-0 bg-component-bg">{version.loaders.map(upperFirst).join(", ")}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{version.mc_versions.join(', ')}</Cell>
+			<Cell className="p-4 pl-0 bg-component-bg">{version.loaders.map(upperFirst).join(', ')}</Cell>
 			<Cell className="p-4 pl-0 bg-component-bg">{formatAsRelative(Date.parse(version.published))}</Cell>
 			<Cell className="p-4 pl-0 bg-component-bg">{version.downloads}</Cell>
 			<Cell className="p-4 pl-0 bg-component-bg rounded-r-xl">
 				<Modal.Trigger>
-						<Button
-						size='icon'
-						color='secondary'
+					<Button
 						children={<Download01Icon />}
+						color="secondary"
+						size="icon"
 					/>
-					<ChooseClusterModal confirmText='Download' onSelected={cluster=>downloadPackage(cluster, provider, version, true)}/>
+					<ChooseClusterModal confirmText="Download" onSelected={cluster => downloadPackage(cluster, provider, version, true)} />
 				</Modal.Trigger>
 			</Cell>
 		</Row>
-	)
+	);
 }
 
 function downloadPackage(cluster: ClusterModel, provider: Provider, version: ManagedVersion, skipCompatibility = false) {

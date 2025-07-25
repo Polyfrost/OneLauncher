@@ -1,4 +1,5 @@
-use sea_orm::{sea_query::{self, Nullable, ValueType}, TryGetableFromJson};
+use sea_orm::TryGetableFromJson;
+use sea_orm::sea_query::{self, Nullable, ValueType};
 use serde::{Deserialize, Serialize};
 
 cfg_select! {
@@ -51,7 +52,7 @@ cfg_select! {
 
 impl From<SettingsOsExtra> for sea_query::Value {
 	fn from(value: SettingsOsExtra) -> Self {
-		sea_query::Value::Json(serde_json::to_value(value).ok().map(Box::new))
+		Self::Json(serde_json::to_value(value).ok().map(Box::new))
 	}
 }
 
@@ -60,11 +61,11 @@ impl TryGetableFromJson for SettingsOsExtra {}
 impl ValueType for SettingsOsExtra {
 	fn try_from(v: sea_orm::Value) -> Result<Self, sea_query::ValueTypeErr> {
 		match v {
-            sea_orm::Value::Json(Some(json)) => Ok(
-                serde_json::from_value(*json).map_err(|_| sea_orm::sea_query::ValueTypeErr)?,
-            ),
-            _ => Err(sea_orm::sea_query::ValueTypeErr),
-        }
+			sea_orm::Value::Json(Some(json)) => {
+				Ok(serde_json::from_value(*json).map_err(|_| sea_orm::sea_query::ValueTypeErr)?)
+			}
+			_ => Err(sea_orm::sea_query::ValueTypeErr),
+		}
 	}
 
 	fn type_name() -> String {

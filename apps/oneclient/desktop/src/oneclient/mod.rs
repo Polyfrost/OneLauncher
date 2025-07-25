@@ -1,4 +1,8 @@
-use onelauncher_core::{entity::{clusters::Model as ClusterModel, icon::Icon, loader::GameLoader}, error::LauncherResult, send_error};
+use onelauncher_core::entity::clusters::Model as ClusterModel;
+use onelauncher_core::entity::icon::Icon;
+use onelauncher_core::entity::loader::GameLoader;
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::send_error;
 
 pub async fn initialize_oneclient() {
 	init_clusters().await;
@@ -31,12 +35,14 @@ async fn init_clusters() {
 
 			for loader in &cluster.mc_loaders {
 				if let Err(e) = create_cluster_if_not_exist(
-					&format!("{} {}", mc_version, loader),
+					&format!("{mc_version} {loader}"),
 					&mc_version,
 					*loader,
 					None,
 					None,
-				).await {
+				)
+				.await
+				{
 					send_error!("failed to create cluster for {}: {}", mc_version, e);
 				}
 			}
@@ -56,7 +62,13 @@ async fn create_cluster_if_not_exist(
 		return Ok(None);
 	}
 
-	onelauncher_core::api::cluster::create_cluster(name, mc_version, mc_loader, mc_loader_version, icon_url)
-		.await
-		.map(Some)
+	onelauncher_core::api::cluster::create_cluster(
+		name,
+		mc_version,
+		mc_loader,
+		mc_loader_version,
+		icon_url,
+	)
+	.await
+	.map(Some)
 }

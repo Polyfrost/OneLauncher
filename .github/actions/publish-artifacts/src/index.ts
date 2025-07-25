@@ -20,7 +20,7 @@ interface TargetConfig {
 }
 interface BuildTarget {
 	updater: false | Updater;
-	standalone: TargetConfig[];
+	standalone: Array<TargetConfig>;
 }
 
 const osTargets = {
@@ -67,7 +67,7 @@ const frontendBundle = 'apps/frontend/dist.tar.xz';
 const updaterName = `OneLauncher-Updater-${os}-${arch}`;
 const frontendName = `OneLauncher-Frontend-${os}-${arch}`;
 
-const globFiles = async (pattern: string): Promise<string[]> => await (await glob.create(pattern)).glob();
+const globFiles = async (pattern: string): Promise<Array<string>> => await (await glob.create(pattern)).glob();
 
 async function uploadFrontend() {
 	if (!(await exists(frontendBundle))) {

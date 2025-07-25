@@ -282,7 +282,8 @@ function InstallButton() {
 			<Button
 				className="max-w-full flex-1 rounded-r-none disabled:text-white/50 disabled:bg-blue-900"
 				color="primary"
-				isDisabled={!version || download.isPending || download.isSuccess}
+				isDisabled={!version || download.isSuccess}
+				isPending={download.isPending || versionsLoading}
 				onClick={() => download.mutate()}
 			>
 				<Download01Icon />
@@ -298,7 +299,9 @@ function InstallButton() {
 										</span>
 									)
 								: versionsLoading ? 'Looking for a version...' : 'No matching version found'
-							: 'Select a Cluster'}
+							: (clusters?.length ?? 0) > 0
+									? 'Select a Cluster'
+									: 'No clusters'}
 					</Show>
 					<Show when={download.isPending}>
 						<span>
@@ -318,7 +321,12 @@ function InstallButton() {
 				</div>
 			</Button>
 
-			<Button className="w-8 h-full rounded-l-none border-l border-white/10 px-2" onClick={() => setOpen(true)}>
+			<Button
+				className="w-8 h-full rounded-l-none border-l border-white/10 px-2"
+				isDisabled={clusters?.length === 0}
+				isPending={clusters === undefined}
+				onClick={() => setOpen(true)}
+			>
 				{open
 					? <ChevronUpIcon />
 					: <ChevronDownIcon />}

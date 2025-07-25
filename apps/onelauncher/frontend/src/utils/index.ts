@@ -129,3 +129,7 @@ export function formatAsDuration(seconds: number | bigint | Date): string {
 
 	return convertSeconds(seconds);
 }
+
+export function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
+	return list.includes(element as unknown as TArray);
+}

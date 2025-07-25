@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use onelauncher_entity::package::{PackageType, Provider};
 use tokio::sync::OnceCell;
 
-use crate::{utils, LauncherResult};
+use crate::{LauncherResult, utils};
 
 use super::Core;
 
@@ -24,9 +24,9 @@ pub enum DirectoryError {
 
 impl Dirs {
 	pub async fn get() -> LauncherResult<&'static Self> {
-		DIRS_GLOBAL.get_or_try_init(async || {
-			Self::initialize()
-		}).await
+		DIRS_GLOBAL
+			.get_or_try_init(async || Self::initialize())
+			.await
 	}
 
 	fn initialize() -> LauncherResult<Self> {
@@ -36,9 +36,7 @@ impl Dirs {
 
 		tracing::info!("using base directory '{}'", base_dir.display());
 
-		Ok(Self {
-			base_dir
-		})
+		Ok(Self { base_dir })
 	}
 
 	/// Get the base directory for the launcher.
@@ -46,7 +44,6 @@ impl Dirs {
 	pub const fn base_dir(&self) -> &PathBuf {
 		&self.base_dir
 	}
-
 }
 
 macro_rules! dirs_impl {

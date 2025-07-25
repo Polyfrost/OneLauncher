@@ -1,6 +1,9 @@
 use super::ProviderExt;
 use crate::api::packages::data::{
-	ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency, ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageGallery, PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery, SearchResult, DEFAULT_LIMIT
+	DEFAULT_LIMIT, ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency,
+	ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageGallery,
+	PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery,
+	SearchResult,
 };
 use crate::error::LauncherResult;
 use crate::utils::http;
@@ -52,25 +55,41 @@ impl ProviderExt for ModrinthProviderImpl {
 
 				if let Some(categories) = &filters.categories {
 					for category in categories {
-						builder.and(Facet("categories".to_string(), FacetOperation::Eq, category.to_string()));
+						builder.and(Facet(
+							"categories".to_string(),
+							FacetOperation::Eq,
+							category.to_string(),
+						));
 					}
 				}
 
 				if let Some(mc_versions) = &filters.game_versions {
 					for mc_version in mc_versions {
-						builder.and(Facet("versions".to_string(), FacetOperation::Eq, mc_version.to_string()));
+						builder.and(Facet(
+							"versions".to_string(),
+							FacetOperation::Eq,
+							mc_version.to_string(),
+						));
 					}
 				}
 
 				if let Some(package_types) = &filters.package_types {
 					for package_type in package_types {
-						builder.and(Facet("project_type".to_string(), FacetOperation::Eq, package_type_to_string(package_type)));
+						builder.and(Facet(
+							"project_type".to_string(),
+							FacetOperation::Eq,
+							package_type_to_string(package_type),
+						));
 					}
 				}
 
 				if let Some(loaders) = &filters.loaders {
 					for loader in loaders {
-						builder.and(Facet("categories".to_string(), FacetOperation::Eq, loader.to_string()));
+						builder.and(Facet(
+							"categories".to_string(),
+							FacetOperation::Eq,
+							loader.to_string(),
+						));
 					}
 				}
 
@@ -166,7 +185,10 @@ impl ProviderExt for ModrinthProviderImpl {
 	// 	Ok(http::fetch_json(Method::GET, url_v3!("/organizations/{slug}/projects"), None, None).await?)
 	// }
 
-	async fn get_users_from_author(&self, author: PackageAuthor) -> LauncherResult<Vec<ManagedUser>> {
+	async fn get_users_from_author(
+		&self,
+		author: PackageAuthor,
+	) -> LauncherResult<Vec<ManagedUser>> {
 		let (team_id, org_id) = match author {
 			PackageAuthor::Team { team_id, org_id } => (team_id, org_id),
 			PackageAuthor::Users(users) => {
@@ -188,14 +210,24 @@ impl ProviderExt for ModrinthProviderImpl {
 				// pub members: Vec<TeamMember>,
 			}
 
-			let organization = http::fetch_json::<Organization>(Method::GET, url_v3!("/organization/{org_id}"), None, None).await?;
+			let organization = http::fetch_json::<Organization>(
+				Method::GET,
+				url_v3!("/organization/{org_id}"),
+				None,
+				None,
+			)
+			.await?;
 
 			let org_user = ManagedUser {
 				id: organization.id.clone(),
 				username: organization.name,
 				avatar_url: organization.icon_url,
 				bio: Some(organization.description),
-				url: Some(format!("{}/organization/{}", Provider::Modrinth.website(), organization.id)),
+				url: Some(format!(
+					"{}/organization/{}",
+					Provider::Modrinth.website(),
+					organization.id
+				)),
 				is_organization_user: true,
 				role: None,
 			};
@@ -407,7 +439,7 @@ impl From<ModrinthPackage> for ManagedPackage {
 			},
 			status: value.status,
 			downloads: value.downloads,
-			gallery: value.gallery.into_iter().map(Into::into).collect()
+			gallery: value.gallery.into_iter().map(Into::into).collect(),
 		}
 	}
 }
@@ -522,11 +554,7 @@ impl From<ModrinthUser> for ManagedUser {
 		Self {
 			id: value.id.clone(),
 			username: value.username,
-			url: Some(format!(
-				"{}user/{}",
-				Provider::Modrinth.website(),
-				value.id
-			)),
+			url: Some(format!("{}user/{}", Provider::Modrinth.website(), value.id)),
 			avatar_url: value.avatar_url,
 			bio: value.bio,
 			is_organization_user: false,
@@ -538,24 +566,24 @@ impl From<ModrinthUser> for ManagedUser {
 #[derive(Deserialize)]
 pub struct ModrinthGallery {
 	#[serde(rename = "raw_url")]
-    pub url: String,
+	pub url: String,
 	#[serde(rename = "url")]
-    pub thumbnail_url: String,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub featured: Option<bool>
+	pub thumbnail_url: String,
+	pub title: Option<String>,
+	pub description: Option<String>,
+	pub featured: Option<bool>,
 }
 
 impl From<ModrinthGallery> for PackageGallery {
-  fn from(value: ModrinthGallery) -> Self {
-    Self {
-      url: value.url,
-      thumbnail_url: value.thumbnail_url,
-	  title: value.title,
-	  description: value.description,
-	  featured: value.featured
-    }
-  }
+	fn from(value: ModrinthGallery) -> Self {
+		Self {
+			url: value.url,
+			thumbnail_url: value.thumbnail_url,
+			title: value.title,
+			description: value.description,
+			featured: value.featured,
+		}
+	}
 }
 
 #[allow(dead_code)]

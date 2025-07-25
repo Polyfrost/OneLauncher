@@ -1,9 +1,11 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use tokio::sync::OnceCell;
 
-use crate::{api::proxy::LauncherProxy, LauncherResult};
+use crate::LauncherResult;
+use crate::api::proxy::LauncherProxy;
 
 static PROXY_STATE: OnceCell<Arc<ProxyState>> = OnceCell::const_new();
 

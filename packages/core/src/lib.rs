@@ -1,9 +1,12 @@
 #![feature(slice_as_array)]
+#![allow(clippy::struct_excessive_bools)]
 
 use api::proxy::LauncherProxy;
-use store::{proxy::ProxyState, semaphore::SemaphoreStore, Core, CoreOptions, Dirs, State};
 use error::LauncherResult;
 pub use logger::start_logger;
+use store::proxy::ProxyState;
+use store::semaphore::SemaphoreStore;
+use store::{Core, CoreOptions, Dirs, State};
 
 pub mod api;
 pub mod constants;
@@ -14,10 +17,12 @@ pub mod utils;
 mod logger;
 
 pub use onelauncher_macro::*;
-pub use onelauncher_entity as entity;
-pub use onelauncher_migration as migration;
+pub use {onelauncher_entity as entity, onelauncher_migration as migration};
 
-pub async fn initialize_core(options: CoreOptions, proxy_backend: impl LauncherProxy + 'static) -> LauncherResult<()> {
+pub async fn initialize_core(
+	options: CoreOptions,
+	proxy_backend: impl LauncherProxy + 'static,
+) -> LauncherResult<()> {
 	Core::initialize(options).await?;
 	Dirs::get().await?;
 	start_logger().await;

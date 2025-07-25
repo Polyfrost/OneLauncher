@@ -1,5 +1,5 @@
 use onelauncher_core::api::proxy::ProxyTauri;
-use onelauncher_core::api::tauri::{TauriLauncherEventApi, TauriLauncherApi};
+use onelauncher_core::api::tauri::{TauriLauncherApi, TauriLauncherEventApi};
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::store::proxy::ProxyState;
 use onelauncher_core::store::semaphore::SemaphoreStore;
@@ -33,9 +33,10 @@ async fn initialize_core() -> LauncherResult<()> {
 		launcher_website: "https://polyfrost.org/".to_string(),
 		discord_client_id: Some(constants::DISCORD_CLIENT_ID.to_string()),
 		fetch_attempts: 3,
-		logger_filter: Some(
-			format!("{}={level},onelauncher_core={level}", env!("CARGO_PKG_NAME")),
-		),
+		logger_filter: Some(format!(
+			"{}={level},onelauncher_core={level}",
+			env!("CARGO_PKG_NAME")
+		)),
 		..Default::default()
 	};
 
@@ -61,6 +62,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.merge(onelauncher_core::api::tauri::TauriLauncherApiImpl.into_handler())
 		.merge(onelauncher_core::api::tauri::TauriLauncherEventApiImpl.into_handler());
 
+	let launcher_path = Dirs::get().await?.base_dir();
 	let builder = builder
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
 			println!("{}, {argv:?}, {cwd}", app.package_info().name);
@@ -75,10 +77,8 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.menu(tauri::menu::Menu::new)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
-			let launcher_path = app.path().data_dir().ok().expect("ok").join("OneLauncher");
-
 			app.asset_protocol_scope()
-				.allow_directory(&launcher_path, true)
+				.allow_directory(launcher_path, true)
 				.unwrap();
 
 			setup_window(app.handle()).expect("failed to setup main window");

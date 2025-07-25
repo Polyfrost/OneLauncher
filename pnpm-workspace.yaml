@@ -45,6 +45,7 @@ catalog:
   '@untitled-theme/icons-react': ^0.14.0
   motion: ^12.10.5
   react-dom: ^19.0.0
+  react-just-parallax: ^3.1.16
 
   # tailwindcss
   tailwind-merge: ^3.2.0

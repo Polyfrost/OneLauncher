@@ -2,9 +2,9 @@ use chrono::Utc;
 use dao::ClusterId;
 use interpulse::api::minecraft::VersionInfo;
 use onelauncher_entity::cluster_stage::ClusterStage;
-use onelauncher_entity::{clusters, java_versions};
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
+use onelauncher_entity::{clusters, java_versions};
 use sea_orm::ActiveValue::Set;
 use tokio::process::Command;
 
@@ -17,8 +17,8 @@ use crate::store::ingress::{IngressType, SubIngress};
 use crate::store::{Dirs, State};
 use crate::utils::io::{self, IOError};
 
-pub mod dao;
 pub mod content;
+pub mod dao;
 
 mod sync;
 pub use sync::*;
@@ -109,14 +109,16 @@ pub async fn create_cluster(
 }
 
 /// Make a cluster playable (installs all necessary game files and dependencies required to play)
-pub async fn prepare_cluster(cluster: &mut clusters::Model, force: Option<bool>) -> LauncherResult<&clusters::Model> {
+pub async fn prepare_cluster(
+	cluster: &mut clusters::Model,
+	force: Option<bool>,
+) -> LauncherResult<&clusters::Model> {
 	tracing::debug!("preparing cluster {}", cluster.name);
 
 	// if cluster.stage == ClusterStage::Ready {
 	// 	tracing::info!("cluster is already ready");
 	// 	return Ok(cluster);
 	// }
-
 
 	dao::update_cluster(cluster, async |mut cluster| {
 		cluster.stage = Set(ClusterStage::Downloading);
@@ -161,7 +163,8 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 	// TASK 1
 	ingress_id.set_ingress_message("fetching data").await?;
 	let setting_profile =
-		setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref()).await?;
+		setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref())
+			.await?;
 
 	let state = State::get().await?;
 	let mut metadata = state.metadata.write().await;
@@ -193,7 +196,9 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 	)
 	.await?;
 
-	let java_version = if let Some(version) = java::get_recommended_java(&version_info, Some(&setting_profile)).await? {
+	let java_version = if let Some(version) =
+		java::get_recommended_java(&version_info, Some(&setting_profile)).await?
+	{
 		version
 	} else {
 		let Some(ver) = &version_info.java_version else {
@@ -204,10 +209,22 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 	};
 
 	// TASK 3
-	download_minecraft(&version_info, &java_version.arch, Some(&SubIngress::new(&ingress_id, INGRESS_STEP)), force).await?;
+	download_minecraft(
+		&version_info,
+		&java_version.arch,
+		Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
+		force,
+	)
+	.await?;
 
 	// TASK 4
-	run_forge_processors(cluster, &mut version_info, java_version, &SubIngress::new(&ingress_id, INGRESS_STEP)).await?;
+	run_forge_processors(
+		cluster,
+		&mut version_info,
+		java_version,
+		&SubIngress::new(&ingress_id, INGRESS_STEP),
+	)
+	.await?;
 
 	Ok(())
 }
@@ -265,23 +282,23 @@ async fn run_forge_processors(
 			server => "";
 	}
 
-	ingress.set_ingress_message("running forge processors").await?;
+	ingress
+		.set_ingress_message("running forge processors")
+		.await?;
 	let total_length = processors.len();
 	for (index, processor) in processors.iter().enumerate() {
 		if let Some(sides) = &processor.sides
-			&& !sides.contains(&String::from("client")) {
-				continue;
-			}
+			&& !sides.contains(&String::from("client"))
+		{
+			continue;
+		}
 
 		let mut cp = processor.classpath.clone();
 		cp.push(processor.jar.clone());
 
 		let child = Command::new(&java_version.absolute_path)
 			.arg("-cp")
-			.arg(arguments::get_classpath_library(
-				&libraries,
-				&cp,
-			)?)
+			.arg(arguments::get_classpath_library(&libraries, &cp)?)
 			.arg(
 				arguments::main_class(arguments::get_library(&libraries, &processor.jar, false)?)
 					.await?
@@ -307,7 +324,9 @@ async fn run_forge_processors(
 			.into());
 		}
 
-		ingress.set_ingress_message(&format!("running forge processors {index}/{total_length}")).await?;
+		ingress
+			.set_ingress_message(&format!("running forge processors {index}/{total_length}"))
+			.await?;
 	}
 
 	Ok(())
@@ -315,11 +334,16 @@ async fn run_forge_processors(
 
 pub async fn update_playtime(id: ClusterId, duration: i64) -> LauncherResult<clusters::Model> {
 	dao::update_cluster_by_id(id, async |mut cluster| {
-		let overall_played = cluster.overall_played.take().unwrap_or_default().unwrap_or_default();
+		let overall_played = cluster
+			.overall_played
+			.take()
+			.unwrap_or_default()
+			.unwrap_or_default();
 
 		cluster.overall_played = Set(Some(overall_played + duration));
 		cluster.last_played = Set(Some(Utc::now()));
 
 		Ok(cluster)
-	}).await
+	})
+	.await
 }

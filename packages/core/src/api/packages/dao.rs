@@ -1,9 +1,7 @@
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::PackageType;
 use onelauncher_entity::{cluster_packages, clusters, packages};
-use sea_orm::{
-	ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
 
 use crate::error::{DaoError, LauncherResult};
 use crate::store::State;

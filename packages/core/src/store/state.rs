@@ -3,15 +3,15 @@ use std::sync::Arc;
 use sea_orm::DatabaseConnection;
 use tokio::sync::{OnceCell, RwLock};
 
-use crate::store::Dirs;
 use crate::LauncherResult;
+use crate::store::Dirs;
 
-use super::credentials::CredentialsStore;
-use super::processes::ProcessStore;
 use super::Settings;
+use super::credentials::CredentialsStore;
 use super::discord::DiscordRPC;
 use super::ingress::IngressProcessor;
 use super::metadata::Metadata;
+use super::processes::ProcessStore;
 
 /// The static [`OnceCell<RwLock<State>>`] for storing the global runtime launcher state.
 static LAUNCHER_STATE: OnceCell<Arc<State>> = OnceCell::const_new();
@@ -32,8 +32,7 @@ impl State {
 		Ok(LAUNCHER_STATE
 			.get_or_try_init(Self::initialize)
 			.await?
-			.clone()
-		)
+			.clone())
 	}
 
 	pub fn initialized() -> bool {

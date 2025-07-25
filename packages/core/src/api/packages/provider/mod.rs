@@ -1,7 +1,8 @@
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::Provider;
 
-use crate::{api::packages::data::SearchResult, error::LauncherResult};
+use crate::api::packages::data::SearchResult;
+use crate::error::LauncherResult;
 use crate::utils::pagination::Paginated;
 
 use super::data::{ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery};
@@ -70,11 +71,7 @@ impl ProviderExt for Provider {
 		hashes: &[String],
 	) -> LauncherResult<Vec<ManagedVersion>> {
 		match self {
-			Self::Modrinth => {
-				ModrinthProviderImpl
-					.get_versions_by_hashes(hashes)
-					.await
-			}
+			Self::Modrinth => ModrinthProviderImpl.get_versions_by_hashes(hashes).await,
 			_ => todo!("unimplemented provider"),
 		}
 	}
@@ -91,11 +88,7 @@ impl ProviderExt for Provider {
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>> {
 		match self {
-			Self::Modrinth => {
-				ModrinthProviderImpl
-					.get_users_from_author(author)
-					.await
-			}
+			Self::Modrinth => ModrinthProviderImpl.get_users_from_author(author).await,
 			_ => todo!("unimplemented provider"),
 		}
 	}

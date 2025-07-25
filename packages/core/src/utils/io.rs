@@ -1,10 +1,11 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_compression::tokio::bufread::GzipDecoder;
 use async_stream::try_stream;
 use async_zip::StoredZipEntry;
 use async_zip::base::read::WithoutEntry;
-use futures::{pin_mut, Stream, TryStreamExt};
+use futures::{Stream, TryStreamExt, pin_mut};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tempfile::TempDir;
@@ -27,11 +28,23 @@ pub enum IOError {
 		path: String,
 	},
 	#[error(transparent)]
-	IOError(#[from] #[skip] std::io::Error),
+	IOError(
+		#[from]
+		#[skip]
+		std::io::Error,
+	),
 	#[error("json deserialization error: {0}")]
-	DeserializeError(#[from] #[skip] serde_json::Error),
+	DeserializeError(
+		#[from]
+		#[skip]
+		serde_json::Error,
+	),
 	#[error(transparent)]
-	AsyncZipError(#[from] #[skip] async_zip::error::ZipError),
+	AsyncZipError(
+		#[from]
+		#[skip]
+		async_zip::error::ZipError,
+	),
 }
 
 impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
@@ -283,9 +296,16 @@ where
 /// Reads a zip archive from a byte array and returns a stream of entries.
 pub fn stream_zip_entries_bytes(
 	data: Vec<u8>,
-) -> impl Stream<Item = Result<(
-	usize, StoredZipEntry, Arc<async_zip::base::read::mem::ZipFileReader>
-), IOError>> {
+) -> impl Stream<
+	Item = Result<
+		(
+			usize,
+			StoredZipEntry,
+			Arc<async_zip::base::read::mem::ZipFileReader>,
+		),
+		IOError,
+	>,
+> {
 	try_stream! {
 		let reader = Arc::new(async_zip::base::read::mem::ZipFileReader::new(data).await?);
 		let entries = reader.file().entries();
@@ -319,9 +339,10 @@ pub async fn unzip_bytes_filtered(
 		let file_name = entry.filename().as_str()?;
 
 		if let Some(filter) = &filter_entries
-			&& !filter(file_name) {
-				continue;
-			}
+			&& !filter(file_name)
+		{
+			continue;
+		}
 
 		let path = dest_path.as_ref().join(sanitize_path(file_name));
 

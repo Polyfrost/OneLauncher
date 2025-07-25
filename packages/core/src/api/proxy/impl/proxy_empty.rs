@@ -1,4 +1,6 @@
-use crate::{api::proxy::{event::LauncherEvent, LauncherProxy}, LauncherResult};
+use crate::LauncherResult;
+use crate::api::proxy::LauncherProxy;
+use crate::api::proxy::event::LauncherEvent;
 
 #[derive(Default, Debug)]
 pub struct ProxyEmpty;
@@ -17,17 +19,19 @@ impl LauncherProxy for ProxyEmpty {
 			LauncherEvent::Ingress(ingress) => {
 				println!(
 					"{} [{}] {}",
-					ingress.percent.map_or("100%".to_string(), |p| format!("{:.2}%", p * 100.0)),
+					ingress
+						.percent
+						.map_or("100%".to_string(), |p| format!("{:.2}%", p * 100.0)),
 					ingress.id,
 					ingress.message
 				);
-			},
+			}
 			LauncherEvent::Message(message) => {
 				println!("[{:?}] {}", message.level, message.message);
-			},
+			}
 			LauncherEvent::Process(payload) => {
 				println!("{payload:#?}");
-			},
+			}
 		}
 
 		Ok(())
@@ -44,5 +48,4 @@ impl LauncherProxy for ProxyEmpty {
 		println!("shown window");
 		Ok(())
 	}
-
 }

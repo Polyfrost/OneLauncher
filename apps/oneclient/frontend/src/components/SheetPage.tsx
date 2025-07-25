@@ -1,22 +1,31 @@
-import type { MotionValue } from 'motion/react';
-import useAppShellStore from '@/stores/appShellStore';
-import { getLocationName } from '@/utils/locationMapping';
+import type { HTMLMotionProps, MotionValue } from 'motion/react';
 import { Button } from '@onelauncher/common/components';
-import { Outlet, useNavigate } from '@tanstack/react-router';
+import { useCanGoBack, useRouter } from '@tanstack/react-router';
 import { ArrowLeftIcon } from '@untitled-theme/icons-react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
+import { twMerge } from 'tailwind-merge';
 
 export function SheetPage({
 	headerSmall,
 	headerLarge,
+	children,
+	scrollContainerRef,
 }: {
 	headerSmall: React.ReactNode;
 	headerLarge: React.ReactNode;
+	children?: React.ReactNode;
+	scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }) {
 	const scrollContainer = useRef<HTMLElement>(null);
 	const headerLargeRef = useRef<HTMLDivElement>(null);
+
+	const setScrollContainerRef = useCallback((el: HTMLElement | null) => {
+		scrollContainer.current = el;
+		if (scrollContainerRef)
+			scrollContainerRef.current = el;
+	}, [scrollContainerRef]);
 
 	const { scrollYProgress } = useScroll({
 		axis: 'y',
@@ -48,20 +57,13 @@ export function SheetPage({
 					</motion.div>
 				</div>
 
-				<OverlayScrollbarsComponent className="flex flex-col flex-1 mask-t-from-97% pt-4 relative" ref={ref => scrollContainer.current = ref?.osInstance()?.elements().content ?? null}>
-					<div className="flex flex-col mx-12 gap-4">
+				<OverlayScrollbarsComponent className="flex flex-col flex-1 mask-t-from-97% pt-4 relative" ref={ref => setScrollContainerRef(ref?.osInstance()?.elements().content ?? null)}>
+					<div className="flex flex-col mx-12 gap-4 flex-1 min-h-full">
 						<motion.div className="w-full" ref={headerLargeRef} style={{ opacity: largeOpacity }}>
-							{/* <headerLarge ref={headerLargeRef as React.RefObject<HTMLDivElement>} /> */}
 							{headerLarge}
 						</motion.div>
 
-						<motion.div
-							animate={{ bottom: 0 }}
-							className="relative flex flex-col px-10 py-6 mb-8 bg-page-elevated rounded-2xl"
-							initial={{ bottom: '-80px' }}
-						>
-							<Outlet />
-						</motion.div>
+						{children}
 					</div>
 				</OverlayScrollbarsComponent>
 			</div>
@@ -69,29 +71,45 @@ export function SheetPage({
 	);
 }
 
+SheetPage.Content = ({
+	children,
+	className,
+	...rest
+}: Omit<HTMLMotionProps<'div'>, 'animate' | 'initial'>) => (
+	<motion.div
+		animate={{
+			bottom: 0,
+			opacity: 1,
+		}}
+		className={twMerge('relative flex flex-col px-10 py-6 last:mb-8 h-full bg-page-elevated rounded-2xl', className)}
+		exit={{
+			opacity: 0,
+		}}
+		initial={{
+			opacity: 0,
+		}}
+		transition={{ duration: 0.25 }}
+		{...rest}
+	>
+		{children}
+	</motion.div>
+);
+
 function GoBackButton() {
-	const prevLocation = useAppShellStore(state => state.prevLocation);
-	const navigate = useNavigate();
+	const router = useRouter();
+	const canGoBack = useCanGoBack();
 
-	const onClick = () => {
-		if (!prevLocation)
-			return;
-
-		navigate({
-			to: prevLocation.pathname,
-			search: prevLocation.search,
-			hash: prevLocation.hash,
-			state: prevLocation.state,
-		});
-	};
-
-	if (!prevLocation)
+	if (!canGoBack)
 		return undefined;
 
+	const onClick = () => {
+		router.history.back();
+	};
+
 	return (
-		<Button color="ghost" onClick={onClick}>
+		<Button color="ghost" onPress={onClick}>
 			<ArrowLeftIcon height={20} />
-			<span className="h-5">{getLocationName(prevLocation.pathname)}</span>
+			<span className="h-5">Back</span>
 		</Button>
 	);
 }
@@ -111,21 +129,21 @@ function HeaderBackgrounds({
 			}}
 		>
 			<div
-				className="absolute -z-10 -top-20 h-50 left-0 w-screen animate-fade animate-duration-200" style={{
+				className="absolute -z-10 -top-20 h-50 left-0 w-screen" style={{
 					background: 'rgba(0, 0, 0, 0.20)',
 				}}
 			>
 			</div>
 
 			<div
-				className="relative h-50 top-0 left-0 w-screen animate-fade animate-duration-200"
+				className="relative h-50 top-0 left-0 w-screen"
 				style={{
 					background: 'linear-gradient(180deg, rgba(17, 23, 28, 0.00) 0%, #11171C 60.1%)',
 				}}
 			>
 			</div>
 
-			<div className="relative top-0 left-0 w-full h-full bg-page animate-fade animate-duration-200"></div>
+			<div className="relative top-0 left-0 w-full h-full bg-page "></div>
 		</motion.div>
 	);
 }

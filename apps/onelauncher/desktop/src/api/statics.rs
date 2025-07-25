@@ -1,4 +1,5 @@
-use onelauncher_core::{constants::{NATIVE_ARCH, TARGET_OS}, store::Core};
+use onelauncher_core::constants::{NATIVE_ARCH, TARGET_OS};
+use onelauncher_core::store::Core;
 use serde::Serialize;
 use specta::Type;
 
@@ -14,7 +15,6 @@ pub struct ProgramInfo {
 
 #[must_use]
 pub fn get_program_info() -> ProgramInfo {
-
 	ProgramInfo {
 		launcher_version: Core::get().launcher_version.clone(),
 		webview_version: tauri::webview_version().unwrap_or_else(|_| "UNKNOWN".into()),

@@ -7,7 +7,10 @@ pub trait OneLauncherApi {
 
 	async fn open_dev_tools<R: Runtime>(webview_window: tauri::WebviewWindow<R>);
 
-	async fn set_window_style<R: Runtime>(webview_window: tauri::WebviewWindow<R>, decorations: bool);
+	async fn set_window_style<R: Runtime>(
+		webview_window: tauri::WebviewWindow<R>,
+		decorations: bool,
+	);
 }
 
 #[taurpc::ipc_type]
@@ -15,7 +18,6 @@ pub struct OneLauncherApiImpl;
 
 #[taurpc::resolvers]
 impl OneLauncherApi for OneLauncherApiImpl {
-
 	async fn return_error(self) -> LauncherResult<()> {
 		let err = DaoError::NotFound.into();
 		Err(err)
@@ -26,7 +28,11 @@ impl OneLauncherApi for OneLauncherApiImpl {
 		webview_window.open_devtools();
 	}
 
-	async fn set_window_style<R: Runtime>(self, webview_window: tauri::WebviewWindow<R>, decorations: bool) {
+	async fn set_window_style<R: Runtime>(
+		self,
+		webview_window: tauri::WebviewWindow<R>,
+		decorations: bool,
+	) {
 		webview_window.set_decorations(decorations).ok();
 	}
 }

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use onelauncher_entity::{loader::GameLoader, package::{PackageType, Provider}};
+use onelauncher_entity::loader::GameLoader;
+use onelauncher_entity::package::{PackageType, Provider};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -23,17 +24,21 @@ pub enum Sort {
 	Relevance,
 	Downloads,
 	Newest,
-	Updated
+	Updated,
 }
 
 impl std::fmt::Display for Sort {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", match self {
-			Self::Relevance => "relevance",
-			Self::Downloads => "downloads",
-			Self::Newest => "newest",
-			Self::Updated => "updated",
-		})
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::Relevance => "relevance",
+				Self::Downloads => "downloads",
+				Self::Newest => "newest",
+				Self::Updated => "updated",
+			}
+		)
 	}
 }
 
@@ -48,28 +53,28 @@ pub struct SearchQuery {
 }
 
 #[onelauncher_macro::specta]
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchResult {
-    pub project_id: String,
-    pub project_type: String,
-    pub slug: String,
-    pub author: String,
-    pub title: String,
-    pub description: String,
-    pub categories: Vec<String>,
-    pub display_categories: Vec<String>,
-    pub versions: Vec<String>,
-    pub downloads: usize,
-    pub icon_url: String,
-    pub date_created: DateTime<Utc>,
-    pub date_modified: DateTime<Utc>,
-    pub latest_version: String,
-    pub license: String,
-    pub client_side: PackageSide,
-    pub server_side: PackageSide,
+	pub project_id: String,
+	pub project_type: String,
+	pub slug: String,
+	pub author: String,
+	pub title: String,
+	pub description: String,
+	pub categories: Vec<String>,
+	pub display_categories: Vec<String>,
+	pub versions: Vec<String>,
+	pub downloads: usize,
+	pub icon_url: String,
+	pub date_created: DateTime<Utc>,
+	pub date_modified: DateTime<Utc>,
+	pub latest_version: String,
+	pub license: String,
+	pub client_side: PackageSide,
+	pub server_side: PackageSide,
 	/// List of URLs to images
-    pub gallery: Vec<String>,
-    // pub color: i64,
+	pub gallery: Vec<String>,
+	// pub color: i64,
 }
 
 #[onelauncher_macro::specta]
@@ -98,7 +103,7 @@ pub struct ManagedPackage {
 	pub links: PackageLinks,
 	pub status: PackageStatus,
 	pub downloads: usize,
-	pub gallery: Vec<PackageGallery>
+	pub gallery: Vec<PackageGallery>,
 }
 
 #[onelauncher_macro::specta]
@@ -179,7 +184,7 @@ pub enum PackageSide {
 	Unsupported,
 }
 
-/// https://spdx.org/licenses/
+/// <https://spdx.org/licenses/>
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageLicense {
@@ -188,7 +193,7 @@ pub struct PackageLicense {
 	pub url: Option<String>,
 }
 
-/// https://docs.curseforge.com/rest-api/#tocS_ModLinks
+/// <https://docs.curseforge.com/rest-api/#tocS_ModLinks>
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageLinks {
@@ -214,10 +219,10 @@ pub struct PackageGallery {
 	pub thumbnail_url: String,
 	pub title: Option<String>,
 	pub description: Option<String>,
-	pub featured: Option<bool>
+	pub featured: Option<bool>,
 }
 
-/// https://api.modrinth.com/v2/tag/donation_platform
+/// <https://api.modrinth.com/v2/tag/donation_platform>
 #[onelauncher_macro::specta]
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

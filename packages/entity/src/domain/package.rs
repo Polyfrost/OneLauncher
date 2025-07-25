@@ -24,7 +24,8 @@ impl PackageType {
 			Self::Shader => "shaders",
 			Self::DataPack => "datapacks",
 			Self::ModPack => "modpacks",
-		}.to_string()
+		}
+		.to_string()
 	}
 }
 
@@ -45,7 +46,7 @@ impl Display for Provider {
 
 impl Provider {
 	#[must_use]
-	pub fn name(&self) -> &str {
+	pub const fn name(&self) -> &str {
 		match self {
 			Self::Modrinth => "Modrinth",
 			Self::CurseForge => "CurseForge",
@@ -55,7 +56,7 @@ impl Provider {
 
 	/// Get the URL of the provider with a trailing slash
 	#[must_use]
-	pub fn website(&self) -> &str {
+	pub const fn website(&self) -> &str {
 		match self {
 			Self::Modrinth => "https://modrinth.com/",
 			Self::CurseForge => "https://curseforge.com/",

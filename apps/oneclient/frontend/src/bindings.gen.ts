@@ -92,7 +92,7 @@ export type PackageAuthor = { Team: { team_id: string; org_id: string | null } }
 export type PackageDependencyType = "required" | "optional" | "embedded" | "incompatible"
 
 /**
- * https://api.modrinth.com/v2/tag/donation_platform
+ * <https://api.modrinth.com/v2/tag/donation_platform>
  */
 export type PackageDonationPlatform = "patreon" | "buymeacoffee" | "paypal" | "github" | "kofi" | "other"
 
@@ -103,12 +103,12 @@ export type PackageError = { type: "NoPrimaryFile"; data: string } | { type: "Is
 export type PackageGallery = { url: string; thumbnail_url: string; title: string | null; description: string | null; featured: boolean | null }
 
 /**
- * https://spdx.org/licenses/
+ * <https://spdx.org/licenses/>
  */
 export type PackageLicense = { id: string; name: string; url: string | null }
 
 /**
- * https://docs.curseforge.com/rest-api/#tocS_ModLinks
+ * <https://docs.curseforge.com/rest-api/#tocS_ModLinks>
  */
 export type PackageLinks = { website: string | null; issues: string | null; source: string | null; wiki: string | null; donation: PackageDonationUrl[] | null; discord: string | null }
 
@@ -211,10 +211,8 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}', 'core':'{"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"readSettings":[],"getDefaultUser":["fallback"],"getPackageUser":["provider","slug"],"getClusterById":["id"],"updateClusterById":["id","request"],"getClusters":[],"getLoadersForVersion":["mc_version"],"searchPackages":["provider","query"],"removeCluster":["id"],"getPackage":["provider","slug"],"launchCluster":["id","uuid"],"openMsaLogin":[],"getMultiplePackages":["provider","slugs"],"getUsersFromAuthor":["provider","author"],"getGlobalProfile":[],"removeUser":["uuid"],"getWorlds":["id"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsers":[],"getGameVersions":[],"getUser":["uuid"],"setDefaultUser":["uuid"],"updateClusterProfile":["name","profile"],"getProfileOrDefault":["name"],"createCluster":["options"],"getScreenshots":["id"],"writeSettings":["setting"]}', 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}' }
-export type Router = { 'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
-'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}', 'core':'{"setDefaultUser":["uuid"],"openMsaLogin":[],"getClusters":[],"removeUser":["uuid"],"getWorlds":["id"],"getPackage":["provider","slug"],"getMultiplePackages":["provider","slugs"],"updateClusterById":["id","request"],"readSettings":[],"searchPackages":["provider","query"],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"getPackageUser":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getLoadersForVersion":["mc_version"],"getUsersFromAuthor":["provider","author"],"getUsers":[],"launchCluster":["id","uuid"],"getUser":["uuid"],"getProfileOrDefault":["name"],"getClusterById":["id"],"getDefaultUser":["fallback"],"writeSettings":["setting"],"createCluster":["options"],"removeCluster":["id"],"getGlobalProfile":[],"getGameVersions":[],"getScreenshots":["id"],"updateClusterProfile":["name","profile"]}', 'events':'{"message":["event"],"process":["event"],"ingress":["event"]}' }
+export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: bigint) => Promise<ClusterModel | null>, 
 removeCluster: (id: bigint) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -244,7 +242,9 @@ downloadPackage: (provider: Provider, packageId: string, versionId: string, clus
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> },
 'events': { ingress: (event: IngressPayload) => Promise<void>, 
 message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> } };
+process: (event: ProcessPayload) => Promise<void> },
+'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> } };
 
 
 export type { InferCommandOutput }

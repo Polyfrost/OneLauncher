@@ -1,6 +1,6 @@
 export const LAUNCHER_IMPORT_TYPES = [
 	'PrismLauncher',
-	'Curseforge',
+	'CurseForge',
 	// 'Modrinth',
 	'ATLauncher',
 	'GDLauncher',
@@ -18,7 +18,16 @@ export const LOADERS = [
 	'fabric',
 	'legacyfabric',
 ] as const;
-export const PROVIDERS = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
+export const ProviderNames: Record<typeof LOADERS[number], string> = {
+	vanilla: 'Vanilla',
+	forge: 'Forge',
+	neoforge: 'NeoForge',
+	quilt: 'Quilt',
+	fabric: 'Fabric',
+	legacyfabric: 'Legacy Fabric',
+} as const;
+
+export const PROVIDERS = ['Modrinth', 'CurseForge', 'SkyClient'] as const;
 export const PACKAGE_TYPES = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 
 export function pluralize(n: number, word: string, locale: string = 'en'): string {

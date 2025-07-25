@@ -18,7 +18,7 @@ async function loadEnv() {
 	dotenv.config({ path: `${path}/.env` });
 }
 
-async function fetchCategoriesCurseforge(packageType: PackageType): Promise<MappingList> {
+async function fetchCategoriesCurseForge(packageType: PackageType): Promise<MappingList> {
 	const key = process.env.CURSEFORGE_API_KEY;
 
 	if (key === undefined) {
@@ -55,7 +55,7 @@ async function fetchCategoriesCurseforge(packageType: PackageType): Promise<Mapp
 
 	const mapping: MappingList = {};
 
-	mapping.Curseforge = data
+	mapping.CurseForge = data
 		.filter((category) => {
 			return category.isClass !== true && category.classId === classIds[packageType];
 		})
@@ -108,7 +108,7 @@ async function fetchCategoriesModrinth(packageType: PackageType): Promise<Mappin
 
 	await loadEnv();
 
-	const cfCategories = await fetchCategoriesCurseforge(packageType);
+	const cfCategories = await fetchCategoriesCurseForge(packageType);
 	const modrinthCategories = await fetchCategoriesModrinth(packageType);
 
 	const categories = {

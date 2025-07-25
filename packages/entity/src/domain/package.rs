@@ -33,7 +33,7 @@ impl PackageType {
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 pub enum Provider {
 	Modrinth = 0,
-	Curseforge = 1,
+	CurseForge = 1,
 	SkyClient = 2,
 }
 
@@ -48,7 +48,7 @@ impl Provider {
 	pub fn name(&self) -> &str {
 		match self {
 			Self::Modrinth => "Modrinth",
-			Self::Curseforge => "Curseforge",
+			Self::CurseForge => "CurseForge",
 			Self::SkyClient => "SkyClient",
 		}
 	}
@@ -58,13 +58,13 @@ impl Provider {
 	pub fn website(&self) -> &str {
 		match self {
 			Self::Modrinth => "https://modrinth.com/",
-			Self::Curseforge => "https://curseforge.com/",
+			Self::CurseForge => "https://curseforge.com/",
 			Self::SkyClient => "https://skyclient.co/",
 		}
 	}
 
 	#[must_use]
 	pub const fn get_providers() -> &'static [Self] {
-		&[Self::Modrinth, Self::Curseforge, Self::SkyClient]
+		&[Self::Modrinth, Self::CurseForge, Self::SkyClient]
 	}
 }

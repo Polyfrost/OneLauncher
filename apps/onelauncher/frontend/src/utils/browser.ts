@@ -17,13 +17,13 @@ export const browserCategories = {
 		return [];
 	},
 
-	mod(provider: string = 'Modrinth'): Array<CategoryItem> {
+	mod(provider: Provider = 'Modrinth'): Array<CategoryItem> {
 		return Object.values(modMapping[provider]);
 	},
 };
 
-const modMapping: Record<string, Array<CategoryItem>> = {
-	Curseforge: [
+const modMapping: Record<Provider, Array<CategoryItem>> = {
+	CurseForge: [
 		{ display: 'Adventure', id: '422' },
 		{ display: 'API and Library', id: '421' },
 		{ display: 'Armor and Tools', id: '434' },

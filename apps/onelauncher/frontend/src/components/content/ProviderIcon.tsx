@@ -1,5 +1,5 @@
 import type { ImgHTMLAttributes, RefAttributes } from 'react';
-import CurseforgeIcon from '@/assets/logos/curseforge.svg';
+import CurseForgeIcon from '@/assets/logos/curseforge.svg';
 import VanillaImage from '@/assets/logos/minecraft.png';
 import ModrinthIcon from '@/assets/logos/modrinth.svg';
 import SkyClientImage from '@/assets/logos/skyclient.png';
@@ -9,7 +9,7 @@ export function getProviderLogoSrc(provider: string): string {
 
 	const mapping: Record<string, string> = {
 		modrinth: ModrinthIcon,
-		curseforge: CurseforgeIcon,
+		curseforge: CurseForgeIcon,
 		skyclient: SkyClientImage,
 	};
 

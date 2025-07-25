@@ -116,7 +116,7 @@ function RouteComponent() {
 function getPackageUrl(pkg: ManagedPackage): string {
 	switch (pkg.provider) {
 		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`;
-		case 'Curseforge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`;
+		case 'CurseForge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`;
 		case 'SkyClient': return ``;
 	}
 }

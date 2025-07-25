@@ -75,7 +75,7 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 						{' '}
 						on
 						{' '}
-						<span className="text-fg-primary">{provider}</span>
+						{provider}
 					</p>
 				</div>
 

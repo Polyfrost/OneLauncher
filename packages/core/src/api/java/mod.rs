@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::ingress::{init_ingress, init_ingress_opt, send_ingress};
 use crate::error::LauncherResult;
-use crate::store::ingress::{IngressType, SubIngress};
 use crate::store::Dirs;
+use crate::store::ingress::{IngressType, SubIngress};
 use crate::utils::http::{fetch_advanced, fetch_json};
 use crate::utils::io::{self, IOError};
 
@@ -178,7 +178,10 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 		}
 	}
 
-	tracing::warn!("no java installations found on the system, attempting to download java {}", major);
+	tracing::warn!(
+		"no java installations found on the system, attempting to download java {}",
+		major
+	);
 
 	let java_path = install_java_from_major(major).await?;
 	let java_info = check_java_runtime(&java_path, false).await?;
@@ -197,19 +200,15 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 
 #[cfg(unix)]
 fn find_java_in_path(mut found: Vec<PathBuf>) -> Vec<PathBuf> {
-    if let Ok(path) = std::env::var("PATH") {
-        for path_entry in path.split(':') {
-            let java = PathBuf::from(path_entry).join("java");
-            if java.exists() {
-				if java.is_file() {
-					if !found.contains(&java) {
-						found.push(java);
-					}
-				}
-            }
-        }
-    }
-    found
+	if let Ok(path) = std::env::var("PATH") {
+		for path_entry in path.split(':') {
+			let java = PathBuf::from(path_entry).join("java");
+			if java.exists() && java.is_file() && !found.contains(&java) {
+				found.push(java);
+			}
+		}
+	}
+	found
 }
 /// Attempts to scan common paths for Java installations.
 ///
@@ -315,7 +314,6 @@ fn internal_locate_java() -> Vec<PathBuf> {
 		}
 	}
 
-
 	found = find_java_in_path(found);
 
 	found
@@ -376,12 +374,10 @@ pub async fn get_zulu_packages() -> LauncherResult<Vec<JavaPackage>> {
 pub async fn install_java_from_major(version: u32) -> LauncherResult<PathBuf> {
 	let packages = get_zulu_packages().await?;
 
-	let package =  packages.into_iter()
+	let package = packages
+		.into_iter()
 		.find(|p| p.java_version.contains(&version))
-		.ok_or_else(|| anyhow::anyhow!(
-			"Could not find a java package for version {}",
-			version
-		))?;
+		.ok_or_else(|| anyhow::anyhow!("Could not find a java package for version {}", version))?;
 
 	install_java_package(package).await
 }
@@ -411,19 +407,18 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 		.await
 		.map_err(IOError::AsyncZipError)?;
 
-	if let Some(entry) = archive.file().entries().first() {
-		if let Some(dir) = entry
+	if let Some(entry) = archive.file().entries().first()
+		&& let Some(dir) = entry
 			.filename()
 			.clone()
 			.into_string()
 			.unwrap()
 			.split('/')
 			.next()
-		{
-			let path = java_dir.join(dir);
-			if path.exists() {
-				io::remove_dir_all(&path).await?;
-			}
+	{
+		let path = java_dir.join(dir);
+		if path.exists() {
+			io::remove_dir_all(&path).await?;
 		}
 	}
 
@@ -440,7 +435,12 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 
 	#[cfg(target_os = "macos")]
 	{
-		let java_version = package.java_version.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
+		let java_version = package
+			.java_version
+			.iter()
+			.map(|v| v.to_string())
+			.collect::<Vec<_>>()
+			.join(".");
 		base_path = base_path
 			.join(format!("zulu-{java_version}.jre"))
 			.join("Contents")

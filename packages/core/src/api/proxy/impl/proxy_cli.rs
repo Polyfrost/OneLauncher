@@ -4,7 +4,11 @@ use indicatif::ProgressBar;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{api::{processes::ProcessPayload, proxy::{event::LauncherEvent, LauncherProxy}}, constants::CLI_TOTAL_INGRESS, LauncherResult};
+use crate::LauncherResult;
+use crate::api::processes::ProcessPayload;
+use crate::api::proxy::LauncherProxy;
+use crate::api::proxy::event::LauncherEvent;
+use crate::constants::CLI_TOTAL_INGRESS;
 
 #[derive(Default, Debug)]
 pub struct ProxyCli {
@@ -39,35 +43,37 @@ impl LauncherProxy for ProxyCli {
 					let progress = ProgressBar::new(CLI_TOTAL_INGRESS);
 					progress.set_message(ingress.message.clone());
 					progress.set_position(0);
-					progress.set_style(indicatif::ProgressStyle::default_bar().template(
-						"{spinner:.green}, [{elapsed_precise}] [{bar:.lime/green}] {pos}/{len} {msg}"
-					).unwrap().progress_chars("#>-"));
+					progress.set_style(
+						indicatif::ProgressStyle::default_bar()
+							.template(
+								"{spinner:.green}, [{elapsed_precise}] [{bar:.lime/green}] {pos}/{len} {msg}",
+							)
+							.unwrap()
+							.progress_chars("#>-"),
+					);
 
 					feeds.insert(ingress.id, progress);
 				}
-			},
+			}
 			LauncherEvent::Message(message) => {
 				println!("[{:?}] {}", message.level, message.message);
-			},
-			LauncherEvent::Process(process) => {
-				match process {
-					ProcessPayload::Starting { command } => {
-						println!("Starting process: {command}");
-					},
-					ProcessPayload::Started { process } => {
-						println!("Process started: {process:#?}");
-					},
-					ProcessPayload::Stopped { pid, exit_code } => {
-						println!("Process {pid} exited with code {exit_code}");
-					},
-					ProcessPayload::Output { pid, output } => {
-						println!("Process {pid}: {output}");
-					},
-				}
 			}
+			LauncherEvent::Process(process) => match process {
+				ProcessPayload::Starting { command } => {
+					println!("Starting process: {command}");
+				}
+				ProcessPayload::Started { process } => {
+					println!("Process started: {process:#?}");
+				}
+				ProcessPayload::Stopped { pid, exit_code } => {
+					println!("Process {pid} exited with code {exit_code}");
+				}
+				ProcessPayload::Output { pid, output } => {
+					println!("Process {pid}: {output}");
+				}
+			},
 		}
 
 		Ok(())
 	}
-
 }

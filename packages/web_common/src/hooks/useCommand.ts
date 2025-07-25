@@ -11,6 +11,8 @@ type RegisterConfig = Register extends {
 	commands: infer Keys;
 } ? Keys : never;
 
+type CommandCacheKey = RegisterConfig[number] | (string & {}) | false;
+
 async function fetchCommand<T>(command: () => Promise<T>): Promise<T> {
 	try {
 		const result = await command();
@@ -26,12 +28,15 @@ async function fetchCommand<T>(command: () => Promise<T>): Promise<T> {
 	}
 }
 
-export function useCommand<T>(
-	cacheKey: RegisterConfig[number] | (string & {}) | false,
-	command: () => Promise<T>,
-	options?: Omit<UndefinedInitialDataOptions<T>, 'queryKey' | 'queryFn'>,
-): UseQueryResult<T, Error> {
-	return useQuery({
+export function useCommand<TQueryFnData, TSelected = TQueryFnData>(
+	cacheKey: CommandCacheKey,
+	command: () => Promise<TQueryFnData>,
+	options?: Omit<
+		UndefinedInitialDataOptions<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>,
+		'queryKey' | 'queryFn'
+	>,
+): UseQueryResult<TSelected, Error> {
+	return useQuery<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>({
 		queryKey: cacheKey === false ? [] : [cacheKey],
 		queryFn: () => fetchCommand(command),
 		enabled: true,
@@ -39,24 +44,35 @@ export function useCommand<T>(
 	});
 }
 
-export function useCommandSuspense<T>(
-	cacheKey: RegisterConfig[number] | (string & {}) | false,
-	command: () => Promise<T>,
-	options?: Omit<UseSuspenseQueryOptions<T>, 'queryKey' | 'queryFn'>,
-): UseSuspenseQueryResult<T, Error> {
-	return useSuspenseQuery({
+export function useCommandSuspense<TQueryFnData, TSelected = TQueryFnData>(
+	cacheKey: CommandCacheKey,
+	command: () => Promise<TQueryFnData>,
+	options?: Omit<
+		UseSuspenseQueryOptions<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>,
+    'queryKey' | 'queryFn'
+	>,
+): UseSuspenseQueryResult<TSelected, Error> {
+	return useSuspenseQuery<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>({
 		queryKey: cacheKey === false ? [] : [cacheKey],
 		queryFn: () => fetchCommand(command),
 		...options,
 	});
 }
 
-export function useCommandMut<TData, TError = Error, TVariables = void, TContext = unknown>(
-	command: () => Promise<TData>,
-	options?: Omit<UseMutationOptions<TData, TError, TVariables, TContext>, 'mutationFn'>,
+export function useCommandMut<
+	TData,
+	TError = Error,
+	TVariables = void,
+	TContext = unknown,
+>(
+	command: (variables: TVariables) => Promise<TData>,
+	options?: Omit<
+		UseMutationOptions<TData, TError, TVariables, TContext>,
+		'mutationFn'
+	>,
 ): UseMutationResult<TData, TError, TVariables, TContext> {
 	return useMutation<TData, TError, TVariables, TContext>({
-		mutationFn: () => fetchCommand(command),
+		mutationFn: command,
 		...options,
 	});
 }

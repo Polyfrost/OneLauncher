@@ -1,7 +1,11 @@
 use tauri::{AppHandle, Manager};
 use tracing::{error, warn};
 
-use crate::{api::{proxy::{event::LauncherEvent, message::MessageLevel, LauncherProxy}, tauri::LauncherEventEmitter}, LauncherResult};
+use crate::LauncherResult;
+use crate::api::proxy::LauncherProxy;
+use crate::api::proxy::event::LauncherEvent;
+use crate::api::proxy::message::MessageLevel;
+use crate::api::tauri::LauncherEventEmitter;
 
 #[derive(Debug)]
 pub struct ProxyTauri {
@@ -13,7 +17,10 @@ impl ProxyTauri {
 	#[must_use]
 	pub fn new(handle: AppHandle) -> Self {
 		tracing::debug!("using tauri bridge");
-		tracing::debug!("webview version: {}", tauri::webview_version().unwrap_or("unknown".into()));
+		tracing::debug!(
+			"webview version: {}",
+			tauri::webview_version().unwrap_or_else(|_| "unknown".into())
+		);
 
 		Self {
 			emitter: LauncherEventEmitter::new(handle.clone()),
@@ -27,7 +34,7 @@ impl LauncherProxy for ProxyTauri {
 	async fn send_event(&self, event: LauncherEvent) -> LauncherResult<()> {
 		if let LauncherEvent::Message(message) = &event {
 			match message.level {
-				MessageLevel::Info => {},
+				MessageLevel::Info => {}
 				MessageLevel::Warn => warn!("{}", message.message),
 				MessageLevel::Error => error!("{}", message.message),
 			}
@@ -59,5 +66,4 @@ impl LauncherProxy for ProxyTauri {
 			Ok(())
 		}
 	}
-
 }

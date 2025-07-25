@@ -1,14 +1,16 @@
-import type { ClusterModel } from '@/bindings.gen';
+import type { GameLoader } from '@/bindings.gen';
 import type { HTMLAttributes } from 'react';
 import { GameBackground } from '@/components';
 import { bindings } from '@/main';
+import { prettifyLoader } from '@/utils/loaders';
 import { animations, transitions } from '@/utils/motion';
 import { getVersionInfo } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { DotsGridIcon, Settings04Icon } from '@untitled-theme/icons-react';
+import { DotsGridIcon, PlusIcon, Settings04Icon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
+import { MouseParallax } from 'react-just-parallax';
 import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/')({
@@ -16,30 +18,32 @@ export const Route = createFileRoute('/app/')({
 });
 
 function RouteComponent() {
-	const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
+	const { data: clusters } = useCommandSuspense(
 		'getClusters',
 		bindings.core.getClusters,
 		{
-			select: ((data: Array<ClusterModel>) => {
-				const sorted = data.sort((a, b) => {
-					if (a.last_played && b.last_played)
-						return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
-					else if (a.last_played)
-						return -1; // a has last_played, b does not
-					else if (b.last_played)
-						return 1; // b has last_played, a does not
+			select(data) {
+				const sorted = data
+					.filter(cluster => cluster.last_played !== null)
+					.sort((a, b) => {
+						if (a.last_played && b.last_played)
+							return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
+						else if (a.last_played)
+							return -1; // a has last_played, b does not
+						else if (b.last_played)
+							return 1; // b has last_played, a does not
 
-					const aVersion = a.mc_version.replaceAll('.', '');
-					const bVersion = b.mc_version.replaceAll('.', '');
-					return Number.parseInt(bVersion) - Number.parseInt(aVersion);
-				});
+						const aVersion = a.mc_version.replaceAll('.', '');
+						const bVersion = b.mc_version.replaceAll('.', '');
+						return Number.parseInt(bVersion) - Number.parseInt(aVersion);
+					});
 
 				return [
 					sorted[0],
 					sorted[1],
-					undefined,
+					sorted[3],
 				];
-			}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
+			},
 		},
 	);
 
@@ -51,14 +55,25 @@ function RouteComponent() {
 
 				<div className="flex flex-row justify-center items-center gap-2">
 					<Button size="large">Launch</Button>
-					<Button color="ghost" size="iconLarge"><Settings04Icon /></Button>
+					<Button color="ghost" size="iconLarge">
+						<Settings04Icon />
+					</Button>
 				</div>
 			</motion.div>
 
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
-				{clusters.map((cluster, index) => (
-					<RecentsCard key={cluster?.folder_name ?? index} version={cluster?.mc_version} />
-				))}
+				{clusters.map((cluster) => {
+					// eslint-disable-next-line ts/no-unnecessary-condition -- rule broken
+					return cluster === undefined
+						? (
+								<Card blur className="group flex justify-center items-center" key={`undefined_${Math.random()}`}>
+									<PlusIcon className="text-fg-secondary opacity-40 stroke-2 group-hover:text-fg-primary group-hover:opacity-90" height={64} width={64} />
+								</Card>
+							)
+						: (
+								<RecentsCard key={cluster.folder_name} loader={cluster.mc_loader} version={cluster.mc_version} />
+							);
+				})}
 
 				<Card blur className="flex flex-col justify-center items-center max-w-24">
 					<DotsGridIcon height={48} width={48} />
@@ -69,30 +84,34 @@ function RouteComponent() {
 }
 
 interface RecentsCardProps {
-	version: string | undefined;
+	version: string;
+	loader: GameLoader;
 }
 
 const BLUR = '30px';
-function RecentsCard({ version }: RecentsCardProps) {
+function RecentsCard({ version, loader }: RecentsCardProps) {
 	const versionInfo = getVersionInfo(version);
 
+	if (!versionInfo)
+		return <Card blur>Unknown Version</Card>;
+
 	return (
-		<Card blur={versionInfo === undefined}>
-			{versionInfo && (
-				<div className="flex w-full h-full justify-start items-end px-6 py-3">
-					<GameBackground className="-z-10" name={versionInfo.backgroundName} />
+		<Card>
+			<div className="flex w-full h-full justify-start items-end px-6 py-3">
+				<MouseParallax isAbsolutelyPositioned strength={0.005} zIndex={-10}>
+					<GameBackground className="absolute left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
+				</MouseParallax>
 
-					<div
-						className="absolute top-0 left-0 -z-10 w-full h-full"
-						style={{
-							background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
-						}}
-					>
-					</div>
-
-					<h4 className="text-3xl font-semibold">{version}</h4>
+				<div
+					className="absolute top-0 left-0 -z-10 w-full h-full"
+					style={{
+						background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
+					}}
+				>
 				</div>
-			)}
+
+				<h4 className="text-3xl font-semibold">{version} {prettifyLoader(loader)}</h4>
+			</div>
 		</Card>
 	);
 }

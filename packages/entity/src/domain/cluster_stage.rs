@@ -4,7 +4,9 @@ use sea_orm::{DeriveActiveEnum, EnumIter};
 use serde::{Deserialize, Serialize};
 
 #[onelauncher_macro::specta]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, EnumIter, DeriveActiveEnum)]
+#[derive(
+	Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default, EnumIter, DeriveActiveEnum,
+)]
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 #[serde(rename_all = "lowercase")]
 pub enum ClusterStage {
@@ -16,18 +18,23 @@ pub enum ClusterStage {
 }
 
 impl ClusterStage {
-	pub fn is_downloading(&self) -> bool {
+	#[must_use]
+	pub const fn is_downloading(&self) -> bool {
 		matches!(self, Self::Downloading | Self::Repairing)
 	}
 }
 
 impl Display for ClusterStage {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{}", match self {
-			ClusterStage::NotReady => "Not Ready",
-			ClusterStage::Downloading => "Downloading",
-			ClusterStage::Repairing => "Repairing",
-			ClusterStage::Ready => "Ready",
-		})
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::NotReady => "Not Ready",
+				Self::Downloading => "Downloading",
+				Self::Repairing => "Repairing",
+				Self::Ready => "Ready",
+			}
+		)
 	}
 }

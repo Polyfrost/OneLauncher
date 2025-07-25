@@ -1,10 +1,15 @@
-use std::{fmt::Display, ops::Deref, str::FromStr};
+use std::fmt::Display;
+use std::ops::Deref;
+use std::str::FromStr;
 
-use sea_orm::{sea_query::Nullable, DeriveValueType};
+use sea_orm::DeriveValueType;
+use sea_orm::sea_query::Nullable;
 use serde::{Deserialize, Serialize};
 
 // #[onelauncher_macro::specta]
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType, specta::Type)]
+#[derive(
+	Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType, specta::Type,
+)]
 pub struct Icon(String);
 
 impl Nullable for Icon {
@@ -14,7 +19,8 @@ impl Nullable for Icon {
 }
 
 impl Icon {
-	pub fn from_hash(hash: String) -> Self {
+	#[must_use]
+	pub fn from_hash(hash: &str) -> Self {
 		Self(format!("cache://{hash}"))
 	}
 
@@ -27,7 +33,8 @@ impl Icon {
 		Some(Self(format!("{}", path.display())))
 	}
 
-	pub fn try_from_url(url: url::Url) -> Option<Self> {
+	#[must_use]
+	pub fn try_from_url(url: &url::Url) -> Option<Self> {
 		if url.scheme() != "http" && url.scheme() != "https" {
 			return None;
 		}
@@ -35,6 +42,7 @@ impl Icon {
 		Some(Self(url.as_str().to_string()))
 	}
 
+	#[must_use]
 	pub fn get_type(&self) -> IconType {
 		if self.is_path() {
 			IconType::Path
@@ -48,16 +56,19 @@ impl Icon {
 	}
 
 	/// Returns true if the icon is a path to a file.
+	#[must_use]
 	pub fn is_path(&self) -> bool {
 		self.0.starts_with("file://")
 	}
 
 	/// Returns true if the icon is a HTTP URL.
+	#[must_use]
 	pub fn is_url(&self) -> bool {
 		self.0.starts_with("http://") || self.0.starts_with("https://")
 	}
 
 	/// Returns true if the icon is a cached icon. Relative to the cache directory.
+	#[must_use]
 	pub fn is_cached(&self) -> bool {
 		self.0.starts_with("cache://")
 	}

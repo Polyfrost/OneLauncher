@@ -33,6 +33,7 @@
 		"react": "catalog:",
 		"react-aria-components": "catalog:",
 		"react-dom": "catalog:",
+		"react-just-parallax": "catalog:",
 		"tailwind-merge": "catalog:",
 		"tailwind-variants": "catalog:",
 		"tailwindcss": "catalog:",

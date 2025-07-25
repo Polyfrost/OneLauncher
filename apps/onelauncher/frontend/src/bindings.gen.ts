@@ -93,7 +93,7 @@ export type PackageAuthor = { Team: { team_id: string; org_id: string | null } }
 export type PackageDependencyType = "required" | "optional" | "embedded" | "incompatible"
 
 /**
- * https://api.modrinth.com/v2/tag/donation_platform
+ * <https://api.modrinth.com/v2/tag/donation_platform>
  */
 export type PackageDonationPlatform = "patreon" | "buymeacoffee" | "paypal" | "github" | "kofi" | "other"
 
@@ -104,12 +104,12 @@ export type PackageError = { type: "NoPrimaryFile"; data: string } | { type: "Is
 export type PackageGallery = { url: string; thumbnail_url: string; title: string | null; description: string | null; featured: boolean | null }
 
 /**
- * https://spdx.org/licenses/
+ * <https://spdx.org/licenses/>
  */
 export type PackageLicense = { id: string; name: string; url: string | null }
 
 /**
- * https://docs.curseforge.com/rest-api/#tocS_ModLinks
+ * <https://docs.curseforge.com/rest-api/#tocS_ModLinks>
  */
 export type PackageLinks = { website: string | null; issues: string | null; source: string | null; wiki: string | null; donation: PackageDonationUrl[] | null; discord: string | null }
 
@@ -149,7 +149,7 @@ export type SettingProfileModel = { name: string; java_id: bigint | null; res: R
 
 export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; max_concurrent_requests: bigint; settings_version: number; native_window_frame: boolean }
 
-export type SettingsOsExtra = Record<string, never>
+export type SettingsOsExtra = { enable_gamemode: boolean | null }
 
 export type Sort = "Relevance" | "Downloads" | "Newest" | "Updated"
 
@@ -212,8 +212,11 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'onelauncher':'{"open_dev_tools":[],"set_window_style":["decorations"],"return_error":[]}', 'core':'{"setDefaultUser":["uuid"],"openMsaLogin":[],"writeSettings":["setting"],"getPackage":["provider","slug"],"getLoadersForVersion":["mc_version"],"getUsersFromAuthor":["provider","author"],"getPackageUser":["provider","slug"],"readSettings":[],"createCluster":["options"],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getMultiplePackages":["provider","slugs"],"searchPackages":["provider","query"],"getUser":["uuid"],"removeCluster":["id"],"updateClusterById":["id","request"],"getClusters":[],"getClusterById":["id"],"launchCluster":["id","uuid"],"getProfileOrDefault":["name"],"updateClusterProfile":["name","profile"],"getScreenshots":["id"],"getGameVersions":[],"getGlobalProfile":[],"getUsers":[],"removeUser":["uuid"],"getDefaultUser":["fallback"],"getWorlds":["id"]}', 'events':'{"message":["event"],"process":["event"],"ingress":["event"]}' }
-export type Router = { 'onelauncher': { return_error: () => Promise<null>, 
+const ARGS_MAP = { 'core':'{"getUser":["uuid"],"getLoadersForVersion":["mc_version"],"getPackage":["provider","slug"],"getMultiplePackages":["provider","slugs"],"updateClusterProfile":["name","profile"],"getGlobalProfile":[],"openMsaLogin":[],"writeSettings":["setting"],"getProfileOrDefault":["name"],"removeUser":["uuid"],"getClusterById":["id"],"getGameVersions":[],"getUsers":[],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"getPackageUser":["provider","slug"],"getClusters":[],"updateClusterById":["id","request"],"getUsersFromAuthor":["provider","author"],"launchCluster":["id","uuid"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"createCluster":["options"],"setDefaultUser":["uuid"],"getWorlds":["id"],"removeCluster":["id"],"getScreenshots":["id"],"getDefaultUser":["fallback"],"readSettings":[],"searchPackages":["provider","query"]}', 'onelauncher':'{"set_window_style":["decorations"],"open_dev_tools":[],"return_error":[]}', 'events':'{"process":["event"],"message":["event"],"ingress":["event"]}' }
+export type Router = { 'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> },
+'onelauncher': { return_error: () => Promise<null>, 
 open_dev_tools: () => Promise<void>, 
 set_window_style: (decorations: boolean) => Promise<void> },
 'core': { getClusters: () => Promise<ClusterModel[]>, 
@@ -243,10 +246,7 @@ getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPac
 getPackageVersions: (provider: Provider, slug: string, mcVersions: string[] | null, loaders: GameLoader[] | null, offset: bigint, limit: bigint) => Promise<Paginated<ManagedVersion>>, 
 getPackageUser: (provider: Provider, slug: string) => Promise<ManagedUser>, 
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: bigint, skipCompatibility: boolean | null) => Promise<PackageModel>, 
-getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> } };
+getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> } };
 
 
 export type { InferCommandOutput }

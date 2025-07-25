@@ -1,9 +1,13 @@
+/* eslint-disable perfectionist/sort-imports -- nah */
 import type { CSSProperties } from 'react';
 import { twMerge } from 'tailwind-merge';
-import HypixelSkyblockHub from '../assets/backgrounds/HypixelSkyblockHub.png';
+
+import CavesAndCliffs from '@/assets/backgrounds/CavesAndCliffs.jpg';
+import HypixelSkyblockHub from '@/assets/backgrounds/HypixelSkyblockHub.png';
 
 const GameBackgrounds = {
 	HypixelSkyblockHub,
+	CavesAndCliffs,
 };
 
 export type GameBackgroundName = keyof typeof GameBackgrounds;
@@ -19,7 +23,7 @@ export function GameBackground({ name, className = '', style = undefined }: Game
 
 	return (
 		<div
-			className={twMerge(`absolute -z-50 pointer-events-none inset-0 bg-cover bg-center`, className)}
+			className={twMerge(`pointer-events-none inset-0 bg-cover bg-center bg-no-repeat`, className)}
 			style={{ backgroundImage: `url(${BackgroundImage})`, ...style }}
 		/>
 	);

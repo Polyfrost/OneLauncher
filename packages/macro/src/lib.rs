@@ -24,7 +24,10 @@ mod pin;
 /// ```
 #[proc_macro_attribute]
 #[cfg(feature = "specta")]
-pub fn specta(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn specta(
+	attr: proc_macro::TokenStream,
+	item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	specta::specta(attr, item)
 }
 
@@ -36,12 +39,18 @@ pub fn serialized_error_derive(item: proc_macro::TokenStream) -> proc_macro::Tok
 }
 
 #[proc_macro_attribute]
-pub fn error(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn error(
+	attr: proc_macro::TokenStream,
+	item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	error::error_attr(attr, item)
 }
 
-/// This macro Box::Pin a function
+/// This macro `Box::Pin` a function
 #[proc_macro_attribute]
-pub fn pin(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn pin(
+	attr: proc_macro::TokenStream,
+	item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
 	pin::pin(attr, item)
 }

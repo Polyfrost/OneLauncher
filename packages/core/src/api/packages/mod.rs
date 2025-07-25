@@ -88,7 +88,7 @@ pub async fn download_package(
 	.await?;
 
 	let icon = if let Some(icon_url) = &package.icon_url {
-		if let Some(icon) = Icon::try_from_url(url::Url::parse(icon_url)?) {
+		if let Some(icon) = Icon::try_from_url(&url::Url::parse(icon_url)?) {
 			Some(icon::cache_icon(&icon).await?)
 		} else {
 			None
@@ -142,12 +142,24 @@ pub async fn link_package(
 
 	tracing::trace!("checking compatibility of package with cluster");
 	if !skip_compatibility.unwrap_or(false) {
-		if !package.mc_loader.iter().any(|v| cluster.mc_loader.compatible_with(v)) {
-			return Err(LauncherError::from(PackageError::from(IncompatiblePackageType::Loader)));
+		if !package
+			.mc_loader
+			.iter()
+			.any(|v| cluster.mc_loader.compatible_with(v))
+		{
+			return Err(LauncherError::from(PackageError::from(
+				IncompatiblePackageType::Loader,
+			)));
 		}
 
-		if !package.mc_versions.iter().any(|v| cluster.mc_version.contains(v)) {
-			return Err(LauncherError::from(PackageError::from(IncompatiblePackageType::McVersion)));
+		if !package
+			.mc_versions
+			.iter()
+			.any(|v| cluster.mc_version.contains(v))
+		{
+			return Err(LauncherError::from(PackageError::from(
+				IncompatiblePackageType::McVersion,
+			)));
 		}
 	}
 
@@ -160,7 +172,9 @@ pub async fn link_package(
 	io::create_dir_all(&dest_dir).await?;
 
 	let dest_pkg = dest_dir.join(package.file_name.as_str());
-	tokio::fs::hard_link(src_pkg, dest_pkg).await.map_err(IOError::from)?;
+	tokio::fs::hard_link(src_pkg, dest_pkg)
+		.await
+		.map_err(IOError::from)?;
 
 	dao::link_package_to_cluster(package, cluster).await?;
 
@@ -174,9 +188,17 @@ pub async fn link_package(
 }
 
 fn path_from_model(dirs: &Dirs, model: &packages::Model) -> std::path::PathBuf {
-	join_package_file(dirs.package_dir(&model.package_type, &model.provider, &model.package_id), &model.version_id, model.file_name.as_str())
+	join_package_file(
+		dirs.package_dir(&model.package_type, &model.provider, &model.package_id),
+		&model.version_id,
+		model.file_name.as_str(),
+	)
 }
 
-fn join_package_file(path: impl AsRef<std::path::Path>, version_id: &str, file_name: &str) -> std::path::PathBuf {
+fn join_package_file(
+	path: impl AsRef<std::path::Path>,
+	version_id: &str,
+	file_name: &str,
+) -> std::path::PathBuf {
 	path.as_ref().join(format!("{version_id}-{file_name}"))
 }

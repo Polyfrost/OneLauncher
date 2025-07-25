@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use futures::{pin_mut, AsyncReadExt, TryStreamExt};
+use futures::{AsyncReadExt, TryStreamExt, pin_mut};
 use interpulse::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
 use interpulse::api::modded::SidedDataEntry;
 use interpulse::utils::get_path_from_artifact;
@@ -11,8 +11,8 @@ use onelauncher_entity::resolution::Resolution;
 
 use crate::constants::{self, DUMMY_REPLACE_NEWLINE};
 use crate::error::LauncherResult;
-use crate::store::credentials::MinecraftCredentials;
 use crate::store::Core;
+use crate::store::credentials::MinecraftCredentials;
 use crate::utils::io;
 
 #[allow(clippy::too_many_arguments)]
@@ -178,23 +178,31 @@ pub async fn main_class(path: String) -> LauncherResult<Option<String>> {
 		let mut entry_reader = match reader.reader_without_entry(index).await {
 			Ok(reader) => reader,
 			Err(err) => {
-				tracing::error!("failed to get entry reader for {}: {}", entry.filename().as_str().unwrap_or_default(), err);
+				tracing::error!(
+					"failed to get entry reader for {}: {}",
+					entry.filename().as_str().unwrap_or_default(),
+					err
+				);
 				continue;
 			}
 		};
 
 		if let Err(err) = entry_reader.read_to_string(&mut buf).await {
-			tracing::error!("failed to read entry {}: {}", entry.filename().as_str().unwrap_or_default(), err);
+			tracing::error!(
+				"failed to read entry {}: {}",
+				entry.filename().as_str().unwrap_or_default(),
+				err
+			);
 			continue;
 		}
 
 		for line in buf.lines() {
 			let line = line.trim();
-			if line.starts_with("Main-Class:") {
-				if let Some(class) = line.split(':').nth(1) {
-					class_name = Some(class.trim().to_string());
-					break;
-				}
+			if line.starts_with("Main-Class:")
+				&& let Some(class) = line.split(':').nth(1)
+			{
+				class_name = Some(class.trim().to_string());
+				break;
 			}
 		}
 	}
@@ -282,9 +290,10 @@ pub fn classpaths(
 		.iter()
 		.filter_map(|lib| {
 			if let Some(rules) = &lib.rules
-				&& !super::rules::validate_rules(rules, java_arch, updated) {
-					return None;
-				}
+				&& !super::rules::validate_rules(rules, java_arch, updated)
+			{
+				return None;
+			}
 
 			if !lib.include_in_classpath {
 				return None;
@@ -294,11 +303,7 @@ pub fn classpaths(
 		})
 		.collect::<Result<HashSet<_>, _>>()?;
 
-	classpaths.insert(
-		io::canonicalize(client_path)?
-			.to_string_lossy()
-			.to_string(),
-	);
+	classpaths.insert(io::canonicalize(client_path)?.to_string_lossy().to_string());
 
 	Ok(classpaths
 		.into_iter()

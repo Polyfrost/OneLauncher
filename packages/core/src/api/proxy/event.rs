@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-use crate::{error::LauncherResult, store::proxy::ProxyState};
+use crate::error::LauncherResult;
+use crate::store::proxy::ProxyState;
 
 #[onelauncher_macro::specta]
 #[derive(Debug, Clone, Serialize)]

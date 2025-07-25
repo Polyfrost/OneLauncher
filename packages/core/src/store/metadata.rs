@@ -20,7 +20,7 @@ use super::Dirs;
 pub struct Metadata {
 	initialized: bool,
 	inner: MetadataInner,
-	version_loader_cache: HashMap<String, Vec<GameLoader>>
+	version_loader_cache: HashMap<String, Vec<GameLoader>>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub enum MetadataError {
 	ParseError(
 		#[from]
 		#[skip]
-		serde_json::Error
+		serde_json::Error,
 	),
 	#[error("no matching loader found")]
 	NoMatchingLoader,
@@ -65,7 +65,6 @@ impl Metadata {
 		Self::default()
 	}
 
-
 	#[tracing::instrument(skip(self))]
 	pub async fn get_vanilla_or_fetch(&mut self) -> LauncherResult<&VanillaManifest> {
 		if !self.initialized() {
@@ -76,7 +75,10 @@ impl Metadata {
 	}
 
 	#[tracing::instrument(skip(self))]
-	pub async fn get_modded_or_fetch(&mut self, loader: &GameLoader) -> LauncherResult<&ModdedManifest> {
+	pub async fn get_modded_or_fetch(
+		&mut self,
+		loader: &GameLoader,
+	) -> LauncherResult<&ModdedManifest> {
 		if !loader.is_modded() {
 			return Err(MetadataError::NotModdedManifest(*loader).into());
 		}
@@ -89,7 +91,10 @@ impl Metadata {
 	}
 
 	pub fn get_vanilla(&self) -> LauncherResult<&VanillaManifest> {
-		self.inner.minecraft.as_ref().ok_or_else(|| MetadataError::FetchError.into())
+		self.inner
+			.minecraft
+			.as_ref()
+			.ok_or_else(|| MetadataError::FetchError.into())
 	}
 
 	pub fn get_modded(&self, loader: &GameLoader) -> LauncherResult<&ModdedManifest> {
@@ -103,7 +108,8 @@ impl Metadata {
 			GameLoader::Fabric => self.inner.fabric.as_ref(),
 			GameLoader::Quilt => self.inner.quilt.as_ref(),
 			_ => None,
-		}.ok_or_else(|| MetadataError::FetchError.into())
+		}
+		.ok_or_else(|| MetadataError::FetchError.into())
 	}
 
 	#[tracing::instrument(skip_all)]
@@ -144,18 +150,16 @@ impl Metadata {
 			($var:tt, $is_modded:tt) => {
 				if self.inner.$var.is_none() {
 					match GameLoader::from_str(stringify!($var)) {
-						Ok(loader) => {
-							match check!(_fetch, loader, $is_modded) {
-								Ok(data) => {
-									self.inner.$var = Some(data);
-									changed += 1;
-								}
-								Err(err) => {
-									tracing::error!("failed to fetch manifest for {}: {}", loader, err);
-								}
+						Ok(loader) => match check!(_fetch, loader, $is_modded) {
+							Ok(data) => {
+								self.inner.$var = Some(data);
+								changed += 1;
+							}
+							Err(err) => {
+								tracing::error!("failed to fetch manifest for {}: {}", loader, err);
 							}
 						},
-						Err(err) => tracing::error!("{err}")
+						Err(err) => tracing::error!("{err}"),
 					};
 				}
 			};
@@ -225,7 +229,10 @@ impl Metadata {
 	/// Returns a list of loaders that are compatible with the given Minecraft version.
 	///
 	/// WARNING: Can be heavy in certain cases!
-	pub async fn get_loaders_for_version(&mut self, mc_version: &str) -> LauncherResult<Vec<GameLoader>> {
+	pub async fn get_loaders_for_version(
+		&mut self,
+		mc_version: &str,
+	) -> LauncherResult<Vec<GameLoader>> {
 		if !self.initialized() {
 			self.initialize().await?;
 		}
@@ -248,7 +255,8 @@ impl Metadata {
 			}
 		}
 
-		self.version_loader_cache.insert(mc_version.to_owned(), loaders.clone());
+		self.version_loader_cache
+			.insert(mc_version.to_owned(), loaders.clone());
 
 		Ok(loaders)
 	}

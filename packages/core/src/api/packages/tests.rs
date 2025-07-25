@@ -1,7 +1,9 @@
-
 use onelauncher_entity::package::Provider;
 
-use crate::{api::packages::{self, provider::ProviderExt}, error::LauncherResult, store::{Core, CoreOptions, Dirs}};
+use crate::api::packages::provider::ProviderExt;
+use crate::api::packages::{self};
+use crate::error::LauncherResult;
+use crate::store::{Core, CoreOptions, Dirs};
 
 #[tokio::test]
 pub async fn test_get_provider() -> LauncherResult<()> {
@@ -22,7 +24,9 @@ pub async fn test_get_multiple() -> LauncherResult<()> {
 
 	let provider = Provider::Modrinth;
 
-	let res = provider.get_multiple(&["oneconfig".to_string(), "chatting".to_string()]).await?;
+	let res = provider
+		.get_multiple(&["oneconfig".to_string(), "chatting".to_string()])
+		.await?;
 
 	assert_eq!(res.len(), 2);
 
@@ -35,7 +39,9 @@ pub async fn test_get_versions() -> LauncherResult<()> {
 
 	let provider = Provider::Modrinth;
 
-	let res = provider.get_versions(&["ZvlCAdEF".to_string(), "GQANlg7p".to_string()]).await?;
+	let res = provider
+		.get_versions(&["ZvlCAdEF".to_string(), "GQANlg7p".to_string()])
+		.await?;
 
 	assert_eq!(res.len(), 2);
 
@@ -51,7 +57,7 @@ pub async fn test_download_chatting() -> LauncherResult<()> {
 	let pkg = provider.get("chatting").await?;
 	let ver_id = pkg.version_ids.first().expect("No version found");
 	let versions = provider.get_versions(&[ver_id.clone()]).await?;
- 	let ver = versions.first().expect("No version found");
+	let ver = versions.first().expect("No version found");
 
 	let db_model = packages::download_package(&pkg, ver, None).await;
 	assert!(db_model.is_ok_and(|m| m.display_name == pkg.name));

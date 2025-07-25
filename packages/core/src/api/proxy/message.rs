@@ -19,10 +19,7 @@ pub enum MessageLevel {
 
 pub fn send_message(level: MessageLevel, message: String) {
 	tokio::spawn(async move {
-		let payload = MessagePayload {
-			level,
-			message,
-		};
+		let payload = MessagePayload { level, message };
 
 		send_event(super::event::LauncherEvent::Message(payload)).await;
 	});

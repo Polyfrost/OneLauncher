@@ -1,9 +1,13 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 use onelauncher_entity::clusters;
 use serde::Serialize;
 
-use crate::{error::{DaoError, LauncherResult}, send_error, store::Dirs, utils::io};
+use crate::error::{DaoError, LauncherResult};
+use crate::send_error;
+use crate::store::Dirs;
+use crate::utils::io;
 
 use super::dao::{self, ClusterId};
 
@@ -42,10 +46,7 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 			missing_ids.push(cluster.id);
 
 			let path = cluster.folder_name.clone();
-			send_error!(
-				"cluster {} is missing from the filesystem",
-				path.clone()
-			);
+			send_error!("cluster {} is missing from the filesystem", path.clone());
 		}
 
 		checked_folders.insert(dirs.clusters_dir().join(cluster.folder_name.clone()));
@@ -56,22 +57,22 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 	// and checks if they are in the database
 	let cluster_dir = Dirs::get_clusters_dir().await?;
 	if cluster_dir.exists() {
- 		let mut stream = io::read_dir(cluster_dir).await?;
- 		while let Ok(Some(entry)) = stream.next_entry().await {
- 			let path = entry.path();
- 			if !path.is_dir() || checked_folders.contains(&path) {
- 				// Skip if it's not a directory or if we've already checked it
- 				continue;
- 			}
+		let mut stream = io::read_dir(cluster_dir).await?;
+		while let Ok(Some(entry)) = stream.next_entry().await {
+			let path = entry.path();
+			if !path.is_dir() || checked_folders.contains(&path) {
+				// Skip if it's not a directory or if we've already checked it
+				continue;
+			}
 
- 			// We have a directory that is not in the database
- 			if let Err(err) = sync_from_fs_to_db(&path).await {
- 				tracing::error!("failed to sync cluster from fs to db: {}", err);
- 			}
- 		}
- 	} else {
- 		io::create_dir_all(cluster_dir).await?;
- 	}
+			// We have a directory that is not in the database
+			if let Err(err) = sync_from_fs_to_db(&path).await {
+				tracing::error!("failed to sync cluster from fs to db: {}", err);
+			}
+		}
+	} else {
+		io::create_dir_all(cluster_dir).await?;
+	}
 
 	Ok(missing_ids)
 }
@@ -80,7 +81,9 @@ pub async fn sync_clusters() -> LauncherResult<Vec<ClusterId>> {
 /// Checks if the cluster in the database exists and if the directory exists.
 #[tracing::instrument]
 pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncAction> {
-	let path = Dirs::get_clusters_dir().await?.join(cluster.folder_name.clone());
+	let path = Dirs::get_clusters_dir()
+		.await?
+		.join(cluster.folder_name.clone());
 	if !path.exists() {
 		return Ok(SyncAction::MissingFs);
 	}
@@ -119,5 +122,6 @@ async fn sync_from_fs_to_db(path: &PathBuf) -> LauncherResult<clusters::Model> {
 	Err(anyhow::anyhow!(
 		"TODO: failed to sync cluster from fs to db: {}",
 		path.display()
-	).into())
+	)
+	.into())
 }

@@ -12,9 +12,9 @@ use tokio_stream::StreamExt;
 
 use crate::api::ingress::IngressSendExt;
 use crate::error::LauncherResult;
+use crate::store::Core;
 use crate::store::ingress::{SubIngress, SubIngressExt};
 use crate::store::semaphore::SemaphoreStore;
-use crate::store::Core;
 
 use super::crypto::{CryptoError, HashAlgorithm};
 use super::io;
@@ -82,13 +82,15 @@ pub async fn fetch_advanced(
 		match req.send().await {
 			Err(err) => {
 				if attempt <= Core::get().fetch_attempts {
-					tracing::error!("error occurred whilst fetching on attempt {attempt}: {err} retrying request...");
+					tracing::error!(
+						"error occurred whilst fetching on attempt {attempt}: {err} retrying request..."
+					);
 					continue;
 				}
 
-				return Err(err.into())
-			},
-			Ok(res) => break res
+				return Err(err.into());
+			}
+			Ok(res) => break res,
 		}
 	};
 
@@ -102,13 +104,12 @@ pub async fn fetch_advanced(
 			let mut bytes = Vec::new();
 
 			while let Some(item) = stream.next().await {
-				let chunk =
-					item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
+				let chunk = item.or(Err(anyhow::anyhow!("no value for fetch bytes")))?;
 				bytes.append(&mut chunk.to_vec());
 
-				ingress.send_ingress(
-					(chunk.len() as f64 / total_size as f64) * ingress.total,
-				).await?;
+				ingress
+					.send_ingress((chunk.len() as f64 / total_size as f64) * ingress.total)
+					.await?;
 			}
 
 			Ok(Bytes::from(bytes))
@@ -131,7 +132,7 @@ pub async fn fetch_advanced(
 					}
 					.into());
 				}
-			},
+			}
 			Err(err) => {
 				tracing::error!("failed to calculate hash for {url}: {err}");
 				return Err(err.into());
@@ -178,7 +179,10 @@ pub async fn download_advanced(
 	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
 	const TASKS: f64 = 3.0;
-	let ingress_step = ingress.ingress_total().map(|total| total / TASKS).unwrap_or_default();
+	let ingress_step = ingress
+		.ingress_total()
+		.map(|total| total / TASKS)
+		.unwrap_or_default();
 
 	let bytes = fetch_advanced(
 		method,
@@ -209,7 +213,7 @@ pub async fn download(
 	url: &str,
 	path: impl AsRef<Path>,
 	hash: Option<(HashAlgorithm, &str)>,
-	ingress: Option<&SubIngress<'_>>
+	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
 	download_advanced(method, url, path, None, None, hash, ingress).await
 }

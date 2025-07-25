@@ -187,7 +187,8 @@ impl ProcessStore {
 			send_error!("{err:?}");
 		}
 
-		command.stdout(Stdio::piped())
+		command
+			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.stdin(Stdio::null());
 
@@ -324,7 +325,10 @@ async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
 	}
 }
 
-async fn wait_for_exit(cluster_id: ClusterId, child: &Arc<RwLock<ChildType>>) -> LauncherResult<i32> {
+async fn wait_for_exit(
+	cluster_id: ClusterId,
+	child: &Arc<RwLock<ChildType>>,
+) -> LauncherResult<i32> {
 	let mut last_updated = Utc::now();
 
 	loop {

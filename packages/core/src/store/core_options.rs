@@ -1,4 +1,5 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
+use std::sync::Arc;
 
 use tokio::sync::OnceCell;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -48,9 +49,9 @@ impl Core {
 	}
 
 	pub async fn initialize(options: CoreOptions) -> LauncherResult<()> {
-		CORE_STATE.get_or_try_init(|| async move {
-			Ok::<_, LauncherError>(Self::new(options))
-		}).await?;
+		CORE_STATE
+			.get_or_try_init(|| async move { Ok::<_, LauncherError>(Self::new(options)) })
+			.await?;
 
 		tracing::info!("core initialized successfully");
 
@@ -58,10 +59,7 @@ impl Core {
 	}
 
 	pub fn get() -> Arc<Self> {
-		CORE_STATE
-			.get()
-			.expect("core was not initialized")
-			.clone()
+		CORE_STATE.get().expect("core was not initialized").clone()
 	}
 }
 
@@ -72,4 +70,3 @@ impl Deref for Core {
 		&self.0
 	}
 }
-

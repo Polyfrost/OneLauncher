@@ -49,7 +49,7 @@ function usePagination(options: PaginationOptions) {
 	function PaginationBtn({ page: pageIndex }: { page: number }) {
 		return (
 			<Button
-				className="p-2 text-lg min-w-8"
+				className="p-2 min-w-8 h-8"
 				color={pageIndex === page ? 'primary' : 'secondary'}
 
 				onClick={() => {

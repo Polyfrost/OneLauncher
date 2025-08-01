@@ -79,7 +79,7 @@ function BrowserCategories() {
 			<div className="flex flex-col gap-y-6 ml-16">
 				<Show when>
 					<div className="flex flex-col gap-y-1.5">
-						<h5 className="my-1 uppercase opacity-60 font-light">Categories</h5>
+						<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
 						{categories.map(category => (
 							<p
 								aria-selected={context.query.filters?.categories?.includes(category.id)}
@@ -144,7 +144,8 @@ function BrowserToolbar() {
 
 			<div className="flex flex-row gap-2">
 				<TextField
-					iconLeft={<SearchMdIcon />}
+					className="min-w-64"
+					iconLeft={<SearchMdIcon className="scale-75" />}
 					onChange={e => setQuery(e.currentTarget.value)}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter')

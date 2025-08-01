@@ -2,8 +2,8 @@
 
 <img src=".github/media/RepoBanner.png" alt="Repository Banner" />
 
-# ` OneLauncher ` + ` OneClient `
-Here is the monorepo containing the code for OneLauncher and OneClient.
+# OneLauncher  |  OneClient
+The monorepo containing the code for OneLauncher, OneClient, and its core backend.
 
 </div>
 

@@ -13,7 +13,7 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
 	return (
-		<div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5! gap-2">
+		<div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5! gap-4">
 			{items.map(item => (
 				<PackageItem key={item.project_id} {...item} provider={provider} />
 			))}

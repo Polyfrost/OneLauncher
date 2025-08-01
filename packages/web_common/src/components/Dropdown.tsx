@@ -1,6 +1,7 @@
 import type {
 	ListBoxItemProps as AriaListBoxItemProps,
 	SelectProps as AriaSelectProps,
+	SelectValueRenderProps,
 
 } from 'react-aria-components';
 import type { VariantProps } from 'tailwind-variants';
@@ -15,6 +16,7 @@ import {
 	Popover as AriaPopover,
 	Select as AriaSelect,
 	SelectValue as AriaSelectValue,
+	SelectValue,
 } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { tv } from 'tailwind-variants';
@@ -102,6 +104,7 @@ export interface DropdownProps<T extends object>
 
 	customMinimalIcon?: React.ReactNode;
 	popoverClassName?: string;
+	selectValue?: (arg1: SelectValueRenderProps<object> & { defaultChildren: React.ReactNode | undefined }) => string;
 }
 
 export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
@@ -115,6 +118,7 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 		customMinimalIcon,
 		minimal,
 		popoverClassName,
+		selectValue,
 		...rest
 	} = props;
 
@@ -129,7 +133,13 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 					<Button className={styles.trigger()} color="ghost">
 						<div className={styles.triggerValueContent()}>
 							{triggerTextPrefix && <span>{triggerTextPrefix}</span>}
-							<AriaSelectValue />
+							{selectValue
+								? (
+										<SelectValue>
+											{selectValue}
+										</SelectValue>
+									)
+								: <SelectValue />}
 						</div>
 						{
 							isOpen

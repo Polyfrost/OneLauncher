@@ -14,19 +14,17 @@ authors = { workspace = true }
 path = "src/lib.rs"
 
 [features]
-default = [ "tauri" ]
+default = [ ]
 tauri = [
 	"dep:tauri",
 	"dep:taurpc",
 	"specta",
 	"gui",
-	"onelauncher_macro/tauri",
 ]
 specta = [
 	"dep:specta",
 	"interpulse/specta",
 	"onelauncher_entity/specta",
-	"onelauncher_macro/specta",
 ]
 cli = [ "dep:indicatif" ]
 gui = []
@@ -51,6 +49,7 @@ tracing-appender = { workspace = true }
 serde = { workspace = true }
 serde_json = { package = "serde_json_path_to_error", path = "../serde_json_path_to_error" }
 serde_with = { workspace = true }
+serde_repr = { workspace = true }
 
 # utils
 sea-orm = { workspace = true }

@@ -113,8 +113,8 @@ pub struct Ingress {
 	pub last_sent: f64,
 }
 
-// #[onelauncher_macro::specta]
-#[derive(Serialize, Deserialize, specta::Type, Debug, Clone)]
+#[onelauncher_macro::specta]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum IngressType {
 	Download { file_name: String },
 	JavaPrepare,

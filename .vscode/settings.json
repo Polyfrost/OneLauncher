@@ -27,6 +27,10 @@
 	"rust-analyzer.diagnostics.disabled": [
 		"macro-error" // TODO: Remove this once taurpc upgrades to latest specta
 	],
+	"rust-analyzer.assist.preferSelf": true,
+	"rust-analyzer.procMacro.ignored": {
+		"async-trait": ["async_trait"]
+	},
 	"rust-analyzer.check.command": "check",
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"rust-analyzer.linkedProjects": [],

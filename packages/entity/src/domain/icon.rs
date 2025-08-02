@@ -6,10 +6,8 @@ use sea_orm::DeriveValueType;
 use sea_orm::sea_query::Nullable;
 use serde::{Deserialize, Serialize};
 
-// #[onelauncher_macro::specta]
-#[derive(
-	Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType, specta::Type,
-)]
+#[onelauncher_macro::specta]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, DeriveValueType)]
 pub struct Icon(String);
 
 impl Nullable for Icon {

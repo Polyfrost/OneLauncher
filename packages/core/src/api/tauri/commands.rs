@@ -118,14 +118,14 @@ pub trait TauriLauncherApi {
 	async fn get_package_versions(
 		provider: Provider,
 		slug: String,
-		mc_versions: Option<Vec<String>>,
-		loaders: Option<Vec<GameLoader>>,
+		mc_version: Option<String>,
+		loader: Option<GameLoader>,
 		offset: usize,
 		limit: usize,
 	) -> LauncherResult<Paginated<ManagedVersion>>;
 
-	#[taurpc(alias = "getPackageUser")]
-	async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
+	// #[taurpc(alias = "getPackageUser")]
+	// async fn get_package_user(provider: Provider, slug: String) -> LauncherResult<ManagedUser>;
 
 	#[taurpc(alias = "downloadPackage")]
 	async fn download_package(
@@ -485,22 +485,14 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		self,
 		provider: Provider,
 		slug: String,
-		mc_versions: Option<Vec<String>>,
-		loaders: Option<Vec<GameLoader>>,
+		mc_version: Option<String>,
+		loader: Option<GameLoader>,
 		offset: usize,
 		limit: usize,
 	) -> LauncherResult<Paginated<ManagedVersion>> {
 		provider
-			.get_versions_paginated(&slug, mc_versions, loaders, offset, limit)
+			.get_versions_paginated(&slug, mc_version, loader, offset, limit)
 			.await
-	}
-
-	async fn get_package_user(
-		self,
-		provider: Provider,
-		slug: String,
-	) -> LauncherResult<ManagedUser> {
-		provider.get_user(&slug).await
 	}
 
 	async fn download_package(

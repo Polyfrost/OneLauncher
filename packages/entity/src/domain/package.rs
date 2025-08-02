@@ -4,10 +4,13 @@ use sea_orm::{DeriveActiveEnum, EnumIter};
 use serde::{Deserialize, Serialize};
 
 #[onelauncher_macro::specta]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[derive(
+	Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum,
+)]
 #[serde(rename_all = "lowercase")]
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 pub enum PackageType {
+	#[default]
 	Mod = 0,
 	ResourcePack = 1,
 	Shader = 2,
@@ -24,6 +27,32 @@ impl PackageType {
 			Self::Shader => "shaders",
 			Self::DataPack => "datapacks",
 			Self::ModPack => "modpacks",
+		}
+		.to_string()
+	}
+}
+
+impl From<String> for PackageType {
+	fn from(value: String) -> Self {
+		match value.to_lowercase().as_str() {
+			"mod" => Self::Mod,
+			"resourcepack" => Self::ResourcePack,
+			"shader" => Self::Shader,
+			"datapack" => Self::DataPack,
+			"modpack" => Self::ModPack,
+			_ => Self::Mod, // default case
+		}
+	}
+}
+
+impl ToString for PackageType {
+	fn to_string(&self) -> String {
+		match self {
+			&Self::Mod => "mod",
+			&Self::ResourcePack => "resourcepack",
+			&Self::Shader => "shader",
+			&Self::DataPack => "datapack",
+			&Self::ModPack => "modpack",
 		}
 		.to_string()
 	}

@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use super::ProviderExt;
+use crate::api::packages::categories::ToProviderCategory;
 use crate::api::packages::data::{
-	DEFAULT_LIMIT, ManagedPackage, ManagedUser, ManagedVersion, ManagedVersionDependency,
-	ManagedVersionFile, PackageAuthor, PackageDependencyType, PackageDonationUrl, PackageGallery,
-	PackageLicense, PackageLinks, PackageReleaseType, PackageSide, PackageStatus, SearchQuery,
-	SearchResult,
+	DEFAULT_LIMIT, ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion,
+	ManagedVersionDependency, ManagedVersionFile, PackageAuthor, PackageDependencyType,
+	PackageDonationUrl, PackageGallery, PackageLicense, PackageLinks, PackageReleaseType,
+	PackageSide, PackageStatus, SearchQuery, SearchResult,
 };
+use crate::api::packages::provider::modrinth::categories::ModrinthCategories;
 use crate::error::LauncherResult;
 use crate::utils::http;
 use crate::utils::pagination::Paginated;
@@ -15,6 +19,8 @@ use reqwest::Method;
 use serde::Deserialize;
 use serde_with::serde_as;
 use url::Url;
+
+mod categories;
 
 macro_rules! url {
 	($($arg:tt)*) => {
@@ -30,13 +36,6 @@ macro_rules! url_v3 {
 
 #[derive(Default)]
 pub struct ModrinthProviderImpl;
-
-impl ModrinthProviderImpl {
-	#[must_use]
-	pub const fn new() -> Self {
-		Self
-	}
-}
 
 #[async_trait::async_trait]
 impl ProviderExt for ModrinthProviderImpl {
@@ -54,39 +53,33 @@ impl ProviderExt for ModrinthProviderImpl {
 				let mut builder = FacetBuilder::builder();
 
 				if let Some(categories) = &filters.categories {
-					for category in categories {
-						builder.and(Facet(
-							"categories".to_string(),
-							FacetOperation::Eq,
-							category.to_string(),
-						));
+					for category in ModrinthCategories::as_out(categories) {
+						builder.and(Facet::new("categories", FacetOperation::Eq, category));
 					}
 				}
 
 				if let Some(mc_versions) = &filters.game_versions {
 					for mc_version in mc_versions {
-						builder.and(Facet(
-							"versions".to_string(),
+						builder.and(Facet::new(
+							"versions",
 							FacetOperation::Eq,
-							mc_version.to_string(),
+							mc_version.clone(),
 						));
 					}
 				}
 
-				if let Some(package_types) = &filters.package_types {
-					for package_type in package_types {
-						builder.and(Facet(
-							"project_type".to_string(),
-							FacetOperation::Eq,
-							package_type_to_string(package_type),
-						));
-					}
+				if let Some(package_type) = &filters.package_type {
+					builder.and(Facet::new(
+						"project_type",
+						FacetOperation::Eq,
+						package_type.to_string(),
+					));
 				}
 
 				if let Some(loaders) = &filters.loaders {
 					for loader in loaders {
-						builder.and(Facet(
-							"categories".to_string(),
+						builder.and(Facet::new(
+							"categories",
 							FacetOperation::Eq,
 							loader.to_string(),
 						));
@@ -152,33 +145,34 @@ impl ProviderExt for ModrinthProviderImpl {
 	async fn get_versions_by_hashes(
 		&self,
 		hashes: &[String],
-	) -> LauncherResult<Vec<ManagedVersion>> {
+	) -> LauncherResult<HashMap<String, ManagedVersion>> {
 		let body = serde_json::json!({
 			"hashes": hashes,
 			"algorithm": "sha1"
 		});
 
-		Ok(http::fetch_json::<Vec<ModrinthVersion>>(
+		let results = http::fetch_json::<HashMap<String, ModrinthVersion>>(
 			Method::POST,
 			url!("/version_files"),
 			Some(body),
 			None,
 		)
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
+		.await?;
+
+		Ok(results.into_iter().map(|(k, v)| (k, v.into())).collect())
 	}
 
-	async fn get_version_by_hash(&self, hash: &str) -> LauncherResult<ManagedVersion> {
-		Ok(http::fetch_json::<ModrinthVersion>(
-			Method::GET,
-			url!("/version_file/{hash}"),
-			None,
-			None,
-		)
-		.await?
-		.into())
+	async fn get_version_by_hash(&self, hash: &str) -> LauncherResult<Option<ManagedVersion>> {
+		Ok(Some(
+			http::fetch_json::<ModrinthVersion>(
+				Method::GET,
+				url!("/version_file/{hash}"),
+				None,
+				None,
+			)
+			.await?
+			.into(),
+		))
 	}
 
 	// async fn get_org_projects(&self, slug: &str) -> LauncherResult<Vec<ManagedPackage>> {
@@ -252,45 +246,45 @@ impl ProviderExt for ModrinthProviderImpl {
 		Ok(users)
 	}
 
-	async fn get_users(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedUser>> {
-		Ok(http::fetch_json::<Vec<ModrinthUser>>(
-			Method::GET,
-			url!("/users?ids=[{}]", &serde_json::to_string(&slugs)?),
-			None,
-			None,
-		)
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
-	}
+	// async fn get_users(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedUser>> {
+	// 	Ok(http::fetch_json::<Vec<ModrinthUser>>(
+	// 		Method::GET,
+	// 		url!("/users?ids=[{}]", &serde_json::to_string(&slugs)?),
+	// 		None,
+	// 		None,
+	// 	)
+	// 	.await?
+	// 	.into_iter()
+	// 	.map(Into::into)
+	// 	.collect())
+	// }
 
-	async fn get_user(&self, slug: &str) -> LauncherResult<ManagedUser> {
-		Ok(
-			http::fetch_json::<ModrinthUser>(Method::GET, url!("/user/{slug}"), None, None)
-				.await?
-				.into(),
-		)
-	}
+	// async fn get_user(&self, slug: &str) -> LauncherResult<ManagedUser> {
+	// 	Ok(
+	// 		http::fetch_json::<ModrinthUser>(Method::GET, url!("/user/{slug}"), None, None)
+	// 			.await?
+	// 			.into(),
+	// 	)
+	// }
 
 	async fn get_versions_paginated(
 		&self,
 		slug: &str,
-		mc_versions: Option<Vec<String>>,
-		loaders: Option<Vec<GameLoader>>,
+		mc_version: Option<String>,
+		loader: Option<GameLoader>,
 		offset: usize,
 		limit: usize,
 	) -> LauncherResult<Paginated<ManagedVersion>> {
 		let mut url = Url::parse(url!("/project/{slug}/version"))?;
 
-		if let Some(mc_versions) = mc_versions {
+		if let Some(mc_version) = mc_version {
 			url.query_pairs_mut()
-				.append_pair("game_versions", &serde_json::to_string(&mc_versions)?);
+				.append_pair("game_versions", &format!("[\"{}\"]", mc_version));
 		}
 
-		if let Some(loaders) = loaders {
+		if let Some(loader) = loader {
 			url.query_pairs_mut()
-				.append_pair("loaders", &serde_json::to_string(&loaders)?);
+				.append_pair("loaders", &format!("[\"{}\"]", loader.to_string()));
 		}
 
 		// url.query_pairs_mut()
@@ -335,15 +329,50 @@ impl ProviderExt for ModrinthProviderImpl {
 	}
 }
 
-fn package_type_to_string(package_type: &PackageType) -> String {
-	match package_type {
-		PackageType::Mod => "mod",
-		PackageType::ResourcePack => "resourcepack",
-		PackageType::Shader => "shader",
-		PackageType::DataPack => "datapack",
-		PackageType::ModPack => "modpack",
+#[derive(Deserialize)]
+struct ModrinthSearchResult {
+	pub project_id: String,
+	pub project_type: PackageType,
+	pub slug: String,
+	pub author: String,
+	pub title: String,
+	pub description: String,
+	pub categories: Vec<String>,
+	pub mc_versions: Vec<String>,
+	pub downloads: usize,
+	pub icon_url: String,
+	pub date_created: DateTime<Utc>,
+	pub date_modified: DateTime<Utc>,
+	pub latest_version: String,
+	pub license: Option<String>,
+	pub client_side: PackageSide,
+	pub server_side: PackageSide,
+	/// List of URLs to images
+	pub gallery: Vec<String>,
+}
+
+impl From<ModrinthSearchResult> for SearchResult {
+	fn from(value: ModrinthSearchResult) -> Self {
+		Self {
+			categories: ModrinthCategories::to_list(&value.project_type, &value.categories),
+			package_type: value.project_type,
+			project_id: value.project_id,
+			slug: value.slug,
+			author: value.author,
+			title: value.title,
+			description: value.description,
+			mc_versions: value.mc_versions,
+			downloads: value.downloads,
+			icon_url: value.icon_url,
+			date_created: value.date_created,
+			date_modified: value.date_modified,
+			latest_version: value.latest_version,
+			license: value.license,
+			client_side: value.client_side,
+			server_side: value.server_side,
+			gallery: value.gallery,
+		}
 	}
-	.to_string()
 }
 
 #[serde_as]
@@ -407,10 +436,9 @@ impl From<ModrinthPackage> for ManagedPackage {
 			provider: Provider::Modrinth,
 			id: value.id,
 			slug: value.slug,
-			package_type: value.project_type,
 			name: value.title,
 			short_desc: value.description,
-			body: value.body,
+			body: ManagedPackageBody::Raw(value.body),
 			version_ids: value.versions,
 			mc_versions: value.game_versions,
 			loaders: value.loaders,
@@ -419,7 +447,8 @@ impl From<ModrinthPackage> for ManagedPackage {
 			updated: value.updated,
 			client: value.client_side,
 			server: value.server_side,
-			categories: value.categories,
+			categories: ModrinthCategories::to_list(&value.project_type, &value.categories),
+			package_type: value.project_type,
 			license: value.license,
 			author: PackageAuthor::Team {
 				team_id: value.team,
@@ -444,20 +473,25 @@ impl From<ModrinthPackage> for ManagedPackage {
 	}
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 struct ModrinthVersion {
 	pub name: String,
 	pub version_number: String,
 	pub changelog: Option<String>,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub dependencies: Vec<ModrinthDependency>,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub game_versions: Vec<String>,
 	pub version_type: PackageReleaseType,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub loaders: Vec<GameLoader>,
 	// pub featured: bool,
 	pub id: String,
 	pub project_id: String,
 	pub date_published: DateTime<Utc>,
 	pub downloads: usize,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub files: Vec<ModrinthFile>,
 }
 
@@ -610,6 +644,12 @@ impl std::fmt::Display for FacetOperation {
 }
 
 struct Facet(pub String, pub FacetOperation, pub String);
+
+impl Facet {
+	pub fn new(key: &str, operation: FacetOperation, value: String) -> Self {
+		Self(key.to_string(), operation, value)
+	}
+}
 
 impl std::fmt::Display for Facet {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

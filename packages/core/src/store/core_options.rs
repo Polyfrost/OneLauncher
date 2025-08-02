@@ -26,6 +26,7 @@ pub struct CoreOptions {
 }
 
 impl Default for CoreOptions {
+	#[cfg(not(test))]
 	fn default() -> Self {
 		Self {
 			discord_client_id: None,
@@ -36,6 +37,26 @@ impl Default for CoreOptions {
 			msa_client_id: String::from("00000000402b5328"),
 			msa_redirect_uri: String::from("https://login.live.com/oauth20_desktop.srf"),
 			curseforge_api_key: None,
+			logger_span_formatting: None,
+			logger_filter: None,
+		}
+	}
+
+	#[cfg(test)]
+	fn default() -> Self {
+		Self {
+			discord_client_id: std::env::var("DISCORD_CLIENT_ID").ok(),
+			launcher_name: String::from("Launcher"),
+			launcher_version: String::from(env!("CARGO_PKG_VERSION")),
+			launcher_website: String::from("https://polyfrost.org/"),
+			fetch_attempts: 3,
+			msa_client_id: std::env::var("MSA_CLIENT_ID")
+				.ok()
+				.unwrap_or_else(|| String::from("00000000402b5328")),
+			msa_redirect_uri: std::env::var("MSA_REDIRECT_URI")
+				.ok()
+				.unwrap_or_else(|| String::from("https://login.live.com/oauth20_desktop.srf")),
+			curseforge_api_key: std::env::var("CURSEFORGE_API_KEY").ok(),
 			logger_span_formatting: None,
 			logger_filter: None,
 		}

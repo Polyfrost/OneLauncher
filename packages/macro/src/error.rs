@@ -16,9 +16,16 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	for variant in &data_enum.variants {
 		let v_ident = &variant.ident;
+		let cfg_attrs = &variant
+			.attrs
+			.iter()
+			.filter(|attr| attr.path().is_ident("cfg"))
+			.collect::<Vec<_>>();
+
 		match &variant.fields {
 			Fields::Unit => {
 				serialize_arms.push(quote! {
+					#(#cfg_attrs)*
 					Self::#v_ident => {
 						let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 						s.serialize_field("type", stringify!(#v_ident))?;
@@ -43,6 +50,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 					if has_from && !has_skip {
 						serialize_arms.push(quote! {
+							#(#cfg_attrs)*
 							Self::#v_ident(inner) => {
 								let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 								s.serialize_field("type", stringify!(#v_ident))?;
@@ -52,6 +60,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 						});
 					} else {
 						serialize_arms.push(quote! {
+							#(#cfg_attrs)*
 							Self::#v_ident(_) => {
 								let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 								s.serialize_field("type", stringify!(#v_ident))?;
@@ -62,6 +71,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 					}
 				} else {
 					serialize_arms.push(quote! {
+						#(#cfg_attrs)*
 						Self::#v_ident(..) => {
 							let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 							s.serialize_field("type", stringify!(#v_ident))?;
@@ -73,6 +83,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 			}
 			Fields::Named(_) => {
 				serialize_arms.push(quote! {
+					#(#cfg_attrs)*
 					Self::#v_ident { .. } => {
 						let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 						s.serialize_field("type", stringify!(#v_ident))?;
@@ -99,7 +110,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 	};
 
 	let output = quote! {
-		#[cfg_attr(feature = "specta", derive(onelauncher_macro::SerializedError))]
+		#[derive(onelauncher_macro::SerializedError)]
 		#input
 
 		#serialize_impl
@@ -160,6 +171,7 @@ pub fn error_derive(input: TokenStream) -> TokenStream {
 
 	let enum_name_str = enum_name.to_string();
 	let output = quote! {
+		#[cfg(feature = "specta")]
 		#[derive(Debug, specta::Type, serde::Serialize)]
 		#[specta(remote = #enum_name)]
 		#[specta(tag = "type", content = "data")]

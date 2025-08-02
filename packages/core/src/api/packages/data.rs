@@ -4,6 +4,8 @@ use onelauncher_entity::package::{PackageType, Provider};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
+use crate::api::packages::categories::PackageCategories;
+
 // Divisible by 4 and 3
 pub const DEFAULT_LIMIT: usize = 24;
 
@@ -13,8 +15,8 @@ pub const DEFAULT_LIMIT: usize = 24;
 pub struct Filters {
 	pub game_versions: Option<Vec<String>>,
 	pub loaders: Option<Vec<GameLoader>>,
-	pub categories: Option<Vec<String>>,
-	pub package_types: Option<Vec<PackageType>>,
+	pub categories: Option<PackageCategories>,
+	pub package_type: Option<PackageType>,
 }
 
 #[onelauncher_macro::specta]
@@ -53,28 +55,26 @@ pub struct SearchQuery {
 }
 
 #[onelauncher_macro::specta]
-#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchResult {
 	pub project_id: String,
-	pub project_type: String,
+	pub package_type: PackageType,
 	pub slug: String,
 	pub author: String,
 	pub title: String,
 	pub description: String,
-	pub categories: Vec<String>,
-	pub display_categories: Vec<String>,
-	pub versions: Vec<String>,
+	pub categories: PackageCategories,
+	pub mc_versions: Vec<String>,
 	pub downloads: usize,
 	pub icon_url: String,
 	pub date_created: DateTime<Utc>,
 	pub date_modified: DateTime<Utc>,
 	pub latest_version: String,
-	pub license: String,
+	pub license: Option<String>,
 	pub client_side: PackageSide,
 	pub server_side: PackageSide,
 	/// List of URLs to images
 	pub gallery: Vec<String>,
-	// pub color: i64,
 }
 
 #[onelauncher_macro::specta]
@@ -87,7 +87,9 @@ pub struct ManagedPackage {
 	pub package_type: PackageType,
 	pub name: String,
 	pub short_desc: String,
-	pub body: String,
+	pub body: ManagedPackageBody,
+	/// Won't have all versions for some providers, like CurseForge.
+	/// Try making a request to get the versions if needed
 	pub version_ids: Vec<String>,
 	pub mc_versions: Vec<String>,
 	#[serde_as(as = "serde_with::VecSkipError<_>")]
@@ -97,13 +99,34 @@ pub struct ManagedPackage {
 	pub updated: DateTime<Utc>,
 	pub client: PackageSide,
 	pub server: PackageSide,
-	pub categories: Vec<String>,
+	pub categories: PackageCategories,
 	pub license: Option<PackageLicense>,
 	pub author: PackageAuthor,
 	pub links: PackageLinks,
 	pub status: PackageStatus,
 	pub downloads: usize,
+	#[serde_as(as = "serde_with::VecSkipError<_>")]
 	pub gallery: Vec<PackageGallery>,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ManagedPackageBody {
+	Url(String),
+	Raw(String),
+}
+
+impl std::fmt::Display for ManagedPackageBody {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				ManagedPackageBody::Url(_) => "Url",
+				ManagedPackageBody::Raw(_) => "Raw",
+			}
+		)
+	}
 }
 
 #[onelauncher_macro::specta]
@@ -171,6 +194,25 @@ pub enum PackageAuthor {
 		org_id: Option<String>,
 	},
 	Users(Vec<ManagedUser>),
+}
+
+impl std::fmt::Display for PackageAuthor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{}",
+			match self {
+				Self::Team { team_id, org_id } => {
+					if let Some(org_id) = org_id {
+						format!("Team({} - {})", team_id, org_id)
+					} else {
+						format!("Team({})", team_id)
+					}
+				}
+				Self::Users(users) => format!("Users({})", users.len()),
+			}
+		)
+	}
 }
 
 #[onelauncher_macro::specta]

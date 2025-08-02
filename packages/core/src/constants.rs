@@ -20,7 +20,7 @@ pub const MINECRAFT_SCOPES: &str = "service::user.auth.xboxlive.com::MBI_SSL";
 /// The Modrinth API base url.
 pub const MODRINTH_API_URL: &str = "https://api.modrinth.com";
 /// The CurseForge API base url.
-pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com";
+pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/v1";
 /// The Minecraft game ID on CurseForge.
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 /// Our metadata API base url.

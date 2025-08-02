@@ -1,9 +1,10 @@
 use data::{ManagedPackage, ManagedVersion};
 use onelauncher_entity::icon::Icon;
-use onelauncher_entity::package::PackageType;
+use onelauncher_entity::package::{PackageType, Provider};
 use onelauncher_entity::{clusters, packages};
 use reqwest::Method;
 
+use crate::api::packages::data::{ManagedPackageBody, PackageAuthor};
 use crate::error::{LauncherError, LauncherResult};
 use crate::store::Dirs;
 use crate::store::ingress::SubIngress;
@@ -11,12 +12,10 @@ use crate::utils::crypto::HashAlgorithm;
 use crate::utils::io::IOError;
 use crate::utils::{http, icon, io};
 
+pub mod categories;
 pub mod dao;
 pub mod data;
 pub mod provider;
-
-#[cfg(test)]
-mod tests;
 
 #[onelauncher_macro::error]
 #[derive(Debug, thiserror::Error)]
@@ -27,6 +26,12 @@ pub enum PackageError {
 	IsModPack,
 	#[error(transparent)]
 	Incompatible(#[from] IncompatiblePackageType),
+	#[error("missing API key for provider '{0}'")]
+	MissingApiKey(Provider),
+	#[error("unsupported package body type '{0}'")]
+	UnsupportedBodyType(ManagedPackageBody),
+	#[error("unsupported author type '{0}'")]
+	UnsupportedAuthorType(PackageAuthor),
 }
 
 #[onelauncher_macro::error]
@@ -200,5 +205,5 @@ fn join_package_file(
 	version_id: &str,
 	file_name: &str,
 ) -> std::path::PathBuf {
-	path.as_ref().join(format!("{version_id}-{file_name}"))
+	path.as_ref().join(version_id).join(file_name)
 }

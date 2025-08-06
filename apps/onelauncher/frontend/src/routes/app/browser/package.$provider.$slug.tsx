@@ -81,7 +81,9 @@ function RouteComponent() {
 									rehypePlugins={[rehypeRaw]}
 									remarkPlugins={[remarkGfm]}
 								>
-									{packageData.data?.body}
+									{'Raw' in (packageData.data?.body ?? { Raw: '' })
+										? (packageData.data?.body ?? { Raw: '' }).Raw
+										: packageData.data?.body.Url}
 								</Markdown>
 							</div>
 						</TabPanel>
@@ -254,8 +256,8 @@ function InstallButton() {
 	const clusters = useClusters();
 	const browserContext = useBrowserContext();
 	const { data: versions, isLoading: versionsLoading } = usePackageVersions(provider, slug, {
-		mc_versions: browserContext.cluster ? [browserContext.cluster.mc_version] : [],
-		loaders: browserContext.cluster ? [browserContext.cluster.mc_loader] : [],
+		mc_version: browserContext.cluster ? browserContext.cluster.mc_version : null,
+		loader: browserContext.cluster ? browserContext.cluster.mc_loader : null,
 		limit: 1,
 	});
 	const version = useMemo(() => {

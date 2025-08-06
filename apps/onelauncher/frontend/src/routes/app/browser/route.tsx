@@ -1,14 +1,17 @@
-import type { Filters } from '@/bindings.gen';
+import type { Filters, PackageCategories } from '@/bindings.gen';
+import type { Key, NonReadonly } from '@/utils';
 import type { PropsWithChildren } from 'react';
 import ProviderIcon from '@/components/content/ProviderIcon';
 import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
-import { PROVIDERS } from '@/utils';
-import { browserCategories } from '@/utils/browser';
+import { bindings } from '@/main';
+import { PROVIDERS, upperFirst } from '@/utils';
+import { browserCategories, categoryNameFromId } from '@/utils/browser';
+import { useCommand } from '@onelauncher/common';
 import { AnimatedOutlet, Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { SelectValue } from 'react-aria-components';
 
 export const Route = createFileRoute('/app/browser')({
@@ -59,19 +62,25 @@ const defaultFilters: Filters = {
 	categories: null,
 	game_versions: null,
 	loaders: null,
-	package_types: null,
+	package_type: null,
 };
+
+type CategoryFilter = Partial<NonReadonly<typeof browserCategories>>;
 
 function BrowserCategories() {
 	const context = useBrowserContext();
-	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ['mod'])[0], context.provider);
+	const categoryName = useMemo(() => categoryNameFromId[context.query.filters?.package_type ?? 'mod'], [context.query.filters]);
+	const categories = browserCategories[categoryName];
 
-	function switchCategory(category: string) {
-		const newCategories = context.query.filters?.categories?.includes(category)
-			? context.query.filters.categories.filter(cat => cat !== category)
-			: [...(context.query.filters?.categories ?? []), category];
-		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, categories: newCategories.length > 0 ? newCategories : null } });
-	}
+	const switchCategory = useMemo(() => (category: string) => {
+		const isCorrectPackageType = context.query.filters && context.query.filters.categories && categoryName in context.query.filters.categories;
+		const isEnabled = isCorrectPackageType && context.query.filters.categories[categoryName].includes(category);
+		const newCategories = isCorrectPackageType
+			? { [categoryName]: isEnabled ? context.query.filters.categories?.[categoryName].filter(c => c !== category) : [...context.query.filters.categories[categoryName], category] }
+			: { [categoryName]: [category] };
+
+		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, categories: newCategories } });
+	}, [context, categoryName]);
 
 	return (
 		<div className="top-0 h-fit min-w-50">
@@ -82,12 +91,12 @@ function BrowserCategories() {
 						<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
 						{categories.map(category => (
 							<p
-								aria-selected={context.query.filters?.categories?.includes(category.id)}
+								aria-selected={context.query.filters?.categories?.[categoryName].includes(category)}
 								className="text-sm capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
-								key={category.id}
-								onClick={() => switchCategory(category.id)}
+								key={category}
+								onClick={() => switchCategory(category)}
 							>
-								{category.display}
+								{category}
 							</p>
 						))}
 					</div>

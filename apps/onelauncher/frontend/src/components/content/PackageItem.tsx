@@ -1,5 +1,7 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
+import { getCategories } from '@/hooks/useBrowser';
 import { abbreviateNumber, LOADERS, upperFirst } from '@/utils';
+import { categoryNameFromId } from '@/utils/browser';
 import { Show, Tooltip } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
@@ -22,7 +24,10 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), [item.categories]);
+	const categoryName = categoryNameFromId[item.package_type];
+	if (!(categoryName in item.categories))
+		throw new Error('invalid categories');
+	const loaders = useMemo(() => getCategories(item.categories).filter(cat => includes(LOADERS, cat)), [item.categories]);
 
 	return (
 		<Link

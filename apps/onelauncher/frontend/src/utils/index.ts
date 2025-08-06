@@ -133,3 +133,9 @@ export function formatAsDuration(seconds: number | bigint | Date): string {
 export function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
 	return list.includes(element as unknown as TArray);
 }
+
+export type Key<T> = T extends Record<infer K, any> ? K : never;
+
+export type NonReadonly<T> = {
+	[P in keyof T]: T[P] extends readonly infer O ? O : P
+};

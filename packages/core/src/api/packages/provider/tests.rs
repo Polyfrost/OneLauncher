@@ -5,12 +5,12 @@ use onelauncher_entity::package::{PackageType, Provider};
 use crate::api::packages;
 use crate::api::packages::provider::ProviderExt;
 use crate::error::LauncherResult;
-use crate::store::{Core, CoreOptions, Dirs};
+use crate::utils::DatabaseModelExt;
 
 macro_rules! init {
 	() => {{
-		Core::initialize(CoreOptions::default()).await?;
-		if Core::get().curseforge_api_key.is_none() {
+		crate::store::Core::initialize(crate::store::CoreOptions::default()).await?;
+		if crate::store::Core::get().curseforge_api_key.is_none() {
 			eprintln!("CURSEFORGE_API_KEY is not set, skipping tests that require it.");
 			false
 		} else {
@@ -18,6 +18,8 @@ macro_rules! init {
 		}
 	}};
 }
+
+pub(crate) use init;
 
 struct Entry {
 	slug: &'static str,
@@ -186,20 +188,10 @@ pub async fn test_download_packages() -> LauncherResult<()> {
 			let versions = provider.get_versions(&[ver_id.clone()]).await?;
 			let ver = versions.first().expect("No version found");
 
-			let db_model = packages::download_package(&pkg, ver, None).await?;
+			let db_model = packages::download_package(&pkg, ver, None, None).await?;
 			assert!(db_model.hash == ver.files.first().unwrap().sha1);
 
-			let dir = Dirs::get_package_dir(
-				&db_model.package_type,
-				&db_model.provider,
-				&db_model.package_id,
-			)
-			.await?;
-			let dest = dir.join(packages::join_package_file(
-				&dir,
-				&db_model.version_id,
-				&db_model.file_name,
-			));
+			let dest = db_model.path().await?;
 
 			assert!(dest.exists(), "File does not exist: {dest:?}");
 		}

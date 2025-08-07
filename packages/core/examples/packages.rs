@@ -1,5 +1,13 @@
-use onelauncher_core::{api::{cluster, packages::{self, data::{SearchQuery, Sort}, download_package, provider::ProviderExt}, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::{CoreOptions, Dirs}};
-use onelauncher_entity::{loader::GameLoader, package::Provider};
+use onelauncher_core::api::cluster;
+use onelauncher_core::api::packages::data::{SearchQuery, Sort};
+use onelauncher_core::api::packages::provider::ProviderExt;
+use onelauncher_core::api::packages::{self, download_package};
+use onelauncher_core::api::proxy::ProxyDynamic;
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::initialize_core;
+use onelauncher_core::store::{CoreOptions, Dirs};
+use onelauncher_entity::loader::GameLoader;
+use onelauncher_entity::package::Provider;
 
 #[tokio::main]
 pub async fn main() -> LauncherResult<()> {
@@ -20,29 +28,44 @@ pub async fn main() -> LauncherResult<()> {
 	// Fetch our package and its versions
 	let provider = Provider::Modrinth;
 
-	println!("search results: {:#?}", provider.search(&SearchQuery {
-		query: Some("chatting".to_string()),
-		offset: Some(0),
-		limit: Some(10),
-		sort: Some(Sort::Newest),
-		filters: None,
-	}).await?);
+	println!(
+		"search results: {:#?}",
+		provider
+			.search(&SearchQuery {
+				query: Some("chatting".to_string()),
+				offset: Some(0),
+				limit: Some(10),
+				sort: Some(Sort::Newest),
+				filters: None,
+			})
+			.await?
+	);
 
 	let package = &provider.get("chatting").await?;
-	let versions = provider.get_versions(package.version_ids.as_slice()).await?;
+	let versions = provider
+		.get_versions(package.version_ids.as_slice())
+		.await?;
 
-	let version = versions.iter().find(|v| v.mc_versions.contains(&"1.8.9".to_string())).expect("Version supporting 1.8.9 not found");
+	let version = versions
+		.iter()
+		.find(|v| v.mc_versions.contains(&"1.8.9".to_string()))
+		.expect("Version supporting 1.8.9 not found");
 
 	// We can now download the package
-	let model = download_package(package, version, None).await?;
+	let model = download_package(package, version, Some(true), None).await?;
 
 	// Link the package to the cluster
 	packages::link_package(&model, &cluster, None).await?;
 
 	// Check if the package is hard linked
 	let cluster_dir = dirs.clusters_dir().join(cluster.folder_name.clone());
-	let pkg_path = cluster_dir.join(model.package_type.folder_name()).join(model.file_name.as_str());
-	assert!(tokio::fs::metadata(&pkg_path).await.is_ok(), "Package not found in cluster directory");
+	let pkg_path = cluster_dir
+		.join(model.package_type.folder_name())
+		.join(model.file_name.as_str());
+	assert!(
+		tokio::fs::metadata(&pkg_path).await.is_ok(),
+		"Package not found in cluster directory"
+	);
 
 	Ok(())
 }

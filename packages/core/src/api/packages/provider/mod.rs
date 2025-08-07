@@ -11,7 +11,7 @@ use crate::utils::pagination::Paginated;
 use super::data::{ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery};
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 mod curseforge;
 mod modrinth;

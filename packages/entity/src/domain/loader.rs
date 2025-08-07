@@ -82,29 +82,21 @@ impl GameLoader {
 	}
 }
 
-impl TryFrom<String> for GameLoader {
-	type Error = String;
+impl FromStr for GameLoader {
+	type Err = String;
 
-	fn try_from(s: String) -> Result<Self, String> {
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		Ok(
 			match s.to_lowercase().replace(['_', '.', ' '], "").as_str() {
 				"vanilla" | "minecraft" => Self::Vanilla,
 				"forge" => Self::Forge,
 				"neoforge" | "neo" => Self::NeoForge,
-				"quilt" => Self::Quilt,
-				"fabric" => Self::Fabric,
+				"quilt" | "quilt-loader" => Self::Quilt,
+				"fabric" | "fabric-loader" => Self::Fabric,
 				"legacyfabric" => Self::LegacyFabric,
 				_ => return Err(format!("'{s}' is not a valid game loader")),
 			},
 		)
-	}
-}
-
-impl FromStr for GameLoader {
-	type Err = String;
-
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		Self::try_from(s.to_string())
 	}
 }
 

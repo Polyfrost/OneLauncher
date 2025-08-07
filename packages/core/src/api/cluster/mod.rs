@@ -15,6 +15,7 @@ use crate::api::{java, setting_profiles};
 use crate::error::LauncherResult;
 use crate::store::ingress::{IngressType, SubIngress};
 use crate::store::{Dirs, State};
+use crate::utils::DatabaseModelExt;
 use crate::utils::io::{self, IOError};
 
 pub mod content;
@@ -30,6 +31,10 @@ use super::ingress::init_ingress;
 pub enum ClusterError {
 	#[error("version '{0}' was not found")]
 	InvalidVersion(String),
+	#[error("version '{0}' is not compatible with version '{1}'")]
+	MismatchedVersion(String, String),
+	#[error("loader '{0}' is not compatible with loader '{1}'")]
+	MismatchedLoader(GameLoader, GameLoader),
 	#[error("failed to imply java version")]
 	MissingJavaVersion,
 	#[error("cluster is in downloading stage")]
@@ -346,4 +351,11 @@ pub async fn update_playtime(id: ClusterId, duration: i64) -> LauncherResult<clu
 		Ok(cluster)
 	})
 	.await
+}
+
+#[async_trait::async_trait]
+impl DatabaseModelExt for clusters::Model {
+	async fn path(&self) -> LauncherResult<std::path::PathBuf> {
+		Ok(Dirs::get_clusters_dir().await?.join(&self.folder_name))
+	}
 }

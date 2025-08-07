@@ -78,6 +78,16 @@ pub struct SearchResult {
 }
 
 #[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalPackage {
+	pub name: String,
+	pub url: String,
+	pub sha1: String,
+	pub size: usize,
+	pub package_type: PackageType,
+}
+
+#[onelauncher_macro::specta]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedPackage {

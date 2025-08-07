@@ -515,7 +515,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			.next()
 			.ok_or_else(|| anyhow::anyhow!("Version not found"))?;
 
-		let model = api::packages::download_package(&package, &version, None).await?;
+		let model = api::packages::download_package(&package, &version, None, None).await?;
 
 		api::packages::link_package(&model, &cluster, skip_compatibility).await?;
 

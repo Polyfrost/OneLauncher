@@ -32,16 +32,22 @@ impl PackageType {
 	}
 }
 
-impl From<String> for PackageType {
-	fn from(value: String) -> Self {
+impl From<&str> for PackageType {
+	fn from(value: &str) -> Self {
 		match value.to_lowercase().as_str() {
-			"mod" => Self::Mod,
-			"resourcepack" => Self::ResourcePack,
-			"shader" => Self::Shader,
-			"datapack" => Self::DataPack,
+			"mod" | "mods" => Self::Mod,
+			"resourcepack" | "resourcepacks" => Self::ResourcePack,
+			"shader" | "shaders" => Self::Shader,
+			"datapack" | "datapacks" => Self::DataPack,
 			"modpack" => Self::ModPack,
 			_ => Self::Mod, // default case
 		}
+	}
+}
+
+impl From<String> for PackageType {
+	fn from(value: String) -> Self {
+		Self::from(value.as_str())
 	}
 }
 

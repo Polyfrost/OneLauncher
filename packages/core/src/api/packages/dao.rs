@@ -1,7 +1,9 @@
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::PackageType;
 use onelauncher_entity::{cluster_packages, clusters, packages};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter};
+use sea_orm::{
+	ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TryInsertResult,
+};
 
 use crate::error::{DaoError, LauncherResult};
 use crate::store::State;
@@ -12,14 +14,6 @@ pub type PackageId = String;
 
 /// Inserts a new package into the database.
 pub async fn insert_package(package: packages::ActiveModel) -> LauncherResult<packages::Model> {
-	if package
-		.package_type
-		.try_as_ref()
-		.is_some_and(|p| p == &PackageType::ModPack)
-	{
-		return Err(PackageError::IsModPack.into());
-	}
-
 	let state = State::get().await?;
 	let db = &state.db;
 
@@ -45,6 +39,36 @@ pub async fn link_package_to_cluster(
 		.await?;
 
 	Ok(())
+}
+
+/// Links multiple packages to a cluster in database. Returns the number of packages linked.
+pub async fn link_many_packages_to_cluster(
+	packages: &[packages::Model],
+	cluster: &clusters::Model,
+) -> LauncherResult<u64> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	let cluster_packages = packages
+		.iter()
+		.map(|package| {
+			cluster_packages::Model {
+				cluster_id: cluster.id,
+				package_hash: package.hash.clone(),
+			}
+			.into_active_model()
+		})
+		.collect::<Vec<_>>();
+
+	let inserted = cluster_packages::Entity::insert_many(cluster_packages)
+		.on_conflict_do_nothing()
+		.exec_without_returning(db)
+		.await?;
+
+	Ok(match inserted {
+		TryInsertResult::Inserted(rows) => rows,
+		_ => 0,
+	})
 }
 
 /// Retrieves a clusters linked packages from the database.

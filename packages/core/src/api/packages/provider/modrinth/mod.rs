@@ -97,20 +97,24 @@ impl ProviderExt for ModrinthProviderImpl {
 		let url = url.as_str();
 
 		#[derive(Deserialize)]
-		struct SearchResults {
-			pub hits: Vec<SearchResult>,
+		struct Response {
+			pub hits: Vec<ModrinthSearchResult>,
 			pub offset: usize,
 			pub limit: usize,
 			pub total_hits: usize,
 		}
 
-		let response = http::fetch_json::<SearchResults>(Method::GET, url, None, None).await?;
+		let response = http::fetch_json::<Response>(Method::GET, url, None, None).await?;
 
 		Ok(Paginated {
 			offset: response.offset,
 			limit: response.limit,
 			total: response.total_hits,
-			items: response.hits,
+			items: response
+				.hits
+				.into_iter()
+				.map(Into::into)
+				.collect::<Vec<_>>(),
 		})
 	}
 

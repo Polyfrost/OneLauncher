@@ -32,9 +32,9 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 	return (
 		<Link
 			className="h-full min-w-50 overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover grid grid-rows-[7rem_auto] max-h-74 min-h-74"
-			params={{ provider, slug: item.slug }}
+			params={{ provider, id: item.project_id }}
 			tabIndex={0}
-			to="/app/browser/package/$provider/$slug"
+			to="/app/browser/package/$provider/$id"
 		>
 			<div
 				className="relative flex items-center justify-center overflow-hidden w-full h-28"

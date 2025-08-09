@@ -83,14 +83,14 @@ export function getCategories(categories: PackageCategories) {
 
 export function useBrowserSearch(provider: Provider, query: SearchQuery, options?: Omit<UndefinedInitialDataOptions<Paginated<SearchResult>>, 'queryKey' | 'queryFn'> | undefined) {
 	const validFilters = useMemo(() => Object.values(query.filters ?? {}).filter(a => a).length > 0, [query.filters]);
-	return useCommand('searchPackages', () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
+	return useCommand(`search.${provider}`, () => bindings.core.searchPackages(provider, validFilters ? query : { ...query, filters: null }), options);
 }
 
 export function usePackageData(provider: Provider, slug: string, options?: Omit<UndefinedInitialDataOptions<ManagedPackage>, 'queryKey' | 'queryFn'> | undefined, key: false | BindingCommands | (string & {}) = `getPackage.${provider}.${slug}`) {
 	return useCommand(key, () => bindings.core.getPackage(provider, slug), options);
 }
 
-export function usePackageVersions(provider: Provider, slug: string, { mc_version, loader, offset, limit, ...options }: { mc_version?: string | null; loader?: GameLoader | null; offset?: number; limit: number } & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, 'queryKey' | 'queryFn'>, key: false | BindingCommands | (string & {}) = `getPackageVersions.${provider}.${slug}.${mc_version}.${loader}`) {
+export function usePackageVersions(provider: Provider, slug: string, { mc_version, loader, offset, limit, ...options }: { mc_version?: string | null; loader?: GameLoader | null; offset?: number; limit: number } & Omit<UndefinedInitialDataOptions<Paginated<ManagedVersion>>, 'queryKey' | 'queryFn'>, key: false | BindingCommands | (string & {}) = `getPackageVersions.${provider}.${slug}.${mc_version}.${loader}.${offset}`) {
 	return useCommand(key, () => bindings.core.getPackageVersions(provider, slug, mc_version ?? null, loader ?? null, (offset ?? 0) as unknown as bigint, limit as unknown as bigint), options);
 }
 

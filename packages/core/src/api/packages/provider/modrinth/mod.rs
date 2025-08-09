@@ -342,6 +342,7 @@ struct ModrinthSearchResult {
 	pub title: String,
 	pub description: String,
 	pub categories: Vec<String>,
+	#[serde(alias = "versions")]
 	pub mc_versions: Vec<String>,
 	pub downloads: usize,
 	pub icon_url: String,

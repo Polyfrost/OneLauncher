@@ -5,7 +5,7 @@ import { useBrowserContext, useDownloadPackage, usePackageData, usePackageVersio
 import { ChooseClusterModal, useClusters } from '@/hooks/useCluster';
 import usePagination from '@/hooks/usePagination';
 import { bindings } from '@/main';
-import { abbreviateNumber, formatAsRelative, PROVIDERS, upperFirst } from '@/utils';
+import { abbreviateNumber, formatAsRelative, includes, PROVIDERS, upperFirst } from '@/utils';
 import { useCommand } from '@onelauncher/common';
 import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
@@ -18,13 +18,9 @@ import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { twMerge } from 'tailwind-merge';
 
-export const Route = createFileRoute('/app/browser/package/$provider/$slug')({
+export const Route = createFileRoute('/app/browser/package/$provider/$id')({
 	component: RouteComponent,
 });
-
-function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
-	return list.includes(element as unknown as TArray);
-}
 
 function CustomA({ href, children, includeIcon, className, ...rest }: { href: string; children: any; includeIcon?: boolean } & HTMLProps<HTMLAnchorElement>) {
 	return (
@@ -52,10 +48,11 @@ const PackageContext = createContext<PackageContextType>({
 });
 
 function RouteComponent() {
-	const { provider, slug } = Route.useParams();
+	const { provider, id } = Route.useParams();
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
-	const packageData = usePackageData(provider, slug, {});
+	const packageData = usePackageData(provider, id, {});
+	const { data: packageBody } = useCommand('getPackageBody', () => bindings.core.getPackageBody(provider, packageData.data?.body ?? { Raw: 'No Package Data' }));
 	const packageContextValue = useMemo(() => ({
 		pkg: packageData.data,
 	}), [packageData.data]);
@@ -81,9 +78,7 @@ function RouteComponent() {
 									rehypePlugins={[rehypeRaw]}
 									remarkPlugins={[remarkGfm]}
 								>
-									{'Raw' in (packageData.data?.body ?? { Raw: '' })
-										? (packageData.data?.body ?? { Raw: '' }).Raw
-										: packageData.data?.body.Url}
+									{packageBody}
 								</Markdown>
 							</div>
 						</TabPanel>
@@ -249,13 +244,13 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 function InstallButton() {
 	const triggerRef = useRef<HTMLDivElement>(null);
-	const { provider, slug } = Route.useParams();
+	const { provider, id } = Route.useParams();
 	if (!includes(PROVIDERS, provider))
 		throw new Error('invalid provider');
 	const [open, setOpen] = useState(false);
 	const clusters = useClusters();
 	const browserContext = useBrowserContext();
-	const { data: versions, isLoading: versionsLoading } = usePackageVersions(provider, slug, {
+	const { data: versions, isLoading: versionsLoading } = usePackageVersions(provider, id, {
 		mc_version: browserContext.cluster ? browserContext.cluster.mc_version : null,
 		loader: browserContext.cluster ? browserContext.cluster.mc_loader : null,
 		limit: 1,
@@ -408,11 +403,12 @@ function colorForType(type: string) {
 }
 
 function Versions() {
-	const { provider, slug } = Route.useParams();
+	const { provider, id } = Route.useParams();
 	if (!includes(PROVIDERS, provider))
 		throw new Error('invalid provider');
 	const [offset, setOffset] = useState(0);
-	const { data: versions } = usePackageVersions(provider, slug, {
+
+	const { data: versions } = usePackageVersions(provider, id, {
 		limit: 20,
 		offset,
 	});

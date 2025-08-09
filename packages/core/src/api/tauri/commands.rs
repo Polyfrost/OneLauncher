@@ -1,5 +1,5 @@
 use crate::api::packages::data::{
-	ManagedPackage, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult,
+	ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult
 };
 use crate::api::packages::provider::ProviderExt;
 use crate::store::{Settings, State};
@@ -107,6 +107,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getPackage")]
 	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
+
+	#[taurpc(alias = "getPackageBody")]
+	async fn get_package_body(provider: Provider, body: ManagedPackageBody) -> LauncherResult<String>;
 
 	#[taurpc(alias = "getMultiplePackages")]
 	async fn get_multiple_packages(
@@ -471,6 +474,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 	async fn get_package(self, provider: Provider, slug: String) -> LauncherResult<ManagedPackage> {
 		provider.get(&slug).await
+	}
+
+	async fn get_package_body(self, provider: Provider, body: ManagedPackageBody) -> LauncherResult<String> {
+		provider.get_body(&body).await
 	}
 
 	async fn get_multiple_packages(

@@ -3,6 +3,7 @@ use std::sync::LazyLock;
 use onelauncher_entity::package::{PackageType, Provider};
 
 use crate::api::packages;
+use crate::api::packages::data::SearchQuery;
 use crate::api::packages::provider::ProviderExt;
 use crate::error::LauncherResult;
 use crate::utils::DatabaseModelExt;
@@ -195,6 +196,26 @@ pub async fn test_download_packages() -> LauncherResult<()> {
 
 			assert!(dest.exists(), "File does not exist: {dest:?}");
 		}
+	}
+
+	Ok(())
+}
+
+#[tokio::test]
+pub async fn test_search_packages() -> LauncherResult<()> {
+	let cf = init!();
+
+	for provider in Provider::get_providers().iter() {
+		if provider == &Provider::CurseForge && !cf {
+			continue;
+		}
+
+		let query = SearchQuery::default();
+		let res = provider.search(&query).await?;
+
+		dbg!(&res.items);
+
+		assert!(!res.items.is_empty());
 	}
 
 	Ok(())

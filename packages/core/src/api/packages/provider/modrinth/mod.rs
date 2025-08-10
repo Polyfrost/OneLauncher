@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use super::ProviderExt;
 use crate::api::packages::categories::ToProviderCategory;
@@ -358,8 +359,15 @@ struct ModrinthSearchResult {
 
 impl From<ModrinthSearchResult> for SearchResult {
 	fn from(value: ModrinthSearchResult) -> Self {
+		let loaders: Vec<GameLoader> = value
+			.categories
+			.iter()
+			.filter_map(|category| GameLoader::from_str(category).ok())
+			.collect();
+
 		Self {
 			categories: ModrinthCategories::to_list(&value.project_type, &value.categories),
+			loaders,
 			package_type: value.project_type,
 			project_id: value.project_id,
 			slug: value.slug,

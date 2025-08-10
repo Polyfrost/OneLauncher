@@ -101,6 +101,6 @@ impl Provider {
 
 	#[must_use]
 	pub const fn get_providers() -> &'static [Self] {
-		&[Self::Modrinth, Self::CurseForge, Self::SkyClient]
+		&[Self::Modrinth, Self::CurseForge]
 	}
 }

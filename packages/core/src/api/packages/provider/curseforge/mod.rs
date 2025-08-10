@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use onelauncher_entity::loader::GameLoader;
@@ -96,7 +96,7 @@ impl ProviderExt for CurseForgeProviderImpl {
 								"[{}]",
 								categories
 									.iter()
-									.map(u32::to_string)
+									.map(i32::to_string)
 									.collect::<Vec<String>>()
 									.join(",")
 							);
@@ -354,7 +354,7 @@ impl From<PackageType> for CFPackageType {
 }
 
 /// Mapping of Curseforge supported loaders to their respective id
-#[derive(Debug, Default, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Default, Clone, Copy, Serialize_repr, Deserialize_repr, Hash, PartialEq)]
 #[repr(u8)]
 pub enum CFLoader {
 	#[default]
@@ -522,11 +522,23 @@ impl From<CFPackage> for SearchResult {
 	fn from(value: CFPackage) -> Self {
 		let mc_versions: Vec<String> = value
 			.latest_files_indexes
-			.into_iter()
-			.map(|index| index.game_version)
+			.iter()
+			.map(|index| index.game_version.clone())
 			.collect();
 
 		let package_type: PackageType = value.package_type.into();
+
+		let loaders: Vec<GameLoader> = value
+			.latest_files_indexes
+			.iter()
+			.filter_map(|index| {
+				index
+					.mod_loader
+					.and_then(|loader| GameLoader::try_from(loader).ok())
+			})
+			.collect::<HashSet<_>>()
+			.into_iter()
+			.collect();
 
 		Self {
 			title: value.name,
@@ -546,6 +558,7 @@ impl From<CFPackage> for SearchResult {
 				&package_type,
 				&value.categories.into_iter().map(|c| c.id).collect(),
 			),
+			loaders,
 			package_type,
 			mc_versions,
 			date_created: value.date_created,
@@ -555,7 +568,10 @@ impl From<CFPackage> for SearchResult {
 				.into_iter()
 				.map(|asset| asset.url)
 				.collect(),
-			latest_version: "".to_string(), // TODO: figure out how to get this
+			latest_version: value
+				.latest_files_indexes
+				.first()
+				.map_or(String::new(), |index| index.file_id.to_string()),
 			license: None,
 		}
 	}
@@ -640,7 +656,7 @@ pub struct CFSocialLink {
 #[derive(Default, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Category {
-	pub id: u32,
+	pub id: i32,
 	// pub game_id: u32,
 	// pub name: String,
 	pub slug: String,

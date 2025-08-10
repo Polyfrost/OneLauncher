@@ -64,6 +64,7 @@ pub struct SearchResult {
 	pub title: String,
 	pub description: String,
 	pub categories: PackageCategories,
+	pub loaders: Vec<GameLoader>,
 	pub mc_versions: Vec<String>,
 	pub downloads: usize,
 	pub icon_url: String,

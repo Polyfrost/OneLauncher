@@ -29,6 +29,7 @@ export function TabList({
 export function Tab({
 	to,
 	children,
+	...rest
 }: Omit<LinkProps, 'activeOptions' | 'activeProps' | 'inactiveProps' | 'className'>) {
 	return (
 		<div className="relative flex justify-center items-center">
@@ -44,6 +45,7 @@ export function Tab({
 					className: 'text-fg-secondary font-normal partial-underline-0% hover:partial-underline-60% hover:text-fg-secondary-hover after:text-fg-secondary-hover pointer-events-auto',
 				}}
 				to={to}
+				{...rest}
 			>
 				{children}
 			</Link>

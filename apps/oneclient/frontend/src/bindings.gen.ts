@@ -4,9 +4,9 @@ import { createTauRPCProxy as createProxy, type InferCommandOutput } from 'taurp
 type TAURI_CHANNEL<T> = (response: T) => void
 
 
-export type ClusterError = { type: "InvalidVersion"; data: string } | { type: "MissingJavaVersion"; data: string } | { type: "ClusterDownloading"; data: string } | { type: "ClusterAlreadyRunning"; data: string }
+export type ClusterError = { type: "InvalidVersion"; data: string } | { type: "MismatchedVersion"; data: string } | { type: "MismatchedLoader"; data: string } | { type: "MissingJavaVersion"; data: string } | { type: "ClusterDownloading"; data: string } | { type: "ClusterAlreadyRunning"; data: string }
 
-export type ClusterModel = { id: bigint; folder_name: string; stage: ClusterStage; created_at: string; group_id: bigint | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: bigint | null; icon_url: Icon | null; setting_profile_name: string | null; linked_pack_id: string | null; linked_pack_version: string | null }
+export type ClusterModel = { id: bigint; folder_name: string; stage: ClusterStage; created_at: string; group_id: bigint | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: bigint | null; icon_url: Icon | null; setting_profile_name: string | null; linked_modpack_hash: string | null }
 
 export type ClusterStage = "notready" | "downloading" | "repairing" | "ready"
 
@@ -24,11 +24,11 @@ export type DirectoryError = { type: "BaseDir"; data: string }
 
 export type DiscordError = { type: "MissingClientId"; data: string } | { type: "ConnectError"; data: string }
 
-export type Filters = { game_versions: string[] | null; loaders: GameLoader[] | null; categories: string[] | null; package_types: PackageType[] | null }
+export type Filters = { game_versions: string[] | null; loaders: GameLoader[] | null; categories: PackageCategories | null; package_type: PackageType | null }
 
 export type GameLoader = "vanilla" | "forge" | "neoforge" | "quilt" | "fabric" | "legacyfabric"
 
-export type IOError = { type: "InvalidAbsolutePath"; data: string } | { type: "IOErrorWrapper"; data: string } | { type: "IOError"; data: string } | { type: "DeserializeError"; data: string } | { type: "AsyncZipError"; data: string }
+export type IOError = { type: "InvalidAbsolutePath"; data: string } | { type: "FileNotFoundInZip"; data: string } | { type: "IOErrorWrapper"; data: string } | { type: "IOError"; data: string } | { type: "DeserializeError"; data: string } | { type: "AsyncZipError"; data: string }
 
 export type Icon = string
 
@@ -44,7 +44,14 @@ export type JavaError = { type: "ParseVersion"; data: string } | { type: "Execut
 
 export type LauncherError = { type: "DirError"; data: DirectoryError } | { type: "IOError"; data: IOError } | { type: "IngressError"; data: IngressError } | { type: "JavaError"; data: JavaError } | { type: "CryptoError"; data: CryptoError } | { type: "DiscordError"; data: DiscordError } | { type: "MetadataError"; data: MetadataError } | { type: "ClusterError"; data: ClusterError } | { type: "MinecraftAuthError"; data: MinecraftAuthError } | { type: "ProcessError"; data: ProcessError } | { type: "PackageError"; data: PackageError } | { type: "DaoError"; data: DaoError } | { type: "SerdeError"; data: string } | { type: "AnyhowError"; data: string } | { type: "DbError"; data: string } | { type: "ReqwestError"; data: string } | { type: "InterpulseError"; data: string } | { type: "RegexError"; data: string } | { type: "SemaphoreError"; data: string } | { type: "UrlError"; data: string } | { type: "TauriError"; data: string }
 
-export type ManagedPackage = { id: string; slug: string; provider: Provider; package_type: PackageType; name: string; short_desc: string; body: string; version_ids: string[]; mc_versions: string[]; loaders: GameLoader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; categories: string[]; license: PackageLicense | null; author: PackageAuthor; links: PackageLinks; status: PackageStatus; downloads: bigint; gallery: PackageGallery[] }
+export type ManagedPackage = { id: string; slug: string; provider: Provider; package_type: PackageType; name: string; short_desc: string; body: ManagedPackageBody; 
+/**
+ * Won't have all versions for some providers, like CurseForge.
+ * Try making a request to get the versions if needed
+ */
+version_ids: string[]; mc_versions: string[]; loaders: GameLoader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; categories: PackageCategories; license: PackageLicense | null; author: PackageAuthor; links: PackageLinks; status: PackageStatus; downloads: bigint; gallery: PackageGallery[] }
+
+export type ManagedPackageBody = { Url: string } | { Raw: string }
 
 export type ManagedUser = { id: string; username: string; url?: string | null; avatar_url?: string | null; bio?: string | null; is_organization_user?: boolean; role?: string | null }
 
@@ -89,6 +96,8 @@ expires: string }
 
 export type PackageAuthor = { Team: { team_id: string; org_id: string | null } } | { Users: ManagedUser[] }
 
+export type PackageCategories = { Mod: PackageModCategory[] } | { ResourcePack: PackageResourcePackCategory[] } | { Shader: PackageShaderCategory[] } | { DataPack: PackageModCategory[] } | { ModPack: PackageModPackCategory[] }
+
 export type PackageDependencyType = "required" | "optional" | "embedded" | "incompatible"
 
 /**
@@ -98,7 +107,7 @@ export type PackageDonationPlatform = "patreon" | "buymeacoffee" | "paypal" | "g
 
 export type PackageDonationUrl = { id: PackageDonationPlatform; url: string }
 
-export type PackageError = { type: "NoPrimaryFile"; data: string } | { type: "IsModPack"; data: string } | { type: "Incompatible"; data: IncompatiblePackageType }
+export type PackageError = { type: "NoPrimaryFile"; data: string } | { type: "IsNotModPack"; data: string } | { type: "Incompatible"; data: IncompatiblePackageType } | { type: "MissingApiKey"; data: string } | { type: "UnsupportedBodyType"; data: string } | { type: "UnsupportedAuthorType"; data: string } | { type: "UnsupportedModpackFormat"; data: string }
 
 export type PackageGallery = { url: string; thumbnail_url: string; title: string | null; description: string | null; featured: boolean | null }
 
@@ -112,9 +121,17 @@ export type PackageLicense = { id: string; name: string; url: string | null }
  */
 export type PackageLinks = { website: string | null; issues: string | null; source: string | null; wiki: string | null; donation: PackageDonationUrl[] | null; discord: string | null }
 
+export type PackageModCategory = "Adventure" | "Library" | "Equipment" | "Patches" | "Cosmetic" | "Food" | "Magic" | "Information" | "Misc" | "Performance" | "Redstone" | "ServerUtil" | "Storage" | "Technology" | "Farming" | "Automation" | "Transport" | "Utility" | "QoL" | "WorldGen" | "Mobs" | "Economy" | "Social"
+
+export type PackageModPackCategory = "Technology" | "Quests" | "Optimization" | "Multiplayer" | "Magic" | "LightWeight" | "Combat" | "Challenging" | "Adventure"
+
 export type PackageModel = { hash: string; file_name: string; version_id: string; published_at: string; display_name: string; display_version: string; package_type: PackageType; provider: Provider; package_id: string; mc_versions: DbVec<string>; mc_loader: DbVec<GameLoader>; icon: Icon | null }
 
 export type PackageReleaseType = "release" | "beta" | "alpha"
+
+export type PackageResourcePackCategory = "X8" | "X16" | "X32" | "X48" | "X64" | "X128" | "X256" | "X512" | "VanillaLike" | "Utility" | "Tweaks" | "Themed" | "Simplistic" | "Realistic" | "Modded" | "Decoration" | "Cursed" | "Combat" | "Audio" | "Blocks" | "CoreShaders" | "Gui" | "Fonts" | "Equipment" | "Environment" | "Entities" | "Items" | "Locale" | "Models"
+
+export type PackageShaderCategory = "VanillaLike" | "SemiRealistic" | "Realistic" | "Fantasy" | "Cursed" | "Cartoon" | "Bloom" | "Atmosphere" | "Reflections" | "Shadows" | "PBR" | "PathTracing" | "Foliage" | "ColoredLightning" | "Potato" | "Low" | "Medium" | "High" | "Ultra"
 
 export type PackageSide = "unknown" | "required" | "optional" | "unsupported"
 
@@ -132,13 +149,13 @@ export type ProcessPayload = { type: "Starting"; command: string } | { type: "St
 
 export type ProfileUpdate = { res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null }
 
-export type Provider = "Modrinth" | "Curseforge" | "SkyClient"
+export type Provider = "Modrinth" | "CurseForge" | "SkyClient"
 
 export type Resolution = { width: number; height: number }
 
 export type SearchQuery = { query: string | null; offset: bigint | null; limit: bigint | null; sort: Sort | null; filters: Filters | null }
 
-export type SearchResult = { project_id: string; project_type: string; slug: string; author: string; title: string; description: string; categories: string[]; display_categories: string[]; versions: string[]; downloads: bigint; icon_url: string; date_created: string; date_modified: string; latest_version: string; license: string; client_side: PackageSide; server_side: PackageSide; 
+export type SearchResult = { project_id: string; package_type: PackageType; slug: string; author: string; title: string; description: string; categories: PackageCategories; loaders: GameLoader[]; mc_versions: string[]; downloads: bigint; icon_url: string; date_created: string; date_modified: string; latest_version: string; license: string | null; client_side: PackageSide; server_side: PackageSide; 
 /**
  * List of URLs to images
  */
@@ -211,8 +228,10 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}', 'core':'{"setDefaultUser":["uuid"],"openMsaLogin":[],"getClusters":[],"removeUser":["uuid"],"getWorlds":["id"],"getPackage":["provider","slug"],"getMultiplePackages":["provider","slugs"],"updateClusterById":["id","request"],"readSettings":[],"searchPackages":["provider","query"],"getPackageVersions":["provider","slug","mc_versions","loaders","offset","limit"],"getPackageUser":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getLoadersForVersion":["mc_version"],"getUsersFromAuthor":["provider","author"],"getUsers":[],"launchCluster":["id","uuid"],"getUser":["uuid"],"getProfileOrDefault":["name"],"getClusterById":["id"],"getDefaultUser":["fallback"],"writeSettings":["setting"],"createCluster":["options"],"removeCluster":["id"],"getGlobalProfile":[],"getGameVersions":[],"getScreenshots":["id"],"updateClusterProfile":["name","profile"]}', 'events':'{"message":["event"],"process":["event"],"ingress":["event"]}' }
-export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}', 'core':'{"getClusters":[],"getGlobalProfile":[],"getUsers":[],"launchCluster":["id","uuid"],"getUser":["uuid"],"removeUser":["uuid"],"updateClusterById":["id","request"],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"],"getPackageBody":["provider","body"],"getProfileOrDefault":["name"],"writeSettings":["setting"],"getClusterById":["id"],"getWorlds":["id"],"getScreenshots":["id"],"searchPackages":["provider","query"],"getMultiplePackages":["provider","slugs"],"readSettings":[],"getLoadersForVersion":["mc_version"],"removeCluster":["id"],"openMsaLogin":[],"getPackage":["provider","slug"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"getGameVersions":[],"updateClusterProfile":["name","profile"],"createCluster":["options"]}', 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}' }
+export type Router = { 'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
+'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: bigint) => Promise<ClusterModel | null>, 
 removeCluster: (id: bigint) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -235,16 +254,14 @@ readSettings: () => Promise<Settings>,
 writeSettings: (setting: Settings) => Promise<null>, 
 searchPackages: (provider: Provider, query: SearchQuery) => Promise<Paginated<SearchResult>>, 
 getPackage: (provider: Provider, slug: string) => Promise<ManagedPackage>, 
+getPackageBody: (provider: Provider, body: ManagedPackageBody) => Promise<string>, 
 getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPackage[]>, 
-getPackageVersions: (provider: Provider, slug: string, mcVersions: string[] | null, loaders: GameLoader[] | null, offset: bigint, limit: bigint) => Promise<Paginated<ManagedVersion>>, 
-getPackageUser: (provider: Provider, slug: string) => Promise<ManagedUser>, 
+getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null, loader: GameLoader | null, offset: bigint, limit: bigint) => Promise<Paginated<ManagedVersion>>, 
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: bigint, skipCompatibility: boolean | null) => Promise<PackageModel>, 
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> },
 'events': { ingress: (event: IngressPayload) => Promise<void>, 
 message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> } };
+process: (event: ProcessPayload) => Promise<void> } };
 
 
 export type { InferCommandOutput }

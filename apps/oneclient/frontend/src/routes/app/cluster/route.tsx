@@ -10,18 +10,18 @@ import { useRef, useState } from 'react';
 
 export interface ClusterRouteSearchParams {
 	clusterId: number;
+	a: number;
 }
 
 export const Route = createFileRoute('/app/cluster')({
 	component: RouteComponent,
 	validateSearch: (search): ClusterRouteSearchParams => {
-		console.log('validateSearch', search);
 		return {
 			clusterId: Number(search.clusterId),
+			a: 6,
 		};
 	},
 	async beforeLoad({ context, search }) {
-		console.log('beforeLoad', search);
 		if (!search.clusterId)
 			throw redirect({ to: '/app/clusters', from: '/app/cluster' });
 
@@ -67,7 +67,7 @@ function RouteComponent() {
 		>
 			<TabList className="sticky top-0 z-10 shadow-lg" floating={floating} ref={tabListRef}>
 				<Tab from={Route.id} search={search} to="/app/cluster/overview">Overview</Tab>
-				<Tab>Logs</Tab>
+				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 			</TabList>
 
 			<div className="relative">

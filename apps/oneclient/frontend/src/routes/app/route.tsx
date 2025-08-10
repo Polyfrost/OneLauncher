@@ -2,8 +2,7 @@ import type { PropsWithChildren } from 'react';
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import useAppShellStore from '@/stores/appShellStore';
-import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/app')({
@@ -15,7 +14,7 @@ function RouteComponent() {
 		<LoaderSuspense spinner={{ size: 'large' }}>
 			<AppShell>
 				<div className="h-full w-full">
-					<AnimatedOutlet
+					{/* <AnimatedOutlet
 						enter={{
 							initial: { opacity: 0 },
 							animate: { opacity: 1 },
@@ -26,7 +25,8 @@ function RouteComponent() {
 						}}
 						from={Route.id}
 						transition={{ duration: 0.25, bounce: 0.1, power: 0.2, type: 'spring' }}
-					/>
+					/> */}
+					<Outlet />
 				</div>
 			</AppShell>
 		</LoaderSuspense>

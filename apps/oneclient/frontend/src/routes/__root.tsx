@@ -1,6 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { AnimatedOutletProvider } from '@onelauncher/common/components';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
 import { RouterProvider } from 'react-aria-components';
@@ -23,17 +22,17 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
 function RootRoute() {
 	const router = useRouter();
 	return (
-		<AnimatedOutletProvider>
-			<RouterProvider
-				navigate={(to, options) => router.navigate({ to, ...options })}
-				useHref={to => router.buildLocation({ to }).href}
-			>
-				<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
-					<Outlet />
+		// <AnimatedOutletProvider>
+		<RouterProvider
+			navigate={(to, options) => router.navigate({ to, ...options })}
+			useHref={to => router.buildLocation({ to }).href}
+		>
+			<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
+				<Outlet />
 
-					<TanStackRouterDevtools />
-				</div>
-			</RouterProvider>
-		</AnimatedOutletProvider>
+				<TanStackRouterDevtools />
+			</div>
+		</RouterProvider>
+		// </AnimatedOutletProvider>
 	);
 }

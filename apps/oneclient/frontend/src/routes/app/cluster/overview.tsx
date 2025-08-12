@@ -1,10 +1,12 @@
 import { SheetPage } from '@/components/SheetPage';
+import { bindings } from '@/main';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/cluster/overview')({
 	component: RouteComponent,
-	beforeLoad(ctx) {
-		console.log('beforeLoad overview', ctx.search);
+	async beforeLoad(ctx) {
+		const cluster = await bindings.core.getClusterById(ctx.search.clusterId as unknown as bigint);
+		return { cluster };
 	},
 });
 

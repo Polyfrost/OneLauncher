@@ -20,7 +20,7 @@ export function Navbar() {
 
 			<div className="flex flex-1 items-center justify-center pointer-events-none gap-6">
 				<NavbarLink to=".">Home</NavbarLink>
-				<NavbarLink to="./clusters">Clusters</NavbarLink>
+				<NavbarLink to="./clusters">Versions</NavbarLink>
 				<NavbarLink to=".">Accounts</NavbarLink>
 			</div>
 

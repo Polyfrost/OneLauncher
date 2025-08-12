@@ -123,9 +123,10 @@ function HeaderBackgrounds({
 
 	return (
 		<motion.div
-			className="absolute left-0 h-full w-full overflow-hidden"
+			className="absolute left-0 w-full overflow-hidden"
 			style={{
 				top,
+				bottom: 0,
 			}}
 		>
 			<div

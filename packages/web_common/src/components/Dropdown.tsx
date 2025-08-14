@@ -105,6 +105,9 @@ export interface DropdownProps<T extends object>
 	customMinimalIcon?: React.ReactNode;
 	popoverClassName?: string;
 	selectValue?: (arg1: SelectValueRenderProps<object> & { defaultChildren: React.ReactNode | undefined }) => string;
+
+	triggerClassName?: string;
+	triggerContentClassName?: string;
 }
 
 export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
@@ -119,6 +122,8 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 		minimal,
 		popoverClassName,
 		selectValue,
+		triggerClassName,
+		triggerContentClassName,
 		...rest
 	} = props;
 
@@ -130,8 +135,8 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 				<>
 					{label && <AriaLabel className={labelClassName}>{label}</AriaLabel>}
 
-					<Button className={styles.trigger()} color="ghost">
-						<div className={styles.triggerValueContent()}>
+					<Button className={styles.trigger({ className: triggerClassName })} color="ghost">
+						<div className={styles.triggerValueContent({ className: triggerContentClassName })}>
 							{triggerTextPrefix && <span>{triggerTextPrefix}</span>}
 							{selectValue
 								? (
@@ -177,7 +182,7 @@ Dropdown.Item = (props: DropdownItemProps) => {
 	const { className, children } = props;
 
 	return (
-		<AriaListBoxItem {...props} className={twMerge(itemStyles.container(), className?.toString())}>
+		<AriaListBoxItem aria-label="dropdown item" {...props} className={twMerge(itemStyles.container(), className?.toString())}>
 			{children}
 		</AriaListBoxItem>
 	);

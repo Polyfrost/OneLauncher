@@ -1,5 +1,5 @@
 use onelauncher_core::api::proxy::ProxyTauri;
-use onelauncher_core::api::tauri::{TauriLauncherApi, TauriLauncherEventApi};
+use onelauncher_core::api::tauri::TauRPCLauncherExt;
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::store::proxy::ProxyState;
 use onelauncher_core::store::semaphore::SemaphoreStore;
@@ -56,12 +56,11 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 	let router = taurpc::Router::new()
 		.export_config(
 			specta_typescript::Typescript::default()
-				.bigint(specta_typescript::BigIntExportBehavior::BigInt)
+				.bigint(specta_typescript::BigIntExportBehavior::Number)
 				.formatter(ext::specta::formatter),
 		)
 		.merge(api::commands::OneClientApiImpl.into_handler())
-		.merge(onelauncher_core::api::tauri::TauriLauncherApiImpl.into_handler())
-		.merge(onelauncher_core::api::tauri::TauriLauncherEventApiImpl.into_handler());
+		.use_launcher_api();
 
 	let builder = builder
 		.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {

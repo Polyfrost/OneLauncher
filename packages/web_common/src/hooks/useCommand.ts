@@ -11,7 +11,8 @@ type RegisterConfig = Register extends {
 	commands: infer Keys;
 } ? Keys : never;
 
-type CommandCacheKey = RegisterConfig[number] | (string & {}) | false;
+type CommandCacheKey = RegisterConfig[number] | (string & {});
+type CommandCacheKeys = Array<CommandCacheKey> | [CommandCacheKey] | [false];
 
 async function fetchCommand<T>(command: () => Promise<T>): Promise<T> {
 	try {
@@ -29,15 +30,15 @@ async function fetchCommand<T>(command: () => Promise<T>): Promise<T> {
 }
 
 export function useCommand<TQueryFnData, TSelected = TQueryFnData>(
-	cacheKey: CommandCacheKey,
+	cacheKey: CommandCacheKeys,
 	command: () => Promise<TQueryFnData>,
 	options?: Omit<
-		UndefinedInitialDataOptions<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>,
+		UndefinedInitialDataOptions<TQueryFnData, Error, TSelected, CommandCacheKeys | []>,
 		'queryKey' | 'queryFn'
 	>,
 ): UseQueryResult<TSelected, Error> {
-	return useQuery<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>({
-		queryKey: cacheKey === false ? [] : [cacheKey],
+	return useQuery<TQueryFnData, Error, TSelected, CommandCacheKeys | []>({
+		queryKey: cacheKey[0] === false ? [] : Array.isArray(cacheKey) ? cacheKey : [cacheKey],
 		queryFn: () => fetchCommand(command),
 		enabled: true,
 		...options,
@@ -45,15 +46,15 @@ export function useCommand<TQueryFnData, TSelected = TQueryFnData>(
 }
 
 export function useCommandSuspense<TQueryFnData, TSelected = TQueryFnData>(
-	cacheKey: CommandCacheKey,
+	cacheKey: CommandCacheKeys,
 	command: () => Promise<TQueryFnData>,
 	options?: Omit<
-		UseSuspenseQueryOptions<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>,
+		UseSuspenseQueryOptions<TQueryFnData, Error, TSelected, CommandCacheKeys | []>,
     'queryKey' | 'queryFn'
 	>,
 ): UseSuspenseQueryResult<TSelected, Error> {
-	return useSuspenseQuery<TQueryFnData, Error, TSelected, [CommandCacheKey] | []>({
-		queryKey: cacheKey === false ? [] : [cacheKey],
+	return useSuspenseQuery<TQueryFnData, Error, TSelected, CommandCacheKeys | []>({
+		queryKey: cacheKey[0] === false ? [] : Array.isArray(cacheKey) ? cacheKey : [cacheKey],
 		queryFn: () => fetchCommand(command),
 		...options,
 	});

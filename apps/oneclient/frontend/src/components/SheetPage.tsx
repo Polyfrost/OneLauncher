@@ -4,20 +4,28 @@ import { useCanGoBack, useRouter } from '@tanstack/react-router';
 import { ArrowLeftIcon } from '@untitled-theme/icons-react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { twMerge } from 'tailwind-merge';
+
+export interface SheetPageProps {
+	headerSmall: React.ReactNode;
+	headerLarge: React.ReactNode;
+	children?: React.ReactNode;
+	scrollContainerRef?: React.RefObject<HTMLElement | null>;
+}
+
+export interface SheetPageContextApi {
+	scrollContainerRef: React.RefObject<HTMLElement | null>;
+}
+
+const SheetPageContext = React.createContext<SheetPageContextApi | null>(null);
 
 export function SheetPage({
 	headerSmall,
 	headerLarge,
 	children,
 	scrollContainerRef,
-}: {
-	headerSmall: React.ReactNode;
-	headerLarge: React.ReactNode;
-	children?: React.ReactNode;
-	scrollContainerRef?: React.RefObject<HTMLElement | null>;
-}) {
+}: SheetPageProps) {
 	const scrollContainer = useRef<HTMLElement>(null);
 	const headerLargeRef = useRef<HTMLDivElement>(null);
 
@@ -38,6 +46,10 @@ export function SheetPage({
 	const smallTop = useTransform(scrollYProgress, [0, 1], ['0', '100%']);
 	const smallOpacity = useTransform(scrollYProgress, [0, 1], ['1', '0']);
 	const largeOpacity = useTransform(scrollYProgress, [0, 1], ['0', '1']);
+
+	const context = useMemo<SheetPageContextApi>(() => ({
+		scrollContainerRef: scrollContainer,
+	}), [scrollContainer]);
 
 	return (
 		<div className="h-full">
@@ -63,12 +75,23 @@ export function SheetPage({
 							{headerLarge}
 						</motion.div>
 
-						{children}
+						<SheetPageContext.Provider value={context}>
+							{children}
+						</SheetPageContext.Provider>
 					</div>
 				</OverlayScrollbarsComponent>
 			</div>
 		</div>
 	);
+}
+
+export function useSheetPageContext() {
+	const ctx = React.useContext(SheetPageContext);
+
+	if (!ctx)
+		throw new Error('useSheetPageContext must be used within a SheetPageContext.Provider');
+
+	return ctx;
 }
 
 SheetPage.Content = ({

@@ -6,7 +6,7 @@ type TAURI_CHANNEL<T> = (response: T) => void
 
 export type ClusterError = { type: "InvalidVersion"; data: string } | { type: "MismatchedVersion"; data: string } | { type: "MismatchedLoader"; data: string } | { type: "MissingJavaVersion"; data: string } | { type: "ClusterDownloading"; data: string } | { type: "ClusterAlreadyRunning"; data: string }
 
-export type ClusterModel = { id: bigint; folder_name: string; stage: ClusterStage; created_at: string; group_id: bigint | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: bigint | null; icon_url: Icon | null; setting_profile_name: string | null; linked_modpack_hash: string | null }
+export type ClusterModel = { id: number; folder_name: string; stage: ClusterStage; created_at: string; group_id: number | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: number | null; icon_url: Icon | null; setting_profile_name: string | null; linked_modpack_hash: string | null }
 
 export type ClusterStage = "notready" | "downloading" | "repairing" | "ready"
 
@@ -42,24 +42,24 @@ export type IngressType = { Download: { file_name: string } } | "JavaPrepare" | 
 
 export type JavaError = { type: "ParseVersion"; data: string } | { type: "Execute"; data: string } | { type: "MissingJava"; data: string }
 
-export type LauncherError = { type: "DirError"; data: DirectoryError } | { type: "IOError"; data: IOError } | { type: "IngressError"; data: IngressError } | { type: "JavaError"; data: JavaError } | { type: "CryptoError"; data: CryptoError } | { type: "DiscordError"; data: DiscordError } | { type: "MetadataError"; data: MetadataError } | { type: "ClusterError"; data: ClusterError } | { type: "MinecraftAuthError"; data: MinecraftAuthError } | { type: "ProcessError"; data: ProcessError } | { type: "PackageError"; data: PackageError } | { type: "DaoError"; data: DaoError } | { type: "SerdeError"; data: string } | { type: "AnyhowError"; data: string } | { type: "DbError"; data: string } | { type: "ReqwestError"; data: string } | { type: "InterpulseError"; data: string } | { type: "RegexError"; data: string } | { type: "SemaphoreError"; data: string } | { type: "UrlError"; data: string } | { type: "TauriError"; data: string }
+export type LauncherError = { type: "DirError"; data: DirectoryError } | { type: "IOError"; data: IOError } | { type: "IngressError"; data: IngressError } | { type: "JavaError"; data: JavaError } | { type: "CryptoError"; data: CryptoError } | { type: "DiscordError"; data: DiscordError } | { type: "MetadataError"; data: MetadataError } | { type: "ClusterError"; data: ClusterError } | { type: "MinecraftAuthError"; data: MinecraftAuthError } | { type: "ProcessError"; data: ProcessError } | { type: "PackageError"; data: PackageError } | { type: "DaoError"; data: DaoError } | { type: "SerdeError"; data: string } | { type: "AnyhowError"; data: string } | { type: "DbError"; data: string } | { type: "ReqwestError"; data: string } | { type: "InterpulseError"; data: string } | { type: "RegexError"; data: string } | { type: "SemaphoreError"; data: string } | { type: "UrlError"; data: string } | { type: "OpenerError"; data: string } | { type: "TauriError"; data: string }
 
 export type ManagedPackage = { id: string; slug: string; provider: Provider; package_type: PackageType; name: string; short_desc: string; body: ManagedPackageBody; 
 /**
  * Won't have all versions for some providers, like CurseForge.
  * Try making a request to get the versions if needed
  */
-version_ids: string[]; mc_versions: string[]; loaders: GameLoader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; categories: PackageCategories; license: PackageLicense | null; author: PackageAuthor; links: PackageLinks; status: PackageStatus; downloads: bigint; gallery: PackageGallery[] }
+version_ids: string[]; mc_versions: string[]; loaders: GameLoader[]; icon_url: string | null; created: string; updated: string; client: PackageSide; server: PackageSide; categories: PackageCategories; license: PackageLicense | null; author: PackageAuthor; links: PackageLinks; status: PackageStatus; downloads: number; gallery: PackageGallery[] }
 
 export type ManagedPackageBody = { Url: string } | { Raw: string }
 
 export type ManagedUser = { id: string; username: string; url?: string | null; avatar_url?: string | null; bio?: string | null; is_organization_user?: boolean; role?: string | null }
 
-export type ManagedVersion = { version_id: string; project_id: string; display_name: string; display_version: string; changelog: string | null; dependencies: ManagedVersionDependency[]; mc_versions: string[]; release_type: PackageReleaseType; loaders: GameLoader[]; published: string; downloads: bigint; files: ManagedVersionFile[] }
+export type ManagedVersion = { version_id: string; project_id: string; display_name: string; display_version: string; changelog: string | null; dependencies: ManagedVersionDependency[]; mc_versions: string[]; release_type: PackageReleaseType; loaders: GameLoader[]; published: string; downloads: number; files: ManagedVersionFile[] }
 
 export type ManagedVersionDependency = { version_id: string | null; project_id: string | null; file_name: string | null; dependency_type: PackageDependencyType }
 
-export type ManagedVersionFile = { sha1: string; url: string; file_name: string; primary: boolean; size: bigint }
+export type ManagedVersionFile = { sha1: string; url: string; file_name: string; primary: boolean; size: number }
 
 export type MessageLevel = "Info" | "Warn" | "Error"
 
@@ -139,9 +139,9 @@ export type PackageStatus = "active" | "abandoned"
 
 export type PackageType = "mod" | "resourcepack" | "shader" | "datapack" | "modpack"
 
-export type Paginated<T> = { total: bigint; offset: bigint; limit: bigint; items: T[] }
+export type Paginated<T> = { total: number; offset: number; limit: number; items: T[] }
 
-export type Process = { pid: number; started_at: string; cluster_id: bigint; post_hook: string | null; account_id: string }
+export type Process = { pid: number; started_at: string; cluster_id: number; post_hook: string | null; account_id: string }
 
 export type ProcessError = { type: "HookUnsuccessful"; data: string } | { type: "NoPid"; data: string }
 
@@ -153,19 +153,19 @@ export type Provider = "Modrinth" | "CurseForge" | "SkyClient"
 
 export type Resolution = { width: number; height: number }
 
-export type SearchQuery = { query: string | null; offset: bigint | null; limit: bigint | null; sort: Sort | null; filters: Filters | null }
+export type SearchQuery = { query: string | null; offset: number | null; limit: number | null; sort: Sort | null; filters: Filters | null }
 
-export type SearchResult = { project_id: string; package_type: PackageType; slug: string; author: string; title: string; description: string; categories: PackageCategories; loaders: GameLoader[]; mc_versions: string[]; downloads: bigint; icon_url: string; date_created: string; date_modified: string; latest_version: string; license: string | null; client_side: PackageSide; server_side: PackageSide; 
+export type SearchResult = { project_id: string; package_type: PackageType; slug: string; author: string; title: string; description: string; categories: PackageCategories; loaders: GameLoader[]; mc_versions: string[]; downloads: number; icon_url: string; date_created: string; date_modified: string; latest_version: string; license: string | null; client_side: PackageSide; server_side: PackageSide; 
 /**
  * List of URLs to images
  */
 gallery: string[] }
 
-export type SettingProfileModel = { name: string; java_id: bigint | null; res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null; os_extra: SettingsOsExtra | null }
+export type SettingProfileModel = { name: string; java_id: number | null; res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null; os_extra: SettingsOsExtra | null }
 
-export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; max_concurrent_requests: bigint; settings_version: number; native_window_frame: boolean }
+export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean }
 
-export type SettingsOsExtra = Record<string, never>
+export type SettingsOsExtra = { enable_gamemode: boolean | null }
 
 export type Sort = "Relevance" | "Downloads" | "Newest" | "Updated"
 
@@ -228,15 +228,17 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'oneclient':'{"openDevTools":[],"getClustersGroupedByMajor":[]}', 'core':'{"getClusters":[],"updateClusterById":["id","request"],"getGameVersions":[],"searchPackages":["provider","query"],"getUser":["uuid"],"getWorlds":["id"],"readSettings":[],"getPackage":["provider","slug"],"getClusterById":["id"],"writeSettings":["setting"],"getMultiplePackages":["provider","slugs"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getLoadersForVersion":["mc_version"],"getPackageBody":["provider","body"],"launchCluster":["id","uuid"],"getUsersFromAuthor":["provider","author"],"getGlobalProfile":[],"getUsers":[],"removeUser":["uuid"],"removeCluster":["id"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"createCluster":["options"],"getProfileOrDefault":["name"],"updateClusterProfile":["name","profile"],"openMsaLogin":[],"setDefaultUser":["uuid"],"getDefaultUser":["fallback"],"getScreenshots":["id"]}' }
+const ARGS_MAP = { 'oneclient':'{"openDevTools":[],"getClustersGroupedByMajor":[]}', 'core':'{"getScreenshots":["id"],"updateClusterById":["id","request"],"getPackageBody":["provider","body"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"launchCluster":["id","uuid"],"getClusters":[],"getLoadersForVersion":["mc_version"],"getUser":["uuid"],"getGameVersions":[],"getDefaultUser":["fallback"],"getUsersFromAuthor":["provider","author"],"getProfileOrDefault":["name"],"removeCluster":["id"],"getUsers":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getMultiplePackages":["provider","slugs"],"getLogs":["id"],"getWorlds":["id"],"setDefaultUser":["uuid"],"removeUser":["uuid"],"openMsaLogin":[],"getPackage":["provider","slug"],"writeSettings":["setting"],"createCluster":["options"],"readSettings":[],"getLogByName":["id","name"],"updateClusterProfile":["name","profile"],"getClusterById":["id"],"searchPackages":["provider","query"],"getGlobalProfile":[]}', 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}', 'folders':'{"openCluster":["folder_name"],"fromCluster":["folder_name"]}' }
 export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
-getClusterById: (id: bigint) => Promise<ClusterModel | null>, 
-removeCluster: (id: bigint) => Promise<null>, 
+getClusterById: (id: number) => Promise<ClusterModel | null>, 
+removeCluster: (id: number) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
-launchCluster: (id: bigint, uuid: string | null) => Promise<null>, 
-updateClusterById: (id: bigint, request: ClusterUpdate) => Promise<null>, 
-getScreenshots: (id: bigint) => Promise<string[]>, 
-getWorlds: (id: bigint) => Promise<string[]>, 
+launchCluster: (id: number, uuid: string | null) => Promise<null>, 
+updateClusterById: (id: number, request: ClusterUpdate) => Promise<null>, 
+getScreenshots: (id: number) => Promise<string[]>, 
+getWorlds: (id: number) => Promise<string[]>, 
+getLogs: (id: number) => Promise<string[]>, 
+getLogByName: (id: number, name: string) => Promise<string | null>, 
 getProfileOrDefault: (name: string | null) => Promise<SettingProfileModel>, 
 getGlobalProfile: () => Promise<SettingProfileModel>, 
 updateClusterProfile: (name: string, profile: ProfileUpdate) => Promise<SettingProfileModel>, 
@@ -254,14 +256,16 @@ searchPackages: (provider: Provider, query: SearchQuery) => Promise<Paginated<Se
 getPackage: (provider: Provider, slug: string) => Promise<ManagedPackage>, 
 getPackageBody: (provider: Provider, body: ManagedPackageBody) => Promise<string>, 
 getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPackage[]>, 
-getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null, loader: GameLoader | null, offset: bigint, limit: bigint) => Promise<Paginated<ManagedVersion>>, 
-downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: bigint, skipCompatibility: boolean | null) => Promise<PackageModel>, 
+getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null, loader: GameLoader | null, offset: number, limit: number) => Promise<Paginated<ManagedVersion>>, 
+downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: number, skipCompatibility: boolean | null) => Promise<PackageModel>, 
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]> },
-'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
 'events': { ingress: (event: IngressPayload) => Promise<void>, 
 message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> } };
+process: (event: ProcessPayload) => Promise<void> },
+'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> } };
 
 
 export type { InferCommandOutput }

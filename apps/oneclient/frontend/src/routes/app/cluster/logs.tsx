@@ -1,11 +1,11 @@
 import type { Key } from 'react-aria-components';
-import { SheetPage, useSheetPageContext } from '@/components';
+import { LoaderContainer, SheetPage, useSheetPageContext } from '@/components';
 import { LogViewer } from '@/components/LogViewer';
 import { bindings } from '@/main';
-import { useCommand, useCommandSuspense } from '@onelauncher/common';
+import { getMessageFromError, useCommand, useCommandSuspense } from '@onelauncher/common';
 import { Dropdown } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export const Route = createFileRoute('/app/cluster/logs')({
 	component: RouteComponent,
@@ -52,8 +52,8 @@ function LogContent({
 	const { cluster } = Route.useRouteContext();
 
 	// TODO: Fix cache
-	const { data: content } = useCommand(
-		['getLogByName', cluster.id.toString(), fileName],
+	const { data: content, error, isLoading } = useCommand(
+		['getLogByName', cluster.id, fileName],
 		() => bindings.core.getLogByName(cluster.id, fileName),
 		{
 			gcTime: 1000 * 60 * 1, // 1 minute
@@ -61,6 +61,8 @@ function LogContent({
 	);
 
 	return (
-		content && <LogViewer content={content} scrollRef={scrollRef} />
+		<LoaderContainer loading={isLoading}>
+			<LogViewer content={getMessageFromError(error) || content || 'Empty log file'} scrollRef={scrollRef} />
+		</LoaderContainer>
 	);
 }

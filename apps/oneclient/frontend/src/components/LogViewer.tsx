@@ -1,16 +1,18 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useImperativeHandle, useRef, useState } from 'react';
+import { useImperativeHandle, useMemo, useState } from 'react';
 import styles from './LogViewer.module.css';
 
 export interface LogViewerProps {
 	content: string;
 	scrollRef: React.RefObject<HTMLElement | null>;
+	autoScroll?: boolean;
 	ref?: React.RefObject<LogViewerRef>;
 }
 
 export interface LogViewerRef {
 	push: (line: string) => void;
+	// search: (query: string) => void;
 }
 
 const LINE_HEIGHT = 16;
@@ -19,15 +21,16 @@ const REGEX_PATTERN = /\[((?:\S+ )?\d+:\d+:\d+(?:\.\d+)?)\] \[(.[^(\n\r/\u2028\u
 export function LogViewer({
 	content,
 	scrollRef,
+	autoScroll = false,
 	ref,
 }: LogViewerProps) {
-	const linesRef = useRef<Array<string>>(content.split('\n'));
+	const lines = useMemo<Array<string>>(() => content.split('\n'), [content]);
 
 	// used to force re-render (and re-init of virtualizer hook)
-	const [lastUpdated, setLastUpdated] = useState(Date.now());
+	const [_lastUpdated, setLastUpdated] = useState(Date.now());
 
 	const virtualizer = useVirtualizer({
-		count: linesRef.current.length,
+		count: lines.length,
 		estimateSize: () => LINE_HEIGHT,
 		getScrollElement: () => scrollRef.current ?? null,
 		paddingStart: 4,
@@ -37,11 +40,14 @@ export function LogViewer({
 	});
 
 	useImperativeHandle(ref, () => ({
-		push: (line: string) => {
-			linesRef.current.push(line);
+		push: (line) => {
+			const len = lines.push(line);
 			setLastUpdated(Date.now());
+
+			if (autoScroll)
+				virtualizer.scrollToIndex(len - 1);
 		},
-	}), []);
+	}), [autoScroll, lines, virtualizer]);
 
 	return (
 		<div
@@ -66,7 +72,7 @@ export function LogViewer({
 					{virtualizer.getVirtualItems().map(virtualRow => (
 						<LogLine
 							key={virtualRow.key}
-							line={linesRef.current[virtualRow.index]}
+							line={lines[virtualRow.index]}
 							style={{
 								height: `${virtualRow.size}px`,
 								transform: `translateY(${virtualRow.start}px)`,

@@ -1,7 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
+import { TanStackDevtools } from '@tanstack/react-devtools';
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
 import { RouterProvider } from 'react-aria-components';
 
 interface AppRouterContext {
@@ -27,12 +29,28 @@ function RootRoute() {
 			navigate={(to, options) => router.navigate({ to, ...options })}
 			useHref={to => router.buildLocation({ to }).href}
 		>
+			<DevTools />
 			<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
 				<Outlet />
-
-				<TanStackRouterDevtools />
 			</div>
 		</RouterProvider>
 		// </AnimatedOutletProvider>
+	);
+}
+
+function DevTools() {
+	return (
+		<TanStackDevtools
+			plugins={[
+				{
+					name: 'Tanstack Query',
+					render: <ReactQueryDevtoolsPanel />,
+				},
+				{
+					name: 'Tanstack Router',
+					render: <TanStackRouterDevtoolsPanel />,
+				},
+			]}
+		/>
 	);
 }

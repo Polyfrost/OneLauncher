@@ -11,7 +11,6 @@ import { useRef, useState } from 'react';
 
 export interface ClusterRouteSearchParams {
 	clusterId: number;
-	a: number;
 }
 
 export const Route = createFileRoute('/app/cluster')({
@@ -19,7 +18,6 @@ export const Route = createFileRoute('/app/cluster')({
 	validateSearch: (search): ClusterRouteSearchParams => {
 		return {
 			clusterId: Number(search.clusterId),
-			a: 6,
 		};
 	},
 	async beforeLoad({ context, search }) {

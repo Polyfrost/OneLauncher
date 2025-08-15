@@ -15,7 +15,7 @@ function RouteComponent() {
 	const { cluster } = Route.useRouteContext();
 	const { scrollContainerRef } = useSheetPageContext();
 
-	const { data: fileNames } = useCommandSuspense(['getLogs', cluster.id.toString()], () => bindings.core.getLogs(cluster.id));
+	const { data: fileNames } = useCommandSuspense(['getLogs', cluster.id], () => bindings.core.getLogs(cluster.id));
 
 	const [activeFileName, setActiveFileName] = useState<Key | undefined>(fileNames[0] || undefined);
 

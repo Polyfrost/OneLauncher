@@ -19,7 +19,7 @@ export const Route = createFileRoute('/app/')({
 
 function RouteComponent() {
 	const { data: clusters } = useCommandSuspense(
-		'getClusters',
+		['getClusters'],
 		bindings.core.getClusters,
 		{
 			select(data) {

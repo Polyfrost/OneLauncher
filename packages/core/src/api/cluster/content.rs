@@ -58,7 +58,9 @@ pub async fn get_logs(cluster: &clusters::Model) -> LauncherResult<Vec<String>> 
 	let mut list = vec![];
 	let mut files = io::read_dir(path).await?;
 	while let Ok(Some(entry)) = files.next_entry().await {
-		list.push(entry.file_name().to_string_lossy().to_string());
+		if entry.file_type().await.is_ok_and(|ft| ft.is_file()) {
+			list.push(entry.file_name().to_string_lossy().to_string());
+		}
 	}
 
 	list.sort_by(|a, b| {

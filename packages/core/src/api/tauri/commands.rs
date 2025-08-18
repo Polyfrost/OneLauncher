@@ -24,7 +24,7 @@ use onelauncher_entity::prelude::model::*;
 
 #[taurpc::procedures(path = "core")]
 pub trait TauriLauncherApi {
-	// Clusters
+	// MARK: API: clusters
 	#[taurpc(alias = "getClusters")]
 	async fn get_clusters() -> LauncherResult<Vec<Cluster>>;
 
@@ -55,7 +55,7 @@ pub trait TauriLauncherApi {
 	#[taurpc(alias = "getLogByName")]
 	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
 
-	// Setting Profiles
+	// MARK: API: profiles
 	#[taurpc(alias = "getProfileOrDefault")]
 	async fn get_profile_or_default(name: Option<String>) -> LauncherResult<SettingsProfile>;
 
@@ -68,14 +68,14 @@ pub trait TauriLauncherApi {
 		profile: ProfileUpdate,
 	) -> LauncherResult<SettingsProfile>;
 
-	// Game Metadata
+	// MARK: API: metadata
 	#[taurpc(alias = "getGameVersions")]
 	async fn get_game_versions() -> LauncherResult<Vec<Version>>;
 
 	#[taurpc(alias = "getLoadersForVersion")]
 	async fn get_loaders_for_version(mc_version: String) -> LauncherResult<Vec<GameLoader>>;
 
-	// Users
+	// MARK: API: users
 	#[taurpc(alias = "getUsers")]
 	async fn get_users() -> LauncherResult<Vec<MinecraftCredentials>>;
 
@@ -98,14 +98,14 @@ pub trait TauriLauncherApi {
 		app_handle: AppHandle<R>,
 	) -> LauncherResult<Option<MinecraftCredentials>>;
 
-	// Settings
+	// MARK: API: settings
 	#[taurpc(alias = "readSettings")]
 	async fn read_settings() -> LauncherResult<Settings>;
 
 	#[taurpc(alias = "writeSettings")]
 	async fn write_settings(setting: Settings) -> LauncherResult<()>;
 
-	// Packages
+	// MARK: API: packages
 	#[taurpc(alias = "searchPackages")]
 	async fn search_packages(
 		provider: Provider,
@@ -154,6 +154,12 @@ pub trait TauriLauncherApi {
 		provider: Provider,
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>>;
+
+	// MARK: API: minecraft
+	#[taurpc(alias = "fetchMinecraftProfile")]
+	async fn fetch_player_profile(
+		uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
@@ -188,7 +194,7 @@ pub struct TauriLauncherApiImpl;
 
 #[taurpc::resolvers]
 impl TauriLauncherApi for TauriLauncherApiImpl {
-	// Clusters
+	// MARK: Impl: clusters
 	async fn get_clusters(self) -> LauncherResult<Vec<Cluster>> {
 		api::cluster::dao::get_all_clusters().await
 	}
@@ -316,7 +322,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::cluster::content::get_log_by_name(&cluster, &name).await
 	}
 
-	// Setting Profiles
+	// MARK: Impl: profiles
 	async fn get_global_profile(self) -> SettingsProfile {
 		api::setting_profiles::get_global_profile().await
 	}
@@ -374,7 +380,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(profile)
 	}
 
-	// Game Metadata
+	// MARK: Impl: metadata
 	async fn get_loaders_for_version(self, mc_version: String) -> LauncherResult<Vec<GameLoader>> {
 		api::game::metadata::get_loaders_for_version(&mc_version).await
 	}
@@ -383,7 +389,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		api::game::metadata::get_game_versions().await
 	}
 
-	// Users
+	// MARK: Impl: users
 	async fn get_users(self) -> LauncherResult<Vec<MinecraftCredentials>> {
 		api::credentials::get_users().await
 	}
@@ -471,6 +477,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(None)
 	}
 
+	// MARK: Impl: settings
 	async fn read_settings(self) -> LauncherResult<Settings> {
 		let state = State::get().await?;
 		let settings = state.settings.read().await;
@@ -489,7 +496,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(())
 	}
 
-	// Packages
+	// MARK: Impl: packages
 	async fn search_packages(
 		self,
 		provider: Provider,
@@ -565,5 +572,13 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>> {
 		provider.get_users_from_author(author).await
+	}
+
+	// MARK: Impl: minecraft
+	async fn fetch_player_profile(
+		self,
+		uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile> {
+		crate::utils::minecraft::fetch_player_profile(&uuid).await
 	}
 }

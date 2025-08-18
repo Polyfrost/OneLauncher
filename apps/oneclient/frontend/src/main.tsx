@@ -19,6 +19,7 @@ const queryClient = new QueryClient({
 		queries: {
 			retry: false,
 			enabled: false,
+			staleTime: 1000 * 60 * 1, // 1 minute
 		},
 	},
 });

@@ -12,7 +12,8 @@
 		"./components": {
 			"types": "./dist/components.d.ts",
 			"import": "./dist/components.js"
-		}
+		},
+		"./assets/*": "./dist/assets/*"
 	},
 	"main": "./dist/index.js",
 	"typings": "./dist/src/index.d.ts",

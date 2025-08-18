@@ -69,7 +69,7 @@ function RouteComponent() {
 				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 			</TabList>
 
-			<div className="relative">
+			<div className="relative pb-8">
 				<LoaderSuspense spinner={{ size: 'large' }}>
 					<Outlet />
 				</LoaderSuspense>

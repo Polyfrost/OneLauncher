@@ -77,7 +77,7 @@ function NavbarLink({
 	);
 }
 
-function NavbarButton({
+export function NavbarButton({
 	children,
 	color = 'ghost',
 	size = 'iconLarge',

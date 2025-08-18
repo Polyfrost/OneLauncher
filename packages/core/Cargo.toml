@@ -73,6 +73,7 @@ async-stream = { workspace = true }
 paste = { workspace = true }
 byteorder = { workspace = true }
 merge = { workspace = true }
+opener = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }

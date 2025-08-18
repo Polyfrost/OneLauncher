@@ -74,6 +74,12 @@ pub enum LauncherError {
 		#[skip]
 		url::ParseError,
 	),
+	#[error(transparent)]
+	OpenerError(
+		#[from]
+		#[skip]
+		opener::OpenError,
+	),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]

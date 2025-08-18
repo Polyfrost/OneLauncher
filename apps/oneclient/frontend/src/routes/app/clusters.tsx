@@ -24,7 +24,7 @@ function RouteComponent() {
 
 	const navigate = Route.useNavigate();
 
-	const { data: clusters } = useCommandSuspense('getClustersGroupedByMajor', bindings.oneclient.getClustersGroupedByMajor);
+	const { data: clusters } = useCommandSuspense(['getClustersGroupedByMajor'], bindings.oneclient.getClustersGroupedByMajor);
 
 	const loadMinorVersion = useCallback((major: number) => {
 		const existing = prevMinorVersions.find(v => v.major === major);
@@ -194,7 +194,7 @@ function RouteComponent() {
 									navigate({
 										to: `/app/cluster/overview`,
 										search: {
-											clusterId: cluster.id as unknown as number,
+											clusterId: cluster.id,
 										},
 									});
 								}}

@@ -8,8 +8,6 @@ use sea_orm::{
 use crate::error::{DaoError, LauncherResult};
 use crate::store::State;
 
-use super::PackageError;
-
 pub type PackageId = String;
 
 /// Inserts a new package into the database.

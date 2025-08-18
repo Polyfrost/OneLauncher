@@ -1,5 +1,6 @@
 use crate::api::packages::data::{
-	ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery, SearchResult
+	ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery,
+	SearchResult,
 };
 use crate::api::packages::provider::ProviderExt;
 use crate::store::{Settings, State};
@@ -47,6 +48,12 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getWorlds")]
 	async fn get_worlds(id: ClusterId) -> LauncherResult<Vec<String>>;
+
+	#[taurpc(alias = "getLogs")]
+	async fn get_logs(id: ClusterId) -> LauncherResult<Vec<String>>;
+
+	#[taurpc(alias = "getLogByName")]
+	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
 
 	// Setting Profiles
 	#[taurpc(alias = "getProfileOrDefault")]
@@ -109,7 +116,10 @@ pub trait TauriLauncherApi {
 	async fn get_package(provider: Provider, slug: String) -> LauncherResult<ManagedPackage>;
 
 	#[taurpc(alias = "getPackageBody")]
-	async fn get_package_body(provider: Provider, body: ManagedPackageBody) -> LauncherResult<String>;
+	async fn get_package_body(
+		provider: Provider,
+		body: ManagedPackageBody,
+	) -> LauncherResult<String>;
 
 	#[taurpc(alias = "getMultiplePackages")]
 	async fn get_multiple_packages(
@@ -288,6 +298,22 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_worlds(&cluster).await
+	}
+
+	async fn get_logs(self, id: ClusterId) -> LauncherResult<Vec<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_logs(&cluster).await
+	}
+
+	async fn get_log_by_name(self, id: ClusterId, name: String) -> LauncherResult<Option<String>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_log_by_name(&cluster, &name).await
 	}
 
 	// Setting Profiles
@@ -476,7 +502,11 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		provider.get(&slug).await
 	}
 
-	async fn get_package_body(self, provider: Provider, body: ManagedPackageBody) -> LauncherResult<String> {
+	async fn get_package_body(
+		self,
+		provider: Provider,
+		body: ManagedPackageBody,
+	) -> LauncherResult<String> {
 		provider.get_body(&body).await
 	}
 

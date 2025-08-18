@@ -53,6 +53,7 @@ export function Button({
 }: ButtonProps) {
 	return (
 		<AriaButton
+			aria-label={props['aria-label'] ?? 'button'}
 			className={buttonVariants({ color, size, className })}
 			isDisabled={props.isDisabled}
 			{...props}

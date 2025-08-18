@@ -5,8 +5,10 @@ import { createFileRoute } from '@tanstack/react-router';
 export const Route = createFileRoute('/app/cluster/overview')({
 	component: RouteComponent,
 	async beforeLoad(ctx) {
-		const cluster = await bindings.core.getClusterById(ctx.search.clusterId as unknown as bigint);
-		return { cluster };
+		const cluster = await bindings.core.getClusterById(ctx.search.clusterId);
+		return {
+			cluster,
+		};
 	},
 });
 

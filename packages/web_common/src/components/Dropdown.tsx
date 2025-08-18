@@ -105,6 +105,9 @@ export interface DropdownProps<T extends object>
 	customMinimalIcon?: React.ReactNode;
 	popoverClassName?: string;
 	selectValue?: (arg1: SelectValueRenderProps<object> & { defaultChildren: React.ReactNode | undefined }) => string;
+
+	triggerClassName?: string;
+	triggerContentClassName?: string;
 }
 
 export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
@@ -119,27 +122,26 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 		minimal,
 		popoverClassName,
 		selectValue,
+		triggerClassName,
+		triggerContentClassName,
+		'aria-label': ariaLabel,
 		...rest
 	} = props;
 
 	const styles = dropdownStyles({ minimal, className });
 
 	return (
-		<AriaSelect {...rest} className={styles.root()}>
+		<AriaSelect aria-label={ariaLabel ?? 'dropdown'} {...rest} className={styles.root()}>
 			{({ isOpen }) => (
 				<>
-					{label && <AriaLabel className={labelClassName}>{label}</AriaLabel>}
+					{label && <AriaLabel aria-label={label} className={labelClassName}>{label}</AriaLabel>}
 
-					<Button className={styles.trigger()} color="ghost">
-						<div className={styles.triggerValueContent()}>
+					<Button className={styles.trigger({ className: triggerClassName })} color="ghost">
+						<div className={styles.triggerValueContent({ className: triggerContentClassName })}>
 							{triggerTextPrefix && <span>{triggerTextPrefix}</span>}
-							{selectValue
-								? (
-										<SelectValue>
-											{selectValue}
-										</SelectValue>
-									)
-								: <SelectValue />}
+							<SelectValue>
+								{selectValue}
+							</SelectValue>
 						</div>
 						{
 							isOpen
@@ -148,10 +150,10 @@ export function Dropdown<TValue extends object>(props: DropdownProps<TValue>) {
 						}
 					</Button>
 
-					<AriaPopover className={twMerge(styles.popover(), popoverClassName)}>
+					<AriaPopover aria-label="dropdown menu" className={twMerge(styles.popover(), popoverClassName)}>
 						<div className={styles.popoverContentWrapper()}>
 							<OverlayScrollbarsComponent className={styles.overlayScrollbars()}>
-								<AriaListBox className={styles.listBox()}>
+								<AriaListBox aria-label="dropdown list" className={styles.listBox()}>
 									{children}
 								</AriaListBox>
 							</OverlayScrollbarsComponent>
@@ -177,7 +179,7 @@ Dropdown.Item = (props: DropdownItemProps) => {
 	const { className, children } = props;
 
 	return (
-		<AriaListBoxItem {...props} className={twMerge(itemStyles.container(), className?.toString())}>
+		<AriaListBoxItem aria-label="dropdown item" {...props} className={twMerge(itemStyles.container(), className?.toString())}>
 			{children}
 		</AriaListBoxItem>
 	);

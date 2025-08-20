@@ -23,7 +23,7 @@ export const Route = createFileRoute('/app/cluster/browser/')({
 			query: (search.query ?? '') as string,
 			packageType: search.packageType as PackageType,
 			categories: (search.categories ?? []) as Array<string>,
-			page: Number(search.page ?? 0),
+			page: Math.max(Number(search.page || 1), 1),
 		};
 	},
 });

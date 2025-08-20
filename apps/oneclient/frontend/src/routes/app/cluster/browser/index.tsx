@@ -69,12 +69,12 @@ function BrowserCategories() {
 			? categories.filter(element => element !== category)
 			: [...categories, category];
 		navRef.current({
-			search: {
-				...search,
+			search: prev => ({
+				...prev,
 				categories: newCategories,
-			},
+			}),
 		});
-	}, [search, categories]);
+	}, [categories]);
 
 	return (
 		<div className="top-0 h-fit min-w-50">

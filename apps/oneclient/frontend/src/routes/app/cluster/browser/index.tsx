@@ -181,12 +181,16 @@ function SearchResult() {
 		itemsPerPage: query.limit,
 		itemsCount: results.data.total,
 	});
+	const [oldTotal, setOldTotal] = useState(pagination.totalPages);
 	const paginationRef = useRef(pagination);
 	useEffect(() => {
 		navRef.current({ search: prev => ({ ...prev, page: pagination.page }) });
 	}, [pagination.page]);
 	useEffect(() => {
+		if (pagination.totalPages === oldTotal)
+			return;
 		paginationRef.current.reset();
+		setOldTotal(pagination.totalPages);
 	}, [pagination.totalPages]);
 	return (
 		<div className="flex flex-col gap-2">

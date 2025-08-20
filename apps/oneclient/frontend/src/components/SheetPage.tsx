@@ -70,7 +70,7 @@ export function SheetPage({
 				</div>
 
 				<OverlayScrollbarsComponent className="flex flex-col flex-1 mask-t-from-97% pt-4 relative" ref={ref => setScrollContainerRef(ref?.osInstance()?.elements().content ?? null)}>
-					<div className="flex flex-col mx-12 gap-4 flex-1 min-h-full">
+					<div className="flex flex-col mx-12 gap-4 flex-1 h-full min-h-full">
 						<motion.div className="w-full" ref={headerLargeRef} style={{ opacity: largeOpacity }}>
 							{headerLarge}
 						</motion.div>

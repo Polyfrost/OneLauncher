@@ -122,7 +122,7 @@ function RouteComponent() {
 					</div>
 				</div>
 
-				<SheetPage.Content className="sticky top-8 w-86 h-full flex flex-col p-2 gap-2 outline outline-ghost-overlay">
+				<SheetPage.Content className="sticky top-8 w-86 h-min flex flex-col p-2 gap-2 outline outline-ghost-overlay">
 					<GameBackground className="aspect-video w-full rounded-xl outline-2 outline-ghost-overlay" name={versionInfo.backgroundName} />
 
 					<div className="flex flex-col px-4 pt-2 pb-4 gap-2">
@@ -212,9 +212,9 @@ function RouteComponent() {
 	);
 }
 
-function HeaderLarge({ ref }: { ref?: React.Ref<HTMLDivElement> }) {
+function HeaderLarge() {
 	return (
-		<div className="flex flex-row justify-between items-end gap-8" ref={ref}>
+		<div className="flex flex-row justify-between items-end gap-8">
 			<div className="flex flex-col">
 				<h1 className="text-3xl font-semibold">Clusters</h1>
 				<p className="text-md font-medium text-fg-secondary">Something something in corporate style fashion about picking your preferred gamemodes and versions and optionally loader so that oneclient can pick something for them</p>

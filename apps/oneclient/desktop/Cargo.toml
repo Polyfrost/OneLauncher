@@ -60,6 +60,7 @@ tokio = { workspace = true }
 # utils
 thiserror = { workspace = true }
 anyhow = { workspace = true }
+reqwest = { workspace = true }
 
 [dependencies.tauri]
 workspace = true

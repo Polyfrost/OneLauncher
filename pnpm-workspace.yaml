@@ -78,3 +78,4 @@ catalog:
   '@formatjs/intl-durationformat': ^0.7.4
   zustand: ^5.0.5
   valtio: ^2.1.5
+  skinview3d: ^3.4.1

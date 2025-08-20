@@ -8,7 +8,7 @@ export interface PaginationOptions {
 	initialPage?: number;
 };
 
-function usePagination(options: PaginationOptions) {
+export function usePagination(options: PaginationOptions) {
 	// const [options, setOptions] = useState(initialOptions);
 
 	const [page, setPage] = useState(Math.max(1, options.initialPage || 1));
@@ -114,5 +114,3 @@ function usePagination(options: PaginationOptions) {
 		Navigation,
 	};
 }
-
-export default usePagination;

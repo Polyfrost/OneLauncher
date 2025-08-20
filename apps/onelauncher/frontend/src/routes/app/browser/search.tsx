@@ -1,7 +1,7 @@
 import type { Paginated, SearchResult } from '@/bindings.gen';
 import { PackageGrid } from '@/components/content/PackageItem';
 import { useBrowserContext, useBrowserSearch } from '@/hooks/useBrowser';
-import usePagination from '@/hooks/usePagination';
+import { usePagination } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { BrowserLayout } from './route';

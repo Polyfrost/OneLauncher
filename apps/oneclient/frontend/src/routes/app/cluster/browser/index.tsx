@@ -1,23 +1,29 @@
-import type { PackageType, Provider } from '@/bindings.gen';
+import type { Filters, PackageCategories, PackageType, Provider } from '@/bindings.gen';
+import { LoaderSuspense } from '@/components';
+import { PackageGrid } from '@/components/PackageItem';
+import { bindings } from '@/main';
 import { browserCategories, categoryNameFromId } from '@/utils/browser';
+import { useCommandSuspense, usePagination } from '@onelauncher/common';
 import { Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface BrowserSearchRouteSearchParams {
 	query?: string;
 	packageType: PackageType;
 	categories: Array<string>;
+	page: number;
 }
 
 export const Route = createFileRoute('/app/cluster/browser/')({
 	component: RouteComponent,
 	validateSearch: (search): BrowserSearchRouteSearchParams => {
 		return {
-			query: search.query as string,
+			query: (search.query ?? '') as string,
 			packageType: search.packageType as PackageType,
-			categories: search.categories as Array<string>,
+			categories: (search.categories ?? []) as Array<string>,
+			page: Number(search.page ?? 0),
 		};
 	},
 });
@@ -39,6 +45,9 @@ function RouteComponent() {
 
 					<div className="h-full flex flex-col gap-y-4">
 						<div className="h-full flex-1">
+							<LoaderSuspense spinner={{ size: 'large' }}>
+								<SearchResult />
+							</LoaderSuspense>
 
 						</div>
 					</div>
@@ -54,17 +63,18 @@ function BrowserCategories() {
 	const search = Route.useSearch();
 	const { categories, packageType } = search;
 	const navigate = Route.useNavigate();
+	const navRef = useRef(navigate);
 	const switchCategory = useMemo(() => (category: string) => {
 		const newCategories = categories.includes(category)
 			? categories.filter(element => element !== category)
 			: [...categories, category];
-		navigate({
+		navRef.current({
 			search: {
 				...search,
 				categories: newCategories,
 			},
 		});
-	}, []);
+	}, [search, categories]);
 
 	return (
 		<div className="top-0 h-fit min-w-50">
@@ -97,6 +107,7 @@ function BrowserToolbar() {
 	const setQuery = (query: string) => {
 		navigate({ search: { ...search, query } });
 	};
+	const [searchBar, setSearchBar] = useState(query);
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
 			<div className="flex flex-row gap-2">
@@ -120,7 +131,7 @@ function BrowserToolbar() {
 				<TextField
 					className="min-w-64"
 					iconLeft={<SearchMdIcon className="scale-75" />}
-					// onChange={e => setQuery(e.currentTarget.value)}
+					onChange={e => setSearchBar(e.currentTarget.value)}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter')
 							return;
@@ -128,9 +139,61 @@ function BrowserToolbar() {
 						setQuery(e.currentTarget.value);
 					}}
 					placeholder="Search for content"
-					value={query}
+					value={searchBar}
 				/>
 			</div>
+		</div>
+	);
+}
+
+interface SearchQuery {
+	query: string | null;
+	offset: number | null;
+	limit: number;
+	sort: 'Relevance' | 'Downloads' | 'Newest' | 'Updated' | null;
+	filters: Filters | null;
+}
+
+const itemsPerPage = 25;
+
+function SearchResult() {
+	const search = Route.useSearch();
+	const { cluster } = Route.useRouteContext();
+	const navigate = Route.useNavigate();
+	const navRef = useRef(navigate);
+	const query = useMemo<SearchQuery>(() => ({
+		query: search.query ?? null,
+		offset: (search.page - 1) * itemsPerPage,
+		limit: itemsPerPage,
+		sort: 'Relevance',
+		filters: {
+			game_versions: [cluster.mc_version],
+			categories: { [categoryNameFromId[search.packageType]]: search.categories } as PackageCategories,
+			loaders: [cluster.mc_loader],
+			package_type: search.packageType,
+		},
+	}), [cluster, search]);
+	const results = useCommandSuspense(['searchPackages', search], () => bindings.core.searchPackages(
+		search.provider,
+		query,
+	));
+	const pagination = usePagination({
+		itemsPerPage: query.limit,
+		itemsCount: results.data.total,
+	});
+	const paginationRef = useRef(pagination);
+	useEffect(() => {
+		navRef.current({ search: prev => ({ ...prev, page: pagination.page }) });
+	}, [pagination.page]);
+	useEffect(() => {
+		paginationRef.current.reset();
+	}, [pagination.totalPages]);
+	return (
+		<div className="flex flex-col gap-2">
+			<div className="flex justify-end">
+				<pagination.Navigation />
+			</div>
+			<PackageGrid items={results.data.items} provider={search.provider} />
 		</div>
 	);
 }

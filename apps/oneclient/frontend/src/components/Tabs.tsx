@@ -12,10 +12,10 @@ export function TabList({
 	ref?: React.Ref<HTMLDivElement>;
 }) {
 	return (
-		<div className="flex justify-stretch items-center sticky top-0 z-10 min-h-[74px] h-[74px] max-h-[74px] w-full" ref={ref}>
+		<div className="pointer-events-none sticky top-0 z-10 min-h-[74px] h-[74px] max-h-[74px] w-full" ref={ref}>
 			<div
 				className={twMerge(
-					'flex-1 flex flex-row gap-2 border border-transparent bg-page-elevated transition-all',
+					'pointer-events-auto flex flex-row gap-2 border border-transparent bg-page-elevated transition-all',
 					floating
 						? 'px-6 mx-4 py-3 shadow-lg border-ghost-overlay rounded-xl'
 						: 'px-10 py-6 rounded-2xl',

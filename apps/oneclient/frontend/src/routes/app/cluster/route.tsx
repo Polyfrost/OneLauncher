@@ -64,7 +64,7 @@ function RouteComponent() {
 			headerSmall={<HeaderSmall />}
 			scrollContainerRef={scrollContainerRef}
 		>
-			<TabList className="sticky top-0 z-10 shadow-lg" floating={floating} ref={tabListRef}>
+			<TabList floating={floating} ref={tabListRef}>
 				<Tab from={Route.id} search={search} to="/app/cluster/overview">Overview</Tab>
 				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 				<Tab from={Route.id} search={{ ...search, packageType: 'mod' }} to="/app/cluster/browser">Browser</Tab>

@@ -1,8 +1,10 @@
 import type { PropsWithChildren } from 'react';
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
-import useAppShellStore from '@/stores/appShellStore';
+import { useActiveCluster } from '@/hooks/useClusters';
+import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { motion } from 'motion/react';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/app')({
@@ -50,10 +52,8 @@ function AppShell({
 }
 
 function BackgroundGradient() {
-	const background = useAppShellStore(state => state.background);
-
-	if (background === 'none')
-		return undefined;
+	const cluster = useActiveCluster();
+	const versionInfo = getVersionInfoOrDefault(cluster?.mc_version);
 
 	return (
 		<div className="relative">
@@ -83,10 +83,23 @@ function BackgroundGradient() {
 			</div>
 
 			<MouseParallax isAbsolutelyPositioned strength={0.01} zIndex={-50}>
-				<GameBackground
-					className="absolute left-0 top-0 w-screen h-screen scale-110"
-					name="HypixelSkyblockHub"
-				/>
+				<motion.div
+					animate={{
+						opacity: 1,
+						left: '0',
+					}}
+					className="relative scale-105"
+					initial={{
+						opacity: 0,
+						left: '-10%',
+					}}
+					key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
+				>
+					<GameBackground
+						className="absolute left-0 top-0 w-screen h-screen scale-110"
+						name={versionInfo.backgroundName}
+					/>
+				</motion.div>
 			</MouseParallax>
 		</div>
 	);

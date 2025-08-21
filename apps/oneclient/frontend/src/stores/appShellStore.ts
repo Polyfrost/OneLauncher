@@ -1,17 +1,17 @@
 import { create } from 'zustand';
 
 export interface AppShellStore {
-	background: 'gradientOverlay' | 'none';
+	activeClusterId: number;
 }
 
 export interface AppShellStoreActions {
-	setBackground: (background: AppShellStore['background']) => void;
+	setActiveClusterId: (cluster: AppShellStore['activeClusterId']) => void;
 }
 
 export const useAppShellStore = create<AppShellStore & AppShellStoreActions>()(set => ({
-	background: 'gradientOverlay',
+	activeClusterId: 0,
 
-	setBackground: background => set({ background }),
+	setActiveClusterId: cluster => set({ activeClusterId: cluster }),
 }));
 
 export default useAppShellStore;

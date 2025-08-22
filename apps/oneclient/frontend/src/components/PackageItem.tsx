@@ -1,38 +1,29 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
-// import { abbreviateNumber, LOADERS, upperFirst } from '@/utils';
-// import { categoryNameFromId } from '@/utils/browser';
 import { Show, Tooltip } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
-import { Download01Icon } from '@untitled-theme/icons-react';
-import { useMemo } from 'react';
-import { Focusable } from 'react-aria-components';
 
-function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
-	return list.includes(element as unknown as TArray);
-}
-
-export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
+export function PackageGrid({ items, provider, clusterId }: { items: Array<SearchResult>; provider: Provider; clusterId: number }) {
 	return (
 		<div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5! gap-4">
 			{items.map(item => (
-				<PackageItem key={item.project_id} {...item} provider={provider} />
+				<PackageItem
+					key={item.project_id}
+					{...item}
+					clusterId={clusterId}
+					provider={provider}
+				/>
 			))}
 		</div>
 	);
 }
 
-export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	// const categoryName = categoryNameFromId[item.package_type];
-	// if (!(categoryName in item.categories))
-	// 	throw new Error('invalid categories');
-	// const loaders = useMemo(() => getCategories(item.categories).filter(cat => includes(LOADERS, cat)), [item.categories]);
-
+export function PackageItem({ provider, clusterId, ...item }: SearchResult & { provider: Provider; clusterId: number }) {
 	return (
 		<Link
 			className="h-full min-w-50 overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover grid grid-rows-[7rem_auto] max-h-74 min-h-74"
-			params={{ provider, id: item.project_id }}
+			search={{ provider, packageId: item.project_id, clusterId }}
 			tabIndex={0}
-			to="/app/browser/package/$provider/$id"
+			to="/app/cluster/browser/package"
 		>
 			<div
 				className="relative flex items-center justify-center overflow-hidden w-full h-28"

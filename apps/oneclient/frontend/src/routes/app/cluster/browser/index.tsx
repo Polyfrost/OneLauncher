@@ -197,7 +197,7 @@ function SearchResult() {
 			<div className="flex justify-end">
 				<pagination.Navigation />
 			</div>
-			<PackageGrid items={results.data.items} provider={search.provider} />
+			<PackageGrid clusterId={search.clusterId} items={results.data.items} provider={search.provider} />
 		</div>
 	);
 }

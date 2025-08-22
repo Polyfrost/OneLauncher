@@ -288,8 +288,10 @@ impl ProviderExt for ModrinthProviderImpl {
 		}
 
 		if let Some(loader) = loader {
-			url.query_pairs_mut()
-				.append_pair("loaders", &format!("[\"{}\"]", loader.to_string()));
+			url.query_pairs_mut().append_pair(
+				"loaders",
+				&format!("[\"{}\"]", loader.to_string().to_ascii_lowercase()),
+			);
 		}
 
 		// url.query_pairs_mut()

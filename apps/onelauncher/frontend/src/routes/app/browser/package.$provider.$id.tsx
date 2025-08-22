@@ -3,10 +3,9 @@ import type { HTMLProps } from 'react';
 import Modal from '@/components/overlay/Modal';
 import { useBrowserContext, useDownloadPackage, usePackageData, usePackageVersions } from '@/hooks/useBrowser';
 import { ChooseClusterModal, useClusters } from '@/hooks/useCluster';
-import usePagination from '@/hooks/usePagination';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, includes, PROVIDERS, upperFirst } from '@/utils';
-import { useCommand } from '@onelauncher/common';
+import { useCommand, usePagination } from '@onelauncher/common';
 import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -61,7 +60,7 @@ function RouteComponent() {
 		<PackageContext value={packageContextValue}>
 			<Show when={packageData.isSuccess && !packageData.isFetching}>
 				<div className="h-full flex flex-1 flex-row items-start gap-x-4">
-					<BrowserSidebar package={packageData.data!} />
+					<BrowserSidebar package={packageData.data} />
 
 					<Tabs className="min-h-full flex flex-1 flex-col items-start gap-y-4 pb-8">
 						<TabList className="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1 w-min">

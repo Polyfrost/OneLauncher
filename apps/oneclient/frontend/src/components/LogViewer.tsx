@@ -1,13 +1,13 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useImperativeHandle, useMemo, useState } from 'react';
+import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import styles from './LogViewer.module.css';
 
 export interface LogViewerProps {
 	content: string;
 	scrollRef: React.RefObject<HTMLElement | null>;
 	autoScroll?: boolean;
-	ref?: React.RefObject<LogViewerRef>;
+	ref?: React.Ref<LogViewerRef>;
 }
 
 export interface LogViewerRef {
@@ -25,6 +25,7 @@ export function LogViewer({
 	ref,
 }: LogViewerProps) {
 	const lines = useMemo<Array<string>>(() => content.split('\n'), [content]);
+	const containerRef = useRef<HTMLDivElement>(null);
 
 	// used to force re-render (and re-init of virtualizer hook)
 	const [_lastUpdated, setLastUpdated] = useState(Date.now());
@@ -36,21 +37,30 @@ export function LogViewer({
 		paddingStart: 4,
 		paddingEnd: 4,
 		gap: 0,
-		overscan: 20,
+		overscan: 8,
+		scrollMargin: containerRef.current ? containerRef.current.offsetTop + 75 : 0,
 	});
 
-	useImperativeHandle(ref, () => ({
-		push: (line) => {
-			const len = lines.push(line);
-			setLastUpdated(Date.now());
+	const scrollToEnd = useCallback(() => {
+		requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }));
+	}, [scrollRef]);
 
-			if (autoScroll)
-				virtualizer.scrollToIndex(len - 1);
-		},
-	}), [autoScroll, lines, virtualizer]);
+	const appendLine = useCallback((line: string) => {
+		setLastUpdated(Date.now());
+		lines.push(line);
+
+		if (autoScroll)
+			scrollToEnd();
+	}, [autoScroll, lines, scrollToEnd]);
+
+	useImperativeHandle(ref, () => ({
+		push: appendLine,
+		scrollToEnd,
+	}), [appendLine, scrollToEnd]);
 
 	return (
 		<div
+			ref={containerRef}
 			style={{
 				height: `${virtualizer.getTotalSize()}px`,
 			}}
@@ -67,7 +77,6 @@ export function LogViewer({
 					height: '100%',
 				}}
 			>
-
 				<code className={styles.log}>
 					{virtualizer.getVirtualItems().map(virtualRow => (
 						<LogLine
@@ -75,7 +84,7 @@ export function LogViewer({
 							line={lines[virtualRow.index]}
 							style={{
 								height: `${virtualRow.size}px`,
-								transform: `translateY(${virtualRow.start}px)`,
+								transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
 							}}
 						/>
 					))}
@@ -109,7 +118,7 @@ function LogLine({
 		<span data-level={level} style={style}>
 			<span data-time={time}>[{time}]</span>
 			<span>[{threadName}/{level}]</span>
-			<span data-chat={isChat}>{isChat ? ' [CHAT] ' : ' '}{line.slice(matched.length)}</span>
+			<span data-chat={isChat ? 'true' : undefined}>{isChat ? ' [CHAT]' : ' '}{line.slice(matched.length)}</span>
 			<br />
 		</span>
 	);

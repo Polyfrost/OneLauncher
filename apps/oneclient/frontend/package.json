@@ -38,6 +38,7 @@
 		"react-dom": "catalog:",
 		"react-just-parallax": "catalog:",
 		"react-markdown": "^10.1.0",
+		"react-toastify": "catalog:",
 		"rehype-raw": "^7.0.0",
 		"remark-gfm": "^4.0.1",
 		"skinview3d": "catalog:",

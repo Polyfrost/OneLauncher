@@ -51,7 +51,6 @@ function LogContent({
 }) {
 	const { cluster } = Route.useRouteContext();
 
-	// TODO: Fix cache
 	const { data: content, error, isLoading } = useCommand(
 		['getLogByName', cluster.id, fileName],
 		() => bindings.core.getLogByName(cluster.id, fileName),

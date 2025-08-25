@@ -1,5 +1,7 @@
 import { LoaderSuspense, Tab, TabList } from '@/components';
+import { LaunchButton } from '@/components/LaunchButton';
 import { SheetPage } from '@/components/SheetPage';
+import { useIsRunning } from '@/hooks/useClusters';
 import { bindings } from '@/main';
 import { prettifyLoader } from '@/utils/loaders';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
@@ -40,8 +42,11 @@ export const Route = createFileRoute('/app/cluster')({
 });
 
 function RouteComponent() {
+	const { cluster } = Route.useRouteContext();
 	const tabListRef = useRef<HTMLDivElement>(null);
 	const scrollContainerRef = useRef<HTMLElement>(null);
+
+	const isRunning = useIsRunning(cluster.id);
 
 	const { scrollYProgress } = useScroll({
 		axis: 'y',
@@ -68,6 +73,8 @@ function RouteComponent() {
 				<Tab from={Route.id} search={search} to="/app/cluster/overview">Overview</Tab>
 				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 				<Tab from={Route.id} search={{ ...search, packageType: 'mod' }} to="/app/cluster/browser">Browser</Tab>
+				{isRunning && <span className="flex-1"></span>}
+				{isRunning && <Tab from={Route.id} search={search} to="/app/cluster/process">Process</Tab>}
 			</TabList>
 
 			<div className="relative pb-8">
@@ -84,8 +91,6 @@ function HeaderLarge() {
 	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
 
 	const openFolder = () => bindings.folders.openCluster(cluster.folder_name);
-
-	const launch = () => bindings.core.launchCluster(cluster.id, null);
 
 	return (
 		<div className="flex flex-row items-end gap-16">
@@ -110,13 +115,10 @@ function HeaderLarge() {
 					<FolderIcon />
 				</Button>
 
-				<Button
-					color="primary"
-					onPress={launch}
+				<LaunchButton
+					clusterId={cluster.id}
 					size="large"
-				>
-					Launch
-				</Button>
+				/>
 			</div>
 		</div>
 	);
@@ -126,8 +128,6 @@ function HeaderSmall() {
 	const { cluster } = Route.useRouteContext();
 
 	const openFolder = () => bindings.folders.openCluster(cluster.folder_name);
-
-	const launch = () => bindings.core.launchCluster(cluster.id, null);
 
 	return (
 		<div className="flex flex-row justify-between items-center h-full">
@@ -142,12 +142,10 @@ function HeaderSmall() {
 					<FolderIcon />
 				</Button>
 
-				<Button
+				<LaunchButton
+					clusterId={cluster.id}
 					color="primary"
-					onPress={launch}
-				>
-					Launch
-				</Button>
+				/>
 			</div>
 		</div>
 	);

@@ -1,13 +1,14 @@
-import type { Filters, PackageCategories, PackageType, Provider } from '@/bindings.gen';
+import type { Filters, PackageCategories, PackageType, Provider, Sort } from '@/bindings.gen';
 import { LoaderSuspense } from '@/components';
 import { PackageGrid } from '@/components/PackageItem';
 import { bindings } from '@/main';
 import { browserCategories, categoryNameFromId } from '@/utils/browser';
 import { useCommandSuspense, usePagination } from '@onelauncher/common';
-import { Dropdown, Show, TextField } from '@onelauncher/common/components';
+import { Dropdown, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { twMerge } from 'tailwind-merge';
 
 interface BrowserSearchRouteSearchParams {
 	query?: string;
@@ -46,13 +47,10 @@ function RouteComponent() {
 					<div className="h-full flex flex-col gap-y-4">
 						<div className="h-full flex-1">
 							<LoaderSuspense spinner={{ size: 'large' }}>
-								<SearchResult />
+								<SearchResults />
 							</LoaderSuspense>
-
 						</div>
 					</div>
-
-					{/* <BrowserSidebar /> */}
 				</div>
 			</div>
 		</div>
@@ -60,14 +58,16 @@ function RouteComponent() {
 }
 
 function BrowserCategories() {
-	const search = Route.useSearch();
-	const { categories, packageType } = search;
+	const { categories, packageType } = Route.useSearch();
+
 	const navigate = Route.useNavigate();
 	const navRef = useRef(navigate);
+
 	const switchCategory = useMemo(() => (category: string) => {
 		const newCategories = categories.includes(category)
 			? categories.filter(element => element !== category)
 			: [...categories, category];
+
 		navRef.current({
 			search: prev => ({
 				...prev,
@@ -78,23 +78,22 @@ function BrowserCategories() {
 
 	return (
 		<div className="top-0 h-fit min-w-50">
-			{/* <div /> */}
 			<div className="flex flex-col gap-y-6 ml-16">
-				<Show when>
-					<div className="flex flex-col gap-y-1.5">
-						<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
-						{browserCategories[categoryNameFromId[packageType]].map(category => (
-							<p
-								aria-selected={categories.includes(category)}
-								className="text-sm capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
-								key={category}
-								onClick={() => switchCategory(category)}
-							>
-								{category}
-							</p>
-						))}
-					</div>
-				</Show>
+				<div className="flex flex-col gap-y-1.5">
+					<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
+					{browserCategories[categoryNameFromId[packageType]].map(category => (
+						<p
+							className={twMerge(
+								'text-sm capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover',
+								categories.includes(category) && 'opacity-100',
+							)}
+							key={category}
+							onClick={() => switchCategory(category)}
+						>
+							{category}
+						</p>
+					))}
+				</div>
 			</div>
 		</div>
 	);
@@ -104,10 +103,13 @@ function BrowserToolbar() {
 	const search = Route.useSearch();
 	const { provider, query } = search;
 	const navigate = Route.useNavigate();
+
 	const setQuery = (query: string) => {
 		navigate({ search: { ...search, query } });
 	};
+
 	const [searchBar, setSearchBar] = useState(query);
+
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
 			<div className="flex flex-row gap-2">
@@ -150,17 +152,18 @@ interface SearchQuery {
 	query: string | null;
 	offset: number | null;
 	limit: number;
-	sort: 'Relevance' | 'Downloads' | 'Newest' | 'Updated' | null;
+	sort: Sort;
 	filters: Filters | null;
 }
 
 const itemsPerPage = 25;
 
-function SearchResult() {
+function SearchResults() {
 	const search = Route.useSearch();
 	const { cluster } = Route.useRouteContext();
 	const navigate = Route.useNavigate();
 	const navRef = useRef(navigate);
+
 	const query = useMemo<SearchQuery>(() => ({
 		query: search.query ?? null,
 		offset: (search.page - 1) * itemsPerPage,
@@ -173,30 +176,38 @@ function SearchResult() {
 			package_type: search.packageType,
 		},
 	}), [cluster, search]);
+
 	const results = useCommandSuspense(['searchPackages', search], () => bindings.core.searchPackages(
 		search.provider,
 		query,
 	));
+
 	const pagination = usePagination({
 		itemsPerPage: query.limit,
 		itemsCount: results.data.total,
 	});
-	const [oldTotal, setOldTotal] = useState(pagination.totalPages);
+
+	const oldTotal = useRef(pagination.totalPages);
 	const paginationRef = useRef(pagination);
+
 	useEffect(() => {
 		navRef.current({ search: prev => ({ ...prev, page: pagination.page }) });
 	}, [pagination.page]);
+
 	useEffect(() => {
-		if (pagination.totalPages === oldTotal)
+		if (pagination.totalPages === oldTotal.current)
 			return;
+
 		paginationRef.current.reset();
-		setOldTotal(pagination.totalPages);
+		oldTotal.current = pagination.totalPages;
 	}, [pagination.totalPages]);
+
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex justify-end">
 				<pagination.Navigation />
 			</div>
+
 			<PackageGrid clusterId={search.clusterId} items={results.data.items} provider={search.provider} />
 		</div>
 	);

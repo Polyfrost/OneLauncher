@@ -176,6 +176,9 @@ pub trait TauriLauncherApi {
 	async fn fetch_player_profile(
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile>;
+
+	// MARK: API: Other
+	async fn open(input: String) -> LauncherResult<()>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
@@ -616,5 +619,11 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile> {
 		crate::utils::minecraft::fetch_player_profile(&uuid).await
+	}
+
+	// MARK: Impl: Other
+	async fn open(self, input: String) -> LauncherResult<()> {
+		opener::open(input)?;
+		Ok(())
 	}
 }

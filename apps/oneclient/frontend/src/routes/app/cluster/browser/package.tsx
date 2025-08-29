@@ -1,17 +1,14 @@
 import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
-import type { HTMLProps } from 'react';
+import { LoaderSuspense } from '@/components';
+import { ExternalLink } from '@/components/ExternalLink';
+import { Markdown } from '@/components/Markdown';
 import { bindings } from '@/main';
-import { abbreviateNumber, formatAsRelative, upperFirst, useCommand, useCommandMut } from '@onelauncher/common';
-import { Button, Show, Tooltip } from '@onelauncher/common/components';
-import { createFileRoute, Link, redirect } from '@tanstack/react-router';
-import { openUrl } from '@tauri-apps/plugin-opener';
-import { CalendarIcon, ClockRewindIcon, Download01Icon, File02Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
+import { abbreviateNumber, formatAsRelative, upperFirst, useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
+import { Button, Tooltip } from '@onelauncher/common/components';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { CalendarIcon, ClockRewindIcon, Download01Icon, File02Icon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Cell, Column, Row, Tab, Table, TableBody, TableHeader, TabList, TabPanel, Tabs } from 'react-aria-components';
-import Markdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import remarkGfm from 'remark-gfm';
-import { twMerge } from 'tailwind-merge';
 
 export interface PackageRouteSearchParams {
 	packageId: string;
@@ -22,22 +19,20 @@ export const Route = createFileRoute('/app/cluster/browser/package')({
 	validateSearch: (search): PackageRouteSearchParams => ({
 		packageId: search.packageId as string,
 	}),
-	async beforeLoad({ context, search }) {
+	async beforeLoad({ search }) {
 		if (!search.packageId)
 			throw redirect({ to: '/app/cluster', from: '/app/cluster/browser/package', search });
-		const [managedPackage, packageVersions] = await Promise.all([
-			bindings.core.getPackage(search.provider, search.packageId),
-			bindings.core.getPackageVersions(search.provider, search.packageId, context.cluster.mc_version, context.cluster.mc_loader, 0, 64),
-		]);
-		const packageBody = await bindings.core.getPackageBody(search.provider, managedPackage.body);
-		return { managedPackage, packageBody, packageVersions };
+
+		const managedPackage = await bindings.core.getPackage(search.provider, search.packageId);
+
+		return { managedPackage };
 	},
 });
 
 function RouteComponent() {
-	const { managedPackage, packageBody } = Route.useRouteContext();
+	const { managedPackage } = Route.useRouteContext();
+
 	return (
-		// <Show when={.isSuccess && !packageData.isFetching}>
 		<div className="h-full flex flex-1 flex-row items-start gap-x-4">
 			<BrowserSidebar package={managedPackage} />
 
@@ -45,24 +40,21 @@ function RouteComponent() {
 				<TabList className="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1 w-min">
 					<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="about">About</Tab>
 					<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="versions">Versions</Tab>
-					<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={managedPackage.gallery.length === 0}>Gallery</Tab>
+					{/* <Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={managedPackage.gallery.length === 0}>Gallery</Tab> */}
 				</TabList>
-				<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block" id="about">
-					<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
-						<Markdown
-							components={{
-								a: ({ node, children, ...props }) => <CustomA children={children} href={props.href as string} />,
-							}}
-							rehypePlugins={[rehypeRaw]}
-							remarkPlugins={[remarkGfm]}
-						>
-							{packageBody}
-						</Markdown>
-					</div>
+
+				<TabPanel className="flex-1 w-full" id="about">
+					<LoaderSuspense>
+						<BodyPanel />
+					</LoaderSuspense>
 				</TabPanel>
-				<TabPanel id="versions">
-					<Versions />
+
+				<TabPanel className="flex-1 w-full" id="versions">
+					<LoaderSuspense>
+						<Versions />
+					</LoaderSuspense>
 				</TabPanel>
+
 				<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
 
 					{/* {managedPackage.gallery.map(item => (
@@ -81,26 +73,22 @@ function RouteComponent() {
 
 				</TabPanel>
 			</Tabs>
-
 		</div>
-	// </Show>
 	);
 }
 
-function CustomA({ href, children, includeIcon, className, ...rest }: { href: string; children: any; includeIcon?: boolean } & HTMLProps<HTMLAnchorElement>) {
+function BodyPanel() {
+	const { provider } = Route.useSearch();
+	const { managedPackage } = Route.useRouteContext();
+
+	const { data: body } = useCommandSuspense(['getPackageBody', provider, managedPackage.body], () => bindings.core.getPackageBody(provider, managedPackage.body));
+
 	return (
-		<a
-			className={twMerge('text-fg-primary underline', className)}
-			href={href}
-			onClick={(e) => {
-				e.preventDefault();
-				openUrl(href);
-			}}
-			{...rest}
-		>
-			{children}
-			{includeIcon && <LinkExternal01Icon className="inline w-4 ml-1" />}
-		</a>
+		<div className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block">
+			<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
+				<Markdown body={body} />
+			</div>
+		</div>
 	);
 }
 
@@ -118,7 +106,7 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 	const createdAt = useMemo(() => pkg.created ? new Date(pkg.created) : null, [pkg.created]);
 	const updatedAt = useMemo(() => pkg.updated ? new Date(pkg.updated) : null, [pkg.updated]);
 
-	const authors = useCommand(['getUsersFromAuthor', pkg.author], () => bindings.core.getUsersFromAuthor(provider as Provider, pkg.author));
+	const authors = useCommand(['getUsersFromAuthor', pkg.author], () => bindings.core.getUsersFromAuthor(provider, pkg.author));
 
 	return (
 		<div className="z-1 max-w-60 min-w-54 flex flex-col gap-y-4 mb-6">
@@ -142,12 +130,12 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 					<p className="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{pkg.short_desc}</p>
 
 					<div className="flex flex-row gap-4 text-xs">
-						<Show when={pkg.provider !== 'SkyClient'}>
+						{pkg.provider !== 'SkyClient' && (
 							<div className="flex flex-row items-center gap-2">
 								<Download01Icon className="h-4 w-4" />
 								{abbreviateNumber(pkg.downloads)}
 							</div>
-						</Show>
+						)}
 					</div>
 				</div>
 			</div>
@@ -157,15 +145,15 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 			<div className="flex flex-col rounded-lg bg-component-bg p-3">
 				<h4 className="text-fg-primary font-bold">Links</h4>
 				<div className="flex flex-col">
-					<CustomA className="text-link hover:text-link-hover" href={getPackageUrl(pkg)} includeIcon>
+					<ExternalLink className="text-link hover:text-link-hover" href={getPackageUrl(pkg)} includeIcon>
 						{provider}
 						{' '}
 						Page
-					</CustomA>
+					</ExternalLink>
 					{(Object.entries(pkg.links) as Array<[keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]]>).filter(a => a[1]).map(link =>
 						typeof link[1] == 'string'
 							? (
-									<CustomA
+									<ExternalLink
 										children={upperFirst(link[0])}
 										className="text-link hover:text-link-hover"
 										href={link[1]}
@@ -174,7 +162,7 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 									/>
 								)
 							: (link[1] as Array<PackageDonationUrl>).map(donationLink => (
-									<CustomA
+									<ExternalLink
 										children={upperFirst(donationLink.id)}
 										className="text-link hover:text-link-hover"
 										href={donationLink.url}
@@ -197,87 +185,103 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 
 			<div className="flex flex-col gap-2 rounded-lg bg-component-bg p-3 text-xs!">
 				<h4 className="text-fg-primary font-bold">Details</h4>
-				<Show when={pkg.license !== null}>
+				{pkg.license !== null && (
 					<div className="flex flex-row items-start gap-x-1">
 						<File02Icon className="h-3 min-w-3 w-3" />
 						License
-						<Link to={pkg.license?.url ?? '#'}>
-							{pkg.license?.name || pkg.license?.id || 'Unknown'}
-						</Link>
+						<ExternalLink href={pkg.license.url ?? undefined}>
+							{pkg.license.name || pkg.license.id || 'Unknown'}
+						</ExternalLink>
 					</div>
-				</Show>
+				)}
 
-				<Show when={createdAt !== null}>
-					<Tooltip text={createdAt!.toLocaleString()}>
+				{createdAt !== null && (
+					<Tooltip text={createdAt.toLocaleString()}>
 						<div className="flex flex-row items-center gap-x-1">
 							<CalendarIcon className="h-3 min-w-3 w-3" />
 							Created
 							<span className="text-fg-primary font-medium">
-								{formatAsRelative(createdAt!.getTime(), 'en', 'long')}
+								{formatAsRelative(createdAt.getTime(), 'en', 'long')}
 							</span>
 						</div>
 					</Tooltip>
-				</Show>
+				)}
 
-				<Show when={updatedAt !== null}>
-					<Tooltip text={updatedAt!.toLocaleString()}>
+				{updatedAt !== null && (
+					<Tooltip text={updatedAt.toLocaleString()}>
 						<div className="flex flex-row items-center gap-x-1">
 							<ClockRewindIcon className="h-3 min-w-3 w-3" />
 							Last Updated
 							<span className="text-fg-primary font-medium">
-								{formatAsRelative(updatedAt!.getTime(), 'en', 'long')}
+								{formatAsRelative(updatedAt.getTime(), 'en', 'long')}
 							</span>
 						</div>
 					</Tooltip>
-				</Show>
+				)}
 			</div>
 
 		</div>
 	);
 }
 
+function usePackageVersions() {
+	const { provider, packageId } = Route.useSearch();
+	const { cluster } = Route.useRouteContext();
+	const { data: versions } = useCommandSuspense(
+		['getPackageVersions', provider, packageId, cluster.mc_version, cluster.mc_loader],
+		() => bindings.core.getPackageVersions(provider, packageId, cluster.mc_version, cluster.mc_loader, 0, 64),
+	);
+
+	return versions;
+}
+
 function InstallButton() {
-	const { packageVersions, managedPackage } = Route.useRouteContext();
-	const { provider, clusterId } = Route.useSearch();
-	const download = useCommandMut(() => bindings.core.downloadPackage(provider, managedPackage.id, packageVersions.items[0].version_id, clusterId, true));
+	const { cluster, managedPackage } = Route.useRouteContext();
+	const packageVersions = usePackageVersions();
+
+	const { provider } = Route.useSearch();
+	const download = useCommandMut(() => bindings.core.downloadPackage(provider, managedPackage.id, packageVersions.items[0].version_id, cluster.id, true));
 	return (
 		<Button
+			className="flex-col py-4"
 			isDisabled={packageVersions.total === 0 || !download.isIdle}
 			onClick={() => download.mutate()}
 		>
-			{download.isIdle
+			<p className="text-lg">{download.isIdle
 				? 'Download'
 				: download.isPending
 					? 'Installing'
 					: 'Installed'}
+			</p>
+
+			<p className="text-xs">
+				to
+				{' '}
+				<strong>{cluster.name}</strong>
+			</p>
 		</Button>
 	);
 }
 
 function Author({ author }: { author: ManagedUser }) {
-	// TODO: onclick and fallback avatar url
 	return (
-		<a
-			className="flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
-			onClick={() => {
-				if (author.url)
-					openUrl(author.url);
-			}}
+		<ExternalLink
+			className="no-underline flex flex-row items-center gap-x-1 rounded-md p-1 active:bg-component-bg-pressed hover:bg-component-bg-hover"
+			href={author.url ?? undefined}
 		>
 			<img alt={`${author.username}'s avatar`} className="h-8 min-h-8 min-w-8 w-8 rounded-[5px]" src={author.avatar_url || ''} />
-			<div className="flex flex-1 flex-col justify-center gap-y-1">
+			<div className="flex flex-1 flex-col justify-center gap-y-px">
 				<span>{author.username}</span>
 
-				<Show when={author.is_organization_user}>
+				{author.is_organization_user && (
 					<span className="text-xs text-fg-secondary">Organization</span>
-				</Show>
+				)}
 
-				<Show when={author.role !== null}>
+				{author.role !== null && (
 					<span className="text-xs text-fg-secondary">{author.role}</span>
-				</Show>
+				)}
 			</div>
-			<LinkExternal01Icon className="h-4 w-4" />
-		</a>
+		</ExternalLink>
 
 	);
 }
@@ -306,7 +310,7 @@ function Versions() {
 	// 	offset,
 	// });
 
-	const { packageVersions: versions } = Route.useRouteContext();
+	const versions = usePackageVersions();
 
 	// const pagination = usePagination({
 	// 	itemsCount: versions?.total as unknown as number,
@@ -324,7 +328,7 @@ function Versions() {
 			<div className="flex justify-between">
 				{/* <pagination.Navigation /> */}
 			</div>
-			<Table className="border-separate border-spacing-x-none border-spacing-y-1 w-full">
+			<Table className="border-separate border-spacing-x-none border-spacing-y-1 flex-1 w-full">
 				<TableHeader className="text-left">
 					<Column className="pr-2" />
 					<Column className="pr-4" isRowHeader>Name</Column>
@@ -334,8 +338,8 @@ function Versions() {
 					<Column className="pr-4">Downloads</Column>
 					<Column className="pr-4" />
 				</TableHeader>
-				<TableBody className="">
-					{versions?.items.map(item =>
+				<TableBody className="w-full">
+					{versions.items.map(item =>
 						<VersionRow key={item.version_id} version={item} />)}
 				</TableBody>
 			</Table>

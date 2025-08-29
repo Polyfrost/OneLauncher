@@ -1,6 +1,8 @@
 import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
-import { useCommandSuspense } from '@onelauncher/common';
+import { useAsyncEffect, useCommandSuspense } from '@onelauncher/common';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 export function useLastPlayedClusters() {
 	return useCommandSuspense(
@@ -30,4 +32,42 @@ export function useActiveCluster() {
 	const { data: clusters } = useLastPlayedClusters();
 
 	return clusters.find(c => c.id === clusterId) ?? clusters.at(0);
+}
+
+export function useIsRunning(clusterId: number | undefined | null) {
+	const [running, setRunning] = useState(false);
+	const queryClient = useQueryClient();
+
+	useEffect(() => {
+		if (!clusterId)
+			return;
+
+		const query = queryClient.ensureQueryData({
+			queryKey: ['isClusterRunning', clusterId],
+			queryFn: () => bindings.core.isClusterRunning(clusterId),
+			staleTime: 0,
+			gcTime: 0,
+		});
+
+		query.then(setRunning);
+
+		return () => {
+			setRunning(false);
+		};
+	}, [clusterId, queryClient]);
+
+	useAsyncEffect(async () => {
+		const unlisten = await bindings.events.process.on((e) => {
+			if (e.cluster_id !== clusterId)
+				return;
+
+			setRunning(e.kind.type !== 'Stopped');
+		});
+
+		return () => {
+			unlisten();
+		};
+	}, []);
+
+	return running;
 }

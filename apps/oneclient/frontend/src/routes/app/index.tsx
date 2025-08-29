@@ -1,11 +1,11 @@
 import type { ClusterModel, GameLoader } from '@/bindings.gen';
 import type { ButtonProps } from 'react-aria-components';
 import { GameBackground } from '@/components';
+import { LaunchButton } from '@/components/LaunchButton';
 import { useActiveCluster, useLastPlayedClusters } from '@/hooks/useClusters';
-import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
 import { prettifyLoader } from '@/utils/loaders';
-import { animations, transitions } from '@/utils/motion';
+import { animations } from '@/utils/motion';
 import { getVersionInfo, getVersionInfoOrDefault } from '@/utils/versionMap';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -65,13 +65,6 @@ function ActiveClusterInfo({
 		from: Route.id,
 	});
 
-	const launch = () => {
-		if (!cluster)
-			return;
-
-		bindings.core.launchCluster(cluster.id, null);
-	};
-
 	const viewCluster = () => {
 		if (!cluster)
 			return;
@@ -86,16 +79,24 @@ function ActiveClusterInfo({
 
 	return (
 		<motion.div
-			{...animations.slideInLeft}
+			animate={{
+				position: 'relative',
+				left: '0',
+			}}
 			className="flex flex-1 flex-col justify-center items-start gap-2"
+			initial={{
+				position: 'relative',
+				left: '-50%',
+			}}
 			key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
-			transition={{ ...transitions.spring, delay: 0.2 }}
+			transition={{ ease: 'backInOut', duration: 0.7 }}
 		>
 			<h1 className="text-6xl font-bold text-fg-primary">{cluster?.mc_version} {prettifyLoader(cluster?.mc_loader ?? 'vanilla')}</h1>
 			<p className="text-lg font-medium text-fg-secondary">{versionInfo.shortDescription}</p>
 
 			<div className="flex flex-row justify-center items-center gap-2">
-				<Button onPress={launch} size="large">Launch</Button>
+				<LaunchButton clusterId={cluster?.id} size="large" />
+
 				<Button color="ghost" onPress={viewCluster} size="iconLarge">
 					<Settings04Icon />
 				</Button>

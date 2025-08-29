@@ -1,6 +1,8 @@
+import type { ButtonProps } from '@onelauncher/common/components';
+import type { HTMLAttributes } from 'react';
 import { Button } from '@onelauncher/common/components';
 import { XCloseIcon } from '@untitled-theme/icons-react';
-import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
+import { Dialog, DialogTrigger, Modal, ModalOverlay } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { tv } from 'tailwind-variants';
 
@@ -50,6 +52,34 @@ export function Overlay({
 		</ModalOverlay>
 	);
 }
+
+Overlay.Trigger = DialogTrigger;
+
+Overlay.Buttons = function OverlayButtons({
+	className,
+	buttons,
+}: Omit<HTMLAttributes<HTMLDivElement>, 'children'> & {
+	buttons?: Array<ButtonProps>;
+}) {
+	return (
+		<div
+			className={twMerge(
+				'flex w-full gap-2 *:flex-1',
+				(buttons?.length ?? 0) >= 3 ? 'flex-col' : 'flex-row',
+				className,
+			)}
+		>
+			{buttons?.map(({ key, size, color, ...rest }) => (
+				<Button
+					color={color || 'primary'}
+					key={key}
+					size={size || 'large'}
+					{...rest}
+				/>
+			))}
+		</div>
+	);
+};
 
 Overlay.Dialog = function OverlayDialog({
 	className,

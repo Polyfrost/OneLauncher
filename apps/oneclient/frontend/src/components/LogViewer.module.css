@@ -1,11 +1,11 @@
 @reference "../styles/global.css";
 
 .log_container {
-	@apply w-full whitespace-pre text-base font-mono bg-component-bg rounded-xl;
+	@apply relative w-full whitespace-pre text-base font-mono bg-component-bg rounded-xl;
 }
 
 .log {
-	@apply relative w-full whitespace-pre text-base font-mono;
+	@apply absolute top-0 left-0 w-full whitespace-pre text-base font-mono;
 }
 
 .log * {

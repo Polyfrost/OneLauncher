@@ -3,6 +3,7 @@ use crate::api::packages::data::{
 	SearchResult,
 };
 use crate::api::packages::provider::ProviderExt;
+use crate::store::processes::Process;
 use crate::store::{Settings, State};
 use crate::utils::pagination::Paginated;
 use interpulse::api::minecraft::Version;
@@ -54,6 +55,21 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLogByName")]
 	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
+
+	// MARK: API: processes
+	#[taurpc(alias = "getRunningProcesses")]
+	async fn get_running_processes() -> LauncherResult<Vec<Process>>;
+
+	#[taurpc(alias = "getRunningProcessesByClusterId")]
+	async fn get_running_processes_by_cluster_id(
+		cluster_id: ClusterId,
+	) -> LauncherResult<Vec<Process>>;
+
+	#[taurpc(alias = "isClusterRunning")]
+	async fn is_cluster_running(cluster_id: ClusterId) -> LauncherResult<bool>;
+
+	#[taurpc(alias = "killProcess")]
+	async fn kill_process(pid: u32) -> LauncherResult<()>;
 
 	// MARK: API: profiles
 	#[taurpc(alias = "getProfileOrDefault")]
@@ -160,6 +176,9 @@ pub trait TauriLauncherApi {
 	async fn fetch_player_profile(
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile>;
+
+	// MARK: API: Other
+	async fn open(input: String) -> LauncherResult<()>;
 }
 
 #[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
@@ -320,6 +339,26 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_log_by_name(&cluster, &name).await
+	}
+
+	// MARK: Impl: processes
+	async fn get_running_processes(self) -> LauncherResult<Vec<Process>> {
+		api::processes::get_running_processes().await
+	}
+
+	async fn get_running_processes_by_cluster_id(
+		self,
+		cluster_id: ClusterId,
+	) -> LauncherResult<Vec<Process>> {
+		api::processes::get_running_processes_by_cluster_id(cluster_id).await
+	}
+
+	async fn is_cluster_running(self, cluster_id: ClusterId) -> LauncherResult<bool> {
+		api::processes::is_cluster_running(cluster_id).await
+	}
+
+	async fn kill_process(self, pid: u32) -> LauncherResult<()> {
+		api::processes::kill_process(pid).await
 	}
 
 	// MARK: Impl: profiles
@@ -580,5 +619,11 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile> {
 		crate::utils::minecraft::fetch_player_profile(&uuid).await
+	}
+
+	// MARK: Impl: Other
+	async fn open(self, input: String) -> LauncherResult<()> {
+		opener::open(input)?;
+		Ok(())
 	}
 }

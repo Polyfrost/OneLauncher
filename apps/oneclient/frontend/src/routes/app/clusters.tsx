@@ -1,5 +1,6 @@
 import type { GameLoader } from '@/bindings.gen';
 import { GameBackground } from '@/components';
+import { LaunchButton } from '@/components/LaunchButton';
 import { SheetPage } from '@/components/SheetPage';
 import { bindings } from '@/main';
 import useClusterStore from '@/stores/clusterStore';
@@ -92,6 +93,18 @@ function RouteComponent() {
 
 	const versionInfo = useMemo(() => getVersionInfoOrDefault(cluster?.mc_version), [cluster]);
 
+	const view = useCallback(() => {
+		if (!cluster)
+			return;
+
+		navigate({
+			to: `/app/cluster/overview`,
+			search: {
+				clusterId: cluster.id,
+			},
+		});
+	}, [cluster, navigate]);
+
 	return (
 		<SheetPage
 			headerLarge={<HeaderLarge />}
@@ -183,21 +196,12 @@ function RouteComponent() {
 						)}
 
 						<div className="w-full flex flex-row gap-4 mt-2">
-							<Button className="flex-1" size="large">Launch</Button>
+							<LaunchButton className="flex-1" clusterId={cluster?.id} size="large" />
+
 							<Button
 								className="flex-1"
 								color="secondary"
-								onPress={() => {
-									if (!cluster)
-										return;
-
-									navigate({
-										to: `/app/cluster/overview`,
-										search: {
-											clusterId: cluster.id,
-										},
-									});
-								}}
+								onPress={view}
 								size="large"
 							>
 								View

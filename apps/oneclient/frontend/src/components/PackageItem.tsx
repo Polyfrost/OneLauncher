@@ -21,6 +21,7 @@ export function PackageItem({ provider, clusterId, ...item }: SearchResult & { p
 	return (
 		<Link
 			className="h-full min-w-50 overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover grid grid-rows-[7rem_auto] max-h-74 min-h-74"
+			preload={false}
 			search={{ provider, packageId: item.project_id, clusterId }}
 			tabIndex={0}
 			to="/app/cluster/browser/package"

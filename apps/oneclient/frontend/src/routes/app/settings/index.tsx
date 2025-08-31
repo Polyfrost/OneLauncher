@@ -16,7 +16,7 @@ export const Route = createFileRoute('/app/settings/')({
 });
 
 function RouteComponent() {
-	const { setting, setSetting, createSetting } = useSettings();
+	const { createSetting } = useSettings();
 	const [launcherDir, setLauncherDir] = useState('');
 
 	useEffect(() => {

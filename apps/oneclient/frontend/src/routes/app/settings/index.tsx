@@ -1,11 +1,12 @@
 // import DiscordIcon from '@/assets/logos/discord.svg';
 import SettingsRow from '@/components/SettingsRow';
+import SettingsSwitch from '@/components/SettingSwitch';
 import { useSettings } from '@/hooks/useSettings';
+import { bindings } from '@/main';
 // import useSettings from '@/hooks/useSettings';
 import { Button, Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
-import { openPath } from '@tauri-apps/plugin-opener';
 import { FolderIcon, Link03Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import Sidebar from './route';
@@ -15,7 +16,7 @@ export const Route = createFileRoute('/app/settings/')({
 });
 
 function RouteComponent() {
-	const { setting, setSetting } = useSettings();
+	const { setting, setSetting, createSetting } = useSettings();
 	const [launcherDir, setLauncherDir] = useState('');
 
 	useEffect(() => {
@@ -24,9 +25,7 @@ function RouteComponent() {
 		})();
 	}, []);
 
-	const openLauncherDir = () => openPath(launcherDir);
-
-	// const [discordRpc, setDiscordRpc] = createSetting('discord_enabled', settings?.discord_enabled);
+	const openLauncherDir = () => bindings.core.open(launcherDir);
 
 	return (
 		<Sidebar.Page>
@@ -38,10 +37,7 @@ function RouteComponent() {
 					icon={<Link03Icon />}
 					title="Discord RPC"
 				>
-					<Switch
-						isSelected={setting('discord_enabled')}
-						onChange={val => setSetting('discord_enabled', val)}
-					/>
+					<SettingsSwitch setting={createSetting('discord_enabled')} />
 				</SettingsRow>
 
 				{/* <SettingsRow

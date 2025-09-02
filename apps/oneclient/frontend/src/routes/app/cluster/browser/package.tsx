@@ -1,12 +1,12 @@
-import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
-import { LoaderSuspense, Spinner } from '@/components';
+import type { ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl } from '@/bindings.gen';
+import { LoaderSuspense } from '@/components';
 import { ExternalLink } from '@/components/ExternalLink';
 import { Markdown } from '@/components/Markdown';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, upperFirst, useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { CalendarIcon, CheckIcon, ClockRewindIcon, Download01Icon, File02Icon, Loading01Icon, Loading02Icon, XIcon } from '@untitled-theme/icons-react';
+import { CalendarIcon, CheckIcon, ClockRewindIcon, Download01Icon, File02Icon, Loading02Icon, XIcon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Cell, Column, Row, Tab, Table, TableBody, TableHeader, TabList, TabPanel, Tabs } from 'react-aria-components';
 

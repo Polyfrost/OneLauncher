@@ -232,12 +232,14 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}', 'core':'{"writeSettings":["setting"],"getWorlds":["id"],"getRunningProcessesByClusterId":["cluster_id"],"updateClusterProfile":["name","profile"],"getClusterById":["id"],"openMsaLogin":[],"getScreenshots":["id"],"getUsers":[],"getProfileOrDefault":["name"],"updateClusterById":["id","request"],"getDefaultUser":["fallback"],"removeCluster":["id"],"createCluster":["options"],"getPackage":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"open":["input"],"getMultiplePackages":["provider","slugs"],"getLogByName":["id","name"],"getLoadersForVersion":["mc_version"],"isClusterRunning":["cluster_id"],"searchPackages":["provider","query"],"setDefaultUser":["uuid"],"getUser":["uuid"],"killProcess":["pid"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"launchCluster":["id","uuid"],"getClusters":[],"getRunningProcesses":[],"getGameVersions":[],"getGlobalProfile":[],"getPackageBody":["provider","body"],"removeUser":["uuid"],"fetchMinecraftProfile":["uuid"],"readSettings":[],"getLogs":["id"]}', 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}' }
-export type Router = { 'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> },
+const ARGS_MAP = { 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}', 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}', 'core':'{"writeSettings":["setting"],"getWorlds":["id"],"getRunningProcessesByClusterId":["cluster_id"],"updateClusterProfile":["name","profile"],"getClusterById":["id"],"openMsaLogin":[],"getScreenshots":["id"],"getUsers":[],"getProfileOrDefault":["name"],"updateClusterById":["id","request"],"getDefaultUser":["fallback"],"removeCluster":["id"],"createCluster":["options"],"getPackage":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"open":["input"],"getMultiplePackages":["provider","slugs"],"getLogByName":["id","name"],"getLoadersForVersion":["mc_version"],"isClusterRunning":["cluster_id"],"searchPackages":["provider","query"],"setDefaultUser":["uuid"],"getUser":["uuid"],"killProcess":["pid"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"launchCluster":["id","uuid"],"getClusters":[],"getRunningProcesses":[],"getGameVersions":[],"getGlobalProfile":[],"getPackageBody":["provider","body"],"removeUser":["uuid"],"fetchMinecraftProfile":["uuid"],"readSettings":[],"getLogs":["id"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}' }
+export type Router = { 'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
 'events': { ingress: (event: IngressPayload) => Promise<void>, 
 message: (event: MessagePayload) => Promise<void>, 
 process: (event: ProcessPayload) => Promise<void> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> },
 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
@@ -273,9 +275,7 @@ getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null,
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: number, skipCompatibility: boolean | null) => Promise<PackageModel>, 
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]>, 
 fetchMinecraftProfile: (uuid: string) => Promise<MojangPlayerProfile>, 
-open: (input: string) => Promise<null> },
-'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> } };
+open: (input: string) => Promise<null> } };
 
 
 export type { InferCommandOutput }

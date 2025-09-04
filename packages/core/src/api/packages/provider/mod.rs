@@ -130,4 +130,8 @@ impl ProviderExt for Provider {
 	async fn get_versions(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedVersion>> {
 		delegate!(self, get_versions(slugs))
 	}
+
+	async fn get_body(&self, body: &ManagedPackageBody) -> LauncherResult<String> {
+		delegate!(self, get_body(body))
+	}
 }

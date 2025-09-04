@@ -1,76 +1,99 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar } from '@/components/AccountAvatar';
 import { bindings } from '@/main';
-import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
-import { useQueryClient } from '@tanstack/react-query';
-import { Button as AriaButton } from 'react-aria-components';
+import { useCommand, useCommandMut } from '@onelauncher/common';
+import { Button } from '@onelauncher/common/components';
+import { Link } from '@tanstack/react-router';
+import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
+import { DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
+import { AccountAvatar } from '../AccountAvatar';
+import { AddAccountModal } from './AddAccountModal';
+import { Overlay } from './Overlay';
 import { Popup } from './Popup';
 
 export function AccountPopup() {
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const { data: accounts } = useCommandSuspense(['getUsers', 'accountPopup'], bindings.core.getUsers, {
-		select(data) {
-			data.sort((a, b) => {
-				if (currentAccount?.id === a.id)
-					return -1;
-				else if (currentAccount?.id === b.id)
-					return 1;
-				return a.username.localeCompare(b.username);
-			});
+	const users = useCommand(['getUsers'], bindings.core.getUsers);
+	const defaultUser = useCommand(['getDefaultUser'], () => bindings.core.getDefaultUser(false));
 
-			return data;
-		},
-	});
-
-	const queryClient = useQueryClient();
-	const { mutate: setDefaultUser } = useCommandMut(bindings.core.setDefaultUser, {
-		onSuccess() {
-			queryClient.invalidateQueries({
-				queryKey: ['getDefaultUser'],
-			});
-		},
-	});
+	const setDefaultUser = (user: MinecraftCredentials) => {
+		bindings.core.setDefaultUser(user.id);
+	};
 
 	return (
 		<Popup placement="top left">
-			<div className="flex flex-col gap-1 min-w-40">
-				{accounts.map(profile => (
-					<AccountRow
-						key={profile.id}
-						onPress={() => setDefaultUser(profile.id)}
-						profile={profile}
-						selected={profile.id === currentAccount?.id}
-					/>
+
+			<div className="min-w-3xs">
+				{defaultUser.data && (
+					<div>
+						<AccountEntry
+							loggedIn
+							onClick={() => { }}
+							user={defaultUser.data}
+						/>
+					</div>
+				)}
+
+				{users.data?.filter(user => user.id !== defaultUser.data?.id).map(user => (
+					<div key={user.id}>
+						<AccountEntry
+							onClick={() => setDefaultUser(user)}
+							user={user}
+						/>
+					</div>
 				))}
+
+				<div className="flex flex-row justify-between">
+					<div className="self-center">
+
+						<DialogTrigger>
+							<Button color="ghost">
+								<PlusIcon />
+								Add Account
+							</Button>
+
+							<Overlay>
+								<AddAccountModal />
+							</Overlay>
+						</DialogTrigger>
+					</div>
+					<div className="flex flex-row">
+						<Link to="/app/accounts">
+							<Button color="ghost" size="iconLarge">
+								<Settings01Icon className="stroke-fg-primary" />
+							</Button>
+						</Link>
+					</div>
+				</div>
 			</div>
 		</Popup>
 	);
 }
 
-function AccountRow({
-	selected = false,
-	profile,
-	onPress,
+export default AccountPopup;
+
+function AccountEntry({
+	onClick,
+	user,
+	loggedIn = false,
 }: {
-	selected?: boolean;
-	profile: MinecraftCredentials;
-	onPress: () => void;
+	onClick: () => void;
+	user: MinecraftCredentials;
+	loggedIn?: boolean;
 }) {
 	return (
-		<AriaButton
-			className={twMerge(
-				'flex flex-row items-center justify-start p-1 gap-2 hover:bg-component-bg-hover pressed:bg-component-bg-pressed rounded-lg',
-				selected && 'bg-brand/80 pointer-events-none',
-			)}
-			onPress={onPress}
-			slot="close"
+		<div
+			className={twMerge('flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')}
+			onClick={onClick}
 		>
-			<AccountAvatar className="aspect-square h-8 rounded-md" uuid={profile.id} />
-
-			<div className="text-left flex flex-col">
-				<p className="flex items-center gap-1 text-fg-primary font-medium">{profile.username}</p>
+			<div className="flex flex-1 flex-row justify-start gap-x-3">
+				<AccountAvatar className="h-8 w-8 rounded-md" uuid={user.id} />
+				<div className="flex flex-col items-center justify-center">
+					<div className="flex flex-col items-start justify-between">
+						<p className="h-[18px] font-semibold">{user.username}</p>
+						{loggedIn && <p className="text-xs">Logged in</p>}
+					</div>
+				</div>
 			</div>
-		</AriaButton>
+		</div>
 	);
 }

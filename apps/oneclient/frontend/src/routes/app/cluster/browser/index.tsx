@@ -1,5 +1,5 @@
 import type { Filters, PackageCategories, PackageType, Provider, Sort } from '@/bindings.gen';
-import { LoaderSuspense } from '@/components';
+import { LoaderSuspense, SheetPage } from '@/components';
 import { PackageGrid } from '@/components/PackageItem';
 import { bindings } from '@/main';
 import { browserCategories, categoryNameFromId } from '@/utils/browser';
@@ -33,15 +33,16 @@ const PROVIDERS: Array<Provider> = ['Modrinth', 'CurseForge', 'SkyClient'];
 
 function RouteComponent() {
 	return (
+		// <SheetPage.Content>
 		<div className="relative h-full flex flex-1 flex-col items-center gap-2">
 			<div className="h-full w-full flex flex-1 flex-col items-center gap-y-2">
-				<div className="grid grid-cols-[180px_auto_160px] w-full gap-x-6">
-					<div />
+				<div className="w-full grid grid-cols-[180px_auto] gap-x-6">
+					<h2 className="flex-1 text-xxl font-semibold">Browser</h2>
 					<BrowserToolbar />
-					<div />
+					{/* <div /> */}
 				</div>
 
-				<div className="grid grid-cols-[180px_auto_160px] w-full gap-x-6 pb-8">
+				<div className="grid grid-cols-[180px_auto] w-full gap-x-6">
 					<BrowserCategories />
 
 					<div className="h-full flex flex-col gap-y-4">
@@ -54,6 +55,7 @@ function RouteComponent() {
 				</div>
 			</div>
 		</div>
+		// </SheetPage.Content>
 	);
 }
 
@@ -78,7 +80,7 @@ function BrowserCategories() {
 
 	return (
 		<div className="top-0 h-fit min-w-50">
-			<div className="flex flex-col gap-y-6 ml-16">
+			<div className="flex flex-col gap-y-6">
 				<div className="flex flex-col gap-y-1.5">
 					<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
 					{browserCategories[categoryNameFromId[packageType]].map(category => (
@@ -111,7 +113,7 @@ function BrowserToolbar() {
 	const [searchBar, setSearchBar] = useState(query);
 
 	return (
-		<div className="w-full flex flex-row justify-between bg-page">
+		<div className="w-full flex flex-row justify-between">
 			<div className="flex flex-row gap-2">
 				<Dropdown
 					onSelectionChange={id => navigate({ search: { ...search, provider: id as Provider } })}

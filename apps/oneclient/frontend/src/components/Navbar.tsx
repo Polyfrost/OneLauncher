@@ -31,41 +31,42 @@ export function Navbar() {
 				<NavbarLink to="./accounts">Accounts</NavbarLink>
 			</div>
 
-			<div className="flex flex-1 items-center justify-end gap-2 pointer-events-none">
-				<NavbarButton
-					children={<Settings02Icon height={28} width={28} />}
-					onClick={() => navigate({ to: '/app/settings' })}
-				/>
-				<Popup.Trigger>
-					<NavbarButton>
-						<AccountAvatar className="w-full h-full rounded-lg" uuid={currentAccount?.id} />
-					</NavbarButton>
+			<div className="flex flex-1 items-center justify-end gap-6 pointer-events-none">
+				<div className="flex gap-4">
+					<NavbarButton
+						children={<Settings02Icon height={28} width={28} />}
+						onClick={() => navigate({ to: '/app/settings' })}
+					/>
+					<Popup.Trigger>
+						<NavbarButton>
+							<AccountAvatar className="w-full h-full rounded-lg" uuid={currentAccount?.id} />
+						</NavbarButton>
+						<AccountPopup />
+					</Popup.Trigger>
+				</div>
 
-					<AccountPopup />
-				</Popup.Trigger>
-
-				<NavbarButton
-					children={<MinusIcon />}
-					onClick={onMinimize}
-				/>
-
-				<NavbarButton
-					children={<SquareIcon />}
-					onClick={onMaximize}
-				/>
-
-				<NavbarButton
-					children={(
-						<XCloseIcon
-							height={28}
-							strokeWidth={1.5}
-							width={28}
-						/>
-					)}
-					className="bg-transparent"
-					color="danger"
-					onClick={onClose}
-				/>
+				<div className="flex gap-2">
+					<NavbarButton
+						children={<MinusIcon />}
+						onClick={onMinimize}
+					/>
+					<NavbarButton
+						children={<SquareIcon />}
+						onClick={onMaximize}
+					/>
+					<NavbarButton
+						children={(
+							<XCloseIcon
+								height={28}
+								strokeWidth={1.5}
+								width={28}
+							/>
+						)}
+						className="bg-transparent"
+						color="danger"
+						onClick={onClose}
+					/>
+				</div>
 			</div>
 
 		</nav>

@@ -45,7 +45,7 @@ export function ExternalLink({
 				{...rest}
 			>
 				{children}
-				{withIcon && <LinkExternal01Icon className="inline w-4 ml-1" />}
+				{withIcon && <LinkExternal01Icon className="inline w-3 ml-0.5 h-3" />}
 			</a>
 
 			<Overlay>

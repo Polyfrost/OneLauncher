@@ -7,6 +7,7 @@ export * from './Popup';
 export * from './SelectList';
 export * from './Show';
 export * from './Switch';
+export * from './TabList';
 export * from './TextField';
 export * from './ToggleButton';
 export * from './Tooltip';

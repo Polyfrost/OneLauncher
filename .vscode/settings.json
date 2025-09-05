@@ -12,7 +12,7 @@
 		"editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
 	},
 	"[typescriptreact]": {
-		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
+		"editor.defaultFormatter": "vscode.typescript-language-features"
 	},
 	"files.readonlyInclude": {
 		"**/node_modules/**": true,

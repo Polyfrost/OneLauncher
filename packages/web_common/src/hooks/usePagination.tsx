@@ -1,6 +1,6 @@
-import { Button, Show } from '@onelauncher/common/components';
 import { ChevronLeftIcon, ChevronRightIcon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
+import { Button, Show } from '../components';
 
 export interface PaginationOptions {
 	itemsCount: number;

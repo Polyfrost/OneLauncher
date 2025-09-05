@@ -25,7 +25,7 @@ const versions = [
 
 function RouteComponent() {
 	return (
-		<div className="min-h-screen p-8">
+		<div className="min-h-screen px-7">
 			<div className="max-w-6xl mx-auto">
 				<h1 className="text-4xl font-semibold mb-2">Starting Versions</h1>
 				<p className="text-slate-400 text-lg mb-2">
@@ -42,7 +42,7 @@ function RouteComponent() {
 						/>
 					))}
 					<div className="border border-component-bg-hover rounded-xl">
-						<div className="flex items-center justify-center h-46">
+						<div className="flex items-center justify-center h-32">
 							<PlusIcon className="text-component-bg-hover size-12" />
 						</div>
 					</div>
@@ -63,7 +63,7 @@ export function VersionCard({ version, tags }: VersionCardProps) {
 			<div className="relative">
 				<img
 					alt={`Minecraft ${version} landscape`}
-					className="w-full rounded-xl h-48 object-cover"
+					className="w-full rounded-xl h-32 object-cover"
 					src={CavesAndCliffs}
 				/>
 

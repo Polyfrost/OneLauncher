@@ -462,7 +462,7 @@ impl From<CFPackage> for ManagedPackage {
 			slug: value.slug,
 			name: value.name,
 			short_desc: value.summary,
-			body: ManagedPackageBody::Url(format!("/v1/mods/{}/description", value.id)),
+			body: ManagedPackageBody::Url(format!("/mods/{}/description", value.id)),
 			version_ids: latest_version_ids,
 			mc_versions,
 			loaders,

@@ -1,4 +1,5 @@
 import type { Provider } from '@/bindings.gen';
+import { SheetPage } from '@/components';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 
 export interface BrowserRouteSearchParams {
@@ -16,6 +17,8 @@ export const Route = createFileRoute('/app/cluster/browser')({
 
 function RouteComponent() {
 	return (
-		<Outlet />
+		<SheetPage.Content>
+			<Outlet />
+		</SheetPage.Content>
 	);
 }

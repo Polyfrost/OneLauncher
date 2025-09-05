@@ -18,7 +18,7 @@ const popupVariants = tv({
 		],
 		dialog: [
 			'flex flex-col items-center p-1 gap-2 relative',
-			'border border-component-border-hover bg-page-elevated shadow-md rounded-lg',
+			'border border-component-border-hover bg-page-elevated shadow-md rounded-xl',
 		],
 	},
 });

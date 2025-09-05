@@ -1,12 +1,12 @@
-import type { ClusterModel, ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl, Provider } from '@/bindings.gen';
+import type { ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl } from '@/bindings.gen';
 import { LoaderSuspense } from '@/components';
 import { ExternalLink } from '@/components/ExternalLink';
 import { Markdown } from '@/components/Markdown';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, upperFirst, useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
-import { Button, Tooltip } from '@onelauncher/common/components';
+import { Button, Show, Tooltip } from '@onelauncher/common/components';
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { CalendarIcon, ClockRewindIcon, Download01Icon, File02Icon } from '@untitled-theme/icons-react';
+import { CalendarIcon, CheckIcon, ClockRewindIcon, Download01Icon, File02Icon, Loading02Icon, XIcon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Cell, Column, Row, Tab, Table, TableBody, TableHeader, TabList, TabPanel, Tabs } from 'react-aria-components';
 
@@ -349,6 +349,7 @@ function Versions() {
 function VersionRow({ version }: { version: ManagedVersion }) {
 	const { cluster } = Route.useRouteContext();
 	const { provider } = Route.useSearch();
+	const download = useCommandMut(() => bindings.core.downloadPackage(provider, version.project_id, version.version_id, cluster.id, true));
 	return (
 		<Row className="my-2 bg-page-elevated px-4 [&>td]:py-4 w-full">
 			<Cell className="p-4 my-2 bg-component-bg rounded-l-xl">
@@ -365,17 +366,19 @@ function VersionRow({ version }: { version: ManagedVersion }) {
 			<Cell className="p-4 pl-0 bg-component-bg">{version.downloads}</Cell>
 			<Cell className="p-4 pl-0 bg-component-bg rounded-r-xl">
 				<Button
-					children={<Download01Icon />}
+					// children={download.isSuccess ? <CheckIcon /> : }
 					color="secondary"
-					onClick={() => downloadPackage(cluster, provider, version)}
+					isDisabled={!download.isIdle}
+					onClick={() => download.mutate()}
 					size="icon"
-				/>
+				>
+					<Show children={<Download01Icon />} when={download.isIdle} />
+					<Show children={<CheckIcon />} when={download.isSuccess} />
+					<Show children={<Loading02Icon className="animate-spin animate-duration-2000" />} when={download.isPending} />
+					<Show children={<XIcon />} when={download.error} />
+				</Button>
 
 			</Cell>
 		</Row>
 	);
-}
-
-function downloadPackage(cluster: ClusterModel, provider: Provider, version: ManagedVersion, skipCompatibility = false) {
-	return bindings.core.downloadPackage(provider, version.project_id, version.version_id, cluster.id, skipCompatibility);
 }

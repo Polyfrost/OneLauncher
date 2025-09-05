@@ -4,15 +4,16 @@ import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Popup } from '@onelauncher/common/components';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
-import { MinusIcon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
+import { MinusIcon, Settings01Icon, Settings02Icon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from './AccountAvatar';
 import { AccountPopup } from './overlay/AccountPopup';
 
 export function Navbar() {
 	const { data: currentAccount } = useCommand(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
+	const navigate = useNavigate();
 
 	const onMinimize = () => Window.getCurrent().minimize();
 	const onMaximize = () => Window.getCurrent().toggleMaximize();
@@ -30,37 +31,42 @@ export function Navbar() {
 				<NavbarLink to="./accounts">Accounts</NavbarLink>
 			</div>
 
-			<div className="flex flex-1 items-center justify-end gap-2 pointer-events-none">
-				<Popup.Trigger>
-					<NavbarButton>
-						<AccountAvatar className="w-full h-full rounded-lg" uuid={currentAccount?.id} />
-					</NavbarButton>
+			<div className="flex flex-1 items-center justify-end gap-6 pointer-events-none">
+				<div className="flex gap-4">
+					<NavbarButton
+						children={<Settings02Icon height={28} width={28} />}
+						onClick={() => navigate({ to: '/app/settings' })}
+					/>
+					<Popup.Trigger>
+						<NavbarButton>
+							<AccountAvatar className="w-full h-full rounded-lg" uuid={currentAccount?.id} />
+						</NavbarButton>
+						<AccountPopup />
+					</Popup.Trigger>
+				</div>
 
-					<AccountPopup />
-				</Popup.Trigger>
-
-				<NavbarButton
-					children={<MinusIcon />}
-					onClick={onMinimize}
-				/>
-
-				<NavbarButton
-					children={<SquareIcon />}
-					onClick={onMaximize}
-				/>
-
-				<NavbarButton
-					children={(
-						<XCloseIcon
-							height={28}
-							strokeWidth={1.5}
-							width={28}
-						/>
-					)}
-					className="bg-transparent"
-					color="danger"
-					onClick={onClose}
-				/>
+				<div className="flex gap-2">
+					<NavbarButton
+						children={<MinusIcon />}
+						onClick={onMinimize}
+					/>
+					<NavbarButton
+						children={<SquareIcon />}
+						onClick={onMaximize}
+					/>
+					<NavbarButton
+						children={(
+							<XCloseIcon
+								height={28}
+								strokeWidth={1.5}
+								width={28}
+							/>
+						)}
+						className="bg-transparent"
+						color="danger"
+						onClick={onClose}
+					/>
+				</div>
 			</div>
 
 		</nav>

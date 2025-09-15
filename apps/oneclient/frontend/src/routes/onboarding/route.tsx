@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from 'react';
-import Logo from '@/assets/logos/oneclient2.svg';
+import Logo from '@/assets/logos/Logo.svg';
+import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import { Stepper } from '@/components/Stepper';
@@ -109,7 +110,7 @@ function AppShell({
 				<div className={`min-w-64 ${isFirstStep ? 'bg-page' : ''} border-r border-component-border flex flex-col`}>
 					<div className="p-6">
 						<div className="flex items-center gap-2">
-							<img alt="logo" className="w-52 h-12" src={Logo} />
+							<LauncherLogo className="w-52 h-12" />
 						</div>
 					</div>
 
@@ -131,10 +132,10 @@ function AppShell({
 }
 
 function BackgroundGradient() {
-	const background = useAppShellStore(state => state.background);
+	// const background = useAppShellStore(state => state.background);
 
-	if (background === 'none')
-		return undefined;
+	// if (background === 'none')
+	// 	return undefined;
 
 	return (
 		<div className="relative">

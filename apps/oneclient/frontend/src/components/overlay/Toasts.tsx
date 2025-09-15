@@ -1,3 +1,4 @@
+import type { IngressType } from '@/bindings.gen';
 import type { ToastData, ToastId } from '@/utils/toast';
 import type { HTMLAttributes } from 'react';
 import type { ToastContentProps, ToastOptions } from 'react-toastify';
@@ -112,6 +113,18 @@ function ToastProgressBar({
 	);
 }
 
+type UnionToIntersection<T> =
+  (T extends any ? (x: T) => void : never) extends ((x: infer I) => void) ? I : never;
+
+const ingressNames: Record<(IngressType & string) | (keyof UnionToIntersection<IngressType & object>), string> = {
+	JavaPrepare: 'Preparing Java',
+	JavaCheck: 'Checking Java',
+	JavaLocate: 'Locating Java',
+	MinecraftDownload: 'Downloading Minecraft',
+	Download: 'Downloading',
+	PrepareCluster: 'Preparing Cluster',
+};
+
 export function Toasts() {
 	// runs twice in dev mode because of react strict mode
 	// the double notifications are NOT a bug!!!
@@ -120,7 +133,8 @@ export function Toasts() {
 		const toastIngressMap: Map<string, ToastId> = new Map();
 
 		bindings.events.ingress.on((e) => {
-			const title = typeof e.ingress_type === 'string' ? e.ingress_type : Object.keys(e.ingress_type).at(0) ?? 'Info';
+			const ingressType = typeof e.ingress_type === 'string' ? e.ingress_type : Object.keys(e.ingress_type).at(0) ?? 'Info';
+			const title = ingressNames[ingressType as keyof typeof ingressNames] ?? ingressType;
 
 			const existingToastId = toastIngressMap.get(e.id);
 

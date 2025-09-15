@@ -89,7 +89,7 @@ function ActiveClusterInfo({
 				left: '-50%',
 			}}
 			key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
-			transition={{ ease: 'backInOut', duration: 0.7 }}
+			transition={{ ease: 'backInOut', duration: 0.35 }}
 		>
 			<h1 className="text-6xl font-bold text-fg-primary">{cluster?.mc_version} {prettifyLoader(cluster?.mc_loader ?? 'vanilla')}</h1>
 			<p className="text-lg font-medium text-fg-secondary">{versionInfo.shortDescription}</p>

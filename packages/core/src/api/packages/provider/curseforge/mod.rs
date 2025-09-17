@@ -269,8 +269,8 @@ impl ProviderExt for CurseForgeProviderImpl {
 		match body {
 			ManagedPackageBody::Raw(raw) => Ok(raw.clone()),
 			ManagedPackageBody::Url(url) => {
-				let body: String = fetch(url).await?;
-				Ok(body)
+				let body = fetch::<CFData<String>>(url).await?;
+				Ok(body.data)
 			}
 		}
 	}

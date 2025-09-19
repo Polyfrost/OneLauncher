@@ -29,8 +29,7 @@ function RouteComponent() {
 			<div className="max-w-6xl mx-auto">
 				<h1 className="text-4xl font-semibold mb-2">Starting Versions</h1>
 				<p className="text-slate-400 text-lg mb-2">
-					Something something in corporate style fashion about picking your preferred gamemodes and versions and
-					optionally loader so that oneclient can pick something for them
+					Pick your preferred version to get going.
 				</p>
 
 				<div className="bg-page-elevated h-full p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

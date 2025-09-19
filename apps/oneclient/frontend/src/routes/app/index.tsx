@@ -129,13 +129,15 @@ function RecentsCard({
 
 	return (
 		<Card className={twMerge(active && 'outline-2 outline-brand')} onPress={onPress}>
-			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-80">
+			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-75 transition-all duration-200">
 				<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
 
 				<div
 					className="absolute top-0 left-0 -z-10 w-full h-full"
 					style={{
 						background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
+						backdropFilter: 'blur(3px)',
+						WebkitBackdropFilter: 'blur(3px)',
 					}}
 				>
 				</div>
@@ -160,7 +162,7 @@ function Card({
 	return (
 		<AriaButton
 			className={twMerge(
-				'relative overflow-hidden flex-1 rounded-xl outline outline-component-border',
+				'relative overflow-hidden flex-1 rounded-xl outline outline-component-border transition-all duration-300',
 				blur
 					? 'bg-white/5 hover:bg-white/15 active:bg-white/20'
 					: 'hover:bg-ghost-overlay-hover active:bg-ghost-overlay-pressed',

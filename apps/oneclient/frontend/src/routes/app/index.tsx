@@ -129,20 +129,22 @@ function RecentsCard({
 
 	return (
 		<Card className={twMerge(active && 'outline-2 outline-brand')} onPress={onPress}>
-			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-75 transition-all duration-200">
-				<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
+			<div className="relative flex w-full h-full justify-start items-end px-6 py-3">
+				<div className="absolute inset-0 hover:brightness-75 transition-all duration-200">
+					<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110 pointer-events-none" name={versionInfo.backgroundName} />
 
-				<div
-					className="absolute top-0 left-0 -z-10 w-full h-full"
-					style={{
-						background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
-						backdropFilter: 'blur(3px)',
-						WebkitBackdropFilter: 'blur(3px)',
-					}}
-				>
+					<div
+						className="absolute top-0 left-0 -z-10 w-full h-full pointer-events-none"
+						style={{
+							background:
+						'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
+							backdropFilter: 'blur(3px)',
+							WebkitBackdropFilter: 'blur(3px)',
+						}}
+					/>
 				</div>
 
-				<h4 className="text-2xl font-semibold">{version} {prettifyLoader(loader)}</h4>
+				<h4 className="text-2xl font-semibold relative z-10"> {version} {prettifyLoader(loader)} </h4>
 			</div>
 		</Card>
 	);

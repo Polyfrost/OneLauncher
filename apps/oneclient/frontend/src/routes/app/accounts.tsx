@@ -40,7 +40,7 @@ function HeaderLarge() {
 		<div className="flex flex-row justify-between items-end gap-16">
 			<div className="flex-1 flex flex-col">
 				<h1 className="text-3xl font-semibold">Accounts</h1>
-				<p className="text-md font-medium text-fg-secondary">Something something in corporate style fashion about picking your preferred gamemodes and versions and optionally loader so that oneclient can pick something for them</p>
+				<p className="text-md font-medium text-fg-secondary">Login to your Minecraft account here.</p>
 			</div>
 
 			<AddAccountButton size="large" />

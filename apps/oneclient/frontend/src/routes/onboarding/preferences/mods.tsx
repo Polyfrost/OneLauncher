@@ -13,8 +13,7 @@ function RouteComponent() {
 			<div className="max-w-6xl mx-auto">
 				<h1 className="text-4xl font-semibold mb-2">Choose Mods</h1>
 				<p className="text-slate-400 text-lg mb-2">
-					Something something in corporate style fashion about picking your preferred gamemodes and versions and
-					optionally loader so that oneclient can pick something for them
+					Add mods to your game and experience something new.
 				</p>
 
 				<div className="relative">

@@ -24,6 +24,8 @@ export type DirectoryError = { type: "BaseDir"; data: string }
 
 export type DiscordError = { type: "MissingClientId"; data: string } | { type: "ConnectError"; data: string }
 
+export type ExternalPackage = { name: string; url: string; sha1: string; size: number; package_type: PackageType }
+
 export type Filters = { game_versions: string[] | null; loaders: GameLoader[] | null; categories: PackageCategories | null; package_type: PackageType | null }
 
 export type GameLoader = "vanilla" | "forge" | "neoforge" | "quilt" | "fabric" | "legacyfabric"
@@ -93,6 +95,16 @@ refresh_token: string;
  * The time that the access token expires as a [`DateTime<Utc>`].
  */
 expires: string }
+
+export type ModpackArchive = { manifest: ModpackManifest; path: string; format: ModpackFormat }
+
+export type ModpackFile = { enabled: boolean; kind: ModpackFileKind }
+
+export type ModpackFileKind = { Managed: [ManagedPackage, ManagedVersion] } | { External: ExternalPackage }
+
+export type ModpackFormat = "CurseForge" | "MrPack" | "PolyMrPack"
+
+export type ModpackManifest = { name: string; version: string; loader: GameLoader; loader_version: string; mc_version: string; files: ModpackFile[] }
 
 export type MojangPlayerProfile = { uuid: string; username: string; is_slim: boolean; skin_url: string | null; cape_url: string | null }
 
@@ -232,11 +244,8 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'core':'{"getUser":["uuid"],"readSettings":[],"searchPackages":["provider","query"],"writeSettings":["setting"],"createCluster":["options"],"fetchMinecraftProfile":["uuid"],"getLoadersForVersion":["mc_version"],"launchCluster":["id","uuid"],"getGlobalProfile":[],"openMsaLogin":[],"open":["input"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"isClusterRunning":["cluster_id"],"getGameVersions":[],"getMultiplePackages":["provider","slugs"],"setDefaultUser":["uuid"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getLogs":["id"],"getRunningProcesses":[],"getUsersFromAuthor":["provider","author"],"getClusterById":["id"],"getScreenshots":["id"],"getProfileOrDefault":["name"],"getPackageBody":["provider","body"],"getRunningProcessesByClusterId":["cluster_id"],"updateClusterProfile":["name","profile"],"getPackage":["provider","slug"],"removeUser":["uuid"],"updateClusterById":["id","request"],"getWorlds":["id"],"getLogByName":["id","name"],"killProcess":["pid"],"getClusters":[],"removeCluster":["id"],"getDefaultUser":["fallback"],"getUsers":[]}', 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[]}' }
-export type Router = { 'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'oneclient':'{"getModpacksFor":["cluster_id"],"getClustersGroupedByMajor":[],"openDevTools":[]}', 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}', 'core':'{"getUsersFromAuthor":["provider","author"],"getUsers":[],"launchCluster":["id","uuid"],"fetchMinecraftProfile":["uuid"],"searchPackages":["provider","query"],"getLoadersForVersion":["mc_version"],"open":["input"],"removeCluster":["id"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getGlobalProfile":[],"getLogByName":["id","name"],"getClusterById":["id"],"getRunningProcesses":[],"getClusters":[],"getDefaultUser":["fallback"],"readSettings":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"createCluster":["options"],"killProcess":["pid"],"getProfileOrDefault":["name"],"getUser":["uuid"],"getPackage":["provider","slug"],"updateClusterById":["id","request"],"writeSettings":["setting"],"setDefaultUser":["uuid"],"getLogs":["id"],"getWorlds":["id"],"openMsaLogin":[],"getRunningProcessesByClusterId":["cluster_id"],"removeUser":["uuid"],"getMultiplePackages":["provider","slugs"],"updateClusterProfile":["name","profile"],"getPackageBody":["provider","body"],"getScreenshots":["id"],"installModpack":["modpack","cluster_id"],"isClusterRunning":["cluster_id"],"getGameVersions":[]}', 'folders':'{"openCluster":["folder_name"],"fromCluster":["folder_name"]}' }
+export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -270,12 +279,17 @@ getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPac
 getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null, loader: GameLoader | null, offset: number, limit: number) => Promise<Paginated<ManagedVersion>>, 
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: number, skipCompatibility: boolean | null) => Promise<PackageModel>, 
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]>, 
+installModpack: (modpack: ModpackArchive, clusterId: number) => Promise<null>, 
 fetchMinecraftProfile: (uuid: string) => Promise<MojangPlayerProfile>, 
 open: (input: string) => Promise<null> },
-'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> },
 'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> } };
+openCluster: (folderName: string) => Promise<null> },
+'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
+getModpacksFor: (clusterId: number) => Promise<ModpackArchive[]> } };
 
 
 export type { InferCommandOutput }

@@ -1,7 +1,18 @@
+use std::path::PathBuf;
+
 use onelauncher_entity::loader::GameLoader;
 use serde::{Deserialize, Serialize};
 
 use crate::api::packages::data::{ExternalPackage, ManagedPackage, ManagedVersion};
+use crate::api::packages::modpack::ModpackFormat;
+
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModpackArchive {
+	pub manifest: ModpackManifest,
+	pub path: PathBuf,
+	pub format: ModpackFormat,
+}
 
 #[onelauncher_macro::specta]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,7 +27,14 @@ pub struct ModpackManifest {
 
 #[onelauncher_macro::specta]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ModpackFile {
+pub struct ModpackFile {
+	pub enabled: bool,
+	pub kind: ModpackFileKind,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModpackFileKind {
 	Managed((ManagedPackage, ManagedVersion)),
 	External(ExternalPackage),
 }

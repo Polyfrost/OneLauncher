@@ -4,25 +4,46 @@ use std::sync::Arc;
 use onelauncher_entity::package::PackageType;
 use onelauncher_entity::{clusters, packages};
 use sea_orm::ActiveValue::Set;
+use serde::{Deserialize, Serialize};
 
 use crate::api::packages::PackageError;
+use crate::api::packages::modpack::data::ModpackArchive;
 use crate::api::packages::modpack::mrpack::MrPackFormatImpl;
+use crate::api::packages::modpack::polymrpack::PolyMrPackFormatImpl;
 use crate::api::{self};
 use crate::error::LauncherResult;
 use crate::store::ingress::SubIngress;
 
 pub mod data;
 mod mrpack;
+mod polymrpack;
 
 #[cfg(test)]
 mod tests;
 
 #[onelauncher_macro::specta]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModpackFormat {
 	CurseForge,
 	MrPack,
+	PolyMrPack,
 }
+
+const FORMAT_PIPELINE_PATH: &[LoaderFn<PathBuf>] = &[
+	PolyMrPackFormatImpl::from_file, // has to be first because of it being a **VALID** mrpack with extra stuff
+	MrPackFormatImpl::from_file,
+];
+
+const FORMAT_PIPELINE_BYTES: &[LoaderFn<Arc<Vec<u8>>>] = &[
+	PolyMrPackFormatImpl::from_bytes, // has to be first because of it being a **VALID** mrpack with extra stuff
+	MrPackFormatImpl::from_bytes,
+];
+
+type LoaderFn<Arg> = fn(
+	Arg,
+) -> std::pin::Pin<
+	Box<dyn Future<Output = LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>> + Send>,
+>;
 
 #[async_trait::async_trait]
 pub trait ModpackFormatExt {
@@ -35,6 +56,15 @@ pub trait ModpackFormatExt {
 	async fn from_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
+	where
+		Self: Sized;
+
+	async fn install_modpack_archive(
+		modpack_archive: &ModpackArchive,
+		cluster: &clusters::Model,
+		skip_compatibility: Option<bool>,
+		ingress: Option<SubIngress<'_>>,
+	) -> LauncherResult<()>
 	where
 		Self: Sized;
 }
@@ -52,17 +82,9 @@ pub trait InstallableModpackFormatExt: Send + Sync + std::any::Any {
 	fn as_any(self: Box<Self>) -> Box<dyn std::any::Any + Send + Sync>;
 }
 
-type LoaderFn<Arg> = fn(
-	Arg,
-) -> std::pin::Pin<
-	Box<dyn Future<Output = LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>> + Send>,
->;
-
 impl ModpackFormat {
-	async fn from_file(path: PathBuf) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
-		let pipeline: Vec<LoaderFn<PathBuf>> = vec![MrPackFormatImpl::from_file];
-
-		for stage in pipeline {
+	pub async fn from_file(path: PathBuf) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
+		for stage in FORMAT_PIPELINE_PATH {
 			if let Some(format) = stage(path.clone()).await? {
 				return Ok(format);
 			}
@@ -71,18 +93,41 @@ impl ModpackFormat {
 		Err(PackageError::UnsupportedModpackFormat.into())
 	}
 
-	async fn from_bytes(
+	pub async fn from_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
-		let pipeline: Vec<LoaderFn<Arc<Vec<u8>>>> = vec![MrPackFormatImpl::from_bytes];
-
-		for stage in pipeline {
+		for stage in FORMAT_PIPELINE_BYTES {
 			if let Some(format) = stage(Arc::clone(&bytes)).await? {
 				return Ok(format);
 			}
 		}
 
 		Err(PackageError::UnsupportedModpackFormat.into())
+	}
+
+	pub async fn install_modpack_archive(
+		&self,
+		modpack_archive: &ModpackArchive,
+		cluster: &clusters::Model,
+		skip_compatibility: Option<bool>,
+		ingress: Option<SubIngress<'_>>,
+	) -> LauncherResult<()> {
+		match self {
+			ModpackFormat::CurseForge => unimplemented!(),
+			ModpackFormat::MrPack => MrPackFormatImpl::install_modpack_archive(
+				modpack_archive,
+				cluster,
+				skip_compatibility,
+				ingress,
+			),
+			ModpackFormat::PolyMrPack => PolyMrPackFormatImpl::install_modpack_archive(
+				modpack_archive,
+				cluster,
+				skip_compatibility,
+				ingress,
+			),
+		}
+		.await
 	}
 }
 

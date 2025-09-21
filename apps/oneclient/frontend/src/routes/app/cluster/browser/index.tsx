@@ -1,6 +1,5 @@
 import type { Filters, PackageCategories, PackageType, Provider, Sort } from '@/bindings.gen';
-import { LoaderSuspense, SheetPage } from '@/components';
-import { PackageGrid } from '@/components/PackageItem';
+import { LoaderSuspense, PackageGrid } from '@/components';
 import { bindings } from '@/main';
 import { browserCategories, categoryNameFromId } from '@/utils/browser';
 import { useCommandSuspense, usePagination } from '@onelauncher/common';

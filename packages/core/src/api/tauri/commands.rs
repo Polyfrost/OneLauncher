@@ -2,6 +2,7 @@ use crate::api::packages::data::{
 	ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery,
 	SearchResult,
 };
+use crate::api::packages::modpack::data::ModpackArchive;
 use crate::api::packages::provider::ProviderExt;
 use crate::store::processes::Process;
 use crate::store::{Settings, State};
@@ -26,6 +27,7 @@ use onelauncher_entity::prelude::model::*;
 #[taurpc::procedures(path = "core")]
 pub trait TauriLauncherApi {
 	// MARK: API: clusters
+	// region: clusters
 	#[taurpc(alias = "getClusters")]
 	async fn get_clusters() -> LauncherResult<Vec<Cluster>>;
 
@@ -55,8 +57,10 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLogByName")]
 	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
+	// endregion: clusters
 
 	// MARK: API: processes
+	// region: processes
 	#[taurpc(alias = "getRunningProcesses")]
 	async fn get_running_processes() -> LauncherResult<Vec<Process>>;
 
@@ -70,8 +74,10 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "killProcess")]
 	async fn kill_process(pid: u32) -> LauncherResult<()>;
+	// endregion: processes
 
 	// MARK: API: profiles
+	// region: profiles
 	#[taurpc(alias = "getProfileOrDefault")]
 	async fn get_profile_or_default(name: Option<String>) -> LauncherResult<SettingsProfile>;
 
@@ -83,15 +89,19 @@ pub trait TauriLauncherApi {
 		name: String,
 		profile: ProfileUpdate,
 	) -> LauncherResult<SettingsProfile>;
+	// endregion: profiles
 
 	// MARK: API: metadata
+	// region: metadata
 	#[taurpc(alias = "getGameVersions")]
 	async fn get_game_versions() -> LauncherResult<Vec<Version>>;
 
 	#[taurpc(alias = "getLoadersForVersion")]
 	async fn get_loaders_for_version(mc_version: String) -> LauncherResult<Vec<GameLoader>>;
+	// endregion: metadata
 
 	// MARK: API: users
+	// region: users
 	#[taurpc(alias = "getUsers")]
 	async fn get_users() -> LauncherResult<Vec<MinecraftCredentials>>;
 
@@ -113,15 +123,19 @@ pub trait TauriLauncherApi {
 	async fn open_msa_login<R: Runtime>(
 		app_handle: AppHandle<R>,
 	) -> LauncherResult<Option<MinecraftCredentials>>;
+	// endregion: users
 
 	// MARK: API: settings
+	// region: settings
 	#[taurpc(alias = "readSettings")]
 	async fn read_settings() -> LauncherResult<Settings>;
 
 	#[taurpc(alias = "writeSettings")]
 	async fn write_settings(setting: Settings) -> LauncherResult<()>;
+	// endregion: settings
 
-	// MARK: API: packages
+	// MARK: API: package
+	// region: package
 	#[taurpc(alias = "searchPackages")]
 	async fn search_packages(
 		provider: Provider,
@@ -170,6 +184,13 @@ pub trait TauriLauncherApi {
 		provider: Provider,
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>>;
+	// endregion: package
+
+	// MARK: API: modpack
+	// region: modpack
+	#[taurpc(alias = "installModpack")]
+	async fn install_modpack(modpack: ModpackArchive, cluster_id: ClusterId) -> LauncherResult<()>;
+	// endregion: modpack
 
 	// MARK: API: minecraft
 	#[taurpc(alias = "fetchMinecraftProfile")]
@@ -214,6 +235,7 @@ pub struct TauriLauncherApiImpl;
 #[taurpc::resolvers]
 impl TauriLauncherApi for TauriLauncherApiImpl {
 	// MARK: Impl: clusters
+	// region: clusters
 	async fn get_clusters(self) -> LauncherResult<Vec<Cluster>> {
 		api::cluster::dao::get_all_clusters().await
 	}
@@ -340,8 +362,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		api::cluster::content::get_log_by_name(&cluster, &name).await
 	}
+	// endregion: clusters
 
 	// MARK: Impl: processes
+	// region: processes
 	async fn get_running_processes(self) -> LauncherResult<Vec<Process>> {
 		api::processes::get_running_processes().await
 	}
@@ -360,8 +384,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	async fn kill_process(self, pid: u32) -> LauncherResult<()> {
 		api::processes::kill_process(pid).await
 	}
+	// endregion: processes
 
 	// MARK: Impl: profiles
+	// region: profiles
 	async fn get_global_profile(self) -> SettingsProfile {
 		api::setting_profiles::get_global_profile().await
 	}
@@ -418,8 +444,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(profile)
 	}
+	// endregion: profiles
 
 	// MARK: Impl: metadata
+	// region: metadata
 	async fn get_loaders_for_version(self, mc_version: String) -> LauncherResult<Vec<GameLoader>> {
 		api::game::metadata::get_loaders_for_version(&mc_version).await
 	}
@@ -427,8 +455,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	async fn get_game_versions(self) -> LauncherResult<Vec<Version>> {
 		api::game::metadata::get_game_versions().await
 	}
+	// endregion: metadata
 
 	// MARK: Impl: users
+	// region: users
 	async fn get_users(self) -> LauncherResult<Vec<MinecraftCredentials>> {
 		api::credentials::get_users().await
 	}
@@ -516,7 +546,17 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(None)
 	}
 
+	async fn get_users_from_author(
+		self,
+		provider: Provider,
+		author: PackageAuthor,
+	) -> LauncherResult<Vec<ManagedUser>> {
+		provider.get_users_from_author(author).await
+	}
+	// endregion: users
+
 	// MARK: Impl: settings
+	// region: settings
 	async fn read_settings(self) -> LauncherResult<Settings> {
 		let state = State::get().await?;
 		let settings = state.settings.read().await;
@@ -534,8 +574,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(())
 	}
+	// endregion: settings
 
-	// MARK: Impl: packages
+	// MARK: Impl: package
+	// region: package
 	async fn search_packages(
 		self,
 		provider: Provider,
@@ -604,26 +646,41 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(model)
 	}
+	// endregion: package
 
-	async fn get_users_from_author(
+	// MARK: Impl: modpack
+	// region: modpack
+	async fn install_modpack(
 		self,
-		provider: Provider,
-		author: PackageAuthor,
-	) -> LauncherResult<Vec<ManagedUser>> {
-		provider.get_users_from_author(author).await
+		modpack: ModpackArchive,
+		cluster_id: ClusterId,
+	) -> LauncherResult<()> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		modpack
+			.format
+			.install_modpack_archive(&modpack, &cluster, None, None)
+			.await
 	}
+	// endregion: modpack
 
 	// MARK: Impl: minecraft
+	// region: minecraft
 	async fn fetch_player_profile(
 		self,
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile> {
 		crate::utils::minecraft::fetch_player_profile(&uuid).await
 	}
+	// endregion: minecraft
 
 	// MARK: Impl: Other
+	// region: other
 	async fn open(self, input: String) -> LauncherResult<()> {
 		opener::open(input)?;
 		Ok(())
 	}
+	// endregion: other
 }

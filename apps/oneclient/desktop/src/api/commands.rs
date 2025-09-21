@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
+use onelauncher_core::api::cluster::dao::ClusterId;
+use onelauncher_core::api::packages::modpack::data::ModpackArchive;
 use onelauncher_core::entity::clusters;
+use onelauncher_core::entity::loader::GameLoader;
 use onelauncher_core::error::LauncherResult;
 use tauri::Runtime;
 
@@ -11,6 +14,9 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "getClustersGroupedByMajor")]
 	async fn get_clusters_grouped_by_major() -> LauncherResult<HashMap<u32, Vec<clusters::Model>>>;
+
+	#[taurpc(alias = "getModpacksFor")]
+	async fn get_modpacks_for(cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>>;
 }
 
 #[taurpc::ipc_type]
@@ -46,5 +52,28 @@ impl OneClientApi for OneClientApiImpl {
 		}
 
 		Ok(mapped)
+	}
+
+	async fn get_modpacks_for(self, cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>> {
+		struct ModpackEntry {
+			pub category: String,
+			pub version: String,
+			pub loader: GameLoader,
+		}
+
+		// const ENTRIES: &[ModpackEntry] = &[
+		// 	ModpackEntry {
+		// 		category: "Gameplay".into(),
+		// 		version: "1.0.0".into(),
+		// 		loader: GameLoader::Fabric,
+		// 	},
+		// 	ModpackEntry {
+		// 		category: "Graphics".into(),
+		// 		version: "1.1.0".into(),
+		// 		loader: GameLoader::Forge,
+		// 	},
+		// ];
+
+		Ok(vec![])
 	}
 }

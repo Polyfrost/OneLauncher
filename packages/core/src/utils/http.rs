@@ -11,7 +11,7 @@ use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
 
 use crate::api::ingress::IngressSendExt;
-use crate::error::LauncherResult;
+use crate::error::{LauncherError, LauncherResult};
 use crate::store::Core;
 use crate::store::ingress::{SubIngress, SubIngressExt};
 use crate::store::semaphore::SemaphoreStore;
@@ -48,6 +48,48 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.build()
 		.expect("failed to build reqwest client!")
 });
+
+pub async fn request(
+	method: Method,
+	url: &str,
+	builder: Option<impl Fn(reqwest::RequestBuilder) -> reqwest::Result<reqwest::Request>>,
+) -> LauncherResult<reqwest::Response> {
+	let semaphore = SemaphoreStore::fetch().await;
+	let permit = semaphore.acquire().await;
+
+	let client = &REQWEST_CLIENT;
+
+	let mut attempt = 0;
+	let res = loop {
+		attempt += 1;
+
+		let req = client.request(method.clone(), url);
+		let req = match builder {
+			Some(ref builder) => builder(req),
+			None => req.build(),
+		}
+		.map_err(LauncherError::from)?;
+
+		match client.execute(req).await {
+			Err(err) => {
+				if attempt <= Core::get().fetch_attempts {
+					tracing::error!(
+						"error occurred whilst fetching on attempt {attempt}: {err} retrying request..."
+					);
+					continue;
+				}
+
+				return Err(err.into());
+			}
+			Ok(res) => break res,
+		}
+	};
+
+	// Drop the fetch permit as we are no longer fetching
+	drop(permit);
+
+	Ok(res)
+}
 
 #[tracing::instrument(level = "debug", skip(ingress))]
 #[onelauncher_macro::pin]

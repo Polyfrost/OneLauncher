@@ -9,32 +9,28 @@ use onelauncher_entity::package::{PackageType, Provider};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 
-use crate::api::cluster::ClusterError;
-use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageSide};
+use crate::api::packages::data::{ExternalPackage, ManagedVersion};
 use crate::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind, ModpackManifest,
 };
+use crate::api::packages::modpack::mrpack::MrPackFile;
 use crate::api::packages::modpack::{InstallableModpackFormatExt, ModpackFormatExt};
 use crate::api::packages::provider::ProviderExt;
-use crate::api::{self};
 use crate::error::LauncherResult;
 use crate::store::ingress::SubIngress;
-use crate::utils::DatabaseModelExt;
 use crate::utils::io::{self, IOError};
 
-pub struct MrPackFormatImpl {
+pub struct PolyMrPackFormatImpl {
 	pub(super) archive: Option<PathBuf>,
-	pub(super) raw_manifest: MrPackManifest,
+	pub(super) raw_manifest: PolyMrPackManifest,
 	pub(super) manifest: OnceCell<ModpackManifest>,
 	pub(super) mc_version: String,
 	pub(super) loader: GameLoader,
 	pub(super) loader_version: String,
 }
 
-pub(super) const MODRINTH_URL_PREFIX: &str = "https://cdn.modrinth.com/";
-
 #[async_trait::async_trait]
-impl ModpackFormatExt for MrPackFormatImpl {
+impl ModpackFormatExt for PolyMrPackFormatImpl {
 	async fn from_file(
 		path: std::path::PathBuf,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
@@ -67,10 +63,10 @@ impl ModpackFormatExt for MrPackFormatImpl {
 	where
 		Self: Sized,
 	{
-		let serialized: MrPackManifest = match serde_json::from_slice(&bytes) {
+		let serialized: PolyMrPackManifest = match serde_json::from_slice(&bytes) {
 			Ok(manifest) => manifest,
 			Err(e) => {
-				tracing::debug!("failed to deserialize modpack as mrpack: {}", e);
+				tracing::debug!("failed to deserialize modpack as polymrpack: {}", e);
 				return Ok(None);
 			}
 		};
@@ -89,17 +85,17 @@ impl ModpackFormatExt for MrPackFormatImpl {
 		}
 
 		if mc_version.is_none() {
-			tracing::error!("mrpack manifest does not contain a minecraft version");
+			tracing::error!("polymrpack manifest does not contain a minecraft version");
 			return Ok(None);
 		}
 
 		if loader.is_none() {
-			tracing::error!("mrpack manifest does not contain a valid game loader");
+			tracing::error!("polymrpack manifest does not contain a valid game loader");
 			return Ok(None);
 		}
 
 		if loader_version.is_none() {
-			tracing::error!("mrpack manifest does not contain a valid loader version");
+			tracing::error!("polymrpack manifest does not contain a valid loader version");
 			return Ok(None);
 		}
 
@@ -124,15 +120,16 @@ impl ModpackFormatExt for MrPackFormatImpl {
 	{
 		let ModpackArchive { manifest, path, .. } = modpack_archive;
 
-		download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress).await?;
-		copy_overrides_folder(cluster, &path, &ingress).await?;
+		super::mrpack::download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress)
+			.await?;
+		super::mrpack::copy_overrides_folder(cluster, &path, &ingress).await?;
 
 		Ok(())
 	}
 }
 
 #[async_trait::async_trait]
-impl InstallableModpackFormatExt for MrPackFormatImpl {
+impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 	fn as_any(self: Box<Self>) -> Box<dyn std::any::Any + Send + Sync>
 	where
 		Self: Sized,
@@ -170,132 +167,47 @@ impl InstallableModpackFormatExt for MrPackFormatImpl {
 	) -> LauncherResult<()> {
 		let manifest = self.manifest().await?;
 
-		download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress).await?;
+		super::mrpack::download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress)
+			.await?;
 
 		if let Some(path) = self.archive.as_ref() {
-			copy_overrides_folder(cluster, path, &ingress).await?;
+			super::mrpack::copy_overrides_folder(cluster, path, &ingress).await?;
 		}
 
 		Ok(())
 	}
 }
 
-pub(super) async fn download_and_link_packages(
-	cluster: &clusters::Model,
-	manifest: &ModpackManifest,
-	skip_compatibility: Option<bool>,
-	_ingress: &Option<SubIngress<'_>>,
-) -> LauncherResult<()> {
-	if cluster.mc_version != manifest.mc_version {
-		return Err(ClusterError::MismatchedVersion(
-			manifest.mc_version.clone(),
-			cluster.mc_version.clone(),
-		)
-		.into());
-	}
-
-	if cluster.mc_loader != manifest.loader {
-		return Err(ClusterError::MismatchedLoader(
-			manifest.loader.clone(),
-			cluster.mc_loader.clone(),
-		)
-		.into());
-	}
-
-	// TODO: Implement loader version checking
-	// if cluster.mc_loader_version.is_some_and(|v| v )
-
-	let mut errors = Vec::new();
-	let mut packages_to_link = Vec::new();
-
-	// TODO: Ingress
-	for file in manifest.files.iter() {
-		match &file.kind {
-			ModpackFileKind::Managed((package, version)) => {
-				match api::packages::download_package(package, version, None, None).await {
-					Ok(model) => packages_to_link.push(model),
-					Err(e) => errors.push(e),
-				}
-			}
-			ModpackFileKind::External(package) => {
-				if let Err(e) = api::packages::download_external_package(
-					package,
-					cluster,
-					None,
-					skip_compatibility,
-					None,
-				)
-				.await
-				{
-					errors.push(e);
-				}
-			}
-		}
-	}
-
-	let linked = api::packages::link_many_packages_to_cluster(
-		&packages_to_link,
-		cluster,
-		skip_compatibility,
-	)
-	.await?;
-	if linked < packages_to_link.len() as u64 {
-		tracing::warn!("not all packages could be linked to the cluster, some errors occurred");
-	}
-	Ok(())
-}
-
-pub(super) async fn copy_overrides_folder(
-	cluster: &clusters::Model,
-	archive_path: &PathBuf,
-	_ingress: &Option<SubIngress<'_>>,
-) -> LauncherResult<()> {
-	tracing::debug!(
-		"extracting overrides from modpack archive: {}",
-		archive_path.display()
-	);
-	let dest = cluster.path().await?;
-
-	io::extract_zip_filtered(
-		archive_path,
-		dest,
-		Some(|entry: &async_zip::StoredZipEntry| {
-			entry
-				.filename()
-				.as_str()
-				.is_ok_and(|s| s.starts_with("overrides/"))
-		}),
-		Some(|name: &str| name.trim_start_matches("overrides/").to_string()),
-	)
-	.await?;
-
-	Ok(())
-}
-
-async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
-	struct ToFetch {
-		project_id: String,
+async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
+	struct FetchedPackage {
 		version_id: String,
+		enabled: bool,
 	}
 
-	let mut to_fetch: Vec<ToFetch> = Vec::new();
+	let mut to_fetch: HashMap<String, FetchedPackage> = HashMap::new();
 	let mut files: Vec<ModpackFile> = Vec::new();
 
 	for file in mrpack_files {
+		if file.hidden {
+			continue;
+		}
+
 		let name = file
+			.base
 			.path
 			.split('/')
 			.last()
-			.unwrap_or(&file.path)
+			.unwrap_or(&file.base.path)
 			.to_string();
 
 		if let Some(url) = file
+			.base
 			.downloads
 			.iter()
-			.find(|url| url.starts_with(MODRINTH_URL_PREFIX))
+			.find(|url| url.starts_with(super::mrpack::MODRINTH_URL_PREFIX))
 		{
 			// https://cdn.modrinth.com/data/<project_id>/versions/<version_id>/<file_name>
-			let paths = url[MODRINTH_URL_PREFIX.len()..]
+			let paths = url[super::mrpack::MODRINTH_URL_PREFIX.len()..]
 				.split('/')
 				.collect::<Vec<_>>();
 
@@ -303,15 +215,19 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				let project_id = paths[1];
 				let version_id = paths[3];
 
-				to_fetch.push(ToFetch {
-					project_id: project_id.to_string(),
-					version_id: version_id.to_string(),
-				});
+				to_fetch.insert(
+					project_id.to_string(),
+					FetchedPackage {
+						version_id: version_id.to_string(),
+						enabled: file.enabled,
+					},
+				);
 			} else {
 				tracing::error!("invalid modrinth file URL: '{}'", url);
 			}
 		} else {
 			let download_url = file
+				.base
 				.downloads
 				.first()
 				.cloned()
@@ -323,6 +239,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 			// the path usually contains the folder name such as "mods" or "resourcepacks"
 			// so we can use it to determine the package type
 			let package_type = file
+				.base
 				.path
 				.split('/')
 				.next()
@@ -330,30 +247,25 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				.unwrap_or(PackageType::Mod);
 
 			files.push(ModpackFile {
+				enabled: file.enabled,
 				kind: ModpackFileKind::External(ExternalPackage {
 					name,
 					url: download_url,
-					sha1: file.hashes.sha1.clone(),
-					size: file.file_size,
+					sha1: file.base.hashes.sha1.clone(),
+					size: file.base.file_size,
 					package_type,
 				}),
-				enabled: true,
 			});
 		}
 	}
 
 	let managed_packages = Provider::Modrinth
-		.get_multiple(
-			&to_fetch
-				.iter()
-				.map(|f| f.project_id.clone())
-				.collect::<Vec<_>>(),
-		)
+		.get_multiple(&to_fetch.keys().cloned().collect::<Vec<_>>())
 		.await?;
 	let managed_versions = Provider::Modrinth
 		.get_versions(
 			&to_fetch
-				.iter()
+				.values()
 				.map(|f| f.version_id.clone())
 				.collect::<Vec<_>>(),
 		)
@@ -366,9 +278,14 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 
 	for fetched_pkg in managed_packages {
 		if let Some(version) = version_map.remove(&fetched_pkg.id) {
+			let enabled = to_fetch
+				.get(&fetched_pkg.id)
+				.map(|f| f.enabled)
+				.unwrap_or(true);
+
 			files.push(ModpackFile {
+				enabled,
 				kind: ModpackFileKind::Managed((fetched_pkg, version)),
-				enabled: true,
 			});
 		} else {
 			tracing::error!("no version found for managed package '{}'", fetched_pkg.id);
@@ -380,35 +297,26 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct MrPackManifest {
+pub(super) struct PolyMrPackManifest {
+	pub id: String,
+	pub category: String,
+	pub enabled: bool,
+	#[serde(rename = "polyFormat")]
+	pub poly_format_version: i32,
+	pub update_url: Option<String>,
+
 	pub format_version: usize,
 	pub version_id: String,
 	pub name: String,
-	pub files: Vec<MrPackFile>,
+	pub files: Vec<PolyMrPackFile>,
 	pub dependencies: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct MrPackFile {
-	pub path: String,
-	pub hashes: MrPackFileHash,
-	#[serde(default)]
-	pub env: MrPackFileEnv,
-	pub downloads: Vec<String>,
-	pub file_size: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct MrPackFileHash {
-	pub sha1: String,
-	// pub sha512: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct MrPackFileEnv {
-	pub client: PackageSide,
-	pub server: PackageSide,
+pub(super) struct PolyMrPackFile {
+	#[serde(flatten)]
+	pub base: MrPackFile,
+	pub enabled: bool,
+	pub hidden: bool,
 }

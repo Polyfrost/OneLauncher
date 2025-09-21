@@ -140,6 +140,10 @@ impl InstallableModpackFormatExt for MrPackFormatImpl {
 		self
 	}
 
+	fn kind(&self) -> super::ModpackFormat {
+		super::ModpackFormat::MrPack
+	}
+
 	async fn manifest(&self) -> LauncherResult<&ModpackManifest> {
 		if let Some(manifest) = self.manifest.get() {
 			return Ok(manifest);
@@ -210,6 +214,10 @@ pub(super) async fn download_and_link_packages(
 
 	// TODO: Ingress
 	for file in manifest.files.iter() {
+		if file.enabled == false {
+			continue;
+		}
+
 		match &file.kind {
 			ModpackFileKind::Managed((package, version)) => {
 				match api::packages::download_package(package, version, None, None).await {

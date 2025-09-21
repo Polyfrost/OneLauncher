@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::modpack::data::ModpackArchive;
 use onelauncher_core::entity::clusters;
-use onelauncher_core::entity::loader::GameLoader;
 use onelauncher_core::error::LauncherResult;
 use tauri::Runtime;
+
+use crate::oneclient::bundles::BundlesManager;
 
 #[taurpc::procedures(path = "oneclient", export_to = "../frontend/src/bindings.gen.ts")]
 pub trait OneClientApi {
@@ -15,8 +16,8 @@ pub trait OneClientApi {
 	#[taurpc(alias = "getClustersGroupedByMajor")]
 	async fn get_clusters_grouped_by_major() -> LauncherResult<HashMap<u32, Vec<clusters::Model>>>;
 
-	#[taurpc(alias = "getModpacksFor")]
-	async fn get_modpacks_for(cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>>;
+	#[taurpc(alias = "getBundlesFor")]
+	async fn get_bundles_for(cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>>;
 }
 
 #[taurpc::ipc_type]
@@ -54,26 +55,21 @@ impl OneClientApi for OneClientApiImpl {
 		Ok(mapped)
 	}
 
-	async fn get_modpacks_for(self, cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>> {
-		struct ModpackEntry {
-			pub category: String,
-			pub version: String,
-			pub loader: GameLoader,
-		}
+	async fn get_bundles_for(self, cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>> {
+		let cluster = onelauncher_core::api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| {
+				onelauncher_core::error::LauncherError::from(anyhow::anyhow!(
+					"cluster with id {} not found",
+					cluster_id
+				))
+			})?;
 
-		// const ENTRIES: &[ModpackEntry] = &[
-		// 	ModpackEntry {
-		// 		category: "Gameplay".into(),
-		// 		version: "1.0.0".into(),
-		// 		loader: GameLoader::Fabric,
-		// 	},
-		// 	ModpackEntry {
-		// 		category: "Graphics".into(),
-		// 		version: "1.1.0".into(),
-		// 		loader: GameLoader::Forge,
-		// 	},
-		// ];
+		let bundles = BundlesManager::get()
+			.await
+			.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+			.await?;
 
-		Ok(vec![])
+		Ok(bundles)
 	}
 }

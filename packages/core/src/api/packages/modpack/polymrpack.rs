@@ -137,6 +137,10 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 		self
 	}
 
+	fn kind(&self) -> super::ModpackFormat {
+		super::ModpackFormat::PolyMrPack
+	}
+
 	async fn manifest(&self) -> LauncherResult<&ModpackManifest> {
 		if let Some(manifest) = self.manifest.get() {
 			return Ok(manifest);
@@ -301,8 +305,8 @@ pub(super) struct PolyMrPackManifest {
 	pub id: String,
 	pub category: String,
 	pub enabled: bool,
-	#[serde(rename = "polyFormat")]
-	pub poly_format_version: i32,
+	// #[serde(rename = "polyFormat")]
+	// pub poly_format_version: i32,
 	pub update_url: Option<String>,
 
 	pub format_version: usize,

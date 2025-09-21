@@ -244,7 +244,7 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'oneclient':'{"getModpacksFor":["cluster_id"],"getClustersGroupedByMajor":[],"openDevTools":[]}', 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}', 'core':'{"getUsersFromAuthor":["provider","author"],"getUsers":[],"launchCluster":["id","uuid"],"fetchMinecraftProfile":["uuid"],"searchPackages":["provider","query"],"getLoadersForVersion":["mc_version"],"open":["input"],"removeCluster":["id"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getGlobalProfile":[],"getLogByName":["id","name"],"getClusterById":["id"],"getRunningProcesses":[],"getClusters":[],"getDefaultUser":["fallback"],"readSettings":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"createCluster":["options"],"killProcess":["pid"],"getProfileOrDefault":["name"],"getUser":["uuid"],"getPackage":["provider","slug"],"updateClusterById":["id","request"],"writeSettings":["setting"],"setDefaultUser":["uuid"],"getLogs":["id"],"getWorlds":["id"],"openMsaLogin":[],"getRunningProcessesByClusterId":["cluster_id"],"removeUser":["uuid"],"getMultiplePackages":["provider","slugs"],"updateClusterProfile":["name","profile"],"getPackageBody":["provider","body"],"getScreenshots":["id"],"installModpack":["modpack","cluster_id"],"isClusterRunning":["cluster_id"],"getGameVersions":[]}', 'folders':'{"openCluster":["folder_name"],"fromCluster":["folder_name"]}' }
+const ARGS_MAP = { 'core':'{"open":["input"],"setDefaultUser":["uuid"],"getScreenshots":["id"],"getClusters":[],"getClusterById":["id"],"getDefaultUser":["fallback"],"removeCluster":["id"],"getProfileOrDefault":["name"],"getRunningProcessesByClusterId":["cluster_id"],"getWorlds":["id"],"fetchMinecraftProfile":["uuid"],"getUser":["uuid"],"getLogByName":["id","name"],"writeSettings":["setting"],"installModpack":["modpack","cluster_id"],"killProcess":["pid"],"updateClusterProfile":["name","profile"],"getUsersFromAuthor":["provider","author"],"getUsers":[],"readSettings":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getPackage":["provider","slug"],"updateClusterById":["id","request"],"getLogs":["id"],"getGameVersions":[],"getGlobalProfile":[],"searchPackages":["provider","query"],"getRunningProcesses":[],"isClusterRunning":["cluster_id"],"getMultiplePackages":["provider","slugs"],"getLoadersForVersion":["mc_version"],"openMsaLogin":[],"removeUser":["uuid"],"createCluster":["options"],"getPackageBody":["provider","body"],"launchCluster":["id","uuid"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"]}', 'oneclient':'{"openDevTools":[],"getClustersGroupedByMajor":[],"getBundlesFor":["cluster_id"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'events':'{"ingress":["event"],"process":["event"],"message":["event"]}' }
 export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
@@ -282,14 +282,14 @@ getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<Manag
 installModpack: (modpack: ModpackArchive, clusterId: number) => Promise<null>, 
 fetchMinecraftProfile: (uuid: string) => Promise<MojangPlayerProfile>, 
 open: (input: string) => Promise<null> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> },
 'oneclient': { openDevTools: () => Promise<void>, 
 getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
-getModpacksFor: (clusterId: number) => Promise<ModpackArchive[]> } };
+getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> } };
 
 
 export type { InferCommandOutput }

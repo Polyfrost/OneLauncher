@@ -67,7 +67,7 @@ pub async fn test_install_modpack() -> LauncherResult<()> {
 			)
 			.await?;
 
-			let modpack_format = ModpackFormat::from_file(modpack_model.path().await?).await?;
+			let modpack_format = ModpackFormat::from_file(&modpack_model.path().await?).await?;
 			api::packages::modpack::install_managed_modpack(
 				&modpack_model,
 				&modpack_format,

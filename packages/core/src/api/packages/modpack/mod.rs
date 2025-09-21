@@ -80,10 +80,12 @@ pub trait InstallableModpackFormatExt: Send + Sync + std::any::Any {
 	) -> LauncherResult<()>;
 
 	fn as_any(self: Box<Self>) -> Box<dyn std::any::Any + Send + Sync>;
+
+	fn kind(&self) -> ModpackFormat;
 }
 
 impl ModpackFormat {
-	pub async fn from_file(path: PathBuf) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
+	pub async fn from_file(path: &PathBuf) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
 		for stage in FORMAT_PIPELINE_PATH {
 			if let Some(format) = stage(path.clone()).await? {
 				return Ok(format);

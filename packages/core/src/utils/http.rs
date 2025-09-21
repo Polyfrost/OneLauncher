@@ -49,7 +49,16 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.expect("failed to build reqwest client!")
 });
 
-pub async fn request(
+pub async fn request(method: Method, url: &str) -> LauncherResult<reqwest::Response> {
+	request_builder(
+		method,
+		url,
+		None::<fn(reqwest::RequestBuilder) -> reqwest::Result<_>>,
+	)
+	.await
+}
+
+pub async fn request_builder(
 	method: Method,
 	url: &str,
 	builder: Option<impl Fn(reqwest::RequestBuilder) -> reqwest::Result<reqwest::Request>>,

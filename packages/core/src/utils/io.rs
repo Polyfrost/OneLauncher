@@ -1,3 +1,4 @@
+use std::fs::Metadata;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -465,4 +466,8 @@ pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
 		.split('/')
 		.map(sanitize_filename::sanitize)
 		.collect()
+}
+
+pub async fn stat(path: impl AsRef<std::path::Path>) -> Result<Metadata, IOError> {
+	tokio::fs::metadata(path).await.map_err(IOError::from)
 }

@@ -40,7 +40,7 @@ function RouteComponent() {
 								<div className="flex-1 font-medium text-lg ">
 									<p>{lang.lang}</p>
 								</div>
-								<div className="flex-1 text-right text-s">
+								<div className="flex-1 text-right text-sm">
 									<p>{lang.percentage}%</p>
 								</div>
 							</div>

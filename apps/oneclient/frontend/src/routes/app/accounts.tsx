@@ -155,8 +155,8 @@ function AccountRow({
 
 				<div className="flex flex-row items-center gap-2">
 					<DialogTrigger>
-						<Button className="w-8 h-8" color="ghost" size="icon">
-							<Trash01Icon />
+						<Button className="group w-8 h-8" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
 						</Button>
 
 						<Overlay>

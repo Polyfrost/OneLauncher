@@ -26,7 +26,7 @@ function RouteComponent() {
 	return (
 		<div className='flex flex-row h-full p-24 pt-48 gap-8'>
 			<div className='h-full w-1/3'>
-				<img src={Illustration} />
+				<img src={Illustration} alt="Language selection illustration" />
 			</div>
 
 			<div className='flex flex-col w-2/3'>

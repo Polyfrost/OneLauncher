@@ -3,12 +3,14 @@ import type { ButtonProps } from '@onelauncher/common/components';
 import { AccountAvatar, SheetPage, SkinViewer } from '@/components';
 import { AddAccountModal } from '@/components/overlay';
 import { Overlay } from '@/components/overlay/Overlay';
+import { RemoveAccountModal } from '@/components/overlay/RemoveAccountModal';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { Trash01Icon } from '@untitled-theme/icons-react';
 import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -85,12 +87,23 @@ function AccountList() {
 			});
 		},
 	});
+	const { mutate: removeUser } = useCommandMut(bindings.core.removeUser, {
+		onSuccess() {
+			queryClient.invalidateQueries({
+				queryKey: ['getDefaultUser'],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ['getUsers'],
+			});
+		},
+	});
 
 	return (
 		<div className="flex-1 flex flex-col gap-2">
 			{accounts.map(account => (
 				<AccountRow
 					key={account.id}
+					onDelete={() => removeUser(account.id)}
 					onPress={() => setDefaultUser(account.id)}
 					profile={account}
 					selected={currentAccount?.id === account.id}
@@ -108,10 +121,12 @@ function AccountRow({
 	selected = false,
 	profile,
 	onPress,
+	onDelete,
 }: {
 	selected?: boolean;
 	profile: MinecraftCredentials;
 	onPress: () => void;
+	onDelete: () => void;
 }) {
 	const { isError } = usePlayerProfile(profile.id);
 
@@ -125,19 +140,31 @@ function AccountRow({
 			)}
 			onPress={onPress}
 		>
-			<AccountAvatar className="aspect-square h-12 rounded-sm " uuid={profile.id} />
+			<div className="flex flex-row justify-between w-full">
+				<div className="flex flex-row gap-2">
+					<AccountAvatar className="aspect-square h-12 rounded-sm " uuid={profile.id} />
 
-			<div className="text-left flex flex-col">
-				<p className="flex items-center gap-1 text-fg-primary font-semibold">
-					{profile.username}
-					{isError && <span className="text-danger text-xs font-medium"> (Error fetching online profile)</span>}
-				</p>
-				<p className="text-fg-secondary text-sm">{profile.id}</p>
+					<div className="text-left flex flex-col">
+						<p className="flex items-center gap-1 text-fg-primary font-semibold">
+							{profile.username}
+							{isError && <span className="text-danger text-xs font-medium"> (Error fetching online profile)</span>}
+						</p>
+						<p className="text-fg-secondary text-sm">{profile.id}</p>
+					</div>
+				</div>
+
+				<div className="flex flex-row items-center gap-2">
+					<DialogTrigger>
+						<Button className="w-8 h-8" color="ghost" size="icon">
+							<Trash01Icon />
+						</Button>
+
+						<Overlay>
+							<RemoveAccountModal onPress={onDelete} profile={profile} />
+						</Overlay>
+					</DialogTrigger>
+				</div>
 			</div>
-
-			{/* <Button className="w-8 h-8" color="ghost" size="icon">
-				<Trash01Icon />
-			</Button> */}
 		</AriaButton>
 	);
 }

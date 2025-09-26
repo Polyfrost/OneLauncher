@@ -1,6 +1,8 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use discord_rich_presence::{activity::{Activity, Assets, Button, Timestamps}, DiscordIpc, DiscordIpcClient};
+use discord_rich_presence::activity::{Activity, Assets, Button, Timestamps};
+use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
 use tokio::sync::RwLock;
 
 use crate::error::LauncherResult;
@@ -15,11 +17,13 @@ pub struct DiscordRPC {
 
 impl DiscordRPC {
 	pub fn initialize() -> LauncherResult<Self> {
-		let client_id = Core::get().discord_client_id.clone()
+		let client_id = Core::get()
+			.discord_client_id
+			.clone()
 			.ok_or(DiscordError::MissingClientId)?;
 
-		let mut client = DiscordIpcClient::new(client_id.as_str())
-			.map_err(|_| DiscordError::ConnectError)?;
+		let mut client =
+			DiscordIpcClient::new(client_id.as_str()).map_err(|_| DiscordError::ConnectError)?;
 
 		let connected = client.connect().is_ok();
 
@@ -34,18 +38,15 @@ impl DiscordRPC {
 		self.set_activity(
 			Activity::new()
 				.state(msg)
-				.buttons(
-					vec![Button::new("Website", "https://polyfrost.org/")]
-				)
-				.timestamps(
-					timestamp.unwrap_or_else(|| Timestamps::new().start(self.started_at))
-				)
+				.buttons(vec![Button::new("Website", "https://polyfrost.org/")])
+				.timestamps(timestamp.unwrap_or_else(|| Timestamps::new().start(self.started_at)))
 				.assets(
 					Assets::new()
 						.large_image("onelauncher_logo_512")
 						.large_text("OneLauncher"),
-				)
-		).await
+				),
+		)
+		.await
 	}
 
 	pub async fn set_activity(&self, activity: Activity<'_>) -> bool {
@@ -102,7 +103,8 @@ impl DiscordRPC {
 	}
 
 	fn set_connected(&self, connected: bool) {
-		self.connected.store(connected, std::sync::atomic::Ordering::Relaxed);
+		self.connected
+			.store(connected, std::sync::atomic::Ordering::Relaxed);
 	}
 }
 

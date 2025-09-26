@@ -6,7 +6,7 @@ use interpulse::api::modded::LoaderVersion;
 use onelauncher_entity::loader::GameLoader;
 use reqwest::Method;
 
-use crate::api::ingress::{init_ingress, IngressSendExt};
+use crate::api::ingress::{IngressSendExt, init_ingress};
 use crate::error::{LauncherError, LauncherResult};
 use crate::store::ingress::{IngressType, SubIngress, SubIngressExt};
 use crate::store::metadata::MetadataError;
@@ -27,7 +27,13 @@ pub async fn download_minecraft_ingressed(
 	)
 	.await?;
 
-	download_minecraft(version, java_arch, Some(&SubIngress::new(&id, 100.0)), force).await
+	download_minecraft(
+		version,
+		java_arch,
+		Some(&SubIngress::new(&id, 100.0)),
+		force,
+	)
+	.await
 }
 
 // MARK: Main
@@ -38,7 +44,6 @@ pub async fn download_minecraft(
 	sub_ingress: Option<&SubIngress<'_>>,
 	force: Option<bool>,
 ) -> LauncherResult<()> {
-
 	let asset_index = download_assets_index(version, sub_ingress, force).await?;
 	tokio::try_join! {
 		download_assets(version.assets == "legacy", asset_index, sub_ingress, force),
@@ -81,8 +86,7 @@ pub async fn download_version_info(
 		);
 
 		let mut info =
-			http::fetch_json_advanced(Method::GET, &version.url, None, None, None, ingress)
-				.await?;
+			http::fetch_json_advanced(Method::GET, &version.url, None, None, None, ingress).await?;
 
 		if let Some(loader) = loader {
 			let partial: interpulse::api::modded::PartialVersionInfo =
@@ -104,7 +108,14 @@ pub async fn download_version_info(
 		info
 	};
 
-	ingress.send_ingress(ingress.ingress_total().map(|i| i / TASKS).unwrap_or_default()).await?;
+	ingress
+		.send_ingress(
+			ingress
+				.ingress_total()
+				.map(|i| i / TASKS)
+				.unwrap_or_default(),
+		)
+		.await?;
 
 	tracing::debug!("loaded minecraft version info for minecraft version {version_id}");
 	Ok(result)
@@ -143,7 +154,9 @@ pub async fn download_assets_index(
 			&version.asset_index.url,
 			path,
 			None,
-			ingress.map(|i| SubIngress::from_sub(i, ingress_step)).as_ref(),
+			ingress
+				.map(|i| SubIngress::from_sub(i, ingress_step))
+				.as_ref(),
 		)
 		.await?,
 	)?;
@@ -440,5 +453,5 @@ pub async fn get_loaders_for_version(mc_version: &str) -> LauncherResult<Vec<Gam
 	let state = State::get().await?;
 	let mut metadata = state.metadata.write().await;
 
-	Ok(metadata.get_loaders_for_version(mc_version).await?)
+	metadata.get_loaders_for_version(mc_version).await
 }

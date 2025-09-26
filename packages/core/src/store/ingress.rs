@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::api::proxy::event::try_send_event;
 use crate::LauncherResult;
 use crate::api::ingress::IngressPayload;
+use crate::api::proxy::event::try_send_event;
 
 use super::State;
 
@@ -88,8 +88,7 @@ impl IngressProcessor {
 			total: ingress.total,
 		};
 
-		try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload))
-			.await?;
+		try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload)).await?;
 
 		Ok(())
 	}
@@ -114,8 +113,8 @@ pub struct Ingress {
 	pub last_sent: f64,
 }
 
-// #[onelauncher_macro::specta]
-#[derive(Serialize, Deserialize, specta::Type, Debug, Clone)]
+#[onelauncher_macro::specta]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum IngressType {
 	Download { file_name: String },
 	JavaPrepare,
@@ -219,8 +218,7 @@ impl Drop for IngressId {
 					total: ingress.total,
 				};
 
-				try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload))
-					.await?;
+				try_send_event(crate::api::proxy::event::LauncherEvent::Ingress(payload)).await?;
 
 				tracing::trace!(
 					"exited at {}% for ingress {:?}",

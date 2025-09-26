@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Data, DeriveInput, Fields};
+use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
 pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as DeriveInput);
+	let input = parse_macro_input!(item as DeriveInput);
 
 	let Data::Enum(data_enum) = &input.data else {
 		return syn::Error::new_spanned(&input.ident, "Only enums are supported")
@@ -16,9 +16,16 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 	for variant in &data_enum.variants {
 		let v_ident = &variant.ident;
+		let cfg_attrs = &variant
+			.attrs
+			.iter()
+			.filter(|attr| attr.path().is_ident("cfg"))
+			.collect::<Vec<_>>();
+
 		match &variant.fields {
 			Fields::Unit => {
 				serialize_arms.push(quote! {
+					#(#cfg_attrs)*
 					Self::#v_ident => {
 						let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 						s.serialize_field("type", stringify!(#v_ident))?;
@@ -43,6 +50,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 					if has_from && !has_skip {
 						serialize_arms.push(quote! {
+							#(#cfg_attrs)*
 							Self::#v_ident(inner) => {
 								let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 								s.serialize_field("type", stringify!(#v_ident))?;
@@ -52,6 +60,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 						});
 					} else {
 						serialize_arms.push(quote! {
+							#(#cfg_attrs)*
 							Self::#v_ident(_) => {
 								let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 								s.serialize_field("type", stringify!(#v_ident))?;
@@ -62,6 +71,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 					}
 				} else {
 					serialize_arms.push(quote! {
+						#(#cfg_attrs)*
 						Self::#v_ident(..) => {
 							let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 							s.serialize_field("type", stringify!(#v_ident))?;
@@ -73,6 +83,7 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 			}
 			Fields::Named(_) => {
 				serialize_arms.push(quote! {
+					#(#cfg_attrs)*
 					Self::#v_ident { .. } => {
 						let mut s = serializer.serialize_struct(stringify!(#ident), 2)?;
 						s.serialize_field("type", stringify!(#v_ident))?;
@@ -98,82 +109,77 @@ pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 		}
 	};
 
-    let output = quote! {
-        #[cfg_attr(feature = "specta", derive(onelauncher_macro::SerializedError))]
-        #input
+	let output = quote! {
+		#[derive(onelauncher_macro::SerializedError)]
+		#input
 
 		#serialize_impl
-    };
+	};
 
-    output.into()
+	output.into()
 }
 
 pub fn error_derive(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+	let input = parse_macro_input!(input as DeriveInput);
 
-    let enum_name = &input.ident;
-    let specta_name = format_ident!("{}SpectaType", enum_name);
-    let mut variants = vec![];
+	let enum_name = &input.ident;
+	let specta_name = format_ident!("{}SpectaType", enum_name);
+	let mut variants = vec![];
 
-    let Data::Enum(data_enum) = &input.data else {
-        return syn::Error::new_spanned(enum_name, "Only enums are supported")
-            .to_compile_error()
-            .into();
-    };
+	let Data::Enum(data_enum) = &input.data else {
+		return syn::Error::new_spanned(enum_name, "Only enums are supported")
+			.to_compile_error()
+			.into();
+	};
 
-    for variant in &data_enum.variants {
-        let name = &variant.ident;
-        let ty = match &variant.fields {
-            Fields::Unit => quote! { String },
+	for variant in &data_enum.variants {
+		let name = &variant.ident;
+		let ty = match &variant.fields {
+			Fields::Unit => quote! { String },
 
-            Fields::Unnamed(fields) => {
-                // Handle newtype-style or tuple-like enums
-                if fields.unnamed.len() == 1 {
-                    let field = &fields.unnamed[0];
-                    let field_ty = &field.ty;
+			Fields::Unnamed(fields) => {
+				// Handle newtype-style or tuple-like enums
+				if fields.unnamed.len() == 1 {
+					let field = &fields.unnamed[0];
+					let field_ty = &field.ty;
 
-                    let has_from = field
-                        .attrs
-                        .iter()
-                        .any(|a| a.path().is_ident("from"));
+					let has_from = field.attrs.iter().any(|a| a.path().is_ident("from"));
 
-                    let has_skip = field
-                        .attrs
-                        .iter()
-                        .any(|a| a.path().is_ident("skip"));
+					let has_skip = field.attrs.iter().any(|a| a.path().is_ident("skip"));
 
-                    if has_from && !has_skip {
-                        quote! {
+					if has_from && !has_skip {
+						quote! {
 							#field_ty
 						}
-                    } else {
-                        quote! { String }
-                    }
-                } else {
-                    quote! { String }
-                }
-            }
+					} else {
+						quote! { String }
+					}
+				} else {
+					quote! { String }
+				}
+			}
 
-            Fields::Named(_) => {
-                quote! { String } // Simplification: treat all struct-like variants as String
-            }
-        };
+			Fields::Named(_) => {
+				quote! { String } // Simplification: treat all struct-like variants as String
+			}
+		};
 
-        variants.push(quote! {
-            #name(#ty)
-        });
-    }
+		variants.push(quote! {
+			#name(#ty)
+		});
+	}
 
 	let enum_name_str = enum_name.to_string();
 	let output = quote! {
-        #[derive(Debug, specta::Type, serde::Serialize)]
-        #[specta(remote = #enum_name)]
+		#[cfg(feature = "specta")]
+		#[derive(Debug, specta::Type, serde::Serialize)]
+		#[specta(remote = #enum_name)]
 		#[specta(tag = "type", content = "data")]
 		#[specta(rename = #enum_name_str)]
-        pub enum #specta_name {
-            #(#variants,)*
-        }
-    };
+		pub enum #specta_name {
+			#(#variants,)*
+		}
+	};
 
-    output.into()
+	output.into()
 }

@@ -4,7 +4,8 @@ use merge::Merge;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{resolution::Resolution, settings::SettingsOsExtra};
+use crate::resolution::Resolution;
+use crate::settings::SettingsOsExtra;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize, Merge)]
 #[sea_orm(table_name = "setting_profiles")]
@@ -31,7 +32,7 @@ pub struct Model {
 	#[sea_orm(nullable)]
 	pub hook_post: Option<String>,
 	#[sea_orm(nullable)]
-	pub os_extra: Option<SettingsOsExtra>
+	pub os_extra: Option<SettingsOsExtra>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -65,16 +66,21 @@ impl ActiveModelBehavior for ActiveModel {}
 const GLOBAL_NAME: &str = "Global";
 
 impl ActiveModel {
+	#[must_use]
 	pub fn is_global(&self) -> bool {
-		self.name.try_as_ref().map(|name| name == GLOBAL_NAME).unwrap_or(false)
+		self.name
+			.try_as_ref()
+			.is_some_and(|name| name == GLOBAL_NAME)
 	}
 }
 
 impl Model {
+	#[must_use]
 	pub fn is_global(&self) -> bool {
 		self.name == GLOBAL_NAME
 	}
 
+	#[must_use]
 	pub fn default_global_profile() -> Self {
 		Self {
 			name: GLOBAL_NAME.into(),
@@ -87,7 +93,7 @@ impl Model {
 			launch_env: None,
 			mem_max: Some(2048),
 			res: None,
-			os_extra: Some(SettingsOsExtra::default())
+			os_extra: Some(SettingsOsExtra::default()),
 		}
 	}
 }

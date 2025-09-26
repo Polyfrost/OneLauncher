@@ -4,4 +4,5 @@ dist
 dist-ssr
 *.local
 
-**/*.gen.ts
+# **/*.gen.ts
+routeTree.gen.ts

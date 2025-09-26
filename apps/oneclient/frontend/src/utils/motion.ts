@@ -41,4 +41,13 @@ export const animations = {
 			bottom: '0',
 		},
 	},
+
+	fadeIn: {
+		initial: {
+			opacity: 0,
+		},
+		animate: {
+			opacity: 1,
+		},
+	},
 } as const satisfies Record<string, MotionProps>;

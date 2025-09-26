@@ -1,4 +1,5 @@
-use std::{ops::Deref, sync::Arc};
+use std::ops::Deref;
+use std::sync::Arc;
 
 use tokio::sync::OnceCell;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -25,6 +26,7 @@ pub struct CoreOptions {
 }
 
 impl Default for CoreOptions {
+	#[cfg(not(test))]
 	fn default() -> Self {
 		Self {
 			discord_client_id: None,
@@ -39,6 +41,26 @@ impl Default for CoreOptions {
 			logger_filter: None,
 		}
 	}
+
+	#[cfg(test)]
+	fn default() -> Self {
+		Self {
+			discord_client_id: std::env::var("DISCORD_CLIENT_ID").ok(),
+			launcher_name: String::from("Launcher"),
+			launcher_version: String::from(env!("CARGO_PKG_VERSION")),
+			launcher_website: String::from("https://polyfrost.org/"),
+			fetch_attempts: 3,
+			msa_client_id: std::env::var("MSA_CLIENT_ID")
+				.ok()
+				.unwrap_or_else(|| String::from("00000000402b5328")),
+			msa_redirect_uri: std::env::var("MSA_REDIRECT_URI")
+				.ok()
+				.unwrap_or_else(|| String::from("https://login.live.com/oauth20_desktop.srf")),
+			curseforge_api_key: std::env::var("CURSEFORGE_API_KEY").ok(),
+			logger_span_formatting: None,
+			logger_filter: None,
+		}
+	}
 }
 
 impl Core {
@@ -48,9 +70,9 @@ impl Core {
 	}
 
 	pub async fn initialize(options: CoreOptions) -> LauncherResult<()> {
-		CORE_STATE.get_or_try_init(|| async move {
-			Ok::<_, LauncherError>(Self::new(options))
-		}).await?;
+		CORE_STATE
+			.get_or_try_init(|| async move { Ok::<_, LauncherError>(Self::new(options)) })
+			.await?;
 
 		tracing::info!("core initialized successfully");
 
@@ -58,10 +80,7 @@ impl Core {
 	}
 
 	pub fn get() -> Arc<Self> {
-		CORE_STATE
-			.get()
-			.expect("core was not initialized")
-			.clone()
+		CORE_STATE.get().expect("core was not initialized").clone()
 	}
 }
 
@@ -72,4 +91,3 @@ impl Deref for Core {
 		&self.0
 	}
 }
-

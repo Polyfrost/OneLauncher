@@ -1,6 +1,6 @@
+pub mod event;
 mod r#impl;
 pub mod message;
-pub mod event;
 
 pub use r#impl::*;
 
@@ -15,5 +15,7 @@ pub trait LauncherProxy: Send + Sync + std::fmt::Debug {
 	fn show_main_window(&self) -> crate::LauncherResult<()>;
 }
 
-#[cfg(feature = "cli")] pub type ProxyDynamic = ProxyCli;
-#[cfg(not(feature = "cli"))] pub type ProxyDynamic = ProxyEmpty;
+#[cfg(feature = "cli")]
+pub type ProxyDynamic = ProxyCli;
+#[cfg(not(feature = "cli"))]
+pub type ProxyDynamic = ProxyEmpty;

@@ -67,31 +67,33 @@ pub async fn send_ingress_message(
 }
 
 /// Sends an ingress update with the given increment
-pub async fn send_ingress(
-	id: &IngressId,
-	increment: f64,
-) -> LauncherResult<()> {
+pub async fn send_ingress(id: &IngressId, increment: f64) -> LauncherResult<()> {
 	send_ingress_message(id, increment, None).await
 }
 
 /// Sends an ingress update with the given message (does not increment)
-pub async fn set_ingress_message(
-	id: &IngressId,
-	message: &str,
-) -> LauncherResult<()> {
+pub async fn set_ingress_message(id: &IngressId, message: &str) -> LauncherResult<()> {
 	send_ingress_message(id, 0.0, Some(message)).await
 }
 
 #[async_trait::async_trait]
 pub trait IngressSendExt {
-	async fn send_ingress_message(&self, increment: f64, message: Option<&str>) -> LauncherResult<()>;
+	async fn send_ingress_message(
+		&self,
+		increment: f64,
+		message: Option<&str>,
+	) -> LauncherResult<()>;
 	async fn send_ingress(&self, increment: f64) -> LauncherResult<()>;
 	async fn set_ingress_message(&self, message: &str) -> LauncherResult<()>;
 }
 
 #[async_trait::async_trait]
 impl IngressSendExt for IngressId {
-	async fn send_ingress_message(&self, increment: f64, message: Option<&str>) -> LauncherResult<()> {
+	async fn send_ingress_message(
+		&self,
+		increment: f64,
+		message: Option<&str>,
+	) -> LauncherResult<()> {
 		send_ingress_message(self, increment, message).await
 	}
 
@@ -106,7 +108,11 @@ impl IngressSendExt for IngressId {
 
 #[async_trait::async_trait]
 impl IngressSendExt for Option<&IngressId> {
-	async fn send_ingress_message(&self, increment: f64, message: Option<&str>) -> LauncherResult<()> {
+	async fn send_ingress_message(
+		&self,
+		increment: f64,
+		message: Option<&str>,
+	) -> LauncherResult<()> {
 		if let Some(id) = self {
 			id.send_ingress_message(increment, message).await
 		} else {
@@ -133,7 +139,11 @@ impl IngressSendExt for Option<&IngressId> {
 
 #[async_trait::async_trait]
 impl IngressSendExt for &SubIngress<'_> {
-	async fn send_ingress_message(&self, increment: f64, message: Option<&str>) -> LauncherResult<()> {
+	async fn send_ingress_message(
+		&self,
+		increment: f64,
+		message: Option<&str>,
+	) -> LauncherResult<()> {
 		self.id.send_ingress_message(increment, message).await
 	}
 
@@ -148,7 +158,11 @@ impl IngressSendExt for &SubIngress<'_> {
 
 #[async_trait::async_trait]
 impl IngressSendExt for Option<&SubIngress<'_>> {
-	async fn send_ingress_message(&self, increment: f64, message: Option<&str>) -> LauncherResult<()> {
+	async fn send_ingress_message(
+		&self,
+		increment: f64,
+		message: Option<&str>,
+	) -> LauncherResult<()> {
 		if let Some(id) = self {
 			id.send_ingress_message(increment, message).await
 		} else {
@@ -175,7 +189,7 @@ impl IngressSendExt for Option<&SubIngress<'_>> {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::api::ingress::{init_ingress, IngressSendExt};
+	use crate::api::ingress::{IngressSendExt, init_ingress};
 	use crate::api::proxy::ProxyDynamic;
 	use crate::initialize_core;
 	use crate::store::CoreOptions;

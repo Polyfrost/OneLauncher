@@ -15,8 +15,4 @@ export function Popup({ children, ...props }: MyPopoverProps) {
 	);
 }
 
-function Trigger({ children, ...props }: any) {
-	return <DialogTrigger children={children} {...props} />;
-}
-
-Popup.Trigger = Trigger;
+Popup.Trigger = DialogTrigger;

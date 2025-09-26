@@ -1,11 +1,13 @@
 import type { Provider, SearchResult } from '@/bindings.gen';
+import { getCategories } from '@/hooks/useBrowser';
 import { abbreviateNumber, LOADERS, upperFirst } from '@/utils';
+import { categoryNameFromId } from '@/utils/browser';
 import { Show, Tooltip } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
 import { Focusable } from 'react-aria-components';
-import LoaderIcon from '../launcher/LoaderIcon';
+import { FlatLoaderIcon } from '../launcher/FlatLoaderIcon';
 
 function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boolean }, element: T): element is TArray {
 	return list.includes(element as unknown as TArray);
@@ -13,7 +15,7 @@ function includes<T, TArray extends T>(list: { includes: (arg0: TArray) => boole
 
 export function PackageGrid({ items, provider }: { items: Array<SearchResult>; provider: Provider }) {
 	return (
-		<div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[1900px]:grid-cols-5! gap-2">
+		<div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5! gap-4">
 			{items.map(item => (
 				<PackageItem key={item.project_id} {...item} provider={provider} />
 			))}
@@ -22,14 +24,17 @@ export function PackageGrid({ items, provider }: { items: Array<SearchResult>; p
 }
 
 export function PackageItem({ provider, ...item }: SearchResult & { provider: Provider }) {
-	const loaders = useMemo(() => item.categories.filter(cat => includes(LOADERS, cat)), [item.categories]);
+	const categoryName = categoryNameFromId[item.package_type];
+	if (!(categoryName in item.categories))
+		throw new Error('invalid categories');
+	const loaders = useMemo(() => getCategories(item.categories).filter(cat => includes(LOADERS, cat)), [item.categories]);
 
 	return (
 		<Link
-			className="h-full min-w-50 flex overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover flex-col max-h-74 min-h-74"
-			params={{ provider, slug: item.slug }}
+			className="h-full min-w-50 overflow-hidden rounded-lg bg-component-bg hover:bg-component-bg-hover grid grid-rows-[7rem_auto] max-h-74 min-h-74"
+			params={{ provider, id: item.project_id }}
 			tabIndex={0}
-			to="/app/browser/package/$provider/$slug"
+			to="/app/browser/package/$provider/$id"
 		>
 			<div
 				className="relative flex items-center justify-center overflow-hidden w-full h-28"
@@ -51,10 +56,10 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 				</Show>
 				<Tooltip className="bg-component-bg-disabled" text={loaders.map(upperFirst).join(', ')}>
 					<Focusable>
-						<div className="flex flex-col rounded-full bg-component-bg/70 border-component-border/70 border p-1 absolute top-0 right-0 m-2">
-							{loaders.toSpliced(loaders.length > 3 ? 2 : 3).map(loader => <LoaderIcon className="w-5 m-1" key={loader} loader={loader} />)}
+						<div className="flex flex-col rounded-full bg-[#11171C]/75 border-component-border/70 border p-1 absolute top-0 right-0 m-2">
+							{loaders.toSpliced(loaders.length > 3 ? 2 : 3).map(loader => <FlatLoaderIcon className="w-4 m-1" key={loader} loader={loader} />)}
 							{loaders.length > 3 && (
-								<div className="bg-component-bg/50 rounded-full w-7 h-7 flex items-center justify-center">
+								<div className="bg-component-bg/50 rounded-full w-6 h-6 flex items-center justify-center">
 									<span className="tracking-tight -ml-0.5 mt-0.5">
 										+
 										{loaders.length - 2}
@@ -75,7 +80,7 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 						{' '}
 						on
 						{' '}
-						<span className="text-fg-primary">{provider}</span>
+						{provider}
 					</p>
 				</div>
 

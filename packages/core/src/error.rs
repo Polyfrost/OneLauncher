@@ -27,25 +27,67 @@ pub enum LauncherError {
 	DaoError(#[from] DaoError),
 
 	#[error("json error: {0}")]
-	SerdeError(#[from] #[skip] serde_json::Error),
+	SerdeError(
+		#[from]
+		#[skip]
+		serde_json::Error,
+	),
 	#[error(transparent)]
-	AnyhowError(#[from] #[skip] anyhow::Error),
+	AnyhowError(
+		#[from]
+		#[skip]
+		anyhow::Error,
+	),
 	#[error("database error: {0}")]
-	DbError(#[from] #[skip] sea_orm::DbErr),
+	DbError(
+		#[from]
+		#[skip]
+		sea_orm::DbErr,
+	),
 	#[error("http error: {0}")]
-	ReqwestError(#[from] #[skip] reqwest::Error),
+	ReqwestError(
+		#[from]
+		#[skip]
+		reqwest::Error,
+	),
 	#[error("meta error: {0}")]
-	InterpulseError(#[from] #[skip] interpulse::Error),
+	InterpulseError(
+		#[from]
+		#[skip]
+		interpulse::Error,
+	),
 	#[error(transparent)]
-	RegexError(#[from] #[skip] regex::Error),
+	RegexError(
+		#[from]
+		#[skip]
+		regex::Error,
+	),
 	#[error("couldn't acquire semaphore: {0}")]
-	SemaphoreError(#[from] #[skip] tokio::sync::AcquireError),
+	SemaphoreError(
+		#[from]
+		#[skip]
+		tokio::sync::AcquireError,
+	),
 	#[error(transparent)]
-	UrlError(#[from] #[skip] url::ParseError),
+	UrlError(
+		#[from]
+		#[skip]
+		url::ParseError,
+	),
+	#[error(transparent)]
+	OpenerError(
+		#[from]
+		#[skip]
+		opener::OpenError,
+	),
 
 	#[cfg(feature = "tauri")]
 	#[error(transparent)]
-	TauriError(#[from] #[skip] tauri::Error),
+	TauriError(
+		#[from]
+		#[skip]
+		tauri::Error,
+	),
 }
 
 pub type LauncherResult<T> = Result<T, LauncherError>;

@@ -1,6 +1,6 @@
 import type { ImgHTMLAttributes, JSX } from 'react';
 import { Show } from '@onelauncher/common/components';
-import CurseforgeIcon from '../../assets/logos/curseforge.svg';
+import CurseForgeIcon from '../../assets/logos/curseforge.svg';
 import AtLauncherIcon from '../../assets/logos/launchers/atlauncher.svg';
 import FTBIcon from '../../assets/logos/launchers/ftb.svg';
 import GDLauncherImage from '../../assets/logos/launchers/gdlauncher.png';
@@ -22,7 +22,7 @@ export function getLauncherLogoElement(launcher: string): ElementType {
 	// [provider logo, is svg]
 	const mapping: Record<Lowercase<string>, ElementType | string> = {
 		modrinth: ModrinthIcon,
-		curseforge: CurseforgeIcon,
+		curseforge: CurseForgeIcon,
 		prismlauncher: PrismIcon,
 		atlauncher: AtLauncherIcon,
 		gdlauncher: GDLauncherImage,

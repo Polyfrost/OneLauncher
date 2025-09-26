@@ -1019,7 +1019,7 @@ pub enum MinecraftAuthError {
 	PKCS8Error(
 		#[from]
 		#[skip]
-		p256::pkcs8::Error
+		p256::pkcs8::Error,
 	),
 	#[error("failed to serialize JSON during MSA step {step:?}: {source}")]
 	SerializeError {

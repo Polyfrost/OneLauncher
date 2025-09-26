@@ -76,9 +76,10 @@ pub fn validate_os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 	}
 
 	if let Some(version) = &rule.version
-		&& let Ok(regex) = Regex::new(version.as_str()) {
-			rule_match &= regex.is_match(&sysinfo::System::os_version().unwrap_or_default());
-		}
+		&& let Ok(regex) = Regex::new(version.as_str())
+	{
+		rule_match &= regex.is_match(&sysinfo::System::os_version().unwrap_or_default());
+	}
 
 	rule_match
 }

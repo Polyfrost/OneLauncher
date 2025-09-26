@@ -1,7 +1,8 @@
 use onelauncher_entity::setting_profiles;
 use serde::{Deserialize, Serialize};
 
-use crate::{send_warning, utils::io, LauncherResult};
+use crate::utils::io;
+use crate::{LauncherResult, send_warning};
 
 use super::Dirs;
 
@@ -15,7 +16,7 @@ pub struct Settings {
 	pub discord_enabled: bool,
 	pub max_concurrent_requests: usize,
 	pub settings_version: u32,
-	pub native_window_frame: bool
+	pub native_window_frame: bool,
 }
 
 impl Default for Settings {
@@ -40,7 +41,7 @@ impl Settings {
 			Err(err) => {
 				send_warning!("Failed to read settings file: {}", err);
 				Self::default()
-			},
+			}
 		}
 	}
 

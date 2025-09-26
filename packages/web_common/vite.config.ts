@@ -12,6 +12,10 @@ export default defineConfig({
 		viteStaticCopy({
 			targets: [
 				{
+					src: normalizePath(path.resolve(__dirname, 'src/assets/*')),
+					dest: './assets',
+				},
+				{
 					src: normalizePath(path.resolve(__dirname, 'src/theme.css')),
 					dest: './',
 				},
@@ -22,7 +26,7 @@ export default defineConfig({
 		}),
 	],
 	build: {
-		minify: false,
+		minify: true,
 		lib: {
 			entry: {
 				index: path.resolve(__dirname, 'src/index.ts'),
@@ -34,7 +38,7 @@ export default defineConfig({
 		rollupOptions: {
 			external: [
 				'react',
-				'react/jsx-runtime',
+				// 'react/jsx-runtime',
 				'react-dom',
 				'react-aria-components',
 				'motion',

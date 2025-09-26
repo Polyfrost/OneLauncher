@@ -6,8 +6,7 @@ use crate::store::State;
 
 pub mod dao {
 	use onelauncher_entity::setting_profiles;
-	use sea_orm::IntoActiveModel;
-	use sea_orm::{ActiveModelTrait, EntityTrait};
+	use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel};
 
 	use crate::error::{DaoError, LauncherResult};
 	use crate::store::State;
@@ -59,37 +58,45 @@ pub mod dao {
 	}
 
 	pub async fn update_profile_by_name<B>(
-        name: &str,
-        block: B,
-    ) -> LauncherResult<setting_profiles::Model>
-    where B: AsyncFnOnce(setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::ActiveModel> {
-        let state = State::get().await?;
-        let db = &state.db;
+		name: &str,
+		block: B,
+	) -> LauncherResult<setting_profiles::Model>
+	where
+		B: AsyncFnOnce(
+			setting_profiles::ActiveModel,
+		) -> LauncherResult<setting_profiles::ActiveModel>,
+	{
+		let state = State::get().await?;
+		let db = &state.db;
 
-        let model = get_profile_by_name(name).await?.ok_or(DaoError::NotFound)?;
-        let model = block(model.into_active_model()).await?;
-        let model = model.update(db).await?;
+		let model = get_profile_by_name(name).await?.ok_or(DaoError::NotFound)?;
+		let model = block(model.into_active_model()).await?;
+		let model = model.update(db).await?;
 
-        Ok(model)
-    }
+		Ok(model)
+	}
 
-    /// Updates an existing profile in the database.
-    pub async fn update_profile<B>(
-        profile: &mut setting_profiles::Model,
-        block: B,
-    ) -> LauncherResult<&mut setting_profiles::Model>
-    where B: AsyncFnOnce(setting_profiles::ActiveModel) -> LauncherResult<setting_profiles::ActiveModel> {
-        let state = State::get().await?;
-        let db = &state.db;
+	/// Updates an existing profile in the database.
+	pub async fn update_profile<B>(
+		profile: &mut setting_profiles::Model,
+		block: B,
+	) -> LauncherResult<&mut setting_profiles::Model>
+	where
+		B: AsyncFnOnce(
+			setting_profiles::ActiveModel,
+		) -> LauncherResult<setting_profiles::ActiveModel>,
+	{
+		let state = State::get().await?;
+		let db = &state.db;
 
-        let model = profile.clone().into_active_model();
-        let model = block(model).await?;
-        let model = model.update(db).await?;
+		let model = profile.clone().into_active_model();
+		let model = block(model).await?;
+		let model = model.update(db).await?;
 
-        *profile = model;
+		*profile = model;
 
-        Ok(profile)
-    }
+		Ok(profile)
+	}
 
 	pub async fn delete_profile_by_name(name: &str) -> LauncherResult<()> {
 		let state = State::get().await?;

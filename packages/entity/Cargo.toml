@@ -18,7 +18,6 @@ path = "src/lib.rs"
 default = []
 specta = [
 	"dep:specta",
-	"onelauncher_macro/specta",
 	"interpulse/specta"
 ]
 

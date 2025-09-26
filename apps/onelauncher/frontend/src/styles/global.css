@@ -15,6 +15,10 @@
 	--radius-4xl: 2rem;
 }
 
+code {
+	@apply rounded-md p-2 text-left;
+}
+
 /* i dont know where to put this */
 .linearBlur::after {
 	content: '';

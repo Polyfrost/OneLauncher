@@ -1,11 +1,11 @@
 import type { PropsWithChildren } from 'react';
 import { LoaderSuspense, Navbar } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
-import useAppShellStore from '@/stores/appShellStore';
-import { AnimatedOutlet } from '@onelauncher/common/components';
-import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { AnimatePresence } from 'motion/react';
-import { useEffect } from 'react';
+import { useActiveCluster } from '@/hooks/useClusters';
+import { getVersionInfoOrDefault } from '@/utils/versionMap';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { motion } from 'motion/react';
+import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/app')({
 	component: RouteComponent,
@@ -16,7 +16,7 @@ function RouteComponent() {
 		<LoaderSuspense spinner={{ size: 'large' }}>
 			<AppShell>
 				<div className="h-full w-full">
-					<AnimatedOutlet
+					{/* <AnimatedOutlet
 						enter={{
 							initial: { opacity: 0 },
 							animate: { opacity: 1 },
@@ -26,8 +26,9 @@ function RouteComponent() {
 							animate: { opacity: 0 },
 						}}
 						from={Route.id}
-						transition={{ duration: 0.3, bounce: 0.1, power: 0.2, type: 'spring' }}
-					/>
+						transition={{ duration: 0.25, bounce: 0.1, power: 0.2, type: 'spring' }}
+					/> */}
+					<Outlet />
 				</div>
 			</AppShell>
 		</LoaderSuspense>
@@ -37,22 +38,9 @@ function RouteComponent() {
 function AppShell({
 	children,
 }: PropsWithChildren) {
-	const router = useRouter();
-	const setPrevLocation = useAppShellStore(state => state.setPrevLocation);
-
-	useEffect(() => {
-		const unsub = router.subscribe('onBeforeNavigate', (e) => {
-			setPrevLocation(e.fromLocation ?? null);
-		});
-
-		return () => unsub();
-	}, [router, setPrevLocation]);
-
 	return (
 		<div className="flex flex-col h-full w-full">
-			<AnimatePresence>
-				<BackgroundGradient />
-			</AnimatePresence>
+			<BackgroundGradient />
 
 			<Navbar />
 
@@ -64,13 +52,11 @@ function AppShell({
 }
 
 function BackgroundGradient() {
-	const background = useAppShellStore(state => state.background);
-
-	if (background === 'none')
-		return undefined;
+	const cluster = useActiveCluster();
+	const versionInfo = getVersionInfoOrDefault(cluster?.mc_version);
 
 	return (
-		<div>
+		<div className="relative">
 			{/* Linear black gradient: left -> right */}
 			<div
 				className="absolute top-0 left-0 w-screen h-screen -z-10"
@@ -96,7 +82,25 @@ function BackgroundGradient() {
 			>
 			</div>
 
-			<GameBackground name="HypixelSkyblockHub" />
+			<MouseParallax isAbsolutelyPositioned strength={0.01} zIndex={-50}>
+				<motion.div
+					animate={{
+						opacity: 1,
+						left: '0',
+					}}
+					className="relative scale-105"
+					initial={{
+						opacity: 0,
+						left: '-10%',
+					}}
+					key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
+				>
+					<GameBackground
+						className="absolute left-0 top-0 w-screen h-screen scale-110"
+						name={versionInfo.backgroundName}
+					/>
+				</motion.div>
+			</MouseParallax>
 		</div>
 	);
 }

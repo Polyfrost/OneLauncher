@@ -32,6 +32,7 @@ pub enum HashAlgorithm {
 const BUFFER_SIZE: usize = 1024 * 256; // 16 KiB
 
 impl HashAlgorithm {
+	#[allow(clippy::unused_async)]
 	pub async fn hash(&self, data: &[u8]) -> Result<String, IOError> {
 		let mut hasher = get_inner(self);
 		hasher.update(data);
@@ -110,7 +111,7 @@ fn get_inner(algorithm: &HashAlgorithm) -> Box<dyn DynDigest + Send + Sync> {
 	match algorithm {
 		HashAlgorithm::Sha1 => Box::new(sha1::Sha1::default()),
 		HashAlgorithm::Sha256 => Box::new(sha2::Sha256::default()),
-		HashAlgorithm::Md5 => Box::new(md5::Md5::default())
+		HashAlgorithm::Md5 => Box::new(md5::Md5::default()),
 	}
 }
 

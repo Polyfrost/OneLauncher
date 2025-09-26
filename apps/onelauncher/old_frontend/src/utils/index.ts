@@ -172,7 +172,7 @@ export function getLicenseUrl(licenseId: string | License | null | undefined): s
 export function getPackageUrl(pkg: ManagedPackage): string {
 	const mapping: Record<Providers, () => string> = {
 		Modrinth: () => `https://modrinth.com/${pkg.package_type}/${pkg.id}`,
-		Curseforge: () => {
+		CurseForge: () => {
 			const packageTypeMapping: Record<PackageType, string> = {
 				mod: 'mc-mods',
 				shaderpack: 'shaders',
@@ -190,11 +190,11 @@ export function getPackageUrl(pkg: ManagedPackage): string {
 }
 
 export const LOADERS: Loader[] = ['vanilla', 'fabric', 'forge', 'neoforge', 'quilt'] as const;
-export const PROVIDERS: Providers[] = ['Modrinth', 'Curseforge', 'SkyClient'] as const;
+export const PROVIDERS: Providers[] = ['Modrinth', 'CurseForge', 'SkyClient'] as const;
 export const PACKAGE_TYPES: PackageType[] = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 export const LAUNCHER_IMPORT_TYPES: ImportType[] = [
 	'PrismLauncher',
-	'Curseforge',
+	'CurseForge',
 	// 'Modrinth',
 	'ATLauncher',
 	'GDLauncher',

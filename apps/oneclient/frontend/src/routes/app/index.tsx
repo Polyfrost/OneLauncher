@@ -1,14 +1,17 @@
-import type { ClusterModel } from '@/bindings.gen';
-import type { HTMLAttributes } from 'react';
+import type { ClusterModel, GameLoader } from '@/bindings.gen';
+import type { ButtonProps } from 'react-aria-components';
 import { GameBackground } from '@/components';
-import { bindings } from '@/main';
-import { animations, transitions } from '@/utils/motion';
-import { getVersionInfo } from '@/utils/versionMap';
-import { useCommandSuspense } from '@onelauncher/common';
+import { LaunchButton } from '@/components/LaunchButton';
+import { useActiveCluster, useLastPlayedClusters } from '@/hooks/useClusters';
+import useAppShellStore from '@/stores/appShellStore';
+import { prettifyLoader } from '@/utils/loaders';
+import { animations } from '@/utils/motion';
+import { getVersionInfo, getVersionInfoOrDefault } from '@/utils/versionMap';
 import { Button } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DotsGridIcon, Settings04Icon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
+import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/')({
@@ -16,51 +19,35 @@ export const Route = createFileRoute('/app/')({
 });
 
 function RouteComponent() {
-	const { data: clusters } = useCommandSuspense<Array<ClusterModel | undefined>>(
-		'getClusters',
-		bindings.core.getClusters,
-		{
-			select: ((data: Array<ClusterModel>) => {
-				const sorted = data.sort((a, b) => {
-					if (a.last_played && b.last_played)
-						return new Date(b.last_played).getTime() - new Date(a.last_played).getTime();
-					else if (a.last_played)
-						return -1; // a has last_played, b does not
-					else if (b.last_played)
-						return 1; // b has last_played, a does not
+	const { data: lastPlayedClusters } = useLastPlayedClusters();
 
-					const aVersion = a.mc_version.replaceAll('.', '');
-					const bVersion = b.mc_version.replaceAll('.', '');
-					return Number.parseInt(bVersion) - Number.parseInt(aVersion);
-				});
+	const setActiveClusterId = useAppShellStore(state => state.setActiveClusterId);
+	const activeCluster = useActiveCluster();
 
-				return [
-					sorted[0],
-					sorted[1],
-					undefined,
-				];
-			}) as (data: Array<ClusterModel | undefined>) => Array<ClusterModel | undefined>,
-		},
-	);
+	const navigate = useNavigate({
+		from: Route.id,
+	});
 
 	return (
 		<div className="flex h-full w-full flex-col justify-center p-12">
-			<motion.div {...animations.slideInLeft} className="flex flex-1 flex-col justify-center items-start gap-2" transition={{ ...transitions.spring, delay: 0.2 }}>
-				<h1 className="text-6xl font-bold text-fg-primary">1.8.9</h1>
-				<p className="text-lg font-medium text-fg-secondary">The Bountiful Update</p>
-
-				<div className="flex flex-row justify-center items-center gap-2">
-					<Button size="large">Launch</Button>
-					<Button color="ghost" size="iconLarge"><Settings04Icon /></Button>
-				</div>
-			</motion.div>
+			<ActiveClusterInfo cluster={activeCluster} />
 
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
-				{clusters.map((cluster, index) => (
-					<RecentsCard key={cluster?.folder_name ?? index} version={cluster?.mc_version} />
+				{lastPlayedClusters.slice(0, 3).map(cluster => (
+					<RecentsCard
+						active={activeCluster?.id === cluster.id}
+						key={cluster.folder_name}
+						loader={cluster.mc_loader}
+						onPress={() => setActiveClusterId(cluster.id)}
+						version={cluster.mc_version}
+					/>
 				))}
 
-				<Card blur className="flex flex-col justify-center items-center max-w-24">
+				<Card
+					blur
+					className="flex flex-col justify-center items-center max-w-24"
+					onPress={() => navigate({ to: '/app/clusters' })}
+				>
 					<DotsGridIcon height={48} width={48} />
 				</Card>
 			</motion.div>
@@ -68,53 +55,118 @@ function RouteComponent() {
 	);
 }
 
-interface RecentsCardProps {
-	version: string | undefined;
-}
+function ActiveClusterInfo({
+	cluster,
+}: {
+	cluster: ClusterModel | undefined;
+}) {
+	const versionInfo = getVersionInfoOrDefault(cluster?.mc_version);
+	const navigate = useNavigate({
+		from: Route.id,
+	});
 
-const BLUR = '30px';
-function RecentsCard({ version }: RecentsCardProps) {
-	const versionInfo = getVersionInfo(version);
+	const viewCluster = () => {
+		if (!cluster)
+			return;
+
+		navigate({
+			to: '/app/cluster/overview',
+			search: {
+				clusterId: cluster.id,
+			},
+		});
+	};
 
 	return (
-		<Card blur={versionInfo === undefined}>
-			{versionInfo && (
-				<div className="flex w-full h-full justify-start items-end px-6 py-3">
-					<GameBackground className="-z-10" name={versionInfo.backgroundName} />
+		<motion.div
+			animate={{
+				position: 'relative',
+				left: '0',
+			}}
+			className="flex flex-1 flex-col justify-center items-start gap-2"
+			initial={{
+				position: 'relative',
+				left: '-50%',
+			}}
+			key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
+			transition={{ ease: 'backInOut', duration: 0.35 }}
+		>
+			<h1 className="text-6xl font-bold text-fg-primary">{cluster?.mc_version} {prettifyLoader(cluster?.mc_loader ?? 'vanilla')}</h1>
+			<p className="text-lg font-medium text-fg-secondary">{versionInfo.shortDescription}</p>
 
-					<div
-						className="absolute top-0 left-0 -z-10 w-full h-full"
-						style={{
-							background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
-						}}
-					>
-					</div>
+			<div className="flex flex-row justify-center items-center gap-2">
+				<LaunchButton clusterId={cluster?.id} size="large" />
 
-					<h4 className="text-3xl font-semibold">{version}</h4>
+				<Button color="ghost" onPress={viewCluster} size="iconLarge">
+					<Settings04Icon />
+				</Button>
+			</div>
+		</motion.div>
+	);
+}
+
+interface RecentsCardProps {
+	version: string;
+	loader: GameLoader;
+	onPress: () => void;
+	active: boolean;
+}
+
+function RecentsCard({
+	version,
+	loader,
+	onPress,
+	active,
+}: RecentsCardProps) {
+	const versionInfo = getVersionInfo(version);
+
+	if (!versionInfo)
+		return (
+			<Card blur>
+				<p className="text-lg font-medium text-fg-secondary">Unknown Version</p>
+			</Card>
+		);
+
+	return (
+		<Card className={twMerge(active && 'outline-2 outline-brand')} onPress={onPress}>
+			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-80">
+				<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
+
+				<div
+					className="absolute top-0 left-0 -z-10 w-full h-full"
+					style={{
+						background: 'linear-gradient(180deg, rgba(25, 25, 25, 0.00) 24.52%, rgba(17, 17, 21, 0.75) 65%)',
+					}}
+				>
 				</div>
-			)}
+
+				<h4 className="text-2xl font-semibold">{version} {prettifyLoader(loader)}</h4>
+			</div>
 		</Card>
 	);
 }
 
+const BLUR = '30px';
 function Card({
 	blur = true,
 	children,
 	className,
 	style,
+	onPress,
 }: {
 	blur?: boolean;
-	children?: React.ReactNode;
-} & HTMLAttributes<HTMLDivElement>) {
+	className?: string | undefined;
+} & ButtonProps & React.RefAttributes<HTMLButtonElement>) {
 	return (
-		<div
+		<AriaButton
 			className={twMerge(
-				'relative overflow-hidden flex-1 rounded-xl inset-ring-2 inset-ring-component-border',
+				'relative overflow-hidden flex-1 rounded-xl outline outline-component-border',
 				blur
 					? 'bg-white/5 hover:bg-white/15 active:bg-white/20'
 					: 'hover:bg-ghost-overlay-hover active:bg-ghost-overlay-pressed',
 				className,
 			)}
+			onPress={onPress}
 			style={blur
 				? {
 						// shitty hack because webkit breaks with css variables in its backdrop filter
@@ -125,6 +177,6 @@ function Card({
 				: style}
 		>
 			{children}
-		</div>
+		</AriaButton>
 	);
 }

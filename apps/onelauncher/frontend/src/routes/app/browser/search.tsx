@@ -1,9 +1,9 @@
 import type { Paginated, SearchResult } from '@/bindings.gen';
 import { PackageGrid } from '@/components/content/PackageItem';
 import { useBrowserContext, useBrowserSearch } from '@/hooks/useBrowser';
-import usePagination from '@/hooks/usePagination';
+import { usePagination } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BrowserLayout } from './route';
 
 export const Route = createFileRoute('/app/browser/search')({
@@ -50,9 +50,11 @@ function Results({ results }: { results: Paginated<SearchResult> }) {
 		itemsPerPage: context.query.limit as unknown as number,
 	});
 
+	const contextRef = useRef(context);
+
 	useEffect(() => {
-		context.setQuery({ ...context.query, offset: pagination.offset as unknown as bigint });
-	}, [context, pagination.offset, pagination.page]);
+		contextRef.current.setQuery(query => ({ ...query, offset: pagination.offset as unknown as bigint }));
+	}, [pagination.offset, pagination.page]);
 
 	useEffect(() => {
 		if (oldTotal === results.total)

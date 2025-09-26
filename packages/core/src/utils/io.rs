@@ -1,15 +1,15 @@
-use std::{path::PathBuf, sync::Arc};
+use std::fs::Metadata;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_compression::tokio::bufread::GzipDecoder;
 use async_stream::try_stream;
 use async_zip::StoredZipEntry;
 use async_zip::base::read::WithoutEntry;
-use futures::{pin_mut, Stream, TryStreamExt};
+use futures::{Stream, TryStreamExt, pin_mut};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use tempfile::TempDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
@@ -18,6 +18,8 @@ use tokio_util::compat::TokioAsyncWriteCompatExt;
 pub enum IOError {
 	#[error("invalid absolute path '{0}'")]
 	InvalidAbsolutePath(PathBuf),
+	#[error("couldn't find file '{0}' in zip")]
+	FileNotFoundInZip(String),
 
 	#[error("error acessing path: {source}, path: {path}")]
 	IOErrorWrapper {
@@ -27,11 +29,23 @@ pub enum IOError {
 		path: String,
 	},
 	#[error(transparent)]
-	IOError(#[from] #[skip] std::io::Error),
+	IOError(
+		#[from]
+		#[skip]
+		std::io::Error,
+	),
 	#[error("json deserialization error: {0}")]
-	DeserializeError(#[from] #[skip] serde_json::Error),
+	DeserializeError(
+		#[from]
+		#[skip]
+		serde_json::Error,
+	),
 	#[error(transparent)]
-	AsyncZipError(#[from] #[skip] async_zip::error::ZipError),
+	AsyncZipError(
+		#[from]
+		#[skip]
+		async_zip::error::ZipError,
+	),
 }
 
 impl<P: AsRef<std::path::Path>> From<(P, std::io::Error)> for IOError {
@@ -113,11 +127,11 @@ pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> Result<(), IOE
 pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> Result<String, IOError> {
 	let mut f = tokio::fs::File::open(path).await?;
 	let mut buf = vec![];
-	f.read_to_end(&mut buf).await?;
+	tokio::io::AsyncReadExt::read_to_end(&mut f, &mut buf).await?;
 
 	let mut decoder = GzipDecoder::new(buf.as_slice());
 	let mut dst = String::new();
-	decoder.read_to_string(&mut dst).await?;
+	tokio::io::AsyncReadExt::read_to_string(&mut decoder, &mut dst).await?;
 
 	Ok(dst)
 }
@@ -176,7 +190,7 @@ where
 
 	f(&mut writer).await?;
 
-	writer.flush().await?;
+	tokio::io::AsyncWriteExt::flush(&mut writer).await?;
 
 	Ok(())
 }
@@ -283,9 +297,16 @@ where
 /// Reads a zip archive from a byte array and returns a stream of entries.
 pub fn stream_zip_entries_bytes(
 	data: Vec<u8>,
-) -> impl Stream<Item = Result<(
-	usize, StoredZipEntry, Arc<async_zip::base::read::mem::ZipFileReader>
-), IOError>> {
+) -> impl Stream<
+	Item = Result<
+		(
+			usize,
+			StoredZipEntry,
+			Arc<async_zip::base::read::mem::ZipFileReader>,
+		),
+		IOError,
+	>,
+> {
 	try_stream! {
 		let reader = Arc::new(async_zip::base::read::mem::ZipFileReader::new(data).await?);
 		let entries = reader.file().entries();
@@ -319,9 +340,10 @@ pub async fn unzip_bytes_filtered(
 		let file_name = entry.filename().as_str()?;
 
 		if let Some(filter) = &filter_entries
-			&& !filter(file_name) {
-				continue;
-			}
+			&& !filter(file_name)
+		{
+			continue;
+		}
 
 		let path = dest_path.as_ref().join(sanitize_path(file_name));
 
@@ -346,10 +368,25 @@ pub async fn unzip_bytes_filtered(
 	Ok(())
 }
 
-/// Unzips a zip archive from a file
-pub async fn unzip_file(
+pub async fn extract_zip(
 	zip_path: impl AsRef<std::path::Path>,
 	dest_path: impl AsRef<std::path::Path>,
+) -> Result<(), IOError> {
+	extract_zip_filtered(
+		zip_path,
+		dest_path,
+		None::<fn(&StoredZipEntry) -> bool>,
+		None::<fn(&str) -> String>,
+	)
+	.await
+}
+
+/// Unzips a zip archive from a file
+pub async fn extract_zip_filtered(
+	zip_path: impl AsRef<std::path::Path>,
+	dest_path: impl AsRef<std::path::Path>,
+	filter_entries: Option<impl Fn(&StoredZipEntry) -> bool + Send + Sync>,
+	modify_entry_name: Option<impl Fn(&str) -> String>,
 ) -> Result<(), IOError> {
 	let zip_path = zip_path.as_ref();
 	let dest_path = dest_path.as_ref();
@@ -360,7 +397,22 @@ pub async fn unzip_file(
 	for index in 0..entries.len() {
 		let entry = entries.get(index).expect("expected more zip entries");
 
-		let path = dest_path.join(sanitize_path(entry.filename().as_str()?));
+		if let Some(filter) = &filter_entries
+			&& !filter(entry)
+		{
+			continue;
+		}
+
+		let old_name = entry.filename().as_str()?;
+		let name: String = if let Some(modify) = &modify_entry_name {
+			modify(&old_name)
+		} else {
+			old_name.to_string()
+		};
+
+		let name = sanitize_path(name);
+
+		let path = dest_path.join(name);
 		let is_dir = entry.dir()?;
 
 		if is_dir {
@@ -381,6 +433,32 @@ pub async fn unzip_file(
 	Ok(())
 }
 
+/// Returns a zip file entry's bytes without reading the entire file into memory.
+pub async fn try_read_zip_entry_bytes<R>(reader: R, file_name: &str) -> Result<Vec<u8>, IOError>
+where
+	R: tokio::io::AsyncRead + tokio::io::AsyncBufRead + tokio::io::AsyncSeek + Unpin,
+{
+	use tokio_util::compat::TokioAsyncReadCompatExt;
+	let compat = reader.compat();
+
+	let mut zip_reader = async_zip::base::read::seek::ZipFileReader::new(compat).await?;
+
+	let index = zip_reader
+		.file()
+		.entries()
+		.iter()
+		.position(|entry| entry.filename().as_str().is_ok_and(|n| n == file_name))
+		.ok_or_else(|| IOError::FileNotFoundInZip(file_name.to_string()))?;
+
+	let mut entry_reader = zip_reader.reader_without_entry(index).await?;
+
+	let mut data: Vec<u8> = Vec::new();
+
+	futures::AsyncReadExt::read_to_end(&mut entry_reader, &mut data).await?;
+
+	Ok(data)
+}
+
 pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
 	path.as_ref()
 		.to_string_lossy()
@@ -388,4 +466,8 @@ pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
 		.split('/')
 		.map(sanitize_filename::sanitize)
 		.collect()
+}
+
+pub async fn stat(path: impl AsRef<std::path::Path>) -> Result<Metadata, IOError> {
+	tokio::fs::metadata(path).await.map_err(IOError::from)
 }

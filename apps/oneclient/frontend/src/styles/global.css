@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @plugin "tailwindcss-react-aria-components";
 @plugin "tailwindcss-animated";
+@plugin "@tailwindcss/typography";
 @import "../../node_modules/@onelauncher/common/dist/theme.css";
 @import "./animations.css";
 
@@ -31,4 +32,10 @@
 	--radius-xl: 1rem;
 	--radius-2xl: 1.5rem;
 	--radius-3xl: 2rem;
+}
+
+.prose-invert{
+	--tw-prose-body: var(--color-fg-primary);
+	--tw-prose-headings: var(--color-fg-primary);
+	--tw-prose-bold: var(--color-fg-primary);
 }

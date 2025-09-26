@@ -1,5 +1,5 @@
 import type { ImportType } from '@onelauncher/client/bindings';
-import CurseforgeIcon from '~assets/logos/curseforge.svg?component-solid';
+import CurseForgeIcon from '~assets/logos/curseforge.svg?component-solid';
 import AtLauncherIcon from '~assets/logos/launchers/atlauncher.svg?component-solid';
 import FTBIcon from '~assets/logos/launchers/ftb.svg?component-solid';
 import GDLauncherImage from '~assets/logos/launchers/gdlauncher.png';
@@ -21,7 +21,7 @@ export function getLauncherLogoElement(launcher: ImportType): ElementType {
 	// [provider logo, is svg]
 	const mapping: Record<Lowercase<ImportType>, ElementType | string> = {
 		modrinth: ModrinthIcon,
-		curseforge: CurseforgeIcon,
+		curseforge: CurseForgeIcon,
 		prismlauncher: PrismIcon,
 		atlauncher: AtLauncherIcon,
 		gdlauncher: GDLauncherImage,

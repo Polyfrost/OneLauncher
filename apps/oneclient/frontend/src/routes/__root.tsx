@@ -1,8 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { AnimatedOutletProvider } from '@onelauncher/common/components';
+import { Toasts } from '@/components/overlay';
+import { TanStackDevtools } from '@tanstack/react-devtools';
+import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
 import { RouterProvider } from 'react-aria-components';
 
 interface AppRouterContext {
@@ -23,17 +25,37 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
 function RootRoute() {
 	const router = useRouter();
 	return (
-		<AnimatedOutletProvider>
-			<RouterProvider
-				navigate={(to, options) => router.navigate({ to, ...options })}
-				useHref={to => router.buildLocation({ to }).href}
-			>
-				<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
-					<Outlet />
+		<RouterProvider
+			navigate={(to, options) => router.navigate({ to, ...options })}
+			useHref={to => router.buildLocation({ to }).href}
+		>
+			<DevTools />
 
-					<TanStackRouterDevtools />
-				</div>
-			</RouterProvider>
-		</AnimatedOutletProvider>
+			<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
+				<Outlet />
+			</div>
+
+			<Toasts />
+		</RouterProvider>
+	);
+}
+
+function DevTools() {
+	return (
+		<TanStackDevtools
+			config={{
+				position: 'top-left',
+			}}
+			plugins={[
+				{
+					name: 'Tanstack Query',
+					render: <ReactQueryDevtoolsPanel />,
+				},
+				{
+					name: 'Tanstack Router',
+					render: <TanStackRouterDevtoolsPanel />,
+				},
+			]}
+		/>
 	);
 }

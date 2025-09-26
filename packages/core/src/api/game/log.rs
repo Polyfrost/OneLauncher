@@ -5,9 +5,7 @@ use crate::store::credentials::MinecraftCredentials;
 pub type CensorMap = HashMap<String, String>;
 
 #[must_use]
-pub fn create_censors(
-	creds: &MinecraftCredentials,
-) -> CensorMap {
+pub fn create_censors(creds: &MinecraftCredentials) -> CensorMap {
 	let mut map = HashMap::new();
 
 	let username = whoami::username();
@@ -24,7 +22,10 @@ pub fn create_censors(
 
 	map.insert(creds.username.clone(), "{MC_USERNAME}".to_string());
 	map.insert(creds.id.as_simple().to_string(), "{MC_UUID}".to_string());
-	map.insert(creds.id.as_hyphenated().to_string(), "{MC_UUID}".to_string());
+	map.insert(
+		creds.id.as_hyphenated().to_string(),
+		"{MC_UUID}".to_string(),
+	);
 
 	map
 }

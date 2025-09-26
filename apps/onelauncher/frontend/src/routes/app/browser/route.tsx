@@ -1,14 +1,18 @@
-import type { Filters } from '@/bindings.gen';
+import type { Filters, PackageCategories } from '@/bindings.gen';
+import type { Key, NonReadonly } from '@/utils';
 import type { PropsWithChildren } from 'react';
 import ProviderIcon from '@/components/content/ProviderIcon';
 import { BrowserProvider, useBrowserContext } from '@/hooks/useBrowser';
 import { useClusters } from '@/hooks/useCluster';
-import { PROVIDERS } from '@/utils';
-import { browserCategories } from '@/utils/browser';
+import { bindings } from '@/main';
+import { PROVIDERS, upperFirst } from '@/utils';
+import { browserCategories, categoryNameFromId } from '@/utils/browser';
+import { useCommand } from '@onelauncher/common';
 import { AnimatedOutlet, Dropdown, Show, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { SelectValue } from 'react-aria-components';
 
 export const Route = createFileRoute('/app/browser')({
 	component: RouteComponent,
@@ -32,13 +36,13 @@ export function BrowserLayout({ children }: PropsWithChildren) {
 	return (
 		<div className="relative h-full flex flex-1 flex-col items-center gap-2">
 			<div className="h-full w-full flex flex-1 flex-col items-center gap-y-2">
-				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6">
+				<div className="grid grid-cols-[180px_auto_160px] w-full gap-x-6">
 					<div />
 					<BrowserToolbar />
 					<div />
 				</div>
 
-				<div className="grid grid-cols-[220px_auto_220px] w-full gap-x-6 pb-8">
+				<div className="grid grid-cols-[180px_auto_160px] w-full gap-x-6 pb-8">
 					<BrowserCategories />
 
 					<div className="h-full flex flex-col gap-y-4">
@@ -47,55 +51,7 @@ export function BrowserLayout({ children }: PropsWithChildren) {
 						</div>
 					</div>
 
-					<BrowserSidebar />
-				</div>
-			</div>
-		</div>
-	);
-}
-
-function BrowserSidebar() {
-	const context = useBrowserContext();
-	const clusters = useClusters();
-
-	useEffect(() => {
-		const game_versions = context.cluster?.mc_version ? [context.cluster.mc_version] : null;
-		const loaders = context.cluster?.mc_loader ? [context.cluster.mc_loader] : null;
-		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, game_versions, loaders } });
-	// eslint-disable-next-line react-hooks/exhaustive-deps -- loop
-	}, [context.cluster]);
-
-	return (
-		<div className="flex flex-col gap-y-4">
-			<div className="flex flex-col gap-y-4">
-				<div className="flex flex-col gap-y-1">
-					<h6 className="my-1 uppercase  opacity-60">Active Cluster</h6>
-					<Dropdown
-						onSelectionChange={(id) => {
-							const cluster = clusters?.find(item => item.id.toString() === id);
-							context.setCluster(cluster);
-						}}
-						selectedKey={context.cluster?.id.toString()}
-					>
-						{clusters?.map(cluster => (
-							<Dropdown.Item id={cluster.id.toString()} key={cluster.id}>
-								{cluster.name}
-							</Dropdown.Item>
-						))}
-					</Dropdown>
-				</div>
-				<div className="flex flex-col gap-y-1">
-					<h6 className="my-1 uppercase opacity-60">Provider</h6>
-					<Dropdown onSelectionChange={id => context.setProvider(id as typeof context.provider)} selectedKey={context.provider}>
-						{PROVIDERS.map(provider => (
-							<Dropdown.Item id={provider} key={provider}>
-								<div className="flex flex-row">
-									<ProviderIcon className="size-4 mr-2 self-center" provider={provider} />
-									{provider}
-								</div>
-							</Dropdown.Item>
-						))}
-					</Dropdown>
+					{/* <BrowserSidebar /> */}
 				</div>
 			</div>
 		</div>
@@ -106,35 +62,41 @@ const defaultFilters: Filters = {
 	categories: null,
 	game_versions: null,
 	loaders: null,
-	package_types: null,
+	package_type: null,
 };
+
+type CategoryFilter = Partial<NonReadonly<typeof browserCategories>>;
 
 function BrowserCategories() {
 	const context = useBrowserContext();
-	const categories = browserCategories.byPackageType((context.query.filters?.package_types ?? ['mod'])[0], context.provider);
+	const categoryName = useMemo(() => categoryNameFromId[context.query.filters?.package_type ?? 'mod'], [context.query.filters]);
+	const categories = browserCategories[categoryName];
 
-	function switchCategory(category: string) {
-		const newCategories = context.query.filters?.categories?.includes(category)
-			? context.query.filters.categories.filter(cat => cat !== category)
-			: [...(context.query.filters?.categories ?? []), category];
-		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, categories: newCategories.length > 0 ? newCategories : null } });
-	}
+	const switchCategory = useMemo(() => (category: string) => {
+		const isCorrectPackageType = context.query.filters && context.query.filters.categories && categoryName in context.query.filters.categories;
+		const isEnabled = isCorrectPackageType && context.query.filters.categories[categoryName].includes(category);
+		const newCategories = isCorrectPackageType
+			? { [categoryName]: isEnabled ? context.query.filters.categories?.[categoryName].filter(c => c !== category) : [...context.query.filters.categories[categoryName], category] }
+			: { [categoryName]: [category] };
+
+		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, categories: newCategories } });
+	}, [context, categoryName]);
 
 	return (
-		<div className="top-0 grid grid-cols-[1fr_auto] h-fit min-w-50 gap-y-6">
-			<div />
-			<div className="flex flex-col gap-y-6">
+		<div className="top-0 h-fit min-w-50">
+			{/* <div /> */}
+			<div className="flex flex-col gap-y-6 ml-16">
 				<Show when>
-					<div className="flex flex-col gap-y-2">
-						<h5 className="my-1 uppercase opacity-60">Categories</h5>
+					<div className="flex flex-col gap-y-1.5">
+						<h5 className="my-1 text-sm uppercase opacity-60 font-light">Categories</h5>
 						{categories.map(category => (
 							<p
-								aria-selected={context.query.filters?.categories?.includes(category.id)}
-								className="text-md capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
-								key={category.id}
-								onClick={() => switchCategory(category.id)}
+								aria-selected={context.query.filters?.categories?.[categoryName].includes(category)}
+								className="text-sm capitalize opacity-60 hover:opacity-90 text-fg-primary hover:text-fg-primary-hover aria-selected:opacity-100"
+								key={category}
+								onClick={() => switchCategory(category)}
 							>
-								{category.display}
+								{category}
 							</p>
 						))}
 					</div>
@@ -145,15 +107,54 @@ function BrowserCategories() {
 }
 
 function BrowserToolbar() {
+	const clusters = useClusters();
 	const context = useBrowserContext();
 	const [query, setQuery] = useState(context.query.query ?? '');
+	useEffect(() => {
+		const game_versions = context.cluster?.mc_version ? [context.cluster.mc_version] : null;
+		const loaders = context.cluster?.mc_loader ? [context.cluster.mc_loader] : null;
+		context.setQuery({ ...context.query, filters: { ...defaultFilters, ...context.query.filters, game_versions, loaders } });
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- loop
+	}, [context.cluster]);
 	return (
 		<div className="w-full flex flex-row justify-between bg-page">
-			<div className="flex flex-row gap-2" />
+			<div className="flex flex-row gap-2">
+				<Dropdown
+					onSelectionChange={id => context.setProvider(id as typeof context.provider)}
+					placeholder="Select a Provider"
+					selectedKey={context.provider}
+				>
+					{PROVIDERS.map(provider => (
+						<Dropdown.Item id={provider} key={provider}>
+							<div className="flex flex-row">
+								<ProviderIcon className="size-4 mr-2 self-center" provider={provider} />
+								{provider}
+							</div>
+						</Dropdown.Item>
+					))}
+				</Dropdown>
+				<Dropdown
+					onSelectionChange={(index) => {
+						if (!clusters)
+							return;
+						const cluster = clusters[index as number];
+						context.setCluster(cluster);
+					}}
+					placeholder="Select a cluster"
+					selectedKey={context.cluster ? clusters?.indexOf(context.cluster) : undefined}
+				>
+					{clusters?.map((cluster, index) => (
+						<Dropdown.Item id={index} key={cluster.id}>
+							{cluster.name}
+						</Dropdown.Item>
+					))}
+				</Dropdown>
+			</div>
 
 			<div className="flex flex-row gap-2">
 				<TextField
-					iconLeft={<SearchMdIcon />}
+					className="min-w-64"
+					iconLeft={<SearchMdIcon className="scale-75" />}
 					onChange={e => setQuery(e.currentTarget.value)}
 					onKeyDown={(e) => {
 						if (e.key !== 'Enter')

@@ -1,0 +1,130 @@
+use crate::api::packages::categories::{
+	PackageModCategory, PackageModPackCategory, PackageResourcePackCategory, PackageShaderCategory,
+	ToProviderCategory, define_category_mapping,
+};
+use crate::api::packages::provider::CurseForgeProviderImpl;
+
+pub struct CurseForgeCategories;
+
+define_category_mapping! {
+	impl ToProviderCategory<i32, CurseForgeProviderImpl> for CurseForgeCategories {
+		PackageModCategory as as_mod_out => to_mod {
+			Adventure => 422,
+			Library => 421,
+			Equipment => 434,
+			Patches => 6821,
+			Cosmetic => 424,
+			Food => 436,
+			Magic => 419,
+			Information => 423,
+			Misc => 425,
+			Performance => 6814,
+			Redstone => 4558,
+			ServerUtil => 435,
+			Storage => 420,
+			Technology => 412,
+			Farming => 416,
+			Automation => 4843,
+			Transport => 414,
+			Utility => 5191,
+			QoL => 5191,
+			WorldGen => 406,
+			Mobs => 411,
+			Economy => -1,
+			Social => -1,
+		}
+
+		PackageModCategory as as_data_pack_out => to_data_pack {
+			Adventure => 6948,
+			Library => 6950,
+			Equipment => -1,
+			Patches => 6946,
+			Cosmetic => -1,
+			Food => -1,
+			Magic => 6952,
+			Information => -1,
+			Misc => 6947,
+			Performance => -1,
+			Redstone => -1,
+			ServerUtil => -1,
+			Storage => -1,
+			Technology => 6951,
+			Farming => -1,
+			Automation => -1,
+			Transport => -1,
+			Utility => 6953,
+			QoL => -1,
+			WorldGen => -1,
+			Mobs => -1,
+			Economy => -1,
+			Social => -1,
+		}
+
+		PackageResourcePackCategory as as_resource_pack_out => to_resource_pack {
+			X8 => -1,
+			X16 => 393,
+			X32 => 394,
+			X48 => -1,
+			X64 => 395,
+			X128 => 396,
+			X256 => 397,
+			X512 => 398,
+			VanillaLike => 403,
+			Utility => 405,
+			Tweaks => 405,
+			Themed => 399,
+			Simplistic => 401,
+			Realistic => 400,
+			Modded => 4465,
+			Decoration => 405,
+			Cursed => 405,
+			Combat => 405,
+			Audio => 405,
+			Blocks => 405,
+			CoreShaders => 405,
+			Gui => 403,
+			Fonts => 5244,
+			Equipment => 405,
+			Environment => 405,
+			Entities => 405,
+			Items => 405,
+			Locale => 405,
+			Models => 405,
+		}
+
+		// Curseforge is very bad with shader categories
+		PackageShaderCategory as as_shader_out => to_shader {
+			VanillaLike => 6555,
+			SemiRealistic => -1,
+			Realistic => 6553,
+			Fantasy => 6554,
+			Cursed => -1,
+			Cartoon => -1,
+			Bloom => -1,
+			Atmosphere => -1,
+			Reflections => -1,
+			Shadows => -1,
+			PBR => -1,
+			PathTracing => -1,
+			Foliage => -1,
+			ColoredLightning => -1,
+			Potato => -1,
+			Low => -1,
+			Medium => -1,
+			High => -1,
+			Ultra => -1,
+		}
+
+		PackageModPackCategory as as_mod_pack_out => to_mod_pack {
+			Adventure => 4475,
+			Technology => 4472,
+			Quests => 4478,
+			Optimization => 4481,
+			Multiplayer => 4484,
+			Magic => 4473,
+			LightWeight => 4481,
+			Combat => 4483,
+			Challenging => 4479,
+		}
+	}
+}

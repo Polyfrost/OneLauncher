@@ -1,22 +1,17 @@
-import type { ParsedLocation } from '@tanstack/react-router';
 import { create } from 'zustand';
 
 export interface AppShellStore {
-	background: 'gradientOverlay' | 'none';
-	prevLocation: ParsedLocation | null;
+	activeClusterId: number;
 }
 
 export interface AppShellStoreActions {
-	setBackground: (background: AppShellStore['background']) => void;
-	setPrevLocation: (location: ParsedLocation | null) => void;
+	setActiveClusterId: (cluster: AppShellStore['activeClusterId']) => void;
 }
 
 export const useAppShellStore = create<AppShellStore & AppShellStoreActions>()(set => ({
-	background: 'gradientOverlay',
-	prevLocation: null,
+	activeClusterId: 0,
 
-	setBackground: background => set({ background }),
-	setPrevLocation: location => set({ prevLocation: location }),
+	setActiveClusterId: cluster => set({ activeClusterId: cluster }),
 }));
 
 export default useAppShellStore;

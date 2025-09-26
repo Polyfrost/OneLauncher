@@ -2,8 +2,8 @@
 
 <img src=".github/media/RepoBanner.png" alt="Repository Banner" />
 
-# ` OneLauncher ` + ` OneClient `
-Here is the monorepo containing the code for OneLauncher and OneClient.
+# OneLauncher  |  OneClient
+The monorepo containing the code for OneLauncher, OneClient, and their core backend.
 
 </div>
 
@@ -23,7 +23,7 @@ We welcome contributions! Please read our [contributing guidelines](CONTRIBUTING
 
 If you encounter any issues, ensure that you are using the following versions (or later) of Rust, Node and Pnpm:
 
-- `rustc` version: **1.89**
+- `rustc` version: **nightly-2025-07-23**
 - `node` version: **22.15**
 - `pnpm` version: **10.13**
 

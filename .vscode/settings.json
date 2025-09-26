@@ -2,6 +2,18 @@
 	"[rust]": {
 		"editor.defaultFormatter": "rust-lang.rust-analyzer"
 	},
+	"[javascript]": {
+		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
+	},
+	"[javascriptreact]": {
+		"editor.defaultFormatter": "dbaeumer.vscode-eslint"
+	},
+	"[typescript]": {
+		"editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "vscode.typescript-language-features"
+	},
 	"files.readonlyInclude": {
 		"**/node_modules/**": true,
 		"**/*.gen.ts": true
@@ -27,6 +39,10 @@
 	"rust-analyzer.diagnostics.disabled": [
 		"macro-error" // TODO: Remove this once taurpc upgrades to latest specta
 	],
+	"rust-analyzer.assist.preferSelf": true,
+	"rust-analyzer.procMacro.ignored": {
+		"async-trait": ["async_trait"]
+	},
 	"rust-analyzer.check.command": "check",
 	"rust-analyzer.diagnostics.experimental.enable": false,
 	"rust-analyzer.linkedProjects": [],

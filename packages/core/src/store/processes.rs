@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::api::cluster;
 use crate::api::cluster::dao::ClusterId;
 use crate::api::game::log::{CensorMap, censor_line};
-use crate::api::processes::ProcessPayload;
+use crate::api::processes::{ProcessPayload, ProcessPayloadKind};
 use crate::api::proxy::event::{LauncherEvent, send_event};
 use crate::error::LauncherResult;
 use crate::send_error;
@@ -176,8 +176,11 @@ impl ProcessStore {
 		settings: &setting_profiles::Model,
 		mut command: Command,
 	) -> LauncherResult<Arc<RwLock<Process>>> {
-		send_event(LauncherEvent::Process(ProcessPayload::Starting {
-			command: format!("{command:?}"),
+		send_event(LauncherEvent::Process(ProcessPayload {
+			cluster_id,
+			kind: ProcessPayloadKind::Starting {
+				command: format!("{command:?}"),
+			},
 		}))
 		.await;
 
@@ -187,7 +190,8 @@ impl ProcessStore {
 			send_error!("{err:?}");
 		}
 
-		command.stdout(Stdio::piped())
+		command
+			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.stdin(Stdio::null());
 
@@ -223,9 +227,9 @@ impl ProcessStore {
 			} {
 				censor_line(&censors, &mut line);
 
-				send_event(LauncherEvent::Process(ProcessPayload::Output {
-					pid,
-					output: line,
+				send_event(LauncherEvent::Process(ProcessPayload {
+					cluster_id,
+					kind: ProcessPayloadKind::Output { pid, output: line },
 				}))
 				.await;
 			}
@@ -250,6 +254,18 @@ impl ProcessStore {
 		let process = Arc::new(RwLock::new(process));
 		let mut write_guard = self.processes.write().await;
 		write_guard.insert(pid, process.clone());
+
+		send_event(LauncherEvent::Process(ProcessPayload {
+			cluster_id,
+			kind: ProcessPayloadKind::Started {
+				pid,
+				started_at,
+				post_hook: settings.hook_post.clone(),
+				account_id: creds.id,
+			},
+		}))
+		.await;
+
 		tracing::info!("spawned process with pid {}", pid);
 
 		Ok(process)
@@ -284,9 +300,9 @@ impl ProcessStore {
 			send_error!("{err:?}");
 		}
 
-		send_event(LauncherEvent::Process(ProcessPayload::Stopped {
-			pid,
-			exit_code,
+		send_event(LauncherEvent::Process(ProcessPayload {
+			cluster_id,
+			kind: ProcessPayloadKind::Stopped { pid, exit_code },
 		}))
 		.await;
 
@@ -324,7 +340,10 @@ async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
 	}
 }
 
-async fn wait_for_exit(cluster_id: ClusterId, child: &Arc<RwLock<ChildType>>) -> LauncherResult<i32> {
+async fn wait_for_exit(
+	cluster_id: ClusterId,
+	child: &Arc<RwLock<ChildType>>,
+) -> LauncherResult<i32> {
 	let mut last_updated = Utc::now();
 
 	loop {

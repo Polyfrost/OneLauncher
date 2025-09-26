@@ -1,9 +1,11 @@
 use onelauncher_entity::icon::{Icon, IconType};
 use reqwest::Method;
 
-use crate::{error::LauncherResult, store::Dirs};
+use crate::error::LauncherResult;
+use crate::store::Dirs;
 
-use super::{crypto::HashAlgorithm, http, io};
+use super::crypto::HashAlgorithm;
+use super::{http, io};
 
 /// Caches a icon on the filesystem. Name is the equivalent to the sha1 hash of the icon.
 pub async fn cache_icon(icon: &Icon) -> LauncherResult<Icon> {
@@ -12,17 +14,16 @@ pub async fn cache_icon(icon: &Icon) -> LauncherResult<Icon> {
 		IconType::Path => {
 			let bytes = io::read(&**icon).await?;
 			cache_icon_bytes(&bytes).await?
-		},
+		}
 		IconType::Url => {
 			let bytes = http::fetch(Method::GET, icon).await?;
 			cache_icon_bytes(&bytes).await?
-		},
+		}
 		IconType::Unknown => {
-			return Err(anyhow::anyhow!(
-				"icon type is unknown, cannot cache icon: {}",
-				icon
-			).into());
-		},
+			return Err(
+				anyhow::anyhow!("icon type is unknown, cannot cache icon: {}", icon).into(),
+			);
+		}
 	})
 }
 
@@ -36,5 +37,5 @@ pub async fn cache_icon_bytes(bytes: &[u8]) -> LauncherResult<Icon> {
 	let path = dir.join(&hash);
 	io::write(&path, bytes).await?;
 
-	Ok(Icon::from_hash(hash))
+	Ok(Icon::from_hash(&hash))
 }

@@ -17,8 +17,6 @@ proc-macro = true
 
 [features]
 default = []
-tauri = [ "specta" ]
-specta = []
 
 [dependencies]
 syn = { workspace = true }

@@ -90,6 +90,7 @@ serde_with = { version = "=3.12.0", features = [
 	"json",
 	"macros"
 ] }
+serde_repr = { version = "=0.1.20" }
 toml = { version = "0.8" }
 url = { version = "2.5" }
 uuid = { version = "1.16", features = [
@@ -98,10 +99,6 @@ uuid = { version = "1.16", features = [
 ] }
 
 # network
-# async-tungstenite = { version = "0.28", features = [
-# 	"tokio-runtime",
-# 	"tokio-rustls-webpki-roots"
-# ] }
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"stream",
@@ -173,6 +170,7 @@ merge = { version = "=0.2.0" }
 sysinfo = { version = "=0.34.2", features = [ "serde" ] }
 thiserror = { version = "2" }
 whoami = { version = "=1.6.0" }
+opener = { version = "=0.8.2" }
 
 # macro
 paste = { version = "1" }

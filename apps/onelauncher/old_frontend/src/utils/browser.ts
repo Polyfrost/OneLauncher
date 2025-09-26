@@ -23,7 +23,7 @@ export const browserCategories = {
 };
 
 const modMapping: Record<Providers, CategoryItem[]> = {
-	Curseforge: [
+	CurseForge: [
 		{ display: 'Adventure', id: '422' },
 		{ display: 'API and Library', id: '421' },
 		{ display: 'Armor and Tools', id: '434' },

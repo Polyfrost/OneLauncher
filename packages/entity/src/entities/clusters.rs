@@ -1,7 +1,9 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{cluster_stage::ClusterStage, icon::Icon, loader::GameLoader};
+use crate::cluster_stage::ClusterStage;
+use crate::icon::Icon;
+use crate::loader::GameLoader;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "clusters")]
@@ -26,8 +28,7 @@ pub struct Model {
 	#[sea_orm(nullable)]
 	pub setting_profile_name: Option<String>,
 	#[sea_orm(nullable)]
-	pub linked_pack_id: Option<String>,
-	pub linked_pack_version: Option<String>,
+	pub linked_modpack_hash: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

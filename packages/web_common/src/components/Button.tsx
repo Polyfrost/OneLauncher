@@ -11,20 +11,20 @@ export const buttonVariants = tv({
 	variants: {
 		color: {
 			primary: [
-				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled',
-				'bg-brand hover:bg-brand-hover pressed:bg-brand-pressed disabled:bg-brand-disabled',
+				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled pending:text-fg-primary-disabled',
+				'bg-brand hover:bg-brand-hover pressed:bg-brand-pressed disabled:bg-brand-disabled pending:bg-brand-disabled',
 			],
 			secondary: [
 				'border box-border border-component-border hover:border-component-border-hover pressed:border-component-border-pressed',
-				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled',
-				'bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled',
+				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled pending:text-fg-primary-disabled',
+				'bg-component-bg hover:bg-component-bg-hover active:bg-component-bg-pressed disabled:bg-component-bg-disabled pending:bg-component-bg-disabled',
 			],
 			danger: [
-				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled',
-				'bg-danger hover:bg-danger-hover pressed:bg-danger-pressed disabled:bg-danger-disabled',
+				'text-fg-primary hover:text-fg-primary-hover pressed:text-fg-primary-pressed disabled:text-fg-primary-disabled pending:text-fg-primary-disabled',
+				'bg-danger hover:bg-danger-hover pressed:bg-danger-pressed disabled:bg-danger-disabled pending:bg-danger-disabled',
 			],
 			ghost: [
-				'hover:bg-ghost-overlay-hover pressed:bg-ghost-overlay-pressed checked:selected:bg-ghost-overlay-pressed',
+				'hover:bg-ghost-overlay-hover pressed:bg-ghost-overlay-pressed checked:selected:bg-ghost-overlay-pressed pending:bg-ghost-overlay-pressed',
 			],
 		},
 		size: {
@@ -53,6 +53,7 @@ export function Button({
 }: ButtonProps) {
 	return (
 		<AriaButton
+			aria-label={props['aria-label'] ?? 'button'}
 			className={buttonVariants({ color, size, className })}
 			isDisabled={props.isDisabled}
 			{...props}

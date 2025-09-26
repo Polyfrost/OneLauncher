@@ -1,9 +1,11 @@
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
+use std::time::Duration;
 
 use onelauncher_migration::MigratorTrait;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 
-use crate::{utils::io::IOError, LauncherResult};
+use crate::LauncherResult;
+use crate::utils::io::IOError;
 
 use super::Dirs;
 

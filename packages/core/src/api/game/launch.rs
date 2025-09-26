@@ -8,7 +8,7 @@ use onelauncher_entity::prelude::model::*;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 
-use crate::api::cluster::{prepare_cluster, update_playtime, ClusterError};
+use crate::api::cluster::{ClusterError, prepare_cluster, update_playtime};
 use crate::api::game::{arguments, log, metadata};
 use crate::api::java::{self, JavaError};
 use crate::api::setting_profiles::dao::get_profile_by_name;
@@ -32,9 +32,10 @@ pub async fn launch_minecraft(
 	prepare_cluster(cluster, force).await?;
 	let mut settings = get_global_profile().await;
 	if let Some(name) = &cluster.setting_profile_name
-		&& let Some(profile) = get_profile_by_name(name).await? {
-			settings.merge(profile);
-		}
+		&& let Some(profile) = get_profile_by_name(name).await?
+	{
+		settings.merge(profile);
+	}
 
 	let state = State::get().await?;
 	let dirs = Dirs::get().await?;
@@ -68,9 +69,7 @@ pub async fn launch_minecraft(
 
 	let version_name = loader_version
 		.as_ref()
-		.map_or(version.id.clone(), |it| {
-			format!("{}-{}", version.id, it.id)
-		});
+		.map_or(version.id.clone(), |it| format!("{}-{}", version.id, it.id));
 
 	let version_info =
 		metadata::download_version_info(&version, loader_version.as_ref(), None, None).await?;
@@ -119,7 +118,7 @@ pub async fn launch_minecraft(
 			arguments::java_arguments(
 				args.get(&interpulse::api::minecraft::ArgumentType::Jvm)
 					.map(Vec::as_slice),
-				&dirs.natives_dir().join(&version.id),
+				&dirs.natives_dir().join(&version_name),
 				&dirs.libraries_dir(),
 				&arguments::classpaths(
 					&dirs.libraries_dir(),
@@ -188,11 +187,16 @@ pub async fn launch_minecraft(
 	let censors = log::create_censors(&creds);
 
 	if let Some(discord) = &state.rpc {
-		discord.set_message(
-			&format!("Playing {}", cluster.name),
-			Some(Timestamps::new().start(Utc::now().timestamp())),
-		).await;
+		discord
+			.set_message(
+				&format!("Playing {}", cluster.name),
+				Some(Timestamps::new().start(Utc::now().timestamp())),
+			)
+			.await;
 	}
 
-	state.processes.spawn(cluster.id, cwd.clone(), creds, censors, &settings, command).await
+	state
+		.processes
+		.spawn(cluster.id, cwd.clone(), creds, censors, &settings, command)
+		.await
 }

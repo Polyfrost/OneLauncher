@@ -1,0 +1,56 @@
+@reference "../styles/global.css";
+
+.log_container {
+	@apply relative w-full whitespace-pre text-base font-mono bg-component-bg rounded-xl;
+}
+
+.log {
+	@apply absolute top-0 left-0 w-full whitespace-pre text-base font-mono;
+}
+
+.log * {
+	white-space: pre !important;
+	user-select: text !important;
+	-webkit-user-select: text !important;
+}
+
+.log > span {
+	@apply box-content left-0 top-0 absolute h-full w-full rounded-md hover:bg-component-bg-hover;
+}
+
+.log > span[data-level=INFO] {
+	@apply text-code-info;
+}
+
+.log > span[data-level=WARN] {
+	@apply text-code-warn;
+}
+
+.log > span[data-level=ERROR] {
+	@apply text-code-error;
+}
+
+.log > span[data-level=DEBUG] {
+	@apply text-code-debug;
+}
+
+.log > span[data-level=TRACE] {
+	@apply text-code-trace;
+}
+
+.log > span > span:nth-child(1) {
+	@apply relative text-transparent;
+}
+
+.log > span > span:nth-child(1):before {
+	content: attr(data-time);
+	@apply absolute h-full w-full text-center select-text text-fg-secondary opacity-100;
+}
+
+.log > span > span:nth-child(2) {
+	@apply font-bold;
+}
+
+.log > span > span[data-chat="true"] {
+	@apply text-white;
+}

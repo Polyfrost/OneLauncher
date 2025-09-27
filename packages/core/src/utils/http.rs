@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
 use bytes::Bytes;
-use reqwest::Method;
+use reqwest::{Method, RequestBuilder};
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
@@ -50,34 +50,32 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 
 pub async fn request(method: Method, url: &str) -> LauncherResult<reqwest::Response> {
-	request_builder(
-		method,
-		url,
-		None::<fn(reqwest::RequestBuilder) -> reqwest::Result<_>>,
-	)
-	.await
+	let req = build_request(method, url).build()?;
+	send_request(req).await
 }
 
-pub async fn request_builder(
-	method: Method,
-	url: &str,
-	builder: Option<impl Fn(reqwest::RequestBuilder) -> reqwest::Result<reqwest::Request>>,
-) -> LauncherResult<reqwest::Response> {
+pub fn build_request(method: Method, url: &str) -> RequestBuilder {
+	let client = &REQWEST_CLIENT;
+
+	client.request(method.clone(), url)
+}
+
+pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
 
 	let client = &REQWEST_CLIENT;
 
 	let mut attempt = 0;
+
 	let res = loop {
 		attempt += 1;
 
-		let req = client.request(method.clone(), url);
-		let req = match builder {
-			Some(ref builder) => builder(req),
-			None => req.build(),
-		}
-		.map_err(LauncherError::from)?;
+		let req = request.try_clone().ok_or_else(|| {
+			LauncherError::from(anyhow::anyhow!(
+				"failed to clone request for retry attempt {attempt}"
+			))
+		})?;
 
 		match client.execute(req).await {
 			Err(err) => {

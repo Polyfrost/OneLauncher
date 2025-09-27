@@ -15,8 +15,10 @@ export function AccountPopup() {
 	const users = useCommand(['getUsers'], bindings.core.getUsers);
 	const defaultUser = useCommand(['getDefaultUser'], () => bindings.core.getDefaultUser(false));
 
-	const setDefaultUser = (user: MinecraftCredentials) => {
-		bindings.core.setDefaultUser(user.id);
+	const setDefaultUser = async (user: MinecraftCredentials) => {
+		await bindings.core.setDefaultUser(user.id);
+		users.refetch();
+		defaultUser.refetch();
 	};
 
 	return (

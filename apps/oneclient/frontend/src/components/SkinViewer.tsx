@@ -9,7 +9,26 @@ export interface SkinViewerProps {
 	width?: number;
 	height?: number;
 	className?: string | undefined;
+	autoRotate?: boolean;
+	autoRotateSpeed?: number;
+	showText?: boolean;
+	playerRotateX?: number;
+	playerRotateY?: number;
+	playerRotateZ?: number;
+	translateRotateX?: number;
+	translateRotateY?: number;
+	translateRotateZ?: number;
+	zoom?: number;
+	animate?: boolean;
+	animation?: skinviewer.PlayerAnimation;
+	enableDamping?: boolean;
+	enableZoom?: boolean;
+	enableRotate?: boolean;
+	enablePan?: boolean;
 }
+
+
+const defaultIdleAnimation = new skinviewer.IdleAnimation();
 
 export function SkinViewer({
 	skinUrl,
@@ -17,6 +36,22 @@ export function SkinViewer({
 	width = 260,
 	height = 300,
 	className,
+	autoRotate = false,
+	autoRotateSpeed = 0.25,
+	showText = true,
+	playerRotateX = 0,
+	playerRotateY = 0,
+	playerRotateZ = 0,
+	translateRotateX = 0,
+	translateRotateY = 0,
+	translateRotateZ = 0,
+	zoom = 0.9,
+	animate = false,
+	animation = defaultIdleAnimation,
+	enableDamping = true,
+	enableZoom = true,
+	enableRotate = true,
+	enablePan = true,
 }: SkinViewerProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const viewerRef = useRef<skinviewer.SkinViewer | null>(null);
@@ -29,8 +64,23 @@ export function SkinViewer({
 			canvas: canvasRef.current,
 		});
 
-		viewer.autoRotate = true;
-		viewer.autoRotateSpeed = 0.25;
+		viewer.controls.enableDamping = enableDamping
+		viewer.controls.enableZoom = enableZoom
+		viewer.controls.enableRotate = enableRotate
+		viewer.controls.enablePan = enablePan
+
+		viewer.zoom = zoom;
+		viewer.playerWrapper.rotateX(playerRotateX);
+		viewer.playerWrapper.rotateY(playerRotateY);
+		viewer.playerWrapper.rotateZ(playerRotateZ);
+		viewer.playerWrapper.translateX(translateRotateX);
+		viewer.playerWrapper.translateY(translateRotateY);
+		viewer.playerWrapper.translateZ(translateRotateZ);
+
+		viewer.animation = animation;
+
+		viewer.autoRotate = autoRotate;
+		viewer.autoRotateSpeed = autoRotateSpeed;
 
 		viewerRef.current = viewer;
 
@@ -67,6 +117,20 @@ export function SkinViewer({
 		viewerRef.current.setSize(width, height);
 	}, [width, height]);
 
+	useEffect(() => {
+		if (!viewerRef.current)
+			return;
+
+		viewerRef.current.animation = animation;
+	}, [animation]);
+
+	useEffect(() => {
+		if (!viewerRef.current || !viewerRef.current.animation)
+			return;
+
+		viewerRef.current.animation.paused = !animate;
+	}, [animate]);
+
 	return (
 		<div className={twMerge('flex flex-col justify-center items-center', className)} style={{ minWidth: `${width}px`, minHeight: `${height}px` }}>
 			<canvas
@@ -75,7 +139,7 @@ export function SkinViewer({
 				width={width}
 			/>
 
-			<span className="text-fg-secondary text-xs">Hold to drag. Scroll to zoom in/out.</span>
+			{showText ? <span className="text-fg-secondary text-xs">Hold to drag. Scroll to zoom in/out.</span> : <></>}
 		</div>
 	);
 }

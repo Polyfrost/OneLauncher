@@ -9,8 +9,8 @@ import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { Trash01Icon } from '@untitled-theme/icons-react';
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Pencil01Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -154,6 +154,17 @@ function AccountRow({
 				</div>
 
 				<div className="flex flex-row items-center gap-2">
+					<Link to="/app/accountSkin">
+						{/* TODO: Find a better way to handle handle a user that isn't just changing the default user */}
+						<Button
+							className="group w-8 h-8"
+							color="ghost"
+							onPress={() => onPress()}
+							size="icon"
+						>
+							<Pencil01Icon className="group-hover:stroke-brand-hover" />
+						</Button>
+					</Link>
 					<DialogTrigger>
 						<Button className="group w-8 h-8" color="ghost" size="icon">
 							<Trash01Icon className="group-hover:stroke-danger" />

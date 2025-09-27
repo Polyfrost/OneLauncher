@@ -5,12 +5,13 @@ import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { IdleAnimation, WalkingAnimation } from 'skinview3d';
-import { RemoveSkinCapeModal } from '../../components/overlay';
+import { ImportSkinModal, RemoveSkinCapeModal } from '../../components/overlay';
 
 interface Skin {
 	is_slim?: boolean;
@@ -87,8 +88,9 @@ function RouteComponent() {
 		});
 		setSelectedCape(skinData.cape_url);
 
-		setCapes(['', ...capes])
+		setCapes(['', ...capes]);
 	}, [skinData.cape_url, profile]);
+
 
 	return (
 		<SheetPage
@@ -186,19 +188,19 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 				skinData={skin}
 				width={75}
 			/>
-			{selected.skin_url === skin.skin_url ?
-				<></>
-				:
-				<DialogTrigger>
-					<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-						<Trash01Icon className="group-hover:stroke-danger" />
-					</Button>
+			{selected.skin_url === skin.skin_url
+				? <></>
+				: (
+					<DialogTrigger>
+						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
+						</Button>
 
-					<Overlay>
-						<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-					</Overlay>
-				</DialogTrigger>
-			}
+						<Overlay>
+							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+						</Overlay>
+					</DialogTrigger>
+				)}
 		</div>
 	);
 }
@@ -259,6 +261,15 @@ function HeaderLarge({ username, animate, toggleAnimation }: { username: string;
 					<Button color="primary" size="large">
 						<p>Save</p>
 					</Button>
+					<DialogTrigger>
+						<Button color="secondary" size="large">
+							<p>Import</p>
+						</Button>
+
+						<Overlay>
+							<ImportSkinModal />
+						</Overlay>
+					</DialogTrigger>
 				</div>
 			</div>
 		</div>

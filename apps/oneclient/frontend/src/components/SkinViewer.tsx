@@ -64,10 +64,10 @@ export function SkinViewer({
 			canvas: canvasRef.current,
 		});
 
-		viewer.controls.enableDamping = enableDamping
-		viewer.controls.enableZoom = enableZoom
-		viewer.controls.enableRotate = enableRotate
-		viewer.controls.enablePan = enablePan
+		viewer.controls.enableDamping = enableDamping;
+		viewer.controls.enableZoom = enableZoom;
+		viewer.controls.enableRotate = enableRotate;
+		viewer.controls.enablePan = enablePan;
 
 		viewer.zoom = zoom;
 		viewer.playerWrapper.rotateX(playerRotateX);

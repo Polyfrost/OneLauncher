@@ -65,9 +65,11 @@ function RouteComponent() {
 	};
 
 	return (
-		<div className="flex flex-col h-full px-12 gap-8">
-			<h1 className="text-4xl font-semibold mb-2">Account</h1>
-			<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
+		<div className="flex flex-col h-full px-12 gap-4">
+			<div>
+				<h1 className="text-4xl font-semibold mb-2">Account</h1>
+				<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
+			</div>
 			{currentAccount ?
 				<>
 					<AccountPreview profile={currentAccount} />
@@ -92,6 +94,6 @@ function RouteComponent() {
 						)}
 				</>
 			}
-		</div >
+		</div>
 	);
 }

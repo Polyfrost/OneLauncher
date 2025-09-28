@@ -175,7 +175,7 @@ function BackgroundGradient() {
 }
 
 export function OnboardingNavigation() {
-	const { isFirstStep, isLastStep, previousPath, nextPath } = Route.useLoaderData();
+	const { isFirstStep, previousPath, nextPath } = Route.useLoaderData();
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">
@@ -187,11 +187,9 @@ export function OnboardingNavigation() {
 				)}
 			</div>
 			<div>
-				{nextPath && (
-					<Link to={nextPath}>
-						<Button className="w-32">{isLastStep ? 'Finish' : 'Next'}</Button>
-					</Link>
-				)}
+				<Link to={nextPath ?? "/app"}>
+					<Button className="w-32">Next</Button>
+				</Link>
 			</div>
 		</div>
 	);

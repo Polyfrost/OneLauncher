@@ -177,9 +177,9 @@ function BackgroundGradient() {
 }
 
 export function OnboardingNavigation() {
-	const { isFirstStep, isLastStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
+	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const disabled = currentStepIndex === 2 && currentAccount === null;
+	const forceLoginDisable = currentStepIndex === 2 && currentAccount === null;
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">
@@ -191,11 +191,9 @@ export function OnboardingNavigation() {
 				)}
 			</div>
 			<div>
-				{nextPath && (
-					<Link disabled={disabled} to={nextPath}>
-						<Button className={`w-32 ${disabled ? "line-through" : ""}`} color={disabled ? 'ghost' : 'primary'}>{isLastStep ? 'Finish' : 'Next'}</Button>
-					</Link>
-				)}
+				<Link disabled={forceLoginDisable} to={nextPath ?? "/app"}>
+					<Button className={`w-32 ${forceLoginDisable ? "line-through" : ""}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
+				</Link>
 			</div>
 		</div>
 	);

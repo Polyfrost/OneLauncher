@@ -21,7 +21,9 @@ pub struct MojangPlayerProfile {
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SkinVariant {
+	#[serde(alias = "CLASSIC")]
 	Classic,
+	#[serde(alias = "SLIM")]
 	Slim,
 }
 

@@ -1,9 +1,10 @@
+import type { SkinVariant } from '@/bindings.gen';
 import type { PlayerAnimation } from 'skinview3d';
 import { SheetPage, SkinViewer } from '@/components';
 import { Overlay } from '@/components/overlay/Overlay';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
-import { useCommandSuspense } from '@onelauncher/common';
+import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
@@ -47,10 +48,11 @@ export const Route = createFileRoute('/app/accountSkin')({
 const idleAnimation = new IdleAnimation();
 idleAnimation.speed = 0.15;
 const walkingAnimation = new WalkingAnimation();
-walkingAnimation.speed = 0.15;
+walkingAnimation.speed = 0.1;
 walkingAnimation.headBobbing = false;
 
 function RouteComponent() {
+	const queryClient = useQueryClient();
 	const [skins, setSkins] = useState<Array<Skin>>(skinsData);
 	const [capes, setCapes] = useState<Array<string>>(capesData);
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
@@ -91,15 +93,37 @@ function RouteComponent() {
 		setCapes(['', ...capes]);
 	}, [skinData.cape_url, profile]);
 
+	const importFromURL = (url: string) => {
+		setSkins([...skins, { is_slim: false, skin_url: url }]);
+	};
+
+	const { mutate: getLoggedInUser } = useCommandMut(bindings.core.fetchLoggedInProfile, {
+		onSuccess() {
+			queryClient.invalidateQueries({
+				queryKey: ['getDefaultUser'],
+			});
+		},
+	});
+
+	const saveSkin = () => {
+		if (!currentAccount)
+			return;
+		const token = getLoggedInUser(currentAccount.access_token);
+		console.log(currentAccount);
+	};
+
+	const toggleAnimation = () => {
+		setAnimation(isAnimated ? idleAnimation : walkingAnimation);
+		setAnimated(!isAnimated);
+	};
 
 	return (
 		<SheetPage
 			headerLarge={(
 				<HeaderLarge
-					animate={isAnimated} toggleAnimation={() => {
-						setAnimation(isAnimated ? idleAnimation : walkingAnimation);
-						setAnimated(!isAnimated);
-					}} username={profile?.username || 'UNKNOWN'}
+					importFromURL={importFromURL}
+					saveSkin={saveSkin}
+					username={profile?.username || 'UNKNOWN'}
 				/>
 			)}
 			headerSmall={<HeaderSmall />}
@@ -114,6 +138,14 @@ function RouteComponent() {
 							enableControls
 							skinData={selectedSkin}
 						/>
+						<Button
+							className="mt-2"
+							color="secondary"
+							onClick={toggleAnimation}
+							size="large"
+						>
+							<p>{`${isAnimated ? 'Stop' : 'Start'} Walking Animation`}</p>
+						</Button>
 					</div>
 
 					<div className="min-h-full w-px bg-component-border"></div>
@@ -248,17 +280,14 @@ function RenderCape({ selected, selectedSkin, animation, setSelectedCape, cape }
 	);
 }
 
-function HeaderLarge({ username, animate, toggleAnimation }: { username: string; animate: boolean; toggleAnimation: () => void }) {
+function HeaderLarge({ username, importFromURL, saveSkin }: { username: string; importFromURL: (url: string) => void; saveSkin: () => void }) {
 	return (
 		<div className="flex flex-row justify-between items-end gap-16">
 			<div className="flex-1 flex flex-row justify-between">
 				<h1 className="text-3xl font-semibold">{`${username}'s Skins`}</h1>
 
 				<div className="flex flex-row gap-2">
-					<Button color="secondary" onClick={toggleAnimation} size="large">
-						<p>{`${animate ? 'Stop' : 'Start'} Walking Animation`}</p>
-					</Button>
-					<Button color="primary" size="large">
+					<Button color="primary" onClick={saveSkin} size="large">
 						<p>Save</p>
 					</Button>
 					<DialogTrigger>
@@ -267,7 +296,7 @@ function HeaderLarge({ username, animate, toggleAnimation }: { username: string;
 						</Button>
 
 						<Overlay>
-							<ImportSkinModal />
+							<ImportSkinModal importFromURL={importFromURL} />
 						</Overlay>
 					</DialogTrigger>
 				</div>

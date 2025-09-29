@@ -1,9 +1,8 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import type { ButtonProps } from '@onelauncher/common/components';
 import { AccountAvatar, SheetPage, SkinViewer } from '@/components';
-import { AddAccountModal } from '@/components/overlay';
+import { AddAccountModal, RemoveAccountModal } from '@/components/overlay';
 import { Overlay } from '@/components/overlay/Overlay';
-import { RemoveAccountModal } from '@/components/overlay/RemoveAccountModal';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';

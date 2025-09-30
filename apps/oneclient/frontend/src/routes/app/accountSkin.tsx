@@ -1,11 +1,13 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import type { PlayerAnimation } from 'skinview3d';
 import { SheetPage, SkinViewer } from '@/components';
+import { ImportSkinModal, RemoveSkinCapeModal } from '@/components/overlay';
 import { Overlay } from '@/components/overlay/Overlay';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, downloadDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -14,7 +16,6 @@ import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-rea
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
-import { ImportSkinModal, RemoveSkinCapeModal } from '../../components/overlay';
 
 interface Skin {
 	is_slim?: boolean;
@@ -74,6 +75,7 @@ async function saveSkinHistory(skins: Array<Skin>): Promise<void> {
 }
 
 function RouteComponent() {
+	const queryClient = useQueryClient();
 	const [skins, setSkinsSTATE] = useState<Array<Skin>>([]);
 	const setSkins = (updater: Array<Skin> | ((prev: Array<Skin>) => Array<Skin>)) => {
 		const newSkins = typeof updater === 'function' ? updater(skins) : updater;
@@ -144,6 +146,28 @@ function RouteComponent() {
 		setSkins([...skins, { is_slim: false, skin_url: url }]);
 	};
 
+	const saveSkin = async () => {
+		try {
+			if (!currentAccount)
+				return;
+			if (!selectedSkin.skin_url || selectedSkin.is_slim === undefined)
+				return;
+			await bindings.core.changeSkin(currentAccount.access_token, selectedSkin.skin_url, selectedSkin.is_slim ? 'slim' : 'classic');
+			queryClient.invalidateQueries({
+				queryKey: ['getDefaultUser'],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ['fetchLoggedInProfile'],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ['fetchMinecraftProfile'],
+			});
+		}
+		catch (error) {
+			console.error(error);
+		}
+	};
+
 	if (currentAccount === null)
 		return (
 			<SheetPage headerLarge={<></>} headerSmall={<></>}>
@@ -173,7 +197,7 @@ function RouteComponent() {
 	return (
 		<SheetPage
 			headerLarge={(
-				<HeaderLarge username={profile?.username || 'UNKNOWN'} />
+				<HeaderLarge save={saveSkin} username={profile?.username || 'UNKNOWN'} />
 			)}
 			headerSmall={<HeaderSmall />}
 		>
@@ -300,16 +324,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-						<DialogTrigger>
-							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-								<Trash01Icon className="group-hover:stroke-danger" />
-							</Button>
+					<DialogTrigger>
+						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
+						</Button>
 
-							<Overlay>
-								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-							</Overlay>
-						</DialogTrigger>
-					)}
+						<Overlay>
+							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+						</Overlay>
+					</DialogTrigger>
+				)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"
@@ -365,14 +389,14 @@ function RenderCape({ selected, selectedSkin, animation, setSelectedCape, cape }
 	);
 }
 
-function HeaderLarge({ username }: { username: string }) {
+function HeaderLarge({ username, save }: { username: string; save: () => void }) {
 	return (
 		<div className="flex flex-row justify-between items-end gap-16">
 			<div className="flex-1 flex flex-row justify-between">
 				<h1 className="text-3xl font-semibold">{`${username}'s Skins`}</h1>
 
 				<div className="flex flex-row gap-2">
-					<Button color="primary" size="large">
+					<Button color="primary" onClick={save} size="large">
 						<p>Save</p>
 					</Button>
 				</div>

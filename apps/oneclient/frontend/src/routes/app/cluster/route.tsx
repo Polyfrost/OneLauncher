@@ -73,6 +73,7 @@ function RouteComponent() {
 				<Tab from={Route.id} search={search} to="/app/cluster/overview">Overview</Tab>
 				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 				<Tab from={Route.id} search={{ ...search, packageType: 'mod' }} to="/app/cluster/browser">Browser</Tab>
+				<Tab from={Route.id} search={search} to="/app/cluster/settings">Settings</Tab>
 				{isRunning && <span className="flex-1"></span>}
 				{isRunning && <Tab from={Route.id} search={search} to="/app/cluster/process">Process</Tab>}
 			</TabList>

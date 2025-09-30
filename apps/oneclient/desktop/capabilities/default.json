@@ -31,6 +31,9 @@
 		"dialog:allow-save",
 		"dialog:allow-confirm",
 		"deep-link:default",
-		"updater:default"
+		"updater:default",
+
+		"fs:allow-download-read",
+		"fs:allow-download-write"
 	]
 }

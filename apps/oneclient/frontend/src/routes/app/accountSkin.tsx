@@ -7,6 +7,9 @@ import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
+import { downloadDir, join } from '@tauri-apps/api/path';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeFile } from '@tauri-apps/plugin-fs';
 import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
@@ -200,6 +203,32 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 }
 
 function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { skin: Skin; selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>> }) {
+	const handleSave = async () => {
+		try {
+			if (!skin.skin_url)
+				return;
+			const filePath = await save({
+				title: 'Skin Export Location',
+				filters: [
+					{
+						name: 'Images',
+						extensions: ['png'],
+					},
+				],
+				defaultPath: await join(await downloadDir(), `${skin.skin_url.split('/').reverse()[0]}.png`),
+			});
+
+			if (!filePath)
+				return;
+
+			const response = await fetch(skin.skin_url);
+			const buffer = await response.arrayBuffer();
+
+			await writeFile(filePath, new Uint8Array(buffer));
+		} catch (error) {
+			console.error(error);
+		}
+	};
 	return (
 		<Button
 			className={`w-[75px] h-[120px] relative border rounded-xl bg-component-border ${selected.skin_url === skin.skin_url ? 'border-brand' : 'hover:border-brand border-component-border'}`}
@@ -226,6 +255,14 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 						</Overlay>
 					</DialogTrigger>
 				)}
+			<Button
+				className="group w-8 h-8 absolute bottom-0 right-0"
+				color="ghost"
+				onPress={handleSave}
+				size="icon"
+			>
+				<Download01Icon className="group-hover:stroke-brand" />
+			</Button>
 		</Button>
 	);
 }

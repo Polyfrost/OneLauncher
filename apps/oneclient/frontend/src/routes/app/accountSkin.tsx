@@ -7,9 +7,9 @@ import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { downloadDir, join } from '@tauri-apps/api/path';
+import { dataDir, downloadDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
-import { writeFile } from '@tauri-apps/plugin-fs';
+import { exists, mkdir, readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
@@ -34,18 +34,76 @@ const animations = [
 	{ name: 'Hit', animation: new HitAnimation(), speed: 0.1 },
 ];
 
+async function getSkinHistory(): Promise<Array<Skin>> {
+	const parentDir = await join(await dataDir(), 'OneClient', 'metadata', 'history');
+	const skinsPath = await join(parentDir, 'skins.json');
+	try {
+		const dirExists = await exists(parentDir);
+		if (!dirExists)
+			await mkdir(parentDir, { recursive: true });
+
+		const fileExists = await exists(skinsPath);
+		if (!fileExists) {
+			await writeTextFile(skinsPath, JSON.stringify([]));
+			return [];
+		}
+
+		const contents = await readTextFile(skinsPath);
+		return JSON.parse(contents) as Array<Skin>;
+	}
+	catch (error) {
+		console.error(error);
+		await writeTextFile(skinsPath, JSON.stringify([]));
+		return [];
+	}
+}
+
+async function saveSkinHistory(skins: Array<Skin>): Promise<void> {
+	const parentDir = await join(await dataDir(), 'OneClient', 'metadata', 'history');
+	const skinsPath = await join(parentDir, 'skins.json');
+	try {
+		const dirExists = await exists(parentDir);
+		if (!dirExists)
+			await mkdir(parentDir, { recursive: true });
+
+		await writeTextFile(skinsPath, JSON.stringify(skins));
+	}
+	catch (error) {
+		console.error(error);
+	}
+}
+
 function RouteComponent() {
-	const [skins, setSkins] = useState<Array<Skin>>([]);
+	const [skins, setSkinsSTATE] = useState<Array<Skin>>([]);
+	const setSkins = (updater: Array<Skin> | ((prev: Array<Skin>) => Array<Skin>)) => {
+		const newSkins = typeof updater === 'function' ? updater(skins) : updater;
+
+		const seen: Set<string> = new Set();
+		const filteredDupes = newSkins.filter((skin) => {
+			const key = skin.skin_url || '';
+			if (seen.has(key))
+				return false;
+			seen.add(key);
+			return true;
+		});
+
+		saveSkinHistory(filteredDupes);
+		setSkinsSTATE(filteredDupes);
+	};
 	const [capes, setCapes] = useState<Array<string>>([]);
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 	const { data: loggedInUser } = useCommandSuspense(['fetchLoggedInProfile'], () => bindings.core.fetchLoggedInProfile((currentAccount as MinecraftCredentials).access_token));
 	useEffect(() => {
-		setSkins(
-			loggedInUser.skins.map(skin => ({
+		async function fetchSkins() {
+			const skins: Array<Skin> = loggedInUser.skins.map(skin => ({
 				is_slim: skin.variant === 'slim',
 				skin_url: skin.url,
-			})),
-		);
+			}));
+			(await getSkinHistory()).forEach(skin => skins.push(skin));
+			setSkins(skins);
+		}
+
+		fetchSkins();
 
 		setCapes(loggedInUser.capes.map(cape => cape.url));
 	}, [loggedInUser]);
@@ -85,10 +143,6 @@ function RouteComponent() {
 	const importFromURL = (url: string) => {
 		setSkins([...skins, { is_slim: false, skin_url: url }]);
 	};
-
-	useEffect(() => {
-		importFromURL('http://textures.minecraft.net/texture/90b8789136facaa9f87b765140e1c8135e6652f513481bd84e6bd8c44844d7ce');
-	}, []);
 
 	if (currentAccount === null)
 		return (
@@ -225,7 +279,8 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 			const buffer = await response.arrayBuffer();
 
 			await writeFile(filePath, new Uint8Array(buffer));
-		} catch (error) {
+		}
+		catch (error) {
 			console.error(error);
 		}
 	};
@@ -245,16 +300,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-					<DialogTrigger>
-						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
+						<DialogTrigger>
+							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+								<Trash01Icon className="group-hover:stroke-danger" />
+							</Button>
 
-						<Overlay>
-							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-						</Overlay>
-					</DialogTrigger>
-				)}
+							<Overlay>
+								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+							</Overlay>
+						</DialogTrigger>
+					)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"

@@ -117,16 +117,6 @@ function AccountEntry({
 				</div>
 
 				<div className="flex flex-row items-center">
-					<DialogTrigger>
-						<Button className="group w-8 h-8" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
-
-						<Overlay>
-							<RemoveAccountModal onPress={onDelete} profile={user} />
-						</Overlay>
-					</DialogTrigger>
-
 					<Link to="/app/accountSkin">
 						<Button
 							className="group w-8 h-8"
@@ -137,6 +127,16 @@ function AccountEntry({
 							<Pencil01Icon className="group-hover:stroke-brand-hover" />
 						</Button>
 					</Link>
+
+					<DialogTrigger>
+						<Button className="group w-8 h-8" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
+						</Button>
+
+						<Overlay>
+							<RemoveAccountModal onPress={onDelete} profile={user} />
+						</Overlay>
+					</DialogTrigger>
 				</div>
 			</div>
 		</Button>

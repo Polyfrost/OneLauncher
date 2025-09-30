@@ -3,13 +3,14 @@ import { bindings } from '@/main';
 import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
-import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
+import { PlusIcon, Settings01Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from '../AccountAvatar';
 import { AddAccountModal } from './AddAccountModal';
 import { Overlay } from './Overlay';
 import { Popup } from './Popup';
+import { RemoveAccountModal } from './RemoveAccountModal';
 
 export function AccountPopup() {
 	const users = useCommand(['getUsers'], bindings.core.getUsers);
@@ -21,6 +22,17 @@ export function AccountPopup() {
 		defaultUser.refetch();
 	};
 
+	const deleteUser = async (user: MinecraftCredentials) => {
+		await bindings.core.removeUser(user.id);
+		users.refetch();
+		defaultUser.refetch();
+
+		if (defaultUser.data && defaultUser.data.id === user.id && users.data && users.data.length > 1) {
+			const filtered = users.data.filter((userData) => userData.id !== user.id)
+			if (filtered.length > 0) setDefaultUser(filtered[0]);
+		}
+	};
+
 	return (
 		<Popup placement="top left">
 
@@ -30,6 +42,7 @@ export function AccountPopup() {
 						<AccountEntry
 							loggedIn
 							onClick={() => { }}
+							onDelete={() => deleteUser(defaultUser.data)}
 							user={defaultUser.data}
 						/>
 					</div>
@@ -39,6 +52,7 @@ export function AccountPopup() {
 					<div key={user.id}>
 						<AccountEntry
 							onClick={() => setDefaultUser(user)}
+							onDelete={() => deleteUser(user)}
 							user={user}
 						/>
 					</div>
@@ -75,10 +89,12 @@ export default AccountPopup;
 
 function AccountEntry({
 	onClick,
+	onDelete,
 	user,
 	loggedIn = false,
 }: {
 	onClick: () => void;
+	onDelete: () => void;
 	user: MinecraftCredentials;
 	loggedIn?: boolean;
 }) {
@@ -88,13 +104,25 @@ function AccountEntry({
 			onClick={onClick}
 		>
 			<div className="flex flex-1 flex-row justify-start gap-x-3">
-				<AccountAvatar className="h-8 w-8 rounded-md" uuid={user.id} />
-				<div className="flex flex-col items-center justify-center">
-					<div className="flex flex-col items-start justify-between">
-						<p className="h-[18px] font-semibold">{user.username}</p>
-						{loggedIn && <p className="text-xs">Logged in</p>}
+				<div className="flex flex-1 flex-row justify-start gap-x-3">
+					<AccountAvatar className="h-8 w-8 rounded-md" uuid={user.id} />
+					<div className="flex flex-col items-center justify-center">
+						<div className="flex flex-col items-start justify-between">
+							<p className="h-[18px] font-semibold">{user.username}</p>
+							{loggedIn && <p className="text-xs">Logged in</p>}
+						</div>
 					</div>
 				</div>
+
+				<DialogTrigger>
+					<Button className="group w-8 h-8" color="ghost" size="icon">
+						<Trash01Icon className="group-hover:stroke-danger" />
+					</Button>
+
+					<Overlay>
+						<RemoveAccountModal onPress={onDelete} profile={user} />
+					</Overlay>
+				</DialogTrigger>
 			</div>
 		</div>
 	);

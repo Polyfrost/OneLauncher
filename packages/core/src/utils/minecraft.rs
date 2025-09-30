@@ -39,7 +39,8 @@ impl std::fmt::Display for SkinVariant {
 #[onelauncher_macro::specta]
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct MojangFullPlayerProfile {
-	pub uuid: String,
+	pub id: String,
+	#[serde(alias = "name")]
 	pub username: String,
 	pub skins: Vec<MojangSkin>,
 	pub capes: Vec<MojangCape>,

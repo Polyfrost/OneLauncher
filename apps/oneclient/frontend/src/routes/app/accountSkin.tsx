@@ -335,16 +335,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-					<DialogTrigger>
-						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
+						<DialogTrigger>
+							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+								<Trash01Icon className="group-hover:stroke-danger" />
+							</Button>
 
-						<Overlay>
-							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-						</Overlay>
-					</DialogTrigger>
-				)}
+							<Overlay>
+								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+							</Overlay>
+						</DialogTrigger>
+					)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"
@@ -444,7 +444,7 @@ function Viewer({ skinData, capeURL, height = 400, width = 250, showText = true,
 			enableRotate={enableControls}
 			enableZoom={enableControls}
 			height={height}
-			playerRotateY={flip ? Math.PI : 0}
+			playerRotateTheta={(-Math.PI / 6) - (flip ? Math.PI : 0)}
 			showText={showText}
 			skinUrl={skinData.skin_url}
 			translateRotateY={-2}

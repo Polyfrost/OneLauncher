@@ -12,9 +12,8 @@ export interface SkinViewerProps {
 	autoRotate?: boolean;
 	autoRotateSpeed?: number;
 	showText?: boolean;
-	playerRotateX?: number;
-	playerRotateY?: number;
-	playerRotateZ?: number;
+	playerRotatePhi?: number;
+	playerRotateTheta?: number;
 	translateRotateX?: number;
 	translateRotateY?: number;
 	translateRotateZ?: number;
@@ -36,12 +35,11 @@ export function SkinViewer({
 	width = 260,
 	height = 300,
 	className,
-	autoRotate = false,
+	autoRotate = true,
 	autoRotateSpeed = 0.25,
 	showText = true,
-	playerRotateX = 0,
-	playerRotateY = 0,
-	playerRotateZ = 0,
+	playerRotatePhi = Math.PI / 3,
+	playerRotateTheta = -Math.PI / 6,
 	translateRotateX = 0,
 	translateRotateY = 0,
 	translateRotateZ = 0,
@@ -71,12 +69,21 @@ export function SkinViewer({
 		viewer.controls.enablePan = enablePan;
 
 		viewer.zoom = zoom;
-		viewer.playerWrapper.rotateX(playerRotateX);
-		viewer.playerWrapper.rotateY(playerRotateY);
-		viewer.playerWrapper.rotateZ(playerRotateZ);
+
+		const setAngle = (phi: number, theta: number) => {
+			const r = viewer.controls.object.position.distanceTo(viewer.controls.target);
+			const x = r * Math.cos(phi - Math.PI / 2) * Math.sin(theta) + viewer.controls.target.x;
+			const y = r * Math.sin(phi + Math.PI / 2) + viewer.controls.target.y;
+			const z = r * Math.cos(phi - Math.PI / 2) * Math.cos(theta) + viewer.controls.target.z;
+			viewer.controls.object.position.set(x, y, z);
+			viewer.controls.object.lookAt(viewer.controls.target);
+		};
+		setAngle(playerRotatePhi, playerRotateTheta)
+
 		viewer.playerWrapper.translateX(translateRotateX);
 		viewer.playerWrapper.translateY(translateRotateY);
 		viewer.playerWrapper.translateZ(translateRotateZ);
+
 
 		viewer.animation = animation;
 
@@ -97,13 +104,12 @@ export function SkinViewer({
 		viewerRef.current.loadSkin(getSkinUrl(skinUrl));
 	}, [skinUrl]);
 
-
 	useEffect(() => {
 		if (!viewerRef.current)
 			return;
 
 		if (capeUrl)
-			viewerRef.current.loadCape(capeUrl, { backEquipment: elytra ? "elytra" : "cape" });
+			viewerRef.current.loadCape(capeUrl, { backEquipment: elytra ? 'elytra' : 'cape' });
 		else
 			viewerRef.current.resetCape();
 	}, [capeUrl, elytra]);

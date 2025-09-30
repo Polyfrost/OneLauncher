@@ -35,15 +35,15 @@ This project uses [`Cargo`] and [`pnpm`]. Make ensure you have them installed be
 
 To make changes locally, follow these steps:
 
-1. Clone the repository: `git clone https://github.com/polyfrost/onelauncher`
-2. Navigate to the project directory: `cd onelauncher`
+1. Clone the repository: `git clone https://github.com/Polyfrost/OneLauncher`
+2. Navigate to the project directory: `cd OneLauncher`
 3. Configure your system environment for OneLauncher development:
    1. For Linux users, run: `./packages/scripts/setup.sh`
       > The [Unix script] will check if Rust and pnpm are installed then proceed to install Clang, NASM, LLVM, libvips, [Tauri essentials] and any other required dependencies for OneLauncher to build.
    2. For macOS users, run: `./packages/scripts/setup.sh`
       > The [Unix script] will check if Rust, pnpm and Xcode are installed and proceed to use Homebrew to install NASM, [Tauri essentials] and install any other required dependencies for OneLauncher to build.
-   3. For Windows users, run in PowerShell: `.\packages\scripts\setup.ps1`
-      > The [Unix script] will install pnpm, LLVM, C++ build tools, NASM, Rust + Cargo, Rust tools, Edge Webview 2, [Tauri essentials] and any other required dependencies for OneLauncher to build.
+   3. For Windows users, run in PowerShell: `powershell -ExecutionPolicy Bypass -File .\packages\scripts\setup.ps1`
+      > The [Windows script] will install pnpm, LLVM, C++ build tools, NASM, Rust + Cargo, Rust tools, Edge Webview 2, [Tauri essentials] and any other required dependencies for OneLauncher to build.
 4. Install dependencies: `pnpm i`
 5. Prepare your cargo installation: `pnpm prep`
 
@@ -98,11 +98,11 @@ Check out the [i18n README](apps/desktop/locales/README.md) for more information
 This CONTRIBUTING.md file was inspired by the [`github/docs` CONTRIBUTING.md] file, and we extend our gratitude to the original authors.
 
 [Tauri essentials]: https://v2.tauri.app/start/prerequisites/
-[Unix script]: https://github.com/polyfrost/onelauncher/blob/main/packages/scripts/setup.sh
-[Windows script]: https://github.com/polyfrost/onelauncher/blob/main/packages/scripts/setup.ps1
+[Unix script]: https://github.com/Polyfrost/OneLauncher/blob/oneclient/main/packages/scripts/setup.sh
+[Windows script]: https://github.com/Polyfrost/OneLauncher/blob/oneclient/main/packages/scripts/setup.ps1
 [`cargo`]: https://doc.rust-lang.org/cargo/getting-started/installation.html
 [`pnpm`]: https://pnpm.io/installation
-[Labels]: https://github.com/polyfrost/onelauncher/labels
+[Labels]: https://github.com/Polyfrost/OneLauncher/labels
 [the `pnpm` CLI]: https://pnpm.io/pnpm-cli
 [Collaborating with pull requests]: https://docs.github.com/en/github/collaborating-with-pull-requests
 [GitHub flow]: https://docs.github.com/en/get-started/quickstart/github-flow
@@ -111,8 +111,8 @@ This CONTRIBUTING.md file was inspired by the [`github/docs` CONTRIBUTING.md] fi
 [Code of Conduct]: ./CODE_OF_CONDUCT.md
 [README]: ./README.md
 [search if a related issue has already been reported]: https://docs.github.com/en/github/searching-for-information-on-github/searching-on-github/searching-issues-and-pull-requests#search-by-the-title-body-or-comments
-[issue form]: https://github.com/polyfrost/onelauncher/issues/new/choose
-[existing issues]: https://github.com/polyfrost/onelauncher/issues
+[issue form]: https://github.com/Polyfrost/OneLauncher/issues/new/choose
+[existing issues]: https://github.com/Polyfrost/OneLauncher/issues
 [`github/docs` CONTRIBUTING.md]: https://github.com/github/docs/blob/main/CONTRIBUTING.md
 [link your PR to the issue]: https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue
 [allow maintainer edits]: https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/allowing-changes-to-a-pull-request-branch-created-from-a-fork

@@ -4,7 +4,9 @@ import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import { Stepper } from '@/components/Stepper';
+import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
+import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
@@ -175,23 +177,23 @@ function BackgroundGradient() {
 }
 
 export function OnboardingNavigation() {
-	const { isFirstStep, isLastStep, previousPath, nextPath } = Route.useLoaderData();
+	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
+	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
+	const forceLoginDisable = currentStepIndex === 2 && currentAccount === null;
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">
 			<div>
 				{!isFirstStep && previousPath && (
 					<Link to={previousPath}>
-						<Button className="w-32" color="ghost">Back</Button>
+						<Button className="w-32" color="secondary">Back</Button>
 					</Link>
 				)}
 			</div>
 			<div>
-				{nextPath && (
-					<Link to={nextPath}>
-						<Button className="w-32">{isLastStep ? 'Finish' : 'Next'}</Button>
-					</Link>
-				)}
+				<Link disabled={forceLoginDisable} to={nextPath ?? "/app"}>
+					<Button className={`w-32 ${forceLoginDisable ? "line-through" : ""}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
+				</Link>
 			</div>
 		</div>
 	);

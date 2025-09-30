@@ -197,10 +197,32 @@ pub trait TauriLauncherApi {
 	// endregion: modpack
 
 	// MARK: API: minecraft
+	// region: minecraft
 	#[taurpc(alias = "fetchMinecraftProfile")]
 	async fn fetch_player_profile(
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile>;
+
+	#[taurpc(alias = "fetchLoggedInProfile")]
+	async fn fetch_logged_in_profile(
+		access_token: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile>;
+
+	#[taurpc(alias = "uploadSkinBytes")]
+	async fn upload_skin_bytes(
+		access_token: String,
+		skin_data: Vec<u8>,
+		image_format: String,
+		skin_variant: crate::utils::minecraft::SkinVariant,
+	) -> LauncherResult<crate::utils::minecraft::MojangSkin>;
+
+	#[taurpc(alias = "changeSkin")]
+	async fn change_skin(
+		access_token: String,
+		skin_url: String,
+		skin_variant: crate::utils::minecraft::SkinVariant,
+	) -> LauncherResult<crate::utils::minecraft::MojangSkin>;
+	// endregion: minecraft
 
 	// MARK: API: Other
 	async fn open(input: String) -> LauncherResult<()>;
@@ -689,6 +711,38 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangPlayerProfile> {
 		crate::utils::minecraft::fetch_player_profile(&uuid).await
+	}
+
+	async fn fetch_logged_in_profile(
+		self,
+		access_token: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile> {
+		crate::utils::minecraft::fetch_logged_in_profile(&access_token).await
+	}
+
+	async fn upload_skin_bytes(
+		self,
+		access_token: String,
+		skin_data: Vec<u8>,
+		image_format: String,
+		skin_variant: crate::utils::minecraft::SkinVariant,
+	) -> LauncherResult<crate::utils::minecraft::MojangSkin> {
+		crate::utils::minecraft::upload_skin_bytes(
+			&access_token,
+			skin_data,
+			&image_format,
+			skin_variant,
+		)
+		.await
+	}
+
+	async fn change_skin(
+		self,
+		access_token: String,
+		skin_url: String,
+		skin_variant: crate::utils::minecraft::SkinVariant,
+	) -> LauncherResult<crate::utils::minecraft::MojangSkin> {
+		crate::utils::minecraft::change_skin(&access_token, &skin_url, skin_variant).await
 	}
 	// endregion: minecraft
 

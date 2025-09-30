@@ -145,6 +145,7 @@ function RouteComponent() {
 	const importFromURL = (url: string) => {
 		setSkins([...skins, { is_slim: false, skin_url: url }]);
 	};
+	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
 
 	const saveSkin = async () => {
 		try {
@@ -211,7 +212,9 @@ function RouteComponent() {
 
 						<Viewer
 							animation={animation}
+							capeURL={selectedCape}
 							enableControls
+							shouldShowElytra={shouldShowElytra}
 							skinData={selectedSkin}
 						/>
 					</div>
@@ -222,10 +225,12 @@ function RouteComponent() {
 
 						<SkinHistoryRow
 							animation={animation}
+							capeURL={selectedCape}
 							importFromURL={importFromURL}
 							selected={selectedSkin}
 							setSelectedSkin={setSelectedSkin}
 							setSkins={setSkins}
+							shouldShowElytra={shouldShowElytra}
 							skins={skins}
 						/>
 
@@ -237,6 +242,8 @@ function RouteComponent() {
 							selected={selectedCape}
 							selectedSkin={selectedSkin}
 							setSelectedCape={setSelectedCape}
+							setShouldShowElytra={() => setShouldShowElytra(!shouldShowElytra)}
+							shouldShowElytra={shouldShowElytra}
 						/>
 
 					</div>
@@ -247,7 +254,7 @@ function RouteComponent() {
 	);
 }
 
-function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; importFromURL: (url: string) => void }) {
+function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; importFromURL: (url: string) => void; capeURL: string; shouldShowElytra: boolean }) {
 	return (
 		<div className="flex flex-col h-full justify-around">
 			<div className="flex flex-col justify-center items-center">
@@ -268,10 +275,12 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 				{skins.map(skinData => (
 					<RenderSkin
 						animation={animation}
+						capeURL={capeURL}
 						key={skinData.skin_url}
 						selected={selected}
 						setSelectedSkin={setSelectedSkin}
 						setSkins={setSkins}
+						shouldShowElytra={shouldShowElytra}
 						skin={skinData}
 					/>
 				))}
@@ -280,7 +289,7 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 	);
 }
 
-function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { skin: Skin; selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>> }) {
+function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, capeURL, shouldShowElytra }: { skin: Skin; selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; capeURL: string; shouldShowElytra: boolean }) {
 	const handleSave = async () => {
 		try {
 			if (!skin.skin_url)
@@ -316,7 +325,9 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 		>
 			<Viewer
 				animation={animation}
+				capeURL={capeURL}
 				height={120}
+				shouldShowElytra={shouldShowElytra}
 				showText={false}
 				skinData={skin}
 				width={75}
@@ -346,7 +357,7 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins }: { 
 	);
 }
 
-function CapeRow({ selected, selectedSkin, animation, setSelectedCape, capes }: { selected: string | null; selectedSkin: Skin; animation: PlayerAnimation; setSelectedCape: (cape: string) => void; capes: Array<string> }) {
+function CapeRow({ selected, selectedSkin, animation, setSelectedCape, capes, shouldShowElytra, setShouldShowElytra }: { selected: string | null; selectedSkin: Skin; animation: PlayerAnimation; setSelectedCape: (cape: string) => void; capes: Array<string>; shouldShowElytra: boolean; setShouldShowElytra: () => void }) {
 	return (
 		<div className="flex flex-col h-full justify-around">
 			<div className="flex flex-row h-fit gap-2">
@@ -358,6 +369,7 @@ function CapeRow({ selected, selectedSkin, animation, setSelectedCape, capes }: 
 						selected={selected}
 						selectedSkin={selectedSkin}
 						setSelectedCape={setSelectedCape}
+						shouldShowElytra={shouldShowElytra}
 					/>
 				))}
 
@@ -365,12 +377,15 @@ function CapeRow({ selected, selectedSkin, animation, setSelectedCape, capes }: 
 
 			<div className="flex flex-col justify-center items-center">
 				<p>Cape History</p>
+				<Button color="ghost" onClick={setShouldShowElytra}>
+					<p>{`${shouldShowElytra ? 'Disable' : 'Enable'} Elytra`}</p>
+				</Button>
 			</div>
 		</div>
 	);
 }
 
-function RenderCape({ selected, selectedSkin, animation, setSelectedCape, cape }: { selected: string | null; selectedSkin: Skin; animation: PlayerAnimation; setSelectedCape: (cape: string) => void; cape: string }) {
+function RenderCape({ selected, selectedSkin, animation, setSelectedCape, cape, shouldShowElytra }: { selected: string | null; selectedSkin: Skin; animation: PlayerAnimation; setSelectedCape: (cape: string) => void; cape: string; shouldShowElytra: boolean }) {
 	return (
 		<Button
 			className={`w-[75px] h-[120px] relative border rounded-xl bg-component-border ${selected === cape ? 'border-brand' : 'hover:border-brand border-component-border'}`}
@@ -379,8 +394,10 @@ function RenderCape({ selected, selectedSkin, animation, setSelectedCape, cape }
 		>
 			<Viewer
 				animation={animation}
+				capeURL={cape}
 				flip
 				height={120}
+				shouldShowElytra={shouldShowElytra}
 				showText={false}
 				skinData={{ ...selectedSkin, cape_url: cape }}
 				width={75}
@@ -413,21 +430,21 @@ function HeaderSmall() {
 	);
 }
 
-function Viewer({ skinData, height = 400, width = 250, showText = true, animation, enableControls = false, flip = false }: { skinData: Skin; height?: number; width?: number; showText?: boolean; animation?: PlayerAnimation; enableControls?: boolean; flip?: boolean }) {
+function Viewer({ skinData, capeURL, height = 400, width = 250, showText = true, animation, enableControls = false, flip = false, shouldShowElytra }: { skinData: Skin; capeURL: string; height?: number; width?: number; showText?: boolean; animation?: PlayerAnimation; enableControls?: boolean; flip?: boolean; shouldShowElytra: boolean }) {
 	return (
 		<SkinViewer
 			animate
 			animation={animation}
 			autoRotate={false}
-			capeUrl={skinData.cape_url}
+			capeUrl={capeURL === '' ? null : capeURL}
 			className="h-full w-full max-w-1/4"
+			elytra={shouldShowElytra}
 			enableDamping={enableControls}
 			enablePan={enableControls}
 			enableRotate={enableControls}
 			enableZoom={enableControls}
 			height={height}
-			playerRotateX={Math.PI / 6}
-			playerRotateY={Math.PI / 4 + (flip ? Math.PI : 0)}
+			playerRotateY={flip ? Math.PI : 0}
 			showText={showText}
 			skinUrl={skinData.skin_url}
 			translateRotateY={-2}

@@ -25,8 +25,8 @@ export interface SkinViewerProps {
 	enableZoom?: boolean;
 	enableRotate?: boolean;
 	enablePan?: boolean;
+	elytra?: boolean;
 }
-
 
 const defaultIdleAnimation = new skinviewer.IdleAnimation();
 
@@ -52,6 +52,7 @@ export function SkinViewer({
 	enableZoom = true,
 	enableRotate = true,
 	enablePan = true,
+	elytra = false
 }: SkinViewerProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const viewerRef = useRef<skinviewer.SkinViewer | null>(null);
@@ -96,19 +97,16 @@ export function SkinViewer({
 		viewerRef.current.loadSkin(getSkinUrl(skinUrl));
 	}, [skinUrl]);
 
-	useEffect(() => {
-
-	}, [capeUrl]);
 
 	useEffect(() => {
 		if (!viewerRef.current)
 			return;
 
 		if (capeUrl)
-			viewerRef.current.loadCape(capeUrl);
+			viewerRef.current.loadCape(capeUrl, { backEquipment: elytra ? "elytra" : "cape" });
 		else
 			viewerRef.current.resetCape();
-	}, [capeUrl]);
+	}, [capeUrl, elytra]);
 
 	useEffect(() => {
 		if (!viewerRef.current)

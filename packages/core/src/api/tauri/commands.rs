@@ -4,6 +4,7 @@ use crate::api::packages::data::{
 };
 use crate::api::packages::modpack::data::ModpackArchive;
 use crate::api::packages::provider::ProviderExt;
+use crate::api::setting_profiles::get_global_profile;
 use crate::store::processes::Process;
 use crate::store::{Settings, State};
 use crate::utils::pagination::Paginated;
@@ -89,6 +90,9 @@ pub trait TauriLauncherApi {
 		name: String,
 		profile: ProfileUpdate,
 	) -> LauncherResult<SettingsProfile>;
+
+	#[taurpc(alias = "createSettingsProfile")]
+	async fn create_settings_profile(name: String) -> LauncherResult<SettingsProfile>;
 	// endregion: profiles
 
 	// MARK: API: metadata
@@ -237,6 +241,7 @@ pub struct CreateCluster {
 pub struct ClusterUpdate {
 	name: Option<String>,
 	icon_url: Option<Icon>,
+	setting_profile_name: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, specta::Type, Clone)]
@@ -345,6 +350,10 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 					api::cluster::dao::set_icon_by_id(id, &icon_url).await?;
 				}
 
+				if let Some(setting_profile_name) = request.setting_profile_name {
+					active_model.setting_profile_name = Set(Some(setting_profile_name))
+				}
+
 				Ok(active_model)
 			},
 		)
@@ -416,6 +425,13 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 	async fn get_profile_or_default(self, name: Option<String>) -> LauncherResult<SettingsProfile> {
 		api::setting_profiles::dao::get_profile_or_default(name.as_ref()).await
+	}
+
+	async fn create_settings_profile(self, name: String) -> LauncherResult<SettingsProfile> {
+		let mut profile = get_global_profile().await;
+		profile.name = name;
+
+		api::setting_profiles::dao::insert_profile(profile.into()).await
 	}
 
 	// please kill this with fire

@@ -277,3 +277,23 @@ pub async fn remove_cape(access_token: &str) -> LauncherResult<MojangFullPlayerP
 	)
 	.await
 }
+
+#[onelauncher_macro::specta]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct MowojangProfile {
+	pub id: String,
+	#[serde(alias = "name")]
+	pub username: String,
+}
+
+pub async fn convert_username_uuid(username_uuid: &str) -> LauncherResult<MowojangProfile> {
+	http::fetch_json_advanced::<MowojangProfile>(
+		Method::GET,
+		&format!("https://mowojang.matdoes.dev/{username_uuid}"),
+		None,
+		None,
+		None,
+		None,
+	)
+	.await
+}

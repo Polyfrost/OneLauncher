@@ -17,6 +17,7 @@ import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-rea
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
+import { toast } from '@/utils/toast';
 
 interface Skin {
 	is_slim: boolean;
@@ -137,6 +138,30 @@ function RouteComponent() {
 	const importFromURL = (url: string) => {
 		setSkins([...skins, { is_slim: false, skin_url: url }]);
 	};
+
+	const importFromUsername = async (username: string) => {
+		toast({
+			type: 'info',
+			title: 'Import Skin',
+			message: `Importing skin from ${username}`,
+		});
+		const { id } = await bindings.core.convertUsernameUUID(username) ?? { id: '', username: '' }
+		if (id === '')
+			return toast({
+				type: 'error',
+				title: 'Import Skin',
+				message: `${username} doesn't exist`,
+			});
+		const playerProfile = await bindings.core.fetchMinecraftProfile(id)
+		if (playerProfile.skin_url)
+			setSkins([...skins, { is_slim: playerProfile.is_slim, skin_url: playerProfile.skin_url }]);
+		toast({
+			type: 'success',
+			title: 'Import Skin',
+			message: `Imported skin from ${username}`,
+		});
+	}
+
 	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
 
 	const saveSkinToAccount = async () => {
@@ -227,6 +252,7 @@ function RouteComponent() {
 							animation={animation}
 							capeURL={selectedCape}
 							importFromURL={importFromURL}
+							importFromUsername={importFromUsername}
 							selected={selectedSkin}
 							setSelectedSkin={setSelectedSkin}
 							setSkins={setSkins}
@@ -254,7 +280,7 @@ function RouteComponent() {
 	);
 }
 
-function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; importFromURL: (url: string) => void; capeURL: string; shouldShowElytra: boolean }) {
+function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, importFromUsername, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; importFromURL: (url: string) => void; importFromUsername: (username: string) => void; capeURL: string; shouldShowElytra: boolean }) {
 	return (
 		<div className="flex flex-col h-full justify-around">
 			<div className="flex flex-col justify-center items-center">
@@ -269,7 +295,7 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 						</div>
 					</Button>
 					<Overlay>
-						<ImportSkinModal importFromURL={importFromURL} />
+						<ImportSkinModal importFromURL={importFromURL} importFromUsername={importFromUsername} />
 					</Overlay>
 				</DialogTrigger>
 				{skins.map(skinData => (

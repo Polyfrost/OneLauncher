@@ -233,6 +233,11 @@ pub trait TauriLauncherApi {
 	async fn remove_cape(
 		access_token: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile>;
+
+	#[taurpc(alias = "convertUsernameUUID")]
+	async fn convert_username_uuid(
+		username_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MowojangProfile>;
 	// endregion: minecraft
 
 	// MARK: API: Other
@@ -769,6 +774,13 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		access_token: String,
 	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile> {
 		crate::utils::minecraft::remove_cape(&access_token).await
+	}
+
+	async fn convert_username_uuid(
+		self,
+		username_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MowojangProfile> {
+		crate::utils::minecraft::convert_username_uuid(&username_uuid).await
 	}
 	// endregion: minecraft
 

@@ -2,7 +2,7 @@ import { Button, TextField } from '@onelauncher/common/components';
 import { useState } from 'react';
 import { Overlay } from './Overlay';
 
-export function ImportSkinModal({ importFromURL }: { importFromURL: (url: string) => void }) {
+export function ImportSkinModal({ importFromURL, importFromUsername }: { importFromURL: (url: string) => void; importFromUsername: (username: string) => void }) {
 	const [input, setInput] = useState<string>('');
 	return (
 		<Overlay.Dialog>
@@ -13,6 +13,7 @@ export function ImportSkinModal({ importFromURL }: { importFromURL: (url: string
 				<Button
 					className="w-1/2"
 					color="primary"
+					onClick={() => importFromUsername(input)}
 					size="normal"
 					slot="close"
 				>

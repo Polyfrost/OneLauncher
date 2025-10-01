@@ -222,6 +222,22 @@ pub trait TauriLauncherApi {
 		skin_url: String,
 		skin_variant: crate::utils::minecraft::SkinVariant,
 	) -> LauncherResult<crate::utils::minecraft::MojangSkin>;
+
+	#[taurpc(alias = "changeCape")]
+	async fn change_cape(
+		access_token: String,
+		cape_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile>;
+
+	#[taurpc(alias = "removeCape")]
+	async fn remove_cape(
+		access_token: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile>;
+
+	#[taurpc(alias = "convertUsernameUUID")]
+	async fn convert_username_uuid(
+		username_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MowojangProfile>;
 	// endregion: minecraft
 
 	// MARK: API: Other
@@ -743,6 +759,28 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		skin_variant: crate::utils::minecraft::SkinVariant,
 	) -> LauncherResult<crate::utils::minecraft::MojangSkin> {
 		crate::utils::minecraft::change_skin(&access_token, &skin_url, skin_variant).await
+	}
+
+	async fn change_cape(
+		self,
+		access_token: String,
+		cape_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile> {
+		crate::utils::minecraft::change_cape(&access_token, &cape_uuid).await
+	}
+
+	async fn remove_cape(
+		self,
+		access_token: String,
+	) -> LauncherResult<crate::utils::minecraft::MojangFullPlayerProfile> {
+		crate::utils::minecraft::remove_cape(&access_token).await
+	}
+
+	async fn convert_username_uuid(
+		self,
+		username_uuid: String,
+	) -> LauncherResult<crate::utils::minecraft::MowojangProfile> {
+		crate::utils::minecraft::convert_username_uuid(&username_uuid).await
 	}
 	// endregion: minecraft
 

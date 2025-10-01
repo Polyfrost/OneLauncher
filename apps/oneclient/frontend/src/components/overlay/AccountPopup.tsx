@@ -3,7 +3,7 @@ import { bindings } from '@/main';
 import { useCommand, useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
-import { PlusIcon, Settings01Icon, Trash01Icon } from '@untitled-theme/icons-react';
+import { Pencil01Icon, PlusIcon, Settings01Icon, Trash01Icon } from '@untitled-theme/icons-react';
 import { DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from '../AccountAvatar';
@@ -28,8 +28,9 @@ export function AccountPopup() {
 		defaultUser.refetch();
 
 		if (defaultUser.data && defaultUser.data.id === user.id && users.data && users.data.length > 1) {
-			const filtered = users.data.filter((userData) => userData.id !== user.id)
-			if (filtered.length > 0) setDefaultUser(filtered[0]);
+			const filtered = users.data.filter(userData => userData.id !== user.id);
+			if (filtered.length > 0)
+				setDefaultUser(filtered[0]);
 		}
 	};
 
@@ -99,8 +100,9 @@ function AccountEntry({
 	loggedIn?: boolean;
 }) {
 	return (
-		<div
-			className={twMerge('flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')}
+		<Button
+			className={twMerge('w-full flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')}
+			color="ghost"
 			onClick={onClick}
 		>
 			<div className="flex flex-1 flex-row justify-start gap-x-3">
@@ -114,16 +116,29 @@ function AccountEntry({
 					</div>
 				</div>
 
-				<DialogTrigger>
-					<Button className="group w-8 h-8" color="ghost" size="icon">
-						<Trash01Icon className="group-hover:stroke-danger" />
-					</Button>
+				<div className="flex flex-row items-center">
+					<Link to="/app/accountSkin">
+						<Button
+							className="group w-8 h-8"
+							color="ghost"
+							onClick={onClick}
+							size="icon"
+						>
+							<Pencil01Icon className="group-hover:stroke-brand-hover" />
+						</Button>
+					</Link>
 
-					<Overlay>
-						<RemoveAccountModal onPress={onDelete} profile={user} />
-					</Overlay>
-				</DialogTrigger>
+					<DialogTrigger>
+						<Button className="group w-8 h-8" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
+						</Button>
+
+						<Overlay>
+							<RemoveAccountModal onPress={onDelete} profile={user} />
+						</Overlay>
+					</DialogTrigger>
+				</div>
 			</div>
-		</div>
+		</Button>
 	);
 }

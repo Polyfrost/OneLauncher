@@ -28,6 +28,7 @@
 		"@tauri-apps/api": "catalog:",
 		"@tauri-apps/plugin-clipboard-manager": "catalog:",
 		"@tauri-apps/plugin-dialog": "catalog:",
+		"@tauri-apps/plugin-fs": "catalog:",
 		"@untitled-theme/icons-react": "catalog:",
 		"motion": "catalog:",
 		"overlayscrollbars": "catalog:",

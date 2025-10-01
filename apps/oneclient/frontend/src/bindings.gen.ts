@@ -108,11 +108,13 @@ export type ModpackManifest = { name: string; version: string; loader: GameLoade
 
 export type MojangCape = { id: string; state: string; url: string; alias: string }
 
-export type MojangFullPlayerProfile = { uuid: string; username: string; skins: MojangSkin[]; capes: MojangCape[] }
+export type MojangFullPlayerProfile = { id: string; username: string; skins: MojangSkin[]; capes: MojangCape[] }
 
 export type MojangPlayerProfile = { uuid: string; username: string; is_slim: boolean; skin_url: string | null; cape_url: string | null }
 
 export type MojangSkin = { id: string; state: string; url: string; variant: SkinVariant }
+
+export type MowojangProfile = { id: string; username: string }
 
 export type PackageAuthor = { Team: { team_id: string; org_id: string | null } } | { Users: ManagedUser[] }
 
@@ -252,15 +254,15 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'core':'{"getScreenshots":["id"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"fetchLoggedInProfile":["access_token"],"getPackageBody":["provider","body"],"getLogs":["id"],"installModpack":["modpack","cluster_id"],"fetchMinecraftProfile":["uuid"],"updateClusterById":["id","request"],"getMultiplePackages":["provider","slugs"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"getUsersFromAuthor":["provider","author"],"updateClusterProfile":["name","profile"],"getLogByName":["id","name"],"removeUser":["uuid"],"getUser":["uuid"],"launchCluster":["id","uuid"],"readSettings":[],"getProfileOrDefault":["name"],"getGameVersions":[],"removeCluster":["id"],"getRunningProcessesByClusterId":["cluster_id"],"open":["input"],"createSettingsProfile":["name"],"getClusterById":["id"],"openMsaLogin":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getRunningProcesses":[],"getClusters":[],"getWorlds":["id"],"changeSkin":["access_token","skin_url","skin_variant"],"killProcess":["pid"],"getLoadersForVersion":["mc_version"],"createCluster":["options"],"getUsers":[],"getGlobalProfile":[],"searchPackages":["provider","query"],"writeSettings":["setting"],"isClusterRunning":["cluster_id"],"getPackage":["provider","slug"],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}', 'oneclient':'{"openDevTools":[],"getClustersGroupedByMajor":[],"getBundlesFor":["cluster_id"]}' }
-export type Router = { 'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> },
-'oneclient': { openDevTools: () => Promise<void>, 
+const ARGS_MAP = { 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'oneclient':'{"getClustersGroupedByMajor":[],"openDevTools":[],"getBundlesFor":["cluster_id"]}', 'core':'{"updateClusterProfile":["name","profile"],"updateClusterById":["id","request"],"getLogByName":["id","name"],"killProcess":["pid"],"getUsers":[],"getPackage":["provider","slug"],"removeCluster":["id"],"launchCluster":["id","uuid"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getProfileOrDefault":["name"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"changeCape":["access_token","cape_uuid"],"changeSkin":["access_token","skin_url","skin_variant"],"getPackageBody":["provider","body"],"installModpack":["modpack","cluster_id"],"getWorlds":["id"],"removeUser":["uuid"],"convertUsernameUUID":["username_uuid"],"writeSettings":["setting"],"getGameVersions":[],"getClusterById":["id"],"getLoadersForVersion":["mc_version"],"getScreenshots":["id"],"getMultiplePackages":["provider","slugs"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"getUsersFromAuthor":["provider","author"],"openMsaLogin":[],"getDefaultUser":["fallback"],"getUser":["uuid"],"getRunningProcessesByClusterId":["cluster_id"],"getGlobalProfile":[],"createSettingsProfile":["name"],"setDefaultUser":["uuid"],"getClusters":[],"removeCape":["access_token"],"searchPackages":["provider","query"],"isClusterRunning":["cluster_id"],"getLogs":["id"],"fetchLoggedInProfile":["access_token"],"open":["input"],"fetchMinecraftProfile":["uuid"],"readSettings":[],"getRunningProcesses":[],"createCluster":["options"]}', 'folders':'{"openCluster":["folder_name"],"fromCluster":["folder_name"]}' }
+export type Router = { 'oneclient': { openDevTools: () => Promise<void>, 
 getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
 getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]> },
 'events': { ingress: (event: IngressPayload) => Promise<void>, 
 message: (event: MessagePayload) => Promise<void>, 
 process: (event: ProcessPayload) => Promise<void> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> },
 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
@@ -301,6 +303,9 @@ fetchMinecraftProfile: (uuid: string) => Promise<MojangPlayerProfile>,
 fetchLoggedInProfile: (accessToken: string) => Promise<MojangFullPlayerProfile>, 
 uploadSkinBytes: (accessToken: string, skinData: number[], imageFormat: string, skinVariant: SkinVariant) => Promise<MojangSkin>, 
 changeSkin: (accessToken: string, skinUrl: string, skinVariant: SkinVariant) => Promise<MojangSkin>, 
+changeCape: (accessToken: string, capeUuid: string) => Promise<MojangFullPlayerProfile>, 
+removeCape: (accessToken: string) => Promise<MojangFullPlayerProfile>, 
+convertUsernameUUID: (usernameUuid: string) => Promise<MowojangProfile>, 
 open: (input: string) => Promise<null> } };
 
 

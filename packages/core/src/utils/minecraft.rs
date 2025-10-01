@@ -21,7 +21,9 @@ pub struct MojangPlayerProfile {
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum SkinVariant {
+	#[serde(alias = "CLASSIC")]
 	Classic,
+	#[serde(alias = "SLIM")]
 	Slim,
 }
 
@@ -37,7 +39,8 @@ impl std::fmt::Display for SkinVariant {
 #[onelauncher_macro::specta]
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
 pub struct MojangFullPlayerProfile {
-	pub uuid: String,
+	pub id: String,
+	#[serde(alias = "name")]
 	pub username: String,
 	pub skins: Vec<MojangSkin>,
 	pub capes: Vec<MojangCape>,
@@ -234,4 +237,63 @@ pub async fn change_skin(
 		.first()
 		.cloned()
 		.ok_or_else(|| anyhow::anyhow!("no skins found in response").into())
+}
+
+pub async fn change_cape(
+	access_token: &str,
+	cape_uuid: &str,
+) -> LauncherResult<MojangFullPlayerProfile> {
+	let mut headers: HashMap<&str, &str> = HashMap::with_capacity(1);
+
+	let bearer = &format!("Bearer {access_token}");
+	headers.insert("Authorization", bearer);
+
+	http::fetch_json_advanced::<MojangFullPlayerProfile>(
+		Method::PUT,
+		"https://api.minecraftservices.com/minecraft/profile/capes/active",
+		Some(json!({
+			"capeId": cape_uuid,
+		})),
+		Some(headers),
+		None,
+		None,
+	)
+	.await
+}
+
+pub async fn remove_cape(access_token: &str) -> LauncherResult<MojangFullPlayerProfile> {
+	let mut headers: HashMap<&str, &str> = HashMap::with_capacity(1);
+
+	let bearer = &format!("Bearer {access_token}");
+	headers.insert("Authorization", bearer);
+
+	http::fetch_json_advanced::<MojangFullPlayerProfile>(
+		Method::DELETE,
+		"https://api.minecraftservices.com/minecraft/profile/capes/active",
+		None,
+		Some(headers),
+		None,
+		None,
+	)
+	.await
+}
+
+#[onelauncher_macro::specta]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct MowojangProfile {
+	pub id: String,
+	#[serde(alias = "name")]
+	pub username: String,
+}
+
+pub async fn convert_username_uuid(username_uuid: &str) -> LauncherResult<MowojangProfile> {
+	http::fetch_json_advanced::<MowojangProfile>(
+		Method::GET,
+		&format!("https://mowojang.matdoes.dev/{username_uuid}"),
+		None,
+		None,
+		None,
+		None,
+	)
+	.await
 }

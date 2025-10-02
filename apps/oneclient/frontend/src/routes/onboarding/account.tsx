@@ -70,30 +70,32 @@ function RouteComponent() {
 				<h1 className="text-4xl font-semibold mb-2">Account</h1>
 				<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
 			</div>
-			{currentAccount ?
-				<>
-					<AccountPreview profile={currentAccount} />
-				</>
-				:
-				<>
-					{profile
-						? (
-							<>
-								<AccountPreview profile={profile} />
-							</>
-						)
-						: (
-							<Button
-								color="primary"
-								isPending={isPending}
-								onClick={onClick}
-								size="large"
-							>
-								Add Account
-							</Button>
-						)}
-				</>
-			}
+			{currentAccount
+				? (
+						<>
+							<AccountPreview profile={currentAccount} />
+						</>
+					)
+				: (
+						<>
+							{profile
+								? (
+										<>
+											<AccountPreview profile={profile} />
+										</>
+									)
+								: (
+										<Button
+											color="primary"
+											isPending={isPending}
+											onClick={onClick}
+											size="large"
+										>
+											Add Account
+										</Button>
+									)}
+						</>
+					)}
 		</div>
 	);
 }

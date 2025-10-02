@@ -6,6 +6,7 @@ import { Overlay } from '@/components/overlay/Overlay';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { getSkinUrl } from '@/utils/minecraft';
+import { toast } from '@/utils/toast';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
@@ -17,7 +18,6 @@ import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-rea
 import { useEffect, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
-import { toast } from '@/utils/toast';
 
 interface Skin {
 	is_slim: boolean;
@@ -113,7 +113,7 @@ function RouteComponent() {
 
 		fetchSkins();
 
-		setCapes([{ url: "", id: "" }, ...loggedInUser.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
+		setCapes([{ url: '', id: '' }, ...loggedInUser.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
 	}, [loggedInUser]);
 	const { data: profile } = usePlayerProfile(currentAccount?.id);
 	const [animation, setAnimation] = useState<PlayerAnimation>(animations[0].animation);
@@ -145,14 +145,14 @@ function RouteComponent() {
 			title: 'Import Skin',
 			message: `Importing skin from ${username}`,
 		});
-		const { id } = await bindings.core.convertUsernameUUID(username) ?? { id: '', username: '' }
+		const { id } = await bindings.core.convertUsernameUUID(username);
 		if (id === '')
 			return toast({
 				type: 'error',
 				title: 'Import Skin',
 				message: `${username} doesn't exist`,
 			});
-		const playerProfile = await bindings.core.fetchMinecraftProfile(id)
+		const playerProfile = await bindings.core.fetchMinecraftProfile(id);
 		if (playerProfile.skin_url)
 			setSkins([...skins, { is_slim: playerProfile.is_slim, skin_url: playerProfile.skin_url }]);
 		toast({
@@ -160,7 +160,7 @@ function RouteComponent() {
 			title: 'Import Skin',
 			message: `Imported skin from ${username}`,
 		});
-	}
+	};
 
 	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
 
@@ -170,11 +170,13 @@ function RouteComponent() {
 				return;
 			await bindings.core.changeSkin(currentAccount.access_token, selectedSkin.skin_url, selectedSkin.is_slim ? 'slim' : 'classic');
 			if (selectedCape === '') {
-				await bindings.core.removeCape(currentAccount.access_token)
-			} else {
-				const capeData = capes.find((cape) => cape.url === selectedCape)
-				if (!capeData) return
-				await bindings.core.changeCape(currentAccount.access_token, capeData.id)
+				await bindings.core.removeCape(currentAccount.access_token);
+			}
+			else {
+				const capeData = capes.find(cape => cape.url === selectedCape);
+				if (!capeData)
+					return;
+				await bindings.core.changeCape(currentAccount.access_token, capeData.id);
 			}
 			queryClient.invalidateQueries({
 				queryKey: ['getDefaultUser'],
@@ -363,16 +365,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-					<DialogTrigger>
-						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
+						<DialogTrigger>
+							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+								<Trash01Icon className="group-hover:stroke-danger" />
+							</Button>
 
-						<Overlay>
-							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-						</Overlay>
-					</DialogTrigger>
-				)}
+							<Overlay>
+								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+							</Overlay>
+						</DialogTrigger>
+					)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"

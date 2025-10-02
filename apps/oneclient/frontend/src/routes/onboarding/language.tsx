@@ -21,15 +21,14 @@ const languageList: Array<Language> = [
 	},
 ];
 
-
 function RouteComponent() {
 	return (
-		<div className='flex flex-row h-full p-24 pt-48 gap-8'>
-			<div className='h-full w-1/3'>
-				<img src={Illustration} alt="Language selection illustration" />
+		<div className="flex flex-row h-full p-24 pt-48 gap-8">
+			<div className="h-full w-1/3">
+				<img alt="Language selection illustration" src={Illustration} />
 			</div>
 
-			<div className='flex flex-col w-2/3'>
+			<div className="flex flex-col w-2/3">
 				<h1 className="text-4xl font-semibold mb-2">Language</h1>
 				<p className="text-slate-400 text-lg mb-2">Choose your preferred language.</p>
 

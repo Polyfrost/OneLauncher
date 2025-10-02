@@ -50,7 +50,7 @@ export function SkinViewer({
 	enableZoom = true,
 	enableRotate = true,
 	enablePan = true,
-	elytra = false
+	elytra = false,
 }: SkinViewerProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const viewerRef = useRef<skinviewer.SkinViewer | null>(null);
@@ -78,12 +78,11 @@ export function SkinViewer({
 			viewer.controls.object.position.set(x, y, z);
 			viewer.controls.object.lookAt(viewer.controls.target);
 		};
-		setAngle(playerRotatePhi, playerRotateTheta)
+		setAngle(playerRotatePhi, playerRotateTheta);
 
 		viewer.playerWrapper.translateX(translateRotateX);
 		viewer.playerWrapper.translateY(translateRotateY);
 		viewer.playerWrapper.translateZ(translateRotateZ);
-
 
 		viewer.animation = animation;
 

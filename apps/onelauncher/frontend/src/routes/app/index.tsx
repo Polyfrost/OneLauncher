@@ -223,7 +223,9 @@ function ClusterCard({
 						</div>
 
 						{/* <LaunchButton cluster={props} iconOnly /> */}
-						<Button onClick={handleLaunch} size="icon"><PlayIcon /></Button>
+						<Button onClick={handleLaunch} size="icon">
+							<PlayIcon />
+						</Button>
 					</div>
 				</div>
 			</Link>

@@ -1,7 +1,7 @@
 import { Button } from '@onelauncher/common/components';
 import { Overlay } from './Overlay';
 
-export function RemoveSkinCapeModal({ onPress }: { onPress: () => void; }) {
+export function RemoveSkinCapeModal({ onPress }: { onPress: () => void }) {
 	return (
 		<Overlay.Dialog>
 			<Overlay.Title>Are you sure?</Overlay.Title>

@@ -16,7 +16,7 @@ export const Route = createFileRoute('/app/settings/minecraft')({
 function RouteComponent() {
 	const result = useCommand('readSettings', bindings.core.readSettings);
 
-	const save = useCommand('writeSettings', () => bindings.core.writeSettings(result.data!), {
+	const save = useCommand('writeSettings', () => bindings.core.writeSettings(result.data), {
 		enabled: false,
 		subscribed: false,
 	});
@@ -31,11 +31,11 @@ function RouteComponent() {
 				<div className="h-full">
 					<h1>Minecraft Settings</h1>
 
-					<GameSettings settings={result.data!.global_game_settings} />
+					<GameSettings settings={result.data.global_game_settings} />
 
 					{/* <LauncherSettings /> */}
 
-					<ProcessSettings settings={result.data!.global_game_settings} />
+					<ProcessSettings settings={result.data.global_game_settings} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>

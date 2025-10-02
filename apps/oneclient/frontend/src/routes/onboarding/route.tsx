@@ -191,8 +191,8 @@ export function OnboardingNavigation() {
 				)}
 			</div>
 			<div>
-				<Link disabled={forceLoginDisable} to={nextPath ?? "/app"}>
-					<Button className={`w-32 ${forceLoginDisable ? "line-through" : ""}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
+				<Link disabled={forceLoginDisable} to={nextPath ?? '/app'}>
+					<Button className={`w-32 ${forceLoginDisable ? 'line-through' : ''}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
 				</Link>
 			</div>
 		</div>

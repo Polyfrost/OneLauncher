@@ -18,7 +18,7 @@ function RouteComponent() {
 		enabled: !!cluster.data?.setting_profile_name,
 	});
 
-	const save = useCommand('updateClusterProfile', () => bindings.core.updateClusterProfile(cluster.data?.name as string, _result.data!), {
+	const save = useCommand('updateClusterProfile', () => bindings.core.updateClusterProfile(cluster.data?.name as string, _result.data), {
 		enabled: false,
 		subscribed: false,
 	});
@@ -36,9 +36,9 @@ function RouteComponent() {
 				<div className="h-full">
 					<h1>Minecraft Settings</h1>
 
-					<GameSettings key={_result.data?.name} settings={_result.data!} />
+					<GameSettings key={_result.data?.name} settings={_result.data} />
 
-					<ProcessSettings key={_result.data?.name} settings={_result.data!} />
+					<ProcessSettings key={_result.data?.name} settings={_result.data} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>

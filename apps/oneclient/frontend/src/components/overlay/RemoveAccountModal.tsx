@@ -14,7 +14,12 @@ export function RemoveAccountModal({
 		<Overlay.Dialog>
 			<Overlay.Title>Are you sure?</Overlay.Title>
 
-			<p>Do you want to remove <span className='font-bold' color='primary'>{profile.username}</span> from you're accounts?</p>
+			<p>
+				Do you want to remove
+				<span className="font-bold" color="primary">{profile.username}</span>
+				{' '}
+				from you're accounts?
+			</p>
 			<p>This cannot be undone</p>
 
 			<AccountRow profile={profile} />

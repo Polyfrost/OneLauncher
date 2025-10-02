@@ -6,7 +6,7 @@ import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/developer')({
 	component: RouteComponent,
-})
+});
 
 function RouteComponent() {
 	return (

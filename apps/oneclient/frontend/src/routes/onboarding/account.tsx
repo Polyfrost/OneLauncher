@@ -2,7 +2,7 @@ import type { MinecraftCredentials } from '@/bindings.gen';
 import { AccountAvatar, SkinViewer } from '@/components';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
-import { useCommandMut } from '@onelauncher/common';
+import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
@@ -49,15 +49,11 @@ function AccountPreview({
 	);
 }
 
-// TODO: Block the next button until the user logs in (beg lynith to do it coz I spent 20 minutes on it)
 function RouteComponent() {
 	const queryClient = useQueryClient();
-
+	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
 		onSuccess() {
-			queryClient.invalidateQueries({
-				queryKey: ['getUsers'],
-			});
 			queryClient.invalidateQueries({
 				queryKey: ['getDefaultUser'],
 			});
@@ -69,25 +65,35 @@ function RouteComponent() {
 	};
 
 	return (
-		<div className="flex flex-col h-full px-12 gap-8">
-			<h1 className="text-4xl font-semibold mb-2">Account</h1>
-			<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
-			{profile
-				? (
-					<>
-						<AccountPreview profile={profile} />
-					</>
-				)
-				: (
-					<Button
-						color="primary"
-						isPending={isPending}
-						onClick={onClick}
-						size="large"
-					>
-						Add Account
-					</Button>
-				)}
-		</div >
+		<div className="flex flex-col h-full px-12 gap-4">
+			<div>
+				<h1 className="text-4xl font-semibold mb-2">Account</h1>
+				<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
+			</div>
+			{currentAccount ?
+				<>
+					<AccountPreview profile={currentAccount} />
+				</>
+				:
+				<>
+					{profile
+						? (
+							<>
+								<AccountPreview profile={profile} />
+							</>
+						)
+						: (
+							<Button
+								color="primary"
+								isPending={isPending}
+								onClick={onClick}
+								size="large"
+							>
+								Add Account
+							</Button>
+						)}
+				</>
+			}
+		</div>
 	);
 }

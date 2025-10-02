@@ -2,12 +2,21 @@ import { defineConfig } from '@flowr/eslint';
 // @ts-ignore -- No types for this package
 import { tanstackConfig } from '@tanstack/eslint-config';
 
+const ignores = [
+	'*.rs',
+	'**/migrations/**',
+	'apps/onelauncher/old_frontend',
+	'apps/*/desktop/capabilities',
+	'apps/*/desktop/gen',
+	'**/*.gen.*',
+];
+
 export default defineConfig(
 	{
 		typescript: true,
 		react: true,
 		query: true,
-		ignores: ['*.rs', '**/migrations/**'],
+		ignores,
 		toml: {
 			overrides: {
 				'toml/array-element-newline': ['error', 'always'],
@@ -24,12 +33,7 @@ export default defineConfig(
 		return config;
 	}),
 	{
-		ignores: [
-			'apps/onelauncher/old_frontend',
-			'apps/*/desktop/capabilities',
-			'apps/*/desktop/gen',
-			'**/*.gen.*',
-		],
+		ignores,
 		// overrides: [
 		// 	{
 		// 		files: ['vite.config.js'],
@@ -40,6 +44,7 @@ export default defineConfig(
 		// ],
 	},
 	{
+		ignores,
 		rules: {
 			'sort-imports': 'off', // Replaced by perfectionist/sort-named-imports',
 			'import/order': 'off', // Replaced by perfectionist/sort-named-imports',

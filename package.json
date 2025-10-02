@@ -37,7 +37,7 @@
 		"format:es": "pnpm lint:es --fix",
 		"format:rs": "cargo +nightly fmt && cargo clippy --fix",
 		"lint": "pnpm lint:es && pnpm lint:rs",
-		"lint:es": "eslint . --cache",
+		"lint:es": "pnpm exec eslint . --cache",
 		"lint:rs": "cargo +nightly fmt --check && cargo clippy -- -D warnings",
 		"prepare": "husky"
 	},

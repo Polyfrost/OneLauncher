@@ -6,7 +6,7 @@ import { useCommand } from '@onelauncher/common';
 import { Button, Popup } from '@onelauncher/common/components';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
-import { MinusIcon, Settings01Icon, Settings02Icon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
+import { MinusIcon, Settings02Icon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from './AccountAvatar';
 import { AccountPopup } from './overlay/AccountPopup';

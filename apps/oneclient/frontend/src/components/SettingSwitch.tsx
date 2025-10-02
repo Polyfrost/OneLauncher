@@ -1,4 +1,3 @@
-import type { useSettings } from '@/hooks/useSettings';
 import { Switch } from '@onelauncher/common/components';
 
 type BooleanSetting = [

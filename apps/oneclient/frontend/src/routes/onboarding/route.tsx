@@ -1,11 +1,9 @@
 import type { PropsWithChildren } from 'react';
-import Logo from '@/assets/logos/Logo.svg';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
 import { Stepper } from '@/components/Stepper';
 import { bindings } from '@/main';
-import useAppShellStore from '@/stores/appShellStore';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link, Outlet } from '@tanstack/react-router';

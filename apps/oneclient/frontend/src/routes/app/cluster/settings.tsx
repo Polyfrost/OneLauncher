@@ -1,7 +1,6 @@
 import { SheetPage } from '@/components';
 import SettingsRow from '@/components/SettingsRow';
 import { useClusterProfile } from '@/hooks/useSettings';
-import { bindings } from '@/main';
 import { Switch, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, XIcon } from '@untitled-theme/icons-react';

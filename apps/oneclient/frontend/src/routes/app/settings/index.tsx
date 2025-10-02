@@ -4,7 +4,7 @@ import SettingsSwitch from '@/components/SettingSwitch';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 // import useSettings from '@/hooks/useSettings';
-import { Button, Switch } from '@onelauncher/common/components';
+import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { FolderIcon, Link03Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';

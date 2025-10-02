@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use onelauncher_core::api::packages::modpack::data::ModpackArchive;
 use onelauncher_core::api::packages::modpack::{InstallableModpackFormatExt, ModpackFormat};
@@ -216,7 +215,7 @@ async fn download_and_load_bundle(
 
 	tracing::debug!("downloading bundle from remote: {url}");
 	// if we are at this point, it means we either need to update or download
-	let bytes = http::download(Method::GET, &url, disk_path, None, None).await?;
+	http::download(Method::GET, &url, disk_path, None, None).await?;
 
-	Ok(ModpackFormat::from_bytes(Arc::new(bytes.to_vec())).await?)
+	Ok(ModpackFormat::from_file(disk_path).await?)
 }

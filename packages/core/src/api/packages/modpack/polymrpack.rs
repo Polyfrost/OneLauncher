@@ -31,7 +31,7 @@ pub struct PolyMrPackFormatImpl {
 
 #[async_trait::async_trait]
 impl ModpackFormatExt for PolyMrPackFormatImpl {
-	async fn from_file(
+	async fn from_path(
 		path: std::path::PathBuf,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where
@@ -44,7 +44,7 @@ impl ModpackFormatExt for PolyMrPackFormatImpl {
 
 		let manifest_file = io::try_read_zip_entry_bytes(buf_reader, "modrinth.index.json").await?;
 
-		let Some(this) = Self::from_bytes(Arc::new(manifest_file)).await? else {
+		let Some(this) = Self::from_manifest_bytes(Arc::new(manifest_file)).await? else {
 			return Ok(None);
 		};
 
@@ -57,7 +57,7 @@ impl ModpackFormatExt for PolyMrPackFormatImpl {
 		Ok(Some(this))
 	}
 
-	async fn from_bytes(
+	async fn from_manifest_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where
@@ -146,7 +146,9 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 			return Ok(manifest);
 		}
 
-		let files = to_modpack_files(&self.raw_manifest.files).await?;
+		let files = to_modpack_files(&self.raw_manifest.files)
+			.await
+			.map_err(|e| anyhow::anyhow!("failed to parse polymrpack files: {e}"))?;
 
 		let manifest = ModpackManifest {
 			name: self.raw_manifest.name.clone(),

@@ -30,13 +30,13 @@ pub enum ModpackFormat {
 }
 
 const FORMAT_PIPELINE_PATH: &[LoaderFn<PathBuf>] = &[
-	PolyMrPackFormatImpl::from_file, // has to be first because of it being a **VALID** mrpack with extra stuff
-	MrPackFormatImpl::from_file,
+	PolyMrPackFormatImpl::from_path, // has to be first because of it being a **VALID** mrpack with extra stuff
+	MrPackFormatImpl::from_path,
 ];
 
 const FORMAT_PIPELINE_BYTES: &[LoaderFn<Arc<Vec<u8>>>] = &[
-	PolyMrPackFormatImpl::from_bytes, // has to be first because of it being a **VALID** mrpack with extra stuff
-	MrPackFormatImpl::from_bytes,
+	PolyMrPackFormatImpl::from_manifest_bytes, // has to be first because of it being a **VALID** mrpack with extra stuff
+	MrPackFormatImpl::from_manifest_bytes,
 ];
 
 type LoaderFn<Arg> = fn(
@@ -47,13 +47,13 @@ type LoaderFn<Arg> = fn(
 
 #[async_trait::async_trait]
 pub trait ModpackFormatExt {
-	async fn from_file(
+	async fn from_path(
 		path: PathBuf,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where
 		Self: Sized;
 
-	async fn from_bytes(
+	async fn from_manifest_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where
@@ -95,7 +95,7 @@ impl ModpackFormat {
 		Err(PackageError::UnsupportedModpackFormat.into())
 	}
 
-	pub async fn from_bytes(
+	pub async fn from_manifest_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
 		for stage in FORMAT_PIPELINE_BYTES {

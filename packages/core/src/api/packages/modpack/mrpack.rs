@@ -35,7 +35,7 @@ pub(super) const MODRINTH_URL_PREFIX: &str = "https://cdn.modrinth.com/";
 
 #[async_trait::async_trait]
 impl ModpackFormatExt for MrPackFormatImpl {
-	async fn from_file(
+	async fn from_path(
 		path: std::path::PathBuf,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where
@@ -48,7 +48,7 @@ impl ModpackFormatExt for MrPackFormatImpl {
 
 		let manifest_file = io::try_read_zip_entry_bytes(buf_reader, "modrinth.index.json").await?;
 
-		let Some(this) = Self::from_bytes(Arc::new(manifest_file)).await? else {
+		let Some(this) = Self::from_manifest_bytes(Arc::new(manifest_file)).await? else {
 			return Ok(None);
 		};
 
@@ -61,7 +61,7 @@ impl ModpackFormatExt for MrPackFormatImpl {
 		Ok(Some(this))
 	}
 
-	async fn from_bytes(
+	async fn from_manifest_bytes(
 		bytes: Arc<Vec<u8>>,
 	) -> LauncherResult<Option<Box<dyn InstallableModpackFormatExt>>>
 	where

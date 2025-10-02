@@ -1,6 +1,6 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import { bindings } from '@/main';
-import { useCommand, useCommandMut } from '@onelauncher/common';
+import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { Pencil01Icon, PlusIcon, Settings01Icon, Trash01Icon } from '@untitled-theme/icons-react';
@@ -43,7 +43,7 @@ export function AccountPopup() {
 						<AccountEntry
 							loggedIn
 							onClick={() => { }}
-							onDelete={() => deleteUser(defaultUser.data)}
+							onDelete={() => deleteUser(defaultUser.data as MinecraftCredentials)}
 							user={defaultUser.data}
 						/>
 					</div>

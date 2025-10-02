@@ -1,4 +1,4 @@
-import type { ClusterModel, ProfileUpdate, SettingProfileModel, Settings } from '@/bindings.gen';
+import type { ClusterModel, ProfileUpdate, Settings } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { useEffect, useMemo, useState } from 'react';

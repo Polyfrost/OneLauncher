@@ -2,9 +2,7 @@
 import SettingsRow from '@/components/SettingsRow';
 import SettingsSwitch from '@/components/SettingSwitch';
 import { useSettings } from '@/hooks/useSettings';
-import { bindings } from '@/main';
 import { THEMES } from '@/utils/theming';
-import { Switch } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Monitor01Icon, PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-react';
 import Sidebar from './route';

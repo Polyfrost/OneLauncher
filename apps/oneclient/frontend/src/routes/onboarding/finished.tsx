@@ -1,3 +1,4 @@
+import { useSettings } from '@/hooks/useSettings';
 import { createFileRoute, Link } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/onboarding/finished')({
@@ -5,6 +6,9 @@ export const Route = createFileRoute('/onboarding/finished')({
 });
 
 function RouteComponent() {
+	const { setSetting } = useSettings();
+	setSetting('seen_onboarding', true)
+
 	return (
 		<Link to="/app">
 			<div className="flex flex-col h-full px-12">

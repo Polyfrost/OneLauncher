@@ -1,4 +1,6 @@
 import SettingsRow from '@/components/SettingsRow';
+import SettingsSwitch from '@/components/SettingSwitch';
+import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Truck01Icon } from '@untitled-theme/icons-react';
@@ -9,21 +11,30 @@ export const Route = createFileRoute('/app/settings/developer')({
 });
 
 function RouteComponent() {
+	const { createSetting } = useSettings();
+
 	return (
 		<Sidebar.Page>
 			<div className="h-full">
-				<h1>General</h1>
+				<h1>Onboarding</h1>
 
-				<SettingsRow.Header>Folders and Files</SettingsRow.Header>
 				<SettingsRow
-					description="Open onboarding"
+					description="Open Onboarding"
 					icon={<Truck01Icon />}
-					title="Onboarding"
+					title="Open Onboarding"
 				>
 					<Link to="/onboarding">
 						<Button size="normal">Open</Button>
 					</Link>
 				</SettingsRow>
+				<SettingsRow
+					description="Seen onboarding"
+					icon={<Truck01Icon />}
+					title="Seen Onboarding"
+				>
+					<SettingsSwitch setting={createSetting('seen_onboarding')} />
+				</SettingsRow>
+
 			</div>
 		</Sidebar.Page>
 	);

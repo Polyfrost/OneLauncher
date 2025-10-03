@@ -3,10 +3,12 @@ import type { ButtonProps } from 'react-aria-components';
 import { GameBackground } from '@/components';
 import { LaunchButton } from '@/components/LaunchButton';
 import { useActiveCluster, useLastPlayedClusters } from '@/hooks/useClusters';
+import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
 import { prettifyLoader } from '@/utils/loaders';
 import { animations } from '@/utils/motion';
 import { getVersionInfo, getVersionInfoOrDefault } from '@/utils/versionMap';
+import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DotsGridIcon, Settings04Icon } from '@untitled-theme/icons-react';
@@ -19,6 +21,9 @@ export const Route = createFileRoute('/app/')({
 });
 
 function RouteComponent() {
+	// Preload the clusters for version page
+	useCommandSuspense(['getClustersGroupedByMajor'], bindings.oneclient.getClustersGroupedByMajor);
+
 	const { data: lastPlayedClusters } = useLastPlayedClusters();
 
 	const setActiveClusterId = useAppShellStore(state => state.setActiveClusterId);

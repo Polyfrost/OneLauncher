@@ -7,7 +7,7 @@ export const Route = createFileRoute('/onboarding/finished')({
 
 function RouteComponent() {
 	const { setSetting } = useSettings();
-	setSetting('seen_onboarding', true)
+	setSetting('seen_onboarding', true);
 
 	return (
 		<Link to="/app">

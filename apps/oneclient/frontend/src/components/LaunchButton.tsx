@@ -1,8 +1,13 @@
 import type { ButtonProps } from '@onelauncher/common/components';
 import { useIsRunning } from '@/hooks/useClusters';
 import { useLaunchCluster } from '@/hooks/useLaunchCluster';
+import { bindings } from '@/main';
+import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
+import { useState } from 'react';
+import { DialogTrigger } from 'react-aria-components';
 import { tv } from 'tailwind-variants';
+import { NoAccountPopup, Overlay } from './overlay';
 
 export type LaunchButtonProps = Omit<ButtonProps, 'children' | 'onClick'> & {
 	clusterId: number | undefined | null;
@@ -22,17 +27,32 @@ export function LaunchButton({
 	className,
 	...rest
 }: LaunchButtonProps) {
-	const launch = useLaunchCluster(clusterId);
+	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
+	const launchCluster = useLaunchCluster(clusterId);
 	const isRunning = useIsRunning(clusterId);
+	const [open, setOpen] = useState<boolean>(false);
+
+	const launch = () => {
+		if (currentAccount === null)
+			setOpen(true);
+		else
+			launchCluster();
+	};
 
 	return (
-		<Button
-			className={launchButtonVariants({ isRunning, className })}
-			isDisabled={isDisabled || isRunning}
-			onClick={launch}
-			{...rest}
-		>
-			{isRunning ? 'Running' : 'Launch'}
-		</Button>
+		<DialogTrigger isOpen={open} onOpenChange={setOpen}>
+			<Button
+				className={launchButtonVariants({ isRunning, className })}
+				isDisabled={isDisabled || isRunning}
+				onPress={launch}
+				{...rest}
+			>
+				{isRunning ? "Running" : "Launch"}
+			</Button>
+
+			<Overlay>
+				<NoAccountPopup />
+			</Overlay>
+		</DialogTrigger>
 	);
 }

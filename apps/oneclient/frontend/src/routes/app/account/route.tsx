@@ -20,11 +20,10 @@ export const Route = createFileRoute('/app/account')({
 			queryFn: () => bindings.core.fetchLoggedInProfile(search.profile.access_token),
 		});
 
-
 		const profileData = await query;
 		return {
 			profileData,
-			profile: search.profile
+			profile: search.profile,
 		};
 	},
 });
@@ -37,5 +36,5 @@ function RouteComponent() {
 			</LoaderSuspense>
 
 		</>
-	)
+	);
 }

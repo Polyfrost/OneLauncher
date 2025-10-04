@@ -84,23 +84,25 @@ const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 
 function RouteComponent() {
 	return (
-		<LoaderSuspense spinner={{ size: 'large' }}>
-			<AppShell>
-				<div className="h-full w-full">
+		// <LoaderSuspense spinner={{ size: 'large' }}>
+		<AppShell>
+			<div className="h-full w-full">
+				<LoaderSuspense spinner={{ size: 'large' }}>
 					<Navbar />
 					<Outlet />
 
 					<OnboardingNavigation />
-				</div>
-			</AppShell>
-		</LoaderSuspense>
+				</LoaderSuspense>
+			</div>
+		</AppShell>
+		// </LoaderSuspense>
 	);
 }
 
 function AppShell({
 	children,
 }: PropsWithChildren) {
-	const { isFirstStep } = Route.useLoaderData();
+	const { isFirstStep, currentStepIndex } = Route.useLoaderData();
 
 	return (
 		<div className="flex flex-col h-full w-full">
@@ -115,7 +117,7 @@ function AppShell({
 					</div>
 
 					<nav className="flex-1 p-4">
-						<Stepper linearSteps={LINEAR_ONBOARDING_STEPS} steps={ONBOARDING_STEPS} />
+						<Stepper currentLinearIndex={currentStepIndex} linearSteps={LINEAR_ONBOARDING_STEPS} steps={ONBOARDING_STEPS} />
 					</nav>
 
 					<div className="p-4 text-xs text-fg-secondary">

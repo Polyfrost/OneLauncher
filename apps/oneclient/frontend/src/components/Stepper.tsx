@@ -3,16 +3,17 @@ import { useMatchRoute } from '@tanstack/react-router';
 
 interface VerticalStepperProps {
 	steps: Array<OnboardingStep>;
+	currentLinearIndex: number;
 	linearSteps: Array<Omit<OnboardingStep, 'subSteps'>>;
 };
 
-export function Stepper({ steps, linearSteps }: VerticalStepperProps) {
-	const matchRoute = useMatchRoute();
+export function Stepper({ steps, linearSteps, currentLinearIndex }: VerticalStepperProps) {
+	// const matchRoute = useMatchRoute();
 
-	const currentLinearIndex = linearSteps.findIndex(step =>
-		matchRoute({ to: step.path }));
+	// const currentLinearIndex = linearSteps.findIndex(step =>
+	// 	matchRoute({ to: step.path }));
 
-	const progressHeight = currentLinearIndex >= 0 ? `${(currentLinearIndex / (linearSteps.length - 1)) * 100}%` : '0%';
+	const progressHeight = currentLinearIndex >= 0 ? `${Math.min((currentLinearIndex + 0.5) / (linearSteps.length - 1), 1) * 100}%` : '0%';
 
 	// const nextStep = () => {
 	// 	if (currentStep < steps.length - 1)
@@ -50,15 +51,17 @@ export function Stepper({ steps, linearSteps }: VerticalStepperProps) {
 								// onClick={() => goToStep(index)}
 							>
 								<div className="ml-8">
-									<span className={`
+									<span
+										className="
                     transition-all duration-300 font-medium
-                    ${index === currentLinearIndex
-								? 'text-white text-lg'
-								: index < currentLinearIndex
-									? ' text-base'
-									: 'text-gray-400 text-base'
-							}
-                  `}
+					text-gray-400
+					text-base
+					data-active:text-white
+					data-active:text-lg
+					data-complete:text-base
+                  "
+										data-active={index === currentLinearIndex || null}
+										data-complete={index < currentLinearIndex || null}
 									>
 										{step.title}
 									</span>

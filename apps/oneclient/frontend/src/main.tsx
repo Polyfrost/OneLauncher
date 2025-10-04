@@ -1,6 +1,6 @@
 import { isDev, registerDevExperience, registerNativeExperience } from '@onelauncher/common';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createRouter, RouterProvider } from '@tanstack/react-router';
+import { createHashHistory, createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
 import { createTauRPCProxy } from './bindings.gen';
@@ -24,12 +24,15 @@ const queryClient = new QueryClient({
 	},
 });
 
+const hashHistory = createHashHistory();
+
 // Tanstack Router
 const router = createRouter({
 	routeTree,
 	context: {
 		queryClient,
 	},
+	history: hashHistory,
 	defaultPreload: 'intent',
 	scrollRestoration: true,
 	defaultStructuralSharing: true,

@@ -47,7 +47,7 @@ export function LaunchButton({
 				onPress={launch}
 				{...rest}
 			>
-				{isRunning ? "Running" : "Launch"}
+				{isRunning ? 'Running' : 'Launch'}
 			</Button>
 
 			<Overlay>

@@ -7,7 +7,7 @@ export function NoAccountPopup() {
 	return (
 		<Overlay.Dialog>
 			<Overlay.Title>No Account</Overlay.Title>
-			<p>Please add an account before you start minecraft</p>
+			<p className="max-w-sm text-fg-secondary">Please add an account before you start minecraft</p>
 
 			<DialogTrigger>
 				<Button className="w-full" size="large">

@@ -1,15 +1,11 @@
-import type { MinecraftCredentials } from '@/bindings.gen';
 import type { PlayerAnimation } from 'skinview3d';
 import { SheetPage, SkinViewer } from '@/components';
 import { ImportSkinModal, RemoveSkinCapeModal } from '@/components/overlay';
 import { Overlay } from '@/components/overlay/Overlay';
-import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { getSkinUrl } from '@/utils/minecraft';
 import { toast } from '@/utils/toast';
-import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, downloadDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -29,17 +25,9 @@ interface Cape {
 	id: string;
 }
 
-export const Route = createFileRoute('/app/accountSkin')({
+export const Route = createFileRoute('/app/account/skins')({
 	component: RouteComponent,
 });
-
-const animations = [
-	{ name: 'Idle', animation: new IdleAnimation(), speed: 0.1 },
-	{ name: 'Walking', animation: new WalkingAnimation(), speed: 0.1 },
-	{ name: 'Flying', animation: new FlyingAnimation(), speed: 0.2 },
-	{ name: 'Crouch', animation: new CrouchAnimation(), speed: 0.025 },
-	{ name: 'Hit', animation: new HitAnimation(), speed: 0.1 },
-];
 
 async function getSkinHistory(): Promise<Array<Skin>> {
 	const parentDir = await join(await dataDir(), 'OneClient', 'metadata', 'history');
@@ -48,13 +36,11 @@ async function getSkinHistory(): Promise<Array<Skin>> {
 		const dirExists = await exists(parentDir);
 		if (!dirExists)
 			await mkdir(parentDir, { recursive: true });
-
 		const fileExists = await exists(skinsPath);
 		if (!fileExists) {
 			await writeTextFile(skinsPath, JSON.stringify([]));
 			return [];
 		}
-
 		const contents = await readTextFile(skinsPath);
 		return JSON.parse(contents) as Array<Skin>;
 	}
@@ -72,7 +58,6 @@ async function saveSkinHistory(skins: Array<Skin>): Promise<void> {
 		const dirExists = await exists(parentDir);
 		if (!dirExists)
 			await mkdir(parentDir, { recursive: true });
-
 		await writeTextFile(skinsPath, JSON.stringify(skins));
 	}
 	catch (error) {
@@ -80,63 +65,68 @@ async function saveSkinHistory(skins: Array<Skin>): Promise<void> {
 	}
 }
 
+const animations = [
+	{ name: 'Idle', animation: new IdleAnimation(), speed: 0.1 },
+	{ name: 'Walking', animation: new WalkingAnimation(), speed: 0.1 },
+	{ name: 'Flying', animation: new FlyingAnimation(), speed: 0.2 },
+	{ name: 'Crouch', animation: new CrouchAnimation(), speed: 0.025 },
+	{ name: 'Hit', animation: new HitAnimation(), speed: 0.1 },
+];
+
+function useSkinHistory() {
+	const [skins, setSkinsState] = useState<Array<Skin>>([]);
+	const [loaded, setLoaded] = useState(false);
+	useEffect(() => {
+		(async () => {
+			const history = await getSkinHistory();
+			setSkinsState(history);
+			setLoaded(true);
+		})();
+	}, []);
+	const setSkins = (updater: (prev: Array<Skin>) => Array<Skin>) => {
+		setSkinsState((prev) => {
+			const newSkins = updater(prev);
+			const dedupedSkins: Array<Skin> = [];
+			const seen: Set<string> = new Set();
+			for (const skin of newSkins)
+				if (!seen.has(skin.skin_url)) {
+					seen.add(skin.skin_url);
+					dedupedSkins.push(skin);
+				}
+
+			saveSkinHistory(dedupedSkins);
+			return dedupedSkins;
+		});
+	};
+
+	return [skins, setSkins, loaded] as const;
+}
+
 function RouteComponent() {
-	const queryClient = useQueryClient();
-	const [skins, setSkinsSTATE] = useState<Array<Skin>>([]);
-	const setSkins = (updater: Array<Skin> | ((prev: Array<Skin>) => Array<Skin>)) => {
-		const newSkins = typeof updater === 'function' ? updater(skins) : updater;
+	const { profileData, profile, queryClient } = Route.useRouteContext();
 
-		const seen: Set<string> = new Set();
-		const filteredDupes = newSkins.filter((skin) => {
-			const key = skin.skin_url || '';
-			if (seen.has(key))
-				return false;
-			seen.add(key);
-			return true;
-		});
-
-		saveSkinHistory(filteredDupes);
-		setSkinsSTATE(filteredDupes);
-	};
 	const [capes, setCapes] = useState<Array<Cape>>([]);
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const { data: loggedInUser } = useCommandSuspense(['fetchLoggedInProfile'], () => bindings.core.fetchLoggedInProfile((currentAccount as MinecraftCredentials).access_token));
-	useEffect(() => {
-		async function fetchSkins() {
-			const skins: Array<Skin> = loggedInUser.skins.map(skin => ({
-				is_slim: skin.variant === 'slim',
-				skin_url: skin.url,
-			}));
-			(await getSkinHistory()).forEach(skin => skins.push(skin));
-			setSkins(skins);
-		}
-
-		fetchSkins();
-
-		setCapes([{ url: '', id: '' }, ...loggedInUser.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
-	}, [loggedInUser]);
-	const { data: profile } = usePlayerProfile(currentAccount?.id);
-	const [animation, setAnimation] = useState<PlayerAnimation>(animations[0].animation);
-	const [animationName, setAnimationName] = useState<string>(animations[0].name);
-	const skinData: Skin = {
-		is_slim: profile?.is_slim ?? false,
-		skin_url: getSkinUrl(profile?.skin_url),
-	};
-	const [selectedSkin, setSelectedSkin] = useState<Skin>(skinData);
-	useEffect(() => {
-		if (!skinData.skin_url)
-			return;
-		setSkins((prev) => {
-			const filtered = prev.filter(skin => skin.skin_url !== skinData.skin_url);
-			return [skinData, ...filtered];
-		});
-		setSelectedSkin(skinData);
-	}, [skinData.skin_url, profile]);
-
 	const [selectedCape, setSelectedCape] = useState<string>('');
+	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
+
+	useEffect(() => {
+		setCapes([{ url: '', id: '' }, ...profileData.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
+	}, []);
+
+	const [skins, setSkins, loaded] = useSkinHistory();
+	const [selectedSkin, setSelectedSkin] = useState<Skin>({ skin_url: getSkinUrl(null), is_slim: false });
+	const skinData: Skin = { is_slim: profileData.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData.skins[0].url) };
+
+	useEffect(() => {
+		if (!loaded)
+			return;
+
+		setSkins(prev => [...prev, skinData]); // ✅ always merges with latest
+		setSelectedSkin(skinData);
+	}, [loaded]);
 
 	const importFromURL = (url: string) => {
-		setSkins([...skins, { is_slim: false, skin_url: url }]);
+		setSkins(prev => [...prev, { is_slim: false, skin_url: url }]);
 	};
 
 	const importFromUsername = async (username: string) => {
@@ -153,30 +143,27 @@ function RouteComponent() {
 				message: `${username} doesn't exist`,
 			});
 		const playerProfile = await bindings.core.fetchMinecraftProfile(id);
-		if (playerProfile.skin_url)
-			setSkins([...skins, { is_slim: playerProfile.is_slim, skin_url: playerProfile.skin_url }]);
-		toast({
-			type: 'success',
-			title: 'Import Skin',
-			message: `Imported skin from ${username}`,
-		});
+		if (playerProfile.skin_url) {
+			setSkins(prev => [...prev, { is_slim: playerProfile.is_slim, skin_url: getSkinUrl(playerProfile.skin_url) }]);
+			toast({
+				type: 'success',
+				title: 'Import Skin',
+				message: `Imported skin from ${username}`,
+			});
+		}
 	};
-
-	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
 
 	const saveSkinToAccount = async () => {
 		try {
-			if (!currentAccount)
-				return;
-			await bindings.core.changeSkin(currentAccount.access_token, selectedSkin.skin_url, selectedSkin.is_slim ? 'slim' : 'classic');
+			await bindings.core.changeSkin(profile.access_token, selectedSkin.skin_url, selectedSkin.is_slim ? 'slim' : 'classic');
 			if (selectedCape === '') {
-				await bindings.core.removeCape(currentAccount.access_token);
+				await bindings.core.removeCape(profile.access_token);
 			}
 			else {
 				const capeData = capes.find(cape => cape.url === selectedCape);
 				if (!capeData)
 					return;
-				await bindings.core.changeCape(currentAccount.access_token, capeData.id);
+				await bindings.core.changeCape(profile.access_token, capeData.id);
 			}
 			queryClient.invalidateQueries({
 				queryKey: ['getDefaultUser'],
@@ -193,14 +180,8 @@ function RouteComponent() {
 		}
 	};
 
-	if (currentAccount === null)
-		return (
-			<SheetPage headerLarge={<></>} headerSmall={<></>}>
-				<SheetPage.Content>
-					<p>No accounts added</p>
-				</SheetPage.Content>
-			</SheetPage>
-		);
+	const [animation, setAnimation] = useState<PlayerAnimation>(animations[0].animation);
+	const [animationName, setAnimationName] = useState<string>(animations[0].name);
 
 	const getNextAnimationData = () => {
 		const animationIndex = animations.findIndex(animationData => animationData.name === animationName);
@@ -219,13 +200,10 @@ function RouteComponent() {
 		setAnimationName(data.name);
 	};
 
-	if (!selectedSkin.skin_url)
-		return <></>;
-
 	return (
 		<SheetPage
 			headerLarge={(
-				<HeaderLarge save={saveSkinToAccount} username={profile?.username || 'UNKNOWN'} />
+				<HeaderLarge save={saveSkinToAccount} username={profileData.username || 'UNKNOWN'} />
 			)}
 			headerSmall={<HeaderSmall />}
 		>
@@ -282,7 +260,7 @@ function RouteComponent() {
 	);
 }
 
-function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, importFromUsername, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; importFromURL: (url: string) => void; importFromUsername: (username: string) => void; capeURL: string; shouldShowElytra: boolean }) {
+function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, importFromUsername, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: (updater: (prev: Array<Skin>) => Array<Skin>) => void; importFromURL: (url: string) => void; importFromUsername: (username: string) => void; capeURL: string; shouldShowElytra: boolean }) {
 	return (
 		<div className="flex flex-col h-full justify-around">
 			<div className="flex flex-col justify-center items-center">
@@ -317,7 +295,7 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 	);
 }
 
-function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, capeURL, shouldShowElytra }: { skin: Skin; selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; setSkins: React.Dispatch<React.SetStateAction<Array<Skin>>>; capeURL: string; shouldShowElytra: boolean }) {
+function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, capeURL, shouldShowElytra }: { skin: Skin; selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; setSkins: (updater: (prev: Array<Skin>) => Array<Skin>) => void; capeURL: string; shouldShowElytra: boolean }) {
 	const exportSkin = async () => {
 		try {
 			if (!skin.skin_url)

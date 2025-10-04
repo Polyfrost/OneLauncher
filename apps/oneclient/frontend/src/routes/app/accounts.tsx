@@ -10,6 +10,7 @@ import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Pencil01Icon, Trash01Icon } from '@untitled-theme/icons-react';
+import { useCallback } from 'react';
 import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -129,6 +130,16 @@ function AccountRow({
 }) {
 	const { isError } = usePlayerProfile(profile.id);
 
+	const navigate = Route.useNavigate();
+	const manageSkin = useCallback(() => {
+		navigate({
+			to: `/app/account/skins`,
+			search: {
+				profile,
+			},
+		});
+	}, [profile, navigate]);
+
 	return (
 		<AriaButton
 			className={twMerge(
@@ -153,17 +164,15 @@ function AccountRow({
 				</div>
 
 				<div className="flex flex-row items-center gap-2">
-					<Link to="/app/accountSkin">
-						{/* TODO: Find a better way to handle handle a user that isn't just changing the default user */}
-						<Button
-							className="group w-8 h-8"
-							color="ghost"
-							onPress={() => onPress()}
-							size="icon"
-						>
-							<Pencil01Icon className="group-hover:stroke-brand-hover" />
-						</Button>
-					</Link>
+					<Button
+						className="group w-8 h-8"
+						color="ghost"
+						onPress={manageSkin}
+						size="icon"
+					>
+						<Pencil01Icon className="group-hover:stroke-brand-hover" />
+					</Button>
+
 					<DialogTrigger>
 						<Button className="group w-8 h-8" color="ghost" size="icon">
 							<Trash01Icon className="group-hover:stroke-danger" />

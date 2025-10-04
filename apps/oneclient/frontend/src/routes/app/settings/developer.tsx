@@ -16,7 +16,9 @@ function RouteComponent() {
 	return (
 		<Sidebar.Page>
 			<div className="h-full">
-				<h1>Onboarding</h1>
+				<h1 className="text-xl">Developer Options</h1>
+
+				<SettingsRow.Header>Onboarding</SettingsRow.Header>
 
 				<SettingsRow
 					description="Open Onboarding"

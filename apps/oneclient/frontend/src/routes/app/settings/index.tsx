@@ -30,7 +30,7 @@ function RouteComponent() {
 	return (
 		<Sidebar.Page>
 			<div className="h-full">
-				<h1>General</h1>
+				<h1 className="text-xl">General</h1>
 
 				<SettingsRow
 					description="Enable Discord Rich Presence."

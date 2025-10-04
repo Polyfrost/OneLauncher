@@ -28,7 +28,7 @@ function RouteComponent() {
 		<Sidebar.Page>
 			{/* <ScrollableContainer> */}
 			<div className="h-full">
-				<h1>Minecraft Settings</h1>
+				<h1 className="text-xl">Minecraft Settings</h1>
 
 				<GameSettings />
 

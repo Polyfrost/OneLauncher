@@ -18,7 +18,7 @@ function RouteComponent() {
 		<Sidebar.Page>
 			{/* <ScrollableContainer> */}
 			<div className="h-full">
-				<h1>Appearance</h1>
+				<h1 className="text-xl">Appearance</h1>
 
 				<div className="flex flex-row items-center gap-4">
 					<PrimaryThemeCard />

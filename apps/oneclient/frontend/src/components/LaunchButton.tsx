@@ -33,10 +33,13 @@ export function LaunchButton({
 	const [open, setOpen] = useState<boolean>(false);
 
 	const launch = () => {
-		if (currentAccount === null)
+		if (currentAccount === null) {
 			setOpen(true);
-		else
+		}
+		else {
 			launchCluster();
+			setOpen(false);
+		}
 	};
 
 	return (

@@ -1,16 +1,14 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import type { ButtonProps } from '@onelauncher/common/components';
-import { AccountAvatar, SheetPage, SkinViewer } from '@/components';
-import { AddAccountModal, RemoveAccountModal } from '@/components/overlay';
+import { AccountAvatar, DeleteAccountButton, ManageSkinButton, SheetPage, SkinViewer } from '@/components';
+import { AddAccountModal } from '@/components/overlay';
 import { Overlay } from '@/components/overlay/Overlay';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { Pencil01Icon, Trash01Icon } from '@untitled-theme/icons-react';
-import { useCallback } from 'react';
+import { createFileRoute } from '@tanstack/react-router';
 import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -130,16 +128,6 @@ function AccountRow({
 }) {
 	const { isError } = usePlayerProfile(profile.id);
 
-	const navigate = Route.useNavigate();
-	const manageSkin = useCallback(() => {
-		navigate({
-			to: `/app/account/skins`,
-			search: {
-				profile,
-			},
-		});
-	}, [profile, navigate]);
-
 	return (
 		<AriaButton
 			className={twMerge(
@@ -164,24 +152,8 @@ function AccountRow({
 				</div>
 
 				<div className="flex flex-row items-center gap-2">
-					<Button
-						className="group w-8 h-8"
-						color="ghost"
-						onPress={manageSkin}
-						size="icon"
-					>
-						<Pencil01Icon className="group-hover:stroke-brand-hover" />
-					</Button>
-
-					<DialogTrigger>
-						<Button className="group w-8 h-8" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
-
-						<Overlay>
-							<RemoveAccountModal onPress={onDelete} profile={profile} />
-						</Overlay>
-					</DialogTrigger>
+					<ManageSkinButton profile={profile} />
+					<DeleteAccountButton onPress={onDelete} profile={profile} />
 				</div>
 			</div>
 		</AriaButton>

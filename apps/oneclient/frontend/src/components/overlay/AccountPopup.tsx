@@ -3,14 +3,15 @@ import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
-import { Pencil01Icon, PlusIcon, Settings01Icon, Trash01Icon } from '@untitled-theme/icons-react';
+import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
 import { DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from '../AccountAvatar';
+import { DeleteAccountButton } from '../DeleteAccountButton';
+import { ManageSkinButton } from '../ManageSkinButton';
 import { AddAccountModal } from './AddAccountModal';
 import { Overlay } from './Overlay';
 import { Popup } from './Popup';
-import { RemoveAccountModal } from './RemoveAccountModal';
 
 export function AccountPopup() {
 	const users = useCommand(['getUsers'], bindings.core.getUsers);
@@ -117,26 +118,8 @@ function AccountEntry({
 				</div>
 
 				<div className="flex flex-row items-center">
-					<Link to="/app/accountSkin">
-						<Button
-							className="group w-8 h-8"
-							color="ghost"
-							onClick={onClick}
-							size="icon"
-						>
-							<Pencil01Icon className="group-hover:stroke-brand-hover" />
-						</Button>
-					</Link>
-
-					<DialogTrigger>
-						<Button className="group w-8 h-8" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
-
-						<Overlay>
-							<RemoveAccountModal onPress={onDelete} profile={user} />
-						</Overlay>
-					</DialogTrigger>
+					<ManageSkinButton profile={user} />
+					<DeleteAccountButton onPress={onDelete} profile={user} />
 				</div>
 			</div>
 		</Button>

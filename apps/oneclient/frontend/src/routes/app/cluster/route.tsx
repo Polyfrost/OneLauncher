@@ -71,6 +71,7 @@ function RouteComponent() {
 		>
 			<TabList floating={floating} ref={tabListRef}>
 				<Tab from={Route.id} search={search} to="/app/cluster/overview">Overview</Tab>
+				<Tab from={Route.id} search={search} to="/app/cluster/mods">Mods</Tab>
 				<Tab from={Route.id} search={search} to="/app/cluster/logs">Logs</Tab>
 				<Tab from={Route.id} search={{ ...search, packageType: 'mod' }} to="/app/cluster/browser">Browser</Tab>
 				<Tab from={Route.id} search={search} to="/app/cluster/settings">Settings</Tab>

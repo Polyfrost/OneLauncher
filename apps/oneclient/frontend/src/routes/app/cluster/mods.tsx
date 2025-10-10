@@ -185,12 +185,12 @@ function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: ()
 									{' '}
 									{modMetadata.managed
 										? (
-											<>
-												(
-												<ModrinthVersionButton kind={file.kind} />
-												)
-											</>
-										)
+												<>
+													(
+													<ModrinthVersionButton kind={file.kind} />
+													)
+												</>
+											)
 										: <></>}
 									{' '}
 								</p>

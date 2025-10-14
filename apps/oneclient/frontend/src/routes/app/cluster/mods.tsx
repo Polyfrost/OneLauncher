@@ -7,6 +7,7 @@ import { Button, Tab, TabContent, TabList, TabPanel, Tabs } from '@onelauncher/c
 import { createFileRoute } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
+import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/cluster/mods')({
 	component: RouteComponent,
@@ -33,9 +34,9 @@ function RouteComponent() {
 				<div className="absolute right-4">
 					<div className="flex flex-row gap-2">
 						<Button onClick={openMods}>Open mods folder</Button>
-						<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1 flex items-center">
+						{/* <div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1 flex items-center">
 							{mods.length} Mods installed
-						</div>
+						</div> */}
 					</div>
 				</div>
 			</TabList>
@@ -73,45 +74,38 @@ function Bundle({ bundleData, updateMods, mods }: { bundleData: ModpackArchive; 
 
 interface ModInfo {
 	name: string;
-	description: string;
-	author: string;
-	iconURL: string;
+	description: string | null;
+	author: string | null;
+	iconURL: string | null;
 	managed: boolean;
 }
 
-async function getModAuthor(kind: ModpackFileKind): Promise<string> {
+async function getModAuthor(kind: ModpackFileKind): Promise<string | null> {
 	if ('External' in kind)
-		return 'UNKNOWN';
+		return null;
 	if (!('Managed' in kind))
-		return 'UNKNOWN';
+		return null;
 
 	const authors = await bindings.core.getUsersFromAuthor(kind.Managed[0].provider, kind.Managed[0].author);
 	return authors.map(author => author.username).join(', ');
 }
 
-function getModIconURL(url?: string | null) {
-	return url || MissingLogo;
-}
-
 async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo> {
+	if ('External' in kind)
+		return {
+			name: kind.External.name.replaceAll('.jar', ''),
+			description: null,
+			iconURL: null,
+			author: await getModAuthor(kind),
+			managed: false,
+		};
+
 	return {
-		name: 'External' in kind
-			? kind.External.name.replaceAll('.jar', '')
-			: 'Managed' in kind
-				? kind.Managed[0].name
-				: 'UNKNOWN',
-		description: 'External' in kind
-			? 'No Description'
-			: 'Managed' in kind
-				? kind.Managed[0].short_desc
-				: 'UNKNOWN',
+		name: kind.Managed[0].name,
+		description: kind.Managed[0].short_desc,
+		iconURL: kind.Managed[0].icon_url,
 		author: await getModAuthor(kind),
-		iconURL: 'External' in kind
-			? getModIconURL()
-			: 'Managed' in kind
-				? getModIconURL(kind.Managed[0].icon_url)
-				: getModIconURL(),
-		managed: 'Managed' in kind,
+		managed: true,
 	};
 }
 
@@ -165,7 +159,7 @@ function DownloadMod({ pkg, version, updateMods, mods }: { pkg: ManagedPackage; 
 }
 
 function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: () => void; mods: Array<string> }) {
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: 'UNKNOWN', description: 'UNKNOWN', name: 'UNKNOWN', iconURL: getModIconURL(), managed: false });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'UNKNOWN', iconURL: null, managed: false });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
 	}, []);
@@ -175,8 +169,10 @@ function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: ()
 			<div>
 				<div className="flex flex-row gap-2 justify-between">
 					<div className="flex flex-row gap-2">
-						<div className="size-18 flex flex-col items-center justify-center">
-							<img className="rounded-lg size-16" src={modMetadata.iconURL} />
+						<div className="size-18 flex flex-col items-center justify-center ">
+							<div className="rounded-lg size-16 bg-component-bg-disabled border border-gray-100/5">
+								<img className={twMerge('rounded-lg size-16', modMetadata.iconURL === null ? 'hidden' : '')} src={modMetadata.iconURL ?? MissingLogo} />
+							</div>
 						</div>
 						<div className="flex flex-col">
 							<div className="flex flex-row gap-2">
@@ -194,19 +190,19 @@ function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: ()
 										: <></>}
 									{' '}
 								</p>
-								<div className="flex flex-col items-center justify-center px-4 rounded-full text-fg-secondary font-normal bg-component-bg border border-gray-100/5">
+								<div className="flex flex-col items-center justify-center px-4 rounded-full text-fg-secondary font-normal bg-component-bg border border-gray-100/5 scale-90">
 									<p>{modMetadata.managed ? 'Modrinth' : 'SkyClient'}</p>
 								</div>
 							</div>
-							<p className="text-fg-secondary">
+							<p className={modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary'}>
 								by
 								{' '}
-								<span className="font-semibold">{modMetadata.author}</span>
+								<span className="font-semibold">{modMetadata.author ?? 'UNKNOWN'}</span>
 							</p>
-							<p className="text-fg-secondary font-normal">{modMetadata.description}</p>
+							<p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary')}>{modMetadata.description ?? 'No Description'}</p>
 						</div>
 					</div>
-					<div className="flex flex-col items-center justify-center gap-2">
+					<div className="flex flex-col items-center justify-center pr-2">
 						<DownloadFileButton kind={file.kind} mods={mods} updateMods={updateMods} />
 					</div>
 				</div>

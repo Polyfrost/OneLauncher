@@ -78,6 +78,7 @@ interface ModInfo {
 	author: string | null;
 	iconURL: string | null;
 	managed: boolean;
+	url: string | null;
 }
 
 async function getModAuthor(kind: ModpackFileKind): Promise<string | null> {
@@ -98,6 +99,7 @@ async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo> {
 			iconURL: null,
 			author: await getModAuthor(kind),
 			managed: false,
+			url: null,
 		};
 
 	return {
@@ -106,18 +108,8 @@ async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo> {
 		iconURL: kind.Managed[0].icon_url,
 		author: await getModAuthor(kind),
 		managed: true,
+		url: `https://modrinth.com/project/${kind.Managed[0].slug}`,
 	};
-}
-
-function ModrinthVersionButton({ kind }: { kind: ModpackFileKind }) {
-	if (!('Managed' in kind))
-		return <></>;
-	const [pkg, version] = kind.Managed;
-	return (
-		<ExternalLink className="text-link hover:text-link-hover" href={`https://modrinth.com/project/${pkg.slug}/version/${version.version_id}`} includeIcon>
-			{version.display_name}
-		</ExternalLink>
-	);
 }
 
 function DownloadFileButton({ kind, updateMods, mods }: { kind: ModpackFileKind; updateMods: () => void; mods: Array<string> }) {
@@ -158,8 +150,16 @@ function DownloadMod({ pkg, version, updateMods, mods }: { pkg: ManagedPackage; 
 	);
 }
 
+function ModTag({ modData }: { modData: ModInfo }) {
+	return (
+		<ExternalLink className="no-underline flex flex-col items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 scale-90" href={modData.url ?? undefined}>
+			<p>{modData.managed ? 'Modrinth' : 'External'}</p>
+		</ExternalLink>
+	);
+}
+
 function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: () => void; mods: Array<string> }) {
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'UNKNOWN', iconURL: null, managed: false });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'UNKNOWN', iconURL: null, managed: false, url: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
 	}, []);
@@ -178,21 +178,8 @@ function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: ()
 							<div className="flex flex-row gap-2">
 								<p className="text-fg-primary text-xl">
 									{modMetadata.name}
-									{' '}
-									{modMetadata.managed
-										? (
-												<>
-													(
-													<ModrinthVersionButton kind={file.kind} />
-													)
-												</>
-											)
-										: <></>}
-									{' '}
 								</p>
-								<div className="flex flex-col items-center justify-center px-4 rounded-full text-fg-secondary font-normal bg-component-bg border border-gray-100/5 scale-90">
-									<p>{modMetadata.managed ? 'Modrinth' : 'SkyClient'}</p>
-								</div>
+								<ModTag modData={modMetadata} />
 							</div>
 							<p className={modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary'}>
 								by

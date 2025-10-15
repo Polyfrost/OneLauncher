@@ -152,7 +152,7 @@ function DownloadMod({ pkg, version, updateMods, mods }: { pkg: ManagedPackage; 
 
 function ModTag({ modData }: { modData: ModInfo }) {
 	return (
-		<ExternalLink className="no-underline flex flex-col items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 scale-90" href={modData.url ?? undefined}>
+		<ExternalLink className="no-underline flex flex-row items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 scale-90 gap-2" href={modData.url ?? undefined} includeIcon={modData.managed}>
 			<p>{modData.managed ? 'Modrinth' : 'External'}</p>
 		</ExternalLink>
 	);

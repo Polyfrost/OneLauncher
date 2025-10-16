@@ -1,10 +1,9 @@
 import type { ManagedPackage, ManagedVersion, ModpackArchive, ModpackFile, ModpackFileKind } from '@/bindings.gen';
 import MissingLogo from '@/assets/misc/missingLogo.svg';
-import { ExternalLink } from '@/components/ExternalLink';
 import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button, Tab, TabContent, TabList, TabPanel, Tabs } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
@@ -30,7 +29,7 @@ function RouteComponent() {
 	return (
 		<Tabs defaultValue={bundles[0].manifest.name}>
 			<TabList className="gap-6">
-				{bundles.map(bundle => <Tab key={bundle.manifest.name} value={bundle.manifest.name}>{(bundle.manifest.name.match(/\[(.*?)\]/)?.[1]) ?? 'UNKNOWN'}</Tab>)}
+				{bundles.map(bundle => <Tab key={bundle.manifest.name} value={bundle.manifest.name}>{(bundle.manifest.name.match(/\[(.*?)\]/)?.[1]) ?? 'LOADING'}</Tab>)}
 				<div className="absolute right-4">
 					<div className="flex flex-row gap-2">
 						<Button onClick={openMods}>Open mods folder</Button>
@@ -79,6 +78,7 @@ interface ModInfo {
 	iconURL: string | null;
 	managed: boolean;
 	url: string | null;
+	id: string | null;
 }
 
 async function getModAuthor(kind: ModpackFileKind): Promise<string | null> {
@@ -100,6 +100,7 @@ async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo> {
 			author: await getModAuthor(kind),
 			managed: false,
 			url: null,
+			id: null,
 		};
 
 	return {
@@ -109,6 +110,7 @@ async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo> {
 		author: await getModAuthor(kind),
 		managed: true,
 		url: `https://modrinth.com/project/${kind.Managed[0].slug}`,
+		id: kind.Managed[0].id,
 	};
 }
 
@@ -151,15 +153,20 @@ function DownloadMod({ pkg, version, updateMods, mods }: { pkg: ManagedPackage; 
 }
 
 function ModTag({ modData }: { modData: ModInfo }) {
+	const { cluster } = Route.useRouteContext();
 	return (
-		<ExternalLink className="no-underline flex flex-row items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 scale-90 gap-2" href={modData.url ?? undefined} includeIcon={modData.managed}>
+		<Link
+			className="no-underline flex flex-row items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 scale-90 gap-2"
+			search={{ provider: 'Modrinth', packageId: modData.id ?? '', clusterId: cluster.id }}
+			to="/app/cluster/browser/package"
+		>
 			<p>{modData.managed ? 'Modrinth' : 'External'}</p>
-		</ExternalLink>
+		</Link>
 	);
 }
 
 function ModCard({ file, updateMods, mods }: { file: ModpackFile; updateMods: () => void; mods: Array<string> }) {
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'UNKNOWN', iconURL: null, managed: false, url: null });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
 	}, []);

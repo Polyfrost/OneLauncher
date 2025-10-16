@@ -6,8 +6,6 @@ export const Route = createFileRoute('/app/cluster/overview')({
 });
 
 function RouteComponent() {
-	const { cluster } = Route.useRouteContext();
-
 	return (
 		<SheetPage.Content>
 			<div className="flex flex-col gap-4">

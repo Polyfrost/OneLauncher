@@ -223,7 +223,7 @@ impl ProviderExt for ModrinthProviderImpl {
 				avatar_url: organization.icon_url,
 				bio: Some(organization.description),
 				url: Some(format!(
-					"{}/organization/{}",
+					"{}organization/{}",
 					Provider::Modrinth.website(),
 					organization.id
 				)),

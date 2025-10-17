@@ -6,9 +6,10 @@ import { Stepper } from '@/components/Stepper';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { createFileRoute, Link, Outlet } from '@tanstack/react-router';
+import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
+import { motion } from 'motion/react';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/onboarding')({
@@ -83,13 +84,33 @@ function getLinearSteps(steps: Array<OnboardingStep>): Array<Omit<OnboardingStep
 const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 
 function RouteComponent() {
+	const location = useLocation();
+
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
 		<AppShell>
 			<div className="h-full w-full">
 				<LoaderSuspense spinner={{ size: 'large' }}>
 					<Navbar />
-					<Outlet />
+
+					<motion.div
+						animate={{
+							bottom: 0,
+							opacity: 1,
+						}}
+						exit={{
+							opacity: 0,
+						}}
+						initial={{
+							opacity: 0,
+						}}
+						key={location.pathname}
+						transition={{ duration: 0.25 }}
+					>
+
+						<Outlet />
+
+					</motion.div>
 
 					<OnboardingNavigation />
 				</LoaderSuspense>

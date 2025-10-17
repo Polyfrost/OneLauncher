@@ -1,6 +1,9 @@
+import type { OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
 import type { JSX } from 'react';
+import { bindings } from '@/main';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
+import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
@@ -12,59 +15,9 @@ export const Route = createFileRoute('/onboarding/preferences/versions')({
 	component: RouteComponent,
 });
 
-interface VersionDataEntry {
-	minor_version: number;
-	loader: string;
-	tags: Array<string>;
-}
-
-interface VersionDataCluster {
-	major_version: number;
-	name: string;
-	art: string;
-	entries: Array<VersionDataEntry>;
-}
-
-interface VersionData {
-	clusters: Array<VersionDataCluster>;
-}
-
-// placeholder
-const versions: VersionData = {
-	clusters: [
-		{
-			major_version: 8,
-			name: 'Bountiful Update',
-			art: '/versions/art/Horse_Update.jpg',
-			entries: [
-				{
-					minor_version: 9,
-					loader: 'forge',
-					tags: ['Bedwars', 'Nostalgia', 'PvP', 'SkyBlock', 'UHC'],
-				},
-			],
-		},
-		{
-			major_version: 21,
-			name: 'Tricky Trials',
-			art: '/versions/art/Tricky_Trials.png',
-			entries: [
-				{
-					minor_version: 1,
-					loader: 'fabric',
-					tags: ['PvP', 'Survival'],
-				},
-				{
-					minor_version: 8,
-					loader: 'fabric',
-					tags: ['PvP', 'SkyBlock', 'Survival'],
-				},
-			],
-		},
-	],
-};
-
 function RouteComponent() {
+	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
+
 	const tags = useMemo(() => {
 		const result: Record<string, Array<JSX.Element> | undefined> = {};
 
@@ -125,7 +78,7 @@ function RouteComponent() {
 	);
 }
 
-function VersionCard({ cluster, versionData, version }: { cluster: VersionDataCluster; versionData: VersionInfo; version: VersionDataEntry }) {
+function VersionCard({ cluster, versionData, version }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry }) {
 	const fullVersionName = `${versionData.prettyName}.${version.minor_version}`;
 	const navigate = useNavigate();
 	const openModsList = useCallback(() => navigate({ to: `/onboarding/preferences/mod/cluster`, search: { mc_version: fullVersionName, mc_loader: version.loader } }), [fullVersionName, version, navigate]);
@@ -170,6 +123,6 @@ function RenderTags({ tags }: { tags: Record<string, Array<JSX.Element> | undefi
 					{tag[1]}
 				</div>
 			</div>
-		)
+		);
 	});
 }

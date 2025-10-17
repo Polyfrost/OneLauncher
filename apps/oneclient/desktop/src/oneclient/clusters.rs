@@ -6,7 +6,7 @@ use onelauncher_core::error::LauncherResult;
 use onelauncher_core::send_error;
 use onelauncher_core::utils::http::fetch_json;
 use reqwest::Method;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 ///
 /// e.g.
@@ -15,44 +15,73 @@ use serde::Deserialize;
 /// 	"clusters": [
 /// 		{
 /// 			"major_version": 21,
+/// 			"name": "Tricky Trials",
+/// 			"art": "/versions/art/Tricky_Trials.png",
 /// 			"entries": [
 /// 				{
 /// 					"minor_version": 5,
-/// 					"loader": "fabric"
+/// 					"loader": "fabric",
+/// 					"tags": ["PvP", "Survival"]
 /// 				},
 /// 				{
 /// 					"minor_version": 5,
-/// 					"loader": "forge"
+/// 					"loader": "forge",
+/// 					"tags": ["PvP", "Survival"]
 /// 				}
 /// 			]
 /// 		},
 /// 		{
 /// 			"major_version": 20,
+/// 			"name": "Trails & Tales",
+/// 			"art": "/versions/art/Trails_Tales.png",
 /// 			"entries": [
 /// 				{
 /// 					"minor_version": 5,
-/// 					"loader": "fabric"
+/// 					"loader": "fabric",
+/// 					"tags": ["PvP", "Survival"]
 /// 				}
 /// 			]
 /// 		}
 /// 	]
 /// }
 /// ```
-#[derive(Deserialize)]
-struct OnlineClusterManifest {
+#[derive(specta::Type, Deserialize, Serialize)]
+pub struct OnlineClusterManifest {
 	clusters: Vec<OnlineCluster>,
 }
 
-#[derive(Deserialize)]
-struct OnlineCluster {
+#[derive(specta::Type, Deserialize, Serialize)]
+pub struct OnlineCluster {
 	major_version: u8,
+	name: String,
+	art: String,
 	entries: Vec<OnlineClusterEntry>,
 }
 
-#[derive(Deserialize)]
-struct OnlineClusterEntry {
+#[derive(specta::Type, Deserialize, Serialize)]
+pub struct OnlineClusterEntry {
 	minor_version: u8,
 	loader: GameLoader,
+	tags: Vec<String>,
+}
+
+pub async fn get_data_storage_versions() -> LauncherResult<OnlineClusterManifest> {
+	let manifest = match fetch_json::<OnlineClusterManifest>(
+		Method::GET,
+		&format!("{}/versions/versions.json", crate::constants::META_URL_BASE),
+		None,
+		None,
+	)
+	.await
+	{
+		Ok(m) => m,
+		Err(e) => {
+			send_error!("failed to fetch clusters manifest: {}", e);
+			return Err(e);
+		}
+	};
+
+	Ok(manifest)
 }
 
 pub async fn init_clusters() -> LauncherResult<()> {

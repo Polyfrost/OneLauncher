@@ -21,17 +21,19 @@ export const Route = createFileRoute('/onboarding')({
 		const isFirstStep = currentStepIndex === 0;
 		const isLastStep = currentStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
 
+		const nextStep = LINEAR_ONBOARDING_STEPS
+			.slice(currentStepIndex + 1)
+			.find(step => !step.disabled);
+		const previousStep = LINEAR_ONBOARDING_STEPS
+			.slice(0, currentStepIndex)
+			.reverse()
+			.find(step => !step.disabled);
+
 		return {
 			isFirstStep,
 			isLastStep,
-			previousPath:
-				currentStepIndex > 0
-					? LINEAR_ONBOARDING_STEPS[currentStepIndex - 1]?.path
-					: undefined,
-			nextPath:
-				currentStepIndex < LINEAR_ONBOARDING_STEPS.length - 1
-					? LINEAR_ONBOARDING_STEPS[currentStepIndex + 1]?.path
-					: undefined,
+			previousPath: previousStep?.path,
+			nextPath: nextStep?.path,
 			currentStepIndex,
 		};
 	},
@@ -41,20 +43,24 @@ export interface OnboardingStep {
 	path: string;
 	title: string;
 	subSteps?: Array<OnboardingStep>;
+	disabled: boolean
 };
 
 const ONBOARDING_STEPS: Array<OnboardingStep> = [
 	{
 		path: '/onboarding',
 		title: 'Welcome',
+		disabled: false
 	},
 	{
 		path: '/onboarding/language',
 		title: 'Set Language',
+		disabled: false
 	},
 	{
 		path: '/onboarding/account',
 		title: 'Account',
+		disabled: false
 	},
 	{
 		path: '/onboarding/preferences/',
@@ -63,16 +69,20 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 			{
 				path: '/onboarding/preferences/versions',
 				title: 'Versions',
+				disabled: false
 			},
 			{
-				path: '/onboarding/preferences/mods',
+				path: '/onboarding/preferences/mod/cluster',
 				title: 'Mods',
+				disabled: true
 			},
 		],
+		disabled: false
 	},
 	{
 		path: '/onboarding/finished',
 		title: 'Finished',
+		disabled: false
 	},
 ];
 
@@ -174,6 +184,12 @@ function BackgroundGradient() {
 			</MouseParallax>
 		</div>
 	);
+}
+
+
+function getNextPath(index: number) {
+	if (ONBOARDING_STEPS[index].disabled) return getNextPath(index++)
+	return ONBOARDING_STEPS[index].path
 }
 
 export function OnboardingNavigation() {

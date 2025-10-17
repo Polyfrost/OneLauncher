@@ -56,7 +56,7 @@ function Bundle({ bundleData, updateMods, mods, cluster }: { bundleData: Modpack
 	return (
 		<TabPanel value={bundleData.manifest.name}>
 			<OverlayScrollbarsComponent>
-				<div className="grid gap-2 grid-cols-1 h-96">
+				<div className="grid gap-2 grid-cols-1 h-112">
 					{bundleData.manifest.files.map((file, index) => (
 						<ModCard
 							cluster={cluster}

@@ -1,10 +1,12 @@
 import type React from 'react';
 import type { HTMLProps } from 'react';
 import { bindings } from '@/main';
-import { LinkExternal01Icon } from '@untitled-theme/icons-react';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { LinkExternal01Icon, Copy03Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 import { Overlay } from './overlay';
+import { toast } from '@/utils/toast';
 
 export interface ExternalLinkProps extends HTMLProps<HTMLAnchorElement> {
 	href?: string | undefined;
@@ -59,8 +61,13 @@ export function ExternalLink({
 						buttons={[
 							{
 								color: 'secondary',
-								children: 'Cancel',
-								slot: 'close',
+								children: 'Copy Link',
+								onClick: () => {
+									if (href)
+										writeText(href);
+
+									setIsOpen(false);
+								},
 							},
 							{
 								color: 'primary',

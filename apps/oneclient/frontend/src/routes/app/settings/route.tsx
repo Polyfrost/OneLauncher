@@ -35,7 +35,7 @@ function RouteComponent() {
 						links={{
 							'Launcher Settings': [
 								[<Rocket02Icon key="general" />, 'General', '/'],
-								[<Brush01Icon key="appearence" />, 'Appearance', '/appearance'],
+								// [<Brush01Icon key="appearence" />, 'Appearance', '/appearance'],
 							// [<Key01Icon />, 'APIs', '/apis'],
 							// [<Globe01Icon />, 'Language', '/language'],
 							],

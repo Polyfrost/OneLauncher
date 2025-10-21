@@ -32,6 +32,10 @@ jobs:
           save-cache: true
           restore-cache: true
 
+      - name: Add x86_64-apple-darwin target
+        if: contains(matrix.args, 'x86_64-apple-darwin')
+        run: rustup target add x86_64-apple-darwin
+
       - name: Setup Packages
         uses: ./.github/actions/setup-packages
 

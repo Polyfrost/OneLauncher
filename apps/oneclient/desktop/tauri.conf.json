@@ -72,10 +72,10 @@
 		"linux": {
 			"deb": {
 				"depends": [],
-				"desktopTemplate": "../distribution/linux/org.polyfrost.oneclient.desktop.template"
+				"desktopTemplate": "../distribution/linux/org.polyfrost.launcher.desktop.template"
 			},
 			"rpm": {
-				"desktopTemplate": "../distribution/linux/org.polyfrost.oneclient.desktop.template"
+				"desktopTemplate": "../distribution/linux/org.polyfrost.launcher.desktop.template"
 			},
 			"appimage": {
 

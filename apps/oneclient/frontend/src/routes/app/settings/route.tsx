@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { SheetPage } from '@/components';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { Brush01Icon, CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
+import { CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/app/settings')({

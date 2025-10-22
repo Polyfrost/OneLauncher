@@ -1,5 +1,4 @@
 import type { OnboardingStep } from '@/routes/onboarding/route';
-import { useMatchRoute } from '@tanstack/react-router';
 
 interface VerticalStepperProps {
 	steps: Array<OnboardingStep>;

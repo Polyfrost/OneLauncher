@@ -207,12 +207,6 @@ function BackgroundGradient() {
 	);
 }
 
-function getNextPath(index: number) {
-	if (ONBOARDING_STEPS[index].disabled)
-		return getNextPath(index++);
-	return ONBOARDING_STEPS[index].path;
-}
-
 export function OnboardingNavigation() {
 	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));

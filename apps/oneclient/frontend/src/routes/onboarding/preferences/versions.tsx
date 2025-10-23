@@ -6,7 +6,7 @@ import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueries } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { DotsVerticalIcon, Download01Icon, Trash01Icon } from '@untitled-theme/icons-react';
+import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useCallback, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
@@ -111,7 +111,7 @@ function VersionCard({ cluster, versionData, version, fullVersionName }: { clust
 }
 
 function ModCategory({ name, bundleData }: { name: string; bundleData: BundleData }) {
-	const [mods, setMods] = useState<Array<ModpackFile>>([]);
+	const [, setMods] = useState<Array<ModpackFile>>([]);
 	return (
 		<>
 			<h1 className="text-2xl font-semibold my-2">{name}</h1>

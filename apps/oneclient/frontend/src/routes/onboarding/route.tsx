@@ -44,24 +44,24 @@ export interface OnboardingStep {
 	path: string;
 	title: string;
 	subSteps?: Array<OnboardingStep>;
-	disabled: boolean
+	disabled: boolean;
 };
 
 const ONBOARDING_STEPS: Array<OnboardingStep> = [
 	{
 		path: '/onboarding',
 		title: 'Welcome',
-		disabled: false
+		disabled: false,
 	},
 	{
 		path: '/onboarding/language',
 		title: 'Set Language',
-		disabled: false
+		disabled: false,
 	},
 	{
 		path: '/onboarding/account',
 		title: 'Account',
-		disabled: false
+		disabled: false,
 	},
 	{
 		path: '/onboarding/preferences/',
@@ -70,20 +70,20 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 			{
 				path: '/onboarding/preferences/versions',
 				title: 'Versions',
-				disabled: false
+				disabled: false,
 			},
 			{
 				path: '/onboarding/preferences/mod/cluster',
 				title: 'Mods',
-				disabled: true
+				disabled: true,
 			},
 		],
-		disabled: false
+		disabled: false,
 	},
 	{
 		path: '/onboarding/finished',
 		title: 'Finished',
-		disabled: false
+		disabled: false,
 	},
 ];
 
@@ -207,10 +207,10 @@ function BackgroundGradient() {
 	);
 }
 
-
 function getNextPath(index: number) {
-	if (ONBOARDING_STEPS[index].disabled) return getNextPath(index++)
-	return ONBOARDING_STEPS[index].path
+	if (ONBOARDING_STEPS[index].disabled)
+		return getNextPath(index++);
+	return ONBOARDING_STEPS[index].path;
 }
 
 export function OnboardingNavigation() {

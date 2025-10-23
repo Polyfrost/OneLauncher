@@ -1,9 +1,9 @@
 import { BundleModsList } from '@/components';
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/onboarding/preferences/mod/cluster')({
 	component: RouteComponent,
-})
+});
 
 function RouteComponent() {
 	const { cluster } = Route.useRouteContext();

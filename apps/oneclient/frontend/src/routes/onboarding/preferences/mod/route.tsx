@@ -26,8 +26,8 @@ export const Route = createFileRoute('/onboarding/preferences/mod')({
 			queryFn: () => bindings.core.getClusters(),
 		});
 
-		const clusters = await query
-		const cluster = clusters.find((cluster) => cluster.mc_version === search.mc_version && cluster.mc_loader === search.mc_loader)
+		const clusters = await query;
+		const cluster = clusters.find(cluster => cluster.mc_version === search.mc_version && cluster.mc_loader === search.mc_loader);
 		if (!cluster)
 			throw redirect({ to: '/onboarding/preferences/versions', from: '/onboarding/preferences/mod' });
 

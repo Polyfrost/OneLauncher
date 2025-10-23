@@ -88,7 +88,7 @@ function VersionCard({ cluster, versionData, version, fullVersionName }: { clust
 					src={`https://raw.githubusercontent.com/PolyFrost/DataStorage/refs/heads/main/oneclient${cluster.art}`}
 				/>
 
-				<div className='absolute top-3 left-3 flex flex-wrap gap-1'>
+				<div className="absolute top-3 left-3 flex flex-wrap gap-1">
 					{
 						version.tags.map(tag => (
 							<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1" key={tag}>
@@ -146,17 +146,17 @@ function FunnyVersionCard({ art, fullVersionName, setMods, bundle }: { fullVersi
 	};
 
 	return (
-		<AriaButton className={twMerge("group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand", isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
+		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
 			<div className="relative w-full">
 				<img
 					alt="fuck"
-					className={twMerge("w-full rounded-xl h-16 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0", isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
+					className={twMerge('w-full rounded-xl h-16 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
 					src={`https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient${art}`}
 				/>
 
-				<div className={twMerge("absolute -top-2 right-3", isSelected ? "block" : "hidden group-hover:block")}>
+				<div className={twMerge('absolute -top-2 right-3', isSelected ? 'block' : 'hidden group-hover:block')}>
 					<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1">
-						{files.length} Mods {isSelected ? "Selected" : ""}
+						{files.length} Mods {isSelected ? 'Selected' : ''}
 					</div>
 				</div>
 

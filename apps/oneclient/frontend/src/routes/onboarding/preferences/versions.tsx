@@ -1,5 +1,6 @@
 import type { ModpackArchive, ModpackFile, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
+import { DownloadMods } from '@/components';
 import { bindings } from '@/main';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
@@ -12,14 +13,16 @@ import { useCallback, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
+export interface BundleData {
+	bundles: Array<ModpackArchive>;
+	art: string;
+	modsInfo: [Array<ModpackFile>, React.Dispatch<React.SetStateAction<Array<ModpackFile>>>];
+	clusterId: number;
+}
+
 export const Route = createFileRoute('/onboarding/preferences/versions')({
 	component: RouteComponent,
 });
-
-interface BundleData {
-	bundles: Array<ModpackArchive>;
-	art: string;
-}
 
 function RouteComponent() {
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
@@ -37,7 +40,8 @@ function RouteComponent() {
 	clusters.forEach((cluster, index) => {
 		const version = versions.clusters.find(versionCluster => cluster.mc_version.startsWith(`1.${versionCluster.major_version}`));
 		const bundles = bundleQueries[index].data ?? [];
-		bundlesData[cluster.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg' };
+		// eslint-disable-next-line react-hooks/rules-of-hooks -- TODO Find a better way to do this that isn't useState
+		bundlesData[cluster.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg', modsInfo: useState<Array<ModpackFile>>([]), clusterId: cluster.id };
 	});
 
 	return (
@@ -67,6 +71,10 @@ function RouteComponent() {
 						</div>
 
 						{Object.entries(bundlesData).map(([name, bundleData], index) => <ModCategory bundleData={bundleData} key={index} name={name} />)}
+
+						<div className="mt-4">
+							<DownloadMods bundlesData={bundlesData} />
+						</div>
 
 					</div>
 				</OverlayScrollbarsComponent>
@@ -111,19 +119,18 @@ function VersionCard({ cluster, versionData, version, fullVersionName }: { clust
 }
 
 function ModCategory({ name, bundleData }: { name: string; bundleData: BundleData }) {
-	const [, setMods] = useState<Array<ModpackFile>>([]);
 	return (
 		<>
 			<h1 className="text-2xl font-semibold my-2">{name}</h1>
 			<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 				{bundleData.bundles.map((bundle, index) => {
 					return (
-						<FunnyVersionCard
+						<ModCategoryCard
 							art={bundleData.art}
 							bundle={bundle}
+							bundleData={bundleData}
 							fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
 							key={index}
-							setMods={setMods}
 						/>
 					);
 				})}
@@ -132,7 +139,8 @@ function ModCategory({ name, bundleData }: { name: string; bundleData: BundleDat
 	);
 }
 
-function FunnyVersionCard({ art, fullVersionName, setMods, bundle }: { fullVersionName: string; art: string; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; bundle: ModpackArchive }) {
+function ModCategoryCard({ art, fullVersionName, bundle, bundleData }: { fullVersionName: string; art: string; bundle: ModpackArchive; bundleData: BundleData }) {
+	const setMods = bundleData.modsInfo[1];
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const files = bundle.manifest.files.filter(file => 'Managed' in file.kind);
 	const handleDownload = () => {

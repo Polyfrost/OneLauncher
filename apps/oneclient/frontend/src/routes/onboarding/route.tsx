@@ -1,3 +1,4 @@
+import type { DownloadModsRef } from '@/components';
 import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
@@ -6,10 +7,12 @@ import { Stepper } from '@/components/Stepper';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
+import { useEffect } from 'react';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/onboarding')({
@@ -96,6 +99,20 @@ const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 function RouteComponent() {
 	const location = useLocation();
 
+	// Prefetch data so that onboarding/preferences/versions is fast
+	const queryClient = useQueryClient();
+	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
+	useEffect(() => {
+		clusters.forEach((cluster) => {
+			queryClient.prefetchQuery({
+				queryKey: ['getBundlesFor', cluster.id],
+				queryFn: () => bindings.oneclient.getBundlesFor(cluster.id),
+			});
+		});
+	}, [clusters, queryClient]);
+
+	const { currentStepIndex } = Route.useLoaderData();
+
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
 		<AppShell>
@@ -122,7 +139,7 @@ function RouteComponent() {
 
 					</motion.div>
 
-					<OnboardingNavigation />
+					{currentStepIndex !== 3 ? <OnboardingNavigation /> : <></>}
 				</LoaderSuspense>
 			</div>
 		</AppShell>
@@ -207,10 +224,21 @@ function BackgroundGradient() {
 	);
 }
 
-export function OnboardingNavigation() {
+export function OnboardingNavigation({ ref }: { ref?: React.RefObject<DownloadModsRef | null> }) {
+	const navigate = useNavigate();
 	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 	const forceLoginDisable = currentStepIndex === 2 && currentAccount === null;
+
+	function handleNextClick() {
+		if (forceLoginDisable)
+			return;
+
+		if (ref && ref.current !== null)
+			ref.current.openDownloadDialog();
+		else
+			navigate({ to: nextPath ?? '/app' });
+	}
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">
@@ -222,9 +250,14 @@ export function OnboardingNavigation() {
 				)}
 			</div>
 			<div>
-				<Link disabled={forceLoginDisable} to={nextPath ?? '/app'}>
-					<Button className={`w-32 ${forceLoginDisable ? 'line-through' : ''}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
-				</Link>
+				<Button
+					className={`w-32 ${forceLoginDisable ? 'line-through' : ''}`}
+					color={forceLoginDisable ? 'secondary' : 'primary'}
+					isDisabled={forceLoginDisable}
+					onClick={handleNextClick}
+				>
+					Next
+				</Button>
 			</div>
 		</div>
 	);

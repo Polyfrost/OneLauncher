@@ -1,4 +1,5 @@
 import type { ModpackArchive, ModpackFile, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
+import type { DownloadModsRef } from '@/components';
 import type { VersionInfo } from '@/utils/versionMap';
 import { DownloadMods } from '@/components';
 import { bindings } from '@/main';
@@ -9,9 +10,10 @@ import { useQueries } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
+import { OnboardingNavigation } from '../route';
 
 export interface BundleData {
 	bundles: Array<ModpackArchive>;
@@ -40,46 +42,52 @@ function RouteComponent() {
 	clusters.forEach((cluster, index) => {
 		const version = versions.clusters.find(versionCluster => cluster.mc_version.startsWith(`1.${versionCluster.major_version}`));
 		const bundles = bundleQueries[index].data ?? [];
-		// eslint-disable-next-line react-hooks/rules-of-hooks -- TODO Find a better way to do this that isn't useState
+		// eslint-disable-next-line react-hooks/rules-of-hooks -- TODO: @Kathund Find a better way to do this that isn't useState
 		bundlesData[cluster.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg', modsInfo: useState<Array<ModpackFile>>([]), clusterId: cluster.id };
 	});
 
+	const downloadModsRef = useRef<DownloadModsRef>(null);
+
 	return (
-		<div className="min-h-screen px-7">
-			<div className="max-w-6xl mx-auto">
-				<OverlayScrollbarsComponent>
-					<div className="h-164">
-						<h1 className="text-4xl font-semibold mb-2">Starting Versions</h1>
-						<p className="text-slate-400 text-lg mb-2">
-							Something something in corporate style fashion about picking your preferred gamemodes and versions and
-							optionally loader so that oneclient can pick something for them
-						</p>
+		<>
+			<div className="min-h-screen px-7">
+				<div className="max-w-6xl mx-auto">
+					<OverlayScrollbarsComponent>
+						<div className="h-164">
+							<h1 className="text-4xl font-semibold mb-2">Starting Versions</h1>
+							<p className="text-slate-400 text-lg mb-2">
+								Something something in corporate style fashion about picking your preferred gamemodes and versions and
+								optionally loader so that oneclient can pick something for them
+							</p>
 
-						<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-							{versions.clusters.map((cluster) => {
-								const versionData = getVersionInfoOrDefault(cluster.major_version);
-								return cluster.entries.map((entry, index) => (
-									<VersionCard
-										cluster={cluster}
-										fullVersionName={`${versionData.prettyName}.${entry.minor_version}`}
-										key={`${versionData.prettyName}.${entry.minor_version}-${index}`}
-										version={entry}
-										versionData={versionData}
-									/>
-								));
-							})}
+							<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+								{versions.clusters.map((cluster) => {
+									const versionData = getVersionInfoOrDefault(cluster.major_version);
+									return cluster.entries.map((entry, index) => (
+										<VersionCard
+											cluster={cluster}
+											fullVersionName={`${versionData.prettyName}.${entry.minor_version}`}
+											key={`${versionData.prettyName}.${entry.minor_version}-${index}`}
+											version={entry}
+											versionData={versionData}
+										/>
+									));
+								})}
+							</div>
+
+							{Object.entries(bundlesData).map(([name, bundleData], index) => <ModCategory bundleData={bundleData} key={index} name={name} />)}
+
+							<div className="hidden">
+								<DownloadMods bundlesData={bundlesData} ref={downloadModsRef} />
+							</div>
+
 						</div>
-
-						{Object.entries(bundlesData).map(([name, bundleData], index) => <ModCategory bundleData={bundleData} key={index} name={name} />)}
-
-						<div className="mt-4">
-							<DownloadMods bundlesData={bundlesData} />
-						</div>
-
-					</div>
-				</OverlayScrollbarsComponent>
+					</OverlayScrollbarsComponent>
+				</div>
 			</div>
-		</div>
+
+			<OnboardingNavigation ref={downloadModsRef} />
+		</>
 	);
 }
 

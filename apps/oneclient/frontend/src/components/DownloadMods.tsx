@@ -1,9 +1,13 @@
 import type { Provider } from '@/bindings.gen';
 import type { BundleData } from '@/routes/onboarding/preferences/versions';
 import { Button } from '@onelauncher/common/components';
-import { useEffect, useState } from 'react';
+import { useEffect, useImperativeHandle, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { DownloadingMods, Overlay } from './overlay';
+
+export interface DownloadModsRef {
+	openDownloadDialog: () => void;
+}
 
 interface ModData {
 	name: string;
@@ -13,7 +17,7 @@ interface ModData {
 	clusterId: number;
 }
 
-export function DownloadMods({ bundlesData }: { bundlesData: Record<string, BundleData> }) {
+export function DownloadMods({ bundlesData, ref }: { bundlesData: Record<string, BundleData>; ref: React.Ref<DownloadModsRef> }) {
 	const [isOpen, setOpen] = useState<boolean>(false);
 	const [mods, setMods] = useState<Array<ModData>>([]);
 
@@ -34,6 +38,15 @@ export function DownloadMods({ bundlesData }: { bundlesData: Record<string, Bund
 			}
 		setMods(modsList);
 	}, [bundlesData]);
+
+	useImperativeHandle(ref, () => {
+		return {
+			openDownloadDialog() {
+				if (mods.length !== 0)
+					setOpen(true);
+			},
+		};
+	}, [mods.length]);
 
 	return (
 		<DialogTrigger>

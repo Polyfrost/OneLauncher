@@ -1,6 +1,7 @@
 import type { Provider } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { Overlay } from './Overlay';
 
@@ -12,7 +13,8 @@ interface ModData {
 	clusterId: number;
 }
 
-export function DownloadingMods({ mods, setOpen }: { mods: Array<ModData>; setOpen: React.Dispatch<React.SetStateAction<boolean>> }) {
+export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModData>; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
+	const navigate = useNavigate();
 	const [downloadedMods, setDownloadedMods] = useState(0);
 	const [modName, setModName] = useState('');
 
@@ -33,8 +35,10 @@ export function DownloadingMods({ mods, setOpen }: { mods: Array<ModData>; setOp
 	}, [mods]);
 
 	useEffect(() => {
-		if (downloadedMods >= mods.length)
+		if (downloadedMods >= mods.length) {
 			setOpen(false);
+			navigate({ to: nextPath });
+		}
 	}, [downloadedMods, mods]);
 
 	return (

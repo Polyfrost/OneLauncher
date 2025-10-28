@@ -235,7 +235,7 @@ export function OnboardingNavigation({ ref }: { ref?: React.RefObject<DownloadMo
 			return;
 
 		if (ref && ref.current !== null)
-			ref.current.openDownloadDialog();
+			ref.current.openDownloadDialog(nextPath ?? '/app');
 		else
 			navigate({ to: nextPath ?? '/app' });
 	}

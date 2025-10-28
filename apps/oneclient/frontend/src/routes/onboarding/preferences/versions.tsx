@@ -165,7 +165,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, bundleData }: { fullVer
 		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
 			<div className="relative w-full">
 				<img
-					alt="fuck"
+					alt={`Minecraft ${fullVersionName} landscape`}
 					className={twMerge('w-full rounded-xl h-16 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
 					src={`https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient${art}`}
 				/>

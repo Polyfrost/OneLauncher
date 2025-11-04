@@ -1,7 +1,7 @@
 import { BundleModsList } from '@/components';
 import { createFileRoute } from '@tanstack/react-router';
 
-export const Route = createFileRoute('/onboarding/preferences/mod/cluster')({
+export const Route = createFileRoute('/onboarding/preferences/versions/bundleMods')({
 	component: RouteComponent,
 });
 

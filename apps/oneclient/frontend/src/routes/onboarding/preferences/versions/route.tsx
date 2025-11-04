@@ -7,7 +7,7 @@ export interface ModRouteSearchParams {
 	mc_loader: string;
 }
 
-export const Route = createFileRoute('/onboarding/preferences/mod')({
+export const Route = createFileRoute('/onboarding/preferences/versions')({
 	component: RouteComponent,
 	validateSearch: (search): ModRouteSearchParams => {
 		return {
@@ -17,9 +17,9 @@ export const Route = createFileRoute('/onboarding/preferences/mod')({
 	},
 	async beforeLoad({ context, search }) {
 		if (!search.mc_version)
-			throw redirect({ to: '/onboarding/preferences/versions', from: '/onboarding/preferences/mod' });
+			throw redirect({ to: '/onboarding/preferences/version', from: '/onboarding/preferences/versions' });
 		if (!search.mc_loader)
-			throw redirect({ to: '/onboarding/preferences/versions', from: '/onboarding/preferences/mod' });
+			throw redirect({ to: '/onboarding/preferences/version', from: '/onboarding/preferences/versions' });
 
 		const query = context.queryClient.ensureQueryData({
 			queryKey: ['getClusters'],
@@ -29,7 +29,7 @@ export const Route = createFileRoute('/onboarding/preferences/mod')({
 		const clusters = await query;
 		const cluster = clusters.find(cluster => cluster.mc_version === search.mc_version && cluster.mc_loader === search.mc_loader);
 		if (!cluster)
-			throw redirect({ to: '/onboarding/preferences/versions', from: '/onboarding/preferences/mod' });
+			throw redirect({ to: '/onboarding/preferences/version', from: '/onboarding/preferences/versions' });
 
 		return {
 			cluster,

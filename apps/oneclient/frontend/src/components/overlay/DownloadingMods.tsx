@@ -16,7 +16,7 @@ interface ModData {
 export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModData>; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
 	const navigate = useNavigate();
 	const [downloadedMods, setDownloadedMods] = useState(0);
-	const [modName, setModName] = useState('');
+	const [modNames, setModNames] = useState<Array<string>>([]);
 
 	const download = useCommandMut(async (mod: ModData) => {
 		await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
@@ -24,10 +24,27 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModDa
 
 	useEffect(() => {
 		const downloadAll = async () => {
-			for (const mod of mods) {
-				setModName(mod.name);
-				await download.mutateAsync(mod);
-				setDownloadedMods(prev => prev + 1);
+			const groupSize = 15;
+			for (let i = 0; i < mods.length; i += groupSize) {
+				const group = mods.slice(i, i + groupSize);
+				setModNames(prev => [...prev, ...group.map(mod => mod.name).filter(name => !prev.includes(name))]);
+
+				try {
+					await Promise.all(
+						group.map(async (mod) => {
+							try {
+								await download.mutateAsync(mod);
+								setDownloadedMods(prev => prev + 1);
+							}
+							finally {
+								setModNames(prev => prev.filter(name => name !== mod.name));
+							}
+						}),
+					);
+				}
+				catch (error) {
+					console.error(error);
+				}
 			}
 		};
 
@@ -54,7 +71,7 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModDa
 					>
 					</div>
 				</div>
-				{modName !== '' && <p>Downloading {modName}</p>}
+				{modNames.length > 0 ? modNames.map(modName => <p key={modName}>Downloading {modName}</p>) : <></>}
 			</div>
 
 		</Overlay.Dialog>

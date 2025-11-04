@@ -48,6 +48,7 @@ export interface OnboardingStep {
 	title: string;
 	subSteps?: Array<OnboardingStep>;
 	disabled: boolean;
+	hideNav: boolean;
 };
 
 const ONBOARDING_STEPS: Array<OnboardingStep> = [
@@ -55,38 +56,51 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 		path: '/onboarding',
 		title: 'Welcome',
 		disabled: false,
+		hideNav: false,
 	},
 	{
 		path: '/onboarding/language',
 		title: 'Set Language',
 		disabled: false,
+		hideNav: false,
 	},
 	{
 		path: '/onboarding/account',
 		title: 'Account',
 		disabled: false,
+		hideNav: false,
 	},
 	{
 		path: '/onboarding/preferences/',
 		title: 'Preferences',
 		subSteps: [
 			{
-				path: '/onboarding/preferences/versions',
+				path: '/onboarding/preferences/version',
 				title: 'Versions',
 				disabled: false,
+				hideNav: true,
 			},
 			{
-				path: '/onboarding/preferences/mod/cluster',
+				path: '/onboarding/preferences/versionCategory',
+				title: 'Versions Category',
+				disabled: false,
+				hideNav: true,
+			},
+			{
+				path: '/onboarding/preferences/versions/bundleMods',
 				title: 'Mods',
 				disabled: true,
+				hideNav: false,
 			},
 		],
 		disabled: false,
+		hideNav: false,
 	},
 	{
 		path: '/onboarding/finished',
 		title: 'Finished',
 		disabled: false,
+		hideNav: false,
 	},
 ];
 
@@ -99,7 +113,7 @@ const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 function RouteComponent() {
 	const location = useLocation();
 
-	// Prefetch data so that onboarding/preferences/versions is fast
+	// Prefetch data so that onboarding/preferences/version is fast
 	const queryClient = useQueryClient();
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
 	useEffect(() => {
@@ -112,6 +126,7 @@ function RouteComponent() {
 	}, [clusters, queryClient]);
 
 	const { currentStepIndex } = Route.useLoaderData();
+	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
@@ -139,7 +154,7 @@ function RouteComponent() {
 
 					</motion.div>
 
-					{currentStepIndex !== 3 ? <OnboardingNavigation /> : <></>}
+					{LINEAR_ONBOARDING_STEPS[currentStepIndex].hideNav ? <></> : <OnboardingNavigation disableNext={currentStepIndex === 2 && currentAccount === null} />}
 				</LoaderSuspense>
 			</div>
 		</AppShell>
@@ -224,14 +239,12 @@ function BackgroundGradient() {
 	);
 }
 
-export function OnboardingNavigation({ ref }: { ref?: React.RefObject<DownloadModsRef | null> }) {
+export function OnboardingNavigation({ ref, disableNext }: { ref?: React.RefObject<DownloadModsRef | null>; disableNext?: boolean }) {
 	const navigate = useNavigate();
-	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const forceLoginDisable = currentStepIndex === 2 && currentAccount === null;
+	const { isFirstStep, previousPath, nextPath } = Route.useLoaderData();
 
 	function handleNextClick() {
-		if (forceLoginDisable)
+		if (disableNext)
 			return;
 
 		if (ref && ref.current !== null)
@@ -251,9 +264,9 @@ export function OnboardingNavigation({ ref }: { ref?: React.RefObject<DownloadMo
 			</div>
 			<div>
 				<Button
-					className={`w-32 ${forceLoginDisable ? 'line-through' : ''}`}
-					color={forceLoginDisable ? 'secondary' : 'primary'}
-					isDisabled={forceLoginDisable}
+					className={`w-32 ${disableNext ? 'line-through' : ''}`}
+					color={disableNext ? 'secondary' : 'primary'}
+					isDisabled={disableNext}
 					onClick={handleNextClick}
 				>
 					Next

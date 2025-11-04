@@ -1,16 +1,14 @@
-import type { ModpackArchive, ModpackFile, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
-import type { DownloadModsRef } from '@/components';
+import type { GameLoader, ModpackArchive, ModpackFile, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
-import { DownloadMods } from '@/components';
 import { bindings } from '@/main';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueries } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useCallback, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
@@ -22,7 +20,12 @@ export interface BundleData {
 	clusterId: number;
 }
 
-export const Route = createFileRoute('/onboarding/preferences/versions')({
+export interface StrippedCLuster {
+	mc_version: string;
+	mc_loader: GameLoader;
+}
+
+export const Route = createFileRoute('/onboarding/preferences/version')({
 	component: RouteComponent,
 });
 
@@ -46,7 +49,7 @@ function RouteComponent() {
 		bundlesData[cluster.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg', modsInfo: useState<Array<ModpackFile>>([]), clusterId: cluster.id };
 	});
 
-	const downloadModsRef = useRef<DownloadModsRef>(null);
+	const [selectedClusters, setSelectedClusters] = useState<Array<StrippedCLuster>>([]);
 
 	return (
 		<>
@@ -68,6 +71,7 @@ function RouteComponent() {
 											cluster={cluster}
 											fullVersionName={`${versionData.prettyName}.${entry.minor_version}`}
 											key={`${versionData.prettyName}.${entry.minor_version}-${index}`}
+											setSelectedClusters={setSelectedClusters}
 											version={entry}
 											versionData={versionData}
 										/>
@@ -75,32 +79,39 @@ function RouteComponent() {
 								})}
 							</div>
 
-							{Object.entries(bundlesData).map(([name, bundleData], index) => <ModCategory bundleData={bundleData} key={index} name={name} />)}
-
-							<div className="hidden">
-								<DownloadMods bundlesData={bundlesData} ref={downloadModsRef} />
-							</div>
-
 						</div>
 					</OverlayScrollbarsComponent>
 				</div>
 			</div>
 
-			<OnboardingNavigation ref={downloadModsRef} />
+			<OnboardingNavigation disableNext={selectedClusters.length === 0} />
 		</>
 	);
 }
 
-function VersionCard({ cluster, versionData, version, fullVersionName }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string }) {
-	const navigate = useNavigate();
-	const openModsList = useCallback(() => navigate({ to: `/onboarding/preferences/mod/cluster`, search: { mc_version: fullVersionName, mc_loader: version.loader } }), [fullVersionName, version, navigate]);
+function VersionCard({ cluster, versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCLuster>>> }) {
+	const [isSelected, setSelected] = useState<boolean>(false);
+	const toggle = () => {
+		setSelected(prev => !prev);
+		setSelectedClusters((prev) => {
+			let updatedClusters: Array<StrippedCLuster> = [];
+			const exists = prev.some(strippedCluster => strippedCluster.mc_version === fullVersionName && strippedCluster.mc_loader === version.loader);
+			if (exists)
+				updatedClusters = prev.filter(strippedCluster => !(strippedCluster.mc_version === fullVersionName && strippedCluster.mc_loader === version.loader));
+			else
+				updatedClusters = [...prev, { mc_version: fullVersionName, mc_loader: version.loader }];
+
+			localStorage.setItem('selectedClusters', JSON.stringify(updatedClusters));
+			return updatedClusters;
+		});
+	};
 
 	return (
-		<AriaButton className="group overflow-hidden cursor-pointer w-full rounded-xl transition-[outline] outline-2 outline-ghost-overlay hover:outline-brand" onPress={openModsList}>
+		<AriaButton className={twMerge('group overflow-hidden cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={toggle}>
 			<div className="relative w-full">
 				<img
 					alt={`Minecraft ${versionData.prettyName} landscape`}
-					className="w-full rounded-xl h-32 object-cover transition-[filter] brightness-70 grayscale-25 group-hover:brightness-100 group-hover:grayscale-0"
+					className={twMerge('w-full rounded-xl h-32 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
 					src={`https://raw.githubusercontent.com/PolyFrost/DataStorage/refs/heads/main/oneclient${cluster.art}`}
 				/>
 
@@ -121,67 +132,6 @@ function VersionCard({ cluster, versionData, version, fullVersionName }: { clust
 				<div className="absolute bottom-3 left-3">
 					<span className="text-white font-bold px-3 py-1 text-xl">{fullVersionName}</span>
 				</div>
-			</div>
-		</AriaButton>
-	);
-}
-
-function ModCategory({ name, bundleData }: { name: string; bundleData: BundleData }) {
-	return (
-		<>
-			<h1 className="text-2xl font-semibold my-2">{name}</h1>
-			<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-				{bundleData.bundles.map((bundle, index) => {
-					return (
-						<ModCategoryCard
-							art={bundleData.art}
-							bundle={bundle}
-							bundleData={bundleData}
-							fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
-							key={index}
-						/>
-					);
-				})}
-			</div>
-		</>
-	);
-}
-
-function ModCategoryCard({ art, fullVersionName, bundle, bundleData }: { fullVersionName: string; art: string; bundle: ModpackArchive; bundleData: BundleData }) {
-	const setMods = bundleData.modsInfo[1];
-	const [isSelected, setSelected] = useState<boolean>(false);
-	const files = bundle.manifest.files.filter(file => 'Managed' in file.kind);
-	const handleDownload = () => {
-		setMods((prevMods) => {
-			if (isSelected)
-				return prevMods.filter(mod => !files.includes(mod));
-			else
-				return [...files, ...prevMods];
-		});
-		setSelected(prev => !prev);
-	};
-
-	return (
-		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
-			<div className="relative w-full">
-				<img
-					alt={`Minecraft ${fullVersionName} landscape`}
-					className={twMerge('w-full rounded-xl h-16 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
-					src={`https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient${art}`}
-				/>
-
-				<div className={twMerge('absolute -top-2 right-3', isSelected ? 'block' : 'hidden group-hover:block')}>
-					<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1">
-						{files.length} Mods {isSelected ? 'Selected' : ''}
-					</div>
-				</div>
-
-				<div className="absolute bottom-3 left-3">
-					<div className="flex flex-col items-center justify-center">
-						<span className="text-white font-bold px-3 py-1 text-xl">{fullVersionName}</span>
-					</div>
-				</div>
-
 			</div>
 		</AriaButton>
 	);

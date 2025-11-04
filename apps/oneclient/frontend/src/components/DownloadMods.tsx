@@ -1,5 +1,5 @@
 import type { Provider } from '@/bindings.gen';
-import type { BundleData } from '@/routes/onboarding/preferences/versions';
+import type { BundleData } from '@/routes/onboarding/preferences/version';
 import { Button } from '@onelauncher/common/components';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useImperativeHandle, useState } from 'react';

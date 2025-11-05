@@ -2,7 +2,7 @@ import type { ModpackArchive, ModpackFile } from '@/bindings.gen';
 import type { DownloadModsRef } from '@/components';
 import type { BundleData, StrippedCLuster } from './version';
 import { DownloadMods } from '@/components';
-import { BundleMostListModal, Overlay } from '@/components/overlay';
+import { BundleModListModal, Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
@@ -79,6 +79,7 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 						<ModCategoryCard
 							art={bundleData.art}
 							bundle={bundle}
+							clusterId={bundleData.clusterId}
 							fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
 							key={index}
 							setMods={bundleData.modsInfo[1]}
@@ -90,7 +91,8 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 	);
 }
 
-function ModCategoryCard({ art, fullVersionName, bundle, setMods }: { fullVersionName: string; art: string; bundle: ModpackArchive; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>> }) {
+function ModCategoryCard({ art, fullVersionName, bundle, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
+	const { data: cluster } = useCommandSuspense(['getClusterById'], () => bindings.core.getClusterById(clusterId));
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const files = bundle.manifest.files.filter(file => 'Managed' in file.kind);
 	const handleDownload = () => {
@@ -124,7 +126,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, setMods }: { fullVersio
 					</Button>
 
 					<Overlay>
-						<BundleMostListModal />
+						<BundleModListModal bundleData={bundle} cluster={cluster} name={fullVersionName} />
 					</Overlay>
 				</DialogTrigger>
 

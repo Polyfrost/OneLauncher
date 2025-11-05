@@ -39,7 +39,7 @@ export function BundleModsList({ cluster }: { cluster: ClusterModel }) {
 
 			<TabContent>
 				{bundles.map(bundle => (
-					<Bundle
+					<BundleTab
 						bundleData={bundle}
 						cluster={cluster}
 						key={bundle.manifest.name}
@@ -52,23 +52,34 @@ export function BundleModsList({ cluster }: { cluster: ClusterModel }) {
 	);
 }
 
-function Bundle({ bundleData, updateMods, mods, cluster }: { bundleData: ModpackArchive; updateMods: () => void; mods: Array<string>; cluster: ClusterModel }) {
+function BundleTab({ bundleData, updateMods, mods, cluster }: { bundleData: ModpackArchive; updateMods: () => void; mods: Array<string>; cluster: ClusterModel }) {
 	return (
 		<TabPanel value={bundleData.manifest.name}>
-			<OverlayScrollbarsComponent>
-				<div className="grid gap-2 grid-cols-1 h-112">
-					{bundleData.manifest.files.map((file, index) => (
-						<ModCard
-							cluster={cluster}
-							file={file}
-							key={index}
-							mods={mods}
-							updateMods={updateMods}
-						/>
-					))}
-				</div>
-			</OverlayScrollbarsComponent>
+			<Bundle
+				bundleData={bundleData}
+				cluster={cluster}
+				mods={mods}
+				updateMods={updateMods}
+			/>
 		</TabPanel>
+	);
+}
+
+export function Bundle({ bundleData, updateMods, mods, cluster }: { bundleData: ModpackArchive; updateMods: () => void; mods: Array<string>; cluster: ClusterModel }) {
+	return (
+		<OverlayScrollbarsComponent>
+			<div className="grid gap-2 grid-cols-1 h-112">
+				{bundleData.manifest.files.map((file, index) => (
+					<ModCard
+						cluster={cluster}
+						file={file}
+						key={index}
+						mods={mods}
+						updateMods={updateMods}
+					/>
+				))}
+			</div>
+		</OverlayScrollbarsComponent>
 	);
 }
 

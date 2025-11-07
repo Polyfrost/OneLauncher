@@ -1,7 +1,7 @@
 import type { ClusterModel, ModpackArchive } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useState } from 'react';
-import { Bundle } from '../BundleModsList';
+import { Bundle } from '../Bundle';
 import { Overlay } from './Overlay';
 
 export function BundleModListModal({ bundleData, cluster, name }: { bundleData: ModpackArchive; cluster: ClusterModel | null; name: string }) {

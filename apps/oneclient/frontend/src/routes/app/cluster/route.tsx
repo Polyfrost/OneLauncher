@@ -6,10 +6,11 @@ import { bindings } from '@/main';
 import { prettifyLoader } from '@/utils/loaders';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { Button } from '@onelauncher/common/components';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
 import { FolderIcon } from '@untitled-theme/icons-react';
 import { useMotionValueEvent, useScroll } from 'motion/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface ClusterRouteSearchParams {
 	clusterId: number;
@@ -62,6 +63,15 @@ function RouteComponent() {
 	});
 
 	const search = Route.useSearch();
+
+	// Prefetch data so that app/cluster/mods is fast
+	const queryClient = useQueryClient();
+	useEffect(() => {
+		queryClient.prefetchQuery({
+			queryKey: ['getBundlesFor', cluster.id],
+			queryFn: () => bindings.oneclient.getBundlesFor(cluster.id),
+		});
+	}, [cluster, queryClient]);
 
 	return (
 		<SheetPage

@@ -157,7 +157,12 @@ pub async fn get_recommended_java(
 }
 
 pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
-	let id = init_ingress(IngressType::JavaPrepare, "preparing java", 100.0).await?;
+	let id = init_ingress(
+		IngressType::JavaPrepare,
+		&format!("preparing java {}", major),
+		100.0,
+	)
+	.await?;
 
 	let java = dao::get_latest_java_by_major(major).await?;
 	if let Some(java) = &java {
@@ -389,8 +394,15 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 
 	let version = package.download_url;
 
-	let ingress_id =
-		init_ingress(IngressType::JavaPrepare, "preparing java", INGRESS_TOTAL).await?;
+	let ingress_id = init_ingress(
+		IngressType::JavaPrepare,
+		&format!(
+			"installing java {}",
+			package.java_version.first().unwrap_or(&0)
+		),
+		INGRESS_TOTAL,
+	)
+	.await?;
 
 	let file = fetch_advanced(
 		reqwest::Method::GET,

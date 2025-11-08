@@ -58,7 +58,7 @@ pub async fn launch_minecraft(
 		.ok_or_else(|| anyhow::anyhow!("invalid game version {}", cluster.mc_version))?;
 
 	let version = versions[version_index].clone();
-	let updated = version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0);
+	let updated = metadata::is_version_updated(version_index, versions);
 
 	let loader_version = metadata::get_loader_version(
 		&cluster.mc_version,
@@ -116,6 +116,7 @@ pub async fn launch_minecraft(
 	command
 		.args(
 			arguments::java_arguments(
+				updated,
 				args.get(&interpulse::api::minecraft::ArgumentType::Jvm)
 					.map(Vec::as_slice),
 				&dirs.natives_dir().join(&version_name),
@@ -137,6 +138,7 @@ pub async fn launch_minecraft(
 		.arg(version_info.main_class.clone())
 		.args(
 			arguments::minecraft_arguments(
+				updated,
 				args.get(&interpulse::api::minecraft::ArgumentType::Game)
 					.map(Vec::as_slice),
 				version_info.minecraft_arguments.as_deref(),

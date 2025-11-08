@@ -18,6 +18,7 @@ use crate::utils::{http, io};
 pub async fn download_minecraft_ingressed(
 	version: &VersionInfo,
 	java_arch: &str,
+	minecraft_updated: bool,
 	force: Option<bool>,
 ) -> LauncherResult<()> {
 	let id = init_ingress(
@@ -31,6 +32,7 @@ pub async fn download_minecraft_ingressed(
 		version,
 		java_arch,
 		Some(&SubIngress::new(&id, 100.0)),
+		minecraft_updated,
 		force,
 	)
 	.await
@@ -42,13 +44,15 @@ pub async fn download_minecraft(
 	version: &VersionInfo,
 	java_arch: &str,
 	sub_ingress: Option<&SubIngress<'_>>,
+	// if the version is newer than 22w16a, this should be true
+	minecraft_updated: bool,
 	force: Option<bool>,
 ) -> LauncherResult<()> {
 	let asset_index = download_assets_index(version, sub_ingress, force).await?;
 	tokio::try_join! {
 		download_assets(version.assets == "legacy", asset_index, sub_ingress, force),
 		download_client(version, sub_ingress, force),
-		download_libraries(version.id.clone(), version.libraries.clone(), java_arch.to_string(), sub_ingress, force),
+		download_libraries(version.id.clone(), version.libraries.clone(), java_arch.to_string(), sub_ingress, minecraft_updated, force),
 	}?;
 
 	Ok(())
@@ -282,6 +286,7 @@ pub async fn download_libraries(
 	libraries: Vec<Library>,
 	java_arch: String,
 	ingress: Option<&SubIngress<'_>>,
+	minecraft_updated: bool,
 	force: Option<bool>,
 ) -> LauncherResult<usize> {
 	tracing::debug!("loading libraries for version {}", version);
@@ -304,7 +309,7 @@ pub async fn download_libraries(
 
 		async move {
 			if let Some(rules) = &lib.rules
-				&& !super::rules::validate_rules(rules, &java_arch, lib.natives.is_some()) {
+				&& !super::rules::validate_rules(rules, &java_arch, minecraft_updated) {
 					tracing::debug!("skipping library {} due to rules", lib.name);
 					return Ok::<(), LauncherError>(());
 				}
@@ -454,4 +459,8 @@ pub async fn get_loaders_for_version(mc_version: &str) -> LauncherResult<Vec<Gam
 	let mut metadata = state.metadata.write().await;
 
 	metadata.get_loaders_for_version(mc_version).await
+}
+
+pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
+	version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
 }

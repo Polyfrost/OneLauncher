@@ -59,14 +59,20 @@ export function isManagedMod(mod: ModInfo | ModInfoManged): mod is ModInfoManged
 	return mod.managed === true;
 }
 
-export function ModCard({ file, cluster, showDownload, onClick }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: () => void }) {
+export function ModCard({ file, cluster, showDownload, onClick, outline }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean }) {
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
 	}, [file]);
 
+	const [showOutline, setShowOutline] = useState<boolean>(outline ?? false);
+	const handleOnClick = () => {
+		if (onClick)
+			onClick(file, modMetadata, setShowOutline);
+	};
+
 	return (
-		<div className="p-2 rounded-lg mb-2 break-inside-avoid flex flex-row gap-2 justify-between bg-component-bg border border-gray-100/5" onClick={onClick}>
+		<div className={twMerge('p-2 rounded-lg m-1 break-inside-avoid flex flex-row gap-2 justify-between bg-component-bg border border-gray-100/5', showOutline ? 'outline-2 outline-brand' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
 				<div className="size-18 flex flex-col items-center justify-center">
 					<div className="rounded-lg size-16 bg-component-bg-disabled border border-gray-100/5">

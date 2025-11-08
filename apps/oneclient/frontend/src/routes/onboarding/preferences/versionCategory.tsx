@@ -92,7 +92,6 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 }
 
 function ModCategoryCard({ art, fullVersionName, bundle, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
-	const { data: cluster } = useCommandSuspense(['getClusterById'], () => bindings.core.getClusterById(clusterId));
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const files = bundle.manifest.files.filter(file => 'Managed' in file.kind);
 	const handleDownload = () => {
@@ -126,7 +125,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, setMods, clusterId }: {
 					</Button>
 
 					<Overlay>
-						<BundleModListModal bundleData={bundle} cluster={cluster} name={fullVersionName} />
+						<BundleModListModal clusterId={clusterId} name={fullVersionName} setMods={setMods} />
 					</Overlay>
 				</DialogTrigger>
 

@@ -23,7 +23,7 @@ export function BundleModListModal({ clusterId, name, setMods }: { clusterId: nu
 		return <></>;
 
 	return (
-		<Overlay.Dialog>
+		<Overlay.Dialog className="bg-page">
 			<ModList
 				bundles={bundles}
 				cluster={cluster}

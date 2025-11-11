@@ -1,5 +1,6 @@
 import type { ClusterModel, ManagedPackage, ManagedVersion, ModpackFile, ModpackFileKind } from '@/bindings.gen';
 import MissingLogo from '@/assets/misc/missingLogo.svg';
+import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
@@ -59,43 +60,50 @@ export function isManagedMod(mod: ModInfo | ModInfoManged): mod is ModInfoManged
 	return mod.managed === true;
 }
 
-export function ModCard({ file, cluster, showDownload, onClick, outline }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean }) {
+export function ModCard({ file, cluster, showDownload, onClick, outline, blueBackground }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean; blueBackground?: boolean }) {
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
 	}, [file]);
 
 	const [showOutline, setShowOutline] = useState<boolean>(outline ?? false);
+	const [showBlueBackground, setShowBlueBackground] = useState<boolean>(blueBackground ?? false);
 	const handleOnClick = () => {
 		if (onClick)
-			onClick(file, modMetadata, setShowOutline);
+			onClick(file, modMetadata, setShowOutline, setShowBlueBackground);
 	};
 
+	const { setting } = useSettings();
+	const grid = setting('mod_list_use_grid');
+
 	return (
-		<div className={twMerge('p-2 rounded-lg m-1 break-inside-avoid flex flex-row gap-2 justify-between bg-component-bg border border-gray-100/5', showOutline ? 'outline-2 outline-brand' : '')} onClick={handleOnClick}>
+		<div className={twMerge('p-2 m-1 rounded-lg break-inside-avoid flex gap-2 justify-between bg-component-bg border border-gray-100/5', grid ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
-				<div className="size-18 flex flex-col items-center justify-center">
-					<div className="rounded-lg size-16 bg-component-bg-disabled border border-gray-100/5">
-						<img className={twMerge('rounded-lg size-16', modMetadata.iconURL === null ? 'hidden' : '')} src={modMetadata.iconURL ?? MissingLogo} />
+				<div className={twMerge('flex flex-col items-center justify-center', grid ? 'size-20' : 'size-18')}>
+					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', grid ? 'size-18' : 'size-16')}>
+						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', grid ? 'size-18' : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
 					</div>
 				</div>
 				<div className="flex flex-col">
-					<div className="flex flex-row gap-2">
-						<p className="text-fg-primary text-xl">{modMetadata.name}</p>
+					<div className="flex flex-row flex-wrap gap-2">
+						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg max-w-3/5' : 'text-xl')}>{modMetadata.name}</p>
 						<ModTag cluster={cluster} modData={modMetadata} />
 					</div>
-					<p className={modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary'}>
+
+					<p className={twMerge(modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>
 						by
 						{' '}
 						<span className="font-semibold">{modMetadata.author ?? 'UNKNOWN'}</span>
 					</p>
-					<p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary')}>{modMetadata.description ?? 'No Description'}</p>
+					<p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>
 				</div>
 			</div>
 
-			<div className={twMerge('flex-col items-center justify-center pr-2', isManagedMod(modMetadata) && (showDownload === true) ? 'flex' : 'hidden')}>
-				{isManagedMod(modMetadata) && (showDownload === true) && (<DownloadModButton cluster={cluster} pkg={modMetadata.pkg} version={modMetadata.version} />)}
-			</div>
+			{isManagedMod(modMetadata) && showDownload === true && (
+				<div className="flex flex-col items-center justify-center pr-2">
+					<DownloadModButton cluster={cluster} pkg={modMetadata.pkg} version={modMetadata.version} />
+				</div>
+			)}
 		</div>
 	);
 }

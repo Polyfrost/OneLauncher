@@ -3,7 +3,7 @@ import SettingsSwitch from '@/components/SettingSwitch';
 import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Truck01Icon } from '@untitled-theme/icons-react';
+import { BatteryFullIcon, Truck01Icon } from '@untitled-theme/icons-react';
 import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/developer')({
@@ -35,6 +35,13 @@ function RouteComponent() {
 					title="Seen Onboarding"
 				>
 					<SettingsSwitch setting={createSetting('seen_onboarding')} />
+				</SettingsRow>
+				<SettingsRow
+					description="Use Grid On Mods List"
+					icon={<BatteryFullIcon />}
+					title="Use Grid On Mods List"
+				>
+					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
 				</SettingsRow>
 
 			</div>

@@ -20,11 +20,16 @@ function useTabs() {
 
 interface TabsProps {
 	defaultValue: string;
-	children: ReactNode;
+	onTabChange?: (value: string) => void;
+	children: React.ReactNode;
 }
 
-export function Tabs({ defaultValue, children }: TabsProps) {
-	const [activeTab, setActiveTab] = useState(defaultValue);
+export function Tabs({ defaultValue, onTabChange, children }: TabsProps) {
+	const [activeTab, setActiveTabInternal] = useState(defaultValue);
+	const setActiveTab = (value: string) => {
+		setActiveTabInternal(value)
+		if (onTabChange) onTabChange(value)
+	}
 
 	return (
 		<TabsContext.Provider value={{ activeTab, setActiveTab }}>
@@ -32,6 +37,7 @@ export function Tabs({ defaultValue, children }: TabsProps) {
 		</TabsContext.Provider>
 	);
 }
+
 
 interface TabListProps extends HTMLAttributes<HTMLDivElement> {
 	floating?: boolean;

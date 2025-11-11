@@ -1,8 +1,10 @@
 import type { ClusterModel, ManagedPackage, ManagedVersion } from '@/bindings.gen';
+import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Download01Icon } from '@untitled-theme/icons-react';
+import { twMerge } from 'tailwind-merge';
 
 export function DownloadModButton({ pkg, version, cluster }: { pkg: ManagedPackage; version: ManagedVersion; cluster: ClusterModel }) {
 	const download = useCommandMut(() => bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, true));
@@ -13,12 +15,15 @@ export function DownloadModButton({ pkg, version, cluster }: { pkg: ManagedPacka
 		})();
 	};
 
+	const { setting } = useSettings();
+	const grid = setting('mod_list_use_grid');
+
 	return (
 		<Button
-			className="flex flex-col items-center justify-center"
+			className={twMerge('flex flex-col items-center justify-center', grid ? 'w-full' : '')}
 			color="primary"
 			onClick={handleDownload}
-			size="iconLarge"
+			size={grid ? 'large' : 'iconLarge'}
 		>
 			<Download01Icon />
 		</Button>

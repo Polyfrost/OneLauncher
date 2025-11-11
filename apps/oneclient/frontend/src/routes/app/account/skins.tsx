@@ -105,7 +105,7 @@ function useSkinHistory() {
 export function MissingAccountData({ validSearch }: { validSearch: boolean }) {
 	return (
 		<SheetPage headerLarge={<></>} headerSmall={<></>}>
-			<h1>{validSearch ? "Please select an account before going to the skins page" : "Missing Profile auth. Please log out and log back in"}</h1>
+			<h1>{validSearch ? 'Please select an account before going to the skins page' : 'Missing Profile auth. Please log out and log back in'}</h1>
 		</SheetPage>
 	);
 }
@@ -358,16 +358,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-					<DialogTrigger>
-						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-							<Trash01Icon className="group-hover:stroke-danger" />
-						</Button>
+						<DialogTrigger>
+							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+								<Trash01Icon className="group-hover:stroke-danger" />
+							</Button>
 
-						<Overlay>
-							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-						</Overlay>
-					</DialogTrigger>
-				)}
+							<Overlay>
+								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+							</Overlay>
+						</DialogTrigger>
+					)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"

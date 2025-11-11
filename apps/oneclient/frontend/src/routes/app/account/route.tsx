@@ -14,7 +14,7 @@ export const Route = createFileRoute('/app/account')({
 	validateSearch: (search): AccountsRouteSearchParams => {
 		return {
 			profile: search.profile as MinecraftCredentials | undefined,
-			search: search.profile === undefined
+			search: search.profile === undefined,
 		};
 	},
 	async beforeLoad({ context, search }) {
@@ -32,7 +32,7 @@ export const Route = createFileRoute('/app/account')({
 		return {
 			profileData,
 			profile,
-			validSearch
+			validSearch,
 		};
 	},
 });

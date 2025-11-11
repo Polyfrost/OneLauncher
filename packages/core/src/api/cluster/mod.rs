@@ -173,15 +173,16 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 
 	let state = State::get().await?;
 	let mut metadata = state.metadata.write().await;
+	let versions_list = &metadata.get_vanilla_or_fetch().await?.versions;
 
-	let version = metadata
-		.get_vanilla_or_fetch()
-		.await?
-		.versions
+	let version_index = versions_list
 		.iter()
-		.find(|v| v.id == cluster.mc_version)
-		.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?
-		.clone();
+		.position(|v| v.id == cluster.mc_version)
+		.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+
+	let version = versions_list[version_index].clone();
+
+	let minecraft_updated = metadata::is_version_updated(version_index, &versions_list);
 
 	drop(metadata);
 
@@ -218,6 +219,7 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 		&version_info,
 		&java_version.arch,
 		Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
+		minecraft_updated,
 		force,
 	)
 	.await?;

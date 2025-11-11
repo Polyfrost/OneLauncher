@@ -17,6 +17,7 @@ use crate::utils::io;
 
 #[allow(clippy::too_many_arguments)]
 pub fn java_arguments(
+	version_updated: bool,
 	arguments: Option<&[Argument]>,
 	natives_path: &Path,
 	libraries_path: &Path,
@@ -29,6 +30,7 @@ pub fn java_arguments(
 	let mut parsed = Vec::new();
 	if let Some(args) = arguments {
 		parse_arguments(
+			version_updated,
 			args,
 			&mut parsed,
 			|a| {
@@ -67,6 +69,7 @@ pub fn java_arguments(
 
 #[allow(clippy::too_many_arguments)]
 pub fn minecraft_arguments(
+	version_updated: bool,
 	args: Option<&[Argument]>,
 	legacy_args: Option<&str>,
 	creds: &MinecraftCredentials,
@@ -81,6 +84,7 @@ pub fn minecraft_arguments(
 	if let Some(args) = args {
 		let mut parsed = Vec::new();
 		parse_arguments(
+			version_updated,
 			args,
 			&mut parsed,
 			|arg| {
@@ -341,6 +345,7 @@ pub fn get_library(
 }
 
 fn parse_arguments<ParseFn>(
+	version_updated: bool,
 	args: &[Argument],
 	parsed: &mut Vec<String>,
 	parse_function: ParseFn,
@@ -358,7 +363,7 @@ where
 				}
 			}
 			Argument::Ruled { rules, value } => {
-				if super::rules::validate_rules(rules, java_arch, true) {
+				if super::rules::validate_rules(rules, java_arch, version_updated) {
 					match value {
 						ArgumentValue::Single(arg) => {
 							parsed.push(parse_function(&arg.replace(' ', DUMMY_REPLACE_NEWLINE))?);

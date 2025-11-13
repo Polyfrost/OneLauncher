@@ -30,6 +30,7 @@ export function BundleModListModal({ clusterId, name, setMods }: { clusterId: nu
 		<Overlay.Dialog className="bg-page">
 			<Overlay.Title>
 				Select Content for
+				{' '}
 				<span className="text-brand">{tab}</span>
 			</Overlay.Title>
 			<ModList
@@ -38,6 +39,7 @@ export function BundleModListModal({ clusterId, name, setMods }: { clusterId: nu
 				onClickOnMod={onClickOnMod}
 				onTabChange={setSelectedTab}
 				selectedTab={name}
+				useVerticalGridLayout
 			/>
 		</Overlay.Dialog>
 	);

@@ -5,13 +5,13 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { twMerge } from 'tailwind-merge';
 import { ModCard } from '.';
 
-export function Bundle({ bundleData, cluster, showModDownload, onClickOnMod, outline }: { bundleData: ModpackArchive; cluster: ClusterModel; showModDownload?: boolean; onClickOnMod?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean }) {
+export function Bundle({ bundleData, cluster, showModDownload, onClickOnMod, outline, useVerticalGridLayout }: { bundleData: ModpackArchive; cluster: ClusterModel; showModDownload?: boolean; onClickOnMod?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean; useVerticalGridLayout?: boolean }) {
 	const { setting } = useSettings();
 	const grid = setting('mod_list_use_grid');
 
 	return (
 		<OverlayScrollbarsComponent>
-			<div className={twMerge('grid gap-2 max-h-112', grid ? 'grid-cols-3' : 'grid-cols-1')}>
+			<div className={twMerge('grid gap-2', grid ? 'grid-cols-3' : 'grid-cols-1', grid && useVerticalGridLayout ? "max-h-128" : "max-h-112")}>
 				{bundleData.manifest.files.map((file, index) => (
 					<ModCard
 						cluster={cluster}
@@ -20,6 +20,7 @@ export function Bundle({ bundleData, cluster, showModDownload, onClickOnMod, out
 						onClick={onClickOnMod}
 						outline={outline}
 						showDownload={showModDownload}
+						useVerticalGridLayout={useVerticalGridLayout}
 					/>
 				))}
 			</div>

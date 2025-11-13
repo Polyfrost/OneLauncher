@@ -60,7 +60,7 @@ export function isManagedMod(mod: ModInfo | ModInfoManged): mod is ModInfoManged
 	return mod.managed === true;
 }
 
-export function ModCard({ file, cluster, showDownload, onClick, outline, blueBackground }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean; blueBackground?: boolean }) {
+export function ModCard({ file, cluster, showDownload, onClick, outline, blueBackground, useVerticalGridLayout }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean; blueBackground?: boolean; useVerticalGridLayout?: boolean }) {
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind)))();
@@ -77,17 +77,17 @@ export function ModCard({ file, cluster, showDownload, onClick, outline, blueBac
 	const grid = setting('mod_list_use_grid');
 
 	return (
-		<div className={twMerge('p-2 m-1 rounded-lg break-inside-avoid flex gap-2 justify-between bg-component-bg border border-gray-100/5', grid ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
+		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && grid ? "p-1" : "p-2 gap-2 justify-between", grid ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
-				<div className={twMerge('flex flex-col items-center justify-center', grid ? 'size-20' : 'size-18')}>
-					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', grid ? 'size-18' : 'size-16')}>
-						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', grid ? 'size-18' : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
+				<div className={twMerge('flex flex-col items-center justify-center', grid ? (useVerticalGridLayout ? "size-14" : 'size-20') : 'size-18')}>
+					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', grid ? (useVerticalGridLayout ? "size-12" : 'size-18') : 'size-16')}>
+						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', grid ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
 					</div>
 				</div>
 				<div className="flex flex-col">
 					<div className="flex flex-row flex-wrap gap-2">
-						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg max-w-3/5' : 'text-xl')}>{modMetadata.name}</p>
-						<ModTag cluster={cluster} modData={modMetadata} />
+						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg' : 'text-xl', grid && !useVerticalGridLayout ? "max-w-3/5" : "")}>{modMetadata.name}</p>
+						{useVerticalGridLayout !== true && <ModTag cluster={cluster} modData={modMetadata} />}
 					</div>
 
 					<p className={twMerge(modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>
@@ -95,9 +95,10 @@ export function ModCard({ file, cluster, showDownload, onClick, outline, blueBac
 						{' '}
 						<span className="font-semibold">{modMetadata.author ?? 'UNKNOWN'}</span>
 					</p>
-					<p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>
+					{useVerticalGridLayout !== true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
 				</div>
 			</div>
+			{useVerticalGridLayout === true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
 
 			{isManagedMod(modMetadata) && showDownload === true && (
 				<div className="flex flex-col items-center justify-center pr-2">

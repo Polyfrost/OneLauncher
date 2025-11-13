@@ -46,11 +46,6 @@ function RouteComponent() {
 						))}
 					</div>
 				</div>
-
-				<div className="w-full flex flex-row justify-end">
-					<p className="text-xs">Help translate OneClient</p>
-				</div>
-
 			</div>
 		</div>
 	);

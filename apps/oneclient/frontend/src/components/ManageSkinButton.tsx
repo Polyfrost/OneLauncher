@@ -6,7 +6,7 @@ import { useCallback } from 'react';
 
 export function ManageSkinButton({ profile }: { profile: MinecraftCredentials }) {
 	const navigate = useNavigate();
-	const manageSkin = useCallback(() => navigate({ to: `/app/account/skins`, search: { profile } }), [profile, navigate]);
+	const manageSkin = useCallback(() => navigate({ to: `/app/account/skins`, search: { profile, search: false } }), [profile, navigate]);
 
 	return (
 		<Button

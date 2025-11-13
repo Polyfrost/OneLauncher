@@ -29,7 +29,7 @@ function RootRoute() {
 			navigate={(to, options) => router.navigate({ to, ...options })}
 			useHref={to => router.buildLocation({ to }).href}
 		>
-			<DevTools />
+			{import.meta.env.DEV && <DevTools />}
 
 			<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
 				<Outlet />

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import { Toasts } from '@/components/overlay';
+import { useSettings } from '@/hooks/useSettings';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
@@ -24,12 +25,13 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
 
 function RootRoute() {
 	const router = useRouter();
+	const { setting } = useSettings();
 	return (
 		<RouterProvider
 			navigate={(to, options) => router.navigate({ to, ...options })}
 			useHref={to => router.buildLocation({ to }).href}
 		>
-			{import.meta.env.DEV && <DevTools />}
+			{setting('show_tanstack_dev_tools') && <DevTools />}
 
 			<div className="h-screen flex flex-col overflow-hidden text-fg-primary">
 				<Outlet />

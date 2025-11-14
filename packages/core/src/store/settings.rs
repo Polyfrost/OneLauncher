@@ -29,7 +29,7 @@ impl Default for Settings {
 			allow_parallel_running_clusters: false,
 			discord_enabled: false,
 			seen_onboarding: false,
-			mod_list_use_grid: false,
+			mod_list_use_grid: true,
 			enable_gamemode: false,
 			max_concurrent_requests: 25,
 			settings_version: 1,

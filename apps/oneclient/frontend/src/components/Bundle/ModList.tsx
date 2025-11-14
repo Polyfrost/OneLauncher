@@ -18,9 +18,11 @@ export function ModList({ bundles, cluster, showModDownload, onClickOnMod, selec
 				<div className="flex flex-row gap-6">
 					{bundles.map(bundle => <Tab key={getBundleName(bundle.manifest.name)} value={getBundleName(bundle.manifest.name)}>{getBundleName(bundle.manifest.name)}</Tab>)}
 				</div>
-				<Button onPress={() => setUseGrid(!useGrid)}>
-					Toggle {useGrid ? 'Row' : 'Grid'}
-				</Button>
+				{!useVerticalGridLayout && (
+					<Button onPress={() => setUseGrid(!useGrid)}>
+						Toggle {useGrid ? 'Row' : 'Grid'}
+					</Button>
+				)}
 			</TabList>
 
 			<TabContent>

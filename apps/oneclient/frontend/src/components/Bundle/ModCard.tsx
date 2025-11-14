@@ -21,23 +21,32 @@ export interface ModInfoManged extends ModInfo {
 	version: ManagedVersion;
 }
 
-async function getModAuthor(kind: ModpackFileKind): Promise<string | null> {
+async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<string | null> {
 	if ('External' in kind)
 		return null;
 	if (!('Managed' in kind))
 		return null;
 
 	const authors = await bindings.core.getUsersFromAuthor(kind.Managed[0].provider, kind.Managed[0].author);
+	if (useVerticalGridLayout) {
+		const truncated = authors.slice(0, 2);
+		const extra = authors.length - truncated.length;
+		const names = truncated.map(author => author.username).join(', ');
+		if (extra > 0)
+			return `${names} and ${extra} more`;
+		else
+			return names;
+	}
 	return authors.map(author => author.username).join(', ');
 }
 
-export async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo | ModInfoManged> {
+export async function getModMetaData(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
 	if ('External' in kind)
 		return {
 			name: kind.External.name.replaceAll('.jar', ''),
 			description: null,
 			iconURL: null,
-			author: await getModAuthor(kind),
+			author: await getModAuthor(kind, useVerticalGridLayout),
 			managed: false,
 			url: null,
 			id: null,
@@ -47,7 +56,7 @@ export async function getModMetaData(kind: ModpackFileKind): Promise<ModInfo | M
 		name: kind.Managed[0].name,
 		description: kind.Managed[0].short_desc,
 		iconURL: kind.Managed[0].icon_url,
-		author: await getModAuthor(kind),
+		author: await getModAuthor(kind, useVerticalGridLayout),
 		managed: true,
 		url: `https://modrinth.com/project/${kind.Managed[0].slug}`,
 		id: kind.Managed[0].id,
@@ -63,8 +72,8 @@ export function isManagedMod(mod: ModInfo | ModInfoManged): mod is ModInfoManged
 export function ModCard({ file, cluster, showDownload, onClick, outline, blueBackground, useVerticalGridLayout }: { file: ModpackFile; cluster: ClusterModel; showDownload?: boolean; onClick?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; outline?: boolean; blueBackground?: boolean; useVerticalGridLayout?: boolean }) {
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
-		(async () => setModMetadata(await getModMetaData(file.kind)))();
-	}, [file]);
+		(async () => setModMetadata(await getModMetaData(file.kind, useVerticalGridLayout)))();
+	}, [file, useVerticalGridLayout]);
 
 	const [showOutline, setShowOutline] = useState<boolean>(outline ?? false);
 	const [showBlueBackground, setShowBlueBackground] = useState<boolean>(blueBackground ?? false);
@@ -84,7 +93,7 @@ export function ModCard({ file, cluster, showDownload, onClick, outline, blueBac
 						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', grid ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
 					</div>
 				</div>
-				<div className="flex flex-col">
+				<div className={twMerge('flex flex-col', useVerticalGridLayout && grid ? 'justify-center' : '')}>
 					<div className="flex flex-row flex-wrap gap-2">
 						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg' : 'text-xl', grid && !useVerticalGridLayout ? 'max-w-3/5' : '')}>{modMetadata.name}</p>
 						{useVerticalGridLayout !== true && <ModTag cluster={cluster} modData={modMetadata} />}
@@ -98,7 +107,7 @@ export function ModCard({ file, cluster, showDownload, onClick, outline, blueBac
 					{useVerticalGridLayout !== true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
 				</div>
 			</div>
-			{useVerticalGridLayout === true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
+			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', grid ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
 
 			{isManagedMod(modMetadata) && showDownload === true && (
 				<div className="flex flex-col items-center justify-center pr-2">

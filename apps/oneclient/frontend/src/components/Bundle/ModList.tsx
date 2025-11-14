@@ -25,7 +25,7 @@ export function ModList({ bundles, cluster, showModDownload, onClickOnMod, selec
 
 			<TabContent>
 				{bundles.map(bundle => (
-					<TabPanel className={useVerticalGridLayout ? "max-w-192" : ""} key={getBundleName(bundle.manifest.name)} value={getBundleName(bundle.manifest.name)}>
+					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundle.manifest.name)} value={getBundleName(bundle.manifest.name)}>
 						<Bundle
 							bundleData={bundle}
 							cluster={cluster}

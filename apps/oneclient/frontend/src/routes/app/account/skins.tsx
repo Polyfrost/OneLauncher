@@ -102,20 +102,30 @@ function useSkinHistory() {
 	return [skins, setSkins, loaded] as const;
 }
 
+export function MissingAccountData({ validSearch }: { validSearch: boolean }) {
+	return (
+		<SheetPage headerLarge={<></>} headerSmall={<></>}>
+			<h1>{validSearch ? 'Please select an account before going to the skins page' : 'Missing Profile auth. Please log out and log back in'}</h1>
+		</SheetPage>
+	);
+}
+
 function RouteComponent() {
-	const { profileData, profile, queryClient } = Route.useRouteContext();
+	const { profileData, profile, queryClient, validSearch } = Route.useRouteContext();
 
 	const [capes, setCapes] = useState<Array<Cape>>([]);
 	const [selectedCape, setSelectedCape] = useState<string>('');
 	const [shouldShowElytra, setShouldShowElytra] = useState<boolean>(false);
 
 	useEffect(() => {
+		if (!profileData)
+			return;
 		setCapes([{ url: '', id: '' }, ...profileData.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
 	}, []);
 
 	const [skins, setSkins, loaded] = useSkinHistory();
 	const [selectedSkin, setSelectedSkin] = useState<Skin>({ skin_url: getSkinUrl(null), is_slim: false });
-	const skinData: Skin = { is_slim: profileData.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData.skins[0].url) };
+	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url) };
 
 	useEffect(() => {
 		if (!loaded)
@@ -155,6 +165,8 @@ function RouteComponent() {
 
 	const saveSkinToAccount = async () => {
 		try {
+			if (!profile)
+				return;
 			await bindings.core.changeSkin(profile.access_token, selectedSkin.skin_url, selectedSkin.is_slim ? 'slim' : 'classic');
 			if (selectedCape === '') {
 				await bindings.core.removeCape(profile.access_token);
@@ -199,6 +211,9 @@ function RouteComponent() {
 		setAnimation(data.animation);
 		setAnimationName(data.name);
 	};
+
+	if (profileData === null)
+		return <MissingAccountData validSearch={validSearch} />;
 
 	return (
 		<SheetPage

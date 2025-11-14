@@ -11,7 +11,7 @@ export function Bundle({ bundleData, cluster, showModDownload, onClickOnMod, out
 
 	return (
 		<OverlayScrollbarsComponent>
-			<div className={twMerge('grid gap-2', grid ? 'grid-cols-3' : 'grid-cols-1', grid && useVerticalGridLayout ? "max-h-128" : "max-h-112")}>
+			<div className={twMerge('grid gap-2', grid ? 'grid-cols-3' : 'grid-cols-1', grid && useVerticalGridLayout ? 'max-h-128' : 'max-h-112')}>
 				{bundleData.manifest.files.map((file, index) => (
 					<ModCard
 						cluster={cluster}

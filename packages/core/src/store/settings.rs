@@ -19,6 +19,7 @@ pub struct Settings {
 	pub max_concurrent_requests: usize,
 	pub settings_version: u32,
 	pub native_window_frame: bool,
+	pub show_tanstack_dev_tools: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +34,7 @@ impl Default for Settings {
 			max_concurrent_requests: 25,
 			settings_version: 1,
 			native_window_frame: false,
+			show_tanstack_dev_tools: tauri::is_dev(),
 		}
 	}
 }

@@ -77,16 +77,16 @@ export function ModCard({ file, cluster, showDownload, onClick, outline, blueBac
 	const grid = setting('mod_list_use_grid');
 
 	return (
-		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && grid ? "p-1" : "p-2 gap-2 justify-between", grid ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
+		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && grid ? 'p-1' : 'p-2 gap-2 justify-between', grid ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
-				<div className={twMerge('flex flex-col items-center justify-center', grid ? (useVerticalGridLayout ? "size-14" : 'size-20') : 'size-18')}>
-					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', grid ? (useVerticalGridLayout ? "size-12" : 'size-18') : 'size-16')}>
+				<div className={twMerge('flex flex-col items-center justify-center', grid ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>
+					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', grid ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')}>
 						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', grid ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
 					</div>
 				</div>
 				<div className="flex flex-col">
 					<div className="flex flex-row flex-wrap gap-2">
-						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg' : 'text-xl', grid && !useVerticalGridLayout ? "max-w-3/5" : "")}>{modMetadata.name}</p>
+						<p className={twMerge('text-fg-primary break-words', grid ? 'text-lg' : 'text-xl', grid && !useVerticalGridLayout ? 'max-w-3/5' : '')}>{modMetadata.name}</p>
 						{useVerticalGridLayout !== true && <ModTag cluster={cluster} modData={modMetadata} />}
 					</div>
 

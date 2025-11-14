@@ -138,7 +138,7 @@ function AppShell({
 					</div>
 
 					<nav className="flex-1 p-4">
-						<Stepper currentLinearIndex={currentStepIndex} linearSteps={LINEAR_ONBOARDING_STEPS} steps={ONBOARDING_STEPS} />
+						<Stepper currentLinearIndex={currentStepIndex} steps={ONBOARDING_STEPS} />
 					</nav>
 
 					<div className="p-4 text-xs text-fg-secondary">

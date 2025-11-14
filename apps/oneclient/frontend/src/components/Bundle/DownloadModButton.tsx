@@ -16,14 +16,14 @@ export function DownloadModButton({ pkg, version, cluster }: { pkg: ManagedPacka
 	};
 
 	const { setting } = useSettings();
-	const grid = setting('mod_list_use_grid');
+	const useGridLayout = setting('mod_list_use_grid');
 
 	return (
 		<Button
-			className={twMerge('flex flex-col items-center justify-center', grid ? 'w-full' : '')}
+			className={twMerge('flex flex-col items-center justify-center', useGridLayout ? 'w-full' : '')}
 			color="primary"
 			onClick={handleDownload}
-			size={grid ? 'large' : 'iconLarge'}
+			size={useGridLayout ? 'large' : 'iconLarge'}
 		>
 			<Download01Icon />
 		</Button>

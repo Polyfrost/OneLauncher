@@ -125,10 +125,6 @@ function VersionCard({ cluster, versionData, version, fullVersionName, setSelect
 					}
 				</div>
 
-				<Button className="absolute bottom-3 right-3 p-1 transition-colors" color="ghost" size="icon">
-					<DotsVerticalIcon className="w-4 h-4 text-white" />
-				</Button>
-
 				<div className="absolute bottom-3 left-3">
 					<span className="text-white font-bold px-3 py-1 text-xl">{fullVersionName}</span>
 				</div>

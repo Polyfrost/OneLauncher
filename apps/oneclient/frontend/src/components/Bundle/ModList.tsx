@@ -1,16 +1,23 @@
-import type { ClusterModel, ModpackArchive, ModpackFile } from '@/bindings.gen';
-import type { ModInfo } from '.';
+import type { ClusterModel, ModpackArchive } from '@/bindings.gen';
 import { useSettings } from '@/hooks/useSettings';
 import { Button, Tab, TabContent, TabList, TabPanel, Tabs } from '@onelauncher/common/components';
-import { Bundle } from '.';
+import { Bundle, useModCardContext } from '.';
 
 function getBundleName(name: string): string {
 	return (name.match(/\[(.*?)\]/)?.[1]) ?? 'LOADING';
 }
 
-export function ModList({ bundles, cluster, showModDownload, onClickOnMod, selectedTab, onTabChange, useVerticalGridLayout }: { bundles: Array<ModpackArchive>; cluster: ClusterModel; showModDownload?: boolean; onClickOnMod?: (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void; selectedTab?: string; onTabChange?: (value: string) => void; useVerticalGridLayout?: boolean }) {
+interface ModListProps {
+	bundles: Array<ModpackArchive>;
+	cluster: ClusterModel;
+	selectedTab?: string;
+	onTabChange?: (value: string) => void;
+}
+
+export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListProps) {
+	const { useVerticalGridLayout } = useModCardContext();
 	const { createSetting } = useSettings();
-	const [useGrid, setUseGrid] = createSetting('mod_list_use_grid');
+	const [useGridLayout, setUseGrid] = createSetting('mod_list_use_grid');
 
 	return (
 		<Tabs defaultValue={selectedTab ?? getBundleName(bundles[0].manifest.name)} onTabChange={onTabChange}>
@@ -19,22 +26,16 @@ export function ModList({ bundles, cluster, showModDownload, onClickOnMod, selec
 					{bundles.map(bundle => <Tab key={getBundleName(bundle.manifest.name)} value={getBundleName(bundle.manifest.name)}>{getBundleName(bundle.manifest.name)}</Tab>)}
 				</div>
 				{!useVerticalGridLayout && (
-					<Button onPress={() => setUseGrid(!useGrid)}>
-						Toggle {useGrid ? 'Row' : 'Grid'}
+					<Button onPress={() => setUseGrid(!useGridLayout)}>
+						Toggle {useGridLayout ? 'Row' : 'Grid'}
 					</Button>
 				)}
 			</TabList>
 
 			<TabContent>
-				{bundles.map(bundle => (
-					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundle.manifest.name)} value={getBundleName(bundle.manifest.name)}>
-						<Bundle
-							bundleData={bundle}
-							cluster={cluster}
-							onClickOnMod={onClickOnMod}
-							showModDownload={showModDownload}
-							useVerticalGridLayout={useVerticalGridLayout}
-						/>
+				{bundles.map(bundleData => (
+					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
+						<Bundle bundleData={bundleData} cluster={cluster} />
 					</TabPanel>
 				))}
 			</TabContent>

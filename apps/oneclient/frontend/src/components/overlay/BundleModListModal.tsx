@@ -1,16 +1,16 @@
 import type { ModpackFile } from '@/bindings.gen';
-import type { ModInfo } from '../Bundle';
+import type { ModCardContextApi, onClickOnMod } from '../Bundle';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
-import { useState } from 'react';
-import { ModList } from '../Bundle';
+import { useMemo, useState } from 'react';
+import { ModCardContext, ModList } from '../Bundle';
 import { Overlay } from './Overlay';
 
 export function BundleModListModal({ clusterId, name, setMods }: { clusterId: number; name: string; setMods: (value: React.SetStateAction<Array<ModpackFile>>) => void }) {
 	const { data: cluster } = useCommandSuspense(['getClusterById'], () => bindings.core.getClusterById(clusterId));
 	const { data: bundles } = useCommandSuspense(['getBundlesFor', clusterId], () => bindings.oneclient.getBundlesFor(clusterId));
 
-	const onClickOnMod = (file: ModpackFile, modMetadata: ModInfo, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => {
+	const onClickOnMod: onClickOnMod = (file, setShowOutline, setShowBlueBackground) => {
 		setMods((prevMods) => {
 			if (prevMods.includes(file))
 				return prevMods.filter(mod => mod !== file);
@@ -23,6 +23,11 @@ export function BundleModListModal({ clusterId, name, setMods }: { clusterId: nu
 
 	const [tab, setSelectedTab] = useState<string>(name);
 
+	const context = useMemo<ModCardContextApi>(() => ({
+		onClickOnMod,
+		useVerticalGridLayout: true,
+	}), []);
+
 	if (!cluster)
 		return <></>;
 
@@ -33,14 +38,14 @@ export function BundleModListModal({ clusterId, name, setMods }: { clusterId: nu
 				{' '}
 				<span className="text-brand">{tab}</span>
 			</Overlay.Title>
-			<ModList
-				bundles={bundles}
-				cluster={cluster}
-				onClickOnMod={onClickOnMod}
-				onTabChange={setSelectedTab}
-				selectedTab={name}
-				useVerticalGridLayout
-			/>
+			<ModCardContext.Provider value={context}>
+				<ModList
+					bundles={bundles}
+					cluster={cluster}
+					onTabChange={setSelectedTab}
+					selectedTab={name}
+				/>
+			</ModCardContext.Provider>
 		</Overlay.Dialog>
 	);
 }

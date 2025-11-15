@@ -1,16 +1,19 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use async_zip::base::read::mem::ZipFileReader;
+use futures::TryStreamExt;
 use interpulse::api::minecraft::VersionInfo;
 use onelauncher_entity::{java_versions, setting_profiles};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
 
 use crate::api::ingress::{init_ingress, init_ingress_opt, send_ingress};
+use crate::constants::JAVA_BIN;
 use crate::error::LauncherResult;
 use crate::store::Dirs;
-use crate::store::ingress::{IngressType, SubIngress};
-use crate::utils::http::{fetch_advanced, fetch_json};
+use crate::store::ingress::IngressType;
+use crate::utils::http;
 use crate::utils::io::{self, IOError};
 
 pub mod dao;
@@ -44,15 +47,11 @@ pub fn get_java_bin() -> PathBuf {
 			.join("Contents")
 			.join("Home")
 			.join("bin")
-			.join("java")
+			.join(JAVA_BIN)
 	}
-	#[cfg(target_os = "windows")]
+	#[cfg(not(target_os = "macos"))]
 	{
-		PathBuf::new().join("bin").join("javaw.exe")
-	}
-	#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-	{
-		PathBuf::new().join("bin").join("java")
+		PathBuf::new().join("bin").join(JAVA_BIN)
 	}
 }
 
@@ -65,7 +64,7 @@ pub struct JavaInfo {
 }
 
 #[onelauncher_macro::specta]
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct JavaPackage {
 	pub download_url: String,
 	pub name: PathBuf,
@@ -88,15 +87,15 @@ pub async fn check_java_runtime(
 	.await?;
 	let id = id.as_ref();
 
-	let dir = io::tempdir()?;
-	let file = dir.path().join("JavaInfo.class");
+	let dir = io::tempdir().await?;
+	let file = dir.dir_path().join("JavaInfo.class");
 	id.map(async |id| send_ingress(id, 25.0).await);
 
 	io::write(&file, JAVA_INFO_CLASS).await?;
 	id.map(async |id| send_ingress(id, 25.0).await);
 	let java_info = tokio::process::Command::new(absolute_path)
 		.arg("-cp")
-		.arg(dir.path())
+		.arg(dir.dir_path())
 		.arg("JavaInfo")
 		.env_remove("_JAVA_OPTIONS")
 		.output()
@@ -207,7 +206,7 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 fn find_java_in_path(mut found: Vec<PathBuf>) -> Vec<PathBuf> {
 	if let Ok(path) = std::env::var("PATH") {
 		for path_entry in path.split(':') {
-			let java = PathBuf::from(path_entry).join("java");
+			let java = PathBuf::from(path_entry).join(JAVA_BIN);
 			if java.exists() && java.is_file() && !found.contains(&java) {
 				found.push(java);
 			}
@@ -264,7 +263,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 		if let Ok(entries) = std::fs::read_dir(base_path) {
 			for entry in entries.flatten() {
 				if entry.file_type().map_or(false, |ft| ft.is_dir()) {
-					let java_exe = entry.path().join("bin").join("java.exe");
+					let java_exe = entry.path().join(get_java_bin());
 					if java_exe.exists() {
 						java_homes.push(java_exe);
 					}
@@ -276,14 +275,14 @@ fn internal_locate_java() -> Vec<PathBuf> {
 	// env vars
 	if let Ok(java_home) = std::env::var("JAVA_HOME") {
 		let path_buf = PathBuf::from(java_home);
-		if path_buf.join("bin").join("java.exe").exists() {
+		if path_buf.join("bin").join(JAVA_BIN).exists() {
 			java_homes.push(path_buf);
 		}
 	}
 
 	if let Ok(path) = std::env::var("PATH") {
 		for path_entry in path.split(';') {
-			let java_exe = PathBuf::from(path_entry).join("java.exe");
+			let java_exe = PathBuf::from(path_entry).join(JAVA_BIN);
 			if java_exe.exists() {
 				if let Some(bin_dir) = java_exe.parent() {
 					if let Some(java_home) = bin_dir.parent() {
@@ -363,7 +362,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 }
 
 pub async fn get_zulu_packages() -> LauncherResult<Vec<JavaPackage>> {
-	fetch_json::<Vec<JavaPackage>>(
+	http::fetch_json::<Vec<JavaPackage>>(
 		reqwest::Method::GET,
 		format!(
 			"https://api.azul.com/metadata/v1/zulu/packages/?os={}&arch={}&archive_type=zip&java_package_type=jre&javafx_bundled=false&latest=true&release_status=ga&availability_types=CA&certifications=tck&page=1&page_size=100",
@@ -384,15 +383,13 @@ pub async fn install_java_from_major(version: u32) -> LauncherResult<PathBuf> {
 		.find(|p| p.java_version.contains(&version))
 		.ok_or_else(|| anyhow::anyhow!("Could not find a java package for version {}", version))?;
 
-	install_java_package(package).await
+	install_java_package(&package).await
 }
 
-pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBuf> {
+pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathBuf> {
 	const INGRESS_TOTAL: f64 = 100.0;
 	const INGRESS_TASKS: f64 = 4.0;
 	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
-
-	let version = package.download_url;
 
 	let ingress_id = init_ingress(
 		IngressType::JavaPrepare,
@@ -404,37 +401,40 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 	)
 	.await?;
 
-	let file = fetch_advanced(
-		reqwest::Method::GET,
-		&version,
-		None,
-		None,
-		None,
-		Some(&SubIngress::new(&ingress_id, INGRESS_STEP)),
-	)
-	.await?;
-
+	// send the request
+	let res = http::request(Method::GET, &package.download_url).await?;
 	let java_dir = Dirs::get_java_dir().await?;
-	let archive = ZipFileReader::new(file.to_vec())
-		.await
-		.map_err(IOError::AsyncZipError)?;
 
-	if let Some(entry) = archive.file().entries().first()
-		&& let Some(dir) = entry
-			.filename()
-			.clone()
-			.into_string()
-			.unwrap()
-			.split('/')
-			.next()
-	{
-		let path = java_dir.join(dir);
-		if path.exists() {
-			io::remove_dir_all(&path).await?;
+	// prepare to download
+	let size = res.content_length().unwrap_or(0);
+	let mut tmp_archive = io::tempfile().await?;
+	let mut downloaded: u64 = 0;
+	let mut last_ingress_prog: f64 = 0.0;
+
+	// download to tmpfile
+	let mut stream = res.bytes_stream();
+	while let Some(bytes) = stream.try_next().await? {
+		let byte_len = bytes.len() as u64;
+		downloaded += byte_len;
+
+		tmp_archive.write_all(&bytes).await.map_err(IOError::from)?;
+
+		if size > 0 {
+			let absolute = (downloaded as f64 / size as f64) * INGRESS_STEP;
+			let delta = absolute - last_ingress_prog;
+			send_ingress(&ingress_id, delta).await?;
+			last_ingress_prog = absolute;
 		}
 	}
 
-	io::unzip_bytes(archive.data().to_vec(), &java_dir).await?;
+	tmp_archive.flush().await.map_err(IOError::from)?;
+
+	// extract file
+	io::extract_zip(tmp_archive.file_path(), &java_dir).await?;
+	send_ingress(&ingress_id, INGRESS_STEP).await?;
+
+	// drop (which in turn closes / deletes the tempfile)
+	drop(tmp_archive);
 
 	let mut base_path = java_dir.join(
 		package
@@ -453,18 +453,10 @@ pub async fn install_java_package(package: JavaPackage) -> LauncherResult<PathBu
 			.map(|v| v.to_string())
 			.collect::<Vec<_>>()
 			.join(".");
-		base_path = base_path
-			.join(format!("zulu-{java_version}.jre"))
-			.join("Contents")
-			.join("Home")
-			.join("bin")
-			.join("java");
+		base_path = base_path.join(format!("zulu-{java_version}.jre"));
 	}
 
-	#[cfg(not(target_os = "macos"))]
-	{
-		base_path = base_path.join("bin").join(crate::constants::JAVA_BIN);
-	}
+	base_path = base_path.join(get_java_bin());
 
 	Ok(base_path)
 }

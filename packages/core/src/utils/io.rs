@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 use async_compression::tokio::bufread::GzipDecoder;
 use async_stream::try_stream;
+use async_tempfile::{TempDir, TempFile};
 use async_zip::StoredZipEntry;
 use async_zip::base::read::WithoutEntry;
 use futures::{Stream, TryStreamExt, pin_mut};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tempfile::TempDir;
 use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 /// A wrapper around generic and unhelpful [`std::io::Error`] messages.
@@ -45,6 +45,12 @@ pub enum IOError {
 		#[from]
 		#[skip]
 		async_zip::error::ZipError,
+	),
+	#[error("tempfile error: {0}")]
+	TempFileError(
+		#[from]
+		#[skip]
+		async_tempfile::Error,
 	),
 }
 
@@ -256,13 +262,13 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> Result<(), IOErro
 }
 
 /// Creates a temporary directory.
-pub fn tempdir() -> Result<TempDir, IOError> {
-	Ok(tempfile::tempdir()?)
+pub async fn tempdir() -> Result<TempDir, IOError> {
+	Ok(TempDir::new().await?)
 }
 
 /// Creates a temporary file.
-pub fn tempfile() -> Result<std::fs::File, IOError> {
-	Ok(tempfile::tempfile()?)
+pub async fn tempfile() -> Result<TempFile, IOError> {
+	Ok(TempFile::new().await?)
 }
 
 /// Reads a zip archive from a byte array

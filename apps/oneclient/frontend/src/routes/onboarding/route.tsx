@@ -34,19 +34,17 @@ export const Route = createFileRoute('/onboarding')({
 		const isFirstStep = currentLinearStepIndex === 0;
 		const isLastStep = currentLinearStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
 
-		const nextStep = LINEAR_ONBOARDING_STEPS
-			.slice(currentLinearStepIndex + 1)
-			.find(step => !step.disabled);
-		const previousStep = LINEAR_ONBOARDING_STEPS
-			.slice(0, currentLinearStepIndex)
-			.reverse()
-			.find(step => !step.disabled);
-
 		return {
 			isFirstStep,
 			isLastStep,
-			previousPath: previousStep?.path,
-			nextPath: nextStep?.path,
+			previousPath:
+				currentLinearStepIndex > 0
+					? LINEAR_ONBOARDING_STEPS[currentLinearStepIndex - 1]?.path
+					: undefined,
+			nextPath:
+				currentLinearStepIndex < LINEAR_ONBOARDING_STEPS.length - 1
+					? LINEAR_ONBOARDING_STEPS[currentLinearStepIndex + 1]?.path
+					: undefined,
 			currentLinearStepIndex,
 			currentStepIndex,
 		};
@@ -57,28 +55,22 @@ export interface OnboardingStep {
 	path: string;
 	title: string;
 	subSteps?: Array<OnboardingStep>;
-	disabled: boolean;
-	hideNav: boolean;
+	hideNavigationButtons?: boolean;
 };
 
 const ONBOARDING_STEPS: Array<OnboardingStep> = [
 	{
 		path: '/onboarding',
 		title: 'Welcome',
-		disabled: false,
-		hideNav: false,
 	},
 	{
 		path: '/onboarding/language',
 		title: 'Set Language',
-		disabled: false,
-		hideNav: false,
 	},
 	{
 		path: '/onboarding/account',
 		title: 'Account',
-		disabled: false,
-		hideNav: false,
+		hideNavigationButtons: true,
 	},
 	{
 		path: '/onboarding/preferences/',
@@ -87,30 +79,18 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 			{
 				path: '/onboarding/preferences/version',
 				title: 'Versions',
-				disabled: false,
-				hideNav: true,
+				hideNavigationButtons: true,
 			},
 			{
 				path: '/onboarding/preferences/versionCategory',
 				title: 'Versions Category',
-				disabled: false,
-				hideNav: true,
-			},
-			{
-				path: '/onboarding/preferences/versions/bundleMods',
-				title: 'Mods',
-				disabled: true,
-				hideNav: false,
+				hideNavigationButtons: true,
 			},
 		],
-		disabled: false,
-		hideNav: false,
 	},
 	{
 		path: '/onboarding/finished',
 		title: 'Finished',
-		disabled: false,
-		hideNav: false,
 	},
 ];
 
@@ -136,7 +116,6 @@ function RouteComponent() {
 	}, [clusters, queryClient]);
 
 	const { currentStepIndex } = Route.useLoaderData();
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
@@ -164,7 +143,7 @@ function RouteComponent() {
 
 					</motion.div>
 
-					{LINEAR_ONBOARDING_STEPS[currentStepIndex].hideNav ? <></> : <OnboardingNavigation disableNext={currentStepIndex === 2 && currentAccount === null} />}
+					{LINEAR_ONBOARDING_STEPS[currentStepIndex].hideNavigationButtons ? <></> : <OnboardingNavigation />}
 				</LoaderSuspense>
 			</div>
 		</AppShell>

@@ -6,6 +6,7 @@ import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { OnboardingNavigation } from './route';
 
 export const Route = createFileRoute('/onboarding/account')({
 	component: RouteComponent,
@@ -65,37 +66,40 @@ function RouteComponent() {
 	};
 
 	return (
-		<div className="flex flex-col h-full px-12 gap-4">
-			<div>
-				<h1 className="text-4xl font-semibold mb-2">Account</h1>
-				<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
-			</div>
-			{currentAccount
-				? (
+		<>
+			<div className="flex flex-col h-full px-12 gap-4">
+				<div>
+					<h1 className="text-4xl font-semibold mb-2">Account</h1>
+					<p className="text-slate-400 text-lg mb-2">Before you continue, we require you to own a copy of Minecraft: Java Edition.</p>
+				</div>
+				{currentAccount
+					? (
 						<>
 							<AccountPreview profile={currentAccount} />
 						</>
 					)
-				: (
+					: (
 						<>
 							{profile
 								? (
-										<>
-											<AccountPreview profile={profile} />
-										</>
-									)
+									<>
+										<AccountPreview profile={profile} />
+									</>
+								)
 								: (
-										<Button
-											color="primary"
-											isPending={isPending}
-											onClick={onClick}
-											size="large"
-										>
-											Add Account
-										</Button>
-									)}
+									<Button
+										color="primary"
+										isPending={isPending}
+										onClick={onClick}
+										size="large"
+									>
+										Add Account
+									</Button>
+								)}
 						</>
 					)}
-		</div>
+			</div>
+			<OnboardingNavigation disableNext={currentAccount === null} />
+		</>
 	);
 }

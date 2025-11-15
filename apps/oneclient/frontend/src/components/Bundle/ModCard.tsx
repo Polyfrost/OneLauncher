@@ -133,7 +133,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 					{useVerticalGridLayout !== true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
 				</div>
 			</div>
-			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
+			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary p-2', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
 
 			{isManagedMod(modMetadata) && showModDownloadButton === true && (
 				<div className="flex flex-col items-center justify-center pr-2">

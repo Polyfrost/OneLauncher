@@ -15,24 +15,34 @@ import { MouseParallax } from 'react-just-parallax';
 export const Route = createFileRoute('/onboarding')({
 	component: RouteComponent,
 	loader: ({ location }) => {
-		const currentStepIndex = LINEAR_ONBOARDING_STEPS.findIndex(
+		const currentStepIndex = ONBOARDING_STEPS.findIndex((step) => {
+			if (step.path === location.pathname)
+				return true;
+
+			if (step.subSteps)
+				return step.subSteps.some(sub => sub.path === location.pathname);
+
+			return false;
+		});
+		const currentLinearStepIndex = LINEAR_ONBOARDING_STEPS.findIndex(
 			step => step.path === location.pathname,
 		);
 
-		const isFirstStep = currentStepIndex === 0;
-		const isLastStep = currentStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
+		const isFirstStep = currentLinearStepIndex === 0;
+		const isLastStep = currentLinearStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
 
 		return {
 			isFirstStep,
 			isLastStep,
 			previousPath:
-				currentStepIndex > 0
-					? LINEAR_ONBOARDING_STEPS[currentStepIndex - 1]?.path
+				currentLinearStepIndex > 0
+					? LINEAR_ONBOARDING_STEPS[currentLinearStepIndex - 1]?.path
 					: undefined,
 			nextPath:
-				currentStepIndex < LINEAR_ONBOARDING_STEPS.length - 1
-					? LINEAR_ONBOARDING_STEPS[currentStepIndex + 1]?.path
+				currentLinearStepIndex < LINEAR_ONBOARDING_STEPS.length - 1
+					? LINEAR_ONBOARDING_STEPS[currentLinearStepIndex + 1]?.path
 					: undefined,
+			currentLinearStepIndex,
 			currentStepIndex,
 		};
 	},
@@ -138,7 +148,7 @@ function AppShell({
 					</div>
 
 					<nav className="flex-1 p-4">
-						<Stepper currentLinearIndex={currentStepIndex} steps={ONBOARDING_STEPS} />
+						<Stepper currentStepIndex={currentStepIndex} steps={ONBOARDING_STEPS} />
 					</nav>
 
 					<div className="p-4 text-xs text-fg-secondary">
@@ -198,9 +208,9 @@ function BackgroundGradient() {
 }
 
 export function OnboardingNavigation() {
-	const { isFirstStep, previousPath, nextPath, currentStepIndex } = Route.useLoaderData();
+	const { isFirstStep, previousPath, nextPath, currentLinearStepIndex } = Route.useLoaderData();
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const forceLoginDisable = currentStepIndex === 2 && currentAccount === null;
+	const forceLoginDisable = currentLinearStepIndex === 2 && currentAccount === null;
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">

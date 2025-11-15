@@ -74,13 +74,12 @@ interface ModCardProps {
 	cluster: ClusterModel;
 }
 
-export type onClickOnMod = (file: ModpackFile, setShowOutline: React.Dispatch<React.SetStateAction<boolean>>, setShowBlueBackground: React.Dispatch<React.SetStateAction<boolean>>) => void;
+export type onClickOnMod = (file: ModpackFile, setSelected: React.Dispatch<React.SetStateAction<boolean>>) => void;
 export interface ModCardContextApi {
 	showModDownloadButton?: boolean;
 	onClickOnMod?: onClickOnMod;
-	showOutlineOnCard?: boolean;
-	showBlueBackgroundOnCard?: boolean;
 	useVerticalGridLayout?: boolean;
+	mods?: Array<ModpackFile>;
 }
 
 export const ModCardContext = createContext<ModCardContextApi | null>(null);
@@ -94,25 +93,24 @@ export function useModCardContext() {
 }
 
 export function ModCard({ file, cluster }: ModCardProps) {
-	const { showModDownloadButton, onClickOnMod, showOutlineOnCard, showBlueBackgroundOnCard, useVerticalGridLayout } = useModCardContext();
+	const { showModDownloadButton, onClickOnMod, useVerticalGridLayout, mods } = useModCardContext();
 
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file.kind, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);
 
-	const [showOutline, setShowOutline] = useState<boolean>(showOutlineOnCard ?? false);
-	const [showBlueBackground, setShowBlueBackground] = useState<boolean>(showBlueBackgroundOnCard ?? false);
+	const [isSelected, setSelected] = useState(mods?.includes(file) ?? false);
 	const handleOnClick = () => {
 		if (onClickOnMod)
-			onClickOnMod(file, setShowOutline, setShowBlueBackground);
+			onClickOnMod(file, setSelected);
 	};
 
 	const { setting } = useSettings();
 	const useGridLayout = setting('mod_list_use_grid');
 
 	return (
-		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && useGridLayout ? 'p-1' : 'p-2 gap-2 justify-between', useGridLayout ? 'flex-col' : 'flex-row', showOutline ? 'outline-2 outline-brand' : '', showBlueBackground ? 'bg-brand/20' : '')} onClick={handleOnClick}>
+		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && useGridLayout ? 'p-1' : 'p-2 gap-2 justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-2 outline-brand bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
 				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>
 					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', useGridLayout ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')}>

@@ -82,6 +82,7 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 							clusterId={bundleData.clusterId}
 							fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
 							key={index}
+							mods={bundleData.modsInfo[0]}
 							setMods={bundleData.modsInfo[1]}
 						/>
 					);
@@ -91,9 +92,9 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 	);
 }
 
-function ModCategoryCard({ art, fullVersionName, bundle, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
+function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModpackFile>; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
 	const [isSelected, setSelected] = useState<boolean>(false);
-	const files = bundle.manifest.files.filter(file => 'Managed' in file.kind);
+	const files = bundle.manifest.files;
 	const handleDownload = () => {
 		setMods((prevMods) => {
 			if (isSelected)
@@ -125,7 +126,12 @@ function ModCategoryCard({ art, fullVersionName, bundle, setMods, clusterId }: {
 					</Button>
 
 					<Overlay>
-						<BundleModListModal clusterId={clusterId} name={fullVersionName} setMods={setMods} />
+						<BundleModListModal
+							clusterId={clusterId}
+							mods={mods}
+							name={fullVersionName}
+							setMods={setMods}
+						/>
 					</Overlay>
 				</DialogTrigger>
 

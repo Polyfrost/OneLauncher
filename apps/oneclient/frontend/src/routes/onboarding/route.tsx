@@ -115,7 +115,7 @@ function RouteComponent() {
 		});
 	}, [clusters, queryClient]);
 
-	const { currentStepIndex } = Route.useLoaderData();
+	const { currentLinearStepIndex } = Route.useLoaderData();
 
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
@@ -143,7 +143,7 @@ function RouteComponent() {
 
 					</motion.div>
 
-					{LINEAR_ONBOARDING_STEPS[currentStepIndex].hideNavigationButtons ? <></> : <OnboardingNavigation />}
+					{LINEAR_ONBOARDING_STEPS[currentLinearStepIndex].hideNavigationButtons ? <></> : <OnboardingNavigation />}
 				</LoaderSuspense>
 			</div>
 		</AppShell>

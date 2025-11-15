@@ -1,7 +1,9 @@
 import type { ModpackArchive, ModpackFile } from '@/bindings.gen';
 import type { DownloadModsRef } from '@/components';
+import type { ModCardContextApi, onClickOnMod } from '@/components/Bundle';
 import type { BundleData, StrippedCLuster } from './version';
 import { DownloadMods } from '@/components';
+import { ModCardContext } from '@/components/Bundle';
 import { BundleModListModal, Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
@@ -10,7 +12,7 @@ import { useQueries } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
@@ -105,6 +107,22 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 		setSelected(prev => !prev);
 	};
 
+	const onClickOnMod: onClickOnMod = (file, setSelected) => {
+		setMods((prevMods) => {
+			if (prevMods.includes(file))
+				return prevMods.filter(mod => mod !== file);
+			else
+				return [file, ...prevMods];
+		});
+		setSelected(prev => !prev);
+	};
+
+	const context = useMemo<ModCardContextApi>(() => ({
+		onClickOnMod,
+		useVerticalGridLayout: true,
+		mods,
+	}), [mods]);
+
 	return (
 		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
 			<div className="relative w-full">
@@ -120,20 +138,20 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 					</div>
 				</div>
 
-				<DialogTrigger>
-					<Button className="absolute bottom-3 right-3 p-1 transition-colors" color="ghost" size="icon">
-						<DotsVerticalIcon className="w-4 h-4 text-white" />
-					</Button>
+				<ModCardContext.Provider value={context}>
+					<DialogTrigger>
+						<Button className="absolute bottom-3 right-3 p-1 transition-colors" color="ghost" size="icon">
+							<DotsVerticalIcon className="w-4 h-4 text-white" />
+						</Button>
 
-					<Overlay>
-						<BundleModListModal
-							clusterId={clusterId}
-							mods={mods}
-							name={fullVersionName}
-							setMods={setMods}
-						/>
-					</Overlay>
-				</DialogTrigger>
+						<Overlay>
+							<BundleModListModal
+								clusterId={clusterId}
+								name={fullVersionName}
+							/>
+						</Overlay>
+					</DialogTrigger>
+				</ModCardContext.Provider>
 
 				<div className="absolute bottom-3 left-3">
 					<div className="flex flex-col items-center justify-center">

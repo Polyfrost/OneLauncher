@@ -74,30 +74,30 @@ function RouteComponent() {
 				</div>
 				{currentAccount
 					? (
-						<>
-							<AccountPreview profile={currentAccount} />
-						</>
-					)
+							<>
+								<AccountPreview profile={currentAccount} />
+							</>
+						)
 					: (
-						<>
-							{profile
-								? (
-									<>
-										<AccountPreview profile={profile} />
-									</>
-								)
-								: (
-									<Button
-										color="primary"
-										isPending={isPending}
-										onClick={onClick}
-										size="large"
-									>
-										Add Account
-									</Button>
-								)}
-						</>
-					)}
+							<>
+								{profile
+									? (
+											<>
+												<AccountPreview profile={profile} />
+											</>
+										)
+									: (
+											<Button
+												color="primary"
+												isPending={isPending}
+												onClick={onClick}
+												size="large"
+											>
+												Add Account
+											</Button>
+										)}
+							</>
+						)}
 			</div>
 			<OnboardingNavigation disableNext={currentAccount === null} />
 		</>

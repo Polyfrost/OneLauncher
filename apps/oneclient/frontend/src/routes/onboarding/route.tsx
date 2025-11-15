@@ -18,18 +18,27 @@ import { MouseParallax } from 'react-just-parallax';
 export const Route = createFileRoute('/onboarding')({
 	component: RouteComponent,
 	loader: ({ location }) => {
-		const currentStepIndex = LINEAR_ONBOARDING_STEPS.findIndex(
+		const currentStepIndex = ONBOARDING_STEPS.findIndex((step) => {
+			if (step.path === location.pathname)
+				return true;
+
+			if (step.subSteps)
+				return step.subSteps.some(sub => sub.path === location.pathname);
+
+			return false;
+		});
+		const currentLinearStepIndex = LINEAR_ONBOARDING_STEPS.findIndex(
 			step => step.path === location.pathname,
 		);
 
-		const isFirstStep = currentStepIndex === 0;
-		const isLastStep = currentStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
+		const isFirstStep = currentLinearStepIndex === 0;
+		const isLastStep = currentLinearStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
 
 		const nextStep = LINEAR_ONBOARDING_STEPS
-			.slice(currentStepIndex + 1)
+			.slice(currentLinearStepIndex + 1)
 			.find(step => !step.disabled);
 		const previousStep = LINEAR_ONBOARDING_STEPS
-			.slice(0, currentStepIndex)
+			.slice(0, currentLinearStepIndex)
 			.reverse()
 			.find(step => !step.disabled);
 
@@ -38,6 +47,7 @@ export const Route = createFileRoute('/onboarding')({
 			isLastStep,
 			previousPath: previousStep?.path,
 			nextPath: nextStep?.path,
+			currentLinearStepIndex,
 			currentStepIndex,
 		};
 	},
@@ -180,7 +190,7 @@ function AppShell({
 					</div>
 
 					<nav className="flex-1 p-4">
-						<Stepper currentLinearIndex={currentStepIndex} linearSteps={LINEAR_ONBOARDING_STEPS} steps={ONBOARDING_STEPS} />
+						<Stepper currentStepIndex={currentStepIndex} steps={ONBOARDING_STEPS} />
 					</nav>
 
 					<div className="p-4 text-xs text-fg-secondary">

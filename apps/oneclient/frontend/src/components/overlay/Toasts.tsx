@@ -6,7 +6,7 @@ import { bindings } from '@/main';
 import { toast, toastUpdate } from '@/utils/toast';
 import { Button } from '@onelauncher/common/components';
 import { AlertCircleIcon, AlertTriangleIcon, CheckCircleIcon, InfoCircleIcon, XCloseIcon } from '@untitled-theme/icons-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { cssTransition, ToastContainer } from 'react-toastify';
 import { tv } from 'tailwind-variants';
 import { Spinner } from '../Spinner';
@@ -126,14 +126,24 @@ const ingressNames: Record<(IngressType & string) | (keyof UnionToIntersection<I
 };
 
 export function Toasts() {
-	// runs twice in dev mode because of react strict mode
-	// the double notifications are NOT a bug!!!
+	const toastIngressMapRef = useRef(new Map<string, ToastId>());
+	const listenerRef = useRef(false);
+
 	useEffect(() => {
+		if (listenerRef.current)
+			return;
+
+		listenerRef.current = true;
+
 		let unlisten: (() => void) | undefined;
-		const toastIngressMap: Map<string, ToastId> = new Map();
 
 		bindings.events.ingress.on((e) => {
-			const ingressType = typeof e.ingress_type === 'string' ? e.ingress_type : Object.keys(e.ingress_type).at(0) ?? 'Info';
+			const toastIngressMap = toastIngressMapRef.current;
+
+			const ingressType = typeof e.ingress_type === 'string'
+				? e.ingress_type
+				: Object.keys(e.ingress_type)[0] ?? 'Info';
+
 			const title = ingressNames[ingressType as keyof typeof ingressNames] ?? ingressType;
 
 			const existingToastId = toastIngressMap.get(e.id);

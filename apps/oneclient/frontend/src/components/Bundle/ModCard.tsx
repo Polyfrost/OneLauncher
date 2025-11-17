@@ -29,13 +29,18 @@ async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boole
 
 	const authors = await bindings.core.getUsersFromAuthor(kind.Managed[0].provider, kind.Managed[0].author);
 	if (useVerticalGridLayout) {
-		const truncated = authors.slice(0, 2);
-		const extra = authors.length - truncated.length;
-		const names = truncated.map(author => author.username).join(', ');
-		if (extra > 0)
-			return `${names} and ${extra} more`;
-		else
-			return names;
+		const usernames = authors.map(a => a.username);
+		let visibleCount = usernames.length;
+		while (visibleCount >= 1) {
+			const hiddenUsers = usernames.length - visibleCount;
+			let string = usernames.slice(0, visibleCount).join(', ');
+			if (hiddenUsers > 0)
+				string += ` and ${hiddenUsers} more`;
+			if (string.length <= 21)
+				return string;
+			visibleCount--;
+		}
+		return `${usernames[0]} and ${usernames.length - 1} more`;
 	}
 	return authors.map(author => author.username).join(', ');
 }
@@ -110,15 +115,15 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	const useGridLayout = setting('mod_list_use_grid');
 
 	return (
-		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5', useVerticalGridLayout && useGridLayout ? 'p-1' : 'p-2 gap-2 justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-2 outline-brand bg-brand/20' : '')} onClick={handleOnClick}>
+		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5 p-2 gap-2', useVerticalGridLayout && useGridLayout ? '' : 'justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-2 outline-brand bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
 				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>
-					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', useGridLayout ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')}>
-						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', useGridLayout ? (useVerticalGridLayout ? 'size-12' : 'size-18') : 'size-16')} src={modMetadata.iconURL ?? MissingLogo} />
+					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>
+						<img className={twMerge('rounded-lg', modMetadata.iconURL === null ? 'hidden' : '', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')} src={modMetadata.iconURL ?? MissingLogo} />
 					</div>
 				</div>
 				<div className={twMerge('flex flex-col', useVerticalGridLayout && useGridLayout ? 'justify-center' : '')}>
-					<div className="flex flex-row flex-wrap gap-2">
+					<div className="flex flex-row flex-wrap">
 						<p className={twMerge('text-fg-primary break-words', useGridLayout ? 'text-lg' : 'text-xl', useGridLayout && !useVerticalGridLayout ? 'max-w-3/5' : '')}>{modMetadata.name}</p>
 						{useVerticalGridLayout !== true && <ModTag cluster={cluster} modData={modMetadata} />}
 					</div>
@@ -131,10 +136,10 @@ export function ModCard({ file, cluster }: ModCardProps) {
 					{useVerticalGridLayout !== true && <p className={twMerge('font-normal', modMetadata.description === null ? 'text-fg-secondary/25' : 'text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description ?? 'No Description'}</p>}
 				</div>
 			</div>
-			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary p-2', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
+			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
 
 			{isManagedMod(modMetadata) && showModDownloadButton === true && (
-				<div className="flex flex-col items-center justify-center pr-2">
+				<div className={twMerge("flex flex-col items-center justify-center", useGridLayout ? "" : "pr-2")}>
 					<DownloadModButton cluster={cluster} pkg={modMetadata.pkg} version={modMetadata.version} />
 				</div>
 			)}

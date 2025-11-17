@@ -5,7 +5,6 @@ import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useState } from 'react';
-import { DialogTrigger } from 'react-aria-components';
 import { tv } from 'tailwind-variants';
 import { NoAccountPopup, Overlay } from './overlay';
 
@@ -43,7 +42,7 @@ export function LaunchButton({
 	};
 
 	return (
-		<DialogTrigger isOpen={open} onOpenChange={setOpen}>
+		<Overlay.Trigger isOpen={open} onOpenChange={setOpen}>
 			<Button
 				className={launchButtonVariants({ isRunning, className })}
 				isDisabled={isDisabled || isRunning}
@@ -56,6 +55,6 @@ export function LaunchButton({
 			<Overlay>
 				<NoAccountPopup />
 			</Overlay>
-		</DialogTrigger>
+		</Overlay.Trigger>
 	);
 }

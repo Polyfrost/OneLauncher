@@ -4,7 +4,6 @@ import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
-import { DialogTrigger } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from '../AccountAvatar';
 import { DeleteAccountButton } from '../DeleteAccountButton';
@@ -63,7 +62,7 @@ export function AccountPopup() {
 				<div className="flex flex-row justify-between">
 					<div className="self-center">
 
-						<DialogTrigger>
+						<Overlay.Trigger>
 							<Button color="ghost">
 								<PlusIcon />
 								Add Account
@@ -72,7 +71,7 @@ export function AccountPopup() {
 							<Overlay>
 								<AddAccountModal />
 							</Overlay>
-						</DialogTrigger>
+						</Overlay.Trigger>
 					</div>
 					<div className="flex flex-row">
 						<Link to="/app/accounts">

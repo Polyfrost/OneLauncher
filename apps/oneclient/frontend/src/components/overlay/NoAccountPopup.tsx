@@ -1,5 +1,4 @@
 import { Button } from '@onelauncher/common/components';
-import { DialogTrigger } from 'react-aria-components';
 import { AddAccountModal } from './AddAccountModal';
 import { Overlay } from './Overlay';
 
@@ -9,7 +8,7 @@ export function NoAccountPopup() {
 			<Overlay.Title>No Account</Overlay.Title>
 			<p className="max-w-sm text-fg-secondary">Please add an account before you start minecraft</p>
 
-			<DialogTrigger>
+			<Overlay.Trigger>
 				<Button className="w-full" size="large">
 					Add Account
 				</Button>
@@ -17,7 +16,7 @@ export function NoAccountPopup() {
 				<Overlay>
 					<AddAccountModal />
 				</Overlay>
-			</DialogTrigger>
+			</Overlay.Trigger>
 		</Overlay.Dialog>
 	);
 }

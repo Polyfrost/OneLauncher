@@ -2,7 +2,6 @@ import type { MinecraftCredentials } from '@/bindings.gen';
 import { AccountAvatar } from '@/components/AccountAvatar';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
-import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { Overlay } from './Overlay';
 
@@ -27,45 +26,20 @@ export function AddAccountModal() {
 	return (
 		<Overlay.Dialog>
 			<Overlay.Title>Add Account</Overlay.Title>
-
-			<p className="max-w-sm text-fg-secondary">
-				Lorem ipsum dolor sit amet consectetur, adipisicing elit. Fugiat aut unde, rem esse natus iusto impedit doloribus laborum laboriosam amet? Totam, commodi sed ducimus dicta praesentium sunt? A, soluta iusto.
-			</p>
-
+			<p className="text-fg-secondary">Add a new account to OneClient</p>
 			{profile
 				? (
 						<>
 							<AccountRow profile={profile} />
-							<Button
-								className="w-full"
-								color="primary"
-								size="large"
-								slot="close"
-							>
-								Close
-							</Button>
+							<Overlay.Buttons buttons={[{ color: 'primary', children: 'Close', slot: 'close' }]} />
 						</>
 					)
-				: (
-						<Button
-							className="w-full"
-							color="primary"
-							isPending={isPending}
-							onClick={onClick}
-							size="large"
-						>
-							Add Account
-						</Button>
-					)}
+				: <Overlay.Buttons buttons={[{ color: 'primary', children: 'Add Account', isPending, onClick }]} />}
 		</Overlay.Dialog>
 	);
 }
 
-function AccountRow({
-	profile,
-}: {
-	profile: MinecraftCredentials;
-}) {
+function AccountRow({ profile }: { profile: MinecraftCredentials }) {
 	return (
 		<div className="flex flex-row items-center justify-start gap-2">
 			<AccountAvatar className="aspect-square h-12 rounded-sm " uuid={profile.id} />

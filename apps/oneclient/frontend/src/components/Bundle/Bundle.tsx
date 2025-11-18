@@ -20,6 +20,7 @@ export function Bundle({ bundleData, cluster }: BundleProps) {
 				{bundleData.manifest.files.map((file, index) => (
 					<ModCard cluster={cluster} file={file} key={index} />
 				))}
+				<div className="h-1" />
 			</div>
 		</OverlayScrollbarsComponent>
 	);

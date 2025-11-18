@@ -115,7 +115,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	const useGridLayout = setting('mod_list_use_grid');
 
 	return (
-		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5 p-2 gap-2', useVerticalGridLayout && useGridLayout ? '' : 'justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-2 outline-brand bg-brand/20' : '')} onClick={handleOnClick}>
+		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5 p-2 gap-2 outline-2 outline-component-bg', useVerticalGridLayout && useGridLayout ? '' : 'justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-brand bg-brand/20' : '')} onClick={handleOnClick}>
 			<div className="flex flex-row gap-2">
 				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>
 					<div className={twMerge('rounded-lg bg-component-bg-disabled border border-gray-100/5', useGridLayout ? (useVerticalGridLayout ? 'size-14' : 'size-20') : 'size-18')}>

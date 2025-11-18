@@ -39,47 +39,40 @@ export function AccountPopup() {
 
 			<div className="min-w-3xs">
 				{defaultUser.data && (
-					<div>
-						<AccountEntry
-							loggedIn
-							onClick={() => { }}
-							onDelete={() => deleteUser(defaultUser.data as MinecraftCredentials)}
-							user={defaultUser.data}
-						/>
-					</div>
+					<AccountEntry
+						loggedIn
+						onClick={() => { }}
+						onDelete={() => deleteUser(defaultUser.data as MinecraftCredentials)}
+						user={defaultUser.data}
+					/>
 				)}
 
 				{users.data?.filter(user => user.id !== defaultUser.data?.id).map(user => (
-					<div key={user.id}>
-						<AccountEntry
-							onClick={() => setDefaultUser(user)}
-							onDelete={() => deleteUser(user)}
-							user={user}
-						/>
-					</div>
+					<AccountEntry
+						key={user.id}
+						onClick={() => setDefaultUser(user)}
+						onDelete={() => deleteUser(user)}
+						user={user}
+					/>
 				))}
 
 				<div className="flex flex-row justify-between">
-					<div className="self-center">
+					<Overlay.Trigger>
+						<Button color="ghost">
+							<PlusIcon />
+							<p>Add Account</p>
+						</Button>
 
-						<Overlay.Trigger>
-							<Button color="ghost">
-								<PlusIcon />
-								Add Account
-							</Button>
+						<Overlay>
+							<AddAccountModal />
+						</Overlay>
+					</Overlay.Trigger>
 
-							<Overlay>
-								<AddAccountModal />
-							</Overlay>
-						</Overlay.Trigger>
-					</div>
-					<div className="flex flex-row">
-						<Link to="/app/accounts">
-							<Button color="ghost" size="iconLarge">
-								<Settings01Icon className="stroke-fg-primary" />
-							</Button>
-						</Link>
-					</div>
+					<Link to="/app/accounts">
+						<Button color="ghost" size="iconLarge">
+							<Settings01Icon className="stroke-fg-primary" />
+						</Button>
+					</Link>
 				</div>
 			</div>
 		</Popup>
@@ -88,23 +81,9 @@ export function AccountPopup() {
 
 export default AccountPopup;
 
-function AccountEntry({
-	onClick,
-	onDelete,
-	user,
-	loggedIn = false,
-}: {
-	onClick: () => void;
-	onDelete: () => void;
-	user: MinecraftCredentials;
-	loggedIn?: boolean;
-}) {
+function AccountEntry({ onClick, onDelete, user, loggedIn = false }: { onClick: () => void; onDelete: () => void; user: MinecraftCredentials; loggedIn?: boolean }) {
 	return (
-		<Button
-			className={twMerge('w-full flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')}
-			color="ghost"
-			onClick={onClick}
-		>
+		<Button className={twMerge('w-full flex flex-row justify-between p-2 rounded-lg', !loggedIn && 'hover:bg-component-bg-hover active:bg-component-bg-pressed hover:text-fg-primary-hover')} color="ghost" onClick={onClick}>
 			<div className="flex flex-1 flex-row justify-start gap-x-3">
 				<div className="flex flex-1 flex-row justify-start gap-x-3">
 					<AccountAvatar className="h-8 w-8 rounded-md" uuid={user.id} />

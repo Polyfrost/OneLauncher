@@ -16,8 +16,8 @@ export function BundleModListModal({ clusterId, name }: { clusterId: number; nam
 
 	return (
 		<Overlay.Dialog className="bg-page items-start">
-			<Overlay.Title>
-				Select Content for
+			<Overlay.Title className="px-4">
+				Select Content For
 				{' '}
 				<span className="text-brand">{tab}</span>
 			</Overlay.Title>
@@ -27,9 +27,16 @@ export function BundleModListModal({ clusterId, name }: { clusterId: number; nam
 				onTabChange={setSelectedTab}
 				selectedTab={name}
 			/>
-			<div className="w-full flex flex-row gap-8 items-center justify-end bg-page-elevated p-4 rounded-2xl pt-3">
-				<p className="font-normal text-fg-secondary">Selected {mods?.length ?? 0} mods</p>
-				<Button color="primary" size="large" slot="close">Confirm</Button>
+			<div className="w-full flex flex-row gap-6 items-center justify-end">
+				<p className="font-normal text-lg text-fg-secondary">Selected {mods?.length ?? 0} mods</p>
+				<Button
+					className="px-12"
+					color="primary"
+					size="large"
+					slot="close"
+				>
+					Confirm
+				</Button>
 			</div>
 		</Overlay.Dialog>
 	);

@@ -110,6 +110,6 @@ Overlay.Dialog = function OverlayDialog({
 	);
 };
 
-Overlay.Title = function OverlayTitle({ children }: { children: React.ReactNode }) {
-	return <h2 className="text-2xl font-semibold">{children}</h2>;
+Overlay.Title = function OverlayTitle({ children, className }: { children: React.ReactNode; className?: string | undefined }) {
+	return <h2 className={twMerge('text-2xl font-semibold', className)}>{children}</h2>;
 };

@@ -139,7 +139,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
 
 			{isManagedMod(modMetadata) && showModDownloadButton === true && (
-				<div className={twMerge("flex flex-col items-center justify-center", useGridLayout ? "" : "pr-2")}>
+				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? '' : 'pr-2')}>
 					<DownloadModButton cluster={cluster} pkg={modMetadata.pkg} version={modMetadata.version} />
 				</div>
 			)}

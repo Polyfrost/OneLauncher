@@ -49,14 +49,14 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModDa
 		};
 
 		downloadAll();
-	}, [mods]);
+	}, [download, mods]);
 
 	useEffect(() => {
 		if (downloadedMods >= mods.length) {
 			setOpen(false);
 			navigate({ to: nextPath });
 		}
-	}, [downloadedMods, mods]);
+	}, [downloadedMods, mods, navigate, nextPath, setOpen]);
 
 	return (
 		<Overlay.Dialog isDismissable={false}>

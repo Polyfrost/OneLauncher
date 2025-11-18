@@ -13,7 +13,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useMemo, useRef, useState } from 'react';
-import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
+import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
 
@@ -139,18 +139,15 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 				</div>
 
 				<ModCardContext.Provider value={context}>
-					<DialogTrigger>
+					<Overlay.Trigger>
 						<Button className="absolute bottom-3 right-3 p-1 transition-colors" color="ghost" size="icon">
 							<DotsVerticalIcon className="w-4 h-4 text-white" />
 						</Button>
 
 						<Overlay>
-							<BundleModListModal
-								clusterId={clusterId}
-								name={fullVersionName}
-							/>
+							<BundleModListModal clusterId={clusterId} name={fullVersionName} />
 						</Overlay>
-					</DialogTrigger>
+					</Overlay.Trigger>
 				</ModCardContext.Provider>
 
 				<div className="absolute bottom-3 left-3">

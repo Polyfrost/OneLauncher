@@ -1,15 +1,14 @@
 import type { SettingProfileModel } from '@/bindings.gen';
-// import ScrollableContainer from '@/components/ScrollableContainer';
-import SettingsRow from '@/components/SettingsRow';
+import { SettingsRow } from '@/components';
 import usePopState from '@/hooks/usePopState';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import { Sidebar } from '@/routes/app/settings/route';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Switch, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, XIcon } from '@untitled-theme/icons-react';
 import { useMemo } from 'react';
-import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/minecraft')({
 	component: RouteComponent,

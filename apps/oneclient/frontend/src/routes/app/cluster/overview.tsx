@@ -1,4 +1,4 @@
-import { SheetPage } from '@/components/SheetPage';
+import { SheetPage } from '@/components';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';

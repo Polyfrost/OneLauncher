@@ -1,4 +1,5 @@
 import type { ButtonProps } from '@onelauncher/common/components';
+import { NoAccountPopup, Overlay } from '@/components/overlay';
 import { useIsRunning } from '@/hooks/useClusters';
 import { useLaunchCluster } from '@/hooks/useLaunchCluster';
 import { bindings } from '@/main';
@@ -6,7 +7,6 @@ import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useState } from 'react';
 import { tv } from 'tailwind-variants';
-import { NoAccountPopup, Overlay } from './overlay';
 
 export type LaunchButtonProps = Omit<ButtonProps, 'children' | 'onClick'> & {
 	clusterId: number | undefined | null;

@@ -1,7 +1,5 @@
 import type { GameLoader } from '@/bindings.gen';
-import { GameBackground } from '@/components';
-import { LaunchButton } from '@/components/LaunchButton';
-import { SheetPage } from '@/components/SheetPage';
+import { GameBackground, LaunchButton, SheetPage } from '@/components';
 import { bindings } from '@/main';
 import useClusterStore from '@/stores/clusterStore';
 import { prettifyLoader } from '@/utils/loaders';

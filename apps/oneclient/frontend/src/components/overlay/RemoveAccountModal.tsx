@@ -1,7 +1,7 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar } from '@/components/AccountAvatar';
+import { AccountAvatar } from '@/components';
+import { Overlay } from '@/components/overlay';
 import { Button } from '@onelauncher/common/components';
-import { Overlay } from './Overlay';
 
 export function RemoveAccountModal({
 	profile,

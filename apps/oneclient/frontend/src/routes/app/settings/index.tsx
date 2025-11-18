@@ -1,15 +1,12 @@
-// import DiscordIcon from '@/assets/logos/discord.svg';
-import SettingsRow from '@/components/SettingsRow';
-import SettingsSwitch from '@/components/SettingSwitch';
+import { SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-// import useSettings from '@/hooks/useSettings';
+import { Sidebar } from '@/routes/app/settings/route';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { FolderIcon, Link03Icon, LinkExternal01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
-import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/')({
 	component: RouteComponent,

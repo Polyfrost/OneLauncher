@@ -1,7 +1,6 @@
 import type { PlayerAnimation } from 'skinview3d';
 import { SheetPage, SkinViewer } from '@/components';
-import { ImportSkinModal, RemoveSkinCapeModal } from '@/components/overlay';
-import { Overlay } from '@/components/overlay/Overlay';
+import { ImportSkinModal, Overlay, RemoveSkinCapeModal } from '@/components/overlay';
 import { bindings } from '@/main';
 import { getSkinUrl } from '@/utils/minecraft';
 import { toast } from '@/utils/toast';

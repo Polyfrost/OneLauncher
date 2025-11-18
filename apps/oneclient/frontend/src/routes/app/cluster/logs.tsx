@@ -1,6 +1,5 @@
 import type { Key } from 'react-aria-components';
-import { LoaderContainer, SheetPage, useSheetPageContext } from '@/components';
-import { LogViewer } from '@/components/LogViewer';
+import { LoaderContainer, LogViewer, SheetPage, useSheetPageContext } from '@/components';
 import { bindings } from '@/main';
 import { getMessageFromError, useCommand, useCommandSuspense } from '@onelauncher/common';
 import { Dropdown } from '@onelauncher/common/components';

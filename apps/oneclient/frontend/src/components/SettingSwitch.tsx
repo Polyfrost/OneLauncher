@@ -5,7 +5,7 @@ type BooleanSetting = [
 	(value: boolean) => void,
 ];
 
-export default function SettingsSwitch({ setting }: { setting: BooleanSetting }) {
+export function SettingsSwitch({ setting }: { setting: BooleanSetting }) {
 	return (
 		<Switch
 			isSelected={setting[0]}

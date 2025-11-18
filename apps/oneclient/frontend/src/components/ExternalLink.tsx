@@ -1,11 +1,11 @@
 import type React from 'react';
 import type { HTMLProps } from 'react';
+import { Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { LinkExternal01Icon } from '@untitled-theme/icons-react';
 import { useState } from 'react';
 import { twMerge } from 'tailwind-merge';
-import { Overlay } from './overlay';
 
 export interface ExternalLinkProps extends HTMLProps<HTMLAnchorElement> {
 	href?: string | undefined;

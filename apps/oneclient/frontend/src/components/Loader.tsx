@@ -1,9 +1,9 @@
+import type { SpinnerProps } from '@/components';
 import type { HTMLAttributes, ReactNode } from 'react';
-import type { SpinnerProps } from './Spinner';
+import { Spinner } from '@/components';
 import { motion } from 'motion/react';
 import { Suspense } from 'react';
 import { twMerge } from 'tailwind-merge';
-import { Spinner } from './Spinner';
 
 interface LoaderProps extends HTMLAttributes<HTMLDivElement> {
 	children?: ReactNode;

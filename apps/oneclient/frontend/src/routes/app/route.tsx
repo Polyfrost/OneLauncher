@@ -1,6 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { LoaderSuspense, Navbar } from '@/components';
-import { GameBackground } from '@/components/GameBackground';
+import { GameBackground, LoaderSuspense, Navbar } from '@/components';
 import { useActiveCluster } from '@/hooks/useClusters';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { createFileRoute, Outlet } from '@tanstack/react-router';

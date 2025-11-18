@@ -1,6 +1,5 @@
+import { AddAccountModal, Overlay } from '@/components/overlay';
 import { Button } from '@onelauncher/common/components';
-import { AddAccountModal } from './AddAccountModal';
-import { Overlay } from './Overlay';
 
 export function NoAccountPopup() {
 	return (

@@ -1,9 +1,9 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar } from '@/components/AccountAvatar';
+import { AccountAvatar } from '@/components';
+import { Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { useQueryClient } from '@tanstack/react-query';
-import { Overlay } from './Overlay';
 
 export function AddAccountModal() {
 	const queryClient = useQueryClient();

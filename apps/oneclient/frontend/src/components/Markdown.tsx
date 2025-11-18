@@ -1,8 +1,8 @@
+import { ExternalLink } from '@/components';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { twMerge } from 'tailwind-merge';
-import { ExternalLink } from './ExternalLink';
 import styles from './Markdown.module.css';
 
 export function Markdown({

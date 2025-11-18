@@ -1,16 +1,12 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
+import { AccountAvatar, DeleteAccountButton, ManageSkinButton } from '@/components';
+import { AddAccountModal, Overlay, Popup } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { PlusIcon, Settings01Icon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
-import { AccountAvatar } from '../AccountAvatar';
-import { DeleteAccountButton } from '../DeleteAccountButton';
-import { ManageSkinButton } from '../ManageSkinButton';
-import { AddAccountModal } from './AddAccountModal';
-import { Overlay } from './Overlay';
-import { Popup } from './Popup';
 
 export function AccountPopup() {
 	const users = useCommand(['getUsers'], bindings.core.getUsers);

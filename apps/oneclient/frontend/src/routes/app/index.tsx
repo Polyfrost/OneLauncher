@@ -1,7 +1,6 @@
 import type { ClusterModel, GameLoader } from '@/bindings.gen';
 import type { ButtonProps } from 'react-aria-components';
-import { GameBackground } from '@/components';
-import { LaunchButton } from '@/components/LaunchButton';
+import { GameBackground, LaunchButton } from '@/components';
 import { useActiveCluster, useLastPlayedClusters } from '@/hooks/useClusters';
 import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';

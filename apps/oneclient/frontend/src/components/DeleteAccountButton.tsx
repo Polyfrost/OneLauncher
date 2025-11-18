@@ -1,7 +1,7 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
+import { Overlay, RemoveAccountModal } from '@/components/overlay';
 import { Button } from '@onelauncher/common/components';
 import { Trash01Icon } from '@untitled-theme/icons-react';
-import { Overlay, RemoveAccountModal } from './overlay';
 
 export function DeleteAccountButton({ profile, onPress }: { profile: MinecraftCredentials; onPress: () => void }) {
 	return (

@@ -1,8 +1,8 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import { LoaderSuspense } from '@/components';
 import { bindings } from '@/main';
+import { MissingAccountData } from '@/routes/app/account/skins';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { MissingAccountData } from './skins';
 
 export interface AccountsRouteSearchParams {
 	profile: MinecraftCredentials | undefined;

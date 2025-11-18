@@ -1,7 +1,5 @@
 import type { ManagedPackage, ManagedUser, ManagedVersion, PackageDonationUrl } from '@/bindings.gen';
-import { LoaderSuspense } from '@/components';
-import { ExternalLink } from '@/components/ExternalLink';
-import { Markdown } from '@/components/Markdown';
+import { ExternalLink, LoaderSuspense, Markdown } from '@/components';
 import { bindings } from '@/main';
 import { abbreviateNumber, formatAsRelative, upperFirst, useCommand, useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button, Show, Tooltip } from '@onelauncher/common/components';

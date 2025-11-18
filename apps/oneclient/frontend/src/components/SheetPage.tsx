@@ -118,7 +118,7 @@ SheetPage.Content = ({
 	</motion.div>
 );
 
-function GoBackButton() {
+export function GoBackButton() {
 	const router = useRouter();
 	const canGoBack = useCanGoBack();
 

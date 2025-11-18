@@ -1,6 +1,5 @@
-import type { LogViewerRef } from '@/components/LogViewer';
-import { LoaderContainer, SheetPage, useSheetPageContext } from '@/components';
-import { LogViewer } from '@/components/LogViewer';
+import type { LogViewerRef } from '@/components';
+import { LoaderContainer, LogViewer, SheetPage, useSheetPageContext } from '@/components';
 import { bindings } from '@/main';
 import { getMessageFromError, useAsyncEffect, useCommand } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';

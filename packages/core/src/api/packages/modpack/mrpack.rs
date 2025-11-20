@@ -10,7 +10,9 @@ use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::api::cluster::ClusterError;
-use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageSide};
+use crate::api::packages::data::{
+	ExternalPackage, ExternalPackageOverrides, ManagedVersion, PackageSide,
+};
 use crate::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind, ModpackManifest,
 };
@@ -344,6 +346,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 					sha1: file.hashes.sha1.clone(),
 					size: file.file_size,
 					package_type,
+					overrides: file.overrides.clone(),
 				}),
 				enabled: true,
 			});
@@ -405,6 +408,8 @@ pub(super) struct MrPackFile {
 	pub env: MrPackFileEnv,
 	pub downloads: Vec<String>,
 	pub file_size: usize,
+	#[serde(default)]
+	pub overrides: Option<ExternalPackageOverrides>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

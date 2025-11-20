@@ -260,6 +260,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 					sha1: file.base.hashes.sha1.clone(),
 					size: file.base.file_size,
 					package_type,
+					overrides: file.base.overrides.clone(),
 				}),
 			});
 		}

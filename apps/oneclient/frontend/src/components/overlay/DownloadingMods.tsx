@@ -49,7 +49,7 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModDa
 		};
 
 		downloadAll();
-	}, [download, mods]);
+	}, [mods]);
 
 	useEffect(() => {
 		if (downloadedMods >= mods.length) {

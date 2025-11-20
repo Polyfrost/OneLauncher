@@ -86,6 +86,16 @@ pub struct ExternalPackage {
 	pub sha1: String,
 	pub size: usize,
 	pub package_type: PackageType,
+	pub overrides: Option<ExternalPackageOverrides>,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalPackageOverrides {
+	pub icon: Option<String>,
+	pub name: Option<String>,
+	pub authors: Option<Vec<String>>,
+	pub description: Option<String>,
 }
 
 #[onelauncher_macro::specta]

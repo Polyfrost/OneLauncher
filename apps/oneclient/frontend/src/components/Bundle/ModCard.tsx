@@ -28,8 +28,14 @@ async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boole
 		return null;
 
 	const authors = await bindings.core.getUsersFromAuthor(kind.Managed[0].provider, kind.Managed[0].author);
+	return parseAuthors(authors.map(author => author.username), useVerticalGridLayout);
+}
+
+function parseAuthors(usernames: Array<string>, useVerticalGridLayout?: boolean): string | null {
+	if (usernames.length === 0)
+		return null;
+
 	if (useVerticalGridLayout) {
-		const usernames = authors.map(a => a.username);
 		let visibleCount = usernames.length;
 		while (visibleCount >= 1) {
 			const hiddenUsers = usernames.length - visibleCount;
@@ -42,16 +48,16 @@ async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boole
 		}
 		return `${usernames[0]} and ${usernames.length - 1} more`;
 	}
-	return authors.map(author => author.username).join(', ');
+	return usernames.join(', ');
 }
 
 async function getModMetaData(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
 	if ('External' in kind)
 		return {
-			name: kind.External.name.replaceAll('.jar', ''),
-			description: null,
-			iconURL: null,
-			author: await getModAuthor(kind, useVerticalGridLayout),
+			name: kind.External.overrides?.name ?? kind.External.name.replaceAll('.jar', ''),
+			description: kind.External.overrides?.description ?? null,
+			iconURL: kind.External.overrides?.icon ?? null,
+			author: parseAuthors(kind.External.overrides?.authors ?? [], useVerticalGridLayout),
 			managed: false,
 			url: null,
 			id: null,

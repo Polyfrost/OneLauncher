@@ -85,7 +85,7 @@ interface ModCardProps {
 	cluster: ClusterModel;
 }
 
-export type onClickOnMod = (file: ModpackFile, setSelected: React.Dispatch<React.SetStateAction<boolean>>) => void;
+export type onClickOnMod = (file: ModpackFile) => void;
 export interface ModCardContextApi {
 	showModDownloadButton?: boolean;
 	onClickOnMod?: onClickOnMod;
@@ -112,9 +112,12 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	}, [file, useVerticalGridLayout]);
 
 	const [isSelected, setSelected] = useState(mods?.includes(file) ?? false);
+	useEffect(() => {
+		setSelected(mods?.includes(file) ?? false);
+	}, [mods, file]);
 	const handleOnClick = () => {
 		if (onClickOnMod)
-			onClickOnMod(file, setSelected);
+			onClickOnMod(file);
 	};
 
 	const { setting } = useSettings();

@@ -95,8 +95,8 @@ function ModCategory({ bundleData, name }: { bundleData: BundleData; name: strin
 }
 
 function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModpackFile>; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
-	const [isSelected, setSelected] = useState<boolean>(false);
 	const files = bundle.manifest.files;
+	const isSelected = files.every(file => mods.includes(file));
 	const handleDownload = () => {
 		setMods((prevMods) => {
 			if (isSelected)
@@ -104,17 +104,15 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 			else
 				return [...files, ...prevMods];
 		});
-		setSelected(prev => !prev);
 	};
 
-	const onClickOnMod: onClickOnMod = (file, setSelected) => {
+	const onClickOnMod: onClickOnMod = (file) => {
 		setMods((prevMods) => {
 			if (prevMods.includes(file))
 				return prevMods.filter(mod => mod !== file);
 			else
 				return [file, ...prevMods];
 		});
-		setSelected(prev => !prev);
 	};
 
 	const context = useMemo<ModCardContextApi>(() => ({

@@ -51,28 +51,28 @@ function parseAuthors(usernames: Array<string>, useVerticalGridLayout?: boolean)
 	return usernames.join(', ');
 }
 
-async function getModMetaData(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
-	if ('External' in kind)
+async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
+	if ('External' in file.kind)
 		return {
-			name: kind.External.overrides?.name ?? kind.External.name.replaceAll('.jar', ''),
-			description: kind.External.overrides?.description ?? null,
-			iconURL: kind.External.overrides?.icon ?? null,
-			author: parseAuthors(kind.External.overrides?.authors ?? [], useVerticalGridLayout),
+			name: file.overrides?.name ?? file.kind.External.name.replaceAll('.jar', ''),
+			description: file.overrides?.description ?? null,
+			iconURL: file.overrides?.icon ?? null,
+			author: parseAuthors(file.overrides?.authors ?? [], useVerticalGridLayout),
 			managed: false,
 			url: null,
 			id: null,
 		};
 
 	return {
-		name: kind.Managed[0].name,
-		description: kind.Managed[0].short_desc,
-		iconURL: kind.Managed[0].icon_url,
-		author: await getModAuthor(kind, useVerticalGridLayout),
+		name: file.overrides?.name ?? file.kind.Managed[0].name,
+		description: file.overrides?.description ?? file.kind.Managed[0].short_desc,
+		iconURL: file.overrides?.icon ?? file.kind.Managed[0].icon_url,
+		author: (file.overrides?.authors ?? []).length > 1 ? parseAuthors(file.overrides?.authors ?? []) : await getModAuthor(file.kind, useVerticalGridLayout),
 		managed: true,
-		url: `https://modrinth.com/project/${kind.Managed[0].slug}`,
-		id: kind.Managed[0].id,
-		pkg: kind.Managed[0],
-		version: kind.Managed[1],
+		url: `https://modrinth.com/project/${file.kind.Managed[0].slug}`,
+		id: file.kind.Managed[0].id,
+		pkg: file.kind.Managed[0],
+		version: file.kind.Managed[1],
 	};
 }
 
@@ -108,7 +108,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
 	useEffect(() => {
-		(async () => setModMetadata(await getModMetaData(file.kind, useVerticalGridLayout)))();
+		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);
 
 	const [isSelected, setSelected] = useState(mods?.includes(file) ?? false);

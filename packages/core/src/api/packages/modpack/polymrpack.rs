@@ -9,7 +9,7 @@ use onelauncher_entity::package::{PackageType, Provider};
 use serde::Deserialize;
 use tokio::sync::OnceCell;
 
-use crate::api::packages::data::{ExternalPackage, ManagedVersion};
+use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageOverrides};
 use crate::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind, ModpackManifest,
 };
@@ -185,9 +185,11 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 }
 
 async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
+	#[derive(Clone)]
 	struct FetchedPackage {
 		version_id: String,
 		enabled: bool,
+		overrides: Option<PackageOverrides>,
 	}
 
 	let mut to_fetch: HashMap<String, FetchedPackage> = HashMap::new();
@@ -226,6 +228,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 					FetchedPackage {
 						version_id: version_id.to_string(),
 						enabled: file.enabled,
+						overrides: file.base.overrides.clone(),
 					},
 				);
 			} else {
@@ -260,8 +263,8 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 					sha1: file.base.hashes.sha1.clone(),
 					size: file.base.file_size,
 					package_type,
-					overrides: file.base.overrides.clone(),
 				}),
+				overrides: file.base.overrides.clone(),
 			});
 		}
 	}
@@ -285,14 +288,11 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 
 	for fetched_pkg in managed_packages {
 		if let Some(version) = version_map.remove(&fetched_pkg.id) {
-			let enabled = to_fetch
-				.get(&fetched_pkg.id)
-				.map(|f| f.enabled)
-				.unwrap_or(true);
-
+			let fetched = to_fetch.get(&fetched_pkg.id).unwrap();
 			files.push(ModpackFile {
-				enabled,
+				enabled: fetched.enabled,
 				kind: ModpackFileKind::Managed((fetched_pkg, version)),
+				overrides: fetched.overrides.clone(),
 			});
 		} else {
 			tracing::error!("no version found for managed package '{}'", fetched_pkg.id);

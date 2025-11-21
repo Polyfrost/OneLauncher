@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use onelauncher_entity::loader::GameLoader;
 use serde::{Deserialize, Serialize};
 
-use crate::api::packages::data::{ExternalPackage, ManagedPackage, ManagedVersion};
+use crate::api::packages::data::{
+	ExternalPackage, ManagedPackage, ManagedVersion, PackageOverrides,
+};
 use crate::api::packages::modpack::ModpackFormat;
 
 #[onelauncher_macro::specta]
@@ -30,6 +32,8 @@ pub struct ModpackManifest {
 pub struct ModpackFile {
 	pub enabled: bool,
 	pub kind: ModpackFileKind,
+	#[serde(default)]
+	pub overrides: Option<PackageOverrides>,
 }
 
 #[onelauncher_macro::specta]

@@ -307,7 +307,7 @@ pub enum PackageStatus {
 	#[default]
 	#[serde(alias = "approved")]
 	Active,
-	#[serde(alias = "archived", alias = "inactive")]
+	#[serde(alias = "archived", alias = "inactive", alias = "unlisted")]
 	Abandoned,
 }
 

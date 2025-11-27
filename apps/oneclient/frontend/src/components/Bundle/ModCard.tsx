@@ -51,10 +51,18 @@ function parseAuthors(usernames: Array<string>, useVerticalGridLayout?: boolean)
 	return usernames.join(', ');
 }
 
+export function getModMetaDataName(file: ModpackFile): string {
+	if ('External' in file.kind)
+		return file.overrides?.name ?? file.kind.External.name.replaceAll('.jar', '');
+	if ('Managed' in file.kind)
+		return file.overrides?.name ?? file.kind.Managed[0].name;
+	else return 'UNKNOWN';
+}
+
 async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
 	if ('External' in file.kind)
 		return {
-			name: file.overrides?.name ?? file.kind.External.name.replaceAll('.jar', ''),
+			name: getModMetaDataName(file),
 			description: file.overrides?.description ?? null,
 			iconURL: file.overrides?.icon ?? null,
 			author: parseAuthors(file.overrides?.authors ?? [], useVerticalGridLayout),
@@ -64,7 +72,7 @@ async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean
 		};
 
 	return {
-		name: file.overrides?.name ?? file.kind.Managed[0].name,
+		name: getModMetaDataName(file),
 		description: file.overrides?.description ?? file.kind.Managed[0].short_desc,
 		iconURL: file.overrides?.icon ?? file.kind.Managed[0].icon_url,
 		author: (file.overrides?.authors ?? []).length > 1 ? parseAuthors(file.overrides?.authors ?? []) : await getModAuthor(file.kind, useVerticalGridLayout),
@@ -147,9 +155,9 @@ export function ModCard({ file, cluster }: ModCardProps) {
 			</div>
 			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
 
-			{isManagedMod(modMetadata) && showModDownloadButton === true && (
+			{showModDownloadButton === true && (
 				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? '' : 'pr-2')}>
-					<DownloadModButton cluster={cluster} pkg={modMetadata.pkg} version={modMetadata.version} />
+					<DownloadModButton cluster={cluster} file={file} />
 				</div>
 			)}
 		</div>

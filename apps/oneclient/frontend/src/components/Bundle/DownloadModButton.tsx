@@ -1,4 +1,4 @@
-import type { ClusterModel, ManagedPackage, ManagedVersion } from '@/bindings.gen';
+import type { ClusterModel, ModpackFile } from '@/bindings.gen';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
@@ -6,8 +6,16 @@ import { Button } from '@onelauncher/common/components';
 import { Download01Icon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
 
-export function DownloadModButton({ pkg, version, cluster }: { pkg: ManagedPackage; version: ManagedVersion; cluster: ClusterModel }) {
-	const download = useCommandMut(() => bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, true));
+export function DownloadModButton({ cluster, file }: { cluster: ClusterModel; file: ModpackFile }) {
+	const download = useCommandMut(async () => {
+		if ('Managed' in file.kind) {
+			const [pkg, version] = file.kind.Managed;
+			await bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, null);
+		}
+		else {
+			await bindings.core.downloadExternalPackage(file.kind.External, cluster.id, null, null);
+		}
+	});
 
 	const handleDownload = () => {
 		(async () => {

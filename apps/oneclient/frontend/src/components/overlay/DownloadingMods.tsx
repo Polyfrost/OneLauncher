@@ -16,34 +16,19 @@ interface ModData {
 export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModData>; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
 	const navigate = useNavigate();
 	const [downloadedMods, setDownloadedMods] = useState(0);
-	const [modNames, setModNames] = useState<Array<string>>([]);
-
-	const download = useCommandMut(async (mod: ModData) => {
-		await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
-	});
+	const [modName, setModName] = useState<string | null>(null);
+	const download = useCommandMut(async (mod: ModData) => await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true));
 
 	useEffect(() => {
 		const downloadAll = async () => {
-			const groupSize = 15;
-			for (let i = 0; i < mods.length; i += groupSize) {
-				const group = mods.slice(i, i + groupSize);
-				setModNames(prev => [...prev, ...group.map(mod => mod.name).filter(name => !prev.includes(name))]);
-
+			for (const mod of mods) {
+				setModName(mod.name);
 				try {
-					await Promise.all(
-						group.map(async (mod) => {
-							try {
-								await download.mutateAsync(mod);
-								setDownloadedMods(prev => prev + 1);
-							}
-							finally {
-								setModNames(prev => prev.filter(name => name !== mod.name));
-							}
-						}),
-					);
+					await download.mutateAsync(mod);
 				}
-				catch (error) {
-					console.error(error);
+				finally {
+					setModName(null);
+					setDownloadedMods(prev => prev + 1);
 				}
 			}
 		};
@@ -71,7 +56,7 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ModDa
 					>
 					</div>
 				</div>
-				{modNames.length > 0 ? modNames.map(modName => <p key={modName}>Downloading {modName}</p>) : <></>}
+				{modName !== null ? <p>Downloading {modName}</p> : <></>}
 			</div>
 
 		</Overlay.Dialog>

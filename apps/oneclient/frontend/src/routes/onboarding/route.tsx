@@ -103,7 +103,7 @@ const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 function RouteComponent() {
 	const location = useLocation();
 
-	// Prefetch data so that onboarding/preferences/version is fast
+	// Prefetch data so that onboarding/preferences/versionCategory is fast
 	const queryClient = useQueryClient();
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
 	useEffect(() => {

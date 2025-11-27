@@ -12,6 +12,8 @@ export interface ModInfo {
 	author: string | null;
 	iconURL: string | null;
 	url: string | null;
+	managed: boolean;
+	packageSlug: string | null;
 }
 
 async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<string | null> {
@@ -60,6 +62,8 @@ async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean
 			author: parseAuthors(file.overrides?.authors ?? [], useVerticalGridLayout),
 			iconURL: file.overrides?.icon ?? null,
 			url: null,
+			managed: false,
+			packageSlug: null,
 		};
 
 	return {
@@ -68,6 +72,8 @@ async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean
 		author: (file.overrides?.authors ?? []).length > 1 ? parseAuthors(file.overrides?.authors ?? []) : await getModAuthor(file.kind, useVerticalGridLayout),
 		iconURL: file.overrides?.icon ?? file.kind.Managed[0].icon_url,
 		url: `https://modrinth.com/project/${file.kind.Managed[0].slug}`,
+		managed: true,
+		packageSlug: file.kind.Managed[0].id,
 	};
 }
 
@@ -97,7 +103,7 @@ export function useModCardContext() {
 export function ModCard({ file, cluster }: ModCardProps) {
 	const { showModDownloadButton, onClickOnMod, useVerticalGridLayout, mods } = useModCardContext();
 
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'LOADING', description: null, author: null, iconURL: null, url: null });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'LOADING', description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);

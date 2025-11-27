@@ -9,7 +9,7 @@ export function ModTag({ modData, cluster }: { modData: ModInfo; cluster: Cluste
 	const useGridLayout = setting('mod_list_use_grid');
 
 	return (
-		<Link className={twMerge('flex flex-row items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 h-8 scale-90', useGridLayout ? '-my-1' : '')} search={{ provider: 'Modrinth', packageId: modData.id ?? '', clusterId: cluster.id }} to="/app/cluster/browser/package">
+		<Link className={twMerge('flex flex-row items-center justify-center px-4 rounded-full font-normal bg-component-bg border border-gray-100/5 h-8 scale-90', useGridLayout ? '-my-1' : '')} search={{ provider: 'Modrinth', packageId: modData.packageSlug ?? '', clusterId: cluster.id }} to="/app/cluster/browser/package">
 			<p>{modData.managed ? 'Modrinth' : 'External'}</p>
 		</Link>
 	);

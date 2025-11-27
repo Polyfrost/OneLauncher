@@ -100,22 +100,3 @@ pub async fn get_log_by_name(
 
 	Ok(Some(content))
 }
-
-/// Returns a list of mods file names
-pub async fn get_mods(cluster: &clusters::Model) -> LauncherResult<Vec<String>> {
-	let dir = cluster.folder_name.clone();
-	let path = Dirs::get_clusters_dir().await?.join(dir).join("mods");
-
-	if !path.exists() {
-		io::create_dir(&path).await?;
-		return Ok(Vec::new());
-	}
-
-	let mut list = vec![];
-	let mut files = io::read_dir(path).await?;
-	while let Ok(Some(entry)) = files.next_entry().await {
-		list.push(entry.file_name().to_string_lossy().to_string());
-	}
-
-	Ok(list)
-}

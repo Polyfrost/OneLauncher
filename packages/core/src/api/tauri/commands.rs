@@ -58,9 +58,6 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLogByName")]
 	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
-
-	#[taurpc(alias = "getMods")]
-	async fn get_mods(id: ClusterId) -> LauncherResult<Vec<String>>;
 	// endregion: clusters
 
 	// MARK: API: processes
@@ -419,14 +416,6 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_log_by_name(&cluster, &name).await
-	}
-
-	async fn get_mods(self, id: ClusterId) -> LauncherResult<Vec<String>> {
-		let cluster = api::cluster::dao::get_cluster_by_id(id)
-			.await?
-			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
-
-		api::cluster::content::get_mods(&cluster).await
 	}
 	// endregion: clusters
 

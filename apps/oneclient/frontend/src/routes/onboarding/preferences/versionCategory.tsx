@@ -1,18 +1,18 @@
 import type { ModpackArchive, ModpackFile } from '@/bindings.gen';
 import type { DownloadModsRef } from '@/components';
 import type { ModCardContextApi, onClickOnMod } from '@/components/Bundle';
-import type { BundleData, StrippedCLuster } from './version';
+import type { StrippedCLuster } from './version';
 import { DownloadMods } from '@/components';
 import { ModCardContext } from '@/components/Bundle';
 import { BundleModListModal, Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { useQueries } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
@@ -21,31 +21,54 @@ export const Route = createFileRoute('/onboarding/preferences/versionCategory')(
 	component: RouteComponent,
 });
 
+export interface BundleData {
+	bundles: Array<ModpackArchive>;
+	art: string;
+	modsInfo: Array<ModpackFile>;
+	clusterId: number;
+}
+
 function RouteComponent() {
 	const selectedClusters: Array<StrippedCLuster> = JSON.parse(localStorage.getItem('selectedClusters') ?? '[]');
 
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
+	const queryClient = useQueryClient();
+	const [bundlesData, setBundlesData] = useState<Record<string, BundleData>>({});
+	useEffect(() => {
+		(async () => {
+			const bundleQueries = await Promise.all(
+				clusters.map(cluster =>
+					queryClient.fetchQuery({
+						queryKey: ['getBundlesFor', cluster.id],
+						queryFn: async () => bindings.oneclient.getBundlesFor(cluster.id),
+					})),
+			);
 
-	const bundleQueries = useQueries({
-		queries: clusters.map(cluster => ({
-			queryKey: ['getBundlesFor', cluster.id],
-			queryFn: () => bindings.oneclient.getBundlesFor(cluster.id),
-			suspense: true,
-		})),
-	});
+			const data: Record<string, BundleData> = {};
+			clusters.forEach((cluster, index) => {
+				const selected = selectedClusters.some(strippedCluster => strippedCluster.mc_version === cluster.mc_version && strippedCluster.mc_loader === cluster.mc_loader);
+				if (!selected)
+					return;
 
-	const bundlesData: Record<string, BundleData> = {};
-	clusters.forEach((clusterData, index) => {
-		const selected = selectedClusters.some(strippedCluster => strippedCluster.mc_version === clusterData.mc_version && strippedCluster.mc_loader === clusterData.mc_loader);
-		if (!selected)
-			return;
+				const version = versions.clusters.find(versionCluster => cluster.mc_version.startsWith(`1.${versionCluster.major_version}`));
+				data[cluster.name] = {
+					bundles: bundleQueries[index],
+					art: version?.art ?? '/versions/art/Horse_Update.jpg',
+					modsInfo: [],
+					clusterId: cluster.id,
+				};
+			});
+			setBundlesData(data);
+		})();
+	}, [clusters, queryClient, versions]);
 
-		const version = versions.clusters.find(versionCluster => clusterData.mc_version.startsWith(`1.${versionCluster.major_version}`));
-		const bundles = bundleQueries[index].data ?? [];
-		// eslint-disable-next-line react-hooks/rules-of-hooks -- TODO: @Kathund Find a better way to do this that isn't useState
-		bundlesData[clusterData.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg', modsInfo: useState<Array<ModpackFile>>([]), clusterId: clusterData.id };
-	});
+	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModpackFile>>>(
+		clusters.reduce((acc, cluster) => {
+			acc[cluster.id] = [];
+			return acc;
+		}, {} as Record<string, Array<ModpackFile>>),
+	);
 
 	const downloadModsRef = useRef<DownloadModsRef>(null);
 
@@ -56,11 +79,19 @@ function RouteComponent() {
 					<OverlayScrollbarsComponent>
 						<div className="h-164">
 							<div className="flex flex-col gap-6">
-								{Object.entries(bundlesData).map(([name, bundleData], index) => <ModCategory bundleData={bundleData} key={index} name={name} />)}
+								{Object.entries(bundlesData).map(([name, bundleData]) => (
+									<ModCategory
+										bundleData={bundleData}
+										key={name}
+										modsPerCluster={modsPerCluster}
+										name={name}
+										setModsPerCluster={setModsPerCluster}
+									/>
+								))}
 							</div>
 
 							<div className="hidden">
-								<DownloadMods bundlesData={bundlesData} ref={downloadModsRef} />
+								<DownloadMods modsPerCluster={modsPerCluster} ref={downloadModsRef} />
 							</div>
 						</div>
 					</OverlayScrollbarsComponent>
@@ -71,24 +102,22 @@ function RouteComponent() {
 	);
 }
 
-function ModCategory({ bundleData, name }: { bundleData: BundleData; name: string }) {
+function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { bundleData: BundleData; name: string; modsPerCluster: Record<string, Array<ModpackFile>>; setModsPerCluster: React.Dispatch<React.SetStateAction<Record<string, Array<ModpackFile>>>> }) {
 	return (
 		<div>
 			<h1 className="text-3xl font-semibold my-2">{name}</h1>
 			<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-				{bundleData.bundles.map((bundle, index) => {
-					return (
-						<ModCategoryCard
-							art={bundleData.art}
-							bundle={bundle}
-							clusterId={bundleData.clusterId}
-							fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
-							key={index}
-							mods={bundleData.modsInfo[0]}
-							setMods={bundleData.modsInfo[1]}
-						/>
-					);
-				})}
+				{bundleData.bundles.map((bundle) => (
+					<ModCategoryCard
+						art={bundleData.art}
+						bundle={bundle}
+						clusterId={bundleData.clusterId}
+						fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
+						key={bundle.manifest.name}
+						mods={modsPerCluster[bundleData.clusterId]}
+						setMods={newMods => setModsPerCluster(prev => ({ ...prev, [bundleData.clusterId]: typeof newMods === 'function' ? newMods(prev[bundleData.clusterId]) : newMods }))}
+					/>
+				))}
 			</div>
 		</div>
 	);

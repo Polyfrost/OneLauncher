@@ -1,24 +1,14 @@
-import type { GameLoader, ModpackArchive, ModpackFile, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
+import type { GameLoader, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
 import { bindings } from '@/main';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
-import { Button } from '@onelauncher/common/components';
-import { useQueries } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
-
-export interface BundleData {
-	bundles: Array<ModpackArchive>;
-	art: string;
-	modsInfo: [Array<ModpackFile>, React.Dispatch<React.SetStateAction<Array<ModpackFile>>>];
-	clusterId: number;
-}
 
 export interface StrippedCLuster {
 	mc_version: string;
@@ -31,23 +21,7 @@ export const Route = createFileRoute('/onboarding/preferences/version')({
 
 function RouteComponent() {
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
-	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
-
-	const bundleQueries = useQueries({
-		queries: clusters.map(cluster => ({
-			queryKey: ['getBundlesFor', cluster.id],
-			queryFn: () => bindings.oneclient.getBundlesFor(cluster.id),
-			suspense: true,
-		})),
-	});
-
-	const bundlesData: Record<string, BundleData> = {};
-	clusters.forEach((cluster, index) => {
-		const version = versions.clusters.find(versionCluster => cluster.mc_version.startsWith(`1.${versionCluster.major_version}`));
-		const bundles = bundleQueries[index].data ?? [];
-		// eslint-disable-next-line react-hooks/rules-of-hooks -- TODO: @Kathund Find a better way to do this that isn't useState
-		bundlesData[cluster.name] = { bundles, art: version?.art ?? '/versions/art/Horse_Update.jpg', modsInfo: useState<Array<ModpackFile>>([]), clusterId: cluster.id };
-	});
+	// const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
 
 	const [selectedClusters, setSelectedClusters] = useState<Array<StrippedCLuster>>([]);
 
@@ -66,11 +40,11 @@ function RouteComponent() {
 							<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
 								{versions.clusters.map((cluster) => {
 									const versionData = getVersionInfoOrDefault(cluster.major_version);
-									return cluster.entries.map((entry, index) => (
+									return cluster.entries.map(entry => (
 										<VersionCard
 											cluster={cluster}
 											fullVersionName={`${versionData.prettyName}.${entry.minor_version}`}
-											key={`${versionData.prettyName}.${entry.minor_version}-${index}`}
+											key={`${versionData.prettyName}.${entry.minor_version}-${entry.loader}`}
 											setSelectedClusters={setSelectedClusters}
 											version={entry}
 											versionData={versionData}

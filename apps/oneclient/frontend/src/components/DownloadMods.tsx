@@ -1,5 +1,4 @@
-import type { ExternalPackage, Provider } from '@/bindings.gen';
-import type { BundleData } from '@/routes/onboarding/preferences/version';
+import type { ExternalPackage, ModpackFile, Provider } from '@/bindings.gen';
 import { Button } from '@onelauncher/common/components';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useImperativeHandle, useState } from 'react';
@@ -31,7 +30,7 @@ export function isManagedMod(mod: ManagedModData | ExternalModData): mod is Mana
 	return mod.managed === true;
 }
 
-export function DownloadMods({ bundlesData, ref }: { bundlesData: Record<string, BundleData>; ref: React.Ref<DownloadModsRef> }) {
+export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<string, Array<ModpackFile>>; ref: React.Ref<DownloadModsRef> }) {
 	const navigate = useNavigate();
 	const [isOpen, setOpen] = useState<boolean>(false);
 	const [mods, setMods] = useState<Array<ManagedModData | ExternalModData>>([]);
@@ -39,12 +38,12 @@ export function DownloadMods({ bundlesData, ref }: { bundlesData: Record<string,
 
 	useEffect(() => {
 		const modsList: Array<ManagedModData | ExternalModData> = [];
-		for (const bundle of Object.values(bundlesData))
-			for (const mod of bundle.modsInfo[0]) {
+		for (const [clusterId, mods] of Object.entries(modsPerCluster))
+			for (const mod of mods) {
 				if ('External' in mod.kind)
 					modsList.push({
 						name: getModMetaDataName(mod),
-						clusterId: bundle.clusterId,
+						clusterId: Number(clusterId),
 						managed: false,
 						package: mod.kind.External,
 					});
@@ -53,7 +52,7 @@ export function DownloadMods({ bundlesData, ref }: { bundlesData: Record<string,
 					const [pkg, version] = mod.kind.Managed;
 					modsList.push({
 						name: getModMetaDataName(mod),
-						clusterId: bundle.clusterId,
+						clusterId: Number(clusterId),
 						managed: true,
 						provider: pkg.provider,
 						id: pkg.id,
@@ -62,7 +61,7 @@ export function DownloadMods({ bundlesData, ref }: { bundlesData: Record<string,
 				}
 			}
 		setMods(modsList);
-	}, [bundlesData]);
+	}, [modsPerCluster]);
 
 	useImperativeHandle(ref, () => {
 		return {

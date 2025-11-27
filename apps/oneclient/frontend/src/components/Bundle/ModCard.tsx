@@ -1,4 +1,4 @@
-import type { ClusterModel, ManagedPackage, ManagedVersion, ModpackFile, ModpackFileKind } from '@/bindings.gen';
+import type { ClusterModel, ModpackFile, ModpackFileKind } from '@/bindings.gen';
 import MissingLogo from '@/assets/misc/missingLogo.svg';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
@@ -11,14 +11,7 @@ export interface ModInfo {
 	description: string | null;
 	author: string | null;
 	iconURL: string | null;
-	managed: boolean;
 	url: string | null;
-	id: string | null;
-}
-
-interface ModInfoManged extends ModInfo {
-	pkg: ManagedPackage;
-	version: ManagedVersion;
 }
 
 async function getModAuthor(kind: ModpackFileKind, useVerticalGridLayout?: boolean): Promise<string | null> {
@@ -59,33 +52,23 @@ export function getModMetaDataName(file: ModpackFile): string {
 	else return 'UNKNOWN';
 }
 
-async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo | ModInfoManged> {
+async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo> {
 	if ('External' in file.kind)
 		return {
 			name: getModMetaDataName(file),
 			description: file.overrides?.description ?? null,
-			iconURL: file.overrides?.icon ?? null,
 			author: parseAuthors(file.overrides?.authors ?? [], useVerticalGridLayout),
-			managed: false,
+			iconURL: file.overrides?.icon ?? null,
 			url: null,
-			id: null,
 		};
 
 	return {
 		name: getModMetaDataName(file),
 		description: file.overrides?.description ?? file.kind.Managed[0].short_desc,
-		iconURL: file.overrides?.icon ?? file.kind.Managed[0].icon_url,
 		author: (file.overrides?.authors ?? []).length > 1 ? parseAuthors(file.overrides?.authors ?? []) : await getModAuthor(file.kind, useVerticalGridLayout),
-		managed: true,
+		iconURL: file.overrides?.icon ?? file.kind.Managed[0].icon_url,
 		url: `https://modrinth.com/project/${file.kind.Managed[0].slug}`,
-		id: file.kind.Managed[0].id,
-		pkg: file.kind.Managed[0],
-		version: file.kind.Managed[1],
 	};
-}
-
-export function isManagedMod(mod: ModInfo | ModInfoManged): mod is ModInfoManged {
-	return mod.managed === true;
 }
 
 interface ModCardProps {
@@ -114,7 +97,7 @@ export function useModCardContext() {
 export function ModCard({ file, cluster }: ModCardProps) {
 	const { showModDownloadButton, onClickOnMod, useVerticalGridLayout, mods } = useModCardContext();
 
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ author: null, description: null, name: 'LOADING', iconURL: null, managed: false, url: null, id: null });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'LOADING', description: null, author: null, iconURL: null, url: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);

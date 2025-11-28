@@ -26,18 +26,21 @@ export interface ExternalModData extends BaseModData {
 	package: ExternalPackage;
 }
 
-export function isManagedMod(mod: ManagedModData | ExternalModData): mod is ManagedModData {
+export type ModData = ManagedModData | ExternalModData;
+export type ModDataArray = Array<ModData>;
+
+export function isManagedMod(mod: ModData): mod is ManagedModData {
 	return mod.managed === true;
 }
 
 export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<string, Array<ModpackFile>>; ref: React.Ref<DownloadModsRef> }) {
 	const navigate = useNavigate();
 	const [isOpen, setOpen] = useState<boolean>(false);
-	const [mods, setMods] = useState<Array<ManagedModData | ExternalModData>>([]);
+	const [mods, setMods] = useState<ModDataArray>([]);
 	const [nextPath, setNextPath] = useState<string>('/app');
 
 	useEffect(() => {
-		const modsList: Array<ManagedModData | ExternalModData> = [];
+		const modsList: ModDataArray = [];
 		for (const [clusterId, mods] of Object.entries(modsPerCluster))
 			for (const mod of mods) {
 				if ('External' in mod.kind)

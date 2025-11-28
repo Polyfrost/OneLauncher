@@ -1,4 +1,4 @@
-import type { ExternalModData, ManagedModData } from '../DownloadMods';
+import type { ModData, ModDataArray } from '../DownloadMods';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { useNavigate } from '@tanstack/react-router';
@@ -6,11 +6,22 @@ import { useEffect, useState } from 'react';
 import { isManagedMod } from '../DownloadMods';
 import { Overlay } from './Overlay';
 
-export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<ManagedModData | ExternalModData>; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
+function downloadModsParallel(items: ModDataArray, limit: number, fn: (mod: ModData, index: number) => Promise<void>) {
+	let index = 0;
+	const workers = Array.from({ length: limit }).fill(null).map(async () => {
+		while (index < items.length) {
+			const i = index++;
+			await fn(items[i], i);
+		}
+	});
+	return Promise.all(workers);
+}
+
+export function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
 	const navigate = useNavigate();
 	const [downloadedMods, setDownloadedMods] = useState(0);
 	const [modName, setModName] = useState<string | null>(null);
-	const download = useCommandMut(async (mod: ManagedModData | ExternalModData) => {
+	const download = useCommandMut(async (mod: ModData) => {
 		if (isManagedMod(mod))
 			await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
 		else
@@ -19,16 +30,15 @@ export function DownloadingMods({ mods, setOpen, nextPath }: { mods: Array<Manag
 
 	useEffect(() => {
 		const downloadAll = async () => {
-			for (const mod of mods) {
+			await downloadModsParallel(mods, 25, async (mod) => {
 				setModName(mod.name);
 				try {
 					await download.mutateAsync(mod);
 				}
 				finally {
 					setDownloadedMods(prev => prev + 1);
-					setModName(null);
 				}
-			}
+			});
 		};
 
 		downloadAll();

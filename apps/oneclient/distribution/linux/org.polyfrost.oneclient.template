@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=OneLauncher
+Name=OneClient
 Comment=Next-generation open source Minecraft launcher
 Exec={{exec}}
 Icon={{icon}}

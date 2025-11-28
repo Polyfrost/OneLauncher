@@ -107,7 +107,7 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 		<div>
 			<h1 className="text-3xl font-semibold my-2">{name}</h1>
 			<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-				{bundleData.bundles.map((bundle) => (
+				{bundleData.bundles.map(bundle => (
 					<ModCategoryCard
 						art={bundleData.art}
 						bundle={bundle}

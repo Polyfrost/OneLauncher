@@ -1,7 +1,6 @@
 export * from './AccountPopup';
 export * from './AddAccountModal';
 export * from './BundleModListModal';
-export * from './DownloadingMods';
 export * from './ImportSkinModal';
 export * from './NoAccountPopup';
 export * from './Overlay';

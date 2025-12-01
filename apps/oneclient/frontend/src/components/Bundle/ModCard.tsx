@@ -112,13 +112,16 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	useEffect(() => {
 		setSelected(mods?.includes(file) ?? false);
 	}, [mods, file]);
+
 	const handleOnClick = () => {
 		if (onClickOnMod)
 			onClickOnMod(file);
 	};
 
 	const { setting } = useSettings();
-	const useGridLayout = setting('mod_list_use_grid');
+	let useGridLayout = setting('mod_list_use_grid');
+	if (useVerticalGridLayout)
+		useGridLayout = true;
 
 	return (
 		<div className={twMerge('rounded-lg m-1 break-inside-avoid flex bg-component-bg border border-gray-100/5 p-2 gap-2 outline-2 outline-component-bg', useVerticalGridLayout && useGridLayout ? '' : 'justify-between', useGridLayout ? 'flex-col' : 'flex-row', isSelected ? 'outline-brand bg-brand/20' : '')} onClick={handleOnClick}>

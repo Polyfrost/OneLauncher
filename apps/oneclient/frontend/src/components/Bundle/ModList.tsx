@@ -21,7 +21,7 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListP
 
 	return (
 		<Tabs defaultValue={selectedTab ?? getBundleName(bundles[0].manifest.name)} onTabChange={onTabChange}>
-			<TabList className="justify-between px-4">
+			<TabList className="justify-between px-4 py-3" height={false}>
 				<div className="flex flex-row gap-6 px-2">
 					{bundles.map(bundle => <Tab key={bundle.path} value={getBundleName(bundle.manifest.name)}>{getBundleName(bundle.manifest.name)}</Tab>)}
 				</div>
@@ -32,7 +32,7 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListP
 				)}
 			</TabList>
 
-			<TabContent className={useVerticalGridLayout ? 'pt-0' : 'pt-4'}>
+			<TabContent className={useVerticalGridLayout ? 'pt-0' : ''}>
 				{bundles.map(bundleData => (
 					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
 						<Bundle bundleData={bundleData} cluster={cluster} />

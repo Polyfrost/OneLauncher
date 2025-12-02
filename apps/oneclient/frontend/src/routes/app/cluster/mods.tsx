@@ -22,10 +22,7 @@ function RouteComponent() {
 
 	return (
 		<ModCardContext.Provider value={context}>
-			<ModList
-				bundles={bundles}
-				cluster={cluster}
-			/>
+			<ModList bundles={bundles} cluster={cluster} />
 		</ModCardContext.Provider>
 	);
 }

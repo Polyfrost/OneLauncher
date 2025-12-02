@@ -15,7 +15,7 @@ export function BundleModListModal({ clusterId, name }: { clusterId: number; nam
 		return <></>;
 
 	return (
-		<Overlay.Dialog className="bg-page items-start">
+		<Overlay.Dialog className="bg-page items-start flex flex-col">
 			<Overlay.Title className="px-4">
 				Select Content For
 				{' '}

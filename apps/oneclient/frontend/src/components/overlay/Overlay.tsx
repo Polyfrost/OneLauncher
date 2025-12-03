@@ -35,6 +35,7 @@ export type OverlayProps = React.ComponentProps<typeof ModalOverlay> & {
 export function Overlay({
 	className,
 	children,
+	isDismissable,
 	...rest
 }: OverlayProps) {
 	const { overlay, modal } = modalVariants();
@@ -48,7 +49,7 @@ export function Overlay({
 			<Modal className={modal()}>
 				{children}
 			</Modal>
-			<p className="fixed bottom-0 left-1/2 -translate-x-1/2 text-xs text-fg-secondary text-center py-2 pointer-events-none">Click outside to dismiss</p>
+			{isDismissable ? <p className="fixed bottom-0 left-1/2 -translate-x-1/2 text-xs text-fg-secondary text-center py-2 pointer-events-none">Click outside to dismiss</p> : <></>}
 		</ModalOverlay>
 	);
 }
@@ -84,25 +85,31 @@ Overlay.Buttons = function OverlayButtons({
 Overlay.Dialog = function OverlayDialog({
 	className,
 	children,
+	isDismissable,
 }: {
 	className?: string | undefined;
 	children?: React.ReactNode | undefined;
+	isDismissable?: boolean | undefined;
 }) {
 	const { dialog } = modalVariants();
 
 	return (
 		<Dialog className={twMerge(dialog(), className)} role="dialog">
-			<div className="absolute top-5.5 right-5.5">
-				<Button color="ghost" size="icon" slot="close">
-					<XCloseIcon />
-				</Button>
-			</div>
+			{isDismissable
+				? (
+						<div className="absolute top-5.5 right-5.5">
+							<Button color="ghost" size="icon" slot="close">
+								<XCloseIcon />
+							</Button>
+						</div>
+					)
+				: <></>}
 
 			{children}
 		</Dialog>
 	);
 };
 
-Overlay.Title = function OverlayTitle({ children }: { children: React.ReactNode }) {
-	return <h2 className="text-2xl font-semibold">{children}</h2>;
+Overlay.Title = function OverlayTitle({ children, className }: { children: React.ReactNode; className?: string | undefined }) {
+	return <h2 className={twMerge('text-2xl font-semibold', className)}>{children}</h2>;
 };

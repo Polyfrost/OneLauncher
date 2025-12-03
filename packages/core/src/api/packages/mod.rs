@@ -145,7 +145,8 @@ pub async fn download_external_package(
 	let dir = Dirs::get_clusters_dir()
 		.await?
 		.join(cluster.folder_name.clone())
-		.join(package.package_type.folder_name());
+		.join(package.package_type.folder_name())
+		.join(package.name.clone());
 
 	http::download_advanced(
 		Method::GET,

@@ -1,3 +1,4 @@
+import type { DownloadModsRef } from '@/components';
 import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
@@ -6,10 +7,12 @@ import { Stepper } from '@/components/Stepper';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
+import { useEffect } from 'react';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/onboarding')({
@@ -52,6 +55,7 @@ export interface OnboardingStep {
 	path: string;
 	title: string;
 	subSteps?: Array<OnboardingStep>;
+	hideNavigationButtons?: boolean;
 };
 
 const ONBOARDING_STEPS: Array<OnboardingStep> = [
@@ -66,18 +70,21 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 	{
 		path: '/onboarding/account',
 		title: 'Account',
+		hideNavigationButtons: true,
 	},
 	{
 		path: '/onboarding/preferences/',
 		title: 'Preferences',
 		subSteps: [
 			{
-				path: '/onboarding/preferences/versions',
+				path: '/onboarding/preferences/version',
 				title: 'Versions',
+				hideNavigationButtons: true,
 			},
 			{
-				path: '/onboarding/preferences/mods',
-				title: 'Mods',
+				path: '/onboarding/preferences/versionCategory',
+				title: 'Versions Category',
+				hideNavigationButtons: true,
 			},
 		],
 	},
@@ -95,6 +102,20 @@ const LINEAR_ONBOARDING_STEPS = getLinearSteps(ONBOARDING_STEPS);
 
 function RouteComponent() {
 	const location = useLocation();
+
+	// Prefetch data so that onboarding/preferences/versionCategory is fast
+	const queryClient = useQueryClient();
+	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
+	useEffect(() => {
+		clusters.forEach((cluster) => {
+			queryClient.prefetchQuery({
+				queryKey: ['getBundlesFor', cluster.id],
+				queryFn: () => bindings.oneclient.getBundlesFor(cluster.id),
+			});
+		});
+	}, [clusters, queryClient]);
+
+	const { currentLinearStepIndex } = Route.useLoaderData();
 
 	return (
 		// <LoaderSuspense spinner={{ size: 'large' }}>
@@ -122,7 +143,7 @@ function RouteComponent() {
 
 					</motion.div>
 
-					<OnboardingNavigation />
+					{LINEAR_ONBOARDING_STEPS[currentLinearStepIndex].hideNavigationButtons ? <></> : <OnboardingNavigation />}
 				</LoaderSuspense>
 			</div>
 		</AppShell>
@@ -207,10 +228,19 @@ function BackgroundGradient() {
 	);
 }
 
-export function OnboardingNavigation() {
-	const { isFirstStep, previousPath, nextPath, currentLinearStepIndex } = Route.useLoaderData();
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
-	const forceLoginDisable = currentLinearStepIndex === 2 && currentAccount === null;
+export function OnboardingNavigation({ ref, disableNext }: { ref?: React.RefObject<DownloadModsRef | null>; disableNext?: boolean }) {
+	const navigate = useNavigate();
+	const { isFirstStep, previousPath, nextPath } = Route.useLoaderData();
+
+	function handleNextClick() {
+		if (disableNext)
+			return;
+
+		if (ref && ref.current !== null)
+			ref.current.openDownloadDialog(nextPath ?? '/app');
+		else
+			navigate({ to: nextPath ?? '/app' });
+	}
 
 	return (
 		<div className="absolute bottom-2 right-2 flex flex-row gap-2">
@@ -222,9 +252,14 @@ export function OnboardingNavigation() {
 				)}
 			</div>
 			<div>
-				<Link disabled={forceLoginDisable} to={nextPath ?? '/app'}>
-					<Button className={`w-32 ${forceLoginDisable ? 'line-through' : ''}`} color={forceLoginDisable ? 'secondary' : 'primary'}>Next</Button>
-				</Link>
+				<Button
+					className={`w-32 ${disableNext ? 'line-through' : ''}`}
+					color={disableNext ? 'secondary' : 'primary'}
+					isDisabled={disableNext}
+					onClick={handleNextClick}
+				>
+					Next
+				</Button>
 			</div>
 		</div>
 	);

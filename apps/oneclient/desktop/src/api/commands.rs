@@ -7,6 +7,7 @@ use onelauncher_core::error::LauncherResult;
 use tauri::Runtime;
 
 use crate::oneclient::bundles::BundlesManager;
+use crate::oneclient::clusters::{OnlineClusterManifest, get_data_storage_versions};
 
 #[taurpc::procedures(path = "oneclient", export_to = "../frontend/src/bindings.gen.ts")]
 pub trait OneClientApi {
@@ -18,6 +19,9 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "getBundlesFor")]
 	async fn get_bundles_for(cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>>;
+
+	#[taurpc(alias = "getVersions")]
+	async fn get_versions() -> LauncherResult<OnlineClusterManifest>;
 }
 
 #[taurpc::ipc_type]
@@ -71,5 +75,9 @@ impl OneClientApi for OneClientApiImpl {
 			.await?;
 
 		Ok(bundles)
+	}
+
+	async fn get_versions(self) -> LauncherResult<OnlineClusterManifest> {
+		get_data_storage_versions().await
 	}
 }

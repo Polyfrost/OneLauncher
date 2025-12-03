@@ -1,6 +1,7 @@
 export * from './AccountAvatar';
 export * from './BrowserPackageItem';
 export * from './DeleteAccountButton';
+export * from './DownloadMods';
 export * from './GameBackground';
 export * from './Loader';
 export * from './LogViewer';

@@ -25,9 +25,7 @@ export type DirectoryError = { type: "BaseDir"; data: string }
 
 export type DiscordError = { type: "MissingClientId"; data: string } | { type: "ConnectError"; data: string }
 
-export type ExternalPackage = { name: string; url: string; sha1: string; size: number; package_type: PackageType; overrides: ExternalPackageOverrides | null }
-
-export type ExternalPackageOverrides = { icon: string | null; name: string | null; authors: string[] | null; description: string | null }
+export type ExternalPackage = { name: string; url: string; sha1: string; size: number; package_type: PackageType }
 
 export type Filters = { game_versions: string[] | null; loaders: GameLoader[] | null; categories: PackageCategories | null; package_type: PackageType | null }
 
@@ -101,7 +99,7 @@ expires: string }
 
 export type ModpackArchive = { manifest: ModpackManifest; path: string; format: ModpackFormat }
 
-export type ModpackFile = { enabled: boolean; kind: ModpackFileKind }
+export type ModpackFile = { enabled: boolean; kind: ModpackFileKind; overrides?: PackageOverrides | null }
 
 export type ModpackFileKind = { Managed: [ManagedPackage, ManagedVersion] } | { External: ExternalPackage }
 
@@ -118,6 +116,50 @@ export type MojangPlayerProfile = { uuid: string; username: string; is_slim: boo
 export type MojangSkin = { id: string; state: string; url: string; variant: SkinVariant }
 
 export type MowojangProfile = { id: string; username: string }
+
+export type OnlineCluster = { major_version: number; name: string; art: string; entries: OnlineClusterEntry[] }
+
+export type OnlineClusterEntry = { minor_version: number; loader: GameLoader; tags: string[] }
+
+/**
+ * e.g.
+ * ```json
+ * {
+ * "clusters": [
+ * {
+ * "major_version": 21,
+ * "name": "Tricky Trials",
+ * "art": "/versions/art/Tricky_Trials.png",
+ * "entries": [
+ * {
+ * "minor_version": 5,
+ * "loader": "fabric",
+ * "tags": ["PvP", "Survival"]
+ * },
+ * {
+ * "minor_version": 5,
+ * "loader": "forge",
+ * "tags": ["PvP", "Survival"]
+ * }
+ * ]
+ * },
+ * {
+ * "major_version": 20,
+ * "name": "Trails & Tales",
+ * "art": "/versions/art/Trails_Tales.png",
+ * "entries": [
+ * {
+ * "minor_version": 5,
+ * "loader": "fabric",
+ * "tags": ["PvP", "Survival"]
+ * }
+ * ]
+ * }
+ * ]
+ * }
+ * ```
+ */
+export type OnlineClusterManifest = { clusters: OnlineCluster[] }
 
 export type PackageAuthor = { Team: { team_id: string; org_id: string | null } } | { Users: ManagedUser[] }
 
@@ -151,6 +193,8 @@ export type PackageModCategory = "Adventure" | "Library" | "Equipment" | "Patche
 export type PackageModPackCategory = "Technology" | "Quests" | "Optimization" | "Multiplayer" | "Magic" | "LightWeight" | "Combat" | "Challenging" | "Adventure"
 
 export type PackageModel = { hash: string; file_name: string; version_id: string; published_at: string; display_name: string; display_version: string; package_type: PackageType; provider: Provider; package_id: string; mc_versions: DbVec<string>; mc_loader: DbVec<GameLoader>; icon: Icon | null }
+
+export type PackageOverrides = { icon: string | null; name: string | null; authors: string[] | null; description: string | null }
 
 export type PackageReleaseType = "release" | "beta" | "alpha"
 
@@ -190,7 +234,7 @@ gallery: string[] }
 
 export type SettingProfileModel = { name: string; java_id: number | null; res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null; os_extra: SettingsOsExtra | null }
 
-export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; show_tanstack_dev_tools: boolean }
+export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; mod_list_use_grid: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; show_tanstack_dev_tools: boolean }
 
 export type SettingsOsExtra = Record<string, never>
 
@@ -257,8 +301,17 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'oneclient':'{"getBundlesFor":["cluster_id"],"getClustersGroupedByMajor":[],"openDevTools":[]}', 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'core':'{"changeCape":["access_token","cape_uuid"],"getUser":["uuid"],"updateClusterById":["id","request"],"getGlobalProfile":[],"isClusterRunning":["cluster_id"],"writeSettings":["setting"],"removeCluster":["id"],"getProfileOrDefault":["name"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"getGameVersions":[],"getUsers":[],"killProcess":["pid"],"getRunningProcesses":[],"removeUser":["uuid"],"getDefaultUser":["fallback"],"setDefaultUser":["uuid"],"getPackage":["provider","slug"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"getLogByName":["id","name"],"getWorlds":["id"],"changeSkin":["access_token","skin_url","skin_variant"],"getClusters":[],"getScreenshots":["id"],"createSettingsProfile":["name"],"getLogs":["id"],"readSettings":[],"fetchMinecraftProfile":["uuid"],"removeCape":["access_token"],"installModpack":["modpack","cluster_id"],"getMultiplePackages":["provider","slugs"],"launchCluster":["id","uuid"],"open":["input"],"getLoadersForVersion":["mc_version"],"getClusterById":["id"],"getRunningProcessesByClusterId":["cluster_id"],"openMsaLogin":[],"fetchLoggedInProfile":["access_token"],"createCluster":["options"],"getUsersFromAuthor":["provider","author"],"convertUsernameUUID":["username_uuid"],"searchPackages":["provider","query"],"updateClusterProfile":["name","profile"],"getPackageBody":["provider","body"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}' }
-export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'oneclient':'{"openDevTools":[],"getVersions":[],"getBundlesFor":["cluster_id"],"getClustersGroupedByMajor":[]}', 'core':'{"open":["input"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"changeSkin":["access_token","skin_url","skin_variant"],"writeSettings":["setting"],"launchCluster":["id","uuid"],"installModpack":["modpack","cluster_id"],"getUsersFromAuthor":["provider","author"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"removeCape":["access_token"],"getUser":["uuid"],"getLogs":["id"],"readSettings":[],"removeCluster":["id"],"getClusterById":["id"],"getLogByName":["id","name"],"openMsaLogin":[],"isClusterRunning":["cluster_id"],"getUsers":[],"createSettingsProfile":["name"],"getRunningProcessesByClusterId":["cluster_id"],"createCluster":["options"],"getMultiplePackages":["provider","slugs"],"downloadExternalPackage":["package","cluster_id","force","skip_compatibility"],"getDefaultUser":["fallback"],"convertUsernameUUID":["username_uuid"],"getScreenshots":["id"],"getClusters":[],"updateClusterProfile":["name","profile"],"getLoadersForVersion":["mc_version"],"fetchLoggedInProfile":["access_token"],"fetchMinecraftProfile":["uuid"],"getProfileOrDefault":["name"],"updateClusterById":["id","request"],"getGameVersions":[],"setDefaultUser":["uuid"],"getGlobalProfile":[],"getWorlds":["id"],"getRunningProcesses":[],"removeUser":["uuid"],"killProcess":["pid"],"searchPackages":["provider","query"],"getPackage":["provider","slug"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"getPackageBody":["provider","body"],"changeCape":["access_token","cape_uuid"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}' }
+export type Router = { 'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> },
+'oneclient': { openDevTools: () => Promise<void>, 
+getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
+getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]>, 
+getVersions: () => Promise<OnlineClusterManifest> },
+'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -292,6 +345,7 @@ getPackageBody: (provider: Provider, body: ManagedPackageBody) => Promise<string
 getMultiplePackages: (provider: Provider, slugs: string[]) => Promise<ManagedPackage[]>, 
 getPackageVersions: (provider: Provider, slug: string, mcVersion: string | null, loader: GameLoader | null, offset: number, limit: number) => Promise<Paginated<ManagedVersion>>, 
 downloadPackage: (provider: Provider, packageId: string, versionId: string, clusterId: number, skipCompatibility: boolean | null) => Promise<PackageModel>, 
+downloadExternalPackage: (package: ExternalPackage, clusterId: number, force: boolean | null, skipCompatibility: boolean | null) => Promise<PackageModel | null>, 
 getUsersFromAuthor: (provider: Provider, author: PackageAuthor) => Promise<ManagedUser[]>, 
 installModpack: (modpack: ModpackArchive, clusterId: number) => Promise<null>, 
 fetchMinecraftProfile: (uuid: string) => Promise<MojangPlayerProfile>, 
@@ -301,15 +355,7 @@ changeSkin: (accessToken: string, skinUrl: string, skinVariant: SkinVariant) => 
 changeCape: (accessToken: string, capeUuid: string) => Promise<MojangFullPlayerProfile>, 
 removeCape: (accessToken: string) => Promise<MojangFullPlayerProfile>, 
 convertUsernameUUID: (usernameUuid: string) => Promise<MowojangProfile>, 
-open: (input: string) => Promise<null> },
-'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'oneclient': { openDevTools: () => Promise<void>, 
-getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
-getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]> } };
+open: (input: string) => Promise<null> } };
 
 
 export type { InferCommandOutput }

@@ -1,4 +1,4 @@
-import type { ExternalPackage, ModpackFile, Provider } from '@/bindings.gen';
+import type { ExternalPackage, ManagedVersionDependency, ModpackFile, Provider } from '@/bindings.gen';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
@@ -22,6 +22,7 @@ export interface ManagedModData extends BaseModData {
 	provider: Provider;
 	id: string;
 	versionId: string;
+	dependencies: Array<ManagedVersionDependency>;
 }
 
 export interface ExternalModData extends BaseModData {
@@ -62,6 +63,7 @@ export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<s
 						provider: pkg.provider,
 						id: pkg.id,
 						versionId: version.version_id,
+						dependencies: version.dependencies,
 					});
 				}
 			}
@@ -109,10 +111,19 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 	const [downloadedMods, setDownloadedMods] = useState(0);
 	const [modName, setModName] = useState<string | null>(null);
 	const download = useCommandMut(async (mod: ModData) => {
-		if (isManagedMod(mod))
+		if (isManagedMod(mod)) {
+			if (mod.dependencies.length > 0)
+				for (const dependency of mod.dependencies) {
+					const cluster = await bindings.core.getClusterById(mod.clusterId);
+					if (!cluster)
+						continue;
+					const slug = dependency.project_id ?? '';
+					const versions = await bindings.core.getPackageVersions(mod.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
+					await bindings.core.downloadPackage(mod.provider, slug, versions.items[0].version_id, cluster.id, null);
+				}
 			await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
-		else
-			await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null);
+		}
+		else { await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null); }
 	});
 
 	useEffect(() => {

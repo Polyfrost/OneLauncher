@@ -1,18 +1,18 @@
 {
 	"version": "0.1.0",
-	"homepage": "https://polyfrost.org/launcher",
+	"homepage": "https://polyfrost.org/projects/oneclient",
 	"description": "Next-generation open source Minecraft launcher",
 	"license": "GPL-3.0-only",
 	"architecture": {
 		"64bit": {
-			"url": "https://launcher.polyfrost.org/versions/0.1.0/windows/OneLauncher_0.1.0_x64_en-US.msi",
+			"url": "https://oneclient.polyfrost.org/versions/0.1.0/windows/OneClient_0.1.0_x64_en-US.msi",
 			"hash": "hhjgskdfghskfdlafjdshjadlk"
 		}
 	},
 	"shortcuts": [
 		[
-			"PFiles\\OneLauncher\\OneLauncher.exe",
-			"OneLauncher"
+			"PFiles\\OneClient\\OneClient.exe",
+			"OneClient"
 		]
 	],
 	"checkver": {
@@ -21,7 +21,7 @@
 	"autoupdat": {
 		"architecture": {
 			"64bit": {
-				"url": "https://launcher.polyfrost.org/versions/$version/windows/OneLauncher_$version_x64_en-US.msi"
+				"url": "https://oneclient.polyfrost.org/versions/$version/windows/OneClient_$version_x64_en-US.msi"
 			}
 		}
 	}

@@ -3,6 +3,7 @@ import { ModCardContext, ModList } from '@/components/Bundle';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useMemo } from 'react';
 
 export const Route = createFileRoute('/app/cluster/mods')({
@@ -21,8 +22,12 @@ function RouteComponent() {
 		return <p>No bundles found {cluster.name}</p>;
 
 	return (
-		<ModCardContext.Provider value={context}>
-			<ModList bundles={bundles} cluster={cluster} />
-		</ModCardContext.Provider>
+		<OverlayScrollbarsComponent className="bg-none">
+			<div className="min-h-148">
+				<ModCardContext.Provider value={context}>
+					<ModList bundles={bundles} cluster={cluster} />
+				</ModCardContext.Provider>
+			</div>
+		</OverlayScrollbarsComponent>
 	);
 }

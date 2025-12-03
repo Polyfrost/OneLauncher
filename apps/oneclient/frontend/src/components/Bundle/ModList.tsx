@@ -35,7 +35,7 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListP
 			<TabContent className={useVerticalGridLayout ? 'pt-0' : ''}>
 				{bundles.map(bundleData => (
 					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
-						<Bundle bundleData={bundleData} cluster={cluster} />
+						<Bundle cluster={cluster} files={bundleData.manifest.files} />
 					</TabPanel>
 				))}
 			</TabContent>

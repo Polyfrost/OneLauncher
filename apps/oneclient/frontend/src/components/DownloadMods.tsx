@@ -7,6 +7,7 @@ import { useEffect, useImperativeHandle, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { getModMetaDataName } from './Bundle';
 import { Overlay } from './overlay';
+import { useSettings } from '@/hooks/useSettings';
 
 export interface DownloadModsRef {
 	openDownloadDialog: (nextPath?: string) => void;
@@ -119,24 +120,40 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 						continue;
 					const slug = dependency.project_id ?? '';
 					const versions = await bindings.core.getPackageVersions(mod.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
-					await bindings.core.downloadPackage(mod.provider, slug, versions.items[0].version_id, cluster.id, null);
+					if (versions.items.length !== 0)
+						await bindings.core.downloadPackage(mod.provider, slug, versions.items[0].version_id, cluster.id, null);
 				}
 			await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
 		}
 		else { await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null); }
 	});
 
+	const { setting } = useSettings();
+	let useSlowDownloading = setting('slow_mod_bulk_downloading');
+
+
 	useEffect(() => {
 		const downloadAll = async () => {
-			await downloadModsParallel(mods, 25, async (mod) => {
-				setModName(mod.name);
-				try {
-					await download.mutateAsync(mod);
-				}
-				finally {
-					setDownloadedMods(prev => prev + 1);
-				}
-			});
+			if (useSlowDownloading)
+				for (const mod of mods) {
+					setModName(mod.name);
+					try {
+						await download.mutateAsync(mod);
+					}
+					finally {
+						setDownloadedMods(prev => prev + 1);
+					}
+				} else
+				await downloadModsParallel(mods, 25, async (mod) => {
+					setModName(mod.name);
+					try {
+						await download.mutateAsync(mod);
+					}
+					finally {
+						setDownloadedMods(prev => prev + 1);
+					}
+				});
+
 		};
 
 		downloadAll();

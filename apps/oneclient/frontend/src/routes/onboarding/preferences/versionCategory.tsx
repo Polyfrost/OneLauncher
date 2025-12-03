@@ -101,7 +101,7 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 						art={bundleData.art}
 						bundle={bundle}
 						clusterId={bundleData.clusterId}
-						fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'LOADING'}
+						fullVersionName={bundle.manifest.name.match(/\[(.*?)\]/)?.[1] ?? 'Loading...'}
 						key={bundle.manifest.name}
 						mods={modsPerCluster[bundleData.clusterId]}
 						setMods={newMods => setModsPerCluster(prev => ({ ...prev, [bundleData.clusterId]: typeof newMods === 'function' ? newMods(prev[bundleData.clusterId]) : newMods }))}

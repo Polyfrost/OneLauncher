@@ -4,7 +4,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { BatteryFullIcon, Code02Icon, Truck01Icon } from '@untitled-theme/icons-react';
+import { BatteryEmptyIcon, BatteryFullIcon, Code02Icon, Truck01Icon } from '@untitled-theme/icons-react';
 import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/developer')({
@@ -58,6 +58,16 @@ function RouteComponent() {
 					title="Use Grid On Mods List"
 				>
 					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
+				</SettingsRow>
+
+
+				<SettingsRow.Header>Mod Downloading</SettingsRow.Header>
+				<SettingsRow
+					description="Slow is sometimes better. This is more consistent but takes longer then someone having a god dam CHILD???"
+					icon={<BatteryEmptyIcon />}
+					title="Use Slow Mod Bulk Downloading"
+				>
+					<SettingsSwitch setting={createSetting('slow_mod_bulk_downloading')} />
 				</SettingsRow>
 
 			</div>

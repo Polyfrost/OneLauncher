@@ -4,7 +4,7 @@ import { Button, Tab, TabContent, TabList, TabPanel, Tabs } from '@onelauncher/c
 import { Bundle, useModCardContext } from '.';
 
 function getBundleName(name: string): string {
-	return (name.match(/\[(.*?)\]/)?.[1]) ?? 'LOADING';
+	return (name.match(/\[(.*?)\]/)?.[1]) ?? 'Loading...';
 }
 
 interface ModListProps {

@@ -103,7 +103,7 @@ export function useModCardContext() {
 export function ModCard({ file, cluster }: ModCardProps) {
 	const { showModDownloadButton, onClickOnMod, useVerticalGridLayout, mods } = useModCardContext();
 
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'LOADING', description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'Loading...', description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);

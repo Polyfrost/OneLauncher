@@ -1,4 +1,4 @@
-import type { ModpackArchive, ModpackFile } from '@/bindings.gen';
+import type { ClusterModel, ModpackArchive, ModpackFile } from '@/bindings.gen';
 import type { DownloadModsRef } from '@/components';
 import type { ModCardContextApi, onClickOnMod } from '@/components/Bundle';
 import type { StrippedCLuster } from './version';
@@ -8,11 +8,10 @@ import { BundleModListModal, Overlay } from '@/components/overlay';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
-import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 import { OnboardingNavigation } from '../route';
@@ -28,40 +27,30 @@ export interface BundleData {
 	clusterId: number;
 }
 
+function HandleCLuster(cluster: ClusterModel): Array<ModpackArchive> {
+	const { data: bundle } = useCommandSuspense(['getBundlesFor', cluster.id], () => bindings.oneclient.getBundlesFor(cluster.id));
+	return bundle;
+}
+
 function RouteComponent() {
 	const selectedClusters: Array<StrippedCLuster> = JSON.parse(localStorage.getItem('selectedClusters') ?? '[]');
 
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
-	const queryClient = useQueryClient();
-	const [bundlesData, setBundlesData] = useState<Record<string, BundleData>>({});
-	useEffect(() => {
-		(async () => {
-			const bundleQueries = await Promise.all(
-				clusters.map(cluster =>
-					queryClient.fetchQuery({
-						queryKey: ['getBundlesFor', cluster.id],
-						queryFn: async () => bindings.oneclient.getBundlesFor(cluster.id),
-					})),
-			);
-
-			const data: Record<string, BundleData> = {};
-			clusters.forEach((cluster, index) => {
-				const selected = selectedClusters.some(strippedCluster => strippedCluster.mc_version === cluster.mc_version && strippedCluster.mc_loader === cluster.mc_loader);
-				if (!selected)
-					return;
-
-				const version = versions.clusters.find(versionCluster => cluster.mc_version.startsWith(`1.${versionCluster.major_version}`));
-				data[cluster.name] = {
-					bundles: bundleQueries[index],
-					art: version?.art ?? '/versions/art/Horse_Update.jpg',
-					modsInfo: [],
-					clusterId: cluster.id,
-				};
-			});
-			setBundlesData(data);
-		})();
-	}, [clusters, queryClient, versions]);
+	const bundleQueries = clusters.map(cluster => HandleCLuster(cluster));
+	const bundlesData: Record<string, BundleData> = {};
+	clusters.forEach((cluster, i) => {
+		const selected = selectedClusters.some(selectedCluster => selectedCluster.mc_version === cluster.mc_version && selectedCluster.mc_loader === cluster.mc_loader);
+		if (!selected)
+			return;
+		const version = versions.clusters.find(version => cluster.mc_version.startsWith(`1.${version.major_version}`));
+		bundlesData[cluster.name] = {
+			bundles: bundleQueries[i],
+			art: version?.art ?? '/versions/art/Horse_Update.jpg',
+			modsInfo: [],
+			clusterId: cluster.id,
+		};
+	});
 
 	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModpackFile>>>(
 		clusters.reduce((acc, cluster) => {

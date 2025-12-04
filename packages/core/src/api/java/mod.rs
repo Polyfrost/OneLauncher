@@ -451,7 +451,7 @@ pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathB
 		base_path = base_path.join(format!("zulu-{java_version}.jre"))
 	}
 
-	base_path = dbg!(base_path.join(get_java_bin()));
+	base_path = base_path.join(get_java_bin());
 
 	#[cfg(target_os = "macos")]
 	{

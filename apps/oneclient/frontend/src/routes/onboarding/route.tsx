@@ -3,6 +3,7 @@ import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { LoaderSuspense, NavbarButton } from '@/components';
 import { GameBackground } from '@/components/GameBackground';
+import { Overlay, SuperSecretDevOptions } from '@/components/overlay';
 import { Stepper } from '@/components/Stepper';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
@@ -13,6 +14,7 @@ import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
 import { useEffect } from 'react';
+import { Button as AriaButton } from 'react-aria-components';
 import { MouseParallax } from 'react-just-parallax';
 
 export const Route = createFileRoute('/onboarding')({
@@ -164,7 +166,15 @@ function AppShell({
 				<div className={`min-w-64 ${isFirstStep ? 'bg-page' : ''} border-r border-component-border flex flex-col`}>
 					<div className="p-6">
 						<div className="flex items-center gap-2">
-							<LauncherLogo className="w-52 h-12" />
+							<Overlay.Trigger>
+								<AriaButton className="w-52 h-12 focus:outline-none focus:ring-0">
+									<LauncherLogo className="w-52 h-12" />
+								</AriaButton>
+
+								<Overlay>
+									<SuperSecretDevOptions />
+								</Overlay>
+							</Overlay.Trigger>
 						</div>
 					</div>
 

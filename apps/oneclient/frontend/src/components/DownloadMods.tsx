@@ -1,4 +1,5 @@
 import type { ExternalPackage, ManagedVersionDependency, ModpackFile, Provider } from '@/bindings.gen';
+import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
@@ -7,7 +8,6 @@ import { useEffect, useImperativeHandle, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { getModMetaDataName } from './Bundle';
 import { Overlay } from './overlay';
-import { useSettings } from '@/hooks/useSettings';
 
 export interface DownloadModsRef {
 	openDownloadDialog: (nextPath?: string) => void;
@@ -129,12 +129,11 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 	});
 
 	const { setting } = useSettings();
-	let useSlowDownloading = setting('slow_mod_bulk_downloading');
-
+	let useParallelModDownloading = setting('parallel_mod_downloading');
 
 	useEffect(() => {
 		const downloadAll = async () => {
-			if (useSlowDownloading)
+			if (useParallelModDownloading)
 				for (const mod of mods) {
 					setModName(mod.name);
 					try {
@@ -153,7 +152,6 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 						setDownloadedMods(prev => prev + 1);
 					}
 				});
-
 		};
 
 		downloadAll();

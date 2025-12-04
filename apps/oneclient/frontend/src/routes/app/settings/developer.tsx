@@ -32,7 +32,7 @@ function RouteComponent() {
 					icon={<Code02Icon />}
 					title="Open Dev Tools"
 				>
-					<Button onPress={bindings.oneclient.openDevTools} size="normal">Open</Button>
+					<Button onPress={bindings.debug.openDevTools} size="normal">Open</Button>
 				</SettingsRow>
 
 				<SettingsRow.Header>Onboarding</SettingsRow.Header>
@@ -60,14 +60,9 @@ function RouteComponent() {
 					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
 				</SettingsRow>
 
-
 				<SettingsRow.Header>Mod Downloading</SettingsRow.Header>
-				<SettingsRow
-					description="Slow is sometimes better. This is more consistent but takes longer then someone having a god dam CHILD???"
-					icon={<BatteryEmptyIcon />}
-					title="Use Slow Mod Bulk Downloading"
-				>
-					<SettingsSwitch setting={createSetting('slow_mod_bulk_downloading')} />
+				<SettingsRow description="Use Parallel Mod Downloading for speed. This can create some issues sometimes" icon={<BatteryEmptyIcon />} title="Use Parallel Mod Downloading">
+					<SettingsSwitch setting={createSetting('parallel_mod_downloading')} />
 				</SettingsRow>
 
 			</div>

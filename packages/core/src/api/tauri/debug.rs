@@ -1,5 +1,7 @@
 use tauri::Runtime;
-use tauri_plugin_os::{arch, exe_extension, family, hostname, locale, platform, type_, version};
+use tauri_plugin_os::{arch, family, locale, platform, type_, version};
+
+use crate::error::LauncherResult;
 
 #[taurpc::procedures(path = "debug")]
 pub trait TauriLauncherDebugApi {
@@ -26,6 +28,12 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getVersion")]
 	async fn get_version() -> String;
+
+	#[taurpc(alias = "getCommitHash")]
+	async fn get_commit_hash() -> LauncherResult<String>;
+
+	#[taurpc(alias = "getBuildTimestamp")]
+	async fn get_build_timestamp() -> LauncherResult<String>;
 }
 
 #[taurpc::ipc_type]
@@ -63,5 +71,19 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 
 	async fn get_version(self) -> String {
 		version().to_string()
+	}
+
+	async fn get_commit_hash(self) -> LauncherResult<String> {
+		if tauri::is_dev() {
+			let hash = std::env::var("GIT_HASH").map_err(anyhow::Error::from)?;
+			Ok(hash)
+		} else {
+			Ok("null".to_string())
+		}
+	}
+
+	async fn get_build_timestamp(self) -> LauncherResult<String> {
+		let timestamp = std::env::var("BUILD_TIMESTAMP").map_err(anyhow::Error::from)?;
+		Ok(timestamp)
 	}
 }

@@ -7,69 +7,13 @@ import { BatteryEmptyIcon, Code02Icon, FolderIcon, LinkExternal01Icon, Truck01Ic
 import { useEffect, useState } from 'react';
 import SettingsRow from '../SettingsRow';
 import SettingsSwitch from '../SettingSwitch';
+import { RawDebugInfo, useDebugInfo } from './DebugInfo';
 import { Overlay } from './Overlay';
-
-interface DevInfo {
-	inDev: boolean;
-	platform: string;
-	arch: string;
-	family: string;
-	locale: string;
-	type: string;
-	version: string;
-}
-
-function useDevInfo(): DevInfo {
-	const [devInfo, setDevInfo] = useState<DevInfo>({
-		inDev: false,
-		platform: 'UNKNOWN',
-		arch: 'UNKNOWN',
-		family: 'UNKNOWN',
-		locale: 'UNKNOWN',
-		type: 'UNKNOWN',
-		version: 'UNKNOWN',
-	});
-
-	useEffect(() => {
-		const fetchDevInfo = async () => {
-			const [
-				inDev,
-				platform,
-				arch,
-				family,
-				locale,
-				type,
-				version,
-			] = await Promise.all([
-				bindings.debug.isInDev(),
-				bindings.debug.getPlatform(),
-				bindings.debug.getArch(),
-				bindings.debug.getFamily(),
-				bindings.debug.getLocale(),
-				bindings.debug.getType(),
-				bindings.debug.getVersion(),
-			]);
-
-			setDevInfo({
-				inDev,
-				platform,
-				arch,
-				family,
-				locale: locale ?? 'UNKNOWN',
-				type,
-				version,
-			});
-		};
-
-		void fetchDevInfo();
-	}, []);
-
-	return devInfo;
-}
 
 export function SuperSecretDevOptions() {
 	const { createSetting } = useSettings();
-	const devInfo = useDevInfo();
+	const debugInfo = useDebugInfo();
+
 	const [launcherDir, setLauncherDir] = useState('');
 
 	useEffect(() => {
@@ -111,15 +55,7 @@ export function SuperSecretDevOptions() {
 				</SettingsRow>
 			</div>
 
-			<div>
-				<p>inDev: {devInfo.inDev ? 'yes' : 'no'}</p>
-				<p>Platform: {devInfo.platform}</p>
-				<p>Arch: {devInfo.arch}</p>
-				<p>Family: {devInfo.family}</p>
-				<p>Locale: {devInfo.locale}</p>
-				<p>Type: {devInfo.type}</p>
-				<p>Version: {devInfo.version}</p>
-			</div>
+			<RawDebugInfo debugInfo={debugInfo} />
 		</Overlay.Dialog>
 	);
 }

@@ -36,6 +36,8 @@
 		"fs:allow-download-read",
 		"fs:allow-download-write",
 		"fs:allow-data-read-recursive",
-		"fs:allow-data-write-recursive"
+		"fs:allow-data-write-recursive",
+
+		"os:default"
 	]
 }

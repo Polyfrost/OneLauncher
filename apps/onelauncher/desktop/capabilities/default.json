@@ -44,6 +44,8 @@
 			]
 		},
 		"opener:allow-open-url",
-		"opener:default"
+		"opener:default",
+
+		"os:default"
 	]
 }

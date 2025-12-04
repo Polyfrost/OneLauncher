@@ -26,6 +26,7 @@ export const buttonVariants = tv({
 			ghost: [
 				'hover:bg-ghost-overlay-hover pressed:bg-ghost-overlay-pressed checked:selected:bg-ghost-overlay-pressed pending:bg-ghost-overlay-pressed',
 			],
+			none: [],
 		},
 		size: {
 			normal: 'py-1.5 px-3',

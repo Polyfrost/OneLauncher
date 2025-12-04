@@ -1,10 +1,11 @@
+import { DebugInfo, Overlay } from '@/components/overlay';
 import SettingsRow from '@/components/SettingsRow';
 import SettingsSwitch from '@/components/SettingSwitch';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { BatteryEmptyIcon, BatteryFullIcon, Code02Icon, Truck01Icon } from '@untitled-theme/icons-react';
+import { BatteryEmptyIcon, BatteryFullIcon, Code02Icon, FileHeart02Icon, Truck01Icon } from '@untitled-theme/icons-react';
 import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/developer')({
@@ -19,6 +20,20 @@ function RouteComponent() {
 			<div className="h-full">
 				<h1 className="text-xl">Developer Options</h1>
 
+				<SettingsRow
+					description="Open Debug Info"
+					icon={<FileHeart02Icon />}
+					title="Open Debug Info"
+				>
+					<Overlay.Trigger>
+						<Button size="normal">Open</Button>
+
+						<Overlay>
+							<DebugInfo />
+						</Overlay>
+					</Overlay.Trigger>
+				</SettingsRow>
+
 				<SettingsRow.Header>Dev Tools</SettingsRow.Header>
 				<SettingsRow
 					description="Enable The Tanstack Dev Tools"
@@ -32,7 +47,7 @@ function RouteComponent() {
 					icon={<Code02Icon />}
 					title="Open Dev Tools"
 				>
-					<Button onPress={bindings.oneclient.openDevTools} size="normal">Open</Button>
+					<Button onPress={bindings.debug.openDevTools} size="normal">Open</Button>
 				</SettingsRow>
 
 				<SettingsRow.Header>Onboarding</SettingsRow.Header>
@@ -60,14 +75,9 @@ function RouteComponent() {
 					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
 				</SettingsRow>
 
-
 				<SettingsRow.Header>Mod Downloading</SettingsRow.Header>
-				<SettingsRow
-					description="Slow is sometimes better. This is more consistent but takes longer then someone having a god dam CHILD???"
-					icon={<BatteryEmptyIcon />}
-					title="Use Slow Mod Bulk Downloading"
-				>
-					<SettingsSwitch setting={createSetting('slow_mod_bulk_downloading')} />
+				<SettingsRow description="Use Parallel Mod Downloading for speed. This can create some issues sometimes" icon={<BatteryEmptyIcon />} title="Use Parallel Mod Downloading">
+					<SettingsSwitch setting={createSetting('parallel_mod_downloading')} />
 				</SettingsRow>
 
 			</div>

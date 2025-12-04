@@ -21,7 +21,7 @@ function RouteComponent() {
 
 	useEffect(() => {
 		(async () => {
-			setLauncherDir(await join(await dataDir(), 'OneLauncher'));
+			setLauncherDir(await join(await dataDir(), 'OneClient'));
 		})();
 	}, []);
 

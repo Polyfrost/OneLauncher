@@ -9,6 +9,7 @@ import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, Settings02Icon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
 import { AccountAvatar } from './AccountAvatar';
+import { Overlay, SuperSecretDevOptions } from './overlay';
 import { AccountPopup } from './overlay/AccountPopup';
 
 export function Navbar() {
@@ -21,8 +22,16 @@ export function Navbar() {
 
 	return (
 		<nav className="flex flex-row items-center justify-between h-20 px-12 z-40" data-tauri-drag-region="true">
-			<div className="flex flex-1 pointer-events-none">
-				<LauncherLogo height={47} width={230} />
+			<div className="flex flex-1">
+				<Overlay.Trigger>
+					<NavbarButton className="w-[230px] h-[47px] focus:outline-none focus:ring-0" color="none">
+						<LauncherLogo height={47} width={230} />
+					</NavbarButton>
+
+					<Overlay>
+						<SuperSecretDevOptions />
+					</Overlay>
+				</Overlay.Trigger>
 			</div>
 
 			<div className="flex flex-1 items-center justify-center pointer-events-none gap-6">

@@ -1,8 +1,8 @@
+import { Overlay } from '@/components';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { useEffect, useState } from 'react';
-import { Overlay } from './Overlay';
 
 export type DebugInfoArray = Array<{ title: string; value: string }>;
 export interface DebugInfoData {

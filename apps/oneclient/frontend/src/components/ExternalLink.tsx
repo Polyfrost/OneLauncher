@@ -1,6 +1,6 @@
 import type React from 'react';
 import type { HTMLProps } from 'react';
-import { Overlay } from '@/components/overlay';
+import { Overlay } from '@/components';
 import { bindings } from '@/main';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { LinkExternal01Icon } from '@untitled-theme/icons-react';

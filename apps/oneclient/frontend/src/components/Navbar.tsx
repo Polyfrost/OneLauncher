@@ -1,8 +1,7 @@
 import type { ButtonProps } from '@onelauncher/common/components';
 import type { LinkProps, RegisteredRouter } from '@tanstack/react-router';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
-import { AccountAvatar } from '@/components';
-import { AccountPopup, Overlay, SuperSecretDevOptions } from '@/components/overlay';
+import { AccountAvatar, AccountPopup, Overlay, SuperSecretDevOptions } from '@/components';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Popup } from '@onelauncher/common/components';

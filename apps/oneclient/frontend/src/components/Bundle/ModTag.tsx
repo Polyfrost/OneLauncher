@@ -1,5 +1,5 @@
 import type { ClusterModel } from '@/bindings.gen';
-import type { ModInfo } from '.';
+import type { ModInfo } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { Link } from '@tanstack/react-router';
 import { twMerge } from 'tailwind-merge';

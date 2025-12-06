@@ -1,7 +1,7 @@
 import type { ClusterModel, ModpackArchive } from '@/bindings.gen';
+import { Bundle, useModCardContext } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { Button, Tab, TabContent, TabList, TabPanel, Tabs } from '@onelauncher/common/components';
-import { Bundle, useModCardContext } from '.';
 
 function getBundleName(name: string): string {
 	return (name.match(/\[(.*?)\]/)?.[1]) ?? 'Loading...';

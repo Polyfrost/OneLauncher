@@ -1,8 +1,8 @@
 import type { ClusterModel, ModpackFile } from '@/bindings.gen';
+import { ModCard, useModCardContext } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { twMerge } from 'tailwind-merge';
-import { ModCard, useModCardContext } from '.';
 
 interface BundleProps {
 	files: Array<ModpackFile>;

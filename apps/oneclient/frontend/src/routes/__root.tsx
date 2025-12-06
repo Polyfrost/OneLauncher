@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { Toasts } from '@/components/overlay';
+import { Toasts } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';

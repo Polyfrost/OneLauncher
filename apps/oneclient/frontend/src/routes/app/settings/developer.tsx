@@ -1,5 +1,4 @@
-import { SettingsRow, SettingsSwitch } from '@/components';
-import { DebugInfo, Overlay } from '@/components/overlay';
+import { DebugInfo, Overlay, SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Sidebar } from '@/routes/app/settings/route';

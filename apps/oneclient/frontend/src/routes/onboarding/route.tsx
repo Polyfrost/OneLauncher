@@ -1,8 +1,7 @@
 import type { DownloadModsRef } from '@/components';
 import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
-import { GameBackground, LoaderSuspense, NavbarButton, Stepper } from '@/components';
-import { Overlay, SuperSecretDevOptions } from '@/components/overlay';
+import { GameBackground, LoaderSuspense, NavbarButton, Overlay, Stepper, SuperSecretDevOptions } from '@/components';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';

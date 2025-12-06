@@ -1,11 +1,9 @@
 import type { ClusterModel, ModpackArchive, ModpackFile } from '@/bindings.gen';
-import type { DownloadModsRef } from '@/components';
-import type { ModCardContextApi, onClickOnMod } from '@/components/Bundle';
-import type { StrippedCLuster } from './version';
-import { DownloadMods } from '@/components';
-import { ModCardContext } from '@/components/Bundle';
-import { BundleModListModal, Overlay } from '@/components/overlay';
+import type { DownloadModsRef, ModCardContextApi, onClickOnMod } from '@/components';
+import type { StrippedCLuster } from '@/routes/onboarding/preferences/version';
+import { BundleModListModal, DownloadMods, ModCardContext, Overlay } from '@/components';
 import { bindings } from '@/main';
+import { OnboardingNavigation } from '@/routes/onboarding/route';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
@@ -14,7 +12,6 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useMemo, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
-import { OnboardingNavigation } from '../route';
 
 export const Route = createFileRoute('/onboarding/preferences/versionCategory')({
 	component: RouteComponent,

@@ -1,6 +1,5 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar } from '@/components';
-import { Overlay } from '@/components/overlay';
+import { AccountAvatar, Overlay } from '@/components';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { useQueryClient } from '@tanstack/react-query';

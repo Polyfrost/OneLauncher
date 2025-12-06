@@ -1,6 +1,7 @@
 import type { GameLoader, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
 import { bindings } from '@/main';
+import { OnboardingNavigation } from '@/routes/onboarding/route';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
@@ -8,7 +9,6 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
-import { OnboardingNavigation } from '../route';
 
 export interface StrippedCLuster {
 	mc_version: string;

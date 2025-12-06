@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@onelauncher/common/components';
-import { NoAccountPopup, Overlay } from '@/components/overlay';
+import { NoAccountPopup, Overlay } from '@/components';
 import { useIsRunning } from '@/hooks/useClusters';
 import { useLaunchCluster } from '@/hooks/useLaunchCluster';
 import { bindings } from '@/main';

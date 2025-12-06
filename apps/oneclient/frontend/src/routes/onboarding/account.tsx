@@ -2,11 +2,11 @@ import type { MinecraftCredentials } from '@/bindings.gen';
 import { AccountAvatar, SkinViewer } from '@/components';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
+import { OnboardingNavigation } from '@/routes/onboarding/route';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { OnboardingNavigation } from './route';
 
 export const Route = createFileRoute('/onboarding/account')({
 	component: RouteComponent,

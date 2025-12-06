@@ -1,4 +1,5 @@
 import type { ExternalPackage, ManagedVersionDependency, ModpackFile, Provider } from '@/bindings.gen';
+import { getModMetaDataName, Overlay } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
@@ -6,8 +7,6 @@ import { Button } from '@onelauncher/common/components';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useImperativeHandle, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
-import { getModMetaDataName } from './Bundle';
-import { Overlay } from './overlay';
 
 export interface DownloadModsRef {
 	openDownloadDialog: (nextPath?: string) => void;

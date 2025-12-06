@@ -1,6 +1,5 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar, DeleteAccountButton, ManageSkinButton } from '@/components';
-import { AddAccountModal, Overlay, Popup } from '@/components/overlay';
+import { AccountAvatar, AddAccountModal, DeleteAccountButton, ManageSkinButton, Overlay, Popup } from '@/components';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';

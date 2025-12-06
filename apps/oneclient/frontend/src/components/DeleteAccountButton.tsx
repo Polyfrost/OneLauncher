@@ -1,5 +1,5 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { Overlay, RemoveAccountModal } from '@/components/overlay';
+import { Overlay, RemoveAccountModal } from '@/components';
 import { Button } from '@onelauncher/common/components';
 import { Trash01Icon } from '@untitled-theme/icons-react';
 

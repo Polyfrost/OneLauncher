@@ -1,4 +1,4 @@
-import { Overlay } from '@/components/overlay';
+import { Overlay } from '@/components';
 import { Button, TextField } from '@onelauncher/common/components';
 import { useState } from 'react';
 

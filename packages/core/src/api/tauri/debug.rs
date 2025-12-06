@@ -11,9 +11,6 @@ pub trait TauriLauncherDebugApi {
 	#[taurpc(alias = "isInDev")]
 	async fn is_in_dev() -> bool;
 
-	#[taurpc(alias = "getPlatform")]
-	async fn get_platform() -> String;
-
 	#[taurpc(alias = "getArch")]
 	async fn get_arch() -> String;
 
@@ -25,6 +22,9 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getType")]
 	async fn get_type() -> String;
+
+	#[taurpc(alias = "getPlatform")]
+	async fn get_platform() -> String;
 
 	#[taurpc(alias = "getVersion")]
 	async fn get_version() -> String;
@@ -49,10 +49,6 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		tauri::is_dev()
 	}
 
-	async fn get_platform(self) -> String {
-		platform().to_string()
-	}
-
 	async fn get_arch(self) -> String {
 		arch().to_string()
 	}
@@ -67,6 +63,10 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 
 	async fn get_type(self) -> String {
 		type_().to_string()
+	}
+
+	async fn get_platform(self) -> String {
+		platform().to_string()
 	}
 
 	async fn get_version(self) -> String {

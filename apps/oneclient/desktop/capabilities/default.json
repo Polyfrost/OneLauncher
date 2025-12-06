@@ -38,6 +38,13 @@
 		"fs:allow-data-read-recursive",
 		"fs:allow-data-write-recursive",
 
-		"os:default"
+		"os:allow-arch",
+		"os:deny-exe-extension",
+		"os:allow-family",
+		"os:deny-hostname",
+		"os:allow-locale",
+		"os:allow-os-type",
+		"os:allow-platform",
+		"os:allow-version"
 	]
 }

@@ -4,20 +4,20 @@ use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::modpack::data::ModpackArchive;
 use onelauncher_core::entity::clusters;
 use onelauncher_core::error::LauncherResult;
-use tauri::Runtime;
 
 use crate::oneclient::bundles::BundlesManager;
+use crate::oneclient::clusters::{OnlineClusterManifest, get_data_storage_versions};
 
 #[taurpc::procedures(path = "oneclient", export_to = "../frontend/src/bindings.gen.ts")]
 pub trait OneClientApi {
-	#[taurpc(alias = "openDevTools")]
-	async fn open_dev_tools<R: Runtime>(webview_window: tauri::WebviewWindow<R>);
-
 	#[taurpc(alias = "getClustersGroupedByMajor")]
 	async fn get_clusters_grouped_by_major() -> LauncherResult<HashMap<u32, Vec<clusters::Model>>>;
 
 	#[taurpc(alias = "getBundlesFor")]
 	async fn get_bundles_for(cluster_id: ClusterId) -> LauncherResult<Vec<ModpackArchive>>;
+
+	#[taurpc(alias = "getVersions")]
+	async fn get_versions() -> LauncherResult<OnlineClusterManifest>;
 }
 
 #[taurpc::ipc_type]
@@ -25,11 +25,6 @@ pub struct OneClientApiImpl;
 
 #[taurpc::resolvers]
 impl OneClientApi for OneClientApiImpl {
-	async fn open_dev_tools<R: Runtime>(self, webview_window: tauri::WebviewWindow<R>) {
-		#[cfg(feature = "devtools")]
-		webview_window.open_devtools();
-	}
-
 	async fn get_clusters_grouped_by_major(
 		self,
 	) -> LauncherResult<HashMap<u32, Vec<clusters::Model>>> {
@@ -71,5 +66,9 @@ impl OneClientApi for OneClientApiImpl {
 			.await?;
 
 		Ok(bundles)
+	}
+
+	async fn get_versions(self) -> LauncherResult<OnlineClusterManifest> {
+		get_data_storage_versions().await
 	}
 }

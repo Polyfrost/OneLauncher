@@ -20,11 +20,16 @@ function useTabs() {
 
 interface TabsProps {
 	defaultValue: string;
-	children: ReactNode;
+	onTabChange?: (value: string) => void;
+	children: React.ReactNode;
 }
 
-export function Tabs({ defaultValue, children }: TabsProps) {
-	const [activeTab, setActiveTab] = useState(defaultValue);
+export function Tabs({ defaultValue, onTabChange, children }: TabsProps) {
+	const [activeTab, setActiveTabInternal] = useState(defaultValue);
+	const setActiveTab = (value: string) => {
+		setActiveTabInternal(value)
+		if (onTabChange) onTabChange(value)
+	}
 
 	return (
 		<TabsContext.Provider value={{ activeTab, setActiveTab }}>
@@ -33,8 +38,10 @@ export function Tabs({ defaultValue, children }: TabsProps) {
 	);
 }
 
+
 interface TabListProps extends HTMLAttributes<HTMLDivElement> {
 	floating?: boolean;
+	height?: boolean;
 	ref?: Ref<HTMLDivElement>;
 }
 
@@ -42,10 +49,11 @@ export function TabList({
 	className,
 	children,
 	floating = false,
+	height = false,
 	ref,
 }: TabListProps) {
 	return (
-		<div className="pointer-events-none sticky top-0 z-10 min-h-[74px] h-[74px] max-h-[74px] w-full" ref={ref}>
+		<div className={twMerge("pointer-events-none sticky top-0 z-10 w-full", height ? "min-h-[74px] h-[74px] max-h-[74px]" : "")} ref={ref}>
 			<div
 				className={twMerge(
 					'pointer-events-auto flex flex-row gap-2 border border-transparent bg-page-elevated transition-all',
@@ -101,7 +109,7 @@ interface TabPanelProps extends HTMLAttributes<HTMLDivElement> {
 	value: string;
 }
 
-export function TabPanel({ children, value, ...rest }: TabPanelProps) {
+export function TabPanel({ children, value, className, ...rest }: TabPanelProps) {
 	const { activeTab } = useTabs();
 
 	if (activeTab !== value)
@@ -109,7 +117,7 @@ export function TabPanel({ children, value, ...rest }: TabPanelProps) {
 
 	return (
 		<div
-			className="bg-page-elevated px-3 pt-3 w-full rounded-2xl h-full"
+			className={twMerge("bg-page-elevated px-3 pt-3 w-full rounded-2xl h-full", className)}
 			role="tabpanel"
 			{...rest}
 		>

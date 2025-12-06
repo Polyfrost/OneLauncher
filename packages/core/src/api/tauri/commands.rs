@@ -1,6 +1,6 @@
 use crate::api::packages::data::{
-	ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion, PackageAuthor, SearchQuery,
-	SearchResult,
+	ExternalPackage, ManagedPackage, ManagedPackageBody, ManagedUser, ManagedVersion,
+	PackageAuthor, SearchQuery, SearchResult,
 };
 use crate::api::packages::modpack::data::ModpackArchive;
 use crate::api::packages::provider::ProviderExt;
@@ -182,6 +182,14 @@ pub trait TauriLauncherApi {
 		cluster_id: ClusterId,
 		skip_compatibility: Option<bool>,
 	) -> LauncherResult<packages::Model>;
+
+	#[taurpc(alias = "downloadExternalPackage")]
+	async fn download_external_package(
+		package: ExternalPackage,
+		cluster_id: ClusterId,
+		force: Option<bool>,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<Option<packages::Model>>;
 
 	#[taurpc(alias = "getUsersFromAuthor")]
 	async fn get_users_from_author(
@@ -697,6 +705,29 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		let model = api::packages::download_package(&package, &version, None, None).await?;
 
 		api::packages::link_package(&model, &cluster, skip_compatibility).await?;
+
+		Ok(model)
+	}
+
+	async fn download_external_package(
+		self,
+		package: ExternalPackage,
+		cluster_id: ClusterId,
+		force: Option<bool>,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<Option<packages::Model>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		let model = api::packages::download_external_package(
+			&package,
+			&cluster,
+			force,
+			skip_compatibility,
+			None,
+		)
+		.await?;
 
 		Ok(model)
 	}

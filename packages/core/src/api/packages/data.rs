@@ -89,6 +89,15 @@ pub struct ExternalPackage {
 }
 
 #[onelauncher_macro::specta]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackageOverrides {
+	pub icon: Option<String>,
+	pub name: Option<String>,
+	pub authors: Option<Vec<String>>,
+	pub description: Option<String>,
+}
+
+#[onelauncher_macro::specta]
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedPackage {
@@ -298,7 +307,7 @@ pub enum PackageStatus {
 	#[default]
 	#[serde(alias = "approved")]
 	Active,
-	#[serde(alias = "archived", alias = "inactive")]
+	#[serde(alias = "archived", alias = "inactive", alias = "unlisted")]
 	Abandoned,
 }
 

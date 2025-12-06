@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::api::cluster::ClusterError;
-use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageSide};
+use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageOverrides, PackageSide};
 use crate::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind, ModpackManifest,
 };
@@ -281,9 +281,11 @@ pub(super) async fn copy_overrides_folder(
 }
 
 async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
+	#[derive(Clone)]
 	struct ToFetch {
 		project_id: String,
 		version_id: String,
+		overrides: Option<PackageOverrides>,
 	}
 
 	let mut to_fetch: Vec<ToFetch> = Vec::new();
@@ -314,6 +316,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				to_fetch.push(ToFetch {
 					project_id: project_id.to_string(),
 					version_id: version_id.to_string(),
+					overrides: file.overrides.clone(),
 				});
 			} else {
 				tracing::error!("invalid modrinth file URL: '{}'", url);
@@ -345,6 +348,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 					size: file.file_size,
 					package_type,
 				}),
+				overrides: file.overrides.clone(),
 				enabled: true,
 			});
 		}
@@ -374,9 +378,15 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 
 	for fetched_pkg in managed_packages {
 		if let Some(version) = version_map.remove(&fetched_pkg.id) {
+			let overrides = to_fetch
+				.iter()
+				.find(|f| f.project_id == fetched_pkg.id)
+				.and_then(|f| f.overrides.clone());
+
 			files.push(ModpackFile {
 				kind: ModpackFileKind::Managed((fetched_pkg, version)),
 				enabled: true,
+				overrides,
 			});
 		} else {
 			tracing::error!("no version found for managed package '{}'", fetched_pkg.id);
@@ -405,6 +415,8 @@ pub(super) struct MrPackFile {
 	pub env: MrPackFileEnv,
 	pub downloads: Vec<String>,
 	pub file_size: usize,
+	#[serde(default)]
+	pub overrides: Option<PackageOverrides>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

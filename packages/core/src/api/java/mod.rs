@@ -447,16 +447,20 @@ pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathB
 
 	#[cfg(target_os = "macos")]
 	{
-		let java_version = package
-			.java_version
-			.iter()
-			.map(|v| v.to_string())
-			.collect::<Vec<_>>()
-			.join(".");
-		base_path = base_path.join(format!("zulu-{java_version}.jre"));
+		let java_version = package.java_version.first().unwrap().to_string();
+		base_path = base_path.join(format!("zulu-{java_version}.jre"))
 	}
 
 	base_path = base_path.join(get_java_bin());
+
+	#[cfg(target_os = "macos")]
+	{
+		let _ = tokio::process::Command::new("chmod")
+			.arg("755")
+			.arg(&base_path)
+			.output()
+			.await;
+	}
 
 	Ok(base_path)
 }

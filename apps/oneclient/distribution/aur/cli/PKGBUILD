@@ -1,8 +1,8 @@
-pkgname=onelauncher-bin
+pkgname=oneclient-bin
 pkgver=0.1.0
 pkgrel=2
 pkgdesc='Next-generation open source Minecraft launcher'
-url='https://polyfrost.org/launcher'
+url='https://polyfrost.org/projects/oneclient'
 arch=('x86_64')
 license=('GPL3')
 
@@ -14,9 +14,9 @@ depends=(
 optdepends=(
     'xorg-xrandr: very legacy minecraft versions'
 )
-provides=('onelauncher')
-conflicts=('onelauncher')
-source=("https://launcher.polyfrost.org/versions/${pkgver}/linux/onelauncher_${pkgver}_amd64.deb")
+provides=('oneclient')
+conflicts=('oneclient')
+source=("https://oneclient.polyfrost.org/versions/${pkgver}/linux/OneClient_${pkgver}_amd64.deb")
 sha256sums=('')
 
 build() {

@@ -98,6 +98,7 @@ sanitize-filename = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }
+tauri-plugin-os = { workspace = true }
 taurpc = { workspace = true, optional = true }
 
 # features[specta]

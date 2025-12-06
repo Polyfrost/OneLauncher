@@ -1,5 +1,5 @@
 import type { ButtonProps } from '@onelauncher/common/components';
-import { NoAccountPopup, Overlay } from '@/components';
+import { KillMinecraft, NoAccountPopup, Overlay } from '@/components';
 import { useIsRunning } from '@/hooks/useClusters';
 import { useLaunchCluster } from '@/hooks/useLaunchCluster';
 import { bindings } from '@/main';
@@ -32,7 +32,7 @@ export function LaunchButton({
 	const [open, setOpen] = useState<boolean>(false);
 
 	const launch = () => {
-		if (currentAccount === null) {
+		if (currentAccount === null || isRunning) {
 			setOpen(true);
 		}
 		else {
@@ -45,7 +45,7 @@ export function LaunchButton({
 		<Overlay.Trigger isOpen={open} onOpenChange={setOpen}>
 			<Button
 				className={launchButtonVariants({ isRunning, className })}
-				isDisabled={isDisabled || isRunning}
+				isDisabled={isDisabled}
 				onPress={launch}
 				{...rest}
 			>
@@ -53,7 +53,7 @@ export function LaunchButton({
 			</Button>
 
 			<Overlay>
-				<NoAccountPopup />
+				{isRunning ? <KillMinecraft setOpen={setOpen} /> : <NoAccountPopup />}
 			</Overlay>
 		</Overlay.Trigger>
 	);

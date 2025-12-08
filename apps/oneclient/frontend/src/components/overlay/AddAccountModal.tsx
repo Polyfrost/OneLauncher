@@ -35,11 +35,11 @@ export function AddAccountModalButton() {
 	return (
 		profile
 			? (
-				<>
-					<AccountRow profile={profile} />
-					<Overlay.Buttons buttons={[{ color: 'primary', children: 'Close', slot: 'close' }]} />
-				</>
-			)
+					<>
+						<AccountRow profile={profile} />
+						<Overlay.Buttons buttons={[{ color: 'primary', children: 'Close', slot: 'close' }]} />
+					</>
+				)
 			: <Overlay.Buttons buttons={[{ color: 'primary', children: 'Add Account', isPending, onClick }]} />
 	);
 }

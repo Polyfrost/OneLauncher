@@ -5,6 +5,16 @@ import { useCommandMut } from '@onelauncher/common';
 import { useQueryClient } from '@tanstack/react-query';
 
 export function AddAccountModal() {
+	return (
+		<Overlay.Dialog>
+			<Overlay.Title>Add Account</Overlay.Title>
+			<p className="text-fg-secondary">Add a new account to OneClient</p>
+			<AddAccountModalButton />
+		</Overlay.Dialog>
+	);
+}
+
+export function AddAccountModalButton() {
 	const queryClient = useQueryClient();
 
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
@@ -23,18 +33,14 @@ export function AddAccountModal() {
 	};
 
 	return (
-		<Overlay.Dialog>
-			<Overlay.Title>Add Account</Overlay.Title>
-			<p className="text-fg-secondary">Add a new account to OneClient</p>
-			{profile
-				? (
-						<>
-							<AccountRow profile={profile} />
-							<Overlay.Buttons buttons={[{ color: 'primary', children: 'Close', slot: 'close' }]} />
-						</>
-					)
-				: <Overlay.Buttons buttons={[{ color: 'primary', children: 'Add Account', isPending, onClick }]} />}
-		</Overlay.Dialog>
+		profile
+			? (
+				<>
+					<AccountRow profile={profile} />
+					<Overlay.Buttons buttons={[{ color: 'primary', children: 'Close', slot: 'close' }]} />
+				</>
+			)
+			: <Overlay.Buttons buttons={[{ color: 'primary', children: 'Add Account', isPending, onClick }]} />
 	);
 }
 

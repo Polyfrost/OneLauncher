@@ -301,26 +301,8 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'events':'{"message":["event"],"ingress":["event"],"process":["event"]}', 'oneclient':'{"getVersions":[],"getBundlesFor":["cluster_id"],"getClustersGroupedByMajor":[]}', 'debug':'{"getArch":[],"getVersion":[],"getFamily":[],"getCommitHash":[],"getBuildTimestamp":[],"getLocale":[],"openDevTools":[],"isInDev":[],"getType":[],"getPlatform":[]}', 'core':'{"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"fetchLoggedInProfile":["access_token"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"removeCape":["access_token"],"getLogs":["id"],"getUsers":[],"getGameVersions":[],"readSettings":[],"getPackage":["provider","slug"],"fetchMinecraftProfile":["uuid"],"removeCluster":["id"],"writeSettings":["setting"],"updateClusterById":["id","request"],"getPackageBody":["provider","body"],"convertUsernameUUID":["username_uuid"],"open":["input"],"isClusterRunning":["cluster_id"],"getRunningProcessesByClusterId":["cluster_id"],"getScreenshots":["id"],"removeUser":["uuid"],"installModpack":["modpack","cluster_id"],"getUsersFromAuthor":["provider","author"],"changeCape":["access_token","cape_uuid"],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"changeSkin":["access_token","skin_url","skin_variant"],"getClusters":[],"launchCluster":["id","uuid"],"createCluster":["options"],"getProfileOrDefault":["name"],"downloadExternalPackage":["package","cluster_id","force","skip_compatibility"],"openMsaLogin":[],"getWorlds":["id"],"getLogByName":["id","name"],"getRunningProcesses":[],"setDefaultUser":["uuid"],"getGlobalProfile":[],"getClusterById":["id"],"getLoadersForVersion":["mc_version"],"createSettingsProfile":["name"],"searchPackages":["provider","query"],"killProcess":["pid"],"getDefaultUser":["fallback"],"updateClusterProfile":["name","profile"],"getUser":["uuid"],"getMultiplePackages":["provider","slugs"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}' }
-export type Router = { 'debug': { openDevTools: () => Promise<void>, 
-isInDev: () => Promise<boolean>, 
-getArch: () => Promise<string>, 
-getFamily: () => Promise<string>, 
-getLocale: () => Promise<string | null>, 
-getType: () => Promise<string>, 
-getPlatform: () => Promise<string>, 
-getVersion: () => Promise<string>, 
-getCommitHash: () => Promise<string>, 
-getBuildTimestamp: () => Promise<string> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
-'oneclient': { getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
-getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]>, 
-getVersions: () => Promise<OnlineClusterManifest> },
-'folders': { fromCluster: (folderName: string) => Promise<string>, 
-openCluster: (folderName: string) => Promise<null> },
-'core': { getClusters: () => Promise<ClusterModel[]>, 
+const ARGS_MAP = { 'folders':'{"openCluster":["folder_name"],"fromCluster":["folder_name"]}', 'oneclient':'{"getBundlesFor":["cluster_id"],"getClustersGroupedByMajor":[],"getVersions":[]}', 'core':'{"getGameVersions":[],"createCluster":["options"],"getWorlds":["id"],"openMsaLogin":[],"readSettings":[],"killProcess":["pid"],"getPackage":["provider","slug"],"removeCape":["access_token"],"launchCluster":["id","uuid"],"getLogs":["id"],"createSettingsProfile":["name"],"removeUser":["uuid"],"getPackageBody":["provider","body"],"installModpack":["modpack","cluster_id"],"removeCluster":["id"],"getGlobalProfile":[],"setDiscordRPCMessage":["message"],"getProfileOrDefault":["name"],"getClusterById":["id"],"setDefaultUser":["uuid"],"getScreenshots":["id"],"getLogByName":["id","name"],"getRunningProcessesByClusterId":["cluster_id"],"getUser":["uuid"],"getRunningProcesses":[],"getLoadersForVersion":["mc_version"],"searchPackages":["provider","query"],"getUsersFromAuthor":["provider","author"],"fetchMinecraftProfile":["uuid"],"fetchLoggedInProfile":["access_token"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"changeSkin":["access_token","skin_url","skin_variant"],"changeCape":["access_token","cape_uuid"],"convertUsernameUUID":["username_uuid"],"getDefaultUser":["fallback"],"isClusterRunning":["cluster_id"],"downloadExternalPackage":["package","cluster_id","force","skip_compatibility"],"updateClusterProfile":["name","profile"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"writeSettings":["setting"],"open":["input"],"getMultiplePackages":["provider","slugs"],"updateClusterById":["id","request"],"getClusters":[],"getUsers":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"]}', 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'debug':'{"openDevTools":[],"getFamily":[],"getType":[],"getPlatform":[],"getBuildTimestamp":[],"getCommitHash":[],"getLocale":[],"getVersion":[],"isInDev":[],"getArch":[]}' }
+export type Router = { 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
 createCluster: (options: CreateCluster) => Promise<ClusterModel>, 
@@ -364,7 +346,26 @@ changeSkin: (accessToken: string, skinUrl: string, skinVariant: SkinVariant) => 
 changeCape: (accessToken: string, capeUuid: string) => Promise<MojangFullPlayerProfile>, 
 removeCape: (accessToken: string) => Promise<MojangFullPlayerProfile>, 
 convertUsernameUUID: (usernameUuid: string) => Promise<MowojangProfile>, 
-open: (input: string) => Promise<null> } };
+setDiscordRPCMessage: (message: string) => Promise<null>, 
+open: (input: string) => Promise<null> },
+'oneclient': { getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
+getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]>, 
+getVersions: () => Promise<OnlineClusterManifest> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
+openCluster: (folderName: string) => Promise<null> },
+'debug': { openDevTools: () => Promise<void>, 
+isInDev: () => Promise<boolean>, 
+getArch: () => Promise<string>, 
+getFamily: () => Promise<string>, 
+getLocale: () => Promise<string | null>, 
+getType: () => Promise<string>, 
+getPlatform: () => Promise<string>, 
+getVersion: () => Promise<string>, 
+getCommitHash: () => Promise<string>, 
+getBuildTimestamp: () => Promise<string> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> } };
 
 
 export type { InferCommandOutput }

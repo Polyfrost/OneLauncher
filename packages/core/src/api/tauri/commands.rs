@@ -248,6 +248,12 @@ pub trait TauriLauncherApi {
 	) -> LauncherResult<crate::utils::minecraft::MowojangProfile>;
 	// endregion: minecraft
 
+	// MARK: API: discord RPC
+	// region: discord RPC
+	#[taurpc(alias = "setDiscordRPCMessage")]
+	async fn set_discord_rpc_message(message: String) -> LauncherResult<()>;
+	// endregion: discord RPC
+
 	// MARK: API: Other
 	async fn open(input: String) -> LauncherResult<()>;
 }
@@ -814,6 +820,22 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		crate::utils::minecraft::convert_username_uuid(&username_uuid).await
 	}
 	// endregion: minecraft
+
+	// MARK: Impl: discord RPC
+	// region: discord RPC
+	async fn set_discord_rpc_message(self, message: String) -> LauncherResult<()> {
+		let state = State::get().await?;
+		if let Some(discord) = &state.rpc {
+			if !state.settings.read().await.discord_enabled {
+				discord.clear_activity().await;
+				return Ok(());
+			}
+			discord.set_message(&message, None).await;
+		}
+
+		Ok(())
+	}
+	// endregion: discord RPC
 
 	// MARK: Impl: Other
 	// region: other

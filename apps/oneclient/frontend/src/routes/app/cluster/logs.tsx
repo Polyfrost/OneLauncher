@@ -16,7 +16,7 @@ function RouteComponent() {
 
 	const { data: fileNames } = useCommandSuspense(['getLogs', cluster.id], () => bindings.core.getLogs(cluster.id));
 
-	const [activeFileName, setActiveFileName] = useState<Key | undefined>(fileNames[0] || undefined);
+	const [activeFileName, setActiveFileName] = useState<Key | null>(fileNames[0] || null);
 
 	return (
 		<SheetPage.Content>

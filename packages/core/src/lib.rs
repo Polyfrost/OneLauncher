@@ -1,6 +1,9 @@
 #![feature(slice_as_array)]
 #![allow(clippy::struct_excessive_bools)]
 
+shadow_rs::shadow!(build);
+pub use build::*;
+
 use api::proxy::LauncherProxy;
 use error::LauncherResult;
 pub use logger::start_logger;

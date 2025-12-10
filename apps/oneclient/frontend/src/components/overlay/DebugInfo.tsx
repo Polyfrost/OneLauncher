@@ -12,9 +12,10 @@ export interface DebugInfoData {
 	family: string;
 	locale: string;
 	type: string;
-	version: string;
+	osVersion: string;
 	commitHash: string;
 	buildTimestamp: string;
+	buildVersion: string;
 }
 
 export function useDebugInfo(): DebugInfoArray {
@@ -25,9 +26,10 @@ export function useDebugInfo(): DebugInfoArray {
 		family: 'UNKNOWN',
 		locale: 'UNKNOWN',
 		type: 'UNKNOWN',
-		version: 'UNKNOWN',
+		osVersion: 'UNKNOWN',
 		commitHash: 'UNKNOWN',
 		buildTimestamp: 'UNKNOWN',
+		buildVersion: 'UNKNOWN',
 	});
 
 	useEffect(() => {
@@ -39,9 +41,10 @@ export function useDebugInfo(): DebugInfoArray {
 				family,
 				locale,
 				type,
-				version,
+				osVersion,
 				commitHash,
 				buildTimestamp,
+				buildVersion,
 			] = await Promise.all([
 				bindings.debug.isInDev(),
 				bindings.debug.getPlatform(),
@@ -49,9 +52,10 @@ export function useDebugInfo(): DebugInfoArray {
 				bindings.debug.getFamily(),
 				bindings.debug.getLocale(),
 				bindings.debug.getType(),
-				bindings.debug.getVersion(),
-				bindings.debug.getCommitHash(),
+				bindings.debug.getOsVersion(),
+				bindings.debug.getGitCommitHash(),
 				bindings.debug.getBuildTimestamp(),
+				bindings.debug.getPackageVersion(),
 			]);
 
 			setDevInfo({
@@ -61,9 +65,10 @@ export function useDebugInfo(): DebugInfoArray {
 				family,
 				locale: locale ?? 'UNKNOWN',
 				type,
-				version,
+				osVersion,
 				commitHash,
-				buildTimestamp,
+				buildTimestamp: new Date(buildTimestamp).getTime().toString(),
+				buildVersion,
 			});
 		};
 
@@ -77,9 +82,10 @@ export function useDebugInfo(): DebugInfoArray {
 		{ title: 'Family', value: devInfo.family },
 		{ title: 'Locale', value: devInfo.locale },
 		{ title: 'Type', value: devInfo.type },
-		{ title: 'Version', value: devInfo.version },
+		{ title: 'Os Version', value: devInfo.osVersion },
 		{ title: 'Commit Hash', value: devInfo.commitHash },
 		{ title: 'Build Timestamp', value: devInfo.buildTimestamp },
+		{ title: 'Version', value: devInfo.buildVersion },
 	];
 }
 
@@ -87,7 +93,7 @@ export function copyDebugInfo(debugInfo: DebugInfoArray) {
 	const timestamp = Math.floor(new Date().getTime() / 1000);
 	const lines = [`**Data exported at:** <t:${timestamp}> (\`${timestamp}\`)`, ...debugInfo.map((lineData) => {
 		if (lineData.title === 'Build Timestamp')
-			return `**${lineData.title}:** <t:${lineData.value}> (\`${lineData.value}\`)`;
+			return `**${lineData.title}:** <t:${Math.floor(Number(lineData.value) / 1000)}> (\`${Math.floor(Number(lineData.value) / 1000)}\`)`;
 		return `**${lineData.title}:** \`${lineData.value}\``;
 	})];
 	writeText(lines.join('\n'));
@@ -111,7 +117,7 @@ export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
 				{debugInfo.map((lineData) => {
 					let line = '';
 					if (lineData.title === 'Build Timestamp')
-						line = `${lineData.title}: ${new Date(Number(lineData.value) * 1000)}`;
+						line = `${lineData.title}: ${new Date(Number(lineData.value))}`;
 					else line = `${lineData.title}: ${lineData.value}`;
 
 					return <p key={lineData.title}>{line}</p>;

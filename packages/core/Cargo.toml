@@ -32,6 +32,9 @@ gui = []
 [lints]
 workspace = true
 
+[build-dependencies]
+shadow-rs = { workspace = true, features = ["default"] }
+
 [dependencies]
 # core
 interpulse = { workspace = true }
@@ -74,6 +77,7 @@ paste = { workspace = true }
 byteorder = { workspace = true }
 merge = { workspace = true }
 opener = { workspace = true }
+shadow-rs = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }

@@ -1,8 +1,6 @@
 use tauri::Runtime;
 use tauri_plugin_os::{arch, family, locale, platform, type_, version};
 
-use crate::error::LauncherResult;
-
 #[taurpc::procedures(path = "debug")]
 pub trait TauriLauncherDebugApi {
 	#[taurpc(alias = "openDevTools")]
@@ -26,14 +24,17 @@ pub trait TauriLauncherDebugApi {
 	#[taurpc(alias = "getPlatform")]
 	async fn get_platform() -> String;
 
-	#[taurpc(alias = "getVersion")]
+	#[taurpc(alias = "getOsVersion")]
 	async fn get_version() -> String;
 
-	#[taurpc(alias = "getCommitHash")]
-	async fn get_commit_hash() -> LauncherResult<String>;
+	#[taurpc(alias = "getGitCommitHash")]
+	async fn get_git_commit_hash() -> String;
 
 	#[taurpc(alias = "getBuildTimestamp")]
-	async fn get_build_timestamp() -> LauncherResult<String>;
+	async fn get_build_timestamp() -> String;
+
+	#[taurpc(alias = "getPackageVersion")]
+	async fn get_package_version() -> String;
 }
 
 #[taurpc::ipc_type]
@@ -73,13 +74,15 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		version().to_string()
 	}
 
-	async fn get_commit_hash(self) -> LauncherResult<String> {
-		let hash = std::env::var("GIT_HASH").map_err(anyhow::Error::from)?;
-		Ok(hash)
+	async fn get_git_commit_hash(self) -> String {
+		crate::build::COMMIT_HASH.to_string()
 	}
 
-	async fn get_build_timestamp(self) -> LauncherResult<String> {
-		let timestamp = std::env::var("BUILD_TIMESTAMP").map_err(anyhow::Error::from)?;
-		Ok(timestamp)
+	async fn get_build_timestamp(self) -> String {
+		crate::build::BUILD_TIME.to_string()
+	}
+
+	async fn get_package_version(self) -> String {
+		crate::build::PKG_VERSION.to_string()
 	}
 }

@@ -1,6 +1,7 @@
 import type { ButtonProps } from '@onelauncher/common/components';
 import type { LinkProps, RegisteredRouter } from '@tanstack/react-router';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
+import { AccountAvatar, AccountPopup, Overlay, SuperSecretDevOptions } from '@/components';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Popup } from '@onelauncher/common/components';
@@ -8,9 +9,6 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { Window } from '@tauri-apps/api/window';
 import { MinusIcon, Settings02Icon, SquareIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { twMerge } from 'tailwind-merge';
-import { AccountAvatar } from './AccountAvatar';
-import { Overlay, SuperSecretDevOptions } from './overlay';
-import { AccountPopup } from './overlay/AccountPopup';
 
 export function Navbar() {
 	const { data: currentAccount } = useCommand(['getDefaultUser'], () => bindings.core.getDefaultUser(true));

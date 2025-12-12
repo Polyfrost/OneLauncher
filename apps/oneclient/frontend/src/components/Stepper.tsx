@@ -11,7 +11,7 @@ export function Stepper({ steps, currentStepIndex }: VerticalStepperProps) {
 		<div className="max-w-md mx-auto">
 			{steps.map((step, index) => (
 				<div
-					className={twMerge('transition-all duration-300 relative flex items-center cursor-pointer py-2 pl-4 border-l-3 border-gray-600 font-medium text-gray-400 text-base data-active:border-brand data-active:text-white data-active:text-lg data-complete:border-brand', index === 0 ? 'pt-0' : '', index === steps.length - 1 ? 'pb-0' : '')}
+					className={twMerge('after:transition-all after:duration-300 after:text-brand transition-all duration-300 relative flex items-center cursor-pointer py-2 pl-4 font-medium text-gray-400 text-base partial-leftline-0%  data-active:text-white data-active:text-lg data-active:partial-leftline-100% data-complete:partial-leftline-100%')}
 					data-active={index === currentStepIndex || null}
 					data-complete={index < currentStepIndex || null}
 					key={index}

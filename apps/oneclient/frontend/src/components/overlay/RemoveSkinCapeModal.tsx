@@ -1,5 +1,5 @@
+import { Overlay } from '@/components';
 import { Button } from '@onelauncher/common/components';
-import { Overlay } from './Overlay';
 
 export function RemoveSkinCapeModal({ onPress }: { onPress: () => void }) {
 	return (

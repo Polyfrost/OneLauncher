@@ -196,6 +196,9 @@ pub trait TauriLauncherApi {
 		provider: Provider,
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>>;
+
+	#[taurpc(alias = "getLinkedPackages")]
+	async fn get_linked_packages(cluster_id: ClusterId) -> LauncherResult<Vec<packages::Model>>;
 	// endregion: package
 
 	// MARK: API: modpack
@@ -247,6 +250,12 @@ pub trait TauriLauncherApi {
 		username_uuid: String,
 	) -> LauncherResult<crate::utils::minecraft::MowojangProfile>;
 	// endregion: minecraft
+
+	// MARK: API: discord RPC
+	// region: discord RPC
+	#[taurpc(alias = "setDiscordRPCMessage")]
+	async fn set_discord_rpc_message(message: String) -> LauncherResult<()>;
+	// endregion: discord RPC
 
 	// MARK: API: Other
 	async fn open(input: String) -> LauncherResult<()>;
@@ -731,6 +740,19 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(model)
 	}
+
+	async fn get_linked_packages(
+		self,
+		cluster_id: ClusterId,
+	) -> LauncherResult<Vec<packages::Model>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		let model = api::packages::dao::get_linked_packages(&cluster).await?;
+
+		Ok(model)
+	}
 	// endregion: package
 
 	// MARK: Impl: modpack
@@ -814,6 +836,22 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		crate::utils::minecraft::convert_username_uuid(&username_uuid).await
 	}
 	// endregion: minecraft
+
+	// MARK: Impl: discord RPC
+	// region: discord RPC
+	async fn set_discord_rpc_message(self, message: String) -> LauncherResult<()> {
+		let state = State::get().await?;
+		if let Some(discord) = &state.rpc {
+			if !state.settings.read().await.discord_enabled {
+				discord.clear_activity().await;
+				return Ok(());
+			}
+			discord.set_message(&message, None).await;
+		}
+
+		Ok(())
+	}
+	// endregion: discord RPC
 
 	// MARK: Impl: Other
 	// region: other

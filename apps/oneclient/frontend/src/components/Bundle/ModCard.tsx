@@ -1,10 +1,10 @@
 import type { ClusterModel, ModpackFile, ModpackFileKind } from '@/bindings.gen';
 import MissingLogo from '@/assets/misc/missingLogo.svg';
+import { DownloadModButton, ModTag } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
-import { DownloadModButton, ModTag } from '.';
 
 export interface ModInfo {
 	name: string;

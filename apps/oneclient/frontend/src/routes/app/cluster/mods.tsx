@@ -1,5 +1,5 @@
-import type { ModCardContextApi } from '@/components/Bundle';
-import { ModCardContext, ModList } from '@/components/Bundle';
+import type { ModCardContextApi } from '@/components';
+import { ModCardContext, ModList } from '@/components';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';

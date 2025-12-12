@@ -1,6 +1,4 @@
-import { LoaderSuspense, Tab, TabList } from '@/components';
-import { LaunchButton } from '@/components/LaunchButton';
-import { SheetPage } from '@/components/SheetPage';
+import { LaunchButton, LoaderSuspense, SheetPage, Tab, TabList } from '@/components';
 import { useIsRunning } from '@/hooks/useClusters';
 import { bindings } from '@/main';
 import { prettifyLoader } from '@/utils/loaders';
@@ -128,7 +126,7 @@ function HeaderLarge() {
 				</Button>
 
 				<LaunchButton
-					clusterId={cluster.id}
+					cluster={cluster}
 					size="large"
 				/>
 			</div>
@@ -155,7 +153,7 @@ function HeaderSmall() {
 				</Button>
 
 				<LaunchButton
-					clusterId={cluster.id}
+					cluster={cluster}
 					color="primary"
 				/>
 			</div>

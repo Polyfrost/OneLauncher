@@ -1,6 +1,5 @@
 import type { Key } from 'react-aria-components';
-import { LoaderContainer, SheetPage, useSheetPageContext } from '@/components';
-import { LogViewer } from '@/components/LogViewer';
+import { LoaderContainer, LogViewer, SheetPage, useSheetPageContext } from '@/components';
 import { bindings } from '@/main';
 import { getMessageFromError, useCommand, useCommandSuspense } from '@onelauncher/common';
 import { Dropdown } from '@onelauncher/common/components';
@@ -17,7 +16,7 @@ function RouteComponent() {
 
 	const { data: fileNames } = useCommandSuspense(['getLogs', cluster.id], () => bindings.core.getLogs(cluster.id));
 
-	const [activeFileName, setActiveFileName] = useState<Key | undefined>(fileNames[0] || undefined);
+	const [activeFileName, setActiveFileName] = useState<Key | null>(fileNames[0] || null);
 
 	return (
 		<SheetPage.Content>

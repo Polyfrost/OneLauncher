@@ -1,9 +1,8 @@
+import { ModList, Overlay, useModCardContext } from '@/components';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useState } from 'react';
-import { ModList, useModCardContext } from '../Bundle';
-import { Overlay } from './Overlay';
 
 export function BundleModListModal({ clusterId, name }: { clusterId: number; name: string }) {
 	const { data: cluster } = useCommandSuspense(['getClusterById'], () => bindings.core.getClusterById(clusterId));

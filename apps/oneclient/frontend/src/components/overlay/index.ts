@@ -3,6 +3,7 @@ export * from './AddAccountModal';
 export * from './BundleModListModal';
 export * from './DebugInfo';
 export * from './ImportSkinModal';
+export * from './KillMinecraft';
 export * from './NoAccountPopup';
 export * from './Overlay';
 export * from './Popup';

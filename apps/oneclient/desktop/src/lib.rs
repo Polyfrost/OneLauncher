@@ -33,7 +33,7 @@ async fn initialize_core() -> LauncherResult<()> {
 		launcher_name: "OneClient".to_string(),
 		launcher_version: env!("CARGO_PKG_VERSION").to_string(),
 		launcher_website: "https://polyfrost.org/".to_string(),
-		discord_client_id: None, //Some(constants::DISCORD_CLIENT_ID.to_string()), // disabled for now
+		discord_client_id: Some(constants::DISCORD_CLIENT_ID.to_string()),
 		fetch_attempts: 3,
 		logger_filter: Some(format!(
 			"{}={level},onelauncher_core={level}",

@@ -2,6 +2,7 @@ import type { IngressType } from '@/bindings.gen';
 import type { ToastData, ToastId } from '@/utils/toast';
 import type { HTMLAttributes } from 'react';
 import type { ToastContentProps, ToastOptions } from 'react-toastify';
+import { Spinner } from '@/components';
 import { bindings } from '@/main';
 import { toast, toastUpdate } from '@/utils/toast';
 import { Button } from '@onelauncher/common/components';
@@ -9,7 +10,6 @@ import { AlertCircleIcon, AlertTriangleIcon, CheckCircleIcon, InfoCircleIcon, XC
 import { useEffect, useRef } from 'react';
 import { cssTransition, ToastContainer } from 'react-toastify';
 import { tv } from 'tailwind-variants';
-import { Spinner } from '../Spinner';
 import styles from './Toasts.module.css';
 
 const toastVariants = tv({

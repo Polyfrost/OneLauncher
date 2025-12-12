@@ -1,3 +1,4 @@
+import { Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
@@ -5,10 +6,6 @@ import { Link } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { BatteryEmptyIcon, Code02Icon, FolderIcon, LinkExternal01Icon, Truck01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
-import SettingsRow from '../SettingsRow';
-import SettingsSwitch from '../SettingSwitch';
-import { RawDebugInfo, useDebugInfo } from './DebugInfo';
-import { Overlay } from './Overlay';
 
 export function SuperSecretDevOptions() {
 	const { createSetting } = useSettings();

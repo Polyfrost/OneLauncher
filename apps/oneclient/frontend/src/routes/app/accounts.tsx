@@ -1,15 +1,13 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
 import type { ButtonProps } from '@onelauncher/common/components';
-import { AccountAvatar, DeleteAccountButton, ManageSkinButton, SheetPage, SkinViewer } from '@/components';
-import { AddAccountModal } from '@/components/overlay';
-import { Overlay } from '@/components/overlay/Overlay';
+import { AccountAvatar, AddAccountModal, DeleteAccountButton, ManageSkinButton, Overlay, SheetPage, SkinViewer } from '@/components';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { Button as AriaButton, DialogTrigger } from 'react-aria-components';
+import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 export const Route = createFileRoute('/app/accounts')({
@@ -166,7 +164,7 @@ function AddAccountButton({
 	size: ButtonProps['size'];
 }) {
 	return (
-		<DialogTrigger>
+		<Overlay.Trigger>
 			<Button color="secondary" size={size}>
 				Add Account
 			</Button>
@@ -174,6 +172,6 @@ function AddAccountButton({
 			<Overlay>
 				<AddAccountModal />
 			</Overlay>
-		</DialogTrigger>
+		</Overlay.Trigger>
 	);
 }

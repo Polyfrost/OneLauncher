@@ -8,7 +8,7 @@ export interface SettingsRowProps {
 	children?: JSX.Element;
 }
 
-function SettingsRow({ disabled, description, icon, title, children }: SettingsRowProps) {
+export function SettingsRow({ disabled, description, icon, title, children }: SettingsRowProps) {
 	return (
 		<div
 			className={`

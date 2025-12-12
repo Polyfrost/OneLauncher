@@ -1,12 +1,10 @@
-import { DebugInfo, Overlay } from '@/components/overlay';
-import SettingsRow from '@/components/SettingsRow';
-import SettingsSwitch from '@/components/SettingSwitch';
+import { DebugInfo, Overlay, SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import { Sidebar } from '@/routes/app/settings/route';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { BatteryEmptyIcon, BatteryFullIcon, Code02Icon, FileHeart02Icon, Truck01Icon } from '@untitled-theme/icons-react';
-import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/developer')({
 	component: RouteComponent,

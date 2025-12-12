@@ -30,7 +30,7 @@ impl Default for Settings {
 		Self {
 			global_game_settings: setting_profiles::Model::default_global_profile(),
 			allow_parallel_running_clusters: false,
-			discord_enabled: false,
+			discord_enabled: true,
 			seen_onboarding: false,
 			mod_list_use_grid: true,
 			parallel_mod_downloading: true,

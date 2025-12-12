@@ -1,6 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { LoaderSuspense, Navbar } from '@/components';
-import { GameBackground } from '@/components/GameBackground';
+import { GameBackground, LoaderSuspense, Navbar } from '@/components';
 import { useActiveCluster } from '@/hooks/useClusters';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
@@ -53,7 +52,7 @@ function AppShell({
 
 function BackgroundGradient() {
 	const cluster = useActiveCluster();
-	const versionInfo = getVersionInfoOrDefault(cluster?.mc_version);
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
 
 	return (
 		<div className="relative">
@@ -93,7 +92,7 @@ function BackgroundGradient() {
 						opacity: 0,
 						left: '-10%',
 					}}
-					key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
+					key={(cluster.mc_version) + (cluster.mc_loader)}
 				>
 					<GameBackground
 						className="absolute left-0 top-0 w-screen h-screen scale-110"

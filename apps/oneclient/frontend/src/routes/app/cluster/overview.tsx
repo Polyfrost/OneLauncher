@@ -1,4 +1,4 @@
-import { SheetPage } from '@/components/SheetPage';
+import { SheetPage } from '@/components';
 import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/cluster/overview')({

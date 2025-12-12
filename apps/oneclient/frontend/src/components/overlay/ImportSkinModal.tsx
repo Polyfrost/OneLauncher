@@ -1,6 +1,6 @@
+import { Overlay } from '@/components';
 import { Button, TextField } from '@onelauncher/common/components';
 import { useState } from 'react';
-import { Overlay } from './Overlay';
 
 export function ImportSkinModal({ importFromURL, importFromUsername }: { importFromURL: (url: string) => void; importFromUsername: (username: string) => void }) {
 	const [input, setInput] = useState<string>('');

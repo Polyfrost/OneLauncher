@@ -67,7 +67,7 @@ interface SidebarProps {
 	exact?: boolean;
 }
 
-function Sidebar(props: SidebarProps) {
+export function Sidebar(props: SidebarProps) {
 	const { base, links, exact } = props;
 
 	const navigate = useNavigate();

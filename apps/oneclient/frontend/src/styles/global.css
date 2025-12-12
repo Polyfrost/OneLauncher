@@ -21,6 +21,21 @@
 	}
 }
 
+@utility partial-leftline-* {
+	position: relative;
+
+	&::after {
+		content: "";
+		background: currentColor;
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 3px;
+		height: --spacing(--value(integer));
+		height: --value(percentage, [percentage]);
+	}
+}
+
 @theme {
 	/** border */
 	--color-component-border: #ffffff1A;
@@ -34,7 +49,7 @@
 	--radius-3xl: 2rem;
 }
 
-.prose-invert{
+.prose-invert {
 	--tw-prose-body: var(--color-fg-primary);
 	--tw-prose-headings: var(--color-fg-primary);
 	--tw-prose-bold: var(--color-fg-primary);

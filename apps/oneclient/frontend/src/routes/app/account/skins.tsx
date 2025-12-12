@@ -1,7 +1,5 @@
 import type { PlayerAnimation } from 'skinview3d';
-import { SheetPage, SkinViewer } from '@/components';
-import { ImportSkinModal, RemoveSkinCapeModal } from '@/components/overlay';
-import { Overlay } from '@/components/overlay/Overlay';
+import { ImportSkinModal, Overlay, RemoveSkinCapeModal, SheetPage, SkinViewer } from '@/components';
 import { bindings } from '@/main';
 import { getSkinUrl } from '@/utils/minecraft';
 import { toast } from '@/utils/toast';
@@ -12,7 +10,6 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { exists, mkdir, readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
-import { DialogTrigger } from 'react-aria-components';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
 
 interface Skin {
@@ -283,7 +280,7 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 			</div>
 
 			<div className="flex flex-row h-fit gap-2">
-				<DialogTrigger>
+				<Overlay.Trigger>
 					<Button className="border border-component-border rounded-xl bg-component-border w-[75px] h-[120px]" color="ghost">
 						<div className="flex flex-col justify-center items-center content-center h-full">
 							<PlusIcon className="scale-200" />
@@ -292,7 +289,7 @@ function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins,
 					<Overlay>
 						<ImportSkinModal importFromURL={importFromURL} importFromUsername={importFromUsername} />
 					</Overlay>
-				</DialogTrigger>
+				</Overlay.Trigger>
 				{skins.map(skinData => (
 					<RenderSkin
 						animation={animation}
@@ -358,7 +355,7 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-						<DialogTrigger>
+						<Overlay.Trigger>
 							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
 								<Trash01Icon className="group-hover:stroke-danger" />
 							</Button>
@@ -366,7 +363,7 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 							<Overlay>
 								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
 							</Overlay>
-						</DialogTrigger>
+						</Overlay.Trigger>
 					)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"

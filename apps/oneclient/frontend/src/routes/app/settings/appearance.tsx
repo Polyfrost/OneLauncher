@@ -1,11 +1,9 @@
-// import ScrollableContainer from '@/components/ScrollableContainer';
-import SettingsRow from '@/components/SettingsRow';
-import SettingsSwitch from '@/components/SettingSwitch';
+import { SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
+import { Sidebar } from '@/routes/app/settings/route';
 import { THEMES } from '@/utils/theming';
 import { createFileRoute } from '@tanstack/react-router';
 import { Monitor01Icon, PackageIcon, Speedometer04Icon } from '@untitled-theme/icons-react';
-import Sidebar from './route';
 
 export const Route = createFileRoute('/app/settings/appearance')({
 	component: RouteComponent,

@@ -1,5 +1,4 @@
-import { SheetPage } from '@/components';
-import SettingsRow from '@/components/SettingsRow';
+import { SettingsRow, SheetPage } from '@/components';
 import { useClusterProfile } from '@/hooks/useSettings';
 import { Switch, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';

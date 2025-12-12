@@ -64,9 +64,9 @@ function ReplaceVariables(template: string, variables: Record<string, any>) {
 
 function useDiscordRPC() {
 	const location = useLocation();
-	const clusterId = location.search.clusterId ?? 0
-	const provider = location.search.provider ?? 'Modrinth'
-	const packageId = location.search.packageId ?? '8pJYUDNi'
+	const clusterId = location.search.clusterId ?? 0;
+	const provider = location.search.provider ?? 'Modrinth';
+	const packageId = location.search.packageId ?? '8pJYUDNi';
 	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
 	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider, packageId));
 	useEffect(() => {

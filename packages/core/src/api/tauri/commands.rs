@@ -196,6 +196,9 @@ pub trait TauriLauncherApi {
 		provider: Provider,
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>>;
+
+	#[taurpc(alias = "getLinkedPackages")]
+	async fn get_linked_packages(cluster_id: ClusterId) -> LauncherResult<Vec<packages::Model>>;
 	// endregion: package
 
 	// MARK: API: modpack
@@ -734,6 +737,19 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			None,
 		)
 		.await?;
+
+		Ok(model)
+	}
+
+	async fn get_linked_packages(
+		self,
+		cluster_id: ClusterId,
+	) -> LauncherResult<Vec<packages::Model>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		let model = api::packages::dao::get_linked_packages(&cluster).await?;
 
 		Ok(model)
 	}

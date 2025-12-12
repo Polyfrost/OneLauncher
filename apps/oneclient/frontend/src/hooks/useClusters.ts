@@ -31,7 +31,7 @@ export function useActiveCluster() {
 
 	const { data: clusters } = useLastPlayedClusters();
 
-	return clusters.find(c => c.id === clusterId) ?? clusters.at(0);
+	return clusters.find(c => c.id === clusterId) ?? clusters[0];
 }
 
 export function useIsRunning(clusterId: number | undefined | null) {

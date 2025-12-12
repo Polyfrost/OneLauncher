@@ -126,7 +126,7 @@ function HeaderLarge() {
 				</Button>
 
 				<LaunchButton
-					clusterId={cluster.id}
+					cluster={cluster}
 					size="large"
 				/>
 			</div>
@@ -153,7 +153,7 @@ function HeaderSmall() {
 				</Button>
 
 				<LaunchButton
-					clusterId={cluster.id}
+					cluster={cluster}
 					color="primary"
 				/>
 			</div>

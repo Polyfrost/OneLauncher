@@ -103,6 +103,21 @@ function RouteComponent() {
 		});
 	}, [cluster, navigate]);
 
+	if (!cluster)
+		return (
+			<SheetPage
+				headerLarge={<HeaderLarge />}
+				headerSmall={<HeaderSmall />}
+			>
+				<div className="relative flex flex-row gap-4">
+					<SheetPage.Content className="sticky top-8 w-86 h-min flex flex-col p-2 gap-2 outline outline-ghost-overlay">
+						<p>Something wen't wrong while getting a cluster</p>
+						<p>Please reload and if this does not work please contact support</p>
+					</SheetPage.Content>
+				</div>
+			</SheetPage>
+		);
+
 	return (
 		<SheetPage
 			headerLarge={<HeaderLarge />}
@@ -137,7 +152,7 @@ function RouteComponent() {
 					<GameBackground className="aspect-video w-full rounded-xl outline-2 outline-ghost-overlay" name={versionInfo.backgroundName} />
 
 					<div className="flex flex-col px-4 pt-2 pb-4 gap-2">
-						<h2 className="text-xxl font-medium">Version {cluster?.mc_version}</h2>
+						<h2 className="text-xxl font-medium">Version {cluster.mc_version}</h2>
 						<p className="text-sm text-fg-secondary">{versionInfo.longDescription}</p>
 
 						{minorVersions.length > 1 && (
@@ -194,7 +209,7 @@ function RouteComponent() {
 						)}
 
 						<div className="w-full flex flex-row gap-4 mt-2">
-							<LaunchButton className="flex-1" clusterId={cluster?.id} size="large" />
+							<LaunchButton className="flex-1" cluster={cluster} size="large" />
 
 							<Button
 								className="flex-1"

@@ -39,7 +39,7 @@ function RouteComponent() {
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
 				{lastPlayedClusters.slice(0, 3).map(cluster => (
 					<RecentsCard
-						active={activeCluster?.id === cluster.id}
+						active={activeCluster.id === cluster.id}
 						key={cluster.folder_name}
 						loader={cluster.mc_loader}
 						onPress={() => setActiveClusterId(cluster.id)}
@@ -59,20 +59,11 @@ function RouteComponent() {
 	);
 }
 
-function ActiveClusterInfo({
-	cluster,
-}: {
-	cluster: ClusterModel | undefined;
-}) {
-	const versionInfo = getVersionInfoOrDefault(cluster?.mc_version);
-	const navigate = useNavigate({
-		from: Route.id,
-	});
+function ActiveClusterInfo({ cluster }: { cluster: ClusterModel }) {
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const navigate = useNavigate({ from: Route.id });
 
 	const viewCluster = () => {
-		if (!cluster)
-			return;
-
 		navigate({
 			to: '/app/cluster/overview',
 			search: {
@@ -92,14 +83,14 @@ function ActiveClusterInfo({
 				position: 'relative',
 				left: '-50%',
 			}}
-			key={(cluster?.mc_version ?? Math.random()) + (cluster?.mc_loader ?? '')}
+			key={(cluster.mc_version) + (cluster.mc_loader)}
 			transition={{ ease: 'backInOut', duration: 0.35 }}
 		>
-			<h1 className="text-6xl font-bold text-fg-primary">{cluster?.mc_version} {prettifyLoader(cluster?.mc_loader ?? 'vanilla')}</h1>
+			<h1 className="text-6xl font-bold text-fg-primary">{cluster.mc_version} {prettifyLoader(cluster.mc_loader)}</h1>
 			<p className="text-lg font-medium text-fg-secondary">{versionInfo.shortDescription}</p>
 
 			<div className="flex flex-row justify-center items-center gap-2">
-				<LaunchButton clusterId={cluster?.id} size="large" />
+				<LaunchButton cluster={cluster} size="large" />
 
 				<Button color="ghost" onPress={viewCluster} size="iconLarge">
 					<Settings04Icon />
@@ -173,7 +164,7 @@ function Card({
 			onPress={onPress}
 			style={blur
 				? {
-						// shitty hack because webkit breaks with css variables in its backdrop filter
+					// shitty hack because webkit breaks with css variables in its backdrop filter
 						backdropFilter: `blur(${BLUR})`,
 						WebkitBackdropFilter: `blur(${BLUR})`,
 						...style,

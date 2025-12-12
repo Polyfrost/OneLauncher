@@ -64,8 +64,11 @@ function ReplaceVariables(template: string, variables: Record<string, any>) {
 
 function useDiscordRPC() {
 	const location = useLocation();
-	const { data: cluster } = useCommand(['getClusterById'], () => bindings.core.getClusterById(location.search.clusterId ?? -1));
-	const { data: managedPackage } = useCommand(['getPackage'], () => bindings.core.getPackage(location.search.provider ?? 'Modrinth', location.search.packageId ?? '8pJYUDNi'));
+	const clusterId = location.search.clusterId ?? 0
+	const provider = location.search.provider ?? 'Modrinth'
+	const packageId = location.search.packageId ?? '8pJYUDNi'
+	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
+	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider, packageId));
 	useEffect(() => {
 		bindings.core.setDiscordRPCMessage(ReplaceVariables(ResolvedPathNames[location.pathname as URLPath], { clusterName: cluster?.name ?? 'UNKNOWN', packageName: managedPackage?.name ?? 'UNKNOWN' }));
 	}, [location.pathname, location.search.clusterId, cluster?.name, managedPackage?.name]);
@@ -95,7 +98,7 @@ function DevTools() {
 	return (
 		<TanStackDevtools
 			config={{
-				position: 'top-left',
+				position: 'bottom-left',
 			}}
 			plugins={[
 				{

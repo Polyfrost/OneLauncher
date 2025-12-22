@@ -4,7 +4,7 @@ import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
-import { BatteryEmptyIcon, Code02Icon, FolderIcon, LinkExternal01Icon, Truck01Icon } from '@untitled-theme/icons-react';
+import { BatteryEmptyIcon, Code02Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 
 export function SuperSecretDevOptions() {

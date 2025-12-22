@@ -20,6 +20,13 @@ export function SuperSecretDevOptions() {
 	}, []);
 
 	const openLauncherDir = () => bindings.core.open(launcherDir);
+	const logRunningProcesses = () => {
+		(async () => {
+			const running = await bindings.core.getRunningProcesses();
+			// eslint-disable-next-line no-console -- Designed to log
+			console.log(running);
+		})();
+	};
 
 	return (
 		<Overlay.Dialog>
@@ -30,26 +37,21 @@ export function SuperSecretDevOptions() {
 					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>
 
-				<SettingsRow description="Open Dev Tools" icon={<Code02Icon />} title="Open Dev Tools">
-					<Button onPress={bindings.debug.openDevTools} size="normal">Open</Button>
-				</SettingsRow>
-
 				<SettingsRow description="Use Parallel Mod Downloading for speed. This can create some issues sometimes" icon={<BatteryEmptyIcon />} title="Use Parallel Mod Downloading">
 					<SettingsSwitch setting={createSetting('parallel_mod_downloading')} />
 				</SettingsRow>
 
-				<SettingsRow description="Skip Onboarding" icon={<Truck01Icon />} title="Skip Onboarding">
+				<div className="grid grid-cols-3 gap-3 justify-items-center">
+					<Button onPress={bindings.debug.openDevTools} size="normal">Dev Tools</Button>
+
 					<Link to="/onboarding/finished">
-						<Button size="normal">Skip</Button>
+						<Button size="normal">Skip Onboarding</Button>
 					</Link>
-				</SettingsRow>
-				<SettingsRow description={launcherDir} icon={<FolderIcon />} title="Launcher Folder">
-					<Button onClick={openLauncherDir} size="normal">
-						<LinkExternal01Icon />
-						{' '}
-						Open
-					</Button>
-				</SettingsRow>
+
+					<Button onClick={openLauncherDir} size="normal">Open Launcher Data</Button>
+
+					<Button onClick={logRunningProcesses} size="normal">Console log processes</Button>
+				</div>
 			</div>
 
 			<RawDebugInfo debugInfo={debugInfo} />

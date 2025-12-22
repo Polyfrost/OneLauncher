@@ -1,11 +1,11 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager};
-use tokio::sync::{Mutex, Notify};
-use tokio::time::Instant;
+use tokio::sync::mpsc;
+use tokio::time::MissedTickBehavior;
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -33,28 +33,13 @@ impl ProxyTauri {
 			tauri::webview_version().unwrap_or_else(|_| "unknown".into())
 		);
 
+		let emitter = Arc::new(LauncherEventEmitter::new(handle.clone()));
+
 		Self {
-			emitter: Arc::new(LauncherEventEmitter::new(handle.clone())),
+			emitter: Arc::clone(&emitter),
 			handle,
-			ingress_queue: IngressQueue::new(),
+			ingress_queue: IngressQueue::new(Arc::clone(&emitter), Duration::from_millis(100)),
 		}
-		.init()
-	}
-
-	fn init(self) -> Self {
-		let ingress_queue = Arc::clone(&self.ingress_queue);
-		let emitter = Arc::clone(&self.emitter);
-
-		// spawn the processor on another thread
-		tokio::spawn(async move {
-			ingress_queue
-				.process_queue(move |payload| {
-					let _ = emitter.ingress(payload);
-				})
-				.await;
-		});
-
-		self
 	}
 }
 
@@ -71,7 +56,7 @@ impl LauncherProxy for ProxyTauri {
 
 		Ok(match event {
 			LauncherEvent::Ingress(ingress) => {
-				self.ingress_queue.push(ingress).await;
+				self.ingress_queue.push(ingress);
 
 				()
 			}
@@ -101,71 +86,52 @@ impl LauncherProxy for ProxyTauri {
 	}
 }
 
+#[derive(Debug)]
 pub struct IngressQueue {
-	queue: Mutex<VecDeque<IngressPayload>>,
-	last_sent: Mutex<HashMap<Uuid, Instant>>,
-	notify: Notify,
-	debounce: Duration,
-}
-
-impl Debug for IngressQueue {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("IngressQueue")
-			.field("debounce", &self.debounce)
-			.finish()
-	}
+	tx: mpsc::UnboundedSender<IngressPayload>,
 }
 
 impl IngressQueue {
-	pub fn new() -> Arc<Self> {
-		Arc::new(Self {
-			queue: Mutex::new(VecDeque::new()),
-			last_sent: Mutex::new(HashMap::new()),
-			notify: Notify::new(),
-			debounce: Duration::from_millis(100),
-		})
-	}
+	pub fn new(
+		emitter: Arc<LauncherEventEmitter<tauri::Wry>>,
+		debounce_duration: Duration,
+	) -> Arc<Self> {
+		let (tx, mut rx) = mpsc::unbounded_channel::<IngressPayload>();
 
-	pub async fn push(&self, payload: IngressPayload) {
-		let now = Instant::now();
+		tokio::spawn(async move {
+			let mut pending: HashMap<Uuid, IngressPayload> = HashMap::new();
 
-		// check last sent time for debouncing
-		let mut last_sent = self.last_sent.lock().await;
-		if let Some(&instant) = last_sent.get(&payload.id) {
-			if now.duration_since(instant) < self.debounce {
-				// skip update or merge with existing queued message
-				let mut queue = self.queue.lock().await;
-				if let Some(existing) = queue.iter_mut().find(|q| q.id == payload.id) {
-					existing.percent = payload.percent.or(existing.percent);
-					existing.message = payload.message;
-					return;
+			let mut tick = tokio::time::interval(debounce_duration);
+			tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+			loop {
+				tokio::select! {
+					Some(payload) = rx.recv() => {
+						// last write wins
+						pending.insert(payload.id, payload);
+					}
+
+					_ = tick.tick() => {
+						if pending.is_empty() {
+							continue;
+						}
+
+						for (_, payload) in pending.drain() {
+							let emitter = Arc::clone(&emitter);
+							tokio::spawn(async move {
+								let _ = emitter.ingress(payload);
+							});
+						}
+					}
 				}
 			}
-		}
+		});
 
-		last_sent.insert(payload.id, now);
-
-		let mut queue = self.queue.lock().await;
-		queue.push_back(payload);
-		self.notify.notify_one(); // wake processor
+		Arc::new(Self { tx })
 	}
 
-	pub async fn process_queue<F>(self: Arc<Self>, mut sender: F)
-	where
-		F: FnMut(IngressPayload) + Send + 'static,
-	{
-		loop {
-			let queued = {
-				let mut queue = self.queue.lock().await;
-				queue.pop_front()
-			};
-
-			if let Some(payload) = queued {
-				sender(payload);
-			} else {
-				// wait until next push, no CPU spin
-				self.notify.notified().await;
-			}
-		}
+	#[inline]
+	pub fn push(&self, payload: IngressPayload) {
+		let _ = self.tx.send(payload);
 	}
 }

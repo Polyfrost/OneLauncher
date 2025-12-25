@@ -111,20 +111,10 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 	const [downloadedMods, setDownloadedMods] = useState(0);
 	const [modName, setModName] = useState<string | null>(null);
 	const download = useCommandMut(async (mod: ModData) => {
-		if (isManagedMod(mod)) {
-			if (mod.dependencies.length > 0)
-				for (const dependency of mod.dependencies) {
-					const cluster = await bindings.core.getClusterById(mod.clusterId);
-					if (!cluster)
-						continue;
-					const slug = dependency.project_id ?? '';
-					const versions = await bindings.core.getPackageVersions(mod.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
-					if (versions.items.length !== 0)
-						await bindings.core.downloadPackage(mod.provider, slug, versions.items[0].version_id, cluster.id, null);
-				}
+		if (isManagedMod(mod))
 			await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
-		}
-		else { await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null); }
+		else
+			await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null);
 	});
 
 	const { setting } = useSettings();

@@ -68,7 +68,7 @@ pub(crate) static MODRINTH_RATE_LIMITER: LazyLock<
 pub(crate) static DOMAIN_SEMAPHORES: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
 	LazyLock::new(|| Mutex::new(HashMap::new()));
 
-const MAX_CONCURRENT_REQUESTS_PER_DOMAIN: usize = 3;
+const MAX_CONCURRENT_REQUESTS_PER_DOMAIN: usize = 10;
 
 fn get_domain_semaphore(host: &str) -> Arc<Semaphore> {
 	let mut map = DOMAIN_SEMAPHORES.lock().unwrap();

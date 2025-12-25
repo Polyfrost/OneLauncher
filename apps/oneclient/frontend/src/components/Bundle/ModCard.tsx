@@ -135,6 +135,14 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	const download = useCommandMut(async () => {
 		if ('Managed' in kind) {
 			const [pkg, version] = kind.Managed;
+			if (version.dependencies.length > 0)
+				for (const dependency of version.dependencies)
+					if (dependency.dependency_type === "required") {
+						const slug = dependency.project_id ?? '';
+						const versions = await bindings.core.getPackageVersions(pkg.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
+						await bindings.core.downloadPackage(pkg.provider, slug, versions.items[0].version_id, cluster.id, null);
+					}
+
 			await bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, null);
 		}
 		else {

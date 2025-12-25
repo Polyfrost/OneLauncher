@@ -13,10 +13,12 @@ export const Route = createFileRoute('/app/cluster/mods')({
 function RouteComponent() {
 	const { cluster } = Route.useRouteContext();
 	const { data: bundles } = useCommandSuspense(['getBundlesFor', cluster.id], () => bindings.oneclient.getBundlesFor(cluster.id));
+	const { data: installedPackages } = useCommandSuspense(['getLinkedPackages', cluster.id], () => bindings.core.getLinkedPackages(cluster.id));
 
 	const context = useMemo<ModCardContextApi>(() => ({
-		showModDownloadButton: true,
-	}), []);
+		enableClickToDownload: true,
+		installedPackages,
+	}), [installedPackages]);
 
 	if (bundles.length === 0)
 		return <p>No bundles found {cluster.name}</p>;

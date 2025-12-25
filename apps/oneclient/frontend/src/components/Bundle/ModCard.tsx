@@ -1,9 +1,11 @@
-import type { ClusterModel, ModpackFile, ModpackFileKind } from '@/bindings.gen';
+import type { ClusterModel, ModpackFile, ModpackFileKind, PackageModel } from '@/bindings.gen';
 import MissingLogo from '@/assets/misc/missingLogo.svg';
-import { DownloadModButton, ModTag } from '@/components';
+import { ModTag } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { useCommandMut } from '@onelauncher/common';
+import { useQueryClient } from '@tanstack/react-query';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 export interface ModInfo {
@@ -84,10 +86,11 @@ interface ModCardProps {
 
 export type onClickOnMod = (file: ModpackFile) => void;
 export interface ModCardContextApi {
-	showModDownloadButton?: boolean;
+	enableClickToDownload?: boolean;
 	onClickOnMod?: onClickOnMod;
 	useVerticalGridLayout?: boolean;
 	mods?: Array<ModpackFile>;
+	installedPackages?: Array<PackageModel>;
 }
 
 export const ModCardContext = createContext<ModCardContextApi | null>(null);
@@ -101,20 +104,72 @@ export function useModCardContext() {
 }
 
 export function ModCard({ file, cluster }: ModCardProps) {
-	const { showModDownloadButton, onClickOnMod, useVerticalGridLayout, mods } = useModCardContext();
+	const { enableClickToDownload, onClickOnMod, useVerticalGridLayout, mods, installedPackages } = useModCardContext();
+	const queryClient = useQueryClient();
 
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'Loading...', description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
 	useEffect(() => {
 		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
 	}, [file, useVerticalGridLayout]);
 
-	const [isSelected, setSelected] = useState(mods?.includes(file) ?? false);
+	const kind = file.kind;
+
+	const isInstalled = useMemo(() => {
+		if (installedPackages)
+			if ('Managed' in kind) {
+				const [pkg, _] = kind.Managed;
+				return installedPackages.some(p => p.package_id === pkg.id && p.provider === pkg.provider);
+			}
+			else {
+				return installedPackages.some(p => p.hash === kind.External.sha1);
+			}
+
+		return mods?.includes(file) ?? false;
+	}, [installedPackages, mods, file]);
+
+	const [isSelected, setSelected] = useState(isInstalled);
 	useEffect(() => {
-		setSelected(mods?.includes(file) ?? false);
-	}, [mods, file]);
+		setSelected(isInstalled);
+	}, [isInstalled]);
+
+	const download = useCommandMut(async () => {
+		if ('Managed' in kind) {
+			const [pkg, version] = kind.Managed;
+			await bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, null);
+		}
+		else {
+			await bindings.core.downloadExternalPackage(kind.External, cluster.id, null, null);
+		}
+	});
+
+	const remove = useCommandMut(async () => {
+		let hash: string | undefined;
+		if ('Managed' in kind) {
+			const [_, version] = kind.Managed;
+			const primary = version.files.find(f => f.primary) ?? version.files[0];
+			hash = primary?.sha1;
+		}
+		else {
+			hash = kind.External.sha1;
+		}
+
+		if (hash)
+			await bindings.core.removePackage(cluster.id, hash);
+	});
 
 	const handleOnClick = () => {
-		if (onClickOnMod)
+		if (enableClickToDownload)
+			(async () => {
+				if (isInstalled)
+					await remove.mutateAsync();
+
+				else
+					await download.mutateAsync();
+
+				await queryClient.invalidateQueries({ queryKey: ['getLinkedPackages', cluster.id] });
+			})();
+
+		else if (onClickOnMod)
 			onClickOnMod(file);
 	};
 
@@ -146,12 +201,6 @@ export function ModCard({ file, cluster }: ModCardProps) {
 				</div>
 			</div>
 			{useVerticalGridLayout === true && modMetadata.description !== null && <p className={twMerge('font-normal text-fg-secondary', useGridLayout ? 'text-sm' : 'text-base')}>{modMetadata.description}</p>}
-
-			{showModDownloadButton === true && (
-				<div className={twMerge('flex flex-col items-center justify-center', useGridLayout ? '' : 'pr-2')}>
-					<DownloadModButton cluster={cluster} file={file} />
-				</div>
-			)}
 		</div>
 	);
 }

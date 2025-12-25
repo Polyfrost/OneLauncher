@@ -4,8 +4,10 @@ use onelauncher_entity::package::Provider;
 use onelauncher_entity::{clusters, packages};
 use reqwest::Method;
 
+use crate::api::cluster::dao::get_cluster_by_id;
 use crate::api::packages::data::{ManagedPackageBody, PackageAuthor};
 use crate::error::{LauncherError, LauncherResult};
+use crate::send_error;
 use crate::store::Dirs;
 use crate::store::ingress::SubIngress;
 use crate::utils::crypto::HashAlgorithm;
@@ -289,4 +291,39 @@ impl DatabaseModelExt for packages::Model {
 			.join(&self.version_id)
 			.join(&self.file_name))
 	}
+}
+
+/// Removes a package from a cluster.
+/// It is also deleted from the filesystem and database.
+pub async fn remove_package(cluster_id: i64, package_hash: String) -> LauncherResult<()> {
+	if let Some(package) = dao::get_package_by_hash(package_hash.clone()).await? {
+		dao::unlink_package_from_cluster(&package_hash, cluster_id).await?;
+
+		// Remove the hard link from the cluster's folder
+		if let Some(cluster) = get_cluster_by_id(cluster_id).await? {
+			let cluster_dir = Dirs::get_clusters_dir()
+				.await?
+				.join(cluster.folder_name)
+				.join(package.package_type.folder_name())
+				.join(&package.file_name);
+
+			if cluster_dir.exists() {
+				if let Err(err) = io::remove_file(&cluster_dir).await {
+					send_error!("{}{}", "failed to remove file: ", err);
+				}
+			}
+		}
+
+		if !dao::is_package_used(&package_hash).await? {
+			let path = package.path().await?;
+			if path.exists() {
+				if let Err(err) = io::remove_file(&path).await {
+					send_error!("{}{}", "failed to remove file: ", err);
+				}
+			}
+			dao::delete_package_by_id(package_hash).await?;
+		}
+	}
+
+	Ok(())
 }

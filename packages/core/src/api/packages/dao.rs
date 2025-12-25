@@ -2,7 +2,8 @@ use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::PackageType;
 use onelauncher_entity::{cluster_packages, clusters, packages};
 use sea_orm::{
-	ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, TryInsertResult,
+	ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
+	TryInsertResult,
 };
 
 use crate::error::{DaoError, LauncherResult};
@@ -103,6 +104,34 @@ pub async fn is_package_linked_to_cluster(
 		.await?;
 
 	Ok(linked_packages.is_some())
+}
+
+/// Checks if a package is linked to any cluster.
+pub async fn is_package_used(package_hash: &str) -> LauncherResult<bool> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	let count = cluster_packages::Entity::find()
+		.filter(cluster_packages::Column::PackageHash.eq(package_hash))
+		.count(db)
+		.await?;
+
+	Ok(count > 0)
+}
+
+/// Unlinks a package from a cluster in database.
+pub async fn unlink_package_from_cluster(
+	package_hash: &str,
+	cluster_id: i64,
+) -> LauncherResult<()> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	cluster_packages::Entity::delete_by_id((cluster_id, package_hash.to_string()))
+		.exec(db)
+		.await?;
+
+	Ok(())
 }
 
 /// Retrieves a package by its hash from the database.

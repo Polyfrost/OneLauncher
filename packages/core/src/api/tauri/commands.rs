@@ -199,6 +199,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLinkedPackages")]
 	async fn get_linked_packages(cluster_id: ClusterId) -> LauncherResult<Vec<packages::Model>>;
+
+	#[taurpc(alias = "removePackage")]
+	async fn remove_package(cluster_id: ClusterId, package_hash: String) -> LauncherResult<()>;
 	// endregion: package
 
 	// MARK: API: modpack
@@ -752,6 +755,14 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		let model = api::packages::dao::get_linked_packages(&cluster).await?;
 
 		Ok(model)
+	}
+
+	async fn remove_package(
+		self,
+		cluster_id: ClusterId,
+		package_hash: String,
+	) -> LauncherResult<()> {
+		api::packages::remove_package(cluster_id, package_hash).await
 	}
 	// endregion: package
 

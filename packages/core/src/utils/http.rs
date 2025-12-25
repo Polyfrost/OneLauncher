@@ -2,10 +2,10 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use bytes::Bytes;
-use reqwest::{Method, RequestBuilder};
+use reqwest::{Method, RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
@@ -36,7 +36,7 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.default_headers({
 			let mut headers = reqwest::header::HeaderMap::new();
 			let header = reqwest::header::HeaderValue::from_str(&format!(
-				"{}/{} ({})",
+				"Polyfrost/{}/{} ({})",
 				Core::get().launcher_name,
 				Core::get().launcher_version,
 				Core::get().launcher_website,
@@ -48,6 +48,18 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.build()
 		.expect("failed to build reqwest client!")
 });
+
+pub(crate) static DOMAIN_SEMAPHORES: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+
+const MAX_CONCURRENT_REQUESTS_PER_DOMAIN: usize = 3;
+
+fn get_domain_semaphore(host: &str) -> Arc<Semaphore> {
+	let mut map = DOMAIN_SEMAPHORES.lock().unwrap();
+	map.entry(host.to_string())
+		.or_insert_with(|| Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS_PER_DOMAIN)))
+		.clone()
+}
 
 pub async fn request(method: Method, url: &str) -> LauncherResult<reqwest::Response> {
 	let req = build_request(method, url).build()?;
@@ -61,6 +73,13 @@ pub fn build_request(method: Method, url: &str) -> RequestBuilder {
 }
 
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
+	let domain_permit = if let Some(host) = request.url().host_str() {
+		let sem = get_domain_semaphore(host);
+		Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
+	} else {
+		None
+	};
+
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
 
@@ -93,6 +112,7 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 	};
 
 	// Drop the fetch permit as we are no longer fetching
+	drop(domain_permit);
 	drop(permit);
 
 	Ok(res)
@@ -108,6 +128,17 @@ pub async fn fetch_advanced(
 	headers: Option<HashMap<&str, &str>>,
 	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
+	let domain_permit = if let Ok(parsed_url) = reqwest::Url::parse(url) {
+		if let Some(host) = parsed_url.host_str() {
+			let sem = get_domain_semaphore(host);
+			Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
+		} else {
+			None
+		}
+	} else {
+		None
+	};
+
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
 
@@ -144,6 +175,7 @@ pub async fn fetch_advanced(
 	};
 
 	// Drop the fetch permit as we are no longer fetching
+	drop(domain_permit);
 	drop(permit);
 
 	let bytes = if let Some(ingress) = ingress {

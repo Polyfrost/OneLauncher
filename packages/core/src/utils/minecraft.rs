@@ -144,8 +144,18 @@ pub async fn fetch_player_profile(uuid: &str) -> LauncherResult<MojangPlayerProf
 		uuid: response.id,
 		username: response.name,
 		is_slim,
-		skin_url: decoded.skin.as_ref().map(|s| s.url.clone()),
-		cape_url: decoded.cape.as_ref().map(|c| c.url.clone()),
+		skin_url: decoded.skin.as_ref().map(|s| {
+			s.url.replace(
+				"http://textures.minecraft.net",
+				"https://textures.minecraft.net",
+			)
+		}),
+		cape_url: decoded.cape.as_ref().map(|c| {
+			c.url.replace(
+				"http://textures.minecraft.net",
+				"https://textures.minecraft.net",
+			)
+		}),
 	})
 }
 
@@ -157,7 +167,7 @@ pub async fn fetch_logged_in_profile(
 	let bearer = &format!("Bearer {access_token}");
 	headers.insert("Authorization", bearer);
 
-	http::fetch_json_advanced::<MojangFullPlayerProfile>(
+	let mut profile = http::fetch_json_advanced::<MojangFullPlayerProfile>(
 		Method::GET,
 		"https://api.minecraftservices.com/minecraft/profile",
 		None,
@@ -165,7 +175,23 @@ pub async fn fetch_logged_in_profile(
 		None,
 		None,
 	)
-	.await
+	.await?;
+
+	for skin in &mut profile.skins {
+		skin.url = skin.url.replace(
+			"http://textures.minecraft.net",
+			"https://textures.minecraft.net",
+		);
+	}
+
+	for cape in &mut profile.capes {
+		cape.url = cape.url.replace(
+			"http://textures.minecraft.net",
+			"https://textures.minecraft.net",
+		);
+	}
+
+	Ok(profile)
 }
 
 pub async fn upload_skin_bytes(

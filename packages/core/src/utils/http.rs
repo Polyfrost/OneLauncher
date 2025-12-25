@@ -1,11 +1,13 @@
 #![allow(clippy::implicit_hasher)]
 
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, Mutex};
 
 use bytes::Bytes;
-use reqwest::{Method, RequestBuilder, StatusCode};
+use governor::{Quota, RateLimiter};
+use reqwest::{Method, RequestBuilder};
 use serde::de::DeserializeOwned;
 use tokio::sync::Semaphore;
 use tokio_stream::StreamExt;
@@ -49,6 +51,20 @@ pub(crate) static REQWEST_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 		.expect("failed to build reqwest client!")
 });
 
+pub(crate) static MODRINTH_RATE_LIMITER: LazyLock<
+	Arc<
+		RateLimiter<
+			governor::state::NotKeyed,
+			governor::state::InMemoryState,
+			governor::clock::DefaultClock,
+		>,
+	>,
+> = LazyLock::new(|| {
+	Arc::new(RateLimiter::direct(Quota::per_minute(
+		NonZeroU32::new(300).unwrap(),
+	)))
+});
+
 pub(crate) static DOMAIN_SEMAPHORES: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
 	LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -74,6 +90,11 @@ pub fn build_request(method: Method, url: &str) -> RequestBuilder {
 
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
 	let domain_permit = if let Some(host) = request.url().host_str() {
+		if host.ends_with("modrinth.com") {
+			let start = std::time::Instant::now();
+			MODRINTH_RATE_LIMITER.until_ready().await;
+			tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
+		}
 		let sem = get_domain_semaphore(host);
 		Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
 	} else {
@@ -130,6 +151,11 @@ pub async fn fetch_advanced(
 ) -> LauncherResult<Bytes> {
 	let domain_permit = if let Ok(parsed_url) = reqwest::Url::parse(url) {
 		if let Some(host) = parsed_url.host_str() {
+			if host.ends_with("modrinth.com") {
+				let start = std::time::Instant::now();
+				MODRINTH_RATE_LIMITER.until_ready().await;
+				tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
+			}
 			let sem = get_domain_semaphore(host);
 			Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
 		} else {

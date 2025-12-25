@@ -59,6 +59,7 @@ sea-orm = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-stream = { workspace = true }
+governor = { workspace = true }
 futures = { workspace = true }
 futures-lite = { workspace = true }
 uuid = { workspace = true }

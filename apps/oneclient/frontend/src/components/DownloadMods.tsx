@@ -123,15 +123,6 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 	useEffect(() => {
 		const downloadAll = async () => {
 			if (useParallelModDownloading)
-				for (const mod of mods) {
-					setModName(mod.name);
-					try {
-						await download.mutateAsync(mod);
-					}
-					finally {
-						setDownloadedMods(prev => prev + 1);
-					}
-				} else
 				await downloadModsParallel(mods, 25, async (mod) => {
 					setModName(mod.name);
 					try {
@@ -140,7 +131,16 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 					finally {
 						setDownloadedMods(prev => prev + 1);
 					}
-				});
+				}); else
+				for (const mod of mods) {
+					setModName(mod.name);
+					try {
+						await download.mutateAsync(mod);
+					}
+					finally {
+						setDownloadedMods(prev => prev + 1);
+					}
+				}
 		};
 
 		downloadAll();

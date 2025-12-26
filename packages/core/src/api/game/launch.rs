@@ -164,7 +164,14 @@ pub async fn launch_minecraft(
 	if !mc_options.is_empty() {
 		let options_path = cwd.join("options.txt");
 		let mut options_string = if options_path.exists() {
-			io::read_to_string(&options_path).await?
+			let bytes = io::read(&options_path).await?;
+			let (cow, _, had_errors) = encoding_rs::UTF_8.decode(&bytes);
+			if had_errors {
+				let (cow, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+				cow.into_owned()
+			} else {
+				cow.into_owned()
+			}
 		} else {
 			String::new()
 		};

@@ -100,6 +100,7 @@ async-compression = { workspace = true }
 dunce = { workspace = true }
 async-tempfile = { workspace = true }
 sanitize-filename = { workspace = true }
+encoding_rs = { workspace = true }
 
 # features[tauri]
 tauri = { workspace = true, optional = true }

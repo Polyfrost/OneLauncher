@@ -1,6 +1,6 @@
 {
 	"name": "@onelauncher/core",
-	"version": "1.0.0-alpha.2",
+	"version": "1.0.0-alpha.3",
 	"description": "Next-generation open source Minecraft launcher core",
 	"license": "GPL-3.0-only",
 	"repository": {

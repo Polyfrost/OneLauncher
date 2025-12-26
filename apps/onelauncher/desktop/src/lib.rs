@@ -74,7 +74,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
 		.plugin(tauri_plugin_opener::init())
-		.menu(tauri::menu::Menu::new)
+		.menu(tauri::menu::Menu::default)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
 			app.asset_protocol_scope()

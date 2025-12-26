@@ -42,7 +42,11 @@ pub trait TauriLauncherApi {
 	async fn create_cluster(options: CreateCluster) -> LauncherResult<Cluster>;
 
 	#[taurpc(alias = "launchCluster")]
-	async fn launch_cluster(id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()>;
+	async fn launch_cluster(
+		id: ClusterId,
+		uuid: Option<uuid::Uuid>,
+		search_for_java: Option<bool>,
+	) -> LauncherResult<()>;
 
 	#[taurpc(alias = "updateClusterById")]
 	async fn update_cluster_by_id(id: ClusterId, request: ClusterUpdate) -> LauncherResult<()>;
@@ -346,7 +350,12 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(cluster)
 	}
 
-	async fn launch_cluster(self, id: ClusterId, uuid: Option<uuid::Uuid>) -> LauncherResult<()> {
+	async fn launch_cluster(
+		self,
+		id: ClusterId,
+		uuid: Option<uuid::Uuid>,
+		search_for_java: Option<bool>,
+	) -> LauncherResult<()> {
 		let mut cluster = api::cluster::dao::get_cluster_by_id(id)
 			.await?
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
@@ -364,7 +373,8 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		// let user = api::credentials::get_fake_user();
 
-		let _ = api::game::launch::launch_minecraft(&mut cluster, user, None).await?;
+		let _ =
+			api::game::launch::launch_minecraft(&mut cluster, user, None, search_for_java).await?;
 
 		Ok(())
 	}

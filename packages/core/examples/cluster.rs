@@ -1,4 +1,8 @@
-use onelauncher_core::{api::{self, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::CoreOptions};
+use onelauncher_core::api::proxy::ProxyDynamic;
+use onelauncher_core::api::{self};
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::initialize_core;
+use onelauncher_core::store::CoreOptions;
 use onelauncher_entity::loader::GameLoader;
 
 #[tokio::main]
@@ -12,18 +16,14 @@ async fn main() -> LauncherResult<()> {
 	}
 
 	println!("creating cluster");
-	let cluster = &mut api::cluster::create_cluster(
-		"Test Cluster",
-		"1.8.9",
-		GameLoader::Vanilla,
-		None,
-		None,
-	).await?;
+	let cluster =
+		&mut api::cluster::create_cluster("Test Cluster", "1.8.9", GameLoader::Vanilla, None, None)
+			.await?;
 
 	println!("cluster created: {cluster:#?}");
 
 	println!("preparing cluster for launch");
-	api::cluster::prepare_cluster(cluster, None).await?;
+	api::cluster::prepare_cluster(cluster, None, Some(true)).await?;
 
 	Ok(())
 }

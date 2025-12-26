@@ -155,7 +155,10 @@ pub async fn get_recommended_java(
 	dao::get_latest_java_by_major(supported_ver.major_version).await
 }
 
-pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
+pub async fn prepare_java(
+	major: u32,
+	search_for_java: bool,
+) -> LauncherResult<java_versions::Model> {
 	let id = init_ingress(
 		IngressType::JavaPrepare,
 		&format!("preparing java {}", major),
@@ -169,16 +172,18 @@ pub async fn prepare_java(major: u32) -> LauncherResult<java_versions::Model> {
 		return Ok(java.clone());
 	}
 
-	let java = locate_java().await?;
+	if search_for_java {
+		let java = locate_java().await?;
 
-	if !java.is_empty() {
-		for (path, info) in java {
-			dao::insert_java(path, info).await?;
-		}
+		if !java.is_empty() {
+			for (path, info) in java {
+				dao::insert_java(path, info).await?;
+			}
 
-		if let Some(java) = dao::get_latest_java_by_major(major).await? {
-			send_ingress(&id, 100.0).await?;
-			return Ok(java);
+			if let Some(java) = dao::get_latest_java_by_major(major).await? {
+				send_ingress(&id, 100.0).await?;
+				return Ok(java);
+			}
 		}
 	}
 
@@ -251,8 +256,8 @@ fn internal_locate_java() -> Vec<PathBuf> {
 
 	// epic common paths
 	let common_paths = [
-		r"C:\Program Files\Java",
-		r"C:\Program Files (x86)\Java",
+		//r"C:\Program Files\Java", # These can be shitty 32-bit installations, we'd rather not deal with that lol
+		//r"C:\Program Files (x86)\Java",
 		r"C:\Program Files\OpenJDK",
 		r"C:\Program Files\Eclipse Adoptium",
 		r"C:\Program Files\Zulu",

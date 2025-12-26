@@ -18,7 +18,7 @@ export function useLaunchCluster(clusterId?: number | undefined | null) {
 				return;
 
 			try {
-				await bindings.core.launchCluster(targetId, null);
+				await bindings.core.launchCluster(targetId, null, false);
 
 				navigate({
 					to: '/app/cluster/process',

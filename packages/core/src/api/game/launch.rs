@@ -24,12 +24,13 @@ pub async fn launch_minecraft(
 	cluster: &mut Cluster,
 	creds: MinecraftCredentials,
 	force: Option<bool>,
+	search_for_java: Option<bool>,
 ) -> LauncherResult<Arc<RwLock<Process>>> {
 	if cluster.stage.is_downloading() {
 		return Err(ClusterError::ClusterDownloading.into());
 	}
 
-	prepare_cluster(cluster, force).await?;
+	prepare_cluster(cluster, force, search_for_java).await?;
 	let mut settings = get_global_profile().await;
 	if let Some(name) = &cluster.setting_profile_name
 		&& let Some(profile) = get_profile_by_name(name).await?

@@ -117,6 +117,7 @@ pub async fn create_cluster(
 pub async fn prepare_cluster(
 	cluster: &mut clusters::Model,
 	force: Option<bool>,
+	search_for_java: Option<bool>,
 ) -> LauncherResult<&clusters::Model> {
 	tracing::debug!("preparing cluster {}", cluster.name);
 
@@ -131,7 +132,7 @@ pub async fn prepare_cluster(
 	})
 	.await?;
 
-	if let Err(err) = install_cluster(cluster, force).await {
+	if let Err(err) = install_cluster(cluster, force, search_for_java).await {
 		tracing::error!("failed to prepare cluster: {}", err);
 		dao::update_cluster(cluster, async |mut cluster| {
 			cluster.stage = Set(ClusterStage::NotReady);
@@ -151,7 +152,11 @@ pub async fn prepare_cluster(
 	Ok(cluster)
 }
 
-async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> LauncherResult<()> {
+async fn install_cluster(
+	cluster: &clusters::Model,
+	force: Option<bool>,
+	search_for_java: Option<bool>,
+) -> LauncherResult<()> {
 	const INGRESS_TOTAL: f64 = 100.0;
 	const INGRESS_TASKS: f64 = 4.0;
 	const INGRESS_STEP: f64 = INGRESS_TOTAL / INGRESS_TASKS;
@@ -211,7 +216,7 @@ async fn install_cluster(cluster: &clusters::Model, force: Option<bool>) -> Laun
 			return Err(ClusterError::MissingJavaVersion.into());
 		};
 
-		java::prepare_java(ver.major_version).await?
+		java::prepare_java(ver.major_version, search_for_java.unwrap_or(true)).await?
 	};
 
 	// TASK 3

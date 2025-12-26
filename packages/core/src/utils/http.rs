@@ -76,9 +76,18 @@ pub fn build_request(method: Method, url: &str) -> RequestBuilder {
 	client.request(method.clone(), url)
 }
 
+fn get_ratelimit_reset(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+	headers
+		.get("X-Ratelimit-Reset")
+		.or(headers.get("retry-after"))
+		.and_then(|h| h.to_str().ok())
+		.and_then(|s| s.parse::<f64>().ok())
+		.map(|s| s.ceil() as u64)
+}
+
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
 	if let Some(host) = request.url().host_str() {
-		if host.ends_with("modrinth.com") {
+		if host == "api.modrinth.com" {
 			let start = std::time::Instant::now();
 			MODRINTH_RATE_LIMITER.until_ready().await;
 			tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
@@ -91,6 +100,12 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 	let client = &REQWEST_CLIENT;
 
 	let mut attempt = 0;
+
+	tracing::debug!(
+		"fetching {:?} with method {:?}",
+		request.url(),
+		request.method()
+	);
 
 	let res = loop {
 		attempt += 1;
@@ -112,7 +127,18 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 
 				return Err(err.into());
 			}
-			Ok(res) => break res,
+			Ok(res) => {
+				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+					if let Some(reset) = get_ratelimit_reset(res.headers()) {
+						tracing::warn!(
+							"Rate limited. Waiting for {reset} seconds before retrying..."
+						);
+						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
+						continue;
+					}
+				}
+				break res;
+			}
 		}
 	};
 
@@ -134,7 +160,7 @@ pub async fn fetch_advanced(
 ) -> LauncherResult<Bytes> {
 	if let Ok(parsed_url) = reqwest::Url::parse(url) {
 		if let Some(host) = parsed_url.host_str() {
-			if host.ends_with("modrinth.com") {
+			if host == "api.modrinth.com" {
 				let start = std::time::Instant::now();
 				MODRINTH_RATE_LIMITER.until_ready().await;
 				tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
@@ -148,6 +174,7 @@ pub async fn fetch_advanced(
 	let client = &REQWEST_CLIENT;
 
 	let mut attempt = 0;
+	tracing::debug!("fetching {url} with method {method:?}");
 	let res = loop {
 		attempt += 1;
 		let mut req = client.request(method.clone(), url);
@@ -173,7 +200,18 @@ pub async fn fetch_advanced(
 
 				return Err(err.into());
 			}
-			Ok(res) => break res,
+			Ok(res) => {
+				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+					if let Some(reset) = get_ratelimit_reset(res.headers()) {
+						tracing::warn!(
+							"Rate limited. Waiting for {reset} seconds before retrying..."
+						);
+						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
+						continue;
+					}
+				}
+				break res;
+			}
 		}
 	};
 

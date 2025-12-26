@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use super::ProviderExt;
 use crate::api::packages::categories::ToProviderCategory;
@@ -34,6 +36,12 @@ macro_rules! url_v3 {
 		format!("{}/v3{}", crate::constants::MODRINTH_API_URL, format!($($arg)*)).as_str()
 	};
 }
+
+static PACKAGE_CACHE: LazyLock<Mutex<HashMap<String, (ManagedPackage, Instant)>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+static VERSION_CACHE: LazyLock<Mutex<HashMap<String, (ManagedVersion, Instant)>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+const CACHE_DURATION: Duration = Duration::from_secs(600);
 
 #[derive(Default)]
 pub struct ModrinthProviderImpl;
@@ -120,64 +128,172 @@ impl ProviderExt for ModrinthProviderImpl {
 	}
 
 	async fn get(&self, slug: &str) -> LauncherResult<ManagedPackage> {
-		Ok(
+		{
+			let mut cache = PACKAGE_CACHE.lock().unwrap();
+			if let Some((package, timestamp)) = cache.get(slug) {
+				if timestamp.elapsed() < CACHE_DURATION {
+					return Ok(package.clone());
+				} else {
+					cache.remove(slug);
+				}
+			}
+		}
+
+		let package: ManagedPackage =
 			http::fetch_json::<ModrinthPackage>(Method::GET, url!("/project/{}", slug), None, None)
 				.await?
-				.into(),
-		)
+				.into();
+
+		{
+			let mut cache = PACKAGE_CACHE.lock().unwrap();
+			cache.insert(package.id.clone(), (package.clone(), Instant::now()));
+			cache.insert(package.slug.clone(), (package.clone(), Instant::now()));
+		}
+
+		Ok(package)
 	}
 
 	async fn get_multiple(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedPackage>> {
-		Ok(http::fetch_json::<Vec<ModrinthPackage>>(
-			Method::GET,
-			url!(
-				"/projects?ids=[{}]",
-				slugs
-					.iter()
-					.map(|id| format!("\"{id}\""))
-					.collect::<Vec<String>>()
-					.join(",")
-			),
-			None,
-			None,
-		)
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
+		let mut packages = Vec::new();
+		let mut missing_slugs = Vec::new();
+
+		let unique_slugs: HashSet<&String> = slugs.iter().collect();
+
+		{
+			let mut cache = PACKAGE_CACHE.lock().unwrap();
+			for slug in unique_slugs {
+				if let Some((package, timestamp)) = cache.get(slug) {
+					if timestamp.elapsed() < CACHE_DURATION {
+						packages.push(package.clone());
+					} else {
+						cache.remove(slug);
+						missing_slugs.push(slug.clone());
+					}
+				} else {
+					missing_slugs.push(slug.clone());
+				}
+			}
+		}
+
+		if !missing_slugs.is_empty() {
+			let fetched_packages: Vec<ManagedPackage> = http::fetch_json::<Vec<ModrinthPackage>>(
+				Method::GET,
+				url!(
+					"/projects?ids=[{}]",
+					missing_slugs
+						.iter()
+						.map(|id| format!("\"{id}\""))
+						.collect::<Vec<String>>()
+						.join(",")
+				),
+				None,
+				None,
+			)
+			.await?
+			.into_iter()
+			.map(Into::into)
+			.collect();
+
+			{
+				let mut cache = PACKAGE_CACHE.lock().unwrap();
+				for package in &fetched_packages {
+					cache.insert(package.id.clone(), (package.clone(), Instant::now()));
+					cache.insert(package.slug.clone(), (package.clone(), Instant::now()));
+				}
+			}
+
+			packages.extend(fetched_packages);
+		}
+
+		Ok(packages)
 	}
 
 	async fn get_versions_by_hashes(
 		&self,
 		hashes: &[String],
 	) -> LauncherResult<HashMap<String, ManagedVersion>> {
-		let body = serde_json::json!({
-			"hashes": hashes,
-			"algorithm": "sha1"
-		});
+		let mut results = HashMap::new();
+		let mut missing_hashes = Vec::new();
+		let unique_hashes: HashSet<&String> = hashes.iter().collect();
 
-		let results = http::fetch_json::<HashMap<String, ModrinthVersion>>(
-			Method::POST,
-			url!("/version_files"),
-			Some(body),
-			None,
-		)
-		.await?;
+		{
+			let mut cache = VERSION_CACHE.lock().unwrap();
+			for hash in unique_hashes {
+				if let Some((version, timestamp)) = cache.get(hash) {
+					if timestamp.elapsed() < CACHE_DURATION {
+						results.insert(hash.clone(), version.clone());
+					} else {
+						cache.remove(hash);
+						missing_hashes.push(hash.clone());
+					}
+				} else {
+					missing_hashes.push(hash.clone());
+				}
+			}
+		}
 
-		Ok(results.into_iter().map(|(k, v)| (k, v.into())).collect())
+		if !missing_hashes.is_empty() {
+			let body = serde_json::json!({
+				"hashes": missing_hashes,
+				"algorithm": "sha1"
+			});
+
+			let fetched_results = http::fetch_json::<HashMap<String, ModrinthVersion>>(
+				Method::POST,
+				url!("/version_files"),
+				Some(body),
+				None,
+			)
+			.await?;
+
+			{
+				let mut cache = VERSION_CACHE.lock().unwrap();
+				for (hash, version) in fetched_results {
+					let managed: ManagedVersion = version.into();
+					cache.insert(hash.clone(), (managed.clone(), Instant::now()));
+					cache.insert(
+						managed.version_id.clone(),
+						(managed.clone(), Instant::now()),
+					);
+					results.insert(hash, managed);
+				}
+			}
+		}
+
+		Ok(results)
 	}
 
 	async fn get_version_by_hash(&self, hash: &str) -> LauncherResult<Option<ManagedVersion>> {
-		Ok(Some(
-			http::fetch_json::<ModrinthVersion>(
-				Method::GET,
-				url!("/version_file/{hash}"),
-				None,
-				None,
-			)
-			.await?
-			.into(),
-		))
+		{
+			let mut cache = VERSION_CACHE.lock().unwrap();
+			if let Some((version, timestamp)) = cache.get(hash) {
+				if timestamp.elapsed() < CACHE_DURATION {
+					return Ok(Some(version.clone()));
+				} else {
+					cache.remove(hash);
+				}
+			}
+		}
+
+		let version: ManagedVersion = http::fetch_json::<ModrinthVersion>(
+			Method::GET,
+			url!("/version_file/{hash}"),
+			None,
+			None,
+		)
+		.await?
+		.into();
+
+		{
+			let mut cache = VERSION_CACHE.lock().unwrap();
+			cache.insert(hash.to_string(), (version.clone(), Instant::now()));
+			cache.insert(
+				version.version_id.clone(),
+				(version.clone(), Instant::now()),
+			);
+		}
+
+		Ok(Some(version))
 	}
 
 	// async fn get_org_projects(&self, slug: &str) -> LauncherResult<Vec<ManagedPackage>> {
@@ -301,38 +417,92 @@ impl ProviderExt for ModrinthProviderImpl {
 		let response =
 			http::fetch_json::<Vec<ModrinthVersion>>(Method::GET, url.as_str(), None, None).await?;
 
-		let paginated = response
+		let mut items = Vec::new();
+		{
+			let mut cache = VERSION_CACHE.lock().unwrap();
+			for version in response {
+				let managed: ManagedVersion = version.into();
+				cache.insert(
+					managed.version_id.clone(),
+					(managed.clone(), Instant::now()),
+				);
+				for file in &managed.files {
+					cache.insert(file.sha1.clone(), (managed.clone(), Instant::now()));
+				}
+				items.push(managed);
+			}
+		}
+
+		let paginated = items
 			.into_iter()
 			.skip(offset)
 			.take(limit)
-			.collect::<Vec<ModrinthVersion>>();
+			.collect::<Vec<ManagedVersion>>();
 
 		Ok(Paginated {
 			offset,
 			limit,
 			total: paginated.len(),
-			items: paginated.into_iter().map(Into::into).collect(),
+			items: paginated,
 		})
 	}
 
 	async fn get_versions(&self, slugs: &[String]) -> LauncherResult<Vec<ManagedVersion>> {
-		Ok(http::fetch_json::<Vec<ModrinthVersion>>(
-			Method::GET,
-			url!(
-				"/versions?ids=[{}]",
-				slugs
-					.iter()
-					.map(|v| format!("\"{v}\""))
-					.collect::<Vec<String>>()
-					.join(",")
-			),
-			None,
-			None,
-		)
-		.await?
-		.into_iter()
-		.map(Into::into)
-		.collect())
+		let mut versions = Vec::new();
+		let mut missing_slugs = Vec::new();
+		let unique_slugs: HashSet<&String> = slugs.iter().collect();
+
+		{
+			let mut cache = VERSION_CACHE.lock().unwrap();
+			for slug in unique_slugs {
+				if let Some((version, timestamp)) = cache.get(slug) {
+					if timestamp.elapsed() < CACHE_DURATION {
+						versions.push(version.clone());
+					} else {
+						cache.remove(slug);
+						missing_slugs.push(slug.clone());
+					}
+				} else {
+					missing_slugs.push(slug.clone());
+				}
+			}
+		}
+
+		if !missing_slugs.is_empty() {
+			let fetched_versions = http::fetch_json::<Vec<ModrinthVersion>>(
+				Method::GET,
+				url!(
+					"/versions?ids=[{}]",
+					missing_slugs
+						.iter()
+						.map(|v| format!("\"{v}\""))
+						.collect::<Vec<String>>()
+						.join(",")
+				),
+				None,
+				None,
+			)
+			.await?
+			.into_iter()
+			.map(Into::into)
+			.collect::<Vec<ManagedVersion>>();
+
+			{
+				let mut cache = VERSION_CACHE.lock().unwrap();
+				for version in &fetched_versions {
+					cache.insert(
+						version.version_id.clone(),
+						(version.clone(), Instant::now()),
+					);
+					for file in &version.files {
+						cache.insert(file.sha1.clone(), (version.clone(), Instant::now()));
+					}
+				}
+			}
+			versions.extend(fetched_versions);
+		}
+
+		Ok(versions)
 	}
 }
 

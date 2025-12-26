@@ -40,7 +40,6 @@ const ResolvedPathNames: Record<URLPath, string> = {
 	'/app/cluster/browser/package': 'Browsing {packageName}',
 	'/app/cluster/logs': 'Viewing {clusterName}\'s logs',
 	'/app/cluster/mods': 'Viewing {clusterName}\'s mods',
-	'/app/cluster/overview': 'Viewing {clusterName}',
 	'/app/cluster/process': 'Viewing {clusterName}',
 	'/app/cluster/settings': 'Viewing {clusterName}\'s settings',
 	'/app/settings': 'Viewing Settings',

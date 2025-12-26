@@ -65,7 +65,7 @@ function ActiveClusterInfo({ cluster }: { cluster: ClusterModel }) {
 
 	const viewCluster = () => {
 		navigate({
-			to: '/app/cluster/overview',
+			to: '/app/cluster/mods',
 			search: {
 				clusterId: cluster.id,
 			},

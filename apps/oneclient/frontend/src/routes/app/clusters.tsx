@@ -96,7 +96,7 @@ function RouteComponent() {
 			return;
 
 		navigate({
-			to: `/app/cluster/overview`,
+			to: `/app/cluster/mods`,
 			search: {
 				clusterId: cluster.id,
 			},

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock};
 
 use bytes::Bytes;
 use governor::{Quota, RateLimiter};
@@ -65,18 +65,6 @@ pub(crate) static MODRINTH_RATE_LIMITER: LazyLock<
 	)))
 });
 
-pub(crate) static DOMAIN_SEMAPHORES: LazyLock<Mutex<HashMap<String, Arc<Semaphore>>>> =
-	LazyLock::new(|| Mutex::new(HashMap::new()));
-
-const MAX_CONCURRENT_REQUESTS_PER_DOMAIN: usize = 10;
-
-fn get_domain_semaphore(host: &str) -> Arc<Semaphore> {
-	let mut map = DOMAIN_SEMAPHORES.lock().unwrap();
-	map.entry(host.to_string())
-		.or_insert_with(|| Arc::new(Semaphore::new(MAX_CONCURRENT_REQUESTS_PER_DOMAIN)))
-		.clone()
-}
-
 pub async fn request(method: Method, url: &str) -> LauncherResult<reqwest::Response> {
 	let req = build_request(method, url).build()?;
 	send_request(req).await
@@ -89,17 +77,13 @@ pub fn build_request(method: Method, url: &str) -> RequestBuilder {
 }
 
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
-	let domain_permit = if let Some(host) = request.url().host_str() {
+	if let Some(host) = request.url().host_str() {
 		if host.ends_with("modrinth.com") {
 			let start = std::time::Instant::now();
 			MODRINTH_RATE_LIMITER.until_ready().await;
 			tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
 		}
-		let sem = get_domain_semaphore(host);
-		Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
-	} else {
-		None
-	};
+	}
 
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
@@ -133,7 +117,6 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 	};
 
 	// Drop the fetch permit as we are no longer fetching
-	drop(domain_permit);
 	drop(permit);
 
 	Ok(res)
@@ -149,21 +132,15 @@ pub async fn fetch_advanced(
 	headers: Option<HashMap<&str, &str>>,
 	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
-	let domain_permit = if let Ok(parsed_url) = reqwest::Url::parse(url) {
+	if let Ok(parsed_url) = reqwest::Url::parse(url) {
 		if let Some(host) = parsed_url.host_str() {
 			if host.ends_with("modrinth.com") {
 				let start = std::time::Instant::now();
 				MODRINTH_RATE_LIMITER.until_ready().await;
 				tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
 			}
-			let sem = get_domain_semaphore(host);
-			Some(sem.acquire_owned().await.map_err(|e| anyhow::anyhow!(e))?)
-		} else {
-			None
 		}
-	} else {
-		None
-	};
+	}
 
 	let semaphore = SemaphoreStore::fetch().await;
 	let permit = semaphore.acquire().await;
@@ -201,7 +178,6 @@ pub async fn fetch_advanced(
 	};
 
 	// Drop the fetch permit as we are no longer fetching
-	drop(domain_permit);
 	drop(permit);
 
 	let bytes = if let Some(ingress) = ingress {

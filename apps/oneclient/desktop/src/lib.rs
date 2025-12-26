@@ -69,7 +69,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 			app.emit("single-instance", SingleInstancePayload { args: argv, cwd })
 				.unwrap();
 		}))
-		// .plugin(tauri_plugin_updater::Builder::new().build())
+		.plugin(tauri_plugin_updater::Builder::new().build())
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_fs::init())
@@ -77,6 +77,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.menu(tauri::menu::Menu::new)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
+			app.manage(ext::updater::UpdaterState::default());
 			setup_window(app.handle()).expect("failed to setup main window");
 			Ok(())
 		});
@@ -119,6 +120,8 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 	let win = handle
 		.get_webview_window("main")
 		.ok_or_else(|| anyhow::anyhow!("no window called main was found"))?;
+
+	ext::updater::init(handle)?;
 
 	// tokio::task::spawn(async move {
 	// 	// let state = State::get().await.expect("failed to get state");

@@ -3,6 +3,7 @@ import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import { Toasts } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import { checkForUpdate, installUpdate, listenForUpdateEvents } from '@/utils/updater';
 import { useCommand } from '@onelauncher/common';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
@@ -74,10 +75,37 @@ function useDiscordRPC() {
 	}, [location.pathname, location.search.clusterId, cluster?.name, managedPackage?.name]);
 }
 
+function useAutoUpdate() {
+	useEffect(() => {
+		const unlistenPromise = listenForUpdateEvents(async (event) => {
+			console.log('Updater event:', event);
+			if (event.status === 'updateAvailable') {
+				console.log('Update available, installing...');
+				try {
+					await installUpdate();
+				}
+				catch (e) {
+					console.error('Failed to install update:', e);
+				}
+			}
+		});
+
+		checkForUpdate().then((update) => {
+			if (update)
+				console.log('Update found on initial check:', update.version);
+		}).catch(e => console.error('Failed to check for update:', e));
+
+		return () => {
+			unlistenPromise.then(unlisten => unlisten());
+		};
+	}, []);
+}
+
 function RootRoute() {
 	const router = useRouter();
 	const { setting } = useSettings();
 	useDiscordRPC();
+	useAutoUpdate();
 	return (
 		<RouterProvider
 			navigate={(to, options) => router.navigate({ to, ...options })}

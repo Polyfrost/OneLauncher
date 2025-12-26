@@ -5,8 +5,10 @@ use onelauncher_core::api::packages::modpack::data::ModpackArchive;
 use onelauncher_core::entity::clusters;
 use onelauncher_core::error::LauncherResult;
 
+use crate::ext::updater::Update;
 use crate::oneclient::bundles::BundlesManager;
 use crate::oneclient::clusters::{OnlineClusterManifest, get_data_storage_versions};
+use tauri::{AppHandle, Runtime};
 
 #[taurpc::procedures(path = "oneclient", export_to = "../frontend/src/bindings.gen.ts")]
 pub trait OneClientApi {
@@ -18,6 +20,14 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "getVersions")]
 	async fn get_versions() -> LauncherResult<OnlineClusterManifest>;
+
+	#[taurpc(alias = "checkForUpdate")]
+	async fn check_for_update<R: Runtime>(
+		app_handle: AppHandle<R>,
+	) -> LauncherResult<Option<Update>>;
+
+	#[taurpc(alias = "installUpdate")]
+	async fn install_update<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<()>;
 }
 
 #[taurpc::ipc_type]
@@ -70,5 +80,20 @@ impl OneClientApi for OneClientApiImpl {
 
 	async fn get_versions(self) -> LauncherResult<OnlineClusterManifest> {
 		get_data_storage_versions().await
+	}
+
+	async fn check_for_update<R: Runtime>(
+		self,
+		app_handle: AppHandle<R>,
+	) -> LauncherResult<Option<Update>> {
+		crate::ext::updater::check_for_update(app_handle)
+			.await
+			.map_err(|e| onelauncher_core::error::LauncherError::from(anyhow::anyhow!(e)))
+	}
+
+	async fn install_update<R: Runtime>(self, app_handle: AppHandle<R>) -> LauncherResult<()> {
+		crate::ext::updater::install_update(app_handle)
+			.await
+			.map_err(|e| onelauncher_core::error::LauncherError::from(anyhow::anyhow!(e)))
 	}
 }

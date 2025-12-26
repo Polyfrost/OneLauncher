@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { SheetPage } from '@/components';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { CodeSnippet02Icon, MessageTextSquare01Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
+import { CodeSnippet02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/app/settings')({
@@ -43,8 +43,8 @@ function RouteComponent() {
 								[<Sliders04Icon key="mcsettings" />, 'Minecraft settings', '/minecraft'],
 							],
 							'About': [
-								//[<RefreshCcw02Icon key="changelog" />, 'Changelog', '/'],
-								//[<MessageTextSquare01Icon key="feedback" />, 'Feedback', '/'],
+								// [<RefreshCcw02Icon key="changelog" />, 'Changelog', '/'],
+								// [<MessageTextSquare01Icon key="feedback" />, 'Feedback', '/'],
 								[<CodeSnippet02Icon key="dev" />, 'Developer Options', '/developer'],
 							],
 						}}

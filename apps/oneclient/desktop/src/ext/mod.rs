@@ -1,2 +1,2 @@
 pub mod specta;
-// pub mod updater;
+pub mod updater;

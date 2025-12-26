@@ -45,7 +45,7 @@
 	},
 	"bundle": {
 		"active": true,
-		"createUpdaterArtifacts": false,
+		"createUpdaterArtifacts": true,
 		"targets": [
 			"app",
 			"dmg",
@@ -112,8 +112,8 @@
 	},
 	"plugins": {
 		"updater": {
-			"pubkey": "",
-			"endpoints": ["https://polyfrost.org/releases/oneclient/{{current_version}}/{{target}}/{{arch}}"]
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGODk3MkMyMjg0MjFDMDUKUldRRkhFSW93bktKSHpkWjNEMXNzaDVINVpCTU8xSnhuK2RnV0dTZ2FkcFJWbG1zUkhGYTNjaUkK",
+			"endpoints": ["https://github.com/Polyfrost/OneLauncher/releases/latest/download/latest.json"]
 		},
 		"deep-link": {
 			"mobile": [],

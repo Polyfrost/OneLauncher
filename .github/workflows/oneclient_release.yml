@@ -39,7 +39,7 @@ jobs:
       - name: Setup Packages
         uses: ./.github/actions/setup-packages
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -50,3 +50,4 @@ jobs:
           tauriScript: pnpm -w oneclient:desktop
           args: ${{ matrix.args }}
           projectPath: ./apps/oneclient/desktop/
+          uploadUpdaterJson: true

@@ -65,7 +65,7 @@ export function LaunchButton({
 }: LaunchButtonProps) {
 	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
 	const { data: installedPackages } = useCommandSuspense(['getLinkedPackages', cluster.id], () => bindings.core.getLinkedPackages(cluster.id));
-	const launchCluster = useLaunchCluster(cluster.id);
+	const { launch: launchCluster, showDownloadWarning, setShowDownloadWarning, forceLaunch } = useLaunchCluster(cluster.id);
 	const isRunning = useIsRunning(cluster.id);
 
 	const [reason, setReason] = useState<'account' | 'packages' | 'kill' | null>(null);
@@ -85,21 +85,44 @@ export function LaunchButton({
 	};
 
 	return (
-		<Overlay.Trigger isOpen={reason !== null} onOpenChange={open => !open && setReason(null)}>
-			<Button
-				className={launchButtonVariants({ isRunning, className })}
-				isDisabled={isDisabled}
-				onPress={launch}
-				{...rest}
-			>
-				{isRunning ? 'Running' : 'Launch'}
-			</Button>
+		<>
+			<Overlay.Trigger isOpen={reason !== null} onOpenChange={open => !open && setReason(null)}>
+				<Button
+					className={launchButtonVariants({ isRunning, className })}
+					isDisabled={isDisabled}
+					onPress={launch}
+					{...rest}
+				>
+					{isRunning ? 'Running' : 'Launch'}
+				</Button>
 
-			<Overlay>
-				{reason === 'kill' && <KillMinecraft setOpen={() => setReason(null)} />}
-				{reason === 'packages' && <PromptForOnboarding cluster={cluster} launch={launch} setSkipPackagesCheck={setSkipPackagesCheck} />}
-				{reason === 'account' && <NoAccountPopup />}
+				<Overlay>
+					{reason === 'kill' && <KillMinecraft setOpen={() => setReason(null)} />}
+					{reason === 'packages' && <PromptForOnboarding cluster={cluster} launch={launch} setSkipPackagesCheck={setSkipPackagesCheck} />}
+					{reason === 'account' && <NoAccountPopup />}
+				</Overlay>
+			</Overlay.Trigger>
+
+			<Overlay isOpen={showDownloadWarning} onOpenChange={setShowDownloadWarning}>
+				<Overlay.Dialog>
+					<Overlay.Title>Cluster is downloading</Overlay.Title>
+					<div className="flex flex-col items-center">
+						<p className="max-w-sm text-fg-secondary">The cluster is currently downloading. Launching it now might cause issues or corruption. Are you sure you want to proceed?</p>
+					</div>
+					<Overlay.Buttons
+						buttons={[
+							{ color: 'secondary', key: 'Cancel', children: 'Cancel', size: 'normal', onClick: () => setShowDownloadWarning(false) },
+							{
+								color: 'primary',
+								key: 'Proceed',
+								children: 'Proceed Anyways',
+								size: 'normal',
+								onClick: forceLaunch,
+							},
+						]}
+					/>
+				</Overlay.Dialog>
 			</Overlay>
-		</Overlay.Trigger>
+		</>
 	);
 }

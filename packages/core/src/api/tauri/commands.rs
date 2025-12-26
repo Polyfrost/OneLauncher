@@ -9,6 +9,7 @@ use crate::store::processes::Process;
 use crate::store::{Settings, State};
 use crate::utils::pagination::Paginated;
 use interpulse::api::minecraft::Version;
+use onelauncher_entity::cluster_stage::ClusterStage;
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::package::Provider;
@@ -50,6 +51,9 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "updateClusterById")]
 	async fn update_cluster_by_id(id: ClusterId, request: ClusterUpdate) -> LauncherResult<()>;
+
+	#[taurpc(alias = "setClusterStage")]
+	async fn set_cluster_stage(id: ClusterId, stage: ClusterStage) -> LauncherResult<()>;
 
 	#[taurpc(alias = "getScreenshots")]
 	async fn get_screenshots(id: ClusterId) -> LauncherResult<Vec<String>>;
@@ -407,7 +411,14 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		Ok(())
 	}
-
+	async fn set_cluster_stage(self, id: ClusterId, stage: ClusterStage) -> LauncherResult<()> {
+		api::cluster::dao::update_cluster_by_id(id, |mut model: ClusterPartial| async move {
+			model.stage = Set(stage);
+			Ok(model)
+		})
+		.await?;
+		Ok(())
+	}
 	async fn get_screenshots(self, id: ClusterId) -> LauncherResult<Vec<String>> {
 		let cluster = api::cluster::dao::get_cluster_by_id(id)
 			.await?

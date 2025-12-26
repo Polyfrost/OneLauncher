@@ -43,8 +43,8 @@ function RouteComponent() {
 								[<Sliders04Icon key="mcsettings" />, 'Minecraft settings', '/minecraft'],
 							],
 							'About': [
-								[<RefreshCcw02Icon key="changelog" />, 'Changelog', '/changelog'],
-								[<MessageTextSquare01Icon key="feedback" />, 'Feedback', '/feedback'],
+								//[<RefreshCcw02Icon key="changelog" />, 'Changelog', '/'],
+								//[<MessageTextSquare01Icon key="feedback" />, 'Feedback', '/'],
 								[<CodeSnippet02Icon key="dev" />, 'Developer Options', '/developer'],
 							],
 						}}

@@ -610,6 +610,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			),
 		)
 		.title(format!("Login to {}", Core::get().launcher_name))
+		.inner_size(800.0, 600.0)
 		.center()
 		.focused(true)
 		.build()?;

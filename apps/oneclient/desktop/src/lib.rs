@@ -123,13 +123,54 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 
 	ext::updater::init(handle)?;
 
-	// tokio::task::spawn(async move {
-	// 	// let state = State::get().await.expect("failed to get state");
-	// 	// let settings = state.settings.read().await;
-	// 	// win.set_decorations(settings.);
-	// });
+	let win_clone = win.clone();
+	let app_handle = handle.clone();
+	tokio::task::spawn(async move {
+		if let Ok(state) = State::get().await {
+			let settings = state.settings.read().await;
+			// native_window_frame=true means use native decorations
+			// native_window_frame=false means use custom frame (no decorations)
+			#[cfg(target_os = "macos")]
+			{
+				win_clone.set_decorations(true).ok();
+				let win_weak = win_clone.clone();
+				app_handle
+					.run_on_main_thread(move || {
+						#[cfg(target_os = "macos")]
+						{
+							use objc2_app_kit::{NSWindow, NSWindowButton};
 
-	win.show()?;
+							if let Ok(ns_window_ptr) = win_weak.ns_window() {
+								let ns_window = ns_window_ptr as *mut NSWindow;
+								unsafe {
+									let ns_window = &*ns_window;
+									if let Some(btn) =
+										ns_window.standardWindowButton(NSWindowButton::CloseButton)
+									{
+										btn.setHidden(true);
+									}
+									if let Some(btn) = ns_window
+										.standardWindowButton(NSWindowButton::MiniaturizeButton)
+									{
+										btn.setHidden(true);
+									}
+									if let Some(btn) =
+										ns_window.standardWindowButton(NSWindowButton::ZoomButton)
+									{
+										btn.setHidden(true);
+									}
+								}
+							}
+						}
+					})
+					.ok();
+			}
+
+			#[cfg(not(target_os = "macos"))]
+			win_clone.set_decorations(settings.native_window_frame).ok();
+		}
+		win_clone.show().ok();
+	});
 
 	Ok(())
 }

@@ -1,6 +1,6 @@
 import type { HTMLMotionProps, MotionValue } from 'motion/react';
 import { Button } from '@onelauncher/common/components';
-import { useCanGoBack, useRouter } from '@tanstack/react-router';
+import { useCanGoBack, useLocation, useRouter } from '@tanstack/react-router';
 import { ArrowLeftIcon } from '@untitled-theme/icons-react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -126,7 +126,7 @@ export function GoBackButton() {
 		return undefined;
 
 	const onClick = () => {
-		router.history.back();
+		router.navigate({ to: '/' });
 	};
 
 	return (

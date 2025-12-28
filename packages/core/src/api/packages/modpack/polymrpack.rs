@@ -156,6 +156,7 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 			mc_version: self.mc_version.clone(),
 			loader: self.loader.clone(),
 			loader_version: self.loader_version.clone(),
+			enabled: self.raw_manifest.enabled,
 			files,
 		};
 

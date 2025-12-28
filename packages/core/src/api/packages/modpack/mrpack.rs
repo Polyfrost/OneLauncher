@@ -157,6 +157,7 @@ impl InstallableModpackFormatExt for MrPackFormatImpl {
 			mc_version: self.mc_version.clone(),
 			loader: self.loader.clone(),
 			loader_version: self.loader_version.clone(),
+			enabled: false,
 			files,
 		};
 

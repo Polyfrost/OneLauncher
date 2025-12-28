@@ -50,8 +50,13 @@ function RouteComponent() {
 	});
 
 	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModpackFile>>>(
-		clusters.reduce((acc, cluster) => {
-			acc[cluster.id] = [];
+		clusters.reduce((acc, cluster, i) => {
+			const bundles = bundleQueries[i];
+			const enabledMods = bundles
+				.filter(bundle => bundle.manifest.enabled)
+				.flatMap(bundle => bundle.manifest.files.filter(file => file.enabled));
+
+			acc[cluster.id] = enabledMods;
 			return acc;
 		}, {} as Record<string, Array<ModpackFile>>),
 	);
@@ -111,13 +116,14 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 
 function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModpackFile>; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
 	const files = bundle.manifest.files;
-	const isSelected = files.every(file => mods.includes(file));
+	const isSelected = files.filter(file => file.enabled).every(file => mods.includes(file));
 	const handleDownload = () => {
 		setMods((prevMods) => {
-			if (isSelected)
-				return prevMods.filter(mod => !files.includes(mod));
-			else
-				return [...files, ...prevMods];
+			if (isSelected) { return prevMods.filter(mod => !files.includes(mod)); }
+			else {
+				const filesToAdd = files.filter(file => file.enabled && !prevMods.includes(file));
+				return [...filesToAdd, ...prevMods];
+			}
 		});
 	};
 

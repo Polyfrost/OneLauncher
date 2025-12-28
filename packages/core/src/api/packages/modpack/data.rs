@@ -24,7 +24,13 @@ pub struct ModpackManifest {
 	pub loader: GameLoader,
 	pub loader_version: String,
 	pub mc_version: String,
+	#[serde(default = "default_false")]
+	pub enabled: bool,
 	pub files: Vec<ModpackFile>,
+}
+
+fn default_false() -> bool {
+	false
 }
 
 #[onelauncher_macro::specta]

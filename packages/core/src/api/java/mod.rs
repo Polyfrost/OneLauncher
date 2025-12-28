@@ -458,7 +458,7 @@ pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathB
 
 	base_path = base_path.join(get_java_bin());
 
-	#[cfg(target_os = "macos")]
+	#[cfg(any(target_os = "macos", target_os = "linux"))]
 	{
 		let _ = tokio::process::Command::new("chmod")
 			.arg("755")

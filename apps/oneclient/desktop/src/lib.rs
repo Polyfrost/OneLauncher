@@ -167,7 +167,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 			}
 
 			#[cfg(not(target_os = "macos"))]
-			win_clone.set_decorations(settings.native_window_frame).ok();
+			win_clone.set_decorations(false).ok();
 		}
 		win_clone.show().ok();
 	});

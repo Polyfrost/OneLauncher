@@ -1,7 +1,7 @@
 {
 	"name": "@oneclient/desktop",
 	"type": "module",
-	"version": "1.0.0-alpha.3",
+	"version": "1.0.0-alpha.4",
 	"private": true,
 	"description": "Next-generation open source Minecraft launcher",
 	"license": "GPL-3.0-only",

@@ -1,0 +1,21 @@
+{
+	"app": {
+		"windows": [
+			{
+				"title": "OneClient",
+				"titleBarStyle": "Overlay",
+				"hiddenTitle": true,
+				"width": 1280,
+				"height": 802,
+				"minWidth": 1020,
+				"minHeight": 600,
+				"resizable": true,
+				"center": true,
+				"decorations": true,
+				"fullscreen": false,
+				"shadow": true,
+				"visible": false
+			}
+		]
+	}
+}

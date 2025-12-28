@@ -59,6 +59,7 @@ runs:
       run: pnpm prep
 
     - name: Override linuxdeploy version (fixes AppImage)
+      shell: bash
       if: matrix.platform == 'ubuntu-22.04'
       run: |
         # Pin linuxdeploy version to prevent @tauri-apps/cli-linux-x64-gnu from pulling in an outdated version

@@ -16,6 +16,7 @@ import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingA
 interface Skin {
 	is_slim: boolean;
 	skin_url: string;
+	cape_url?: string;
 }
 
 interface Cape {
@@ -109,7 +110,7 @@ export function MissingAccountData({ validSearch }: { validSearch: boolean }) {
 }
 
 function RouteComponent() {
-	const { profileData, profile, queryClient, validSearch } = Route.useRouteContext();
+	const { profileData, profile, queryClient, validSearch, playerData } = Route.useRouteContext();
 
 	const [capes, setCapes] = useState<Array<Cape>>([]);
 	const [selectedCape, setSelectedCape] = useState<string>('');
@@ -123,7 +124,7 @@ function RouteComponent() {
 
 	const [skins, setSkins, loaded] = useSkinHistory();
 	const [selectedSkin, setSelectedSkin] = useState<Skin>({ skin_url: getSkinUrl(null), is_slim: false });
-	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url) };
+	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url), cape_url: playerData?.cape_url ?? '' };
 
 	useEffect(() => {
 		if (!loaded)
@@ -131,6 +132,7 @@ function RouteComponent() {
 
 		setSkins(prev => [...prev, skinData]);
 		setSelectedSkin(skinData);
+		setSelectedCape(skinData.cape_url ?? '')
 	}, [loaded]);
 
 	const importFromURL = (url: string) => {

@@ -119,7 +119,9 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 	const isSelected = files.filter(file => file.enabled).every(file => mods.includes(file));
 	const handleDownload = () => {
 		setMods((prevMods) => {
-			if (isSelected) { return prevMods.filter(mod => !files.includes(mod)); }
+			if (isSelected) {
+				return prevMods.filter(mod => !files.includes(mod));
+			}
 			else {
 				const filesToAdd = files.filter(file => file.enabled && !prevMods.includes(file));
 				return [...filesToAdd, ...prevMods];

@@ -125,7 +125,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 			}
 
 		return mods?.includes(file) ?? false;
-	}, [installedPackages, mods, file]);
+	}, [installedPackages, kind, mods, file]);
 
 	const [isSelected, setSelected] = useState(isInstalled);
 	useEffect(() => {
@@ -137,7 +137,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 			const [pkg, version] = kind.Managed;
 			if (version.dependencies.length > 0)
 				for (const dependency of version.dependencies)
-					if (dependency.dependency_type === "required") {
+					if (dependency.dependency_type === 'required') {
 						const slug = dependency.project_id ?? '';
 						const versions = await bindings.core.getPackageVersions(pkg.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
 						await bindings.core.downloadPackage(pkg.provider, slug, versions.items[0].version_id, cluster.id, null);
@@ -155,7 +155,7 @@ export function ModCard({ file, cluster }: ModCardProps) {
 		if ('Managed' in kind) {
 			const [_, version] = kind.Managed;
 			const primary = version.files.find(f => f.primary) ?? version.files[0];
-			hash = primary?.sha1;
+			hash = primary.sha1;
 		}
 		else {
 			hash = kind.External.sha1;

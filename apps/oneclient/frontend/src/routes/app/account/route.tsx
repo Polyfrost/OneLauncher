@@ -28,7 +28,6 @@ export const Route = createFileRoute('/app/account')({
 			queryFn: () => bindings.core.fetchLoggedInProfile(profile.access_token),
 		});
 
-
 		const profileData = await query;
 
 		const playerDataQuery = context.queryClient.ensureQueryData({
@@ -36,13 +35,13 @@ export const Route = createFileRoute('/app/account')({
 			queryFn: () => bindings.core.fetchMinecraftProfile(profileData.id),
 		});
 
-		const playerData = await playerDataQuery
+		const playerData = await playerDataQuery;
 
 		return {
 			profileData,
 			profile,
 			validSearch,
-			playerData
+			playerData,
 		};
 	},
 });

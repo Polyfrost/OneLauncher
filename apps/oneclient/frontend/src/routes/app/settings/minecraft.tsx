@@ -80,10 +80,10 @@ export function GameSettings() {
 						min={1}
 						onChange={(e) => {
 							const width = Math.max(1, Number(e.currentTarget.value));
-							setSetting('res', { width, height: gameSettings.res?.height ?? 720 });
+							setSetting('res', { width, height: gameSettings.res?.height ?? 480 });
 						}}
 						type="number"
-						value={gameSettings.res?.width ?? 1280}
+						value={gameSettings.res?.width ?? 640}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
@@ -91,10 +91,10 @@ export function GameSettings() {
 						min={1}
 						onChange={(e) => {
 							const height = Math.max(1, Number(e.currentTarget.value));
-							setSetting('res', { width: gameSettings.res?.width ?? 1280, height });
+							setSetting('res', { width: gameSettings.res?.width ?? 640, height });
 						}}
 						type="number"
-						value={gameSettings.res?.height ?? 720}
+						value={gameSettings.res?.height ?? 480}
 					/>
 				</div>
 			</SettingsRow>

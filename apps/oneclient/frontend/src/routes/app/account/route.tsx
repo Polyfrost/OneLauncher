@@ -21,18 +21,28 @@ export const Route = createFileRoute('/app/account')({
 		// TODO instead replace this with a refresh access_token function. Waiting on binding from @LynithDev
 		const { profile, search: validSearch } = search;
 		if (!profile)
-			return { profileData: null, profile: null, validSearch };
+			return { profileData: null, profile: null, validSearch, playerData: null };
 
 		const query = context.queryClient.ensureQueryData({
 			queryKey: ['fetchLoggedInProfile', profile.access_token],
 			queryFn: () => bindings.core.fetchLoggedInProfile(profile.access_token),
 		});
 
+
 		const profileData = await query;
+
+		const playerDataQuery = context.queryClient.ensureQueryData({
+			queryKey: ['fetchMinecraftProfile', profileData.id],
+			queryFn: () => bindings.core.fetchMinecraftProfile(profileData.id),
+		});
+
+		const playerData = await playerDataQuery
+
 		return {
 			profileData,
 			profile,
 			validSearch,
+			playerData
 		};
 	},
 });

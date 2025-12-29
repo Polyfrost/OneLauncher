@@ -9,12 +9,14 @@ import { dataDir, downloadDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
 import { exists, mkdir, readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useEffect, useState } from 'react';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
 
 interface Skin {
 	is_slim: boolean;
 	skin_url: string;
+	cape_url?: string;
 }
 
 interface Cape {
@@ -108,7 +110,7 @@ export function MissingAccountData({ validSearch }: { validSearch: boolean }) {
 }
 
 function RouteComponent() {
-	const { profileData, profile, queryClient, validSearch } = Route.useRouteContext();
+	const { profileData, profile, queryClient, validSearch, playerData } = Route.useRouteContext();
 
 	const [capes, setCapes] = useState<Array<Cape>>([]);
 	const [selectedCape, setSelectedCape] = useState<string>('');
@@ -122,7 +124,7 @@ function RouteComponent() {
 
 	const [skins, setSkins, loaded] = useSkinHistory();
 	const [selectedSkin, setSelectedSkin] = useState<Skin>({ skin_url: getSkinUrl(null), is_slim: false });
-	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url) };
+	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url), cape_url: playerData?.cape_url ?? '' };
 
 	useEffect(() => {
 		if (!loaded)
@@ -130,6 +132,7 @@ function RouteComponent() {
 
 		setSkins(prev => [...prev, skinData]);
 		setSelectedSkin(skinData);
+		setSelectedCape(skinData.cape_url ?? '')
 	}, [loaded]);
 
 	const importFromURL = (url: string) => {
@@ -189,6 +192,7 @@ function RouteComponent() {
 		}
 	};
 
+	animations[0].animation.speed = animations[0].speed;
 	const [animation, setAnimation] = useState<PlayerAnimation>(animations[0].animation);
 	const [animationName, setAnimationName] = useState<string>(animations[0].name);
 
@@ -238,7 +242,7 @@ function RouteComponent() {
 
 					<div className="min-h-full w-px bg-component-border"></div>
 
-					<div className="w-full flex flex-col min-h-full justify-between">
+					<div className="w-full flex flex-col min-h-full justify-between overflow-hidden">
 
 						<SkinHistoryRow
 							animation={animation}
@@ -274,35 +278,38 @@ function RouteComponent() {
 
 function SkinHistoryRow({ selected, animation, setSelectedSkin, skins, setSkins, importFromURL, importFromUsername, capeURL, shouldShowElytra }: { selected: Skin; animation: PlayerAnimation; setSelectedSkin: (skin: Skin) => void; skins: Array<Skin>; setSkins: (updater: (prev: Array<Skin>) => Array<Skin>) => void; importFromURL: (url: string) => void; importFromUsername: (username: string) => void; capeURL: string; shouldShowElytra: boolean }) {
 	return (
-		<div className="flex flex-col h-full justify-around">
+		<div className="flex flex-col h-full justify-around w-10/12">
 			<div className="flex flex-col justify-center items-center">
 				<p>Skin History</p>
 			</div>
 
-			<div className="flex flex-row h-fit gap-2">
-				<Overlay.Trigger>
-					<Button className="border border-component-border rounded-xl bg-component-border w-[75px] h-[120px]" color="ghost">
-						<div className="flex flex-col justify-center items-center content-center h-full">
-							<PlusIcon className="scale-200" />
-						</div>
-					</Button>
-					<Overlay>
-						<ImportSkinModal importFromURL={importFromURL} importFromUsername={importFromUsername} />
-					</Overlay>
-				</Overlay.Trigger>
-				{skins.map(skinData => (
-					<RenderSkin
-						animation={animation}
-						capeURL={capeURL}
-						key={skinData.skin_url}
-						selected={selected}
-						setSelectedSkin={setSelectedSkin}
-						setSkins={setSkins}
-						shouldShowElytra={shouldShowElytra}
-						skin={skinData}
-					/>
-				))}
-			</div>
+			<OverlayScrollbarsComponent>
+				<div className="flex flex-row h-fit gap-2">
+					<Overlay.Trigger>
+						<Button className="border border-component-border rounded-xl bg-component-border w-[75px] h-[120px]" color="ghost">
+							<div className="flex flex-col justify-center items-center content-center h-full">
+								<PlusIcon className="scale-200" />
+							</div>
+						</Button>
+						<Overlay>
+							<ImportSkinModal importFromURL={importFromURL} importFromUsername={importFromUsername} />
+						</Overlay>
+					</Overlay.Trigger>
+					{skins.map(skinData => (
+						<RenderSkin
+							animation={animation}
+							capeURL={capeURL}
+							key={skinData.skin_url}
+							selected={selected}
+							setSelectedSkin={setSelectedSkin}
+							setSkins={setSkins}
+							shouldShowElytra={shouldShowElytra}
+							skin={skinData}
+						/>
+					))}
+					<div className="w-4 shrink-0" />
+				</div>
+			</OverlayScrollbarsComponent>
 		</div>
 	);
 }
@@ -355,16 +362,16 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 			{selected.skin_url === skin.skin_url
 				? <></>
 				: (
-						<Overlay.Trigger>
-							<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
-								<Trash01Icon className="group-hover:stroke-danger" />
-							</Button>
+					<Overlay.Trigger>
+						<Button className="group w-8 h-8 absolute top-0 right-0" color="ghost" size="icon">
+							<Trash01Icon className="group-hover:stroke-danger" />
+						</Button>
 
-							<Overlay>
-								<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
-							</Overlay>
-						</Overlay.Trigger>
-					)}
+						<Overlay>
+							<RemoveSkinCapeModal onPress={() => setSkins(prev => prev.filter(skinData => skinData.skin_url !== skin.skin_url))} />
+						</Overlay>
+					</Overlay.Trigger>
+				)}
 			<Button
 				className="group w-8 h-8 absolute bottom-0 right-0"
 				color="ghost"
@@ -379,21 +386,23 @@ function RenderSkin({ skin, selected, animation, setSelectedSkin, setSkins, cape
 
 function CapeRow({ selected, animation, setSelectedCape, capes, shouldShowElytra, setShouldShowElytra, skinURL }: { selected: string | null; animation: PlayerAnimation; setSelectedCape: (cape: string) => void; capes: Array<Cape>; shouldShowElytra: boolean; setShouldShowElytra: () => void; skinURL: string }) {
 	return (
-		<div className="flex flex-col h-full justify-around">
-			<div className="flex flex-row h-fit gap-2">
-				{capes.map(cape => (
-					<RenderCape
-						animation={animation}
-						cape={cape.url}
-						key={cape.id}
-						selected={selected}
-						setSelectedCape={setSelectedCape}
-						shouldShowElytra={shouldShowElytra}
-						skinURL={skinURL}
-					/>
-				))}
-
-			</div>
+		<div className="flex flex-col h-full justify-around w-10/12">
+			<OverlayScrollbarsComponent className="pr-4">
+				<div className="flex flex-row h-fit gap-2 mr-4 pr-4">
+					{capes.map(cape => (
+						<RenderCape
+							animation={animation}
+							cape={cape.url}
+							key={cape.id}
+							selected={selected}
+							setSelectedCape={setSelectedCape}
+							shouldShowElytra={shouldShowElytra}
+							skinURL={skinURL}
+						/>
+					))}
+					<div className="w-4 shrink-0" />
+				</div>
+			</OverlayScrollbarsComponent>
 
 			<div className="flex flex-col justify-center items-center">
 				<p>Cape History</p>

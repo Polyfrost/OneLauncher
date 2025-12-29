@@ -77,20 +77,24 @@ export function GameSettings() {
 				<div className="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							setSetting('res', { height: gameSettings.res?.height ?? 720, width: Number(e.currentTarget.value) });
+							const width = Math.max(1, Number(e.currentTarget.value));
+							setSetting('res', { width, height: gameSettings.res?.height ?? 480 });
 						}}
 						type="number"
-						value={gameSettings.res?.width}
+						value={gameSettings.res?.width ?? 640}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							setSetting('res', { width: gameSettings.res?.height ?? 1280, height: Number(e.currentTarget.value) });
+							const height = Math.max(1, Number(e.currentTarget.value));
+							setSetting('res', { width: gameSettings.res?.width ?? 640, height });
 						}}
 						type="number"
-						value={gameSettings.res?.height}
+						value={gameSettings.res?.height ?? 480}
 					/>
 				</div>
 			</SettingsRow>
@@ -101,15 +105,22 @@ export function GameSettings() {
 				title="Memory"
 			>
 				<div className="flex items-center gap-x-4 flex-justify-center">
-					<div className="flex flex-row items-center gap-x-2">
+					<div className="flex flex-row items-center gap-x-2 relative">
 						<TextField
-							className="text-center"
+							className="text-center pr-10"
+							onBlur={() => {
+								setSetting('mem_max', gameSettings.mem_max ?? 0);
+							}}
 							onChange={(e) => {
-								setSetting('mem_max', Number(e.currentTarget.value));
+								const raw = e.currentTarget.value;
+								setSetting('mem_max', raw === '' ? null : Math.max(0, Number(raw)));
 							}}
 							type="number"
-							value={gameSettings.mem_max ?? undefined}
+							value={gameSettings.mem_max ?? ''}
 						/>
+						<div className="absolute inset-y-0 right-3 flex items-center">
+							<p className="text-sm text-fg-secondary">MB</p>
+						</div>
 					</div>
 				</div>
 			</SettingsRow>

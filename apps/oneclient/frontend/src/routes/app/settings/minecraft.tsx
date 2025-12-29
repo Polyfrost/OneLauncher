@@ -77,20 +77,24 @@ export function GameSettings() {
 				<div className="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							setSetting('res', { height: gameSettings.res?.height ?? 720, width: Number(e.currentTarget.value) });
+							const width = Math.max(1, Number(e.currentTarget.value));
+							setSetting('res', { width, height: gameSettings.res?.height ?? 720 });
 						}}
 						type="number"
-						value={gameSettings.res?.width}
+						value={gameSettings.res?.width ?? 1280}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							setSetting('res', { width: gameSettings.res?.height ?? 1280, height: Number(e.currentTarget.value) });
+							const height = Math.max(1, Number(e.currentTarget.value));
+							setSetting('res', { width: gameSettings.res?.width ?? 1280, height });
 						}}
 						type="number"
-						value={gameSettings.res?.height}
+						value={gameSettings.res?.height ?? 720}
 					/>
 				</div>
 			</SettingsRow>

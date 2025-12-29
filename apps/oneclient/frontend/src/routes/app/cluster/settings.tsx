@@ -73,20 +73,24 @@ function RouteComponent() {
 				<div className="grid grid-cols-[70px_16px_70px] gap-2 grid-justify-center grid-items-center">
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							updateProfile({ res: { height: profile.res?.height ?? 720, width: Number(e.currentTarget.value) } });
+							const width = Math.max(1, Number(e.currentTarget.value));
+							updateProfile({ res: { width, height: profile.res?.height ?? 720 } });
 						}}
 						type="number"
-						value={profile.res?.width}
+						value={profile.res?.width ?? 1280}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
 						className="text-center"
+						min={1}
 						onChange={(e) => {
-							updateProfile({ res: { width: profile.res?.height ?? 1280, height: Number(e.currentTarget.value) } });
+							const height = Math.max(1, Number(e.currentTarget.value));
+							updateProfile({ res: { width: profile.res?.width ?? 1280, height } });
 						}}
 						type="number"
-						value={profile.res?.height}
+						value={profile.res?.height ?? 720}
 					/>
 				</div>
 			</SettingsRow>

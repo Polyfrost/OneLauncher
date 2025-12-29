@@ -27,7 +27,7 @@ export const ProviderNames: Record<typeof LOADERS[number], string> = {
 	legacyfabric: 'Legacy Fabric',
 } as const;
 
-export const PROVIDERS = ['Modrinth', 'CurseForge', 'SkyClient'] as const;
+export const PROVIDERS = ['Modrinth', 'CurseForge'] as const;
 export const PACKAGE_TYPES = ['mod', 'resourcepack', 'datapack', 'shaderpack'] as const;
 
 export function pluralize(n: number, word: string, locale: string = 'en'): string {

@@ -70,7 +70,6 @@ impl ToString for PackageType {
 pub enum Provider {
 	Modrinth = 0,
 	CurseForge = 1,
-	SkyClient = 2,
 }
 
 impl Display for Provider {
@@ -85,7 +84,6 @@ impl Provider {
 		match self {
 			Self::Modrinth => "Modrinth",
 			Self::CurseForge => "CurseForge",
-			Self::SkyClient => "SkyClient",
 		}
 	}
 
@@ -95,7 +93,6 @@ impl Provider {
 		match self {
 			Self::Modrinth => "https://modrinth.com/",
 			Self::CurseForge => "https://curseforge.com/",
-			Self::SkyClient => "https://skyclient.co/",
 		}
 	}
 

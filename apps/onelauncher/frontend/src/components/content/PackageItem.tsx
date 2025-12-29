@@ -87,12 +87,10 @@ export function PackageItem({ provider, ...item }: SearchResult & { provider: Pr
 				<p className="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{item.description}</p>
 
 				<div className="flex flex-row gap-4 text-xs">
-					<Show when={provider !== 'SkyClient'}>
-						<div className="flex flex-row items-center gap-2">
-							<Download01Icon className="h-4 w-4" />
-							{abbreviateNumber(item.downloads)}
-						</div>
-					</Show>
+					<div className="flex flex-row items-center gap-2">
+						<Download01Icon className="h-4 w-4" />
+						{abbreviateNumber(item.downloads)}
+					</div>
 				</div>
 			</div>
 		</Link>

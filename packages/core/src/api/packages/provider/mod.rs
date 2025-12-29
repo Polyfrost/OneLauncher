@@ -15,11 +15,9 @@ pub(crate) mod tests;
 
 mod curseforge;
 mod modrinth;
-// mod skyclient;
 
 pub use curseforge::CurseForgeProviderImpl;
 pub use modrinth::ModrinthProviderImpl;
-// pub use skyclient::SkyClientProviderImpl;
 
 #[async_trait::async_trait]
 pub trait ProviderExt {
@@ -66,8 +64,6 @@ macro_rules! delegate {
         match $self {
             Provider::Modrinth => ModrinthProviderImpl.$method($($arg),*).await,
             Provider::CurseForge => CurseForgeProviderImpl.$method($($arg),*).await,
-			// Provider::SkyClient => SkyClientProviderImpl.$method($($arg),*).await,
-			_ => todo!("skyclient not implement")
         }
     };
 }

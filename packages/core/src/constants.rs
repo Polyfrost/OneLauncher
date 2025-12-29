@@ -29,9 +29,6 @@ pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
 pub const FEATURED_PACKAGES_URL: &str = "https://polyfrost.org/meta/onelauncher/featured.json";
 /// <https://mclo.gs>/ API base url.
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
-/// <https://skyclient.co/> metadata base url.
-pub const SKYCLIENT_BASE_URL: &str =
-	"https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
 
 // =========== Hacky Mojang-spec OS constants ===========
 #[cfg(target_os = "windows")]

@@ -113,7 +113,6 @@ function getPackageUrl(pkg: ManagedPackage): string {
 	switch (pkg.provider) {
 		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`;
 		case 'CurseForge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`;
-		case 'SkyClient': return ``;
 	}
 }
 
@@ -147,12 +146,10 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 					<p className="max-h-22 flex-1 overflow-hidden text-sm text-fg-secondary line-height-snug">{pkg.short_desc}</p>
 
 					<div className="flex flex-row gap-4 text-xs">
-						<Show when={pkg.provider !== 'SkyClient'}>
-							<div className="flex flex-row items-center gap-2">
-								<Download01Icon className="h-4 w-4" />
-								{abbreviateNumber(pkg.downloads)}
-							</div>
-						</Show>
+						<div className="flex flex-row items-center gap-2">
+							<Download01Icon className="h-4 w-4" />
+							{abbreviateNumber(pkg.downloads)}
+						</div>
 					</div>
 				</div>
 			</div>
@@ -170,23 +167,23 @@ function BrowserSidebar({ package: pkg }: { package: ManagedPackage }) {
 					{(Object.entries(pkg.links) as Array<[keyof typeof pkg.links, typeof pkg.links[keyof typeof pkg.links]]>).filter(a => a[1]).map(link =>
 						typeof link[1] == 'string'
 							? (
-									<CustomA
-										children={upperFirst(link[0])}
-										className="text-link hover:text-link-hover"
-										href={link[1]}
-										includeIcon
-										key={link[0]}
-									/>
-								)
+								<CustomA
+									children={upperFirst(link[0])}
+									className="text-link hover:text-link-hover"
+									href={link[1]}
+									includeIcon
+									key={link[0]}
+								/>
+							)
 							: (link[1] as Array<PackageDonationUrl>).map(donationLink => (
-									<CustomA
-										children={upperFirst(donationLink.id)}
-										className="text-link hover:text-link-hover"
-										href={donationLink.url}
-										includeIcon
-										key={donationLink.id}
-									/>
-								)))}
+								<CustomA
+									children={upperFirst(donationLink.id)}
+									className="text-link hover:text-link-hover"
+									href={donationLink.url}
+									includeIcon
+									key={donationLink.id}
+								/>
+							)))}
 				</div>
 			</div>
 
@@ -288,16 +285,16 @@ function InstallButton() {
 						{browserContext.cluster
 							? version
 								? (
-										<span>
-											Download latest to
-											<br />
-											<span className="text-md font-semibold">{browserContext.cluster.name}</span>
-										</span>
-									)
+									<span>
+										Download latest to
+										<br />
+										<span className="text-md font-semibold">{browserContext.cluster.name}</span>
+									</span>
+								)
 								: versionsLoading ? 'Looking for a version...' : 'No matching version found'
 							: (clusters?.length ?? 0) > 0
-									? 'Select a Cluster'
-									: 'No clusters'}
+								? 'Select a Cluster'
+								: 'No clusters'}
 					</Show>
 					<Show when={download.isPending}>
 						<span>

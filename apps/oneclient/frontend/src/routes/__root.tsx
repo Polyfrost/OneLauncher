@@ -65,10 +65,10 @@ function ReplaceVariables(template: string, variables: Record<string, any>) {
 function useDiscordRPC() {
 	const location = useLocation();
 	const clusterId = location.search.clusterId ?? 0;
-	const provider = location.search.provider ?? 'Modrinth';
-	const packageId = location.search.packageId ?? '8pJYUDNi';
+	const provider = location.search.provider ?? null;
+	const packageId = location.search.packageId ?? null;
 	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
-	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider, packageId));
+	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider!, packageId!), { enabled: provider != null && packageId != null });
 	useEffect(() => {
 		bindings.core.setDiscordRPCMessage(ReplaceVariables(ResolvedPathNames[location.pathname as URLPath], { clusterName: cluster?.name ?? 'UNKNOWN', packageName: managedPackage?.name ?? 'UNKNOWN' }));
 	}, [location.pathname, location.search.clusterId, cluster?.name, managedPackage?.name]);

@@ -77,8 +77,10 @@ function useDiscordRPC() {
 function useAutoUpdate() {
 	useEffect(() => {
 		const unlistenPromise = listenForUpdateEvents(async (event) => {
+			// eslint-disable-next-line no-console -- Used for debugging - aka important
 			console.log('Updater event:', event);
 			if (event.status === 'updateAvailable') {
+				// eslint-disable-next-line no-console -- Used for debugging - aka important
 				console.log('Update available, installing...');
 				try {
 					await installUpdate();
@@ -91,6 +93,7 @@ function useAutoUpdate() {
 
 		checkForUpdate().then((update) => {
 			if (update)
+				// eslint-disable-next-line no-console -- Used for debugging - aka important
 				console.log('Update found on initial check:', update.version);
 		}).catch(e => console.error('Failed to check for update:', e));
 

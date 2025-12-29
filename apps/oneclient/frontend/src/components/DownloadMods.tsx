@@ -117,7 +117,7 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 					const cluster = await bindings.core.getClusterById(mod.clusterId);
 					if (!cluster)
 						continue;
-					if (dependency.dependency_type === "required") {
+					if (dependency.dependency_type === 'required') {
 						const slug = dependency.project_id ?? '';
 						const versions = await bindings.core.getPackageVersions(mod.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
 						if (versions.items.length !== 0)

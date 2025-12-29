@@ -28,7 +28,10 @@ export const Route = createFileRoute('/app/cluster/browser/')({
 	},
 });
 
-const PROVIDERS: Array<Provider> = ['Modrinth', 'CurseForge', 'SkyClient'];
+// const PROVIDERS: Array<Provider> = ['Modrinth', 'CurseForge', 'SkyClient'];
+// I don't think SkyClient will get implemented due to hypixel removing 1.8 support and SkyClient is only really for old 1.8 mods that aren't on a provider
+// High chance we can just one day nuke the entire unfinished implementation
+const PROVIDERS: Array<Provider> = ['Modrinth', 'CurseForge'];
 
 function RouteComponent() {
 	return (

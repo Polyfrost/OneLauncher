@@ -190,6 +190,7 @@ function RouteComponent() {
 		}
 	};
 
+	animations[0].animation.speed = animations[0].speed;
 	const [animation, setAnimation] = useState<PlayerAnimation>(animations[0].animation);
 	const [animationName, setAnimationName] = useState<string>(animations[0].name);
 

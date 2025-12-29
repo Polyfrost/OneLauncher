@@ -104,11 +104,15 @@ export function GameSettings() {
 					<div className="flex flex-row items-center gap-x-2">
 						<TextField
 							className="text-center"
+							onBlur={() => {
+								setSetting('mem_max', gameSettings.mem_max ?? 0);
+							}}
 							onChange={(e) => {
-								setSetting('mem_max', Number(e.currentTarget.value));
+								const raw = e.currentTarget.value;
+								setSetting('mem_max', raw === '' ? null : Math.max(0, Number(raw)));
 							}}
 							type="number"
-							value={gameSettings.mem_max ?? undefined}
+							value={gameSettings.mem_max ?? ''}
 						/>
 					</div>
 				</div>

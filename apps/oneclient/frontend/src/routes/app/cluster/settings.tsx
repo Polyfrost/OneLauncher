@@ -100,11 +100,16 @@ function RouteComponent() {
 					<div className="flex flex-row items-center gap-x-2">
 						<TextField
 							className="text-center"
+							min={0}
+							onBlur={() => {
+								updateProfile({ mem_max: profile.mem_max ?? 0 });
+							}}
 							onChange={(e) => {
-								updateProfile({ mem_max: Number(e.currentTarget.value) });
+								const raw = e.currentTarget.value;
+								updateProfile({ mem_max: raw === '' ? undefined : Math.max(0, Number(raw)), });
 							}}
 							type="number"
-							value={profile.mem_max ?? undefined}
+							value={profile.mem_max ?? ''}
 						/>
 					</div>
 				</div>

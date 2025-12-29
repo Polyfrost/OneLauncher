@@ -101,9 +101,9 @@ export function GameSettings() {
 				title="Memory"
 			>
 				<div className="flex items-center gap-x-4 flex-justify-center">
-					<div className="flex flex-row items-center gap-x-2">
+					<div className="flex flex-row items-center gap-x-2 relative">
 						<TextField
-							className="text-center"
+							className="text-center pr-10"
 							onBlur={() => {
 								setSetting('mem_max', gameSettings.mem_max ?? 0);
 							}}
@@ -114,6 +114,9 @@ export function GameSettings() {
 							type="number"
 							value={gameSettings.mem_max ?? ''}
 						/>
+						<div className="absolute inset-y-0 right-3 flex items-center">
+							<p className="text-sm text-fg-secondary">MB</p>
+						</div>
 					</div>
 				</div>
 			</SettingsRow>

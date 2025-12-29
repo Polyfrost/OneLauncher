@@ -97,20 +97,23 @@ function RouteComponent() {
 				title="Memory"
 			>
 				<div className="flex items-center gap-x-4 flex-justify-center">
-					<div className="flex flex-row items-center gap-x-2">
+					<div className="flex flex-row items-center gap-x-2 relative">
 						<TextField
-							className="text-center"
+							className="text-center pr-10"
 							min={0}
 							onBlur={() => {
 								updateProfile({ mem_max: profile.mem_max ?? 0 });
 							}}
 							onChange={(e) => {
 								const raw = e.currentTarget.value;
-								updateProfile({ mem_max: raw === '' ? undefined : Math.max(0, Number(raw)), });
+								updateProfile({ mem_max: raw === '' ? undefined : Math.max(0, Number(raw)) });
 							}}
 							type="number"
 							value={profile.mem_max ?? ''}
 						/>
+						<div className="absolute inset-y-0 right-3 flex items-center">
+							<p className="text-sm text-fg-secondary">MB</p>
+						</div>
 					</div>
 				</div>
 			</SettingsRow>

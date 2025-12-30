@@ -83,7 +83,7 @@ export function GameSettings() {
 							setSetting('res', { width, height: gameSettings.res?.height ?? 480 });
 						}}
 						type="number"
-						value={gameSettings.res?.width ?? 640}
+						value={gameSettings.res?.width ?? 854}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
@@ -91,7 +91,7 @@ export function GameSettings() {
 						min={1}
 						onChange={(e) => {
 							const height = Math.max(1, Number(e.currentTarget.value));
-							setSetting('res', { width: gameSettings.res?.width ?? 640, height });
+							setSetting('res', { width: gameSettings.res?.width ?? 854, height });
 						}}
 						type="number"
 						value={gameSettings.res?.height ?? 480}

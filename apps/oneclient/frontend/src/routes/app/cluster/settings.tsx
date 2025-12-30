@@ -79,7 +79,7 @@ function RouteComponent() {
 							updateProfile({ res: { width, height: profile.res?.height ?? 480 } });
 						}}
 						type="number"
-						value={profile.res?.width ?? 640}
+						value={profile.res?.width ?? 854}
 					/>
 					<XIcon className="size-4 self-center" />
 					<TextField
@@ -87,7 +87,7 @@ function RouteComponent() {
 						min={1}
 						onChange={(e) => {
 							const height = Math.max(1, Number(e.currentTarget.value));
-							updateProfile({ res: { width: profile.res?.width ?? 640, height } });
+							updateProfile({ res: { width: profile.res?.width ?? 854, height } });
 						}}
 						type="number"
 						value={profile.res?.height ?? 480}

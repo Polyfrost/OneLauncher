@@ -95,6 +95,7 @@ function getPackageUrl(pkg: ManagedPackage): string {
 		case 'Modrinth': return `https://modrinth.com/project/${pkg.slug}`;
 		case 'CurseForge': return `https://www.curseforge.com/minecraft/${pkg.package_type}s/${pkg.slug}`;
 		case 'SkyClient': return ``;
+		case 'Local': return ``;
 	}
 }
 

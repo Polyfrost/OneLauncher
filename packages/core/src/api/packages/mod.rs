@@ -144,16 +144,25 @@ pub async fn download_external_package(
 		return Ok(Some(model));
 	}
 
-	let dir = Dirs::get_clusters_dir()
-		.await?
-		.join(cluster.folder_name.clone())
-		.join(package.package_type.folder_name())
-		.join(package.name.clone());
+	let model = packages::Model {
+		hash: package.sha1.clone(),
+		display_name: package.name.clone(),
+		display_version: "Unknown".to_string(),
+		file_name: package.name.clone(),
+		version_id: package.sha1.clone(),
+		published_at: chrono::Utc::now(),
+		provider: Provider::Local,
+		icon: None,
+		package_id: package.sha1.clone(),
+		mc_loader: vec![].into(),
+		mc_versions: vec![].into(),
+		package_type: package.package_type.clone(),
+	};
 
 	http::download_advanced(
 		Method::GET,
 		&package.url,
-		dir,
+		model.path().await?,
 		None,
 		None,
 		Some((HashAlgorithm::Sha1, &package.sha1)),
@@ -161,7 +170,9 @@ pub async fn download_external_package(
 	)
 	.await?;
 
-	Ok(None)
+	let inserted_model = dao::insert_package(model.into()).await?;
+
+	Ok(Some(inserted_model))
 }
 
 /// Links a package to a cluster on the file system and in database.
@@ -186,7 +197,7 @@ pub async fn link_package(
 	}
 
 	tracing::trace!("checking compatibility of package with cluster");
-	if !skip_compatibility.unwrap_or(false) {
+	if !skip_compatibility.unwrap_or(false) && package.provider != Provider::Local {
 		if !package
 			.mc_loader
 			.iter()
@@ -239,6 +250,9 @@ pub async fn link_many_packages_to_cluster(
 		packages
 			.iter()
 			.filter(|p| {
+				if p.provider == Provider::Local {
+					return true;
+				}
 				p.mc_loader
 					.iter()
 					.any(|v| cluster.mc_loader.compatible_with(v))

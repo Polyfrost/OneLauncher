@@ -1,12 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use onelauncher_entity::clusters;
+use chrono::Utc;
+use futures::future::join_all;
+use onelauncher_entity::package::{PackageType, Provider};
+use onelauncher_entity::{clusters, packages};
+use sea_orm::{ActiveValue, Iterable};
 use serde::Serialize;
 
+use crate::api::packages::provider::ProviderExt;
 use crate::error::{DaoError, LauncherResult};
 use crate::send_error;
 use crate::store::Dirs;
+use crate::utils::crypto::HashAlgorithm;
 use crate::utils::io;
 
 use super::dao::{self, ClusterId};
@@ -88,7 +94,151 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 		return Ok(SyncAction::MissingFs);
 	}
 
-	// TODO: sync packages
+	let mut missing_hashes = HashMap::new();
+	let mut found_hashes = HashSet::new();
+
+	for package_type in PackageType::iter() {
+		let dir = path.join(package_type.folder_name());
+		if !dir.exists() {
+			continue;
+		}
+
+		let mut stream = io::read_dir(&dir).await?;
+		while let Ok(Some(entry)) = stream.next_entry().await {
+			let file_path = entry.path();
+			if !file_path.is_file() {
+				continue;
+			}
+			// Skip hidden files
+			if file_path
+				.file_name()
+				.map(|s| s.to_string_lossy().starts_with('.'))
+				.unwrap_or(false)
+			{
+				continue;
+			}
+
+			let hash = HashAlgorithm::Sha1.hash_file(&file_path).await?;
+
+			if let Some(package) =
+				crate::api::packages::dao::get_package_by_hash(hash.clone()).await?
+			{
+				if !crate::api::packages::dao::is_package_linked_to_cluster(&package, cluster)
+					.await?
+				{
+					crate::api::packages::dao::link_package_to_cluster(&package, cluster).await?;
+				}
+				found_hashes.insert(hash);
+			} else {
+				missing_hashes.insert(hash, (file_path, package_type.clone()));
+			}
+		}
+	}
+
+	if !missing_hashes.is_empty() {
+		let hashes: Vec<String> = missing_hashes.keys().cloned().collect();
+
+		let futures = Provider::get_providers().iter().map(|&provider| {
+			let hashes = hashes.clone();
+			async move {
+				match provider.get_versions_by_hashes(&hashes).await {
+					Ok(versions) => Some((provider, versions)),
+					Err(err) => {
+						tracing::error!(
+							"failed to get versions from provider {}: {}",
+							provider,
+							err
+						);
+						None
+					}
+				}
+			}
+		});
+
+		let results = join_all(futures).await;
+
+		let mut found_versions = HashMap::new();
+		for result in results.into_iter().flatten() {
+			let (provider, versions) = result;
+			for (hash, version) in versions {
+				found_versions.entry(hash).or_insert((version, provider));
+			}
+		}
+
+		for (hash, (file_path, package_type)) in &missing_hashes {
+			if let Some((version, provider)) = found_versions.get(hash) {
+				// Find the file in version.files
+				let file = version
+					.files
+					.iter()
+					.find(|f| f.sha1 == *hash)
+					.ok_or_else(|| anyhow::anyhow!("File hash mismatch"))?;
+
+				let model = packages::ActiveModel {
+					hash: ActiveValue::Set(hash.clone()),
+					file_name: ActiveValue::Set(file.file_name.clone()),
+					version_id: ActiveValue::Set(version.version_id.clone()),
+					published_at: ActiveValue::Set(version.published),
+					display_name: ActiveValue::Set(version.display_name.clone()),
+					display_version: ActiveValue::Set(version.display_version.clone()),
+					package_type: ActiveValue::Set(package_type.clone()),
+					provider: ActiveValue::Set(*provider),
+					package_id: ActiveValue::Set(version.project_id.clone()),
+					mc_versions: ActiveValue::Set(version.mc_versions.clone().into()),
+					mc_loader: ActiveValue::Set(version.loaders.clone().into()),
+					icon: ActiveValue::Set(None), // TODO: Fetch icon
+				};
+
+				let package = match crate::api::packages::dao::insert_package(model).await {
+					Ok(package) => package,
+					Err(err) => {
+						tracing::error!("failed to insert package {}: {}", hash, err);
+						continue;
+					}
+				};
+				if let Err(err) =
+					crate::api::packages::dao::link_package_to_cluster(&package, cluster).await
+				{
+					tracing::error!("failed to link package {} to cluster: {}", hash, err);
+				}
+			} else {
+				// Save as external package
+				let file_name = file_path
+					.file_name()
+					.unwrap_or_default()
+					.to_string_lossy()
+					.to_string();
+
+				let model = packages::ActiveModel {
+					hash: ActiveValue::Set(hash.clone()),
+					file_name: ActiveValue::Set(file_name.clone()),
+					version_id: ActiveValue::Set(hash.clone()),
+					published_at: ActiveValue::Set(Utc::now()),
+					display_name: ActiveValue::Set(file_name.clone()),
+					display_version: ActiveValue::Set("Unknown".to_string()),
+					package_type: ActiveValue::Set(package_type.clone()),
+					provider: ActiveValue::Set(Provider::Local),
+					package_id: ActiveValue::Set(hash.clone()),
+					mc_versions: ActiveValue::Set(vec![].into()),
+					mc_loader: ActiveValue::Set(vec![].into()),
+					icon: ActiveValue::Set(None),
+				};
+
+				let package = match crate::api::packages::dao::insert_package(model).await {
+					Ok(package) => package,
+					Err(err) => {
+						tracing::error!("failed to insert local package {}: {}", hash, err);
+						continue;
+					}
+				};
+				if let Err(err) =
+					crate::api::packages::dao::link_package_to_cluster(&package, cluster).await
+				{
+					tracing::error!("failed to link local package {} to cluster: {}", hash, err);
+				}
+			}
+		}
+	}
 
 	Ok(SyncAction::NoAction)
 }

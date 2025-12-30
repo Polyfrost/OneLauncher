@@ -748,7 +748,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		package: ExternalPackage,
 		cluster_id: ClusterId,
 		force: Option<bool>,
-		skip_compatibility: Option<bool>,
+		skip_compatibility: Option<bool>, // default: true
 	) -> LauncherResult<Option<packages::Model>> {
 		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
 			.await?
@@ -758,10 +758,14 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			&package,
 			&cluster,
 			force,
-			skip_compatibility,
+			skip_compatibility.or(Some(true)),
 			None,
 		)
 		.await?;
+
+		if let Some(model) = &model {
+			api::packages::link_package(model, &cluster, skip_compatibility.or(Some(true))).await?;
+		}
 
 		Ok(model)
 	}

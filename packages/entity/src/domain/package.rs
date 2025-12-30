@@ -65,12 +65,13 @@ impl ToString for PackageType {
 }
 
 #[onelauncher_macro::specta]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "u8", db_type = "Integer")]
 pub enum Provider {
 	Modrinth = 0,
 	CurseForge = 1,
 	SkyClient = 2,
+	Local = 3,
 }
 
 impl Display for Provider {
@@ -86,6 +87,7 @@ impl Provider {
 			Self::Modrinth => "Modrinth",
 			Self::CurseForge => "CurseForge",
 			Self::SkyClient => "SkyClient",
+			Self::Local => "Local",
 		}
 	}
 
@@ -96,6 +98,7 @@ impl Provider {
 			Self::Modrinth => "https://modrinth.com/",
 			Self::CurseForge => "https://curseforge.com/",
 			Self::SkyClient => "https://skyclient.co/",
+			Self::Local => "",
 		}
 	}
 

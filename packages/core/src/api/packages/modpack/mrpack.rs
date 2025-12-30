@@ -227,7 +227,7 @@ pub(super) async fn download_and_link_packages(
 				}
 			}
 			ModpackFileKind::External(package) => {
-				if let Err(e) = api::packages::download_external_package(
+				match api::packages::download_external_package(
 					package,
 					cluster,
 					None,
@@ -236,7 +236,9 @@ pub(super) async fn download_and_link_packages(
 				)
 				.await
 				{
-					errors.push(e);
+					Ok(Some(model)) => packages_to_link.push(model),
+					Ok(None) => {}
+					Err(e) => errors.push(e),
 				}
 			}
 		}

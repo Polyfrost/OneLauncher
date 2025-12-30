@@ -67,7 +67,7 @@ macro_rules! delegate {
             Provider::Modrinth => ModrinthProviderImpl.$method($($arg),*).await,
             Provider::CurseForge => CurseForgeProviderImpl.$method($($arg),*).await,
 			// Provider::SkyClient => SkyClientProviderImpl.$method($($arg),*).await,
-			_ => todo!("skyclient not implement")
+			_ => Err(anyhow::anyhow!("Provider {} not supported", $self).into()),
         }
     };
 }

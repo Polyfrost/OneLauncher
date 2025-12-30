@@ -34,6 +34,7 @@ pub async fn link_package_to_cluster(
 	.into_active_model();
 
 	cluster_packages::Entity::insert(cluster_package)
+		.on_conflict_do_nothing()
 		.exec(db)
 		.await?;
 

@@ -22,7 +22,7 @@ homepage = "https://polyfrost.org/projects/onelauncher"
 license = "GPL-3.0-only"
 readme = "README.md"
 repository = "https://github.com/Polyfrost/OneLauncher"
-version = "1.0.0-alpha.4"
+version = "1.0.0-alpha.5"
 
 [workspace.dependencies]
 # workspace

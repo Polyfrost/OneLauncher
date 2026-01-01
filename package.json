@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/root",
 	"type": "module",
-	"version": "1.0.0-alpha.5",
+	"version": "1.0.0-alpha.6",
 	"private": true,
 	"engineStrict": true,
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",

@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/desktop",
 	"type": "module",
-	"version": "1.0.0-alpha.5",
+	"version": "1.0.0-alpha.6",
 	"private": true,
 	"description": "Next-generation open source Minecraft launcher",
 	"license": "GPL-3.0-only",

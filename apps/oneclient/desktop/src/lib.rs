@@ -96,6 +96,8 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 
 	State::get().await?;
 
+	onelauncher_core::api::credentials::refresh_accounts().await?;
+
 	tracing::info!("initialized launcher successfully");
 	Ok(())
 }

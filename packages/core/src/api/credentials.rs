@@ -95,3 +95,34 @@ pub fn get_fake_user() -> MinecraftCredentials {
 		expires: chrono::Utc::now() + chrono::Duration::days(1),
 	}
 }
+
+/// Refresh a specific user account by [`uuid::Uuid`].
+#[tracing::instrument]
+pub async fn refresh_account(user_id: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>> {
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	if let Some(user) = store.users.get(&user_id).cloned() {
+		store.refresh_token(&user).await
+	} else {
+		Ok(None)
+	}
+}
+
+/// Refresh all user accounts.
+#[tracing::instrument]
+pub async fn refresh_accounts() -> LauncherResult<Vec<MinecraftCredentials>> {
+	let state = State::get().await?;
+	let mut store = state.credentials.write().await;
+
+	let users: Vec<MinecraftCredentials> = store.users.values().cloned().collect();
+	let mut refreshed_users = Vec::new();
+
+	for user in users {
+		if let Some(refreshed) = store.refresh_token(&user).await? {
+			refreshed_users.push(refreshed);
+		}
+	}
+
+	Ok(refreshed_users)
+}

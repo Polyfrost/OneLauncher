@@ -135,6 +135,12 @@ pub trait TauriLauncherApi {
 	async fn open_msa_login<R: Runtime>(
 		app_handle: AppHandle<R>,
 	) -> LauncherResult<Option<MinecraftCredentials>>;
+
+	#[taurpc(alias = "refreshAccounts")]
+	async fn refresh_accounts() -> LauncherResult<Vec<MinecraftCredentials>>;
+
+	#[taurpc(alias = "refreshAccount")]
+	async fn refresh_account(uuid: uuid::Uuid) -> LauncherResult<Option<MinecraftCredentials>>;
 	// endregion: users
 
 	// MARK: API: settings
@@ -640,6 +646,17 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		win.close()?;
 
 		Ok(None)
+	}
+
+	async fn refresh_accounts(self) -> LauncherResult<Vec<MinecraftCredentials>> {
+		api::credentials::refresh_accounts().await
+	}
+
+	async fn refresh_account(
+		self,
+		uuid: uuid::Uuid,
+	) -> LauncherResult<Option<MinecraftCredentials>> {
+		api::credentials::refresh_account(uuid).await
 	}
 
 	async fn get_users_from_author(

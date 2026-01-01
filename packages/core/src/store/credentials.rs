@@ -215,7 +215,7 @@ impl CredentialsStore {
 	}
 
 	/// Refresh the current stored [`MinecraftCredentials`].
-	async fn refresh_token(
+	pub async fn refresh_token(
 		&mut self,
 		creds: &MinecraftCredentials,
 	) -> LauncherResult<Option<MinecraftCredentials>> {

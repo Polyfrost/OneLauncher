@@ -38,8 +38,10 @@ To make changes locally, follow these steps:
 1. Clone the repository: `git clone https://github.com/Polyfrost/OneLauncher`
 2. Navigate to the project directory: `cd OneLauncher`
 3. Configure your system environment for OneLauncher development:
-   1. For Linux users, run: `./packages/scripts/setup.sh`
-      > The [Unix script] will check if Rust and pnpm are installed then proceed to install Clang, NASM, LLVM, libvips, [Tauri essentials] and any other required dependencies for OneLauncher to build.
+   1. Linux:
+	   1. NixOS: Please use `nix develop`
+	   2. For Other Linux users, run: `./packages/scripts/setup.sh`
+		  > The [Unix script] will check if Rust and pnpm are installed then proceed to install Clang, NASM, LLVM, libvips, [Tauri essentials] and any other required dependencies for OneLauncher to build.
    2. For macOS users, run: `./packages/scripts/setup.sh`
       > The [Unix script] will check if Rust, pnpm and Xcode are installed and proceed to use Homebrew to install NASM, [Tauri essentials] and install any other required dependencies for OneLauncher to build.
    3. For Windows users, run in PowerShell: `powershell -ExecutionPolicy Bypass -File .\packages\scripts\setup.ps1`

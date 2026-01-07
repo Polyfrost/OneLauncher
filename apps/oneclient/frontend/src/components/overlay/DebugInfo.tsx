@@ -120,7 +120,7 @@ export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
 				{debugInfo.map((lineData) => {
 					let line = '';
 					if (lineData.title === 'Build Timestamp')
-						line = `${lineData.title}: ${new Date(Number(lineData.value))}`;
+						line = `${lineData.title}: ${new Date(Number(lineData.value) * 1000).toString()}`;
 					else line = `${lineData.title}: ${lineData.value}`;
 
 					return <p key={lineData.title}>{line}</p>;

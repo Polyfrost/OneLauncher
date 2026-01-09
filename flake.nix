@@ -48,8 +48,10 @@
               (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
 
               cargo-tauri
-              nodejs
+              nodejs_24
               pnpm
+              eslint
+              typescript
 
               pkg-config
               openssl

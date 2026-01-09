@@ -3,7 +3,7 @@ import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { GameBackground, LoaderSuspense, NavbarButton, Overlay, Stepper, SuperSecretDevOptions } from '@/components';
 import { bindings } from '@/main';
-import { useCommandSuspense } from '@onelauncher/common';
+import { useCommand, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from '@tanstack/react-router';
@@ -154,6 +154,8 @@ function AppShell({
 	children,
 }: PropsWithChildren) {
 	const { isFirstStep, currentStepIndex } = Route.useLoaderData();
+	const { data: version } = useCommand(["getPackageVersion"], () => bindings.debug.getPackageVersion());
+	const { data: isInDev } = useCommand(["isInDev"], () => bindings.debug.isInDev());
 
 	return (
 		<div className="flex flex-col h-full w-full">
@@ -180,7 +182,9 @@ function AppShell({
 					</nav>
 
 					<div className="p-4 text-xs text-fg-secondary">
-						<p>version info</p>
+						<p>OneClient by Polyfrost</p>
+						<p>Version {version}</p>
+						<p>{isInDev ? "Development" : "Release"} Build</p>
 					</div>
 				</div>
 

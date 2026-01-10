@@ -71,6 +71,7 @@
             ];
 
             shellHook = ''
+              export GIO_MODULE_DIR="${pkgs.glib-networking}/lib/gio/modules/"
               pnpm i
               pnpm prep
             '';

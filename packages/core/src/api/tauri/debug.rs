@@ -79,7 +79,7 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 	}
 
 	async fn get_build_timestamp(self) -> String {
-		crate::build::BUILD_TIME.to_string()
+		crate::build::BUILD_TIMESTAMP.to_string()
 	}
 
 	async fn get_package_version(self) -> String {

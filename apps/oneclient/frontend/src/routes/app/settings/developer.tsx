@@ -4,7 +4,6 @@ import { bindings } from '@/main';
 import { Sidebar } from '@/routes/app/settings/route';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { BatteryEmptyIcon, BatteryFullIcon, Code02Icon, FileHeart02Icon, Truck01Icon } from '@untitled-theme/icons-react';
 
 export const Route = createFileRoute('/app/settings/developer')({
 	component: RouteComponent,

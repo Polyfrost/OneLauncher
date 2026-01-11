@@ -3,7 +3,7 @@ import type { JSX } from 'react';
 export interface SettingsRowProps {
 	title: JSX.Element | string;
 	description: JSX.Element | string;
-	icon: JSX.Element;
+	icon?: JSX.Element;
 	disabled?: boolean;
 	children?: JSX.Element;
 }
@@ -16,9 +16,11 @@ export function SettingsRow({ disabled, description, icon, title, children }: Se
                 ${disabled ? 'bg-component-bg-disabled' : 'bg-page-elevated hover:bg-component-bg-hover'}
             `}
 		>
-			<div className="flex h-8 w-8 items-center justify-center">
-				{icon}
-			</div>
+			{icon && (
+				<div className="flex h-8 w-8 items-center justify-center">
+					{icon}
+				</div>
+			)}
 
 			<div className="flex flex-1 flex-col gap-2">
 				<p className="text-lg capitalize leading-tight">{title}</p>

@@ -154,8 +154,8 @@ function AppShell({
 	children,
 }: PropsWithChildren) {
 	const { isFirstStep, currentStepIndex } = Route.useLoaderData();
-	const { data: version } = useCommand(["getPackageVersion"], () => bindings.debug.getPackageVersion());
-	const { data: isInDev } = useCommand(["isInDev"], () => bindings.debug.isInDev());
+	const { data: version } = useCommand(['getPackageVersion'], () => bindings.debug.getPackageVersion());
+	const { data: isInDev } = useCommand(['isInDev'], () => bindings.debug.isInDev());
 
 	return (
 		<div className="flex flex-col h-full w-full">
@@ -184,7 +184,7 @@ function AppShell({
 					<div className="p-4 text-xs text-fg-secondary">
 						<p>OneClient by Polyfrost</p>
 						<p>Version {version}</p>
-						<p>{isInDev ? "Development" : "Release"} Build</p>
+						<p>{isInDev ? 'Development' : 'Release'} Build</p>
 					</div>
 				</div>
 

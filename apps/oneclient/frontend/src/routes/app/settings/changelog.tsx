@@ -65,9 +65,7 @@ function RouteComponent() {
 	useEffect(() => {
 		const getData = async () => {
 			try {
-				const response = await fetch(
-					'https://raw.githubusercontent.com/Kathund/OneLauncher/refs/heads/feat/oneclient/changeLog/docs/OneClient/CHANGE_LOG.md',
-				);
+				const response = await fetch('https://raw.githubusercontent.com/Polyfrost/OneLauncher/refs/heads/oneclient/main/docs/OneClient/CHANGE_LOG.md');
 				if (!response.ok)
 					throw new Error('Failed to fetch changelog');
 

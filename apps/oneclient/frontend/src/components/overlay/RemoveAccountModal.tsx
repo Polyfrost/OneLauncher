@@ -15,9 +15,10 @@ export function RemoveAccountModal({
 
 			<p>
 				Do you want to remove
+				{' '}
 				<span className="font-bold" color="primary">{profile.username}</span>
 				{' '}
-				from you're accounts?
+				from your accounts list?
 			</p>
 			<p>This cannot be undone</p>
 

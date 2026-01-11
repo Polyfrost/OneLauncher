@@ -67,7 +67,7 @@ export function useDebugInfo(): DebugInfoArray {
 				type,
 				osVersion,
 				commitHash,
-				buildTimestamp: new Date(buildTimestamp).getTime().toString(),
+				buildTimestamp,
 				buildVersion,
 			});
 		};
@@ -91,11 +91,14 @@ export function useDebugInfo(): DebugInfoArray {
 
 export function copyDebugInfo(debugInfo: DebugInfoArray) {
 	const timestamp = Math.floor(new Date().getTime() / 1000);
-	const lines = [`**Data exported at:** <t:${timestamp}> (\`${timestamp}\`)`, ...debugInfo.map((lineData) => {
-		if (lineData.title === 'Build Timestamp')
-			return `**${lineData.title}:** <t:${Math.floor(Number(lineData.value) / 1000)}> (\`${Math.floor(Number(lineData.value) / 1000)}\`)`;
-		return `**${lineData.title}:** \`${lineData.value}\``;
-	})];
+	const lines = [
+		`**Data exported at:** <t:${timestamp}> (\`${timestamp}\`)`,
+		...debugInfo.map((lineData) => {
+			if (lineData.title === 'Build Timestamp')
+				return `**${lineData.title}:** <t:${lineData.value}> (\`${lineData.value}\`)`;
+			return `**${lineData.title}:** \`${lineData.value}\``;
+		}),
+	];
 	writeText(lines.join('\n'));
 }
 
@@ -117,7 +120,7 @@ export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
 				{debugInfo.map((lineData) => {
 					let line = '';
 					if (lineData.title === 'Build Timestamp')
-						line = `${lineData.title}: ${new Date(Number(lineData.value))}`;
+						line = `${lineData.title}: ${new Date(Number(lineData.value) * 1000).toString()}`;
 					else line = `${lineData.title}: ${lineData.value}`;
 
 					return <p key={lineData.title}>{line}</p>;

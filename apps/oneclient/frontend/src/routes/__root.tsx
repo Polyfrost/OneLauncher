@@ -46,6 +46,7 @@ const ResolvedPathNames: Record<URLPath, string> = {
 	'/app/settings/appearance': 'Viewing Settings',
 	'/app/settings/developer': 'Viewing Settings',
 	'/app/settings/minecraft': 'Viewing Settings',
+	'/app/settings/changelog': 'Viewing Settings',
 	'/app/accounts': 'Viewing Accounts',
 	'/app/clusters': 'Viewing Clusters',
 	'/onboarding': 'Preparing OneClient',

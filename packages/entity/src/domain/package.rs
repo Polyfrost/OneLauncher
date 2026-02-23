@@ -24,7 +24,7 @@ impl PackageType {
 		match self {
 			Self::Mod => "mods",
 			Self::ResourcePack => "resourcepacks",
-			Self::Shader => "shaders",
+			Self::Shader => "shaderpacks",
 			Self::DataPack => "datapacks",
 			Self::ModPack => "modpacks",
 		}
@@ -37,7 +37,7 @@ impl From<&str> for PackageType {
 		match value.to_lowercase().as_str() {
 			"mod" | "mods" => Self::Mod,
 			"resourcepack" | "resourcepacks" => Self::ResourcePack,
-			"shader" | "shaders" => Self::Shader,
+			"shader" | "shaders" | "shaderpacks" => Self::Shader,
 			"datapack" | "datapacks" => Self::DataPack,
 			"modpack" => Self::ModPack,
 			_ => Self::Mod, // default case

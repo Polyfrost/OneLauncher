@@ -1,6 +1,6 @@
 import type { ClusterModel, ModpackArchive, ModpackFile } from '@/bindings.gen';
-import type { DownloadModsRef, ModCardContextApi, onClickOnMod } from '@/components';
-import type { StrippedCLuster } from '@/routes/onboarding/preferences/version';
+import type { DownloadModsRef, ModCardContextApi, ModWithBundle, onClickOnMod } from '@/components';
+import type { StrippedCluster } from '@/routes/onboarding/preferences/version';
 import { BundleModListModal, DownloadMods, ModCardContext, Overlay } from '@/components';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
@@ -30,7 +30,7 @@ function HandleCLuster(cluster: ClusterModel): Array<ModpackArchive> {
 }
 
 function RouteComponent() {
-	const selectedClusters: Array<StrippedCLuster> = JSON.parse(localStorage.getItem('selectedClusters') ?? '[]');
+	const selectedClusters: Array<StrippedCluster> = JSON.parse(localStorage.getItem('selectedClusters') ?? '[]');
 
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
@@ -49,16 +49,18 @@ function RouteComponent() {
 		};
 	});
 
-	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModpackFile>>>(
+	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModWithBundle>>>(
 		clusters.reduce((acc, cluster, i) => {
 			const bundles = bundleQueries[i];
 			const enabledMods = bundles
 				.filter(bundle => bundle.manifest.enabled)
-				.flatMap(bundle => bundle.manifest.files.filter(file => file.enabled));
+				.flatMap(bundle => bundle.manifest.files
+					.filter(file => file.enabled)
+					.map(file => ({ file, bundleName: bundle.manifest.name })));
 
 			acc[cluster.id] = enabledMods;
 			return acc;
-		}, {} as Record<string, Array<ModpackFile>>),
+		}, {} as Record<string, Array<ModWithBundle>>),
 	);
 
 	const bundlesPerCluster = useMemo(() => {
@@ -125,7 +127,7 @@ function RouteComponent() {
 	);
 }
 
-function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { bundleData: BundleData; name: string; modsPerCluster: Record<string, Array<ModpackFile>>; setModsPerCluster: React.Dispatch<React.SetStateAction<Record<string, Array<ModpackFile>>>> }) {
+function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { bundleData: BundleData; name: string; modsPerCluster: Record<string, Array<ModWithBundle>>; setModsPerCluster: React.Dispatch<React.SetStateAction<Record<string, Array<ModWithBundle>>>> }) {
 	return (
 		<div>
 			<h1 className="text-3xl font-semibold my-2">{name}</h1>
@@ -146,16 +148,23 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 	);
 }
 
-function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModpackFile>; setMods: React.Dispatch<React.SetStateAction<Array<ModpackFile>>>; clusterId: number }) {
+function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModWithBundle>; setMods: React.Dispatch<React.SetStateAction<Array<ModWithBundle>>>; clusterId: number }) {
 	const files = bundle.manifest.files;
-	const isSelected = files.filter(file => file.enabled).every(file => mods.includes(file));
+	const bundleName = bundle.manifest.name;
+
+	const isSelected = files
+		.filter(file => file.enabled)
+		.every(file => mods.some(m => m.file === file && m.bundleName === bundleName));
+
 	const handleDownload = () => {
 		setMods((prevMods) => {
 			if (isSelected) {
-				return prevMods.filter(mod => !files.includes(mod));
+				return prevMods.filter(mod => mod.bundleName !== bundleName || !files.includes(mod.file));
 			}
 			else {
-				const filesToAdd = files.filter(file => file.enabled && !prevMods.includes(file));
+				const filesToAdd = files
+					.filter(file => file.enabled && !prevMods.some(m => m.file === file && m.bundleName === bundleName))
+					.map(file => ({ file, bundleName }));
 				return [...filesToAdd, ...prevMods];
 			}
 		});
@@ -163,18 +172,22 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 
 	const onClickOnMod: onClickOnMod = (file) => {
 		setMods((prevMods) => {
-			if (prevMods.includes(file))
-				return prevMods.filter(mod => mod !== file);
+			const existingIndex = prevMods.findIndex(m => m.file === file && m.bundleName === bundleName);
+			if (existingIndex >= 0)
+				return prevMods.filter((_, i) => i !== existingIndex);
+
 			else
-				return [file, ...prevMods];
+				return [{ file, bundleName }, ...prevMods];
 		});
 	};
+
+	const modsForContext = mods.map(m => m.file);
 
 	const context = useMemo<ModCardContextApi>(() => ({
 		onClickOnMod,
 		useVerticalGridLayout: true,
-		mods,
-	}), [mods]);
+		mods: modsForContext,
+	}), [modsForContext]);
 
 	return (
 		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>

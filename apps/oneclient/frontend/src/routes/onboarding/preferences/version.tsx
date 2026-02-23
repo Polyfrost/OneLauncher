@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
-export interface StrippedCLuster {
+export interface StrippedCluster {
 	mc_version: string;
 	mc_loader: GameLoader;
 }
@@ -23,7 +23,7 @@ function RouteComponent() {
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	// const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
 
-	const [selectedClusters, setSelectedClusters] = useState<Array<StrippedCLuster>>([]);
+	const [selectedClusters, setSelectedClusters] = useState<Array<StrippedCluster>>([]);
 
 	return (
 		<>
@@ -63,12 +63,12 @@ function RouteComponent() {
 	);
 }
 
-function VersionCard({ cluster, versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCLuster>>> }) {
+function VersionCard({ cluster, versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCluster>>> }) {
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const toggle = () => {
 		setSelected(prev => !prev);
 		setSelectedClusters((prev) => {
-			let updatedClusters: Array<StrippedCLuster> = [];
+			let updatedClusters: Array<StrippedCluster> = [];
 			const exists = prev.some(strippedCluster => strippedCluster.mc_version === fullVersionName && strippedCluster.mc_loader === version.loader);
 			if (exists)
 				updatedClusters = prev.filter(strippedCluster => !(strippedCluster.mc_version === fullVersionName && strippedCluster.mc_loader === version.loader));

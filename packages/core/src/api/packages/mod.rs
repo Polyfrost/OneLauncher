@@ -14,6 +14,7 @@ use crate::utils::crypto::HashAlgorithm;
 use crate::utils::io::IOError;
 use crate::utils::{DatabaseModelExt, http, icon, io};
 
+pub mod bundle_dao;
 pub mod categories;
 pub mod dao;
 pub mod data;

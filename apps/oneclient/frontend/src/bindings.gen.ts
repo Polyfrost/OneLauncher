@@ -5,6 +5,14 @@ import { createTauRPCProxy as createProxy, type InferCommandOutput } from 'taurp
 type TAURI_CHANNEL<T> = (response: T) => void
 
 
+export type ApplyBundleUpdatesResult = { updates_applied: BundlePackageUpdate[]; removals_applied: BundlePackageRemoval[]; additions_applied: BundlePackageAddition[] }
+
+export type BundlePackageAddition = { cluster_id: number; bundle_name: string; new_file: ModpackFile }
+
+export type BundlePackageRemoval = { cluster_id: number; package_hash: string; package_id: string; bundle_name: string; installed_at: string }
+
+export type BundlePackageUpdate = { cluster_id: number; installed_package_hash: string; installed_version_id: string; bundle_name: string; new_version_id: string; new_file: ModpackFile; installed_at: string }
+
 export type ClusterError = { type: "InvalidVersion"; data: string } | { type: "MismatchedVersion"; data: string } | { type: "MismatchedLoader"; data: string } | { type: "MissingJavaVersion"; data: string } | { type: "ClusterDownloading"; data: string } | { type: "ClusterAlreadyRunning"; data: string }
 
 export type ClusterModel = { id: number; folder_name: string; stage: ClusterStage; created_at: string; group_id: number | null; name: string; mc_version: string; mc_loader: GameLoader; mc_loader_version: string | null; last_played: string | null; overall_played: number | null; icon_url: Icon | null; setting_profile_name: string | null; linked_modpack_hash: string | null }
@@ -234,7 +242,7 @@ gallery: string[] }
 
 export type SettingProfileModel = { name: string; java_id: number | null; res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null; os_extra: SettingsOsExtra | null }
 
-export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; mod_list_use_grid: boolean; parallel_mod_downloading: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; show_tanstack_dev_tools: boolean }
+export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; mod_list_use_grid: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; show_tanstack_dev_tools: boolean }
 
 export type SettingsOsExtra = Record<string, never>
 

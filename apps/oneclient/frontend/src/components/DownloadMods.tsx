@@ -1,11 +1,11 @@
-import type { ExternalPackage, ManagedVersionDependency, ModpackFile, Provider } from '@/bindings.gen';
+import type { ExternalPackage, ManagedVersionDependency, ModpackArchive, ModpackFile, Provider } from '@/bindings.gen';
 import { getModMetaDataName, Overlay } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useImperativeHandle, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 
 export interface DownloadModsRef {
@@ -36,7 +36,7 @@ export function isManagedMod(mod: ModData): mod is ManagedModData {
 	return mod.managed === true;
 }
 
-export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<string, Array<ModpackFile>>; ref: React.Ref<DownloadModsRef> }) {
+export function DownloadMods({ modsPerCluster, bundlesPerCluster, ref }: { modsPerCluster: Record<string, Array<ModpackFile>>; bundlesPerCluster?: Record<string, Array<ModpackArchive>>; ref: React.Ref<DownloadModsRef> }) {
 	const navigate = useNavigate();
 	const [isOpen, setOpen] = useState<boolean>(false);
 	const [mods, setMods] = useState<ModDataArray>([]);
@@ -89,7 +89,7 @@ export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<s
 			<Button className="mb-4" isDisabled={mods.length === 0} onPress={() => setOpen(prev => !prev)}>Download Mods</Button>
 
 			<Overlay isDismissable={false} isOpen={isOpen}>
-				<DownloadingMods mods={mods} nextPath={nextPath} setOpen={setOpen} />
+				<DownloadingMods bundlesPerCluster={bundlesPerCluster} mods={mods} nextPath={nextPath} setOpen={setOpen} />
 			</Overlay>
 		</DialogTrigger>
 	);
@@ -106,10 +106,12 @@ function downloadModsParallel(items: ModDataArray, limit: number, fn: (mod: ModD
 	return Promise.all(workers);
 }
 
-function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
+function DownloadingMods({ mods, setOpen, nextPath, bundlesPerCluster }: { mods: ModDataArray; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string; bundlesPerCluster?: Record<string, Array<ModpackArchive>> }) {
 	const navigate = useNavigate();
 	const [downloadedMods, setDownloadedMods] = useState(0);
 	const [modName, setModName] = useState<string | null>(null);
+	const [allDone, setAllDone] = useState(false);
+	const hasStarted = useRef(false);
 	const download = useCommandMut(async (mod: ModData) => {
 		if (isManagedMod(mod)) {
 			if (mod.dependencies.length > 0)
@@ -133,37 +135,72 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 	let useParallelModDownloading = setting('parallel_mod_downloading');
 
 	useEffect(() => {
+		if (hasStarted.current)
+			return;
+		hasStarted.current = true;
+
 		const downloadAll = async () => {
-			if (useParallelModDownloading)
-				await downloadModsParallel(mods, 10, async (mod) => {
-					setModName(mod.name);
-					try {
-						await download.mutateAsync(mod);
+			try {
+				if (useParallelModDownloading)
+					await downloadModsParallel(mods, 10, async (mod) => {
+						setModName(mod.name);
+						try {
+							await download.mutateAsync(mod);
+						}
+						catch (e) {
+							console.warn(`Failed to download mod ${mod.name}:`, e);
+						}
+						finally {
+							setDownloadedMods(prev => prev + 1);
+						}
+					}); else
+					for (const mod of mods) {
+						setModName(mod.name);
+						try {
+							await download.mutateAsync(mod);
+						}
+						catch (e) {
+							console.warn(`Failed to download mod ${mod.name}:`, e);
+						}
+						finally {
+							setDownloadedMods(prev => prev + 1);
+						}
 					}
-					finally {
-						setDownloadedMods(prev => prev + 1);
-					}
-				}); else
-				for (const mod of mods) {
-					setModName(mod.name);
-					try {
-						await download.mutateAsync(mod);
-					}
-					finally {
-						setDownloadedMods(prev => prev + 1);
+
+				// Extract overrides from enabled bundles after all mods are downloaded
+				if (bundlesPerCluster) {
+					setModName('Extracting overrides...');
+					for (const [clusterId, bundles] of Object.entries(bundlesPerCluster)) {
+						for (const bundle of bundles) {
+							if (bundle.manifest.enabled) {
+								try {
+									await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
+								}
+								catch (e) {
+									console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
+								}
+							}
+						}
 					}
 				}
+			}
+			catch (e) {
+				console.error('Error during mod download:', e);
+			}
+			finally {
+				setAllDone(true);
+			}
 		};
 
 		downloadAll();
 	}, [mods]);
 
 	useEffect(() => {
-		if (downloadedMods >= mods.length) {
+		if (allDone) {
 			setOpen(false);
 			navigate({ to: nextPath });
 		}
-	}, [downloadedMods, mods, navigate, nextPath, setOpen]);
+	}, [allDone, navigate, nextPath, setOpen]);
 
 	return (
 		<Overlay.Dialog isDismissable={false}>

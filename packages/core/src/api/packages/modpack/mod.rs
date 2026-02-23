@@ -15,7 +15,7 @@ use crate::error::LauncherResult;
 use crate::store::ingress::SubIngress;
 
 pub mod data;
-mod mrpack;
+pub mod mrpack;
 mod polymrpack;
 
 #[cfg(test)]

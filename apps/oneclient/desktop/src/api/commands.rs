@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::modpack::data::ModpackArchive;
@@ -20,6 +21,12 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "getVersions")]
 	async fn get_versions() -> LauncherResult<OnlineClusterManifest>;
+
+	#[taurpc(alias = "extractBundleOverrides")]
+	async fn extract_bundle_overrides(
+		bundle_path: PathBuf,
+		cluster_id: ClusterId,
+	) -> LauncherResult<()>;
 
 	#[taurpc(alias = "checkForUpdate")]
 	async fn check_for_update<R: Runtime>(
@@ -80,6 +87,30 @@ impl OneClientApi for OneClientApiImpl {
 
 	async fn get_versions(self) -> LauncherResult<OnlineClusterManifest> {
 		get_data_storage_versions().await
+	}
+
+	async fn extract_bundle_overrides(
+		self,
+		bundle_path: PathBuf,
+		cluster_id: ClusterId,
+	) -> LauncherResult<()> {
+		let cluster = onelauncher_core::api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| {
+				onelauncher_core::error::LauncherError::from(anyhow::anyhow!(
+					"cluster with id {} not found",
+					cluster_id
+				))
+			})?;
+
+		onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder(
+			&cluster,
+			&bundle_path,
+			&None,
+		)
+		.await?;
+
+		Ok(())
 	}
 
 	async fn check_for_update<R: Runtime>(

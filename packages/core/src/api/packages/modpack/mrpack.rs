@@ -256,7 +256,7 @@ pub(super) async fn download_and_link_packages(
 	Ok(())
 }
 
-pub(super) async fn copy_overrides_folder(
+pub async fn copy_overrides_folder(
 	cluster: &clusters::Model,
 	archive_path: &PathBuf,
 	_ingress: &Option<SubIngress<'_>>,

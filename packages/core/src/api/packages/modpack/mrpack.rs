@@ -21,6 +21,7 @@ use crate::error::LauncherResult;
 use crate::store::ingress::SubIngress;
 use crate::utils::DatabaseModelExt;
 use crate::utils::io::{self, IOError};
+use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 pub struct MrPackFormatImpl {
 	pub(super) archive: Option<PathBuf>,
@@ -283,6 +284,82 @@ pub async fn copy_overrides_folder(
 	Ok(())
 }
 
+/// Like [`copy_overrides_folder`], but skips files that already exist on disk.
+/// Used during bundle updates so that user customizations are preserved.
+pub async fn copy_overrides_folder_no_overwrite(
+	cluster: &clusters::Model,
+	archive_path: &PathBuf,
+) -> LauncherResult<()> {
+	let dest = cluster.path().await?;
+	extract_overrides_no_overwrite(archive_path, &dest).await
+}
+
+/// Extracts the `overrides/` folder from a zip archive into `dest_path`,
+/// but **skips** any file that already exists on disk.
+pub async fn extract_overrides_no_overwrite(
+	archive_path: &PathBuf,
+	dest_path: &std::path::Path,
+) -> LauncherResult<()> {
+	tracing::debug!(
+		"extracting overrides (skip existing) from modpack archive: {}",
+		archive_path.display()
+	);
+
+	let reader = async_zip::tokio::read::fs::ZipFileReader::new(archive_path)
+		.await
+		.map_err(io::IOError::from)?;
+	let entries = reader.file().entries();
+
+	for index in 0..entries.len() {
+		let entry = entries.get(index).expect("expected more zip entries");
+
+		let name = match entry.filename().as_str() {
+			Ok(s) if s.starts_with("overrides/") => s.trim_start_matches("overrides/").to_string(),
+			_ => continue,
+		};
+
+		if name.is_empty() {
+			continue;
+		}
+
+		let name = io::sanitize_path(name);
+		let path = dest_path.join(&name);
+		let is_dir = entry.dir().map_err(io::IOError::from)?;
+
+		if is_dir {
+			io::create_dir_all(&path).await?;
+		} else {
+			// Skip files that already exist — preserve user customizations
+			if path.exists() {
+				tracing::trace!(
+					path = %path.display(),
+					"Skipping override file (already exists)"
+				);
+				continue;
+			}
+
+			if let Some(parent) = path.parent() {
+				io::create_dir_all(parent).await?;
+			}
+
+			let file = tokio::fs::File::create(&path)
+				.await
+				.map_err(io::IOError::from)?;
+			let writer = tokio::io::BufWriter::new(file);
+			let entry_reader = reader
+				.reader_without_entry(index)
+				.await
+				.map_err(io::IOError::from)?;
+
+			futures_lite::io::copy(entry_reader, &mut writer.compat_write())
+				.await
+				.map_err(io::IOError::from)?;
+		}
+	}
+
+	Ok(())
+}
+
 async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
 	#[derive(Clone)]
 	struct ToFetch {
@@ -434,4 +511,101 @@ pub(super) struct MrPackFileHash {
 pub(super) struct MrPackFileEnv {
 	pub client: PackageSide,
 	pub server: PackageSide,
+}
+
+#[cfg(test)]
+mod tests {
+	use std::path::PathBuf;
+
+	use async_zip::base::write::ZipFileWriter;
+	use async_zip::{Compression, ZipEntryBuilder};
+	use tokio_util::compat::TokioAsyncWriteCompatExt;
+
+	use super::extract_overrides_no_overwrite;
+
+	/// Helper: creates a .mrpack zip at `zip_path` with the given entries.
+	/// Each entry is (filename_in_zip, content_bytes).
+	async fn create_test_zip(zip_path: &std::path::Path, entries: &[(&str, &[u8])]) {
+		let file = tokio::fs::File::create(zip_path).await.unwrap();
+		let mut writer = ZipFileWriter::new(file.compat_write());
+
+		for &(name, content) in entries {
+			let entry = ZipEntryBuilder::new(name.into(), Compression::Stored);
+			writer.write_entry_whole(entry, content).await.unwrap();
+		}
+
+		writer.close().await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_extract_overrides_no_overwrite_skips_existing() {
+		let tmp = std::env::temp_dir().join(format!(
+			"onelauncher_test_overrides_{}",
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_nanos()
+		));
+		tokio::fs::create_dir_all(&tmp).await.unwrap();
+
+		let zip_path = tmp.join("test.mrpack");
+		let dest = tmp.join("cluster");
+		tokio::fs::create_dir_all(&dest).await.unwrap();
+
+		// Create a zip with:
+		//   overrides/config.txt       -> "bundle content"
+		//   overrides/new_file.txt     -> "new from bundle"
+		//   overrides/sub/nested.txt   -> "nested content"
+		//   mods/not_an_override.jar   -> "should be ignored"
+		create_test_zip(
+			&zip_path,
+			&[
+				("overrides/config.txt", b"bundle content"),
+				("overrides/new_file.txt", b"new from bundle"),
+				("overrides/sub/nested.txt", b"nested content"),
+				("mods/not_an_override.jar", b"should be ignored"),
+			],
+		)
+		.await;
+
+		// Pre-create config.txt with custom content (simulating user edit)
+		tokio::fs::write(dest.join("config.txt"), b"user customized")
+			.await
+			.unwrap();
+
+		// Run
+		extract_overrides_no_overwrite(&PathBuf::from(&zip_path), &dest)
+			.await
+			.unwrap();
+
+		// 1) Existing file should NOT be overwritten
+		let config = tokio::fs::read_to_string(dest.join("config.txt"))
+			.await
+			.unwrap();
+		assert_eq!(
+			config, "user customized",
+			"existing file should be preserved, not overwritten"
+		);
+
+		// 2) New file should be extracted
+		let new_file = tokio::fs::read_to_string(dest.join("new_file.txt"))
+			.await
+			.unwrap();
+		assert_eq!(
+			new_file, "new from bundle",
+			"new file should be extracted from zip"
+		);
+
+		// 3) Nested file in subdirectory should be extracted
+		let nested = tokio::fs::read_to_string(dest.join("sub/nested.txt"))
+			.await
+			.unwrap();
+		assert_eq!(nested, "nested content", "nested file should be extracted");
+
+		// 4) Non-override file should NOT be extracted
+		assert!(
+			!dest.join("mods/not_an_override.jar").exists(),
+			"non-override file should not be extracted"
+		);
+	}
 }

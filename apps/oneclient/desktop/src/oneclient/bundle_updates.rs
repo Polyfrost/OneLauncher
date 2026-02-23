@@ -670,6 +670,60 @@ pub async fn apply_bundle_updates(
 		}
 	}
 
+	// Re-extract overrides from any bundle that had changes applied.
+	// This keeps config files, resource packs, and other overridden assets in sync.
+	let has_changes = !updates_applied.is_empty()
+		|| !removals_applied.is_empty()
+		|| !additions_applied.is_empty();
+
+	if has_changes {
+		let mut affected_bundles: std::collections::HashSet<String> =
+			std::collections::HashSet::new();
+
+		for u in &updates_applied {
+			affected_bundles.insert(u.bundle_name.clone());
+		}
+		for r in &removals_applied {
+			affected_bundles.insert(r.bundle_name.clone());
+		}
+		for a in &additions_applied {
+			affected_bundles.insert(a.bundle_name.clone());
+		}
+
+		if !affected_bundles.is_empty() {
+			if let Ok(Some(cluster)) = api::cluster::dao::get_cluster_by_id(cluster_id).await {
+				if let Ok(bundles) = BundlesManager::get()
+					.await
+					.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+					.await
+				{
+					for bundle in &bundles {
+						if affected_bundles.contains(&bundle.manifest.name) {
+							tracing::info!(
+								bundle_name = %bundle.manifest.name,
+								cluster_id = %cluster_id,
+								"Re-extracting overrides from updated bundle"
+							);
+							if let Err(e) =
+								onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
+									&cluster,
+									&bundle.path,
+								)
+								.await
+							{
+								send_error!(
+									"Failed to extract overrides from bundle '{}': {}",
+									bundle.manifest.name,
+									e
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
 	Ok(ApplyBundleUpdatesResult {
 		updates_applied,
 		removals_applied,

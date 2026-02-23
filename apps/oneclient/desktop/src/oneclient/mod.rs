@@ -2,8 +2,18 @@ pub mod bundle_updates;
 pub mod bundles;
 pub mod clusters;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use onelauncher_core::api::cluster::dao::get_all_clusters;
 use onelauncher_core::send_info;
+
+/// Global flag indicating whether a bundle sync is currently in progress.
+/// Used by the frontend FS watcher to skip `syncCluster` calls during updates.
+static BUNDLE_SYNCING: AtomicBool = AtomicBool::new(false);
+
+pub fn is_bundle_syncing() -> bool {
+	BUNDLE_SYNCING.load(Ordering::Relaxed)
+}
 
 pub async fn initialize_oneclient() {
 	if let Err(err) = clusters::init_clusters().await {
@@ -21,12 +31,14 @@ pub async fn initialize_oneclient() {
 }
 
 async fn check_and_apply_all_bundle_updates() {
+	BUNDLE_SYNCING.store(true, Ordering::Relaxed);
 	tracing::info!("checking for bundle updates...");
 
 	let clusters = match get_all_clusters().await {
 		Ok(clusters) => clusters,
 		Err(err) => {
 			tracing::error!("failed to get clusters for bundle update check: {err}");
+			BUNDLE_SYNCING.store(false, Ordering::Relaxed);
 			return;
 		}
 	};
@@ -148,4 +160,6 @@ async fn check_and_apply_all_bundle_updates() {
 	if total_clusters_failed > 0 {
 		tracing::warn!("failed to apply updates for {total_clusters_failed} cluster(s)");
 	}
+
+	BUNDLE_SYNCING.store(false, Ordering::Relaxed);
 }

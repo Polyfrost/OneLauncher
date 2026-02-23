@@ -99,14 +99,18 @@ pub async fn check_bundle_updates(
 		let mut enabled_count = 0;
 		let mut disabled_count = 0;
 		for file in &bundle.manifest.files {
-			if let ModpackFileKind::Managed((pkg, version)) = &file.kind {
-				if file.enabled {
-					enabled_count += 1;
+			if !file.enabled {
+				disabled_count += 1;
+				continue;
+			}
+			enabled_count += 1;
+			match &file.kind {
+				ModpackFileKind::Managed((pkg, version)) => {
 					tracing::trace!(
 						bundle_name = %bundle.manifest.name,
 						package_id = %pkg.id,
 						version_id = %version.version_id,
-						"Indexed bundle package version"
+						"Indexed managed bundle package"
 					);
 					bundle_versions.insert(
 						pkg.id.clone(),
@@ -116,8 +120,17 @@ pub async fn check_bundle_updates(
 							file.clone(),
 						),
 					);
-				} else {
-					disabled_count += 1;
+				}
+				ModpackFileKind::External(ext) => {
+					tracing::trace!(
+						bundle_name = %bundle.manifest.name,
+						sha1 = %ext.sha1,
+						"Indexed external bundle package"
+					);
+					bundle_versions.insert(
+						ext.sha1.clone(),
+						(bundle.manifest.name.clone(), ext.sha1.clone(), file.clone()),
+					);
 				}
 			}
 		}
@@ -415,100 +428,66 @@ async fn apply_single_update(
 		.await?
 		.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", update.cluster_id))?;
 
+	// Download the new version FIRST, before removing the old one.
+	// This way, if the download fails, the old package remains untouched.
+	let model = match &update.new_file.kind {
+		ModpackFileKind::Managed((pkg, version)) => {
+			tracing::debug!(
+				package_id = %pkg.id,
+				version_id = %version.version_id,
+				"Downloading new managed package version (before removing old)"
+			);
+			api::packages::download_package(pkg, version, None, None).await?
+		}
+		ModpackFileKind::External(ext_package) => {
+			tracing::debug!(
+				url = %ext_package.url,
+				sha1 = %ext_package.sha1,
+				"Downloading new external package version (before removing old)"
+			);
+			api::packages::download_external_package(ext_package, &cluster, None, Some(true), None)
+				.await?
+				.ok_or_else(|| anyhow::anyhow!("Failed to download external package"))?
+		}
+	};
+
+	// Now remove the old package (safe — we already have the new one downloaded)
 	tracing::debug!(
 		package_hash = %update.installed_package_hash,
 		"Removing old package"
 	);
 	api::packages::remove_package(update.cluster_id, update.installed_package_hash.clone()).await?;
 
+	// Link and track the new package
 	tracing::debug!(
-		package_hash = %update.installed_package_hash,
-		"Removing old bundle tracking"
+		package_hash = %model.hash,
+		"Linking new package to cluster"
 	);
-	let _ = api::packages::bundle_dao::remove_bundle_package_tracking(
-		update.cluster_id,
-		&update.installed_package_hash,
+	api::packages::link_package(&model, &cluster, Some(true)).await?;
+
+	let version_id = match &update.new_file.kind {
+		ModpackFileKind::Managed((_, version)) => version.version_id.clone(),
+		ModpackFileKind::External(ext) => ext.sha1.clone(),
+	};
+
+	tracing::debug!(
+		package_hash = %model.hash,
+		bundle_name = %update.bundle_name,
+		"Tracking new package as bundle package"
+	);
+	api::packages::bundle_dao::track_bundle_package(
+		&cluster,
+		&model,
+		&update.bundle_name,
+		&version_id,
 	)
-	.await;
+	.await?;
 
-	match &update.new_file.kind {
-		ModpackFileKind::Managed((pkg, version)) => {
-			tracing::debug!(
-				package_id = %pkg.id,
-				version_id = %version.version_id,
-				"Downloading new managed package version"
-			);
-			let model = api::packages::download_package(pkg, version, None, None).await?;
-
-			tracing::debug!(
-				package_hash = %model.hash,
-				"Linking new package to cluster"
-			);
-			api::packages::link_package(&model, &cluster, Some(true)).await?;
-
-			tracing::debug!(
-				package_hash = %model.hash,
-				bundle_name = %update.bundle_name,
-				"Tracking new package as bundle package"
-			);
-			api::packages::bundle_dao::track_bundle_package(
-				&cluster,
-				&model,
-				&update.bundle_name,
-				&version.version_id,
-			)
-			.await?;
-
-			tracing::info!(
-				package_id = %pkg.id,
-				new_hash = %model.hash,
-				"Successfully updated managed package"
-			);
-			Ok(model)
-		}
-		ModpackFileKind::External(ext_package) => {
-			tracing::debug!(
-				url = %ext_package.url,
-				sha1 = %ext_package.sha1,
-				"Downloading new external package version"
-			);
-			let model = api::packages::download_external_package(
-				ext_package,
-				&cluster,
-				None,
-				Some(true),
-				None,
-			)
-			.await?
-			.ok_or_else(|| anyhow::anyhow!("Failed to download external package"))?;
-
-			tracing::debug!(
-				package_hash = %model.hash,
-				"Linking new external package to cluster"
-			);
-			api::packages::link_package(&model, &cluster, Some(true)).await?;
-
-			tracing::debug!(
-				package_hash = %model.hash,
-				bundle_name = %update.bundle_name,
-				"Tracking new external package as bundle package"
-			);
-			api::packages::bundle_dao::track_bundle_package(
-				&cluster,
-				&model,
-				&update.bundle_name,
-				&ext_package.sha1,
-			)
-			.await?;
-
-			tracing::info!(
-				url = %ext_package.url,
-				new_hash = %model.hash,
-				"Successfully updated external package"
-			);
-			Ok(model)
-		}
-	}
+	tracing::info!(
+		new_hash = %model.hash,
+		"Successfully updated package"
+	);
+	Ok(model)
 }
 
 async fn apply_single_removal(removal: &BundlePackageRemoval) -> LauncherResult<()> {

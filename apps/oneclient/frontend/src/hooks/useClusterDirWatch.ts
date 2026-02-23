@@ -24,6 +24,12 @@ export function useAllClusterDirWatch() {
 				watch(
 					clusterDir,
 					async () => {
+						// Skip sync while the backend is applying bundle updates to
+						// avoid race conditions (watcher would re-sync mid-download).
+						const syncing = await bindings.oneclient.isBundleSyncing().catch(() => false);
+						if (syncing)
+							return;
+
 						try {
 							await bindings.core.syncCluster(cluster.id);
 							await queryClient.invalidateQueries({ queryKey: ['getLinkedPackages', cluster.id] });

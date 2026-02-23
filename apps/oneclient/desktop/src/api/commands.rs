@@ -50,6 +50,9 @@ pub trait OneClientApi {
 	async fn update_bundle_packages(
 		cluster_id: ClusterId,
 	) -> LauncherResult<ApplyBundleUpdatesResult>;
+
+	#[taurpc(alias = "isBundleSyncing")]
+	async fn is_bundle_syncing() -> LauncherResult<bool>;
 }
 
 #[taurpc::ipc_type]
@@ -198,5 +201,9 @@ impl OneClientApi for OneClientApiImpl {
 		cluster_id: ClusterId,
 	) -> LauncherResult<ApplyBundleUpdatesResult> {
 		crate::oneclient::bundle_updates::apply_bundle_updates(cluster_id).await
+	}
+
+	async fn is_bundle_syncing(self) -> LauncherResult<bool> {
+		Ok(crate::oneclient::is_bundle_syncing())
 	}
 }

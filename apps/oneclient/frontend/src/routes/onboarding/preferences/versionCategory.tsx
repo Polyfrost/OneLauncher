@@ -9,7 +9,7 @@ import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useMemo, useRef, useState } from 'react';
+import { useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -62,13 +62,38 @@ function RouteComponent() {
 	);
 
 	const bundlesPerCluster = useMemo(() => {
-		return clusters.reduce((acc, cluster, i) => {
-			acc[cluster.id] = bundleQueries[i];
-			return acc;
-		}, {} as Record<string, Array<ModpackArchive>>);
-	}, [clusters, bundleQueries]);
+		const result: Record<number, Array<ModpackArchive>> = {};
+		clusters.forEach((cluster, i) => {
+			const selected = selectedClusters.some(sc => sc.mc_version === cluster.mc_version && sc.mc_loader === cluster.mc_loader);
+			if (selected)
+				result[cluster.id] = bundleQueries[i];
+		});
+		return result;
+	}, [clusters, bundleQueries, selectedClusters]);
 
 	const downloadModsRef = useRef<DownloadModsRef>(null);
+	const wrappedRef = useRef<DownloadModsRef>(null);
+
+	useImperativeHandle(wrappedRef, () => ({
+		async openDownloadDialog(nextPath?: string) {
+			// Extract overrides from all enabled bundles before downloading mods
+			for (const [clusterId, bundles] of Object.entries(bundlesPerCluster)) {
+				for (const bundle of bundles) {
+					if (bundle.manifest.enabled) {
+						try {
+							await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
+						}
+						catch (e) {
+							console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
+						}
+					}
+				}
+			}
+
+			// Then delegate to the actual mod download dialog
+			downloadModsRef.current?.openDownloadDialog(nextPath);
+		},
+	}), [bundlesPerCluster]);
 
 	return (
 		<>
@@ -89,13 +114,13 @@ function RouteComponent() {
 							</div>
 
 							<div className="hidden">
-								<DownloadMods bundlesPerCluster={bundlesPerCluster} modsPerCluster={modsPerCluster} ref={downloadModsRef} />
+								<DownloadMods modsPerCluster={modsPerCluster} ref={downloadModsRef} />
 							</div>
 						</div>
 					</OverlayScrollbarsComponent>
 				</div>
 			</div>
-			<OnboardingNavigation disableNext={selectedClusters.length === 0} ref={downloadModsRef} />
+			<OnboardingNavigation disableNext={selectedClusters.length === 0} ref={wrappedRef} />
 		</>
 	);
 }

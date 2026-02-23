@@ -48,21 +48,32 @@ function RouteComponent() {
 			return [];
 
 		const versions = list.map(c => parseMcVersion(c.mc_version)?.minor).filter((v): v is number => v !== undefined);
-		const sorted = Array.from(new Set(versions)).sort((a, b) => a - b);
+		return Array.from(new Set(versions)).sort((a, b) => a - b);
+	}, [clusters, majorVersion]);
 
-		// attempt to load the minor version from localStorage
-		const storedMinor = loadMinorVersion(majorVersion) || sorted[0];
-		setActiveMinorVersion(storedMinor);
-
-		return sorted;
-	}, [clusters, loadMinorVersion, majorVersion]);
-
-	const modLoader = useMemo(() => {
-		if (!activeMinorVersion)
+	// Derive effective minor version without side effects in useMemo
+	const effectiveMinorVersion = useMemo(() => {
+		if (minorVersions.length === 0)
 			return undefined;
 
-		return modLoaders[`${majorVersion}.${activeMinorVersion}`];
-	}, [modLoaders, majorVersion, activeMinorVersion]);
+		// If user has explicitly selected a minor version valid for this major, use it
+		if (activeMinorVersion !== undefined && minorVersions.includes(activeMinorVersion))
+			return activeMinorVersion;
+
+		// Otherwise fall back to stored version or first available
+		const storedMinor = loadMinorVersion(majorVersion);
+		if (storedMinor !== undefined && minorVersions.includes(storedMinor))
+			return storedMinor;
+
+		return minorVersions[0];
+	}, [minorVersions, activeMinorVersion, loadMinorVersion, majorVersion]);
+
+	const modLoader = useMemo(() => {
+		if (!effectiveMinorVersion)
+			return undefined;
+
+		return modLoaders[`${majorVersion}.${effectiveMinorVersion}`];
+	}, [modLoaders, majorVersion, effectiveMinorVersion]);
 
 	const loaders = useMemo(() => {
 		const list = clusters[majorVersion];
@@ -79,15 +90,16 @@ function RouteComponent() {
 
 	const cluster = useMemo(() => {
 		const list = clusters[majorVersion];
-		if (!activeMinorVersion)
+		if (effectiveMinorVersion === undefined)
 			return list?.[0];
 
 		return list?.find((c) => {
-			const version = c.mc_version.endsWith(activeMinorVersion.toString());
+			const parsed = parseMcVersion(c.mc_version);
+			const versionMatch = parsed?.minor === effectiveMinorVersion;
 			const loaderCheck = modLoader ? c.mc_loader === modLoader : true;
-			return version && loaderCheck;
+			return versionMatch && loaderCheck;
 		});
-	}, [clusters, majorVersion, activeMinorVersion, modLoader]);
+	}, [clusters, majorVersion, effectiveMinorVersion, modLoader]);
 
 	const versionInfo = useMemo(() => getVersionInfoOrDefault(cluster?.mc_version), [cluster]);
 
@@ -165,7 +177,7 @@ function RouteComponent() {
 										setActiveMinorVersion(Number(selected));
 										setMinorVersion(majorVersion, Number(selected));
 									}}
-									selectedKey={activeMinorVersion}
+								selectedKey={effectiveMinorVersion}
 								>
 									{minorVersions.map((minorVersion) => {
 										const fullVer = `${versionInfo.prettyName}.${minorVersion}`;
@@ -189,12 +201,12 @@ function RouteComponent() {
 								<Dropdown
 									aria-label="Mod Loader Dropdown"
 									onSelectionChange={(selected) => {
-										if (!activeMinorVersion)
-											return;
+									if (!effectiveMinorVersion)
+										return;
 
-										setModLoader(`${majorVersion}.${activeMinorVersion}`, selected as GameLoader);
-									}}
-									selectedKey={activeMinorVersion ? (modLoaders[`${majorVersion}.${activeMinorVersion}`] ?? loaders[0]) : loaders[0]}
+									setModLoader(`${majorVersion}.${effectiveMinorVersion}`, selected as GameLoader);
+								}}
+								selectedKey={effectiveMinorVersion ? (modLoaders[`${majorVersion}.${effectiveMinorVersion}`] ?? loaders[0]) : loaders[0]}
 								>
 									{loaders.map(loader => (
 										<Dropdown.Item

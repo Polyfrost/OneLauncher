@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from 'react';
 import { GameBackground, LoaderSuspense, Navbar } from '@/components';
+import { useAllClusterDirWatch } from '@/hooks/useClusterDirWatch';
 import { useActiveCluster } from '@/hooks/useClusters';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
@@ -11,6 +12,8 @@ export const Route = createFileRoute('/app')({
 });
 
 function RouteComponent() {
+	useAllClusterDirWatch();
+
 	return (
 		<LoaderSuspense spinner={{ size: 'large' }}>
 			<AppShell>

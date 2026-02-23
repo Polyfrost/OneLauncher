@@ -94,7 +94,12 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 		return Ok(SyncAction::MissingFs);
 	}
 
+	tracing::info!("sync_cluster: scanning path={}", path.display());
+
 	let mut missing_hashes = HashMap::new();
+	// Directory-based packages (resource packs, shader packs, data packs can be folders).
+	// These skip provider lookups and are always registered as local packages.
+	let mut missing_dir_hashes: Vec<(String, PathBuf, PackageType)> = Vec::new();
 	let mut found_hashes = HashSet::new();
 
 	for package_type in PackageType::iter() {
@@ -106,15 +111,47 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 		let mut stream = io::read_dir(&dir).await?;
 		while let Ok(Some(entry)) = stream.next_entry().await {
 			let file_path = entry.path();
-			if !file_path.is_file() {
+			let is_dir = file_path.is_dir();
+			if !file_path.is_file() && !is_dir {
 				continue;
 			}
-			// Skip hidden files
+			// Skip hidden files/folders
 			if file_path
 				.file_name()
 				.map(|s| s.to_string_lossy().starts_with('.'))
 				.unwrap_or(false)
 			{
+				continue;
+			}
+
+			if is_dir {
+				// Mods are never folders — skip directories in the mods directory.
+				if package_type == PackageType::Mod {
+					continue;
+				}
+				// Directories get a deterministic hash from their name so they have a stable DB identity.
+				let folder_name = file_path
+					.file_name()
+					.unwrap_or_default()
+					.to_string_lossy()
+					.to_string();
+				let hash = HashAlgorithm::Sha1
+					.hash(format!("dir:{folder_name}").as_bytes())
+					.await?;
+
+				if let Some(package) =
+					crate::api::packages::dao::get_package_by_hash(hash.clone()).await?
+				{
+					if !crate::api::packages::dao::is_package_linked_to_cluster(&package, cluster)
+						.await?
+					{
+						crate::api::packages::dao::link_package_to_cluster(&package, cluster)
+							.await?;
+					}
+					found_hashes.insert(hash);
+				} else {
+					missing_dir_hashes.push((hash, file_path, package_type.clone()));
+				}
 				continue;
 			}
 
@@ -132,6 +169,50 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 			} else {
 				missing_hashes.insert(hash, (file_path, package_type.clone()));
 			}
+		}
+	}
+
+	// Track dir packages as on-disk before the vec is consumed.
+	found_hashes.extend(missing_dir_hashes.iter().map(|(h, _, _)| h.clone()));
+
+	// Register directory-based packages as local (no provider lookup possible for folders).
+	for (hash, dir_path, package_type) in missing_dir_hashes {
+		let file_name = dir_path
+			.file_name()
+			.unwrap_or_default()
+			.to_string_lossy()
+			.to_string();
+
+		let model = packages::ActiveModel {
+			hash: ActiveValue::Set(hash.clone()),
+			file_name: ActiveValue::Set(file_name.clone()),
+			version_id: ActiveValue::Set(hash.clone()),
+			published_at: ActiveValue::Set(Utc::now()),
+			display_name: ActiveValue::Set(file_name.clone()),
+			display_version: ActiveValue::Set("Unknown".to_string()),
+			package_type: ActiveValue::Set(package_type),
+			provider: ActiveValue::Set(Provider::Local),
+			package_id: ActiveValue::Set(hash.clone()),
+			mc_versions: ActiveValue::Set(vec![].into()),
+			mc_loader: ActiveValue::Set(vec![].into()),
+			icon: ActiveValue::Set(None),
+		};
+
+		let package = match crate::api::packages::dao::insert_package(model).await {
+			Ok(package) => package,
+			Err(err) => {
+				tracing::error!("failed to insert local directory package {}: {}", hash, err);
+				continue;
+			}
+		};
+		if let Err(err) =
+			crate::api::packages::dao::link_package_to_cluster(&package, cluster).await
+		{
+			tracing::error!(
+				"failed to link local directory package {} to cluster: {}",
+				hash,
+				err
+			);
 		}
 	}
 
@@ -236,6 +317,37 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 				{
 					tracing::error!("failed to link local package {} to cluster: {}", hash, err);
 				}
+			}
+		}
+	}
+
+	// Reconcile: unlink any packages that are in the DB but no longer on disk.
+	// Extend found_hashes with all file packages seen on disk (whether provider-matched or local).
+	found_hashes.extend(missing_hashes.keys().cloned());
+
+	tracing::info!("sync_cluster: on-disk hashes count={}", found_hashes.len());
+
+	let linked_packages = crate::api::packages::dao::get_linked_packages(cluster).await?;
+	tracing::info!(
+		"sync_cluster: db-linked packages count={}",
+		linked_packages.len()
+	);
+	for package in linked_packages {
+		if !found_hashes.contains(&package.hash) {
+			tracing::info!(
+				"sync_cluster: unlinking missing package file_name={} hash={}",
+				package.file_name,
+				package.hash
+			);
+			if let Err(err) =
+				crate::api::packages::dao::unlink_package_from_cluster(&package.hash, cluster.id)
+					.await
+			{
+				tracing::error!(
+					"failed to unlink deleted package {} from cluster: {}",
+					package.hash,
+					err
+				);
 			}
 		}
 	}

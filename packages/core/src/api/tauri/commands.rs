@@ -211,11 +211,17 @@ pub trait TauriLauncherApi {
 		author: PackageAuthor,
 	) -> LauncherResult<Vec<ManagedUser>>;
 
+	#[taurpc(alias = "syncCluster")]
+	async fn sync_cluster(cluster_id: ClusterId) -> LauncherResult<()>;
+
 	#[taurpc(alias = "getLinkedPackages")]
 	async fn get_linked_packages(cluster_id: ClusterId) -> LauncherResult<Vec<packages::Model>>;
 
 	#[taurpc(alias = "removePackage")]
 	async fn remove_package(cluster_id: ClusterId, package_hash: String) -> LauncherResult<()>;
+
+	#[taurpc(alias = "togglePackage")]
+	async fn toggle_package(cluster_id: ClusterId, package_hash: String) -> LauncherResult<bool>;
 	// endregion: package
 
 	// MARK: API: modpack
@@ -806,6 +812,31 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		package_hash: String,
 	) -> LauncherResult<()> {
 		api::packages::remove_package(cluster_id, package_hash).await
+	}
+
+	async fn toggle_package(
+		self,
+		cluster_id: ClusterId,
+		package_hash: String,
+	) -> LauncherResult<bool> {
+		api::packages::toggle_package(cluster_id, package_hash).await
+	}
+
+	async fn sync_cluster(self, cluster_id: ClusterId) -> LauncherResult<()> {
+		let result = crate::api::cluster::sync_cluster_by_id(cluster_id).await;
+		match &result {
+			Ok(action) if !matches!(action, crate::api::cluster::SyncAction::NoAction) => {
+				tracing::info!(
+					"syncCluster complete for cluster_id={}, action={:?}",
+					cluster_id,
+					action
+				)
+			}
+			Err(e) => tracing::error!("syncCluster failed for cluster_id={}: {}", cluster_id, e),
+			_ => {}
+		}
+		result?;
+		Ok(())
 	}
 	// endregion: package
 

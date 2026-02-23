@@ -323,7 +323,12 @@ pub async fn remove_package(cluster_id: i64, package_hash: String) -> LauncherRe
 				.join(&package.file_name);
 
 			if cluster_dir.exists() {
-				if let Err(err) = io::remove_file(&cluster_dir).await {
+				let remove_result = if cluster_dir.is_dir() {
+					io::remove_dir_all(&cluster_dir).await
+				} else {
+					io::remove_file(&cluster_dir).await
+				};
+				if let Err(err) = remove_result {
 					send_error!("{}{}", "failed to remove file: ", err);
 				}
 			}
@@ -341,4 +346,64 @@ pub async fn remove_package(cluster_id: i64, package_hash: String) -> LauncherRe
 	}
 
 	Ok(())
+}
+
+/// Toggles a package's enabled state in a cluster by renaming its hard link
+/// between `.jar` and `.jar.disabled`. Returns the new enabled state.
+pub async fn toggle_package(cluster_id: i64, package_hash: String) -> LauncherResult<bool> {
+	let package = dao::get_package_by_hash(package_hash.clone())
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("package with hash '{}' not found", package_hash))?;
+
+	let cluster = get_cluster_by_id(cluster_id)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+	let cluster_mods_dir = Dirs::get_clusters_dir()
+		.await?
+		.join(&cluster.folder_name)
+		.join(package.package_type.folder_name());
+
+	let file_name = &package.file_name;
+	let is_disabled = file_name.ends_with(".disabled");
+
+	let (new_file_name, enabled) = if is_disabled {
+		(file_name.trim_end_matches(".disabled").to_string(), true)
+	} else {
+		(format!("{}.disabled", file_name), false)
+	};
+
+	// Rename the hard link in the cluster folder
+	let current_path = cluster_mods_dir.join(file_name);
+	let new_path = cluster_mods_dir.join(&new_file_name);
+	if current_path.exists() {
+		tokio::fs::rename(&current_path, &new_path)
+			.await
+			.map_err(IOError::from)?;
+	}
+
+	// Rename the file in the central package store
+	let old_store_path = package.path().await?;
+	dao::update_package_by_hash(package_hash, async |mut model| {
+		model.file_name = sea_orm::ActiveValue::Set(new_file_name.clone());
+		Ok(model)
+	})
+	.await?;
+
+	// Re-fetch to get the updated path
+	let updated_package = dao::get_package_by_hash(package.hash.clone())
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("package not found after update"))?;
+	let new_store_path = updated_package.path().await?;
+
+	if old_store_path.exists() && old_store_path != new_store_path {
+		if let Some(parent) = new_store_path.parent() {
+			io::create_dir_all(parent).await?;
+		}
+		tokio::fs::rename(&old_store_path, &new_store_path)
+			.await
+			.map_err(IOError::from)?;
+	}
+
+	Ok(enabled)
 }

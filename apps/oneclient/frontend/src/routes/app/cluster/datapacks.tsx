@@ -1,22 +1,16 @@
-import type { ModpackFile } from '@/bindings.gen';
 import type { ModCardContextApi } from '@/components';
 import { ModCardContext, ModList } from '@/components';
 import { useCustomBundle } from '@/hooks/useCustomBundle';
 import { bindings } from '@/main';
+import { getFilePackageType } from '@/routes/app/cluster/mods';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useMemo } from 'react';
 
-export const Route = createFileRoute('/app/cluster/mods')({
+export const Route = createFileRoute('/app/cluster/datapacks')({
 	component: RouteComponent,
 });
-
-export function getFilePackageType(file: ModpackFile) {
-	if ('Managed' in file.kind)
-		return file.kind.Managed[0].package_type;
-	return file.kind.External.package_type;
-}
 
 function RouteComponent() {
 	const { cluster } = Route.useRouteContext();
@@ -26,10 +20,10 @@ function RouteComponent() {
 	const filteredBundles = useMemo(() =>
 		bundles.map(b => ({
 			...b,
-			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'mod') },
+			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'datapack') },
 		})), [bundles]);
 
-	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'mod');
+	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'datapack');
 
 	const allBundles = useMemo(() =>
 		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,
@@ -43,7 +37,7 @@ function RouteComponent() {
 	}), [installedPackages]);
 
 	if (allBundles.every(b => b.manifest.files.length === 0))
-		return <p className="p-4 text-fg-secondary">No mods found in {cluster.name}</p>;
+		return <p className="p-4 text-fg-secondary">No data packs found in {cluster.name}</p>;
 
 	return (
 		<OverlayScrollbarsComponent className="bg-none">

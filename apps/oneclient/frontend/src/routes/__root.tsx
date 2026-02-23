@@ -40,6 +40,9 @@ const ResolvedPathNames: Record<URLPath, string> = {
 	'/app/cluster/browser/package': 'Browsing {packageName}',
 	'/app/cluster/logs': 'Viewing {clusterName}\'s logs',
 	'/app/cluster/mods': 'Viewing {clusterName}\'s mods',
+	'/app/cluster/resource-packs': 'Viewing {clusterName}\'s resource packs',
+	'/app/cluster/shaders': 'Viewing {clusterName}\'s shaders',
+	'/app/cluster/datapacks': 'Viewing {clusterName}\'s data packs',
 	'/app/cluster/process': 'Viewing {clusterName}',
 	'/app/cluster/settings': 'Viewing {clusterName}\'s settings',
 	'/app/settings': 'Viewing Settings',
@@ -71,7 +74,9 @@ function useDiscordRPC() {
 	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
 	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider!, packageId!), { enabled: provider != null && packageId != null });
 	useEffect(() => {
-		bindings.core.setDiscordRPCMessage(ReplaceVariables(ResolvedPathNames[location.pathname as URLPath], { clusterName: cluster?.name ?? 'UNKNOWN', packageName: managedPackage?.name ?? 'UNKNOWN' }));
+		const template = ResolvedPathNames[location.pathname as URLPath];
+		if (template)
+			bindings.core.setDiscordRPCMessage(ReplaceVariables(template, { clusterName: cluster?.name ?? 'UNKNOWN', packageName: managedPackage?.name ?? 'UNKNOWN' }));
 	}, [location.pathname, location.search.clusterId, cluster?.name, managedPackage?.name]);
 }
 

@@ -1,21 +1,15 @@
-import type { ModpackFile } from '@/bindings.gen';
 import type { ModCardContextApi } from '@/components';
 import { ModCardContext, ModList } from '@/components';
+import { getFilePackageType } from '@/routes/app/cluster/mods';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
 import { useMemo } from 'react';
 
-export const Route = createFileRoute('/app/cluster/mods')({
+export const Route = createFileRoute('/app/cluster/resource-packs')({
 	component: RouteComponent,
 });
-
-export function getFilePackageType(file: ModpackFile) {
-	if ('Managed' in file.kind)
-		return file.kind.Managed[0].package_type;
-	return file.kind.External.package_type;
-}
 
 function RouteComponent() {
 	const { cluster } = Route.useRouteContext();
@@ -25,7 +19,7 @@ function RouteComponent() {
 	const filteredBundles = useMemo(() =>
 		bundles.map(b => ({
 			...b,
-			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'mod') },
+			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'resourcepack') },
 		})), [bundles]);
 
 	const context = useMemo<ModCardContextApi>(() => ({
@@ -34,7 +28,7 @@ function RouteComponent() {
 	}), [installedPackages]);
 
 	if (filteredBundles.every(b => b.manifest.files.length === 0))
-		return <p className="p-4 text-fg-secondary">No mods found in {cluster.name}</p>;
+		return <p className="p-4 text-fg-secondary">No resource packs found in {cluster.name}</p>;
 
 	return (
 		<OverlayScrollbarsComponent className="bg-none">

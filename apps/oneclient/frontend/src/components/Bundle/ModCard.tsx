@@ -93,14 +93,11 @@ export interface ModCardContextApi {
 	installedPackages?: Array<PackageModel>;
 }
 
+const DEFAULT_MOD_CARD_CONTEXT: ModCardContextApi = {};
+
 export const ModCardContext = createContext<ModCardContextApi | null>(null);
 export function useModCardContext() {
-	const ctx = useContext(ModCardContext);
-
-	if (!ctx)
-		throw new Error('useModCardContext must be used within a ModCardContext.Provider');
-
-	return ctx;
+	return useContext(ModCardContext) ?? DEFAULT_MOD_CARD_CONTEXT;
 }
 
 export function ModCard({ file, cluster }: ModCardProps) {

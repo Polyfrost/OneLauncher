@@ -1,6 +1,7 @@
 import type { ModpackFile } from '@/bindings.gen';
 import type { ModCardContextApi } from '@/components';
 import { ModCardContext, ModList } from '@/components';
+import { useCustomBundle } from '@/hooks/useCustomBundle';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
@@ -28,19 +29,27 @@ function RouteComponent() {
 			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'mod') },
 		})), [bundles]);
 
+	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'mod');
+
+	const allBundles = useMemo(() =>
+		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,
+	[filteredBundles, customBundle]);
+
+	const customTogglePaths = useMemo(() => new Set(['__custom__']), []);
+
 	const context = useMemo<ModCardContextApi>(() => ({
 		enableClickToDownload: true,
 		installedPackages,
 	}), [installedPackages]);
 
-	if (filteredBundles.every(b => b.manifest.files.length === 0))
+	if (allBundles.every(b => b.manifest.files.length === 0))
 		return <p className="p-4 text-fg-secondary">No mods found in {cluster.name}</p>;
 
 	return (
 		<OverlayScrollbarsComponent className="bg-none">
 			<div className="min-h-148">
 				<ModCardContext.Provider value={context}>
-					<ModList bundles={filteredBundles} cluster={cluster} />
+					<ModList bundles={allBundles} cluster={cluster} toggleBundlePaths={customTogglePaths} />
 				</ModCardContext.Provider>
 			</div>
 		</OverlayScrollbarsComponent>

@@ -13,9 +13,10 @@ interface ModListProps {
 	cluster: ClusterModel;
 	selectedTab?: string;
 	onTabChange?: (value: string) => void;
+	toggleBundlePaths?: Set<string>;
 }
 
-export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListProps) {
+export function ModList({ bundles, cluster, selectedTab, onTabChange, toggleBundlePaths }: ModListProps) {
 	const ctx = useContext(ModCardContext);
 	const useVerticalGridLayout = ctx?.useVerticalGridLayout ?? false;
 	const { createSetting } = useSettings();
@@ -37,11 +38,22 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange }: ModListP
 			</TabList>
 
 			<TabContent className={useVerticalGridLayout ? 'pt-0' : ''}>
-				{nonEmptyBundles.map(bundleData => (
-					<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
-						<Bundle cluster={cluster} files={bundleData.manifest.files} />
-					</TabPanel>
-				))}
+				{nonEmptyBundles.map((bundleData) => {
+					const isToggle = toggleBundlePaths?.has(bundleData.path) ?? false;
+					const content = <Bundle cluster={cluster} files={bundleData.manifest.files} />;
+
+					return (
+						<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
+							{isToggle
+								? (
+										<ModCardContext.Provider value={{ ...ctx, useToggleMode: true }}>
+											{content}
+										</ModCardContext.Provider>
+									)
+								: content}
+						</TabPanel>
+					);
+				})}
 			</TabContent>
 		</Tabs>
 	);

@@ -1,7 +1,8 @@
 import type { ModCardContextApi } from '@/components';
 import { ModCardContext, ModList } from '@/components';
-import { getFilePackageType } from '@/routes/app/cluster/mods';
+import { useCustomBundle } from '@/hooks/useCustomBundle';
 import { bindings } from '@/main';
+import { getFilePackageType } from '@/routes/app/cluster/mods';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -22,19 +23,27 @@ function RouteComponent() {
 			manifest: { ...b.manifest, files: b.manifest.files.filter(f => getFilePackageType(f) === 'shader') },
 		})), [bundles]);
 
+	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'shader');
+
+	const allBundles = useMemo(() =>
+		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,
+	[filteredBundles, customBundle]);
+
+	const customTogglePaths = useMemo(() => new Set(['__custom__']), []);
+
 	const context = useMemo<ModCardContextApi>(() => ({
 		enableClickToDownload: true,
 		installedPackages,
 	}), [installedPackages]);
 
-	if (filteredBundles.every(b => b.manifest.files.length === 0))
+	if (allBundles.every(b => b.manifest.files.length === 0))
 		return <p className="p-4 text-fg-secondary">No shaders found in {cluster.name}</p>;
 
 	return (
 		<OverlayScrollbarsComponent className="bg-none">
 			<div className="min-h-148">
 				<ModCardContext.Provider value={context}>
-					<ModList bundles={filteredBundles} cluster={cluster} />
+					<ModList bundles={allBundles} cluster={cluster} toggleBundlePaths={customTogglePaths} />
 				</ModCardContext.Provider>
 			</div>
 		</OverlayScrollbarsComponent>

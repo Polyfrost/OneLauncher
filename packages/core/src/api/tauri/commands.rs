@@ -811,7 +811,8 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		cluster_id: ClusterId,
 		package_hash: String,
 	) -> LauncherResult<()> {
-		api::packages::remove_package(cluster_id, package_hash).await
+		// record_override=true: user explicitly removed this package from the cluster
+		api::packages::remove_package(cluster_id, package_hash, true).await
 	}
 
 	async fn toggle_package(

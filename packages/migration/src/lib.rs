@@ -2,6 +2,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m20220101_000001_create_table;
 mod m20260222_000001_create_bundle_packages;
+mod m20260223_000001_create_bundle_overrides_table;
 
 pub struct Migrator;
 
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
 		vec![
 			Box::new(m20220101_000001_create_table::Migration),
 			Box::new(m20260222_000001_create_bundle_packages::Migration),
+			Box::new(m20260223_000001_create_bundle_overrides_table::Migration),
 		]
 	}
 }

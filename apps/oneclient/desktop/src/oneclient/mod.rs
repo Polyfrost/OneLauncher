@@ -60,6 +60,15 @@ async fn check_and_apply_all_bundle_updates() {
 				let update_count = result.updates_applied.len();
 				let removal_count = result.removals_applied.len();
 				let addition_count = result.additions_applied.len();
+				let failure_count = result.updates_failed.len()
+					+ result.removals_failed.len()
+					+ result.additions_failed.len();
+				if failure_count > 0 {
+					tracing::warn!(
+						"{failure_count} bundle operation(s) failed for cluster '{}'",
+						cluster.name
+					);
+				}
 
 				if update_count > 0 || removal_count > 0 || addition_count > 0 {
 					total_updates_applied += update_count;

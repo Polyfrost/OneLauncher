@@ -310,8 +310,30 @@ impl DatabaseModelExt for packages::Model {
 
 /// Removes a package from a cluster.
 /// It is also deleted from the filesystem and database.
-pub async fn remove_package(cluster_id: i64, package_hash: String) -> LauncherResult<()> {
+///
+/// * `record_override` - When `true` and the package is tracked as a bundle package, a
+///   `Removed` override is saved so future bundle syncs won't re-install it. Pass `false`
+///   for system-initiated removals (bundle updates, bundle-driven removals) where the
+///   removal is not a deliberate user choice.
+pub async fn remove_package(
+	cluster_id: i64,
+	package_hash: String,
+	record_override: bool,
+) -> LauncherResult<()> {
 	if let Some(package) = dao::get_package_by_hash(package_hash.clone()).await? {
+		// Always look up bundle mapping: needed for recording a Removed override (user action)
+		// and for cleaning up stale Disabled overrides (system action).
+		let bundle_override_data: Option<(String, String)> = if let Ok(Some(bundle_mapping)) =
+			bundle_dao::get_bundle_package(cluster_id, &package_hash).await
+		{
+			match (bundle_mapping.bundle_name, bundle_mapping.package_id) {
+				(Some(bn), Some(pid)) => Some((bn, pid)),
+				_ => None,
+			}
+		} else {
+			None
+		};
+
 		dao::unlink_package_from_cluster(&package_hash, cluster_id).await?;
 
 		// Remove the hard link from the cluster's folder
@@ -343,6 +365,24 @@ pub async fn remove_package(cluster_id: i64, package_hash: String) -> LauncherRe
 			}
 			dao::delete_package_by_id(package_hash).await?;
 		}
+
+		// Act on bundle override data AFTER all filesystem/DB mutations succeed.
+		if let Some((bundle_name, package_id)) = bundle_override_data {
+			if record_override {
+				// User-initiated removal: record intent to keep package out of future syncs.
+				bundle_dao::save_bundle_override(
+					cluster_id,
+					&bundle_name,
+					&package_id,
+					onelauncher_entity::cluster_bundle_overrides::OverrideType::Removed,
+				)
+				.await?;
+			} else {
+				// System-initiated removal: clean up any stale Disabled overrides so they
+				// don't accumulate for packages that are no longer installed.
+				bundle_dao::remove_overrides_for_package(cluster_id, &package_id).await?;
+			}
+		}
 	}
 
 	Ok(())
@@ -373,13 +413,41 @@ pub async fn toggle_package(cluster_id: i64, package_hash: String) -> LauncherRe
 		(format!("{}.disabled", file_name), false)
 	};
 
-	// Rename the hard link in the cluster folder
+	// Read bundle mapping data before any mutations so the override can be written
+	// after the filesystem rename succeeds (avoiding DB/disk desync on FS failure).
+	let bundle_override_data: Option<(String, String)> = if let Ok(Some(bundle_mapping)) =
+		bundle_dao::get_bundle_package(cluster_id, &package_hash).await
+	{
+		match (bundle_mapping.bundle_name, bundle_mapping.package_id) {
+			(Some(bn), Some(pid)) => Some((bn, pid)),
+			_ => None,
+		}
+	} else {
+		None
+	};
+
+	// Rename the hard link in the cluster folder FIRST
 	let current_path = cluster_mods_dir.join(file_name);
 	let new_path = cluster_mods_dir.join(&new_file_name);
 	if current_path.exists() {
 		tokio::fs::rename(&current_path, &new_path)
 			.await
 			.map_err(IOError::from)?;
+	}
+
+	// Write the bundle override AFTER the filesystem rename succeeds
+	if let Some((bundle_name, package_id)) = bundle_override_data {
+		if enabled {
+			bundle_dao::remove_bundle_override(cluster_id, &bundle_name, &package_id).await?;
+		} else {
+			bundle_dao::save_bundle_override(
+				cluster_id,
+				&bundle_name,
+				&package_id,
+				onelauncher_entity::cluster_bundle_overrides::OverrideType::Disabled,
+			)
+			.await?;
+		}
 	}
 
 	// Rename the file in the central package store

@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
 use chrono::{DateTime, Utc};
 use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::bundle_dao;
@@ -9,6 +12,18 @@ use onelauncher_core::error::LauncherResult;
 use onelauncher_core::{api, send_error};
 
 use crate::oneclient::bundles::BundlesManager;
+
+/// Per-cluster mutex map to prevent concurrent bundle updates on the same cluster.
+static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>> =
+	OnceLock::new();
+
+fn get_cluster_lock(cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+	let locks = CLUSTER_UPDATE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+	let mut map = locks.lock().unwrap();
+	map.entry(cluster_id)
+		.or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+		.clone()
+}
 
 #[taurpc::ipc_type]
 pub struct BundlePackageUpdate {
@@ -48,6 +63,14 @@ pub struct BundleUpdateCheckResult {
 
 pub async fn check_bundle_updates(
 	cluster_id: ClusterId,
+) -> LauncherResult<BundleUpdateCheckResult> {
+	let overrides = bundle_dao::get_bundle_overrides(cluster_id).await?;
+	check_bundle_updates_inner(cluster_id, &overrides).await
+}
+
+async fn check_bundle_updates_inner(
+	cluster_id: ClusterId,
+	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
 ) -> LauncherResult<BundleUpdateCheckResult> {
 	tracing::debug!(cluster_id = %cluster_id, "Starting bundle update check");
 
@@ -92,12 +115,15 @@ pub async fn check_bundle_updates(
 		"Retrieved available bundles"
 	);
 
-	let mut bundle_versions: std::collections::HashMap<String, (String, String, ModpackFile)> =
-		std::collections::HashMap::new();
+	let mut bundle_versions: std::collections::HashMap<
+		String,
+		std::collections::HashMap<String, (String, ModpackFile)>,
+	> = std::collections::HashMap::new();
 
 	for bundle in &bundles {
 		let mut enabled_count = 0;
 		let mut disabled_count = 0;
+		let mut files_map = std::collections::HashMap::new();
 		for file in &bundle.manifest.files {
 			if !file.enabled {
 				disabled_count += 1;
@@ -112,14 +138,7 @@ pub async fn check_bundle_updates(
 						version_id = %version.version_id,
 						"Indexed managed bundle package"
 					);
-					bundle_versions.insert(
-						pkg.id.clone(),
-						(
-							bundle.manifest.name.clone(),
-							version.version_id.clone(),
-							file.clone(),
-						),
-					);
+					files_map.insert(pkg.id.clone(), (version.version_id.clone(), file.clone()));
 				}
 				ModpackFileKind::External(ext) => {
 					tracing::trace!(
@@ -127,10 +146,7 @@ pub async fn check_bundle_updates(
 						sha1 = %ext.sha1,
 						"Indexed external bundle package"
 					);
-					bundle_versions.insert(
-						ext.sha1.clone(),
-						(bundle.manifest.name.clone(), ext.sha1.clone(), file.clone()),
-					);
+					files_map.insert(ext.sha1.clone(), (ext.sha1.clone(), file.clone()));
 				}
 			}
 		}
@@ -141,10 +157,11 @@ pub async fn check_bundle_updates(
 			total_files = %bundle.manifest.files.len(),
 			"Indexed bundle"
 		);
+		bundle_versions.insert(bundle.manifest.name.clone(), files_map);
 	}
 
 	tracing::debug!(
-		total_indexed_packages = %bundle_versions.len(),
+		total_indexed_bundles = %bundle_versions.len(),
 		"Finished indexing all bundle versions"
 	);
 
@@ -173,47 +190,64 @@ pub async fn check_bundle_updates(
 			continue;
 		};
 
-		if let Some((bundle_name, new_version_id, new_file)) = bundle_versions.get(pkg_id) {
-			tracing::debug!(
-				package_id = %pkg_id,
-				installed_version = %installed_version_id,
-				bundle_version = %new_version_id,
-				bundle_name = %bundle_name,
-				"Checking bundle package for updates"
-			);
+		if let Some(ref bundle_name) = bundle_pkg.bundle_name {
+			if let Some(files_map) = bundle_versions.get(bundle_name) {
+				if let Some((new_version_id, new_file)) = files_map.get(pkg_id) {
+					tracing::debug!(
+						package_id = %pkg_id,
+						installed_version = %installed_version_id,
+						bundle_version = %new_version_id,
+						bundle_name = %bundle_name,
+						"Checking bundle package for updates"
+					);
 
-			if installed_version_id != new_version_id {
-				tracing::info!(
-					package_id = %pkg_id,
-					installed_version = %installed_version_id,
-					bundle_version = %new_version_id,
-					bundle_name = %bundle_name,
-					"Update available for bundle package"
-				);
-				updates_available.push(BundlePackageUpdate {
-					cluster_id,
-					installed_package_hash: bundle_pkg.package_hash.clone(),
-					installed_version_id: installed_version_id.clone(),
-					bundle_name: bundle_name.clone(),
-					new_version_id: new_version_id.clone(),
-					new_file: new_file.clone(),
-					installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
-				});
+					if installed_version_id != new_version_id {
+						tracing::info!(
+							package_id = %pkg_id,
+							installed_version = %installed_version_id,
+							bundle_version = %new_version_id,
+							bundle_name = %bundle_name,
+							"Update available for bundle package"
+						);
+						updates_available.push(BundlePackageUpdate {
+							cluster_id,
+							installed_package_hash: bundle_pkg.package_hash.clone(),
+							installed_version_id: installed_version_id.clone(),
+							bundle_name: bundle_name.clone(),
+							new_version_id: new_version_id.clone(),
+							new_file: new_file.clone(),
+							installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
+						});
+					} else {
+						tracing::debug!(
+							package_id = %pkg_id,
+							version = %installed_version_id,
+							"Bundle package is up to date"
+						);
+					}
+				} else {
+					not_in_bundle += 1;
+					tracing::info!(
+						package_id = %pkg_id,
+						package_hash = %bundle_pkg.package_hash,
+						bundle_name = %bundle_name,
+						"Package no longer in bundle, marking for removal"
+					);
+					removals_available.push(BundlePackageRemoval {
+						cluster_id,
+						package_hash: bundle_pkg.package_hash.clone(),
+						package_id: pkg_id.clone(),
+						bundle_name: bundle_name.clone(),
+						installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
+					});
+				}
 			} else {
-				tracing::debug!(
-					package_id = %pkg_id,
-					version = %installed_version_id,
-					"Bundle package is up to date"
-				);
-			}
-		} else {
-			not_in_bundle += 1;
-			if let Some(ref bundle_name) = bundle_pkg.bundle_name {
+				not_in_bundle += 1;
 				tracing::info!(
 					package_id = %pkg_id,
 					package_hash = %bundle_pkg.package_hash,
 					bundle_name = %bundle_name,
-					"Package no longer in bundle, marking for removal"
+					"Bundle no longer exists, marking package for removal"
 				);
 				removals_available.push(BundlePackageRemoval {
 					cluster_id,
@@ -222,13 +256,13 @@ pub async fn check_bundle_updates(
 					bundle_name: bundle_name.clone(),
 					installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
 				});
-			} else {
-				tracing::debug!(
-					package_id = %pkg_id,
-					package_hash = %bundle_pkg.package_hash,
-					"Package not found in any bundle (no bundle name tracked)"
-				);
 			}
+		} else {
+			tracing::debug!(
+				package_id = %pkg_id,
+				package_hash = %bundle_pkg.package_hash,
+				"Package not found in any bundle (no bundle name tracked)"
+			);
 		}
 	}
 
@@ -251,8 +285,35 @@ pub async fn check_bundle_updates(
 	let installed_external_hashes: std::collections::HashSet<String> = bundle_packages
 		.iter()
 		.filter(|bp| bp.bundle_name.is_some())
+		.filter(|bp| bp.package_id.as_deref() == Some(bp.package_hash.as_str()))
 		.map(|bp| bp.package_hash.clone())
 		.collect();
+
+	let overrides_map: std::collections::HashMap<
+		(String, String),
+		onelauncher_core::entity::cluster_bundle_overrides::OverrideType,
+	> = overrides
+		.iter()
+		.map(|o| {
+			(
+				(o.bundle_name.clone(), o.package_id.clone()),
+				o.override_type.clone(),
+			)
+		})
+		.collect();
+
+	// Filter out updates for packages the user has explicitly removed.
+	// Without this, apply_single_update would try to replace a package that no longer exists.
+	updates_available.retain(|u| {
+		let file_id = match &u.new_file.kind {
+			ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+			ModpackFileKind::External(ext) => ext.sha1.clone(),
+		};
+		!matches!(
+			overrides_map.get(&(u.bundle_name.clone(), file_id)),
+			Some(onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed)
+		)
+	});
 
 	let mut additions_available = Vec::new();
 	for bundle in &bundles {
@@ -279,6 +340,23 @@ pub async fn check_bundle_updates(
 					ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
 					ModpackFileKind::External(ext) => ext.sha1.clone(),
 				};
+
+				// Check user overrides
+				if let Some(override_type) =
+					overrides_map.get(&(bundle.manifest.name.clone(), file_id.clone()))
+				{
+					if *override_type
+						== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed
+					{
+						tracing::info!(
+							bundle_name = %bundle.manifest.name,
+							file_id = %file_id,
+							"Skipping package addition due to user override 'Removed'"
+						);
+						continue;
+					}
+				}
+
 				tracing::info!(
 					bundle_name = %bundle.manifest.name,
 					file_id = %file_id,
@@ -334,6 +412,20 @@ pub async fn get_bundles_with_update_status(
 			.filter_map(|bp| bp.package_id.as_ref().map(|pid| (pid.clone(), bp)))
 			.collect();
 
+	let overrides = bundle_dao::get_bundle_overrides(cluster_id).await?;
+	let overrides_map: std::collections::HashMap<
+		(String, String),
+		onelauncher_core::entity::cluster_bundle_overrides::OverrideType,
+	> = overrides
+		.iter()
+		.map(|o| {
+			(
+				(o.bundle_name.clone(), o.package_id.clone()),
+				o.override_type.clone(),
+			)
+		})
+		.collect();
+
 	let bundles = BundlesManager::get()
 		.await
 		.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
@@ -361,14 +453,30 @@ pub async fn get_bundles_with_update_status(
 							FileUpdateStatus::UpToDate
 						}
 					} else {
-						FileUpdateStatus::NotInstalled
+						let key = (bundle.manifest.name.clone(), pkg.id.clone());
+						if matches!(
+							overrides_map.get(&key),
+							Some(onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed)
+						) {
+							FileUpdateStatus::RemovedByUser
+						} else {
+							FileUpdateStatus::NotInstalled
+						}
 					}
 				}
 				ModpackFileKind::External(ext) => {
 					if bundle_packages.iter().any(|bp| bp.package_hash == ext.sha1) {
 						FileUpdateStatus::UpToDate
 					} else {
-						FileUpdateStatus::NotInstalled
+						let key = (bundle.manifest.name.clone(), ext.sha1.clone());
+						if matches!(
+							overrides_map.get(&key),
+							Some(onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed)
+						) {
+							FileUpdateStatus::RemovedByUser
+						} else {
+							FileUpdateStatus::NotInstalled
+						}
 					}
 				}
 			};
@@ -392,6 +500,7 @@ pub async fn get_bundles_with_update_status(
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FileUpdateStatus {
 	NotInstalled,
+	RemovedByUser,
 	UpToDate,
 	UpdateAvailable {
 		installed_version_id: String,
@@ -414,6 +523,7 @@ pub struct BundleWithUpdateStatus {
 
 async fn apply_single_update(
 	update: &BundlePackageUpdate,
+	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
 ) -> LauncherResult<onelauncher_core::entity::packages::Model> {
 	tracing::info!(
 		cluster_id = %update.cluster_id,
@@ -428,14 +538,13 @@ async fn apply_single_update(
 		.await?
 		.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", update.cluster_id))?;
 
-	// Download the new version FIRST, before removing the old one.
-	// This way, if the download fails, the old package remains untouched.
+	// Download the new version first. If it fails the old package remains untouched.
 	let model = match &update.new_file.kind {
 		ModpackFileKind::Managed((pkg, version)) => {
 			tracing::debug!(
 				package_id = %pkg.id,
 				version_id = %version.version_id,
-				"Downloading new managed package version (before removing old)"
+				"Downloading new managed package version"
 			);
 			api::packages::download_package(pkg, version, None, None).await?
 		}
@@ -443,7 +552,7 @@ async fn apply_single_update(
 			tracing::debug!(
 				url = %ext_package.url,
 				sha1 = %ext_package.sha1,
-				"Downloading new external package version (before removing old)"
+				"Downloading new external package version"
 			);
 			api::packages::download_external_package(ext_package, &cluster, None, Some(true), None)
 				.await?
@@ -451,14 +560,8 @@ async fn apply_single_update(
 		}
 	};
 
-	// Now remove the old package (safe — we already have the new one downloaded)
-	tracing::debug!(
-		package_hash = %update.installed_package_hash,
-		"Removing old package"
-	);
-	api::packages::remove_package(update.cluster_id, update.installed_package_hash.clone()).await?;
-
-	// Link and track the new package
+	// Link and track the new package BEFORE removing the old one.
+	// If linking or tracking fails, the old package remains untouched.
 	tracing::debug!(
 		package_hash = %model.hash,
 		"Linking new package to cluster"
@@ -483,6 +586,42 @@ async fn apply_single_update(
 	)
 	.await?;
 
+	// Check if this package should be disabled based on user overrides (passed in from caller)
+	let file_id = match &update.new_file.kind {
+		ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+		ModpackFileKind::External(ext) => ext.sha1.clone(),
+	};
+
+	let should_be_disabled = overrides.iter().any(|o| {
+		o.bundle_name == update.bundle_name
+			&& o.package_id == file_id
+			&& o.override_type
+				== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Disabled
+	});
+
+	if should_be_disabled {
+		tracing::info!(
+			package_hash = %model.hash,
+			bundle_name = %update.bundle_name,
+			"Re-applying disabled state to updated package"
+		);
+		// toggle_package internally disables the mod if it's currently enabled
+		api::packages::toggle_package(update.cluster_id, model.hash.clone()).await?;
+	}
+
+	// Remove the old package only after the new one is fully installed and tracked.
+	// Pass record_override=false: this is a system-initiated replacement, not a user removal.
+	tracing::debug!(
+		package_hash = %update.installed_package_hash,
+		"Removing old package"
+	);
+	api::packages::remove_package(
+		update.cluster_id,
+		update.installed_package_hash.clone(),
+		false,
+	)
+	.await?;
+
 	tracing::info!(
 		new_hash = %model.hash,
 		"Successfully updated package"
@@ -503,7 +642,9 @@ async fn apply_single_removal(removal: &BundlePackageRemoval) -> LauncherResult<
 		package_hash = %removal.package_hash,
 		"Removing package from cluster"
 	);
-	api::packages::remove_package(removal.cluster_id, removal.package_hash.clone()).await?;
+	// Pass record_override=false: removal is bundle-driven (publisher dropped the package),
+	// not a user choice. If the publisher re-adds it later, it should be reinstalled.
+	api::packages::remove_package(removal.cluster_id, removal.package_hash.clone(), false).await?;
 
 	tracing::info!(
 		package_id = %removal.package_id,
@@ -516,6 +657,7 @@ async fn apply_single_removal(removal: &BundlePackageRemoval) -> LauncherResult<
 
 async fn apply_single_addition(
 	addition: &BundlePackageAddition,
+	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
 ) -> LauncherResult<onelauncher_core::entity::packages::Model> {
 	let file_id = match &addition.new_file.kind {
 		ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
@@ -566,6 +708,22 @@ async fn apply_single_addition(
 				package_hash = %model.hash,
 				"Successfully installed new managed package from bundle"
 			);
+
+			let should_be_disabled = overrides.iter().any(|o| {
+				o.bundle_name == addition.bundle_name
+					&& o.package_id == file_id
+					&& o.override_type == onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Disabled
+			});
+
+			if should_be_disabled {
+				tracing::info!(
+					package_hash = %model.hash,
+					bundle_name = %addition.bundle_name,
+					"Applying disabled state to newly added package due to overrides"
+				);
+				api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+			}
+
 			Ok(model)
 		}
 		ModpackFileKind::External(ext_package) => {
@@ -608,6 +766,22 @@ async fn apply_single_addition(
 				package_hash = %model.hash,
 				"Successfully installed new external package from bundle"
 			);
+
+			let should_be_disabled = overrides.iter().any(|o| {
+				o.bundle_name == addition.bundle_name
+					&& o.package_id == file_id
+					&& o.override_type == onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Disabled
+			});
+
+			if should_be_disabled {
+				tracing::info!(
+					package_hash = %model.hash,
+					bundle_name = %addition.bundle_name,
+					"Applying disabled state to newly added package due to overrides"
+				);
+				api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+			}
+
 			Ok(model)
 		}
 	}
@@ -618,16 +792,29 @@ pub struct ApplyBundleUpdatesResult {
 	pub updates_applied: Vec<BundlePackageUpdate>,
 	pub removals_applied: Vec<BundlePackageRemoval>,
 	pub additions_applied: Vec<BundlePackageAddition>,
+	pub updates_failed: Vec<String>,
+	pub removals_failed: Vec<String>,
+	pub additions_failed: Vec<String>,
 }
 
 pub async fn apply_bundle_updates(
 	cluster_id: ClusterId,
 ) -> LauncherResult<ApplyBundleUpdatesResult> {
-	let check_result = check_bundle_updates(cluster_id).await?;
+	// Hold a per-cluster lock for the duration of the update to prevent concurrent
+	// apply calls on the same cluster from racing each other.
+	let cluster_lock = get_cluster_lock(cluster_id);
+	let _guard = cluster_lock.lock().await;
+
+	// Fetch overrides once: shared by both the check and the apply pass.
+	let cluster_overrides = api::packages::bundle_dao::get_bundle_overrides(cluster_id).await?;
+	let check_result = check_bundle_updates_inner(cluster_id, &cluster_overrides).await?;
 
 	let mut updates_applied = Vec::new();
 	let mut removals_applied = Vec::new();
 	let mut additions_applied = Vec::new();
+	let mut updates_failed = Vec::new();
+	let mut removals_failed = Vec::new();
+	let mut additions_failed = Vec::new();
 
 	for removal in check_result.removals_available {
 		match apply_single_removal(&removal).await {
@@ -635,22 +822,25 @@ pub async fn apply_bundle_updates(
 				removals_applied.push(removal);
 			}
 			Err(e) => {
-				send_error!(
+				let msg = format!(
 					"Failed to remove bundle package '{}': {}",
-					removal.package_id,
-					e
+					removal.package_id, e
 				);
+				send_error!("{}", msg);
+				removals_failed.push(msg);
 			}
 		}
 	}
 
 	for update in check_result.updates_available {
-		match apply_single_update(&update).await {
+		match apply_single_update(&update, &cluster_overrides).await {
 			Ok(_) => {
 				updates_applied.push(update);
 			}
 			Err(e) => {
-				send_error!("Failed to update bundle package: {}", e);
+				let msg = format!("Failed to update bundle package: {}", e);
+				send_error!("{}", msg);
+				updates_failed.push(msg);
 			}
 		}
 	}
@@ -660,12 +850,14 @@ pub async fn apply_bundle_updates(
 			ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
 			ModpackFileKind::External(ext) => ext.sha1.clone(),
 		};
-		match apply_single_addition(&addition).await {
+		match apply_single_addition(&addition, &cluster_overrides).await {
 			Ok(_) => {
 				additions_applied.push(addition);
 			}
 			Err(e) => {
-				send_error!("Failed to install new bundle package '{}': {}", file_id, e);
+				let msg = format!("Failed to install new bundle package '{}': {}", file_id, e);
+				send_error!("{}", msg);
+				additions_failed.push(msg);
 			}
 		}
 	}
@@ -691,34 +883,58 @@ pub async fn apply_bundle_updates(
 		}
 
 		if !affected_bundles.is_empty() {
-			if let Ok(Some(cluster)) = api::cluster::dao::get_cluster_by_id(cluster_id).await {
-				if let Ok(bundles) = BundlesManager::get()
-					.await
-					.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
-					.await
-				{
-					for bundle in &bundles {
-						if affected_bundles.contains(&bundle.manifest.name) {
-							tracing::info!(
-								bundle_name = %bundle.manifest.name,
-								cluster_id = %cluster_id,
-								"Re-extracting overrides from updated bundle"
-							);
-							if let Err(e) =
-								onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
-									&cluster,
-									&bundle.path,
-								)
-								.await
-							{
-								send_error!(
-									"Failed to extract overrides from bundle '{}': {}",
-									bundle.manifest.name,
-									e
-								);
+			match api::cluster::dao::get_cluster_by_id(cluster_id).await {
+				Ok(Some(cluster)) => {
+					match BundlesManager::get()
+						.await
+						.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+						.await
+					{
+						Ok(bundles) => {
+							for bundle in &bundles {
+								if affected_bundles.contains(&bundle.manifest.name) {
+									tracing::info!(
+										bundle_name = %bundle.manifest.name,
+										cluster_id = %cluster_id,
+										"Re-extracting overrides from updated bundle"
+									);
+									if let Err(e) =
+										onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
+											&cluster,
+											&bundle.path,
+										)
+										.await
+									{
+										send_error!(
+											"Failed to extract overrides from bundle '{}': {}",
+											bundle.manifest.name,
+											e
+										);
+									}
+								}
 							}
 						}
+						Err(e) => {
+							tracing::error!(
+								cluster_id = %cluster_id,
+								"Failed to retrieve bundles for override extraction after update: {}",
+								e
+							);
+						}
 					}
+				}
+				Ok(None) => {
+					tracing::error!(
+						cluster_id = %cluster_id,
+						"Cluster not found during post-update override extraction"
+					);
+				}
+				Err(e) => {
+					tracing::error!(
+						cluster_id = %cluster_id,
+						"Failed to retrieve cluster for override extraction after update: {}",
+						e
+					);
 				}
 			}
 		}
@@ -728,5 +944,12 @@ pub async fn apply_bundle_updates(
 		updates_applied,
 		removals_applied,
 		additions_applied,
+		updates_failed,
+		removals_failed,
+		additions_failed,
 	})
 }
+
+#[cfg(test)]
+#[path = "bundle_updates_test.rs"]
+mod bundle_updates_test;

@@ -123,9 +123,6 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 			Ok(res) => {
 				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
 					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tracing::warn!(
-							"Rate limited. Waiting for {reset} seconds before retrying..."
-						);
 						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
 						continue;
 					}
@@ -194,9 +191,6 @@ pub async fn fetch_advanced(
 			Ok(res) => {
 				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
 					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tracing::warn!(
-							"Rate limited. Waiting for {reset} seconds before retrying..."
-						);
 						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
 						continue;
 					}

@@ -247,9 +247,29 @@ pub async fn remove_bundle_override(
 	Ok(())
 }
 
+/// Returns whether a specific bundle package mapping still exists in the cluster.
+/// Useful to avoid deleting overrides during update replacements where the old hash
+/// is removed after a new hash has already been linked and tracked.
+pub async fn has_bundle_package_mapping(
+	cluster_id: i64,
+	bundle_name: &str,
+	package_id: &str,
+) -> LauncherResult<bool> {
+	let state = State::get().await?;
+	let db = &state.db;
+
+	let record = cluster_packages::Entity::find()
+		.filter(cluster_packages::Column::ClusterId.eq(cluster_id))
+		.filter(cluster_packages::Column::BundleName.eq(Some(bundle_name.to_string())))
+		.filter(cluster_packages::Column::PackageId.eq(Some(package_id.to_string())))
+		.one(db)
+		.await?;
+
+	Ok(record.is_some())
+}
+
 /// Removes all bundle overrides for a specific package in a cluster.
-/// Used during system-initiated package removal to clean up stale `Disabled` overrides
-/// that would otherwise accumulate for packages no longer installed.
+/// This is a broad cleanup helper that applies across all bundles.
 pub async fn remove_overrides_for_package(
 	cluster_id: i64,
 	package_id: &str,

@@ -440,9 +440,16 @@ pub async fn remove_package(
 				)
 				.await?;
 			} else {
-				// System-initiated removal: clean up any stale Disabled overrides so they
-				// don't accumulate for packages that are no longer installed.
-				bundle_dao::remove_overrides_for_package(cluster_id, &package_id).await?;
+				// System-initiated removal: clean up stale overrides for this specific
+				// bundle package, but preserve overrides when a replacement hash for the
+				// same bundle/package mapping was already linked and tracked.
+				let replacement_exists =
+					bundle_dao::has_bundle_package_mapping(cluster_id, &bundle_name, &package_id)
+						.await?;
+				if !replacement_exists {
+					bundle_dao::remove_bundle_override(cluster_id, &bundle_name, &package_id)
+						.await?;
+				}
 			}
 		}
 	}

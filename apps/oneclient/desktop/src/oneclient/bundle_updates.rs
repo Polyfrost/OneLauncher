@@ -8,6 +8,7 @@ use onelauncher_core::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind,
 };
 use onelauncher_core::entity::cluster_packages;
+use onelauncher_core::entity::package::Provider;
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::{api, send_error};
 
@@ -23,6 +24,14 @@ fn get_cluster_lock(cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
 	map.entry(cluster_id)
 		.or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
 		.clone()
+}
+
+fn managed_bundle_key(provider: &Provider, package_id: &str) -> String {
+	format!("m:{}:{}", provider.name(), package_id)
+}
+
+fn external_bundle_key(sha1: &str) -> String {
+	format!("e:{sha1}")
 }
 
 #[taurpc::ipc_type]
@@ -102,9 +111,28 @@ async fn check_bundle_updates_inner(
 	// Fetch ALL packages in the cluster (not just bundle-tracked ones) so we can
 	// infer bundle subscriptions from packages installed via the regular flow.
 	let all_linked_packages = api::packages::dao::get_linked_packages(&cluster).await?;
-	let all_installed_package_ids: std::collections::HashSet<String> = all_linked_packages
+	let all_linked_by_hash: std::collections::HashMap<
+		String,
+		&onelauncher_core::entity::packages::Model,
+	> = all_linked_packages
 		.iter()
-		.map(|p| p.package_id.clone())
+		.map(|pkg| (pkg.hash.clone(), pkg))
+		.collect();
+
+	let all_installed_managed_keys: std::collections::HashSet<String> = all_linked_packages
+		.iter()
+		.filter_map(|pkg| {
+			if pkg.provider == Provider::Local && pkg.package_id == pkg.hash {
+				None
+			} else {
+				Some(managed_bundle_key(&pkg.provider, &pkg.package_id))
+			}
+		})
+		.collect();
+	let all_installed_external_hashes: std::collections::HashSet<String> = all_linked_packages
+		.iter()
+		.filter(|pkg| pkg.package_id == pkg.hash)
+		.map(|pkg| pkg.hash.clone())
 		.collect();
 
 	tracing::debug!(
@@ -127,39 +155,64 @@ async fn check_bundle_updates_inner(
 
 	let mut bundle_versions: std::collections::HashMap<
 		String,
-		std::collections::HashMap<String, (String, ModpackFile)>,
+		std::collections::HashMap<String, (String, ModpackFile)>, // key: managed(provider+id) or external(sha1)
+	> = std::collections::HashMap::new();
+	let mut hidden_dependency_keys_by_bundle: std::collections::HashMap<
+		String,
+		std::collections::HashSet<String>,
 	> = std::collections::HashMap::new();
 
 	for bundle in &bundles {
 		let mut enabled_count = 0;
 		let mut disabled_count = 0;
 		let mut files_map = std::collections::HashMap::new();
+		let mut hidden_dependency_keys = std::collections::HashSet::new();
+
 		for file in &bundle.manifest.files {
 			if !file.enabled {
 				disabled_count += 1;
 				continue;
 			}
 			enabled_count += 1;
+
 			match &file.kind {
 				ModpackFileKind::Managed((pkg, version)) => {
+					let key = managed_bundle_key(&pkg.provider, &pkg.id);
 					tracing::trace!(
 						bundle_name = %bundle.manifest.name,
+						provider = %pkg.provider,
 						package_id = %pkg.id,
 						version_id = %version.version_id,
 						"Indexed managed bundle package"
 					);
-					files_map.insert(pkg.id.clone(), (version.version_id.clone(), file.clone()));
+					files_map.insert(key, (version.version_id.clone(), file.clone()));
+
+					// Dependencies that are not explicit files are treated as hidden mods
+					// for subscription inference.
+					for dep in &version.dependencies {
+						if let Some(dep_project_id) = &dep.project_id {
+							hidden_dependency_keys
+								.insert(managed_bundle_key(&pkg.provider, dep_project_id));
+						}
+					}
 				}
 				ModpackFileKind::External(ext) => {
+					let key = external_bundle_key(&ext.sha1);
 					tracing::trace!(
 						bundle_name = %bundle.manifest.name,
 						sha1 = %ext.sha1,
 						"Indexed external bundle package"
 					);
-					files_map.insert(ext.sha1.clone(), (ext.sha1.clone(), file.clone()));
+					files_map.insert(key, (ext.sha1.clone(), file.clone()));
 				}
 			}
 		}
+
+		// If a dependency is also a visible file, keep it eligible for inference.
+		for visible_key in files_map.keys() {
+			hidden_dependency_keys.remove(visible_key);
+		}
+
 		tracing::debug!(
 			bundle_name = %bundle.manifest.name,
 			enabled_packages = %enabled_count,
@@ -167,6 +220,8 @@ async fn check_bundle_updates_inner(
 			total_files = %bundle.manifest.files.len(),
 			"Indexed bundle"
 		);
+		hidden_dependency_keys_by_bundle
+			.insert(bundle.manifest.name.clone(), hidden_dependency_keys);
 		bundle_versions.insert(bundle.manifest.name.clone(), files_map);
 	}
 
@@ -175,10 +230,75 @@ async fn check_bundle_updates_inner(
 		"Finished indexing all bundle versions"
 	);
 
+	// Start with explicitly tracked bundles (packages installed via the bundle-aware path).
+	let mut subscribed_bundles: std::collections::HashSet<String> = bundle_packages
+		.iter()
+		.filter_map(|bp| bp.bundle_name.clone())
+		.collect();
+
+	// Infer subscriptions: if ANY installed package's package_id matches an enabled file in a
+	// bundle, treat this cluster as subscribed to that bundle. This handles the common case where
+	// packages were installed via the regular flow (bundle_name never set) but are in a bundle.
+	for bundle in &bundles {
+		if subscribed_bundles.contains(&bundle.manifest.name) {
+			continue;
+		}
+		let Some(bundle_files_map) = bundle_versions.get(&bundle.manifest.name) else {
+			continue;
+		};
+		let hidden_keys = hidden_dependency_keys_by_bundle
+			.get(&bundle.manifest.name)
+			.cloned()
+			.unwrap_or_default();
+
+		let has_matching_package = bundle_files_map.keys().any(|key| {
+			if !key.starts_with("m:") {
+				return false;
+			}
+			if hidden_keys.contains(key) {
+				return false;
+			}
+			all_installed_managed_keys.contains(key)
+		});
+		if has_matching_package {
+			tracing::debug!(
+				bundle_name = %bundle.manifest.name,
+				"Inferring bundle subscription from installed package match"
+			);
+			subscribed_bundles.insert(bundle.manifest.name.clone());
+		}
+	}
+
+	let subscribed_bundle_names: Vec<&str> = bundles
+		.iter()
+		.filter(|bundle| subscribed_bundles.contains(&bundle.manifest.name))
+		.map(|bundle| bundle.manifest.name.as_str())
+		.collect();
+
+	tracing::debug!(
+		cluster_id = %cluster_id,
+		subscribed_bundles = ?subscribed_bundles,
+		"Bundles this cluster is subscribed to"
+	);
+
+	let overrides_map: std::collections::HashMap<
+		(String, String),
+		onelauncher_core::entity::cluster_bundle_overrides::OverrideType,
+	> = overrides
+		.iter()
+		.map(|o| {
+			(
+				(o.bundle_name.clone(), o.package_id.clone()),
+				o.override_type.clone(),
+			)
+		})
+		.collect();
+
 	let mut updates_available = Vec::new();
 	let mut removals_available = Vec::new();
 	let mut skipped_no_package_id = 0;
 	let mut skipped_no_version_id = 0;
+	let mut skipped_no_provider = 0;
 	let mut not_in_bundle = 0;
 
 	for bundle_pkg in &bundle_packages {
@@ -200,56 +320,87 @@ async fn check_bundle_updates_inner(
 			continue;
 		};
 
+		let installed_key = if pkg_id == &bundle_pkg.package_hash {
+			external_bundle_key(&bundle_pkg.package_hash)
+		} else {
+			let Some(installed_pkg) = all_linked_by_hash.get(&bundle_pkg.package_hash) else {
+				skipped_no_provider += 1;
+				tracing::debug!(
+					package_hash = %bundle_pkg.package_hash,
+					package_id = %pkg_id,
+					"Skipping package: missing linked package metadata for provider-aware matching"
+				);
+				continue;
+			};
+			managed_bundle_key(&installed_pkg.provider, pkg_id)
+		};
+
 		if let Some(ref bundle_name) = bundle_pkg.bundle_name {
-			if let Some(files_map) = bundle_versions.get(bundle_name) {
-				if let Some((new_version_id, new_file)) = files_map.get(pkg_id) {
-					tracing::debug!(
+			let mut matched_target: Option<(String, String, ModpackFile)> =
+				bundle_versions.get(bundle_name).and_then(|files_map| {
+					files_map
+						.get(&installed_key)
+						.map(|(new_version_id, new_file)| {
+							(
+								bundle_name.clone(),
+								new_version_id.clone(),
+								new_file.clone(),
+							)
+						})
+				});
+
+			// Bundles are combinable: if a package moved out of the tracked bundle but is still in
+			// any subscribed bundle, do not remove it.
+			if matched_target.is_none() {
+				for candidate_bundle_name in &subscribed_bundle_names {
+					if *candidate_bundle_name == bundle_name.as_str() {
+						continue;
+					}
+					if let Some((new_version_id, new_file)) = bundle_versions
+						.get(*candidate_bundle_name)
+						.and_then(|files_map| files_map.get(&installed_key))
+					{
+						matched_target = Some((
+							(*candidate_bundle_name).to_string(),
+							new_version_id.clone(),
+							new_file.clone(),
+						));
+						break;
+					}
+				}
+			}
+
+			if let Some((resolved_bundle_name, new_version_id, new_file)) = matched_target {
+				tracing::debug!(
+					package_id = %pkg_id,
+					installed_version = %installed_version_id,
+					bundle_version = %new_version_id,
+					bundle_name = %resolved_bundle_name,
+					"Checking bundle package for updates"
+				);
+				if installed_version_id != &new_version_id {
+					tracing::info!(
 						package_id = %pkg_id,
 						installed_version = %installed_version_id,
 						bundle_version = %new_version_id,
-						bundle_name = %bundle_name,
-						"Checking bundle package for updates"
+						bundle_name = %resolved_bundle_name,
+						"Update available for bundle package"
 					);
-
-					if installed_version_id != new_version_id {
-						tracing::info!(
-							package_id = %pkg_id,
-							installed_version = %installed_version_id,
-							bundle_version = %new_version_id,
-							bundle_name = %bundle_name,
-							"Update available for bundle package"
-						);
-						updates_available.push(BundlePackageUpdate {
-							cluster_id,
-							installed_package_hash: bundle_pkg.package_hash.clone(),
-							installed_version_id: installed_version_id.clone(),
-							bundle_name: bundle_name.clone(),
-							new_version_id: new_version_id.clone(),
-							new_file: new_file.clone(),
-							installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
-						});
-					} else {
-						tracing::debug!(
-							package_id = %pkg_id,
-							version = %installed_version_id,
-							"Bundle package is up to date"
-						);
-					}
-				} else {
-					not_in_bundle += 1;
-					tracing::info!(
-						package_id = %pkg_id,
-						package_hash = %bundle_pkg.package_hash,
-						bundle_name = %bundle_name,
-						"Package no longer in bundle, marking for removal"
-					);
-					removals_available.push(BundlePackageRemoval {
+					updates_available.push(BundlePackageUpdate {
 						cluster_id,
-						package_hash: bundle_pkg.package_hash.clone(),
-						package_id: pkg_id.clone(),
-						bundle_name: bundle_name.clone(),
+						installed_package_hash: bundle_pkg.package_hash.clone(),
+						installed_version_id: installed_version_id.clone(),
+						bundle_name: resolved_bundle_name,
+						new_version_id,
+						new_file,
 						installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
 					});
+				} else {
+					tracing::debug!(
+						package_id = %pkg_id,
+						version = %installed_version_id,
+						"Bundle package is up to date"
+					);
 				}
 			} else {
 				not_in_bundle += 1;
@@ -257,7 +408,7 @@ async fn check_bundle_updates_inner(
 					package_id = %pkg_id,
 					package_hash = %bundle_pkg.package_hash,
 					bundle_name = %bundle_name,
-					"Bundle no longer exists, marking package for removal"
+					"Package no longer in any subscribed bundle, marking for removal"
 				);
 				removals_available.push(BundlePackageRemoval {
 					cluster_id,
@@ -276,64 +427,6 @@ async fn check_bundle_updates_inner(
 		}
 	}
 
-	// Start with explicitly tracked bundles (packages installed via the bundle-aware path).
-	let mut subscribed_bundles: std::collections::HashSet<String> = bundle_packages
-		.iter()
-		.filter_map(|bp| bp.bundle_name.clone())
-		.collect();
-
-	// Infer subscriptions: if ANY installed package's package_id matches an enabled file in a
-	// bundle, treat this cluster as subscribed to that bundle. This handles the common case where
-	// packages were installed via the regular flow (bundle_name never set) but are in a bundle.
-	for bundle in &bundles {
-		if subscribed_bundles.contains(&bundle.manifest.name) {
-			continue;
-		}
-		let has_matching_package = bundle.manifest.files.iter().any(|f| {
-			if !f.enabled {
-				return false;
-			}
-			matches!(&f.kind, ModpackFileKind::Managed((pkg, _)) if all_installed_package_ids.contains(&pkg.id))
-		});
-		if has_matching_package {
-			tracing::debug!(
-				bundle_name = %bundle.manifest.name,
-				"Inferring bundle subscription from installed package match"
-			);
-			subscribed_bundles.insert(bundle.manifest.name.clone());
-		}
-	}
-
-	tracing::debug!(
-		cluster_id = %cluster_id,
-		subscribed_bundles = ?subscribed_bundles,
-		"Bundles this cluster is subscribed to"
-	);
-
-	// Use ALL installed package IDs so that packages installed via the regular flow are not
-	// re-proposed as additions by the bundle update check.
-	let installed_package_ids = all_installed_package_ids;
-
-	let installed_external_hashes: std::collections::HashSet<String> = bundle_packages
-		.iter()
-		.filter(|bp| bp.bundle_name.is_some())
-		.filter(|bp| bp.package_id.as_deref() == Some(bp.package_hash.as_str()))
-		.map(|bp| bp.package_hash.clone())
-		.collect();
-
-	let overrides_map: std::collections::HashMap<
-		(String, String),
-		onelauncher_core::entity::cluster_bundle_overrides::OverrideType,
-	> = overrides
-		.iter()
-		.map(|o| {
-			(
-				(o.bundle_name.clone(), o.package_id.clone()),
-				o.override_type.clone(),
-			)
-		})
-		.collect();
-
 	// Filter out updates for packages the user has explicitly removed.
 	// Without this, apply_single_update would try to replace a package that no longer exists.
 	updates_available.retain(|u| {
@@ -348,6 +441,11 @@ async fn check_bundle_updates_inner(
 	});
 
 	let mut additions_available = Vec::new();
+	let mut planned_addition_keys = all_installed_managed_keys.clone();
+	for hash in &all_installed_external_hashes {
+		planned_addition_keys.insert(external_bundle_key(hash));
+	}
+
 	for bundle in &bundles {
 		if !subscribed_bundles.contains(&bundle.manifest.name) {
 			tracing::debug!(
@@ -362,44 +460,46 @@ async fn check_bundle_updates_inner(
 				continue;
 			}
 
-			let is_new = match &file.kind {
-				ModpackFileKind::Managed((pkg, _)) => !installed_package_ids.contains(&pkg.id),
-				ModpackFileKind::External(ext) => !installed_external_hashes.contains(&ext.sha1),
+			let file_key = match &file.kind {
+				ModpackFileKind::Managed((pkg, _)) => managed_bundle_key(&pkg.provider, &pkg.id),
+				ModpackFileKind::External(ext) => external_bundle_key(&ext.sha1),
+			};
+			if planned_addition_keys.contains(&file_key) {
+				continue;
+			}
+
+			let file_id = match &file.kind {
+				ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+				ModpackFileKind::External(ext) => ext.sha1.clone(),
 			};
 
-			if is_new {
-				let file_id = match &file.kind {
-					ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
-					ModpackFileKind::External(ext) => ext.sha1.clone(),
-				};
-
-				// Check user overrides
-				if let Some(override_type) =
-					overrides_map.get(&(bundle.manifest.name.clone(), file_id.clone()))
+			// Check user overrides
+			if let Some(override_type) =
+				overrides_map.get(&(bundle.manifest.name.clone(), file_id.clone()))
+			{
+				if *override_type
+					== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed
 				{
-					if *override_type
-						== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed
-					{
-						tracing::info!(
-							bundle_name = %bundle.manifest.name,
-							file_id = %file_id,
-							"Skipping package addition due to user override 'Removed'"
-						);
-						continue;
-					}
+					tracing::info!(
+						bundle_name = %bundle.manifest.name,
+						file_id = %file_id,
+						"Skipping package addition due to user override 'Removed'"
+					);
+					continue;
 				}
-
-				tracing::info!(
-					bundle_name = %bundle.manifest.name,
-					file_id = %file_id,
-					"New package found in subscribed bundle, marking for addition"
-				);
-				additions_available.push(BundlePackageAddition {
-					cluster_id,
-					bundle_name: bundle.manifest.name.clone(),
-					new_file: file.clone(),
-				});
 			}
+
+			tracing::info!(
+				bundle_name = %bundle.manifest.name,
+				file_id = %file_id,
+				"New package found in subscribed bundle, marking for addition"
+			);
+			additions_available.push(BundlePackageAddition {
+				cluster_id,
+				bundle_name: bundle.manifest.name.clone(),
+				new_file: file.clone(),
+			});
+			planned_addition_keys.insert(file_key);
 		}
 	}
 
@@ -411,6 +511,7 @@ async fn check_bundle_updates_inner(
 		additions_found = %additions_available.len(),
 		skipped_no_package_id = %skipped_no_package_id,
 		skipped_no_version_id = %skipped_no_version_id,
+		skipped_no_provider = %skipped_no_provider,
 		not_in_bundle = %not_in_bundle,
 		"Bundle update check completed"
 	);
@@ -437,12 +538,32 @@ pub async fn get_bundles_with_update_status(
 		})?;
 
 	let bundle_packages = bundle_dao::get_bundle_packages_for_cluster(cluster_id).await?;
+	let all_linked_packages = api::packages::dao::get_linked_packages(&cluster).await?;
+	let all_linked_by_hash: std::collections::HashMap<
+		String,
+		&onelauncher_core::entity::packages::Model,
+	> = all_linked_packages
+		.iter()
+		.map(|pkg| (pkg.hash.clone(), pkg))
+		.collect();
 
-	let installed_map: std::collections::HashMap<String, &cluster_packages::Model> =
-		bundle_packages
-			.iter()
-			.filter_map(|bp| bp.package_id.as_ref().map(|pid| (pid.clone(), bp)))
-			.collect();
+	let mut installed_map: std::collections::HashMap<String, &cluster_packages::Model> =
+		std::collections::HashMap::new();
+	for bundle_pkg in &bundle_packages {
+		let Some(pkg_id) = &bundle_pkg.package_id else {
+			continue;
+		};
+
+		let key = if pkg_id == &bundle_pkg.package_hash {
+			external_bundle_key(&bundle_pkg.package_hash)
+		} else if let Some(installed_pkg) = all_linked_by_hash.get(&bundle_pkg.package_hash) {
+			managed_bundle_key(&installed_pkg.provider, pkg_id)
+		} else {
+			continue;
+		};
+
+		installed_map.insert(key, bundle_pkg);
+	}
 
 	let overrides = bundle_dao::get_bundle_overrides(cluster_id).await?;
 	let overrides_map: std::collections::HashMap<
@@ -472,7 +593,8 @@ pub async fn get_bundles_with_update_status(
 		for file in &bundle.manifest.files {
 			let update_status = match &file.kind {
 				ModpackFileKind::Managed((pkg, version)) => {
-					if let Some(installed) = installed_map.get(&pkg.id) {
+					let key = managed_bundle_key(&pkg.provider, &pkg.id);
+					if let Some(installed) = installed_map.get(&key) {
 						let installed_version =
 							installed.bundle_version_id.as_deref().unwrap_or("");
 						if installed_version != version.version_id {
@@ -497,7 +619,8 @@ pub async fn get_bundles_with_update_status(
 					}
 				}
 				ModpackFileKind::External(ext) => {
-					if bundle_packages.iter().any(|bp| bp.package_hash == ext.sha1) {
+					let key = external_bundle_key(&ext.sha1);
+					if installed_map.contains_key(&key) {
 						FileUpdateStatus::UpToDate
 					} else {
 						let key = (bundle.manifest.name.clone(), ext.sha1.clone());

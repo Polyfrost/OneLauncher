@@ -190,6 +190,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 	struct FetchedPackage {
 		version_id: String,
 		enabled: bool,
+		hidden: bool,
 		overrides: Option<PackageOverrides>,
 	}
 
@@ -197,10 +198,6 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 	let mut files: Vec<ModpackFile> = Vec::new();
 
 	for file in mrpack_files {
-		if file.hidden {
-			continue;
-		}
-
 		let name = file
 			.base
 			.path
@@ -229,6 +226,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 					FetchedPackage {
 						version_id: version_id.to_string(),
 						enabled: file.enabled,
+						hidden: file.hidden,
 						overrides: file.base.overrides.clone(),
 					},
 				);
@@ -258,6 +256,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 
 			files.push(ModpackFile {
 				enabled: file.enabled,
+				hidden: file.hidden,
 				kind: ModpackFileKind::External(ExternalPackage {
 					name,
 					url: download_url,
@@ -292,6 +291,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 			let fetched = to_fetch.get(&fetched_pkg.id).unwrap();
 			files.push(ModpackFile {
 				enabled: fetched.enabled,
+				hidden: fetched.hidden,
 				kind: ModpackFileKind::Managed((fetched_pkg, version)),
 				overrides: fetched.overrides.clone(),
 			});

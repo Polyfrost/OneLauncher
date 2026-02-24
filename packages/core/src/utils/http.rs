@@ -90,7 +90,6 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 		if host == "api.modrinth.com" {
 			let start = std::time::Instant::now();
 			MODRINTH_RATE_LIMITER.until_ready().await;
-			tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
 		}
 	}
 
@@ -100,12 +99,6 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 	let client = &REQWEST_CLIENT;
 
 	let mut attempt = 0;
-
-	tracing::debug!(
-		"fetching {:?} with method {:?}",
-		request.url(),
-		request.method()
-	);
 
 	let res = loop {
 		attempt += 1;
@@ -130,9 +123,6 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 			Ok(res) => {
 				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
 					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tracing::warn!(
-							"Rate limited. Waiting for {reset} seconds before retrying..."
-						);
 						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
 						continue;
 					}
@@ -163,7 +153,6 @@ pub async fn fetch_advanced(
 			if host == "api.modrinth.com" {
 				let start = std::time::Instant::now();
 				MODRINTH_RATE_LIMITER.until_ready().await;
-				tracing::debug!("waited {:?} for modrinth rate limiter", start.elapsed());
 			}
 		}
 	}
@@ -174,7 +163,6 @@ pub async fn fetch_advanced(
 	let client = &REQWEST_CLIENT;
 
 	let mut attempt = 0;
-	tracing::debug!("fetching {url} with method {method:?}");
 	let res = loop {
 		attempt += 1;
 		let mut req = client.request(method.clone(), url);
@@ -203,9 +191,6 @@ pub async fn fetch_advanced(
 			Ok(res) => {
 				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
 					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tracing::warn!(
-							"Rate limited. Waiting for {reset} seconds before retrying..."
-						);
 						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
 						continue;
 					}
@@ -261,7 +246,6 @@ pub async fn fetch_advanced(
 		}
 	}
 
-	tracing::debug!("finished fetching {url}");
 	Ok(bytes)
 }
 

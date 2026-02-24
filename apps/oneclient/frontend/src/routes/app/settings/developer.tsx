@@ -66,11 +66,6 @@ function RouteComponent() {
 					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
 				</SettingsRow>
 
-				<SettingsRow.Header>Mod Downloading</SettingsRow.Header>
-				<SettingsRow description="Use Parallel Mod Downloading for speed. This can create some issues sometimes" title="Use Parallel Mod Downloading">
-					<SettingsSwitch setting={createSetting('parallel_mod_downloading')} />
-				</SettingsRow>
-
 			</div>
 		</Sidebar.Page>
 	);

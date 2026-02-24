@@ -49,25 +49,31 @@ impl BundlesManager {
 			.await
 	}
 
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self))]
 	pub async fn get_bundles_for(
 		&self,
 		mc_version: &str,
 		loader: onelauncher_core::entity::loader::GameLoader,
 	) -> LauncherResult<Vec<ModpackArchive>> {
 		let manifest = self.manifest.read().await;
-		let bundles_lock = self.bundles.read().await;
 
+		// Fast path: check cache under read lock.
+		let bundles_lock = self.bundles.read().await;
 		if let Some(entry) = bundles_lock.get(mc_version) {
 			if let Some(bundles) = entry.get(&loader) {
 				return Ok(bundles.clone());
 			}
 		}
-
-		// drop read lock as we're gonna acquire a write lock this time
 		drop(bundles_lock);
 
+		// Slow path: acquire write lock and re-check before populating (double-checked locking).
+		// This closes the TOCTOU gap between dropping the read lock and acquiring the write lock.
 		let mut bundles_lock = self.bundles.write().await;
+		if let Some(entry) = bundles_lock.get(mc_version) {
+			if let Some(bundles) = entry.get(&loader) {
+				return Ok(bundles.clone());
+			}
+		}
 
 		let mut found = Vec::new();
 
@@ -180,42 +186,61 @@ async fn download_and_load_bundle(
 	disk_path: &PathBuf,
 ) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
 	let url = format!("{}{}", crate::constants::META_URL_BASE, url_path);
+	// Sidecar file that stores the server ETag for cache freshness checks.
+	let etag_path = PathBuf::from(format!("{}.etag", disk_path.display()));
 
 	if disk_path.exists() {
-		// we check if the remote file is different to the local file
+		// Check if the remote file differs from the local cached copy.
 		let res = http::request(Method::HEAD, &url).await?;
 
 		if !res.status().is_success() {
 			return Err(anyhow::anyhow!("failed to download bundle from remote: {}", url).into());
 		}
 
-		if res.headers().get(reqwest::header::CONTENT_LENGTH).is_none() {
-			return Err(anyhow::anyhow!(
-				"bundle at {url} missing content-length header, skipping..."
-			)
-			.into());
-		}
-
-		// TODO: check hash if provided in future, for now we check file size :(
-		let content_length = res
+		let server_etag = res
 			.headers()
-			.get(header::CONTENT_LENGTH)
+			.get(reqwest::header::ETAG)
 			.and_then(|v| v.to_str().ok())
-			.and_then(|v| v.parse::<u64>().ok())
-			.unwrap_or(0);
+			.map(|s| s.to_string());
+		let stored_etag: Option<String> = tokio::fs::read_to_string(&etag_path).await.ok();
 
-		let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
+		if let (Some(server), Some(stored)) = (&server_etag, &stored_etag) {
+			// ETag comparison: most reliable cache validation method.
+			if server == stored {
+				tracing::debug!("bundle cache hit via ETag for: {url}");
+				return Ok(ModpackFormat::from_file(disk_path).await?);
+			}
+		} else {
+			// Fall back to Content-Length comparison when no ETag is available.
+			let content_length = res
+				.headers()
+				.get(header::CONTENT_LENGTH)
+				.and_then(|v| v.to_str().ok())
+				.and_then(|v| v.parse::<u64>().ok());
 
-		tracing::debug!("bundle content length: {content_length}, local file size: {file_size}");
-		if content_length == file_size {
-			// file is up to date, load from disk
-			return Ok(ModpackFormat::from_file(disk_path).await?);
+			if let Some(length) = content_length {
+				let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
+				if length == file_size {
+					return Ok(ModpackFormat::from_file(disk_path).await?);
+				}
+			}
+			// If neither ETag nor Content-Length are available, fall through to re-download.
 		}
 	}
 
 	tracing::debug!("downloading bundle from remote: {url}");
-	// if we are at this point, it means we either need to update or download
 	http::download(Method::GET, &url, disk_path, None, None).await?;
+
+	// After a fresh download, persist the server ETag for next time.
+	if let Ok(head_res) = http::request(Method::HEAD, &url).await {
+		if let Some(etag) = head_res
+			.headers()
+			.get(reqwest::header::ETAG)
+			.and_then(|v| v.to_str().ok())
+		{
+			let _ = tokio::fs::write(&etag_path, etag).await;
+		}
+	}
 
 	Ok(ModpackFormat::from_file(disk_path).await?)
 }

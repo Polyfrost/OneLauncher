@@ -22,7 +22,15 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange, toggleBund
 	const { createSetting } = useSettings();
 	const [useGridLayout, setUseGrid] = createSetting('mod_list_use_grid');
 
-	const nonEmptyBundles = bundles.filter(b => b.manifest.files.length > 0);
+	const nonEmptyBundles = bundles
+		.map(bundle => ({
+			...bundle,
+			manifest: {
+				...bundle.manifest,
+				files: bundle.manifest.files.filter(file => !file.hidden),
+			},
+		}))
+		.filter(b => b.manifest.files.length > 0);
 
 	return (
 		<Tabs defaultValue={selectedTab ?? getBundleName(nonEmptyBundles[0]?.manifest.name ?? bundles[0].manifest.name)} onTabChange={onTabChange}>

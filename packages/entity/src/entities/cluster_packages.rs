@@ -12,6 +12,10 @@ pub struct Model {
 	pub cluster_id: i64,
 	#[sea_orm(primary_key, auto_increment = false)]
 	pub package_hash: String,
+	pub bundle_name: Option<String>,
+	pub bundle_version_id: Option<String>,
+	pub package_id: Option<String>,
+	pub installed_at: Option<DateTimeUtc>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

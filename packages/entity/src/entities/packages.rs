@@ -3,7 +3,10 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{icon::Icon, loader::GameLoader, package::{PackageType, Provider}, utility::DbVec};
+use crate::icon::Icon;
+use crate::loader::GameLoader;
+use crate::package::{PackageType, Provider};
+use crate::utility::DbVec;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(table_name = "packages")]

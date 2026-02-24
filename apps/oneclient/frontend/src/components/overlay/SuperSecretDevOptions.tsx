@@ -4,7 +4,7 @@ import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
-import { BatteryEmptyIcon, Code02Icon } from '@untitled-theme/icons-react';
+import { Code02Icon } from '@untitled-theme/icons-react';
 import { useEffect, useState } from 'react';
 
 export function SuperSecretDevOptions() {
@@ -35,10 +35,6 @@ export function SuperSecretDevOptions() {
 			<div>
 				<SettingsRow description="Enable The Tanstack Dev Tools" icon={<Code02Icon />} title="Tanstack Dev Tools">
 					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
-				</SettingsRow>
-
-				<SettingsRow description="Use Parallel Mod Downloading for speed. This can create some issues sometimes" icon={<BatteryEmptyIcon />} title="Use Parallel Mod Downloading">
-					<SettingsSwitch setting={createSetting('parallel_mod_downloading')} />
 				</SettingsRow>
 
 				<div className="grid grid-cols-3 gap-3 justify-items-center">

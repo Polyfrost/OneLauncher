@@ -191,40 +191,53 @@ async fn download_and_load_bundle(
 
 	if disk_path.exists() {
 		// Check if the remote file differs from the local cached copy.
-		let res = http::request(Method::HEAD, &url).await?;
+		// If the validation request itself fails, trust the local cache instead of
+		// treating the bundle as unavailable.
+		match http::request(Method::HEAD, &url).await {
+			Ok(res) if res.status().is_success() => {
+				let server_etag = res
+					.headers()
+					.get(reqwest::header::ETAG)
+					.and_then(|v| v.to_str().ok())
+					.map(|s| s.to_string());
+				let stored_etag: Option<String> = tokio::fs::read_to_string(&etag_path).await.ok();
 
-		if !res.status().is_success() {
-			return Err(anyhow::anyhow!("failed to download bundle from remote: {}", url).into());
-		}
+				if let (Some(server), Some(stored)) = (&server_etag, &stored_etag) {
+					// ETag comparison: most reliable cache validation method.
+					if server == stored {
+						tracing::debug!("bundle cache hit via ETag for: {url}");
+						return Ok(ModpackFormat::from_file(disk_path).await?);
+					}
+				} else {
+					// Fall back to Content-Length comparison when no ETag is available.
+					let content_length = res
+						.headers()
+						.get(header::CONTENT_LENGTH)
+						.and_then(|v| v.to_str().ok())
+						.and_then(|v| v.parse::<u64>().ok());
 
-		let server_etag = res
-			.headers()
-			.get(reqwest::header::ETAG)
-			.and_then(|v| v.to_str().ok())
-			.map(|s| s.to_string());
-		let stored_etag: Option<String> = tokio::fs::read_to_string(&etag_path).await.ok();
-
-		if let (Some(server), Some(stored)) = (&server_etag, &stored_etag) {
-			// ETag comparison: most reliable cache validation method.
-			if server == stored {
-				tracing::debug!("bundle cache hit via ETag for: {url}");
-				return Ok(ModpackFormat::from_file(disk_path).await?);
-			}
-		} else {
-			// Fall back to Content-Length comparison when no ETag is available.
-			let content_length = res
-				.headers()
-				.get(header::CONTENT_LENGTH)
-				.and_then(|v| v.to_str().ok())
-				.and_then(|v| v.parse::<u64>().ok());
-
-			if let Some(length) = content_length {
-				let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
-				if length == file_size {
-					return Ok(ModpackFormat::from_file(disk_path).await?);
+					if let Some(length) = content_length {
+						let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
+						if length == file_size {
+							return Ok(ModpackFormat::from_file(disk_path).await?);
+						}
+					}
+					// If neither ETag nor Content-Length are available, fall through to re-download.
 				}
 			}
-			// If neither ETag nor Content-Length are available, fall through to re-download.
+			Ok(res) => {
+				tracing::warn!(
+					status = %res.status(),
+					"failed to validate remote bundle cache for {url}; using cached local bundle"
+				);
+				return Ok(ModpackFormat::from_file(disk_path).await?);
+			}
+			Err(e) => {
+				tracing::warn!(
+					"failed to validate remote bundle cache for {url}: {e}; using cached local bundle"
+				);
+				return Ok(ModpackFormat::from_file(disk_path).await?);
+			}
 		}
 	}
 

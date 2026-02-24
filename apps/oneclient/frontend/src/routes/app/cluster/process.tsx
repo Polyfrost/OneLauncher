@@ -33,11 +33,14 @@ function LogContent({
 	const { cluster } = Route.useRouteContext();
 	const logViewerRef = useRef<LogViewerRef>(null);
 
-	const { data: content, error, isLoading, refetch } = useCommand(
-		['getLogByName', cluster.id, 'latest.log'],
-		() => bindings.core.getLogByName(cluster.id, 'latest.log'),
+	const { data: tail, error, isLoading, refetch } = useCommand(
+		['getProcessLogTail', cluster.id, 0],
+		() => bindings.core.getProcessLogTail(cluster.id, 0),
 		{
 			staleTime: 0,
+			gcTime: 0,
+			refetchOnWindowFocus: false,
+			refetchOnReconnect: false,
 		},
 	);
 
@@ -54,7 +57,9 @@ function LogContent({
 			if (e.kind.type !== 'Output')
 				return;
 
-			logViewerRef.current?.push(e.kind.output);
+			const outputLines = e.kind.output.split('\n');
+			for (const line of outputLines)
+				logViewerRef.current?.push(line);
 		});
 
 		return () => {
@@ -66,7 +71,7 @@ function LogContent({
 		<LoaderContainer loading={isLoading}>
 			<LogViewer
 				autoScroll
-				content={getMessageFromError(error) || content || 'Empty log file'}
+				content={getMessageFromError(error) || tail?.content || 'Empty log file'}
 				ref={logViewerRef}
 				scrollRef={scrollRef}
 			/>

@@ -66,6 +66,12 @@ pub trait TauriLauncherApi {
 
 	#[taurpc(alias = "getLogByName")]
 	async fn get_log_by_name(id: ClusterId, name: String) -> LauncherResult<Option<String>>;
+
+	#[taurpc(alias = "getProcessLogTail")]
+	async fn get_process_log_tail(
+		id: ClusterId,
+		max_lines: usize,
+	) -> LauncherResult<Option<api::cluster::content::ProcessLogTail>>;
 	// endregion: clusters
 
 	// MARK: API: processes
@@ -461,6 +467,18 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
 
 		api::cluster::content::get_log_by_name(&cluster, &name).await
+	}
+
+	async fn get_process_log_tail(
+		self,
+		id: ClusterId,
+		max_lines: usize,
+	) -> LauncherResult<Option<api::cluster::content::ProcessLogTail>> {
+		let cluster = api::cluster::dao::get_cluster_by_id(id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", id))?;
+
+		api::cluster::content::get_process_log_tail(&cluster, max_lines).await
 	}
 	// endregion: clusters
 

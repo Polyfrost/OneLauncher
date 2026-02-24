@@ -79,6 +79,7 @@ byteorder = { workspace = true }
 merge = { workspace = true }
 opener = { workspace = true }
 shadow-rs = { workspace = true }
+libc = { workspace = true }
 
 # integration
 discord-rich-presence = { workspace = true }

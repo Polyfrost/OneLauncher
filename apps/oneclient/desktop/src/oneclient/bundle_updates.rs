@@ -197,6 +197,25 @@ async fn check_bundle_updates_inner(
 		"Retrieved available bundles"
 	);
 
+	let tracked_bundle_names: std::collections::HashSet<String> = bundle_packages
+		.iter()
+		.filter_map(|bp| bp.bundle_name.clone())
+		.collect();
+	let loaded_bundle_names: std::collections::HashSet<String> =
+		bundles.iter().map(|b| b.manifest.name.clone()).collect();
+	let unavailable_tracked_bundles: std::collections::HashSet<String> = tracked_bundle_names
+		.into_iter()
+		.filter(|name| !loaded_bundle_names.contains(name))
+		.collect();
+
+	if !unavailable_tracked_bundles.is_empty() {
+		tracing::warn!(
+			cluster_id = %cluster_id,
+			unavailable_tracked_bundles = ?unavailable_tracked_bundles,
+			"Some tracked bundles could not be loaded; skipping updates/removals for those bundles"
+		);
+	}
+
 	let mut bundle_versions: std::collections::HashMap<
 		String,
 		std::collections::HashMap<String, (String, ModpackFile)>, // key: managed(provider+id) or external(sha1)
@@ -358,6 +377,7 @@ async fn check_bundle_updates_inner(
 	let mut skipped_no_package_id = 0;
 	let mut skipped_no_version_id = 0;
 	let mut skipped_no_provider = 0;
+	let mut skipped_unavailable_bundle = 0;
 	let mut not_in_bundle = 0;
 
 	for bundle_pkg in &bundle_packages {
@@ -395,6 +415,17 @@ async fn check_bundle_updates_inner(
 		};
 
 		if let Some(ref bundle_name) = bundle_pkg.bundle_name {
+			if unavailable_tracked_bundles.contains(bundle_name) {
+				skipped_unavailable_bundle += 1;
+				tracing::warn!(
+					package_id = %pkg_id,
+					package_hash = %bundle_pkg.package_hash,
+					bundle_name = %bundle_name,
+					"Skipping package update check because tracked bundle metadata is unavailable"
+				);
+				continue;
+			}
+
 			let mut matched_target: Option<(String, String, ModpackFile)> =
 				bundle_versions.get(bundle_name).and_then(|files_map| {
 					files_map
@@ -571,6 +602,7 @@ async fn check_bundle_updates_inner(
 		skipped_no_package_id = %skipped_no_package_id,
 		skipped_no_version_id = %skipped_no_version_id,
 		skipped_no_provider = %skipped_no_provider,
+		skipped_unavailable_bundle = %skipped_unavailable_bundle,
 		not_in_bundle = %not_in_bundle,
 		"Bundle update check completed"
 	);

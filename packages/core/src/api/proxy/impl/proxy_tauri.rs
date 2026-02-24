@@ -60,8 +60,22 @@ impl LauncherProxy for ProxyTauri {
 
 				()
 			}
-			LauncherEvent::Message(message) => self.emitter.message(message)?,
-			LauncherEvent::Process(process) => self.emitter.process(process)?,
+			LauncherEvent::Message(message) => {
+				let emitter = Arc::clone(&self.emitter);
+				self.handle.run_on_main_thread(move || {
+					if let Err(err) = emitter.message(message) {
+						tracing::error!(?err, "failed to emit tauri message event on main thread");
+					}
+				})?;
+			}
+			LauncherEvent::Process(process) => {
+				let emitter = Arc::clone(&self.emitter);
+				self.handle.run_on_main_thread(move || {
+					if let Err(err) = emitter.process(process) {
+						tracing::error!(?err, "failed to emit tauri process event on main thread");
+					}
+				})?;
+			}
 		})
 	}
 

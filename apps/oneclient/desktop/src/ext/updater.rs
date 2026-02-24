@@ -1,5 +1,5 @@
 use onelauncher_core::store::Core;
-use tauri::{Emitter, Manager, Runtime};
+use tauri::{Manager, Runtime};
 use tauri_plugin_updater::{Update as TauriPluginUpdate, UpdaterExt};
 use tokio::sync::Mutex;
 
@@ -44,28 +44,9 @@ pub enum UpdateEvent {
 pub async fn check_for_update<R: Runtime>(
 	app: tauri::AppHandle<R>,
 ) -> Result<Option<Update>, String> {
-	app.emit("updater", UpdateEvent::Loading).ok();
-
-	let update = match get_update(app.clone()).await {
-		Ok(update) => update,
-		Err(e) => {
-			app.emit("updater", UpdateEvent::Error { error: e.clone() })
-				.ok();
-			return Err(e);
-		}
-	};
-
-	let update = update.map(|u| Update::new(&u));
-
-	app.emit(
-		"updater",
-		update.clone().map_or(UpdateEvent::NoUpdateAvailable, |u| {
-			UpdateEvent::UpdateAvailable { update: u }
-		}),
-	)
-	.ok();
-
-	Ok(update)
+	get_update(app)
+		.await
+		.map(|update| update.map(|u| Update::new(&u)))
 }
 
 pub async fn install_update<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
@@ -73,8 +54,6 @@ pub async fn install_update<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), 
 	let Ok(lock) = state.install_lock.try_lock() else {
 		return Err("Update already installing".into());
 	};
-
-	app.emit("updater", UpdateEvent::Installing).ok();
 
 	get_update(app.clone())
 		.await?

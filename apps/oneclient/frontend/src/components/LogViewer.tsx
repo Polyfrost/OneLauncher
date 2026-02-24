@@ -1,34 +1,68 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import styles from './LogViewer.module.css';
 
 export interface LogViewerProps {
 	content: string;
 	scrollRef: React.RefObject<HTMLElement | null>;
 	autoScroll?: boolean;
+	maxLines?: number;
+	onTrimmedLines?: (trimmedLines: number) => void;
 	ref?: React.Ref<LogViewerRef>;
 }
 
 export interface LogViewerRef {
 	push: (line: string) => void;
-	// search: (query: string) => void;
+	scrollToEnd: () => void;
 }
 
 const LINE_HEIGHT = 16;
 const REGEX_PATTERN = /\[((?:\S+ )?\d+:\d+:\d+(?:\.\d+)?)\] \[(.[^(\n\r/\u2028\u2029]*)\/(\w+)\]:? (?:\[(CHAT)\])?/;
 
+function normalizeLineLimit(maxLines?: number): number {
+	if (maxLines === undefined || !Number.isFinite(maxLines))
+		return Number.POSITIVE_INFINITY;
+
+	return Math.max(1, Math.floor(maxLines));
+}
+
+interface TrimResult {
+	lines: Array<string>;
+	trimmedCount: number;
+}
+
+function trimLines(
+	lines: Array<string>,
+	lineLimit: number,
+): TrimResult {
+	if (!Number.isFinite(lineLimit) || lines.length <= lineLimit)
+		return {
+			lines,
+			trimmedCount: 0,
+		};
+
+	const trimmedCount = lines.length - lineLimit;
+	return {
+		lines: lines.slice(trimmedCount),
+		trimmedCount,
+	};
+}
+
 export function LogViewer({
 	content,
 	scrollRef,
 	autoScroll = false,
+	maxLines,
+	onTrimmedLines,
 	ref,
 }: LogViewerProps) {
-	const lines = useMemo<Array<string>>(() => content.split('\n'), [content]);
+	const lineLimit = normalizeLineLimit(maxLines);
 	const containerRef = useRef<HTMLDivElement>(null);
-
-	// used to force re-render (and re-init of virtualizer hook)
-	const [_lastUpdated, setLastUpdated] = useState(Date.now());
+	const pendingLinesRef = useRef<Array<string>>([]);
+	const frameRef = useRef<number | null>(null);
+	const [lines, setLines] = useState<Array<string>>(() => trimLines(content.split('\n'), lineLimit).lines);
+	const linesRef = useRef<Array<string>>(lines);
 
 	const virtualizer = useVirtualizer({
 		count: lines.length,
@@ -45,13 +79,52 @@ export function LogViewer({
 		requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }));
 	}, [scrollRef]);
 
-	const appendLine = useCallback((line: string) => {
-		setLastUpdated(Date.now());
-		lines.push(line);
+	useEffect(() => {
+		pendingLinesRef.current = [];
+		if (frameRef.current !== null) {
+			cancelAnimationFrame(frameRef.current);
+			frameRef.current = null;
+		}
 
-		if (autoScroll)
-			scrollToEnd();
-	}, [autoScroll, lines, scrollToEnd]);
+		const nextState = trimLines(content.split('\n'), lineLimit);
+		linesRef.current = nextState.lines;
+		setLines(nextState.lines);
+
+		if (nextState.trimmedCount > 0)
+			onTrimmedLines?.(nextState.trimmedCount);
+	}, [content, lineLimit, onTrimmedLines]);
+
+	useEffect(() => {
+		return () => {
+			if (frameRef.current !== null)
+				cancelAnimationFrame(frameRef.current);
+		};
+	}, []);
+
+	const appendLine = useCallback((line: string) => {
+		pendingLinesRef.current.push(line);
+		if (frameRef.current !== null)
+			return;
+
+		frameRef.current = requestAnimationFrame(() => {
+			frameRef.current = null;
+			if (pendingLinesRef.current.length === 0)
+				return;
+
+			const pending = pendingLinesRef.current;
+			pendingLinesRef.current = [];
+
+			const nextState = trimLines(linesRef.current.concat(pending), lineLimit);
+			linesRef.current = nextState.lines;
+			setLines(nextState.lines);
+
+			if (nextState.trimmedCount > 0)
+				onTrimmedLines?.(nextState.trimmedCount);
+
+			if (autoScroll)
+				scrollToEnd();
+		});
+	}, [autoScroll, lineLimit, onTrimmedLines, scrollToEnd]);
 
 	useImperativeHandle(ref, () => ({
 		push: appendLine,

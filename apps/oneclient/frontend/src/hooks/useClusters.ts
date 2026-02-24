@@ -1,8 +1,8 @@
 import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
-import { useAsyncEffect, useCommandSuspense } from '@onelauncher/common';
+import { useAsyncEffect, useCommand, useCommandSuspense } from '@onelauncher/common';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 export function useLastPlayedClusters() {
 	return useCommandSuspense(
@@ -35,39 +35,55 @@ export function useActiveCluster() {
 }
 
 export function useIsRunning(clusterId: number | undefined | null) {
-	const [running, setRunning] = useState(false);
 	const queryClient = useQueryClient();
-
-	useEffect(() => {
-		if (!clusterId)
-			return;
-
-		const query = queryClient.ensureQueryData({
-			queryKey: ['isClusterRunning', clusterId],
-			queryFn: () => bindings.core.isClusterRunning(clusterId),
+	const enabled = clusterId !== null && clusterId !== undefined;
+	const queryClusterId = clusterId ?? -1;
+	const { data: running } = useCommand(
+		['isClusterRunning', queryClusterId],
+		() => bindings.core.isClusterRunning(queryClusterId),
+		{
+			enabled,
 			staleTime: 0,
 			gcTime: 0,
-		});
+			refetchOnWindowFocus: true,
+			refetchInterval: 2000,
+			refetchIntervalInBackground: true,
+		},
+	);
 
-		query.then(setRunning);
+	useEffect(() => {
+		if (!enabled)
+			return;
+
+		// Keep state accurate when the game is force-closed and a process event
+		// is delayed/missed.
+		const interval = window.setInterval(() => {
+			queryClient.invalidateQueries({
+				queryKey: ['isClusterRunning', queryClusterId],
+			});
+		}, 2000);
 
 		return () => {
-			setRunning(false);
+			window.clearInterval(interval);
 		};
-	}, [clusterId, queryClient]);
+	}, [enabled, queryClient, queryClusterId]);
 
 	useAsyncEffect(async () => {
+		if (!enabled)
+			return;
+
 		const unlisten = await bindings.events.process.on((e) => {
-			if (e.cluster_id !== clusterId)
+			if (e.cluster_id !== queryClusterId)
 				return;
 
-			setRunning(e.kind.type !== 'Stopped');
+			const isRunning = e.kind.type !== 'Stopped';
+			queryClient.setQueryData(['isClusterRunning', queryClusterId], isRunning);
 		});
 
 		return () => {
 			unlisten();
 		};
-	}, []);
+	}, [enabled, queryClient, queryClusterId]);
 
-	return running;
+	return enabled ? Boolean(running) : false;
 }

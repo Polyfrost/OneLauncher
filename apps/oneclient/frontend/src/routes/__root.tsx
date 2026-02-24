@@ -3,7 +3,7 @@ import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import { Toasts } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-import { checkForUpdate, installUpdate, listenForUpdateEvents } from '@/utils/updater';
+import { checkForUpdate, installUpdate } from '@/utils/updater';
 import { useCommand } from '@onelauncher/common';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
@@ -82,12 +82,15 @@ function useDiscordRPC() {
 
 function useAutoUpdate() {
 	useEffect(() => {
-		const unlistenPromise = listenForUpdateEvents(async (event) => {
-			// eslint-disable-next-line no-console -- Used for debugging - aka important
-			console.log('Updater event:', event);
-			if (event.status === 'updateAvailable') {
+		void (async () => {
+			try {
+				const update = await checkForUpdate();
+				if (!update)
+					return;
+
 				// eslint-disable-next-line no-console -- Used for debugging - aka important
-				console.log('Update available, installing...');
+				console.log('Update found on initial check:', update.version);
+
 				try {
 					await installUpdate();
 				}
@@ -95,17 +98,10 @@ function useAutoUpdate() {
 					console.error('Failed to install update:', e);
 				}
 			}
-		});
-
-		checkForUpdate().then((update) => {
-			if (update)
-				// eslint-disable-next-line no-console -- Used for debugging - aka important
-				console.log('Update found on initial check:', update.version);
-		}).catch(e => console.error('Failed to check for update:', e));
-
-		return () => {
-			unlistenPromise.then(unlisten => unlisten());
-		};
+			catch (e) {
+				console.error('Failed to check for update:', e);
+			}
+		})();
 	}, []);
 }
 

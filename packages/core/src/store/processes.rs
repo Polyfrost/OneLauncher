@@ -24,6 +24,10 @@ use crate::utils::io::IOError;
 use super::State;
 use super::credentials::MinecraftCredentials;
 
+const PROCESS_OUTPUT_FLUSH_MS: u64 = 50;
+const PROCESS_OUTPUT_BATCH_MAX_LINES: usize = 128;
+const PROCESS_OUTPUT_BATCH_MAX_CHARS: usize = 16 * 1024;
+
 #[onelauncher_macro::error]
 #[derive(Debug, thiserror::Error)]
 pub enum ProcessError {
@@ -155,15 +159,76 @@ impl ProcessStore {
 
 	/// Returns whether a cluster has a running process.
 	pub async fn has_running(&self, cluster_id: ClusterId) -> bool {
-		let read_guard = self.processes.read().await;
+		let processes = {
+			let read_guard = self.processes.read().await;
+			read_guard
+				.iter()
+				.map(|(pid, process)| (*pid, process.clone()))
+				.collect::<Vec<_>>()
+		};
 
-		for process in read_guard.values() {
-			if process.read().await.cluster_id == cluster_id {
-				return true;
+		let mut stale_pids = Vec::new();
+		let mut running = false;
+
+		for (pid, process) in processes {
+			let (process_cluster_id, process_loop_finished, child_type) = {
+				let process_guard = process.read().await;
+				(
+					process_guard.cluster_id,
+					process_guard
+						.process_loop
+						.as_ref()
+						.map_or(true, |handle| handle.is_finished()),
+					process_guard.child_type.clone(),
+				)
+			};
+			let is_target_cluster = process_cluster_id == cluster_id;
+
+			if !is_target_cluster {
+				continue;
+			}
+
+			if process_loop_finished {
+				stale_pids.push(pid);
+				continue;
+			}
+
+			let stopped = {
+				let mut child = child_type.write().await;
+				match child.try_wait() {
+					Ok(Some(_)) => true,
+					Ok(None) => {
+						let exists = process_exists_os(pid);
+						if exists { false } else { true }
+					}
+					Err(err) => {
+						tracing::warn!(
+							pid,
+							cluster_id,
+							?err,
+							"failed to poll process in has_running; removing stale process",
+						);
+						true
+					}
+				}
+			};
+
+			if stopped {
+				stale_pids.push(pid);
+				continue;
+			}
+
+			running = true;
+		}
+
+		if !stale_pids.is_empty() {
+			let mut write_guard = self.processes.write().await;
+			for pid in &stale_pids {
+				write_guard.remove(pid);
 			}
 		}
 
-		false
+		running
 	}
 
 	/// Spawns a new process (Minecraft Instance)
@@ -220,19 +285,75 @@ impl ProcessStore {
 		tokio::spawn(async move {
 			let mut stdout = BufReader::new(stdout).lines();
 			let mut stderr = BufReader::new(stderr).lines();
+			let mut stdout_closed = false;
+			let mut stderr_closed = false;
+			let mut pending_lines = Vec::with_capacity(PROCESS_OUTPUT_BATCH_MAX_LINES);
+			let mut pending_chars = 0usize;
 
-			while let Ok(Some(mut line)) = tokio::select! {
-				line = stdout.next_line() => line,
-				line = stderr.next_line() => line,
-			} {
-				censor_line(&censors, &mut line);
+			let mut flush_tick =
+				tokio::time::interval(std::time::Duration::from_millis(PROCESS_OUTPUT_FLUSH_MS));
+			flush_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-				send_event(LauncherEvent::Process(ProcessPayload {
-					cluster_id,
-					kind: ProcessPayloadKind::Output { pid, output: line },
-				}))
-				.await;
+			loop {
+				if stdout_closed && stderr_closed {
+					break;
+				}
+
+				tokio::select! {
+					line = stdout.next_line(), if !stdout_closed => {
+						match line {
+							Ok(Some(mut line)) => {
+								censor_line(&censors, &mut line);
+								pending_chars += line.len();
+								pending_lines.push(line);
+							}
+							Ok(None) => {
+								stdout_closed = true;
+							}
+							Err(err) => {
+								stdout_closed = true;
+								tracing::warn!("stdout read failed for pid {}: {}", pid, err);
+							}
+						}
+					}
+
+					line = stderr.next_line(), if !stderr_closed => {
+						match line {
+							Ok(Some(mut line)) => {
+								censor_line(&censors, &mut line);
+								pending_chars += line.len();
+								pending_lines.push(line);
+							}
+							Ok(None) => {
+								stderr_closed = true;
+							}
+							Err(err) => {
+								stderr_closed = true;
+								tracing::warn!("stderr read failed for pid {}: {}", pid, err);
+							}
+						}
+					}
+
+					_ = flush_tick.tick(), if !pending_lines.is_empty() => {
+						flush_process_output_event(cluster_id, pid, &mut pending_lines, &mut pending_chars).await;
+					}
+				}
+
+				if pending_lines.len() >= PROCESS_OUTPUT_BATCH_MAX_LINES
+					|| pending_chars >= PROCESS_OUTPUT_BATCH_MAX_CHARS
+				{
+					flush_process_output_event(
+						cluster_id,
+						pid,
+						&mut pending_lines,
+						&mut pending_chars,
+					)
+					.await;
+				}
 			}
+
+			flush_process_output_event(cluster_id, pid, &mut pending_lines, &mut pending_chars)
+				.await;
 		});
 
 		let child_type = Arc::new(RwLock::new(ChildType::new(child)));
@@ -284,14 +405,26 @@ impl ProcessStore {
 	) -> LauncherResult<i32> {
 		let pid = child.read().await.id();
 
-		let exit_code = wait_for_exit(cluster_id, &child).await?;
+		let exit_code = match wait_for_exit(cluster_id, &child).await {
+			Ok(exit_code) => exit_code,
+			Err(err) => {
+				tracing::warn!(
+					pid,
+					cluster_id,
+					?err,
+					"failed while waiting for process exit; marking process as stopped",
+				);
+				-1
+			}
+		};
 
 		let state = State::get().await?;
 		let store = &state.processes;
 
-		let mut write_guard = store.processes.write().await;
-
-		write_guard.remove(&pid);
+		{
+			let mut write_guard = store.processes.write().await;
+			write_guard.remove(&pid);
+		}
 		tracing::debug!("removed process with pid {}", pid);
 
 		if let Some(post_hook) = post_hook
@@ -308,6 +441,30 @@ impl ProcessStore {
 
 		Ok(exit_code)
 	}
+}
+
+async fn flush_process_output_event(
+	cluster_id: ClusterId,
+	pid: u32,
+	pending_lines: &mut Vec<String>,
+	pending_chars: &mut usize,
+) -> usize {
+	if pending_lines.is_empty() {
+		return 0;
+	}
+
+	let emitted_lines = pending_lines.len();
+	let output = pending_lines.join("\n");
+	pending_lines.clear();
+	*pending_chars = 0;
+
+	send_event(LauncherEvent::Process(ProcessPayload {
+		cluster_id,
+		kind: ProcessPayloadKind::Output { pid, output },
+	}))
+	.await;
+
+	emitted_lines
 }
 
 async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
@@ -344,13 +501,34 @@ async fn wait_for_exit(
 	cluster_id: ClusterId,
 	child: &Arc<RwLock<ChildType>>,
 ) -> LauncherResult<i32> {
+	let pid = child.read().await.id();
+
 	let mut last_updated = Utc::now();
 
 	loop {
-		let mut child = child.write().await;
-		if let Some(status) = child.try_wait()? {
-			tracing::info!("process exited with status: {:?}", status);
-			return Ok(status);
+		let exit_status = {
+			let mut child = child.write().await;
+			child.try_wait()
+		};
+
+		match exit_status {
+			Ok(Some(status)) => {
+				tracing::info!("process exited with status: {:?}", status);
+				return Ok(status);
+			}
+			Ok(None) => {
+				if !process_exists_os(pid) {
+					return Ok(-1);
+				}
+			}
+			Err(err) => {
+				tracing::warn!(
+					cluster_id,
+					?err,
+					"failed to poll process status; treating as already stopped",
+				);
+				return Ok(-1);
+			}
 		}
 
 		// Every 60 seconds, update the playtime of the process
@@ -365,4 +543,18 @@ async fn wait_for_exit(
 
 		tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 	}
+}
+
+fn process_exists_os(pid: u32) -> bool {
+	// SAFETY: `kill` with signal 0 performs existence/permission checks only and
+	// does not deliver a signal.
+	let rc = unsafe { libc::kill(pid as i32, 0) };
+	if rc == 0 {
+		return true;
+	}
+
+	let err = std::io::Error::last_os_error()
+		.raw_os_error()
+		.unwrap_or_default();
+	err == libc::EPERM
 }

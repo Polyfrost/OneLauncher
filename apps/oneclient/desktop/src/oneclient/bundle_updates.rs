@@ -99,9 +99,19 @@ async fn check_bundle_updates_inner(
 		"Retrieved bundle packages from database"
 	);
 
-	if bundle_packages.is_empty() {
-		tracing::debug!(cluster_id = %cluster_id, "No bundle packages found, checking for new additions only");
-	}
+	// Fetch ALL packages in the cluster (not just bundle-tracked ones) so we can
+	// infer bundle subscriptions from packages installed via the regular flow.
+	let all_linked_packages = api::packages::dao::get_linked_packages(&cluster).await?;
+	let all_installed_package_ids: std::collections::HashSet<String> = all_linked_packages
+		.iter()
+		.map(|p| p.package_id.clone())
+		.collect();
+
+	tracing::debug!(
+		cluster_id = %cluster_id,
+		total_installed = %all_linked_packages.len(),
+		"Retrieved all linked packages for subscription inference"
+	);
 
 	let bundles = BundlesManager::get()
 		.await
@@ -266,10 +276,33 @@ async fn check_bundle_updates_inner(
 		}
 	}
 
-	let subscribed_bundles: std::collections::HashSet<String> = bundle_packages
+	// Start with explicitly tracked bundles (packages installed via the bundle-aware path).
+	let mut subscribed_bundles: std::collections::HashSet<String> = bundle_packages
 		.iter()
 		.filter_map(|bp| bp.bundle_name.clone())
 		.collect();
+
+	// Infer subscriptions: if ANY installed package's package_id matches an enabled file in a
+	// bundle, treat this cluster as subscribed to that bundle. This handles the common case where
+	// packages were installed via the regular flow (bundle_name never set) but are in a bundle.
+	for bundle in &bundles {
+		if subscribed_bundles.contains(&bundle.manifest.name) {
+			continue;
+		}
+		let has_matching_package = bundle.manifest.files.iter().any(|f| {
+			if !f.enabled {
+				return false;
+			}
+			matches!(&f.kind, ModpackFileKind::Managed((pkg, _)) if all_installed_package_ids.contains(&pkg.id))
+		});
+		if has_matching_package {
+			tracing::debug!(
+				bundle_name = %bundle.manifest.name,
+				"Inferring bundle subscription from installed package match"
+			);
+			subscribed_bundles.insert(bundle.manifest.name.clone());
+		}
+	}
 
 	tracing::debug!(
 		cluster_id = %cluster_id,
@@ -277,10 +310,9 @@ async fn check_bundle_updates_inner(
 		"Bundles this cluster is subscribed to"
 	);
 
-	let installed_package_ids: std::collections::HashSet<String> = bundle_packages
-		.iter()
-		.filter_map(|bp| bp.package_id.clone())
-		.collect();
+	// Use ALL installed package IDs so that packages installed via the regular flow are not
+	// re-proposed as additions by the bundle update check.
+	let installed_package_ids = all_installed_package_ids;
 
 	let installed_external_hashes: std::collections::HashSet<String> = bundle_packages
 		.iter()

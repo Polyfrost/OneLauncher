@@ -49,7 +49,7 @@ impl BundlesManager {
 			.await
 	}
 
-	#[tracing::instrument]
+	#[tracing::instrument(skip(self))]
 	pub async fn get_bundles_for(
 		&self,
 		mc_version: &str,
@@ -220,7 +220,6 @@ async fn download_and_load_bundle(
 
 			if let Some(length) = content_length {
 				let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
-				tracing::debug!("bundle content length: {length}, local file size: {file_size}");
 				if length == file_size {
 					return Ok(ModpackFormat::from_file(disk_path).await?);
 				}

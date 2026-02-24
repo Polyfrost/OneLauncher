@@ -161,12 +161,17 @@ async fn check_bundle_updates_inner(
 		String,
 		std::collections::HashSet<String>,
 	> = std::collections::HashMap::new();
+	let mut hidden_explicit_keys_by_bundle: std::collections::HashMap<
+		String,
+		std::collections::HashSet<String>,
+	> = std::collections::HashMap::new();
 
 	for bundle in &bundles {
 		let mut enabled_count = 0;
 		let mut disabled_count = 0;
 		let mut files_map = std::collections::HashMap::new();
 		let mut hidden_dependency_keys = std::collections::HashSet::new();
+		let mut hidden_explicit_keys = std::collections::HashSet::new();
 
 		for file in &bundle.manifest.files {
 			if !file.enabled {
@@ -186,6 +191,9 @@ async fn check_bundle_updates_inner(
 						"Indexed managed bundle package"
 					);
 					files_map.insert(key, (version.version_id.clone(), file.clone()));
+					if file.hidden {
+						hidden_explicit_keys.insert(managed_bundle_key(&pkg.provider, &pkg.id));
+					}
 
 					// Dependencies that are not explicit files are treated as hidden mods
 					// for subscription inference.
@@ -204,11 +212,15 @@ async fn check_bundle_updates_inner(
 						"Indexed external bundle package"
 					);
 					files_map.insert(key, (ext.sha1.clone(), file.clone()));
+					if file.hidden {
+						hidden_explicit_keys.insert(external_bundle_key(&ext.sha1));
+					}
 				}
 			}
 		}
 
-		// If a dependency is also a visible file, keep it eligible for inference.
+		// If a dependency is also an explicit bundle file, don't treat it as an
+		// inferred hidden dependency.
 		for visible_key in files_map.keys() {
 			hidden_dependency_keys.remove(visible_key);
 		}
@@ -222,6 +234,7 @@ async fn check_bundle_updates_inner(
 		);
 		hidden_dependency_keys_by_bundle
 			.insert(bundle.manifest.name.clone(), hidden_dependency_keys);
+		hidden_explicit_keys_by_bundle.insert(bundle.manifest.name.clone(), hidden_explicit_keys);
 		bundle_versions.insert(bundle.manifest.name.clone(), files_map);
 	}
 
@@ -250,12 +263,19 @@ async fn check_bundle_updates_inner(
 			.get(&bundle.manifest.name)
 			.cloned()
 			.unwrap_or_default();
+		let hidden_explicit_keys = hidden_explicit_keys_by_bundle
+			.get(&bundle.manifest.name)
+			.cloned()
+			.unwrap_or_default();
 
 		let has_matching_package = bundle_files_map.keys().any(|key| {
 			if !key.starts_with("m:") {
 				return false;
 			}
 			if hidden_keys.contains(key) {
+				return false;
+			}
+			if hidden_explicit_keys.contains(key) {
 				return false;
 			}
 			all_installed_managed_keys.contains(key)

@@ -430,6 +430,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				}),
 				overrides: file.overrides.clone(),
 				enabled: true,
+				hidden: false,
 			});
 		}
 	}
@@ -466,6 +467,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 			files.push(ModpackFile {
 				kind: ModpackFileKind::Managed((fetched_pkg, version)),
 				enabled: true,
+				hidden: false,
 				overrides,
 			});
 		} else {

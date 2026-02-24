@@ -37,6 +37,8 @@ fn default_false() -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModpackFile {
 	pub enabled: bool,
+	#[serde(default = "default_false")]
+	pub hidden: bool,
 	pub kind: ModpackFileKind,
 	#[serde(default)]
 	pub overrides: Option<PackageOverrides>,

@@ -150,20 +150,22 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 
 function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModWithBundle>; setMods: React.Dispatch<React.SetStateAction<Array<ModWithBundle>>>; clusterId: number }) {
 	const files = bundle.manifest.files;
+	const enabledFiles = files.filter(file => file.enabled);
+	const hiddenEnabledFiles = enabledFiles.filter(file => file.hidden);
+	const visibleEnabledFiles = enabledFiles.filter(file => !file.hidden);
 	const bundleName = bundle.manifest.name;
 
-	const isSelected = files
-		.filter(file => file.enabled)
-		.every(file => mods.some(m => m.file === file && m.bundleName === bundleName));
+	const isSelected = visibleEnabledFiles.length > 0
+		&& visibleEnabledFiles.every(file => mods.some(m => m.file === file && m.bundleName === bundleName));
 
 	const handleDownload = () => {
 		setMods((prevMods) => {
 			if (isSelected) {
-				return prevMods.filter(mod => mod.bundleName !== bundleName || !files.includes(mod.file));
+				return prevMods.filter(mod => mod.bundleName !== bundleName || !enabledFiles.includes(mod.file));
 			}
 			else {
-				const filesToAdd = files
-					.filter(file => file.enabled && !prevMods.some(m => m.file === file && m.bundleName === bundleName))
+				const filesToAdd = enabledFiles
+					.filter(file => !prevMods.some(m => m.file === file && m.bundleName === bundleName))
 					.map(file => ({ file, bundleName }));
 				return [...filesToAdd, ...prevMods];
 			}
@@ -173,15 +175,28 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 	const onClickOnMod: onClickOnMod = (file) => {
 		setMods((prevMods) => {
 			const existingIndex = prevMods.findIndex(m => m.file === file && m.bundleName === bundleName);
-			if (existingIndex >= 0)
-				return prevMods.filter((_, i) => i !== existingIndex);
+			const nextMods = existingIndex >= 0
+				? prevMods.filter((_, i) => i !== existingIndex)
+				: [{ file, bundleName }, ...prevMods];
 
-			else
-				return [{ file, bundleName }, ...prevMods];
+			const hasVisibleSelection = nextMods.some(mod => (
+				mod.bundleName === bundleName
+				&& mod.file.enabled
+				&& !mod.file.hidden
+			));
+
+			if (!hasVisibleSelection)
+				return nextMods.filter(mod => mod.bundleName !== bundleName || !hiddenEnabledFiles.includes(mod.file));
+
+			const hiddenToAdd = hiddenEnabledFiles
+				.filter(hiddenFile => !nextMods.some(mod => mod.file === hiddenFile && mod.bundleName === bundleName))
+				.map(hiddenFile => ({ file: hiddenFile, bundleName }));
+
+			return [...hiddenToAdd, ...nextMods];
 		});
 	};
 
-	const modsForContext = mods.map(m => m.file);
+	const modsForContext = mods.filter(m => !m.file.hidden).map(m => m.file);
 
 	const context = useMemo<ModCardContextApi>(() => ({
 		onClickOnMod,
@@ -200,7 +215,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 
 				<div className={twMerge('absolute -top-2 right-3', isSelected ? 'block' : 'hidden group-hover:block')}>
 					<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1">
-						{files.length} Mods {isSelected ? 'Selected' : ''}
+						{visibleEnabledFiles.length} Mods {isSelected ? 'Selected' : ''}
 					</div>
 				</div>
 

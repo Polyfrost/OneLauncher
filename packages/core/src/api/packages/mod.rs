@@ -72,11 +72,23 @@ pub async fn download_package(
 		.find(|f| f.primary)
 		.ok_or(PackageError::NoPrimaryFile)?;
 
-	if !force.unwrap_or(false)
-		&& let Some(model) = dao::get_package_by_hash(primary_file.sha1.clone()).await?
-	{
-		tracing::debug!("package is already downloaded");
-		return Ok(model);
+	let mut update_existing_package = false;
+	if let Some(model) = dao::get_package_by_hash(primary_file.sha1.clone()).await? {
+		if !force.unwrap_or(false) {
+			let cached_path = model.path().await?;
+			if cached_path.exists() {
+				tracing::debug!("package is already downloaded");
+				return Ok(model);
+			}
+
+			tracing::warn!(
+				"package '{}' was found in database but cached file is missing at '{}'; re-downloading",
+				model.hash,
+				cached_path.display()
+			);
+		}
+
+		update_existing_package = true;
 	}
 
 	let mut model = packages::Model {
@@ -111,7 +123,7 @@ pub async fn download_package(
 		}
 	}
 
-	dao::insert_package(model.into()).await
+	persist_downloaded_package(model, update_existing_package).await
 }
 
 /// Downloads a package and conditionally returns the database entry if it's hash was already registered.
@@ -129,20 +141,32 @@ pub async fn download_external_package(
 	);
 
 	// check if already downloaded
-	if !force.unwrap_or(false)
-		&& let Some(model) = dao::get_package_by_hash(package.sha1.clone()).await?
-	{
-		tracing::debug!(
-			"external package is already downloaded as '{}'",
-			model.display_name
-		);
+	let mut update_existing_package = false;
+	if let Some(model) = dao::get_package_by_hash(package.sha1.clone()).await? {
+		if !force.unwrap_or(false) {
+			let cached_path = model.path().await?;
+			if cached_path.exists() {
+				tracing::debug!(
+					"external package is already downloaded as '{}'",
+					model.display_name
+				);
 
-		// considering that this function downloads packages to a cluster,
-		// we'll hard-link the already downloaded package to the cluster
-		// as to keep functionality consistent
-		link_package(&model, cluster, skip_compatibility).await?;
+				// considering that this function downloads packages to a cluster,
+				// we'll hard-link the already downloaded package to the cluster
+				// as to keep functionality consistent
+				link_package(&model, cluster, skip_compatibility).await?;
 
-		return Ok(Some(model));
+				return Ok(Some(model));
+			}
+
+			tracing::warn!(
+				"external package '{}' was found in database but cached file is missing at '{}'; re-downloading",
+				model.hash,
+				cached_path.display()
+			);
+		}
+
+		update_existing_package = true;
 	}
 
 	let model = packages::Model {
@@ -171,9 +195,47 @@ pub async fn download_external_package(
 	)
 	.await?;
 
-	let inserted_model = dao::insert_package(model.into()).await?;
+	let inserted_model = persist_downloaded_package(model, update_existing_package).await?;
 
 	Ok(Some(inserted_model))
+}
+
+async fn persist_downloaded_package(
+	model: packages::Model,
+	update_existing_package: bool,
+) -> LauncherResult<packages::Model> {
+	if !update_existing_package {
+		return dao::insert_package(model.into()).await;
+	}
+
+	let hash = model.hash.clone();
+	let file_name = model.file_name.clone();
+	let version_id = model.version_id.clone();
+	let published_at = model.published_at;
+	let display_name = model.display_name.clone();
+	let display_version = model.display_version.clone();
+	let package_type = model.package_type.clone();
+	let provider = model.provider;
+	let package_id = model.package_id.clone();
+	let mc_versions = model.mc_versions.clone();
+	let mc_loader = model.mc_loader.clone();
+	let icon = model.icon.clone();
+
+	dao::update_package_by_hash(hash, async |mut active| {
+		active.file_name = sea_orm::ActiveValue::Set(file_name);
+		active.version_id = sea_orm::ActiveValue::Set(version_id);
+		active.published_at = sea_orm::ActiveValue::Set(published_at);
+		active.display_name = sea_orm::ActiveValue::Set(display_name);
+		active.display_version = sea_orm::ActiveValue::Set(display_version);
+		active.package_type = sea_orm::ActiveValue::Set(package_type);
+		active.provider = sea_orm::ActiveValue::Set(provider);
+		active.package_id = sea_orm::ActiveValue::Set(package_id);
+		active.mc_versions = sea_orm::ActiveValue::Set(mc_versions);
+		active.mc_loader = sea_orm::ActiveValue::Set(mc_loader);
+		active.icon = sea_orm::ActiveValue::Set(icon);
+		Ok(active)
+	})
+	.await
 }
 
 /// Links a package to a cluster on the file system and in database.

@@ -24,6 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./apps/oneclient/desktop/package.json').version")
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
         with:
@@ -92,8 +98,8 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.CERT_ID }}
         with:
-          tagName: oneclient-__VERSION__
-          releaseName: OneClient __VERSION__
+          tagName: oneclient-${{ env.RELEASE_VERSION }}
+          releaseName: OneClient ${{ env.RELEASE_VERSION }}
           releaseDraft: true
           prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-alpha') || false }}
           retryAttempts: 3
@@ -110,8 +116,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: oneclient-__VERSION__
-          releaseName: OneClient __VERSION__
+          tagName: oneclient-${{ env.RELEASE_VERSION }}
+          releaseName: OneClient ${{ env.RELEASE_VERSION }}
           releaseDraft: true
           prerelease: ${{ startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-alpha') || false }}
           retryAttempts: 3

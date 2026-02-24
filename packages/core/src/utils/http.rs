@@ -88,7 +88,7 @@ fn get_ratelimit_reset(headers: &reqwest::header::HeaderMap) -> Option<u64> {
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
 	if let Some(host) = request.url().host_str() {
 		if host == "api.modrinth.com" {
-			let start = std::time::Instant::now();
+			let _start = std::time::Instant::now();
 			MODRINTH_RATE_LIMITER.until_ready().await;
 		}
 	}
@@ -151,7 +151,7 @@ pub async fn fetch_advanced(
 	if let Ok(parsed_url) = reqwest::Url::parse(url) {
 		if let Some(host) = parsed_url.host_str() {
 			if host == "api.modrinth.com" {
-				let start = std::time::Instant::now();
+				let _start = std::time::Instant::now();
 				MODRINTH_RATE_LIMITER.until_ready().await;
 			}
 		}

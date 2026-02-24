@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use crate::store::Core;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;

@@ -545,6 +545,7 @@ async fn wait_for_exit(
 	}
 }
 
+#[cfg(unix)]
 fn process_exists_os(pid: u32) -> bool {
 	// SAFETY: `kill` with signal 0 performs existence/permission checks only and
 	// does not deliver a signal.
@@ -557,4 +558,19 @@ fn process_exists_os(pid: u32) -> bool {
 		.raw_os_error()
 		.unwrap_or_default();
 	err == libc::EPERM
+}
+
+#[cfg(windows)]
+fn process_exists_os(pid: u32) -> bool {
+	let pid = sysinfo::Pid::from_u32(pid);
+	let mut system = sysinfo::System::new();
+
+	system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+	system.process(pid).is_some()
+}
+
+#[cfg(not(any(unix, windows)))]
+fn process_exists_os(pid: u32) -> bool {
+	let _ = pid;
+	false
 }

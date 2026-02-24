@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/scripts",
 	"type": "module",
-	"version": "1.0.0-alpha.6",
+	"version": "1.0.0",
 	"private": true,
 	"description": "Scripts for developing OneLauncher",
 	"license": "GPL-3.0-only",
@@ -16,6 +16,7 @@
 	"types": "./src/index.ts",
 	"scripts": {
 		"tauri": "pnpm tsx tauri.ts",
+		"version": "pnpm tsx version.ts",
 		"prep": "pnpm tsx prepare.ts",
 		"setup-win": "./setup.ps1",
 		"setup-nix": "./setup.sh",

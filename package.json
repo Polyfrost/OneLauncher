@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/root",
 	"type": "module",
-	"version": "1.0.0-alpha.6",
+	"version": "1.0.0",
 	"private": true,
 	"engineStrict": true,
 	"description": "Next-generation open source Minecraft launcher and tools for interacting with Polyfrost",
@@ -22,6 +22,7 @@
 	},
 	"scripts": {
 		"prep": "pnpm scripts prep",
+		"version:bump": "pnpm scripts version",
 		"typecheck": "pnpm -r typecheck",
 		"bootstrap": "cargo clean && ./packages/scripts/setup.sh && pnpm install && pnpm prep",
 		"core": "pnpm --filter @onelauncher/core -- ",

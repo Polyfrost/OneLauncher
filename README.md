@@ -27,6 +27,14 @@ If you encounter any issues, ensure that you are using the following versions (o
 - `node` version: **22.15**
 - `pnpm` version: **10.13**
 
+### Versioning
+
+OneClient and OneLauncher share a single version across workspace manifests.
+
+- Set an explicit version: `pnpm version:bump 1.0.0-alpha.7`
+- Increment using semver: `pnpm version:bump prerelease`
+- Preview changes only: `pnpm version:bump prerelease --dry-run`
+
 ### Project Structure
 - **`packages/`** - Shared libraries and utilities.
   - [**`core/`**](./packages/core/) - Launcher Core. This is the library that contains the entire launcher logic.

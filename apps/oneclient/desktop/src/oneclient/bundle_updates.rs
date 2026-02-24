@@ -632,13 +632,31 @@ async fn apply_single_update(
 	});
 
 	if should_be_disabled {
-		tracing::info!(
+		if model.file_name.ends_with(".disabled") {
+			tracing::debug!(
+				package_hash = %model.hash,
+				bundle_name = %update.bundle_name,
+				"Updated package is already disabled; skipping toggle"
+			);
+		} else {
+			tracing::info!(
+				package_hash = %model.hash,
+				bundle_name = %update.bundle_name,
+				"Re-applying disabled state to updated package"
+			);
+			// toggle_package internally disables the mod if it's currently enabled
+			api::packages::toggle_package(update.cluster_id, model.hash.clone()).await?;
+		}
+	}
+
+	// If the replacement resolves to the same package hash, there is nothing to remove.
+	// Removing here would unlink the package we just kept/retagged.
+	if model.hash == update.installed_package_hash {
+		tracing::debug!(
 			package_hash = %model.hash,
-			bundle_name = %update.bundle_name,
-			"Re-applying disabled state to updated package"
+			"Update resolved to the same package hash; skipping old-package removal"
 		);
-		// toggle_package internally disables the mod if it's currently enabled
-		api::packages::toggle_package(update.cluster_id, model.hash.clone()).await?;
+		return Ok(model);
 	}
 
 	// Remove the old package only after the new one is fully installed and tracked.
@@ -748,12 +766,20 @@ async fn apply_single_addition(
 			});
 
 			if should_be_disabled {
-				tracing::info!(
-					package_hash = %model.hash,
-					bundle_name = %addition.bundle_name,
-					"Applying disabled state to newly added package due to overrides"
-				);
-				api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+				if model.file_name.ends_with(".disabled") {
+					tracing::debug!(
+						package_hash = %model.hash,
+						bundle_name = %addition.bundle_name,
+						"Added package is already disabled; skipping toggle"
+					);
+				} else {
+					tracing::info!(
+						package_hash = %model.hash,
+						bundle_name = %addition.bundle_name,
+						"Applying disabled state to newly added package due to overrides"
+					);
+					api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+				}
 			}
 
 			Ok(model)
@@ -806,12 +832,20 @@ async fn apply_single_addition(
 			});
 
 			if should_be_disabled {
-				tracing::info!(
-					package_hash = %model.hash,
-					bundle_name = %addition.bundle_name,
-					"Applying disabled state to newly added package due to overrides"
-				);
-				api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+				if model.file_name.ends_with(".disabled") {
+					tracing::debug!(
+						package_hash = %model.hash,
+						bundle_name = %addition.bundle_name,
+						"Added external package is already disabled; skipping toggle"
+					);
+				} else {
+					tracing::info!(
+						package_hash = %model.hash,
+						bundle_name = %addition.bundle_name,
+						"Applying disabled state to newly added package due to overrides"
+					);
+					api::packages::toggle_package(addition.cluster_id, model.hash.clone()).await?;
+				}
 			}
 
 			Ok(model)

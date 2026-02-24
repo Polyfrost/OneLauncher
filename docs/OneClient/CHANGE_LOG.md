@@ -1,3 +1,11 @@
+# 1.0.0
+
+###
+- Add updating for cluster categories
+- Fix overrides not being downloaded from mrpacks
+- Add support for resource packs + shaders + datapacks
+- Add support for "Custom" (local) mods/resourcepacks/shaderpacks/datapacks
+
 # 1.0.0-alpha.6
 
 ###

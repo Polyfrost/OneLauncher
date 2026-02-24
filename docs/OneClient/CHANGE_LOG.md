@@ -1,3 +1,10 @@
+# 1.0.1
+
+###
+- Fix freezes with launcher
+- Fix window process check
+- Sign macOS build
+
 # 1.0.0
 
 ###

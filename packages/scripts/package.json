@@ -1,7 +1,7 @@
 {
 	"name": "@onelauncher/scripts",
 	"type": "module",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"private": true,
 	"description": "Scripts for developing OneLauncher",
 	"license": "GPL-3.0-only",

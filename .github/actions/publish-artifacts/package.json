@@ -1,6 +1,6 @@
 {
 	"name": "@onelauncher/action-publish-artifacts",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"private": true,
 	"description": "Next-generation open source Minecraft launcher",
 	"license": "GPL-3.0-only",

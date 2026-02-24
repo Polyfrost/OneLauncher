@@ -59,8 +59,22 @@ jobs:
       - name: verify certificate
         if: startsWith(matrix.platform, 'macos')
         run: |
-          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
-          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+          IDENTITIES=$(security find-identity -v -p codesigning build.keychain || true)
+          echo "$IDENTITIES"
+
+          CERT_ID=$(echo "$IDENTITIES" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$CERT_ID" ]; then
+            CERT_ID=$(echo "$IDENTITIES" | awk -F'"' '/^[[:space:]]*[0-9]+\)/ && $2 != "" {print $2; exit}')
+            if [ -n "$CERT_ID" ]; then
+              echo "::warning::Developer ID Application certificate not found. Falling back to: $CERT_ID"
+            fi
+          fi
+
+          if [ -z "$CERT_ID" ]; then
+            echo "::error::No code-signing certificate was found in build.keychain. Check APPLE_CERTIFICATE/APPLE_CERTIFICATE_PASSWORD and ensure the cert includes a private key."
+            exit 1
+          fi
+
           echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
           echo "Certificate imported."
 
@@ -86,7 +100,7 @@ jobs:
           args: ${{ matrix.args }}
           projectPath: ./apps/oneclient/desktop/
           uploadUpdaterJson: true
-          
+
       - name: Build App (non-macOS)
         if: startsWith(matrix.platform, 'macos') == false
         uses: tauri-apps/tauri-action@dev

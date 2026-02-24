@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use onelauncher_core::api;
 use onelauncher_core::api::cluster::dao::ClusterId;
-use onelauncher_core::api::packages::modpack::data::ModpackArchive;
-use onelauncher_core::entity::clusters;
+use onelauncher_core::api::packages::modpack::data::{ModpackArchive, ModpackFileKind};
+use onelauncher_core::entity::{clusters, packages};
 use onelauncher_core::error::LauncherResult;
 
 use crate::ext::updater::Update;
+use crate::oneclient::bundle_updates::ApplyBundleUpdatesResult;
 use crate::oneclient::bundles::BundlesManager;
 use crate::oneclient::clusters::{OnlineClusterManifest, get_data_storage_versions};
 use tauri::{AppHandle, Runtime};
@@ -35,6 +37,22 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "installUpdate")]
 	async fn install_update<R: Runtime>(app_handle: AppHandle<R>) -> LauncherResult<()>;
+
+	#[taurpc(alias = "downloadPackageFromBundle")]
+	async fn download_package_from_bundle(
+		package: ModpackFileKind,
+		cluster_id: ClusterId,
+		bundle_name: String,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<packages::Model>;
+
+	#[taurpc(alias = "updateBundlePackages")]
+	async fn update_bundle_packages(
+		cluster_id: ClusterId,
+	) -> LauncherResult<ApplyBundleUpdatesResult>;
+
+	#[taurpc(alias = "isBundleSyncing")]
+	async fn is_bundle_syncing() -> LauncherResult<bool>;
 }
 
 #[taurpc::ipc_type]
@@ -50,14 +68,12 @@ impl OneClientApi for OneClientApiImpl {
 		let mut mapped: HashMap<u32, Vec<clusters::Model>> = HashMap::new();
 
 		for cluster in clusters {
-			// Assuming `mc_version` is a String and you have a function to parse major version
 			let split = &mut cluster.mc_version.split('.');
 			split.next();
 			if let Some(major) = split.next() {
-				// Convert the major version to a u32
 				let major: u32 = match major.parse() {
 					Ok(v) => v,
-					Err(_) => continue, // Skip if parsing fails
+					Err(_) => continue,
 				};
 
 				mapped.entry(major).or_default().push(cluster);
@@ -126,5 +142,68 @@ impl OneClientApi for OneClientApiImpl {
 		crate::ext::updater::install_update(app_handle)
 			.await
 			.map_err(|e| onelauncher_core::error::LauncherError::from(anyhow::anyhow!(e)))
+	}
+
+	async fn download_package_from_bundle(
+		self,
+		package: ModpackFileKind,
+		cluster_id: ClusterId,
+		bundle_name: String,
+		skip_compatibility: Option<bool>,
+	) -> LauncherResult<packages::Model> {
+		let cluster = api::cluster::dao::get_cluster_by_id(cluster_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
+
+		match package {
+			ModpackFileKind::Managed((pkg, version)) => {
+				let model = api::packages::download_package(&pkg, &version, None, None).await?;
+				api::packages::link_package(&model, &cluster, skip_compatibility).await?;
+				api::packages::bundle_dao::track_bundle_package(
+					&cluster,
+					&model,
+					&bundle_name,
+					&version.version_id,
+				)
+				.await?;
+				Ok(model)
+			}
+
+			ModpackFileKind::External(ext_package) => {
+				let model = api::packages::download_external_package(
+					&ext_package,
+					&cluster,
+					None,
+					skip_compatibility.or(Some(true)),
+					None,
+				)
+				.await?
+				.ok_or_else(|| anyhow::anyhow!("Failed to download external package"))?;
+
+				api::packages::link_package(&model, &cluster, skip_compatibility.or(Some(true)))
+					.await?;
+
+				api::packages::bundle_dao::track_bundle_package(
+					&cluster,
+					&model,
+					&bundle_name,
+					&ext_package.sha1,
+				)
+				.await?;
+
+				Ok(model)
+			}
+		}
+	}
+
+	async fn update_bundle_packages(
+		self,
+		cluster_id: ClusterId,
+	) -> LauncherResult<ApplyBundleUpdatesResult> {
+		crate::oneclient::bundle_updates::apply_bundle_updates(cluster_id).await
+	}
+
+	async fn is_bundle_syncing(self) -> LauncherResult<bool> {
+		Ok(crate::oneclient::is_bundle_syncing())
 	}
 }

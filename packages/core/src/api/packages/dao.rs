@@ -30,6 +30,10 @@ pub async fn link_package_to_cluster(
 	let cluster_package = cluster_packages::Model {
 		cluster_id: cluster.id,
 		package_hash: package.hash.clone(),
+		bundle_name: None,
+		bundle_version_id: None,
+		package_id: None,
+		installed_at: None,
 	}
 	.into_active_model();
 
@@ -55,6 +59,10 @@ pub async fn link_many_packages_to_cluster(
 			cluster_packages::Model {
 				cluster_id: cluster.id,
 				package_hash: package.hash.clone(),
+				bundle_name: None,
+				bundle_version_id: None,
+				package_id: None,
+				installed_at: None,
 			}
 			.into_active_model()
 		})

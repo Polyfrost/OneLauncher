@@ -3732,6 +3732,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "onelauncher_core",
  "reqwest",
+ "sea-orm",
  "serde",
  "serde_json",
  "specta",

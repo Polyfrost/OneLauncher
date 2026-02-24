@@ -2,6 +2,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, Fields, parse_macro_input};
 
+#[allow(clippy::too_many_lines)]
 pub fn error_attr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 	let input = parse_macro_input!(item as DeriveInput);
 

@@ -74,6 +74,9 @@ features = [
 	"specta"
 ]
 
+[dev-dependencies]
+sea-orm = { workspace = true }
+
 [features]
 default = [
 	"custom-protocol",

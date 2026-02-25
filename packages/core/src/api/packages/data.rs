@@ -108,7 +108,7 @@ pub struct ManagedPackage {
 	pub name: String,
 	pub short_desc: String,
 	pub body: ManagedPackageBody,
-	/// Won't have all versions for some providers, like CurseForge.
+	/// Won't have all versions for some providers, like `CurseForge`.
 	/// Try making a request to get the versions if needed
 	pub version_ids: Vec<String>,
 	pub mc_versions: Vec<String>,
@@ -142,8 +142,8 @@ impl std::fmt::Display for ManagedPackageBody {
 			f,
 			"{}",
 			match self {
-				ManagedPackageBody::Url(_) => "Url",
-				ManagedPackageBody::Raw(_) => "Raw",
+				Self::Url(_) => "Url",
+				Self::Raw(_) => "Raw",
 			}
 		)
 	}
@@ -223,11 +223,10 @@ impl std::fmt::Display for PackageAuthor {
 			"{}",
 			match self {
 				Self::Team { team_id, org_id } => {
-					if let Some(org_id) = org_id {
-						format!("Team({} - {})", team_id, org_id)
-					} else {
-						format!("Team({})", team_id)
-					}
+					org_id.as_ref().map_or_else(
+						|| format!("Team({team_id})"),
+						|id| format!("Team({team_id} - {id})"),
+					)
 				}
 				Self::Users(users) => format!("Users({})", users.len()),
 			}

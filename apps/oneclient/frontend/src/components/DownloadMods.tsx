@@ -174,6 +174,7 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 		};
 
 		downloadAll();
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- download is not stable, adding it would cause infinite loops
 	}, [mods]);
 
 	useEffect(() => {

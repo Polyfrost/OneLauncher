@@ -32,8 +32,7 @@ function RouteComponent() {
 	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'mod');
 
 	const allBundles = useMemo(() =>
-		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,
-	[filteredBundles, customBundle]);
+		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,	[filteredBundles, customBundle]);
 
 	const customTogglePaths = useMemo(() => new Set(['__custom__']), []);
 

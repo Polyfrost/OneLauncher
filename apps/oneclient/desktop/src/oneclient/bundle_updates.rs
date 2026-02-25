@@ -26,7 +26,7 @@ fn get_cluster_lock(cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
 		.clone()
 }
 
-fn managed_bundle_key(provider: &Provider, package_id: &str) -> String {
+fn managed_bundle_key(provider: Provider, package_id: &str) -> String {
 	format!("m:{}:{}", provider.name(), package_id)
 }
 
@@ -121,6 +121,7 @@ pub async fn check_bundle_updates(
 	check_bundle_updates_inner(cluster_id, &overrides).await
 }
 
+#[allow(clippy::too_many_lines)]
 async fn check_bundle_updates_inner(
 	cluster_id: ClusterId,
 	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
@@ -169,7 +170,7 @@ async fn check_bundle_updates_inner(
 			if pkg.provider == Provider::Local && pkg.package_id == pkg.hash {
 				None
 			} else {
-				Some(managed_bundle_key(&pkg.provider, &pkg.package_id))
+				Some(managed_bundle_key(pkg.provider, &pkg.package_id))
 			}
 		})
 		.collect();
@@ -244,8 +245,9 @@ async fn check_bundle_updates_inner(
 			enabled_count += 1;
 
 			match &file.kind {
-				ModpackFileKind::Managed((pkg, version)) => {
-					let key = managed_bundle_key(&pkg.provider, &pkg.id);
+				ModpackFileKind::Managed(box_) => {
+					let (pkg, version) = &**box_;
+					let key = managed_bundle_key(pkg.provider, &pkg.id);
 					tracing::trace!(
 						bundle_name = %bundle.manifest.name,
 						provider = %pkg.provider,
@@ -255,7 +257,7 @@ async fn check_bundle_updates_inner(
 					);
 					files_map.insert(key, (version.version_id.clone(), file.clone()));
 					if file.hidden {
-						hidden_explicit_keys.insert(managed_bundle_key(&pkg.provider, &pkg.id));
+						hidden_explicit_keys.insert(managed_bundle_key(pkg.provider, &pkg.id));
 					}
 
 					// Dependencies that are not explicit files are treated as hidden mods
@@ -263,7 +265,7 @@ async fn check_bundle_updates_inner(
 					for dep in &version.dependencies {
 						if let Some(dep_project_id) = &dep.project_id {
 							hidden_dependency_keys
-								.insert(managed_bundle_key(&pkg.provider, dep_project_id));
+								.insert(managed_bundle_key(pkg.provider, dep_project_id));
 						}
 					}
 				}
@@ -411,7 +413,7 @@ async fn check_bundle_updates_inner(
 				);
 				continue;
 			};
-			managed_bundle_key(&installed_pkg.provider, pkg_id)
+			managed_bundle_key(installed_pkg.provider, pkg_id)
 		};
 
 		if let Some(ref bundle_name) = bundle_pkg.bundle_name {
@@ -468,7 +470,13 @@ async fn check_bundle_updates_inner(
 					bundle_name = %resolved_bundle_name,
 					"Checking bundle package for updates"
 				);
-				if installed_version_id != &new_version_id {
+				if installed_version_id == &new_version_id {
+					tracing::debug!(
+						package_id = %pkg_id,
+						version = %installed_version_id,
+						"Bundle package is up to date"
+					);
+				} else {
 					tracing::info!(
 						package_id = %pkg_id,
 						installed_version = %installed_version_id,
@@ -485,12 +493,6 @@ async fn check_bundle_updates_inner(
 						new_file,
 						installed_at: bundle_pkg.installed_at.unwrap_or_else(Utc::now),
 					});
-				} else {
-					tracing::debug!(
-						package_id = %pkg_id,
-						version = %installed_version_id,
-						"Bundle package is up to date"
-					);
 				}
 			} else {
 				not_in_bundle += 1;
@@ -521,7 +523,7 @@ async fn check_bundle_updates_inner(
 	// Without this, apply_single_update would try to replace a package that no longer exists.
 	updates_available.retain(|u| {
 		let file_id = match &u.new_file.kind {
-			ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+			ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 			ModpackFileKind::External(ext) => ext.sha1.clone(),
 		};
 		!matches!(
@@ -551,7 +553,7 @@ async fn check_bundle_updates_inner(
 			}
 
 			let file_key = match &file.kind {
-				ModpackFileKind::Managed((pkg, _)) => managed_bundle_key(&pkg.provider, &pkg.id),
+				ModpackFileKind::Managed(box_) => managed_bundle_key(box_.0.provider, &box_.0.id),
 				ModpackFileKind::External(ext) => external_bundle_key(&ext.sha1),
 			};
 			if planned_addition_keys.contains(&file_key) {
@@ -559,24 +561,22 @@ async fn check_bundle_updates_inner(
 			}
 
 			let file_id = match &file.kind {
-				ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+				ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 				ModpackFileKind::External(ext) => ext.sha1.clone(),
 			};
 
 			// Check user overrides
 			if let Some(override_type) =
 				overrides_map.get(&(bundle.manifest.name.clone(), file_id.clone()))
-			{
-				if *override_type
+				&& *override_type
 					== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed
-				{
-					tracing::info!(
-						bundle_name = %bundle.manifest.name,
-						file_id = %file_id,
-						"Skipping package addition due to user override 'Removed'"
-					);
-					continue;
-				}
+			{
+				tracing::info!(
+					bundle_name = %bundle.manifest.name,
+					file_id = %file_id,
+					"Skipping package addition due to user override 'Removed'"
+				);
+				continue;
 			}
 
 			tracing::info!(
@@ -616,6 +616,7 @@ async fn check_bundle_updates_inner(
 	})
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn get_bundles_with_update_status(
 	cluster_id: ClusterId,
 ) -> LauncherResult<Vec<BundleWithUpdateStatus>> {
@@ -648,7 +649,7 @@ pub async fn get_bundles_with_update_status(
 		let key = if pkg_id == &bundle_pkg.package_hash {
 			external_bundle_key(&bundle_pkg.package_hash)
 		} else if let Some(installed_pkg) = all_linked_by_hash.get(&bundle_pkg.package_hash) {
-			managed_bundle_key(&installed_pkg.provider, pkg_id)
+			managed_bundle_key(installed_pkg.provider, pkg_id)
 		} else {
 			continue;
 		};
@@ -683,19 +684,20 @@ pub async fn get_bundles_with_update_status(
 
 		for file in &bundle.manifest.files {
 			let update_status = match &file.kind {
-				ModpackFileKind::Managed((pkg, version)) => {
-					let key = managed_bundle_key(&pkg.provider, &pkg.id);
+				ModpackFileKind::Managed(box_) => {
+					let (pkg, version) = &**box_;
+					let key = managed_bundle_key(pkg.provider, &pkg.id);
 					if let Some(installed) = installed_map.get(&key) {
 						let installed_version =
 							installed.bundle_version_id.as_deref().unwrap_or("");
-						if installed_version != version.version_id {
+						if installed_version == version.version_id {
+							FileUpdateStatus::UpToDate
+						} else {
 							has_updates = true;
 							FileUpdateStatus::UpdateAvailable {
 								installed_version_id: installed_version.to_string(),
 								new_version_id: version.version_id.clone(),
 							}
-						} else {
-							FileUpdateStatus::UpToDate
 						}
 					} else {
 						let key = (bundle.manifest.name.clone(), pkg.id.clone());
@@ -767,6 +769,7 @@ pub struct BundleWithUpdateStatus {
 	pub has_updates: bool,
 }
 
+#[allow(clippy::too_many_lines)]
 async fn apply_single_update(
 	update: &BundlePackageUpdate,
 	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
@@ -786,7 +789,8 @@ async fn apply_single_update(
 
 	// Download the new version first. If it fails the old package remains untouched.
 	let model = match &update.new_file.kind {
-		ModpackFileKind::Managed((pkg, version)) => {
+		ModpackFileKind::Managed(box_) => {
+			let (pkg, version) = &**box_;
 			tracing::debug!(
 				package_id = %pkg.id,
 				version_id = %version.version_id,
@@ -815,7 +819,7 @@ async fn apply_single_update(
 	api::packages::link_package(&model, &cluster, Some(true)).await?;
 
 	let version_id = match &update.new_file.kind {
-		ModpackFileKind::Managed((_, version)) => version.version_id.clone(),
+		ModpackFileKind::Managed(box_) => box_.1.version_id.clone(),
 		ModpackFileKind::External(ext) => ext.sha1.clone(),
 	};
 
@@ -834,7 +838,7 @@ async fn apply_single_update(
 
 	// Check if this package should be disabled based on user overrides (passed in from caller)
 	let file_id = match &update.new_file.kind {
-		ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+		ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 		ModpackFileKind::External(ext) => ext.sha1.clone(),
 	};
 
@@ -919,12 +923,13 @@ async fn apply_single_removal(removal: &BundlePackageRemoval) -> LauncherResult<
 	Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 async fn apply_single_addition(
 	addition: &BundlePackageAddition,
 	overrides: &[onelauncher_core::entity::cluster_bundle_overrides::Model],
 ) -> LauncherResult<onelauncher_core::entity::packages::Model> {
 	let file_id = match &addition.new_file.kind {
-		ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+		ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 		ModpackFileKind::External(ext) => ext.sha1.clone(),
 	};
 
@@ -940,7 +945,8 @@ async fn apply_single_addition(
 		.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", addition.cluster_id))?;
 
 	match &addition.new_file.kind {
-		ModpackFileKind::Managed((pkg, version)) => {
+		ModpackFileKind::Managed(box_) => {
+			let (pkg, version) = &**box_;
 			tracing::debug!(
 				package_id = %pkg.id,
 				version_id = %version.version_id,
@@ -1077,6 +1083,7 @@ pub struct ApplyBundleUpdatesResult {
 	pub additions_failed: Vec<String>,
 }
 
+#[allow(clippy::too_many_lines)]
 pub async fn apply_bundle_updates(
 	cluster_id: ClusterId,
 ) -> LauncherResult<ApplyBundleUpdatesResult> {
@@ -1098,7 +1105,7 @@ pub async fn apply_bundle_updates(
 
 	for removal in check_result.removals_available {
 		match apply_single_removal(&removal).await {
-			Ok(_) => {
+			Ok(()) => {
 				removals_applied.push(removal);
 			}
 			Err(e) => {
@@ -1118,7 +1125,7 @@ pub async fn apply_bundle_updates(
 				updates_applied.push(update);
 			}
 			Err(e) => {
-				let msg = format!("Failed to update bundle package: {}", e);
+				let msg = format!("Failed to update bundle package: {e}");
 				send_error!("{}", msg);
 				updates_failed.push(msg);
 			}
@@ -1127,7 +1134,7 @@ pub async fn apply_bundle_updates(
 
 	for addition in check_result.additions_available {
 		let file_id = match &addition.new_file.kind {
-			ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+			ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 			ModpackFileKind::External(ext) => ext.sha1.clone(),
 		};
 		match apply_single_addition(&addition, &cluster_overrides).await {
@@ -1135,7 +1142,7 @@ pub async fn apply_bundle_updates(
 				additions_applied.push(addition);
 			}
 			Err(e) => {
-				let msg = format!("Failed to install new bundle package '{}': {}", file_id, e);
+				let msg = format!("Failed to install new bundle package '{file_id}': {e}");
 				send_error!("{}", msg);
 				additions_failed.push(msg);
 			}

@@ -16,7 +16,6 @@ import { motion } from 'motion/react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
-
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
 });
@@ -141,15 +140,15 @@ function RecentsCard({
 			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-80">
 				{artSrc
 					? (
-						<img
-							alt={`Minecraft ${version} landscape`}
-							className="absolute -z-10 left-0 top-0 w-full h-full object-cover scale-110"
-							src={artSrc}
-						/>
-					)
+							<img
+								alt={`Minecraft ${version} landscape`}
+								className="absolute -z-10 left-0 top-0 w-full h-full object-cover scale-110"
+								src={artSrc}
+							/>
+						)
 					: (
-						<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo!.backgroundName} />
-					)}
+							<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo!.backgroundName} />
+						)}
 
 				<div
 					className="absolute top-0 left-0 -z-10 w-full h-full"

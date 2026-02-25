@@ -5,32 +5,16 @@ use serde::{Deserialize, Serialize};
 cfg_select! {
 	target_os = "windows" => {
 		#[onelauncher_macro::specta]
-		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 		pub struct SettingsOsExtra {
 
-		}
-
-		impl Default for SettingsOsExtra {
-			fn default() -> Self {
-				Self {
-
-				}
-			}
 		}
 	}
 	target_os = "macos" => {
 		#[onelauncher_macro::specta]
-		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 		pub struct SettingsOsExtra {
 
-		}
-
-		impl Default for SettingsOsExtra {
-			fn default() -> Self {
-				Self {
-
-				}
-			}
 		}
 	}
 	not(any(target_os = "windows", target_os = "macos")) => {

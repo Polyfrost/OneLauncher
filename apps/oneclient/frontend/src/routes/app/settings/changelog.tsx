@@ -36,8 +36,8 @@ function VersionDropdown({ version, changes, active, current }: VersionDropdownP
 						{changes.length > 0
 							? (
 									<ul className="list-disc pl-6">
-										{changes.map((change, index) => (
-											<li className="px-1 text-fg-secondary" key={index}>
+										{changes.map(change => (
+											<li className="px-1 text-fg-secondary" key={change}>
 												{change}
 											</li>
 										))}
@@ -116,7 +116,7 @@ function RouteComponent() {
 									active={groupIndex === 0 ? true : undefined}
 									changes={group.changes}
 									current={group.version === version ? true : undefined}
-									key={groupIndex}
+									key={group.version}
 									version={group.version}
 								/>
 							)

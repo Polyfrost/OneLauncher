@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::LauncherResult;
-use crate::api::processes::ProcessPayload;
+use crate::api::processes::ProcessPayloadKind;
 use crate::api::proxy::LauncherProxy;
 use crate::api::proxy::event::LauncherEvent;
 use crate::constants::CLI_TOTAL_INGRESS;
@@ -58,22 +58,30 @@ impl LauncherProxy for ProxyCli {
 			LauncherEvent::Message(message) => {
 				println!("[{:?}] {}", message.level, message.message);
 			}
-			LauncherEvent::Process(process) => match process {
-				ProcessPayload::Starting { command } => {
+			LauncherEvent::Process(process) => match process.kind {
+				ProcessPayloadKind::Starting { command } => {
 					println!("Starting process: {command}");
 				}
-				ProcessPayload::Started { process } => {
-					println!("Process started: {process:#?}");
+				ProcessPayloadKind::Started { pid, .. } => {
+					println!("Process started: {pid}");
 				}
-				ProcessPayload::Stopped { pid, exit_code } => {
+				ProcessPayloadKind::Stopped { pid, exit_code } => {
 					println!("Process {pid} exited with code {exit_code}");
 				}
-				ProcessPayload::Output { pid, output } => {
+				ProcessPayloadKind::Output { pid, output } => {
 					println!("Process {pid}: {output}");
 				}
 			},
 		}
 
+		Ok(())
+	}
+
+	fn hide_main_window(&self) -> LauncherResult<()> {
+		Ok(())
+	}
+
+	fn show_main_window(&self) -> LauncherResult<()> {
 		Ok(())
 	}
 }

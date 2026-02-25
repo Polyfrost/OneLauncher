@@ -12,7 +12,7 @@ export function useRecentCluster() {
 	const [cluster, setCluster] = useState<ClusterModel | undefined>();
 
 	useEffect(() => {
-		if (!result.data)
+		if (!result.isSuccess)
 			return;
 
 		let mostRecentCluster: ClusterModel | undefined;
@@ -39,7 +39,7 @@ export function useRecentCluster() {
 		}
 
 		setCluster(mostRecentCluster);
-	}, [result.data]);
+	}, [result.data, result.isSuccess]);
 
 	return cluster;
 }
@@ -49,10 +49,10 @@ export function useClusters() {
 	const [clusters, setClusters] = useState<Array<ClusterModel> | undefined>();
 
 	useEffect(() => {
-		if (!result.data)
+		if (!result.isSuccess)
 			return;
 		setClusters(result.data);
-	}, [result.data]);
+	}, [result.data, result.isSuccess]);
 
 	return clusters;
 }

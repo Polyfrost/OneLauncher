@@ -35,7 +35,6 @@ impl PackageType {
 impl From<&str> for PackageType {
 	fn from(value: &str) -> Self {
 		match value.to_lowercase().as_str() {
-			"mod" | "mods" => Self::Mod,
 			"resourcepack" | "resourcepacks" => Self::ResourcePack,
 			"shader" | "shaders" | "shaderpacks" => Self::Shader,
 			"datapack" | "datapacks" => Self::DataPack,
@@ -51,16 +50,16 @@ impl From<String> for PackageType {
 	}
 }
 
-impl ToString for PackageType {
-	fn to_string(&self) -> String {
-		match self {
-			&Self::Mod => "mod",
-			&Self::ResourcePack => "resourcepack",
-			&Self::Shader => "shader",
-			&Self::DataPack => "datapack",
-			&Self::ModPack => "modpack",
-		}
-		.to_string()
+impl Display for PackageType {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let s = match *self {
+			Self::Mod => "mod",
+			Self::ResourcePack => "resourcepack",
+			Self::Shader => "shader",
+			Self::DataPack => "datapack",
+			Self::ModPack => "modpack",
+		};
+		write!(f, "{s}")
 	}
 }
 

@@ -1,4 +1,9 @@
-use onelauncher_core::{api::{credentials, proxy::ProxyDynamic}, error::LauncherResult, initialize_core, store::CoreOptions, utils::io::IOError};
+use onelauncher_core::api::credentials;
+use onelauncher_core::api::proxy::ProxyDynamic;
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::initialize_core;
+use onelauncher_core::store::CoreOptions;
+use onelauncher_core::utils::io::IOError;
 use tokio::io::AsyncBufReadExt;
 
 #[tokio::main]

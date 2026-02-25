@@ -29,6 +29,7 @@ where
 	fn as_mod_pack_out(category: &PackageModPackCategory) -> Out;
 	fn to_mod_pack(value: &Out) -> Option<PackageModPackCategory>;
 
+	#[must_use]
 	fn as_data_pack_out(category: &PackageModCategory) -> Out {
 		Self::as_mod_out(category)
 	}
@@ -39,46 +40,44 @@ where
 
 	fn as_out(categories: &PackageCategories) -> Vec<Out> {
 		match categories {
-			PackageCategories::Mod(categories) => {
-				categories.into_iter().map(Self::as_mod_out).collect()
+			PackageCategories::Mod(categories) => categories.iter().map(Self::as_mod_out).collect(),
+			PackageCategories::ResourcePack(categories) => {
+				categories.iter().map(Self::as_resource_pack_out).collect()
 			}
-			PackageCategories::ResourcePack(categories) => categories
-				.into_iter()
-				.map(Self::as_resource_pack_out)
-				.collect(),
 			PackageCategories::Shader(categories) => {
-				categories.into_iter().map(Self::as_shader_out).collect()
+				categories.iter().map(Self::as_shader_out).collect()
 			}
 			PackageCategories::DataPack(categories) => {
-				categories.into_iter().map(Self::as_data_pack_out).collect()
+				categories.iter().map(Self::as_data_pack_out).collect()
 			}
 			PackageCategories::ModPack(categories) => {
-				categories.into_iter().map(Self::as_mod_pack_out).collect()
+				categories.iter().map(Self::as_mod_pack_out).collect()
 			}
 		}
 	}
 
-	fn to_list(package_type: &PackageType, values: &Vec<Out>) -> PackageCategories {
-		match package_type {
-			&PackageType::Mod => {
+	#[must_use]
+	fn to_list(package_type: &PackageType, values: &[Out]) -> PackageCategories {
+		match *package_type {
+			PackageType::Mod => {
 				PackageCategories::Mod(values.iter().filter_map(|v| Self::to_mod(v)).collect())
 			}
-			&PackageType::ResourcePack => PackageCategories::ResourcePack(
+			PackageType::ResourcePack => PackageCategories::ResourcePack(
 				values
 					.iter()
 					.filter_map(|v| Self::to_resource_pack(v))
 					.collect(),
 			),
-			&PackageType::Shader => PackageCategories::Shader(
+			PackageType::Shader => PackageCategories::Shader(
 				values.iter().filter_map(|v| Self::to_shader(v)).collect(),
 			),
-			&PackageType::DataPack => PackageCategories::DataPack(
+			PackageType::DataPack => PackageCategories::DataPack(
 				values
 					.iter()
 					.filter_map(|v| Self::to_data_pack(v))
 					.collect(),
 			),
-			&PackageType::ModPack => PackageCategories::ModPack(
+			PackageType::ModPack => PackageCategories::ModPack(
 				values.iter().filter_map(|v| Self::to_mod_pack(v)).collect(),
 			),
 		}

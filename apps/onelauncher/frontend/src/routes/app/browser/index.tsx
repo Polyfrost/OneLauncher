@@ -30,8 +30,8 @@ function Featured() {
 	const [provider, slug] = useMemo<[Provider, string]>(() => ['Modrinth', 'iris'], []);
 	const featuredPackage = usePackageData(provider, slug, {});
 	const navigate = useNavigate();
-	const featuredImageIndex = useMemo(() => featuredPackage.data?.gallery.findIndex(image => image.featured), [featuredPackage.data]);
-	const [selectedImage, setSelectedImage] = useState(featuredImageIndex ?? 0);
+	const featuredImageIndex = useMemo(() => featuredPackage.data.gallery.findIndex(image => image.featured), [featuredPackage.data]);
+	const [selectedImage, setSelectedImage] = useState(featuredImageIndex === -1 ? 0 : featuredImageIndex);
 
 	return (
 		<Show when={featuredPackage.isSuccess}>
@@ -39,10 +39,10 @@ function Featured() {
 				<h5 className="ml-2 uppercase opacity-60">Featured</h5>
 				<div className="w-full flex flex-col lg:flex-row overflow-hidden rounded-lg bg-page-elevated">
 					<div className="w-full p-1">
-						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data?.gallery[selectedImage].url} />
+						<img alt="thumbnail" className="aspect-video h-full w-full rounded-md object-cover object-center" src={featuredPackage.data.gallery[selectedImage].url} />
 					</div>
 					<div className="lg:max-w-64 min-[1900px]:max-w-96 min-w-52 flex flex-col gap-y-1 p-4">
-						<h2 className="text-[1.5rem] font-semibold">{featuredPackage.data?.name}</h2>
+						<h2 className="text-[1.5rem] font-semibold">{featuredPackage.data.name}</h2>
 
 						<Show when={false}>
 							<div className="w-fit flex flex-row items-center gap-x-1 rounded-lg bg-border/10 px-1.5 py-1 text-fg-primary transition hover:opacity-80">
@@ -51,10 +51,10 @@ function Featured() {
 							</div>
 						</Show>
 
-						<p className="my-1 flex-1 leading-normal">{featuredPackage.data?.short_desc}</p>
+						<p className="my-1 flex-1 leading-normal">{featuredPackage.data.short_desc}</p>
 
 						<div className="grid grid-cols-3 gap-2 h-full">
-							{featuredPackage.data?.gallery.map(
+							{featuredPackage.data.gallery.map(
 								(image, index) => (
 									<img
 										className="aspect-video object-center object-cover rounded-md"
@@ -67,7 +67,7 @@ function Featured() {
 						</div>
 
 						<div className="flex flex-row justify-end">
-							<Button color="ghost" onClick={() => navigate({ to: '/app/browser/package/$provider/$slug', params: { provider, slug } })}>
+							<Button color="ghost" onClick={() => navigate({ to: '/app/browser/package/$provider/$id', params: { provider, id: slug } })}>
 								View
 								<ChevronRightIcon />
 							</Button>

@@ -32,7 +32,7 @@ function AccountPopup() {
 				</div>
 			)}
 
-			{users.data?.filter(user => user.id !== defaultUser.data?.id).map(user => (
+			{users.data.filter(user => user.id !== defaultUser.data?.id).map(user => (
 				<div key={user.id}>
 					<AccountEntry
 						onClick={() => setDefaultUser(user)}

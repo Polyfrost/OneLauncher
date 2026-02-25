@@ -10,7 +10,7 @@ use crate::error::{LauncherError, LauncherResult};
 
 use super::super::provider::tests::init;
 
-const DATA: LazyLock<Vec<(ModpackFormat, Vec<Entry>)>> = LazyLock::new(|| {
+static DATA: LazyLock<Vec<(ModpackFormat, Vec<Entry>)>> = LazyLock::new(|| {
 	vec![(
 		ModpackFormat::MrPack,
 		vec![Entry {
@@ -57,7 +57,7 @@ pub async fn test_install_modpack() -> LauncherResult<()> {
 			assert_eq!(modpack_version.version_id, entry.version_id);
 
 			let modpack_model =
-				api::packages::download_package(&modpack_pkg, &modpack_version, None, None).await?;
+				api::packages::download_package(&modpack_pkg, modpack_version, None, None).await?;
 			let mut cluster = api::cluster::create_cluster(
 				"Modpack Format Test",
 				modpack_version.mc_versions.first().unwrap(),
@@ -70,7 +70,7 @@ pub async fn test_install_modpack() -> LauncherResult<()> {
 			let modpack_format = ModpackFormat::from_file(&modpack_model.path().await?).await?;
 			api::packages::modpack::install_managed_modpack(
 				&modpack_model,
-				&modpack_format,
+				modpack_format.as_ref(),
 				&mut cluster,
 				None,
 				None,

@@ -85,9 +85,11 @@ pub trait InstallableModpackFormatExt: Send + Sync + std::any::Any {
 }
 
 impl ModpackFormat {
-	pub async fn from_file(path: &PathBuf) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
+	pub async fn from_file(
+		path: &std::path::Path,
+	) -> LauncherResult<Box<dyn InstallableModpackFormatExt>> {
 		for stage in FORMAT_PIPELINE_PATH {
-			if let Some(format) = stage(path.clone()).await? {
+			if let Some(format) = stage(path.to_path_buf()).await? {
 				return Ok(format);
 			}
 		}
@@ -115,14 +117,14 @@ impl ModpackFormat {
 		ingress: Option<SubIngress<'_>>,
 	) -> LauncherResult<()> {
 		match self {
-			ModpackFormat::CurseForge => unimplemented!(),
-			ModpackFormat::MrPack => MrPackFormatImpl::install_modpack_archive(
+			Self::CurseForge => unimplemented!(),
+			Self::MrPack => MrPackFormatImpl::install_modpack_archive(
 				modpack_archive,
 				cluster,
 				skip_compatibility,
 				ingress,
 			),
-			ModpackFormat::PolyMrPack => PolyMrPackFormatImpl::install_modpack_archive(
+			Self::PolyMrPack => PolyMrPackFormatImpl::install_modpack_archive(
 				modpack_archive,
 				cluster,
 				skip_compatibility,
@@ -136,7 +138,7 @@ impl ModpackFormat {
 /// Installs a modpack to a cluster.
 pub async fn install_managed_modpack(
 	package_model: &packages::Model,
-	modpack: &Box<dyn InstallableModpackFormatExt>,
+	modpack: &dyn InstallableModpackFormatExt,
 	cluster: &mut clusters::Model,
 	skip_compatibility: Option<bool>,
 	ingress: Option<SubIngress<'_>>,

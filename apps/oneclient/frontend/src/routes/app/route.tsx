@@ -108,18 +108,18 @@ function BackgroundGradient() {
 				>
 					{artSrc
 						? (
-							<img
-								alt=""
-								className="absolute left-0 top-0 w-screen h-screen scale-110 object-cover"
-								src={artSrc}
-							/>
-						)
+								<img
+									alt=""
+									className="absolute left-0 top-0 w-screen h-screen scale-110 object-cover"
+									src={artSrc}
+								/>
+							)
 						: (
-							<GameBackground
-								className="absolute left-0 top-0 w-screen h-screen scale-110"
-								name={versionInfo.backgroundName}
-							/>
-						)}
+								<GameBackground
+									className="absolute left-0 top-0 w-screen h-screen scale-110"
+									name={versionInfo.backgroundName}
+								/>
+							)}
 				</motion.div>
 			</MouseParallax>
 		</div>

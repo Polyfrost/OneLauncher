@@ -54,11 +54,9 @@ impl LauncherProxy for ProxyTauri {
 			}
 		}
 
-		Ok(match event {
+		let _: () = match event {
 			LauncherEvent::Ingress(ingress) => {
 				self.ingress_queue.push(ingress);
-
-				()
 			}
 			LauncherEvent::Message(message) => {
 				let emitter = Arc::clone(&self.emitter);
@@ -76,7 +74,8 @@ impl LauncherProxy for ProxyTauri {
 					}
 				})?;
 			}
-		})
+		};
+		Ok(())
 	}
 
 	#[tracing::instrument]
@@ -106,6 +105,7 @@ pub struct IngressQueue {
 }
 
 impl IngressQueue {
+	#[must_use]
 	pub fn new(
 		emitter: Arc<LauncherEventEmitter<tauri::Wry>>,
 		debounce_duration: Duration,

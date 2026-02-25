@@ -133,9 +133,8 @@ impl ProviderExt for ModrinthProviderImpl {
 			if let Some((package, timestamp)) = cache.get(slug) {
 				if timestamp.elapsed() < CACHE_DURATION {
 					return Ok(package.clone());
-				} else {
-					cache.remove(slug);
 				}
+				cache.remove(slug);
 			}
 		}
 
@@ -269,9 +268,8 @@ impl ProviderExt for ModrinthProviderImpl {
 			if let Some((version, timestamp)) = cache.get(hash) {
 				if timestamp.elapsed() < CACHE_DURATION {
 					return Ok(Some(version.clone()));
-				} else {
-					cache.remove(hash);
 				}
+				cache.remove(hash);
 			}
 		}
 
@@ -400,7 +398,7 @@ impl ProviderExt for ModrinthProviderImpl {
 
 		if let Some(mc_version) = mc_version {
 			url.query_pairs_mut()
-				.append_pair("game_versions", &format!("[\"{}\"]", mc_version));
+				.append_pair("game_versions", &format!("[\"{mc_version}\"]"));
 		}
 
 		if let Some(loader) = loader {

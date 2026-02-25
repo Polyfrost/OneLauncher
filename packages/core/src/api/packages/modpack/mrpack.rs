@@ -80,7 +80,7 @@ impl ModpackFormatExt for MrPackFormatImpl {
 		let mut loader: Option<GameLoader> = None;
 		let mut loader_version: Option<String> = None;
 
-		for (key, value) in serialized.dependencies.iter() {
+		for (key, value) in &serialized.dependencies {
 			if key == "minecraft" {
 				mc_version = Some(value.clone());
 			} else {
@@ -125,8 +125,8 @@ impl ModpackFormatExt for MrPackFormatImpl {
 	{
 		let ModpackArchive { manifest, path, .. } = modpack_archive;
 
-		download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress).await?;
-		copy_overrides_folder(cluster, &path, &ingress).await?;
+		download_and_link_packages(cluster, manifest, skip_compatibility, ingress.as_ref()).await?;
+		copy_overrides_folder(cluster, path, &ingress).await?;
 
 		Ok(())
 	}
@@ -156,7 +156,7 @@ impl InstallableModpackFormatExt for MrPackFormatImpl {
 			name: self.raw_manifest.name.clone(),
 			version: self.raw_manifest.version_id.clone(),
 			mc_version: self.mc_version.clone(),
-			loader: self.loader.clone(),
+			loader: self.loader,
 			loader_version: self.loader_version.clone(),
 			enabled: false,
 			files,
@@ -176,7 +176,7 @@ impl InstallableModpackFormatExt for MrPackFormatImpl {
 	) -> LauncherResult<()> {
 		let manifest = self.manifest().await?;
 
-		download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress).await?;
+		download_and_link_packages(cluster, manifest, skip_compatibility, ingress.as_ref()).await?;
 
 		if let Some(path) = self.archive.as_ref() {
 			copy_overrides_folder(cluster, path, &ingress).await?;
@@ -190,7 +190,7 @@ pub(super) async fn download_and_link_packages(
 	cluster: &clusters::Model,
 	manifest: &ModpackManifest,
 	skip_compatibility: Option<bool>,
-	_ingress: &Option<SubIngress<'_>>,
+	_ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<()> {
 	if cluster.mc_version != manifest.mc_version {
 		return Err(ClusterError::MismatchedVersion(
@@ -201,30 +201,26 @@ pub(super) async fn download_and_link_packages(
 	}
 
 	if cluster.mc_loader != manifest.loader {
-		return Err(ClusterError::MismatchedLoader(
-			manifest.loader.clone(),
-			cluster.mc_loader.clone(),
-		)
-		.into());
+		return Err(ClusterError::MismatchedLoader(manifest.loader, cluster.mc_loader).into());
 	}
 
 	// TODO: Implement loader version checking
 	// if cluster.mc_loader_version.is_some_and(|v| v )
 
-	let mut errors = Vec::new();
 	let mut packages_to_link = Vec::new();
 
 	// TODO: Ingress
-	for file in manifest.files.iter() {
-		if file.enabled == false {
+	for file in &manifest.files {
+		if !file.enabled {
 			continue;
 		}
 
 		match &file.kind {
-			ModpackFileKind::Managed((package, version)) => {
+			ModpackFileKind::Managed(managed) => {
+				let (package, version) = &**managed;
 				match api::packages::download_package(package, version, None, None).await {
 					Ok(model) => packages_to_link.push(model),
-					Err(e) => errors.push(e),
+					Err(e) => tracing::error!("failed to download package: {e:?}"),
 				}
 			}
 			ModpackFileKind::External(package) => {
@@ -239,7 +235,7 @@ pub(super) async fn download_and_link_packages(
 				{
 					Ok(Some(model)) => packages_to_link.push(model),
 					Ok(None) => {}
-					Err(e) => errors.push(e),
+					Err(e) => tracing::error!("failed to download external package: {e:?}"),
 				}
 			}
 		}
@@ -360,6 +356,7 @@ pub async fn extract_overrides_no_overwrite(
 	Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
 	#[derive(Clone)]
 	struct ToFetch {
@@ -375,7 +372,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 		let name = file
 			.path
 			.split('/')
-			.last()
+			.next_back()
 			.unwrap_or(&file.path)
 			.to_string();
 
@@ -407,7 +404,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				.first()
 				.cloned()
 				.ok_or_else(|| {
-					tracing::warn!("mrpack file '{}' does not contain a download URL", name)
+					tracing::warn!("mrpack file '{}' does not contain a download URL", name);
 				})
 				.unwrap_or(String::new());
 
@@ -417,8 +414,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				.path
 				.split('/')
 				.next()
-				.and_then(|s| PackageType::try_from(s).ok())
-				.unwrap_or(PackageType::Mod);
+				.map_or(PackageType::Mod, PackageType::from);
 
 			files.push(ModpackFile {
 				kind: ModpackFileKind::External(ExternalPackage {
@@ -465,7 +461,7 @@ async fn to_modpack_files(mrpack_files: &Vec<MrPackFile>) -> LauncherResult<Vec<
 				.and_then(|f| f.overrides.clone());
 
 			files.push(ModpackFile {
-				kind: ModpackFileKind::Managed((fetched_pkg, version)),
+				kind: ModpackFileKind::Managed(Box::new((fetched_pkg, version))),
 				enabled: true,
 				hidden: false,
 				overrides,
@@ -526,7 +522,7 @@ mod tests {
 	use super::extract_overrides_no_overwrite;
 
 	/// Helper: creates a .mrpack zip at `zip_path` with the given entries.
-	/// Each entry is (filename_in_zip, content_bytes).
+	/// Each entry is (`filename_in_zip`, `content_bytes`).
 	async fn create_test_zip(zip_path: &std::path::Path, entries: &[(&str, &[u8])]) {
 		let file = tokio::fs::File::create(zip_path).await.unwrap();
 		let mut writer = ZipFileWriter::new(file.compat_write());

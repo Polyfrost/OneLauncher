@@ -33,7 +33,7 @@ gui = []
 workspace = true
 
 [build-dependencies]
-shadow-rs = { workspace = true, features = ["default"] }
+shadow-rs = { workspace = true, features = [ "default" ] }
 
 [dependencies]
 # core

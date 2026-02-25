@@ -73,24 +73,25 @@ pub async fn request(method: Method, url: &str) -> LauncherResult<reqwest::Respo
 pub fn build_request(method: Method, url: &str) -> RequestBuilder {
 	let client = &REQWEST_CLIENT;
 
-	client.request(method.clone(), url)
+	client.request(method, url)
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn get_ratelimit_reset(headers: &reqwest::header::HeaderMap) -> Option<u64> {
 	headers
 		.get("X-Ratelimit-Reset")
-		.or(headers.get("retry-after"))
+		.or_else(|| headers.get("retry-after"))
 		.and_then(|h| h.to_str().ok())
 		.and_then(|s| s.parse::<f64>().ok())
 		.map(|s| s.ceil() as u64)
 }
 
 pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::Response> {
-	if let Some(host) = request.url().host_str() {
-		if host == "api.modrinth.com" {
-			let _start = std::time::Instant::now();
-			MODRINTH_RATE_LIMITER.until_ready().await;
-		}
+	if let Some(host) = request.url().host_str()
+		&& host == "api.modrinth.com"
+	{
+		let _start = std::time::Instant::now();
+		MODRINTH_RATE_LIMITER.until_ready().await;
 	}
 
 	let semaphore = SemaphoreStore::fetch().await;
@@ -121,11 +122,11 @@ pub async fn send_request(request: reqwest::Request) -> LauncherResult<reqwest::
 				return Err(err.into());
 			}
 			Ok(res) => {
-				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
-						continue;
-					}
+				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+					&& let Some(reset) = get_ratelimit_reset(res.headers())
+				{
+					tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
+					continue;
 				}
 				break res;
 			}
@@ -148,13 +149,12 @@ pub async fn fetch_advanced(
 	headers: Option<HashMap<&str, &str>>,
 	ingress: Option<&SubIngress<'_>>,
 ) -> LauncherResult<Bytes> {
-	if let Ok(parsed_url) = reqwest::Url::parse(url) {
-		if let Some(host) = parsed_url.host_str() {
-			if host == "api.modrinth.com" {
-				let _start = std::time::Instant::now();
-				MODRINTH_RATE_LIMITER.until_ready().await;
-			}
-		}
+	if let Ok(parsed_url) = reqwest::Url::parse(url)
+		&& let Some(host) = parsed_url.host_str()
+		&& host == "api.modrinth.com"
+	{
+		let _start = std::time::Instant::now();
+		MODRINTH_RATE_LIMITER.until_ready().await;
 	}
 
 	let semaphore = SemaphoreStore::fetch().await;
@@ -189,11 +189,11 @@ pub async fn fetch_advanced(
 				return Err(err.into());
 			}
 			Ok(res) => {
-				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-					if let Some(reset) = get_ratelimit_reset(res.headers()) {
-						tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
-						continue;
-					}
+				if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+					&& let Some(reset) = get_ratelimit_reset(res.headers())
+				{
+					tokio::time::sleep(std::time::Duration::from_secs(reset)).await;
+					continue;
 				}
 				break res;
 			}

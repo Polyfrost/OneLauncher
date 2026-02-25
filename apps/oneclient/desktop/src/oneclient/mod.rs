@@ -30,6 +30,7 @@ pub async fn initialize_oneclient() {
 	});
 }
 
+#[allow(clippy::too_many_lines)]
 async fn check_and_apply_all_bundle_updates() {
 	BUNDLE_SYNCING.store(true, Ordering::Relaxed);
 	tracing::info!("checking for bundle updates...");
@@ -120,7 +121,7 @@ async fn check_and_apply_all_bundle_updates() {
 
 						for addition in &result.additions_applied {
 							let file_id = match &addition.new_file.kind {
-								onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed((pkg, _)) => pkg.id.clone(),
+								onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed(box_) => box_.0.id.clone(),
 								onelauncher_core::api::packages::modpack::data::ModpackFileKind::External(ext) => ext.sha1.clone(),
 							};
 							tracing::info!(
@@ -147,13 +148,13 @@ async fn check_and_apply_all_bundle_updates() {
 	if total_updates_applied > 0 || total_removals_applied > 0 || total_additions_applied > 0 {
 		let mut message_parts = Vec::new();
 		if total_updates_applied > 0 {
-			message_parts.push(format!("{} mod(s) updated", total_updates_applied));
+			message_parts.push(format!("{total_updates_applied} mod(s) updated"));
 		}
 		if total_removals_applied > 0 {
-			message_parts.push(format!("{} mod(s) removed", total_removals_applied));
+			message_parts.push(format!("{total_removals_applied} mod(s) removed"));
 		}
 		if total_additions_applied > 0 {
-			message_parts.push(format!("{} mod(s) added", total_additions_applied));
+			message_parts.push(format!("{total_additions_applied} mod(s) added"));
 		}
 		send_info!("Bundle sync: {}", message_parts.join(", "));
 		tracing::info!(

@@ -72,24 +72,25 @@ pub async fn download_package(
 		.find(|f| f.primary)
 		.ok_or(PackageError::NoPrimaryFile)?;
 
-	let mut update_existing_package = false;
-	if let Some(model) = dao::get_package_by_hash(primary_file.sha1.clone()).await? {
-		if !force.unwrap_or(false) {
-			let cached_path = model.path().await?;
-			if cached_path.exists() {
-				tracing::debug!("package is already downloaded");
-				return Ok(model);
+	let update_existing_package =
+		if let Some(model) = dao::get_package_by_hash(primary_file.sha1.clone()).await? {
+			if !force.unwrap_or(false) {
+				let cached_path = model.path().await?;
+				if cached_path.exists() {
+					tracing::debug!("package is already downloaded");
+					return Ok(model);
+				}
+
+				tracing::warn!(
+					"package '{}' was found in database but cached file is missing at '{}'; re-downloading",
+					model.hash,
+					cached_path.display()
+				);
 			}
-
-			tracing::warn!(
-				"package '{}' was found in database but cached file is missing at '{}'; re-downloading",
-				model.hash,
-				cached_path.display()
-			);
-		}
-
-		update_existing_package = true;
-	}
+			true
+		} else {
+			false
+		};
 
 	let mut model = packages::Model {
 		hash: primary_file.sha1.clone(),
@@ -98,7 +99,7 @@ pub async fn download_package(
 		file_name: primary_file.file_name.clone(),
 		version_id: version.version_id.clone(),
 		published_at: version.published,
-		provider: package.provider.clone(),
+		provider: package.provider,
 		icon: None,
 		package_id: package.id.clone(),
 		mc_loader: version.loaders.clone().into(),
@@ -117,10 +118,10 @@ pub async fn download_package(
 	)
 	.await?;
 
-	if let Some(icon_url) = &package.icon_url {
-		if let Some(icon) = Icon::try_from_url(&url::Url::parse(icon_url)?) {
-			model.icon = Some(icon::cache_icon(&icon).await?);
-		}
+	if let Some(icon_url) = &package.icon_url
+		&& let Some(icon) = Icon::try_from_url(&url::Url::parse(icon_url)?)
+	{
+		model.icon = Some(icon::cache_icon(&icon).await?);
 	}
 
 	persist_downloaded_package(model, update_existing_package).await
@@ -141,8 +142,9 @@ pub async fn download_external_package(
 	);
 
 	// check if already downloaded
-	let mut update_existing_package = false;
-	if let Some(model) = dao::get_package_by_hash(package.sha1.clone()).await? {
+	let update_existing_package = if let Some(model) =
+		dao::get_package_by_hash(package.sha1.clone()).await?
+	{
 		if !force.unwrap_or(false) {
 			let cached_path = model.path().await?;
 			if cached_path.exists() {
@@ -165,9 +167,10 @@ pub async fn download_external_package(
 				cached_path.display()
 			);
 		}
-
-		update_existing_package = true;
-	}
+		true
+	} else {
+		false
+	};
 
 	let model = packages::Model {
 		hash: package.sha1.clone(),
@@ -325,7 +328,7 @@ pub async fn link_many_packages_to_cluster(
 			.collect::<Vec<_>>()
 	};
 
-	for package in compatible_packages.iter() {
+	for package in &compatible_packages {
 		hard_link(package, cluster).await?;
 	}
 
@@ -362,8 +365,8 @@ impl DatabaseModelExt for packages::Model {
 	async fn path(&self) -> LauncherResult<std::path::PathBuf> {
 		Ok(Dirs::get_packages_dir()
 			.await?
-			.join(&self.package_type.folder_name())
-			.join(&self.provider.name())
+			.join(self.package_type.folder_name())
+			.join(self.provider.name())
 			.join(&self.package_id)
 			.join(&self.version_id)
 			.join(&self.file_name))
@@ -420,10 +423,10 @@ pub async fn remove_package(
 
 		if !dao::is_package_used(&package_hash).await? {
 			let path = package.path().await?;
-			if path.exists() {
-				if let Err(err) = io::remove_file(&path).await {
-					send_error!("{}{}", "failed to remove file: ", err);
-				}
+			if path.exists()
+				&& let Err(err) = io::remove_file(&path).await
+			{
+				send_error!("{}{}", "failed to remove file: ", err);
 			}
 			dao::delete_package_by_id(package_hash).await?;
 		}
@@ -479,7 +482,7 @@ pub async fn toggle_package(cluster_id: i64, package_hash: String) -> LauncherRe
 	let (new_file_name, enabled) = if is_disabled {
 		(file_name.trim_end_matches(".disabled").to_string(), true)
 	} else {
-		(format!("{}.disabled", file_name), false)
+		(format!("{file_name}.disabled"), false)
 	};
 
 	// Read bundle mapping data before any mutations so the override can be written

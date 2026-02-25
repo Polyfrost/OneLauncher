@@ -65,8 +65,6 @@ const defaultFilters: Filters = {
 	package_type: null,
 };
 
-type CategoryFilter = Partial<NonReadonly<typeof browserCategories>>;
-
 function BrowserCategories() {
 	const context = useBrowserContext();
 	const categoryName = useMemo(() => categoryNameFromId[context.query.filters?.package_type ?? 'mod'], [context.query.filters]);

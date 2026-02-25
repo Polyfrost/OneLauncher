@@ -10,7 +10,7 @@ import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -84,18 +84,15 @@ function RouteComponent() {
 	useImperativeHandle(wrappedRef, () => ({
 		async openDownloadDialog(nextPath?: string) {
 			// Extract overrides from all enabled bundles before downloading mods
-			for (const [clusterId, bundles] of Object.entries(bundlesPerCluster)) {
-				for (const bundle of bundles) {
-					if (bundle.manifest.enabled) {
+			for (const [clusterId, bundles] of Object.entries(bundlesPerCluster))
+				for (const bundle of bundles)
+					if (bundle.manifest.enabled)
 						try {
 							await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
 						}
 						catch (e) {
 							console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
 						}
-					}
-				}
-			}
 
 			// Then delegate to the actual mod download dialog
 			downloadModsRef.current?.openDownloadDialog(nextPath);
@@ -178,7 +175,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 		});
 	};
 
-	const onClickOnMod: onClickOnMod = (file) => {
+	const onClickOnMod: onClickOnMod = useCallback((file: ModpackFile) => {
 		setMods((prevMods) => {
 			const existingIndex = prevMods.findIndex(m => m.file === file && m.bundleName === bundleName);
 			const nextMods = existingIndex >= 0
@@ -200,7 +197,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 
 			return [...hiddenToAdd, ...nextMods];
 		});
-	};
+	}, [bundleName, hiddenEnabledFiles, setMods]);
 
 	const modsForContext = mods.filter(m => !m.file.hidden).map(m => m.file);
 
@@ -208,7 +205,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 		onClickOnMod,
 		useVerticalGridLayout: true,
 		mods: modsForContext,
-	}), [modsForContext]);
+	}), [modsForContext, onClickOnMod]);
 
 	return (
 		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>

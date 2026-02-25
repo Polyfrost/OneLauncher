@@ -1,5 +1,5 @@
 import type { HTMLAttributes, ReactNode, Ref } from 'react';
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 // i thank chatgpt for this i dont want to replace current tabs component yet so this is going to be here for some time
@@ -26,19 +26,20 @@ interface TabsProps {
 
 export function Tabs({ defaultValue, onTabChange, children }: TabsProps) {
 	const [activeTab, setActiveTabInternal] = useState(defaultValue);
-	const setActiveTab = (value: string) => {
-		setActiveTabInternal(value)
-		if (onTabChange) onTabChange(value)
-	}
+	const setActiveTab = useCallback((value: string) => {
+		setActiveTabInternal(value);
+		if (onTabChange)
+			onTabChange(value);
+	}, [onTabChange]);
+
+	const contextValue = useMemo(() => ({ activeTab, setActiveTab }), [activeTab, setActiveTab]);
 
 	return (
-		<TabsContext.Provider value={{ activeTab, setActiveTab }}>
+		<TabsContext.Provider value={contextValue}>
 			{children}
 		</TabsContext.Provider>
 	);
 }
-
-
 interface TabListProps extends HTMLAttributes<HTMLDivElement> {
 	floating?: boolean;
 	height?: boolean;
@@ -53,7 +54,7 @@ export function TabList({
 	ref,
 }: TabListProps) {
 	return (
-		<div className={twMerge("pointer-events-none sticky top-0 z-10 w-full", height ? "min-h-[74px] h-[74px] max-h-[74px]" : "")} ref={ref}>
+		<div className={twMerge('pointer-events-none sticky top-0 z-10 w-full', height ? 'min-h-[74px] h-[74px] max-h-[74px]' : '')} ref={ref}>
 			<div
 				className={twMerge(
 					'pointer-events-auto flex flex-row gap-2 border border-transparent bg-page-elevated transition-all',
@@ -117,7 +118,7 @@ export function TabPanel({ children, value, className, ...rest }: TabPanelProps)
 
 	return (
 		<div
-			className={twMerge("bg-page-elevated px-3 pt-3 w-full rounded-2xl h-full", className)}
+			className={twMerge('bg-page-elevated px-3 pt-3 w-full rounded-2xl h-full', className)}
 			role="tabpanel"
 			{...rest}
 		>

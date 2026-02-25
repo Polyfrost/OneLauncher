@@ -10,7 +10,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { exists, mkdir, readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { Download01Icon, PlusIcon, Trash01Icon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CrouchAnimation, FlyingAnimation, HitAnimation, IdleAnimation, WalkingAnimation } from 'skinview3d';
 
 interface Skin {
@@ -120,11 +120,11 @@ function RouteComponent() {
 		if (!profileData)
 			return;
 		setCapes([{ url: '', id: '' }, ...profileData.capes.map(cape => ({ url: cape.url, id: cape.id }))]);
-	}, []);
+	}, [profileData]);
 
 	const [skins, setSkins, loaded] = useSkinHistory();
 	const [selectedSkin, setSelectedSkin] = useState<Skin>({ skin_url: getSkinUrl(null), is_slim: false });
-	const skinData: Skin = { is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url), cape_url: playerData?.cape_url ?? '' };
+	const skinData: Skin = useMemo(() => ({ is_slim: profileData?.skins[0].variant === 'slim', skin_url: getSkinUrl(profileData?.skins[0].url), cape_url: playerData?.cape_url ?? '' }), [playerData?.cape_url, profileData?.skins]);
 
 	useEffect(() => {
 		if (!loaded)
@@ -133,7 +133,7 @@ function RouteComponent() {
 		setSkins(prev => [...prev, skinData]);
 		setSelectedSkin(skinData);
 		setSelectedCape(skinData.cape_url ?? '');
-	}, [loaded]);
+	}, [loaded, setSkins, skinData]);
 
 	const importFromURL = (url: string) => {
 		setSkins(prev => [...prev, { is_slim: false, skin_url: url }]);

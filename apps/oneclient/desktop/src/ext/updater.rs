@@ -65,8 +65,6 @@ pub async fn install_update<R: Runtime>(app: tauri::AppHandle<R>) -> Result<(), 
 	drop(lock);
 
 	app.restart();
-
-	Ok(())
 }
 
 pub fn init<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
@@ -76,19 +74,17 @@ pub fn init<R: Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
 	#[cfg(not(target_os = "linux"))]
 	let updater_available = true;
 
-	if updater_available {
-		if let Some(window) = app.get_webview_window("main") {
-			window
-				.eval("window.__LAUNCHER_UPDATER__ = true;")
-				.expect("Failed to inject updater JS");
+	if updater_available && let Some(window) = app.get_webview_window("main") {
+		window
+			.eval("window.__LAUNCHER_UPDATER__ = true;")
+			.expect("Failed to inject updater JS");
 
-			window
-				.eval(&format!(
-					r#"window.__ONECLIENT_VERSION__ = "{}";"#,
-					Core::get().launcher_version,
-				))
-				.expect("Failed to inject version JS");
-		}
+		window
+			.eval(format!(
+				r#"window.__ONECLIENT_VERSION__ = "{}";"#,
+				Core::get().launcher_version,
+			))
+			.expect("Failed to inject version JS");
 	}
 	Ok(())
 }

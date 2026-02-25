@@ -20,7 +20,7 @@ async fn main() -> LauncherResult<()> {
 
 	let path = java::install_java_package(pkg).await?;
 
-	println!("java package installed at '{path:?}'");
+	println!("java package installed at '{}'", path.display());
 
 	Ok(())
 }

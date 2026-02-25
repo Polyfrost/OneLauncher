@@ -171,9 +171,6 @@ function ClusterCard({
 
 	const handleLaunch = () => {
 		launch.mutate();
-
-		if (launch.error)
-			console.error(launch.error.message);
 	};
 
 	const image = () => {

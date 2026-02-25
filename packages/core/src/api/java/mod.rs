@@ -161,7 +161,7 @@ pub async fn prepare_java(
 ) -> LauncherResult<java_versions::Model> {
 	let id = init_ingress(
 		IngressType::JavaPrepare,
-		&format!("preparing java {}", major),
+		&format!("preparing java {major}"),
 		100.0,
 	)
 	.await?;
@@ -453,7 +453,7 @@ pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathB
 	#[cfg(target_os = "macos")]
 	{
 		let java_version = package.java_version.first().unwrap().to_string();
-		base_path = base_path.join(format!("zulu-{java_version}.jre"))
+		base_path = base_path.join(format!("zulu-{java_version}.jre"));
 	}
 
 	base_path = base_path.join(get_java_bin());

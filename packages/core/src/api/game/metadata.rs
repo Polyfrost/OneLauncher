@@ -69,7 +69,10 @@ pub async fn download_version_info(
 	const TASKS: f64 = 3.33;
 
 	tracing::debug!("loading version info for version {}", version.id);
-	let version_id = loader.map_or(version.id.clone(), |it| format!("{}-{}", version.id, it.id));
+	let version_id = loader.map_or_else(
+		|| version.id.clone(),
+		|it| format!("{}-{}", version.id, it.id),
+	);
 
 	ingress.set_ingress_message("fetching version info").await?;
 
@@ -461,6 +464,7 @@ pub async fn get_loaders_for_version(mc_version: &str) -> LauncherResult<Vec<Gam
 	metadata.get_loaders_for_version(mc_version).await
 }
 
+#[must_use]
 pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
 	version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
 }

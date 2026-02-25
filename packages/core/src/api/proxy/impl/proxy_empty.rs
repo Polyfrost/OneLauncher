@@ -21,7 +21,7 @@ impl LauncherProxy for ProxyEmpty {
 					"{} [{}] {}",
 					ingress
 						.percent
-						.map_or("100%".to_string(), |p| format!("{:.2}%", p * 100.0)),
+						.map_or_else(|| "100%".to_string(), |p| format!("{:.2}%", p * 100.0)),
 					ingress.id,
 					ingress.message
 				);

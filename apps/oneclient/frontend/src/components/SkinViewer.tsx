@@ -94,6 +94,7 @@ export function SkinViewer({
 		return () => {
 			viewer.dispose();
 		};
+	// eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only initialization
 	}, []);
 
 	useEffect(() => {

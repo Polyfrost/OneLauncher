@@ -1,7 +1,7 @@
 #![feature(cfg_select)]
 
-mod entities;
 mod domain;
+mod entities;
 
-pub use entities::*;
 pub use domain::*;
+pub use entities::*;

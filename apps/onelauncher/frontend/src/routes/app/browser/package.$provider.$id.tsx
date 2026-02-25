@@ -51,7 +51,7 @@ function RouteComponent() {
 	if (!includes(PROVIDERS, provider))
 		throw new Error('Invalid provider');
 	const packageData = usePackageData(provider, id, {});
-	const { data: packageBody } = useCommand('getPackageBody', () => bindings.core.getPackageBody(provider, packageData.data?.body ?? { Raw: 'No Package Data' }));
+	const { data: packageBody } = useCommand('getPackageBody', () => bindings.core.getPackageBody(provider, packageData.data.body));
 	const packageContextValue = useMemo(() => ({
 		pkg: packageData.data,
 	}), [packageData.data]);
@@ -66,7 +66,7 @@ function RouteComponent() {
 						<TabList className="flex flex-none flex-row gap-x-1 rounded-lg bg-component-bg p-1 w-min">
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="about">About</Tab>
 							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="versions">Versions</Tab>
-							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data?.gallery.length === 0}>Gallery</Tab>
+							<Tab className="uppercase p-2.5 text-trim rounded-md selected:bg-component-bg-pressed disabled:hidden" id="gallery" isDisabled={packageData.data.gallery.length === 0}>Gallery</Tab>
 						</TabList>
 						<TabPanel className="prose prose-invert prose-sm max-w-none prose-code:before:content-none prose-code:after:content-none prose-code:bg-component-bg-disabled prose-code:rounded-sm prose-code:p-1! prose-code:text-trim prose-img:inline-block prose-a:inline-block" id="about">
 							<div className="h-full min-h-full flex-1 w-full rounded-lg bg-component-bg p-3">
@@ -86,7 +86,7 @@ function RouteComponent() {
 						</TabPanel>
 						<TabPanel className="flex flex-wrap gap-2 justify-center" id="gallery">
 
-							{packageData.data?.gallery.map(item => (
+							{packageData.data.gallery.map(item => (
 								<Modal.Trigger key={item.url}>
 									<Pressable>
 										<div aria-label="Loaders" className="rounded-md overflow-hidden bg-component-bg-pressed outline-0 h-64 flex flex-col relative">
@@ -255,7 +255,7 @@ function InstallButton() {
 		limit: 1,
 	});
 	const version = useMemo(() => {
-		if (!versions || !browserContext.cluster)
+		if (!browserContext.cluster)
 			return undefined;
 		return versions.items[0];
 	}, [browserContext.cluster, versions]);
@@ -294,7 +294,7 @@ function InstallButton() {
 											<span className="text-md font-semibold">{browserContext.cluster.name}</span>
 										</span>
 									)
-								: versionsLoading ? 'Looking for a version...' : 'No matching version found'
+								: 'No matching version found'
 							: (clusters?.length ?? 0) > 0
 									? 'Select a Cluster'
 									: 'No clusters'}
@@ -413,8 +413,8 @@ function Versions() {
 	});
 
 	const pagination = usePagination({
-		itemsCount: versions?.total as unknown as number,
-		itemsPerPage: versions?.limit as unknown as number,
+		itemsCount: versions.total as unknown as number,
+		itemsPerPage: versions.limit as unknown as number,
 	});
 	const paginationRef = useRef(pagination);
 	useEffect(() => {
@@ -422,7 +422,7 @@ function Versions() {
 	}, [pagination.offset]);
 	useEffect(() => {
 		paginationRef.current.reset();
-	}, [versions?.total]);
+	}, [versions.total]);
 	return (
 		<div className="flex flex-col w-full">
 			<div className="flex justify-between">
@@ -439,7 +439,7 @@ function Versions() {
 					<Column className="pr-4" />
 				</TableHeader>
 				<TableBody className="">
-					{versions?.items.map(item =>
+					{versions.items.map(item =>
 						<VersionRow key={item.version_id} version={item} />)}
 				</TableBody>
 			</Table>

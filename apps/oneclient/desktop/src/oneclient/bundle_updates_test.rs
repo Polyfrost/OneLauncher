@@ -2,7 +2,7 @@
 mod tests {
 	use onelauncher_core::entity::loader::GameLoader;
 	use onelauncher_core::store::{Core, CoreOptions};
-	use std::path::PathBuf;
+
 	use tokio::fs;
 
 	use crate::oneclient::bundle_updates::{apply_bundle_updates, check_bundle_updates};
@@ -13,7 +13,8 @@ mod tests {
 	// We only run this if we ignore it by default, since it hits the network and modifies DB
 	// but we can run it explicitly.
 	#[tokio::test]
-	#[ignore]
+	#[ignore = "touches true files and takes long"]
+	#[allow(clippy::too_many_lines, clippy::items_after_statements)]
 	async fn test_bundle_updates_e2e() {
 		// 1. Initialize DB and paths
 		Core::initialize(CoreOptions::default()).await.unwrap();
@@ -132,7 +133,7 @@ mod tests {
 
 		// Remove it from the database and filesystem so the updater thinks it's missing.
 		// record_override=false: this simulates a missing package, not a deliberate user removal.
-		println!("Removing package hash: {}", hash_to_remove);
+		println!("Removing package hash: {hash_to_remove}");
 		onelauncher_core::api::packages::remove_package(cluster.id, hash_to_remove, false)
 			.await
 			.unwrap();
@@ -187,7 +188,8 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[ignore]
+	#[ignore = "touches true files and takes long"]
+	#[allow(clippy::too_many_lines, clippy::items_after_statements)]
 	async fn test_bundle_user_overrides() {
 		// 1. Initialize DB and paths
 		Core::initialize(CoreOptions::default()).await.unwrap();
@@ -300,10 +302,9 @@ mod tests {
 
 		let is_offered_as_addition = check_removed.additions_available.iter().any(|a| {
 			let file_id = match &a.new_file.kind {
-				onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed((
-					pkg,
-					_,
-				)) => pkg.id.clone(),
+				onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed(box_) => {
+					box_.0.id.clone()
+				}
 				onelauncher_core::api::packages::modpack::data::ModpackFileKind::External(ext) => {
 					ext.sha1.clone()
 				}
@@ -373,8 +374,8 @@ mod tests {
 			.new_file;
 
 		let file_id = match &updated_pkg_hash.kind {
-			onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed((pkg, _)) => {
-				pkg.id.clone()
+			onelauncher_core::api::packages::modpack::data::ModpackFileKind::Managed(box_) => {
+				box_.0.id.clone()
 			}
 			onelauncher_core::api::packages::modpack::data::ModpackFileKind::External(ext) => {
 				ext.sha1.clone()

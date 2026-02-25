@@ -32,11 +32,7 @@ function Search() {
 
 	return (
 		<>
-			{
-				search.data
-					? <Results results={search.data} />
-					: <h1>Loading</h1>
-			}
+			<Results results={search.data} />
 		</>
 	);
 }

@@ -35,7 +35,10 @@ pub async fn main() -> LauncherResult<()> {
 
 	// We create a settings profile so that we can run hooks
 	let profile_name = "profile with hooks example";
-	if setting_profiles::dao::get_profile_by_name(profile_name).await?.is_none() {
+	if setting_profiles::dao::get_profile_by_name(profile_name)
+		.await?
+		.is_none()
+	{
 		setting_profiles::create_profile(profile_name, async |mut profile| {
 			profile.hook_pre = Set(Some("echo this is a pre-hook!".to_string()));
 			profile.hook_post = Set(Some("echo this is my post-hook!".to_string()));
@@ -46,14 +49,17 @@ pub async fn main() -> LauncherResult<()> {
 			}
 
 			Ok(profile)
-		}).await?;
+		})
+		.await?;
 	}
 
 	// Here we create the cluster
 	let cluster_name = "Launchable";
 	let path = dirs.clusters_dir().join(cluster_name);
 
-	let mut cluster = if let Some(cluster) = api::cluster::dao::get_cluster_by_folder_name(&path).await? {
+	let mut cluster = if let Some(cluster) =
+		api::cluster::dao::get_cluster_by_folder_name(&path).await?
+	{
 		cluster
 	} else {
 		api::cluster::create_cluster(cluster_name, "1.20.4", GameLoader::Fabric, None, None).await?
@@ -64,12 +70,16 @@ pub async fn main() -> LauncherResult<()> {
 		cluster.setting_profile_name = Set(Some(profile_name.to_string()));
 
 		Ok(cluster)
-	}).await?;
+	})
+	.await?;
 
-	println!("Using cluster: {} at '{}'", cluster.name, cluster.folder_name);
+	println!(
+		"Using cluster: {} at '{}'",
+		cluster.name, cluster.folder_name
+	);
 
 	// Launch the game
-	let process = api::game::launch::launch_minecraft(&mut cluster, creds, None).await?;
+	let process = api::game::launch::launch_minecraft(&mut cluster, creds, None, None).await?;
 	println!("Process: {:?}", process.read().await);
 
 	// We wait for the process to finish so that we can run code after

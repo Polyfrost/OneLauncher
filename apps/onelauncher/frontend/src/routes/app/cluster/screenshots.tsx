@@ -27,10 +27,10 @@ function RouteComponent() {
 					<Show
 						fallback={<div className="text-border/400">No screenshots found. Press F2 in game to take a screenshot!</div>}
 						// @ts-ignore idk
-						when={result.data?.length > 0}
+						when={result.data.length > 0}
 					>
 						<div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] w-full transform-gpu gap-2">
-							{result.data?.map(data => (
+							{result.data.map(data => (
 								<ScreenshotEntry cluster_path={cluster.data?.folder_name || ''} key={data} path={data} />
 							))}
 						</div>

@@ -410,11 +410,9 @@ pub async fn extract_zip_filtered(
 		}
 
 		let old_name = entry.filename().as_str()?;
-		let name: String = if let Some(modify) = &modify_entry_name {
-			modify(&old_name)
-		} else {
-			old_name.to_string()
-		};
+		let name: String = modify_entry_name
+			.as_ref()
+			.map_or_else(|| old_name.to_string(), |modify| modify(old_name));
 
 		let name = sanitize_path(name);
 

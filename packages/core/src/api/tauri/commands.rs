@@ -419,7 +419,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 				}
 
 				if let Some(setting_profile_name) = request.setting_profile_name {
-					active_model.setting_profile_name = Set(Some(setting_profile_name))
+					active_model.setting_profile_name = Set(Some(setting_profile_name));
 				}
 
 				Ok(active_model)
@@ -849,7 +849,7 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 					"syncCluster complete for cluster_id={}, action={:?}",
 					cluster_id,
 					action
-				)
+				);
 			}
 			Err(e) => tracing::error!("syncCluster failed for cluster_id={}: {}", cluster_id, e),
 			_ => {}

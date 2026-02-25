@@ -52,13 +52,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 	}, []);
 
 	const saveChangedSettings = useCallback(() => {
-		if (!settings)
-			return;
-
 		writeQuery.refetch();
-
 		setSettingsChanged(false);
-	}, [settings, writeQuery]);
+	}, [writeQuery]);
 
 	const handleSetSettingsToSave = useCallback((newSettings: Partial<Settings> | null) => {
 		setSettingsToSave(newSettings);
@@ -72,9 +68,9 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		const [value, setValue] = useState<V>(initialValue);
 
 		useEffect(() => {
-			const didChange = settings?.[name] !== value;
+			const didChange = settings[name] !== value;
 
-			if (didChange && settings) {
+			if (didChange) {
 				setSettingsToSave(prev => ({
 					...prev,
 					[name]: value,
@@ -95,9 +91,6 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 		setSettingsChanged,
 		createSetting,
 	}), [createSetting, handleSetSettingsToSave, saveChangedSettings, settings, settingsChanged, settingsToSave]);
-
-	if (settings === undefined)
-		return null;
 
 	return (
 		<SettingsContext.Provider value={controller}>

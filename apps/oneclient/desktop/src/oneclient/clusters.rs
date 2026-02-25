@@ -13,37 +13,37 @@ use serde::{Deserialize, Serialize};
 /// e.g.
 /// ```json
 /// {
-/// 	"clusters": [
-/// 		{
-/// 			"major_version": 21,
-/// 			"name": "Tricky Trials",
-/// 			"art": "/versions/art/Tricky_Trials.png",
-/// 			"entries": [
-/// 				{
-/// 					"minor_version": 5,
-/// 					"loader": "fabric",
-/// 					"tags": ["PvP", "Survival"]
-/// 				},
-/// 				{
-/// 					"minor_version": 5,
-/// 					"loader": "forge",
-/// 					"tags": ["PvP", "Survival"]
-/// 				}
-/// 			]
-/// 		},
-/// 		{
-/// 			"major_version": 20,
-/// 			"name": "Trails & Tales",
-/// 			"art": "/versions/art/Trails_Tales.png",
-/// 			"entries": [
-/// 				{
-/// 					"minor_version": 5,
-/// 					"loader": "fabric",
-/// 					"tags": ["PvP", "Survival"]
-/// 				}
-/// 			]
-/// 		}
-/// 	]
+///     "clusters": [
+///         {
+///             "major_version": 21,
+///             "name": "Tricky Trials",
+///             "art": "/versions/art/Tricky_Trials.png",
+///             "entries": [
+///                 {
+///                     "minor_version": 5,
+///                     "loader": "fabric",
+///                     "tags": ["PvP", "Survival"]
+///                 },
+///                 {
+///                     "minor_version": 5,
+///                     "loader": "forge",
+///                     "tags": ["PvP", "Survival"]
+///                 }
+///             ]
+///         },
+///         {
+///             "major_version": 20,
+///             "name": "Trails & Tales",
+///             "art": "/versions/art/Trails_Tales.png",
+///             "entries": [
+///                 {
+///                     "minor_version": 5,
+///                     "loader": "fabric",
+///                     "tags": ["PvP", "Survival"]
+///                 }
+///             ]
+///         }
+///     ]
 /// }
 /// ```
 #[derive(specta::Type, Deserialize, Serialize)]
@@ -90,7 +90,9 @@ pub async fn get_data_storage_versions() -> LauncherResult<OnlineClusterManifest
 }
 
 /// Download an art image (e.g. `/versions/art/Foo.png`) from the data storage CDN and
-/// save it to the local cache directory. Returns the OS-native path to the cached file,
+/// save it to the local cache directory.
+///
+/// Returns the OS-native path to the cached file,
 /// which the frontend converts to an `asset://` URL via `convertFileSrc`.
 /// If the file is already cached it is returned immediately without a network request.
 pub async fn cache_art_image(path: &str) -> LauncherResult<String> {
@@ -117,6 +119,7 @@ pub async fn cache_art_image(path: &str) -> LauncherResult<String> {
 }
 
 /// Re-download an art image and overwrite the on-disk cache.
+///
 /// Errors are silently ignored — the existing cached version is kept on failure.
 /// Call this from `tokio::spawn` so it runs fully in the background.
 pub async fn refresh_art_cache(path: &str) {
@@ -162,7 +165,7 @@ pub async fn init_clusters() -> LauncherResult<()> {
 	Ok(())
 }
 
-fn cluster_name(mc_version: &str, loader: &GameLoader) -> String {
+fn cluster_name(mc_version: &str, loader: GameLoader) -> String {
 	format!("{mc_version} {loader}")
 }
 
@@ -171,7 +174,7 @@ async fn create_cluster_if_not_exist(
 	mc_loader: GameLoader,
 	mc_loader_version: Option<&str>,
 ) -> LauncherResult<Option<ClusterModel>> {
-	let name = cluster_name(mc_version, &mc_loader);
+	let name = cluster_name(mc_version, mc_loader);
 
 	let cluster =
 		onelauncher_core::api::cluster::dao::get_cluster_by_folder_name(Path::new(&name)).await?;

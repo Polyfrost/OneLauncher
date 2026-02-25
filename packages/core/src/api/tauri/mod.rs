@@ -11,6 +11,7 @@ mod debug;
 pub use debug::*;
 
 pub trait TauRPCLauncherExt {
+	#[must_use]
 	fn use_launcher_api(self) -> Self;
 }
 

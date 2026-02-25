@@ -14,12 +14,12 @@ use tokio::sync::{OnceCell, RwLock};
 /// e.g.
 /// ```json
 /// {
-/// 	"versions": {
-/// 		"1.21.5": {
-/// 			"fabric": ["/generated/hud-fabric-1.21.5.mrpack"],
-/// 			"forge": ["/generated/hud-forge-1.21.5.mrpack"]
-/// 		}
-/// 	},
+///     "versions": {
+///         "1.21.5": {
+///             "fabric": ["/generated/hud-fabric-1.21.5.mrpack"],
+///             "forge": ["/generated/hud-forge-1.21.5.mrpack"]
+///         }
+///     },
 /// }
 /// ```
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -59,20 +59,20 @@ impl BundlesManager {
 
 		// Fast path: check cache under read lock.
 		let bundles_lock = self.bundles.read().await;
-		if let Some(entry) = bundles_lock.get(mc_version) {
-			if let Some(bundles) = entry.get(&loader) {
-				return Ok(bundles.clone());
-			}
+		if let Some(entry) = bundles_lock.get(mc_version)
+			&& let Some(bundles) = entry.get(&loader)
+		{
+			return Ok(bundles.clone());
 		}
 		drop(bundles_lock);
 
 		// Slow path: acquire write lock and re-check before populating (double-checked locking).
 		// This closes the TOCTOU gap between dropping the read lock and acquiring the write lock.
 		let mut bundles_lock = self.bundles.write().await;
-		if let Some(entry) = bundles_lock.get(mc_version) {
-			if let Some(bundles) = entry.get(&loader) {
-				return Ok(bundles.clone());
-			}
+		if let Some(entry) = bundles_lock.get(mc_version)
+			&& let Some(bundles) = entry.get(&loader)
+		{
+			return Ok(bundles.clone());
 		}
 
 		let mut found = Vec::new();
@@ -88,7 +88,7 @@ impl BundlesManager {
 
 			// we will be first checking the disk cache, if that fails we fetch from remote
 			for path in paths {
-				let Some(file_name) = path.split('/').last() else {
+				let Some(file_name) = path.split('/').next_back() else {
 					tracing::error!("no bundle name was found in path: {path}");
 					continue;
 				};
@@ -199,14 +199,14 @@ async fn download_and_load_bundle(
 					.headers()
 					.get(reqwest::header::ETAG)
 					.and_then(|v| v.to_str().ok())
-					.map(|s| s.to_string());
+					.map(std::string::ToString::to_string);
 				let stored_etag: Option<String> = tokio::fs::read_to_string(&etag_path).await.ok();
 
 				if let (Some(server), Some(stored)) = (&server_etag, &stored_etag) {
 					// ETag comparison: most reliable cache validation method.
 					if server == stored {
 						tracing::debug!("bundle cache hit via ETag for: {url}");
-						return Ok(ModpackFormat::from_file(disk_path).await?);
+						return ModpackFormat::from_file(disk_path).await;
 					}
 				} else {
 					// Fall back to Content-Length comparison when no ETag is available.
@@ -219,7 +219,7 @@ async fn download_and_load_bundle(
 					if let Some(length) = content_length {
 						let file_size = io::stat(disk_path).await.map(|m| m.len()).unwrap_or(0);
 						if length == file_size {
-							return Ok(ModpackFormat::from_file(disk_path).await?);
+							return ModpackFormat::from_file(disk_path).await;
 						}
 					}
 					// If neither ETag nor Content-Length are available, fall through to re-download.
@@ -230,13 +230,13 @@ async fn download_and_load_bundle(
 					status = %res.status(),
 					"failed to validate remote bundle cache for {url}; using cached local bundle"
 				);
-				return Ok(ModpackFormat::from_file(disk_path).await?);
+				return ModpackFormat::from_file(disk_path).await;
 			}
 			Err(e) => {
 				tracing::warn!(
 					"failed to validate remote bundle cache for {url}: {e}; using cached local bundle"
 				);
-				return Ok(ModpackFormat::from_file(disk_path).await?);
+				return ModpackFormat::from_file(disk_path).await;
 			}
 		}
 	}
@@ -245,15 +245,14 @@ async fn download_and_load_bundle(
 	http::download(Method::GET, &url, disk_path, None, None).await?;
 
 	// After a fresh download, persist the server ETag for next time.
-	if let Ok(head_res) = http::request(Method::HEAD, &url).await {
-		if let Some(etag) = head_res
+	if let Ok(head_res) = http::request(Method::HEAD, &url).await
+		&& let Some(etag) = head_res
 			.headers()
 			.get(reqwest::header::ETAG)
 			.and_then(|v| v.to_str().ok())
-		{
-			let _ = tokio::fs::write(&etag_path, etag).await;
-		}
+	{
+		let _ = tokio::fs::write(&etag_path, etag).await;
 	}
 
-	Ok(ModpackFormat::from_file(disk_path).await?)
+	ModpackFormat::from_file(disk_path).await
 }

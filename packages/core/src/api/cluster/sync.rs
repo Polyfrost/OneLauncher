@@ -118,8 +118,7 @@ pub async fn sync_cluster(cluster: &clusters::Model) -> LauncherResult<SyncActio
 			// Skip hidden files/folders
 			if file_path
 				.file_name()
-				.map(|s| s.to_string_lossy().starts_with('.'))
-				.unwrap_or(false)
+				.is_some_and(|s| s.to_string_lossy().starts_with('.'))
 			{
 				continue;
 			}

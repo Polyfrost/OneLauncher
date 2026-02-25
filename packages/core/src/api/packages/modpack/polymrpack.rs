@@ -75,7 +75,7 @@ impl ModpackFormatExt for PolyMrPackFormatImpl {
 		let mut loader: Option<GameLoader> = None;
 		let mut loader_version: Option<String> = None;
 
-		for (key, value) in serialized.dependencies.iter() {
+		for (key, value) in &serialized.dependencies {
 			if key == "minecraft" {
 				mc_version = Some(value.clone());
 			} else {
@@ -120,9 +120,14 @@ impl ModpackFormatExt for PolyMrPackFormatImpl {
 	{
 		let ModpackArchive { manifest, path, .. } = modpack_archive;
 
-		super::mrpack::download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress)
-			.await?;
-		super::mrpack::copy_overrides_folder(cluster, &path, &ingress).await?;
+		super::mrpack::download_and_link_packages(
+			cluster,
+			manifest,
+			skip_compatibility,
+			ingress.as_ref(),
+		)
+		.await?;
+		super::mrpack::copy_overrides_folder(cluster, path, &ingress).await?;
 
 		Ok(())
 	}
@@ -154,7 +159,7 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 			name: self.raw_manifest.name.clone(),
 			version: self.raw_manifest.version_id.clone(),
 			mc_version: self.mc_version.clone(),
-			loader: self.loader.clone(),
+			loader: self.loader,
 			loader_version: self.loader_version.clone(),
 			enabled: self.raw_manifest.enabled,
 			files,
@@ -174,8 +179,13 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 	) -> LauncherResult<()> {
 		let manifest = self.manifest().await?;
 
-		super::mrpack::download_and_link_packages(cluster, &manifest, skip_compatibility, &ingress)
-			.await?;
+		super::mrpack::download_and_link_packages(
+			cluster,
+			manifest,
+			skip_compatibility,
+			ingress.as_ref(),
+		)
+		.await?;
 
 		if let Some(path) = self.archive.as_ref() {
 			super::mrpack::copy_overrides_folder(cluster, path, &ingress).await?;
@@ -185,6 +195,7 @@ impl InstallableModpackFormatExt for PolyMrPackFormatImpl {
 	}
 }
 
+#[allow(clippy::too_many_lines)]
 async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<Vec<ModpackFile>> {
 	#[derive(Clone)]
 	struct FetchedPackage {
@@ -202,7 +213,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 			.base
 			.path
 			.split('/')
-			.last()
+			.next_back()
 			.unwrap_or(&file.base.path)
 			.to_string();
 
@@ -240,7 +251,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 				.first()
 				.cloned()
 				.ok_or_else(|| {
-					tracing::warn!("mrpack file '{}' does not contain a download URL", name)
+					tracing::warn!("mrpack file '{}' does not contain a download URL", name);
 				})
 				.unwrap_or(String::new());
 
@@ -251,8 +262,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 				.path
 				.split('/')
 				.next()
-				.and_then(|s| PackageType::try_from(s).ok())
-				.unwrap_or(PackageType::Mod);
+				.map_or(PackageType::Mod, PackageType::from);
 
 			files.push(ModpackFile {
 				enabled: file.enabled,
@@ -292,7 +302,7 @@ async fn to_modpack_files(mrpack_files: &Vec<PolyMrPackFile>) -> LauncherResult<
 			files.push(ModpackFile {
 				enabled: fetched.enabled,
 				hidden: fetched.hidden,
-				kind: ModpackFileKind::Managed((fetched_pkg, version)),
+				kind: ModpackFileKind::Managed(Box::new((fetched_pkg, version))),
 				overrides: fetched.overrides.clone(),
 			});
 		} else {

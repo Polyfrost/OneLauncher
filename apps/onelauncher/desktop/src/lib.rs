@@ -50,6 +50,7 @@ async fn initialize_core() -> LauncherResult<()> {
 }
 
 #[tracing::instrument(skip_all)]
+#[allow(clippy::large_stack_frames)]
 async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult<tauri::App> {
 	let router = taurpc::Router::new()
 		.export_config(
@@ -125,11 +126,11 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 		.ok_or_else(|| anyhow::anyhow!("no window called main was found"))?;
 
 	// Initialize window decorations based on settings
-	let win_clone = win.clone();
+	let win_clone = win;
 	let app_handle = handle.clone();
 	tokio::task::spawn(async move {
 		if let Ok(state) = State::get().await {
-			let settings = state.settings.read().await;
+			let _settings = state.settings.read().await;
 			// native_window_frame=true means use native decorations
 			// native_window_frame=false means use custom frame (no decorations)
 			#[cfg(target_os = "macos")]
@@ -143,7 +144,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 							use objc2_app_kit::{NSWindow, NSWindowButton};
 
 							if let Ok(ns_window_ptr) = win_weak.ns_window() {
-								let ns_window = ns_window_ptr as *mut NSWindow;
+								let ns_window = ns_window_ptr.cast::<NSWindow>();
 								unsafe {
 									let ns_window = &*ns_window;
 									if let Some(btn) =

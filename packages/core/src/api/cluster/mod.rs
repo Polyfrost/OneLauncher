@@ -187,7 +187,7 @@ async fn install_cluster(
 
 	let version = versions_list[version_index].clone();
 
-	let minecraft_updated = metadata::is_version_updated(version_index, &versions_list);
+	let minecraft_updated = metadata::is_version_updated(version_index, versions_list);
 
 	drop(metadata);
 

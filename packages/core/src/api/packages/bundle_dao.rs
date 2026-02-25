@@ -248,6 +248,7 @@ pub async fn remove_bundle_override(
 }
 
 /// Returns whether a specific bundle package mapping still exists in the cluster.
+///
 /// Useful to avoid deleting overrides during update replacements where the old hash
 /// is removed after a new hash has already been linked and tracked.
 pub async fn has_bundle_package_mapping(

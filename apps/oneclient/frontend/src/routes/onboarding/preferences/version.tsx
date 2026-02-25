@@ -64,7 +64,7 @@ function RouteComponent() {
 	);
 }
 
-function VersionCard({ cluster, versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCluster>>> }) {
+function VersionCard({ cluster, versionData: _versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCluster>>> }) {
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const toggle = () => {
 		setSelected(prev => !prev);

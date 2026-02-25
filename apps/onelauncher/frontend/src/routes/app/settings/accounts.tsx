@@ -18,29 +18,21 @@ interface Account {
 }
 
 function RouteComponent() {
-	const { data: usersData, isLoading: usersLoading } = useCommand('getUsers', bindings.core.getUsers);
-	const { data: defaultUserData, isLoading: defaultUserLoading } = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
+	const { data: usersData } = useCommand('getUsers', bindings.core.getUsers);
+	const { data: defaultUserData } = useCommand('getDefaultUser', () => bindings.core.getDefaultUser(false));
 
 	const addAccount = useCommand('openMsaLogin', bindings.core.openMsaLogin, {
 		enabled: false,
 		subscribed: false,
 	});
 
-	if (usersLoading || defaultUserLoading)
-		return (
-			<Sidebar.Page>
-				<h1>Accounts</h1>
-				<p>Loading accounts...</p>
-			</Sidebar.Page>
-		);
-
 	return (
 		<Sidebar.Page>
 			<h1>Accounts</h1>
 			<ScrollableContainer>
 				<div className="h-full space-y-2">
-					<Show fallback={<p>No accounts found.</p>} when={usersData && usersData.length > 0}>
-						{usersData?.map(account => (
+					<Show fallback={<p>No accounts found.</p>} when={usersData.length > 0}>
+						{usersData.map(account => (
 							<AccountRow
 								account={account}
 								isCurrent={account.id === defaultUserData?.id}

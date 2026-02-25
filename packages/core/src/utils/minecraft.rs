@@ -30,8 +30,8 @@ pub enum SkinVariant {
 impl std::fmt::Display for SkinVariant {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			SkinVariant::Classic => write!(f, "classic"),
-			SkinVariant::Slim => write!(f, "slim"),
+			Self::Classic => write!(f, "classic"),
+			Self::Slim => write!(f, "slim"),
 		}
 	}
 }
@@ -78,14 +78,6 @@ pub async fn fetch_player_profile(uuid: &str) -> LauncherResult<MojangPlayerProf
 		properties: Vec<Properties>,
 	}
 
-	let response = http::fetch_json::<Response>(
-		Method::GET,
-		&format!("https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"),
-		None,
-		None,
-	)
-	.await?;
-
 	#[derive(Default, serde::Deserialize)]
 	#[serde(default)]
 	struct TextureMetadata {
@@ -110,6 +102,14 @@ pub async fn fetch_player_profile(uuid: &str) -> LauncherResult<MojangPlayerProf
 	struct DecodedProperties {
 		textures: Textures,
 	}
+
+	let response = http::fetch_json::<Response>(
+		Method::GET,
+		&format!("https://sessionserver.mojang.com/session/minecraft/profile/{uuid}"),
+		None,
+		None,
+	)
+	.await?;
 
 	let texture_property = response
 		.properties
@@ -138,7 +138,7 @@ pub async fn fetch_player_profile(uuid: &str) -> LauncherResult<MojangPlayerProf
 	let is_slim = decoded
 		.skin
 		.as_ref()
-		.map_or(false, |s| s.metadata.model.as_deref() == Some("slim"));
+		.is_some_and(|s| s.metadata.model.as_deref() == Some("slim"));
 
 	Ok(MojangPlayerProfile {
 		uuid: response.id,
@@ -201,7 +201,7 @@ pub async fn upload_skin_bytes(
 	skin_variant: SkinVariant,
 ) -> LauncherResult<MojangSkin> {
 	let bytes_part =
-		multipart::Part::bytes(skin_data).mime_str(&format!("image/{}", image_format))?;
+		multipart::Part::bytes(skin_data).mime_str(&format!("image/{image_format}"))?;
 
 	let form = multipart::Form::new()
 		.text("variant", skin_variant.to_string())
@@ -227,7 +227,6 @@ pub async fn upload_skin_bytes(
 	}
 
 	let full_profile = res.json::<MojangFullPlayerProfile>().await?;
-	dbg!(&full_profile);
 	full_profile
 		.skins
 		.first()

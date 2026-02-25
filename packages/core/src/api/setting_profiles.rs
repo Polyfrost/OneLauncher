@@ -48,7 +48,7 @@ pub mod dao {
 		if let Some(name) = profile.name.try_as_ref()
 			&& (name.is_empty() || profile.is_global())
 		{
-			return Err(DaoError::InvalidValue(name.to_string(), "name".into()).into());
+			return Err(DaoError::InvalidValue(name.clone(), "name".into()).into());
 		}
 
 		let state = State::get().await?;

@@ -162,7 +162,8 @@ impl OneClientApi for OneClientApiImpl {
 			.ok_or_else(|| anyhow::anyhow!("cluster with id {} not found", cluster_id))?;
 
 		match package {
-			ModpackFileKind::Managed((pkg, version)) => {
+			ModpackFileKind::Managed(box_) => {
+				let (pkg, version) = *box_;
 				let model = api::packages::download_package(&pkg, &version, None, None).await?;
 				api::packages::link_package(&model, &cluster, skip_compatibility).await?;
 				api::packages::bundle_dao::track_bundle_package(

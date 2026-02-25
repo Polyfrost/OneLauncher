@@ -160,9 +160,7 @@ pub async fn test_get_versions() -> LauncherResult<()> {
 			.map(|e| e.version_id.to_string())
 			.collect::<Vec<String>>();
 
-		let res = provider
-			.get_versions(&slugs.iter().map(|s| s.to_string()).collect::<Vec<String>>())
-			.await?;
+		let res = provider.get_versions(&slugs.clone()).await?;
 
 		assert_eq!(res.len(), slugs.len());
 	}
@@ -186,7 +184,7 @@ pub async fn test_download_packages() -> LauncherResult<()> {
 
 			let pkg = provider.get(entry.id).await?;
 			let ver_id = entry.version_id.to_string();
-			let versions = provider.get_versions(&[ver_id.clone()]).await?;
+			let versions = provider.get_versions(std::slice::from_ref(&ver_id)).await?;
 			let ver = versions.first().expect("No version found");
 
 			let db_model = packages::download_package(&pkg, ver, None, None).await?;
@@ -205,15 +203,13 @@ pub async fn test_download_packages() -> LauncherResult<()> {
 pub async fn test_search_packages() -> LauncherResult<()> {
 	let cf = init!();
 
-	for provider in Provider::get_providers().iter() {
+	for provider in Provider::get_providers() {
 		if provider == &Provider::CurseForge && !cf {
 			continue;
 		}
 
 		let query = SearchQuery::default();
 		let res = provider.search(&query).await?;
-
-		dbg!(&res.items);
 
 		assert!(!res.items.is_empty());
 	}

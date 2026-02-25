@@ -1,8 +1,8 @@
 import type { ModCardContextApi } from '@/components';
 import { ModCardContext, ModList } from '@/components';
 import { useCustomBundle } from '@/hooks/useCustomBundle';
-import { getFilePackageType } from '@/routes/app/cluster/mods';
 import { bindings } from '@/main';
+import { getFilePackageType } from '@/routes/app/cluster/mods';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -26,8 +26,7 @@ function RouteComponent() {
 	const customBundle = useCustomBundle(bundles, installedPackages, cluster, 'resourcepack');
 
 	const allBundles = useMemo(() =>
-		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,
-	[filteredBundles, customBundle]);
+		customBundle !== null ? [...filteredBundles, customBundle] : filteredBundles,	[filteredBundles, customBundle]);
 
 	const customTogglePaths = useMemo(() => new Set(['__custom__']), []);
 

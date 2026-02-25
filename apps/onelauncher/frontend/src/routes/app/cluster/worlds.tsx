@@ -23,10 +23,10 @@ function RouteComponent() {
 				<div className="h-full">
 					<Show
 						fallback={<div className="text-border/400">No worlds found.</div>}
-						when={list.data !== undefined && list.data.length > 0}
+						when={list.data.length > 0}
 					>
 						<div className="flex flex-col gap-2">
-							{list.data?.map(data => (
+							{list.data.map(data => (
 								<WorldEntry cluster_path={cluster.data?.folder_name || ''} key={data} name={data} />
 							))}
 						</div>

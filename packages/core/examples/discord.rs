@@ -1,15 +1,23 @@
 use discord_rich_presence::activity::Timestamps;
-use onelauncher_core::{api::proxy::ProxyEmpty, error::LauncherResult, initialize_core, store::{CoreOptions, State}};
+use onelauncher_core::api::proxy::ProxyEmpty;
+use onelauncher_core::error::LauncherResult;
+use onelauncher_core::initialize_core;
+use onelauncher_core::store::{CoreOptions, State};
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
-	initialize_core(CoreOptions {
-		discord_client_id: Some(String::from("1274084193193955408")),
-		..Default::default()
-	}, ProxyEmpty::new()).await?;
+	initialize_core(
+		CoreOptions {
+			discord_client_id: Some(String::from("1274084193193955408")),
+			..Default::default()
+		},
+		ProxyEmpty::new(),
+	)
+	.await?;
 
 	let state = State::get().await?;
-	let Some(rpc) = &state.rpc else {
+	let rpc_lock = state.rpc.read().await;
+	let Some(rpc) = &*rpc_lock else {
 		println!("RPC is not initialized");
 		return Ok(());
 	};
@@ -18,11 +26,13 @@ async fn main() -> LauncherResult<()> {
 	println!("Set Discord message");
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-	rpc.set_message("New timestamp.", Some(Timestamps::new())).await;
+	rpc.set_message("New timestamp.", Some(Timestamps::new()))
+		.await;
 	println!("Set Discord message");
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-	rpc.set_message("Reverted back to the old timestamp!", None).await;
+	rpc.set_message("Reverted back to the old timestamp!", None)
+		.await;
 	println!("Set Discord message");
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;

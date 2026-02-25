@@ -65,7 +65,7 @@ impl ProviderExt for CurseForgeProviderImpl {
 							"[{}]",
 							game_versions
 								.iter()
-								.map(|v| format!("\"{}\"", v))
+								.map(|v| format!("\"{v}\""))
 								.collect::<Vec<String>>()
 								.join(",")
 						);
@@ -79,7 +79,7 @@ impl ProviderExt for CurseForgeProviderImpl {
 							"[{}]",
 							loaders
 								.iter()
-								.map(|l| (CFLoader::from(l.clone()) as u32).to_string())
+								.map(|l| (CFLoader::from(*l) as u32).to_string())
 								.collect::<Vec<String>>()
 								.join(",")
 						);
@@ -146,7 +146,7 @@ impl ProviderExt for CurseForgeProviderImpl {
 		hashes: &[String],
 	) -> LauncherResult<HashMap<String, ManagedVersion>> {
 		let body = serde_json::json!({
-			"fingerprints": hashes.into_iter().filter_map(|hash| hash.parse::<u32>().ok()).collect::<Vec<u32>>()
+			"fingerprints": hashes.iter().filter_map(|hash| hash.parse::<u32>().ok()).collect::<Vec<u32>>()
 		});
 
 		#[derive(Deserialize)]
@@ -198,7 +198,7 @@ impl ProviderExt for CurseForgeProviderImpl {
 	) -> LauncherResult<Vec<ManagedUser>> {
 		match author {
 			PackageAuthor::Users(users) => Ok(users),
-			_ => Err(PackageError::UnsupportedAuthorType(author).into()),
+			PackageAuthor::Team { .. } => Err(PackageError::UnsupportedAuthorType(author).into()),
 		}
 	}
 
@@ -293,7 +293,7 @@ async fn fetch_advanced<T: DeserializeOwned, F: FnOnce(&mut Url)>(
 			onelauncher_entity::package::Provider::CurseForge,
 		))?;
 
-	let mut headers = headers.unwrap_or(HashMap::<&str, &str>::new());
+	let mut headers = headers.unwrap_or_default();
 	headers.insert("x-api-key", key);
 
 	let url = &mut Url::parse(format!("{}{}", crate::constants::CURSEFORGE_API_URL, url).as_str())?;
@@ -354,7 +354,7 @@ impl From<PackageType> for CFPackageType {
 }
 
 /// Mapping of Curseforge supported loaders to their respective id
-#[derive(Debug, Default, Clone, Copy, Serialize_repr, Deserialize_repr, Hash, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Serialize_repr, Deserialize_repr, Hash, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CFLoader {
 	#[default]
@@ -370,13 +370,13 @@ pub enum CFLoader {
 impl From<String> for CFLoader {
 	fn from(loader: String) -> Self {
 		match loader.to_lowercase().as_str() {
-			"forge" => CFLoader::Forge,
-			"cauldron" => CFLoader::Cauldron,
-			"liteloader" => CFLoader::LiteLoader,
-			"fabric" => CFLoader::Fabric,
-			"quilt" => CFLoader::Quilt,
-			"neoforge" => CFLoader::NeoForge,
-			_ => CFLoader::Any,
+			"forge" => Self::Forge,
+			"cauldron" => Self::Cauldron,
+			"liteloader" => Self::LiteLoader,
+			"fabric" => Self::Fabric,
+			"quilt" => Self::Quilt,
+			"neoforge" => Self::NeoForge,
+			_ => Self::Any,
 		}
 	}
 }
@@ -384,11 +384,11 @@ impl From<String> for CFLoader {
 impl From<GameLoader> for CFLoader {
 	fn from(loader: GameLoader) -> Self {
 		match loader {
-			GameLoader::Forge => CFLoader::Forge,
-			GameLoader::Fabric | GameLoader::LegacyFabric => CFLoader::Fabric,
-			GameLoader::Quilt => CFLoader::Quilt,
-			GameLoader::NeoForge => CFLoader::NeoForge,
-			_ => CFLoader::Any,
+			GameLoader::Forge => Self::Forge,
+			GameLoader::Fabric | GameLoader::LegacyFabric => Self::Fabric,
+			GameLoader::Quilt => Self::Quilt,
+			GameLoader::NeoForge => Self::NeoForge,
+			GameLoader::Vanilla => Self::Any,
 		}
 	}
 }
@@ -400,7 +400,7 @@ impl From<CFLoader> for GameLoader {
 			CFLoader::Fabric => Self::Fabric,
 			CFLoader::Quilt => Self::Quilt,
 			CFLoader::NeoForge => Self::NeoForge,
-			_ => GameLoader::Vanilla,
+			_ => Self::Vanilla,
 		}
 	}
 }
@@ -448,10 +448,7 @@ impl From<CFPackage> for ManagedPackage {
 			mc_versions.push(index.game_version);
 			latest_version_ids.push(index.file_id.to_string());
 
-			if let Some(loader) = index
-				.mod_loader
-				.and_then(|loader| GameLoader::try_from(loader).ok())
-			{
+			if let Some(loader) = index.mod_loader.map(GameLoader::from) {
 				loaders.push(loader);
 			}
 		}
@@ -473,7 +470,11 @@ impl From<CFPackage> for ManagedPackage {
 			server: PackageSide::Unknown, // TODO: determine server side
 			categories: CurseForgeCategories::to_list(
 				&package_type,
-				&value.categories.into_iter().map(|c| c.id).collect(),
+				&value
+					.categories
+					.into_iter()
+					.map(|c| c.id)
+					.collect::<Vec<_>>(),
 			),
 			package_type,
 			license: None,
@@ -508,8 +509,6 @@ impl From<CFPackage> for ManagedPackage {
 					.iter()
 					.find(|l| l.link_type == CFSocialLinkType::Website)
 					.map(|l| l.url.clone()),
-
-				..Default::default()
 			},
 			status: value.status.into(),
 			downloads: value.download_count,
@@ -531,11 +530,7 @@ impl From<CFPackage> for SearchResult {
 		let loaders: Vec<GameLoader> = value
 			.latest_files_indexes
 			.iter()
-			.filter_map(|index| {
-				index
-					.mod_loader
-					.and_then(|loader| GameLoader::try_from(loader).ok())
-			})
+			.filter_map(|index| index.mod_loader.map(GameLoader::from))
 			.collect::<HashSet<_>>()
 			.into_iter()
 			.collect();
@@ -547,8 +542,7 @@ impl From<CFPackage> for SearchResult {
 			author: value
 				.authors
 				.first()
-				.and_then(|a| Some(a.name.clone()))
-				.unwrap_or(String::from("Unknown")),
+				.map_or_else(|| String::from("Unknown"), |a| a.name.clone()),
 			description: value.summary,
 			client_side: PackageSide::Unknown,
 			server_side: PackageSide::Unknown,
@@ -556,7 +550,11 @@ impl From<CFPackage> for SearchResult {
 			icon_url: value.logo.map_or(String::new(), |l| l.url),
 			categories: CurseForgeCategories::to_list(
 				&package_type,
-				&value.categories.into_iter().map(|c| c.id).collect(),
+				&value
+					.categories
+					.into_iter()
+					.map(|c| c.id)
+					.collect::<Vec<_>>(),
 			),
 			loaders,
 			package_type,
@@ -602,11 +600,8 @@ pub enum CFStatus {
 impl From<CFStatus> for PackageStatus {
 	fn from(status: CFStatus) -> Self {
 		match status {
-			CFStatus::Unknown => Self::Active,
-			CFStatus::New => Self::Active,
-			CFStatus::Approved => Self::Active,
-			CFStatus::Rejected => Self::Abandoned,
-			CFStatus::Deleted => Self::Abandoned,
+			CFStatus::Unknown | CFStatus::New | CFStatus::Approved => Self::Active,
+			CFStatus::Rejected | CFStatus::Deleted => Self::Abandoned,
 		}
 	}
 }
@@ -751,7 +746,7 @@ pub struct CFModFile {
 }
 
 impl From<CFModFile> for ManagedVersion {
-	fn from(value: CFModFile) -> ManagedVersion {
+	fn from(value: CFModFile) -> Self {
 		let mut hashes = HashMap::new();
 
 		for hash in value.hashes {
@@ -770,16 +765,15 @@ impl From<CFModFile> for ManagedVersion {
 			}
 		}
 
-		let mut files = Vec::new();
-		files.push(ManagedVersionFile {
+		let files = vec![ManagedVersionFile {
 			url: value.download_url,
 			file_name: value.file_name.clone(),
 			primary: true,
 			size: value.file_size_on_disk.unwrap_or(value.file_length),
 			sha1: hashes.get("sha1").cloned().unwrap_or_default(),
-		});
+		}];
 
-		ManagedVersion {
+		Self {
 			project_id: value.mod_id.to_string(),
 			version_id: value.id.to_string(),
 			display_name: value.display_name.clone(),
@@ -863,12 +857,10 @@ pub enum CFRelationType {
 impl From<CFRelationType> for PackageDependencyType {
 	fn from(value: CFRelationType) -> Self {
 		match value {
-			CFRelationType::Embedded => Self::Embedded,
-			CFRelationType::Optional => Self::Optional,
+			CFRelationType::Embedded | CFRelationType::Include => Self::Embedded,
+			CFRelationType::Optional | CFRelationType::Tool => Self::Optional,
 			CFRelationType::Required => Self::Required,
-			CFRelationType::Tool => Self::Optional,
 			CFRelationType::Incompatible => Self::Incompatible,
-			CFRelationType::Include => Self::Embedded,
 		}
 	}
 }

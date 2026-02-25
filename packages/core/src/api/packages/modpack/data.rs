@@ -29,7 +29,7 @@ pub struct ModpackManifest {
 	pub files: Vec<ModpackFile>,
 }
 
-fn default_false() -> bool {
+const fn default_false() -> bool {
 	false
 }
 
@@ -47,6 +47,6 @@ pub struct ModpackFile {
 #[onelauncher_macro::specta]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ModpackFileKind {
-	Managed((ManagedPackage, ManagedVersion)),
+	Managed(Box<(ManagedPackage, ManagedVersion)>),
 	External(ExternalPackage),
 }

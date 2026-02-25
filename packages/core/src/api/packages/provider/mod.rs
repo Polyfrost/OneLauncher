@@ -55,7 +55,9 @@ pub trait ProviderExt {
 	async fn get_body(&self, body: &ManagedPackageBody) -> LauncherResult<String> {
 		match body {
 			ManagedPackageBody::Raw(raw) => Ok(raw.clone()),
-			_ => Err(PackageError::UnsupportedBodyType(body.clone()).into()),
+			ManagedPackageBody::Url(_) => {
+				Err(PackageError::UnsupportedBodyType(body.clone()).into())
+			}
 		}
 	}
 }

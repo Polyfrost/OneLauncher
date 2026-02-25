@@ -68,9 +68,10 @@ pub async fn launch_minecraft(
 	)
 	.await?;
 
-	let version_name = loader_version
-		.as_ref()
-		.map_or(version.id.clone(), |it| format!("{}-{}", version.id, it.id));
+	let version_name = loader_version.as_ref().map_or_else(
+		|| version.id.clone(),
+		|it| format!("{}-{}", version.id, it.id),
+	);
 
 	let version_info =
 		metadata::download_version_info(&version, loader_version.as_ref(), None, None).await?;

@@ -178,7 +178,7 @@ impl ProcessStore {
 					process_guard
 						.process_loop
 						.as_ref()
-						.map_or(true, |handle| handle.is_finished()),
+						.is_none_or(|handle| handle.is_finished()),
 					process_guard.child_type.clone(),
 				)
 			};
@@ -199,7 +199,7 @@ impl ProcessStore {
 					Ok(Some(_)) => true,
 					Ok(None) => {
 						let exists = process_exists_os(pid);
-						if exists { false } else { true }
+						!exists
 					}
 					Err(err) => {
 						tracing::warn!(
@@ -232,6 +232,7 @@ impl ProcessStore {
 	}
 
 	/// Spawns a new process (Minecraft Instance)
+	#[allow(clippy::too_many_lines)]
 	pub async fn spawn(
 		&self,
 		cluster_id: ClusterId,
@@ -549,6 +550,7 @@ async fn wait_for_exit(
 fn process_exists_os(pid: u32) -> bool {
 	// SAFETY: `kill` with signal 0 performs existence/permission checks only and
 	// does not deliver a signal.
+	#[allow(clippy::cast_possible_wrap)]
 	let rc = unsafe { libc::kill(pid as i32, 0) };
 	if rc == 0 {
 		return true;

@@ -105,7 +105,10 @@ pub async fn get_log_by_name(
 		return Ok(None);
 	}
 
-	let content = if file_name.ends_with(".gz") {
+	let content = if std::path::Path::new(file_name)
+		.extension()
+		.is_some_and(|ext| ext.eq_ignore_ascii_case("gz"))
+	{
 		io::read_gz_to_string(&path).await?
 	} else {
 		io::read_to_string(&path).await?
@@ -136,6 +139,7 @@ pub async fn get_process_log_tail(
 	Ok(Some(tail))
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::naive_bytecount)]
 async fn read_process_log_tail(
 	path: &Path,
 	max_lines: usize,
@@ -174,12 +178,10 @@ async fn read_process_log_tail(
 		file.read_exact(&mut chunk).await?;
 		newline_count += chunk.iter().filter(|byte| **byte == b'\n').count();
 
-		if buffer.is_empty() {
-			buffer = chunk;
-		} else {
+		if !buffer.is_empty() {
 			chunk.extend_from_slice(&buffer);
-			buffer = chunk;
 		}
+		buffer = chunk;
 	}
 
 	let raw = String::from_utf8_lossy(&buffer);

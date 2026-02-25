@@ -1,9 +1,8 @@
 // === API ===
-pub const CURSEFORGE_API_KEY: &'static str =
-	"$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kpFB0fsmE/d42ZAfFgCe";
-pub const DISCORD_CLIENT_ID: &'static str = "1426999264633946334";
+pub const CURSEFORGE_API_KEY: &str = "$2a$10$6utA1UNSmFPrE/Lh7b7ndeeGmiOkjKNY8kpFB0fsmE/d42ZAfFgCe";
+pub const DISCORD_CLIENT_ID: &str = "1426999264633946334";
 
 // === Meta ===
 // Cannot contain trailing slash
-pub const META_URL_BASE: &'static str =
+pub const META_URL_BASE: &str =
 	"https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient";

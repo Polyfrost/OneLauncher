@@ -19,7 +19,7 @@ export function useSettings() {
 
 	const createSetting = useMemo(() => <TKey extends keyof Settings>(key: TKey): [Settings[TKey], Setter<TKey>] => {
 		return [setting(key), value => setSetting(key, value)];
-	}, [setting]);
+	}, [setting, setSetting]);
 
 	return { setting, setSetting, createSetting };
 }
@@ -62,7 +62,7 @@ export function useClusterProfile(cluster: ClusterModel) {
 				throw new Error('No settings profile name');
 			await bindings.core.updateClusterProfile(name, { ...emptyUpdate, ...update });
 			profileSrc.refetch();
-		},	[profileName, cluster.name, cluster.id]);
+		},	[profileName, cluster.name, cluster.id, profileSrc]);
 	// const updateProfile = useMemo(() => (update: Partial<ProfileUpdate>) => setProfile({ ...profile.data, ...update }), [setProfile, profile.data]);
 	return { profile, setProfile, updateProfile };
 }

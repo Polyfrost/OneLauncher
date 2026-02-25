@@ -60,11 +60,11 @@ function getFileKey(file: ModpackFile): string {
 	if ('Managed' in file.kind)
 		return `managed:${file.kind.Managed[0].id}`;
 	if ('External' in file.kind)
-		return `external:${file.kind.External.sha1 ?? file.kind.External.url ?? file.kind.External.name}`;
+		return `external:${file.kind.External.sha1 || file.kind.External.url || file.kind.External.name}`;
 	return 'unknown';
 }
 
-const modMetadataCache = new Map<string, Promise<ModInfo>>();
+const modMetadataCache: Map<string, Promise<ModInfo>> = new Map();
 
 function fetchModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo> {
 	const key = getFileKey(file);
@@ -136,16 +136,17 @@ export function ModCard({ file, cluster }: ModCardProps) {
 			if (!cancelled)
 				setModMetadata(meta);
 		}).catch(() => {});
-		return () => { cancelled = true; };
+		return () => {
+			cancelled = true;
+		};
 	}, [file, useVerticalGridLayout]);
 
 	const kind = file.kind;
-		// Directory-based packages (folders dropped into resourcepacks/shaderpacks/datapacks)
-		// cannot be toggled via .disabled rename — skip toggle mode for them.
-		const isDirectory = useMemo(() =>
-			'External' in kind && !kind.External.name.includes('.'),
-		[kind]);
-		const effectiveToggleMode = useToggleMode && !isDirectory;
+	// Directory-based packages (folders dropped into resourcepacks/shaderpacks/datapacks)
+	// cannot be toggled via .disabled rename — skip toggle mode for them.
+	const isDirectory = useMemo(() =>
+		'External' in kind && !kind.External.name.includes('.'), [kind]);
+	const effectiveToggleMode = useToggleMode && !isDirectory;
 	const isInstalled = useMemo(() => {
 		if (installedPackages)
 			if ('Managed' in kind) {
@@ -161,18 +162,18 @@ export function ModCard({ file, cluster }: ModCardProps) {
 
 	// In toggle mode, "selected" = enabled (file_name doesn't end with .disabled)
 	const isFileEnabled = useMemo(() => {
-			if (!effectiveToggleMode)
-				return true;
-			if ('Managed' in kind) {
-				const primary = kind.Managed[1].files.find(f => f.primary) ?? kind.Managed[1].files[0];
-				return !primary?.file_name.endsWith('.disabled');
-			}
-			return !kind.External.name.endsWith('.disabled');
-		}, [effectiveToggleMode, kind]);
-		const [isSelected, setSelected] = useState(effectiveToggleMode ? isFileEnabled : isInstalled);
-		useEffect(() => {
-			setSelected(effectiveToggleMode ? isFileEnabled : isInstalled);
-		}, [isInstalled, effectiveToggleMode, isFileEnabled]);
+		if (!effectiveToggleMode)
+			return true;
+		if ('Managed' in kind) {
+			const primary = kind.Managed[1].files.find(f => f.primary) ?? kind.Managed[1].files[0];
+			return !primary.file_name.endsWith('.disabled');
+		}
+		return !kind.External.name.endsWith('.disabled');
+	}, [effectiveToggleMode, kind]);
+	const [isSelected, setSelected] = useState(effectiveToggleMode ? isFileEnabled : isInstalled);
+	useEffect(() => {
+		setSelected(effectiveToggleMode ? isFileEnabled : isInstalled);
+	}, [isInstalled, effectiveToggleMode, isFileEnabled]);
 
 	const download = useCommandMut(async () => {
 		if ('Managed' in kind) {
@@ -223,11 +224,11 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	});
 
 	const handleOnClick = () => {
-			// Folder-based packages (resource packs, shader packs, data packs as directories)
-			// cannot be toggled or removed — treat them as entirely non-interactive.
-			if (isDirectory)
-				return;
-			if (effectiveToggleMode)
+		// Folder-based packages (resource packs, shader packs, data packs as directories)
+		// cannot be toggled or removed — treat them as entirely non-interactive.
+		if (isDirectory)
+			return;
+		if (effectiveToggleMode)
 			(async () => {
 				await toggle.mutateAsync();
 				await queryClient.invalidateQueries({ queryKey: ['getLinkedPackages', cluster.id] });

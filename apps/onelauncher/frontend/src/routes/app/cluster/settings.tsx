@@ -27,18 +27,15 @@ function RouteComponent() {
 		save.refetch();
 	});
 
-	if (_result.isPending)
-		return <p>loading...</p>;
-
 	return (
 		<Sidebar.Page>
 			<ScrollableContainer>
 				<div className="h-full">
 					<h1>Minecraft Settings</h1>
 
-					<GameSettings key={_result.data?.name} settings={_result.data} />
+					<GameSettings key={_result.data.name} settings={_result.data} />
 
-					<ProcessSettings key={_result.data?.name} settings={_result.data} />
+					<ProcessSettings key={_result.data.name} settings={_result.data} />
 				</div>
 			</ScrollableContainer>
 		</Sidebar.Page>

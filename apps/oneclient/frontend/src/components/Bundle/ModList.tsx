@@ -1,5 +1,5 @@
 import type { ClusterModel, ModpackArchive } from '@/bindings.gen';
-import { Bundle, ModCardContext, getModMetaDataName } from '@/components';
+import { Bundle, getModMetaDataName, ModCardContext } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { Button, Tab, TabContent, TabList, TabPanel, Tabs, TextField } from '@onelauncher/common/components';
 import { SearchMdIcon } from '@untitled-theme/icons-react';
@@ -77,30 +77,30 @@ export function ModList({ bundles, cluster, selectedTab, onTabChange, toggleBund
 
 			{isSearching
 				? (
-					<div className={useVerticalGridLayout ? 'pt-0' : 'p-2'}>
-						<Bundle cluster={cluster} files={searchResults} />
-					</div>
-				)
+						<div className={useVerticalGridLayout ? 'pt-0' : 'p-2'}>
+							<Bundle cluster={cluster} files={searchResults} />
+						</div>
+					)
 				: (
-					<TabContent className={useVerticalGridLayout ? 'pt-0' : ''}>
-						{nonEmptyBundles.map((bundleData) => {
-							const isToggle = toggleBundlePaths?.has(bundleData.path) ?? false;
-							const content = <Bundle cluster={cluster} files={bundleData.manifest.files} />;
+						<TabContent className={useVerticalGridLayout ? 'pt-0' : ''}>
+							{nonEmptyBundles.map((bundleData) => {
+								const isToggle = toggleBundlePaths?.has(bundleData.path) ?? false;
+								const content = <Bundle cluster={cluster} files={bundleData.manifest.files} />;
 
-							return (
-								<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
-									{isToggle
-										? (
-												<ModCardContext.Provider value={{ ...ctx, useToggleMode: true }}>
-													{content}
-												</ModCardContext.Provider>
-											)
-										: content}
-								</TabPanel>
-							);
-						})}
-					</TabContent>
-				)}
+								return (
+									<TabPanel className={useVerticalGridLayout ? 'max-w-192' : ''} key={getBundleName(bundleData.manifest.name)} value={getBundleName(bundleData.manifest.name)}>
+										{isToggle
+											? (
+													<ModCardContext.Provider value={{ ...ctx, useToggleMode: true }}>
+														{content}
+													</ModCardContext.Provider>
+												)
+											: content}
+									</TabPanel>
+								);
+							})}
+						</TabContent>
+					)}
 		</Tabs>
 	);
 }

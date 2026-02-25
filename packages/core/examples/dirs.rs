@@ -2,7 +2,9 @@ use onelauncher_core::store::{Core, CoreOptions, Dirs};
 
 #[tokio::main]
 async fn main() {
-	Core::initialize(CoreOptions::default()).await.expect("couldn't initialize core");
+	Core::initialize(CoreOptions::default())
+		.await
+		.expect("couldn't initialize core");
 	let dirs = Dirs::get().await.expect("couldn't initialize dirs");
 
 	println!("         Base dir : {}", dirs.base_dir().display());

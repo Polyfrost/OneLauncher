@@ -260,7 +260,12 @@ function InstallButton() {
 		return versions.items[0];
 	}, [browserContext.cluster, versions]);
 
-	const download = useDownloadPackage(browserContext.cluster!, provider, version!, true);
+	const download = useDownloadPackage(
+		(browserContext.cluster || {}) as ClusterModel,
+		provider,
+		(version || {}) as ManagedVersion,
+		true,
+	);
 	const downloadRef = useRef(download);
 	useEffect(() => {
 		downloadRef.current.reset();

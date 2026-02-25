@@ -127,7 +127,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 
 	// Initialize window decorations based on settings
 	let win_clone = win;
-	let app_handle = handle.clone();
+	let _app_handle = handle.clone();
 	tokio::task::spawn(async move {
 		if let Ok(state) = State::get().await {
 			let _settings = state.settings.read().await;
@@ -137,7 +137,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 			{
 				win_clone.set_decorations(true).ok();
 				let win_weak = win_clone.clone();
-				app_handle
+				_app_handle
 					.run_on_main_thread(move || {
 						#[cfg(target_os = "macos")]
 						{
@@ -170,7 +170,9 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 			}
 
 			#[cfg(not(target_os = "macos"))]
-			win_clone.set_decorations(settings.native_window_frame).ok();
+			win_clone
+				.set_decorations(_settings.native_window_frame)
+				.ok();
 		}
 		win_clone.show().ok();
 	});

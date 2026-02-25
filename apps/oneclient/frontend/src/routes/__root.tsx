@@ -72,7 +72,17 @@ function useDiscordRPC() {
 	const provider = location.search.provider ?? null;
 	const packageId = location.search.packageId ?? null;
 	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
-	const { data: managedPackage } = useCommand(['getPackage', provider, packageId], () => bindings.core.getPackage(provider!, packageId!), { enabled: provider != null && packageId != null });
+
+	const { data: managedPackage } = useCommand(
+		['getPackage', provider, packageId],
+		() => {
+			if (provider == null || packageId == null)
+				return Promise.reject(new Error('Missing parameters'));
+			return bindings.core.getPackage(provider, packageId);
+		},
+		{ enabled: provider != null && packageId != null },
+	);
+
 	useEffect(() => {
 		const template = ResolvedPathNames[location.pathname as URLPath];
 		if (template)

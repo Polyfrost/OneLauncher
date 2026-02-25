@@ -129,7 +129,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 	ext::updater::init(handle)?;
 
 	let win_clone = win;
-	let app_handle = handle.clone();
+	let _app_handle = handle.clone();
 	tokio::task::spawn(async move {
 		if let Ok(state) = State::get().await {
 			let _settings = state.settings.read().await;
@@ -139,7 +139,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 			{
 				win_clone.set_decorations(true).ok();
 				let win_weak = win_clone.clone();
-				app_handle
+				_app_handle
 					.run_on_main_thread(move || {
 						#[cfg(target_os = "macos")]
 						{

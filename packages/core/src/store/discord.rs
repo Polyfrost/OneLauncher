@@ -27,6 +27,12 @@ impl DiscordRPC {
 
 		let connected = client.connect().is_ok();
 
+		if connected {
+			tracing::info!("Discord RPC connected successfully");
+		} else {
+			tracing::warn!("Discord RPC failed to connect (Discord may not be running)");
+		}
+
 		Ok(Self {
 			started_at: chrono::Utc::now().timestamp(),
 			client: Arc::new(RwLock::new(client)),
@@ -50,13 +56,17 @@ impl DiscordRPC {
 	}
 
 	pub async fn set_activity(&self, activity: Activity<'_>) -> bool {
-		if !self.is_connected() {
+		// If we know we're disconnected, try to reconnect first
+		if !self.is_connected() && !self.reconnect().await {
 			return false;
 		}
 
 		let mut client = self.client.write().await;
 
 		if client.set_activity(activity).is_err() {
+			// Connection dropped — mark as disconnected so next call will reconnect
+			self.set_connected(false);
+			tracing::warn!("Discord RPC set_activity failed; connection may have dropped");
 			return false;
 		}
 
@@ -71,6 +81,7 @@ impl DiscordRPC {
 		let mut client = self.client.write().await;
 
 		if client.clear_activity().is_err() {
+			self.set_connected(false);
 			return false;
 		}
 
@@ -78,11 +89,19 @@ impl DiscordRPC {
 	}
 
 	pub async fn reconnect(&self) -> bool {
+		tracing::info!("Attempting Discord RPC reconnect...");
 		let mut client = self.client.write().await;
 
 		let connected = client.reconnect().is_ok();
 
 		self.set_connected(connected);
+
+		if connected {
+			tracing::info!("Discord RPC reconnected successfully");
+		} else {
+			tracing::warn!("Discord RPC reconnect failed");
+		}
+
 		connected
 	}
 

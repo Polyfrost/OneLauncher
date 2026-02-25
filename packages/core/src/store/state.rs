@@ -23,7 +23,9 @@ pub struct State {
 	pub credentials: RwLock<CredentialsStore>,
 	pub metadata: RwLock<Metadata>,
 	pub processes: ProcessStore,
-	pub rpc: Option<DiscordRPC>,
+	/// Discord RPC client. Wrapped in `RwLock` so it can be lazily initialized
+	/// after startup if Discord wasn't running when the launcher launched.
+	pub rpc: RwLock<Option<DiscordRPC>>,
 }
 
 impl State {
@@ -64,7 +66,31 @@ impl State {
 			credentials: RwLock::new(credentials),
 			metadata: RwLock::new(metadata),
 			processes,
-			rpc,
+			rpc: RwLock::new(rpc),
 		}))
+	}
+
+	/// Get or lazily initialize the Discord RPC.
+	///
+	/// If RPC was `None` at startup (Discord wasn't running), this will attempt
+	/// to initialize it now. Returns `true` if RPC is available after the call.
+	pub async fn ensure_rpc(&self) -> bool {
+		// Fast path: already have a client
+		if self.rpc.read().await.is_some() {
+			return true;
+		}
+
+		// Try to initialize for the first time
+		match DiscordRPC::initialize() {
+			Ok(rpc) => {
+				*self.rpc.write().await = Some(rpc);
+				tracing::info!("Discord RPC lazily initialized");
+				true
+			}
+			Err(err) => {
+				tracing::debug!("Discord RPC lazy init failed: {err}");
+				false
+			}
+		}
 	}
 }

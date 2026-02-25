@@ -945,12 +945,15 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	// region: discord RPC
 	async fn set_discord_rpc_message(self, message: String) -> LauncherResult<()> {
 		let state = State::get().await?;
-		if let Some(discord) = &state.rpc {
-			if !state.settings.read().await.discord_enabled {
-				discord.clear_activity().await;
-				return Ok(());
+		if state.ensure_rpc().await {
+			let rpc = state.rpc.read().await;
+			if let Some(discord) = rpc.as_ref() {
+				if !state.settings.read().await.discord_enabled {
+					discord.clear_activity().await;
+					return Ok(());
+				}
+				discord.set_message(&message, None).await;
 			}
-			discord.set_message(&message, None).await;
 		}
 
 		Ok(())

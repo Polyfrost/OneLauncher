@@ -196,13 +196,16 @@ pub async fn launch_minecraft(
 
 	let censors = log::create_censors(&creds);
 
-	if let Some(discord) = &state.rpc {
-		discord
-			.set_message(
-				&format!("Playing {}", cluster.name),
-				Some(Timestamps::new().start(Utc::now().timestamp())),
-			)
-			.await;
+	if state.ensure_rpc().await {
+		let rpc = state.rpc.read().await;
+		if let Some(discord) = rpc.as_ref() {
+			discord
+				.set_message(
+					&format!("Playing {}", cluster.name),
+					Some(Timestamps::new().start(Utc::now().timestamp())),
+				)
+				.await;
+		}
 	}
 
 	state

@@ -30,6 +30,7 @@
 		"@tauri-apps/plugin-dialog": "catalog:",
 		"@tauri-apps/plugin-fs": "catalog:",
 		"@untitled-theme/icons-react": "catalog:",
+		"fuse.js": "^7.1.0",
 		"motion": "catalog:",
 		"overlayscrollbars": "catalog:",
 		"overlayscrollbars-react": "catalog:",

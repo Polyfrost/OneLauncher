@@ -56,6 +56,30 @@ export function getModMetaDataName(file: ModpackFile): string {
 	else return 'UNKNOWN';
 }
 
+function getFileKey(file: ModpackFile): string {
+	if ('Managed' in file.kind)
+		return `managed:${file.kind.Managed[0].id}`;
+	if ('External' in file.kind)
+		return `external:${file.kind.External.sha1 ?? file.kind.External.url ?? file.kind.External.name}`;
+	return 'unknown';
+}
+
+const modMetadataCache = new Map<string, Promise<ModInfo>>();
+
+function fetchModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo> {
+	const key = getFileKey(file);
+	const existing = modMetadataCache.get(key);
+	if (existing)
+		return existing;
+
+	const promise = getModMetaData(file, useVerticalGridLayout).catch((err) => {
+		modMetadataCache.delete(key);
+		throw err;
+	});
+	modMetadataCache.set(key, promise);
+	return promise;
+}
+
 async function getModMetaData(file: ModpackFile, useVerticalGridLayout?: boolean): Promise<ModInfo> {
 	if ('External' in file.kind)
 		return {
@@ -105,9 +129,14 @@ export function ModCard({ file, cluster }: ModCardProps) {
 	const { enableClickToDownload, onClickOnMod, useVerticalGridLayout, mods, installedPackages, useToggleMode } = useModCardContext();
 	const queryClient = useQueryClient();
 
-	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: 'Loading...', description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
+	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: getModMetaDataName(file), description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
 	useEffect(() => {
-		(async () => setModMetadata(await getModMetaData(file, useVerticalGridLayout)))();
+		let cancelled = false;
+		fetchModMetaData(file, useVerticalGridLayout).then((meta) => {
+			if (!cancelled)
+				setModMetadata(meta);
+		}).catch(() => {});
+		return () => { cancelled = true; };
 	}, [file, useVerticalGridLayout]);
 
 	const kind = file.kind;

@@ -142,7 +142,7 @@ function RouteComponent() {
 			>
 				<div className="relative flex flex-row gap-4">
 					<SheetPage.Content className="sticky top-8 w-86 h-min flex flex-col p-2 gap-2 outline outline-ghost-overlay">
-						<p>Something wen't wrong while getting a cluster</p>
+						<p>Something wen't wrong while getting a version</p>
 						<p>Please reload and if this does not work please contact support</p>
 					</SheetPage.Content>
 				</div>
@@ -272,7 +272,7 @@ function HeaderLarge() {
 	return (
 		<div className="flex flex-row justify-between items-end gap-8">
 			<div className="flex flex-col">
-				<h1 className="text-3xl font-semibold">Clusters</h1>
+				<h1 className="text-3xl font-semibold">Versions</h1>
 				<p className="text-md font-medium text-fg-secondary">Something something in corporate style fashion about picking your preferred gamemodes and versions and optionally loader so that oneclient can pick something for them</p>
 			</div>
 		</div>
@@ -281,7 +281,7 @@ function HeaderLarge() {
 
 function HeaderSmall() {
 	return (
-		<h1 className="text-2lg h-full font-medium">Clusters</h1>
+		<h1 className="text-2lg h-full font-medium">Versions</h1>
 	);
 }
 

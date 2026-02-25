@@ -2,6 +2,7 @@ import type { ClusterModel, ModpackArchive, ModpackFile } from '@/bindings.gen';
 import type { DownloadModsRef, ModCardContextApi, ModWithBundle, onClickOnMod } from '@/components';
 import type { StrippedCluster } from '@/routes/onboarding/preferences/version';
 import { BundleModListModal, DownloadMods, ModCardContext, Overlay } from '@/components';
+import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
 import { useCommandSuspense } from '@onelauncher/common';
@@ -40,10 +41,14 @@ function RouteComponent() {
 		const selected = selectedClusters.some(selectedCluster => selectedCluster.mc_version === cluster.mc_version && selectedCluster.mc_loader === cluster.mc_loader);
 		if (!selected)
 			return;
-		const version = versions.clusters.find(version => cluster.mc_version.startsWith(`1.${version.major_version}`));
+		const onlineCluster = versions.clusters.find(c => cluster.mc_version.startsWith(`1.${c.major_version}`));
+		const minorVersion = Number.parseInt(cluster.mc_version.split('.')[2] ?? '', 10);
+		const onlineEntry = !Number.isNaN(minorVersion)
+			? onlineCluster?.entries.find(e => e.minor_version === minorVersion)
+			: undefined;
 		bundlesData[cluster.name] = {
 			bundles: bundleQueries[i],
-			art: version?.art ?? '/versions/art/Horse_Update.jpg',
+			art: onlineEntry?.art ?? onlineCluster?.art ?? '/versions/art/Horse_Update.jpg',
 			modsInfo: [],
 			clusterId: cluster.id,
 		};
@@ -148,7 +153,8 @@ function ModCategory({ bundleData, name, modsPerCluster, setModsPerCluster }: { 
 	);
 }
 
-function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string; bundle: ModpackArchive; mods: Array<ModWithBundle>; setMods: React.Dispatch<React.SetStateAction<Array<ModWithBundle>>>; clusterId: number }) {
+function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterId }: { fullVersionName: string; art: string | null | undefined; bundle: ModpackArchive; mods: Array<ModWithBundle>; setMods: React.Dispatch<React.SetStateAction<Array<ModWithBundle>>>; clusterId: number }) {
+	const artSrc = useCachedImage(art);
 	const files = bundle.manifest.files;
 	const enabledFiles = files.filter(file => file.enabled);
 	const hiddenEnabledFiles = enabledFiles.filter(file => file.hidden);
@@ -210,7 +216,7 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 				<img
 					alt={`Minecraft ${fullVersionName} landscape`}
 					className={twMerge('w-full rounded-xl h-32 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
-					src={`https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient${art}`}
+					src={artSrc}
 				/>
 
 				<div className={twMerge('absolute -top-2 right-3', isSelected ? 'block' : 'hidden group-hover:block')}>

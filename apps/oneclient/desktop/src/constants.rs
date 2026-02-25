@@ -6,4 +6,4 @@ pub const DISCORD_CLIENT_ID: &'static str = "1426999264633946334";
 // === Meta ===
 // Cannot contain trailing slash
 pub const META_URL_BASE: &'static str =
-	"https://raw.githubusercontent.com/PolyFrost/DataStorage/refs/heads/main/oneclient";
+	"https://raw.githubusercontent.com/Polyfrost/DataStorage/refs/heads/main/oneclient";

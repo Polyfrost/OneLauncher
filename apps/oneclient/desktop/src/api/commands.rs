@@ -53,6 +53,12 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "isBundleSyncing")]
 	async fn is_bundle_syncing() -> LauncherResult<bool>;
+
+	#[taurpc(alias = "cacheArt")]
+	async fn cache_art(path: String) -> LauncherResult<String>;
+
+	#[taurpc(alias = "refreshArt")]
+	async fn refresh_art(path: String) -> LauncherResult<()>;
 }
 
 #[taurpc::ipc_type]
@@ -205,5 +211,16 @@ impl OneClientApi for OneClientApiImpl {
 
 	async fn is_bundle_syncing(self) -> LauncherResult<bool> {
 		Ok(crate::oneclient::is_bundle_syncing())
+	}
+
+	async fn cache_art(self, path: String) -> LauncherResult<String> {
+		crate::oneclient::clusters::cache_art_image(&path).await
+	}
+
+	async fn refresh_art(self, path: String) -> LauncherResult<()> {
+		tokio::spawn(async move {
+			crate::oneclient::clusters::refresh_art_cache(&path).await;
+		});
+		Ok(())
 	}
 }

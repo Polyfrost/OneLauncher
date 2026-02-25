@@ -1,3 +1,4 @@
+import type { OnlineCluster, OnlineClusterEntry, OnlineClusterManifest } from '@/bindings.gen';
 import type { GameBackgroundName } from '@/components';
 
 export interface VersionInfo {
@@ -52,6 +53,29 @@ export function getVersionInfo(version: number | string | null | undefined): Ver
 export function getVersionInfoOrDefault(version: number | string | null | undefined): VersionInfo {
 	const info = getVersionInfo(version);
 	return info ?? VERSION_MAP[-1];
+}
+
+export function getOnlineClusterForVersion(
+	version: string | null | undefined,
+	versions: OnlineClusterManifest,
+): OnlineCluster | undefined {
+	const parsed = parseMcVersion(version);
+	if (!parsed)
+		return undefined;
+	return versions.clusters.find(c => c.major_version === parsed.major);
+}
+
+export function getOnlineEntryForVersion(
+	version: string | null | undefined,
+	versions: OnlineClusterManifest,
+): OnlineClusterEntry | undefined {
+	const parsed = parseMcVersion(version);
+	if (!parsed || parsed.minor === undefined)
+		return undefined;
+	const cluster = versions.clusters.find(c => c.major_version === parsed.major);
+	if (!cluster)
+		return undefined;
+	return cluster.entries.find(e => e.minor_version === parsed.minor);
 }
 
 export interface ParsedMcVersion {

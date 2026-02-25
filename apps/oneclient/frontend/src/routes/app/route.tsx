@@ -1,8 +1,11 @@
 import type { PropsWithChildren } from 'react';
 import { GameBackground, LoaderSuspense, Navbar } from '@/components';
+import { useCachedImage } from '@/hooks/useCachedImage';
 import { useAllClusterDirWatch } from '@/hooks/useClusterDirWatch';
 import { useActiveCluster } from '@/hooks/useClusters';
-import { getVersionInfoOrDefault } from '@/utils/versionMap';
+import { bindings } from '@/main';
+import { getOnlineClusterForVersion, getOnlineEntryForVersion, getVersionInfoOrDefault } from '@/utils/versionMap';
+import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { motion } from 'motion/react';
 import { MouseParallax } from 'react-just-parallax';
@@ -56,6 +59,12 @@ function AppShell({
 function BackgroundGradient() {
 	const cluster = useActiveCluster();
 	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
+
+	const entry = getOnlineEntryForVersion(cluster.mc_version, versions);
+	const onlineCluster = getOnlineClusterForVersion(cluster.mc_version, versions);
+	const artPath = entry?.art ?? onlineCluster?.art;
+	const artSrc = useCachedImage(artPath);
 
 	return (
 		<div className="relative">
@@ -97,10 +106,20 @@ function BackgroundGradient() {
 					}}
 					key={(cluster.mc_version) + (cluster.mc_loader)}
 				>
-					<GameBackground
-						className="absolute left-0 top-0 w-screen h-screen scale-110"
-						name={versionInfo.backgroundName}
-					/>
+					{artSrc
+						? (
+							<img
+								alt=""
+								className="absolute left-0 top-0 w-screen h-screen scale-110 object-cover"
+								src={artSrc}
+							/>
+						)
+						: (
+							<GameBackground
+								className="absolute left-0 top-0 w-screen h-screen scale-110"
+								name={versionInfo.backgroundName}
+							/>
+						)}
 				</motion.div>
 			</MouseParallax>
 		</div>

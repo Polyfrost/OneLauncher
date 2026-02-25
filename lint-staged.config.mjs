@@ -4,7 +4,7 @@
  * @type {import('lint-staged').Configuration}
  */
 const config = {
-	'*.ts': 'eslint',
+	'*.ts': 'eslint --no-warn-ignored',
 	'*.{js,mjs,cjs}': 'eslint', // handle JS, MJS, CJS in one fell swoop
 	'*.rs': [
 		'rustfmt', // use rustfmt to only check the files provided by lint-staged

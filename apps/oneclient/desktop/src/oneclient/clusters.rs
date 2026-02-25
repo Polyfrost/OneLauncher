@@ -4,7 +4,8 @@ use onelauncher_core::entity::clusters::Model as ClusterModel;
 use onelauncher_core::entity::loader::GameLoader;
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::send_error;
-use onelauncher_core::utils::http::fetch_json;
+use onelauncher_core::store::Dirs;
+use onelauncher_core::utils::http::{fetch, fetch_json};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +62,10 @@ pub struct OnlineCluster {
 #[derive(specta::Type, Deserialize, Serialize)]
 pub struct OnlineClusterEntry {
 	minor_version: u8,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	name: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	art: Option<String>,
 	loader: GameLoader,
 	tags: Vec<String>,
 }
@@ -82,6 +87,50 @@ pub async fn get_data_storage_versions() -> LauncherResult<OnlineClusterManifest
 	};
 
 	Ok(manifest)
+}
+
+/// Download an art image (e.g. `/versions/art/Foo.png`) from the data storage CDN and
+/// save it to the local cache directory. Returns the OS-native path to the cached file,
+/// which the frontend converts to an `asset://` URL via `convertFileSrc`.
+/// If the file is already cached it is returned immediately without a network request.
+pub async fn cache_art_image(path: &str) -> LauncherResult<String> {
+	let art_dir = Dirs::get_caches_dir().await?.join("oneclient").join("art");
+	tokio::fs::create_dir_all(&art_dir)
+		.await
+		.map_err(anyhow::Error::from)?;
+
+	// Flatten "/versions/art/Foo.png" → "versions_art_Foo.png"
+	let filename = path.trim_start_matches('/').replace('/', "_");
+	let cached_path = art_dir.join(&filename);
+
+	if cached_path.exists() {
+		return Ok(cached_path.to_string_lossy().into_owned());
+	}
+
+	let url = format!("{}{}", crate::constants::META_URL_BASE, path);
+	let bytes = fetch(Method::GET, &url).await?;
+	tokio::fs::write(&cached_path, bytes)
+		.await
+		.map_err(anyhow::Error::from)?;
+
+	Ok(cached_path.to_string_lossy().into_owned())
+}
+
+/// Re-download an art image and overwrite the on-disk cache.
+/// Errors are silently ignored — the existing cached version is kept on failure.
+/// Call this from `tokio::spawn` so it runs fully in the background.
+pub async fn refresh_art_cache(path: &str) {
+	let Ok(caches_dir) = Dirs::get_caches_dir().await else {
+		return;
+	};
+	let art_dir = caches_dir.join("oneclient").join("art");
+	let filename = path.trim_start_matches('/').replace('/', "_");
+	let cached_path = art_dir.join(&filename);
+
+	let url = format!("{}{}", crate::constants::META_URL_BASE, path);
+	if let Ok(bytes) = fetch(Method::GET, &url).await {
+		let _ = tokio::fs::write(&cached_path, bytes).await;
+	}
 }
 
 pub async fn init_clusters() -> LauncherResult<()> {

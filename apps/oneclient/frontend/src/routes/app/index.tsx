@@ -1,12 +1,13 @@
-import type { ClusterModel, GameLoader } from '@/bindings.gen';
+import type { ClusterModel, GameLoader, OnlineClusterManifest } from '@/bindings.gen';
 import type { ButtonProps } from 'react-aria-components';
 import { GameBackground, LaunchButton } from '@/components';
+import { useCachedImage } from '@/hooks/useCachedImage';
 import { useActiveCluster, useLastPlayedClusters } from '@/hooks/useClusters';
 import { bindings } from '@/main';
 import useAppShellStore from '@/stores/appShellStore';
 import { prettifyLoader } from '@/utils/loaders';
 import { animations } from '@/utils/motion';
-import { getVersionInfo, getVersionInfoOrDefault } from '@/utils/versionMap';
+import { getOnlineClusterForVersion, getOnlineEntryForVersion, getVersionInfo, getVersionInfoOrDefault } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -14,6 +15,7 @@ import { DotsGridIcon, Settings04Icon } from '@untitled-theme/icons-react';
 import { motion } from 'motion/react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
+
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -23,6 +25,7 @@ function RouteComponent() {
 	// Preload the clusters for version page
 	useCommandSuspense(['getClustersGroupedByMajor'], bindings.oneclient.getClustersGroupedByMajor);
 
+	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	const { data: lastPlayedClusters } = useLastPlayedClusters();
 
 	const setActiveClusterId = useAppShellStore(state => state.setActiveClusterId);
@@ -34,7 +37,7 @@ function RouteComponent() {
 
 	return (
 		<div className="flex h-full w-full flex-col justify-center p-12">
-			<ActiveClusterInfo cluster={activeCluster} />
+			<ActiveClusterInfo cluster={activeCluster} versions={versions} />
 
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
 				{lastPlayedClusters.slice(0, 3).map(cluster => (
@@ -44,6 +47,7 @@ function RouteComponent() {
 						loader={cluster.mc_loader}
 						onPress={() => setActiveClusterId(cluster.id)}
 						version={cluster.mc_version}
+						versions={versions}
 					/>
 				))}
 
@@ -59,8 +63,9 @@ function RouteComponent() {
 	);
 }
 
-function ActiveClusterInfo({ cluster }: { cluster: ClusterModel }) {
+function ActiveClusterInfo({ cluster, versions }: { cluster: ClusterModel; versions: OnlineClusterManifest }) {
 	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const entry = getOnlineEntryForVersion(cluster.mc_version, versions);
 	const navigate = useNavigate({ from: Route.id });
 
 	const viewCluster = () => {
@@ -71,6 +76,8 @@ function ActiveClusterInfo({ cluster }: { cluster: ClusterModel }) {
 			},
 		});
 	};
+
+	const subtitle = entry?.name ?? versionInfo.shortDescription;
 
 	return (
 		<motion.div
@@ -87,7 +94,7 @@ function ActiveClusterInfo({ cluster }: { cluster: ClusterModel }) {
 			transition={{ ease: 'backInOut', duration: 0.35 }}
 		>
 			<h1 className="text-6xl font-bold text-fg-primary">{cluster.mc_version} {prettifyLoader(cluster.mc_loader)}</h1>
-			<p className="text-lg font-medium text-fg-secondary">{versionInfo.shortDescription}</p>
+			<p className="text-lg font-medium text-fg-secondary">{subtitle}</p>
 
 			<div className="flex flex-row justify-center items-center gap-2">
 				<LaunchButton cluster={cluster} size="large" />
@@ -105,6 +112,7 @@ interface RecentsCardProps {
 	loader: GameLoader;
 	onPress: () => void;
 	active: boolean;
+	versions: OnlineClusterManifest;
 }
 
 function RecentsCard({
@@ -112,10 +120,16 @@ function RecentsCard({
 	loader,
 	onPress,
 	active,
+	versions,
 }: RecentsCardProps) {
 	const versionInfo = getVersionInfo(version);
+	const entry = getOnlineEntryForVersion(version, versions);
+	const onlineCluster = getOnlineClusterForVersion(version, versions);
 
-	if (!versionInfo)
+	const artPath = entry?.art ?? onlineCluster?.art;
+	const artSrc = useCachedImage(artPath);
+
+	if (!versionInfo && !artPath)
 		return (
 			<Card blur>
 				<p className="text-lg font-medium text-fg-secondary">Unknown Version</p>
@@ -125,7 +139,17 @@ function RecentsCard({
 	return (
 		<Card className={twMerge(active && 'outline-2 outline-brand')} onPress={onPress}>
 			<div className="flex w-full h-full justify-start items-end px-6 py-3 hover:brightness-80">
-				<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo.backgroundName} />
+				{artSrc
+					? (
+						<img
+							alt={`Minecraft ${version} landscape`}
+							className="absolute -z-10 left-0 top-0 w-full h-full object-cover scale-110"
+							src={artSrc}
+						/>
+					)
+					: (
+						<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo!.backgroundName} />
+					)}
 
 				<div
 					className="absolute top-0 left-0 -z-10 w-full h-full"

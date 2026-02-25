@@ -1,5 +1,6 @@
 import type { GameLoader, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
 import type { VersionInfo } from '@/utils/versionMap';
+import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
@@ -80,13 +81,16 @@ function VersionCard({ cluster, versionData, version, fullVersionName, setSelect
 		});
 	};
 
+	const artPath = version.art ?? cluster.art;
+	const artSrc = useCachedImage(artPath);
+
 	return (
 		<AriaButton className={twMerge('group overflow-hidden cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={toggle}>
 			<div className="relative w-full">
 				<img
-					alt={`Minecraft ${versionData.prettyName} landscape`}
+					alt={`Minecraft ${fullVersionName} landscape`}
 					className={twMerge('w-full rounded-xl h-32 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
-					src={`https://raw.githubusercontent.com/PolyFrost/DataStorage/refs/heads/main/oneclient${cluster.art}`}
+					src={artSrc}
 				/>
 
 				<div className="absolute top-3 left-3 flex flex-wrap gap-1">

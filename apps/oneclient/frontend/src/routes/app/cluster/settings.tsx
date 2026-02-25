@@ -2,7 +2,7 @@ import { SettingsRow, SheetPage } from '@/components';
 import { useClusterProfile } from '@/hooks/useSettings';
 import { Switch, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
-import { Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, XIcon } from '@untitled-theme/icons-react';
+import { Database01Icon, FilePlus02Icon, FileX02Icon, LayoutTopIcon, Maximize01Icon, ParagraphWrapIcon, TerminalIcon, XIcon } from '@untitled-theme/icons-react';
 
 export const Route = createFileRoute('/app/cluster/settings')({
 	component: RouteComponent,
@@ -120,6 +120,18 @@ function RouteComponent() {
 						</div>
 					</div>
 				</div>
+			</SettingsRow>
+
+			<SettingsRow
+				description="Additional arguments passed to the JVM when launching the game."
+				icon={<TerminalIcon />}
+				title="JVM Arguments"
+			>
+				<TextField
+					onChange={e => updateProfile({ launch_args: e.currentTarget.value || null })}
+					placeholder="-XX:+UseG1GC -Xss1M"
+					value={profile.launch_args ?? ''}
+				/>
 			</SettingsRow>
 		</SheetPage.Content>
 	);

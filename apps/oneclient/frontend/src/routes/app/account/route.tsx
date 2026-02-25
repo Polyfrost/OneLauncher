@@ -19,7 +19,7 @@ export const Route = createFileRoute('/app/account')({
 	},
 	async beforeLoad({ context, search }) {
 		// TODO instead replace this with a refresh access_token function. Waiting on binding from @LynithDev
-		const { profile, search: validSearch } = search;
+		const { profile, search: validSearch } = search as AccountsRouteSearchParams;
 
 		if (!profile)
 			return { profileData: null, profile: null, validSearch, playerData: null };

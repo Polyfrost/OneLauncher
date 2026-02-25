@@ -47,5 +47,10 @@ jobs:
       - name: Setup Packages
         uses: ./.github/actions/setup-packages
 
+      - name: Create Dummy Dist Directories
+        run: |
+          mkdir -p apps/onelauncher/frontend/dist
+          mkdir -p apps/oneclient/frontend/dist
+
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings

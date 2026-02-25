@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use discord_rich_presence::activity::{Activity, Assets, Button, Timestamps};
 use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
@@ -13,6 +13,7 @@ pub struct DiscordRPC {
 	started_at: i64,
 	client: Arc<RwLock<DiscordIpcClient>>,
 	connected: Arc<AtomicBool>,
+	last_reconnect_attempt: Arc<AtomicI64>,
 }
 
 impl DiscordRPC {
@@ -37,6 +38,7 @@ impl DiscordRPC {
 			started_at: chrono::Utc::now().timestamp(),
 			client: Arc::new(RwLock::new(client)),
 			connected: Arc::new(AtomicBool::new(connected)),
+			last_reconnect_attempt: Arc::new(AtomicI64::new(0)),
 		})
 	}
 
@@ -89,7 +91,12 @@ impl DiscordRPC {
 	}
 
 	pub async fn reconnect(&self) -> bool {
-		tracing::info!("Attempting Discord RPC reconnect...");
+		let now = chrono::Utc::now().timestamp();
+		if now - self.last_reconnect_attempt.load(Ordering::Relaxed) < 60 {
+			return false;
+		}
+		self.last_reconnect_attempt.store(now, Ordering::Relaxed);
+
 		let mut client = self.client.write().await;
 
 		let connected = client.reconnect().is_ok();
@@ -98,8 +105,6 @@ impl DiscordRPC {
 
 		if connected {
 			tracing::info!("Discord RPC reconnected successfully");
-		} else {
-			tracing::warn!("Discord RPC reconnect failed");
 		}
 
 		connected

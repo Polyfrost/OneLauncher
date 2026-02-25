@@ -132,8 +132,7 @@ fn setup_window(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Err
 	#[allow(unused_variables)]
 	let app_handle = handle.clone();
 	tokio::task::spawn(async move {
-		if let Ok(state) = State::get().await {
-			let _settings = state.settings.read().await;
+		if State::get().await.is_ok() {
 			// native_window_frame=true means use native decorations
 			// native_window_frame=false means use custom frame (no decorations)
 			#[cfg(target_os = "macos")]

@@ -68,7 +68,7 @@ pub fn validate_os_rule(rule: &OsRule, java_arch: &str, updated: bool) -> bool {
 
 	if let Some(name) = &rule.name {
 		if updated && (name != &Os::LinuxArm64 || name != &Os::LinuxArm32) {
-			rule_match &= &Os::native() == name || &Os::native_arch(java_arch) == name;
+			rule_match &= Os::native() == name.get_os() || &Os::native_arch(java_arch) == name;
 		} else {
 			rule_match &= &Os::native_arch(java_arch) == name;
 		}

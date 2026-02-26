@@ -1,4 +1,4 @@
-import { minecraftAuthErrors, MinecraftAuthErrorModal, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
+import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';

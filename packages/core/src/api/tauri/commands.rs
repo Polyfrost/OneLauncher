@@ -666,32 +666,28 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 				return Ok(None);
 			}
 
-			let current_url = match win.url() {
-				Ok(u) => u,
-				Err(_) => {
-					tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-					continue;
-				}
+			let Ok(current_url) = win.url() else {
+				tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+				continue;
 			};
 
 			if current_url
 				.as_str()
 				.starts_with("https://login.live.com/oauth20_desktop.srf")
+				&& let Some((_, code)) = current_url.query_pairs().find(|x| x.0 == "code")
 			{
-				if let Some((_, code)) = win.url()?.query_pairs().find(|x| x.0 == "code") {
-					win.close()?;
-					let value = api::credentials::finish(&code.clone(), flow)
-						.await
-						.map_err(|e| {
-							tracing::error!(
-								"[auth] open_msa_login() - credentials::finish() failed: {:?}",
-								e
-							);
+				win.close()?;
+				let value = api::credentials::finish(code.as_ref(), flow)
+					.await
+					.map_err(|e| {
+						tracing::error!(
+							"[auth] open_msa_login() - credentials::finish() failed: {:?}",
 							e
-						})?;
+						);
+						e
+					})?;
 
-					return Ok(Some(value));
-				}
+				return Ok(Some(value));
 			}
 			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 		}

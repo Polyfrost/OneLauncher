@@ -38,15 +38,16 @@ impl CredentialsStore {
 		let path = Dirs::get_auth_file().await?;
 		let store = io::read_json::<Self>(&path).await.ok();
 
-		if let Some(s) = store {
-			Ok(s)
-		} else {
-			Ok(Self {
-				users: HashMap::new(),
-				token: None,
-				default_user: None,
-			})
-		}
+		store.map_or_else(
+			|| {
+				Ok(Self {
+					users: HashMap::new(),
+					token: None,
+					default_user: None,
+				})
+			},
+			Ok,
+		)
 	}
 
 	/// Save the current Minecraft credentials.

@@ -58,7 +58,7 @@ function RouteComponent() {
 		return bindings.core.getDefaultUser(true);
 	});
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
-		onSuccess(data) {
+		onSuccess() {
 			setAuthError(null);
 			queryClient.invalidateQueries({
 				queryKey: ['getDefaultUser'],

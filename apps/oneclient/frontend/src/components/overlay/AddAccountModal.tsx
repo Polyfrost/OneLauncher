@@ -20,7 +20,7 @@ export function AddAccountModalButton() {
 	const [authError, setAuthError] = useState<unknown>(null);
 
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
-		onSuccess(data) {
+		onSuccess() {
 			setAuthError(null);
 			queryClient.invalidateQueries({
 				queryKey: ['getUsers'],

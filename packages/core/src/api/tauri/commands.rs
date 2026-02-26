@@ -321,6 +321,7 @@ pub struct ProfileUpdate {
 #[taurpc::ipc_type]
 pub struct TauriLauncherApiImpl;
 
+#[allow(clippy::too_many_lines)]
 #[taurpc::resolvers]
 impl TauriLauncherApi for TauriLauncherApiImpl {
 	// MARK: Impl: clusters
@@ -622,7 +623,13 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 	) -> LauncherResult<Option<MinecraftCredentials>> {
 		use tauri::Manager;
 
-		let flow = api::credentials::begin().await?;
+		let flow = api::credentials::begin().await.map_err(|e| {
+			tracing::error!(
+				"[auth] open_msa_login() - credentials::begin() failed: {:?}",
+				e
+			);
+			e
+		})?;
 
 		let now = chrono::Utc::now();
 
@@ -643,7 +650,14 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		.inner_size(800.0, 600.0)
 		.center()
 		.focused(true)
-		.build()?;
+		.build()
+		.map_err(|e| {
+			tracing::error!(
+				"[auth] open_msa_login() - failed to create login window: {:?}",
+				e
+			);
+			e
+		})?;
 
 		win.request_user_attention(Some(tauri::UserAttentionType::Critical))?;
 
@@ -652,18 +666,33 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 				return Ok(None);
 			}
 
-			if win
-				.url()?
+			let current_url = match win.url() {
+				Ok(u) => u,
+				Err(_) => {
+					tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+					continue;
+				}
+			};
+
+			if current_url
 				.as_str()
 				.starts_with("https://login.live.com/oauth20_desktop.srf")
-				&& let Some((_, code)) = win.url()?.query_pairs().find(|x| x.0 == "code")
 			{
-				win.close()?;
-				let value = api::credentials::finish(&code.clone(), flow).await?;
+				if let Some((_, code)) = win.url()?.query_pairs().find(|x| x.0 == "code") {
+					win.close()?;
+					let value = api::credentials::finish(&code.clone(), flow)
+						.await
+						.map_err(|e| {
+							tracing::error!(
+								"[auth] open_msa_login() - credentials::finish() failed: {:?}",
+								e
+							);
+							e
+						})?;
 
-				return Ok(Some(value));
+					return Ok(Some(value));
+				}
 			}
-
 			tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 		}
 

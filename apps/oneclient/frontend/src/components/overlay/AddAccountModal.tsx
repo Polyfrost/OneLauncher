@@ -1,12 +1,13 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar, Overlay } from '@/components';
+import { AccountAvatar, isMinecraftAuthError, MinecraftAuthErrorModal, Overlay } from '@/components';
 import { bindings } from '@/main';
 import { useCommandMut } from '@onelauncher/common';
 import { useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 export function AddAccountModal() {
 	return (
-		<Overlay.Dialog>
+		<Overlay.Dialog isDismissable>
 			<Overlay.Title>Add Account</Overlay.Title>
 			<p className="text-fg-secondary">Add a new account to OneClient</p>
 			<AddAccountModalButton />
@@ -16,9 +17,11 @@ export function AddAccountModal() {
 
 export function AddAccountModalButton() {
 	const queryClient = useQueryClient();
+	const [authError, setAuthError] = useState<unknown>(null);
 
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
-		onSuccess() {
+		onSuccess(data) {
+			setAuthError(null);
 			queryClient.invalidateQueries({
 				queryKey: ['getUsers'],
 			});
@@ -26,11 +29,20 @@ export function AddAccountModalButton() {
 				queryKey: ['getDefaultUser'],
 			});
 		},
+		onError(error) {
+			console.error('[auth] AddAccountModal: openMsaLogin failed', error);
+			if (isMinecraftAuthError(error))
+				setAuthError(error);
+		},
 	});
 
 	const onClick = () => {
+		setAuthError(null);
 		login();
 	};
+
+	if (authError)
+		return <MinecraftAuthErrorModal error={authError} />;
 
 	return (
 		profile

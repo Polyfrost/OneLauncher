@@ -18,7 +18,7 @@ pub async fn start_logger() {
 			Core::get()
 				.logger_filter
 				.clone()
-				.unwrap_or_else(|| format!("{}=info", env!("CARGO_PKG_NAME"))),
+				.unwrap_or_else(|| format!("{}=debug", env!("CARGO_PKG_NAME"))),
 		)
 	});
 

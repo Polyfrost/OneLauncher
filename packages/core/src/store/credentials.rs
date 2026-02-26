@@ -36,18 +36,17 @@ impl CredentialsStore {
 	#[tracing::instrument]
 	pub async fn initialize() -> LauncherResult<Self> {
 		let path = Dirs::get_auth_file().await?;
-		let store = io::read_json(&path).await.ok();
+		let store = io::read_json::<Self>(&path).await.ok();
 
-		store.map_or_else(
-			|| {
-				Ok(Self {
-					users: HashMap::new(),
-					token: None,
-					default_user: None,
-				})
-			},
-			Ok,
-		)
+		if let Some(s) = store {
+			Ok(s)
+		} else {
+			Ok(Self {
+				users: HashMap::new(),
+				token: None,
+				default_user: None,
+			})
+		}
 	}
 
 	/// Save the current Minecraft credentials.
@@ -143,6 +142,10 @@ impl CredentialsStore {
 			}),
 			Err(err) => {
 				if valid_date {
+					tracing::error!(
+						"[auth] begin() - sisu_authenticate failed (device token was fresh): {:?}",
+						err
+					);
 					Err(err.into())
 				} else {
 					let (key, token, current_date, _) = self.refresh(Utc::now(), false).await?;
@@ -290,6 +293,7 @@ impl CredentialsStore {
 							_ => {}
 						}
 
+						tracing::error!("[auth] get_default() - token refresh failed: {:?}", err);
 						Err(err)
 					}
 				}
@@ -397,7 +401,7 @@ pub async fn device_token(
 	key: &DeviceKey,
 	current_date: DateTime<Utc>,
 ) -> Result<RequestWithDate<DeviceToken>, MinecraftAuthError> {
-	let res = send_signed_request(
+	let res: SignedRequestResponse<DeviceToken> = send_signed_request(
 		None,
 		"https://device.auth.xboxlive.com/device/authenticate",
 		"/device/authenticate",
@@ -474,7 +478,10 @@ async fn sisu_authenticate(
 		.headers
 		.get("X-SessionId")
 		.and_then(|x| x.to_str().ok())
-		.ok_or_else(|| MinecraftAuthError::SessionIdError)?
+		.ok_or_else(|| {
+			tracing::error!("[auth] sisu_authenticate() - missing X-SessionId header in response");
+			MinecraftAuthError::SessionIdError
+		})?
 		.to_string();
 
 	Ok((
@@ -533,7 +540,15 @@ async fn oauth_token(
 			source,
 		})?;
 
-	let body =
+	if !status.is_success() {
+		tracing::error!(
+			"[auth] oauth_token() - non-success status={}, body={}",
+			status,
+			text
+		);
+	}
+
+	let body: OAuthToken =
 		serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
 			step: MinecraftAuthStep::OAuthToken,
 			raw: text,
@@ -581,7 +596,15 @@ async fn oauth_refresh(
 			source,
 		})?;
 
-	let body =
+	if !status.is_success() {
+		tracing::error!(
+			"[auth] oauth_refresh() - non-success status={}, body={}",
+			status,
+			text
+		);
+	}
+
+	let body: OAuthToken =
 		serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
 			step: MinecraftAuthStep::RefreshOAuthToken,
 			raw: text,
@@ -657,7 +680,7 @@ async fn xsts_authorize(
 	key: &DeviceKey,
 	current_date: DateTime<Utc>,
 ) -> Result<RequestWithDate<DeviceToken>, MinecraftAuthError> {
-	let res = send_signed_request(
+	let res: SignedRequestResponse<DeviceToken> = send_signed_request(
 		None,
 		"https://xsts.auth.xboxlive.com/xsts/authorize",
 		"/xsts/authorize",
@@ -699,7 +722,13 @@ async fn minecraft_token(token: DeviceToken) -> Result<MinecraftToken, Minecraft
 		.and_then(|x| x.get(0))
 		.and_then(|x| x.get("uhs"))
 		.and_then(|x| x.as_str().map(String::from))
-		.ok_or_else(|| MinecraftAuthError::HashError)?;
+		.ok_or_else(|| {
+			tracing::error!(
+				"[auth] minecraft_token() - failed to extract UHS from display_claims: {:?}",
+				token.display_claims
+			);
+			MinecraftAuthError::HashError
+		})?;
 
 	let token = token.token;
 	let res = auth_retry(|| {
@@ -726,6 +755,15 @@ async fn minecraft_token(token: DeviceToken) -> Result<MinecraftToken, Minecraft
 			step: MinecraftAuthStep::MinecraftToken,
 			source,
 		})?;
+
+	if status.is_success() {
+	} else {
+		tracing::error!(
+			"[auth] minecraft_token() - non-success status={}, body={}",
+			status,
+			text
+		);
+	}
 
 	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
 		step: MinecraftAuthStep::MinecraftToken,
@@ -765,6 +803,15 @@ async fn minecraft_profile(token: &str) -> Result<MinecraftProfile, MinecraftAut
 			source,
 		})?;
 
+	if status.is_success() {
+	} else {
+		tracing::error!(
+			"[auth] minecraft_profile() - non-success status={}, body={}",
+			status,
+			text
+		);
+	}
+
 	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
 		step: MinecraftAuthStep::MinecraftProfile,
 		raw: text,
@@ -800,6 +847,15 @@ async fn minecraft_entitlements(token: &str) -> Result<MinecraftEntitlements, Mi
 			step: MinecraftAuthStep::MinecraftEntitlements,
 			source,
 		})?;
+
+	if status.is_success() {
+	} else {
+		tracing::error!(
+			"[auth] minecraft_entitlements() - non-success status={}, body={}",
+			status,
+			text
+		);
+	}
 
 	serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
 		step: MinecraftAuthStep::MinecraftEntitlements,
@@ -871,9 +927,25 @@ struct SignedRequestResponse<T> {
 	pub body: T,
 }
 
+/// Xbox error response structure returned by Xbox Live APIs on authentication failure.
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "PascalCase")]
+struct XboxErrorResponse {
+	/// The Xbox error code (e.g., 2148916233 for no Xbox profile).
+	#[serde(rename = "XErr")]
+	pub x_err: u64,
+	/// A human-readable error message from Xbox.
+	#[serde(rename = "Message")]
+	pub message: String,
+	/// An optional redirect URL for resolving the error.
+	#[serde(rename = "Redirect")]
+	pub redirect: Option<String>,
+}
+
 #[allow(clippy::cast_possible_wrap)]
 #[allow(clippy::cast_possible_truncation)]
 #[allow(clippy::cast_sign_loss)]
+#[allow(clippy::too_many_lines)]
 async fn send_signed_request<T: serde::de::DeserializeOwned>(
 	authorization: Option<&str>,
 	url: &str,
@@ -960,6 +1032,25 @@ async fn send_signed_request<T: serde::de::DeserializeOwned>(
 		.text()
 		.await
 		.map_err(|source| MinecraftAuthError::RequestError { step, source })?;
+
+	if !status.is_success() {
+		tracing::error!(
+			"[auth] send_signed_request() - step={:?}, non-success status={}, body={}",
+			step,
+			status,
+			body
+		);
+
+		// Try to parse as an Xbox error response (contains XErr code)
+		if let Ok(xbox_err) = serde_json::from_str::<XboxErrorResponse>(&body) {
+			return Err(MinecraftAuthError::XboxError {
+				step,
+				error_code: xbox_err.x_err,
+				message: xbox_err.message,
+				redirect: xbox_err.redirect,
+			});
+		}
+	}
 
 	let body =
 		serde_json::from_str(&body).map_err(|source| MinecraftAuthError::DeserializeError {
@@ -1061,4 +1152,11 @@ pub enum MinecraftAuthError {
 	HashError,
 	#[error("failed to read user xbox session ID")]
 	SessionIdError,
+	#[error("Minecraft authentication error: {error_code} during MSA step {step:?}")]
+	XboxError {
+		step: MinecraftAuthStep,
+		error_code: u64,
+		message: String,
+		redirect: Option<String>,
+	},
 }

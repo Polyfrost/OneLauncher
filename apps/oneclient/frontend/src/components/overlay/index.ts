@@ -4,6 +4,8 @@ export * from './BundleModListModal';
 export * from './DebugInfo';
 export * from './ImportSkinModal';
 export * from './KillMinecraft';
+export * from './minecraft-auth-errors';
+export * from './MinecraftAuthErrorModal';
 export * from './NoAccountPopup';
 export * from './Overlay';
 export * from './Popup';

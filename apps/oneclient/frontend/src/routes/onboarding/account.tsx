@@ -1,5 +1,5 @@
 import type { MinecraftCredentials } from '@/bindings.gen';
-import { AccountAvatar, SkinViewer } from '@/components';
+import { AccountAvatar, isMinecraftAuthError, MinecraftAuthErrorModal, Overlay, SkinViewer } from '@/components';
 import { usePlayerProfile } from '@/hooks/usePlayerProfile';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
@@ -7,6 +7,7 @@ import { useCommandMut, useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 
 export const Route = createFileRoute('/onboarding/account')({
 	component: RouteComponent,
@@ -52,16 +53,26 @@ function AccountPreview({
 
 function RouteComponent() {
 	const queryClient = useQueryClient();
-	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
+	const [authError, setAuthError] = useState<unknown>(null);
+	const { data: currentAccount } = useCommandSuspense(['getDefaultUser'], () => {
+		return bindings.core.getDefaultUser(true);
+	});
 	const { data: profile, isPending, mutate: login } = useCommandMut(bindings.core.openMsaLogin, {
-		onSuccess() {
+		onSuccess(data) {
+			setAuthError(null);
 			queryClient.invalidateQueries({
 				queryKey: ['getDefaultUser'],
 			});
 		},
+		onError(error) {
+			console.error('[auth] onboarding/account: openMsaLogin failed', error);
+			if (isMinecraftAuthError(error))
+				setAuthError(error);
+		},
 	});
 
 	const onClick = () => {
+		setAuthError(null);
 		login();
 	};
 
@@ -100,6 +111,19 @@ function RouteComponent() {
 						)}
 			</div>
 			<OnboardingNavigation disableNext={currentAccount === null} />
+
+			{authError && (
+				<Overlay
+					isDismissable
+					isOpen
+					onOpenChange={(open) => {
+						if (!open)
+							setAuthError(null);
+					}}
+				>
+					<MinecraftAuthErrorModal error={authError} />
+				</Overlay>
+			)}
 		</>
 	);
 }

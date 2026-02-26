@@ -1,4 +1,4 @@
-import { Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
+import { minecraftAuthErrors, MinecraftAuthErrorModal, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 export function SuperSecretDevOptions() {
 	const { createSetting } = useSettings();
 	const debugInfo = useDebugInfo();
+	const [previewError, setPreviewError] = useState<string | null>(null);
 
 	const [launcherDir, setLauncherDir] = useState('');
 
@@ -48,9 +49,43 @@ export function SuperSecretDevOptions() {
 
 					<Button onClick={logRunningProcesses} size="normal">Console log processes</Button>
 				</div>
+
+				<div className="mt-3 border-t border-component-border pt-3">
+					<p className="text-fg-secondary text-xs mb-2">Auth Error Preview</p>
+					<div className="flex flex-wrap gap-2">
+						{minecraftAuthErrors.map(err => (
+							<Button
+								key={err.errorCode}
+								onClick={() => setPreviewError(`Minecraft authentication error: ${err.errorCode} during MSA step XstsAuthorize`)}
+								size="normal"
+							>
+								{err.errorCode}
+							</Button>
+						))}
+						<Button
+							onClick={() => setPreviewError('Some unknown auth error occurred')}
+							size="normal"
+						>
+							Unknown
+						</Button>
+					</div>
+				</div>
 			</div>
 
 			<RawDebugInfo debugInfo={debugInfo} />
+
+			{previewError && (
+				<Overlay
+					isDismissable
+					isOpen
+					onOpenChange={(open) => {
+						if (!open)
+							setPreviewError(null);
+					}}
+				>
+					<MinecraftAuthErrorModal error={previewError} />
+				</Overlay>
+			)}
 		</Overlay.Dialog>
 	);
 }

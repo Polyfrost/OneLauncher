@@ -48,11 +48,11 @@ export function useClusterProfile(cluster: ClusterModel) {
 		async (update: Partial<ProfileUpdate>) => {
 			setProfile(profile => ({ ...profile, ...update }));
 			let name = profileName;
-			if (!profileName) {
+			if (!profileName || profileSrc.data.name !== profileName) {
 				name = globalThis.crypto.randomUUID();
 				await bindings.core.createSettingsProfile(name);
 				await bindings.core.updateClusterById(cluster.id, {
-					setting_profile_name: cluster.name,
+					setting_profile_name: name,
 					name: null,
 					icon_url: null,
 				});
@@ -62,7 +62,7 @@ export function useClusterProfile(cluster: ClusterModel) {
 				throw new Error('No settings profile name');
 			await bindings.core.updateClusterProfile(name, { ...emptyUpdate, ...update });
 			profileSrc.refetch();
-		},	[profileName, cluster.name, cluster.id, profileSrc]);
+		}, [profileName, cluster.id, profileSrc]);
 	// const updateProfile = useMemo(() => (update: Partial<ProfileUpdate>) => setProfile({ ...profile.data, ...update }), [setProfile, profile.data]);
 	return { profile, setProfile, updateProfile };
 }

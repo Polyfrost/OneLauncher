@@ -1,3 +1,17 @@
+# 1.0.2
+
+###
+- Add additional art per minor version
+- Add ability to search for mods / resource packs / shaders / etc.
+- Add ability to customize JVM args
+
+- Improve MS auth handling significantly
+- Improve stability of Discord RPC
+
+- Fix macOS MC library bug
+- Fix settings not saving
+- Fix pre/post-launch and wrapper command not being sanitized
+
 # 1.0.1
 
 ###

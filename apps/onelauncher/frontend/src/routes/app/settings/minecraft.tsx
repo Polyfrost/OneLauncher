@@ -148,7 +148,7 @@ export function ProcessSettings(props: ProcessSettingsProps) {
 				<TextField
 					defaultValue={settings.hook_pre || ''}
 					onChange={(e) => {
-						settings.hook_pre = e.target.value || null;
+						settings.hook_pre = e.target.value;
 					}}
 					placeholder="echo 'Game started'"
 				/>
@@ -162,7 +162,7 @@ export function ProcessSettings(props: ProcessSettingsProps) {
 				<TextField
 					defaultValue={settings.hook_wrapper || ''}
 					onChange={(e) => {
-						settings.hook_wrapper = e.target.value || null;
+						settings.hook_wrapper = e.target.value;
 					}}
 					placeholder="gamescope"
 				/>
@@ -176,7 +176,7 @@ export function ProcessSettings(props: ProcessSettingsProps) {
 				<TextField
 					defaultValue={settings.hook_post || ''}
 					onChange={(e) => {
-						settings.hook_post = e.target.value || null;
+						settings.hook_post = e.target.value;
 					}}
 					placeholder="echo 'Game exited'"
 				/>

@@ -318,6 +318,35 @@ pub struct ProfileUpdate {
 	pub hook_post: Option<String>,
 }
 
+#[inline]
+fn normalize_optional_command(value: String) -> Option<String> {
+	if value.trim().is_empty() {
+		None
+	} else {
+		Some(value)
+	}
+}
+
+fn sanitize_settings_profile_commands(profile: &mut SettingsProfile) {
+	profile.launch_args = profile
+		.launch_args
+		.take()
+		.and_then(normalize_optional_command);
+	profile.launch_env = profile
+		.launch_env
+		.take()
+		.and_then(normalize_optional_command);
+	profile.hook_pre = profile.hook_pre.take().and_then(normalize_optional_command);
+	profile.hook_wrapper = profile
+		.hook_wrapper
+		.take()
+		.and_then(normalize_optional_command);
+	profile.hook_post = profile
+		.hook_post
+		.take()
+		.and_then(normalize_optional_command);
+}
+
 #[taurpc::ipc_type]
 pub struct TauriLauncherApiImpl;
 
@@ -544,23 +573,23 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 				}
 
 				if let Some(launch_args) = profile.launch_args {
-					active_model.launch_args = Set(Some(launch_args));
+					active_model.launch_args = Set(normalize_optional_command(launch_args));
 				}
 
 				if let Some(launch_env) = profile.launch_env {
-					active_model.launch_env = Set(Some(launch_env));
+					active_model.launch_env = Set(normalize_optional_command(launch_env));
 				}
 
 				if let Some(hook_pre) = profile.hook_pre {
-					active_model.hook_pre = Set(Some(hook_pre));
+					active_model.hook_pre = Set(normalize_optional_command(hook_pre));
 				}
 
 				if let Some(hook_wrapper) = profile.hook_wrapper {
-					active_model.hook_wrapper = Set(Some(hook_wrapper));
+					active_model.hook_wrapper = Set(normalize_optional_command(hook_wrapper));
 				}
 
 				if let Some(hook_post) = profile.hook_post {
-					active_model.hook_post = Set(Some(hook_post));
+					active_model.hook_post = Set(normalize_optional_command(hook_post));
 				}
 
 				Ok(active_model)
@@ -726,7 +755,9 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 		Ok(settings.clone())
 	}
 
-	async fn write_settings(self, setting: Settings) -> LauncherResult<()> {
+	async fn write_settings(self, mut setting: Settings) -> LauncherResult<()> {
+		sanitize_settings_profile_commands(&mut setting.global_game_settings);
+
 		let state = State::get().await?;
 		let mut settings = state.settings.write().await;
 

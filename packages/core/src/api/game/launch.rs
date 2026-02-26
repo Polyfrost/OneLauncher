@@ -88,8 +88,14 @@ pub async fn launch_minecraft(
 		.join(&version_name)
 		.join(format!("{version_name}.jar"));
 
-	let mut command = if let Some(wrapper) = &settings.hook_wrapper {
-		let mut cmd = Command::new(wrapper);
+	let mut command = if let Some(wrapper) = settings
+		.hook_wrapper
+		.as_deref()
+		.and_then(|hook| (!hook.trim().is_empty()).then_some(hook))
+	{
+		let mut split = wrapper.split_whitespace();
+		let mut cmd = Command::new(split.next().expect("hook wrapper should not be empty"));
+		cmd.args(split);
 		cmd.arg(&java.absolute_path);
 		cmd
 	} else {

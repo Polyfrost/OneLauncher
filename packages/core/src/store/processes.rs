@@ -469,7 +469,7 @@ async fn flush_process_output_event(
 }
 
 async fn run_hook(hook: &str, cwd: PathBuf) -> LauncherResult<Option<i32>> {
-	let mut split = hook.split(' ');
+	let mut split = hook.split_whitespace();
 
 	let Some(command) = split.next() else {
 		return Ok(None);

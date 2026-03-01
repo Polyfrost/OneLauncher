@@ -84,7 +84,7 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 
 			#[cfg(desktop)]
 			app.handle()
-				.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+				.plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
 
 			Ok(())
 		});

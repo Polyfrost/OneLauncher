@@ -22,18 +22,9 @@ export function useDebugInfo(): DebugInfoArray {
 	return debugInfo;
 }
 
-export function copyDebugInfo(debugInfo: DebugInfoArray) {
-	const timestamp = Math.floor(new Date().getTime() / 1000);
-	const lines = [
-		'## OneClient Debug Information',
-		`**Data exported at:** <t:${timestamp}> (\`${timestamp}\`)`,
-		...debugInfo.map((lineData) => {
-			if (lineData.title === 'Build Timestamp')
-				return `**${lineData.title}:** <t:${lineData.value}> (\`${lineData.value}\`)`;
-			return `**${lineData.title}:** \`${lineData.value}\``;
-		}),
-	];
-	writeText(lines.join('\n'));
+export async function copyDebugInfo() {
+	const info = await bindings.debug.getFullDebugInfoParsedString();
+	writeText(info);
 	toast({
 		type: 'info',
 		title: 'Debug Info',
@@ -42,11 +33,10 @@ export function copyDebugInfo(debugInfo: DebugInfoArray) {
 }
 
 export function useDebugKeybind() {
-	const handleKeybind = async (event: ShortcutEvent) => {
+	const handleKeybind = (event: ShortcutEvent) => {
 		if (event.state !== 'Pressed')
 			return;
-		const info = await bindings.debug.getFullDebugInfoParsed();
-		copyDebugInfo(info);
+		copyDebugInfo();
 	};
 
 	useEffect(() => {

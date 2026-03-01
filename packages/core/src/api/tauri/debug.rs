@@ -1,3 +1,4 @@
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Runtime;
 use tauri_plugin_os::{arch, family, locale, platform, type_, version};
 use tokio::fs;
@@ -78,6 +79,9 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getFullDebugInfoParsed")]
 	async fn get_full_debug_info_parsed() -> Vec<DebugInfoParsedLine>;
+
+	#[taurpc(alias = "getFullDebugInfoParsedString")]
+	async fn get_full_debug_info_parsed_string() -> String;
 }
 
 #[taurpc::ipc_type]
@@ -186,5 +190,34 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 			DebugInfoParsedLine::new("Build Timestamp", info.build_timestamp),
 			DebugInfoParsedLine::new("Version", info.build_version),
 		]
+	}
+
+	async fn get_full_debug_info_parsed_string(self) -> String {
+		let debug_info = self.clone().get_full_debug_info_parsed().await;
+
+		let timestamp = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("Time went backwards")
+			.as_secs();
+
+		let mut lines = Vec::new();
+
+		lines.push("## OneClient Debug Information".to_string());
+		lines.push(format!(
+			"**Data exported at:** <t:{timestamp}> (`{timestamp}`)"
+		));
+
+		for line_data in debug_info {
+			if line_data.title == "Build Timestamp" {
+				lines.push(format!(
+					"**{}:** <t:{}> (`{}`)",
+					line_data.title, line_data.value, line_data.value
+				));
+			} else {
+				lines.push(format!("**{}:** `{}`", line_data.title, line_data.value));
+			}
+		}
+
+		lines.join("\n")
 	}
 }

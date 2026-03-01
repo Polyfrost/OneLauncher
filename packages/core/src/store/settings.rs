@@ -21,6 +21,7 @@ pub struct Settings {
 	pub native_window_frame: bool,
 
 	#[cfg(feature = "tauri")]
+	pub log_debug_info: bool,
 	pub show_tanstack_dev_tools: bool,
 }
 
@@ -38,6 +39,7 @@ impl Default for Settings {
 			native_window_frame: false,
 
 			#[cfg(feature = "tauri")]
+			log_debug_info: tauri::is_dev(),
 			show_tanstack_dev_tools: tauri::is_dev(),
 		}
 	}

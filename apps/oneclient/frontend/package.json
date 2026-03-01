@@ -29,6 +29,7 @@
 		"@tauri-apps/plugin-clipboard-manager": "catalog:",
 		"@tauri-apps/plugin-dialog": "catalog:",
 		"@tauri-apps/plugin-fs": "catalog:",
+		"@tauri-apps/plugin-global-shortcut": "catalog:",
 		"@untitled-theme/icons-react": "catalog:",
 		"fuse.js": "^7.1.0",
 		"motion": "catalog:",

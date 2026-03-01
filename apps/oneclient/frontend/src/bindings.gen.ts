@@ -29,6 +29,10 @@ export type DaoError = { type: "NotFound"; data: string } | { type: "AlreadyExis
 
 export type DbVec = T[]
 
+export type DebugInfoData = { inDev: boolean; platform: string; arch: string; family: string; locale: string; osType: string; osVersion: string; osDistro: string; commitHash: string; buildTimestamp: string; buildVersion: string }
+
+export type DebugInfoParsedLine = { title: string; value: string }
+
 export type DirectoryError = { type: "BaseDir"; data: string }
 
 export type DiscordError = { type: "MissingClientId"; data: string } | { type: "ConnectError"; data: string }
@@ -244,9 +248,9 @@ gallery: string[] }
 
 export type SettingProfileModel = { name: string; java_id: number | null; res: Resolution | null; force_fullscreen: boolean | null; mem_max: number | null; launch_args: string | null; launch_env: string | null; hook_pre: string | null; hook_wrapper: string | null; hook_post: string | null; os_extra: SettingsOsExtra | null }
 
-export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; mod_list_use_grid: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; show_tanstack_dev_tools: boolean }
+export type Settings = { global_game_settings: SettingProfileModel; allow_parallel_running_clusters: boolean; enable_gamemode: boolean; discord_enabled: boolean; seen_onboarding: boolean; mod_list_use_grid: boolean; max_concurrent_requests: number; settings_version: number; native_window_frame: boolean; log_debug_info: boolean; show_tanstack_dev_tools: boolean }
 
-export type SettingsOsExtra = Record<string, never>
+export type SettingsOsExtra = { enable_gamemode: boolean | null }
 
 export type SkinVariant = "classic" | "slim"
 
@@ -313,8 +317,26 @@ export type VersionType =
  */
 "old_beta"
 
-const ARGS_MAP = { 'oneclient':'{"checkForUpdate":[],"installUpdate":[],"extractBundleOverrides":["bundle_path","cluster_id"],"getVersions":[],"refreshArt":["path"],"getBundlesFor":["cluster_id"],"cacheArt":["path"],"getClustersGroupedByMajor":[],"isBundleSyncing":[],"updateBundlePackages":["cluster_id"],"downloadPackageFromBundle":["package","cluster_id","bundle_name","skip_compatibility"]}', 'debug':'{"openDevTools":[],"getArch":[],"getFamily":[],"isInDev":[],"getPlatform":[],"getType":[],"getOsVersion":[],"getGitCommitHash":[],"getLocale":[],"getBuildTimestamp":[],"getPackageVersion":[]}', 'core':'{"getRunningProcesses":[],"getPackage":["provider","slug"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"updateClusterById":["id","request"],"getDefaultUser":["fallback"],"getClusters":[],"getProfileOrDefault":["name"],"removeUser":["uuid"],"writeSettings":["setting"],"getLinkedPackages":["cluster_id"],"getGlobalProfile":[],"togglePackage":["cluster_id","package_hash"],"launchCluster":["id","uuid","search_for_java"],"removeCluster":["id"],"setDefaultUser":["uuid"],"fetchLoggedInProfile":["access_token"],"getProcessLogTail":["id","max_lines"],"openMsaLogin":[],"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"open":["input"],"createCluster":["options"],"getUsersFromAuthor":["provider","author"],"getUsers":[],"setClusterStage":["id","stage"],"getWorlds":["id"],"getPackageBody":["provider","body"],"removePackage":["cluster_id","package_hash"],"getScreenshots":["id"],"updateClusterProfile":["name","profile"],"getLoadersForVersion":["mc_version"],"refreshAccounts":[],"getClusterById":["id"],"getLogs":["id"],"getUser":["uuid"],"searchPackages":["provider","query"],"getMultiplePackages":["provider","slugs"],"installModpack":["modpack","cluster_id"],"changeCape":["access_token","cape_uuid"],"convertUsernameUUID":["username_uuid"],"getLogByName":["id","name"],"fetchMinecraftProfile":["uuid"],"createSettingsProfile":["name"],"syncCluster":["cluster_id"],"downloadExternalPackage":["package","cluster_id","force","skip_compatibility"],"changeSkin":["access_token","skin_url","skin_variant"],"readSettings":[],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"isClusterRunning":["cluster_id"],"setDiscordRPCMessage":["message"],"refreshAccount":["uuid"],"removeCape":["access_token"],"getGameVersions":[],"killProcess":["pid"],"getRunningProcessesByClusterId":["cluster_id"]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'events':'{"process":["event"],"ingress":["event"],"message":["event"]}' }
-export type Router = { 'folders': { fromCluster: (folderName: string) => Promise<string>, 
+const ARGS_MAP = { 'debug':'{"getPackageVersion":[],"getOsVersion":[],"getArch":[],"getFamily":[],"getBuildTimestamp":[],"isInDev":[],"getType":[],"getGitCommitHash":[],"getLocale":[],"getOsDistro":[],"getFullDebugInfoParsedString":[],"getPlatform":[],"getFullDebugInfo":[],"openDevTools":[],"getFullDebugInfoParsed":[]}', 'folders':'{"fromCluster":["folder_name"],"openCluster":["folder_name"]}', 'events':'{"ingress":["event"],"message":["event"],"process":["event"]}', 'oneclient':'{"updateBundlePackages":["cluster_id"],"cacheArt":["path"],"isBundleSyncing":[],"getClustersGroupedByMajor":[],"getVersions":[],"getBundlesFor":["cluster_id"],"downloadPackageFromBundle":["package","cluster_id","bundle_name","skip_compatibility"],"refreshArt":["path"],"checkForUpdate":[],"extractBundleOverrides":["bundle_path","cluster_id"],"installUpdate":[]}', 'core':'{"getPackageVersions":["provider","slug","mc_version","loader","offset","limit"],"downloadPackage":["provider","package_id","version_id","cluster_id","skip_compatibility"],"togglePackage":["cluster_id","package_hash"],"uploadSkinBytes":["access_token","skin_data","image_format","skin_variant"],"getLoadersForVersion":["mc_version"],"getMultiplePackages":["provider","slugs"],"getLogs":["id"],"getRunningProcessesByClusterId":["cluster_id"],"getLinkedPackages":["cluster_id"],"removeCape":["access_token"],"getProcessLogTail":["id","max_lines"],"searchPackages":["provider","query"],"changeCape":["access_token","cape_uuid"],"getScreenshots":["id"],"getRunningProcesses":[],"getDefaultUser":["fallback"],"killProcess":["pid"],"removeUser":["uuid"],"getClusterById":["id"],"getClusters":[],"isClusterRunning":["cluster_id"],"setClusterStage":["id","stage"],"createSettingsProfile":["name"],"launchCluster":["id","uuid","search_for_java"],"getGameVersions":[],"refreshAccounts":[],"refreshAccount":["uuid"],"writeSettings":["setting"],"downloadExternalPackage":["package","cluster_id","force","skip_compatibility"],"getPackage":["provider","slug"],"createCluster":["options"],"getUsersFromAuthor":["provider","author"],"updateClusterProfile":["name","profile"],"removePackage":["cluster_id","package_hash"],"installModpack":["modpack","cluster_id"],"getPackageBody":["provider","body"],"changeSkin":["access_token","skin_url","skin_variant"],"convertUsernameUUID":["username_uuid"],"setDiscordRPCMessage":["message"],"open":["input"],"openMsaLogin":[],"readSettings":[],"getGlobalProfile":[],"updateClusterById":["id","request"],"fetchLoggedInProfile":["access_token"],"getUsers":[],"removeCluster":["id"],"getLogByName":["id","name"],"fetchMinecraftProfile":["uuid"],"syncCluster":["cluster_id"],"getProfileOrDefault":["name"],"getWorlds":["id"],"getUser":["uuid"],"setDefaultUser":["uuid"]}' }
+export type Router = { 'debug': { openDevTools: () => Promise<void>, 
+isInDev: () => Promise<boolean>, 
+getArch: () => Promise<string>, 
+getFamily: () => Promise<string>, 
+getLocale: () => Promise<string>, 
+getType: () => Promise<string>, 
+getPlatform: () => Promise<string>, 
+getOsVersion: () => Promise<string>, 
+getOsDistro: () => Promise<string>, 
+getGitCommitHash: () => Promise<string>, 
+getBuildTimestamp: () => Promise<string>, 
+getPackageVersion: () => Promise<string>, 
+getFullDebugInfo: () => Promise<DebugInfoData>, 
+getFullDebugInfoParsed: () => Promise<DebugInfoParsedLine[]>, 
+getFullDebugInfoParsedString: () => Promise<string> },
+'events': { ingress: (event: IngressPayload) => Promise<void>, 
+message: (event: MessagePayload) => Promise<void>, 
+process: (event: ProcessPayload) => Promise<void> },
+'folders': { fromCluster: (folderName: string) => Promise<string>, 
 openCluster: (folderName: string) => Promise<null> },
 'oneclient': { getClustersGroupedByMajor: () => Promise<Partial<{ [key in number]: ClusterModel[] }>>, 
 getBundlesFor: (clusterId: number) => Promise<ModpackArchive[]>, 
@@ -327,9 +349,6 @@ updateBundlePackages: (clusterId: number) => Promise<ApplyBundleUpdatesResult>,
 isBundleSyncing: () => Promise<boolean>, 
 cacheArt: (path: string) => Promise<string>, 
 refreshArt: (path: string) => Promise<null> },
-'events': { ingress: (event: IngressPayload) => Promise<void>, 
-message: (event: MessagePayload) => Promise<void>, 
-process: (event: ProcessPayload) => Promise<void> },
 'core': { getClusters: () => Promise<ClusterModel[]>, 
 getClusterById: (id: number) => Promise<ClusterModel | null>, 
 removeCluster: (id: number) => Promise<null>, 
@@ -383,18 +402,7 @@ changeCape: (accessToken: string, capeUuid: string) => Promise<MojangFullPlayerP
 removeCape: (accessToken: string) => Promise<MojangFullPlayerProfile>, 
 convertUsernameUUID: (usernameUuid: string) => Promise<MowojangProfile>, 
 setDiscordRPCMessage: (message: string) => Promise<null>, 
-open: (input: string) => Promise<null> },
-'debug': { openDevTools: () => Promise<void>, 
-isInDev: () => Promise<boolean>, 
-getArch: () => Promise<string>, 
-getFamily: () => Promise<string>, 
-getLocale: () => Promise<string | null>, 
-getType: () => Promise<string>, 
-getPlatform: () => Promise<string>, 
-getOsVersion: () => Promise<string>, 
-getGitCommitHash: () => Promise<string>, 
-getBuildTimestamp: () => Promise<string>, 
-getPackageVersion: () => Promise<string> } };
+open: (input: string) => Promise<null> } };
 
 
 export type { InferCommandOutput }

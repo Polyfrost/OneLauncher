@@ -1,6 +1,7 @@
-import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
+import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import { useDebugInfo } from '@/utils/debugInfo';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
@@ -34,6 +35,10 @@ export function SuperSecretDevOptions() {
 			<Overlay.Title>Super Secret Dev Options</Overlay.Title>
 
 			<div>
+				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" icon={<Code02Icon />} title="Log Debug Info">
+					<SettingsSwitch setting={createSetting('log_debug_info')} />
+				</SettingsRow>
+
 				<SettingsRow description="Enable The Tanstack Dev Tools" icon={<Code02Icon />} title="Tanstack Dev Tools">
 					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>

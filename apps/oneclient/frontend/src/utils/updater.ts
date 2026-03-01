@@ -1,6 +1,7 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
+import { bindings } from '@/main';
 import { listen } from '@tauri-apps/api/event';
-import { bindings } from '../main';
+import { useEffect } from 'react';
 
 export interface Update {
 	version: string;
@@ -27,4 +28,29 @@ export async function listenForUpdateEvents(
 	return await listen<UpdateEvent>('updater', (event) => {
 		callback(event.payload);
 	});
+}
+
+export function useAutoUpdater() {
+	useEffect(() => {
+		void (async () => {
+			try {
+				const update = await checkForUpdate();
+				if (!update)
+					return;
+
+				// eslint-disable-next-line no-console -- Used for debugging - aka important
+				console.log('Update found on initial check:', update.version);
+
+				try {
+					await installUpdate();
+				}
+				catch (e) {
+					console.error('Failed to install update:', e);
+				}
+			}
+			catch (e) {
+				console.error('Failed to check for update:', e);
+			}
+		})();
+	}, []);
 }

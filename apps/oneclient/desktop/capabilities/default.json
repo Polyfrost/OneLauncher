@@ -37,7 +37,8 @@
 		"fs:allow-download-write",
 		"fs:allow-data-read-recursive",
 		"fs:allow-data-write-recursive",
-                "fs:allow-watch",
+		"fs:allow-watch",
+
 		"os:deny-hostname",
 		"os:allow-locale",
 		"os:allow-os-type",
@@ -45,6 +46,10 @@
 		"os:allow-version",
 		"os:allow-arch",
 		"os:deny-exe-extension",
-		"os:allow-family"
+		"os:allow-family",
+
+		"global-shortcut:allow-is-registered",
+		"global-shortcut:allow-register",
+		"global-shortcut:allow-unregister"
 	]
 }

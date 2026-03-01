@@ -1,6 +1,7 @@
-import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, useDebugInfo } from '@/components';
+import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import { useDebugInfo } from '@/utils/debugInfo';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';

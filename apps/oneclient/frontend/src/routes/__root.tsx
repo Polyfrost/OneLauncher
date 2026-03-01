@@ -1,17 +1,14 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import type { ShortcutEvent } from '@tauri-apps/plugin-global-shortcut';
-import { copyDebugInfo, Toasts } from '@/components';
+import { Toasts } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
-import { bindings } from '@/main';
-import { checkForUpdate, installUpdate } from '@/utils/updater';
-import { useCommand } from '@onelauncher/common';
+import { useDebugKeybind } from '@/utils/debugInfo';
+import { useDiscordRPC } from '@/utils/discordRPC';
+import { useAutoUpdater } from '@/utils/updater';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
-import { createRootRouteWithContext, Outlet, useLocation, useRouter } from '@tanstack/react-router';
+import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
-import { register } from '@tauri-apps/plugin-global-shortcut';
-import { useEffect } from 'react';
 import { RouterProvider } from 'react-aria-components';
 
 interface AppRouterContext {
@@ -29,115 +26,11 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
 	component: RootRoute,
 });
 
-type URLPath = Exclude<ToOptions['to'], undefined>;
-const ResolvedPathNames: Record<URLPath, string> = {
-	'.': 'UNKNOWN',
-	'..': 'UNKNOWN',
-	'/': 'Viewing Home',
-	'/app': 'Viewing Homepage',
-	'/app/account': 'Viewing Account',
-	'/app/account/skins': 'Viewing Skin Manager',
-	'/app/cluster': 'Viewing Versions',
-	'/app/cluster/browser': 'Viewing {clusterName}\'s mods',
-	'/app/cluster/browser/package': 'Browsing {packageName}',
-	'/app/cluster/logs': 'Viewing {clusterName}\'s logs',
-	'/app/cluster/mods': 'Viewing {clusterName}\'s mods',
-	'/app/cluster/resource-packs': 'Viewing {clusterName}\'s resource packs',
-	'/app/cluster/shaders': 'Viewing {clusterName}\'s shaders',
-	'/app/cluster/datapacks': 'Viewing {clusterName}\'s data packs',
-	'/app/cluster/process': 'Viewing {clusterName}',
-	'/app/cluster/settings': 'Viewing {clusterName}\'s settings',
-	'/app/settings': 'Viewing Settings',
-	'/app/settings/appearance': 'Viewing Settings',
-	'/app/settings/developer': 'Viewing Settings',
-	'/app/settings/minecraft': 'Viewing Settings',
-	'/app/settings/changelog': 'Viewing Settings',
-	'/app/accounts': 'Viewing Accounts',
-	'/app/clusters': 'Viewing Versions',
-	'/onboarding': 'Preparing OneClient',
-	'/onboarding/account': 'Preparing OneClient',
-	'/onboarding/finished': 'Preparing OneClient',
-	'/onboarding/language': 'Preparing OneClient',
-	'/onboarding/preferences/version': 'Preparing OneClient',
-	'/onboarding/preferences/versionCategory': 'Preparing OneClient',
-	'/onboarding/preferences': 'Preparing OneClient',
-};
-
-// Credit - https://github.com/DuckySoLucky/hypixel-discord-chat-bridge/blob/d3ea84a26ebf094c8191d50b4954549e2dd4dc7f/src/contracts/helperFunctions.js#L216-L225
-function ReplaceVariables(template: string, variables: Record<string, any>) {
-	return template.replace(/\{(\w+)\}/g, (match: any, name: string | number) => variables[name] ?? match);
-}
-
-function useDiscordRPC() {
-	const location = useLocation();
-	const clusterId = location.search.clusterId ?? 0;
-	const provider = location.search.provider ?? null;
-	const packageId = location.search.packageId ?? null;
-	const { data: cluster } = useCommand(['getClusterById', clusterId], () => bindings.core.getClusterById(clusterId));
-
-	const { data: managedPackage } = useCommand(
-		['getPackage', provider, packageId],
-		() => {
-			if (provider == null || packageId == null)
-				return Promise.reject(new Error('Missing parameters'));
-			return bindings.core.getPackage(provider, packageId);
-		},
-		{ enabled: provider != null && packageId != null },
-	);
-
-	useEffect(() => {
-		const template = ResolvedPathNames[location.pathname as URLPath];
-		if (template)
-			bindings.core.setDiscordRPCMessage(ReplaceVariables(template, { clusterName: cluster?.name ?? 'UNKNOWN', packageName: managedPackage?.name ?? 'UNKNOWN' }));
-	}, [location.pathname, location.search.clusterId, cluster?.name, managedPackage?.name]);
-}
-
-function useAutoUpdate() {
-	useEffect(() => {
-		void (async () => {
-			try {
-				const update = await checkForUpdate();
-				if (!update)
-					return;
-
-				// eslint-disable-next-line no-console -- Used for debugging - aka important
-				console.log('Update found on initial check:', update.version);
-
-				try {
-					await installUpdate();
-				}
-				catch (e) {
-					console.error('Failed to install update:', e);
-				}
-			}
-			catch (e) {
-				console.error('Failed to check for update:', e);
-			}
-		})();
-	}, []);
-}
-
-function useDebugKeybind() {
-	const handleKeybind = async (event: ShortcutEvent) => {
-		if (event.state !== 'Pressed')
-			return;
-		const info = await bindings.debug.getFullDebugInfoParsed();
-		copyDebugInfo(info);
-	};
-
-	useEffect(() => {
-		void (async () => {
-			await register('CommandOrControl+Shift+D', handleKeybind);
-			await register('Alt+F12', handleKeybind);
-		})();
-	}, []);
-}
-
 function RootRoute() {
 	const router = useRouter();
 	const { setting } = useSettings();
 	useDiscordRPC();
-	useAutoUpdate();
+	useAutoUpdater();
 	useDebugKeybind();
 	return (
 		<RouterProvider

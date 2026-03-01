@@ -8,6 +8,7 @@ export * from './GameBackground';
 export * from './LaunchButton';
 export * from './Loader';
 export * from './LogViewer';
+export * from './MadeBy';
 export * from './ManageSkinButton';
 export * from './Markdown';
 export * from './Navbar';

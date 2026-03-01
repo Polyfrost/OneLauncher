@@ -32,7 +32,7 @@ pub async fn launch_minecraft(
 
 	prepare_cluster(cluster, force, search_for_java).await?;
 	let global = get_global_profile().await;
-	let mut settings = if let Some(name) = &cluster.setting_profile_name
+	let settings = if let Some(name) = &cluster.setting_profile_name
 		&& let Some(profile) = get_profile_by_name(name).await?
 	{
 		// Start from cluster profile so its values (e.g. mem_max) take precedence, then fill

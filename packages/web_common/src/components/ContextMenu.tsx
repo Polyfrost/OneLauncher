@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
-import type { MenuItemProps, MenuProps } from 'react-aria-components';
+import type { MenuItemProps, MenuProps, SeparatorProps } from 'react-aria-components';
 import { useEffect, useRef, useState } from 'react';
-import { Menu, MenuItem, Popover } from 'react-aria-components';
+import { Menu, MenuItem, Popover, Separator } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
 export interface ContextMenuProps<T extends object> extends MenuProps<T> {
@@ -87,4 +87,15 @@ export function ContextMenu<T extends object>({
 	);
 }
 
-ContextMenu.Item = <T extends object>({ className, ...rest }: MenuItemProps<T>) => <MenuItem {...rest} />;
+ContextMenu.Item = <T extends object>({
+	className,
+	isDisabled,
+	...rest
+}: MenuItemProps<T>) => 
+	<MenuItem 
+		{...rest}
+		className={twMerge('rounded-sm px-3 py-1 hover:bg-component-bg-hover', className?.toString(), isDisabled ? 'text-gray-700' : '')}
+		isDisabled={isDisabled}
+	/>;
+
+ContextMenu.Separator = ({ className, ...rest }: SeparatorProps) => <Separator {...rest} className={twMerge('my-1 py-0.25 bg-component-border', className)} />;

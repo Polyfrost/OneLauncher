@@ -2,15 +2,20 @@ import type { ClusterModel } from '@/bindings.gen';
 import DefaultBanner from '@/assets/images/default_banner.png';
 import DefaultInstancePhoto from '@/assets/images/default_instance_cover.jpg';
 import { NewClusterCreate } from '@/components/launcher/cluster/ClusterCreation';
+import Modal from '@/components/overlay/Modal';
 import { useRecentCluster } from '@/hooks/useCluster';
 import { bindings } from '@/main';
 import { formatAsDuration, upperFirst } from '@/utils';
 import { useCommand, useCommandMut } from '@onelauncher/common';
-import { Button, Show } from '@onelauncher/common/components';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { Button, ContextMenu, Show, TextField } from '@onelauncher/common/components';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { PlayIcon } from '@untitled-theme/icons-react';
+import { dataDir, join } from '@tauri-apps/api/path';
+import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { CheckIcon, PlayIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
+import { useEffect, useRef, useState } from 'react';
 
 export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
@@ -161,20 +166,71 @@ function ClusterGroup({
 
 function ClusterCard({
 	id,
-	name,
 	mc_loader,
 	mc_version,
-	icon_url,
 	stage,
 }: ClusterModel) {
 	const launch = useCommandMut(() => bindings.core.launchCluster(id, null));
+	const ref = useRef<HTMLDivElement>(null);
+	const [isOpen, setOpen] = useState(false);
+	const navigate = useNavigate({ from: '/app' });
+	const [launcherDir, setLauncherDir] = useState('');
+	const cluster = useCommand(`getClusterById-${id}`, () => bindings.core.getClusterById(id));
+	const [newCover, setNewCover] = useState<string>(cluster.data?.icon_url as string);
+	const [newName, setNewName] = useState<string>(cluster.data?.name as string);
+	const [modalOpen, setModalOpen] = useState(false);
 
 	const handleLaunch = () => {
 		launch.mutate();
 	};
 
+	useEffect(() => {
+		(async () => {
+			setLauncherDir(await join(await dataDir(), 'OneLauncher', 'clusters', cluster.data!.folder_name));
+		})();
+	}, [cluster.data, cluster.data?.folder_name]);
+
+	const openClusterDir = async () => {
+		await openPath(launcherDir);
+	};
+
+	const editing = useCommand(`updateClusterById-${id}`, () => bindings.core.updateClusterById(id, {
+		icon_url: newCover,
+		name: newName,
+	}), {
+		enabled: false,
+		subscribed: false,
+	});
+
+	async function launchFilePicker() {
+		const selected = await open({
+			multiple: false,
+			directory: false,
+			filters: [{
+				name: 'Image',
+				extensions: ['png', 'jpg', 'jpeg', 'webp'],
+			}],
+		});
+
+		if (!selected)
+			return;
+
+		setNewCover(selected);
+	}
+
+	useEffect(() => {
+		if ((newCover && newCover !== cluster.data?.icon_url) || (newName && newName !== cluster.data?.name))
+			editing.refetch();
+	}, [cluster.data?.icon_url, cluster.data?.name, editing, newCover, newName]);
+
 	const image = () => {
-		const url = icon_url;
+		if (newCover && newCover !== cluster.data?.icon_url)
+			if (newCover.includes('\\') || newCover.includes('/')) {
+				console.warn('Using preview image:', newCover);
+				return convertFileSrc(newCover);
+			}
+
+		const url = cluster.data?.icon_url;
 
 		if (!url)
 			return DefaultInstancePhoto;
@@ -182,8 +238,15 @@ function ClusterCard({
 		return convertFileSrc(url);
 	};
 
+	function updateName(name: string) {
+		if (name.length > 30 || name.length <= 0)
+			return;
+
+		setNewName(name);
+	}
+
 	return (
-		<>
+		<div ref={ref}>
 			<Link
 				disabled={stage === 'downloading'}
 				search={{
@@ -210,8 +273,9 @@ function ClusterCard({
 					<div className="z-10 flex flex-row items-center justify-between gap-x-3 p-3">
 						<div className="h-full flex flex-col gap-1.5 overflow-hidden">
 							<p className="h-4 text-ellipsis whitespace-nowrap font-medium">
-								{name}
+								{cluster.data?.name}
 							</p>
+
 							<p className="h-4 text-xs">
 								{mc_loader}
 								{' '}
@@ -226,6 +290,53 @@ function ClusterCard({
 					</div>
 				</div>
 			</Link>
-		</>
+
+			<ContextMenu
+				isOpen={isOpen}
+				setOpen={setOpen}
+				triggerRef={ref}
+			>
+				<ContextMenu.Item className="flex items-center gap-1" onAction={handleLaunch}>
+					<span>Launch</span>
+					<PlayIcon className="pb-0.5" height={14} width={14} />
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+				<ContextMenu.Item onAction={() => setModalOpen(true)}>
+					Rename
+				</ContextMenu.Item>
+				<ContextMenu.Item onAction={launchFilePicker}>
+					Change Icon
+				</ContextMenu.Item>
+				<ContextMenu.Separator />
+				<ContextMenu.Item isDisabled={stage === 'downloading'} onAction={() => { navigate({ to: '/app/cluster', search: { id } }); }}>
+					Properties
+				</ContextMenu.Item>
+				<ContextMenu.Item onAction={openClusterDir}>
+					Open Folder
+				</ContextMenu.Item>
+				<ContextMenu.Item className="text-red-500">
+					Delete
+				</ContextMenu.Item>
+				{/* <ContextMenu.Item>
+					Export
+				</ContextMenu.Item> */}
+			</ContextMenu>
+
+			<Modal isDismissable isOpen={modalOpen}>
+				<div className="min-w-sm flex flex-col rounded-lg bg-page text-center">
+					<Modal.Header name="New Cluster name:" />
+					<TextField
+						className="text-xl font-bold m-3"
+						iconRight={(
+							<Button className="px-1.5" onClick={() => setModalOpen(false)}>
+								<CheckIcon height={10} width={10} />
+							</Button>
+						)}
+						onChange={e => updateName(e.target.value)}
+						placeholder={cluster.data?.name}
+					/>
+				</div>
+			</Modal>
+		</div>
 	);
 }

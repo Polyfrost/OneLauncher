@@ -81,6 +81,11 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.setup(move |app| {
 			app.manage(ext::updater::UpdaterState::default());
 			setup_window(app.handle()).expect("failed to setup main window");
+
+			#[cfg(desktop)]
+			app.handle()
+				.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+
 			Ok(())
 		});
 

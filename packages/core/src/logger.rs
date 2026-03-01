@@ -11,15 +11,21 @@ pub async fn start_logger() {
 	use std::fs::OpenOptions;
 	use tracing_subscriber::fmt::time::ChronoLocal;
 
-	use crate::store::Dirs;
+	use crate::store::{Dirs, State};
+
+	let state = State::get().await.expect("failed to get state");
+	let enable_debug_logs = state.settings.read().await.log_debug_info;
+
+	let level = if enable_debug_logs {
+		tracing::Level::DEBUG
+	} else {
+		tracing::Level::INFO
+	};
 
 	let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-		tracing_subscriber::EnvFilter::new(
-			Core::get()
-				.logger_filter
-				.clone()
-				.unwrap_or_else(|| format!("{}=debug", env!("CARGO_PKG_NAME"))),
-		)
+		tracing_subscriber::EnvFilter::new(format!(
+			"oneclient_gui={level},onelauncher_core={level}"
+		))
 	});
 
 	let mut console_fmt_layer = tracing_subscriber::fmt::layer()

@@ -35,6 +35,10 @@ export function SuperSecretDevOptions() {
 			<Overlay.Title>Super Secret Dev Options</Overlay.Title>
 
 			<div>
+				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" icon={<Code02Icon />} title="Log Debug Info">
+					<SettingsSwitch setting={createSetting('log_debug_info')} />
+				</SettingsRow>
+
 				<SettingsRow description="Enable The Tanstack Dev Tools" icon={<Code02Icon />} title="Tanstack Dev Tools">
 					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>

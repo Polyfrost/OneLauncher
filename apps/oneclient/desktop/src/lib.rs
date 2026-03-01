@@ -1,5 +1,5 @@
 use onelauncher_core::api::proxy::ProxyTauri;
-use onelauncher_core::api::tauri::TauRPCLauncherExt;
+use onelauncher_core::api::tauri::{TauRPCLauncherExt, TauriLauncherDebugApi};
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::store::proxy::ProxyState;
 use onelauncher_core::store::semaphore::SemaphoreStore;
@@ -47,6 +47,12 @@ async fn initialize_core() -> LauncherResult<()> {
 	onelauncher_core::start_logger().await;
 	SemaphoreStore::get().await;
 	tracing::info!("initialized core modules");
+
+	let debug_info = onelauncher_core::api::tauri::TauriLauncherDebugApiImpl
+		.get_full_debug_info_parsed_string()
+		.await;
+
+	tracing::info!("\n{}", debug_info);
 
 	Ok(())
 }

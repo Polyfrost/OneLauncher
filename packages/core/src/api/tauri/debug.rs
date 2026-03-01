@@ -26,6 +26,15 @@ pub struct DebugInfoParsedLine {
 	pub value: String,
 }
 
+impl DebugInfoParsedLine {
+	pub fn new<T: Into<String>, U: Into<String>>(title: T, value: U) -> Self {
+		Self {
+			title: title.into(),
+			value: value.into(),
+		}
+	}
+}
+
 #[taurpc::procedures(path = "debug")]
 pub trait TauriLauncherDebugApi {
 	#[taurpc(alias = "openDevTools")]
@@ -162,57 +171,20 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 	}
 
 	async fn get_full_debug_info_parsed(self) -> Vec<DebugInfoParsedLine> {
-		let info: DebugInfoData = self.clone().get_full_debug_info().await;
+		let info = self.clone().get_full_debug_info().await;
 
 		vec![
-			DebugInfoParsedLine {
-				title: "inDev".into(),
-				value: if info.in_dev {
-					"yes".into()
-				} else {
-					"no".into()
-				},
-			},
-			DebugInfoParsedLine {
-				title: "Platform".into(),
-				value: info.platform,
-			},
-			DebugInfoParsedLine {
-				title: "Arch".into(),
-				value: info.arch,
-			},
-			DebugInfoParsedLine {
-				title: "Family".into(),
-				value: info.family,
-			},
-			DebugInfoParsedLine {
-				title: "Locale".into(),
-				value: info.locale,
-			},
-			DebugInfoParsedLine {
-				title: "Os Type".into(),
-				value: info.os_type,
-			},
-			DebugInfoParsedLine {
-				title: "Os Version".into(),
-				value: info.os_version,
-			},
-			DebugInfoParsedLine {
-				title: "Os Distro".into(),
-				value: info.os_distro,
-			},
-			DebugInfoParsedLine {
-				title: "Commit Hash".into(),
-				value: info.commit_hash,
-			},
-			DebugInfoParsedLine {
-				title: "Build Timestamp".into(),
-				value: info.build_timestamp,
-			},
-			DebugInfoParsedLine {
-				title: "Version".into(),
-				value: info.build_version,
-			},
+			DebugInfoParsedLine::new("inDev", if info.in_dev { "yes" } else { "no" }),
+			DebugInfoParsedLine::new("Platform", info.platform),
+			DebugInfoParsedLine::new("Arch", info.arch),
+			DebugInfoParsedLine::new("Family", info.family),
+			DebugInfoParsedLine::new("Locale", info.locale),
+			DebugInfoParsedLine::new("Os Type", info.os_type),
+			DebugInfoParsedLine::new("Os Version", info.os_version),
+			DebugInfoParsedLine::new("Os Distro", info.os_distro),
+			DebugInfoParsedLine::new("Commit Hash", info.commit_hash),
+			DebugInfoParsedLine::new("Build Timestamp", info.build_timestamp),
+			DebugInfoParsedLine::new("Version", info.build_version),
 		]
 	}
 }

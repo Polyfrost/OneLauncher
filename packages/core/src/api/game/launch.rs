@@ -31,12 +31,18 @@ pub async fn launch_minecraft(
 	}
 
 	prepare_cluster(cluster, force, search_for_java).await?;
-	let mut settings = get_global_profile().await;
-	if let Some(name) = &cluster.setting_profile_name
+	let global = get_global_profile().await;
+	let mut settings = if let Some(name) = &cluster.setting_profile_name
 		&& let Some(profile) = get_profile_by_name(name).await?
 	{
-		settings.merge(profile);
-	}
+		// Start from cluster profile so its values (e.g. mem_max) take precedence, then fill
+		// in any None fields from global (merge uses overwrite_none).
+		let mut s = profile;
+		s.merge(global.clone());
+		s
+	} else {
+		global
+	};
 
 	let state = State::get().await?;
 	let dirs = Dirs::get().await?;

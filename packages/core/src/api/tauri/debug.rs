@@ -178,7 +178,7 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		let info = self.clone().get_full_debug_info().await;
 
 		vec![
-			DebugInfoParsedLine::new("inDev", if info.in_dev { "yes" } else { "no" }),
+			DebugInfoParsedLine::new("In Dev", if info.in_dev { "yes" } else { "no" }),
 			DebugInfoParsedLine::new("Platform", info.platform),
 			DebugInfoParsedLine::new("Arch", info.arch),
 			DebugInfoParsedLine::new("Family", info.family),

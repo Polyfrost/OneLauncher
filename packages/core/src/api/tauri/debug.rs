@@ -1,6 +1,29 @@
 use tauri::Runtime;
 use tauri_plugin_os::{arch, family, locale, platform, type_, version};
 
+#[onelauncher_macro::specta]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugInfoData {
+	pub in_dev: bool,
+	pub platform: String,
+	pub arch: String,
+	pub family: String,
+	pub locale: String,
+	pub os_type: String,
+	pub os_version: String,
+	pub commit_hash: String,
+	pub build_timestamp: String,
+	pub build_version: String,
+}
+
+#[onelauncher_macro::specta]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
+pub struct DebugInfoParsedLine {
+	pub title: String,
+	pub value: String,
+}
+
 #[taurpc::procedures(path = "debug")]
 pub trait TauriLauncherDebugApi {
 	#[taurpc(alias = "openDevTools")]
@@ -16,7 +39,7 @@ pub trait TauriLauncherDebugApi {
 	async fn get_family() -> String;
 
 	#[taurpc(alias = "getLocale")]
-	async fn get_locale() -> Option<String>;
+	async fn get_locale() -> String;
 
 	#[taurpc(alias = "getType")]
 	async fn get_type() -> String;
@@ -35,6 +58,12 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getPackageVersion")]
 	async fn get_package_version() -> String;
+
+	#[taurpc(alias = "getFullDebugInfo")]
+	async fn get_full_debug_info() -> DebugInfoData;
+
+	#[taurpc(alias = "getFullDebugInfoParsed")]
+	async fn get_full_debug_info_parsed() -> Vec<DebugInfoParsedLine>;
 }
 
 #[taurpc::ipc_type]
@@ -58,8 +87,9 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		family().to_string()
 	}
 
-	async fn get_locale(self) -> Option<String> {
-		locale()
+	/// Returns the user's locale (like "en-AU"), or "UNKNOWN" if it couldn't be found.
+	async fn get_locale(self) -> String {
+		locale().unwrap_or("UNKNOWN".to_string())
 	}
 
 	async fn get_type(self) -> String {
@@ -84,5 +114,71 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 
 	async fn get_package_version(self) -> String {
 		crate::build::PKG_VERSION.to_string()
+	}
+
+	async fn get_full_debug_info(self) -> DebugInfoData {
+		DebugInfoData {
+			in_dev: self.clone().is_in_dev().await,
+			platform: self.clone().get_platform().await,
+			arch: self.clone().get_arch().await,
+			family: self.clone().get_family().await,
+			locale: self.clone().get_locale().await,
+			os_type: self.clone().get_type().await,
+			os_version: self.clone().get_version().await,
+			commit_hash: self.clone().get_git_commit_hash().await,
+			build_timestamp: self.clone().get_build_timestamp().await,
+			build_version: self.clone().get_package_version().await,
+		}
+	}
+
+	async fn get_full_debug_info_parsed(self) -> Vec<DebugInfoParsedLine> {
+		let info: DebugInfoData = self.clone().get_full_debug_info().await;
+
+		vec![
+			DebugInfoParsedLine {
+				title: "inDev".into(),
+				value: if info.in_dev {
+					"yes".into()
+				} else {
+					"no".into()
+				},
+			},
+			DebugInfoParsedLine {
+				title: "Platform".into(),
+				value: info.platform,
+			},
+			DebugInfoParsedLine {
+				title: "Arch".into(),
+				value: info.arch,
+			},
+			DebugInfoParsedLine {
+				title: "Family".into(),
+				value: info.family,
+			},
+			DebugInfoParsedLine {
+				title: "Locale".into(),
+				value: info.locale,
+			},
+			DebugInfoParsedLine {
+				title: "Os Type".into(),
+				value: info.os_type,
+			},
+			DebugInfoParsedLine {
+				title: "Os Version".into(),
+				value: info.os_version,
+			},
+			DebugInfoParsedLine {
+				title: "Commit Hash".into(),
+				value: info.commit_hash,
+			},
+			DebugInfoParsedLine {
+				title: "Build Timestamp".into(),
+				value: info.build_timestamp,
+			},
+			DebugInfoParsedLine {
+				title: "Version".into(),
+				value: info.build_version,
+			},
+		]
 	}
 }

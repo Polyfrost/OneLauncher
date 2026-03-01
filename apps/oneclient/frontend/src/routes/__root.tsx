@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { Toasts } from '@/components';
+import type { ShortcutEvent } from '@tauri-apps/plugin-global-shortcut';
+import { copyDebugInfo, Toasts } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { checkForUpdate, installUpdate } from '@/utils/updater';
@@ -9,6 +10,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useLocation, useRouter } from '@tanstack/react-router';
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools';
+import { register } from '@tauri-apps/plugin-global-shortcut';
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-aria-components';
 
@@ -115,11 +117,28 @@ function useAutoUpdate() {
 	}, []);
 }
 
+function useDebugKeybind() {
+	const handleKeybind = async (event: ShortcutEvent) => {
+		if (event.state !== 'Pressed')
+			return;
+		const info = await bindings.debug.getFullDebugInfoParsed();
+		copyDebugInfo(info);
+	};
+
+	useEffect(() => {
+		void (async () => {
+			await register('CommandOrControl+Shift+D', handleKeybind);
+			await register('Alt+F12', handleKeybind);
+		})();
+	}, []);
+}
+
 function RootRoute() {
 	const router = useRouter();
 	const { setting } = useSettings();
 	useDiscordRPC();
 	useAutoUpdate();
+	useDebugKeybind();
 	return (
 		<RouterProvider
 			navigate={(to, options) => router.navigate({ to, ...options })}

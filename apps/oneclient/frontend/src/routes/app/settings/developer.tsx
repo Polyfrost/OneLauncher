@@ -31,6 +31,9 @@ function RouteComponent() {
 				</SettingsRow>
 
 				<SettingsRow.Header>Dev Tools</SettingsRow.Header>
+				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" icon={<Code02Icon />} title="Log Debug Info">
+					<SettingsSwitch setting={createSetting('log_debug_info')} />
+				</SettingsRow>
 				<SettingsRow
 					description="Enable The Tanstack Dev Tools"
 					title="Tanstack Dev Tools"

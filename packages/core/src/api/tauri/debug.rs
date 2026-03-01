@@ -1,5 +1,6 @@
 use tauri::Runtime;
 use tauri_plugin_os::{arch, family, locale, platform, type_, version};
+use tokio::fs;
 
 #[onelauncher_macro::specta]
 #[derive(Debug, serde::Serialize, serde::Deserialize, Clone)]
@@ -12,6 +13,7 @@ pub struct DebugInfoData {
 	pub locale: String,
 	pub os_type: String,
 	pub os_version: String,
+	pub os_distro: String,
 	pub commit_hash: String,
 	pub build_timestamp: String,
 	pub build_version: String,
@@ -49,6 +51,9 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getOsVersion")]
 	async fn get_version() -> String;
+
+	#[taurpc(alias = "getOsDistro")]
+	async fn get_distro() -> String;
 
 	#[taurpc(alias = "getGitCommitHash")]
 	async fn get_git_commit_hash() -> String;
@@ -104,6 +109,30 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		version().to_string()
 	}
 
+	async fn get_distro(self) -> String {
+		let platform = self.clone().get_platform().await;
+
+		if platform == "linux" {
+			if let Ok(contents) = fs::read_to_string("/etc/os-release").await {
+				for line in contents.lines() {
+					if let Some(value) = line.strip_prefix("PRETTY_NAME=") {
+						return value.trim_matches('"').to_string();
+					}
+				}
+
+				for line in contents.lines() {
+					if let Some(value) = line.strip_prefix("NAME=") {
+						return value.trim_matches('"').to_string();
+					}
+				}
+			}
+
+			"UNKNOWN".to_string()
+		} else {
+			platform
+		}
+	}
+
 	async fn get_git_commit_hash(self) -> String {
 		crate::build::COMMIT_HASH.to_string()
 	}
@@ -125,6 +154,7 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 			locale: self.clone().get_locale().await,
 			os_type: self.clone().get_type().await,
 			os_version: self.clone().get_version().await,
+			os_distro: self.clone().get_distro().await,
 			commit_hash: self.clone().get_git_commit_hash().await,
 			build_timestamp: self.clone().get_build_timestamp().await,
 			build_version: self.clone().get_package_version().await,
@@ -166,6 +196,10 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 			DebugInfoParsedLine {
 				title: "Os Version".into(),
 				value: info.os_version,
+			},
+			DebugInfoParsedLine {
+				title: "Os Distro".into(),
+				value: info.os_distro,
 			},
 			DebugInfoParsedLine {
 				title: "Commit Hash".into(),

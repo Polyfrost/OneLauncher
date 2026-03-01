@@ -14,7 +14,6 @@ export function DebugInfo() {
 }
 
 export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
-	const copy = () => copyDebugInfo(debugInfo);
 	return (
 		<>
 			<div>
@@ -27,7 +26,7 @@ export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
 					return <p key={lineData.title}>{line}</p>;
 				})}
 			</div>
-			<Button onPress={copy}>Copy Data</Button>
+			<Button onPress={copyDebugInfo}>Copy Data</Button>
 		</>
 	);
 }

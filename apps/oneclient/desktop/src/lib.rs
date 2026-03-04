@@ -1,5 +1,5 @@
 use onelauncher_core::api::proxy::ProxyTauri;
-use onelauncher_core::api::tauri::TauRPCLauncherExt;
+use onelauncher_core::api::tauri::{TauRPCLauncherExt, TauriLauncherDebugApi};
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::store::proxy::ProxyState;
 use onelauncher_core::store::semaphore::SemaphoreStore;
@@ -48,6 +48,12 @@ async fn initialize_core() -> LauncherResult<()> {
 	SemaphoreStore::get().await;
 	tracing::info!("initialized core modules");
 
+	let debug_info = onelauncher_core::api::tauri::TauriLauncherDebugApiImpl
+		.get_full_debug_info_parsed_string()
+		.await;
+
+	tracing::info!("\n{}", debug_info);
+
 	Ok(())
 }
 
@@ -75,11 +81,17 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_fs::init())
 		.plugin(tauri_plugin_deep_link::init())
+		.plugin(tauri_plugin_os::init())
 		.menu(tauri::menu::Menu::default)
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
 			app.manage(ext::updater::UpdaterState::default());
 			setup_window(app.handle()).expect("failed to setup main window");
+
+			#[cfg(desktop)]
+			app.handle()
+				.plugin(tauri_plugin_global_shortcut::Builder::new().build())?;
+
 			Ok(())
 		});
 

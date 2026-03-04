@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { SheetPage } from '@/components';
+import { MadeBy, SheetPage } from '@/components';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
 import { CodeSnippet02Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
 import { useEffect } from 'react';
@@ -50,7 +50,7 @@ function RouteComponent() {
 						}}
 
 					/>
-					{/* <Info /> */}
+					<MadeBy />
 				</div>
 
 				<div className="h-full w-full flex flex-col">

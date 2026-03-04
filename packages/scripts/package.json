@@ -23,7 +23,8 @@
 		"autoformat": "./format.sh",
 		"fix-deb": "./fix-deb.sh",
 		"dupe": "./dedupe.sh",
-		"api:categories": "pnpm tsx ./api/fetch_categories.ts"
+		"api:categories": "pnpm tsx ./api/fetch_categories.ts",
+		"merge-releases": "pnpm tsx merge-releases.ts"
 	},
 	"dependencies": {
 		"@pnpm/find-workspace-dir": "^7.0.1",

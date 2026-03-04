@@ -2,6 +2,7 @@ import type { DownloadModsRef } from '@/components';
 import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { GameBackground, LoaderSuspense, MadeBy, NavbarButton, Overlay, Stepper, SuperSecretDevOptions } from '@/components';
+import { prefetchCachedImages } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
@@ -105,6 +106,7 @@ function RouteComponent() {
 	// Prefetch data so that onboarding/preferences/versionCategory is fast
 	const queryClient = useQueryClient();
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
+	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
 	useEffect(() => {
 		clusters.forEach((cluster) => {
 			queryClient.prefetchQuery({
@@ -113,6 +115,16 @@ function RouteComponent() {
 			});
 		});
 	}, [clusters, queryClient]);
+	useEffect(() => {
+		const artPaths: Array<string | null | undefined> = ['/versions/art/Horse_Update.jpg'];
+		for (const cluster of versions.clusters) {
+			artPaths.push(cluster.art);
+			for (const entry of cluster.entries)
+				artPaths.push(entry.art);
+		}
+
+		void prefetchCachedImages(artPaths);
+	}, [versions.clusters]);
 
 	const { currentLinearStepIndex } = Route.useLoaderData();
 

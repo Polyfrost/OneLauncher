@@ -220,11 +220,17 @@ function ModCategoryCard({ art, fullVersionName, bundle, mods, setMods, clusterI
 	return (
 		<AriaButton className={twMerge('group cursor-pointer w-full rounded-xl transition-[outline] outline-2 hover:outline-brand', isSelected ? 'outline-brand' : 'outline-ghost-overlay')} onPress={handleDownload}>
 			<div className="relative w-full">
-				<img
-					alt={`Minecraft ${fullVersionName} landscape`}
-					className={twMerge('w-full rounded-xl h-32 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
-					src={artSrc}
-				/>
+				{artSrc
+					? (
+							<img
+								alt={`Minecraft ${fullVersionName} landscape`}
+								className={twMerge('w-full rounded-xl h-32 object-cover transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')}
+								src={artSrc}
+							/>
+						)
+					: (
+							<div className={twMerge('w-full rounded-xl h-32 bg-page-elevated transition-[filter] group-hover:brightness-100 group-hover:grayscale-0', isSelected ? 'brightness-100 grayscale-0' : 'brightness-70 grayscale-25')} />
+						)}
 
 				<div className={twMerge('absolute -top-2 right-3', isSelected ? 'block' : 'hidden group-hover:block')}>
 					<div className="bg-[#D0D7F3] rounded-xl text-brand text-sm px-2 py-1">

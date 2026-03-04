@@ -56,6 +56,16 @@ function RouteComponent() {
 
 	const [modsPerCluster, setModsPerCluster] = useState<Record<string, Array<ModWithBundle>>>(
 		clusters.reduce((acc, cluster, i) => {
+			const isSelectedCluster = selectedClusters.some(selectedCluster => (
+				selectedCluster.mc_version === cluster.mc_version
+				&& selectedCluster.mc_loader === cluster.mc_loader
+			));
+			if (!isSelectedCluster) {
+				acc[cluster.id] = [];
+				return acc;
+			}
+
+			// Preselect defaults only for clusters chosen during onboarding.
 			const bundles = bundleQueries[i];
 			const enabledMods = bundles
 				.filter(bundle => bundle.manifest.enabled)

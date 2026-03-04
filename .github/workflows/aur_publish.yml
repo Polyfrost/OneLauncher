@@ -1,0 +1,104 @@
+name: Publish AUR Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. onelauncher-1.0.3)'
+        required: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.parse.outputs.app }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse release tag
+        id: parse
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ "$TAG" =~ ^onelauncher-(.+)$ ]]; then
+            echo "app=onelauncher" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^oneclient-(.+)$ ]]; then
+            echo "app=oneclient" >> "$GITHUB_OUTPUT"
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tag '$TAG' does not match onelauncher-* or oneclient-*"
+            exit 1
+          fi
+
+  publish-source:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute source sha256
+        id: hash
+        env:
+          APP: ${{ needs.resolve.outputs.app }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/${APP}-${VERSION}.tar.gz"
+          SHA=$(curl -sL "$URL" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare PKGBUILD
+        env:
+          APP: ${{ needs.resolve.outputs.app }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          PKGBUILD="apps/${APP}/distribution/aur/source/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" "$PKGBUILD"
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: ${{ needs.resolve.outputs.app }}
+          pkgbuild: apps/${{ needs.resolve.outputs.app }}/distribution/aur/source/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  publish-bin:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute .deb sha256
+        id: hash
+        env:
+          APP: ${{ needs.resolve.outputs.app }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          URL="https://github.com/${{ github.repository }}/releases/download/${APP}-${VERSION}/${APP}_${VERSION}_amd64.deb"
+          SHA=$(curl -sL "$URL" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare PKGBUILD
+        env:
+          APP: ${{ needs.resolve.outputs.app }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          PKGBUILD="apps/${APP}/distribution/aur/bin/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" "$PKGBUILD"
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: ${{ needs.resolve.outputs.app }}-bin
+          pkgbuild: apps/${{ needs.resolve.outputs.app }}/distribution/aur/bin/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}

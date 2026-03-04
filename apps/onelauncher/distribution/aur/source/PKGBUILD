@@ -1,0 +1,48 @@
+pkgname=onelauncher
+pkgver=1.0.3
+pkgrel=1
+pkgdesc='Next-generation open source Minecraft launcher'
+url='https://polyfrost.org/projects/onelauncher'
+arch=('x86_64')
+license=('GPL-3.0-only')
+
+makedepends=('rust' 'pnpm' 'nodejs' 'clang' 'nasm' 'perl')
+depends=(
+    'openssl' 'dbus' 'gtk3' 'libayatana-appindicator' 'librsvg' 'webkit2gtk-4.1'
+    'libgl' 'libpulse' 'libx11' 'libxcursor' 'libxext' 'libxxf86vm'
+)
+optdepends=(
+    'xorg-xrandr: very legacy minecraft versions'
+)
+conflicts=('onelauncher-bin')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Polyfrost/OneLauncher/archive/refs/tags/onelauncher-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+options=('!lto')
+
+prepare() {
+    cd "OneLauncher-onelauncher-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
+    pnpm install --frozen-lockfile
+}
+
+build() {
+    cd "OneLauncher-onelauncher-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    pnpm --filter @onelauncher/frontend build
+    cargo build --frozen --release -p onelauncher_gui
+}
+
+check() {
+    cd "OneLauncher-onelauncher-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen -p onelauncher_gui
+}
+
+package() {
+    cd "OneLauncher-onelauncher-${pkgver}"
+    install -Dm755 "target/release/onelauncher_gui" "$pkgdir/usr/bin/onelauncher"
+    install -Dm644 "apps/onelauncher/distribution/icons/128x128.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/org.polyfrost.launcher.png"
+    install -Dm644 "apps/onelauncher/distribution/icons/512x512.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/org.polyfrost.launcher.png"
+    install -Dm644 "apps/onelauncher/distribution/flatpak/org.polyfrost.launcher.desktop" "$pkgdir/usr/share/applications/org.polyfrost.launcher.desktop"
+}

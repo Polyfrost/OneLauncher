@@ -161,6 +161,12 @@ async function main() {
 			await gh('release', 'upload', target.tagName, mergedPath);
 
 			consola.success(`merged latest.json platforms: ${Object.keys(mergedLatestJson.platforms).join(', ')}`);
+
+			// Rename the tag to the canonical format
+			const newTag = `oneclient-${mergedLatestJson.version}`;
+			consola.start(`renaming tag ${target.tagName} -> ${newTag}...`);
+			await gh('release', 'edit', target.tagName, '--tag', newTag);
+			consola.success(`renamed tag to ${newTag}`);
 		}
 
 		consola.success(`\ndone! all releases merged into ${target.tagName}`);

@@ -107,7 +107,7 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 
 	/// Returns the user's locale (like "en-AU"), or "UNKNOWN" if it couldn't be found.
 	async fn get_locale(self) -> String {
-		locale().unwrap_or("UNKNOWN".to_string())
+		locale().unwrap_or_else(|| "UNKNOWN".to_string())
 	}
 
 	async fn get_type(self) -> String {

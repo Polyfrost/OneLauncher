@@ -1,7 +1,7 @@
 pkgname=oneclient-bin
 pkgver=1.0.3
 pkgrel=1
-pkgdesc='Next-generation open source Minecraft launcher'
+pkgdesc='Next-generation open source Minecraft launcher that downloads all the mods you would ever want'
 url='https://polyfrost.org/projects/oneclient'
 arch=('x86_64')
 license=('GPL-3.0-only')

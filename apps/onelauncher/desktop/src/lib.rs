@@ -74,8 +74,12 @@ async fn initialize_tauri(builder: tauri::Builder<tauri::Wry>) -> LauncherResult
 		.plugin(tauri_plugin_clipboard_manager::init())
 		.plugin(tauri_plugin_dialog::init())
 		.plugin(tauri_plugin_deep_link::init())
-		.plugin(tauri_plugin_opener::init())
-		.menu(tauri::menu::Menu::default)
+		.plugin(tauri_plugin_opener::init());
+
+	#[cfg(not(target_os = "linux"))]
+	let builder = builder.menu(tauri::menu::Menu::default);
+
+	let builder = builder
 		.invoke_handler(router.into_handler())
 		.setup(move |app| {
 			app.asset_protocol_scope()

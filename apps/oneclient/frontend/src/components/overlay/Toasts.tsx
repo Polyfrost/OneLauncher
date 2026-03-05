@@ -48,7 +48,7 @@ export function Toast({
 
 	return (
 		<div className={container()}>
-			<ToastIcon isLoading={toastProps.isLoading} type={toastProps.type} />
+			<ToastIcon isLoading={toastProps.isLoading} type={data.type} />
 
 			<div className="flex flex-col">
 				<h4 className="text-lg font-medium">{data.title}</h4>
@@ -194,7 +194,7 @@ function ToastIcon({
 	type,
 }: {
 	isLoading: boolean | undefined;
-	type: string;
+	type: ToastData['type'];
 }) {
 	if (isLoading)
 		return <Spinner size="extraSmall" />;

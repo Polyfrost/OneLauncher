@@ -1,4 +1,4 @@
-import { SettingDropdown, SettingsRow } from '@/components';
+import { SettingDropdown, SettingNumber, SettingsRow } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { Sidebar } from '@/routes/app/settings/route';
 import { ToastPositions, useToast } from '@/utils/toast';
@@ -24,6 +24,10 @@ function RouteComponent() {
 
 				<SettingsRow description="Where the toast will show up" title="Position">
 					<SettingDropdown options={ToastPositions} setting={createSetting('toast_position')} />
+				</SettingsRow>
+
+				<SettingsRow description="How long the toast should stay" title="Duration">
+					<SettingNumber max={60000} min={500} setting={createSetting('toast_duration')} />
 				</SettingsRow>
 
 				<SettingsRow description="Preview a Toast" title="Preview Toast">

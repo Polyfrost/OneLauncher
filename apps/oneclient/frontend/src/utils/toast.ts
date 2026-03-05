@@ -27,12 +27,15 @@ export function useToast() {
 	return function toast({
 		progress,
 		isLoading,
-		autoClose = 5000,
+		autoClose,
 		position,
 		...data
 	}: ToastOptions): ToastId {
 		if (position === undefined)
 			position = setting('toast_position');
+
+		if (autoClose === undefined)
+			autoClose = setting('toast_duration');
 
 		return toastify(Toast, {
 			data,

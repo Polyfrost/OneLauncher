@@ -1,5 +1,5 @@
 import type { ToastData, ToastOptions } from '@/utils/toast';
-import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingSwitch, SheetPage } from '@/components';
+import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingNumber, SettingsRow, SettingSwitch, SheetPage } from '@/components';
 import { useDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
@@ -87,6 +87,7 @@ function Toasts() {
 	const [message, setMessage] = useState<string | undefined>('Message');
 	const [type, setType] = useState<ToastData['type']>('info');
 	const [position, setPosition] = useState<ToastOptions['position'] | 'undefined'>('undefined');
+	const [duration, setDuration] = useState<number>(5000);
 	const toast = useToast();
 
 	const sendToast = () => toast({
@@ -94,6 +95,7 @@ function Toasts() {
 		title,
 		message,
 		position: position === 'undefined' ? undefined : position,
+		autoClose: duration
 	});
 
 	return (
@@ -119,6 +121,10 @@ function Toasts() {
 					<Dropdown.Item id="undefined" key="undefined">Config</Dropdown.Item>
 					{ToastPositions.map(type => <Dropdown.Item id={type} key={type}>{TitleCase(type)}</Dropdown.Item>)}
 				</Dropdown>
+			</div>
+			<div className="flex flex-row gap-4 items-center">
+				<p>Duration:</p>
+				<SettingNumber max={60000} min={500} setting={[duration, (value: number) => setDuration(value)]} />
 			</div>
 
 			<div className="flex flex-row gap-4">

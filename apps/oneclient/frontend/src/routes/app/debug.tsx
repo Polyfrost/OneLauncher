@@ -5,7 +5,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { toast, ToastTypes } from '@/utils/toast';
 import { Button, Dropdown, TextField } from '@onelauncher/common/components';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { useEffect, useState } from 'react';
 

@@ -1,10 +1,23 @@
 use onelauncher_entity::setting_profiles;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::utils::io;
 use crate::{LauncherResult, send_warning};
 
 use super::Dirs;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Type)]
+pub enum ToastPosition {
+	#[serde(rename = "top-right")]
+	TopRight,
+	#[serde(rename = "top-left")]
+	TopLeft,
+	#[serde(rename = "bottom-right")]
+	BottomRight,
+	#[serde(rename = "bottom-left")]
+	BottomLeft,
+}
 
 #[onelauncher_macro::specta]
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -23,6 +36,9 @@ pub struct Settings {
 	#[cfg(feature = "tauri")]
 	pub log_debug_info: bool,
 	pub show_tanstack_dev_tools: bool,
+
+	// Toasts
+	pub toast_position: ToastPosition,
 }
 
 impl Default for Settings {
@@ -41,6 +57,9 @@ impl Default for Settings {
 			#[cfg(feature = "tauri")]
 			log_debug_info: tauri::is_dev(),
 			show_tanstack_dev_tools: tauri::is_dev(),
+
+			// Toasts
+			toast_position: ToastPosition::BottomRight,
 		}
 	}
 }

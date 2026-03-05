@@ -2,7 +2,7 @@ import type { PlayerAnimation } from 'skinview3d';
 import { ImportSkinModal, Overlay, RemoveSkinCapeModal, SheetPage, SkinViewer } from '@/components';
 import { bindings } from '@/main';
 import { getSkinUrl } from '@/utils/minecraft';
-import { toast } from '@/utils/toast';
+import { useToast } from '@/utils/toast';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, downloadDir, join } from '@tauri-apps/api/path';
@@ -111,6 +111,7 @@ export function MissingAccountData({ validSearch }: { validSearch: boolean }) {
 
 function RouteComponent() {
 	const { profileData, profile, queryClient, validSearch, playerData } = Route.useRouteContext();
+	const toast = useToast();
 
 	const [capes, setCapes] = useState<Array<Cape>>([]);
 	const [selectedCape, setSelectedCape] = useState<string>('');

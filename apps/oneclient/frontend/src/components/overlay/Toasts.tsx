@@ -4,7 +4,7 @@ import type { HTMLAttributes } from 'react';
 import type { ToastContentProps, ToastOptions } from 'react-toastify';
 import { Spinner } from '@/components';
 import { bindings } from '@/main';
-import { toast, toastUpdate } from '@/utils/toast';
+import { toastUpdate, useToast } from '@/utils/toast';
 import { Button } from '@onelauncher/common/components';
 import { AlertCircleIcon, AlertTriangleIcon, CheckCircleIcon, InfoCircleIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { useEffect, useRef } from 'react';
@@ -128,6 +128,7 @@ const ingressNames: Record<(IngressType & string) | (keyof UnionToIntersection<I
 export function Toasts() {
 	const toastIngressMapRef = useRef(new Map<string, ToastId>());
 	const listenerRef = useRef(false);
+	const toast = useToast();
 
 	useEffect(() => {
 		if (listenerRef.current)
@@ -180,7 +181,6 @@ export function Toasts() {
 	return (
 		<ToastContainer
 			newestOnTop
-			position="bottom-right"
 			transition={cssTransition({
 				enter: 'animate-fade animate-duration-75',
 				exit: 'animate-fade animate-duration-75 animate-reverse',

@@ -1,6 +1,6 @@
 import type { DebugInfoArray } from '@/hooks/useDebugInfo';
 import { Overlay } from '@/components';
-import { copyDebugInfo, useDebugInfo } from '@/hooks/useDebugInfo';
+import { useCopyDebugInfo, useDebugInfo } from '@/hooks/useDebugInfo';
 import { Button } from '@onelauncher/common/components';
 
 export function DebugInfo() {
@@ -14,6 +14,7 @@ export function DebugInfo() {
 }
 
 export function RawDebugInfo({ debugInfo }: { debugInfo: DebugInfoArray }) {
+	const copyDebugInfo = useCopyDebugInfo();
 	return (
 		<>
 			<div>

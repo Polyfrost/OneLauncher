@@ -1,5 +1,5 @@
-import { Overlay, SettingsRow, SettingsSwitch } from '@/components';
-import { copyDebugInfo } from '@/hooks/useDebugInfo';
+import { Overlay, SettingsRow, SettingSwitch } from '@/components';
+import { useCopyDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
@@ -7,6 +7,7 @@ import { Link } from '@tanstack/react-router';
 
 export function SuperSecretDevOptions() {
 	const { createSetting } = useSettings();
+	const copyDebugInfo = useCopyDebugInfo();
 
 	return (
 		<Overlay.Dialog>
@@ -14,11 +15,11 @@ export function SuperSecretDevOptions() {
 
 			<div>
 				<SettingsRow description="Enable The Tanstack Dev Tools and shows debug page" title="Show Dev stuff">
-					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
+					<SettingSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>
 
 				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" title="Log Debug Info">
-					<SettingsSwitch setting={createSetting('log_debug_info')} />
+					<SettingSwitch setting={createSetting('log_debug_info')} />
 				</SettingsRow>
 
 				<div className="grid grid-cols-4 gap-3 justify-items-center">

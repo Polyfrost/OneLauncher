@@ -1,4 +1,4 @@
-import { SettingsRow, SettingsSwitch } from '@/components';
+import { SettingsRow, SettingSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Sidebar } from '@/routes/app/settings/route';
@@ -34,7 +34,7 @@ function RouteComponent() {
 					icon={<Link03Icon />}
 					title="Discord RPC"
 				>
-					<SettingsSwitch setting={createSetting('discord_enabled')} />
+					<SettingSwitch setting={createSetting('discord_enabled')} />
 				</SettingsRow>
 
 				{/* <SettingsRow

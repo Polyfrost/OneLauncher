@@ -1,7 +1,7 @@
 import { Overlay, SettingsRow, SettingsSwitch } from '@/components';
+import { copyDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-import { copyDebugInfo } from '@/utils/debugInfo';
 import { Button } from '@onelauncher/common/components';
 import { Link } from '@tanstack/react-router';
 

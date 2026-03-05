@@ -1,5 +1,5 @@
+import { copyDebugInfo } from '@/hooks/useDebugInfo';
 import { bindings } from '@/main';
-import { copyDebugInfo } from '@/utils/debugInfo';
 import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 

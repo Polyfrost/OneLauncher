@@ -1,8 +1,8 @@
 import type { ToastData } from '@/utils/toast';
 import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, SheetPage } from '@/components';
+import { useDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-import { useDebugInfo } from '@/utils/debugInfo';
 import { toast, ToastTypes } from '@/utils/toast';
 import { Button, Dropdown, TextField } from '@onelauncher/common/components';
 import { createFileRoute, Link } from '@tanstack/react-router';

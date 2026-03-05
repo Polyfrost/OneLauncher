@@ -1,3 +1,4 @@
+use crate::store::State;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Runtime;
 use tauri_plugin_os::{arch, family, locale, platform, type_, version};
@@ -18,6 +19,7 @@ pub struct DebugInfoData {
 	pub commit_hash: String,
 	pub build_timestamp: String,
 	pub build_version: String,
+	pub has_dev_settings: bool,
 }
 
 #[onelauncher_macro::specta]
@@ -82,6 +84,9 @@ pub trait TauriLauncherDebugApi {
 
 	#[taurpc(alias = "getFullDebugInfoParsedString")]
 	async fn get_full_debug_info_parsed_string() -> String;
+
+	#[taurpc(alias = "hasDevSettings")]
+	async fn get_has_dev_settings() -> bool;
 }
 
 #[taurpc::ipc_type]
@@ -158,6 +163,11 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 		crate::build::PKG_VERSION.to_string()
 	}
 
+	async fn get_has_dev_settings(self) -> bool {
+		let state = State::get().await.expect("failed to get state");
+		return state.settings.read().await.show_tanstack_dev_tools;
+	}
+
 	async fn get_full_debug_info(self) -> DebugInfoData {
 		DebugInfoData {
 			in_dev: self.clone().is_in_dev().await,
@@ -171,6 +181,7 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 			commit_hash: self.clone().get_git_commit_hash().await,
 			build_timestamp: self.clone().get_build_timestamp().await,
 			build_version: self.clone().get_package_version().await,
+			has_dev_settings: self.clone().get_has_dev_settings().await,
 		}
 	}
 
@@ -189,6 +200,10 @@ impl TauriLauncherDebugApi for TauriLauncherDebugApiImpl {
 			DebugInfoParsedLine::new("Commit Hash", info.commit_hash),
 			DebugInfoParsedLine::new("Build Timestamp", info.build_timestamp),
 			DebugInfoParsedLine::new("Version", info.build_version),
+			DebugInfoParsedLine::new(
+				"Has Dev Settings",
+				if info.has_dev_settings { "yes" } else { "no" },
+			),
 		]
 	}
 

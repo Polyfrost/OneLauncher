@@ -29,6 +29,7 @@ export const ResolvedPathNames: Record<URLPath, string> = {
 	'/app/settings/minecraft': 'Viewing Settings',
 	'/app/accounts': 'Viewing Accounts',
 	'/app/clusters': 'Viewing Versions',
+	'/app/debug': 'Viewing Debug',
 	'/onboarding': 'Preparing OneClient',
 	'/onboarding/preferences/version': 'Preparing OneClient',
 	'/onboarding/preferences/versionCategory': 'Preparing OneClient',

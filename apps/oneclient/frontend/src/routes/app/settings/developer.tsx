@@ -1,10 +1,8 @@
 import { DebugInfo, Overlay, SettingsRow, SettingsSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
-import { bindings } from '@/main';
 import { Sidebar } from '@/routes/app/settings/route';
 import { Button } from '@onelauncher/common/components';
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { Code02Icon } from '@untitled-theme/icons-react';
+import { createFileRoute } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/app/settings/developer')({
 	component: RouteComponent,
@@ -32,42 +30,13 @@ function RouteComponent() {
 				</SettingsRow>
 
 				<SettingsRow.Header>Dev Tools</SettingsRow.Header>
-				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" icon={<Code02Icon />} title="Log Debug Info">
+
+				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" title="Log Debug Info">
 					<SettingsSwitch setting={createSetting('log_debug_info')} />
 				</SettingsRow>
-				<SettingsRow
-					description="Enable The Tanstack Dev Tools"
-					title="Tanstack Dev Tools"
-				>
-					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
-				</SettingsRow>
-				<SettingsRow
-					description="Open Dev Tools"
-					title="Open Dev Tools"
-				>
-					<Button onPress={bindings.debug.openDevTools} size="normal">Open</Button>
-				</SettingsRow>
 
-				<SettingsRow.Header>Onboarding</SettingsRow.Header>
-				<SettingsRow
-					description="Open Onboarding"
-					title="Open Onboarding"
-				>
-					<Link to="/onboarding">
-						<Button size="normal">Open</Button>
-					</Link>
-				</SettingsRow>
-				<SettingsRow
-					description="Seen onboarding"
-					title="Seen Onboarding"
-				>
-					<SettingsSwitch setting={createSetting('seen_onboarding')} />
-				</SettingsRow>
-				<SettingsRow
-					description="Use Grid On Mods List"
-					title="Use Grid On Mods List"
-				>
-					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
+				<SettingsRow description="Enable The Tanstack Dev Tools and shows debug page" title="Show Dev stuff">
+					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>
 
 			</div>

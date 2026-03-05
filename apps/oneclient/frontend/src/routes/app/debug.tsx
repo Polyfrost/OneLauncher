@@ -109,6 +109,7 @@ function Toasts() {
 				<p>Message:</p>
 				<TextField className="flex-1" onChange={e => setMessage(e.target.value)} value={message} />
 			</div>
+
 			<div className="flex flex-row gap-4 items-center">
 				<p>Type:</p>
 				<Dropdown onSelectionChange={key => setType(key as ToastData['type'])} selectedKey={type}>
@@ -127,9 +128,7 @@ function Toasts() {
 				<SettingNumber max={60000} min={500} setting={[duration, (value: number) => setDuration(value)]} />
 			</div>
 
-			<div className="flex flex-row gap-4">
-				<Button onPress={sendToast} size="normal">Send Toast</Button>
-			</div>
+			<Button onPress={sendToast} size="normal">Send Toast</Button>
 		</div>
 	);
 }

@@ -2,6 +2,7 @@ import type { ButtonProps } from '@onelauncher/common/components';
 import type { LinkProps, RegisteredRouter } from '@tanstack/react-router';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { AccountAvatar, AccountPopup, Overlay, SuperSecretDevOptions } from '@/components';
+import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button, Popup } from '@onelauncher/common/components';
@@ -12,6 +13,7 @@ import { twMerge } from 'tailwind-merge';
 
 export function Navbar() {
 	const { data: currentAccount } = useCommand(['getDefaultUser'], () => bindings.core.getDefaultUser(true));
+	const { setting } = useSettings();
 	const navigate = useNavigate();
 
 	const onMinimize = () => Window.getCurrent().minimize();
@@ -36,6 +38,7 @@ export function Navbar() {
 				<NavbarLink to=".">Home</NavbarLink>
 				<NavbarLink to="./clusters">Versions</NavbarLink>
 				<NavbarLink to="./accounts">Accounts</NavbarLink>
+				{setting('show_tanstack_dev_tools') && <NavbarLink to="./debug">Debug</NavbarLink>}
 			</div>
 
 			<div className="flex flex-1 items-center justify-end gap-6 pointer-events-none">

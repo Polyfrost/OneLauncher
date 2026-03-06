@@ -9,6 +9,7 @@ export interface ToastData {
 	title: string;
 	message?: string | undefined;
 }
+export const ToastTypes: Array<ToastData['type']> = ['info', 'success', 'warning', 'error'];
 
 export interface ToastOptions extends ToastData {
 	progress?: number;

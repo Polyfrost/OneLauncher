@@ -1,6 +1,6 @@
-import type { DebugInfoArray } from '@/utils/debugInfo';
+import type { DebugInfoArray } from '@/hooks/useDebugInfo';
 import { Overlay } from '@/components';
-import { copyDebugInfo, useDebugInfo } from '@/utils/debugInfo';
+import { copyDebugInfo, useDebugInfo } from '@/hooks/useDebugInfo';
 import { Button } from '@onelauncher/common/components';
 
 export function DebugInfo() {

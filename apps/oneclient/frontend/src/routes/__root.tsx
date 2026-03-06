@@ -1,10 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import { Toasts } from '@/components';
+import { useDebugKeybind } from '@/hooks/useDebugInfo';
+import { useDiscordRPC } from '@/hooks/useDiscordRPC';
 import { useSettings } from '@/hooks/useSettings';
-import { useDebugKeybind } from '@/utils/debugInfo';
-import { useDiscordRPC } from '@/utils/discordRPC';
-import { useAutoUpdater } from '@/utils/updater';
+import { useAutoUpdater } from '@/hooks/useUpdater';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';

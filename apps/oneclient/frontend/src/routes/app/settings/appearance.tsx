@@ -30,7 +30,7 @@ function RouteComponent() {
 					<SettingSwitch setting={createSetting('toast_auto_close')} />
 				</SettingsRow>
 
-				<SettingsRow description="How long the toast should stay" title="Duration">
+				<SettingsRow description="How long the toast should stay. In milliseconds" title="Duration">
 					<SettingNumber max={60000} min={500} setting={createSetting('toast_duration')} />
 				</SettingsRow>
 

@@ -1,4 +1,5 @@
 import { TextField } from '@onelauncher/common/components';
+import { useState } from 'react';
 
 type NumberSetting = [
 	number,
@@ -6,28 +7,42 @@ type NumberSetting = [
 ];
 
 export function SettingNumber({ setting, placeholder, min, max }: { setting: NumberSetting; placeholder?: string; min?: number; max?: number }) {
-	function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
-		let value = Number(event.currentTarget.value);
+	const [inputValue, setInputValue] = useState(String(setting[0]));
 
-		if (Number.isNaN(value))
+	function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+		const value = event.currentTarget.value;
+		setInputValue(value);
+		const num = Number(value);
+		if (!Number.isNaN(num))
+			setting[1](num);
+	}
+
+	function handleBlur() {
+		let num = Number(inputValue);
+
+		if (Number.isNaN(num)) {
+			setInputValue(String(setting[0]));
 			return;
+		}
 
 		if (min !== undefined)
-			value = Math.max(min, value);
+			num = Math.max(min, num);
 		if (max !== undefined)
-			value = Math.min(max, value);
+			num = Math.min(max, num);
 
-		setting[1](value);
+		setInputValue(String(num));
+		setting[1](num);
 	}
 
 	return (
 		<TextField
 			max={max}
 			min={min}
+			onBlur={handleBlur}
 			onChange={handleChange}
 			placeholder={placeholder}
 			type="number"
-			value={setting[0]}
+			value={inputValue}
 		/>
 	);
 }

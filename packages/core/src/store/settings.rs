@@ -40,6 +40,7 @@ pub struct Settings {
 	// Toasts
 	pub toast_position: ToastPosition,
 	pub toast_duration: u32,
+	pub toast_auto_close: bool,
 }
 
 impl Default for Settings {
@@ -62,6 +63,7 @@ impl Default for Settings {
 			// Toasts
 			toast_position: ToastPosition::BottomRight,
 			toast_duration: 5000,
+			toast_auto_close: true,
 		}
 	}
 }

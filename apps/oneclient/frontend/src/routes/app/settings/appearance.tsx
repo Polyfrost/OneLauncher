@@ -1,4 +1,4 @@
-import { SettingDropdown, SettingNumber, SettingsRow } from '@/components';
+import { SettingDropdown, SettingNumber, SettingsRow, SettingSwitch } from '@/components';
 import { useSettings } from '@/hooks/useSettings';
 import { Sidebar } from '@/routes/app/settings/route';
 import { ToastPositions, useToast } from '@/utils/toast';
@@ -24,6 +24,10 @@ function RouteComponent() {
 
 				<SettingsRow description="Where the toast will show up" title="Position">
 					<SettingDropdown options={ToastPositions} setting={createSetting('toast_position')} />
+				</SettingsRow>
+
+				<SettingsRow description="Should the toast expire and auto close" title="Auto Close">
+					<SettingSwitch setting={createSetting('toast_auto_close')} />
 				</SettingsRow>
 
 				<SettingsRow description="How long the toast should stay" title="Duration">

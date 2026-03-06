@@ -66,7 +66,12 @@ export function Toast({
 			</div>
 
 			<div className="w-full h-1 absolute left-0 right-0 bottom-0">
-				<ToastProgressBar closeToast={closeToast} isPaused={isPaused} toastProps={toastProps} />
+				<ToastProgressBar
+					closeToast={closeToast}
+					data={data}
+					isPaused={isPaused}
+					toastProps={toastProps}
+				/>
 			</div>
 		</div>
 	);
@@ -76,20 +81,29 @@ function ToastProgressBar({
 	isPaused,
 	toastProps,
 	closeToast,
+	data,
 }: {
 	toastProps: ToastOptions;
 	isPaused: boolean;
 	closeToast: () => void;
+	data: ToastData;
 }) {
+	let progress = toastProps.progress;
+
+	if (data.shouldAutoClose === false) {
+		isPaused = true;
+		progress = 0;
+	}
+
 	const attrs: HTMLAttributes<HTMLDivElement> = {};
 
-	if (typeof toastProps.progress === 'number') {
+	if (typeof progress === 'number') {
 		attrs.style = {
 			transition: 'width 0.2s ease-in-out',
-			width: `${toastProps.progress * 100}%`,
+			width: `${progress * 100}%`,
 		};
 
-		if (toastProps.progress >= 1)
+		if (progress >= 1)
 			attrs.onTransitionEnd = closeToast;
 	}
 	else {

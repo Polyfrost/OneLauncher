@@ -88,6 +88,7 @@ function Toasts() {
 	const [type, setType] = useState<ToastData['type']>('info');
 	const [position, setPosition] = useState<ToastOptions['position'] | 'undefined'>('undefined');
 	const [duration, setDuration] = useState<number>(5000);
+	const [autoClose, setAutoClose] = useState<boolean>(true);
 	const toast = useToast();
 
 	const sendToast = () => toast({
@@ -95,7 +96,7 @@ function Toasts() {
 		title,
 		message,
 		position: position === 'undefined' ? undefined : position,
-		autoClose: duration
+		autoClose: autoClose ? duration : false,
 	});
 
 	return (
@@ -126,6 +127,10 @@ function Toasts() {
 			<div className="flex flex-row gap-4 items-center">
 				<p>Duration:</p>
 				<SettingNumber max={60000} min={500} setting={[duration, (value: number) => setDuration(value)]} />
+			</div>
+			<div className="flex flex-row gap-4 items-center">
+				<p>Auto Close:</p>
+				<SettingSwitch setting={[autoClose, (value: boolean) => setAutoClose(value)]} />
 			</div>
 
 			<Button onPress={sendToast} size="normal">Send Toast</Button>

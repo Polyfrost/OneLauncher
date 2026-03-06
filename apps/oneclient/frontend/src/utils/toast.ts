@@ -10,6 +10,7 @@ export interface ToastData {
 	type: 'info' | 'success' | 'warning' | 'error';
 	title: string;
 	message?: string | undefined;
+	shouldAutoClose?: boolean | undefined;
 }
 export const ToastTypes: Array<ToastData['type']> = ['info', 'success', 'warning', 'error'];
 
@@ -36,6 +37,11 @@ export function useToast() {
 
 		if (autoClose === undefined)
 			autoClose = setting('toast_duration');
+
+		if (autoClose === false)
+			data.shouldAutoClose = false;
+		else
+			data.shouldAutoClose = setting('toast_auto_close');
 
 		return toastify(Toast, {
 			data,

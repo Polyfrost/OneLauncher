@@ -116,6 +116,7 @@ export interface ModCardContextApi {
 	mods?: Array<ModpackFile>;
 	installedPackages?: Array<PackageModel>;
 	useToggleMode?: boolean;
+	skipCompatibilityChecks?: boolean;
 }
 
 const DEFAULT_MOD_CARD_CONTEXT: ModCardContextApi = {};
@@ -126,7 +127,7 @@ export function useModCardContext() {
 }
 
 export function ModCard({ file, cluster }: ModCardProps) {
-	const { enableClickToDownload, onClickOnMod, useVerticalGridLayout, mods, installedPackages, useToggleMode } = useModCardContext();
+	const { enableClickToDownload, onClickOnMod, useVerticalGridLayout, mods, installedPackages, useToggleMode, skipCompatibilityChecks = null } = useModCardContext();
 	const queryClient = useQueryClient();
 
 	const [modMetadata, setModMetadata] = useState<ModInfo>({ name: getModMetaDataName(file), description: null, author: null, iconURL: null, url: null, managed: false, packageSlug: null });
@@ -183,13 +184,13 @@ export function ModCard({ file, cluster }: ModCardProps) {
 					if (dependency.dependency_type === 'required') {
 						const slug = dependency.project_id ?? '';
 						const versions = await bindings.core.getPackageVersions(pkg.provider, slug, cluster.mc_version, cluster.mc_loader, 0, 1);
-						await bindings.core.downloadPackage(pkg.provider, slug, versions.items[0].version_id, cluster.id, null);
+						await bindings.core.downloadPackage(pkg.provider, slug, versions.items[0].version_id, cluster.id, skipCompatibilityChecks);
 					}
 
-			await bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, null);
+			await bindings.core.downloadPackage(pkg.provider, pkg.id, version.version_id, cluster.id, skipCompatibilityChecks);
 		}
 		else {
-			await bindings.core.downloadExternalPackage(kind.External, cluster.id, null, null);
+			await bindings.core.downloadExternalPackage(kind.External, cluster.id, null, skipCompatibilityChecks);
 		}
 	});
 

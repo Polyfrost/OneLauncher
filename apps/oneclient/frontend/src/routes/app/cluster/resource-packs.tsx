@@ -33,6 +33,7 @@ function RouteComponent() {
 	const context = useMemo<ModCardContextApi>(() => ({
 		enableClickToDownload: true,
 		installedPackages,
+		skipCompatibilityChecks: true,
 	}), [installedPackages]);
 
 	if (allBundles.every(b => b.manifest.files.length === 0))

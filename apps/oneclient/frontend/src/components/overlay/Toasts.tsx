@@ -4,7 +4,7 @@ import type { HTMLAttributes } from 'react';
 import type { ToastContentProps, ToastOptions } from 'react-toastify';
 import { Spinner } from '@/components';
 import { bindings } from '@/main';
-import { toast, toastUpdate } from '@/utils/toast';
+import { toastUpdate, useToast } from '@/utils/toast';
 import { Button } from '@onelauncher/common/components';
 import { AlertCircleIcon, AlertTriangleIcon, CheckCircleIcon, InfoCircleIcon, XCloseIcon } from '@untitled-theme/icons-react';
 import { useEffect, useRef } from 'react';
@@ -48,7 +48,7 @@ export function Toast({
 
 	return (
 		<div className={container()}>
-			<ToastIcon isLoading={toastProps.isLoading} type={toastProps.type} />
+			<ToastIcon isLoading={toastProps.isLoading} type={data.type} />
 
 			<div className="flex flex-col">
 				<h4 className="text-lg font-medium">{data.title}</h4>
@@ -66,7 +66,12 @@ export function Toast({
 			</div>
 
 			<div className="w-full h-1 absolute left-0 right-0 bottom-0">
-				<ToastProgressBar closeToast={closeToast} isPaused={isPaused} toastProps={toastProps} />
+				<ToastProgressBar
+					closeToast={closeToast}
+					data={data}
+					isPaused={isPaused}
+					toastProps={toastProps}
+				/>
 			</div>
 		</div>
 	);
@@ -76,20 +81,29 @@ function ToastProgressBar({
 	isPaused,
 	toastProps,
 	closeToast,
+	data,
 }: {
 	toastProps: ToastOptions;
 	isPaused: boolean;
 	closeToast: () => void;
+	data: ToastData;
 }) {
+	let progress = toastProps.progress;
+
+	if (data.shouldAutoClose === false) {
+		isPaused = true;
+		progress = 0;
+	}
+
 	const attrs: HTMLAttributes<HTMLDivElement> = {};
 
-	if (typeof toastProps.progress === 'number') {
+	if (typeof progress === 'number') {
 		attrs.style = {
 			transition: 'width 0.2s ease-in-out',
-			width: `${toastProps.progress * 100}%`,
+			width: `${progress * 100}%`,
 		};
 
-		if (toastProps.progress >= 1)
+		if (progress >= 1)
 			attrs.onTransitionEnd = closeToast;
 	}
 	else {
@@ -128,6 +142,7 @@ const ingressNames: Record<(IngressType & string) | (keyof UnionToIntersection<I
 export function Toasts() {
 	const toastIngressMapRef = useRef(new Map<string, ToastId>());
 	const listenerRef = useRef(false);
+	const toast = useToast();
 
 	useEffect(() => {
 		if (listenerRef.current)
@@ -180,7 +195,6 @@ export function Toasts() {
 	return (
 		<ToastContainer
 			newestOnTop
-			position="bottom-right"
 			transition={cssTransition({
 				enter: 'animate-fade animate-duration-75',
 				exit: 'animate-fade animate-duration-75 animate-reverse',
@@ -194,7 +208,7 @@ function ToastIcon({
 	type,
 }: {
 	isLoading: boolean | undefined;
-	type: string;
+	type: ToastData['type'];
 }) {
 	if (isLoading)
 		return <Spinner size="extraSmall" />;

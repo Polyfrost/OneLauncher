@@ -1,5 +1,6 @@
 import type { ToOptions } from '@tanstack/react-router';
 import { bindings } from '@/main';
+import { ReplaceVariables } from '@/utils/string';
 import { useCommand } from '@onelauncher/common';
 import { useLocation } from '@tanstack/react-router';
 import { useEffect } from 'react';
@@ -38,11 +39,6 @@ export const ResolvedPathNames: Record<URLPath, string> = {
 	'/onboarding/finished': 'Preparing OneClient',
 	'/onboarding/language': 'Preparing OneClient',
 };
-
-// Credit - https://github.com/DuckySoLucky/hypixel-discord-chat-bridge/blob/d3ea84a26ebf094c8191d50b4954549e2dd4dc7f/src/contracts/helperFunctions.js#L216-L225
-function ReplaceVariables(template: string, variables: Record<string, any>) {
-	return template.replace(/\{(\w+)\}/g, (match: any, name: string | number) => variables[name] ?? match);
-}
 
 export function useDiscordRPC() {
 	const location = useLocation();

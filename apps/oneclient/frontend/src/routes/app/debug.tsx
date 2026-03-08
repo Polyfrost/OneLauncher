@@ -1,9 +1,10 @@
-import type { ToastData } from '@/utils/toast';
-import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingsRow, SettingsSwitch, SheetPage } from '@/components';
+import type { ToastData, ToastOptions } from '@/utils/toast';
+import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, SettingNumber, SettingsRow, SettingSwitch, SheetPage } from '@/components';
 import { useDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
-import { toast, ToastTypes } from '@/utils/toast';
+import { TitleCase } from '@/utils/string';
+import { ToastPositions, ToastTypes, useToast } from '@/utils/toast';
 import { Button, Dropdown, TextField } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
@@ -81,26 +82,22 @@ function AuthError() {
 	);
 }
 
-// Credit - https://github.com/DuckySoLucky/hypixel-discord-chat-bridge/blob/52887f12fce3bc9ebe91befaf394f289abd234a1/src/contracts/helperFunctions.js#L260-L278
-function TitleCase(str: string): string {
-	if (!str)
-		return '';
-
-	if (typeof str !== 'string')
-		return '';
-
-	return str
-		.toLowerCase()
-		.replaceAll('_', ' ')
-		.split(' ')
-		.map(word => word.charAt(0).toUpperCase() + word.slice(1))
-		.join(' ');
-}
-
 function Toasts() {
 	const [title, setTitle] = useState<string>('Title');
 	const [message, setMessage] = useState<string | undefined>('Message');
 	const [type, setType] = useState<ToastData['type']>('info');
+	const [position, setPosition] = useState<ToastOptions['position'] | 'undefined'>('undefined');
+	const [duration, setDuration] = useState<number>(5000);
+	const [autoClose, setAutoClose] = useState<boolean>(true);
+	const toast = useToast();
+
+	const sendToast = () => toast({
+		type,
+		title,
+		message,
+		position: position === 'undefined' ? undefined : position,
+		autoClose: autoClose ? duration : false,
+	});
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -113,16 +110,30 @@ function Toasts() {
 				<p>Message:</p>
 				<TextField className="flex-1" onChange={e => setMessage(e.target.value)} value={message} />
 			</div>
+
 			<div className="flex flex-row gap-4 items-center">
-				<p>Toast Type:</p>
+				<p>Type:</p>
 				<Dropdown onSelectionChange={key => setType(key as ToastData['type'])} selectedKey={type}>
 					{ToastTypes.map(type => <Dropdown.Item id={type} key={type}>{TitleCase(type)}</Dropdown.Item>)}
 				</Dropdown>
 			</div>
-
-			<div className="flex flex-row gap-4">
-				<Button onPress={() => toast({ type, title, message })} size="normal">Send Toast</Button>
+			<div className="flex flex-row gap-4 items-center">
+				<p>Position:</p>
+				<Dropdown onSelectionChange={key => setPosition(key as ToastOptions['position'])} selectedKey={position}>
+					<Dropdown.Item id="undefined" key="undefined">Config</Dropdown.Item>
+					{ToastPositions.map(type => <Dropdown.Item id={type} key={type}>{TitleCase(type)}</Dropdown.Item>)}
+				</Dropdown>
 			</div>
+			<div className="flex flex-row gap-4 items-center">
+				<p>Duration:</p>
+				<SettingNumber max={60000} min={500} setting={[duration, (value: number) => setDuration(value)]} />
+			</div>
+			<div className="flex flex-row gap-4 items-center">
+				<p>Auto Close:</p>
+				<SettingSwitch setting={[autoClose, (value: boolean) => setAutoClose(value)]} />
+			</div>
+
+			<Button onPress={sendToast} size="normal">Send Toast</Button>
 		</div>
 	);
 }
@@ -136,19 +147,19 @@ function Settings() {
 			<div className="flex flex-row gap-4 flex-wrap">
 
 				<SettingsRow description="WARNING! This requires a restart to apply. Logs out debug info" title="Log Debug Info">
-					<SettingsSwitch setting={createSetting('log_debug_info')} />
+					<SettingSwitch setting={createSetting('log_debug_info')} />
 				</SettingsRow>
 
 				<SettingsRow description="Enable The Tanstack Dev Tools and shows debug page" title="Show Dev stuff">
-					<SettingsSwitch setting={createSetting('show_tanstack_dev_tools')} />
+					<SettingSwitch setting={createSetting('show_tanstack_dev_tools')} />
 				</SettingsRow>
 
 				<SettingsRow description="Seen onboarding" title="Seen Onboarding">
-					<SettingsSwitch setting={createSetting('seen_onboarding')} />
+					<SettingSwitch setting={createSetting('seen_onboarding')} />
 				</SettingsRow>
 
 				<SettingsRow description="Use Grid On Mods List" title="Use Grid On Mods List">
-					<SettingsSwitch setting={createSetting('mod_list_use_grid')} />
+					<SettingSwitch setting={createSetting('mod_list_use_grid')} />
 				</SettingsRow>
 			</div>
 		</div>

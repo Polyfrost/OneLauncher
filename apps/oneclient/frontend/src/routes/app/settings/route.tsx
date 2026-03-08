@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { MadeBy, SheetPage } from '@/components';
 import { createFileRoute, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { CodeSnippet02Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
+import { Brush01Icon, CodeSnippet02Icon, RefreshCcw02Icon, Rocket02Icon, Sliders04Icon } from '@untitled-theme/icons-react';
 import { useEffect } from 'react';
 
 export const Route = createFileRoute('/app/settings')({
@@ -35,7 +35,7 @@ function RouteComponent() {
 						links={{
 							'Launcher Settings': [
 								[<Rocket02Icon key="general" />, 'General', '/'],
-								// [<Brush01Icon key="appearence" />, 'Appearance', '/appearance'],
+								[<Brush01Icon key="appearence" />, 'Appearance', '/appearance'],
 							// [<Key01Icon />, 'APIs', '/apis'],
 							// [<Globe01Icon />, 'Language', '/language'],
 							],

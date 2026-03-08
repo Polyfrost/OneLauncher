@@ -1,4 +1,4 @@
-import { copyDebugInfo } from '@/hooks/useDebugInfo';
+import { useCopyDebugInfo } from '@/hooks/useDebugInfo';
 import { bindings } from '@/main';
 import { useCommand } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
@@ -6,6 +6,7 @@ import { Button } from '@onelauncher/common/components';
 export function MadeBy() {
 	const { data: version } = useCommand(['getPackageVersion'], () => bindings.debug.getPackageVersion());
 	const { data: isInDev } = useCommand(['isInDev'], () => bindings.debug.isInDev());
+	const copyDebugInfo = useCopyDebugInfo();
 
 	return (
 		<Button

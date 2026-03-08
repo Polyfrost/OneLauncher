@@ -1,5 +1,5 @@
 import { bindings } from '@/main';
-import { toast } from '@/utils/toast';
+import { useToast } from '@/utils/toast';
 import { getMessageFromError, isLauncherError } from '@onelauncher/common';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useState } from 'react';
@@ -8,6 +8,7 @@ export function useLaunchCluster(): { launch: (clusterId: number | undefined | n
 export function useLaunchCluster(clusterId: number | undefined | null): { launch: () => void; showDownloadWarning: boolean; setShowDownloadWarning: (show: boolean) => void; forceLaunch: () => void };
 
 export function useLaunchCluster(clusterId?: number | undefined | null) {
+	const toast = useToast();
 	const navigate = useNavigate();
 	const [showDownloadWarning, setShowDownloadWarning] = useState(false);
 	const [lastAttemptedId, setLastAttemptedId] = useState<number | null>(null);

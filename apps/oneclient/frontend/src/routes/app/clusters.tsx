@@ -273,7 +273,7 @@ function HeaderLarge() {
 		<div className="flex flex-row justify-between items-end gap-8">
 			<div className="flex flex-col">
 				<h1 className="text-3xl font-semibold">Versions</h1>
-				<p className="text-md font-medium text-fg-secondary">Something something in corporate style fashion about picking your preferred gamemodes and versions and optionally loader so that oneclient can pick something for them</p>
+				<p className="text-md font-medium text-fg-secondary">Choose your preferred setup and launch and configure directly from here.</p>
 			</div>
 		</div>
 	);

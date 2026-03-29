@@ -273,7 +273,7 @@ function HeaderLarge() {
 		<div className="flex flex-row justify-between items-end gap-8">
 			<div className="flex flex-col">
 				<h1 className="text-3xl font-semibold">Versions</h1>
-				<p className="text-md font-medium text-fg-secondary">Choose your preferred setup and launch and configure directly from here.</p>
+				<p className="text-md font-medium text-fg-secondary">Configure your preferred version and launch directly from here.</p>
 			</div>
 		</div>
 	);

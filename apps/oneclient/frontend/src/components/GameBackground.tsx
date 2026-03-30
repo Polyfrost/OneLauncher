@@ -4,12 +4,11 @@ import { twMerge } from 'tailwind-merge';
 
 import CavesAndCliffs from '@/assets/backgrounds/CavesAndCliffs.jpg';
 import HypixelSkyblockHub from '@/assets/backgrounds/HypixelSkyblockHub.png';
-import MinecraftBuilding from '@/assets/backgrounds/MinecraftBuilding.png';
 
 const GameBackgrounds = {
 	HypixelSkyblockHub,
 	CavesAndCliffs,
-	MinecraftBuilding,
+	MinecraftBuilding: HypixelSkyblockHub,
 };
 
 export type GameBackgroundName = keyof typeof GameBackgrounds;

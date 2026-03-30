@@ -4,7 +4,7 @@ import { bindings } from '@/main';
 import { useToast } from '@/utils/toast';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { register } from '@tauri-apps/plugin-global-shortcut';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type DebugInfoArray = Array<DebugInfoParsedLine>;
 export function useDebugInfo(): DebugInfoArray {
@@ -38,16 +38,16 @@ export function useCopyDebugInfo() {
 
 export function useDebugKeybind() {
 	const copyDebugInfo = useCopyDebugInfo();
-	const handleKeybind = (event: ShortcutEvent) => {
+	const handleKeybind = useCallback((event: ShortcutEvent) => {
 		if (event.state !== 'Pressed')
 			return;
 		copyDebugInfo();
-	};
+	}, [copyDebugInfo]);
 
 	useEffect(() => {
 		void (async () => {
 			await register('CommandOrControl+Shift+D', handleKeybind);
 			await register('Alt+F12', handleKeybind);
 		})();
-	}, []);
+	}, [handleKeybind]);
 }

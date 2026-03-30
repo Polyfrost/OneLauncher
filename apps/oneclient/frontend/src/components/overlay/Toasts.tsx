@@ -190,7 +190,7 @@ export function Toasts() {
 			if (unlisten)
 				unlisten();
 		};
-	}, []);
+	}, [toast]);
 
 	return (
 		<ToastContainer

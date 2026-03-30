@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use onelauncher_core::api;
 use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::modpack::data::{ModpackArchive, ModpackFileKind};
@@ -12,6 +13,32 @@ use crate::oneclient::bundle_updates::ApplyBundleUpdatesResult;
 use crate::oneclient::bundles::BundlesManager;
 use crate::oneclient::clusters::{OnlineClusterManifest, get_data_storage_versions};
 use tauri::{AppHandle, Runtime};
+
+const BUNDLE_DIRS: &[&str] = &["mods", "resourcepacks", "shaderpacks"];
+
+/// Recursively copy all files from `src` into `dst`, creating directories as needed.
+async fn copy_dir_all(src: &Path, dst: &Path) -> onelauncher_core::error::LauncherResult<()> {
+	tokio::fs::create_dir_all(dst)
+		.await
+		.map_err(anyhow::Error::from)?;
+
+	let mut entries = tokio::fs::read_dir(src)
+		.await
+		.map_err(anyhow::Error::from)?;
+	while let Some(entry) = entries.next_entry().await.map_err(anyhow::Error::from)? {
+		let src_path = entry.path();
+		let dst_path = dst.join(entry.file_name());
+		if src_path.is_dir() {
+			Box::pin(copy_dir_all(&src_path, &dst_path)).await?;
+		} else {
+			tokio::fs::copy(&src_path, &dst_path)
+				.await
+				.map_err(anyhow::Error::from)?;
+		}
+	}
+
+	Ok(())
+}
 
 #[taurpc::procedures(path = "oneclient", export_to = "../frontend/src/bindings.gen.ts")]
 pub trait OneClientApi {
@@ -59,6 +86,18 @@ pub trait OneClientApi {
 
 	#[taurpc(alias = "refreshArt")]
 	async fn refresh_art(path: String) -> LauncherResult<()>;
+
+	#[taurpc(alias = "copyClusterContent")]
+	async fn copy_cluster_content(
+		source_id: ClusterId,
+		target_id: ClusterId,
+	) -> LauncherResult<CopyClusterResult>;
+}
+
+#[taurpc::ipc_type]
+pub struct CopyClusterResult {
+	/// Files that had no compatible provider version and were copied verbatim from the source.
+	pub fallback_files: Vec<String>,
 }
 
 #[taurpc::ipc_type]
@@ -74,16 +113,21 @@ impl OneClientApi for OneClientApiImpl {
 		let mut mapped: HashMap<u32, Vec<clusters::Model>> = HashMap::new();
 
 		for cluster in clusters {
-			let split = &mut cluster.mc_version.split('.');
-			split.next();
-			if let Some(major) = split.next() {
-				let major: u32 = match major.parse() {
+			let mut parts = cluster.mc_version.splitn(3, '.');
+			let major: u32 = match parts.next() {
+				// Old format: 1.X[.Y]
+				Some("1") => match parts.next().and_then(|v| v.parse().ok()) {
+					Some(v) => v,
+					None => continue,
+				},
+				// New format: YY.N[.P]
+				Some(year) => match year.parse() {
 					Ok(v) => v,
 					Err(_) => continue,
-				};
-
-				mapped.entry(major).or_default().push(cluster);
-			}
+				},
+				None => continue,
+			};
+			mapped.entry(major).or_default().push(cluster);
 		}
 
 		Ok(mapped)
@@ -223,5 +267,111 @@ impl OneClientApi for OneClientApiImpl {
 			crate::oneclient::clusters::refresh_art_cache(&path).await;
 		});
 		Ok(())
+	}
+
+	async fn copy_cluster_content(
+		self,
+		source_id: ClusterId,
+		target_id: ClusterId,
+	) -> LauncherResult<CopyClusterResult> {
+		let source = api::cluster::dao::get_cluster_by_id(source_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("source cluster {} not found", source_id))?;
+		let target = api::cluster::dao::get_cluster_by_id(target_id)
+			.await?
+			.ok_or_else(|| anyhow::anyhow!("target cluster {} not found", target_id))?;
+
+		let clusters_dir = onelauncher_core::store::Dirs::get_clusters_dir().await?;
+		let source_path = clusters_dir.join(&source.folder_name);
+		let target_path = clusters_dir.join(&target.folder_name);
+
+		// Mods, resource packs, and shader packs are version-dependent and bundle-managed.
+		// Detect the source cluster's bundle subscriptions, map them to the target version,
+		// copy overrides, and install the correctly-versioned packages into the target.
+		crate::oneclient::bundle_updates::migrate_bundles_to_cluster(source_id, target_id).await?;
+
+		// Migrate non-bundle (custom) packages: update via provider for the target MC version
+		// where possible, and get back a list of files that had no compatible version and
+		// need to be copied verbatim.
+		let fallback_files: std::collections::HashSet<String> =
+			crate::oneclient::bundle_updates::migrate_non_bundle_packages(source_id, target_id)
+				.await?
+				.into_iter()
+				.collect();
+
+		// File-copy everything from the source folder. For bundle-managed dirs, only copy
+		// files in the fallback list (everything else was handled version-correctly above).
+		if source_path.exists() {
+			let mut entries = tokio::fs::read_dir(&source_path)
+				.await
+				.map_err(anyhow::Error::from)?;
+			while let Some(entry) = entries.next_entry().await.map_err(anyhow::Error::from)? {
+				let name = entry.file_name();
+				let name_str = name.to_string_lossy();
+				let src = entry.path();
+				let dst = target_path.join(&name);
+				if BUNDLE_DIRS.contains(&name_str.as_ref()) {
+					// Only copy files that weren't handled by migrate_non_bundle_packages
+					// or migrate_bundles_to_cluster (i.e., provider lookup failed).
+					if src.is_dir() {
+						let mut sub = tokio::fs::read_dir(&src)
+							.await
+							.map_err(anyhow::Error::from)?;
+						while let Some(sub_entry) =
+							sub.next_entry().await.map_err(anyhow::Error::from)?
+						{
+							let sub_name = sub_entry.file_name();
+							if !fallback_files.contains(sub_name.to_string_lossy().as_ref()) {
+								continue;
+							}
+							tokio::fs::create_dir_all(&dst)
+								.await
+								.map_err(anyhow::Error::from)?;
+							let sub_src = sub_entry.path();
+							// Copy as disabled — no compatible version exists for the new MC
+							// version, so mark it disabled rather than silently breaking the game.
+							let disabled_name = {
+								let s = sub_name.to_string_lossy();
+								if s.ends_with(".disabled") {
+									sub_name.clone()
+								} else {
+									std::ffi::OsString::from(format!("{s}.disabled"))
+								}
+							};
+							let sub_dst = dst.join(&disabled_name);
+							if sub_src.is_dir() {
+								copy_dir_all(&sub_src, &sub_dst).await?;
+							} else {
+								tokio::fs::copy(&sub_src, &sub_dst)
+									.await
+									.map_err(anyhow::Error::from)?;
+							}
+						}
+					}
+				} else if src.is_dir() {
+					copy_dir_all(&src, &dst).await?;
+				} else {
+					tokio::fs::copy(&src, &dst)
+						.await
+						.map_err(anyhow::Error::from)?;
+				}
+			}
+		}
+
+		onelauncher_core::api::cluster::sync_cluster_by_id(target_id).await?;
+
+		// Stamp the target cluster's created_at with the actual migration time so the
+		// home page can correctly identify it as a newly-migrated cluster.
+		onelauncher_core::api::cluster::dao::touch_cluster_created_at(target_id)
+			.await
+			.with_context(|| {
+				format!(
+					"failed to stamp migrated cluster created_at for target cluster {target_id}"
+				)
+			})?;
+
+		Ok(CopyClusterResult {
+			fallback_files: fallback_files.into_iter().collect(),
+		})
 	}
 }

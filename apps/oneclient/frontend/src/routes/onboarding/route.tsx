@@ -1,9 +1,9 @@
-import type { DownloadModsRef } from '@/components';
 import type { PropsWithChildren } from 'react';
 import LauncherLogo from '@/assets/logos/oneclient.svg?react';
 import { GameBackground, LoaderSuspense, MadeBy, NavbarButton, Overlay, Stepper, SuperSecretDevOptions } from '@/components';
 import { prefetchCachedImages } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
+import { preloadOnboardingTips } from '@/utils/onboardingFunFacts';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
@@ -33,10 +33,12 @@ export const Route = createFileRoute('/onboarding')({
 
 		const isFirstStep = currentLinearStepIndex === 0;
 		const isLastStep = currentLinearStepIndex === LINEAR_ONBOARDING_STEPS.length - 1;
+		const isDownloadingStep = location.pathname === '/onboarding/downloading';
 
 		return {
 			isFirstStep,
 			isLastStep,
+			isDownloadingStep,
 			previousPath:
 				currentLinearStepIndex > 0
 					? LINEAR_ONBOARDING_STEPS[currentLinearStepIndex - 1]?.path
@@ -86,11 +88,12 @@ const ONBOARDING_STEPS: Array<OnboardingStep> = [
 				title: 'Versions Category',
 				hideNavigationButtons: true,
 			},
+			{
+				path: '/onboarding/downloading',
+				title: 'Downloading',
+				hideNavigationButtons: true,
+			},
 		],
-	},
-	{
-		path: '/onboarding/finished',
-		title: 'Finished',
 	},
 ];
 
@@ -125,6 +128,10 @@ function RouteComponent() {
 
 		void prefetchCachedImages(artPaths);
 	}, [versions.clusters]);
+
+	useEffect(() => {
+		void preloadOnboardingTips();
+	}, []);
 
 	const { currentLinearStepIndex } = Route.useLoaderData();
 
@@ -165,7 +172,7 @@ function RouteComponent() {
 function AppShell({
 	children,
 }: PropsWithChildren) {
-	const { isFirstStep, currentStepIndex } = Route.useLoaderData();
+	const { isFirstStep, isDownloadingStep, currentStepIndex } = Route.useLoaderData();
 
 	return (
 		<div className="flex flex-col h-full w-full">
@@ -193,7 +200,7 @@ function AppShell({
 					<MadeBy />
 				</div>
 
-				<div className={`flex-1 flex ${isFirstStep ? '' : 'bg-page'} flex-col relative`}>
+				<div className={`flex-1 flex ${(isFirstStep || isDownloadingStep) ? '' : 'bg-page'} flex-col relative`}>
 					{children}
 				</div>
 			</div>
@@ -210,13 +217,13 @@ function BackgroundGradient() {
 	return (
 		<div className="relative">
 			{/* Linear black gradient: left -> right */}
-			{/* <div
+			<div
 				className="absolute top-0 left-0 w-screen h-screen -z-10"
 				style={{
 					background: 'linear-gradient(270deg, rgba(0, 0, 0, 0.00) 35%, rgba(0, 0, 0, 0.60) 87.5%)',
 				}}
 			>
-			</div> */}
+			</div>
 
 			{/* Radial black gradient */}
 			<div
@@ -244,18 +251,21 @@ function BackgroundGradient() {
 	);
 }
 
-export function OnboardingNavigation({ ref, disableNext }: { ref?: React.RefObject<DownloadModsRef | null>; disableNext?: boolean }) {
+export function OnboardingNavigation({ disableNext, onBeforeNext }: { disableNext?: boolean; onBeforeNext?: () => Promise<boolean | void> | boolean | void }) {
 	const navigate = useNavigate();
 	const { isFirstStep, previousPath, nextPath } = Route.useLoaderData();
 
-	function handleNextClick() {
+	async function handleNextClick() {
 		if (disableNext)
 			return;
 
-		if (ref && ref.current !== null)
-			ref.current.openDownloadDialog(nextPath ?? '/app');
-		else
-			navigate({ to: nextPath ?? '/app' });
+		if (onBeforeNext) {
+			const shouldContinue = await onBeforeNext();
+			if (shouldContinue === false)
+				return;
+		}
+
+		navigate({ to: nextPath ?? '/app' });
 	}
 
 	return (

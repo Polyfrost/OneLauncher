@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { MinecraftAuthErrorInfo } from './minecraft-auth-errors';
 import { Overlay } from '@/components';
 import { bindings } from '@/main';
@@ -32,6 +33,42 @@ export function isMinecraftAuthError(error: unknown): boolean {
 	return extractXboxErrorCode(error) !== null;
 }
 
+function renderStepWithLinks(step: string): Array<ReactNode> {
+	const anchorRegex = /<a\s+href="([^"]+)"[^>]*>(.*?)<\/a>/g;
+	const nodes: Array<ReactNode> = [];
+	let lastIndex = 0;
+	let match = anchorRegex.exec(step);
+
+	while (match) {
+		const fullMatch = match[0];
+		const href = match[1];
+		const label = match[2];
+
+		if (match.index > lastIndex)
+			nodes.push(step.slice(lastIndex, match.index));
+
+		nodes.push(
+			<a
+				className="text-brand-primary underline"
+				href={href}
+				key={`${href}-${match.index}`}
+				rel="noopener noreferrer"
+				target="_blank"
+			>
+				{label}
+			</a>,
+		);
+
+		lastIndex = match.index + fullMatch.length;
+		match = anchorRegex.exec(step);
+	}
+
+	if (lastIndex < step.length)
+		nodes.push(step.slice(lastIndex));
+
+	return nodes;
+}
+
 function MatchedErrorContent({
 	matchedError,
 }: {
@@ -52,10 +89,7 @@ function MatchedErrorContent({
 							<span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-primary/20 text-brand-primary text-xs flex items-center justify-center font-medium mt-0.5">
 								{index + 1}
 							</span>
-							<span
-								className="text-fg-secondary text-sm [&_a]:text-brand-primary [&_a]:underline"
-								dangerouslySetInnerHTML={{ __html: step }}
-							/>
+							<span className="text-fg-secondary text-sm">{renderStepWithLinks(step)}</span>
 						</li>
 					))}
 				</ol>

@@ -1,10 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
 import { Toasts } from '@/components';
+import { MigrationModal } from '@/components/overlay/MigrationModal';
 import { useDebugKeybind } from '@/hooks/useDebugInfo';
 import { useDiscordRPC } from '@/hooks/useDiscordRPC';
 import { useSettings } from '@/hooks/useSettings';
 import { useAutoUpdater } from '@/hooks/useUpdater';
+import { useVersionMigration } from '@/hooks/useVersionMigration';
 import { TanStackDevtools } from '@tanstack/react-devtools';
 import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools';
 import { createRootRouteWithContext, Outlet, useRouter } from '@tanstack/react-router';
@@ -32,6 +34,9 @@ function RootRoute() {
 	useDiscordRPC();
 	useAutoUpdater();
 	useDebugKeybind();
+
+	const migration = useVersionMigration();
+
 	return (
 		<RouterProvider
 			navigate={(to, options) => router.navigate({ to, ...options })}
@@ -44,6 +49,17 @@ function RootRoute() {
 			</div>
 
 			<Toasts />
+
+			{setting('seen_onboarding') && (
+				<MigrationModal
+					allClusters={migration.allClusters}
+					isDebugPreview={migration.isDebugPreview}
+					isOpen={migration.isOpen}
+					newVersions={migration.newVersions}
+					onOpenChange={migration.setIsOpen}
+					sourceClusters={migration.sourceClusters}
+				/>
+			)}
 		</RouterProvider>
 	);
 }

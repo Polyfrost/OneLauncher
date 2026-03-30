@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use chrono::Utc;
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
 use onelauncher_entity::{cluster_groups, clusters};
@@ -32,6 +33,7 @@ pub async fn insert_cluster(
 		mc_loader: Set(mc_loader),
 		mc_loader_version: Set(mc_loader_version.map(String::from)),
 		icon_url: Set(icon_url),
+		created_at: Set(Utc::now()),
 		..Default::default()
 	};
 
@@ -85,6 +87,16 @@ pub async fn delete_cluster_by_id(id: ClusterId) -> LauncherResult<()> {
 		return Err(DaoError::NotFound.into());
 	}
 
+	Ok(())
+}
+
+/// Stamps `created_at` to the current UTC time for the given cluster.
+pub async fn touch_cluster_created_at(id: ClusterId) -> LauncherResult<()> {
+	update_cluster_by_id(id, |mut active: clusters::ActiveModel| async move {
+		active.created_at = Set(Utc::now());
+		Ok(active)
+	})
+	.await?;
 	Ok(())
 }
 

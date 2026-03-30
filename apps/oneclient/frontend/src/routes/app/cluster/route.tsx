@@ -3,6 +3,7 @@ import { useIsRunning } from '@/hooks/useClusters';
 import { bindings } from '@/main';
 import { prettifyLoader } from '@/utils/loaders';
 import { getVersionInfoOrDefault } from '@/utils/versionMap';
+import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
@@ -100,7 +101,8 @@ function RouteComponent() {
 
 function HeaderLarge() {
 	const { cluster } = Route.useRouteContext();
-	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version, versions);
 
 	const openFolder = () => bindings.folders.openCluster(cluster.folder_name);
 

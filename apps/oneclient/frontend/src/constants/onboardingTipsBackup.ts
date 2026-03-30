@@ -1,0 +1,17 @@
+export const ONBOARDING_TIPS_BACKUP = [
+	'418 I\'m a teapot',
+	'Floors 8 through 10 of the Catacombs were originally planned for release, but portions of it were later merged into Floor 7 and its Master Mode counterpart.',
+	'At one point, Feather Client was willing to pay $300 USD to add Skytils, a popular SkyBlock mod.',
+	'Grass is a plant with narrow leaves growing from the base. [...]\nGrasses are monocotyledon, herbaceous plants.',
+	'In Canada, Santa\'s postal code is H0H 0H0.',
+	'Guvf vf abg na vzcbegnag fragrapr.',
+	'Vs lbh qrpvcure guvf, lbh fubhyq yvfgra gb Mrgihr\'f zhfvp.',
+	'Try to do something creative! It could be music, art, coding...\nYou won\'t know how much you like it until you try it, so give it a shot :)',
+	'At one point in Minecraft, there was a rare chance of Snow Golems naturally spawning.',
+	'W[h]yvest',
+	'RUMOUR. Open your ears; 9r"5j5&?OWTY Z0d',
+	'Make sure to drink water! You never know if you might be dehydrated.',
+	'People asking you to "test their mod" are likely trying to hack you.\nThe only ones you can trust are ones widely trusted by the community.',
+	'Have a great day!',
+	'You can sleep through a thunderstorm, even during the day',
+];

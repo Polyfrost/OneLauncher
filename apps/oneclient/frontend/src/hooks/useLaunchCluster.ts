@@ -44,7 +44,7 @@ export function useLaunchCluster(clusterId?: number | undefined | null) {
 					});
 			}
 		},
-		[clusterId, navigate],
+		[clusterId, navigate, toast],
 	);
 
 	const forceLaunch = useCallback(async () => {

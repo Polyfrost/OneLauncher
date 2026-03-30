@@ -1,10 +1,10 @@
-import type { GameLoader } from '@/bindings.gen';
+import type { GameLoader, OnlineClusterManifest } from '@/bindings.gen';
 import { GameBackground, LaunchButton, SheetPage } from '@/components';
 import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import useClusterStore from '@/stores/clusterStore';
 import { prettifyLoader } from '@/utils/loaders';
-import { getVersionInfo, getVersionInfoOrDefault, parseMcVersion } from '@/utils/versionMap';
+import { formatMcVersion, getVersionInfoOrDefault, parseMcVersion } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button, Dropdown } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
@@ -120,7 +120,7 @@ function RouteComponent() {
 
 	const selectedMinorArtSrc = useCachedImage(selectedMinorArtPath);
 
-	const versionInfo = useMemo(() => getVersionInfoOrDefault(cluster?.mc_version), [cluster]);
+	const versionInfo = useMemo(() => getVersionInfoOrDefault(cluster?.mc_version, versions), [cluster, versions]);
 
 	const view = useCallback(() => {
 		if (!cluster)
@@ -171,6 +171,7 @@ function RouteComponent() {
 									major_version={major}
 									onClick={() => setMajorVersion(major)}
 									tags={[...new Set(clusters[major]?.flatMap(c => prettifyLoader(c.mc_loader)))]}
+									versions={versions}
 								/>
 							);
 						})}
@@ -207,7 +208,7 @@ function RouteComponent() {
 									selectedKey={effectiveMinorVersion}
 								>
 									{minorVersions.map((minorVersion) => {
-										const fullVer = `${versionInfo.prettyName}.${minorVersion}`;
+										const fullVer = formatMcVersion(majorVersion, minorVersion);
 										return (
 											<Dropdown.Item
 												id={minorVersion}
@@ -291,18 +292,17 @@ function ClusterEntry({
 	major_version,
 	onClick,
 	tags,
+	versions,
 }: {
 	artPath: string | null | undefined;
 	isSelected: boolean;
 	major_version: number;
 	onClick: () => unknown;
 	tags: Array<string>;
+	versions: OnlineClusterManifest;
 }) {
 	const artSrc = useCachedImage(artPath);
-	const info = getVersionInfo(major_version);
-
-	if (!info)
-		return undefined;
+	const info = getVersionInfoOrDefault(major_version, versions);
 
 	return (
 		<div className={twMerge('flex flex-col justify-between relative aspect-video transition-[filter] px-4', !isSelected && 'brightness-70 grayscale-25 hover:brightness-80 hover:grayscale-0')} key={major_version} onClick={onClick}>

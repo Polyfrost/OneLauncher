@@ -20,6 +20,28 @@ export const Route = createFileRoute('/app/')({
 	component: RouteComponent,
 });
 
+function getCreatedAtMs(createdAt: string): number | null {
+	const parsed = Date.parse(createdAt);
+	if (Number.isFinite(parsed))
+		return parsed;
+
+	// Normalize high-precision RFC3339 fractions for stricter engines.
+	const normalized = createdAt.replace(/\.(\d{3})\d+(?=(?:Z|[+-]\d{2}:\d{2})$)/, '.$1');
+	const normalizedParsed = Date.parse(normalized);
+	return Number.isFinite(normalizedParsed) ? normalizedParsed : null;
+}
+
+function getBoostedCreatedAtMs(cluster: ClusterModel, now: number, boostWindowMs: number): number | null {
+	if (cluster.last_played !== null)
+		return null;
+
+	const createdAtMs = getCreatedAtMs(cluster.created_at);
+	if (createdAtMs === null)
+		return null;
+
+	return (now - createdAtMs) < boostWindowMs ? createdAtMs : null;
+}
+
 function RouteComponent() {
 	// Preload the clusters for version page
 	useCommandSuspense(['getClustersGroupedByMajor'], bindings.oneclient.getClustersGroupedByMajor);
@@ -34,12 +56,28 @@ function RouteComponent() {
 		from: Route.id,
 	});
 
+	const BOOST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+	const now = Date.now();
+	const displayClusters = [...lastPlayedClusters].sort((a, b) => {
+		const aBoostedCreatedAtMs = getBoostedCreatedAtMs(a, now, BOOST_WINDOW_MS);
+		const bBoostedCreatedAtMs = getBoostedCreatedAtMs(b, now, BOOST_WINDOW_MS);
+
+		if (aBoostedCreatedAtMs !== null && bBoostedCreatedAtMs === null)
+			return -1;
+		if (bBoostedCreatedAtMs !== null && aBoostedCreatedAtMs === null)
+			return 1;
+		if (aBoostedCreatedAtMs !== null && bBoostedCreatedAtMs !== null)
+			return bBoostedCreatedAtMs - aBoostedCreatedAtMs;
+
+		return 0;
+	}).slice(0, 3);
+
 	return (
 		<div className="flex h-full w-full flex-col justify-center p-12">
 			<ActiveClusterInfo cluster={activeCluster} versions={versions} />
 
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
-				{lastPlayedClusters.slice(0, 3).map(cluster => (
+				{displayClusters.map(cluster => (
 					<RecentsCard
 						active={activeCluster.id === cluster.id}
 						key={cluster.folder_name}
@@ -63,7 +101,7 @@ function RouteComponent() {
 }
 
 function ActiveClusterInfo({ cluster, versions }: { cluster: ClusterModel; versions: OnlineClusterManifest }) {
-	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version, versions);
 	const entry = getOnlineEntryForVersion(cluster.mc_version, versions);
 	const navigate = useNavigate({ from: Route.id });
 
@@ -121,7 +159,7 @@ function RecentsCard({
 	active,
 	versions,
 }: RecentsCardProps) {
-	const versionInfo = getVersionInfo(version);
+	const versionInfo = getVersionInfo(version, versions);
 	const entry = getOnlineEntryForVersion(version, versions);
 	const onlineCluster = getOnlineClusterForVersion(version, versions);
 

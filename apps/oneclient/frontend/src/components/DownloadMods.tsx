@@ -33,6 +33,19 @@ export interface ExternalModData extends BaseModData {
 export type ModData = ManagedModData | ExternalModData;
 export type ModDataArray = Array<ModData>;
 
+export type DownloadModsParallelResult =
+	| {
+		ok: true;
+		index: number;
+		mod: ModData;
+	}
+	| {
+		ok: false;
+		index: number;
+		mod: ModData;
+		error: unknown;
+	};
+
 export function isManagedMod(mod: ModData): mod is ManagedModData {
 	return mod.managed === true;
 }
@@ -137,15 +150,50 @@ export function buildModDataArray(modsPerCluster: Record<string, Array<ModWithBu
 	return modsList;
 }
 
-export function downloadModsParallel(items: ModDataArray, limit: number, fn: (mod: ModData, index: number) => Promise<void>) {
+export async function downloadModsParallel(
+	items: ModDataArray,
+	limit: number,
+	fn: (mod: ModData, index: number) => Promise<void>,
+): Promise<Array<DownloadModsParallelResult>> {
+	if (items.length === 0)
+		return [];
+
 	let index = 0;
-	const workers = Array.from({ length: limit }).fill(null).map(async () => {
+	const workerCount = Math.max(1, Math.min(limit, items.length));
+	const results: Array<DownloadModsParallelResult> = [];
+
+	const workers = Array.from({ length: workerCount }).fill(null).map(async () => {
 		while (index < items.length) {
-			const i = index++;
-			await fn(items[i], i);
+			const i = index;
+			index += 1;
+
+			if (i >= items.length)
+				return;
+
+			const mod = items[i];
+			try {
+				await fn(mod, i);
+				results.push({
+					ok: true,
+					index: i,
+					mod,
+				});
+			}
+			catch (error) {
+				results.push({
+					ok: false,
+					index: i,
+					mod,
+					error,
+				});
+			}
 		}
 	});
-	return Promise.all(workers);
+
+	await Promise.all(workers);
+
+	results.sort((left, right) => left.index - right.index);
+	return results;
 }
 
 function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setOpen: React.Dispatch<React.SetStateAction<boolean>>; nextPath: string }) {
@@ -194,7 +242,7 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 
 	useEffect(() => {
 		const downloadAll = async () => {
-			await downloadModsParallel(mods, 10, async (mod) => {
+			const results = await downloadModsParallel(mods, 10, async (mod) => {
 				setModName(mod.name);
 				try {
 					await download.mutateAsync(mod);
@@ -203,9 +251,21 @@ function DownloadingMods({ mods, setOpen, nextPath }: { mods: ModDataArray; setO
 					setDownloadedMods(prev => prev + 1);
 				}
 			});
+
+			const failed = results.filter(result => !result.ok);
+			if (failed.length > 0)
+				console.error('[DownloadMods] Some mods failed to download:', {
+					failed: failed.length,
+					total: mods.length,
+					entries: failed.map(result => ({
+						index: result.index,
+						name: result.mod.name,
+						error: result.error,
+					})),
+				});
 		};
 
-		downloadAll();
+		void downloadAll();
 	// eslint-disable-next-line react-hooks/exhaustive-deps -- download is not stable, adding it would cause infinite loops
 	}, [mods]);
 

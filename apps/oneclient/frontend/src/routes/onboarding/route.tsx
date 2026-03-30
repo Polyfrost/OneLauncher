@@ -251,7 +251,7 @@ function BackgroundGradient() {
 	);
 }
 
-export function OnboardingNavigation({ disableNext, onBeforeNext }: { disableNext?: boolean; onBeforeNext?: () => Promise<void> | void }) {
+export function OnboardingNavigation({ disableNext, onBeforeNext }: { disableNext?: boolean; onBeforeNext?: () => Promise<boolean | void> | boolean | void }) {
 	const navigate = useNavigate();
 	const { isFirstStep, previousPath, nextPath } = Route.useLoaderData();
 
@@ -259,8 +259,11 @@ export function OnboardingNavigation({ disableNext, onBeforeNext }: { disableNex
 		if (disableNext)
 			return;
 
-		if (onBeforeNext)
-			await onBeforeNext();
+		if (onBeforeNext) {
+			const shouldContinue = await onBeforeNext();
+			if (shouldContinue === false)
+				return;
+		}
 
 		navigate({ to: nextPath ?? '/app' });
 	}

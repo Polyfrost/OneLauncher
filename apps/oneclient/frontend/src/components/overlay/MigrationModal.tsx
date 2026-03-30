@@ -7,6 +7,7 @@ import { useToast } from '@/utils/toast';
 import { getOnlineClusterForVersion } from '@/utils/versionMap';
 import { useCommand } from '@onelauncher/common';
 import { Dropdown } from '@onelauncher/common/components';
+import { useQueryClient } from '@tanstack/react-query';
 import { Announcement01Icon } from '@untitled-theme/icons-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -51,6 +52,7 @@ export function MigrationModal({
 	const [fallbackFiles, setFallbackFiles] = useState<Array<string>>([]);
 
 	const toast = useToast();
+	const queryClient = useQueryClient();
 
 	const { data: manifest } = useCommand(
 		['getVersions'],
@@ -87,6 +89,17 @@ export function MigrationModal({
 		setIsMigrating(true);
 		try {
 			const result = await bindings.oneclient.copyClusterContent(sourceId, effectiveTargetId);
+			await Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: ['getClusters'],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: ['getClusters', 'sortedByLastPlayed'],
+				}),
+				queryClient.invalidateQueries({
+					queryKey: ['getClustersGroupedByMajor'],
+				}),
+			]);
 			if (result.fallback_files.length > 0)
 				setFallbackFiles(result.fallback_files);
 			else

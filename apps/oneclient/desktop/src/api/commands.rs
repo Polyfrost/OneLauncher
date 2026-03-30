@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use anyhow::Context;
 use onelauncher_core::api;
 use onelauncher_core::api::cluster::dao::ClusterId;
 use onelauncher_core::api::packages::modpack::data::{ModpackArchive, ModpackFileKind};
@@ -361,7 +362,13 @@ impl OneClientApi for OneClientApiImpl {
 
 		// Stamp the target cluster's created_at with the actual migration time so the
 		// home page can correctly identify it as a newly-migrated cluster.
-		onelauncher_core::api::cluster::dao::touch_cluster_created_at(target_id).await?;
+		onelauncher_core::api::cluster::dao::touch_cluster_created_at(target_id)
+			.await
+			.with_context(|| {
+				format!(
+					"failed to stamp migrated cluster created_at for target cluster {target_id}"
+				)
+			})?;
 
 		Ok(CopyClusterResult {
 			fallback_files: fallback_files.into_iter().collect(),

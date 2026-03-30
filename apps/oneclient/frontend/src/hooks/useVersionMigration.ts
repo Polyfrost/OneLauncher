@@ -1,6 +1,7 @@
 import { bindings } from '@/main';
 import useMigrationStore from '@/stores/migrationStore';
 import { useCommandSuspense } from '@onelauncher/common';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 const DEFAULT_SEEN_VERSIONS = ['1.21.1', '1.21.10', '1.21.11'] as const;
@@ -24,6 +25,7 @@ function areClustersEqual(
 }
 
 export function useVersionMigration() {
+	const queryClient = useQueryClient();
 	const { data: grouped } = useCommandSuspense(
 		['getClustersGroupedByMajor'],
 		bindings.oneclient.getClustersGroupedByMajor,
@@ -40,11 +42,7 @@ export function useVersionMigration() {
 	const openForDebug = useMigrationStore(state => state.openForDebug);
 
 	useEffect(() => {
-		type SettingsWithSeenVersions = typeof settingsData & {
-			seen_versions?: Array<string>;
-		};
-
-		const settings = settingsData as SettingsWithSeenVersions;
+		const settings = settingsData;
 		const storedSeenVersions = Array.isArray(settings.seen_versions) ? settings.seen_versions : [];
 		const seenVersions = [
 			...new Set([
@@ -68,10 +66,12 @@ export function useVersionMigration() {
 		if (!areClustersEqual(migrationState.allClusters, nextAllClusters))
 			setAllClusters(nextAllClusters);
 
-		if (
-			!areStringArraysEqual(migrationState.newVersions, unseenUnplayed)
-			|| !areClustersEqual(migrationState.sourceClusters, sources)
-		)
+		const migrationCandidatesChanged
+			= !areStringArraysEqual(migrationState.newVersions, unseenUnplayed)
+				|| !areClustersEqual(migrationState.sourceClusters, sources);
+
+		// Keep active modal data stable while it is open.
+		if (migrationCandidatesChanged && !migrationState.isOpen)
 			setMigrationCandidates(unseenUnplayed, sources);
 
 		if (unseenUnplayed.length > 0 && sources.length > 0 && !migrationState.isOpen)
@@ -82,12 +82,16 @@ export function useVersionMigration() {
 		const hasSeenVersionsChanged
 			= !areStringArraysEqual(nextSeenVersions, normalizedStoredSeenVersions);
 
-		if (hasSeenVersionsChanged)
-			void bindings.core.writeSettings({
+		if (hasSeenVersionsChanged) {
+			const nextSettings = {
 				...settings,
 				seen_versions: nextSeenVersions,
-			} as typeof settingsData);
-	}, [grouped, setAllClusters, setIsOpen, setMigrationCandidates, settingsData]);
+			} as typeof settingsData;
+
+			queryClient.setQueryData(['readSettings'], nextSettings);
+			void bindings.core.writeSettings(nextSettings);
+		}
+	}, [grouped, queryClient, setAllClusters, setIsOpen, setMigrationCandidates, settingsData]);
 
 	return { isOpen, isDebugPreview, setIsOpen, newVersions, sourceClusters, allClusters, openForDebug };
 }

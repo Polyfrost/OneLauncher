@@ -10,6 +10,7 @@ use serde::Deserialize;
 use tokio::sync::OnceCell;
 
 use crate::api::cluster::ClusterError;
+use crate::api::packages::PackageError;
 use crate::api::packages::data::{ExternalPackage, ManagedVersion, PackageOverrides, PackageSide};
 use crate::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind, ModpackManifest,
@@ -208,6 +209,8 @@ pub(super) async fn download_and_link_packages(
 	// if cluster.mc_loader_version.is_some_and(|v| v )
 
 	let mut packages_to_link = Vec::new();
+	let mut failed_downloads = 0u64;
+	let mut attempted_downloads = 0u64;
 
 	// TODO: Ingress
 	for file in &manifest.files {
@@ -215,12 +218,21 @@ pub(super) async fn download_and_link_packages(
 			continue;
 		}
 
+		attempted_downloads += 1;
+
 		match &file.kind {
 			ModpackFileKind::Managed(managed) => {
 				let (package, version) = &**managed;
 				match api::packages::download_package(package, version, None, None).await {
 					Ok(model) => packages_to_link.push(model),
-					Err(e) => tracing::error!("failed to download package: {e:?}"),
+					Err(e) => {
+						failed_downloads += 1;
+						tracing::error!(
+							"failed to download package '{}' version '{}': {e:?}",
+							package.id,
+							version.version_id,
+						);
+					}
 				}
 			}
 			ModpackFileKind::External(package) => {
@@ -234,8 +246,17 @@ pub(super) async fn download_and_link_packages(
 				.await
 				{
 					Ok(Some(model)) => packages_to_link.push(model),
-					Ok(None) => {}
-					Err(e) => tracing::error!("failed to download external package: {e:?}"),
+					Ok(None) => {
+						failed_downloads += 1;
+						tracing::error!("external package '{}' was not downloaded", package.url);
+					}
+					Err(e) => {
+						failed_downloads += 1;
+						tracing::error!(
+							"failed to download external package '{}': {e:?}",
+							package.url
+						);
+					}
 				}
 			}
 		}
@@ -250,6 +271,15 @@ pub(super) async fn download_and_link_packages(
 	if linked < packages_to_link.len() as u64 {
 		tracing::warn!("not all packages could be linked to the cluster, some errors occurred");
 	}
+
+	if failed_downloads > 0 {
+		return Err(PackageError::PartialModpackInstall {
+			failed: failed_downloads,
+			total: attempted_downloads,
+		}
+		.into());
+	}
+
 	Ok(())
 }
 

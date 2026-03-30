@@ -12,12 +12,12 @@ export function useSettings() {
 	}, [settings]);
 
 	const setSetting = useMemo(() => {
-		return function setSetting<TKey extends keyof Settings>(key: TKey, value: Settings[TKey]) {
-			bindings.core.writeSettings({
+		return async function setSetting<TKey extends keyof Settings>(key: TKey, value: Settings[TKey]) {
+			await bindings.core.writeSettings({
 				...settings.data,
 				[key]: value,
 			});
-			settings.refetch();
+			await settings.refetch();
 		};
 	}, [settings]);
 

@@ -19,6 +19,12 @@ export const Route = createFileRoute('/onboarding/preferences/versionCategory')(
 	component: RouteComponent,
 });
 
+interface OverrideExtractionFailure {
+	clusterId: number;
+	bundleName: string;
+	reason: string;
+}
+
 function extractDisplayName(manifestName: string): string {
 	return manifestName.match(/\[(.*?)\]/)?.[1] ?? manifestName;
 }
@@ -165,22 +171,57 @@ function RouteComponent() {
 	const anySelected = Object.values(modsPerCluster).some(mods => mods.length > 0);
 
 	const setDownloadData = useDownloadStore(s => s.setDownloadData);
+	const [isPreparingNext, setIsPreparingNext] = useState(false);
+	const [overrideFailures, setOverrideFailures] = useState<Array<OverrideExtractionFailure>>([]);
 
-	const handleBeforeNext = async () => {
+	function toErrorMessage(error: unknown): string {
+		if (error instanceof Error)
+			return error.message;
+
+		if (typeof error === 'string')
+			return error;
+
+		try {
+			return JSON.stringify(error);
+		}
+		catch {
+			return 'Unknown override extraction error';
+		}
+	}
+
+	const handleBeforeNext = async (): Promise<boolean> => {
+		setIsPreparingNext(true);
+		setOverrideFailures([]);
+		const failures: Array<OverrideExtractionFailure> = [];
+
 		for (const [clusterId, bundles] of Object.entries(bundlesPerCluster))
 			for (const bundle of bundles) {
 				const selectedMods = modsPerCluster[clusterId] ?? [];
 				const hasSelectedBundleContent = selectedMods.some(mod => mod.bundleName === bundle.manifest.name);
 				if (!hasSelectedBundleContent)
 					continue;
+
 				try {
 					await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
 				}
 				catch (e) {
 					console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
+					failures.push({
+						clusterId: Number(clusterId),
+						bundleName: bundle.manifest.name,
+						reason: toErrorMessage(e),
+					});
 				}
 			}
+
+		setIsPreparingNext(false);
+		if (failures.length > 0) {
+			setOverrideFailures(failures);
+			return false;
+		}
+
 		setDownloadData(modsPerCluster, bundlesPerCluster);
+		return true;
 	};
 
 	return (
@@ -193,6 +234,23 @@ function RouteComponent() {
 							<p className="text-slate-400 text-lg mb-4">
 								Choose which mod bundles to install. Your selection will be applied across all available versions.
 							</p>
+							{overrideFailures.length > 0
+								? (
+										<div className="mb-4 rounded-lg border border-red-500/50 bg-red-500/10 p-4 text-sm text-fg-primary">
+											<p className="font-semibold">Some bundle overrides failed to extract.</p>
+											<p className="mt-1 text-fg-secondary">Fix or retry before continuing.</p>
+											<div className="mt-3 max-h-24 overflow-auto rounded bg-black/20 p-2">
+												{overrideFailures.map((failure) => {
+													return (
+														<p key={`${failure.clusterId}-${failure.bundleName}`}>
+															Cluster {failure.clusterId} / {failure.bundleName}: {failure.reason}
+														</p>
+													);
+												})}
+											</div>
+										</div>
+									)
+								: null}
 
 							<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
 								{unifiedBundles.map((ub) => {
@@ -222,7 +280,7 @@ function RouteComponent() {
 					</OverlayScrollbarsComponent>
 				</div>
 			</div>
-			<OnboardingNavigation disableNext={!anySelected} onBeforeNext={handleBeforeNext} />
+			<OnboardingNavigation disableNext={!anySelected || isPreparingNext} onBeforeNext={handleBeforeNext} />
 		</>
 	);
 }

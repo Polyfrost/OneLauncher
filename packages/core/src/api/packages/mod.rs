@@ -28,6 +28,8 @@ pub enum PackageError {
 	NoPrimaryFile,
 	#[error("package is not a modpack")]
 	IsNotModPack,
+	#[error("modpack install completed with partial failures ({failed} of {total} files failed)")]
+	PartialModpackInstall { failed: u64, total: u64 },
 	#[error(transparent)]
 	Incompatible(#[from] IncompatiblePackageType),
 	#[error("missing API key for provider '{0}'")]
@@ -208,7 +210,23 @@ async fn persist_downloaded_package(
 	update_existing_package: bool,
 ) -> LauncherResult<packages::Model> {
 	if !update_existing_package {
-		return dao::insert_package(model.into()).await;
+		let model_hash = model.hash.clone();
+		return match dao::insert_package(model.into()).await {
+			Ok(inserted) => Ok(inserted),
+			Err(LauncherError::DbError(err)) if is_unique_package_hash_violation(&err) => {
+				(dao::get_package_by_hash(model_hash.clone()).await?).map_or_else(
+					|| Err(LauncherError::DbError(err)),
+					|existing| {
+						tracing::debug!(
+							"package '{}' was inserted concurrently; reusing existing row",
+							model_hash,
+						);
+						Ok(existing)
+					},
+				)
+			}
+			Err(error) => Err(error),
+		};
 	}
 
 	let hash = model.hash.clone();
@@ -239,6 +257,14 @@ async fn persist_downloaded_package(
 		Ok(active)
 	})
 	.await
+}
+
+fn is_unique_package_hash_violation(error: &sea_orm::DbErr) -> bool {
+	let message = error.to_string();
+	message.contains("UNIQUE constraint failed: packages.hash")
+		|| (message.contains("duplicate key value")
+			&& message.contains("packages")
+			&& message.contains("hash"))
 }
 
 /// Links a package to a cluster on the file system and in database.
@@ -332,9 +358,13 @@ pub async fn link_many_packages_to_cluster(
 		hard_link(package, cluster).await?;
 	}
 
-	dao::link_many_packages_to_cluster(packages, cluster).await?;
+	if compatible_packages.is_empty() {
+		return Ok(0);
+	}
 
-	Ok(0)
+	let linked = dao::link_many_packages_to_cluster(&compatible_packages, cluster).await?;
+
+	Ok(linked)
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -353,9 +383,28 @@ async fn hard_link(package: &packages::Model, cluster: &clusters::Model) -> Laun
 	io::create_dir_all(&dest_dir).await?;
 
 	let dest_pkg = dest_dir.join(package.file_name.as_str());
-	tokio::fs::hard_link(src_pkg, dest_pkg)
-		.await
-		.map_err(IOError::from)?;
+	match tokio::fs::hard_link(&src_pkg, &dest_pkg).await {
+		Ok(()) => {}
+		Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+			let existing_hash = HashAlgorithm::Sha1.hash_file(&dest_pkg).await?;
+			if existing_hash == package.hash {
+				tracing::debug!(
+					"package '{}' is already present at '{}' with matching hash; skipping hard-link",
+					package.display_name,
+					dest_pkg.display()
+				);
+			} else {
+				return Err(anyhow::anyhow!(
+					"destination '{}' already exists with mismatched hash (existing: {}, expected: {})",
+					dest_pkg.display(),
+					existing_hash,
+					package.hash,
+				)
+				.into());
+			}
+		}
+		Err(err) => return Err(IOError::from(err).into()),
+	}
 
 	Ok(())
 }

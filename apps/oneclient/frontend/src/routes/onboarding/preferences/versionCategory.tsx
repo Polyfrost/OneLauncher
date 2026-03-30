@@ -1,16 +1,17 @@
 import type { ClusterModel, ModpackArchive, ModpackFile, OnlineClusterManifest } from '@/bindings.gen';
-import type { DownloadModsRef, ModCardContextApi, ModWithBundle, onClickOnMod } from '@/components';
-import { DownloadMods, ModCardContext, ModList, Overlay } from '@/components';
+import type { ModCardContextApi, ModWithBundle, onClickOnMod } from '@/components';
+import { ModCardContext, ModList, Overlay } from '@/components';
 import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
+import useDownloadStore from '@/stores/downloadStore';
 import { getOnlineClusterForVersion, parseMcVersion } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
 import { DotsVerticalIcon } from '@untitled-theme/icons-react';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button as AriaButton } from 'react-aria-components';
 import { twMerge } from 'tailwind-merge';
 
@@ -163,27 +164,24 @@ function RouteComponent() {
 
 	const anySelected = Object.values(modsPerCluster).some(mods => mods.length > 0);
 
-	const downloadModsRef = useRef<DownloadModsRef>(null);
-	const wrappedRef = useRef<DownloadModsRef>(null);
+	const setDownloadData = useDownloadStore(s => s.setDownloadData);
 
-	useImperativeHandle(wrappedRef, () => ({
-		async openDownloadDialog(nextPath?: string) {
-			for (const [clusterId, bundles] of Object.entries(bundlesPerCluster))
-				for (const bundle of bundles) {
-					const selectedMods = modsPerCluster[clusterId] ?? [];
-					const hasSelectedBundleContent = selectedMods.some(mod => mod.bundleName === bundle.manifest.name);
-					if (!hasSelectedBundleContent)
-						continue;
-					try {
-						await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
-					}
-					catch (e) {
-						console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
-					}
+	const handleBeforeNext = async () => {
+		for (const [clusterId, bundles] of Object.entries(bundlesPerCluster))
+			for (const bundle of bundles) {
+				const selectedMods = modsPerCluster[clusterId] ?? [];
+				const hasSelectedBundleContent = selectedMods.some(mod => mod.bundleName === bundle.manifest.name);
+				if (!hasSelectedBundleContent)
+					continue;
+				try {
+					await bindings.oneclient.extractBundleOverrides(bundle.path, Number(clusterId));
 				}
-			downloadModsRef.current?.openDownloadDialog(nextPath);
-		},
-	}), [bundlesPerCluster, modsPerCluster]);
+				catch (e) {
+					console.error(`Failed to extract overrides for bundle ${bundle.manifest.name}:`, e);
+				}
+			}
+		setDownloadData(modsPerCluster, bundlesPerCluster);
+	};
 
 	return (
 		<>
@@ -220,15 +218,11 @@ function RouteComponent() {
 									);
 								})}
 							</div>
-
-							<div className="hidden">
-								<DownloadMods modsPerCluster={modsPerCluster} ref={downloadModsRef} />
-							</div>
 						</div>
 					</OverlayScrollbarsComponent>
 				</div>
 			</div>
-			<OnboardingNavigation disableNext={!anySelected} ref={wrappedRef} />
+			<OnboardingNavigation disableNext={!anySelected} onBeforeNext={handleBeforeNext} />
 		</>
 	);
 }

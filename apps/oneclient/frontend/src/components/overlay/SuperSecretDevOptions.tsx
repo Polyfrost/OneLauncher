@@ -3,11 +3,17 @@ import { useCopyDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import { Button } from '@onelauncher/common/components';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 
 export function SuperSecretDevOptions() {
-	const { createSetting } = useSettings();
+	const { createSetting, setSetting } = useSettings();
 	const copyDebugInfo = useCopyDebugInfo();
+	const navigate = useNavigate();
+
+	const handleSkipOnboarding = () => {
+		setSetting('seen_onboarding', true);
+		navigate({ to: '/app' });
+	};
 
 	return (
 		<Overlay.Dialog>
@@ -31,9 +37,7 @@ export function SuperSecretDevOptions() {
 						<Button size="normal">Debug Page</Button>
 					</Link>
 
-					<Link to="/onboarding/finished">
-						<Button size="normal">Skip Onboarding</Button>
-					</Link>
+					<Button onPress={handleSkipOnboarding} size="normal">Skip Onboarding</Button>
 
 				</div>
 

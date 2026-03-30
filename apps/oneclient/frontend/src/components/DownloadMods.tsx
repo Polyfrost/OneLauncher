@@ -105,7 +105,39 @@ export function DownloadMods({ modsPerCluster, ref }: { modsPerCluster: Record<s
 	);
 }
 
-function downloadModsParallel(items: ModDataArray, limit: number, fn: (mod: ModData, index: number) => Promise<void>) {
+export function buildModDataArray(modsPerCluster: Record<string, Array<ModWithBundle>>): ModDataArray {
+	const modsList: ModDataArray = [];
+	for (const [clusterId, modsWithBundle] of Object.entries(modsPerCluster))
+		for (const { file: mod, bundleName } of modsWithBundle) {
+			if ('External' in mod.kind)
+				modsList.push({
+					name: getModMetaDataName(mod),
+					clusterId: Number(clusterId),
+					managed: false,
+					package: mod.kind.External,
+					bundleName,
+					fileKind: mod.kind,
+				});
+
+			if ('Managed' in mod.kind) {
+				const [pkg, version] = mod.kind.Managed;
+				modsList.push({
+					name: getModMetaDataName(mod),
+					clusterId: Number(clusterId),
+					managed: true,
+					provider: pkg.provider,
+					id: pkg.id,
+					versionId: version.version_id,
+					dependencies: version.dependencies,
+					bundleName,
+					fileKind: mod.kind,
+				});
+			}
+		}
+	return modsList;
+}
+
+export function downloadModsParallel(items: ModDataArray, limit: number, fn: (mod: ModData, index: number) => Promise<void>) {
 	let index = 0;
 	const workers = Array.from({ length: limit }).fill(null).map(async () => {
 		while (index < items.length) {

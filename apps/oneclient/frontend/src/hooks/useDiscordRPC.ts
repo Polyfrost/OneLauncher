@@ -36,7 +36,7 @@ export const ResolvedPathNames: Record<URLPath, string> = {
 	'/onboarding/preferences/versionCategory': 'Preparing OneClient',
 	'/onboarding/preferences': 'Preparing OneClient',
 	'/onboarding/account': 'Preparing OneClient',
-	'/onboarding/finished': 'Preparing OneClient',
+	'/onboarding/downloading': 'Preparing OneClient',
 	'/onboarding/language': 'Preparing OneClient',
 };
 

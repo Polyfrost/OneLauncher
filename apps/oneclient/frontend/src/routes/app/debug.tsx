@@ -7,7 +7,7 @@ import useMigrationStore from '@/stores/migrationStore';
 import { TitleCase } from '@/utils/string';
 import { ToastPositions, ToastTypes, useToast } from '@/utils/toast';
 import { Button, Dropdown, TextField } from '@onelauncher/common/components';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { dataDir, join } from '@tauri-apps/api/path';
 import { useEffect, useState } from 'react';
 
@@ -170,6 +170,7 @@ function Settings() {
 function Other() {
 	const [launcherDir, setLauncherDir] = useState('');
 	const openMigrationGui = useMigrationStore(state => state.openForDebug);
+	const navigate = useNavigate({ from: '/app/debug' });
 	useEffect(() => {
 		(async () => {
 			setLauncherDir(await join(await dataDir(), 'OneClient'));
@@ -191,6 +192,7 @@ function Other() {
 			<h1 className="text-3xl font-semibold">Other</h1>
 			<div className="flex flex-row gap-4">
 				<Button onPress={bindings.debug.openDevTools} size="normal">Open Dev Tools</Button>
+				<Button onPress={() => navigate({ to: '/onboarding' })} size="normal">Open Onboarding</Button>
 				<Button onPress={openMigrationGui} size="normal">Open Migration GUI</Button>
 				<Button onClick={openLauncherDir} size="normal">Open Launcher Data</Button>
 				<Button onClick={logRunningProcesses} size="normal">Log Running Processes to frontend</Button>

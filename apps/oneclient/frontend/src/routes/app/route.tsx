@@ -58,8 +58,8 @@ function AppShell({
 
 function BackgroundGradient() {
 	const cluster = useActiveCluster();
-	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
 	const { data: versions } = useCommandSuspense(['getVersions'], () => bindings.oneclient.getVersions());
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version, versions);
 
 	const entry = getOnlineEntryForVersion(cluster.mc_version, versions);
 	const onlineCluster = getOnlineClusterForVersion(cluster.mc_version, versions);

@@ -57,6 +57,10 @@ pub struct OnlineCluster {
 	name: String,
 	art: String,
 	entries: Vec<OnlineClusterEntry>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	long_description: Option<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	tags: Vec<String>,
 }
 
 #[derive(specta::Type, Deserialize, Serialize)]
@@ -70,23 +74,46 @@ pub struct OnlineClusterEntry {
 	tags: Vec<String>,
 }
 
-pub async fn get_data_storage_versions() -> LauncherResult<OnlineClusterManifest> {
-	let manifest = match fetch_json::<OnlineClusterManifest>(
+/// Load the versions manifest, preferring a local override file if one exists.
+///
+/// Place a `versions_override.json` in the launcher's data directory
+/// (the path logged as "using base directory '...'" on startup) to use it
+/// instead of fetching from the remote `DataStorage` URL. Useful for testing
+/// new versions locally before pushing to `DataStorage`.
+async fn load_versions_manifest() -> LauncherResult<OnlineClusterManifest> {
+	if let Ok(base_dir) = onelauncher_core::store::Dirs::get()
+		.await
+		.map(|d| d.base_dir().clone())
+	{
+		let override_path = base_dir.join("versions_override.json");
+		if override_path.exists() {
+			tracing::info!("using local versions override: {}", override_path.display());
+			let bytes = tokio::fs::read(&override_path)
+				.await
+				.map_err(anyhow::Error::from)?;
+			let manifest: OnlineClusterManifest =
+				serde_json::from_slice(&bytes).map_err(anyhow::Error::from)?;
+			return Ok(manifest);
+		}
+	}
+
+	fetch_json::<OnlineClusterManifest>(
 		Method::GET,
 		&format!("{}/versions/versions.json", crate::constants::META_URL_BASE),
 		None,
 		None,
 	)
 	.await
-	{
-		Ok(m) => m,
+}
+
+pub async fn get_data_storage_versions() -> LauncherResult<OnlineClusterManifest> {
+	match load_versions_manifest().await {
+		Ok(m) => Ok(m),
 		Err(e) => {
 			send_error!("failed to fetch clusters manifest: {}", e);
-			return Err(e);
+			Err(e)
 		}
-	};
-
-	Ok(manifest)
+	}
 }
 
 /// Download an art image (e.g. `/versions/art/Foo.png`) from the data storage CDN and
@@ -137,14 +164,7 @@ pub async fn refresh_art_cache(path: &str) {
 }
 
 pub async fn init_clusters() -> LauncherResult<()> {
-	let manifest = match fetch_json::<OnlineClusterManifest>(
-		Method::GET,
-		&format!("{}/versions/versions.json", crate::constants::META_URL_BASE),
-		None,
-		None,
-	)
-	.await
-	{
+	let manifest = match load_versions_manifest().await {
 		Ok(m) => m,
 		Err(e) => {
 			send_error!("failed to fetch clusters manifest: {}", e);
@@ -154,7 +174,11 @@ pub async fn init_clusters() -> LauncherResult<()> {
 
 	for cluster in manifest.clusters {
 		for entry in cluster.entries {
-			let mc_version = format!("1.{}.{}", cluster.major_version, entry.minor_version);
+			let mc_version = if cluster.major_version >= 26 {
+				format!("{}.{}", cluster.major_version, entry.minor_version)
+			} else {
+				format!("1.{}.{}", cluster.major_version, entry.minor_version)
+			};
 
 			if let Err(e) = create_cluster_if_not_exist(&mc_version, entry.loader, None).await {
 				send_error!("failed to create cluster for {}: {}", mc_version, e);

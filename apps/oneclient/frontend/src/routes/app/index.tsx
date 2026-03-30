@@ -34,12 +34,24 @@ function RouteComponent() {
 		from: Route.id,
 	});
 
+	const BOOST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+	const now = Date.now();
+	const displayClusters = [...lastPlayedClusters].sort((a, b) => {
+		const aIsNew = a.last_played === null && (now - new Date(a.created_at).getTime()) < BOOST_WINDOW_MS;
+		const bIsNew = b.last_played === null && (now - new Date(b.created_at).getTime()) < BOOST_WINDOW_MS;
+		if (aIsNew && !bIsNew)
+			return -1;
+		if (bIsNew && !aIsNew)
+			return 1;
+		return 0;
+	}).slice(0, 3);
+
 	return (
 		<div className="flex h-full w-full flex-col justify-center p-12">
 			<ActiveClusterInfo cluster={activeCluster} versions={versions} />
 
 			<motion.div {...animations.slideInUp} className="flex flex-row transition-[height] h-52 gap-6">
-				{lastPlayedClusters.slice(0, 3).map(cluster => (
+				{displayClusters.map(cluster => (
 					<RecentsCard
 						active={activeCluster.id === cluster.id}
 						key={cluster.folder_name}
@@ -63,7 +75,7 @@ function RouteComponent() {
 }
 
 function ActiveClusterInfo({ cluster, versions }: { cluster: ClusterModel; versions: OnlineClusterManifest }) {
-	const versionInfo = getVersionInfoOrDefault(cluster.mc_version);
+	const versionInfo = getVersionInfoOrDefault(cluster.mc_version, versions);
 	const entry = getOnlineEntryForVersion(cluster.mc_version, versions);
 	const navigate = useNavigate({ from: Route.id });
 
@@ -121,7 +133,7 @@ function RecentsCard({
 	active,
 	versions,
 }: RecentsCardProps) {
-	const versionInfo = getVersionInfo(version);
+	const versionInfo = getVersionInfo(version, versions);
 	const entry = getOnlineEntryForVersion(version, versions);
 	const onlineCluster = getOnlineClusterForVersion(version, versions);
 

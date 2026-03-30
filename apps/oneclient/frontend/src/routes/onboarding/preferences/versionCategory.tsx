@@ -5,6 +5,7 @@ import { BundleModListModal, DownloadMods, ModCardContext, Overlay } from '@/com
 import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
+import { getOnlineClusterForVersion, parseMcVersion } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { Button } from '@onelauncher/common/components';
 import { createFileRoute } from '@tanstack/react-router';
@@ -41,10 +42,10 @@ function RouteComponent() {
 		const selected = selectedClusters.some(selectedCluster => selectedCluster.mc_version === cluster.mc_version && selectedCluster.mc_loader === cluster.mc_loader);
 		if (!selected)
 			return;
-		const onlineCluster = versions.clusters.find(c => cluster.mc_version.startsWith(`1.${c.major_version}`));
-		const minorVersion = Number.parseInt(cluster.mc_version.split('.')[2] ?? '', 10);
-		const onlineEntry = !Number.isNaN(minorVersion)
-			? onlineCluster?.entries.find(e => e.minor_version === minorVersion)
+		const onlineCluster = getOnlineClusterForVersion(cluster.mc_version, versions);
+		const parsedVersion = parseMcVersion(cluster.mc_version);
+		const onlineEntry = parsedVersion?.minor !== undefined
+			? onlineCluster?.entries.find(e => e.minor_version === parsedVersion.minor)
 			: undefined;
 		bundlesData[cluster.name] = {
 			bundles: bundleQueries[i],

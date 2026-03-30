@@ -9,60 +9,54 @@ export interface VersionInfo {
 	tags: Array<string>;
 }
 
-const VERSION_MAP: Record<number, VersionInfo> = {
-	[-1]: {
-		backgroundName: 'HypixelSkyblockHub',
-		shortDescription: 'Unknown Version',
-		longDescription: 'This version is not recognized or does not have specific information available.',
-		prettyName: '0.0',
-		tags: [],
-	},
-	8: {
-		backgroundName: 'HypixelSkyblockHub',
-		prettyName: '1.8',
-		shortDescription: 'The Bountiful Update',
-		longDescription: 'The Bountiful Update is a major update that introduces new features, items, and gameplay mechanics to enhance the Minecraft experience. It focuses on expanding the game world and providing players with new challenges and adventures.',
-		tags: ['Legacy', 'Bountiful Update'],
-	},
-	21: {
-		backgroundName: 'CavesAndCliffs',
-		prettyName: '1.21',
-		shortDescription: 'The Tricky Trials Update',
-		longDescription: `Minecraft's 1.21 update, known as "Tricky Trials," primarily focuses on combat adventures and tinkering, introducing trial chambers, new copper block variants, a new crafting tool, and a new weapon. It also features new hostile mobs, paintings, and gameplay enhancements.`,
-		tags: ['Tricky Trials'],
-	},
-} as const;
+const DEFAULT_VERSION_INFO: VersionInfo = {
+	backgroundName: 'MinecraftBuilding',
+	prettyName: '?',
+	shortDescription: 'Unknown Version',
+	longDescription: 'This version is not recognized or does not have specific information available.',
+	tags: [],
+};
 
-export function getVersionInfo(version: number | string | null | undefined): VersionInfo | undefined {
-	if (version === undefined || version === null)
-		return undefined;
-
-	let majorVersion: number | undefined;
-
-	if (typeof version === 'string')
-		majorVersion = parseMcVersion(version)?.major;
-	else if (typeof version === 'number')
-		majorVersion = version;
-
-	if (majorVersion)
-		return VERSION_MAP[majorVersion];
-	else
-		return undefined;
+export function getVersionInfoFromCluster(cluster: OnlineCluster): VersionInfo {
+	const { major_version } = cluster;
+	return {
+		backgroundName: 'MinecraftBuilding',
+		prettyName: major_version >= 26 ? `${major_version}` : `1.${major_version}`,
+		shortDescription: cluster.name,
+		longDescription: cluster.long_description ?? '',
+		tags: cluster.tags,
+	};
 }
 
-export function getVersionInfoOrDefault(version: number | string | null | undefined): VersionInfo {
-	const info = getVersionInfo(version);
-	return info ?? VERSION_MAP[-1];
+export function getVersionInfo(
+	version: number | string | null | undefined,
+	manifest: OnlineClusterManifest,
+): VersionInfo | undefined {
+	const cluster = getOnlineClusterForVersion(version, manifest);
+	if (!cluster)
+		return undefined;
+	return getVersionInfoFromCluster(cluster);
+}
+
+export function getVersionInfoOrDefault(
+	version: number | string | null | undefined,
+	manifest: OnlineClusterManifest,
+): VersionInfo {
+	return getVersionInfo(version, manifest) ?? DEFAULT_VERSION_INFO;
 }
 
 export function getOnlineClusterForVersion(
-	version: string | null | undefined,
+	version: number | string | null | undefined,
 	versions: OnlineClusterManifest,
 ): OnlineCluster | undefined {
-	const parsed = parseMcVersion(version);
-	if (!parsed)
+	let major: number | undefined;
+	if (typeof version === 'string')
+		major = parseMcVersion(version)?.major;
+	else if (typeof version === 'number')
+		major = version;
+	if (major === undefined)
 		return undefined;
-	return versions.clusters.find(c => c.major_version === parsed.major);
+	return versions.clusters.find(c => c.major_version === major);
 }
 
 export function getOnlineEntryForVersion(
@@ -88,14 +82,38 @@ export function parseMcVersion(version: string | null | undefined): ParsedMcVers
 		return undefined;
 
 	const parts = version.split('.');
-	if (parts.length <= 1) // we need a.b.c where c is optional
+
+	// New format: YY.N[.P] (e.g. "26.1" or "26.1.1") — no "1." prefix
+	if (parts[0] !== '1') {
+		if (parts.length < 2)
+			return undefined;
+		const major = Number.parseInt(parts[0], 10);
+		const minor = Number.parseInt(parts[1], 10);
+		return {
+			major,
+			minor: Number.isNaN(minor) ? undefined : minor,
+		};
+	}
+
+	// Old format: 1.X[.Y] (e.g. "1.21.5")
+	if (parts.length <= 1)
 		return undefined;
 
 	const major = Number.parseInt(parts[1], 10);
-	const minor = parts.length > 1 ? Number.parseInt(parts[2], 10) : undefined;
+	const minor = parts.length > 2 ? Number.parseInt(parts[2], 10) : undefined;
 
 	return {
 		major,
 		minor: Number.isNaN(minor) ? undefined : minor,
 	};
+}
+
+/**
+ * Constructs a Minecraft version string from a major+minor pair.
+ * Versions from 2026 onward use the new YY.N format; older versions use 1.X.Y.
+ */
+export function formatMcVersion(major: number, minor: number): string {
+	if (major >= 26)
+		return `${major}.${minor}`;
+	return `1.${major}.${minor}`;
 }

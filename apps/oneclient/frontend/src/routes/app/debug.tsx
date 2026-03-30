@@ -3,6 +3,7 @@ import { MinecraftAuthErrorModal, minecraftAuthErrors, Overlay, RawDebugInfo, Se
 import { useDebugInfo } from '@/hooks/useDebugInfo';
 import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
+import useMigrationStore from '@/stores/migrationStore';
 import { TitleCase } from '@/utils/string';
 import { ToastPositions, ToastTypes, useToast } from '@/utils/toast';
 import { Button, Dropdown, TextField } from '@onelauncher/common/components';
@@ -168,6 +169,7 @@ function Settings() {
 
 function Other() {
 	const [launcherDir, setLauncherDir] = useState('');
+	const openMigrationGui = useMigrationStore(state => state.openForDebug);
 	useEffect(() => {
 		(async () => {
 			setLauncherDir(await join(await dataDir(), 'OneClient'));
@@ -189,6 +191,7 @@ function Other() {
 			<h1 className="text-3xl font-semibold">Other</h1>
 			<div className="flex flex-row gap-4">
 				<Button onPress={bindings.debug.openDevTools} size="normal">Open Dev Tools</Button>
+				<Button onPress={openMigrationGui} size="normal">Open Migration GUI</Button>
 				<Button onClick={openLauncherDir} size="normal">Open Launcher Data</Button>
 				<Button onClick={logRunningProcesses} size="normal">Log Running Processes to frontend</Button>
 			</div>

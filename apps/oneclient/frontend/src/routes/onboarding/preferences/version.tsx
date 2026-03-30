@@ -1,9 +1,8 @@
 import type { GameLoader, OnlineCluster, OnlineClusterEntry } from '@/bindings.gen';
-import type { VersionInfo } from '@/utils/versionMap';
 import { useCachedImage } from '@/hooks/useCachedImage';
 import { bindings } from '@/main';
 import { OnboardingNavigation } from '@/routes/onboarding/route';
-import { getVersionInfoOrDefault } from '@/utils/versionMap';
+import { formatMcVersion } from '@/utils/versionMap';
 import { useCommandSuspense } from '@onelauncher/common';
 import { createFileRoute } from '@tanstack/react-router';
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-react';
@@ -40,15 +39,13 @@ function RouteComponent() {
 
 							<div className="bg-page-elevated p-4 rounded-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
 								{versions.clusters.map((cluster) => {
-									const versionData = getVersionInfoOrDefault(cluster.major_version);
 									return cluster.entries.map(entry => (
 										<VersionCard
 											cluster={cluster}
-											fullVersionName={`${versionData.prettyName}.${entry.minor_version}`}
-											key={`${versionData.prettyName}.${entry.minor_version}-${entry.loader}`}
+											fullVersionName={formatMcVersion(cluster.major_version, entry.minor_version)}
+											key={`${formatMcVersion(cluster.major_version, entry.minor_version)}-${entry.loader}`}
 											setSelectedClusters={setSelectedClusters}
 											version={entry}
-											versionData={versionData}
 										/>
 									));
 								})}
@@ -64,7 +61,7 @@ function RouteComponent() {
 	);
 }
 
-function VersionCard({ cluster, versionData: _versionData, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; versionData: VersionInfo; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCluster>>> }) {
+function VersionCard({ cluster, version, fullVersionName, setSelectedClusters }: { cluster: OnlineCluster; version: OnlineClusterEntry; fullVersionName: string; setSelectedClusters: React.Dispatch<React.SetStateAction<Array<StrippedCluster>>> }) {
 	const [isSelected, setSelected] = useState<boolean>(false);
 	const toggle = () => {
 		setSelected(prev => !prev);

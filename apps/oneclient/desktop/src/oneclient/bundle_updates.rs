@@ -7,8 +7,9 @@ use onelauncher_core::api::packages::bundle_dao;
 use onelauncher_core::api::packages::modpack::data::{
 	ModpackArchive, ModpackFile, ModpackFileKind,
 };
+use onelauncher_core::api::packages::provider::ProviderExt;
 use onelauncher_core::entity::cluster_packages;
-use onelauncher_core::entity::package::Provider;
+use onelauncher_core::entity::package::{PackageType, Provider};
 use onelauncher_core::error::LauncherResult;
 use onelauncher_core::{api, send_error};
 
@@ -33,6 +34,12 @@ fn managed_bundle_key(provider: Provider, package_id: &str) -> String {
 fn external_bundle_key(sha1: &str) -> String {
 	format!("e:{sha1}")
 }
+
+const VERSIONED_TYPES: &[PackageType] = &[
+	PackageType::Mod,
+	PackageType::ResourcePack,
+	PackageType::Shader,
+];
 
 fn collect_inferable_managed_keys(
 	bundle_files_map: &HashMap<String, (String, ModpackFile)>,
@@ -1235,6 +1242,325 @@ pub async fn apply_bundle_updates(
 		removals_failed,
 		additions_failed,
 	})
+}
+
+/// Migrates non-bundle (custom) packages from `source_cluster_id` to `target_cluster_id`.
+///
+/// For packages tracked on Modrinth or `CurseForge`, attempts to find and install a version
+/// compatible with the target cluster's MC version. Packages with no provider match are
+/// returned as a list of file names to copy verbatim.
+pub async fn migrate_non_bundle_packages(
+	source_cluster_id: ClusterId,
+	target_cluster_id: ClusterId,
+) -> LauncherResult<Vec<String>> {
+	let source = api::cluster::dao::get_cluster_by_id(source_cluster_id)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("source cluster {} not found", source_cluster_id))?;
+	let target = api::cluster::dao::get_cluster_by_id(target_cluster_id)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("target cluster {} not found", target_cluster_id))?;
+
+	// All packages linked to source cluster.
+	let all_linked = api::packages::dao::get_linked_packages(&source).await?;
+
+	// Set of hashes that are bundle-tracked.
+	let bundle_packages = bundle_dao::get_bundle_packages_for_cluster(source_cluster_id).await?;
+	let bundle_hashes: HashSet<&str> = bundle_packages
+		.iter()
+		.map(|bp| bp.package_hash.as_str())
+		.collect();
+
+	let non_bundle: Vec<_> = all_linked
+		.iter()
+		.filter(|p| {
+			!bundle_hashes.contains(p.hash.as_str()) && VERSIONED_TYPES.contains(&p.package_type)
+		})
+		.collect();
+
+	let mut fallback_file_names = Vec::new();
+
+	for pkg in non_bundle {
+		if matches!(pkg.provider, Provider::Modrinth | Provider::CurseForge) {
+			let versions = pkg
+				.provider
+				.get_versions_paginated(
+					&pkg.package_id,
+					Some(target.mc_version.clone()),
+					Some(target.mc_loader),
+					0,
+					1,
+				)
+				.await;
+
+			match versions {
+				Ok(page) if !page.items.is_empty() => {
+					let version = &page.items[0];
+					match pkg.provider.get(&pkg.package_id).await {
+						Ok(managed_pkg) => {
+							match api::packages::download_package(&managed_pkg, version, None, None)
+								.await
+							{
+								Ok(dl) => {
+									if let Err(e) =
+										api::packages::link_package(&dl, &target, Some(true)).await
+									{
+										tracing::warn!(
+											package_id = %pkg.package_id,
+											"Failed to link migrated non-bundle package: {e}"
+										);
+										fallback_file_names.push(pkg.file_name.clone());
+									}
+								}
+								Err(e) => {
+									tracing::warn!(
+										package_id = %pkg.package_id,
+										"Failed to download migrated non-bundle package: {e}"
+									);
+									fallback_file_names.push(pkg.file_name.clone());
+								}
+							}
+						}
+						Err(e) => {
+							tracing::warn!(
+								package_id = %pkg.package_id,
+								"Failed to fetch package metadata for migration: {e}"
+							);
+							fallback_file_names.push(pkg.file_name.clone());
+						}
+					}
+				}
+				_ => {
+					// No compatible version found — fall back to file copy.
+					fallback_file_names.push(pkg.file_name.clone());
+				}
+			}
+		} else {
+			// Local/unknown provider — always file-copy.
+			fallback_file_names.push(pkg.file_name.clone());
+		}
+	}
+
+	Ok(fallback_file_names)
+}
+
+/// Migrates bundle packages from `source_cluster_id` to `target_cluster_id` by:
+/// 1. Detecting which bundles the source is subscribed to.
+/// 2. Mapping those to equivalent bundles for the target's MC version (by matching the
+///    category suffix, e.g. `[HUD]`).
+/// 3. Copying the source's bundle overrides (disabled/removed) to the target, translating
+///    bundle names to the target version's equivalent.
+/// 4. Installing all enabled packages from the matched bundles into the target cluster,
+///    respecting those overrides.
+#[allow(clippy::too_many_lines)]
+pub async fn migrate_bundles_to_cluster(
+	source_cluster_id: ClusterId,
+	target_cluster_id: ClusterId,
+) -> LauncherResult<()> {
+	let cluster_lock = get_cluster_lock(target_cluster_id);
+	let _guard = cluster_lock.lock().await;
+
+	// 1. Find which bundle names the source cluster is explicitly subscribed to.
+	let source_bundle_packages =
+		bundle_dao::get_bundle_packages_for_cluster(source_cluster_id).await?;
+	let source_subscribed_names: HashSet<String> = source_bundle_packages
+		.iter()
+		.filter_map(|bp| bp.bundle_name.clone())
+		.collect();
+
+	if source_subscribed_names.is_empty() {
+		tracing::debug!(
+			source_cluster_id = %source_cluster_id,
+			"Source cluster has no tracked bundle subscriptions; skipping bundle migration"
+		);
+		return Ok(());
+	}
+
+	let target_cluster = api::cluster::dao::get_cluster_by_id(target_cluster_id)
+		.await?
+		.ok_or_else(|| anyhow::anyhow!("target cluster {} not found", target_cluster_id))?;
+
+	// 2. Fetch bundles available for the target version.
+	let target_bundles = BundlesManager::get()
+		.await
+		.get_bundles_for(&target_cluster.mc_version, target_cluster.mc_loader)
+		.await?;
+
+	// Build a map: source bundle name → target bundle name, matched by category suffix
+	// (the `[Category]` part at the end of the name, e.g. `[HUD]`).
+	let bundle_name_map: HashMap<String, String> = target_bundles
+		.iter()
+		.filter_map(|bundle| {
+			let target_name = &bundle.manifest.name;
+			let matched_src = source_subscribed_names.iter().find(|src_name| {
+				src_name
+					.rfind('[')
+					.is_some_and(|i| target_name.ends_with(&src_name[i..]))
+			})?;
+			Some((matched_src.clone(), target_name.clone()))
+		})
+		.collect();
+
+	if bundle_name_map.is_empty() {
+		tracing::debug!(
+			source_cluster_id = %source_cluster_id,
+			target_cluster_id = %target_cluster_id,
+			"No matching target bundles found for source subscriptions; skipping bundle migration"
+		);
+		return Ok(());
+	}
+
+	tracing::info!(
+		source_cluster_id = %source_cluster_id,
+		target_cluster_id = %target_cluster_id,
+		bundle_map = ?bundle_name_map,
+		"Migrating bundles to target cluster"
+	);
+
+	// 3. Copy source overrides to target, translating bundle names to the target version.
+	let source_overrides = bundle_dao::get_bundle_overrides(source_cluster_id).await?;
+	for ov in &source_overrides {
+		if let Some(target_bundle_name) = bundle_name_map.get(&ov.bundle_name) {
+			let _ = bundle_dao::save_bundle_override(
+				target_cluster_id,
+				target_bundle_name,
+				&ov.package_id,
+				ov.override_type.clone(),
+			)
+			.await;
+		}
+	}
+
+	// 4. Install all enabled packages from matched target bundles.
+	let target_overrides = bundle_dao::get_bundle_overrides(target_cluster_id).await?;
+	let mut additions_applied: HashSet<String> = HashSet::new();
+
+	for bundle in &target_bundles {
+		if !bundle_name_map.values().any(|n| n == &bundle.manifest.name) {
+			continue;
+		}
+		for file in &bundle.manifest.files {
+			if !file.enabled {
+				continue;
+			}
+			let file_id = match &file.kind {
+				ModpackFileKind::Managed(box_) => box_.0.id.clone(),
+				ModpackFileKind::External(ext) => ext.sha1.clone(),
+			};
+			if target_overrides.iter().any(|o| {
+				o.bundle_name == bundle.manifest.name
+					&& o.package_id == file_id
+					&& o.override_type
+						== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Removed
+			}) {
+				tracing::info!(
+					bundle_name = %bundle.manifest.name,
+					file_id = %file_id,
+					"Skipping package migration due to user override 'Removed'"
+				);
+				continue;
+			}
+			let addition = BundlePackageAddition {
+				cluster_id: target_cluster_id,
+				bundle_name: bundle.manifest.name.clone(),
+				new_file: file.clone(),
+			};
+			match apply_single_addition(&addition, &target_overrides).await {
+				Ok(_) => {
+					additions_applied.insert(bundle.manifest.name.clone());
+				}
+				Err(e) => {
+					send_error!(
+						"Failed to install bundle package '{}' during migration: {}",
+						file_id,
+						e
+					);
+				}
+			}
+		}
+	}
+
+	// Re-extract bundle overrides (configs, resource packs, etc.) for affected bundles.
+	for bundle in &target_bundles {
+		if additions_applied.contains(&bundle.manifest.name)
+			&& let Err(e) =
+				onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
+					&target_cluster,
+					&bundle.path,
+				)
+				.await
+		{
+			send_error!(
+				"Failed to extract overrides from bundle '{}' during migration: {}",
+				bundle.manifest.name,
+				e
+			);
+		}
+	}
+
+	// Ensure disabled overrides are reflected on disk. Packages may have been pre-installed
+	// by startup bundle sync (before overrides were copied), so we retroactively disable any
+	// that the user had disabled in the source cluster.
+	let current_overrides = bundle_dao::get_bundle_overrides(target_cluster_id).await?;
+	if !current_overrides.is_empty() {
+		let target_bundle_packages =
+			bundle_dao::get_bundle_packages_for_cluster(target_cluster_id).await?;
+		let all_linked = api::packages::dao::get_linked_packages(&target_cluster).await?;
+		let linked_by_hash: HashMap<&str, &onelauncher_core::entity::packages::Model> =
+			all_linked.iter().map(|p| (p.hash.as_str(), p)).collect();
+
+		for bp in &target_bundle_packages {
+			let Some(bundle_name) = &bp.bundle_name else {
+				continue;
+			};
+			let Some(package_id) = &bp.package_id else {
+				continue;
+			};
+			let should_be_disabled = current_overrides.iter().any(|o| {
+				&o.bundle_name == bundle_name
+					&& &o.package_id == package_id
+					&& o.override_type
+						== onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Disabled
+			});
+			let Some(pkg) = linked_by_hash.get(bp.package_hash.as_str()) else {
+				continue;
+			};
+
+			// Keep override metadata and on-disk state aligned after migration:
+			// - if file is already `.disabled`, ensure Disabled override exists
+			// - if Disabled override exists but file is enabled, disable it on disk
+			if pkg.file_name.ends_with(".disabled") {
+				if !should_be_disabled
+					&& let Err(e) = bundle_dao::save_bundle_override(
+						target_cluster_id,
+						bundle_name,
+						package_id,
+						onelauncher_core::entity::cluster_bundle_overrides::OverrideType::Disabled,
+					)
+					.await
+				{
+					tracing::warn!(
+						package_id = %package_id,
+						bundle_name = %bundle_name,
+						"Failed to persist disabled override for migrated package: {e}"
+					);
+				}
+				continue;
+			}
+
+			if should_be_disabled
+				&& let Err(e) =
+					api::packages::toggle_package(target_cluster_id, bp.package_hash.clone()).await
+			{
+				tracing::warn!(
+					package_id = %package_id,
+					bundle_name = %bundle_name,
+					"Failed to disable migrated bundle package: {e}"
+				);
+			}
+		}
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]

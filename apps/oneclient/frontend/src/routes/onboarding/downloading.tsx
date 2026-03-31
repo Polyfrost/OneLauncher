@@ -1,11 +1,11 @@
 import type { ModData } from '@/components';
 import { buildModDataArray, downloadModsParallel, isManagedMod } from '@/components';
-import { useSettings } from '@/hooks/useSettings';
 import { bindings } from '@/main';
 import useDownloadStore from '@/stores/downloadStore';
 import { getCachedOnboardingTips, loadOnboardingTips } from '@/utils/onboardingFunFacts';
 import { useToast } from '@/utils/toast';
 import { getMessageFromError, isLauncherError, useCommandSuspense } from '@onelauncher/common';
+import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -45,12 +45,13 @@ function getErrorMessage(error: unknown): string {
 
 function RouteComponent() {
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const { modsPerCluster, isFinishingOnboarding } = useDownloadStore();
 	const clearStore = useDownloadStore(s => s.clear);
 	const markOnboardingFinishing = useDownloadStore(s => s.markOnboardingFinishing);
-	const { setSetting } = useSettings();
 	const toast = useToast();
 	const { data: clusters } = useCommandSuspense(['getClusters'], () => bindings.core.getClusters());
+	const { data: settings } = useCommandSuspense(['readSettings'], bindings.core.readSettings);
 	const [tips, setTips] = useState<Array<string>>(getCachedOnboardingTips);
 
 	const clusterVersionById = useMemo(() => {
@@ -95,6 +96,10 @@ function RouteComponent() {
 	}, [isFinishingOnboarding, navigate]);
 
 	const mods = useMemo(() => buildModDataArray(modsPerCluster), [modsPerCluster]);
+	const onboardingInstalledVersions = useMemo(() => {
+		const versions = new Set(clusters.map(cluster => cluster.mc_version));
+		return [...versions].sort();
+	}, [clusters]);
 	const bundledManagedIdsByCluster = useMemo(() => {
 		const map: Map<number, Set<string>> = new Map();
 
@@ -141,7 +146,18 @@ function RouteComponent() {
 		finishTimerRef.current = window.setTimeout(() => {
 			void (async () => {
 				try {
-					await setSetting('seen_onboarding', true);
+					const storedSeenVersions = Array.isArray(settings.seen_versions) ? settings.seen_versions : [];
+					const nextSeenVersions = [
+						...new Set([...onboardingInstalledVersions, ...storedSeenVersions]),
+					].sort();
+					const nextSettings = {
+						...settings,
+						seen_onboarding: true,
+						seen_versions: nextSeenVersions,
+					};
+
+					await bindings.core.writeSettings(nextSettings);
+					queryClient.setQueryData(['readSettings'], nextSettings);
 				}
 				catch (error) {
 					console.error('[onboarding/downloading] Failed to persist seen_onboarding before continue; navigating anyway.', error);
@@ -151,7 +167,15 @@ function RouteComponent() {
 				clearStore();
 			})();
 		}, FADE_DURATION_MS);
-	}, [clearStore, isLeaving, markOnboardingFinishing, navigate, setSetting]);
+	}, [
+		clearStore,
+		isLeaving,
+		markOnboardingFinishing,
+		navigate,
+		onboardingInstalledVersions,
+		queryClient,
+		settings,
+	]);
 
 	useEffect(() => {
 		return () => {

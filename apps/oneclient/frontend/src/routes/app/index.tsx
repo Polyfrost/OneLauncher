@@ -160,6 +160,7 @@ function RecentsCard({
 	versions,
 }: RecentsCardProps) {
 	const versionInfo = getVersionInfo(version, versions);
+	const backgroundName = versionInfo?.backgroundName ?? 'MinecraftBuilding';
 	const entry = getOnlineEntryForVersion(version, versions);
 	const onlineCluster = getOnlineClusterForVersion(version, versions);
 
@@ -185,7 +186,7 @@ function RecentsCard({
 							/>
 						)
 					: (
-							<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={versionInfo!.backgroundName} />
+							<GameBackground className="absolute -z-10 left-0 top-0 w-full h-full scale-110" name={backgroundName} />
 						)}
 
 				<div

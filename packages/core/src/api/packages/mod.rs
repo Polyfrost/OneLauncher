@@ -74,25 +74,40 @@ pub async fn download_package(
 		.find(|f| f.primary)
 		.ok_or(PackageError::NoPrimaryFile)?;
 
-	let update_existing_package =
-		if let Some(model) = dao::get_package_by_hash(primary_file.sha1.clone()).await? {
-			if !force.unwrap_or(false) {
-				let cached_path = model.path().await?;
-				if cached_path.exists() {
+	let update_existing_package = if let Some(model) =
+		dao::get_package_by_hash(primary_file.sha1.clone()).await?
+	{
+		if !force.unwrap_or(false) {
+			let cached_path = model.path().await?;
+			if cached_path.exists() {
+				let cached_hash = HashAlgorithm::Sha1.hash_file(&cached_path).await?;
+				if cached_hash == model.hash {
 					tracing::debug!("package is already downloaded");
 					return Ok(model);
 				}
 
+				tracing::warn!(
+					"package '{}' was found in database but cached file at '{}' has mismatched hash (existing: {}, expected: {}); re-downloading",
+					model.hash,
+					cached_path.display(),
+					cached_hash,
+					model.hash,
+				);
+				io::remove_file(&cached_path).await?;
+			}
+
+			if !cached_path.exists() {
 				tracing::warn!(
 					"package '{}' was found in database but cached file is missing at '{}'; re-downloading",
 					model.hash,
 					cached_path.display()
 				);
 			}
-			true
-		} else {
-			false
-		};
+		}
+		true
+	} else {
+		false
+	};
 
 	let mut model = packages::Model {
 		hash: primary_file.sha1.clone(),
@@ -150,24 +165,38 @@ pub async fn download_external_package(
 		if !force.unwrap_or(false) {
 			let cached_path = model.path().await?;
 			if cached_path.exists() {
-				tracing::debug!(
-					"external package is already downloaded as '{}'",
-					model.display_name
+				let cached_hash = HashAlgorithm::Sha1.hash_file(&cached_path).await?;
+				if cached_hash == model.hash {
+					tracing::debug!(
+						"external package is already downloaded as '{}'",
+						model.display_name
+					);
+
+					// considering that this function downloads packages to a cluster,
+					// we'll hard-link the already downloaded package to the cluster
+					// as to keep functionality consistent
+					link_package(&model, cluster, skip_compatibility).await?;
+
+					return Ok(Some(model));
+				}
+
+				tracing::warn!(
+					"external package '{}' was found in database but cached file at '{}' has mismatched hash (existing: {}, expected: {}); re-downloading",
+					model.hash,
+					cached_path.display(),
+					cached_hash,
+					model.hash,
 				);
-
-				// considering that this function downloads packages to a cluster,
-				// we'll hard-link the already downloaded package to the cluster
-				// as to keep functionality consistent
-				link_package(&model, cluster, skip_compatibility).await?;
-
-				return Ok(Some(model));
+				io::remove_file(&cached_path).await?;
 			}
 
-			tracing::warn!(
-				"external package '{}' was found in database but cached file is missing at '{}'; re-downloading",
-				model.hash,
-				cached_path.display()
-			);
+			if !cached_path.exists() {
+				tracing::warn!(
+					"external package '{}' was found in database but cached file is missing at '{}'; re-downloading",
+					model.hash,
+					cached_path.display()
+				);
+			}
 		}
 		true
 	} else {
@@ -394,13 +423,23 @@ async fn hard_link(package: &packages::Model, cluster: &clusters::Model) -> Laun
 					dest_pkg.display()
 				);
 			} else {
-				return Err(anyhow::anyhow!(
-					"destination '{}' already exists with mismatched hash (existing: {}, expected: {})",
+				tracing::warn!(
+					"destination '{}' already exists with mismatched hash (existing: {}, expected: {}); replacing stale file",
 					dest_pkg.display(),
 					existing_hash,
 					package.hash,
-				)
-				.into());
+				);
+
+				io::remove_file(&dest_pkg).await?;
+				tokio::fs::hard_link(&src_pkg, &dest_pkg)
+					.await
+					.map_err(IOError::from)?;
+
+				tracing::debug!(
+					"replaced stale package link for '{}' at '{}'",
+					package.display_name,
+					dest_pkg.display()
+				);
 			}
 		}
 		Err(err) => return Err(IOError::from(err).into()),

@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use chrono::Utc;
 use discord_rich_presence::activity::Timestamps;
@@ -18,6 +18,21 @@ use crate::store::credentials::MinecraftCredentials;
 use crate::store::processes::Process;
 use crate::store::{Dirs, State};
 use crate::utils::io;
+use onelauncher_entity::cluster_stage::ClusterStage;
+use sea_orm::ActiveValue::Set;
+
+/// Per-cluster lock map to avoid concurrent launch/prepare races.
+static CLUSTER_LAUNCH_LOCKS: OnceLock<
+	Mutex<std::collections::HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
+> = OnceLock::new();
+
+fn get_cluster_launch_lock(cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+	let locks = CLUSTER_LAUNCH_LOCKS.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+	let mut map = locks.lock().unwrap();
+	map.entry(cluster_id)
+		.or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+		.clone()
+}
 
 #[tracing::instrument(skip_all)]
 pub async fn launch_minecraft(
@@ -26,11 +41,73 @@ pub async fn launch_minecraft(
 	force: Option<bool>,
 	search_for_java: Option<bool>,
 ) -> LauncherResult<Arc<RwLock<Process>>> {
+	let cluster_launch_lock = get_cluster_launch_lock(cluster.id);
+	let _launch_guard = cluster_launch_lock.lock().await;
+
+	tracing::info!(
+		cluster_id = %cluster.id,
+		cluster_name = %cluster.name,
+		mc_version = %cluster.mc_version,
+		mc_loader = ?cluster.mc_loader,
+		mc_loader_version = ?cluster.mc_loader_version,
+		"launch requested"
+	);
+
 	if cluster.stage.is_downloading() {
-		return Err(ClusterError::ClusterDownloading.into());
+		let state = State::get().await?;
+		let mut has_active_prepare = state
+			.ingress_processor
+			.has_active_prepare_cluster(&cluster.name)
+			.await;
+
+		if has_active_prepare {
+			tracing::info!(
+				cluster_id = %cluster.id,
+				cluster_name = %cluster.name,
+				"cluster prepare is active; waiting for completion before launching"
+			);
+
+			let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
+			while tokio::time::Instant::now() < deadline {
+				tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+				if let Some(fresh_cluster) =
+					crate::api::cluster::dao::get_cluster_by_id(cluster.id).await?
+				{
+					*cluster = fresh_cluster;
+				}
+
+				has_active_prepare = state
+					.ingress_processor
+					.has_active_prepare_cluster(&cluster.name)
+					.await;
+
+				if !cluster.stage.is_downloading() || !has_active_prepare {
+					break;
+				}
+			}
+		}
+
+		if has_active_prepare {
+			return Err(ClusterError::ClusterDownloading.into());
+		}
+
+		tracing::warn!(
+			cluster_id = %cluster.id,
+			cluster_name = %cluster.name,
+			"cluster was marked as Downloading without active prepare ingress; resetting stage"
+		);
+
+		crate::api::cluster::dao::update_cluster(cluster, async |mut active| {
+			active.stage = Set(ClusterStage::NotReady);
+			Ok(active)
+		})
+		.await?;
 	}
 
+	tracing::info!(cluster_id = %cluster.id, "preparing cluster before launch");
 	prepare_cluster(cluster, force, search_for_java).await?;
+	tracing::info!(cluster_id = %cluster.id, "cluster preparation completed");
 	let global = get_global_profile().await;
 	let settings = if let Some(name) = &cluster.setting_profile_name
 		&& let Some(profile) = get_profile_by_name(name).await?
@@ -56,16 +133,20 @@ pub async fn launch_minecraft(
 
 	let cwd = &io::canonicalize(dirs.clusters_dir().join(cluster.folder_name.clone()))?;
 
-	let metadata = state.metadata.read().await;
-	let versions = &metadata.get_vanilla()?.versions;
+	let (version, updated) = {
+		let metadata_store = state.metadata.read().await;
+		let versions = &metadata_store.get_vanilla()?.versions;
 
-	let version_index = versions
-		.iter()
-		.position(|it| it.id == cluster.mc_version)
-		.ok_or_else(|| anyhow::anyhow!("invalid game version {}", cluster.mc_version))?;
+		let version_index = versions
+			.iter()
+			.position(|it| it.id == cluster.mc_version)
+			.ok_or_else(|| anyhow::anyhow!("invalid game version {}", cluster.mc_version))?;
 
-	let version = versions[version_index].clone();
-	let updated = metadata::is_version_updated(version_index, versions);
+		(
+			versions[version_index].clone(),
+			metadata::is_version_updated(version_index, versions),
+		)
+	};
 
 	let loader_version = metadata::get_loader_version(
 		&cluster.mc_version,
@@ -74,6 +155,12 @@ pub async fn launch_minecraft(
 	)
 	.await?;
 
+	tracing::info!(
+		cluster_id = %cluster.id,
+		resolved_loader_version = ?loader_version.as_ref().map(|value| value.id.clone()),
+		"resolved loader version for launch"
+	);
+
 	let version_name = loader_version.as_ref().map_or_else(
 		|| version.id.clone(),
 		|it| format!("{}-{}", version.id, it.id),
@@ -81,6 +168,11 @@ pub async fn launch_minecraft(
 
 	let version_info =
 		metadata::download_version_info(&version, loader_version.as_ref(), None, None).await?;
+	tracing::info!(
+		cluster_id = %cluster.id,
+		version_id = %version_info.id,
+		"version metadata prepared for launch"
+	);
 
 	let Some(java) = java::get_recommended_java(&version_info, Some(&settings)).await? else {
 		return Err(JavaError::MissingJava.into());
@@ -220,6 +312,8 @@ pub async fn launch_minecraft(
 				.await;
 		}
 	}
+
+	tracing::info!(cluster_id = %cluster.id, "spawning minecraft process");
 
 	state
 		.processes

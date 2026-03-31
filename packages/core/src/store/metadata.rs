@@ -50,6 +50,8 @@ pub enum MetadataError {
 	),
 	#[error("no matching loader found")]
 	NoMatchingLoader,
+	#[error("requested loader version '{requested}' was not found")]
+	RequestedLoaderVersionNotFound { requested: String },
 	#[error("no matching version found")]
 	NoMatchingVersion,
 }

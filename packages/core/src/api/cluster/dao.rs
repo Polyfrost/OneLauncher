@@ -100,6 +100,23 @@ pub async fn touch_cluster_created_at(id: ClusterId) -> LauncherResult<()> {
 	Ok(())
 }
 
+/// Sets the loader version for a cluster.
+///
+/// Passing `None` means no explicit version is pinned.
+pub async fn set_cluster_loader_version(
+	id: ClusterId,
+	loader_version: Option<String>,
+) -> LauncherResult<clusters::Model> {
+	update_cluster_by_id(id, move |mut active: clusters::ActiveModel| {
+		let loader_version = loader_version.clone();
+		async move {
+			active.mc_loader_version = Set(loader_version);
+			Ok(active)
+		}
+	})
+	.await
+}
+
 /// Gets a cluster by its ID from the database.
 pub async fn get_cluster_by_id(id: ClusterId) -> LauncherResult<Option<clusters::Model>> {
 	let state = State::get().await?;

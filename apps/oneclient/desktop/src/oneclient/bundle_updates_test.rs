@@ -105,6 +105,15 @@ mod tests {
 			check1.additions_available.len()
 		);
 
+		let cluster_after_apply = dao::get_cluster_by_id(cluster.id)
+			.await
+			.unwrap()
+			.expect("cluster should still exist after bundle apply");
+		assert!(
+			cluster_after_apply.mc_loader_version.is_some(),
+			"Expected bundle apply to sync cluster mc_loader_version"
+		);
+
 		// 4. Verify overrides were extracted
 		// The 1.21.1 Fabric bundles usually include some config overrides (e.g. options.txt or config/...)
 		// We'll write a custom file in the cluster to simulate a user creating a config
@@ -259,6 +268,15 @@ mod tests {
 		assert!(
 			!applied1.additions_applied.is_empty(),
 			"Expected initial additions from bundle"
+		);
+
+		let cluster_after_apply = dao::get_cluster_by_id(cluster.id)
+			.await
+			.unwrap()
+			.expect("cluster should still exist after bundle apply");
+		assert!(
+			cluster_after_apply.mc_loader_version.is_some(),
+			"Expected bundle apply to sync cluster mc_loader_version"
 		);
 
 		// Get all installed packages mapping to the bundle

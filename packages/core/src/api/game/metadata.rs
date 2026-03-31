@@ -422,26 +422,82 @@ pub async fn get_loader_version(
 	}
 
 	let state = State::get().await?;
-	let metadata = state.metadata.read().await;
-	let manifest = metadata.get_modded(&loader)?;
+	let mut metadata = state.metadata.write().await;
 
-	let Some(loaders) = manifest.game_versions.iter().find(|it| {
-		it.id
-			.replace(interpulse::api::modded::DUMMY_REPLACE_STRING, mc_version)
-			== mc_version
-	}) else {
-		return Err(MetadataError::NoMatchingVersion.into());
+	let resolve_from_manifest = |manifest: &interpulse::api::modded::Manifest| {
+		let mut saw_matching_game_version = false;
+
+		for entry in &manifest.game_versions {
+			if entry
+				.id
+				.replace(interpulse::api::modded::DUMMY_REPLACE_STRING, mc_version)
+				!= mc_version
+			{
+				continue;
+			}
+
+			saw_matching_game_version = true;
+
+			if let Some(requested_loader_version) = loader_version {
+				if let Some(found) = entry
+					.loaders
+					.iter()
+					.find(|loader_entry| loader_entry.id == requested_loader_version)
+				{
+					return (saw_matching_game_version, Some(found.clone()));
+				}
+				continue;
+			}
+
+			if let Some(found) = entry
+				.loaders
+				.iter()
+				.find(|loader_entry| loader_entry.stable)
+				.or_else(|| entry.loaders.first())
+			{
+				return (saw_matching_game_version, Some(found.clone()));
+			}
+		}
+
+		(saw_matching_game_version, None)
 	};
 
-	let loader_version = loaders
-		.loaders
-		.iter()
-		.find(|it| loader_version.map_or(it.stable, |version| it.id == version))
-		.or_else(|| loaders.loaders.first())
-		.cloned()
-		.ok_or(MetadataError::NoMatchingLoader)?;
+	let mut manifest = metadata.get_modded_or_fetch(&loader).await?;
+	let (mut saw_matching_game_version, mut resolved_loader) = resolve_from_manifest(manifest);
+	if let Some(resolved) = resolved_loader.take() {
+		return Ok(Some(resolved));
+	}
 
-	Ok(Some(loader_version))
+	if loader_version.is_some() {
+		tracing::warn!(
+			mc_version = %mc_version,
+			loader = ?loader,
+			requested_loader_version = ?loader_version,
+			"Requested loader version not found in cached metadata; refetching manifests"
+		);
+
+		metadata.fetch_all().await;
+		manifest = metadata.get_modded(&loader)?;
+		(saw_matching_game_version, resolved_loader) = resolve_from_manifest(manifest);
+		if let Some(resolved) = resolved_loader {
+			return Ok(Some(resolved));
+		}
+
+		if !saw_matching_game_version {
+			return Err(MetadataError::NoMatchingVersion.into());
+		}
+
+		return Err(MetadataError::RequestedLoaderVersionNotFound {
+			requested: loader_version.expect("checked as some").to_string(),
+		}
+		.into());
+	}
+
+	if saw_matching_game_version {
+		Err(MetadataError::NoMatchingLoader.into())
+	} else {
+		Err(MetadataError::NoMatchingVersion.into())
+	}
 }
 
 // MARK: Get Versions

@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -83,6 +84,219 @@ fn infer_bundle_names_from_unique_installed_keys(
 			}
 		})
 		.collect()
+}
+
+fn collect_all_installed_managed_keys(
+	all_linked_packages: &[onelauncher_core::entity::packages::Model],
+) -> HashSet<String> {
+	all_linked_packages
+		.iter()
+		.filter_map(|pkg| {
+			if pkg.provider == Provider::Local && pkg.package_id == pkg.hash {
+				None
+			} else {
+				Some(managed_bundle_key(pkg.provider, &pkg.package_id))
+			}
+		})
+		.collect()
+}
+
+fn collect_inferable_managed_keys_for_bundle(bundle: &ModpackArchive) -> HashSet<String> {
+	let mut visible_managed_keys: HashSet<String> = HashSet::new();
+	let mut hidden_dependency_keys: HashSet<String> = HashSet::new();
+	let mut hidden_explicit_keys: HashSet<String> = HashSet::new();
+
+	for file in &bundle.manifest.files {
+		if !file.enabled {
+			continue;
+		}
+
+		if let ModpackFileKind::Managed(box_) = &file.kind {
+			let (pkg, version) = &**box_;
+			let key = managed_bundle_key(pkg.provider, &pkg.id);
+			visible_managed_keys.insert(key.clone());
+
+			if file.hidden {
+				hidden_explicit_keys.insert(key);
+			}
+
+			for dep in &version.dependencies {
+				if let Some(dep_project_id) = &dep.project_id {
+					hidden_dependency_keys.insert(managed_bundle_key(pkg.provider, dep_project_id));
+				}
+			}
+		}
+	}
+
+	for visible_key in &visible_managed_keys {
+		hidden_dependency_keys.remove(visible_key);
+	}
+
+	visible_managed_keys
+		.into_iter()
+		.filter(|key| !hidden_dependency_keys.contains(key) && !hidden_explicit_keys.contains(key))
+		.collect()
+}
+
+fn infer_subscribed_bundles_for_loader_sync(
+	bundle_packages: &[cluster_packages::Model],
+	bundles: &[ModpackArchive],
+	all_installed_managed_keys: &HashSet<String>,
+) -> HashSet<String> {
+	let mut subscribed_bundles: HashSet<String> = bundle_packages
+		.iter()
+		.filter_map(|bp| bp.bundle_name.clone())
+		.collect();
+
+	let mut candidate_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
+	for bundle in bundles {
+		candidate_keys_by_bundle.insert(
+			bundle.manifest.name.clone(),
+			collect_inferable_managed_keys_for_bundle(bundle),
+		);
+	}
+
+	for inferred_bundle in infer_bundle_names_from_unique_installed_keys(
+		&candidate_keys_by_bundle,
+		all_installed_managed_keys,
+	) {
+		subscribed_bundles.insert(inferred_bundle);
+	}
+
+	subscribed_bundles
+}
+
+fn split_version_segments(version: &str) -> Vec<String> {
+	version
+		.split(|c: char| !c.is_ascii_alphanumeric())
+		.filter(|segment| !segment.is_empty())
+		.map(str::to_ascii_lowercase)
+		.collect()
+}
+
+fn compare_version_segment(left: &str, right: &str) -> Ordering {
+	match (left.parse::<u64>(), right.parse::<u64>()) {
+		(Ok(left_num), Ok(right_num)) => left_num.cmp(&right_num),
+		(Ok(_), Err(_)) => Ordering::Greater,
+		(Err(_), Ok(_)) => Ordering::Less,
+		(Err(_), Err(_)) => left.cmp(right),
+	}
+}
+
+fn compare_version_like(left: &str, right: &str) -> Ordering {
+	let left_segments = split_version_segments(left);
+	let right_segments = split_version_segments(right);
+
+	for index in 0..left_segments.len().max(right_segments.len()) {
+		match (left_segments.get(index), right_segments.get(index)) {
+			(Some(left_segment), Some(right_segment)) => {
+				let cmp = compare_version_segment(left_segment, right_segment);
+				if cmp != Ordering::Equal {
+					return cmp;
+				}
+			}
+			(Some(left_segment), None) => {
+				if left_segment.parse::<u64>().is_ok_and(|value| value == 0) {
+					continue;
+				}
+				return Ordering::Greater;
+			}
+			(None, Some(right_segment)) => {
+				if right_segment.parse::<u64>().is_ok_and(|value| value == 0) {
+					continue;
+				}
+				return Ordering::Less;
+			}
+			(None, None) => break,
+		}
+	}
+
+	Ordering::Equal
+}
+
+fn select_highest_loader_version<'a>(
+	versions: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+	versions
+		.into_iter()
+		.map(str::trim)
+		.filter(|value| !value.is_empty())
+		.max_by(|left, right| compare_version_like(left, right))
+		.map(std::string::ToString::to_string)
+}
+
+fn resolve_target_loader_version_for_subscribed_bundles(
+	bundles: &[ModpackArchive],
+	subscribed_bundles: &HashSet<String>,
+) -> Option<String> {
+	select_highest_loader_version(
+		bundles
+			.iter()
+			.filter(|bundle| subscribed_bundles.contains(&bundle.manifest.name))
+			.map(|bundle| bundle.manifest.loader_version.as_str()),
+	)
+}
+
+async fn sync_cluster_loader_version_from_bundles(cluster_id: ClusterId) -> LauncherResult<()> {
+	let Some(cluster) = onelauncher_core::api::cluster::dao::get_cluster_by_id(cluster_id).await?
+	else {
+		tracing::warn!(
+			cluster_id = %cluster_id,
+			"Skipping loader version sync because cluster no longer exists"
+		);
+		return Ok(());
+	};
+
+	let bundle_packages = bundle_dao::get_bundle_packages_for_cluster(cluster_id).await?;
+	let all_linked_packages = api::packages::dao::get_linked_packages(&cluster).await?;
+	let bundles = BundlesManager::get()
+		.await
+		.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+		.await?;
+
+	let all_installed_managed_keys = collect_all_installed_managed_keys(&all_linked_packages);
+	let subscribed_bundles = infer_subscribed_bundles_for_loader_sync(
+		&bundle_packages,
+		&bundles,
+		&all_installed_managed_keys,
+	);
+
+	let Some(target_loader_version) =
+		resolve_target_loader_version_for_subscribed_bundles(&bundles, &subscribed_bundles)
+	else {
+		tracing::debug!(
+			cluster_id = %cluster_id,
+			subscribed_bundle_count = %subscribed_bundles.len(),
+			"No subscribed bundle loader version available for sync"
+		);
+		return Ok(());
+	};
+
+	let current_loader_version = cluster.mc_loader_version.clone();
+	if current_loader_version.as_deref() == Some(target_loader_version.as_str()) {
+		tracing::debug!(
+			cluster_id = %cluster_id,
+			loader_version = %target_loader_version,
+			"Cluster loader version already matches resolved bundle loader version"
+		);
+		return Ok(());
+	}
+
+	tracing::info!(
+		cluster_id = %cluster_id,
+		old_loader_version = ?current_loader_version,
+		new_loader_version = %target_loader_version,
+		subscribed_bundle_count = %subscribed_bundles.len(),
+		"Updating cluster loader version from subscribed bundle manifests"
+	);
+
+	onelauncher_core::api::cluster::dao::set_cluster_loader_version(
+		cluster_id,
+		Some(target_loader_version),
+	)
+	.await?;
+
+	Ok(())
 }
 
 #[taurpc::ipc_type]
@@ -1234,6 +1448,18 @@ pub async fn apply_bundle_updates(
 		}
 	}
 
+	let package_operation_failed =
+		!updates_failed.is_empty() || !removals_failed.is_empty() || !additions_failed.is_empty();
+
+	if package_operation_failed {
+		tracing::warn!(
+			cluster_id = %cluster_id,
+			"Skipping loader version sync because one or more bundle package operations failed"
+		);
+	} else if let Err(e) = sync_cluster_loader_version_from_bundles(cluster_id).await {
+		send_error!("Failed to sync cluster loader version from bundles: {e}");
+	}
+
 	Ok(ApplyBundleUpdatesResult {
 		updates_applied,
 		removals_applied,
@@ -1567,7 +1793,10 @@ pub async fn migrate_bundles_to_cluster(
 mod inference_tests {
 	use std::collections::{HashMap, HashSet};
 
-	use super::infer_bundle_names_from_unique_installed_keys;
+	use super::{
+		compare_version_like, infer_bundle_names_from_unique_installed_keys,
+		select_highest_loader_version,
+	};
 
 	fn set(values: &[&str]) -> HashSet<String> {
 		values.iter().map(|value| (*value).to_string()).collect()
@@ -1640,6 +1869,26 @@ mod inference_tests {
 			&set(&["m:modrinth:overflowparticles"]),
 		);
 		assert_eq!(inferred, set(&["QoL"]));
+	}
+
+	#[test]
+	fn loader_version_selects_highest_numeric_value() {
+		let selected = select_highest_loader_version(["0.16.8", "0.16.12", "0.15.11"]);
+		assert_eq!(selected.as_deref(), Some("0.16.12"));
+	}
+
+	#[test]
+	fn loader_version_ignores_empty_values() {
+		let selected = select_highest_loader_version(["", "  ", "0.16.10"]);
+		assert_eq!(selected.as_deref(), Some("0.16.10"));
+	}
+
+	#[test]
+	fn loader_version_comparator_treats_missing_zero_segments_as_equal() {
+		assert_eq!(
+			compare_version_like("0.16", "0.16.0"),
+			std::cmp::Ordering::Equal
+		);
 	}
 }
 

@@ -425,8 +425,22 @@ impl TauriLauncherApi for TauriLauncherApiImpl {
 
 		// let user = api::credentials::get_fake_user();
 
-		let _ =
-			api::game::launch::launch_minecraft(&mut cluster, user, None, search_for_java).await?;
+		let launch_result =
+			api::game::launch::launch_minecraft(&mut cluster, user, None, search_for_java).await;
+
+		if let Err(err) = &launch_result {
+			tracing::error!(
+				cluster_id = %cluster.id,
+				cluster_name = %cluster.name,
+				mc_version = %cluster.mc_version,
+				mc_loader = ?cluster.mc_loader,
+				mc_loader_version = ?cluster.mc_loader_version,
+				"failed to launch cluster: {err}"
+			);
+			crate::send_error!("Failed to launch '{}': {}", cluster.name, err);
+		}
+
+		let _ = launch_result?;
 
 		Ok(())
 	}

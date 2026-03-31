@@ -101,6 +101,19 @@ impl IngressProcessor {
 		let mut feeds = self.ingress_feeds.write().await;
 		Ok(feeds.remove(&uuid).ok_or(IngressError::NotFound)?)
 	}
+
+	pub async fn has_active_prepare_cluster(&self, cluster_name: &str) -> bool {
+		let feeds = self.ingress_feeds.read().await;
+		feeds.values().any(|ingress| {
+			matches!(
+				ingress.ingress_type,
+				IngressType::PrepareCluster {
+					cluster_name: ref name
+				}
+					if name == cluster_name
+			)
+		})
+	}
 }
 
 #[derive(Debug, Clone)]

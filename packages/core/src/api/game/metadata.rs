@@ -474,12 +474,12 @@ pub async fn get_loader_version(
 		return Ok(Some(resolved));
 	}
 
-	if loader_version.is_some() {
+	if !saw_matching_game_version || loader_version.is_some() {
 		tracing::warn!(
 			mc_version = %mc_version,
 			loader = ?loader,
 			requested_loader_version = ?loader_version,
-			"Requested loader version not found in cached metadata; refetching manifests"
+			"No matching loader metadata found in cache; refetching manifests"
 		);
 
 		metadata.fetch_all().await;
@@ -488,13 +488,15 @@ pub async fn get_loader_version(
 		if let Some(resolved) = resolved_loader {
 			return Ok(Some(resolved));
 		}
+	}
 
+	if let Some(requested_loader_version) = loader_version {
 		if !saw_matching_game_version {
 			return Err(MetadataError::NoMatchingVersion.into());
 		}
 
 		return Err(MetadataError::RequestedLoaderVersionNotFound {
-			requested: loader_version.expect("checked as some").to_string(),
+			requested: requested_loader_version.to_string(),
 		}
 		.into());
 	}
@@ -504,6 +506,35 @@ pub async fn get_loader_version(
 	} else {
 		Err(MetadataError::NoMatchingVersion.into())
 	}
+}
+
+#[tracing::instrument]
+pub async fn resolve_minecraft_version(mc_version: &str) -> LauncherResult<(Version, usize, bool)> {
+	let state = State::get().await?;
+	let mut metadata = state.metadata.write().await;
+
+	let mut manifest = metadata.get_vanilla_or_fetch().await?;
+	let mut version_index = manifest.versions.iter().position(|it| it.id == mc_version);
+
+	if version_index.is_none() {
+		tracing::warn!(
+			mc_version = %mc_version,
+			"requested Minecraft version missing from cached manifest; refetching metadata"
+		);
+
+		metadata.fetch_all().await;
+		manifest = metadata.get_vanilla()?;
+		version_index = manifest.versions.iter().position(|it| it.id == mc_version);
+	}
+
+	let version_index = version_index.ok_or(MetadataError::NoMatchingVersion)?;
+	let versions = &manifest.versions;
+
+	Ok((
+		versions[version_index].clone(),
+		version_index,
+		is_version_updated(version_index, versions),
+	))
 }
 
 // MARK: Get Versions

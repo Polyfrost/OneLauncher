@@ -13,8 +13,8 @@ use crate::api::game::metadata::{self, download_minecraft};
 use crate::api::ingress::IngressSendExt;
 use crate::api::{java, setting_profiles};
 use crate::error::LauncherResult;
+use crate::store::Dirs;
 use crate::store::ingress::{IngressType, SubIngress};
-use crate::store::{Dirs, State};
 use crate::utils::DatabaseModelExt;
 use crate::utils::io::{self, IOError};
 
@@ -176,20 +176,10 @@ async fn install_cluster(
 		setting_profiles::dao::get_profile_or_default(cluster.setting_profile_name.as_ref())
 			.await?;
 
-	let state = State::get().await?;
-	let mut metadata = state.metadata.write().await;
-	let versions_list = &metadata.get_vanilla_or_fetch().await?.versions;
-
-	let version_index = versions_list
-		.iter()
-		.position(|v| v.id == cluster.mc_version)
-		.ok_or_else(|| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
-
-	let version = versions_list[version_index].clone();
-
-	let minecraft_updated = metadata::is_version_updated(version_index, versions_list);
-
-	drop(metadata);
+	let (version, _version_index, minecraft_updated) =
+		metadata::resolve_minecraft_version(&cluster.mc_version)
+			.await
+			.map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
 
 	let loader_version = metadata::get_loader_version(
 		&cluster.mc_version,

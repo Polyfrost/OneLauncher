@@ -133,20 +133,10 @@ pub async fn launch_minecraft(
 
 	let cwd = &io::canonicalize(dirs.clusters_dir().join(cluster.folder_name.clone()))?;
 
-	let (version, updated) = {
-		let metadata_store = state.metadata.read().await;
-		let versions = &metadata_store.get_vanilla()?.versions;
-
-		let version_index = versions
-			.iter()
-			.position(|it| it.id == cluster.mc_version)
-			.ok_or_else(|| anyhow::anyhow!("invalid game version {}", cluster.mc_version))?;
-
-		(
-			versions[version_index].clone(),
-			metadata::is_version_updated(version_index, versions),
-		)
-	};
+	let (version, _version_index, updated) =
+		metadata::resolve_minecraft_version(&cluster.mc_version)
+			.await
+			.map_err(|_| anyhow::anyhow!("invalid game version {}", cluster.mc_version))?;
 
 	let loader_version = metadata::get_loader_version(
 		&cluster.mc_version,

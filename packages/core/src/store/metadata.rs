@@ -265,7 +265,23 @@ impl Metadata {
 }
 
 async fn fetch_vanilla_manifest(loader: GameLoader) -> LauncherResult<VanillaManifest> {
-	fetch_manifest(loader).await
+	match fetch_manifest(loader).await {
+		Ok(manifest) => Ok(manifest),
+		Err(err) => {
+			tracing::warn!(
+				"failed to fetch vanilla manifest from metadata mirror: {}; falling back to Mojang",
+				err
+			);
+
+			fetch_json::<VanillaManifest>(
+				Method::GET,
+				interfrost::api::minecraft::VERSION_MANIFEST_URL,
+				None,
+				None,
+			)
+			.await
+		}
+	}
 }
 
 async fn fetch_modded_manifest(loader: GameLoader) -> LauncherResult<ModdedManifest> {

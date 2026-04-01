@@ -101,6 +101,11 @@ pub async fn download_version_info(
 					.await?;
 
 			info = interfrost::api::modded::merge_partial_version(partial, info);
+			// interfrost's DUMMY_REPLACE_STRING uses "${interfrost.gameVersion}" but manifests
+			// still use "${interpulse.gameVersion}", so library names need a second pass.
+			for lib in &mut info.libraries {
+				lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
+			}
 		}
 
 		info.id.clone_from(&version_id);
@@ -430,6 +435,7 @@ pub async fn get_loader_version(
 		for entry in &manifest.game_versions {
 			if entry
 				.id
+				.replace("${interpulse.gameVersion}", mc_version)
 				.replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
 				!= mc_version
 			{

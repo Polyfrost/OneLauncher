@@ -3739,7 +3739,7 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
 name = "oneclient_gui"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3776,7 +3776,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_core"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -3841,7 +3841,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_entity"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "chrono",
  "interfrost",
@@ -3857,7 +3857,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_gamemode"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "cc",
  "libc",
@@ -3865,7 +3865,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_gui"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3899,7 +3899,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_macro"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3908,7 +3908,7 @@ dependencies = [
 
 [[package]]
 name = "onelauncher_migration"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "async-trait",
  "chrono",

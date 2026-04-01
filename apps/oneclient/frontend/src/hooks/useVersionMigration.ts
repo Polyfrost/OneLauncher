@@ -74,7 +74,7 @@ export function useVersionMigration() {
 		if (migrationCandidatesChanged && !migrationState.isOpen)
 			setMigrationCandidates(unseenUnplayed, sources);
 
-		if (unseenUnplayed.length > 0 && sources.length > 0 && !migrationState.isOpen)
+		if (unseenUnplayed.length > 0 && sources.length > 0 && !migrationState.isOpen && settings.seen_onboarding)
 			setIsOpen(true);
 
 		const nextSeenVersions = [...new Set([...currentVersions, ...DEFAULT_SEEN_VERSIONS])].sort();

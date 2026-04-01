@@ -223,7 +223,7 @@ pub async fn launch_minecraft(
 		.args(
 			arguments::java_arguments(
 				updated,
-				args.get(&interpulse::api::minecraft::ArgumentType::Jvm)
+				args.get(&interfrost::api::minecraft::ArgumentType::Jvm)
 					.map(Vec::as_slice),
 				&dirs.natives_dir().join(&version_name),
 				&dirs.libraries_dir(),
@@ -245,7 +245,7 @@ pub async fn launch_minecraft(
 		.args(
 			arguments::minecraft_arguments(
 				updated,
-				args.get(&interpulse::api::minecraft::ArgumentType::Game)
+				args.get(&interfrost::api::minecraft::ArgumentType::Game)
 					.map(Vec::as_slice),
 				version_info.minecraft_arguments.as_deref(),
 				&creds,

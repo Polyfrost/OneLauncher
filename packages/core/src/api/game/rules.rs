@@ -1,4 +1,4 @@
-use interpulse::api::minecraft::{Os, OsRule, Rule, RuleAction};
+use interfrost::api::minecraft::{Os, OsRule, Rule, RuleAction};
 
 use crate::utils::os_ext::OsExt;
 

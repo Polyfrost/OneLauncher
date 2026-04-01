@@ -18,7 +18,7 @@ path = "src/lib.rs"
 default = []
 specta = [
 	"dep:specta",
-	"interpulse/specta"
+	"interfrost/specta"
 ]
 
 [dependencies]
@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 url = { workspace = true }
-interpulse = { workspace = true }
+interfrost = { workspace = true }
 merge = { workspace = true }
 specta = { workspace = true, optional = true }
 

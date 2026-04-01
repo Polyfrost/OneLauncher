@@ -28,7 +28,7 @@ tauri-build = { workspace = true }
 [dependencies]
 # core
 onelauncher_core = { workspace = true, features = [ "tauri" ] }
-interpulse = { workspace = true }
+interfrost = { workspace = true }
 
 # tauri
 tauri-plugin-window-state = { workspace = true }

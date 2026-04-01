@@ -51,10 +51,10 @@ pub enum LauncherError {
 		reqwest::Error,
 	),
 	#[error("meta error: {0}")]
-	InterpulseError(
+	InterfrostError(
 		#[from]
 		#[skip]
-		interpulse::Error,
+		interfrost::Error,
 	),
 	#[error(transparent)]
 	RegexError(

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use interpulse::api::minecraft::VersionManifest as VanillaManifest;
-use interpulse::api::modded::Manifest as ModdedManifest;
+use interfrost::api::minecraft::VersionManifest as VanillaManifest;
+use interfrost::api::modded::Manifest as ModdedManifest;
 use onelauncher_entity::loader::GameLoader;
 use reqwest::Method;
 use serde::de::DeserializeOwned;

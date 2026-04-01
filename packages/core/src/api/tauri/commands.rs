@@ -8,7 +8,7 @@ use crate::api::setting_profiles::get_global_profile;
 use crate::store::processes::Process;
 use crate::store::{Settings, State};
 use crate::utils::pagination::Paginated;
-use interpulse::api::minecraft::Version;
+use interfrost::api::minecraft::Version;
 use onelauncher_entity::cluster_stage::ClusterStage;
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;

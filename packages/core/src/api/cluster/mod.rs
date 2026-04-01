@@ -1,6 +1,6 @@
 use chrono::Utc;
 use dao::ClusterId;
-use interpulse::api::minecraft::VersionInfo;
+use interfrost::api::minecraft::VersionInfo;
 use onelauncher_entity::cluster_stage::ClusterStage;
 use onelauncher_entity::icon::Icon;
 use onelauncher_entity::loader::GameLoader;
@@ -267,7 +267,7 @@ async fn run_forge_processors(
 			$(std::collections::HashMap::insert(
 				$dest,
 				String::from($name),
-				interpulse::api::modded::SidedDataEntry {
+				interfrost::api::modded::SidedDataEntry {
 					client: String::from($client),
 					server: String::from($server),
 				},

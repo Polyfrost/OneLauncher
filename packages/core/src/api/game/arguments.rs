@@ -4,9 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use futures::{AsyncReadExt, TryStreamExt, pin_mut};
-use interpulse::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
-use interpulse::api::modded::SidedDataEntry;
-use interpulse::utils::get_path_from_artifact;
+use interfrost::api::minecraft::{Argument, ArgumentValue, Library, VersionType};
+use interfrost::api::modded::SidedDataEntry;
+use interfrost::utils::get_path_from_artifact;
 use onelauncher_entity::resolution::Resolution;
 
 use crate::constants::{self, DUMMY_REPLACE_NEWLINE};

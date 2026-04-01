@@ -40,12 +40,12 @@ impl GameLoader {
 	#[must_use]
 	pub const fn get_format_version(&self) -> usize {
 		match self {
-			Self::Vanilla => interpulse::api::minecraft::CURRENT_FORMAT_VERSION,
-			Self::Forge => interpulse::api::modded::CURRENT_FORGE_FORMAT_VERSION,
-			Self::NeoForge => interpulse::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION,
-			Self::Quilt => interpulse::api::modded::CURRENT_QUILT_FORMAT_VERSION,
-			Self::Fabric => interpulse::api::modded::CURRENT_FABRIC_FORMAT_VERSION,
-			Self::LegacyFabric => interpulse::api::modded::CURRENT_LEGACY_FABRIC_FORMAT_VERSION,
+			Self::Vanilla => interfrost::api::minecraft::CURRENT_FORMAT_VERSION,
+			Self::Forge => interfrost::api::modded::CURRENT_FORGE_FORMAT_VERSION,
+			Self::NeoForge => interfrost::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION,
+			Self::Quilt => interfrost::api::modded::CURRENT_QUILT_FORMAT_VERSION,
+			Self::Fabric => interfrost::api::modded::CURRENT_FABRIC_FORMAT_VERSION,
+			Self::LegacyFabric => interfrost::api::modded::CURRENT_LEGACY_FABRIC_FORMAT_VERSION,
 		}
 	}
 

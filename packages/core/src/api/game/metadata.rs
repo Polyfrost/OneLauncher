@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use futures::{StreamExt, stream};
-use interpulse::api::minecraft::{AssetsIndex, DownloadType, Library, Os, Version, VersionInfo};
-use interpulse::api::modded::LoaderVersion;
+use interfrost::api::minecraft::{AssetsIndex, DownloadType, Library, Os, Version, VersionInfo};
+use interfrost::api::modded::LoaderVersion;
 use onelauncher_entity::loader::GameLoader;
 use reqwest::Method;
 
@@ -96,11 +96,11 @@ pub async fn download_version_info(
 			http::fetch_json_advanced(Method::GET, &version.url, None, None, None, ingress).await?;
 
 		if let Some(loader) = loader {
-			let partial: interpulse::api::modded::PartialVersionInfo =
+			let partial: interfrost::api::modded::PartialVersionInfo =
 				http::fetch_json_advanced(Method::GET, &loader.url, None, None, None, ingress)
 					.await?;
 
-			info = interpulse::api::modded::merge_partial_version(partial, info);
+			info = interfrost::api::modded::merge_partial_version(partial, info);
 		}
 
 		info.id.clone_from(&version_id);
@@ -322,7 +322,7 @@ pub async fn download_libraries(
 				return Ok(());
 			}
 
-			let artifact_path = interpulse::utils::get_path_from_artifact(&lib.name)?;
+			let artifact_path = interfrost::utils::get_path_from_artifact(&lib.name)?;
 			let path = lib_dir.join(&artifact_path);
 
 			if path.exists() && !force.unwrap_or(false) {
@@ -332,7 +332,7 @@ pub async fn download_libraries(
 
 			tokio::try_join! {
 				async {
-					if let Some(interpulse::api::minecraft::LibraryDownloads {
+					if let Some(interfrost::api::minecraft::LibraryDownloads {
 						artifact: Some(ref artifact), ..
 					}) = lib.downloads
 						&& !artifact.url.is_empty() {
@@ -424,13 +424,13 @@ pub async fn get_loader_version(
 	let state = State::get().await?;
 	let mut metadata = state.metadata.write().await;
 
-	let resolve_from_manifest = |manifest: &interpulse::api::modded::Manifest| {
+	let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
 		let mut saw_matching_game_version = false;
 
 		for entry in &manifest.game_versions {
 			if entry
 				.id
-				.replace(interpulse::api::modded::DUMMY_REPLACE_STRING, mc_version)
+				.replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
 				!= mc_version
 			{
 				continue;

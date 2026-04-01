@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use futures::TryStreamExt;
-use interpulse::api::minecraft::VersionInfo;
+use interfrost::api::minecraft::VersionInfo;
 use onelauncher_entity::{java_versions, setting_profiles};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};

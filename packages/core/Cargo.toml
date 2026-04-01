@@ -23,7 +23,7 @@ tauri = [
 ]
 specta = [
 	"dep:specta",
-	"interpulse/specta",
+	"interfrost/specta",
 	"onelauncher_entity/specta",
 ]
 cli = [ "dep:indicatif" ]
@@ -37,7 +37,7 @@ shadow-rs = { workspace = true, features = [ "default" ] }
 
 [dependencies]
 # core
-interpulse = { workspace = true }
+interfrost = { workspace = true }
 onelauncher_migration = { workspace = true }
 onelauncher_entity = { workspace = true }
 onelauncher_macro = { workspace = true }

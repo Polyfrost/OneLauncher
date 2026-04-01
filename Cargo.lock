@@ -2674,12 +2674,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "interpulse"
-version = "1.2.2"
+name = "interfrost"
+version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6dfab7ec77a9dc51f9c1986c3bfd9ab5c06ffcac5a4149329010a4bc01e52f7"
+checksum = "3449eb9b8a587b832db2eb3a45776928ce0927c0efa7d0be9a7f4c619140a12a"
 dependencies = [
- "bytes",
  "chrono",
  "serde",
  "serde_json",
@@ -3744,7 +3743,7 @@ version = "1.1.1"
 dependencies = [
  "anyhow",
  "chrono",
- "interpulse",
+ "interfrost",
  "objc2 0.6.3",
  "objc2-app-kit",
  "objc2-foundation 0.3.2",
@@ -3798,7 +3797,7 @@ dependencies = [
  "futures-lite",
  "governor",
  "indicatif",
- "interpulse",
+ "interfrost",
  "libc",
  "md-5",
  "merge",
@@ -3845,7 +3844,7 @@ name = "onelauncher_entity"
 version = "1.1.1"
 dependencies = [
  "chrono",
- "interpulse",
+ "interfrost",
  "merge",
  "onelauncher_macro",
  "sea-orm",
@@ -3870,7 +3869,7 @@ version = "1.1.1"
 dependencies = [
  "anyhow",
  "chrono",
- "interpulse",
+ "interfrost",
  "objc2 0.6.3",
  "objc2-app-kit",
  "objc2-foundation 0.3.2",

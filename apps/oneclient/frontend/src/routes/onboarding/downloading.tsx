@@ -100,20 +100,6 @@ function RouteComponent() {
 		const versions = new Set(clusters.map(cluster => cluster.mc_version));
 		return [...versions].sort();
 	}, [clusters]);
-	const bundledManagedIdsByCluster = useMemo(() => {
-		const map: Map<number, Set<string>> = new Map();
-
-		for (const mod of mods) {
-			if (!isManagedMod(mod) || !mod.bundleName)
-				continue;
-
-			const knownManagedIds: Set<string> = map.get(mod.clusterId) ?? new Set();
-			knownManagedIds.add(mod.id);
-			map.set(mod.clusterId, knownManagedIds);
-		}
-
-		return map;
-	}, [mods]);
 
 	const [processedMods, setProcessedMods] = useState(0);
 	const [successfulMods, setSuccessfulMods] = useState(0);
@@ -128,10 +114,6 @@ function RouteComponent() {
 	const finishTimerRef = useRef<number | null>(null);
 
 	const percentage = currentBatchTotal > 0 ? Math.round((processedMods / currentBatchTotal) * 100) : 0;
-	const hasBundledDependency = useCallback((clusterId: number, dependencyProjectId: string): boolean => {
-		return bundledManagedIdsByCluster.get(clusterId)?.has(dependencyProjectId) ?? false;
-	}, [bundledManagedIdsByCluster]);
-
 	const finishOnboarding = useCallback(() => {
 		if (isLeaving)
 			return;
@@ -185,62 +167,20 @@ function RouteComponent() {
 	}, []);
 
 	const downloadMod = async (mod: ModData): Promise<void> => {
+		if (isManagedMod(mod) && mod.bundleName) {
+			await bindings.oneclient.downloadPackageFromBundle(mod.fileKind, mod.clusterId, mod.bundleName, true);
+			return;
+		}
+
 		if (isManagedMod(mod)) {
-			if (mod.dependencies.length > 0)
-				for (const dependency of mod.dependencies) {
-					const cluster = await bindings.core.getClusterById(mod.clusterId);
-					if (!cluster)
-						throw new Error(`Cluster ${mod.clusterId} not found while downloading dependency for '${mod.name}'`);
-
-					if (dependency.dependency_type === 'required') {
-						const dependencyProjectId = dependency.project_id ?? '';
-						if (!dependencyProjectId)
-							throw new Error(`Required dependency for '${mod.name}' is missing a project id`);
-
-						const dependencySatisfiedByBundle
-							= mod.bundleName !== null && hasBundledDependency(cluster.id, dependencyProjectId);
-
-						const versions = await bindings.core.getPackageVersions(
-							mod.provider,
-							dependencyProjectId,
-							cluster.mc_version,
-							cluster.mc_loader,
-							0,
-							1,
-						);
-
-						if (versions.items.length === 0) {
-							if (dependencySatisfiedByBundle) {
-								console.warn(
-									`[onboarding/downloading] Skipping dependency '${dependencyProjectId}' compatibility lookup for '${mod.name}' in cluster ${cluster.id} (MC ${cluster.mc_version}) because it is present in the selected bundle.`,
-								);
-								continue;
-							}
-
-							throw new Error(`No compatible dependency versions found for '${dependencyProjectId}' in cluster ${cluster.id}`);
-						}
-
-						await bindings.core.downloadPackage(
-							mod.provider,
-							dependencyProjectId,
-							versions.items[0].version_id,
-							cluster.id,
-							null,
-						);
-					}
-				}
-
-			if (mod.bundleName)
-				await bindings.oneclient.downloadPackageFromBundle(mod.fileKind, mod.clusterId, mod.bundleName, true);
-			else
-				await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
+			await bindings.core.downloadPackage(mod.provider, mod.id, mod.versionId, mod.clusterId, true);
+			return;
 		}
-		else {
-			if (mod.bundleName)
-				await bindings.oneclient.downloadPackageFromBundle(mod.fileKind, mod.clusterId, mod.bundleName, true);
-			else
-				await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null);
-		}
+
+		if (mod.bundleName)
+			await bindings.oneclient.downloadPackageFromBundle(mod.fileKind, mod.clusterId, mod.bundleName, true);
+		else
+			await bindings.core.downloadExternalPackage(mod.package, mod.clusterId, null, null);
 	};
 
 	const startDownloadBatch = async (batchMods: Array<ModData>) => {

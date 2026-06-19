@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateOptions, ToOptions } from '@tanstack/react-router';
-import { Toasts } from '@/components';
+import { AuthRefreshPrompt, Toasts } from '@/components';
 import { MigrationModal } from '@/components/overlay/MigrationModal';
 import { useDebugKeybind } from '@/hooks/useDebugInfo';
 import { useDiscordRPC } from '@/hooks/useDiscordRPC';
@@ -49,6 +49,7 @@ function RootRoute() {
 			</div>
 
 			<Toasts />
+			<AuthRefreshPrompt />
 
 			{setting('seen_onboarding') && (
 				<MigrationModal

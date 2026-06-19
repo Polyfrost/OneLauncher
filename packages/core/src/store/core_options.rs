@@ -21,6 +21,7 @@ pub struct CoreOptions {
 	pub msa_client_id: String,
 	pub msa_redirect_uri: String,
 	pub curseforge_api_key: Option<String>,
+	pub plus_backend_url: Option<String>,
 	pub logger_span_formatting: Option<FmtSpan>,
 	pub logger_filter: Option<String>,
 }
@@ -37,6 +38,7 @@ impl Default for CoreOptions {
 			msa_client_id: String::from("00000000402b5328"),
 			msa_redirect_uri: String::from("https://login.live.com/oauth20_desktop.srf"),
 			curseforge_api_key: None,
+			plus_backend_url: None,
 			logger_span_formatting: None,
 			logger_filter: None,
 		}
@@ -57,6 +59,7 @@ impl Default for CoreOptions {
 				.ok()
 				.unwrap_or_else(|| String::from("https://login.live.com/oauth20_desktop.srf")),
 			curseforge_api_key: std::env::var("CURSEFORGE_API_KEY").ok(),
+			plus_backend_url: std::env::var("PLUS_BACKEND_URL").ok(),
 			logger_span_formatting: None,
 			logger_filter: None,
 		}

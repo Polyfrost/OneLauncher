@@ -207,6 +207,14 @@ impl CredentialsStore {
 				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
 		};
 
+		if let Err(err) = record_plus_login(&credentials).await {
+			tracing::warn!(
+				"[auth] finish() - failed to record Poly+ login analytics for user {}: {:?}",
+				credentials.id,
+				err
+			);
+		}
+
 		self.users.insert(profile_id, credentials.clone());
 
 		if self.default_user.is_none() {
@@ -252,6 +260,14 @@ impl CredentialsStore {
 			expires: oauth_token.date
 				+ chrono::TimeDelta::seconds(oauth_token.value.expires_in as i64),
 		};
+
+		if let Err(err) = record_plus_login(&val).await {
+			tracing::warn!(
+				"[auth] refresh_token() - failed to record Poly+ login analytics for user {}: {:?}",
+				val.id,
+				err
+			);
+		}
 
 		self.users.insert(val.id, val.clone());
 		self.save().await?;
@@ -505,7 +521,7 @@ struct OAuthToken {
 	// pub foci: String,
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(code, verify))]
 async fn oauth_token(
 	code: &str,
 	verify: &str,
@@ -563,7 +579,7 @@ async fn oauth_token(
 	})
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(refresh_token))]
 async fn oauth_refresh(
 	refresh_token: &str,
 ) -> Result<RequestWithDate<OAuthToken>, MinecraftAuthError> {
@@ -863,6 +879,76 @@ async fn minecraft_entitlements(token: &str) -> Result<MinecraftEntitlements, Mi
 		raw: text,
 		source,
 		status_code: status,
+	})
+}
+
+#[derive(Deserialize)]
+struct PlusLoginResponse {
+	#[allow(dead_code)]
+	token: String,
+}
+
+#[tracing::instrument(skip(credentials))]
+async fn record_plus_login(credentials: &MinecraftCredentials) -> anyhow::Result<()> {
+	let Some(base_url) = Core::get().plus_backend_url.clone() else {
+		return Ok(());
+	};
+
+	let server_id = generate_plus_server_id();
+	let selected_profile = credentials.id.simple().to_string();
+
+	let join_res = auth_retry(|| {
+		crate::utils::http::REQWEST_CLIENT
+			.post("https://sessionserver.mojang.com/session/minecraft/join")
+			.header("Accept", "application/json")
+			.bearer_auth(&credentials.access_token)
+			.json(&json!({
+				"accessToken": credentials.access_token,
+				"selectedProfile": selected_profile,
+				"serverId": server_id,
+			}))
+			.send()
+	})
+	.await?;
+
+	if !join_res.status().is_success() {
+		let status = join_res.status();
+		let body = join_res.text().await.unwrap_or_default();
+		anyhow::bail!("Mojang join rejected Poly+ analytics login: status={status}, body={body}");
+	}
+
+	let mut login_url =
+		reqwest::Url::parse(&format!("{}/account/login", base_url.trim_end_matches('/')))?;
+	login_url
+		.query_pairs_mut()
+		.append_pair("username", &credentials.username)
+		.append_pair("server_id", &server_id);
+
+	let plus_res = auth_retry(|| {
+		crate::utils::http::REQWEST_CLIENT
+			.post(login_url.clone())
+			.header("Accept", "application/json")
+			.send()
+	})
+	.await?;
+
+	if !plus_res.status().is_success() {
+		let status = plus_res.status();
+		let body = plus_res.text().await.unwrap_or_default();
+		anyhow::bail!("Poly+ login rejected analytics login: status={status}, body={body}");
+	}
+
+	let _response = plus_res.json::<PlusLoginResponse>().await?;
+
+	Ok(())
+}
+
+fn generate_plus_server_id() -> String {
+	let mut rng = rand::thread_rng();
+	let bytes: Vec<u8> = (0..20).map(|_| rng.r#gen::<u8>()).collect();
+	bytes.iter().fold(String::new(), |mut output, b| {
+		let _ = write!(output, "{b:02x}");
+		output
 	})
 }
 

@@ -34,6 +34,7 @@ async fn initialize_core() -> LauncherResult<()> {
 		launcher_version: env!("CARGO_PKG_VERSION").to_string(),
 		launcher_website: "https://polyfrost.org/".to_string(),
 		discord_client_id: Some(constants::DISCORD_CLIENT_ID.to_string()),
+		plus_backend_url: Some(constants::PLUS_BACKEND_URL.to_string()),
 		fetch_attempts: 3,
 		logger_filter: Some(format!(
 			"{}={level},onelauncher_core={level}",

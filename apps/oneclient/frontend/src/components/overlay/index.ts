@@ -1,5 +1,6 @@
 export * from './AccountPopup';
 export * from './AddAccountModal';
+export * from './AuthRefreshPrompt';
 export * from './BundleModListModal';
 export * from './DebugInfo';
 export * from './ImportSkinModal';

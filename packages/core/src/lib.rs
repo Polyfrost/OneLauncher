@@ -14,6 +14,7 @@ use store::{Core, CoreOptions, Dirs, State};
 pub mod api;
 pub mod constants;
 pub mod error;
+pub mod platform;
 pub mod store;
 pub mod utils;
 

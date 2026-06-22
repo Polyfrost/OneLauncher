@@ -128,6 +128,22 @@ impl BundlesManager {
 		Ok(found.clone())
 	}
 
+	/// Re-fetches the bundles manifest from remote and clears the in-memory parsed-bundle
+	/// cache so the next [`get_bundles_for`](Self::get_bundles_for) call reloads everything.
+	///
+	/// The on-disk `.mrpack` cache is still consulted (and validated via ETag) by
+	/// `download_and_load_bundle`, so this only forces re-validation, not blind re-downloads.
+	///
+	/// Without this, the manifest is fetched exactly once per process at startup and the
+	/// parsed bundles are cached for the process lifetime — meaning a long-running session
+	/// (or a manual "check for updates") would never observe a bundle the publisher updated
+	/// after launch. Mods would silently stop updating until a full restart.
+	pub async fn refresh(&self) {
+		let manifest = Self::fetch_cached().await;
+		*self.manifest.write().await = manifest;
+		self.bundles.write().await.clear();
+	}
+
 	/// Fetches the bundles manifest from remote, falling back to a saved copy on disk if available
 	#[tracing::instrument]
 	pub async fn fetch_cached() -> BundleManifest {

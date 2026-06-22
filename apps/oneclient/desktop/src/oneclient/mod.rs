@@ -35,6 +35,11 @@ async fn check_and_apply_all_bundle_updates() {
 	BUNDLE_SYNCING.store(true, Ordering::Relaxed);
 	tracing::info!("checking for bundle updates...");
 
+	// Force a fresh manifest fetch + cache clear so we observe bundles the publisher updated
+	// since this process started (or since the last sync). The on-disk .mrpack cache is still
+	// ETag-validated, so unchanged bundles are not re-downloaded.
+	bundles::BundlesManager::get().await.refresh().await;
+
 	let clusters = match get_all_clusters().await {
 		Ok(clusters) => clusters,
 		Err(err) => {

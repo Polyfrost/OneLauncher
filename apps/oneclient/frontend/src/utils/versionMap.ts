@@ -75,6 +75,28 @@ export function getOnlineEntryForVersion(
 export interface ParsedMcVersion {
 	major: number;
 	minor: number | undefined;
+	/**
+	 * Patch component of the new (year-based) scheme, e.g. the `2` in `26.1.2`.
+	 * `undefined` for two-part new versions (`26.1`) and for all old `1.X.Y` versions
+	 * (whose third component is the `minor`, not a patch).
+	 */
+	patch?: number | undefined;
+}
+
+/**
+ * The major version at and above which Minecraft uses the new year-based scheme
+ * (`YY.N[.P]`, e.g. `26.1` / `26.1.2`). Below it, the legacy `1.X[.Y]` scheme is used.
+ *
+ * Kept as a single named constant so every formatter/parser agrees on the boundary —
+ * an inconsistent boundary is how malformed strings like `1.26` get produced.
+ */
+export const NEW_SCHEME_MAJOR = 26;
+
+function toNumberOrUndefined(value: string | undefined): number | undefined {
+	if (value === undefined)
+		return undefined;
+	const parsed = Number.parseInt(value, 10);
+	return Number.isNaN(parsed) ? undefined : parsed;
 }
 
 export function parseMcVersion(version: string | null | undefined): ParsedMcVersion | undefined {
@@ -83,15 +105,19 @@ export function parseMcVersion(version: string | null | undefined): ParsedMcVers
 
 	const parts = version.split('.');
 
-	// New format: YY.N[.P] (e.g. "26.1" or "26.1.1") — no "1." prefix
+	// New format: YY.N[.P] (e.g. "26.1", "26.1.1", "26.1.2") — no "1." prefix.
 	if (parts[0] !== '1') {
 		if (parts.length < 2)
 			return undefined;
-		const major = Number.parseInt(parts[0], 10);
-		const minor = Number.parseInt(parts[1], 10);
+		const major = toNumberOrUndefined(parts[0]);
+		if (major === undefined)
+			return undefined;
 		return {
 			major,
-			minor: Number.isNaN(minor) ? undefined : minor,
+			minor: toNumberOrUndefined(parts[1]),
+			// Preserve the patch component instead of silently dropping it, so a
+			// "26.1.2" cluster is parsed in full rather than collapsing to "26.1".
+			patch: toNumberOrUndefined(parts[2]),
 		};
 	}
 
@@ -99,21 +125,28 @@ export function parseMcVersion(version: string | null | undefined): ParsedMcVers
 	if (parts.length <= 1)
 		return undefined;
 
-	const major = Number.parseInt(parts[1], 10);
-	const minor = parts.length > 2 ? Number.parseInt(parts[2], 10) : undefined;
+	const major = toNumberOrUndefined(parts[1]);
+	if (major === undefined)
+		return undefined;
 
 	return {
 		major,
-		minor: Number.isNaN(minor) ? undefined : minor,
+		minor: toNumberOrUndefined(parts[2]),
+		patch: undefined,
 	};
 }
 
 /**
- * Constructs a Minecraft version string from a major+minor pair.
- * Versions from 2026 onward use the new YY.N format; older versions use 1.X.Y.
+ * Constructs a Minecraft version string from a major+minor[+patch] tuple.
+ * Versions from {@link NEW_SCHEME_MAJOR} onward use the new `YY.N[.P]` format;
+ * older versions use `1.X.Y`.
+ *
+ * The `major >= NEW_SCHEME_MAJOR` check MUST stay in sync with {@link parseMcVersion}'s
+ * `parts[0] !== '1'` rule: a `major` of 26 must never be formatted with a `1.` prefix
+ * (which would yield bogus strings like `1.26`).
  */
-export function formatMcVersion(major: number, minor: number): string {
-	if (major >= 26)
-		return `${major}.${minor}`;
+export function formatMcVersion(major: number, minor: number, patch?: number): string {
+	if (major >= NEW_SCHEME_MAJOR)
+		return patch === undefined ? `${major}.${minor}` : `${major}.${minor}.${patch}`;
 	return `1.${major}.${minor}`;
 }

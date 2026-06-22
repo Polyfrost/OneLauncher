@@ -424,4 +424,161 @@ mod tests {
 		let _ = dao::delete_cluster_by_id(cluster.id).await;
 		let _ = fs::remove_dir_all(cluster.path().await.unwrap()).await;
 	}
+
+	/// Regression test for the bundle-override bug: override files (config JSONs, etc.) must
+	/// be re-extracted on a sync EVEN WHEN no package was added/updated/removed.
+	///
+	/// Previously override extraction was gated behind package-level changes, so an
+	/// override-only update (e.g. a JSON making an already-installed mod compatible with a
+	/// new MC version) was silently skipped for users who already had the mods installed.
+	#[tokio::test]
+	#[ignore = "touches true files and takes long"]
+	#[allow(clippy::too_many_lines, clippy::items_after_statements)]
+	async fn test_overrides_reextracted_without_package_changes() {
+		use sea_orm::{ActiveModelTrait, Set};
+
+		Core::initialize(CoreOptions::default()).await.unwrap();
+
+		let cluster_name = format!(
+			"Bundle Override-Only Test {}",
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_nanos()
+		);
+		let cluster = create_cluster(&cluster_name, "1.21.1", GameLoader::Fabric, None, None)
+			.await
+			.unwrap();
+		let cluster_dir = cluster.path().await.unwrap();
+
+		let bundles = BundlesManager::get()
+			.await
+			.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+			.await
+			.unwrap();
+		let target_bundle = bundles
+			.into_iter()
+			.find(|b| b.manifest.name.contains("Performance"))
+			.expect("Expected to find a Performance bundle");
+
+		// Find an override file shipped in the bundle archive so we have something to assert on.
+		let override_rel_path = first_override_entry(&target_bundle.path)
+			.await
+			.expect("bundle has no override files to test against; cannot run this regression");
+
+		// Subscribe the cluster to the bundle.
+		let dummy_hash = uuid::Uuid::new_v4().to_string();
+		onelauncher_core::entity::packages::ActiveModel {
+			hash: Set(dummy_hash.clone()),
+			file_name: Set("dummy.jar".to_string()),
+			version_id: Set("dummy_version".to_string()),
+			display_name: Set("Dummy".to_string()),
+			display_version: Set("1.0.0".to_string()),
+			package_type: Set(onelauncher_core::entity::package::PackageType::Mod),
+			provider: Set(onelauncher_core::entity::package::Provider::Modrinth),
+			package_id: Set("dummy_id".to_string()),
+			mc_versions: Set(onelauncher_core::entity::utility::DbVec(vec![
+				"1.21.1".to_string(),
+			])),
+			mc_loader: Set(onelauncher_core::entity::utility::DbVec(vec![
+				GameLoader::Fabric,
+			])),
+			published_at: Set(chrono::Utc::now()),
+			..Default::default()
+		}
+		.insert(&onelauncher_core::store::State::get().await.unwrap().db)
+		.await
+		.unwrap();
+		onelauncher_core::entity::cluster_packages::ActiveModel {
+			cluster_id: Set(cluster.id),
+			package_hash: Set(dummy_hash.clone()),
+			bundle_name: Set(Some(target_bundle.manifest.name.clone())),
+			..Default::default()
+		}
+		.insert(&onelauncher_core::store::State::get().await.unwrap().db)
+		.await
+		.unwrap();
+
+		// First apply: installs packages AND extracts overrides (has_changes == true).
+		let applied1 = apply_bundle_updates(cluster.id).await.unwrap();
+		assert!(
+			!applied1.additions_applied.is_empty(),
+			"Expected initial additions from bundle"
+		);
+
+		let extracted = cluster_dir.join(&override_rel_path);
+		assert!(
+			extracted.exists(),
+			"override file should be extracted on first apply"
+		);
+
+		// Simulate the override file being missing (e.g. it was only just added to the bundle,
+		// so existing users never had it). Delete it from disk.
+		fs::remove_file(&extracted).await.unwrap();
+		assert!(!extracted.exists());
+
+		// Second apply: nothing about the packages changed, so has_changes == false.
+		// The override file MUST still be re-extracted (this is the bug being regression-tested).
+		let applied2 = apply_bundle_updates(cluster.id).await.unwrap();
+		assert!(
+			applied2.updates_applied.is_empty()
+				&& applied2.additions_applied.is_empty()
+				&& applied2.removals_applied.is_empty(),
+			"second apply should have no package-level changes"
+		);
+		assert!(
+			extracted.exists(),
+			"override file must be re-extracted even when no package changed (Bug 2 regression)"
+		);
+
+		// Clean up
+		let _ = onelauncher_core::api::packages::dao::delete_package_by_id(dummy_hash).await;
+		let _ = dao::delete_cluster_by_id(cluster.id).await;
+		let _ = fs::remove_dir_all(cluster_dir).await;
+	}
+
+	/// Returns the first file path under `overrides/` in a `.mrpack`/zip archive, relative to
+	/// the cluster root (i.e. with the `overrides/` prefix stripped).
+	///
+	/// Extracts the archive's overrides into a throwaway temp dir using the same public helper
+	/// the real sync uses, then walks it — avoiding a direct zip-crate dependency in this test.
+	async fn first_override_entry(archive_path: &std::path::Path) -> Option<String> {
+		let probe_dir = std::env::temp_dir().join(format!(
+			"oneclient_override_probe_{}",
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_nanos()
+		));
+		fs::create_dir_all(&probe_dir).await.ok()?;
+
+		onelauncher_core::api::packages::modpack::mrpack::extract_overrides_no_overwrite(
+			&archive_path.to_path_buf(),
+			&probe_dir,
+		)
+		.await
+		.ok()?;
+
+		let relative = first_file_relative(&probe_dir, &probe_dir);
+		let _ = fs::remove_dir_all(&probe_dir).await;
+		relative
+	}
+
+	/// Recursively finds the first regular file under `dir`, returning its path relative to
+	/// `root` with forward slashes.
+	fn first_file_relative(dir: &std::path::Path, root: &std::path::Path) -> Option<String> {
+		let mut entries: Vec<_> = std::fs::read_dir(dir).ok()?.flatten().collect();
+		entries.sort_by_key(std::fs::DirEntry::path);
+		for entry in entries {
+			let path = entry.path();
+			if path.is_dir() {
+				if let Some(found) = first_file_relative(&path, root) {
+					return Some(found);
+				}
+			} else if let Ok(rel) = path.strip_prefix(root) {
+				return Some(rel.to_string_lossy().replace('\\', "/"));
+			}
+		}
+		None
+	}
 }

@@ -1370,82 +1370,16 @@ pub async fn apply_bundle_updates(
 		}
 	}
 
-	// Re-extract overrides from any bundle that had changes applied.
-	// This keeps config files, resource packs, and other overridden assets in sync.
-	let has_changes = !updates_applied.is_empty()
-		|| !removals_applied.is_empty()
-		|| !additions_applied.is_empty();
-
-	if has_changes {
-		let mut affected_bundles: std::collections::HashSet<String> =
-			std::collections::HashSet::new();
-
-		for u in &updates_applied {
-			affected_bundles.insert(u.bundle_name.clone());
-		}
-		for r in &removals_applied {
-			affected_bundles.insert(r.bundle_name.clone());
-		}
-		for a in &additions_applied {
-			affected_bundles.insert(a.bundle_name.clone());
-		}
-
-		if !affected_bundles.is_empty() {
-			match api::cluster::dao::get_cluster_by_id(cluster_id).await {
-				Ok(Some(cluster)) => {
-					match BundlesManager::get()
-						.await
-						.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
-						.await
-					{
-						Ok(bundles) => {
-							for bundle in &bundles {
-								if affected_bundles.contains(&bundle.manifest.name) {
-									tracing::info!(
-										bundle_name = %bundle.manifest.name,
-										cluster_id = %cluster_id,
-										"Re-extracting overrides from updated bundle"
-									);
-									if let Err(e) =
-										onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
-											&cluster,
-											&bundle.path,
-										)
-										.await
-									{
-										send_error!(
-											"Failed to extract overrides from bundle '{}': {}",
-											bundle.manifest.name,
-											e
-										);
-									}
-								}
-							}
-						}
-						Err(e) => {
-							tracing::error!(
-								cluster_id = %cluster_id,
-								"Failed to retrieve bundles for override extraction after update: {}",
-								e
-							);
-						}
-					}
-				}
-				Ok(None) => {
-					tracing::error!(
-						cluster_id = %cluster_id,
-						"Cluster not found during post-update override extraction"
-					);
-				}
-				Err(e) => {
-					tracing::error!(
-						cluster_id = %cluster_id,
-						"Failed to retrieve cluster for override extraction after update: {}",
-						e
-					);
-				}
-			}
-		}
+	// Always re-extract overrides for every subscribed bundle, regardless of whether any
+	// package was added/updated/removed this run.
+	//
+	// Overrides (config files, compatibility JSONs, resource packs, etc.) can change in a
+	// bundle WITHOUT any package version changing — e.g. publishing a JSON that makes an
+	// already-installed mod compatible with a new MC version. Gating extraction on
+	// package-level changes (the previous behaviour) silently skipped these override-only
+	// updates, so users who already had the mods installed never received the new override.
+	if let Err(e) = extract_overrides_for_subscribed_bundles(cluster_id).await {
+		send_error!("Failed to extract bundle overrides for cluster {cluster_id}: {e}");
 	}
 
 	let package_operation_failed =
@@ -1468,6 +1402,65 @@ pub async fn apply_bundle_updates(
 		removals_failed,
 		additions_failed,
 	})
+}
+
+/// Re-extracts override files (configs, compatibility JSONs, resource packs, etc.) for
+/// every bundle the cluster is subscribed to.
+///
+/// This runs on every bundle sync — overrides can change independently of package
+/// versions, so it must NOT be gated behind package-level changes. Existing on-disk files
+/// are preserved (see [`copy_overrides_folder_no_overwrite`]) so user customizations and
+/// already-correct files are not clobbered; only missing override files are written.
+async fn extract_overrides_for_subscribed_bundles(cluster_id: ClusterId) -> LauncherResult<()> {
+	let Some(cluster) = api::cluster::dao::get_cluster_by_id(cluster_id).await? else {
+		tracing::warn!(
+			cluster_id = %cluster_id,
+			"Skipping override extraction because cluster no longer exists"
+		);
+		return Ok(());
+	};
+
+	let bundle_packages = bundle_dao::get_bundle_packages_for_cluster(cluster_id).await?;
+	let all_linked_packages = api::packages::dao::get_linked_packages(&cluster).await?;
+	let bundles = BundlesManager::get()
+		.await
+		.get_bundles_for(&cluster.mc_version, cluster.mc_loader)
+		.await?;
+
+	let all_installed_managed_keys = collect_all_installed_managed_keys(&all_linked_packages);
+	let subscribed_bundles = infer_subscribed_bundles_for_loader_sync(
+		&bundle_packages,
+		&bundles,
+		&all_installed_managed_keys,
+	);
+
+	for bundle in &bundles {
+		if !subscribed_bundles.contains(&bundle.manifest.name) {
+			continue;
+		}
+
+		tracing::debug!(
+			bundle_name = %bundle.manifest.name,
+			cluster_id = %cluster_id,
+			"Re-extracting overrides for subscribed bundle"
+		);
+
+		if let Err(e) =
+			onelauncher_core::api::packages::modpack::mrpack::copy_overrides_folder_no_overwrite(
+				&cluster,
+				&bundle.path,
+			)
+			.await
+		{
+			send_error!(
+				"Failed to extract overrides from bundle '{}': {}",
+				bundle.manifest.name,
+				e
+			);
+		}
+	}
+
+	Ok(())
 }
 
 /// Migrates non-bundle (custom) packages from `source_cluster_id` to `target_cluster_id`.

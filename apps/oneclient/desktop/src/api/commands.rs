@@ -251,6 +251,12 @@ impl OneClientApi for OneClientApiImpl {
 		self,
 		cluster_id: ClusterId,
 	) -> LauncherResult<ApplyBundleUpdatesResult> {
+		// A manual update check must re-fetch the manifest and re-validate bundles rather than
+		// serving the process-cached copy, otherwise updates published after launch are missed.
+		crate::oneclient::bundles::BundlesManager::get()
+			.await
+			.refresh()
+			.await;
 		crate::oneclient::bundle_updates::apply_bundle_updates(cluster_id).await
 	}
 

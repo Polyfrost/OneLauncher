@@ -118,6 +118,8 @@ async fn initialize_state(handle: &tauri::AppHandle) -> LauncherResult<()> {
 		tracing::warn!("failed to refresh accounts on startup: {err}");
 	}
 
+	onelauncher_core::store::credentials::spawn_plus_playtime_tracking();
+
 	tracing::info!("initialized launcher successfully");
 	Ok(())
 }

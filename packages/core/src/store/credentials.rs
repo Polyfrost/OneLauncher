@@ -884,14 +884,13 @@ async fn minecraft_entitlements(token: &str) -> Result<MinecraftEntitlements, Mi
 
 #[derive(Deserialize)]
 struct PlusLoginResponse {
-	#[allow(dead_code)]
 	token: String,
 }
 
 #[tracing::instrument(skip(credentials))]
-async fn record_plus_login(credentials: &MinecraftCredentials) -> anyhow::Result<()> {
+async fn record_plus_login(credentials: &MinecraftCredentials) -> anyhow::Result<Option<String>> {
 	let Some(base_url) = Core::get().plus_backend_url.clone() else {
-		return Ok(());
+		return Ok(None);
 	};
 
 	let server_id = generate_plus_server_id();
@@ -938,7 +937,75 @@ async fn record_plus_login(credentials: &MinecraftCredentials) -> anyhow::Result
 		anyhow::bail!("Poly+ login rejected analytics login: status={status}, body={body}");
 	}
 
-	let _response = plus_res.json::<PlusLoginResponse>().await?;
+	let response = plus_res.json::<PlusLoginResponse>().await?;
+
+	Ok(Some(response.token))
+}
+
+const PLUS_PLAYTIME_RECONNECT_DELAY: std::time::Duration = std::time::Duration::from_secs(15);
+
+pub fn spawn_plus_playtime_tracking() {
+	tokio::task::spawn(async move {
+		loop {
+			match default_plus_credentials().await {
+				Ok(Some(credentials)) => {
+					if let Err(err) = run_plus_playtime_session(&credentials).await {
+						tracing::warn!("[plus] playtime websocket session ended: {err:?}");
+					}
+				}
+				Ok(None) => {
+					// No user logged in yet; retry after a delay.
+				}
+				Err(err) => {
+					tracing::warn!(
+						"[plus] failed to load credentials for playtime tracking: {err:?}"
+					);
+				}
+			}
+
+			tokio::time::sleep(PLUS_PLAYTIME_RECONNECT_DELAY).await;
+		}
+	});
+}
+
+async fn default_plus_credentials() -> LauncherResult<Option<MinecraftCredentials>> {
+	let state = crate::store::State::get().await?;
+	let mut store = state.credentials.write().await;
+	store.get_default().await
+}
+
+async fn run_plus_playtime_session(credentials: &MinecraftCredentials) -> anyhow::Result<()> {
+	use futures::TryStreamExt;
+	use reqwest_websocket::{Message, RequestBuilderExt};
+
+	let Some(base_url) = Core::get().plus_backend_url.clone() else {
+		return Ok(());
+	};
+	let Some(token) = record_plus_login(credentials).await? else {
+		return Ok(());
+	};
+
+	let ws_url = format!("{}/websocket", base_url.trim_end_matches('/'));
+
+	let mut websocket = crate::utils::http::REQWEST_CLIENT
+		.get(&ws_url)
+		.bearer_auth(&token)
+		.upgrade()
+		.send()
+		.await?
+		.into_websocket()
+		.await?;
+
+	tracing::info!(
+		"[plus] playtime websocket connected for user {}",
+		credentials.id
+	);
+
+	while let Some(message) = websocket.try_next().await? {
+		if let Message::Close { .. } = message {
+			break;
+		}
+	}
 
 	Ok(())
 }

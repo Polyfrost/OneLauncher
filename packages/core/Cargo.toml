@@ -67,6 +67,7 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
+reqwest-websocket = { workspace = true }
 regex = { workspace = true }
 sysinfo = { workspace = true }
 whoami = { workspace = true }

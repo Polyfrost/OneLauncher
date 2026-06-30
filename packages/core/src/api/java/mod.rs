@@ -308,23 +308,55 @@ fn internal_locate_java() -> Vec<PathBuf> {
 fn internal_locate_java() -> Vec<PathBuf> {
 	let mut found = Vec::new();
 
-	// TODO(macos): More paths for Java installations
+	// Standard macOS JDK location: /Library/Java/JavaVirtualMachines/*.jdk/Contents/Home/bin/java
+	if let Ok(entries) = std::fs::read_dir("/Library/Java/JavaVirtualMachines") {
+		for entry in entries.flatten() {
+			let java_bin = entry
+				.path()
+				.join("Contents")
+				.join("Home")
+				.join("bin")
+				.join(JAVA_BIN);
+			if java_bin.exists() {
+				found.push(java_bin);
+			}
+		}
+	}
 
-	let paths = vec![
-		r"/System/Library/Frameworks/JavaVM.framework/Versions/Current/Commands",
-		r"/Applications/Xcode.app/Contents/Applications/Application Loader.app/Contents/MacOS/itms/java",
-		r"/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home",
-	];
+	// System Java VM framework /usr/bin/java (the Apple-provided stub)
+	let sys_java = PathBuf::from(
+		"/System/Library/Frameworks/JavaVM.framework/Versions/Current/Commands",
+	)
+	.join(JAVA_BIN);
+	if sys_java.exists() {
+		found.push(sys_java);
+	}
 
-	for path in paths {
-		let path = PathBuf::from(path).join(get_java_bin());
-		if path.exists() {
-			found.push(path);
+	// Java Applet Plugin (JRE)
+	let plugin_java = PathBuf::from(
+		"/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home",
+	)
+	.join("bin")
+	.join(JAVA_BIN);
+	if plugin_java.exists() {
+		found.push(plugin_java);
+	}
+
+	// SDKMAN installations
+	if let Ok(home) = std::env::var("HOME") {
+		let sdkman_dir =
+			PathBuf::from(home).join(".sdkman").join("candidates").join("java");
+		if let Ok(entries) = std::fs::read_dir(sdkman_dir) {
+			for entry in entries.flatten() {
+				let java_bin = entry.path().join("bin").join(JAVA_BIN);
+				if java_bin.exists() {
+					found.push(java_bin);
+				}
+			}
 		}
 	}
 
 	found = find_java_in_path(found);
-
 	found
 }
 
@@ -449,12 +481,6 @@ pub async fn install_java_package(package: &JavaPackage) -> LauncherResult<PathB
 			.to_string_lossy()
 			.to_string(),
 	);
-
-	#[cfg(target_os = "macos")]
-	{
-		let java_version = package.java_version.first().unwrap().to_string();
-		base_path = base_path.join(format!("zulu-{java_version}.jre"));
-	}
 
 	base_path = base_path.join(get_java_bin());
 

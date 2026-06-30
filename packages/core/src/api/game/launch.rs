@@ -199,8 +199,11 @@ pub async fn launch_minecraft(
 		})
 	});
 
+	// On macOS, always remove DYLD_FALLBACK_LIBRARY_PATH which can interfere with
+	// LWJGL native library loading for OpenAL and other native libraries.
+	// This is necessary for both debug (cargo sets it) and release builds.
 	#[cfg(target_os = "macos")]
-	if std::env::var("CARGO").is_ok() {
+	{
 		command.env_remove("DYLD_FALLBACK_LIBRARY_PATH");
 	}
 

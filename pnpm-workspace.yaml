@@ -4,6 +4,11 @@ packages:
   - packages/*
   - .github/actions/*
 
+allowBuilds:
+  '@tailwindcss/oxide': true
+  esbuild: true
+  unrs-resolver: true
+
 catalog:
   tsx: ^4.19.4
   typescript: ^5.8.3

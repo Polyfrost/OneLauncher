@@ -7,6 +7,8 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
+      # Required so SignPath can download the uploaded build artifact.
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -125,3 +127,75 @@ jobs:
           args: ${{ matrix.args }}
           projectPath: ./apps/oneclient/desktop/
           uploadUpdaterJson: true
+
+      # ---- Windows Authenticode signing via SignPath (windows-latest only) ----
+      # The installer must be Authenticode-signed BEFORE its Tauri updater signature is
+      # computed, otherwise auto-update breaks: the .sig covers the *unsigned* bytes and no
+      # longer verifies once SignPath alters the exe. tauri-action already built and uploaded
+      # the unsigned exe + latest.json, so here we: SignPath-sign -> recompute the updater
+      # .sig over the SIGNED exe -> replace the release exe and patch latest.json's signature.
+
+      - name: Locate Windows installer
+        if: matrix.platform == 'windows-latest'
+        id: installer
+        shell: bash
+        run: echo "path=$(ls target/release/bundle/nsis/*-setup.exe | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload unsigned installer
+        if: matrix.platform == 'windows-latest'
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneclient-windows-installer-unsigned
+          path: ${{ steps.installer.outputs.path }}
+
+      - name: Submit SignPath signing request
+        if: matrix.platform == 'windows-latest'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: onelauncher
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: onelauncher-installer
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Recompute updater signature over signed installer
+        if: matrix.platform == 'windows-latest'
+        id: resign
+        shell: bash
+        run: |
+          signed="$(ls signed/*-setup.exe | head -n1)"
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+          # Writes "$signed.sig" (minisign) over the Authenticode-signed bytes.
+          pnpm -w oneclient:desktop tauri signer sign \
+            --private-key "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" \
+            --password "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" \
+            "$signed"
+
+      - name: Publish signed installer and patch updater manifest
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: oneclient-${{ env.RELEASE_VERSION }}
+        run: |
+          signed="${{ steps.resign.outputs.signed }}"
+          # Replace the release installer with the Authenticode-signed one (same filename).
+          gh release upload "$TAG" "$signed" --clobber
+          # Patch latest.json: swap the windows-x86_64 signature for the recomputed one.
+          gh release download "$TAG" -p latest.json -D manifest --clobber
+          SIG="$(cat "$signed.sig")" python3 - <<'PY'
+          import json, os
+          p = "manifest/latest.json"
+          with open(p) as f:
+              data = json.load(f)
+          for key, plat in data.get("platforms", {}).items():
+              if key.startswith("windows-"):
+                  plat["signature"] = os.environ["SIG"]
+          with open(p, "w") as f:
+              json.dump(data, f, indent=2)
+          PY
+          gh release upload "$TAG" manifest/latest.json --clobber

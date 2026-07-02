@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for the OneClient Windows installer.
+
+  GitHub Actions wraps every uploaded artifact in a ZIP archive, so the root
+  element MUST be <zip-file> (see https://docs.signpath.io/trusted-build-systems/github).
+
+  The NSIS bundle produced by Tauri is named e.g. "OneClient_1.1.6_x64-setup.exe",
+  so we match it with a wildcard instead of a fixed, version-specific name.
+
+  Upload this file in the SignPath portal:
+    Project "onelauncher" -> Artifact Configurations -> slug "onelauncher-installer"
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="**/*-setup.exe" min-matches="1" max-matches="unbounded">
+      <!-- optionally, add metadata constraints: product-name, product-version, file-version, company-name, copyright, original-filename -->
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

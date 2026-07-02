@@ -13,7 +13,7 @@
 -->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
-    <pe-file path="**/*-setup.exe" min-matches="1" max-matches="unbounded">
+    <pe-file path="*-setup.exe" min-matches="1" max-matches="unbounded">
       <!-- optionally, add metadata constraints: product-name, product-version, file-version, company-name, copyright, original-filename -->
       <authenticode-sign />
     </pe-file>

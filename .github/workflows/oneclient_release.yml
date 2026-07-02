@@ -169,11 +169,11 @@ jobs:
         run: |
           signed="$(ls signed/*-setup.exe | head -n1)"
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
-          # Writes "$signed.sig" (minisign) over the Authenticode-signed bytes.
+          signed_abs="$(cygpath -w "$(pwd)/$signed")"
           pnpm -w oneclient:desktop tauri signer sign \
             --private-key "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" \
             --password "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" \
-            "$signed"
+            "$signed_abs"
 
       - name: Publish signed installer and patch updater manifest
         if: matrix.platform == 'windows-latest'

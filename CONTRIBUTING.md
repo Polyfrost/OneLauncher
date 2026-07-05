@@ -1,4 +1,4 @@
-# Contributing to OneLauncher
+# Contributing to OneLauncher/OneClient
 
 Welcome!
 
@@ -12,8 +12,8 @@ To familiarize yourself with the project, please read the [README]. Here are som
 - [Setting up Git]
 - [GitHub flow]
 - [Collaborating with pull requests]
-- [Tauri essentials]
-- [the `pnpm` CLI]
+- [The Rust Book]
+- [The `cargo` CLI]
 
 ## Getting Started
 
@@ -21,7 +21,7 @@ To familiarize yourself with the project, please read the [README]. Here are som
 
 #### Creating a New Issue
 
-If you come across an issue or have a feature request for OneLauncher, please [search if a related issue has already been reported]. If no relevant issue exists, you can open a new issue using the appropriate [issue form].
+If you come across an issue or have a feature request for OneLauncher/OneClient, please [search if a related issue has already been reported]. If no relevant issue exists, you can open a new issue using the appropriate [issue form].
 
 #### Solving an Issue
 
@@ -31,36 +31,29 @@ To find an issue that interests you, you can browse through our [existing issues
 
 #### Making Changes Locally
 
-This project uses [`Cargo`] and [`pnpm`]. Make ensure you have them installed before proceeding.
+This project is a pure Rust [`Cargo`] workspace (edition 2024). Make sure you have a
+recent Rust toolchain (`rustc` **1.85+**) installed before proceeding — the easiest way
+is via [rustup].
 
 To make changes locally, follow these steps:
 
 1. Clone the repository: `git clone https://github.com/Polyfrost/OneLauncher`
 2. Navigate to the project directory: `cd OneLauncher`
-3. Configure your system environment for OneLauncher development:
-   1. Linux:
-	   1. NixOS: Please use `nix develop`
-	   2. For Other Linux users, run: `./packages/scripts/setup.sh`
-		  > The [Unix script] will check if Rust and pnpm are installed then proceed to install Clang, NASM, LLVM, libvips, [Tauri essentials] and any other required dependencies for OneLauncher to build.
-   2. For macOS users, run: `./packages/scripts/setup.sh`
-      > The [Unix script] will check if Rust, pnpm and Xcode are installed and proceed to use Homebrew to install NASM, [Tauri essentials] and install any other required dependencies for OneLauncher to build.
-   3. For Windows users, run in PowerShell: `powershell -ExecutionPolicy Bypass -File .\packages\scripts\setup.ps1`
-      > The [Windows script] will install pnpm, LLVM, C++ build tools, NASM, Rust + Cargo, Rust tools, Edge Webview 2, [Tauri essentials] and any other required dependencies for OneLauncher to build.
-4. Install dependencies: `pnpm i`
-5. Prepare your cargo installation: `pnpm prep`
+3. Configure your system environment for OneLauncher/OneClient development:
+   1. Install a Rust toolchain that supports edition 2024: `rustup toolchain install stable`
+   2. Freya renders with [Skia]; on Linux you may also need system libraries such as a C
+      compiler, `pkg-config`, and the usual GUI/graphics dev packages. See the
+      [Freya setup guide] for platform-specific prerequisites.
 
 ### Running
-The most common scripts you will use are:
 
-- `pnpm onelauncher:desktop dev` - Runs the **OneLauncher** desktop application with watch mode enabled and starts up the frontend's vite dev server.
+The app crate is `oneclient_app`:
 
-- `pnpm oneclient:desktop dev` - Runs the **OneClient** desktop application with watch mode enabled and starts up the frontend's vite dev server.
+- `cargo run -p oneclient_app` - Runs the **OneClient** desktop application.
+- `cargo build --release -p oneclient_app` - Builds an optimized release binary.
 
-If necessary, the webview devtools can be opened by pressing `Ctrl + Shift + I` (Linux and Windows) or `Command + Option + I` (macOS) in the desktop app.
-
-After cleaning out your build artifacts using `pnpm clean`, `git clean`, or `cargo clean`, it is necessary to re-run the `setup` script.
-
-After you finish making your changes and committed them to your branch, make sure to execute `pnpm format` to fix any style inconsistency in your code.
+After you finish making your changes and committed them to your branch, run
+`cargo fmt` and `cargo clippy` to fix style inconsistencies and catch lints.
 
 ### Pull Request
 
@@ -81,31 +74,23 @@ Once your PR is merged, your changes will be included in the next release.
 
 ### Common Errors
 
-#### macOS errors with XCode tools & Rosetta
+#### macOS errors with Xcode command line tools
 
-This error occurs when Xcode is not installed or when the Xcode command line tools are not in your `PATH`.
+Build errors can occur when the Xcode command line tools are not installed or not in your `PATH`.
 
-Run `xcode-select --install` in the terminal to install the command line tools. If they are already installed, ensure that you update macOS to the latest version available.
-
-If that doesn't work, ensure that macOS is fully updated, and that you have Xcode installed (via the app store).
-
-Also ensure that Rosetta is installed, as a few of our dependencies require it. You can install Rosetta with `softwareupdate --install-rosetta --agree-to-license`.
-
-### Translations
-
-Check out the [i18n README](apps/desktop/locales/README.md) for more information on how to contribute to translations.
+Run `xcode-select --install` in the terminal to install them. If they are already installed, ensure that macOS is updated to the latest version available.
 
 ### Credits
 
 This CONTRIBUTING.md file was inspired by the [`github/docs` CONTRIBUTING.md] file, and we extend our gratitude to the original authors.
 
-[Tauri essentials]: https://v2.tauri.app/start/prerequisites/
-[Unix script]: https://github.com/Polyfrost/OneLauncher/blob/oneclient/main/packages/scripts/setup.sh
-[Windows script]: https://github.com/Polyfrost/OneLauncher/blob/oneclient/main/packages/scripts/setup.ps1
+[Skia]: https://skia.org/
+[Freya setup guide]: https://book.freyaui.dev/setup.html
 [`cargo`]: https://doc.rust-lang.org/cargo/getting-started/installation.html
-[`pnpm`]: https://pnpm.io/installation
+[rustup]: https://rustup.rs/
 [Labels]: https://github.com/Polyfrost/OneLauncher/labels
-[the `pnpm` CLI]: https://pnpm.io/pnpm-cli
+[The Rust Book]: https://doc.rust-lang.org/book/
+[The `cargo` CLI]: https://doc.rust-lang.org/cargo/
 [Collaborating with pull requests]: https://docs.github.com/en/github/collaborating-with-pull-requests
 [GitHub flow]: https://docs.github.com/en/get-started/quickstart/github-flow
 [Setting up Git]: https://docs.github.com/en/get-started/quickstart/set-up-git

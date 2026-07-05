@@ -1,0 +1,696 @@
+use std::collections::{BTreeMap, HashMap};
+use std::time::{Duration, Instant};
+
+use freya::animation::*;
+use freya::prelude::*;
+use freya::router::RouterContext;
+use oneclient_core::notification::{
+    GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
+};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+use crate::hooks::{
+    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, onboarding_bundles_items,
+    try_default_account, use_current_account, use_dispatch, use_onboarding_bundles,
+    use_onboarding_selection, use_settings_snapshot,
+};
+use crate::routes::Route;
+use crate::theme::colors;
+
+mod backdrop;
+mod progress;
+mod summary;
+pub use backdrop::LoadingBackdrop;
+use progress::{ProgressView, failure_panel, progress_panel};
+use summary::summary_view;
+
+const FADE_DURATION_MS: u64 = 700;
+const MAX_TASK_ROWS: usize = 6;
+
+#[derive(Clone, PartialEq)]
+struct ClusterPlan {
+    cluster_id: i64,
+    mc_version: String,
+    overrides: Vec<(String, String)>,
+}
+
+#[derive(Clone, PartialEq)]
+struct InstallFailure {
+    plan: ClusterPlan,
+    reason: String,
+}
+
+#[derive(Clone, PartialEq)]
+struct TaskLine {
+    label: String,
+    phase: &'static str,
+    current: u64,
+    total: u64,
+}
+
+#[derive(Clone, PartialEq, Default)]
+struct GroupedAgg {
+    children: HashMap<Uuid, TaskLine>,
+    done_units: u64,
+}
+
+impl GroupedAgg {
+    fn fraction(&self) -> f32 {
+        let completed: u64 = self.done_units
+            + self
+                .children
+                .values()
+                .map(|t| t.current.min(t.total))
+                .sum::<u64>();
+        let total: u64 = self.done_units + self.children.values().map(|t| t.total).sum::<u64>();
+        if total == 0 {
+            0.0
+        } else {
+            (completed as f32 / total as f32).clamp(0.0, 1.0)
+        }
+    }
+
+    fn task_list(&self) -> Vec<TaskLine> {
+        let mut tasks: Vec<TaskLine> = self.children.values().cloned().collect();
+        tasks.sort_by(|a, b| a.label.cmp(&b.label));
+        tasks
+    }
+
+    fn downloaded_bytes(&self) -> u64 {
+        self.done_units
+            + self
+                .children
+                .values()
+                .map(|t| t.current.min(t.total))
+                .sum::<u64>()
+    }
+
+    fn summary(&self) -> Option<String> {
+        if self.children.is_empty() {
+            return None;
+        }
+
+        let mut kinds: BTreeMap<&'static str, usize> = BTreeMap::new();
+        let mut phases: BTreeMap<&'static str, usize> = BTreeMap::new();
+        for task in self.children.values() {
+            *kinds.entry(categorize(&task.label)).or_default() += 1;
+            *phases.entry(task.phase).or_default() += 1;
+        }
+
+        let verb = phases
+            .iter()
+            .max_by_key(|(_, n)| **n)
+            .map(|(p, _)| *p)
+            .unwrap_or("Downloading");
+
+        let mut ordered: Vec<(&str, usize)> = kinds.into_iter().collect();
+        ordered.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let parts: Vec<String> = ordered
+            .into_iter()
+            .take(3)
+            .map(|(kind, count)| {
+                if count > 1 {
+                    format!("{kind} ×{count}")
+                } else {
+                    kind.to_string()
+                }
+            })
+            .collect();
+
+        Some(format!("{verb} {}", parts.join(", ")))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Default)]
+struct Meter {
+    speed_bps: f64,
+}
+
+fn categorize(label: &str) -> &'static str {
+    if label.starts_with("Assets index") {
+        "asset index"
+    } else if label.starts_with("Asset") {
+        "assets"
+    } else if label.starts_with("Library") {
+        "libraries"
+    } else if label.starts_with("Natives") {
+        "natives"
+    } else if label.starts_with("Client") {
+        "game client"
+    } else if label.starts_with("Version metadata") || label.starts_with("Loader metadata") {
+        "metadata"
+    } else if label.starts_with("Mod") {
+        "mods"
+    } else {
+        "content"
+    }
+}
+
+#[derive(Clone, PartialEq, Default)]
+struct DownloadStage {
+    index: usize,
+    total: usize,
+    label: String,
+}
+
+#[derive(Clone, Copy)]
+struct InstallHandles {
+    progress: State<(usize, usize)>,
+    agg: State<GroupedAgg>,
+    stage: State<DownloadStage>,
+    activity: State<String>,
+    started_at: State<Option<Instant>>,
+    meter: State<Meter>,
+    total_estimate: State<u64>,
+    failures: State<Vec<InstallFailure>>,
+    running: State<bool>,
+    complete: State<bool>,
+}
+
+#[derive(PartialEq)]
+pub struct OnboardingDownloading;
+
+impl Component for OnboardingDownloading {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let bundles_query = use_onboarding_bundles();
+        let selection = use_onboarding_selection();
+        let settings = use_settings_snapshot().settings;
+        let account_query = use_current_account();
+
+        let selected_state = selection.selected;
+        let language_state = selection.language;
+        let reduce_motion_state = selection.reduce_motion;
+        let predownload_state = selection.predownload;
+        let mut setup_started = selection.setup_started;
+
+        let mut confirmed = use_state(|| false);
+        let mut started = use_state(|| false);
+        let progress = use_state(|| (0usize, 0usize));
+        let agg = use_state(GroupedAgg::default);
+        let stage = use_state(DownloadStage::default);
+        let activity = use_state(String::new);
+        let started_at = use_state(|| None::<Instant>);
+        let meter = use_state(Meter::default);
+        let total_estimate = use_state(|| 0u64);
+        let failures = use_state(Vec::<InstallFailure>::new);
+        let running = use_state(|| false);
+        let complete = use_state(|| false);
+        let mut leaving = use_state(|| false);
+
+        let handles = InstallHandles {
+            progress,
+            agg,
+            stage,
+            activity,
+            started_at,
+            meter,
+            total_estimate,
+            failures,
+            running,
+            complete,
+        };
+
+        use_side_effect(move || {
+            if !*confirmed.read() || *started.peek() {
+                return;
+            }
+            let Some(items) = onboarding_bundles_items(&bundles_query) else {
+                return;
+            };
+            let selected = selected_state.peek().clone();
+            let plans = build_plans(&items, &selected);
+            let predownload = *predownload_state.peek();
+            started.set(true);
+            run_install_batch(plans, predownload, handles);
+        });
+
+        let dispatch_finish = dispatch.clone();
+        use_side_effect(move || {
+            if !*complete.read() || !failures.read().is_empty() || *leaving.peek() {
+                return;
+            }
+
+            leaving.set(true);
+            finish_onboarding(dispatch_finish.clone(), &bundles_query);
+        });
+
+        let (done, total) = *progress.read();
+        let stage_now = stage.read().clone();
+        let agg_now = agg.read().clone();
+        let activity_now = activity.read().clone();
+        let meter_now = *meter.read();
+        let total_estimate_now = *total_estimate.read();
+        let elapsed_secs = (*started_at.read()).map(|s| s.elapsed().as_secs());
+        let predownload = *predownload_state.read();
+        let is_running = *running.read();
+        let is_complete = *complete.read();
+
+        let global = if total == 0 {
+            if is_complete { 100.0 } else { 0.0 }
+        } else {
+            ((done as f32 + agg_now.fraction()) / total as f32 * 100.0).clamp(0.0, 100.0)
+        };
+
+        let has_failures = !failures.read().is_empty();
+        let heading = if has_failures && is_complete {
+            "Download issues found"
+        } else if predownload {
+            "Downloading your content"
+        } else {
+            "Finishing up..."
+        };
+
+        let is_leaving = *leaving.read();
+        let fade = use_animation_with_dependencies(&is_leaving, |conf, _| {
+            conf.on_creation(OnCreation::Run);
+            conf.on_change(OnChange::Rerun);
+            AnimNum::new(0., 1.)
+                .time(FADE_DURATION_MS)
+                .ease(Ease::Out)
+                .function(Function::Cubic)
+        });
+        let opacity = if is_leaving {
+            1.0 - fade.get().value()
+        } else {
+            1.0
+        };
+
+        if !*confirmed.read() {
+            let items = onboarding_bundles_items(&bundles_query).unwrap_or_default();
+            let selected = selected_state.read().clone();
+            let language = language_state.read().clone();
+            let reduce_motion = *reduce_motion_state.read();
+            let account_name = try_default_account(&account_query)
+                .map(|account| account.username.clone())
+                .unwrap_or_else(|| "Not signed in".to_string());
+
+            return summary_view(
+                &items,
+                &selected,
+                &language,
+                reduce_motion,
+                settings.dynamic_background_enabled,
+                account_name,
+                predownload_state,
+                move |_| {
+                    setup_started.set(true);
+                    confirmed.set(true);
+                },
+            )
+            .into_element();
+        }
+
+        let dispatch_continue = dispatch.clone();
+        let continue_query = bundles_query;
+        let mut continue_leaving = leaving;
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .height(Size::fill())
+            .content(Content::Flex)
+            .padding(Gaps::new(16., 48., 48., 48.))
+            .opacity(opacity)
+            .child(
+                label()
+                    .text(heading)
+                    .font_size(36.)
+                    .font_weight(FontWeight::BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .maybe_child((has_failures && is_complete).then(|| {
+                failure_panel(
+                    &failures.read(),
+                    done,
+                    total,
+                    is_running,
+                    move |_| {
+                        let retry_plans: Vec<ClusterPlan> =
+                            failures.peek().iter().map(|f| f.plan.clone()).collect();
+                        if retry_plans.is_empty() || *running.peek() {
+                            return;
+                        }
+                        let predownload = *predownload_state.peek();
+                        run_install_batch(retry_plans, predownload, handles);
+                    },
+                    move |_| {
+                        if *continue_leaving.peek() {
+                            return;
+                        }
+                        continue_leaving.set(true);
+                        finish_onboarding(dispatch_continue.clone(), &continue_query);
+                    },
+                )
+                .into_element()
+            }))
+            .child(rect().width(Size::fill()).height(Size::flex(1.0)))
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::Flex)
+                    .cross_align(Alignment::End)
+                    .child(progress_panel(ProgressView {
+                        global,
+                        stage: &stage_now,
+                        agg: &agg_now,
+                        activity: &activity_now,
+                        speed_bps: meter_now.speed_bps,
+                        total_estimate: total_estimate_now,
+                        elapsed_secs,
+                        done,
+                        total,
+                        predownload,
+                        running: is_running,
+                    }))
+                    .child(rect().width(Size::flex(1.0))),
+            )
+            .into_element()
+    }
+}
+
+fn build_plans(
+    items: &[ClusterBundles],
+    selected: &std::collections::HashSet<String>,
+) -> Vec<ClusterPlan> {
+    items
+        .iter()
+        .map(|cb| {
+            let mut overrides = Vec::new();
+            for archive in &cb.archives {
+                for file in &archive.manifest.files {
+                    if file.hidden {
+                        continue;
+                    }
+                    let package_id = file.kind.package_id();
+                    let key = format!("{}|{}|{}", cb.cluster.id, archive.manifest.name, package_id);
+                    if file.enabled && !selected.contains(&key) {
+                        overrides.push((archive.manifest.name.clone(), package_id));
+                    }
+                }
+            }
+            ClusterPlan {
+                cluster_id: cb.cluster.id,
+                mc_version: cb.cluster.mc_version.clone(),
+                overrides,
+            }
+        })
+        .collect()
+}
+
+const GAME_SIZE_GUESS: u64 = 180_000_000;
+const JRE_SIZE_GUESS: u64 = 45_000_000;
+
+fn rough_download_estimate(
+    items: &[ClusterBundles],
+    selected: &std::collections::HashSet<String>,
+) -> u64 {
+    let mut total: u64 = 0;
+    for cb in items {
+        for archive in &cb.archives {
+            for file in &archive.manifest.files {
+                if !file.enabled {
+                    continue;
+                }
+                let key = format!(
+                    "{}|{}|{}",
+                    cb.cluster.id,
+                    archive.manifest.name,
+                    file.kind.package_id()
+                );
+                if file.hidden || selected.contains(&key) {
+                    total += file.size;
+                }
+            }
+        }
+        total += GAME_SIZE_GUESS + JRE_SIZE_GUESS;
+    }
+    total
+}
+
+fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: InstallHandles) {
+    let InstallHandles {
+        mut progress,
+        mut agg,
+        mut stage,
+        mut activity,
+        mut started_at,
+        mut meter,
+        mut total_estimate,
+        mut failures,
+        mut running,
+        mut complete,
+    } = handles;
+
+    running.set(true);
+    complete.set(false);
+    failures.set(Vec::new());
+    agg.set(GroupedAgg::default());
+    meter.set(Meter::default());
+    total_estimate.set(0);
+    activity.set("Getting started...".to_string());
+    started_at.set(Some(Instant::now()));
+    let total = plans.len();
+    progress.set((0, total));
+
+    spawn(async move {
+        let mut prev = 0u64;
+        let mut speed = 0f64;
+
+        loop {
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            let downloaded = agg.peek().downloaded_bytes();
+            let delta = downloaded.saturating_sub(prev);
+            let inst = delta as f64 / 0.5;
+
+            speed = if speed <= 0.0 {
+                inst
+            } else {
+                speed * 0.6 + inst * 0.4
+            };
+
+            prev = downloaded;
+            meter.set(Meter { speed_bps: speed });
+
+            if !*running.peek() {
+                break;
+            }
+        }
+    });
+
+    spawn(async move {
+        let mut failed = Vec::new();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<Notification>();
+        let notifier = NotificationService::new(tx);
+
+        spawn(async move {
+            while let Some(notification) = rx.recv().await {
+                if let Notification::GroupedProgress(event) = notification {
+                    let mut next = agg.peek().clone();
+                    apply_grouped(&mut next, event);
+                    agg.set(next);
+                }
+            }
+        });
+
+        if predownload {
+            activity.set("Calculating download size...".to_string());
+            if let Ok(state) = oneclient_core::LauncherState::get() {
+                let mut sum = 0u64;
+                for plan in &plans {
+                    match oneclient_core::estimate_cluster_download(
+                        &state,
+                        plan.cluster_id,
+                        state.bundles.as_ref(),
+                    )
+                    .await
+                    {
+                        Ok(bytes) => sum += bytes,
+                        Err(err) => tracing::warn!(
+                            cluster_id = plan.cluster_id,
+                            "download size estimate failed: {err}"
+                        ),
+                    }
+                    total_estimate.set(sum);
+                }
+            }
+        }
+
+        for (index, plan) in plans.into_iter().enumerate() {
+            stage.set(DownloadStage {
+                index,
+                total,
+                label: plan.mc_version.clone(),
+            });
+
+            if let Err(reason) = install_one(&plan, predownload, &notifier, activity).await {
+                tracing::error!(
+                    cluster_id = plan.cluster_id,
+                    mc_version = %plan.mc_version,
+                    "onboarding install failed: {reason}"
+                );
+                failed.push(InstallFailure { plan, reason });
+            }
+            progress.set((index + 1, total));
+        }
+
+        drop(notifier);
+        agg.set(GroupedAgg::default());
+        activity.set("Wrapping up...".to_string());
+
+        invalidate_cluster_queries().await;
+        failures.set(failed);
+        running.set(false);
+        complete.set(true);
+    });
+}
+
+async fn install_one(
+    plan: &ClusterPlan,
+    predownload: bool,
+    notifier: &NotificationService,
+    mut activity: State<String>,
+) -> Result<(), String> {
+    let state = oneclient_core::LauncherState::get().map_err(|err| err.to_string())?;
+
+    if !plan.overrides.is_empty() {
+        activity.set("Saving your package choices...".to_string());
+    }
+    for (bundle_name, package_id) in &plan.overrides {
+        oneclient_core::set_bundle_package_enabled(
+            plan.cluster_id,
+            bundle_name,
+            package_id,
+            false,
+            &state.services,
+        )
+        .await
+        .map_err(|err| err.to_string())?;
+    }
+
+    if !predownload {
+        return Ok(());
+    }
+
+    let session =
+        GroupedProgressSession::start(notifier, format!("Downloading {}", plan.mc_version));
+
+    activity.set(format!("Downloading Minecraft {}...", plan.mc_version));
+
+    let prepared = oneclient_core::ClusterManager::prepare(
+        &state,
+        plan.cluster_id,
+        false,
+        true,
+        true,
+        Some(&session),
+    )
+    .await;
+
+    let bundles_result = if prepared.is_ok() {
+        activity.set(format!(
+            "Installing mods & content for {}...",
+            plan.mc_version
+        ));
+        oneclient_core::install_cluster_bundles(
+            plan.cluster_id,
+            state.bundles.as_ref(),
+            Some(&session),
+            &state.services,
+        )
+        .await
+    } else {
+        Ok(())
+    };
+
+    session.finish();
+
+    prepared.map_err(|err| err.to_string())?;
+    bundles_result.map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
+    match event {
+        GroupedProgressEvent::Start { .. } => {
+            agg.children.clear();
+            agg.done_units = 0;
+        }
+        GroupedProgressEvent::AddChild {
+            child_id,
+            label,
+            total,
+            ..
+        } => {
+            agg.children.insert(
+                child_id,
+                TaskLine {
+                    label,
+                    phase: "Downloading",
+                    current: 0,
+                    total: total.max(1),
+                },
+            );
+        }
+        GroupedProgressEvent::UpdateChild {
+            child_id,
+            current,
+            total,
+            ..
+        } => {
+            if let Some(task) = agg.children.get_mut(&child_id) {
+                task.current = current;
+                task.total = total.max(1);
+            }
+        }
+        GroupedProgressEvent::SetChildPhase {
+            child_id, phase, ..
+        } => {
+            if let Some(task) = agg.children.get_mut(&child_id) {
+                task.phase = phase.label();
+            }
+        }
+        GroupedProgressEvent::FinishChild { child_id, .. } => {
+            if let Some(task) = agg.children.remove(&child_id) {
+                agg.done_units += task.total;
+            }
+        }
+        GroupedProgressEvent::End { .. } => {
+            agg.children.clear();
+            agg.done_units = 0;
+        }
+    }
+}
+
+fn finish_onboarding(
+    dispatch: BridgeDispatch,
+    bundles_query: &freya::query::UseQuery<crate::hooks::OnboardingBundlesQuery>,
+) {
+    let versions: Vec<String> = onboarding_bundles_items(bundles_query)
+        .map(|items| {
+            let mut versions: Vec<String> = items
+                .iter()
+                .map(|cb| cb.cluster.mc_version.clone())
+                .collect();
+            
+            versions.sort();
+            versions.dedup();
+            versions
+        })
+        .unwrap_or_default();
+
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(FADE_DURATION_MS)).await;
+
+        for version in versions {
+            dispatch.record_seen_version(version);
+        }
+
+        dispatch.mark_onboarding_seen();
+        let _ = RouterContext::get().replace(Route::Home {});
+    });
+}

@@ -1,0 +1,118 @@
+[package]
+name = "oneclient_core"
+description = "OneClient launcher core"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[[example]]
+name = "java_list_providers"
+path = "examples/java_list_providers.rs"
+
+[[example]]
+name = "java_install_provider"
+path = "examples/java_install_provider.rs"
+
+[[example]]
+name = "package_search"
+path = "examples/package_search.rs"
+
+[[example]]
+name = "package_project"
+path = "examples/package_project.rs"
+
+[[example]]
+name = "auth_msa"
+path = "examples/auth_msa.rs"
+
+[[example]]
+name = "cluster_manage"
+path = "examples/cluster_manage.rs"
+
+[[example]]
+name = "download_game"
+path = "examples/download_game.rs"
+
+[[example]]
+name = "bundles_sync"
+path = "examples/bundles_sync.rs"
+
+[[example]]
+name = "launch_game"
+path = "examples/launch_game.rs"
+
+[[example]]
+name = "notifications"
+path = "examples/notifications.rs"
+
+[dependencies]
+# core (extra)
+# gamemode_rs.workspace = true
+interfrost.workspace = true
+oneclient_db.workspace = true
+polyio.workspace = true
+
+# logging
+tracing.workspace = true
+tracing-futures.workspace = true
+tracing-subscriber.workspace = true
+
+# database
+sqlx.workspace = true
+
+# async
+async-trait.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-util.workspace = true
+futures-util = { workspace = true, features = ["std"] }
+futures-lite.workspace = true
+reqwest.workspace = true
+async_zip.workspace = true
+async-tempfile.workspace = true
+async-stream.workspace = true
+async-compression.workspace = true
+
+# image decode/resize
+image.workspace = true
+
+# move-to-trash for deletions
+trash.workspace = true
+
+# util (codegen/macro)
+strum.workspace = true
+serde_repr = { version = "=0.1.20" }
+thiserror.workspace = true
+
+# crypto
+digest.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+md-5.workspace = true
+
+# util
+directories.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+rand.workspace = true
+url.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+sanitize-filename.workspace = true
+dunce.workspace = true
+bytes.workspace = true
+indicatif.workspace = true
+

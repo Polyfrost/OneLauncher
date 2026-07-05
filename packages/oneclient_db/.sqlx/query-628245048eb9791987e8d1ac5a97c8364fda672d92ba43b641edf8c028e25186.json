@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            remote_path, mc_version, mc_loader, file_name, name, version_id,\n            category, loader_version, disk_path, hidden, etag, synced_at\n        FROM bundles\n        WHERE mc_version = ? AND mc_loader = ? AND hidden = 0\n        ORDER BY name, file_name\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "remote_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "remote_path"
+          }
+        }
+      },
+      {
+        "name": "mc_version",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_version"
+          }
+        }
+      },
+      {
+        "name": "mc_loader",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_loader"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "category",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "name": "loader_version",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "loader_version"
+          }
+        }
+      },
+      {
+        "name": "disk_path",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "disk_path"
+          }
+        }
+      },
+      {
+        "name": "hidden",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "hidden"
+          }
+        }
+      },
+      {
+        "name": "etag",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "etag"
+          }
+        }
+      },
+      {
+        "name": "synced_at",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "synced_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "628245048eb9791987e8d1ac5a97c8364fda672d92ba43b641edf8c028e25186"
+}

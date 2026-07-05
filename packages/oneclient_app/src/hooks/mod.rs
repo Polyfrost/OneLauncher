@@ -1,0 +1,130 @@
+mod active_cluster;
+mod dispatch;
+mod queries;
+mod view_state;
+
+pub use view_state::{PersistedView, use_view_state};
+
+pub use active_cluster::{
+    use_active_cluster_id, use_provide_active_cluster, ActiveClusterState, BrowserCompatState,
+    use_browser_compat, use_provide_browser_compat, LinkConfirmState, use_link_confirm,
+    use_provide_link_confirm, BrowserUiState, BrowserStateStore, use_browser_state_store,
+    use_provide_browser_state, OnboardingSelectionState, use_onboarding_selection,
+    use_provide_onboarding_selection,
+};
+
+pub use dispatch::BridgeDispatch;
+pub use queries::{
+    try_cluster_analytics, try_global_analytics, use_cluster_analytics, use_global_analytics,
+    ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
+    AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
+    UseRefreshAccount, UseRemoveAccount, UseSetDefaultAccount, accounts_have_microsoft,
+    mutation_error, mutation_is_pending, pick_version_metadata, try_account, try_accounts,
+    try_default_account, try_game_profile, use_account, use_accounts, use_add_microsoft_account,
+    use_add_offline_account, use_begin_microsoft_login, use_bundle_updates,
+    bundle_overrides_map, bundles_with_status_items, use_bundle_overrides, use_bundles_with_status,
+    ClusterBundles, OnboardingBundlesQuery, onboarding_bundles_items, use_onboarding_bundles,
+    use_cached_image, CachedImageQuery, use_changelog, changelog_error, changelog_groups,
+    changelog_is_loading, use_cluster_content, cluster_content_items,
+    invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,
+    use_provider_versions,
+    content_type_for_slug, package_meta_batch, project_detail, search_items, search_pending,
+    search_total, use_package_meta_batch, use_package_project, use_package_search,
+    use_package_versions, version_list, versions_total, use_package_categories, category_list,
+    BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE,
+    use_cluster_profile, use_cluster_settings,
+    use_clusters, use_current_account, use_default_account, use_finish_microsoft_login,
+    use_game_profile, use_named_profiles, use_player_profile, use_refresh_account,
+    use_refresh_all_accounts, use_remove_account, use_set_default_account, use_version_metadata,
+    use_versions, use_loader_versions, loader_versions,
+    ClusterLogsQuery, LogAction, LogContentQuery, UploadLogKeys, UploadLogMutation,
+    UseLogAction, UseUploadLog, invalidate_logs_queries,
+    try_cluster_logs, try_log_content, use_cluster_logs, use_log_action, use_log_content,
+    use_upload_log,
+    ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries,
+    try_cluster_screenshots, use_cluster_screenshots, use_local_image, use_screenshot_action,
+};
+
+use crate::notifications::NotificationSnapshot;
+use freya::prelude::*;
+
+use crate::bridge::{
+    use_bridge_snapshot, BridgeSnapshot, ClustersSnapshot, GameSnapshot, JavaSnapshot, LauncherInit,
+    OneClientBridge, ProfilesSnapshot, SettingsSnapshot,
+};
+
+pub fn use_provide_bridge(bridge: &OneClientBridge) {
+    let bridge = bridge.clone();
+    use_provide_root_context(move || bridge.clone());
+}
+
+pub fn use_bridge() -> OneClientBridge {
+    consume_root_context::<OneClientBridge>()
+}
+
+pub fn use_snapshots() -> BridgeSnapshot {
+    let bridge = use_bridge();
+    use_bridge_snapshot(&bridge)
+}
+
+pub fn use_dispatch() -> BridgeDispatch {
+    let bridge = use_bridge();
+    use_hook(move || BridgeDispatch::new(bridge.clone()))
+}
+
+pub fn use_launcher() -> LauncherInit {
+    use_snapshots().launcher
+}
+
+pub fn use_settings_snapshot() -> SettingsSnapshot {
+    use_snapshots().settings
+}
+
+pub fn use_profiles_snapshot() -> ProfilesSnapshot {
+    use_snapshots().profiles
+}
+
+pub fn use_clusters_snapshot() -> ClustersSnapshot {
+    use_snapshots().clusters
+}
+
+pub fn use_notifications_snapshot() -> NotificationSnapshot {
+    use_snapshots().notifications
+}
+
+pub fn use_game_snapshot() -> GameSnapshot {
+    use_snapshots().game
+}
+
+pub fn use_java_snapshot() -> JavaSnapshot {
+    use_snapshots().java
+}
+
+#[derive(PartialEq)]
+pub struct DataSync;
+
+impl Component for DataSync {
+    fn render(&self) -> impl IntoElement {
+        let clusters_pulse = use_clusters_snapshot().generation;
+        let profiles_pulse = use_profiles_snapshot().generation;
+        let java_pulse = use_java_snapshot().generation;
+        let mut last_clusters = use_state(|| clusters_pulse);
+        let mut last_profiles = use_state(|| profiles_pulse);
+        let mut last_java = use_state(|| java_pulse);
+
+        if *last_clusters.peek() != clusters_pulse {
+            last_clusters.set(clusters_pulse);
+            spawn(async move { invalidate_cluster_queries().await });
+        }
+        if *last_profiles.peek() != profiles_pulse {
+            last_profiles.set(profiles_pulse);
+            spawn(async move { invalidate_profile_queries().await });
+        }
+        if *last_java.peek() != java_pulse {
+            last_java.set(java_pulse);
+            spawn(async move { invalidate_java_queries().await });
+        }
+
+        rect().width(Size::px(0.)).height(Size::px(0.))
+    }
+}

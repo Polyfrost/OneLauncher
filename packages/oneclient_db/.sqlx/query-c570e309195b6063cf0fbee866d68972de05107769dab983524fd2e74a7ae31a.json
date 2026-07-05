@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT absolute_path, major, version, vendor, os_arch FROM java_versions \n        WHERE absolute_path = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "absolute_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "absolute_path"
+          }
+        }
+      },
+      {
+        "name": "major",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "major"
+          }
+        }
+      },
+      {
+        "name": "version",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "name": "vendor",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "vendor"
+          }
+        }
+      },
+      {
+        "name": "os_arch",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "os_arch"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c570e309195b6063cf0fbee866d68972de05107769dab983524fd2e74a7ae31a"
+}

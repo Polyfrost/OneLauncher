@@ -1,0 +1,50 @@
+[package]
+name = "oneclient_app"
+description = "OneClient Freya App"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+readme = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+
+[features]
+default = []
+
+[dependencies]
+oneclient_core.workspace = true
+oneclient_db.workspace = true
+chrono.workspace = true
+oneclient_macro = { workspace = true, features = ["freya"] }
+
+polyio.workspace = true
+rust-embed = { version = "=8.11.0", features = ["include-exclude", "compression", "debug-embed"] }
+
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+bytes.workspace = true
+sysinfo.workspace = true
+
+anyhow.workspace = true
+regex.workspace = true
+
+# file dialog
+rfd = "=0.17.2"
+
+# clipboard image copy + decode for it
+arboard.workspace = true
+image.workspace = true
+
+# required for the SKSL player renderer
+freya-skia-safe = "=0.98.0"
+freya = { git = "https://github.com/marc2332/freya.git", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "titlebar"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mimalloc = "=0.1.52"
+
+[patch.crates-io]
+freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }

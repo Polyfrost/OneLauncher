@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE game_sessions\n\t\tSET ended_at = ?, exit_code = ?\n\t\tWHERE started_at = ? AND ended_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "44e40c724779e5e1cffbbbcf857223cac28f59431933ffefea04e59b62deab3a"
+}

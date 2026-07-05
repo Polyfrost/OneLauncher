@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE cluster_artifacts\n        SET bundle_name = NULL, bundle_version_id = NULL, package_id = NULL, installed_at = NULL\n        WHERE cluster_id = ? AND hash = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "80e69ca0c87bb70e0fcf7bf6c0aefc092f51300c10ad8776815637fc4616d12b"
+}

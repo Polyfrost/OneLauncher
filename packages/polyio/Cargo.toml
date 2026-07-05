@@ -1,0 +1,39 @@
+[package]
+name = "polyio"
+description = "PolyIO-rs"
+version = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+readme = { workspace = true }
+homepage = { workspace = true }
+authors = { workspace = true }
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+tracing.workspace = true
+thiserror.workspace = true
+
+tokio.workspace = true
+tokio-util.workspace = true
+futures-util.workspace = true
+futures-lite.workspace = true
+
+async-tempfile.workspace = true
+async-compression.workspace = true
+async-stream.workspace = true
+async_zip.workspace = true
+astral-tokio-tar.workspace = true
+sanitize-filename.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+dunce.workspace = true
+bytes.workspace = true
+

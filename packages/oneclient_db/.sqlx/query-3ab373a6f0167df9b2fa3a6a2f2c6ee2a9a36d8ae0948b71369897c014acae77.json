@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT session_started_at, address, port, joined_at, disconnected_at\n\t\tFROM game_session_servers\n\t\tORDER BY joined_at ASC\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "session_started_at",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "session_started_at"
+          }
+        }
+      },
+      {
+        "name": "address",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "name": "port",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "port"
+          }
+        }
+      },
+      {
+        "name": "joined_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "joined_at"
+          }
+        }
+      },
+      {
+        "name": "disconnected_at",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "disconnected_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "3ab373a6f0167df9b2fa3a6a2f2c6ee2a9a36d8ae0948b71369897c014acae77"
+}

@@ -205,14 +205,21 @@ jobs:
           shopt -s nullglob
 
           # Identify the single updater artifact for this platform (the file with a
-          # sibling .sig): -setup.exe (nsis), *.app.tar.gz (app), *.AppImage.tar.gz (appimage).
-          updater_file=""; fmt=""; ext=""
+          # sibling .sig): -setup.exe (nsis), *.app.tar.gz (app), *.AppImage (appimage).
+          # NOTE: nullglob is on, so an unmatched glob expands to nothing. Use arrays
+          # rather than `ls <glob> | head` — the latter falls back to listing the cwd
+          # when nothing matches, silently picking an unrelated file.
+          fmt=""; ext=""; matches=()
           case "$OS_KEY" in
-            windows) updater_file="$(ls "$OUT_DIR"/*-setup.exe | head -n1)"; fmt="nsis"; ext="exe" ;;
-            darwin)  updater_file="$(ls "$OUT_DIR"/*.app.tar.gz | head -n1)"; fmt="app"; ext="app.tar.gz" ;;
-            linux)   updater_file="$(ls "$OUT_DIR"/*.AppImage.tar.gz 2>/dev/null | head -n1)"; fmt="appimage"; ext="AppImage.tar.gz"
-                     if [ -z "$updater_file" ]; then updater_file="$(ls "$OUT_DIR"/*.AppImage | head -n1)"; ext="AppImage"; fi ;;
+            windows) matches=("$OUT_DIR"/*-setup.exe); fmt="nsis"; ext="exe" ;;
+            darwin)  matches=("$OUT_DIR"/*.app.tar.gz); fmt="app"; ext="app.tar.gz" ;;
+            linux)   matches=("$OUT_DIR"/*.AppImage); fmt="appimage"; ext="AppImage" ;;
           esac
+          updater_file="${matches[0]:-}"
+          if [ -z "$updater_file" ]; then
+            echo "::error::No updater artifact found in $OUT_DIR for $OS_KEY"
+            exit 1
+          fi
 
           # The updater bundle isn't always arch-tagged by cargo-packager, so the two
           # macOS legs would collide on the release. Rename the updater artifact + its .sig

@@ -229,6 +229,7 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
 		},
 		settings: parking_lot::RwLock::new(settings),
 		auth: tokio::sync::Mutex::new(CredentialsStore::default()),
+		microsoft_logins: tokio::sync::Mutex::new(std::collections::HashMap::new()),
 		java: crate::java::JavaManager,
 		metadata: tokio::sync::Mutex::new(crate::metadata::MetadataStore::new()),
 		bundles: Arc::new(crate::bundles::BundlesManager::new()),

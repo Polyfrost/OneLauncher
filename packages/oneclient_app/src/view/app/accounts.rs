@@ -45,10 +45,13 @@ impl Component for Accounts {
                 _ => None,
             };
             let Some(login) = login else { return };
-            if login_code_already_handled(&login.user_code) {
+            if login_code_already_handled(login.dedupe_key()) {
                 return;
             }
-            handled_code.set(Some(login.user_code.clone()));
+            handled_code.set(Some(login.dedupe_key().to_string()));
+            if let Some(url) = login.browser_url() {
+                platform::open_url(url);
+            }
             finish.mutate(login.clone());
             pending_login.set(Some(login));
         });
@@ -511,9 +514,18 @@ fn microsoft_dialog(
     mut pending_login: State<Option<MinecraftLogin>>,
     mut handled_code: State<Option<String>>,
 ) -> impl IntoElement {
-    let code = login.user_code.clone();
-    let copy_code = code.clone();
-    let verification_uri = login.verification_uri.clone();
+    let body = match &login {
+        MinecraftLogin::DeviceCode(flow) => {
+            device_code_dialog_body(flow.user_code.clone(), flow.verification_uri.clone())
+                .into_element()
+        }
+        MinecraftLogin::Browser(flow) => {
+            browser_dialog_body(flow.auth_url.clone()).into_element()
+        }
+    };
+
+    let mut close_pending = pending_login;
+    let mut close_handled = handled_code;
 
     OverlayPopup::new()
         .on_close(move |()| {
@@ -543,79 +555,115 @@ fn microsoft_dialog(
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
-                        .child(
-                            label()
-                                .text("Enter this code on the Microsoft sign-in page:")
-                                .font_size(13.)
-                                .color(colors::fg_secondary()),
-                        )
-                        .child(
-                            rect()
-                                .width(Size::fill())
-                                .center()
-                                .padding(Gaps::new_symmetric(20., 16.))
-                                .corner_radius(CornerRadius::new_all(14.))
-                                .background(colors::component_bg())
-                                .border(border_all_color(1., colors::brand()))
-                                .child(
-                                    label()
-                                        .text(code)
-                                        .font_size(48.)
-                                        .font_weight(FontWeight::BOLD)
-                                        .color(colors::fg_primary()),
-                                ),
-                        )
-                        .child(
-                            rect()
-                                .horizontal()
-                                .width(Size::fill())
-                                .main_align(Alignment::Center)
-                                .spacing(8.)
-                                .child(
-                                    Button::new()
-                                        .secondary()
-                                        .on_press(move |_| {
-                                            if let Err(err) = Clipboard::set(copy_code.clone()) {
-                                                tracing::warn!("clipboard copy failed: {err:?}");
-                                            }
-                                        })
-                                        .child(Icon::new(IconType::Copy01).size(16.))
-                                        .text("Copy code"),
-                                )
-                                .child(
-                                    Button::new()
-                                        .primary()
-                                        .on_press(move |_| platform::open_url(&verification_uri))
-                                        .child(Icon::new(IconType::LinkExternal01).size(16.))
-                                        .text("Open in browser"),
-                                ),
-                        )
-                        .child(
-                            rect()
-                                .horizontal()
-                                .cross_align(Alignment::Center)
-                                .spacing(6.)
-                                .child(
-                                    Icon::new(IconType::Loading02)
-                                        .size(13.)
-                                        .color(colors::brand()),
-                                )
-                                .child(
-                                    label()
-                                        .text("Waiting for you to finish signing in...")
-                                        .font_size(12.)
-                                        .color(colors::fg_secondary()),
-                                ),
-                        )
+                        .child(body)
+                        .child(waiting_row())
                         .child(
                             Button::new()
                                 .ghost()
                                 .on_press(move |_| {
-                                    pending_login.set(None);
-                                    handled_code.set(None);
+                                    close_pending.set(None);
+                                    close_handled.set(None);
                                 })
                                 .text("Cancel"),
                         ),
+                ),
+        )
+        .into_element()
+}
+
+fn waiting_row() -> impl IntoElement {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(6.)
+        .child(
+            Icon::new(IconType::Loading02)
+                .size(13.)
+                .color(colors::brand()),
+        )
+        .child(
+            label()
+                .text("Waiting for you to finish signing in...")
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
+fn browser_dialog_body(auth_url: String) -> impl IntoElement {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .spacing(18.)
+        .child(
+            label()
+                .text("Your browser has opened the Microsoft sign-in page. Complete sign-in there and you'll be brought back automatically.")
+                .font_size(13.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            Button::new()
+                .primary()
+                .on_press(move |_| platform::open_url(&auth_url))
+                .child(Icon::new(IconType::LinkExternal01).size(16.))
+                .text("Open in browser again"),
+        )
+        .into_element()
+}
+
+fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoElement {
+    let copy_code = code.clone();
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .spacing(18.)
+        .child(
+            label()
+                .text("Enter this code on the Microsoft sign-in page:")
+                .font_size(13.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            rect()
+                .width(Size::fill())
+                .center()
+                .padding(Gaps::new_symmetric(20., 16.))
+                .corner_radius(CornerRadius::new_all(14.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::brand()))
+                .child(
+                    label()
+                        .text(code)
+                        .font_size(48.)
+                        .font_weight(FontWeight::BOLD)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .secondary()
+                        .on_press(move |_| {
+                            if let Err(err) = Clipboard::set(copy_code.clone()) {
+                                tracing::warn!("clipboard copy failed: {err:?}");
+                            }
+                        })
+                        .child(Icon::new(IconType::Copy01).size(16.))
+                        .text("Copy code"),
+                )
+                .child(
+                    Button::new()
+                        .primary()
+                        .on_press(move |_| platform::open_url(&verification_uri))
+                        .child(Icon::new(IconType::LinkExternal01).size(16.))
+                        .text("Open in browser"),
                 ),
         )
         .into_element()

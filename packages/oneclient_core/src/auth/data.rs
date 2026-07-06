@@ -35,11 +35,40 @@ impl MinecraftAccount {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct MinecraftLogin {
+pub struct DeviceCodeLogin {
     pub user_code: String,
     pub device_code: String,
     pub verification_uri: String,
     pub expires_in: u64,
     pub interval: u64,
     pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BrowserLogin {
+    pub auth_url: String,
+    pub state: String,
+    pub redirect_uri: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MinecraftLogin {
+    DeviceCode(DeviceCodeLogin),
+    Browser(BrowserLogin),
+}
+
+impl MinecraftLogin {
+    pub fn dedupe_key(&self) -> &str {
+        match self {
+            MinecraftLogin::DeviceCode(flow) => &flow.user_code,
+            MinecraftLogin::Browser(flow) => &flow.state,
+        }
+    }
+
+    pub fn browser_url(&self) -> Option<&str> {
+        match self {
+            MinecraftLogin::Browser(flow) => Some(&flow.auth_url),
+            MinecraftLogin::DeviceCode(_) => None,
+        }
+    }
 }

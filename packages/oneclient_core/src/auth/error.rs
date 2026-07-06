@@ -6,6 +6,7 @@ use crate::http::RequestError;
 pub enum MinecraftAuthStep {
     DeviceCodeRequest,
     DeviceCodePoll,
+    AuthCodeExchange,
     RefreshToken,
     XblAuthenticate,
     XstsAuthorize,
@@ -46,6 +47,14 @@ pub enum MinecraftAuthError {
     DeviceAuthorizationExpired,
     #[error("device authorization failed: {error}")]
     DeviceAuthorizationFailed { error: String },
+    #[error("failed to start the loopback redirect server: {0}")]
+    LoopbackBind(String),
+    #[error("browser sign-in was cancelled or timed out before completing")]
+    BrowserAuthorizationExpired,
+    #[error("this browser sign-in is no longer active")]
+    BrowserLoginNotFound,
+    #[error("browser authorization failed: {error}")]
+    BrowserAuthorizationFailed { error: String },
     #[error("failed to read user hash from Xbox token")]
     HashError,
     #[error("Minecraft authentication error {error_code} during MSA step {step:?}: {message}")]

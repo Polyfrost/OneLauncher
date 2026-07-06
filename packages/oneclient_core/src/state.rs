@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use oneclient_db::DbPool;
 use tokio::sync::{Mutex, OnceCell};
 use tracing::instrument;
 
-use crate::auth::CredentialsStore;
+use crate::auth::{CredentialsStore, PendingBrowserLogin};
 use crate::bundles::BundlesManager;
 use crate::http::RequestClient;
 use crate::images::ImageCacheStore;
@@ -31,6 +32,7 @@ pub struct LauncherState {
 	pub services: LauncherServices,
 	pub settings: parking_lot::RwLock<LauncherSettings>,
 	pub auth: Mutex<CredentialsStore>,
+	pub microsoft_logins: Mutex<HashMap<String, PendingBrowserLogin>>,
 	pub java: JavaManager,
 	pub metadata: Mutex<MetadataStore>,
 	pub bundles: Arc<BundlesManager>,
@@ -63,6 +65,7 @@ impl LauncherState {
 			services,
 			settings: parking_lot::RwLock::new(settings),
 			auth: Mutex::new(auth),
+			microsoft_logins: Mutex::new(HashMap::new()),
 			java,
 			metadata: Mutex::new(MetadataStore::new()),
 			bundles: Arc::new(BundlesManager::new()),

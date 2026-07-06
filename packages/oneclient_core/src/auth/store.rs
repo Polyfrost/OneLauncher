@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::error::AuthError;
 use super::offline::{offline_account, validate_offline_username};
-use super::data::{AccountKind, MinecraftAccount, MinecraftLogin};
+use super::data::{AccountKind, DeviceCodeLogin, MinecraftAccount};
 use crate::paths;
 use crate::state::LauncherServices;
 use crate::LauncherResult;
@@ -57,30 +57,28 @@ impl CredentialsStore {
         self.users.get(&id)
     }
 
-    pub async fn begin_microsoft_login(
+    pub async fn finish_device_login(
         &mut self,
-        services: &LauncherServices,
-    ) -> LauncherResult<MinecraftLogin> {
-        let client = services.requester.http();
-        Ok(super::msa::begin_login(client)
-            .await
-            .map_err(AuthError::from)?)
-    }
-
-    pub async fn finish_microsoft_login(
-        &mut self,
-        flow: &MinecraftLogin,
+        flow: &DeviceCodeLogin,
         services: &LauncherServices,
     ) -> LauncherResult<MinecraftAccount> {
         let client = services.requester.http();
         let progress_id = Uuid::new_v4();
         let notifier = services.notifier.clone();
-        let account = super::msa::finish_login(client, flow, |label, current, total| {
+        let account = super::msa::finish_device_login(client, flow, |label, current, total| {
             notifier.send_progress(&progress_id, label, current, total);
         })
         .await
         .map_err(AuthError::from)?;
 
+        self.commit_account(account, services).await
+    }
+
+    pub async fn commit_account(
+        &mut self,
+        account: MinecraftAccount,
+        services: &LauncherServices,
+    ) -> LauncherResult<MinecraftAccount> {
         self.users.insert(account.id, account.clone());
 
         if self.default_user.is_none() {

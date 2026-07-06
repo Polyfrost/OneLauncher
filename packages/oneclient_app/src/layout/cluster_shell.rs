@@ -138,6 +138,7 @@ impl Component for ClusterShell {
                 dispatch,
                 launch_state,
                 game.is_running(cluster_id),
+                cluster.game_dir().ok(),
             )
             .into_element()
         });
@@ -235,6 +236,7 @@ fn cluster_header(
     dispatch: crate::BridgeDispatch,
     launch_state: (&'static str, bool),
     running: bool,
+    folder: Option<std::path::PathBuf>,
 ) -> impl IntoElement {
     let (launch_label, launch_enabled) = launch_state;
     let kill_dispatch = dispatch.clone();
@@ -272,6 +274,7 @@ fn cluster_header(
                 .horizontal()
                 .cross_align(Alignment::Center)
                 .spacing(10.)
+                .maybe_child(folder.map(crate::components::open_folder_button))
                 .maybe(running, |el| {
                     el.child(
                         Button::new()

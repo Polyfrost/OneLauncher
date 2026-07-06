@@ -423,3 +423,14 @@ pub fn link_button() -> Button {
         .child(Icon::new(IconType::LinkExternal01).size(14.).color(colors::fg_primary()))
         .child(label().text("Open"))
 }
+
+pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
+    Button::new()
+        .secondary()
+        .icon()
+        .on_press(move |_| {
+            std::fs::create_dir_all(&folder).ok();
+            crate::platform::open_url(&folder.to_string_lossy());
+        })
+        .child(Icon::new(IconType::Folder).size(16.))
+}

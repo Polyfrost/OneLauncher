@@ -281,6 +281,10 @@ impl Component for PackageManager {
         let content_type = self.content_type;
         let dispatch = use_dispatch();
 
+        let folder = super::load_cluster(cluster_id)
+            .and_then(|c| c.game_dir().ok())
+            .map(|dir| dir.join(content_type.folder_name()));
+
         let total = items.len();
         let enabled = items.iter().filter(|i| i.enabled).count();
 
@@ -325,6 +329,7 @@ impl Component for PackageManager {
                 content_type,
                 cluster_id,
                 dispatch,
+                folder,
             ))
             .child(toolbar(search, sort, sort_filter, layout))
             .child(tab_bar(&tabs, &items, active_idx, active))

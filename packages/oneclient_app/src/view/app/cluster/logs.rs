@@ -8,7 +8,7 @@ use oneclient_core::{LogFileInfo, LogKind, LogLevel};
 
 use crate::components::{
     Button, Icon, IconType, LogViewer, OverlayPopup, ScrollArea, Segment, SegmentedControl,
-    TextInput,
+    TextInput, open_folder_button,
 };
 use crate::hooks::{
     LogAction, UploadLogKeys, UseLogAction, UseUploadLog, invalidate_logs_queries,
@@ -159,9 +159,10 @@ impl Component for ClusterLogs {
             None,
         );
 
-        let Some(_cluster) = load_cluster(cluster_id) else {
+        let Some(cluster) = load_cluster(cluster_id) else {
             return cluster_not_found();
         };
+        let folder = cluster.game_dir().ok().map(|d| d.join("logs"));
 
         let files = try_cluster_logs(&logs_query).unwrap_or_default();
         let has_log = !files.is_empty();
@@ -190,6 +191,7 @@ impl Component for ClusterLogs {
                 selected_info.clone(),
                 size_text,
                 has_log,
+                folder,
                 selected,
                 confirm,
             ))
@@ -214,6 +216,7 @@ fn top_bar(
     selected_info: Option<LogFileInfo>,
     size_text: String,
     has_log: bool,
+    folder: Option<PathBuf>,
     selected: State<PathBuf>,
     mut confirm: State<Option<Confirm>>,
 ) -> impl IntoElement {
@@ -249,6 +252,7 @@ fn top_bar(
                 .color(colors::fg_secondary()),
         )
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(folder.map(open_folder_button))
         .child(
             Button::new()
                 .secondary()

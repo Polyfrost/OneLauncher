@@ -137,6 +137,7 @@ pub(super) fn header(
     content_type: ContentType,
     cluster_id: i64,
     dispatch: BridgeDispatch,
+    folder: Option<std::path::PathBuf>,
 ) -> impl IntoElement {
     rect()
         .horizontal()
@@ -159,6 +160,7 @@ pub(super) fn header(
                 .main_align(Alignment::End)
                 .cross_align(Alignment::Center)
                 .spacing(8.)
+                .maybe_child(folder.map(crate::components::open_folder_button))
                 .child(add_from_file_button(cluster_id, content_type, dispatch))
                 .child(browse_button(cluster_id, package_type)),
         )

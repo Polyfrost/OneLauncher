@@ -318,6 +318,7 @@ pub async fn launch_cluster(
     let post_hook = profile.hook_post.clone();
     let cluster_name = cluster.name.clone();
     tokio::spawn(async move {
+        let cluster = cluster;
         let started = Instant::now();
         let status = tokio::select! {
             status = child.wait() => status,
@@ -341,6 +342,13 @@ pub async fn launch_cluster(
         }
 
         run_hook(post_hook.as_deref(), &cwd).await;
+
+        if !dedicated {
+            crate::game::import_manual_content(&state.services, &cluster, &cwd).await;
+            if let Err(err) = crate::game::clear_shared_content(&cwd).await {
+                tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
+            }
+        }
 
         match status {
             Ok(status) if status.success() => state

@@ -8,6 +8,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
+    open_folder_button,
     Segment, SegmentedControl,
 };
 use crate::hooks::{
@@ -36,9 +37,10 @@ pub struct ClusterScreenshots {
 
 impl Component for ClusterScreenshots {
     fn render(&self) -> impl IntoElement {
-        let Some(_cluster) = load_cluster(self.cluster_id) else {
+        let Some(cluster) = load_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
+        let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
 
         let query = use_cluster_screenshots(self.cluster_id);
         let action = use_screenshot_action();
@@ -55,7 +57,7 @@ impl Component for ClusterScreenshots {
         let grid_width = use_state(|| 0f32);
         let mut menu = use_state(|| None::<(f32, f32, PathBuf)>);
 
-        let toolbar = toolbar_row(&shots, view_mode, edit_mode, selected, confirm_delete);
+        let toolbar = toolbar_row(&shots, folder, view_mode, edit_mode, selected, confirm_delete);
 
         let content: Element = if shots.is_empty() {
             empty_state(matches!(
@@ -194,6 +196,7 @@ impl Component for ClusterScreenshots {
 
 fn toolbar_row(
     shots: &[ScreenshotInfo],
+    folder: Option<PathBuf>,
     view_mode: State<ViewLayout>,
     mut edit_mode: State<bool>,
     mut selected: State<HashSet<PathBuf>>,
@@ -206,7 +209,8 @@ fn toolbar_row(
     let mut right = rect()
         .horizontal()
         .cross_align(Alignment::Center)
-        .spacing(10.);
+        .spacing(10.)
+        .maybe_child((!editing).then_some(folder).flatten().map(open_folder_button));
 
     if editing {
         let select_all_paths = all_paths.clone();

@@ -27,4 +27,4 @@ pub use metadata::{
     resolve_minecraft_version,
 };
 pub use rules::{validate_rule, validate_rules};
-pub use shared_dir::sync_shared_content;
+pub use shared_dir::{clear_shared_content, import_manual_content, sync_shared_content};

@@ -118,6 +118,21 @@ jobs:
             exit 1
           fi
           echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          # cargo-packager only codesigns when `signing-identity` is present in the
+          # packager config; it does NOT read APPLE_SIGNING_IDENTITY. Inject it into
+          # the macOS metadata so signing + notarization actually run.
+          CERT_ID="$CERT_ID" python3 - <<'PY'
+          import os, re
+          p = "packages/oneclient_app/Cargo.toml"
+          s = open(p).read()
+          ident = os.environ["CERT_ID"]
+          hdr = "[package.metadata.packager.macos]"
+          assert hdr in s, "macos packager section not found"
+          if "signing-identity" not in s:
+              s = s.replace(hdr, f'{hdr}\nsigning-identity = "{ident}"', 1)
+              open(p, "w").write(s)
+          print(f"signing-identity set to: {ident}")
+          PY
 
       - name: Build release binary
         shell: bash

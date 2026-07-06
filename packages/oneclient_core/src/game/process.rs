@@ -1,5 +1,6 @@
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
@@ -18,6 +19,7 @@ pub struct GameProcess {
 pub struct GameProcessManager {
     inner: Mutex<HashMap<i64, GameProcess>>,
     kills: Mutex<HashMap<i64, oneshot::Sender<()>>>,
+    dirs: Mutex<HashMap<i64, PathBuf>>,
 }
 
 impl GameProcessManager {
@@ -60,6 +62,20 @@ impl GameProcessManager {
     pub fn remove(&self, cluster_id: i64) {
         self.inner.lock().unwrap().remove(&cluster_id);
         self.kills.lock().unwrap().remove(&cluster_id);
+        self.dirs.lock().unwrap().remove(&cluster_id);
+    }
+
+    pub fn set_dir(&self, cluster_id: i64, dir: PathBuf) {
+        self.dirs.lock().unwrap().insert(cluster_id, dir);
+    }
+
+    pub fn dir_in_use_by(&self, dir: &Path, exclude: i64) -> Option<i64> {
+        self.dirs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, d)| **id != exclude && d.as_path() == dir)
+            .map(|(id, _)| *id)
     }
 
     pub fn is_running(&self, cluster_id: i64) -> bool {

@@ -30,6 +30,9 @@ pub enum GameError {
     #[error("cluster {0} is already running")]
     AlreadyRunning(i64),
 
+    #[error("another cluster ({0}) is already running in the same directory")]
+    DirectoryInUse(i64),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 }

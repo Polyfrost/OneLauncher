@@ -122,6 +122,33 @@ impl ClusterManager {
 		Ok(Cluster::try_from_row(row)?)
 	}
 
+	pub async fn uses_dedicated_dir(
+		state: &LauncherState,
+		cluster_id: ClusterId,
+	) -> LauncherResult<bool> {
+		Ok(Self::get(state, cluster_id).await?.uses_dedicated_dir())
+	}
+
+	pub async fn set_dedicated_dir(
+		state: &LauncherState,
+		cluster_id: ClusterId,
+		dedicated: bool,
+	) -> LauncherResult<()> {
+		if state.games.is_active(cluster_id) {
+			return Err(crate::game::GameError::AlreadyRunning(cluster_id).into());
+		}
+
+		let cluster = Self::get(state, cluster_id).await?;
+		let marker = cluster.dedicated_marker()?;
+		if dedicated {
+			polyio::create_dir_all(cluster.dir()?).await?;
+			tokio::fs::write(&marker, b"").await.ok();
+		} else if marker.exists() {
+			tokio::fs::remove_file(&marker).await.ok();
+		}
+		Ok(())
+	}
+
 	pub async fn add_playtime(
 		state: &LauncherState,
 		cluster_id: ClusterId,

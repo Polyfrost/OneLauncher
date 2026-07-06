@@ -5,10 +5,12 @@ use oneclient_core::java::JavaRuntime;
 use oneclient_core::packages::domain::GameLoader;
 use oneclient_core::settings::{GameSettingsProfile, ProfileUpdate, Resolution};
 
-use crate::components::{Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, validate_number};
+use crate::components::{
+    Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled, validate_number,
+};
 use crate::hooks::{
-    java_runtimes, loader_versions, try_game_profile, use_dispatch, use_game_profile,
-    use_java_runtimes, use_loader_versions, use_settings_snapshot,
+    ClusterAction, java_runtimes, loader_versions, try_game_profile, use_cluster_mutation,
+    use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -95,6 +97,14 @@ impl Component for ClusterSettings {
                             cluster_id,
                             value: profile.mem_max,
                             global: global.mem_max.unwrap_or(4096),
+                        }
+                        .into_element(),
+                    )
+                    .child(section_header("DIRECTORY"))
+                    .child(
+                        DedicatedDirRow {
+                            cluster_id,
+                            dedicated: cluster.uses_dedicated_dir(),
                         }
                         .into_element(),
                     )
@@ -212,6 +222,35 @@ impl Component for ToggleRow {
             "Force Fullscreen",
             "Force Minecraft to start in fullscreen mode.",
             override_cell(toggle(state), overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct DedicatedDirRow {
+    cluster_id: i64,
+    dedicated: bool,
+}
+
+impl Component for DedicatedDirRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dedicated = self.dedicated;
+        let mutation = use_cluster_mutation();
+
+        let on_toggle: EventHandler<()> = (move |()| {
+            mutation.mutate(ClusterAction::SetDedicatedDir {
+                cluster_id,
+                dedicated: !dedicated,
+            });
+        })
+        .into();
+
+        settings_row(
+            IconType::Folder,
+            "Dedicated Directory",
+            "Run this cluster in its own .minecraft instead of the shared one.",
+            toggle_controlled(dedicated, on_toggle),
         )
     }
 }

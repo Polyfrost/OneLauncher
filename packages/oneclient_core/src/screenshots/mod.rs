@@ -34,16 +34,18 @@ fn is_image(name: &str) -> bool {
 
 fn ensure_in_clusters(path: &Path) -> LauncherResult<PathBuf> {
     let canon = std::fs::canonicalize(path).map_err(ScreenshotsError::Io)?;
-    if let Ok(root) = std::fs::canonicalize(paths::clusters_dir()?)
-        && canon.starts_with(&root)
-    {
-        return Ok(canon);
+    for root in [paths::clusters_dir()?, paths::shared_minecraft_dir()?] {
+        if let Ok(root) = std::fs::canonicalize(root)
+            && canon.starts_with(&root)
+        {
+            return Ok(canon);
+        }
     }
     Err(ScreenshotsError::InvalidPath(path.display().to_string()).into())
 }
 
 pub fn list_cluster_screenshots(cluster: &Cluster) -> LauncherResult<Vec<ScreenshotInfo>> {
-    let dir = cluster.dir()?.join("screenshots");
+    let dir = cluster.game_dir()?.join("screenshots");
     let mut out = Vec::new();
 
     let Ok(entries) = std::fs::read_dir(&dir) else {

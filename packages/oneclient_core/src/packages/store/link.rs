@@ -47,7 +47,7 @@ pub async fn link_artifact_to_cluster(
 	Ok(())
 }
 
-async fn link_or_copy(src: &Path, dest: &Path) -> LauncherResult<()> {
+pub async fn link_or_copy(src: &Path, dest: &Path) -> LauncherResult<()> {
 	if dest.exists() {
 		tokio::fs::remove_file(dest).await?;
 	}

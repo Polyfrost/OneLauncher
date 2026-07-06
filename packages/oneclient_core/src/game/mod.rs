@@ -7,6 +7,7 @@ mod metadata;
 mod process;
 mod rules;
 mod session;
+mod shared_dir;
 
 pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
@@ -26,3 +27,4 @@ pub use metadata::{
     resolve_minecraft_version,
 };
 pub use rules::{validate_rule, validate_rules};
+pub use shared_dir::sync_shared_content;

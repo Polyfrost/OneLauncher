@@ -60,6 +60,10 @@ pub fn clusters_dir() -> LauncherResult<PathBuf> {
 	Ok(launcher_dir()?.join("clusters"))
 }
 
+pub fn shared_minecraft_dir() -> LauncherResult<PathBuf> {
+	Ok(launcher_dir()?.join("minecraft"))
+}
+
 pub fn packages_cache_dir() -> LauncherResult<PathBuf> {
 	Ok(launcher_dir()?.join("metadata").join("packages"))
 }

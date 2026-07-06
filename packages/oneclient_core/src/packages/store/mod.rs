@@ -3,7 +3,7 @@ mod link;
 mod paths;
 
 pub use download::{download_external, download_version_file, ensure_artifact_file};
-pub use link::{link_artifact_to_cluster, unlink_cluster_file};
+pub use link::{link_artifact_to_cluster, link_or_copy, unlink_cluster_file};
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
 use oneclient_db::dao::{artifact as artifact_dao, cluster as cluster_dao};

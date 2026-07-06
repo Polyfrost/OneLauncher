@@ -218,7 +218,7 @@ async fn run_forge_processors(
         .join(&version_info.id)
         .join(format!("{}.jar", version_info.id));
     let libraries = paths::libraries_dir()?;
-    let cluster_dir = cluster.dir()?;
+    let cluster_dir = cluster.game_dir()?;
 
     let Some(data) = &mut version_info.data else {
         return Ok(());

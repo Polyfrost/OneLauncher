@@ -51,6 +51,10 @@ pub enum ClusterAction {
         content_type: ContentType,
         path: PathBuf,
     },
+    SetDedicatedDir {
+        cluster_id: ClusterId,
+        dedicated: bool,
+    },
 }
 
 impl MutationCapability for ClusterMutation {
@@ -99,6 +103,13 @@ impl MutationCapability for ClusterMutation {
                         .notifier
                         .send_info("Imported", &format!("Added {}", row.file_name));
                 }),
+            ClusterAction::SetDedicatedDir {
+                cluster_id,
+                dedicated,
+            } => oneclient_core::clusters::ClusterManager::set_dedicated_dir(
+                &state, *cluster_id, *dedicated,
+            )
+            .await,
         };
         result.map_err(|e| e.to_string())
     }

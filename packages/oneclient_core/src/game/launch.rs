@@ -55,6 +55,13 @@ pub async fn launch_cluster(
 
     let existing = ClusterManager::get(state, cluster_id).await?;
 
+    let game_dir = existing.game_dir()?;
+    if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
+        return Err(GameError::DirectoryInUse(other).into());
+    }
+
+    let dedicated = existing.uses_dedicated_dir();
+
     let progress = GroupedProgressSession::start(
         &state.services.notifier,
         format!("Launching {}", existing.name),
@@ -188,8 +195,16 @@ pub async fn launch_cluster(
 
     stage(LaunchStage::Launching);
 
-    let cwd = cluster.dir()?;
+    let cwd = game_dir;
     tokio::fs::create_dir_all(&cwd).await.ok();
+
+    if !dedicated {
+        if let Err(err) =
+            crate::game::sync_shared_content(&state.services, &cluster, &cwd).await
+        {
+            tracing::warn!(cluster_id, error = %err, "failed to sync shared content");
+        }
+    }
 
     let client_jar = paths::versions_dir()?
         .join(&version_name)
@@ -270,6 +285,7 @@ pub async fn launch_cluster(
 
     stage(LaunchStage::Running);
     state.games.set_pid(cluster_id, pid);
+    state.games.set_dir(cluster_id, cwd.clone());
 
     let log_path = paths::logs_dir()?.join(format!("cluster-{cluster_id}.log"));
     if let Some(parent) = log_path.parent() {

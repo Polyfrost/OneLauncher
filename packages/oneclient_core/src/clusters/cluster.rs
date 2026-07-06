@@ -13,6 +13,8 @@ use crate::LauncherResult;
 use super::error::ClusterError;
 use super::stage::ClusterStage;
 
+pub const DEDICATED_MARKER: &str = ".dedicated_directory";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cluster {
 	pub id: ClusterId,
@@ -74,6 +76,22 @@ impl Cluster {
 
 	pub fn dir(&self) -> LauncherResult<PathBuf> {
 		Ok(paths::clusters_dir()?.join(&self.folder_name))
+	}
+
+	pub fn dedicated_marker(&self) -> LauncherResult<PathBuf> {
+		Ok(self.dir()?.join(DEDICATED_MARKER))
+	}
+
+	pub fn uses_dedicated_dir(&self) -> bool {
+		self.dedicated_marker().map(|p| p.exists()).unwrap_or(false)
+	}
+
+	pub fn game_dir(&self) -> LauncherResult<PathBuf> {
+		if self.uses_dedicated_dir() {
+			self.dir()
+		} else {
+			paths::shared_minecraft_dir()
+		}
 	}
 
 	pub fn as_link_target(&self) -> ClusterLinkTarget<'_> {

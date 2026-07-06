@@ -67,7 +67,7 @@ fn collect_dir(
 
 pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> {
     let mut out = Vec::new();
-    let dir = cluster.dir()?;
+    let dir = cluster.game_dir()?;
 
     collect_dir(
         &dir.join("logs"),

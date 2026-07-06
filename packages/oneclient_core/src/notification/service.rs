@@ -51,6 +51,15 @@ impl NotificationService {
 		.await
 	}
 
+	pub async fn prompt_update(&self, version: &str) -> Result<UserChoice, NotificationError> {
+		self.prompt(
+			"Update available",
+			&format!("OneClient {version} is ready to install. Download and install it now?"),
+			PromptKind::Update,
+		)
+		.await
+	}
+
 	pub async fn prompt(
 		&self,
 		title: &str,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use oneclient_core::notification::{
-    GroupedProgressEvent, Notification, NotificationLevel, UserChoice,
+    GroupedProgressEvent, Notification, NotificationLevel, PromptKind, UserChoice,
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -65,6 +65,7 @@ pub struct ActiveToast {
 pub struct PendingPrompt {
     pub title: String,
     pub question: String,
+    pub kind: PromptKind,
     pub reply_tx: Option<oneshot::Sender<UserChoice>>,
 }
 
@@ -72,6 +73,7 @@ pub struct PendingPrompt {
 pub struct PendingPromptView {
     pub title: String,
     pub question: String,
+    pub kind: PromptKind,
 }
 
 #[derive(Clone, Debug)]
@@ -187,7 +189,7 @@ impl NotificationState {
             Notification::Prompt {
                 title,
                 question,
-                kind: _,
+                kind,
                 reply_tx,
             } => {
                 let entry_id = self.push_inbox(
@@ -202,9 +204,14 @@ impl NotificationState {
                 let pending_prompt = Some(PendingPrompt {
                     title: title.clone(),
                     question: question.clone(),
+                    kind,
                     reply_tx: Some(reply_tx),
                 });
-                let pending_view = Some(PendingPromptView { title, question });
+                let pending_view = Some(PendingPromptView {
+                    title,
+                    question,
+                    kind,
+                });
                 let timers = std::mem::take(&mut self.pending_timers);
                 return (
                     self.snapshot(inbox, false, pending_view),

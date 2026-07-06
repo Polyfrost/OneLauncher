@@ -250,6 +250,10 @@ impl CoreBridgeRuntime {
         };
         refresh_settings(snapshots)?;
         bump_profiles_generation(snapshots);
+
+        let auto_update = LauncherState::get()?.settings.read().auto_update;
+        crate::updater::spawn_update_check(auto_update);
+
         Ok(())
     }
 
@@ -640,6 +644,7 @@ fn sync_notifications(
     let pending_view = pending.as_ref().map(|prompt| PendingPromptView {
         title: prompt.title.clone(),
         question: prompt.question.clone(),
+        kind: prompt.kind,
     });
     snapshots.notifications = engine.snapshot(inbox, center_open, pending_view);
 }

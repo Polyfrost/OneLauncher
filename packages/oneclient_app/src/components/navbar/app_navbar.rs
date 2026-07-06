@@ -18,24 +18,27 @@ impl Component for Navbar {
         rect()
             .width(Size::fill())
             .height(Size::px(theme::NAVBAR_HEIGHT_PX))
-            .horizontal()
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .padding(Gaps::new_symmetric(0.0, 40.0))
-            .child(navbar_left())
-            .child(navbar_center())
-            .child(NavbarRight)
             .position(Position::new_absolute().top(0.).left(0.))
             .layer(Layer::RelativeOverlay(2))
-        // TODO: Window Drag?
-        // .child(
-        //     rect()
-        //         .window_drag()
-        //         .width(Size::flex(1.))
-        //         .height(Size::fill())
-        //         .position(Position::new_absolute())
-        //         .layer(Layer::RelativeOverlay(0))
-        // )
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .horizontal()
+                    .content(Content::Flex)
+                    .cross_align(Alignment::Center)
+                    .padding(Gaps::new_symmetric(0.0, 40.0))
+                    .child(navbar_left())
+                    .child(navbar_center())
+                    .child(NavbarRight),
+            )
+            .child(
+                rect()
+                    .window_drag()
+                    .width(Size::window_percent(100.))
+                    .height(Size::px(theme::NAVBAR_HEIGHT_PX))
+                    .position(Position::new_absolute().top(0.).left(0.).right(0.))
+            )
     }
 }
 
@@ -92,6 +95,8 @@ struct NavLink {
 impl Component for NavLink {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+		let a11y_id = use_a11y();
+		let focused = use_focus(a11y_id);
 
         let active = self.active;
         let target = self.target.clone();
@@ -101,7 +106,7 @@ impl Component for NavLink {
             Cursor::set(CursorIcon::default());
         });
 
-        let color = if active || *hovering.peek() {
+        let color = if active || *hovering.peek() || focused.peek().is_focused() {
             theme::colors::fg_primary()
         } else {
             theme::colors::fg_secondary()
@@ -109,7 +114,7 @@ impl Component for NavLink {
 
         let underline_width = if active {
             27.
-        } else if *hovering.peek() {
+        } else if *hovering.peek() || focused.peek().is_focused() {
             18.
         } else {
             0.
@@ -120,7 +125,13 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .spacing(2.)
             .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            .on_press(move |e: Event<PressEventData>| {
+			// TODO: Hacky workaround for weird freya measurement bug, where if a rectangle has a transparent background (so in dec = 0), it will be measured weirdly.
+			// This basically fools freya into thinking it indeed has a box and properly handles pointer events
+			.background(Color::RED.with_a(0))
+			.a11y_id(a11y_id)
+			.a11y_focusable(true)
+			.a11y_role(AccessibilityRole::Button)
+            .on_all_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
                 let _ = RouterContext::get().push(target.clone());
             })

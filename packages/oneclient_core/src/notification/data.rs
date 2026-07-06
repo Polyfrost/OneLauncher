@@ -119,6 +119,7 @@ impl LaunchStage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptKind {
 	JavaInstall { major: u32 },
+	Update,
 }
 
 #[derive(Debug)]

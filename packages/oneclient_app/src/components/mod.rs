@@ -26,6 +26,7 @@ mod tab_bar;
 mod text_input;
 mod toasts;
 mod toggle;
+mod update_prompt;
 
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
@@ -57,3 +58,4 @@ pub use tab_bar::{TabBar, TabItem};
 pub use text_input::{TextInput, validate_number};
 pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
+pub use update_prompt::UpdatePromptOverlay;

@@ -46,8 +46,6 @@ fn main() {
         oneclient_core::logger::init()
     }.expect("Failed to initialize logger");
 
-    oneclient_app::updater::spawn_update_check(settings.auto_update);
-
     let (bridge, handle): (OneClientBridge, CoreBridgeHandle) = OneClientBridge::new();
     handle.spawn_runtime();
 

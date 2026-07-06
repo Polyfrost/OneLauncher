@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use freya::router::*;
 
-use crate::components::{NotificationCenter, StatusBar, Toasts};
+use crate::components::{NotificationCenter, StatusBar, Toasts, UpdatePromptOverlay};
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::colors;
@@ -27,6 +27,7 @@ impl Component for RootLayout {
             )
             .child(NotificationCenter)
             .child(Toasts)
+            .child(UpdatePromptOverlay)
             .child(StatusBar)
     }
 }

@@ -19,6 +19,7 @@ pub use queries::{
     ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
     UseRefreshAccount, UseRemoveAccount, UseSetDefaultAccount, accounts_have_microsoft,
+    login_code_already_handled,
     mutation_error, mutation_is_pending, pick_version_metadata, try_account, try_accounts,
     try_default_account, try_game_profile, use_account, use_accounts, use_add_microsoft_account,
     use_add_offline_account, use_begin_microsoft_login, use_bundle_updates,

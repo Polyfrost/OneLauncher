@@ -57,6 +57,7 @@ pub use versions::{use_versions, use_loader_versions, loader_versions};
 pub use auth::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
     UseRefreshAccount, UseRemoveAccount, UseSetDefaultAccount, accounts_have_microsoft,
+    login_code_already_handled,
     mutation_error, mutation_is_pending, try_account, try_accounts, try_default_account,
     use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
     use_begin_microsoft_login, use_current_account, use_default_account,

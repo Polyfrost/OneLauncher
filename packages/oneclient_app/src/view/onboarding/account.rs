@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use freya::text_edit::Clipboard;
@@ -7,8 +5,8 @@ use oneclient_core::auth::{MinecraftAccount, MinecraftLogin};
 
 use crate::components::{Avatar, Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{
-    try_default_account, use_begin_microsoft_login, use_current_account,
-    use_finish_microsoft_login,
+    login_code_already_handled, try_default_account, use_begin_microsoft_login,
+    use_current_account, use_finish_microsoft_login,
 };
 use crate::platform;
 use crate::routes::Route;
@@ -17,8 +15,6 @@ use crate::ui::border_all_color;
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
-
-static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
 
 #[derive(PartialEq)]
 pub struct OnboardingAccount;
@@ -38,12 +34,8 @@ impl Component for OnboardingAccount {
                 _ => None,
             };
             let Some(login) = login else { return };
-            {
-                let mut handled = HANDLED_LOGIN_CODE.lock().unwrap();
-                if handled.as_deref() == Some(login.user_code.as_str()) {
-                    return;
-                }
-                *handled = Some(login.user_code.clone());
+            if login_code_already_handled(&login.user_code) {
+                return;
             }
             finish.mutate(login.clone());
             pending_login.set(Some(login));

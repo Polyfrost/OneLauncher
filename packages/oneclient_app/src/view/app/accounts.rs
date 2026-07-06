@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use chrono::Utc;
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
@@ -11,15 +9,14 @@ use crate::components::{
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
-    accounts_have_microsoft, try_accounts, try_default_account, use_accounts,
-    use_add_offline_account, use_begin_microsoft_login, use_current_account,
+    accounts_have_microsoft, login_code_already_handled, try_accounts, try_default_account,
+    use_accounts, use_add_offline_account, use_begin_microsoft_login, use_current_account,
     use_finish_microsoft_login, use_refresh_account, use_remove_account, use_set_default_account,
 };
 use crate::platform;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
 
 #[derive(PartialEq)]
 pub struct Accounts;
@@ -48,12 +45,8 @@ impl Component for Accounts {
                 _ => None,
             };
             let Some(login) = login else { return };
-            {
-                let mut handled = HANDLED_LOGIN_CODE.lock().unwrap();
-                if handled.as_deref() == Some(login.user_code.as_str()) {
-                    return;
-                }
-                *handled = Some(login.user_code.clone());
+            if login_code_already_handled(&login.user_code) {
+                return;
             }
             handled_code.set(Some(login.user_code.clone()));
             finish.mutate(login.clone());

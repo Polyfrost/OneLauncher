@@ -1,4 +1,6 @@
 
+use std::sync::Mutex;
+
 use freya::query::{
     Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability,
     QueryStateData, UseMutation, UseQuery, use_mutation, use_query,
@@ -6,6 +8,17 @@ use freya::query::{
 use oneclient_core::LauncherError;
 use oneclient_core::auth::{self, AccountKind, MinecraftAccount, MinecraftLogin};
 use uuid::Uuid;
+
+static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn login_code_already_handled(user_code: &str) -> bool {
+    let mut handled = HANDLED_LOGIN_CODE.lock().unwrap();
+    if handled.as_deref() == Some(user_code) {
+        return true;
+    }
+    *handled = Some(user_code.to_string());
+    false
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListAccountsKeys;

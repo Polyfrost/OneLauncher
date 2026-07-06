@@ -21,9 +21,11 @@ use crate::theme::colors;
 mod backdrop;
 mod progress;
 mod summary;
+mod tips;
 pub use backdrop::LoadingBackdrop;
 use progress::{ProgressView, failure_panel, progress_panel};
 use summary::summary_view;
+use tips::{tip_panel, use_onboarding_tip};
 
 const FADE_DURATION_MS: u64 = 700;
 const MAX_TASK_ROWS: usize = 6;
@@ -154,6 +156,14 @@ struct DownloadStage {
     label: String,
 }
 
+enum InstallUiEvent {
+    Progress(usize, usize),
+    Stage(DownloadStage),
+    Activity(String),
+    TotalEstimate(u64),
+    Finished(Vec<InstallFailure>),
+}
+
 #[derive(Clone, Copy)]
 struct InstallHandles {
     progress: State<(usize, usize)>,
@@ -257,7 +267,7 @@ impl Component for OnboardingDownloading {
         let heading = if has_failures && is_complete {
             "Download issues found"
         } else if predownload {
-            "Downloading your content"
+            "Downloading..."
         } else {
             "Finishing up..."
         };
@@ -276,6 +286,8 @@ impl Component for OnboardingDownloading {
         } else {
             1.0
         };
+
+        let tip = use_onboarding_tip();
 
         if !*confirmed.read() {
             let items = onboarding_bundles_items(&bundles_query).unwrap_or_default();
@@ -365,7 +377,8 @@ impl Component for OnboardingDownloading {
                         predownload,
                         running: is_running,
                     }))
-                    .child(rect().width(Size::flex(1.0))),
+                    .child(rect().width(Size::flex(1.0)))
+                    .child(tip_panel(tip)),
             )
             .into_element()
     }
@@ -455,6 +468,11 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
     let total = plans.len();
     progress.set((0, total));
 
+    let (notif_tx, mut notif_rx) = mpsc::unbounded_channel::<Notification>();
+    let notifier = NotificationService::new(notif_tx);
+
+    let (ui_tx, mut ui_rx) = mpsc::unbounded_channel::<InstallUiEvent>();
+
     spawn(async move {
         let mut prev = 0u64;
         let mut speed = 0f64;
@@ -482,23 +500,52 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
     });
 
     spawn(async move {
-        let mut failed = Vec::new();
-
-        let (tx, mut rx) = mpsc::unbounded_channel::<Notification>();
-        let notifier = NotificationService::new(tx);
-
-        spawn(async move {
-            while let Some(notification) = rx.recv().await {
+        let mut local = GroupedAgg::default();
+        loop {
+            let Some(first) = notif_rx.recv().await else {
+                break;
+            };
+            if let Notification::GroupedProgress(event) = first {
+                apply_grouped(&mut local, event);
+            }
+            // Drain everything already queued in one pass.
+            while let Ok(notification) = notif_rx.try_recv() {
                 if let Notification::GroupedProgress(event) = notification {
-                    let mut next = agg.peek().clone();
-                    apply_grouped(&mut next, event);
-                    agg.set(next);
+                    apply_grouped(&mut local, event);
                 }
             }
-        });
+            agg.set(local.clone());
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    });
+
+    spawn(async move {
+        while let Some(event) = ui_rx.recv().await {
+            match event {
+                InstallUiEvent::Progress(done, total) => progress.set((done, total)),
+                InstallUiEvent::Stage(next) => stage.set(next),
+                InstallUiEvent::Activity(text) => activity.set(text),
+                InstallUiEvent::TotalEstimate(bytes) => total_estimate.set(bytes),
+                InstallUiEvent::Finished(failed) => {
+                    agg.set(GroupedAgg::default());
+                    activity.set("Wrapping up...".to_string());
+                    invalidate_cluster_queries().await;
+                    failures.set(failed);
+                    running.set(false);
+                    complete.set(true);
+                    break;
+                }
+            }
+        }
+    });
+
+    tokio::spawn(async move {
+        let mut failed = Vec::new();
 
         if predownload {
-            activity.set("Calculating download size...".to_string());
+            let _ = ui_tx.send(InstallUiEvent::Activity(
+                "Calculating download size...".to_string(),
+            ));
             if let Ok(state) = oneclient_core::LauncherState::get() {
                 let mut sum = 0u64;
                 for plan in &plans {
@@ -515,19 +562,19 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
                             "download size estimate failed: {err}"
                         ),
                     }
-                    total_estimate.set(sum);
+                    let _ = ui_tx.send(InstallUiEvent::TotalEstimate(sum));
                 }
             }
         }
 
         for (index, plan) in plans.into_iter().enumerate() {
-            stage.set(DownloadStage {
+            let _ = ui_tx.send(InstallUiEvent::Stage(DownloadStage {
                 index,
                 total,
                 label: plan.mc_version.clone(),
-            });
+            }));
 
-            if let Err(reason) = install_one(&plan, predownload, &notifier, activity).await {
+            if let Err(reason) = install_one(&plan, predownload, &notifier, &ui_tx).await {
                 tracing::error!(
                     cluster_id = plan.cluster_id,
                     mc_version = %plan.mc_version,
@@ -535,17 +582,11 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
                 );
                 failed.push(InstallFailure { plan, reason });
             }
-            progress.set((index + 1, total));
+            let _ = ui_tx.send(InstallUiEvent::Progress(index + 1, total));
         }
 
         drop(notifier);
-        agg.set(GroupedAgg::default());
-        activity.set("Wrapping up...".to_string());
-
-        invalidate_cluster_queries().await;
-        failures.set(failed);
-        running.set(false);
-        complete.set(true);
+        let _ = ui_tx.send(InstallUiEvent::Finished(failed));
     });
 }
 
@@ -553,12 +594,14 @@ async fn install_one(
     plan: &ClusterPlan,
     predownload: bool,
     notifier: &NotificationService,
-    mut activity: State<String>,
+    ui_tx: &mpsc::UnboundedSender<InstallUiEvent>,
 ) -> Result<(), String> {
     let state = oneclient_core::LauncherState::get().map_err(|err| err.to_string())?;
 
     if !plan.overrides.is_empty() {
-        activity.set("Saving your package choices...".to_string());
+        let _ = ui_tx.send(InstallUiEvent::Activity(
+            "Saving your package choices...".to_string(),
+        ));
     }
     for (bundle_name, package_id) in &plan.overrides {
         oneclient_core::set_bundle_package_enabled(
@@ -579,7 +622,10 @@ async fn install_one(
     let session =
         GroupedProgressSession::start(notifier, format!("Downloading {}", plan.mc_version));
 
-    activity.set(format!("Downloading Minecraft {}...", plan.mc_version));
+    let _ = ui_tx.send(InstallUiEvent::Activity(format!(
+        "Downloading Minecraft {}...",
+        plan.mc_version
+    )));
 
     let prepared = oneclient_core::ClusterManager::prepare(
         &state,
@@ -592,10 +638,10 @@ async fn install_one(
     .await;
 
     let bundles_result = if prepared.is_ok() {
-        activity.set(format!(
+        let _ = ui_tx.send(InstallUiEvent::Activity(format!(
             "Installing mods & content for {}...",
             plan.mc_version
-        ));
+        )));
         oneclient_core::install_cluster_bundles(
             plan.cluster_id,
             state.bundles.as_ref(),

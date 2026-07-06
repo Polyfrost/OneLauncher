@@ -297,4 +297,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.prepare.outputs.tag }}
-        run: gh release upload "$TAG" latest.json --clobber
+        run: gh release upload "$TAG" latest.json --clobber --repo "$GITHUB_REPOSITORY"

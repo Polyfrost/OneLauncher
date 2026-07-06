@@ -78,7 +78,7 @@ entitlements = "distribution/App.entitlements"
 
 [package.metadata.packager.dmg]
 app-position = { x = 190, y = 190 }
-app-folder-position = { x = 470, y = 190 }
+application-folder-position = { x = 470, y = 190 }
 
 [package.metadata.packager.windows]
 digest-algorithm = "sha256"

@@ -312,6 +312,7 @@ pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()
 					provider,
 					project_id,
 					version_id,
+					..
 				} = &file.kind
 				else {
 					continue;

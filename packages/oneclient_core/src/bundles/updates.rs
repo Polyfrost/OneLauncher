@@ -101,6 +101,7 @@ async fn check_bundle_updates_inner(
                     provider,
                     project_id,
                     version_id,
+                    ..
                 } => {
                     let key = managed_bundle_key(*provider, project_id);
                     files_map.insert(key.clone(), (version_id.clone(), file.clone()));
@@ -538,6 +539,7 @@ pub async fn get_bundles_with_update_status(
                     provider,
                     project_id,
                     version_id,
+                    ..
                 } => {
                     let key = managed_bundle_key(*provider, project_id);
                     if let Some(installed) = installed_map.get(&key) {

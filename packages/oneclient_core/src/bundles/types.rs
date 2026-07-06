@@ -59,6 +59,7 @@ pub enum BundleFileKind {
         provider: ProviderId,
         project_id: String,
         version_id: String,
+        sha1: String,
     },
     External(ExternalFile),
 }

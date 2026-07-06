@@ -15,6 +15,11 @@ impl QueryCapability for VersionsMetadataQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
+        let metadata = state.versions.metadata().await;
+        if !metadata.is_empty() {
+            return Ok(metadata);
+        }
+        state.versions.sync(&state.services).await?;
         Ok(state.versions.metadata().await)
     }
 }

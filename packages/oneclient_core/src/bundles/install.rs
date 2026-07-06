@@ -17,6 +17,10 @@ use crate::packages::store::{PackageStore, unlink_cluster_file};
 use crate::packages::types::ExternalFile;
 use crate::state::LauncherServices;
 
+fn is_base62(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
 pub async fn install_package_from_bundle(
     file: &BundleFile,
     cluster_id: i64,
@@ -30,6 +34,7 @@ pub async fn install_package_from_bundle(
             provider,
             project_id,
             version_id,
+            sha1,
         } => {
             let project = crate::packages::cached_project_detail(
                 services,
@@ -39,10 +44,18 @@ pub async fn install_package_from_bundle(
             )
             .await;
 
-            let version =
+            let version = if is_base62(version_id) {
                 crate::packages::get_version_cached(services, *provider, project_id, version_id)
-                    .await?;
-                
+                    .await?
+            } else if let Ok(Some((_, version))) =
+                services.packages.lookup_version(sha1, services).await
+            {
+                version
+            } else {
+                crate::packages::get_version_cached(services, *provider, project_id, version_id)
+                    .await?
+            };
+
             let artifact = PackageStore::install_to_cluster(
                 *provider,
                 &project,

@@ -142,6 +142,7 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
                     provider: ProviderId::Modrinth,
                     project_id: paths[0].to_string(),
                     version_id: paths[2].to_string(),
+                    sha1: file.hashes.sha1.to_ascii_lowercase(),
                 },
             });
         }

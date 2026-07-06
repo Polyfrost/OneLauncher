@@ -4,7 +4,11 @@ use freya::query::QueryStateData;
 use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType};
-use crate::hooks::{use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot};
+use oneclient_core::parse_mc_version;
+
+use crate::hooks::{
+    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_version_metadata,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
@@ -56,6 +60,13 @@ impl Component for ActiveClusterPanel {
         let p = intro.get().value();
         let slide_x = (p - 1.0) * 48.0;
 
+        let parsed = active.as_ref().and_then(|c| parse_mc_version(&c.mc_version));
+        let metadata = use_version_metadata(
+            parsed.as_ref().map(|p| p.major),
+            parsed.and_then(|p| p.minor),
+            active.as_ref().map(|c| c.mc_loader),
+        );
+
         let Some(cluster) = active else {
             return rect()
                 .vertical()
@@ -70,7 +81,9 @@ impl Component for ActiveClusterPanel {
         };
 
         let title = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let subtitle = cluster.name.clone();
+        let subtitle = metadata
+            .map(|m| m.name)
+            .unwrap_or_else(|| cluster.name.clone());
         let cluster_id = cluster.id;
 
         rect()

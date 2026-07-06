@@ -35,6 +35,22 @@ cargo run -p oneclient_app
 cargo build --release -p oneclient_app
 ```
 
+### Packaging / Releasing
+
+Installers are produced with [**cargo-packager**](https://github.com/crabnebula-dev/cargo-packager)
+(the standalone bundler spun out of the Tauri bundler). Config lives in
+[`packages/oneclient_app/Cargo.toml`](./packages/oneclient_app/Cargo.toml) under
+`[package.metadata.packager]`.
+
+```sh
+cargo install cargo-packager --locked
+
+# Build the binary, then bundle it for the current OS:
+cargo build --release -p oneclient_app
+cargo packager --release -p oneclient_app --formats <targets>
+#   Windows: nsis      macOS: app,dmg      Linux: deb,appimage
+```
+
 ### Versioning
 
 The workspace shares a single version, defined in the root [`Cargo.toml`](./Cargo.toml)

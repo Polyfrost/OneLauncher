@@ -55,6 +55,19 @@ The app crate is `oneclient_app`:
 After you finish making your changes and committed them to your branch, run
 `cargo fmt` and `cargo clippy` to fix style inconsistencies and catch lints.
 
+### Packaging
+
+Installers are built with [cargo-packager] (config in
+`packages/oneclient_app/Cargo.toml` under `[package.metadata.packager]`):
+
+- `cargo install cargo-packager --locked`
+- `cargo build --release -p oneclient_app`
+- `cargo packager --release -p oneclient_app --formats <nsis|app,dmg|deb,appimage>`
+
+Releases are cut by dispatching the `OneClient Release Build` GitHub Actions
+workflow. See the **Packaging / Releasing** section of the [README] for details
+and per-OS prerequisites.
+
 ### Pull Request
 
 Once you have finished making your changes, create a pull request (PR) to submit them.
@@ -84,6 +97,7 @@ Run `xcode-select --install` in the terminal to install them. If they are alread
 
 This CONTRIBUTING.md file was inspired by the [`github/docs` CONTRIBUTING.md] file, and we extend our gratitude to the original authors.
 
+[cargo-packager]: https://github.com/crabnebula-dev/cargo-packager
 [Skia]: https://skia.org/
 [Freya setup guide]: https://book.freyaui.dev/setup.html
 [`cargo`]: https://doc.rust-lang.org/cargo/getting-started/installation.html

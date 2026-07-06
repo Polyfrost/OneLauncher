@@ -25,6 +25,7 @@ pub struct ViewState {
 pub struct LauncherSettings {
 	pub settings_version: u32,
 	pub log_debug: bool,
+	pub auto_update: bool,
 	pub enable_gamemode: bool,
 	pub discord_enabled: bool,
 	pub max_concurrent_requests: usize,
@@ -55,6 +56,7 @@ impl Default for LauncherSettings {
 		Self {
 			settings_version: 1,
 			log_debug: false,
+			auto_update: true,
 			discord_enabled: true,
 			enable_gamemode: false,
 			max_concurrent_requests: 25,

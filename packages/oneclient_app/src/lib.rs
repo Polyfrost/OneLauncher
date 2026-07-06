@@ -10,6 +10,7 @@ mod notifications;
 pub mod platform;
 mod routes;
 pub mod theme;
+pub mod updater;
 mod ui;
 pub(crate) mod utils;
 mod view;

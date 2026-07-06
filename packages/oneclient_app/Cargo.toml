@@ -32,6 +32,8 @@ sysinfo.workspace = true
 anyhow.workspace = true
 regex.workspace = true
 
+cargo-packager-updater = "=0.2.3"
+
 # file dialog
 rfd = "=0.17.2"
 
@@ -48,3 +50,43 @@ mimalloc = "=0.1.52"
 
 [patch.crates-io]
 freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }
+# Build then package (per OS):
+#   cargo build --release -p oneclient_app
+#   cargo packager --release -p oneclient_app --formats <nsis|app,dmg|deb,appimage>
+[package.metadata.packager]
+product-name = "OneClient"
+identifier = "org.polyfrost.OneClient"
+category = "Game"
+publisher = "Polyfrost"
+copyright = "© 2026 Polyfrost Inc."
+homepage = "https://polyfrost.org/projects/oneclient"
+license-file = "../../LICENSE"
+long-description = "Next-generation open source Minecraft launcher"
+formats = ["nsis", "app", "dmg", "deb", "appimage"]
+binaries = [{ path = "oneclient_app", main = true }]
+icons = [
+  "icons/32x32.png",
+  "icons/128x128.png",
+  "icons/128x128@2x.png",
+  "icons/icon.icns",
+  "icons/icon.ico",
+]
+
+[package.metadata.packager.macos]
+minimum-system-version = "10.15"
+entitlements = "distribution/App.entitlements"
+
+[package.metadata.packager.dmg]
+app-position = { x = 190, y = 190 }
+app-folder-position = { x = 470, y = 190 }
+
+[package.metadata.packager.windows]
+digest-algorithm = "sha256"
+timestamp-url = "https://timestamp.digicert.com"
+
+[package.metadata.packager.deb]
+desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
+
+[package.metadata.packager.appimage]
+# desktop entry generated from the deb template above via the linux config
+

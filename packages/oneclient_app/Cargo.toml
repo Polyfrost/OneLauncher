@@ -48,6 +48,9 @@ freya = { git = "https://github.com/marc2332/freya.git", features = ["engine", "
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_UI_Shell", "Win32_Foundation"] }
+
 [patch.crates-io]
 freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }
 # Build then package (per OS):

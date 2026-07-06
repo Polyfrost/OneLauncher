@@ -11,9 +11,7 @@ pub fn open_url(url: &str) {
         }
         #[cfg(target_os = "windows")]
         {
-            std::process::Command::new("cmd")
-                .args(["/C", "start", "", url])
-                .spawn()
+            std::process::Command::new("explorer").arg(url).spawn()
         }
     };
 

@@ -6,52 +6,92 @@ mod view_state;
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
-    use_active_cluster_id, use_provide_active_cluster, ActiveClusterState, BrowserCompatState,
-    use_browser_compat, use_provide_browser_compat, LinkConfirmState, use_link_confirm,
-    use_provide_link_confirm, BrowserUiState, BrowserStateStore, use_browser_state_store,
-    use_provide_browser_state, OnboardingSelectionState, use_onboarding_selection,
+    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, LinkConfirmState,
+    OnboardingSelectionState, use_active_cluster_id, use_browser_compat, use_browser_state_store,
+    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_link_confirm,
     use_provide_onboarding_selection,
 };
 
 pub use dispatch::BridgeDispatch;
 pub use queries::{
-    try_cluster_analytics, try_global_analytics, use_cluster_analytics, use_global_analytics,
-    ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
-    AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
-    UseRefreshAccount, UseRemoveAccount, UseSetDefaultAccount, accounts_have_microsoft,
-    login_code_already_handled,
-    mutation_error, mutation_is_pending, pick_version_metadata, try_account, try_accounts,
-    try_default_account, try_game_profile, use_account, use_accounts, use_add_microsoft_account,
-    use_add_offline_account, use_begin_microsoft_login, use_bundle_updates,
-    bundle_overrides_map, bundles_with_status_items, use_bundle_overrides, use_bundles_with_status,
-    ClusterBundles, OnboardingBundlesQuery, onboarding_bundles_items, use_onboarding_bundles,
-    use_cached_image, CachedImageQuery, use_changelog, changelog_error, changelog_groups,
-    changelog_is_loading, use_cluster_content, cluster_content_items,
-    invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,
-    use_provider_versions,
-    content_type_for_slug, package_meta_batch, project_detail, search_items, search_pending,
-    search_total, use_package_meta_batch, use_package_project, use_package_search,
-    use_package_versions, version_list, versions_total, use_package_categories, category_list,
-    BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE,
-    use_cluster_profile, use_cluster_settings,
+    AddOfflineAccountKeys, BROWSE_PAGE_SIZE, CachedImageQuery, ClusterAction, ClusterBundles,
+    ClusterLogsQuery, LogAction, LogContentQuery, OnboardingBundlesQuery, RefreshAccountKeys,
+    RemoveAccountKeys, ScreenshotAction, SetDefaultAccountKeys, UploadLogKeys, UploadLogMutation,
+    UseLogAction, UseRefreshAccount, UseRemoveAccount, UseScreenshotAction, UseSetDefaultAccount,
+    UseUploadLog, VERSIONS_PAGE_SIZE, accounts_have_microsoft, bundle_overrides_map,
+    bundles_with_status_items, category_list, changelog_error, changelog_groups,
+    changelog_is_loading, cluster_content_items, content_type_for_slug, invalidate_cluster_queries,
+    invalidate_java_queries, invalidate_logs_queries, invalidate_profile_queries,
+    invalidate_screenshots_queries, java_runtimes, loader_versions, login_code_already_handled,
+    mutation_error, mutation_is_pending, onboarding_bundles_items, package_meta_batch,
+    pick_version_metadata, project_detail, provider_versions, search_items, search_pending,
+    search_total, try_account, try_accounts, try_cluster_analytics, try_cluster_logs,
+    try_cluster_screenshots, try_default_account, try_game_profile, try_global_analytics,
+    try_log_content, use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
+    use_begin_microsoft_login, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
+    use_cached_image, use_changelog, use_cluster_analytics, use_cluster_content, use_cluster_logs,
+    use_cluster_mutation, use_cluster_profile, use_cluster_screenshots, use_cluster_settings,
     use_clusters, use_current_account, use_default_account, use_finish_microsoft_login,
-    use_game_profile, use_named_profiles, use_player_profile, use_refresh_account,
-    use_refresh_all_accounts, use_remove_account, use_set_default_account, use_version_metadata,
-    use_versions, use_loader_versions, loader_versions,
-    ClusterLogsQuery, LogAction, LogContentQuery, UploadLogKeys, UploadLogMutation,
-    UseLogAction, UseUploadLog, invalidate_logs_queries,
-    try_cluster_logs, try_log_content, use_cluster_logs, use_log_action, use_log_content,
-    use_upload_log,
-    ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries,
-    try_cluster_screenshots, use_cluster_screenshots, use_local_image, use_screenshot_action,
+    use_game_profile, use_global_analytics, use_java_runtimes, use_loader_versions,
+    use_local_image, use_log_action, use_log_content, use_named_profiles, use_onboarding_bundles,
+    use_package_categories, use_package_meta_batch, use_package_project, use_package_search,
+    use_package_versions, use_player_profile, use_provider_versions, use_refresh_account,
+    use_refresh_all_accounts, use_remove_account, use_screenshot_action, use_set_default_account,
+    use_upload_log, use_version_metadata, use_versions, version_list, versions_total,
 };
 
 use crate::notifications::NotificationSnapshot;
+use bytes::Bytes;
 use freya::prelude::*;
+use freya::query::QueryStateData;
+
+use crate::AppAssets;
+
+pub fn use_player_skin(uuid: String) -> (Bytes, bool) {
+    let profile = use_player_profile(uuid.clone(), None::<String>);
+
+    let (skin_url, is_slim) = match &*profile.read().state() {
+        QueryStateData::Settled {
+            res: Ok(profile), ..
+        } => (profile.skin_url.clone(), profile.is_slim),
+        _ => (None, false),
+    };
+
+    let skin_query = use_cached_image(skin_url.clone(), 256);
+
+    let steve = use_memo(|| AppAssets::get_bytes("steve.png").unwrap_or_default());
+    let alex = use_memo(|| AppAssets::get_bytes("alex.png").unwrap_or_default());
+
+    // No custom skin: pick alex (slim) or steve (classic) from the UUID.
+    let default_slim = (java_string_hash(&uuid) & 1) == 1;
+
+    let reader = skin_query.read();
+    match (&skin_url, &*reader.state()) {
+        (Some(_), QueryStateData::Settled { res: Ok(bytes), .. })
+        | (
+            Some(_),
+            QueryStateData::Loading {
+                res: Some(Ok(bytes)),
+            },
+        ) => (bytes.clone(), is_slim),
+        _ if default_slim => (alex.read().clone(), true),
+        _ => (steve.read().clone(), false),
+    }
+}
+
+/// Java `String.hashCode()`: h = h*31 + c over UTF-16 units, wrapping i32.
+fn java_string_hash(s: &str) -> i32 {
+    let mut h: i32 = 0;
+    for c in s.encode_utf16() {
+        h = h.wrapping_mul(31).wrapping_add(c as i32);
+    }
+    h
+}
 
 use crate::bridge::{
-    use_bridge_snapshot, BridgeSnapshot, ClustersSnapshot, GameSnapshot, JavaSnapshot, LauncherInit,
-    OneClientBridge, ProfilesSnapshot, SettingsSnapshot,
+    BridgeSnapshot, ClustersSnapshot, GameSnapshot, JavaSnapshot, LauncherInit, OneClientBridge,
+    ProfilesSnapshot, SettingsSnapshot, use_bridge_snapshot,
 };
 
 pub fn use_provide_bridge(bridge: &OneClientBridge) {

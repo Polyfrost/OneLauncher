@@ -2,10 +2,8 @@ use bytes::Bytes;
 use freya::elements::image::{ImageHandle, image};
 use freya::engine::prelude::{Paint, SkData, SkImage, raster_n32_premul};
 use freya::prelude::*;
-use freya::query::QueryStateData;
 
-use crate::AppAssets;
-use crate::hooks::{use_cached_image, use_player_profile};
+use crate::hooks::use_player_skin;
 
 const AVATAR_SIZE: f32 = 32.;
 const FACE: f32 = 8.;
@@ -37,32 +35,7 @@ impl ContainerSizeExt for Avatar {}
 
 impl Component for Avatar {
     fn render(&self) -> impl IntoElement {
-        let profile = use_player_profile(self.uuid.clone(), None::<String>);
-
-        let skin_url = match &*profile.read().state() {
-            QueryStateData::Settled {
-                res: Ok(profile), ..
-            } => profile.skin_url.clone(),
-            _ => None,
-        };
-
-        let skin_query = use_cached_image(skin_url.clone(), 256);
-
-        let steve = use_memo(|| AppAssets::get_bytes("steve.png").unwrap_or_default());
-
-        let skin_bytes = {
-            let reader = skin_query.read();
-            match (&skin_url, &*reader.state()) {
-                (Some(_), QueryStateData::Settled { res: Ok(bytes), .. })
-                | (
-                    Some(_),
-                    QueryStateData::Loading {
-                        res: Some(Ok(bytes)),
-                    },
-                ) => bytes.clone(),
-                _ => steve.read().clone(),
-            }
-        };
+        let (skin_bytes, _is_slim) = use_player_skin(self.uuid.clone());
 
         let mut cache = use_state(|| None::<(usize, ImageHandle)>);
         let src_ptr = skin_bytes.as_ptr() as usize;

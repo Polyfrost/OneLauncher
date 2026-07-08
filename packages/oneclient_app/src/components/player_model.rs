@@ -5,12 +5,10 @@ use freya::engine::prelude::{
     Data, Paint, SamplingOptions, Shader, SkData, SkImage, SkRect, TileMode,
 };
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use skia_safe::RuntimeEffect;
 use skia_safe::runtime_effect::ChildPtr;
 
-use crate::AppAssets;
-use crate::hooks::{use_cached_image, use_player_profile};
+use crate::hooks::use_player_skin;
 
 const CAM_DIST: f32 = 80.0;
 const CAM_FOCAL: f32 = 1.85;
@@ -81,31 +79,7 @@ impl PlayerModel {
 
 impl Component for PlayerModel {
     fn render(&self) -> impl IntoElement {
-        let profile = use_player_profile(self.uuid.clone(), None::<String>);
-
-        let skin_url = match &*profile.read().state() {
-            QueryStateData::Settled {
-                res: Ok(profile), ..
-            } => profile.skin_url.clone(),
-            _ => None,
-        };
-
-        let skin_query = use_cached_image(skin_url.clone(), 256);
-        let steve = use_memo(|| AppAssets::get_bytes("steve.png").unwrap_or_default());
-
-        let skin_bytes = {
-            let reader = skin_query.read();
-            match (&skin_url, &*reader.state()) {
-                (Some(_), QueryStateData::Settled { res: Ok(bytes), .. })
-                | (
-                    Some(_),
-                    QueryStateData::Loading {
-                        res: Some(Ok(bytes)),
-                    },
-                ) => bytes.clone(),
-                _ => steve.read().clone(),
-            }
-        };
+        let (skin_bytes, is_slim) = use_player_skin(self.uuid.clone());
 
         let mut cache = use_state(|| None::<(usize, Shader)>);
         let src_ptr = skin_bytes.as_ptr() as usize;
@@ -151,15 +125,19 @@ impl Component for PlayerModel {
             let (Some(effect), Some(skin)) = (&effect, &skin_shader) else {
                 return;
             };
+
             let (w, h) = (ctx.size.width, ctx.size.height);
-            if w <= 0.0 || h <= 0.0 {
+
+			if w <= 0.0 || h <= 0.0 {
                 return;
             }
 
             let (cur_yaw, cur_pitch) = (yaw(), pitch());
 
-            let mut uniforms = Vec::with_capacity(24);
-            for value in [w, h, cur_yaw, cur_pitch, CAM_DIST, CAM_FOCAL] {
+            let slim = if is_slim { 1.0 } else { 0.0 };
+
+            let mut uniforms = Vec::with_capacity(28);
+            for value in [w, h, cur_yaw, cur_pitch, CAM_DIST, CAM_FOCAL, slim] {
                 uniforms.extend_from_slice(&value.to_le_bytes());
             }
 
@@ -237,6 +215,7 @@ uniform float uYaw;
 uniform float uPitch;
 uniform float uDist;
 uniform float uFocal;
+uniform float uSlim;
 uniform shader uSkin;
 
 void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 td,
@@ -266,8 +245,8 @@ void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 
             nrm = float3(1.0, 0.0, 0.0);
         }
     } else if (tN == tmin.y) {
-        if (rd.y > 0.0) {            // -Y face (bottom)
-            uv = float2(base.x + d + w + n.x * w, base.y + (1.0 - n.z) * d);
+        if (rd.y > 0.0) {            // -Y face (bottom): 180deg from top, flip both axes
+            uv = float2(base.x + d + w + (1.0 - n.x) * w, base.y + (1.0 - n.z) * d);
             nrm = float3(0.0, -1.0, 0.0);
         } else {                     // +Y face (top)
             uv = float2(base.x + d + n.x * w, base.y + n.z * d);
@@ -285,9 +264,9 @@ void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 
 
     half4 s = uSkin.eval(uv);
 
-    if (s.a < 0.5) { 
-        return; 
-    }       
+    if (s.a < 0.5) {
+        return;
+    }
 
     float3 L = normalize(float3(0.4, 0.8, 0.6));
     float diff = 0.65 + 0.35 * clamp(dot(nrm, L), 0.0, 1.0);
@@ -311,14 +290,17 @@ half4 main(float2 fragCoord) {
     float best = 1e9;
     half4 col = half4(0.0);
 
+    float aw = uSlim > 0.5 ? 3.0 : 4.0;  // arm width: slim = 3px, classic = 4px
+    float sw = aw + 0.5;                  // arm overlay (sleeve) width
+
     hitBox(ro, rd, float3(-4.0, 8.0, -4.0), float3(4.0, 16.0, 4.0),
            float3(8.0, 8.0, 8.0), float3(8.0, 8.0, 8.0), float2(0.0, 0.0), best, col);   // head
     hitBox(ro, rd, float3(-4.0, -4.0, -2.0), float3(4.0, 8.0, 2.0),
            float3(8.0, 12.0, 4.0), float3(8.0, 12.0, 4.0), float2(16.0, 16.0), best, col); // body
-    hitBox(ro, rd, float3(-8.0, -4.0, -2.0), float3(-4.0, 8.0, 2.0),
-           float3(4.0, 12.0, 4.0), float3(4.0, 12.0, 4.0), float2(40.0, 16.0), best, col); // right arm
-    hitBox(ro, rd, float3(4.0, -4.0, -2.0), float3(8.0, 8.0, 2.0),
-           float3(4.0, 12.0, 4.0), float3(4.0, 12.0, 4.0), float2(32.0, 48.0), best, col); // left arm
+    hitBox(ro, rd, float3(-4.0 - aw, -4.0, -2.0), float3(-4.0, 8.0, 2.0),
+           float3(aw, 12.0, 4.0), float3(aw, 12.0, 4.0), float2(40.0, 16.0), best, col); // right arm
+    hitBox(ro, rd, float3(4.0, -4.0, -2.0), float3(4.0 + aw, 8.0, 2.0),
+           float3(aw, 12.0, 4.0), float3(aw, 12.0, 4.0), float2(32.0, 48.0), best, col); // left arm
     hitBox(ro, rd, float3(-4.0, -16.0, -2.0), float3(0.0, -4.0, 2.0),
            float3(4.0, 12.0, 4.0), float3(4.0, 12.0, 4.0), float2(0.0, 16.0), best, col);  // right leg
     hitBox(ro, rd, float3(0.0, -16.0, -2.0), float3(4.0, -4.0, 2.0),
@@ -328,10 +310,10 @@ half4 main(float2 fragCoord) {
            float3(9.0, 9.0, 9.0), float3(8.0, 8.0, 8.0), float2(32.0, 0.0), best, col);    // hat
     hitBox(ro, rd, float3(-4.25, -4.25, -2.25), float3(4.25, 8.25, 2.25),
            float3(8.5, 12.5, 4.5), float3(8.0, 12.0, 4.0), float2(16.0, 32.0), best, col);  // jacket
-    hitBox(ro, rd, float3(-8.25, -4.25, -2.25), float3(-3.75, 8.25, 2.25),
-           float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(40.0, 32.0), best, col);  // right sleeve
-    hitBox(ro, rd, float3(3.75, -4.25, -2.25), float3(8.25, 8.25, 2.25),
-           float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(48.0, 48.0), best, col);  // left sleeve
+    hitBox(ro, rd, float3(-3.75 - sw, -4.25, -2.25), float3(-3.75, 8.25, 2.25),
+           float3(sw, 12.5, 4.5), float3(aw, 12.0, 4.0), float2(40.0, 32.0), best, col);  // right sleeve
+    hitBox(ro, rd, float3(3.75, -4.25, -2.25), float3(3.75 + sw, 8.25, 2.25),
+           float3(sw, 12.5, 4.5), float3(aw, 12.0, 4.0), float2(48.0, 48.0), best, col);  // left sleeve
     hitBox(ro, rd, float3(-4.25, -16.25, -2.25), float3(0.25, -3.75, 2.25),
            float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(0.0, 32.0), best, col);   // right pant
     hitBox(ro, rd, float3(-0.25, -16.25, -2.25), float3(4.25, -3.75, 2.25),

@@ -6,12 +6,11 @@ use oneclient_core::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 
 use crate::components::{CardLayout, PackageEntry};
-use crate::hooks::{use_dispatch, use_view_state};
+use crate::hooks::use_view_state;
 
 mod views;
-use views::{SortFilter, header, list, tab_bar, toolbar};
+use views::{ContentBox, ContentKind, EnabledFilter, SortMode, toolbar_bar};
 
-const PANEL_BG: Color = Color::from_rgb(21, 28, 34);
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
 const CARD_GRID_H: f32 = 148.;
@@ -185,29 +184,27 @@ fn make_row(
 }
 
 #[derive(Clone)]
-enum Tab {
-    All,
+pub(super) enum Tab {
     Category(String),
-    Remote,
+    External,
     Local,
 }
 
 impl Tab {
-    fn label(&self) -> String {
+    pub(super) fn label(&self) -> String {
         match self {
-            Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::Remote => "Remote".to_string(),
+            Tab::External => "External".to_string(),
             Tab::Local => "Local".to_string(),
         }
     }
 
-    fn matches(&self, p: &PackageEntry) -> bool {
+    pub(super) fn matches(&self, p: &PackageEntry) -> bool {
         match self {
-            Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            Tab::Remote => !p.in_bundle() && p.is_remote(),
-            Tab::Local => !p.in_bundle() && !p.is_remote(),
+            // External = remote provider content that is NOT provided by a bundle.
+            Tab::External => p.is_remote() && !p.in_bundle(),
+            Tab::Local => !p.is_remote(),
         }
     }
 }
@@ -232,9 +229,15 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
             }
         }
     }
-    let mut tabs = vec![Tab::All];
-    tabs.extend(cats.into_iter().map(Tab::Category));
-    tabs.push(Tab::Remote);
+
+    // Category tabs are hidden when empty; External + Local are always shown.
+    let mut tabs: Vec<Tab> = cats
+        .into_iter()
+        .map(Tab::Category)
+        .filter(|t| items.iter().any(|p| t.matches(p)))
+        .collect();
+
+    tabs.push(Tab::External);
     tabs.push(Tab::Local);
     tabs
 }
@@ -279,65 +282,68 @@ impl Component for PackageManager {
         let package_type = self.package_type;
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
-        let dispatch = use_dispatch();
-
-        let folder = super::load_cluster(cluster_id)
-            .and_then(|c| c.game_dir().ok())
-            .map(|dir| dir.join(content_type.folder_name()));
-
-        let total = items.len();
-        let enabled = items.iter().filter(|i| i.enabled).count();
 
         let tabs = build_tabs(&self.categories, &items);
         let active = use_state(|| 0usize);
         let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
 
         let search = use_state(String::new);
+        let enabled_filter = use_state(|| EnabledFilter::All);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
         let query = search.read().to_lowercase();
-        let sort_filter = sort
+        let sort_mode = sort
             .read()
             .as_deref()
-            .and_then(SortFilter::from_key)
-            .unwrap_or(SortFilter::NameAsc);
+            .and_then(SortMode::from_key)
+            .unwrap_or(SortMode::NameAsc);
+
+        let show = *enabled_filter.read();
         let card_layout = CardLayout::from(*layout.read());
+
+        let tab_filter = tabs.get(active_idx);
+        let content_kind = match tab_filter {
+            Some(Tab::External) => ContentKind::External,
+            Some(Tab::Local) => ContentKind::Local,
+            _ => ContentKind::Other,
+        };
 
         let mut filtered: Vec<PackageEntry> = items
             .iter()
-            .filter(|p| tabs[active_idx].matches(p))
+            .filter(|p| tab_filter.is_none_or(|t| t.matches(p)))
             .filter(|p| {
                 query.is_empty()
                     || p.name.to_lowercase().contains(query.as_str())
                     || p.file_name.to_lowercase().contains(query.as_str())
             })
-            .filter(|p| sort_filter.keep(p))
+            .filter(|p| show.keep(p))
             .cloned()
             .collect();
-        sort_filter.sort(&mut filtered);
+
+        sort_mode.sort(&mut filtered);
 
         rect()
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
-            .spacing(16.)
-            .child(header(
-                self.title,
-                format!("{enabled} / {total} enabled"),
-                package_type,
-                content_type,
-                cluster_id,
-                dispatch,
-                folder,
+            .child(toolbar_bar(
+                &tabs,
+                active_idx,
+                active,
+                search,
+                sort,
+                sort_mode,
+                enabled_filter,
+                layout,
             ))
-            .child(toolbar(search, sort, sort_filter, layout))
-            .child(tab_bar(&tabs, &items, active_idx, active))
-            .child(list(
+            .child(ContentBox::new(
                 filtered,
                 noun_plural,
                 package_type,
+                content_type,
                 cluster_id,
+                content_kind,
                 card_layout,
             ))
     }

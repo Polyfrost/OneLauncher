@@ -4,64 +4,50 @@ use freya::router::RouterContext;
 use oneclient_core::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
-use crate::BridgeDispatch;
 use crate::components::{
-    Button, CardLayout, Dropdown, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx, Segment, SegmentedControl, TabBar, TabItem, TextInput
+    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
+    Segment, SegmentedControl, TabBar, TabItem, TextInput,
 };
+use crate::hooks::use_dispatch;
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::{BridgeDispatch, utils};
 
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum SortFilter {
+pub(super) enum SortMode {
     NameAsc,
     NameDesc,
     SizeAsc,
     SizeDesc,
-    Enabled,
-    Disabled,
 }
 
-impl SortFilter {
-    const ALL: [SortFilter; 6] = [
-        SortFilter::NameAsc,
-        SortFilter::NameDesc,
-        SortFilter::SizeAsc,
-        SortFilter::SizeDesc,
-        SortFilter::Enabled,
-        SortFilter::Disabled,
+impl SortMode {
+    const ALL: [SortMode; 4] = [
+        SortMode::NameAsc,
+        SortMode::NameDesc,
+        SortMode::SizeAsc,
+        SortMode::SizeDesc,
     ];
 
     fn key(self) -> &'static str {
         match self {
-            SortFilter::NameAsc => "name_asc",
-            SortFilter::NameDesc => "name_desc",
-            SortFilter::SizeAsc => "size_asc",
-            SortFilter::SizeDesc => "size_desc",
-            SortFilter::Enabled => "enabled",
-            SortFilter::Disabled => "disabled",
+            SortMode::NameAsc => "name_asc",
+            SortMode::NameDesc => "name_desc",
+            SortMode::SizeAsc => "size_asc",
+            SortMode::SizeDesc => "size_desc",
         }
     }
 
     pub(super) fn from_key(key: &str) -> Option<Self> {
-        SortFilter::ALL.into_iter().find(|s| s.key() == key)
+        SortMode::ALL.into_iter().find(|s| s.key() == key)
     }
 
     fn label(self) -> &'static str {
         match self {
-            SortFilter::NameAsc => "Name (A-Z)",
-            SortFilter::NameDesc => "Name (Z-A)",
-            SortFilter::SizeAsc => "Size (Smallest)",
-            SortFilter::SizeDesc => "Size (Largest)",
-            SortFilter::Enabled => "Enabled only",
-            SortFilter::Disabled => "Disabled only",
-        }
-    }
-
-    pub(super) fn keep(self, p: &PackageEntry) -> bool {
-        match self {
-            SortFilter::Enabled => p.enabled,
-            SortFilter::Disabled => !p.enabled,
-            _ => true,
+            SortMode::NameAsc => "Name (A-Z)",
+            SortMode::NameDesc => "Name (Z-A)",
+            SortMode::SizeAsc => "Size (Smallest)",
+            SortMode::SizeDesc => "Size (Largest)",
         }
     }
 
@@ -75,30 +61,96 @@ impl SortFilter {
         };
 
         match self {
-            SortFilter::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
-            SortFilter::SizeAsc => rows.sort_by_key(|p| p.size),
-            SortFilter::SizeDesc => rows.sort_by_key(|p| std::cmp::Reverse(p.size)),
+            SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
+            SortMode::SizeAsc => rows.sort_by_key(|p| p.size),
+            SortMode::SizeDesc => rows.sort_by_key(|p| std::cmp::Reverse(p.size)),
             _ => rows.sort_by_key(title),
         }
     }
 }
 
-pub(super) fn toolbar(
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum EnabledFilter {
+    All,
+    Enabled,
+    Disabled,
+}
+
+impl EnabledFilter {
+    const ALL: [EnabledFilter; 3] = [
+        EnabledFilter::All,
+        EnabledFilter::Enabled,
+        EnabledFilter::Disabled,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            EnabledFilter::All => "All packages",
+            EnabledFilter::Enabled => "Enabled only",
+            EnabledFilter::Disabled => "Disabled only",
+        }
+    }
+
+    pub(super) fn keep(self, p: &PackageEntry) -> bool {
+        match self {
+            EnabledFilter::All => true,
+            EnabledFilter::Enabled => p.enabled,
+            EnabledFilter::Disabled => !p.enabled,
+        }
+    }
+}
+
+const FILTER_PANEL_W: f32 = 172.;
+const FILTER_BTN_W: f32 = 34.;
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn toolbar_bar(
+    tabs: &[Tab],
+    active_idx: usize,
+    active: State<usize>,
     search: State<String>,
-    mut sort: State<Option<String>>,
-    current: SortFilter,
+    sort: State<Option<String>>,
+    current_sort: SortMode,
+    enabled_filter: State<EnabledFilter>,
     layout: State<ViewLayout>,
 ) -> impl IntoElement {
+    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
+        let mut active = active;
+        TabItem::new(tab.label(), i == active_idx).on_press(move |_| *active.write() = i)
+    });
+
+    let mut top_corners = CornerRadius::new_all(0.);
+    top_corners.fill_top(12.);
+
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .spacing(8.)
         .content(Content::Flex)
+        .overflow(Overflow::Clip)
+        .padding(Gaps::new_symmetric(8., 12.))
+        .corner_radius(top_corners)
+        .background(colors::page_elevated())
+        .child(
+            ScrollView::new()
+                .direction(Direction::Horizontal)
+                .show_scrollbar(false)
+                .width(Size::flex(1.0))
+                .height(Size::auto())
+                .child(
+                    TabBar::new()
+                        .width(Size::auto())
+                        .height(Size::auto())
+                        .spacing(20.)
+                        .font_size(12.)
+                        .tabs(tab_items),
+                ),
+        )
         .child(
             TextInput::new(search)
-                .placeholder("Search packages...")
-                .width(Size::flex(1.0))
+                .placeholder("Search...")
+                .width(Size::px(180.))
                 .leading(
                     Icon::new(IconType::SearchMd)
                         .size(14.)
@@ -106,19 +158,11 @@ pub(super) fn toolbar(
                         .into_element(),
                 ),
         )
-        .child(
-            Dropdown::new(
-                current.label(),
-                SortFilter::ALL.iter().map(|s| s.label().to_string()).collect(),
-            )
-            .width(Size::px(120.))
-            .height(Size::px(34.))
-            .on_select(move |idx: usize| {
-                if let Some(option) = SortFilter::ALL.get(idx) {
-                    sort.set(Some(option.key().to_string()));
-                }
-            }),
-        )
+        .child(FilterButton {
+            sort,
+            current_sort,
+            enabled_filter,
+        })
         .child(
             SegmentedControl::new(layout)
                 .height(34.)
@@ -130,76 +174,172 @@ pub(super) fn toolbar(
         .into_element()
 }
 
-pub(super) fn header(
-    title: &'static str,
-    count_label: String,
-    package_type: &'static str,
-    content_type: ContentType,
-    cluster_id: i64,
-    dispatch: BridgeDispatch,
-    folder: Option<std::path::PathBuf>,
+#[derive(PartialEq)]
+struct FilterButton {
+    sort: State<Option<String>>,
+    current_sort: SortMode,
+    enabled_filter: State<EnabledFilter>,
+}
+
+impl Component for FilterButton {
+    fn render(&self) -> impl IntoElement {
+        let mut open = use_state(|| false);
+        let mut hovering = use_state(|| false);
+
+        let sort = self.sort;
+        let current_sort = self.current_sort;
+        let enabled_filter = self.enabled_filter;
+
+        let is_open = open();
+        let active =
+            current_sort != SortMode::NameAsc || *enabled_filter.read() != EnabledFilter::All;
+
+        let bg = if is_open || hovering() {
+            colors::component_bg_hover()
+        } else {
+            colors::component_bg()
+        };
+        let icon_color = if active {
+            colors::brand()
+        } else {
+            colors::fg_secondary()
+        };
+
+        rect()
+            .width(Size::px(FILTER_BTN_W))
+            .child(
+                rect()
+                    .width(Size::px(FILTER_BTN_W))
+                    .height(Size::px(34.))
+                    .center()
+                    .corner_radius(CornerRadius::new_all(8.))
+                    .background(bg)
+                    .border(crate::ui::border_all_color(1., colors::component_border()))
+                    .on_pointer_enter(move |_| {
+                        hovering.set(true);
+                        Cursor::set(CursorIcon::Pointer);
+                    })
+                    .on_pointer_leave(move |_| {
+                        hovering.set(false);
+                        Cursor::set(CursorIcon::default());
+                    })
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        open.toggle();
+                    })
+                    .child(Icon::new(IconType::Sliders04).size(16.).color(icon_color)),
+            )
+            .maybe_child(is_open.then(|| {
+                filter_popover(sort, current_sort, enabled_filter, move || open.set(false))
+                    .into_element()
+            }))
+    }
+}
+
+fn filter_popover(
+    mut sort: State<Option<String>>,
+    current_sort: SortMode,
+    mut enabled_filter: State<EnabledFilter>,
+    on_close: impl FnMut() + Clone + 'static,
 ) -> impl IntoElement {
-    rect()
-        .horizontal()
+    let mut close_backdrop = on_close.clone();
+
+    let show = *enabled_filter.read();
+
+    let mut panel = rect()
+        .vertical()
         .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .content(Content::Flex)
-        .child(
-            label()
-                .text(title)
-                .font_size(20.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
-        )
-        .child(pill(count_label))
+        .spacing(4.)
+        .padding(Gaps::new_all(8.))
+        .corner_radius(CornerRadius::new_all(10.))
+        .border(crate::ui::border_all_color(1., colors::component_border()))
+        .background(colors::page_elevated())
+        .child(section_label("Sort by"));
+
+    for mode in SortMode::ALL {
+        let selected = mode == current_sort;
+        panel = panel.child(choice_row(mode.label(), selected, move |_| {
+            sort.set(Some(mode.key().to_string()));
+        }));
+    }
+
+    panel = panel.child(section_label("Show"));
+    for filter in EnabledFilter::ALL {
+        let selected = filter == show;
+        panel = panel.child(choice_row(filter.label(), selected, move |_| {
+            enabled_filter.set(filter);
+        }));
+    }
+
+    rect()
+        .height(Size::px(0.))
+        .width(Size::px(FILTER_PANEL_W))
+        .layer(Layer::Overlay)
         .child(
             rect()
-                .horizontal()
-                .width(Size::flex(1.0))
-                .main_align(Alignment::End)
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .maybe_child(folder.map(crate::components::open_folder_button))
-                .child(add_from_file_button(cluster_id, content_type, dispatch))
-                .child(browse_button(cluster_id, package_type)),
+                .layer(Layer::RelativeOverlay(10))
+                .position(Position::new_global().top(0.).left(0.))
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .on_press(move |_| close_backdrop()),
+        )
+        .child(
+            rect()
+                .width(Size::fill())
+                .layer(Layer::RelativeOverlay(12))
+                .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
+                .child(panel),
         )
         .into_element()
 }
 
-pub(super) fn tab_bar(
-    tabs: &[Tab],
-    items: &[PackageEntry],
-    active_idx: usize,
-    active: State<usize>,
-) -> impl IntoElement {
-    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
-        let total = items.iter().filter(|p| tab.matches(p)).count();
-        let enabled = items.iter().filter(|p| tab.matches(p) && p.enabled).count();
-        let mut active = active;
-        TabItem::new(tab.label(), i == active_idx)
-            .count_text(format!("{enabled}/{total}"))
-            .on_press(move |_| *active.write() = i)
-    });
+fn section_label(text: &'static str) -> impl IntoElement {
+    label()
+        .text(text)
+        .font_size(10.)
+        .font_weight(FontWeight::SEMI_BOLD)
+        .color(colors::fg_secondary())
+}
 
+fn choice_row(
+    text: &'static str,
+    selected: bool,
+    on_press: impl FnMut(Event<PressEventData>) + 'static,
+) -> impl IntoElement {
+    let color = if selected {
+        colors::fg_primary()
+    } else {
+        colors::fg_secondary()
+    };
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new_symmetric(10., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(PANEL_BG)
+        .spacing(8.)
+        .padding(Gaps::new_symmetric(5., 8.))
+        .corner_radius(CornerRadius::new_all(6.))
+        .background(if selected {
+            colors::component_bg()
+        } else {
+            Color::TRANSPARENT
+        })
+        .content(Content::Flex)
+        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .on_press(on_press)
         .child(
-            TabBar::new()
-                .width(Size::fill())
-                .height(Size::auto())
-                .spacing(24.)
+            label()
+                .text(text)
                 .font_size(12.)
-                .bold_active(true)
-                .tabs(tab_items),
+                .width(Size::flex(1.0))
+                .color(color),
         )
-        .into_element()
+        .maybe_child(selected.then(|| {
+            Icon::new(IconType::Check)
+                .size(14.)
+                .color(colors::brand())
+                .into_element()
+        }))
 }
 
 fn add_from_file_button(
@@ -208,7 +348,7 @@ fn add_from_file_button(
     dispatch: BridgeDispatch,
 ) -> impl IntoElement {
     Button::new()
-        .secondary()
+        .primary()
         .on_press(move |_| {
             let dispatch = dispatch.clone();
             spawn(async move {
@@ -242,63 +382,125 @@ fn browse_button(cluster_id: i64, package_type: &'static str) -> impl IntoElemen
         .text("Browse Content")
 }
 
-fn pill(text: String) -> impl IntoElement {
-    rect()
-        .center()
-        .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(10.))
-        .background(colors::component_bg())
-        .child(
-            label()
-                .text(text)
-                .font_size(9.)
-                .color(colors::fg_secondary()),
-        )
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum ContentKind {
+    External,
+    Local,
+    Other,
 }
 
-pub(super) fn list(
+#[derive(PartialEq)]
+pub(super) struct ContentBox {
     items: Vec<PackageEntry>,
     noun_plural: &'static str,
     package_type: &'static str,
+    content_type: ContentType,
     cluster_id: i64,
+    kind: ContentKind,
     layout: CardLayout,
-) -> impl IntoElement {
-    let count = items.len();
-    let scroll = (count > 0).then(|| match layout {
-        CardLayout::List => {
-            let items = items.clone();
-            ScrollArea::new()
+}
+
+impl ContentBox {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn new(
+        items: Vec<PackageEntry>,
+        noun_plural: &'static str,
+        package_type: &'static str,
+        content_type: ContentType,
+        cluster_id: i64,
+        kind: ContentKind,
+        layout: CardLayout,
+    ) -> Self {
+        Self {
+            items,
+            noun_plural,
+            package_type,
+            content_type,
+            cluster_id,
+            kind,
+            layout,
+        }
+    }
+}
+
+impl Component for ContentBox {
+    fn render(&self) -> impl IntoElement {
+        let items = self.items.clone();
+        let package_type = self.package_type;
+        let content_type = self.content_type;
+        let cluster_id = self.cluster_id;
+        let noun_plural = self.noun_plural;
+        let kind = self.kind;
+        let layout = self.layout;
+
+        let dispatch = use_dispatch();
+        let mut dropping = use_state(|| false);
+
+        let count = items.len();
+        let scroll = (count > 0).then(|| match layout {
+            CardLayout::List => {
+                let items = items.clone();
+                ScrollArea::new()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .lazy(count, CARD_H, CARD_SPACING, move |i| {
+                        let item = items[i].clone();
+                        let key = item.package_id.clone();
+                        PackageRow::new(item, cluster_id, package_type)
+                            .layout(CardLayout::List)
+                            .key(key)
+                            .into_element()
+                    })
+                    .into_element()
+            }
+            CardLayout::Grid => ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
-                .lazy(count, CARD_H, CARD_SPACING, move |i| {
-                    let item = items[i].clone();
-                    let key = item.package_id.clone();
-                    PackageRow::new(item, cluster_id, package_type)
-                        .layout(CardLayout::List)
-                        .key(key)
-                        .into_element()
+                .content(move |ctx: ScrollAreaCtx| {
+                    grid_content(&items, package_type, cluster_id, ctx).into_element()
                 })
-                .into_element()
-        }
-        CardLayout::Grid => ScrollArea::new()
-            .width(Size::fill())
-            .height(Size::fill())
-            .content(move |ctx: ScrollAreaCtx| {
-                grid_content(&items, package_type, cluster_id, ctx).into_element()
-            })
-            .into_element(),
-    });
+                .into_element(),
+        });
 
-    rect()
-        .width(Size::fill())
-        .height(Size::flex(1.0))
-        .padding(Gaps::new_all(8.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(PANEL_BG)
-        .overflow(Overflow::Clip)
-        .maybe_child(scroll)
-        .maybe_child((count == 0).then(|| empty_state(noun_plural)))
-        .into_element()
+        let empty = (count == 0).then(|| match kind {
+            ContentKind::External => external_empty(cluster_id, package_type).into_element(),
+            ContentKind::Local => {
+                local_empty(cluster_id, content_type, dispatch.clone(), noun_plural).into_element()
+            }
+            ContentKind::Other => empty_state(noun_plural).into_element(),
+        });
+
+        let mut bottom_corners = CornerRadius::new_all(0.);
+        bottom_corners.fill_bottom(12.);
+
+        let drop_dispatch = dispatch.clone();
+
+        rect()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .padding(Gaps::new_all(8.))
+            .corner_radius(bottom_corners)
+            .background(colors::page_elevated())
+            .overflow(Overflow::Clip)
+            .maybe(*dropping.read(), |el| {
+                el.border(
+                    Border::new()
+                        .fill(colors::brand())
+                        .width(2.)
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
+            .on_global_file_hover(move |_| dropping.set(true))
+            .on_global_file_hover_cancelled(move |_| dropping.set(false))
+            .on_file_drop(move |e: Event<FileEventData>| {
+                dropping.set(false);
+                if let Some(path) = &e.file_path {
+                    drop_dispatch.import_local_file(cluster_id, content_type, path.clone());
+                }
+            })
+            .maybe_child(scroll)
+            .maybe_child(empty)
+    }
 }
 
 fn grid_content(
@@ -308,8 +510,8 @@ fn grid_content(
     ctx: ScrollAreaCtx,
 ) -> impl IntoElement {
     let count = items.len();
-    let cols = (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize)
-        .clamp(1, 3);
+    let cols =
+        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 3);
     let rows_total = count.div_ceil(cols);
     let slot = CARD_GRID_H + GRID_GAP;
 
@@ -334,9 +536,7 @@ fn grid_content(
             .content(Content::Flex);
         for c in 0..cols {
             let idx = r * cols + c;
-            let cell = rect()
-                .width(Size::flex(1.0))
-                .height(Size::px(CARD_GRID_H));
+            let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
             row = row.child(if idx < count {
                 let item = items[idx].clone();
                 let key = item.package_id.clone();
@@ -358,7 +558,7 @@ fn grid_content(
     container.into_element()
 }
 
-fn empty_state(noun_plural: &'static str) -> impl IntoElement {
+fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -366,22 +566,59 @@ fn empty_state(noun_plural: &'static str) -> impl IntoElement {
         .center()
         .padding(Gaps::new_all(48.))
         .spacing(8.)
-        .child(
-            Icon::new(IconType::DotsGrid)
-                .size(28.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            label()
-                .text(format!("No {noun_plural} here yet."))
-                .font_size(14.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            label()
-                .text("Add one from a file or browse provider content.")
-                .font_size(12.)
-                .color(colors::fg_secondary()),
-        )
+        .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
+}
+
+fn empty_title(text: impl Into<String>) -> impl IntoElement {
+    label()
+        .text(text.into())
+        .font_size(14.)
+        .color(colors::fg_secondary())
+}
+
+fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+    label()
+        .text(text.into())
+        .font_size(12.)
+        .color(colors::fg_secondary())
+}
+
+fn empty_state(noun_plural: &'static str) -> impl IntoElement {
+    empty_shell(IconType::DotsGrid)
+        .child(empty_title(format!("No {noun_plural} here yet.")))
+        .child(empty_hint(
+            "Add one from a file or browse provider content.",
+        ))
+        .into_element()
+}
+
+fn external_empty(cluster_id: i64, package_type: &'static str) -> impl IntoElement {
+    empty_shell(IconType::SearchMd)
+        .child(empty_title("No external content installed."))
+        .child(empty_hint(
+            "Browse providers to add mods, resource packs and more.",
+        ))
+        .child(rect().height(Size::px(6.)))
+        .child(browse_button(cluster_id, package_type))
+        .into_element()
+}
+
+fn local_empty(
+    cluster_id: i64,
+    content_type: ContentType,
+    dispatch: BridgeDispatch,
+    noun_plural: &'static str,
+) -> impl IntoElement {
+    let is_wayland = utils::is_wayland();
+
+    empty_shell(IconType::FilePlus02)
+        .child(empty_title(format!("No local {noun_plural} yet.")))
+        .maybe(!is_wayland, |e| {
+            e.child(empty_hint(
+                "Tip: drag files onto the window to install them.",
+            ))
+        })
+        .child(rect().height(Size::px(6.)))
+        .child(add_from_file_button(cluster_id, content_type, dispatch))
         .into_element()
 }

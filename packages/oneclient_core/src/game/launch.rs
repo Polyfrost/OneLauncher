@@ -198,13 +198,12 @@ pub async fn launch_cluster(
     let cwd = game_dir;
     tokio::fs::create_dir_all(&cwd).await.ok();
 
-    if !dedicated {
-        if let Err(err) =
+    if !dedicated
+        && let Err(err) =
             crate::game::sync_shared_content(&state.services, &cluster, &cwd).await
         {
             tracing::warn!(cluster_id, error = %err, "failed to sync shared content");
         }
-    }
 
     let client_jar = paths::versions_dir()?
         .join(&version_name)

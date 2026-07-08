@@ -19,6 +19,7 @@ impl TabItem {
         }
     }
 
+	#[allow(dead_code)]
     pub fn count_text(mut self, text: impl Into<String>) -> Self {
         self.count = Some(text.into());
         self
@@ -36,7 +37,6 @@ pub struct TabBar {
     height: Size,
     spacing: f32,
     font_size: f32,
-    bold_active: bool,
 }
 
 impl Default for TabBar {
@@ -53,7 +53,6 @@ impl TabBar {
             height: Size::fill(),
             spacing: 24.,
             font_size: 12.,
-            bold_active: false,
         }
     }
 
@@ -81,19 +80,11 @@ impl TabBar {
         self.font_size = font_size;
         self
     }
-
-    pub fn bold_active(mut self, bold_active: bool) -> Self {
-        self.bold_active = bold_active;
-        self
-    }
 }
 
-fn tab_label(
-    text: &str,
-    font_size: f32,
-    active: bool,
-    active_weight: FontWeight,
-) -> impl IntoElement {
+fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
+    const ACTIVE_WEIGHT: FontWeight = FontWeight::MEDIUM;
+
     rect()
         .center()
         .content(Content::Fit)
@@ -101,8 +92,9 @@ fn tab_label(
             label()
                 .text(text.to_string())
                 .font_size(font_size)
-                .font_weight(active_weight)
-                .color(Color::TRANSPARENT),
+                .font_weight(ACTIVE_WEIGHT)
+                .color(Color::TRANSPARENT)
+                .text_align(TextAlign::Center),
         )
         .child(
             rect()
@@ -119,11 +111,12 @@ fn tab_label(
                         .text(text.to_string())
                         .font_size(font_size)
                         .font_weight(if active {
-                            active_weight
+                            ACTIVE_WEIGHT
                         } else {
                             FontWeight::NORMAL
                         })
-                        .color(colors::fg_primary()),
+                        .color(colors::fg_primary())
+                        .text_align(TextAlign::Center),
                 ),
         )
 }
@@ -145,7 +138,6 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
 impl IntoElement for TabBar {
     fn into_element(self) -> Element {
         let font_size = self.font_size;
-        let bold_active = self.bold_active;
 
         rect()
             .horizontal()
@@ -156,11 +148,6 @@ impl IntoElement for TabBar {
             .content(Content::Fit)
             .children(self.tabs.into_iter().map(|tab| {
                 let active = tab.active;
-                let active_weight = if bold_active {
-                    FontWeight::BOLD
-                } else {
-                    FontWeight::MEDIUM
-                };
 
                 let mut el = rect()
                     .vertical()
@@ -182,7 +169,7 @@ impl IntoElement for TabBar {
                             rect()
                                 .vertical()
                                 .content(Content::Fit)
-                                .child(tab_label(&tab.label, font_size, active, active_weight))
+                                .child(tab_label(&tab.label, font_size, active))
                                 .child(
                                     rect()
                                         .height(Size::px(1.5))

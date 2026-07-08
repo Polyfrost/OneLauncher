@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use chrono::{Datelike, NaiveDate};
 use oneclient_core::clusters::Cluster;
@@ -238,4 +239,23 @@ fn version_sort_key(cluster: &Cluster) -> (u32, u32) {
     parse_mc_version(&cluster.mc_version)
         .map(|v| (v.major, v.minor.unwrap_or(0)))
         .unwrap_or((0, 0))
+}
+
+
+#[cfg(not(target_os = "linux"))]
+pub fn is_wayland() -> bool {
+	false
+}
+
+#[cfg(target_os = "linux")]
+pub fn is_wayland() -> bool {
+	static IS_WAYLAND: OnceLock<bool> = OnceLock::new();
+
+	*IS_WAYLAND.get_or_init(|| {
+		if cfg!(target_os = "linux") {
+			std::env::var("XDG_SESSION_TYPE").map(|v| v == "wayland").unwrap_or(false)
+		} else {
+			false
+		}
+	})
 }

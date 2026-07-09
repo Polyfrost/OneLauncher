@@ -143,7 +143,6 @@ impl Component for PackageBanner {
                                 .width(Size::fill())
                                 .height(Size::fill())
                                 .aspect_ratio(AspectRatio::Max)
-                                .blur(12.)
                                 .image_cover(ImageCover::Center),
                         )
                         .layer(Layer::Relative(1)),
@@ -153,6 +152,7 @@ impl Component for PackageBanner {
                         .position(Position::new_absolute().top(0.).left(0.))
                         .width(Size::fill())
                         .height(Size::fill())
+                        .blur(12.)
                         .background(BANNER_BG.with_a(120))
                         .overflow(Overflow::Clip)
                         .layer(Layer::Relative(3)),
@@ -166,7 +166,7 @@ impl Component for PackageBanner {
                                 .width(Size::px(icon))
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
-                                .corner_radius(CornerRadius::new_all(10.))
+                                .corner_radius(CornerRadius::new_all(10.)),
                         )
                         .layer(Layer::Relative(5)),
                 ),

@@ -111,6 +111,13 @@ image = {version = "=0.25.10", default-features = false, features = ["png", "jpe
 arboard = {version = "=3.6.1"}
 trash = {version = "=5.2.6"}
 
+# required for the SKSL player renderer
+freya-skia-safe = "=0.98.0"
+freya = { git = "https://github.com/marc2332/freya.git", ref = "be57ee3184e047ac932057cd063f7858741d41d9", branch = "fix/blur", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "titlebar"] }
+
+[patch.crates-io]
+freya = { git = "https://github.com/marc2332/freya.git", ref = "be57ee3184e047ac932057cd063f7858741d41d9", branch = "fix/blur" }
+
 [profile.release]
 opt-level = 3
 lto = "fat"

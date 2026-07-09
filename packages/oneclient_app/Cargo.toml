@@ -41,9 +41,8 @@ rfd = "=0.17.2"
 arboard.workspace = true
 image.workspace = true
 
-# required for the SKSL player renderer
-freya-skia-safe = "=0.98.0"
-freya = { git = "https://github.com/marc2332/freya.git", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "titlebar"] }
+freya-skia-safe.workspace = true
+freya.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
@@ -51,8 +50,6 @@ mimalloc = "=0.1.52"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
-[patch.crates-io]
-freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }
 # Build then package (per OS):
 #   cargo build --release -p oneclient_app
 #   cargo packager --release -p oneclient_app --formats <nsis|app,dmg|deb,appimage>

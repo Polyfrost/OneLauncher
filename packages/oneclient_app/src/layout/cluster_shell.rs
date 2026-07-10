@@ -7,10 +7,10 @@ use oneclient_core::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{use_clusters, use_dispatch, use_game_snapshot, use_version_metadata};
-use crate::view::app::launch_button_state;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
+use crate::view::app::launch_button_state;
 
 const HEADER_HEIGHT: f32 = 64.;
 const TABS_HEIGHT: f32 = 44.;
@@ -80,9 +80,7 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
         Route::ClusterOverview { cluster_id } => (*cluster_id, ClusterViewShellTab::Overview),
         Route::ClusterLogs { cluster_id } => (*cluster_id, ClusterViewShellTab::Logs),
         Route::ProcessLogs { cluster_id } => (*cluster_id, ClusterViewShellTab::GameLog),
-        Route::ClusterScreenshots { cluster_id } => {
-            (*cluster_id, ClusterViewShellTab::Screenshots)
-        }
+        Route::ClusterScreenshots { cluster_id } => (*cluster_id, ClusterViewShellTab::Screenshots),
         Route::ClusterMods { cluster_id } => (*cluster_id, ClusterViewShellTab::Mods),
         Route::ClusterShaders { cluster_id } => (*cluster_id, ClusterViewShellTab::Shaders),
         Route::ClusterTextures { cluster_id } => (*cluster_id, ClusterViewShellTab::Textures),
@@ -152,7 +150,12 @@ impl Component for ClusterShell {
                 rect()
                     .vertical()
                     .width(Size::fill())
-                    .padding(Gaps::new(BAR_SPACING, SIDE_PADDING, BAR_SPACING, SIDE_PADDING))
+                    .padding(Gaps::new(
+                        BAR_SPACING,
+                        SIDE_PADDING,
+                        BAR_SPACING,
+                        SIDE_PADDING,
+                    ))
                     .spacing(BAR_SPACING)
                     .maybe_child(header)
                     .child(cluster_tabs(active_tab, cluster_id, show_game_log)),
@@ -210,14 +213,16 @@ impl Component for ClusterContentOutlet {
             }
         });
 
-        if anim_finished {
-            if matches!(&*router.peek(), AnimatedRouterContext::FromTo(_, _)) {
-                router.write().settle();
-            }
+        if anim_finished && matches!(&*router.peek(), AnimatedRouterContext::FromTo(_, _)) {
+            router.write().settle();
         }
 
         const CONTENT_DX: f32 = 44.;
-        let p = if anim_finished { 1.0 } else { anim.get().value() };
+        let p = if anim_finished {
+            1.0
+        } else {
+            anim.get().value()
+        };
         let slide_x = if anim_finished || dir == 0. {
             0.
         } else {

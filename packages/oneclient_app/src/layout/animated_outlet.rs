@@ -92,10 +92,8 @@ impl Component for AnimatedAppOutlet {
             }
         });
 
-        if anim_finished {
-            if matches!(&*router.peek(), AnimatedRouterContext::FromTo(_, _)) {
-                router.write().settle();
-            }
+        if anim_finished && matches!(&*router.peek(), AnimatedRouterContext::FromTo(_, _)) {
+            router.write().settle();
         }
 
         let kind = match &*router.read() {
@@ -106,7 +104,11 @@ impl Component for AnimatedAppOutlet {
         let is_home = matches!(to, Route::Home {});
         let show_overlay = !hides_overlay(&to);
 
-        let p = if anim_finished { 1.0 } else { anim.get().value() };
+        let p = if anim_finished {
+            1.0
+        } else {
+            anim.get().value()
+        };
 
         let chrome_opacity = if kind == Enter::Up { p } else { 1.0 };
 

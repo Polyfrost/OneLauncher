@@ -41,7 +41,7 @@ pub use link_confirm::ConfirmLinkOverlay;
 pub use local_image::LocalImage;
 pub use log_viewer::LogViewer;
 pub use major_version_card::MajorVersionCard;
-pub use navbar::AppNavbar;
+pub use navbar::{AppNavbar, OnboardingNavbar};
 pub(crate) use navbar::window_controls;
 pub use notifications::NotificationCenter;
 pub use overlay_popup::OverlayPopup;

@@ -1,6 +1,8 @@
 mod app_navbar;
+mod onboarding_navbar;
 
 pub use app_navbar::Navbar as AppNavbar;
+pub use onboarding_navbar::OnboardingNavbar;
 
 use freya::prelude::*;
 

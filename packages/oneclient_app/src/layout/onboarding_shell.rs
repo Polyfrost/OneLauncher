@@ -4,12 +4,12 @@ use freya::prelude::*;
 use freya::router::{Outlet, use_route};
 
 use crate::Route;
-use crate::components::window_controls;
+use crate::components::OnboardingNavbar;
 use crate::hooks::{
     OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_migration,
     use_onboarding_bundles, use_provide_onboarding_selection,
 };
-use crate::theme::{self, colors};
+use crate::theme::colors;
 use crate::view::onboarding::{LoadingBackdrop, onboarding_step_index, onboarding_total};
 
 #[derive(PartialEq)]
@@ -71,7 +71,7 @@ impl Component for OnboardingShell {
                         step_index,
                         onboarding_total(detected_migration),
                     ))
-                    .child(header())
+                    .child(OnboardingNavbar)
                     .child(
                         rect()
                             .width(Size::fill())
@@ -97,29 +97,6 @@ fn progress_bar(step_index: usize, total: usize) -> impl IntoElement {
                 .height(Size::fill())
                 .background(colors::brand()),
         )
-}
-
-fn header() -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(theme::NAVBAR_HEIGHT_PX))
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .padding(Gaps::new_symmetric(0., 24.))
-        .window_drag()
-        .child(logo())
-        .child(rect().width(Size::flex(1.0)).height(Size::fill()))
-        .child(window_controls())
-}
-
-fn logo() -> impl IntoElement {
-    let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
-    svg(bytes.read().cloned())
-        .height(Size::px(36.))
-        .width(Size::px(170.))
-        .color(colors::fg_primary())
 }
 
 fn copyright() -> impl IntoElement {

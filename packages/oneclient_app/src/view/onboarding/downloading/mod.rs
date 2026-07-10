@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_core::ImportTarget;
 use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
@@ -11,12 +12,13 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::hooks::{
-    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, onboarding_bundles_items,
-    try_default_account, use_current_account, use_dispatch, use_onboarding_bundles,
-    use_onboarding_selection, use_settings_snapshot,
+    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, migration_detection,
+    onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
+    use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
 };
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::view::onboarding::matching_new_cluster_id;
 
 mod backdrop;
 mod progress;
@@ -185,6 +187,7 @@ impl Component for OnboardingDownloading {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let bundles_query = use_onboarding_bundles();
+        let migration_query = use_migration();
         let selection = use_onboarding_selection();
         let settings = use_settings_snapshot().settings;
         let account_query = use_current_account();
@@ -298,6 +301,34 @@ impl Component for OnboardingDownloading {
                 .map(|account| account.username.clone())
                 .unwrap_or_else(|| "Not signed in".to_string());
 
+            let import_dispatch = dispatch.clone();
+            let import_folder = selection.import_folder;
+            let import_dedicated = selection.import_dedicated;
+            let import_detection = migration_detection(&migration_query);
+            let import_items = items.clone();
+
+            let migration_summary = import_detection.as_ref().map(|detection| {
+                let source_name = detection.source.display_name().to_string();
+                match import_folder.read().clone() {
+                    Some(folder) => {
+                        let dedicated = *import_dedicated.read()
+                            && detection
+                                .instances
+                                .iter()
+                                .find(|c| c.folder_name == folder)
+                                .and_then(|inst| matching_new_cluster_id(inst, &items))
+                                .is_some();
+                        let target = if dedicated {
+                            "This version only"
+                        } else {
+                            "Shared game directory"
+                        };
+                        (source_name, folder, target.to_string())
+                    }
+                    None => (source_name, "No files imported".to_string(), String::new()),
+                }
+            });
+
             return summary_view(
                 &items,
                 &selected,
@@ -305,8 +336,26 @@ impl Component for OnboardingDownloading {
                 reduce_motion,
                 settings.dynamic_background_enabled,
                 account_name,
+                migration_summary,
                 predownload_state,
                 move |_| {
+                    if let (Some(detection), Some(folder)) =
+                        (import_detection.as_ref(), import_folder.peek().clone())
+                    {
+                        let target = if *import_dedicated.peek() {
+                            detection
+                                .instances
+                                .iter()
+                                .find(|c| c.folder_name == folder)
+                                .and_then(|inst| matching_new_cluster_id(inst, &import_items))
+                                .map(|new_cluster_id| ImportTarget::Dedicated { new_cluster_id })
+                                .unwrap_or(ImportTarget::Shared)
+                        } else {
+                            ImportTarget::Shared
+                        };
+                        import_dispatch.import_launcher(detection.source, folder, target);
+                    }
+
                     setup_started.set(true);
                     confirmed.set(true);
                 },
@@ -722,7 +771,7 @@ fn finish_onboarding(
                 .iter()
                 .map(|cb| cb.cluster.mc_version.clone())
                 .collect();
-            
+
             versions.sort();
             versions.dedup();
             versions

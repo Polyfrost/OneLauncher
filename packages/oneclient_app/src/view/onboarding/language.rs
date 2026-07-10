@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::IconType;
-use crate::hooks::use_onboarding_selection;
+use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -25,6 +25,12 @@ impl Component for OnboardingLanguage {
     fn render(&self) -> impl IntoElement {
         let selected = use_state(|| 0usize);
         let language = use_onboarding_selection().language;
+        let migration_query = use_migration();
+        let back = if has_migration_data(&migration_query) {
+            Route::OnboardingMigration {}
+        } else {
+            Route::OnboardingWelcome {}
+        };
 
         let rows: Vec<Element> = LANGUAGES
             .iter()
@@ -55,11 +61,7 @@ impl Component for OnboardingLanguage {
         onboarding_page(
             onboarding_illustration(IconType::OnboardingLanguage),
             content,
-            onboarding_nav(
-                Some(Route::OnboardingWelcome {}),
-                Route::OnboardingAccount {},
-                true,
-            ),
+            onboarding_nav(Some(back), Route::OnboardingAccount {}, true),
         )
     }
 }

@@ -2,6 +2,7 @@ mod account;
 mod bundles;
 mod downloading;
 mod language;
+mod migration;
 mod preferences;
 mod welcome;
 
@@ -9,6 +10,8 @@ pub use account::OnboardingAccount;
 pub use bundles::OnboardingBundles;
 pub use downloading::{LoadingBackdrop, OnboardingDownloading};
 pub use language::OnboardingLanguage;
+pub use migration::OnboardingMigration;
+pub(crate) use migration::matching_new_cluster_id;
 pub use preferences::OnboardingPreferences;
 pub use welcome::OnboardingWelcome;
 
@@ -20,20 +23,27 @@ use freya::router::{RouterContext, use_route};
 
 use crate::Route;
 use crate::components::{Button, Icon, IconType, toggle};
-use crate::hooks::use_onboarding_selection;
+use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::theme::colors;
 use crate::ui::{border_all_color, entrance_motion_layer};
 
-pub const ONBOARDING_TOTAL: usize = 6;
+/// Number of onboarding steps. The v1-migration step only exists (and is only
+/// counted) when old launcher data was detected.
+pub fn onboarding_total(has_migration: bool) -> usize {
+    if has_migration { 7 } else { 6 }
+}
 
-pub fn onboarding_step_index(route: &Route) -> usize {
+pub fn onboarding_step_index(route: &Route, has_migration: bool) -> usize {
+    let shift = if has_migration { 1 } else { 0 };
+
     match route {
         Route::OnboardingWelcome {} => 0,
-        Route::OnboardingLanguage {} => 1,
-        Route::OnboardingAccount {} => 2,
-        Route::OnboardingBundles {} => 3,
-        Route::OnboardingPreferences {} => 4,
-        Route::OnboardingDownloading {} => 5,
+        Route::OnboardingMigration {} => 1,
+        Route::OnboardingLanguage {} => 1 + shift,
+        Route::OnboardingAccount {} => 2 + shift,
+        Route::OnboardingBundles {} => 3 + shift,
+        Route::OnboardingPreferences {} => 4 + shift,
+        Route::OnboardingDownloading {} => 5 + shift,
         _ => 0,
     }
 }
@@ -44,7 +54,8 @@ const SLIDE_DISTANCE: f32 = 44.;
 
 pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
     let route = use_route::<Route>();
-    let step = onboarding_step_index(&route);
+    let migration_query = use_migration();
+    let step = onboarding_step_index(&route, has_migration_data(&migration_query));
     let reduce_motion = use_onboarding_selection().reduce_motion;
 
     let direction = use_hook(|| {

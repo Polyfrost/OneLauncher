@@ -16,6 +16,7 @@ pub mod java;
 pub mod logger;
 pub mod logs;
 pub mod metadata;
+pub mod migration;
 pub mod minecraft;
 pub mod notification;
 pub mod os_ext;
@@ -51,6 +52,10 @@ pub use logs::{
     delete_log_at, list_cluster_logs, read_log_at, upload_log_at,
 };
 pub use metadata::{MetadataError, MetadataStore};
+pub use migration::{
+    detect as detect_migration, import_game_dir as import_migration_game_dir, ImportTarget,
+    MigrationDetection, MigrationSource, SourceInstance,
+};
 pub use screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
 };

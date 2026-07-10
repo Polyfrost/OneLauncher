@@ -42,6 +42,19 @@ impl BridgeDispatch {
         self.send(BridgeCommand::MarkOnboardingSeen);
     }
 
+    pub fn import_launcher(
+        &self,
+        source: oneclient_core::MigrationSource,
+        folder_name: impl Into<String>,
+        target: oneclient_core::ImportTarget,
+    ) {
+        self.send(BridgeCommand::ImportLauncher {
+            source,
+            folder_name: folder_name.into(),
+            target,
+        });
+    }
+
     pub fn save_global_profile(&self, profile: GameSettingsProfile) {
         self.send(BridgeCommand::SaveGlobalProfile { profile });
     }

@@ -89,4 +89,10 @@ pub enum BridgeCommand {
     },
     ApplyBundleUpdates { cluster_id: ClusterId },
     SyncBundles,
+
+    ImportLauncher {
+        source: oneclient_core::MigrationSource,
+        folder_name: String,
+        target: oneclient_core::ImportTarget,
+    },
 }

@@ -402,6 +402,25 @@ impl CoreBridgeRuntime {
                 bump_clusters_generation(snapshots);
             }
 
+            BridgeCommand::ImportLauncher { source, folder_name, target } => {
+                let state = LauncherState::get()?;
+                tokio::spawn(async move {
+                    let notifier = state.services.notifier.clone();
+                    match oneclient_core::import_migration_game_dir(source, &folder_name, target).await {
+                        Ok(()) => {
+                            notifier.send_info(
+                                "Import complete",
+                                &format!("Copied your files from {}.", source.display_name()),
+                            );
+
+							notifier.invalidate_clusters();
+                        }
+                        Err(err) => {
+                            notifier.send_error("Import failed", &err.to_string());
+                        }
+                    }
+                });
+            }
             BridgeCommand::InstallJavaRuntime { vendor, major } => {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
@@ -691,7 +710,7 @@ async fn install_package(
     let version = provider_impl
         .get_version(project_id, version_id, &state.services)
         .await?;
-    
+
     PackageStore::install_to_cluster(
         provider,
         &project,

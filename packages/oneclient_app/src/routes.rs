@@ -23,7 +23,7 @@ use crate::view::{
     },
     onboarding::{
         OnboardingAccount, OnboardingBundles, OnboardingDownloading, OnboardingLanguage,
-        OnboardingPreferences, OnboardingWelcome,
+        OnboardingMigration, OnboardingPreferences, OnboardingWelcome,
     },
 };
 
@@ -37,6 +37,8 @@ pub enum Route {
         #[layout(OnboardingShell)]
             #[route("/onboarding")]
             OnboardingWelcome {},
+            #[route("/onboarding/migration")]
+            OnboardingMigration {},
             #[route("/onboarding/language")]
             OnboardingLanguage {},
             #[route("/onboarding/account")]
@@ -118,6 +120,7 @@ impl Route {
         match self {
             Route::Startup { .. } => "Startup".to_string(),
             Route::OnboardingWelcome { .. } => "Welcome".to_string(),
+            Route::OnboardingMigration { .. } => "Migration".to_string(),
             Route::OnboardingLanguage { .. } => "Language".to_string(),
             Route::OnboardingAccount { .. } => "Account".to_string(),
             Route::OnboardingPreferences { .. } => "Accessibility".to_string(),

@@ -18,6 +18,7 @@ pub(super) fn summary_view(
     reduce_motion: bool,
     parallax: bool,
     account_name: String,
+    migration: Option<(String, String, String)>,
     predownload: State<bool>,
     on_setup: impl FnMut(Event<PressEventData>) + 'static,
 ) -> impl IntoElement {
@@ -43,6 +44,17 @@ pub(super) fn summary_view(
         "Content is downloaded the first time you launch each version.".to_string()
     };
 
+    let migration_section: Element = match migration {
+        Some((source, folder, target)) => {
+            let mut rows = vec![summary_line("From", &source), summary_line("Files", &folder)];
+            if !target.is_empty() {
+                rows.push(summary_line("Destination", &target));
+            }
+            summary_section("Migration", None, rows).into_element()
+        }
+        None => rect().into_element(),
+    };
+
     let content = rect()
         .vertical()
         .width(Size::fill())
@@ -66,6 +78,7 @@ pub(super) fn summary_view(
                         summary_line("Account", &account_name),
                     ],
                 ))
+                .child(migration_section)
                 .child(summary_section(
                     "Accessibility",
                     None,

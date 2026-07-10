@@ -75,6 +75,10 @@ pub struct OnboardingSelectionState {
     pub reduce_motion: State<bool>,
     pub predownload: State<bool>,
     pub setup_started: State<bool>,
+    /// v1-migration: source folder to import files from (`None` = don't import).
+    pub import_folder: State<Option<String>>,
+    /// v1-migration: import into the matching cluster's own dir instead of shared.
+    pub import_dedicated: State<bool>,
 }
 
 pub fn use_provide_onboarding_selection(state: OnboardingSelectionState) {

@@ -60,7 +60,6 @@ category = "Game"
 publisher = "Polyfrost"
 copyright = "© 2026 Polyfrost Inc."
 homepage = "https://polyfrost.org/projects/oneclient"
-license-file = "../../LICENSE"
 long-description = "Next-generation open source Minecraft launcher"
 formats = ["nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
@@ -77,8 +76,10 @@ minimum-system-version = "10.15"
 entitlements = "distribution/App.entitlements"
 
 [package.metadata.packager.dmg]
-app-position = { x = 190, y = 190 }
-application-folder-position = { x = 470, y = 190 }
+background = "distribution/dmg-background.tiff"
+window-size = { width = 600, height = 400 }
+app-position = { x = 160, y = 190 }
+application-folder-position = { x = 440, y = 190 }
 
 [package.metadata.packager.windows]
 digest-algorithm = "sha256"

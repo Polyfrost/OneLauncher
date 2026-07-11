@@ -198,12 +198,22 @@ pub async fn launch_cluster(
     let cwd = game_dir;
     tokio::fs::create_dir_all(&cwd).await.ok();
 
-    if !dedicated
-        && let Err(err) =
+    if let Err(err) = crate::game::write_allowed_symlinks(&cwd).await {
+        tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
+    }
+
+    if !dedicated {
+        if let Err(err) =
             crate::game::sync_shared_content(&state.services, &cluster, &cwd).await
         {
             tracing::warn!(cluster_id, error = %err, "failed to sync shared content");
         }
+        // Redirect the shared dir's `logs`/`crash-reports` into this cluster's
+        // own folder so its output is attributable while it plays; unlinked on
+        // exit. Keeps the shared `.minecraft` (and the launcher's own logs dir)
+        // free of another cluster's leftovers.
+        crate::game::link_cluster_logs(&cluster, &cwd).await;
+    }
 
     let client_jar = paths::versions_dir()?
         .join(&version_name)
@@ -286,7 +296,7 @@ pub async fn launch_cluster(
     state.games.set_pid(cluster_id, pid);
     state.games.set_dir(cluster_id, cwd.clone());
 
-    let log_path = paths::logs_dir()?.join(format!("cluster-{cluster_id}.log"));
+    let log_path = crate::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
         tokio::fs::create_dir_all(parent).await.ok();
     }
@@ -347,6 +357,7 @@ pub async fn launch_cluster(
             if let Err(err) = crate::game::clear_shared_content(&cwd).await {
                 tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
             }
+            crate::game::unlink_cluster_logs(&cwd).await;
         }
 
         match status {

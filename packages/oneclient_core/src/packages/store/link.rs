@@ -49,21 +49,14 @@ pub async fn link_artifact_to_cluster(
 
 pub async fn link_or_copy(src: &Path, dest: &Path) -> LauncherResult<()> {
 	if dest.exists() {
-		tokio::fs::remove_file(dest).await?;
+		polyio::remove_file(dest).await?;
 	}
 
-	#[cfg(unix)]
-	{
-		if tokio::fs::symlink(src, dest).await.is_ok() {
-			return Ok(());
-		}
-	}
-
-	if tokio::fs::hard_link(src, dest).await.is_ok() {
+	if polyio::symlink_file(src, dest).await.is_ok() {
 		return Ok(());
 	}
 
-	tokio::fs::copy(src, dest).await?;
+	polyio::copy(src, dest).await?;
 	Ok(())
 }
 

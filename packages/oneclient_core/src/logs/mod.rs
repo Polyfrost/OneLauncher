@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 
 pub use error::LogsError;
-pub use manage::{delete_log_at, list_cluster_logs, read_log_at};
+pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_at};
 pub use mclogs::upload_log_at;
 pub use parse::parse_level;
 

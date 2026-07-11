@@ -67,7 +67,8 @@ fn collect_dir(
 
 pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> {
     let mut out = Vec::new();
-    let dir = cluster.game_dir()?;
+
+    let dir = cluster.dir()?;
 
     collect_dir(
         &dir.join("logs"),
@@ -83,9 +84,8 @@ pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> 
         &mut out,
     );
 
-    let captured = paths::logs_dir()?.join(format!("cluster-{}.log", cluster.id));
     push_file(
-        captured,
+        cluster_output_log(cluster)?,
         "Launcher output".to_string(),
         LogKind::Game {
             cluster_id: cluster.id,
@@ -95,6 +95,10 @@ pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> 
 
     out.sort_by_key(|info| std::cmp::Reverse(info.modified));
     Ok(out)
+}
+
+pub fn cluster_output_log(cluster: &Cluster) -> LauncherResult<PathBuf> {
+    Ok(cluster.dir()?.join("cluster-output.log"))
 }
 
 pub(super) fn lines_from(content: &str, opts: &ReadOptions) -> Vec<LogLine> {

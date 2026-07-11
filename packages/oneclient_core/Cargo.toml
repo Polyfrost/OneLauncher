@@ -94,6 +94,7 @@ trash.workspace = true
 strum.workspace = true
 serde_repr = { version = "=0.1.20" }
 thiserror.workspace = true
+regex.workspace = true
 
 # crypto
 digest.workspace = true
@@ -115,4 +116,3 @@ sanitize-filename.workspace = true
 dunce.workspace = true
 bytes.workspace = true
 indicatif.workspace = true
-

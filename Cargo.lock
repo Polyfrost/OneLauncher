@@ -4170,6 +4170,7 @@ dependencies = [
  "parking_lot",
  "polyio",
  "rand 0.10.1",
+ "regex",
  "reqwest 0.13.3",
  "sanitize-filename",
  "serde",

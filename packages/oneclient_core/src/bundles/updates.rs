@@ -593,17 +593,26 @@ pub async fn get_bundles_with_update_status(
 pub async fn apply_bundle_updates_for_all_clusters(
     bundles: &BundlesManager,
     services: &LauncherServices,
-) -> LauncherResult<()> {
+) -> LauncherResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
+    let mut changed = Vec::new();
     for cluster in cluster_dao::list_all(&services.db).await? {
-        if let Err(err) = apply_bundle_updates(cluster.id, bundles, services).await {
-            tracing::warn!(
+        match apply_bundle_updates(cluster.id, bundles, services).await {
+            Ok(result) => {
+                if !result.updates_applied.is_empty()
+                    || !result.additions_applied.is_empty()
+                    || !result.removals_applied.is_empty()
+                {
+                    changed.push((cluster.id, result));
+                }
+            }
+            Err(err) => tracing::warn!(
                 cluster_id = cluster.id,
                 error = %err,
                 "bundle update apply failed for cluster"
-            );
+            ),
         }
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn bundle_package_key(

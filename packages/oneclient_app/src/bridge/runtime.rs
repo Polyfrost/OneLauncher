@@ -7,8 +7,10 @@ use oneclient_core::settings::store::{
 use oneclient_core::{ClusterManager, LauncherState};
 use tokio::sync::{mpsc, watch};
 
+use crate::components::IconType;
 use crate::notifications::{
-    InboxEntry, MESSAGE_TOAST_TTL, NotificationState, PendingPrompt, PendingPromptView,
+    ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction, NotificationActionKind,
+    NotificationSpec, NotificationState, PendingPrompt, PendingPromptView,
 };
 
 use super::commands::BridgeCommand;
@@ -515,6 +517,13 @@ impl CoreBridgeRuntime {
                     let _ = reply_tx.send(choice);
                 }
             }
+            BridgeCommand::OpenClusterUpdate(summary) => {
+                notification_engine.open_cluster_update(summary);
+                *notification_center_open = false;
+            }
+            BridgeCommand::CloseClusterUpdate => {
+                notification_engine.close_cluster_update();
+            }
             BridgeCommand::SendNotification { spec } => {
                 notification_engine.push_custom(inbox, spec);
             }
@@ -637,29 +646,98 @@ impl CoreBridgeRuntime {
             }
             BridgeCommand::ApplyBundleUpdates { cluster_id } => {
                 let state = LauncherState::get()?;
-                oneclient_core::apply_bundle_updates(
+                let result = oneclient_core::apply_bundle_updates(
                     cluster_id,
                     state.bundles.as_ref(),
                     &state.services,
                 )
                 .await?;
                 bump_clusters_generation(snapshots);
+                if let Some(spec) =
+                    cluster_update_notification(cluster_id, &result, &state.services).await
+                {
+                    notification_engine.push_custom(inbox, spec);
+                }
             }
             BridgeCommand::SyncBundles => {
                 let state = LauncherState::get()?;
                 state.bundles.sync(&state.services).await?;
                 oneclient_core::clusters::ensure_from_bundles(&state).await?;
-                oneclient_core::bundles::sync_all_cluster_bundles(
+                let changed = oneclient_core::bundles::sync_all_cluster_bundles(
                     state.bundles.as_ref(),
                     &state.services,
                 )
                 .await;
                 bump_clusters_generation(snapshots);
+                for (cluster_id, result) in &changed {
+                    if let Some(spec) =
+                        cluster_update_notification(*cluster_id, result, &state.services).await
+                    {
+                        notification_engine.push_custom(inbox, spec);
+                    }
+                }
             }
         }
 
         Ok(())
     }
+}
+
+async fn cluster_update_notification(
+    cluster_id: i64,
+    result: &oneclient_core::ApplyBundleUpdatesResult,
+    services: &oneclient_core::LauncherServices,
+) -> Option<NotificationSpec> {
+    let updated: Vec<String> = result
+        .updates_applied
+        .iter()
+        .map(|u| u.new_file.display_name())
+        .collect();
+    let added: Vec<String> = result
+        .additions_applied
+        .iter()
+        .map(|a| a.new_file.display_name())
+        .collect();
+    let removed: Vec<String> = result
+        .removals_applied
+        .iter()
+        .map(|r| r.package_id.clone())
+        .collect();
+
+    if updated.is_empty() && added.is_empty() && removed.is_empty() {
+        return None;
+    }
+
+    let cluster_name = PackageStore::get_cluster(cluster_id, services)
+        .await
+        .map(|c| c.name)
+        .unwrap_or_else(|_| "Cluster".to_string());
+
+    let summary = ClusterUpdateSummary {
+        cluster_id,
+        cluster_name: cluster_name.clone(),
+        updated,
+        added,
+        removed,
+    };
+
+    let total = summary.total();
+    let body = format!(
+        "{total} package{} changed in {cluster_name}",
+        if total == 1 { "" } else { "s" }
+    );
+
+    Some(NotificationSpec {
+        title: "Cluster updated".to_string(),
+        body,
+        level: NotificationLevel::Info,
+        icon: Some(IconType::DownloadCloud02),
+        progress: None,
+        actions: vec![NotificationAction {
+            label: "View changes".to_string(),
+            kind: NotificationActionKind::OpenClusterUpdate(summary),
+        }],
+    })
 }
 
 fn publish(tx: &watch::Sender<BridgeSnapshot>, snapshots: &BridgeSnapshot) {

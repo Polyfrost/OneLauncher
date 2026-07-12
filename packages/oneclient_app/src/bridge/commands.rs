@@ -6,7 +6,7 @@ use oneclient_core::packages::{ContentType, ProviderId};
 use oneclient_core::settings::{GameSettingsProfile, LauncherSettings, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 
-use crate::notifications::NotificationSpec;
+use crate::notifications::{ClusterUpdateSummary, NotificationSpec};
 
 #[derive(Debug)]
 pub enum BridgeCommand {
@@ -62,6 +62,8 @@ pub enum BridgeCommand {
     MarkNotificationRead(u64),
     DismissNotification(u64),
     AnswerPrompt(UserChoice),
+    OpenClusterUpdate(ClusterUpdateSummary),
+    CloseClusterUpdate,
     SendNotification { spec: NotificationSpec },
     SendTestProgress {
         current: u64,

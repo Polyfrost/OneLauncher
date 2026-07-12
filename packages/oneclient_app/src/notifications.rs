@@ -4,12 +4,39 @@ use std::time::{Duration, Instant};
 use oneclient_core::notification::{
     GroupedProgressEvent, Notification, NotificationLevel, PromptKind, UserChoice,
 };
+use oneclient_db::models::ClusterId;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::components::IconType;
 
 pub const MESSAGE_TOAST_TTL: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NotificationAction {
+    pub label: String,
+    pub kind: NotificationActionKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NotificationActionKind {
+    OpenClusterUpdate(ClusterUpdateSummary),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClusterUpdateSummary {
+    pub cluster_id: ClusterId,
+    pub cluster_name: String,
+    pub updated: Vec<String>,
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+}
+
+impl ClusterUpdateSummary {
+    pub fn total(&self) -> usize {
+        self.updated.len() + self.added.len() + self.removed.len()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InboxEntry {
@@ -22,7 +49,7 @@ pub struct InboxEntry {
     pub is_loading: bool,
     pub read: bool,
     pub created_at: Instant,
-    pub actions: Vec<String>,
+    pub actions: Vec<NotificationAction>,
     pub tasks: Vec<TaskView>,
 }
 
@@ -41,7 +68,7 @@ pub struct NotificationSpec {
     pub level: NotificationLevel,
     pub icon: Option<IconType>,
     pub progress: Option<(u64, u64)>,
-    pub actions: Vec<String>,
+    pub actions: Vec<NotificationAction>,
 }
 
 impl InboxEntry {
@@ -89,6 +116,7 @@ pub struct NotificationSnapshot {
     pub inbox: Vec<InboxEntry>,
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
+    pub cluster_update: Option<ClusterUpdateSummary>,
     pub active_toast_entry_ids: Vec<u64>,
 }
 
@@ -106,6 +134,7 @@ pub struct NotificationState {
     grouped_entries: HashMap<Uuid, u64>,
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
+    cluster_update: Option<ClusterUpdateSummary>,
 }
 
 #[derive(Default)]
@@ -145,8 +174,17 @@ impl NotificationState {
             inbox: inbox.to_vec(),
             center_open,
             pending_prompt,
+            cluster_update: self.cluster_update.clone(),
             active_toast_entry_ids: self.active_toasts.iter().map(|t| t.entry_id).collect(),
         }
+    }
+
+    pub fn open_cluster_update(&mut self, summary: ClusterUpdateSummary) {
+        self.cluster_update = Some(summary);
+    }
+
+    pub fn close_cluster_update(&mut self) {
+        self.cluster_update = None;
     }
 
     pub fn unread_count(inbox: &[InboxEntry]) -> usize {
@@ -283,7 +321,7 @@ impl NotificationState {
         if inbox
             .iter()
             .find(|e| e.id == entry_id)
-            .is_some_and(|e| e.click_dismissable())
+            .is_some_and(|e| e.dismissable())
         {
             self.forget_entry(inbox, entry_id);
         }

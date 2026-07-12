@@ -4,7 +4,7 @@ use oneclient_db::models::ClusterId;
 
 use crate::bridge::{BridgeCommand, OneClientBridge};
 use crate::components::IconType;
-use crate::notifications::NotificationSpec;
+use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationSpec};
 
 #[derive(Clone)]
 pub struct BridgeDispatch {
@@ -184,6 +184,14 @@ impl BridgeDispatch {
         self.send(BridgeCommand::AnswerPrompt(choice));
     }
 
+    pub fn open_cluster_update(&self, summary: ClusterUpdateSummary) {
+        self.send(BridgeCommand::OpenClusterUpdate(summary));
+    }
+
+    pub fn close_cluster_update(&self) {
+        self.send(BridgeCommand::CloseClusterUpdate);
+    }
+
     pub fn notify(&self, title: impl Into<String>) -> NotificationBuilder {
         NotificationBuilder {
             dispatch: self.clone(),
@@ -299,13 +307,13 @@ impl NotificationBuilder {
         self
     }
 
-    pub fn action(mut self, label: impl Into<String>) -> Self {
-        self.spec.actions.push(label.into());
+    pub fn action(mut self, action: NotificationAction) -> Self {
+        self.spec.actions.push(action);
         self
     }
 
-    pub fn actions(mut self, actions: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.spec.actions = actions.into_iter().map(Into::into).collect();
+    pub fn actions(mut self, actions: impl IntoIterator<Item = NotificationAction>) -> Self {
+        self.spec.actions = actions.into_iter().collect();
         self
     }
 

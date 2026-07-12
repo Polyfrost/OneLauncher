@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, NotificationCenter, StatusBar, Toasts, UpdatePromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, NotificationCenter, StatusBar, Toasts, UpdatePromptOverlay,
 };
 use crate::routes::Route;
 use crate::theme;
@@ -31,6 +31,7 @@ impl Component for RootLayout {
             .child(AccountSwitcher)
             .child(Toasts)
             .child(UpdatePromptOverlay)
+            .child(ClusterUpdatePopup)
             .child(StatusBar)
     }
 }

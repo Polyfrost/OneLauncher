@@ -1,4 +1,4 @@
-use oneclient_core::notification::{NotificationLevel, Notification, NotificationService};
+use oneclient_core::notification::{Notification, NotificationLevel, NotificationService};
 use oneclient_core::packages::PackageStore;
 use oneclient_core::settings::store::{
     self, create_profile_from_global, create_settings_profile, delete_named_profile,
@@ -402,18 +402,24 @@ impl CoreBridgeRuntime {
                 bump_clusters_generation(snapshots);
             }
 
-            BridgeCommand::ImportLauncher { source, folder_name, target } => {
+            BridgeCommand::ImportLauncher {
+                source,
+                folder_name,
+                target,
+            } => {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
                     let notifier = state.services.notifier.clone();
-                    match oneclient_core::import_migration_game_dir(source, &folder_name, target).await {
+                    match oneclient_core::import_migration_game_dir(source, &folder_name, target)
+                        .await
+                    {
                         Ok(()) => {
                             notifier.send_info(
                                 "Import complete",
                                 &format!("Copied your files from {}.", source.display_name()),
                             );
 
-							notifier.invalidate_clusters();
+                            notifier.invalidate_clusters();
                         }
                         Err(err) => {
                             notifier.send_error("Import failed", &err.to_string());
@@ -477,6 +483,12 @@ impl CoreBridgeRuntime {
             }
             BridgeCommand::CloseNotificationCenter => {
                 *notification_center_open = false;
+            }
+            BridgeCommand::ToggleAccountSwitcher => {
+                snapshots.account_switcher_open = !snapshots.account_switcher_open;
+            }
+            BridgeCommand::CloseAccountSwitcher => {
+                snapshots.account_switcher_open = false;
             }
             BridgeCommand::ClearNotificationInbox => {
                 inbox.clear();
@@ -587,7 +599,8 @@ impl CoreBridgeRuntime {
                 version_id,
             } => {
                 let state = LauncherState::get()?;
-                match install_package(&state, provider, &project_id, &version_id, cluster_id).await {
+                match install_package(&state, provider, &project_id, &version_id, cluster_id).await
+                {
                     Ok(()) => {
                         state
                             .services
@@ -702,7 +715,9 @@ async fn install_package(
     cluster_id: i64,
 ) -> anyhow::Result<()> {
     let provider_impl = state.services.packages.get(provider)?;
-    let project = provider_impl.get_project(project_id, &state.services).await?;
+    let project = provider_impl
+        .get_project(project_id, &state.services)
+        .await?;
     let version = provider_impl
         .get_version(project_id, version_id, &state.services)
         .await?;
@@ -732,7 +747,10 @@ fn apply_game_stage(snapshots: &mut BridgeSnapshot, cluster_id: i64, stage: Laun
 }
 
 fn apply_game_failed(snapshots: &mut BridgeSnapshot, cluster_id: i64, message: String) {
-    snapshots.game.stages.insert(cluster_id, LaunchStage::Exited);
+    snapshots
+        .game
+        .stages
+        .insert(cluster_id, LaunchStage::Exited);
     snapshots.game.error = Some(message);
 }
 

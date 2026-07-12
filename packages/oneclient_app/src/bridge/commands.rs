@@ -54,6 +54,8 @@ pub enum BridgeCommand {
 
     ToggleNotificationCenter,
     CloseNotificationCenter,
+    ToggleAccountSwitcher,
+    CloseAccountSwitcher,
     ClearNotificationInbox,
     DismissToast(u64),
     BumpToast(u64),

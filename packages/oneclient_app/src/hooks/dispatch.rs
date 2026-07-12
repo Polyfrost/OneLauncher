@@ -152,6 +152,14 @@ impl BridgeDispatch {
         self.send(BridgeCommand::CloseNotificationCenter);
     }
 
+    pub fn toggle_account_switcher(&self) {
+        self.send(BridgeCommand::ToggleAccountSwitcher);
+    }
+
+    pub fn close_account_switcher(&self) {
+        self.send(BridgeCommand::CloseAccountSwitcher);
+    }
+
     pub fn clear_notification_inbox(&self) {
         self.send(BridgeCommand::ClearNotificationInbox);
     }

@@ -98,4 +98,5 @@ pub struct BridgeSnapshot {
     pub java: JavaSnapshot,
     pub notifications: crate::notifications::NotificationSnapshot,
     pub game: GameSnapshot,
+    pub account_switcher_open: bool,
 }

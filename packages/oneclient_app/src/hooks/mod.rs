@@ -88,6 +88,10 @@ pub fn use_notifications_snapshot() -> NotificationSnapshot {
     use_snapshots().notifications
 }
 
+pub fn use_account_switcher_open() -> bool {
+    use_snapshots().account_switcher_open
+}
+
 pub fn use_game_snapshot() -> GameSnapshot {
     use_snapshots().game
 }

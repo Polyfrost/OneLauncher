@@ -1,3 +1,4 @@
+mod account_switcher;
 mod active_cluster_panel;
 mod avatar;
 mod button;
@@ -28,6 +29,7 @@ mod toasts;
 mod toggle;
 mod update_prompt;
 
+pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};

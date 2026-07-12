@@ -14,6 +14,7 @@ use crate::utils::sort_clusters_for_home;
 const ROW_HEIGHT_PX: f32 = 208.0;
 const CARD_GAP_PX: f32 = 24.0;
 const MORE_TILE_WIDTH_PX: f32 = 96.0;
+const MIN_CARD_WIDTH_PX: f32 = 300.0;
 const MAX_CARD_WIDTH_PX: f32 = 480.0;
 const CARD_MS: u64 = 460;
 const STAGGER_MS: u64 = 85;
@@ -121,6 +122,7 @@ impl Component for ClusterCard {
         rect()
             .key(self.cluster.id)
             .width(Size::flex(1.0))
+            .min_width(Size::px(MIN_CARD_WIDTH_PX))
             .max_width(Size::px(MAX_CARD_WIDTH_PX))
             .height(Size::fill())
             .offset_y(rise)
@@ -257,15 +259,15 @@ impl Component for OtherVersionsTile {
 }
 
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
-    const MORE_TILE_WIDTH: f32 = 96.0;
-    const GAP: f32 = 24.0;
-    const MIN_CARD_WIDTH: f32 = 300.0;
-
-    if row_width_px <= MORE_TILE_WIDTH + GAP {
+    // Layout is: [card gap]* more-tile — i.e. N cards each followed by a gap,
+    // then the fixed-width more-tile. So width for N cards is:
+    //   N * MIN_CARD_WIDTH + N * GAP + MORE_TILE_WIDTH
+    // Solve for the largest N that fits.
+    if row_width_px <= MORE_TILE_WIDTH_PX + CARD_GAP_PX {
         return 0;
     }
 
-    let available = row_width_px - MORE_TILE_WIDTH - GAP;
-    let slot = MIN_CARD_WIDTH + GAP;
+    let available = row_width_px - MORE_TILE_WIDTH_PX;
+    let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
     (available / slot).floor() as usize
 }

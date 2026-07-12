@@ -15,38 +15,43 @@ pub use active_cluster::{
 
 pub use dispatch::BridgeDispatch;
 pub use queries::{
-    AddOfflineAccountKeys, BROWSE_PAGE_SIZE, CachedImageQuery, ClusterAction, ClusterBundles,
-    ClusterLogsQuery, LogAction, LogContentQuery, MigrationQuery, OnboardingBundlesQuery,
-    RefreshAccountKeys, RemoveAccountKeys, ScreenshotAction, SetDefaultAccountKeys, UploadLogKeys,
-    UploadLogMutation, UseLogAction, UseRefreshAccount, UseRemoveAccount, UseScreenshotAction,
-    UseSetDefaultAccount, UseUploadLog, VERSIONS_PAGE_SIZE, accounts_have_microsoft,
-    bundle_overrides_map, bundles_with_status_items, category_list, changelog_error,
-    changelog_groups, changelog_is_loading, cluster_content_items, content_type_for_slug,
-    has_migration_data, invalidate_cluster_queries, invalidate_java_queries,
+    AddOfflineAccountKeys, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation, CachedImageQuery,
+    CancelMicrosoftLoginKeys, CancelMicrosoftLoginMutation, ClusterAction, ClusterBundles,
+    ClusterLogsQuery, FinishMicrosoftLoginMutation, LogAction, LogContentQuery, MigrationQuery,
+    OnboardingBundlesQuery, RefreshAccountKeys, RemoveAccountKeys, ScreenshotAction,
+    SetDefaultAccountKeys, UploadLogKeys, UploadLogMutation, UseLogAction, UseRefreshAccount,
+    UseRemoveAccount, UseScreenshotAction, UseSetDefaultAccount, UseUploadLog, VERSIONS_PAGE_SIZE,
+    accounts_have_microsoft, bundle_overrides_map, bundles_with_status_items, category_list,
+    changelog_error, changelog_groups, changelog_is_loading, cluster_content_items,
+    content_type_for_slug, has_migration_data, invalidate_cluster_queries, invalidate_java_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
     java_runtimes, loader_versions, login_code_already_handled, migration_detection,
     mutation_error, mutation_is_pending, onboarding_bundles_items, package_meta_batch,
-    pick_version_metadata, project_detail, provider_versions, search_items, search_pending,
-    search_total, try_account, try_accounts, try_cluster_analytics, try_cluster_logs,
-    try_cluster_screenshots, try_default_account, try_game_profile, try_global_analytics,
-    try_log_content, use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
-    use_begin_microsoft_login, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
-    use_cached_image, use_changelog, use_cluster_analytics, use_cluster_content, use_cluster_logs,
-    use_cluster_mutation, use_cluster_profile, use_cluster_screenshots, use_cluster_settings,
-    use_clusters, use_current_account, use_default_account, use_finish_microsoft_login,
-    use_game_profile, use_global_analytics, use_java_runtimes, use_loader_versions,
-    use_local_image, use_log_action, use_log_content, use_migration, use_named_profiles,
-    use_onboarding_bundles, use_package_categories, use_package_meta_batch, use_package_project,
-    use_package_search, use_package_versions, use_player_profile, use_player_skin,
-    use_provider_versions, use_refresh_account, use_refresh_all_accounts, use_remove_account,
-    use_screenshot_action, use_set_default_account, use_upload_log, use_version_metadata,
-    use_versions, version_list, versions_total,
+    pick_version_metadata, project_detail, provider_versions, reset_login_code_dedup, search_items,
+    search_pending, search_total, try_account, try_accounts, try_cluster_analytics,
+    try_cluster_logs, try_cluster_screenshots, try_default_account, try_game_profile,
+    try_global_analytics, try_log_content, use_account, use_accounts, use_add_microsoft_account,
+    use_add_offline_account, use_begin_microsoft_login, use_bundle_overrides, use_bundle_updates,
+    use_bundles_with_status, use_cached_image, use_cancel_microsoft_login, use_changelog,
+    use_cluster_analytics, use_cluster_content, use_cluster_logs, use_cluster_mutation,
+    use_cluster_profile, use_cluster_screenshots, use_cluster_settings, use_clusters,
+    use_current_account, use_default_account, use_finish_microsoft_login, use_game_profile,
+    use_global_analytics, use_java_runtimes, use_loader_versions, use_local_image, use_log_action,
+    use_log_content, use_migration, use_named_profiles, use_onboarding_bundles,
+    use_package_categories, use_package_meta_batch, use_package_project, use_package_search,
+    use_package_versions, use_player_profile, use_player_skin, use_provider_versions,
+    use_refresh_account, use_refresh_all_accounts, use_remove_account, use_screenshot_action,
+    use_set_default_account, use_upload_log, use_version_metadata, use_versions, version_list,
+    versions_total,
 };
 
-use crate::{bridge::{
-    BridgeSnapshot, ClustersSnapshot, GameSnapshot, JavaSnapshot, LauncherInit, OneClientBridge,
-    ProfilesSnapshot, SettingsSnapshot, use_bridge_snapshot,
-}, notifications::NotificationSnapshot};
+use crate::{
+    bridge::{
+        BridgeSnapshot, ClustersSnapshot, GameSnapshot, JavaSnapshot, LauncherInit,
+        OneClientBridge, ProfilesSnapshot, SettingsSnapshot, use_bridge_snapshot,
+    },
+    notifications::NotificationSnapshot,
+};
 use freya::prelude::*;
 
 pub fn use_provide_bridge(bridge: &OneClientBridge) {
@@ -94,6 +99,10 @@ pub fn use_account_switcher_open() -> bool {
 
 pub fn use_game_snapshot() -> GameSnapshot {
     use_snapshots().game
+}
+
+pub fn use_microsoft_login_status() -> Option<oneclient_core::notification::MicrosoftLoginStatus> {
+    use_snapshots().microsoft_login
 }
 
 pub fn use_java_snapshot() -> JavaSnapshot {

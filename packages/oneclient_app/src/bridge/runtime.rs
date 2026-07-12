@@ -147,6 +147,10 @@ impl CoreBridgeRuntime {
                                 apply_game_failed(snapshots, cluster_id, message);
                                 immediate = true;
                             }
+                            Notification::MicrosoftLoginStatus(status) => {
+                                snapshots.microsoft_login = status;
+                                immediate = true;
+                            }
                             other => {
                                 let (notif, _timers, prompt) = engine.dispatch(inbox, other);
                                 snapshots.notifications = notif;

@@ -1,7 +1,7 @@
 
 use std::process::Command;
 
-use oneclient_core::auth::{self, MinecraftLogin};
+use oneclient_core::auth::{self};
 use oneclient_core::{dev, logger, LauncherResult};
 
 #[tokio::main]
@@ -9,23 +9,18 @@ async fn main() -> LauncherResult<()> {
     logger::init_debug()?;
     dev::initialize().await?;
 
-    let flow = auth::begin_microsoft_login().await?;
+    let session = auth::begin_microsoft_login().await?;
 
-    match &flow {
-        MinecraftLogin::DeviceCode(device) => {
-            println!("{}\n", device.message);
-            println!("Verification URL: {}", device.verification_uri);
-            println!("Enter this code: {}\n", device.user_code);
-            try_open_browser(&device.verification_uri);
-        }
-        MinecraftLogin::Browser(browser) => {
-            println!("Opening browser to sign in...\n");
-            try_open_browser(&browser.auth_url);
-        }
-    }
+    println!("Sign in with EITHER method:\n");
+    println!("  Browser: opening {}", session.browser.auth_url);
+    try_open_browser(&session.browser.auth_url);
+    println!(
+        "  Device code: go to {} and enter {}\n",
+        session.device.verification_uri, session.device.user_code
+    );
 
     println!("Waiting for you to sign in...");
-    let account = auth::finish_microsoft_login(flow).await?;
+    let account = auth::finish_microsoft_login(session).await?;
 
     println!(
         "Signed in as {} ({})\n  token expires: {}",

@@ -2,7 +2,8 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::notification::{
-	LaunchStage, Notification, NotificationError, NotificationLevel, PromptKind, UserChoice,
+	LaunchStage, MicrosoftLoginStatus, Notification, NotificationError, NotificationLevel,
+	PromptKind, UserChoice,
 };
 
 #[derive(Clone)]
@@ -78,6 +79,15 @@ impl NotificationService {
 			.map_err(|_| NotificationError::ServiceDown)?;
 
 		reply_rx.await.map_err(|_| NotificationError::ServiceDown)
+	}
+
+	pub fn microsoft_login_status(&self, status: Option<MicrosoftLoginStatus>) {
+		if let Err(err) = self
+			.channel
+			.send(Notification::MicrosoftLoginStatus(status))
+		{
+			tracing::error!("{err}");
+		}
 	}
 
 	pub fn send_info(&self, title: &str, body: &str) {

@@ -160,6 +160,9 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                 Notification::InvalidateClusters => {}
                 Notification::InvalidateJava => {}
                 Notification::SyncComplete => {}
+                Notification::MicrosoftLoginStatus(status) => {
+                    mp.suspend(|| tracing::info!(?status, "microsoft login status"));
+                }
                 Notification::GameStage { cluster_id, stage } => {
                     mp.suspend(|| tracing::info!(cluster_id, ?stage, "game stage"));
                 }

@@ -7,64 +7,70 @@ mod data;
 pub use error::{AuthError, MinecraftAuthError, MinecraftAuthStep};
 pub use offline::{offline_account, offline_uuid, validate_offline_username};
 pub use store::CredentialsStore;
-pub use data::{AccountKind, BrowserLogin, DeviceCodeLogin, MinecraftAccount, MinecraftLogin};
+pub use data::{
+    AccountKind, BrowserLogin, DeviceCodeLogin, MicrosoftLoginSession, MinecraftAccount,
+};
 pub use msa::PendingBrowserLogin;
 
 use uuid::Uuid;
 
 use crate::LauncherResult;
+use crate::notification::MicrosoftLoginStatus;
 use crate::state::LauncherState;
 
-pub async fn begin_microsoft_login() -> LauncherResult<MinecraftLogin> {
+pub async fn begin_microsoft_login() -> LauncherResult<MicrosoftLoginSession> {
     let state = LauncherState::get()?;
-    let use_browser = state.settings.read().microsoft_login_use_browser;
+    let client = state.services.requester.http();
 
-    if use_browser {
-        let (login, pending) = msa::begin_browser_login().await.map_err(AuthError::from)?;
-        state
-            .microsoft_logins
-            .lock()
-            .await
-            .insert(login.state.clone(), pending);
-        Ok(MinecraftLogin::Browser(login))
-    } else {
-        let client = state.services.requester.http();
-        let flow = msa::begin_device_login(client).await.map_err(AuthError::from)?;
-        Ok(MinecraftLogin::DeviceCode(flow))
-    }
+    let (browser, pending) = msa::begin_browser_login().await.map_err(AuthError::from)?;
+    let device = msa::begin_device_login(client).await.map_err(AuthError::from)?;
+
+    state
+        .microsoft_logins
+        .lock()
+        .await
+        .insert(browser.state.clone(), pending);
+
+    Ok(MicrosoftLoginSession { browser, device })
 }
 
-pub async fn finish_microsoft_login(flow: MinecraftLogin) -> LauncherResult<MinecraftAccount> {
+pub async fn finish_microsoft_login(
+    session: MicrosoftLoginSession,
+) -> LauncherResult<MinecraftAccount> {
     let state = LauncherState::get()?;
 
-    match flow {
-        MinecraftLogin::DeviceCode(flow) => {
-            let mut auth = state.auth.lock().await;
-            auth.finish_device_login(&flow, &state.services).await
-        }
-        MinecraftLogin::Browser(login) => {
-            let pending = state
-                .microsoft_logins
-                .lock()
-                .await
-                .remove(&login.state)
-                .ok_or(AuthError::Minecraft(
-                    MinecraftAuthError::BrowserLoginNotFound,
-                ))?;
+    let pending = state
+        .microsoft_logins
+        .lock()
+        .await
+        .remove(&session.browser.state)
+        .ok_or(AuthError::Minecraft(
+            MinecraftAuthError::BrowserLoginNotFound,
+        ))?;
 
-            let client = state.services.requester.http();
-            let progress_id = Uuid::new_v4();
-            let notifier = state.services.notifier.clone();
-            let account = msa::finish_browser_login(client, pending, |label, current, total| {
-                notifier.send_progress(&progress_id, label, current, total);
-            })
-            .await
-            .map_err(AuthError::from)?;
+    let client = state.services.requester.http();
+    let notifier = state.services.notifier.clone();
 
-            let mut auth = state.auth.lock().await;
-            auth.commit_account(account, &state.services).await
-        }
-    }
+    let result = msa::finish_dual_login(
+        client,
+        pending,
+        &session.device,
+        |label, current, total| {
+            notifier.microsoft_login_status(Some(MicrosoftLoginStatus {
+                label: label.to_string(),
+                current,
+                total,
+            }));
+        },
+    )
+    .await
+    .map_err(AuthError::from);
+
+    state.services.notifier.microsoft_login_status(None);
+
+    let account = result?;
+    let mut auth = state.auth.lock().await;
+    auth.commit_account(account, &state.services).await
 }
 
 pub async fn cancel_microsoft_login(state_token: &str) {

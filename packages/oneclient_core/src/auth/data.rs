@@ -52,23 +52,25 @@ pub struct BrowserLogin {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum MinecraftLogin {
-    DeviceCode(DeviceCodeLogin),
-    Browser(BrowserLogin),
+pub struct MicrosoftLoginSession {
+    pub browser: BrowserLogin,
+    pub device: DeviceCodeLogin,
 }
 
-impl MinecraftLogin {
+impl MicrosoftLoginSession {
     pub fn dedupe_key(&self) -> &str {
-        match self {
-            MinecraftLogin::DeviceCode(flow) => &flow.user_code,
-            MinecraftLogin::Browser(flow) => &flow.state,
-        }
+        &self.browser.state
     }
 
-    pub fn browser_url(&self) -> Option<&str> {
-        match self {
-            MinecraftLogin::Browser(flow) => Some(&flow.auth_url),
-            MinecraftLogin::DeviceCode(_) => None,
-        }
+    pub fn auth_url(&self) -> &str {
+        &self.browser.auth_url
+    }
+
+    pub fn user_code(&self) -> &str {
+        &self.device.user_code
+    }
+
+    pub fn verification_uri(&self) -> &str {
+        &self.device.verification_uri
     }
 }

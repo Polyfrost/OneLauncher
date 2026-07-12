@@ -99,6 +99,17 @@ pub enum Notification {
 	InvalidateJava,
 
 	SyncComplete,
+
+	/// Live status of Microsoft Auth
+	/// `None` clears the status
+	MicrosoftLoginStatus(Option<MicrosoftLoginStatus>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MicrosoftLoginStatus {
+	pub label: String,
+	pub current: u64,
+	pub total: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

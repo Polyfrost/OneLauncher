@@ -1,22 +1,20 @@
 use chrono::Utc;
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
-use freya::text_edit::Clipboard;
-use oneclient_core::auth::{AccountKind, MinecraftAccount, MinecraftLogin};
+use oneclient_core::auth::{AccountKind, MinecraftAccount};
 
 use crate::components::{
     Avatar, Button, Icon, IconType, OverlayPopup, PlayerModel, ScrollArea, TextInput,
+    use_microsoft_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
-    accounts_have_microsoft, login_code_already_handled, try_accounts, try_default_account,
-    use_accounts, use_add_offline_account, use_begin_microsoft_login, use_current_account,
-    use_finish_microsoft_login, use_refresh_account, use_remove_account, use_set_default_account,
+    accounts_have_microsoft, try_accounts, try_default_account, use_accounts,
+    use_add_offline_account, use_current_account, use_refresh_account, use_remove_account,
+    use_set_default_account,
 };
-use crate::platform;
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
 
 #[derive(PartialEq)]
 pub struct Accounts;
@@ -26,43 +24,15 @@ impl Component for Accounts {
         let accounts_query = use_accounts();
         let default_query = use_current_account();
 
-        let begin = use_begin_microsoft_login();
-        let finish = use_finish_microsoft_login();
+        let msa = use_microsoft_login();
         let add_offline = use_add_offline_account();
         let set_default = use_set_default_account();
         let remove = use_remove_account();
         let refresh = use_refresh_account();
 
         let mut username = use_state(String::new);
-        let mut pending_login = use_state(|| None::<MinecraftLogin>);
-        let mut handled_code = use_state(|| None::<String>);
         let mut show_offline = use_state(|| false);
         let mut closing_offline = use_state(|| false);
-
-        use_side_effect(move || {
-            let login = match &*begin.read().state() {
-                MutationStateData::Settled { res: Ok(login), .. } => Some(login.clone()),
-                _ => None,
-            };
-            let Some(login) = login else { return };
-            if login_code_already_handled(login.dedupe_key()) {
-                return;
-            }
-            handled_code.set(Some(login.dedupe_key().to_string()));
-            if let Some(url) = login.browser_url() {
-                platform::open_url(url);
-            }
-            finish.mutate(login.clone());
-            pending_login.set(Some(login));
-        });
-
-        use_side_effect(move || {
-            if matches!(&*finish.read().state(), MutationStateData::Settled { .. })
-                && pending_login.peek().is_some()
-            {
-                pending_login.set(None);
-            }
-        });
 
         use_side_effect(move || {
             if !*closing_offline.read() {
@@ -84,15 +54,13 @@ impl Component for Accounts {
         let accounts = try_accounts(&accounts_query).unwrap_or_default();
         let default_account = try_default_account(&default_query);
         let default_id = default_account.as_ref().map(|a| a.id);
-        let microsoft_pending =
-            begin.read().state().is_loading() || finish.read().state().is_loading();
         let has_microsoft = accounts_have_microsoft(&accounts);
 
         let offline_name = username.read().trim().to_string();
         let offline_uuid = (!offline_name.is_empty())
             .then(|| oneclient_core::auth::offline_uuid(&offline_name).to_string());
+
         let offline_error = mutation_err_text(&add_offline);
-        let microsoft_error = mutation_err_text(&finish).or_else(|| mutation_err_text(&begin));
 
         let on_confirm_offline = move |_| {
             let name = username.peek().trim().to_string();
@@ -144,10 +112,13 @@ impl Component for Accounts {
                     )
                     .child(add_bar(
                         has_microsoft,
-                        microsoft_pending,
-                        microsoft_error,
+                        msa.pending,
+                        msa.error.clone(),
                         move |_| show_offline.set(true),
-                        move |_| begin.mutate(()),
+                        {
+                            let msa = msa.clone();
+                            move |_| msa.start()
+                        },
                     ))
                     .child(
                         ScrollArea::new()
@@ -166,12 +137,7 @@ impl Component for Accounts {
                     show_offline,
                 )
             }))
-            .maybe_child(
-                pending_login
-                    .read()
-                    .clone()
-                    .map(|login| microsoft_dialog(login, pending_login, handled_code)),
-            )
+            .maybe_child(msa.popup())
             .into_element()
     }
 }
@@ -187,33 +153,6 @@ fn render_panel(account: Option<MinecraftAccount>) -> impl IntoElement {
         .corner_radius(CornerRadius::new_all(16.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
-        // .maybe_child(account.as_ref().map(|a| {
-        //     Avatar::new(a.id.to_string())
-        //         .width(Size::px(120.))
-        //         .height(Size::px(120.))
-        //         .into_element()
-        // }))
-        // .maybe_child(account.as_ref().map(|a| {
-        //     label()
-        //         .text(a.username.clone())
-        //         .font_size(18.)
-        //         .font_weight(FontWeight::SEMI_BOLD)
-        //         .color(colors::fg_primary())
-        //         .into_element()
-        // }))
-        // .maybe_child(account.is_none().then(|| {
-        //     label()
-        //         .text("No account selected")
-        //         .font_size(14.)
-        //         .color(colors::fg_secondary())
-        //         .into_element()
-        // }))
-        // .child(
-        //     label()
-        //         .text("3D preview coming soon")
-        //         .font_size(11.)
-        //         .color(colors::fg_secondary()),
-        // )
         .maybe_child(account.as_ref().map(|account| {
             PlayerModel::new(account.id)
                 .yaw(-0.5)
@@ -504,166 +443,6 @@ fn account_row(
                     Icon::new(IconType::Trash01)
                         .size(18.)
                         .color(colors::fg_secondary()),
-                ),
-        )
-        .into_element()
-}
-
-fn microsoft_dialog(
-    login: MinecraftLogin,
-    mut pending_login: State<Option<MinecraftLogin>>,
-    mut handled_code: State<Option<String>>,
-) -> impl IntoElement {
-    let body = match &login {
-        MinecraftLogin::DeviceCode(flow) => {
-            device_code_dialog_body(flow.user_code.clone(), flow.verification_uri.clone())
-                .into_element()
-        }
-        MinecraftLogin::Browser(flow) => {
-            browser_dialog_body(flow.auth_url.clone()).into_element()
-        }
-    };
-
-    let mut close_pending = pending_login;
-    let mut close_handled = handled_code;
-
-    OverlayPopup::new()
-        .on_close(move |()| {
-            pending_login.set(None);
-            handled_code.set(None);
-        })
-        .child(
-            rect()
-                .width(Size::window_percent(100.))
-                .height(Size::window_percent(100.))
-                .center()
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::px(420.))
-                        .max_width(Size::window_percent(90.))
-                        .cross_align(Alignment::Center)
-                        .spacing(18.)
-                        .padding(Gaps::new_all(28.))
-                        .corner_radius(CornerRadius::new_all(16.))
-                        .background(colors::page_elevated())
-                        .border(border_all_color(1., colors::component_border()))
-                        .child(
-                            label()
-                                .text("Sign in to Microsoft")
-                                .font_size(18.)
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(body)
-                        .child(waiting_row())
-                        .child(
-                            Button::new()
-                                .ghost()
-                                .on_press(move |_| {
-                                    close_pending.set(None);
-                                    close_handled.set(None);
-                                })
-                                .text("Cancel"),
-                        ),
-                ),
-        )
-        .into_element()
-}
-
-fn waiting_row() -> impl IntoElement {
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(6.)
-        .child(
-            Icon::new(IconType::Loading02)
-                .size(13.)
-                .color(colors::brand()),
-        )
-        .child(
-            label()
-                .text("Waiting for you to finish signing in...")
-                .font_size(12.)
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
-}
-
-fn browser_dialog_body(auth_url: String) -> impl IntoElement {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(18.)
-        .child(
-            label()
-                .text("Your browser has opened the Microsoft sign-in page. Complete sign-in there and you'll be brought back automatically.")
-                .font_size(13.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            Button::new()
-                .primary()
-                .on_press(move |_| platform::open_url(&auth_url))
-                .child(Icon::new(IconType::LinkExternal01).size(16.))
-                .text("Open in browser again"),
-        )
-        .into_element()
-}
-
-fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoElement {
-    let copy_code = code.clone();
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(18.)
-        .child(
-            label()
-                .text("Enter this code on the Microsoft sign-in page:")
-                .font_size(13.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .center()
-                .padding(Gaps::new_symmetric(20., 16.))
-                .corner_radius(CornerRadius::new_all(14.))
-                .background(colors::component_bg())
-                .border(border_all_color(1., colors::brand()))
-                .child(
-                    label()
-                        .text(code)
-                        .font_size(48.)
-                        .font_weight(FontWeight::BOLD)
-                        .color(colors::fg_primary()),
-                ),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .main_align(Alignment::Center)
-                .spacing(8.)
-                .child(
-                    Button::new()
-                        .secondary()
-                        .on_press(move |_| {
-                            if let Err(err) = Clipboard::set(copy_code.clone()) {
-                                tracing::warn!("clipboard copy failed: {err:?}");
-                            }
-                        })
-                        .child(Icon::new(IconType::Copy01).size(16.))
-                        .text("Copy code"),
-                )
-                .child(
-                    Button::new()
-                        .primary()
-                        .on_press(move |_| platform::open_url(&verification_uri))
-                        .child(Icon::new(IconType::LinkExternal01).size(16.))
-                        .text("Open in browser"),
                 ),
         )
         .into_element()

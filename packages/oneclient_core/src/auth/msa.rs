@@ -29,21 +29,65 @@ const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0
 
 const AUTH_STEPS: u64 = 5;
 
-const BROWSER_LOGIN_TIMEOUT: Duration = Duration::from_secs(5 * 60);
-
 
 pub async fn begin_device_login(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
     request_device_code(client).await
 }
 
-pub async fn finish_device_login(
+pub async fn finish_dual_login(
     client: &Client,
-    flow: &DeviceCodeLogin,
+    pending: PendingBrowserLogin,
+    device: &DeviceCodeLogin,
     on_progress: impl Fn(&str, u64, u64),
 ) -> Result<MinecraftAccount, MinecraftAuthError> {
     on_progress("Waiting for sign-in", 0, AUTH_STEPS);
-    let msa = poll_device_token(client, flow).await?;
+
+    let deadline = Duration::from_secs(device.expires_in);
+    let msa = tokio::time::timeout(deadline, race_msa_token(client, &pending, device))
+        .await
+        .map_err(|_| MinecraftAuthError::DeviceAuthorizationExpired)??;
+
     account_from_msa_token(client, msa, on_progress).await
+}
+
+async fn race_msa_token(
+    client: &Client,
+    pending: &PendingBrowserLogin,
+    device: &DeviceCodeLogin,
+) -> Result<MsaToken, MinecraftAuthError> {
+    let browser = browser_msa_token(client, pending);
+    let device = poll_device_token(client, device);
+    tokio::pin!(browser, device);
+
+    let mut browser_done = false;
+    let mut device_done = false;
+    let mut last_err: Option<MinecraftAuthError> = None;
+
+    loop {
+        tokio::select! {
+            res = &mut browser, if !browser_done => match res {
+                Ok(token) => return Ok(token),
+                Err(err) => {
+                    browser_done = true;
+                    if device_done {
+                        return Err(err);
+                    }
+                    last_err = Some(err);
+                }
+            },
+            res = &mut device, if !device_done => match res {
+                Ok(token) => return Ok(token),
+                Err(err) => {
+                    device_done = true;
+                    if browser_done {
+                        return Err(err);
+                    }
+                    last_err = Some(err);
+                }
+            },
+            else => return Err(last_err.unwrap_or(MinecraftAuthError::DeviceAuthorizationExpired)),
+        }
+    }
 }
 
 pub struct PendingBrowserLogin {
@@ -95,18 +139,12 @@ pub async fn begin_browser_login() -> Result<(BrowserLogin, PendingBrowserLogin)
     Ok((login, pending))
 }
 
-pub async fn finish_browser_login(
+async fn browser_msa_token(
     client: &Client,
-    pending: PendingBrowserLogin,
-    on_progress: impl Fn(&str, u64, u64),
-) -> Result<MinecraftAccount, MinecraftAuthError> {
-    on_progress("Waiting for sign-in", 0, AUTH_STEPS);
-    let code = tokio::time::timeout(BROWSER_LOGIN_TIMEOUT, wait_for_redirect(&pending))
-        .await
-        .map_err(|_| MinecraftAuthError::BrowserAuthorizationExpired)??;
-
-    let msa = exchange_auth_code(client, &code, &pending).await?;
-    account_from_msa_token(client, msa, on_progress).await
+    pending: &PendingBrowserLogin,
+) -> Result<MsaToken, MinecraftAuthError> {
+    let code = wait_for_redirect(pending).await?;
+    exchange_auth_code(client, &code, pending).await
 }
 
 async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, MinecraftAuthError> {

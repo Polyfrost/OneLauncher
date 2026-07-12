@@ -1,6 +1,6 @@
 pub use data::{
-    GroupedProgressEvent, LaunchStage, Notification, NotificationLevel, PromptKind, TaskPhase,
-    UserChoice,
+    GroupedProgressEvent, LaunchStage, MicrosoftLoginStatus, Notification, NotificationLevel,
+    PromptKind, TaskPhase, UserChoice,
 };
 pub use grouped::{GroupedProgressChild, GroupedProgressSession};
 pub use service::NotificationService;
@@ -14,5 +14,5 @@ pub enum NotificationError {
     #[error("Notification service is down")]
     ServiceDown,
     #[error("Notification prompt timed out")]
-    PromptTimedOut
+    PromptTimedOut,
 }

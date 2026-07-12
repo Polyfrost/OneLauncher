@@ -183,6 +183,7 @@ impl NotificationState {
             Notification::InvalidateClusters => {}
             Notification::InvalidateJava => {}
             Notification::SyncComplete => {}
+            Notification::MicrosoftLoginStatus(_) => {}
             Notification::GameStage { .. }
             | Notification::GameLog { .. }
             | Notification::GameFailed { .. } => {}
@@ -268,7 +269,8 @@ impl NotificationState {
     }
 
     pub fn expire_toast(&mut self, _inbox: &[InboxEntry], entry_id: u64) {
-        self.active_toasts.retain(|toast| toast.entry_id != entry_id);
+        self.active_toasts
+            .retain(|toast| toast.entry_id != entry_id);
     }
 
     pub fn mark_read(&mut self, inbox: &mut [InboxEntry], entry_id: u64) {

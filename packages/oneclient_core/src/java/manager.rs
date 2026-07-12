@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -92,22 +93,22 @@ impl JavaManager {
 			return Ok(Vec::new());
 		};
 
-		let results = futures_util::future::join_all(INSTALLABLE_MAJORS.iter().map(|&major| {
-			let provider = &provider;
-			async move {
-				(major, provider.latest_package_by_major(major, services).await)
-			}
-		}))
-		.await;
+		let packages = provider.list_packages(None, services).await?;
 
-		let mut available = Vec::new();
-		for (major, result) in results {
-			match result {
-				Ok(Some(package)) => available.push(AvailableJava { major, package }),
-				Ok(None) => {}
-				Err(err) => tracing::warn!(?vendor, major, "failed to query packages: {err}"),
-			}
+		let mut by_major =
+			BTreeMap::<u32, JavaPackage>::new();
+
+		for package in packages {
+			let Some(&major) = package.java_version.first() else {
+				continue;
+			};
+			by_major.entry(major).or_insert(package);
 		}
+
+		let mut available: Vec<AvailableJava> = by_major
+			.into_iter()
+			.map(|(major, package)| AvailableJava { major, package })
+			.collect();
 
 		available.sort_by_key(|b| std::cmp::Reverse(b.major));
 
@@ -171,10 +172,10 @@ async fn download_and_register(
 	for provider in vendors::runtime_providers() {
 		let vendor = provider.vendor();
 
-        let packages = provider.list_packages_by_major(major, services).await;
+        let packages = provider.list_packages(Some(major), services).await;
 
 		let package = match &packages {
-			Ok(packages) => match packages.first() {
+			Ok(packages) => match packages.iter().find(|p| p.java_version.first() == Some(&major)).or_else(|| packages.first()) {
                 Some(package) => package,
                 None => {
                     tracing::warn!(?vendor, major, "no packages found");

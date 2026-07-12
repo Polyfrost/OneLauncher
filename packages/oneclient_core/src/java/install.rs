@@ -22,16 +22,19 @@ pub async fn install_package(
 
 	let archive_path = java_dir.join(polyio::sanitize_path(&package.name));
 
+	let major = package.java_version.first().copied().unwrap_or(0);
 	services.requester
 		.download_file(
 			reqwest::Request::new(Method::GET, Url::parse(&package.download_url)?),
 			&archive_path,
 			ResponseOptions {
-				notify: Some(ResponseNotifyOptions::standalone(format!(
-					"Installing {} {}",
-					package.vendor,
-					package.java_version.first().copied().unwrap_or(0)
-				))),
+				notify: Some(
+					ResponseNotifyOptions::standalone(format!(
+						"Installing {} {}",
+						package.vendor, major
+					))
+					.done_label(format!("Installed {} {}", package.vendor, major)),
+				),
 			},
 			services,
 		)

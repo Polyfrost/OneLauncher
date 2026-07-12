@@ -42,7 +42,7 @@ pub(crate) fn scrollbar_pos_and_size(inner: f32, viewport: f32, scroll: f32) -> 
     let scroll_range = inner - viewport;
     let thumb_range = viewport - thumb;
     let normalized = -scroll / scroll_range;
-    
+
     (normalized * thumb_range, thumb)
 }
 
@@ -307,7 +307,17 @@ impl ScrollArea {
         let us_thumb = on_user_scroll.clone();
         let us_h_thumb = on_user_scroll;
 
+        let can_scroll_v = vp_h > 0. && vp_h < ct_h;
+        let can_scroll_h = horizontal && vp_w > 0. && vp_w < content_w;
+
         let on_wheel = move |e: Event<WheelEventData>| {
+            let wants_h = horizontal && *shift_held.read();
+
+            // check if scrollable
+            if (wants_h && !can_scroll_h) || !can_scroll_v {
+                return;
+            }
+
             e.stop_propagation();
 
             if (e.delta_y != 0.0 || e.delta_x != 0.0)
@@ -316,7 +326,7 @@ impl ScrollArea {
                 cb.call(());
             }
 
-            if horizontal && *shift_held.read() {
+            if wants_h {
                 let delta = if e.delta_x != 0.0 { e.delta_x } else { e.delta_y };
                 if delta != 0.0 {
                     let cur_x = corrected_scroll(content_w, vp_w, *scroll_x.read());

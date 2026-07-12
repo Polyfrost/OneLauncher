@@ -4,7 +4,9 @@ use std::env;
 use oneclient_core::dev;
 use oneclient_core::java::check_java_runtime;
 use oneclient_core::java::vendors::AdoptiumRuntimeProvider;
+use oneclient_core::java::vendors::CorrettoRuntimeProvider;
 use oneclient_core::java::vendors::JavaRuntimeProvider;
+use oneclient_core::java::vendors::LibericaRuntimeProvider;
 use oneclient_core::java::vendors::ZuluRuntimeProvider;
 use oneclient_core::logger;
 use oneclient_core::LauncherResult;
@@ -18,7 +20,7 @@ async fn main() -> LauncherResult<()> {
 	let vendor = args
 		.next()
 		.unwrap_or_else(|| {
-			eprintln!("usage: java_install_provider <zulu|adoptium|corretto> [major]");
+			eprintln!("usage: java_install_provider <zulu|adoptium|corretto|liberica> [major]");
 			std::process::exit(1);
 		});
 
@@ -33,13 +35,15 @@ async fn main() -> LauncherResult<()> {
     let provider: Box<dyn JavaRuntimeProvider> = match vendor.as_str() {
         "zulu" => Box::new(ZuluRuntimeProvider),
         "adoptium" => Box::new(AdoptiumRuntimeProvider),
+        "corretto" => Box::new(CorrettoRuntimeProvider),
+        "liberica" => Box::new(LibericaRuntimeProvider),
         other => {
-			eprintln!("unknown vendor '{other}', use zulu, adoptium, or corretto");
+			eprintln!("unknown vendor '{other}', use zulu, adoptium, corretto, or liberica");
 			std::process::exit(1);
 		}
     };
 
-    let packages = provider.list_packages_by_major(major, &services).await?;
+    let packages = provider.list_packages(Some(major), &services).await?;
     let package = packages
         .into_iter()
         .find(|p| p.java_version.contains(&major))

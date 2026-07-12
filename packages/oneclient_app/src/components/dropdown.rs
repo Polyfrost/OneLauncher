@@ -59,16 +59,48 @@ impl Component for Dropdown {
         let mut open = use_state(|| false);
         let mut hovering = use_state(|| false);
 
+        let mut button_area = use_state(|| None::<Area>);
+        let mut list_size = use_state(|| None::<Size2D>);
+
         let selected = self.selected.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
-        let list_width = self.width.clone();
         let is_open = open();
+
+        if !is_open && list_size().is_some() {
+            let _ = list_size.take();
+        }
 
         let trigger_bg = if hovering() {
             colors::ghost_overlay_hover()
         } else {
             colors::ghost_overlay()
+        };
+
+        let visible = options.len().min(MAX_VISIBLE_OPTIONS);
+        let list_h = visible as f32 * OPTION_HEIGHT
+            + visible.saturating_sub(1) as f32 * OPTION_SPACING;
+
+        let offset_y = match (button_area(), list_size()) {
+            (Some(button), Some(list)) => {
+                let root_height = Platform::get().root_size.peek().height;
+                let space_below = root_height - button.max_y();
+                let space_above = button.min_y();
+                if list.height > space_below && list.height <= space_above {
+                    -(button.height() + list.height + 8.)
+                } else {
+                    0.
+                }
+            }
+            _ => 0.,
+        };
+
+        let list_width = button_area()
+            .map(|b| Size::px(b.width()))
+            .unwrap_or_else(|| self.width.clone());
+
+        let on_global_pointer_press = move |_: Event<PointerEventData>| {
+            open.set_if_modified(false);
         };
 
         rect()
@@ -85,6 +117,10 @@ impl Component for Dropdown {
                     .background(trigger_bg)
                     .on_pointer_enter(move |_| hovering.set(true))
                     .on_pointer_leave(move |_| hovering.set(false))
+                    .on_global_pointer_press(on_global_pointer_press)
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        button_area.set_if_modified(Some(e.area));
+                    })
                     .on_press(move |e: Event<PressEventData>| {
                         e.prevent_default();
                         e.stop_propagation();
@@ -103,44 +139,41 @@ impl Component for Dropdown {
                     ),
             )
             .maybe_child(is_open.then(|| {
-                let visible = options.len().min(MAX_VISIBLE_OPTIONS);
-                let list_h = visible as f32 * OPTION_HEIGHT
-                    + visible.saturating_sub(1) as f32 * OPTION_SPACING;
-
-                rect().height(Size::px(0.)).width(list_width)
-                    .layer(Layer::Overlay)
-                    .child(
-                        rect()
-                            .layer(Layer::RelativeOverlay(10))
-                            .position(Position::new_global().top(0.).left(0.))
-                            .width(Size::window_percent(100.))
-                            .height(Size::window_percent(100.))
-                            .on_press(move |_| open.set(false)),
-                    )
-                    .child(
+                rect().width(Size::px(0.)).height(Size::px(0.)).child(
                     rect()
-                        .width(Size::fill())
+                        .layer(Layer::Overlay)
+                        .width(list_width)
                         .margin(Gaps::new(4., 0., 0., 0.))
-                        .layer(Layer::RelativeOverlay(12))
-                        .padding(4.)
-                        .corner_radius(CornerRadius::new_all(8.))
-                        .border(border_all_color(1., colors::component_border()))
-                        .background(colors::page_elevated())
-                        .overflow(Overflow::Clip)
+                        .offset_y(offset_y)
+                        .content(Content::Fit)
+                        .on_sized(move |e: Event<SizedEventData>| {
+                            list_size.set_if_modified(Some(e.area.size));
+                        })
                         .child(
-                            ScrollArea::new()
-                                .height(Size::px(list_h))
-                                .spacing(OPTION_SPACING)
-                                .children(options.into_iter().enumerate().map(|(idx, option)| {
-                                    let on_select = on_select.clone();
-                                    DropdownOption::new(option, move |_| {
-                                        if let Some(handler) = &on_select {
-                                            handler.call(idx);
-                                        }
-                                        open.set(false);
-                                    })
-                                    .into_element()
-                                })),
+                            rect()
+                                .width(Size::fill())
+                                .padding(4.)
+                                .corner_radius(CornerRadius::new_all(8.))
+                                .border(border_all_color(1., colors::component_border()))
+                                .background(colors::page_elevated())
+                                .overflow(Overflow::Clip)
+                                .child(
+                                    ScrollArea::new()
+                                        .height(Size::px(list_h))
+                                        .spacing(OPTION_SPACING)
+                                        .children(options.into_iter().enumerate().map(
+                                            |(idx, option)| {
+                                                let on_select = on_select.clone();
+                                                DropdownOption::new(option, move |_| {
+                                                    if let Some(handler) = &on_select {
+                                                        handler.call(idx);
+                                                    }
+                                                    open.set(false);
+                                                })
+                                                .into_element()
+                                            },
+                                        )),
+                                ),
                         ),
                 )
             }))

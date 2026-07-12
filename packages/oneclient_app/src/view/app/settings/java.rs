@@ -15,6 +15,8 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
     vec![
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
+        (JavaVendor::Corretto, "Amazon Corretto"),
+        (JavaVendor::Liberica, "BellSoft Liberica"),
     ]
 }
 
@@ -209,16 +211,29 @@ impl Component for RuntimeRow {
             .child(
                 rect()
                     .width(Size::flex(1.0))
+                    .overflow(Overflow::Clip)
                     .child(
-                        label()
-                            .text(runtime.absolute_path.clone())
-                            .font_size(12.)
-                            .max_lines(1)
-                            .color(colors::fg_secondary()),
+                        ScrollArea::new()
+                            .horizontal(path_content_width(&runtime.absolute_path))
+                            .width(Size::fill())
+                            .height(Size::px(18.))
+                            .show_scrollbar(false)
+                            .child(
+                                label()
+                                    .text(runtime.absolute_path.clone())
+                                    .font_size(12.)
+                                    .max_lines(1)
+                                    .color(colors::fg_secondary())
+                                    .into_element(),
+                            ),
                     ),
             )
             .child(remove_button(dispatch, path))
     }
+}
+
+fn path_content_width(path: &str) -> f32 {
+    (path.chars().count() as f32 * 7.0).max(1.0)
 }
 
 fn remove_button(dispatch: BridgeDispatch, path: String) -> impl IntoElement {

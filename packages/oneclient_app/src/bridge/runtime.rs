@@ -432,11 +432,7 @@ impl CoreBridgeRuntime {
                     )
                     .await
                     {
-                        Ok(runtime) => {
-                            notifier.send_info(
-                                "Java installed",
-                                &format!("Java {} ({})", runtime.major, runtime.vendor),
-                            );
+                        Ok(_) => {
                             notifier.invalidate_java();
                         }
                         Err(err) => {

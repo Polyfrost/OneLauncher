@@ -365,22 +365,7 @@ pub async fn apply_bundle_updates(
         session.finish();
     }
 
-    let has_changes = !result.updates_applied.is_empty()
-        || !result.removals_applied.is_empty()
-        || !result.additions_applied.is_empty();
-
-    if has_changes {
-        let mut affected = HashSet::new();
-        for u in &result.updates_applied {
-            affected.insert(u.bundle_name.clone());
-        }
-        for r in &result.removals_applied {
-            affected.insert(r.bundle_name.clone());
-        }
-        for a in &result.additions_applied {
-            affected.insert(a.bundle_name.clone());
-        }
-
+    {
         let cluster = PackageStore::get_cluster(cluster_id, services).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles
@@ -388,12 +373,19 @@ pub async fn apply_bundle_updates(
             .await
         {
             for archive in archives {
-                if affected.contains(&archive.manifest.name) {
-                    let _ = overrides::extract_bundle_overrides_no_overwrite(
-                        &archive.bundle.path,
-                        &cluster,
-                    )
-                    .await;
+                if let Err(err) = overrides::sync_bundle_overrides(
+                    &archive.bundle.path,
+                    &archive.manifest.name,
+                    &cluster,
+                    Some(&services.notifier),
+                )
+                .await
+                {
+                    tracing::warn!(
+                        bundle = %archive.manifest.name,
+                        error = %err,
+                        "failed to sync bundle overrides during update"
+                    );
                 }
             }
         }

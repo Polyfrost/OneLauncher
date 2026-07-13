@@ -71,7 +71,7 @@ pub fn stream_zip_entries_bytes(
     skip(data, dest_path),
     fields(
         dest_path = %dest_path.as_ref().display()
-    ) 
+    )
 )]
 pub async fn unzip_bytes(
 	data: Vec<u8>,
@@ -86,7 +86,7 @@ pub async fn unzip_bytes(
     skip(data, filter_entries, dest_path),
     fields(
         dest_path = %dest_path.as_ref().display()
-    ) 
+    )
 )]
 pub async fn unzip_bytes_filtered(
 	data: Vec<u8>,
@@ -134,7 +134,7 @@ pub async fn unzip_bytes_filtered(
     fields(
         zip_path = %zip_path.as_ref().display(),
         dest_path = %dest_path.as_ref().display()
-    ) 
+    )
 )]
 pub async fn extract_zip(
 	zip_path: impl AsRef<std::path::Path>,
@@ -156,7 +156,7 @@ pub async fn extract_zip(
     fields(
         zip_path = %zip_path.as_ref().display(),
         dest_path = %dest_path.as_ref().display()
-    ) 
+    )
 )]
 pub async fn extract_zip_filtered(
 	zip_path: impl AsRef<std::path::Path>,
@@ -207,6 +207,45 @@ pub async fn extract_zip_filtered(
 	Ok(())
 }
 
+/// Reads the bytes of every non-directory zip entry whose name passes `filter`.
+///
+/// Returns `(entry_name, bytes)` pairs. Each matching entry is read fully into
+/// memory, so this is meant for small files (e.g. bundle config overrides), not
+/// large archives.
+#[instrument(
+    level = "debug",
+    skip(zip_path, filter),
+    fields(zip_path = %zip_path.as_ref().display())
+)]
+pub async fn read_zip_file_entries(
+	zip_path: impl AsRef<std::path::Path>,
+	filter: impl Fn(&str) -> bool,
+) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
+	let zip_path = zip_path.as_ref();
+	let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path).await?;
+	let entries = reader.file().entries();
+
+	let mut out = Vec::new();
+	for index in 0..entries.len() {
+		let entry = entries.get(index).expect("expected more zip entries");
+		let Ok(name) = entry.filename().as_str() else {
+			continue;
+		};
+		let name = name.to_string();
+
+		if entry.dir().unwrap_or(false) || !filter(&name) {
+			continue;
+		}
+
+		let mut entry_reader = reader.reader_without_entry(index).await?;
+		let mut data = Vec::new();
+		futures_lite::AsyncReadExt::read_to_end(&mut entry_reader, &mut data).await?;
+		out.push((name, data));
+	}
+
+	Ok(out)
+}
+
 /// Returns a zip file entry's bytes without reading the entire file into memory.
 #[instrument(
     level = "debug",
@@ -253,7 +292,7 @@ pub async fn extract_tar_gz(archive: impl AsRef<std::path::Path>, dest: impl AsR
     let file = tokio::fs::File::open(archive).await?;
     let buf_reader = tokio::io::BufReader::new(file);
     let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
-    
+
     let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
     tar_archive.unpack(dest).await?;
 

@@ -108,7 +108,9 @@ pub async fn extract_bundle_overrides_for_cluster(
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, services).await?;
-    overrides::extract_bundle_overrides(&archive.bundle.path, &cluster).await
+    overrides::sync_bundle_overrides(&archive.bundle.path, &archive.manifest.name, &cluster, None)
+        .await?;
+    Ok(())
 }
 
 pub async fn install_bundle(

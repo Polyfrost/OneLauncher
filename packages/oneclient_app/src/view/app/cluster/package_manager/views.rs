@@ -405,16 +405,18 @@ fn add_from_file_button(
         .on_press(move |_| {
             let dispatch = dispatch.clone();
             spawn(async move {
-                if let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Select a file to import")
-                    .pick_file()
+                if let Some(handles) = rfd::AsyncFileDialog::new()
+                    .set_title("Select files to import")
+                    .pick_files()
                     .await
                 {
-                    dispatch.import_local_file(
-                        cluster_id,
-                        content_type,
-                        handle.path().to_path_buf(),
-                    );
+                    for handle in handles {
+                        dispatch.import_local_file(
+                            cluster_id,
+                            content_type,
+                            handle.path().to_path_buf(),
+                        );
+                    }
                 }
             });
         })

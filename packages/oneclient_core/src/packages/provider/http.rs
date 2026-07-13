@@ -1,7 +1,8 @@
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 
-use crate::http::{RequestClient, RequestError, ResponseOptions};
+use crate::http::{RequestClient, RequestError, ResponseNotifyOptions, ResponseOptions};
+use crate::notification::GroupedProgressChild;
 use crate::state::LauncherServices;
 
 pub async fn fetch_json<T: DeserializeOwned>(
@@ -33,10 +34,14 @@ pub async fn download_url(
     client: &RequestClient,
     url: &str,
     dest: impl AsRef<std::path::Path> + Send,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> Result<(), RequestError> {
     let request = reqwest::Request::new(Method::GET, url.parse()?);
+    let options = ResponseOptions {
+        notify: child.map(|c| ResponseNotifyOptions::grouped(c.clone())),
+    };
     client
-        .download_file(request, dest, ResponseOptions::default(), services)
+        .download_file(request, dest, options, services)
         .await
 }

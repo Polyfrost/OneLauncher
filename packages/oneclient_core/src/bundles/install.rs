@@ -10,7 +10,7 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
-use crate::notification::{GroupedProgressSession, TaskPhase};
+use crate::notification::{GroupedProgressChild, GroupedProgressSession, TaskPhase};
 use crate::packages::domain::{ContentType, GameLoader};
 use crate::packages::error::PackageError;
 use crate::packages::store::{PackageStore, unlink_cluster_file};
@@ -26,6 +26,7 @@ pub async fn install_package_from_bundle(
     cluster_id: i64,
     bundle_name: &str,
     skip_compatibility: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<String> {
     let cluster = PackageStore::get_cluster(cluster_id, services).await?;
@@ -63,13 +64,14 @@ pub async fn install_package_from_bundle(
                 cluster_id,
                 skip_compatibility,
                 false,
+                child,
                 services,
             )
             .await?;
             artifact.hash
         }
         BundleFileKind::External(ext) => {
-            install_external(ext, &cluster, skip_compatibility, services).await?
+            install_external(ext, &cluster, skip_compatibility, child, services).await?
         }
     };
 
@@ -90,9 +92,10 @@ async fn install_external(
     ext: &ExternalFile,
     cluster: &ClusterRow,
     skip_compatibility: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<String> {
-    let artifact = crate::packages::store::download_external(ext, false, services).await?;
+    let artifact = crate::packages::store::download_external(ext, false, child, services).await?;
     PackageStore::link_artifact(&artifact, cluster, Some(&ext.name), services).await?;
 
     let _ = skip_compatibility;
@@ -197,8 +200,8 @@ pub async fn install_enabled_bundle_files(
     let bundle_name = &bundle_name;
     let results = futures_util::stream::iter(to_install.into_iter().map(|file| async move {
         let child = progress.map(|p| {
-            let c = p.child(format!("Mod {}", file.display_name()), 1);
-            c.set_phase(TaskPhase::Installing);
+            let c = p.child(format!("Mod {}", file.display_name()), file.size.max(1));
+            c.set_phase(TaskPhase::Downloading);
             c
         });
 
@@ -207,11 +210,13 @@ pub async fn install_enabled_bundle_files(
             cluster_id,
             bundle_name,
             skip_compatibility,
+            child.as_ref(),
             services,
         )
         .await;
 
         if let Some(child) = child {
+            child.set_phase(TaskPhase::Installing);
             child.finish();
         }
         (file.display_name(), result)

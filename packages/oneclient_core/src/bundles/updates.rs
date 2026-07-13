@@ -328,8 +328,21 @@ pub async fn apply_bundle_updates(
         }
     }
 
+    let session = (!check.updates_available.is_empty() || !check.additions_available.is_empty())
+        .then(|| {
+            crate::notification::GroupedProgressSession::start(
+                &services.notifier,
+                "Updating bundle content",
+            )
+        });
+
     for update in check.updates_available {
-        match apply_single_update(&update, &overrides, services).await {
+        let child = session.as_ref().map(|s| {
+            let c = s.child(update.new_file.display_name(), update.new_file.size.max(1));
+            c.set_phase(crate::notification::TaskPhase::Downloading);
+            c
+        });
+        match apply_single_update(&update, &overrides, child.as_ref(), services).await {
             Ok(_) => result.updates_applied.push(update),
             Err(err) => result.updates_failed.push(err.to_string()),
         }
@@ -337,10 +350,19 @@ pub async fn apply_bundle_updates(
 
     for addition in check.additions_available {
         let file_id = addition.new_file.kind.package_id();
-        match apply_single_addition(&addition, &overrides, services).await {
+        let child = session.as_ref().map(|s| {
+            let c = s.child(addition.new_file.display_name(), addition.new_file.size.max(1));
+            c.set_phase(crate::notification::TaskPhase::Downloading);
+            c
+        });
+        match apply_single_addition(&addition, &overrides, child.as_ref(), services).await {
             Ok(_) => result.additions_applied.push(addition),
             Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
         }
+    }
+
+    if let Some(session) = session {
+        session.finish();
     }
 
     let has_changes = !result.updates_applied.is_empty()
@@ -389,6 +411,7 @@ pub async fn apply_bundle_updates(
 async fn apply_single_update(
     update: &BundlePackageUpdate,
     overrides: &[ClusterBundleOverrideRow],
+    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let hash = install_package_from_bundle(
@@ -396,9 +419,14 @@ async fn apply_single_update(
         update.cluster_id,
         &update.bundle_name,
         true,
+        child,
         services,
     )
     .await?;
+    if let Some(child) = child {
+        child.set_phase(crate::notification::TaskPhase::Installing);
+        child.finish();
+    }
 
     let file_id = update.new_file.kind.package_id();
     if should_be_disabled(&update.bundle_name, &file_id, overrides) {
@@ -415,6 +443,7 @@ async fn apply_single_update(
 async fn apply_single_addition(
     addition: &BundlePackageAddition,
     overrides: &[ClusterBundleOverrideRow],
+    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let hash = install_package_from_bundle(
@@ -422,9 +451,14 @@ async fn apply_single_addition(
         addition.cluster_id,
         &addition.bundle_name,
         true,
+        child,
         services,
     )
     .await?;
+    if let Some(child) = child {
+        child.set_phase(crate::notification::TaskPhase::Installing);
+        child.finish();
+    }
 
     let file_id = addition.new_file.kind.package_id();
     if should_be_disabled(&addition.bundle_name, &file_id, overrides) {

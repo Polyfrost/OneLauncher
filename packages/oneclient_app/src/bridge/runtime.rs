@@ -804,16 +804,28 @@ async fn install_package(
         .get_version(project_id, version_id, &state.services)
         .await?;
 
-    PackageStore::install_to_cluster(
+    let session = oneclient_core::notification::GroupedProgressSession::start(
+        &state.services.notifier,
+        format!("Installing {}", project.name),
+    );
+    let size = version.primary_file().map(|f| f.size).unwrap_or(0);
+    let child = session.child(project.name.clone(), size);
+
+    let result = PackageStore::install_to_cluster(
         provider,
         &project,
         &version,
         cluster_id,
         false,
         false,
+        Some(&child),
         &state.services,
     )
-    .await?;
+    .await;
+
+    child.finish();
+    session.finish();
+    result?;
     Ok(())
 }
 

@@ -13,6 +13,7 @@ use super::domain::{ContentType, GameLoader, ProviderId};
 use super::error::PackageError;
 use super::types::{CachedArtifact, ProjectDetail, ProviderReleaseInfo, VersionDetail, LinkedArtifactInfo};
 use crate::crypto::{normalize_hash, sha1_file};
+use crate::notification::GroupedProgressChild;
 use crate::state::LauncherServices;
 use crate::{LauncherError, LauncherResult};
 use std::path::Path;
@@ -45,6 +46,7 @@ impl PackageStore {
         project: &ProjectDetail,
         version: &VersionDetail,
         force: bool,
+        child: Option<&GroupedProgressChild>,
         services: &LauncherServices,
     ) -> LauncherResult<ArtifactRow> {
         let file = version.primary_file().ok_or(PackageError::NoPrimaryFile)?;
@@ -56,11 +58,13 @@ impl PackageStore {
             project.content_type,
             file,
             force,
+            child,
             services,
         )
         .await
     }
 
+	#[allow(clippy::too_many_arguments)]
     pub async fn install_to_cluster(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -68,6 +72,7 @@ impl PackageStore {
         cluster_id: i64,
         skip_compatibility: bool,
         force_download: bool,
+        child: Option<&GroupedProgressChild>,
         services: &LauncherServices,
     ) -> LauncherResult<ArtifactRow> {
         let cluster = Self::get_cluster(cluster_id, services).await?;
@@ -81,6 +86,7 @@ impl PackageStore {
             project,
             version,
             force_download,
+            child,
             services,
         )
         .await?;
@@ -286,7 +292,7 @@ impl PackageStore {
 
         let project = provider.get_project(project_id, services).await?;
 
-        Self::download_and_cache(provider_id, &project, &version, false, services).await
+        Self::download_and_cache(provider_id, &project, &version, false, None, services).await
     }
 }
 

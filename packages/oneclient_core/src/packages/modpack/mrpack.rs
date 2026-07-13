@@ -168,6 +168,7 @@ async fn install_mrpack_file(
             &project,
             &version,
             false,
+            None,
             services,
         )
         .await?;
@@ -189,7 +190,7 @@ async fn install_mrpack_file(
         content_type,
     };
 
-    let artifact = store::download_external(&external, false, services).await?;
+    let artifact = store::download_external(&external, false, None, services).await?;
     PackageStore::link_artifact(&artifact, cluster, Some(&file_name), services).await?;
 
     Ok(())

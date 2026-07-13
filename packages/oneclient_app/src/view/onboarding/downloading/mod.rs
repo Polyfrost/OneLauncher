@@ -57,6 +57,7 @@ struct TaskLine {
 struct GroupedAgg {
     children: HashMap<Uuid, TaskLine>,
     done_units: u64,
+    carried: u64,
 }
 
 impl GroupedAgg {
@@ -82,7 +83,8 @@ impl GroupedAgg {
     }
 
     fn downloaded_bytes(&self) -> u64 {
-        self.done_units
+        self.carried
+            + self.done_units
             + self
                 .children
                 .values()
@@ -260,8 +262,12 @@ impl Component for OnboardingDownloading {
         let is_running = *running.read();
         let is_complete = *complete.read();
 
-        let global = if total == 0 {
-            if is_complete { 100.0 } else { 0.0 }
+        let global = if is_complete {
+            100.0
+        } else if total == 0 {
+            0.0
+        } else if total_estimate_now > 0 {
+            (agg_now.downloaded_bytes() as f32 / total_estimate_now as f32 * 100.0).clamp(0.0, 99.0)
         } else {
             ((done as f32 + agg_now.fraction()) / total as f32 * 100.0).clamp(0.0, 100.0)
         };
@@ -531,7 +537,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
 
             let downloaded = agg.peek().downloaded_bytes();
             let delta = downloaded.saturating_sub(prev);
-            let inst = delta as f64 / 0.5;
+            let inst = delta as f64;
 
             speed = if speed <= 0.0 {
                 inst
@@ -755,6 +761,12 @@ fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
             }
         }
         GroupedProgressEvent::End { .. } => {
+            agg.carried += agg.done_units
+                + agg
+                    .children
+                    .values()
+                    .map(|t| t.current.min(t.total))
+                    .sum::<u64>();
             agg.children.clear();
             agg.done_units = 0;
         }

@@ -34,8 +34,8 @@ regex.workspace = true
 
 cargo-packager-updater = "=0.2.3"
 
-# file dialog
 rfd = "=0.17.2"
+open = "=5.4.0"
 
 # clipboard image copy + decode for it
 arboard.workspace = true
@@ -46,9 +46,6 @@ freya.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
-
-[target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.60", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
 # Build then package (per OS):
 #   cargo build --release -p oneclient_app

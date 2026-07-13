@@ -50,7 +50,16 @@ impl Component for Switch {
         let on_press = self.on_press.clone();
         let on = *value.read();
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let knob_align = if on { Alignment::End } else { Alignment::Start };
+
+        let track_border = if focus().is_focused() {
+            colors::fg_primary()
+        } else {
+            colors::component_border()
+        };
 
         let background = use_animation_transition(value, |_, on| {
             if on {
@@ -84,9 +93,12 @@ impl Component for Switch {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(8.)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_press(move |_| {
+            .on_all_press(move |_| {
                 on_press.call(());
             })
             .child(
@@ -104,7 +116,7 @@ impl Component for Switch {
                     .main_align(knob_align)
                     .cross_align(Alignment::Center)
                     .background(&*background.read())
-                    .border(ui::border_all_color(1., colors::component_border()))
+                    .border(ui::border_all_color(1., track_border))
                     .child(
                         rect()
                             .width(Size::px(HANDLE_SIZE))

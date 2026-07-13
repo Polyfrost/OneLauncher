@@ -717,6 +717,9 @@ impl Component for SidebarItem {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let tab = self.tab;
         let active = self.active;
         let route = tab.route();
@@ -731,7 +734,7 @@ impl Component for SidebarItem {
 
         let has_dot = matches!(tab, SettingsTab::Changelog);
 
-        rect()
+        let mut el = rect()
             .horizontal()
             .content(Content::Flex)
             .width(Size::fill())
@@ -741,6 +744,9 @@ impl Component for SidebarItem {
             .padding(Gaps::new_symmetric(0., 12.))
             .corner_radius(CornerRadius::new_all(7.))
             .background(background)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
                 Cursor::set(CursorIcon::Pointer);
@@ -750,11 +756,21 @@ impl Component for SidebarItem {
                 Cursor::set(CursorIcon::default());
             })
             .map(route, |el, route| {
-                el.on_press(move |_| {
+                el.on_all_press(move |_| {
                     let _ = RouterContext::get().push(route.clone());
                 })
-            })
-            .child(Icon::new(tab.icon()).size(18.).color(colors::fg_primary()))
+            });
+
+        if focus().is_focused() {
+            el = el.border(
+                Border::new()
+                    .fill(colors::brand())
+                    .width(1.)
+                    .alignment(BorderAlignment::Inner),
+            );
+        }
+
+        el.child(Icon::new(tab.icon()).size(18.).color(colors::fg_primary()))
             .child(
                 rect()
                     .horizontal()

@@ -6,7 +6,7 @@ use oneclient_core::packages::types::{
 use oneclient_core::packages::ProviderId;
 
 use crate::BridgeDispatch;
-use crate::components::{Button, Icon, IconType};
+use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
 use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -27,40 +27,15 @@ pub(super) fn loading_body() -> impl IntoElement {
         .into_element()
 }
 
-pub(super) fn tabs(current: usize, active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
-    let mut labels: Vec<&str> = vec!["About", "Versions"];
+pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
+    let mut control = SegmentedControl::new(active_tab)
+        .height(36.)
+        .segment(Segment::new(0usize).label("About"))
+        .segment(Segment::new(1usize).label("Versions"));
     if has_gallery {
-        labels.push("Gallery");
+        control = control.segment(Segment::new(2usize).label("Gallery"));
     }
-    rect()
-        .horizontal()
-        .spacing(6.)
-        .padding(Gaps::new_all(4.))
-        .corner_radius(CornerRadius::new_all(9.))
-        .background(colors::component_bg())
-        .children(labels.into_iter().enumerate().map(move |(i, t)| {
-            let selected = i == current;
-            let mut active_tab = active_tab;
-            rect()
-                .center()
-                .padding(Gaps::new_symmetric(6., 16.))
-                .corner_radius(CornerRadius::new_all(7.))
-                .background(if selected {
-                    colors::component_bg_pressed()
-                } else {
-                    Color::TRANSPARENT
-                })
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| *active_tab.write() = i)
-                .child(label().text(t).font_size(13.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                }))
-                .into_element()
-        }))
-        .into_element()
+    control
 }
 
 pub(super) fn about_panel(project: &ProjectDetail) -> impl IntoElement {

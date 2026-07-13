@@ -174,44 +174,78 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
     card("Authors", rows)
 }
 
-fn author_row(member: &ProjectMember, mut confirm: State<Option<String>>) -> Element {
-    let url = member.url.clone();
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .corner_radius(CornerRadius::new_all(6.))
-        .padding(Gaps::new_all(4.))
-        .maybe(url.is_some(), |el| {
-            let url = url.clone().unwrap_or_default();
-            el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| confirm.set(Some(url.clone())))
-        })
-        .child(Thumbnail::new(member.avatar_url.clone(), 32.).radius(6.))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .child(
-                    label()
-                        .text(member.name.clone())
-                        .font_size(12.)
-                        .max_lines(1)
-                        .color(colors::fg_primary()),
-                )
-                .maybe(!member.role.is_empty(), |el| {
-                    el.child(
+fn author_row(member: &ProjectMember, confirm: State<Option<String>>) -> Element {
+    AuthorRow {
+        name: member.name.clone(),
+        role: member.role.clone(),
+        url: member.url.clone(),
+        avatar_url: member.avatar_url.clone(),
+        confirm,
+    }
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct AuthorRow {
+    name: String,
+    role: String,
+    url: Option<String>,
+    avatar_url: Option<String>,
+    confirm: State<Option<String>>,
+}
+
+impl Component for AuthorRow {
+    fn render(&self) -> impl IntoElement {
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let url = self.url.clone();
+        let interactive = url.is_some();
+        let mut confirm = self.confirm;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .corner_radius(CornerRadius::new_all(6.))
+            .padding(Gaps::new_all(4.))
+            .maybe(interactive, |el| {
+                let url = url.clone().unwrap_or_default();
+                el.a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Button)
+                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+            })
+            .maybe(interactive && focused, |el| {
+                el.border(border_all_color(1., colors::brand()))
+            })
+            .child(Thumbnail::new(self.avatar_url.clone(), 32.).radius(6.))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .child(
                         label()
-                            .text(member.role.clone())
-                            .font_size(10.)
+                            .text(self.name.clone())
+                            .font_size(12.)
                             .max_lines(1)
-                            .color(colors::fg_secondary()),
+                            .color(colors::fg_primary()),
                     )
-                }),
-        )
-        .into_element()
+                    .maybe(!self.role.is_empty(), |el| {
+                        el.child(
+                            label()
+                                .text(self.role.clone())
+                                .font_size(10.)
+                                .max_lines(1)
+                                .color(colors::fg_secondary()),
+                        )
+                    }),
+            )
+    }
 }
 
 fn details_card(project: &ProjectDetail) -> impl IntoElement {
@@ -282,25 +316,57 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
     card("Links", rows)
 }
 
-fn link_row(label_text: String, url: String, mut confirm: State<Option<String>>) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_press(move |_| confirm.set(Some(url.clone())))
-        .child(
-            Icon::new(IconType::Link03)
-                .size(14.)
-                .color(colors::code_info()),
-        )
-        .child(
-            label()
-                .text(label_text)
-                .font_size(12.)
-                .color(colors::code_info()),
-        )
-        .into_element()
+fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {
+    LinkRow {
+        label_text,
+        url,
+        confirm,
+    }
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct LinkRow {
+    label_text: String,
+    url: String,
+    confirm: State<Option<String>>,
+}
+
+impl Component for LinkRow {
+    fn render(&self) -> impl IntoElement {
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let url = self.url.clone();
+        let mut confirm = self.confirm;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .corner_radius(CornerRadius::new_all(6.))
+            .padding(Gaps::new_all(4.))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .maybe(focused, |el| {
+                el.border(border_all_color(1., colors::brand()))
+            })
+            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .on_all_press(move |_| confirm.set(Some(url.clone())))
+            .child(
+                Icon::new(IconType::Link03)
+                    .size(14.)
+                    .color(colors::code_info()),
+            )
+            .child(
+                label()
+                    .text(self.label_text.clone())
+                    .font_size(12.)
+                    .color(colors::code_info()),
+            )
+    }
 }

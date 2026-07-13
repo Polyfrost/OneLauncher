@@ -59,6 +59,9 @@ impl Component for Dropdown {
         let mut open = use_state(|| false);
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let mut button_area = use_state(|| None::<Area>);
         let mut list_size = use_state(|| None::<Size2D>);
 
@@ -115,13 +118,19 @@ impl Component for Dropdown {
                     .padding(Gaps::new_symmetric(0., 8.))
                     .corner_radius(CornerRadius::new_all(6.))
                     .background(trigger_bg)
+                    .a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Button)
+                    .maybe(focus().is_focused(), |el| {
+                        el.border(border_all_color(1., colors::brand()))
+                    })
                     .on_pointer_enter(move |_| hovering.set(true))
                     .on_pointer_leave(move |_| hovering.set(false))
                     .on_global_pointer_press(on_global_pointer_press)
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })
-                    .on_press(move |e: Event<PressEventData>| {
+                    .on_all_press(move |e: Event<PressEventData>| {
                         e.prevent_default();
                         e.stop_propagation();
                         open.toggle();
@@ -211,18 +220,24 @@ impl Component for DropdownOption {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(6., 8.))
             .corner_radius(CornerRadius::new_all(6.))
-            .background(if hovering() {
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .background(if hovering() || focus().is_focused() {
                 colors::ghost_overlay_hover()
             } else {
                 Color::TRANSPARENT
             })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
-            .on_press(self.on_press.clone())
+            .on_all_press(self.on_press.clone())
             .child(
                 label()
                     .text(self.text.clone())

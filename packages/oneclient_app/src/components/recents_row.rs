@@ -101,6 +101,10 @@ impl Component for ClusterCard {
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
         let total = CARD_MS as f32 + (self.count.saturating_sub(1) as f32) * STAGGER_MS as f32;
         let elapsed = self.progress * total;
         let local =
@@ -135,7 +139,7 @@ impl Component for ClusterCard {
                     .corner_radius(CornerRadius::new_all(12.))
                     .overflow(Overflow::Clip)
                     .border(
-                        if active {
+                        if active || focused {
                             border_all_color(2., colors::brand())
                         } else if *hovering.read() {
                             border_all_color(1., colors::component_border_hover())
@@ -144,6 +148,9 @@ impl Component for ClusterCard {
                         }
                         .alignment(BorderAlignment::Outer),
                     )
+                    .a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Button)
                     .on_pointer_over(move |_| {
                         if !*hovering.peek() {
                             *hovering.write() = true;
@@ -160,7 +167,7 @@ impl Component for ClusterCard {
                             .y(0.)
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
-                    .on_press(on_press)
+                    .on_all_press(on_press)
                     .child(
                         rect()
                             .width(Size::fill())
@@ -220,17 +227,31 @@ impl Component for OtherVersionsTile {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
         rect()
             .width(Size::px(MORE_TILE_WIDTH_PX))
             .height(Size::fill())
             .corner_radius(CornerRadius::new_all(12.))
-            .border(border_all(1.))
+            .border(
+                if focused {
+                    border_all_color(2., colors::brand())
+                } else {
+                    border_all(1.)
+                }
+                .alignment(BorderAlignment::Outer),
+            )
             .background(if *hovering.read() {
                 colors::ghost_overlay_pressed()
             } else {
                 colors::ghost_overlay_hover()
             })
             .blur(32.)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
             })
@@ -245,7 +266,7 @@ impl Component for OtherVersionsTile {
                     .y(0.)
                     .color(Color::from_af32rgb(0.3, 0, 0, 0)),
             )
-            .on_press(|_| {
+            .on_all_press(|_| {
                 let _ = RouterContext::get().push(Route::Clusters {});
             })
             .child(
@@ -259,10 +280,6 @@ impl Component for OtherVersionsTile {
 }
 
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
-    // Layout is: [card gap]* more-tile — i.e. N cards each followed by a gap,
-    // then the fixed-width more-tile. So width for N cards is:
-    //   N * MIN_CARD_WIDTH + N * GAP + MORE_TILE_WIDTH
-    // Solve for the largest N that fits.
     if row_width_px <= MORE_TILE_WIDTH_PX + CARD_GAP_PX {
         return 0;
     }

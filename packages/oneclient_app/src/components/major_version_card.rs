@@ -46,19 +46,25 @@ impl Component for MajorVersionCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let selected = self.selected;
         let hovered = *hovering.read();
+        let focused = focus().is_focused();
         let on_press = self.on_press.clone();
 
-        let opacity = if selected {
-            1.0
-        } else if hovered {
-            0.85
+        let opacity = if selected || hovered || focused {
+            if selected {
+                1.0
+            } else {
+                0.85
+            }
         } else {
             0.6
         };
 
-        let border_color = if selected {
+        let border_color = if selected || focused {
             colors::brand()
         } else if hovered {
             colors::component_border_hover()
@@ -70,7 +76,10 @@ impl Component for MajorVersionCard {
             .key(self.major)
             .width(Size::flex(1.0))
             .height(Size::px(CARD_HEIGHT_PX))
-            .on_press(move |e| on_press.call(e))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .on_all_press(move |e| on_press.call(e))
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
             })

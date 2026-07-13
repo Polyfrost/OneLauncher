@@ -106,7 +106,7 @@ impl Component for NavLink {
             Cursor::set(CursorIcon::default());
         });
 
-        let color = if active || *hovering.peek() || focused.peek().is_focused() {
+        let color = if active || hovering() || focused().is_focused() {
             theme::colors::fg_primary()
         } else {
             theme::colors::fg_secondary()
@@ -114,7 +114,7 @@ impl Component for NavLink {
 
         let underline_width = if active {
             27.
-        } else if *hovering.peek() || focused.peek().is_focused() {
+        } else if hovering() || focused().is_focused() {
             18.
         } else {
             0.

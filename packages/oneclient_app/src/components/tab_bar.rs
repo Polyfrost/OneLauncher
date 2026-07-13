@@ -6,7 +6,7 @@ pub struct TabItem {
     label: String,
     active: bool,
     count: Option<String>,
-    on_press: Option<Box<dyn FnMut(Event<PressEventData>)>>,
+    on_press: Option<EventHandler<Event<PressEventData>>>,
 }
 
 impl TabItem {
@@ -25,8 +25,8 @@ impl TabItem {
         self
     }
 
-    pub fn on_press(mut self, handler: impl FnMut(Event<PressEventData>) + 'static) -> Self {
-        self.on_press = Some(Box::new(handler));
+    pub fn on_press(mut self, handler: impl Into<EventHandler<Event<PressEventData>>>) -> Self {
+        self.on_press = Some(handler.into());
         self
     }
 }
@@ -147,46 +147,79 @@ impl IntoElement for TabBar {
             .cross_align(Alignment::Center)
             .content(Content::Fit)
             .children(self.tabs.into_iter().map(|tab| {
-                let active = tab.active;
-
-                let mut el = rect()
-                    .vertical()
-                    .content(Content::Fit)
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()));
-
-                if let Some(handler) = tab.on_press {
-                    el = el.on_press(handler);
+                TabButton {
+                    label: tab.label,
+                    active: tab.active,
+                    count: tab.count,
+                    font_size,
+                    on_press: tab.on_press,
                 }
-
-                el.child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .spacing(6.)
-                        .content(Content::Fit)
-                        .child(
-                            rect()
-                                .vertical()
-                                .content(Content::Fit)
-                                .child(tab_label(&tab.label, font_size, active))
-                                .child(
-                                    rect()
-                                        .height(Size::px(1.5))
-                                        .width(Size::fill_minimum())
-                                        .margin(Gaps::new_symmetric(0., 4.0))
-                                        .corner_radius(CornerRadius::new_all(2.))
-                                        .background(if active {
-                                            colors::fg_primary()
-                                        } else {
-                                            Color::TRANSPARENT
-                                        }),
-                                ),
-                        )
-                        .maybe_child(tab.count.map(|c| count_pill(&c, font_size).into_element())),
-                )
                 .into_element()
             }))
             .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct TabButton {
+    label: String,
+    active: bool,
+    count: Option<String>,
+    font_size: f32,
+    on_press: Option<EventHandler<Event<PressEventData>>>,
+}
+
+impl Component for TabButton {
+    fn render(&self) -> impl IntoElement {
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
+        let active = self.active;
+        let font_size = self.font_size;
+        let underline_on = active || focus().is_focused();
+
+        let mut el = rect()
+            .vertical()
+            .content(Content::Fit)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()));
+
+        if let Some(handler) = self.on_press.clone() {
+            el = el.on_all_press(move |e| handler.call(e));
+        }
+
+        el.child(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .content(Content::Fit)
+                .child(
+                    rect()
+                        .vertical()
+                        .content(Content::Fit)
+                        .child(tab_label(&self.label, font_size, active))
+                        .child(
+                            rect()
+                                .height(Size::px(1.5))
+                                .width(Size::fill_minimum())
+                                .margin(Gaps::new_symmetric(0., 4.0))
+                                .corner_radius(CornerRadius::new_all(2.))
+                                .background(if underline_on {
+                                    colors::fg_primary()
+                                } else {
+                                    Color::TRANSPARENT
+                                }),
+                        ),
+                )
+                .maybe_child(
+                    self.count
+                        .as_ref()
+                        .map(|c| count_pill(c, font_size).into_element()),
+                ),
+        )
     }
 }

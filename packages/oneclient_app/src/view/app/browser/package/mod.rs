@@ -184,7 +184,7 @@ impl Component for BrowserPackage {
                     .vertical()
                     .width(Size::flex(1.0))
                     .spacing(12.)
-                    .child(tabs(current, active_tab, has_gallery))
+                    .child(tabs(active_tab, has_gallery))
                     .child(body),
             )
             .into_element();

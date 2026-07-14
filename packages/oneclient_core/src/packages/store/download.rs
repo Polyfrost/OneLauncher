@@ -6,14 +6,17 @@ use crate::LauncherResult;
 use crate::crypto::{normalize_hash, sha1_file};
 use crate::packages::domain::{ContentType, ProviderId};
 use crate::packages::error::PackageError;
+use crate::notification::{GroupedProgressChild, TaskPhase};
 use crate::packages::provider::http::download_url;
 use crate::packages::types::{ExternalFile, VersionDetail, VersionFile};
 use crate::state::LauncherServices;
 
+#[tracing::instrument(level = "debug", skip(child, services))]
 pub async fn ensure_artifact_file(
     hash: &str,
     url: &str,
     dest: &std::path::Path,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<u64> {
     polyio::create_dir_all(dest.parent().unwrap_or(dest)).await?;
@@ -26,10 +29,15 @@ pub async fn ensure_artifact_file(
         tokio::fs::remove_file(dest).await?;
     }
 
-    download_url(&services.requester, url, dest, services).await?;
+    tracing::debug!("downloading artifact file");
+    download_url(&services.requester, url, dest, child, services).await?;
 
+    if let Some(child) = child {
+        child.set_phase(TaskPhase::Verifying);
+    }
     let actual = sha1_file(dest).await?;
     if normalize_hash(&actual) != normalize_hash(hash) {
+        tracing::warn!(expected = %hash, %actual, "downloaded artifact hash mismatch");
         return Err(PackageError::HashMismatch {
             expected: hash.to_string(),
             actual,
@@ -40,6 +48,8 @@ pub async fn ensure_artifact_file(
     Ok(tokio::fs::metadata(dest).await?.len())
 }
 
+#[allow(clippy::too_many_arguments)]
+#[tracing::instrument(level = "debug", skip(version, file, child, services))]
 pub async fn download_version_file(
     provider: ProviderId,
     project_id: &str,
@@ -47,6 +57,7 @@ pub async fn download_version_file(
     content_type: ContentType,
     file: &VersionFile,
     force: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<ArtifactRow> {
     let hash = normalize_hash(&file.sha1);
@@ -68,7 +79,7 @@ pub async fn download_version_file(
         &file.file_name,
     )?;
 
-    let size = ensure_artifact_file(&hash, &file.url, &dest, services).await?;
+    let size = ensure_artifact_file(&hash, &file.url, &dest, child, services).await?;
     let stored_path = relative_cache_path(&dest)?;
 
     let published_at = version.published.to_rfc3339();
@@ -100,9 +111,11 @@ pub async fn download_version_file(
     Ok(row)
 }
 
+#[tracing::instrument(level = "debug", skip(file, child, services), fields(name = %file.name))]
 pub async fn download_external(
     file: &ExternalFile,
     force: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<ArtifactRow> {
     let hash = normalize_hash(&file.sha1);
@@ -120,7 +133,7 @@ pub async fn download_external(
         &hash[..hash.len().min(16)],
         &file.name,
     )?;
-    let size = ensure_artifact_file(&hash, &file.url, &dest, services).await?;
+    let size = ensure_artifact_file(&hash, &file.url, &dest, child, services).await?;
     let stored_path = relative_cache_path(&dest)?;
 
     artifact_dao::insert_artifact(

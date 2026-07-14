@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use reqwest::Method;
-use tracing::instrument;
 use url::Url;
 
 use crate::http::{ResponseNotifyOptions, ResponseOptions};
@@ -12,7 +11,7 @@ use crate::paths;
 use crate::state::LauncherServices;
 use crate::LauncherResult;
 
-#[instrument(skip(services))]
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn install_package(
 	package: &JavaPackage,
 	services: &LauncherServices,
@@ -22,16 +21,19 @@ pub async fn install_package(
 
 	let archive_path = java_dir.join(polyio::sanitize_path(&package.name));
 
+	let major = package.java_version.first().copied().unwrap_or(0);
 	services.requester
 		.download_file(
 			reqwest::Request::new(Method::GET, Url::parse(&package.download_url)?),
 			&archive_path,
 			ResponseOptions {
-				notify: Some(ResponseNotifyOptions::standalone(format!(
-					"Installing {} {}",
-					package.vendor,
-					package.java_version.first().copied().unwrap_or(0)
-				))),
+				notify: Some(
+					ResponseNotifyOptions::standalone(format!(
+						"Installing {} {}",
+						package.vendor, major
+					))
+					.done_label(format!("Installed {} {}", package.vendor, major)),
+				),
 			},
 			services,
 		)
@@ -57,10 +59,12 @@ pub async fn install_package(
 
 	let _ = tokio::fs::remove_file(&archive_path).await;
 
+	tracing::info!(vendor = %package.vendor, major, "installed Java runtime");
+
 	Ok(executable)
 }
 
-#[instrument]
+#[tracing::instrument(level = "debug")]
 fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> PathBuf {
     let mut base_path = extract_root.to_path_buf();
 
@@ -90,7 +94,7 @@ fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> P
     #[cfg(target_os = "macos")]
     {
         use crate::java::vendors::JavaVendor;
-        
+
         if !base_path.join("Contents").join("Home").exists() {
             if let Ok(mut entries) = std::fs::read_dir(&base_path) {
                 if let Some(dir) = entries.flatten().find(|entry| {

@@ -26,6 +26,7 @@ struct MclogsResponse {
     error: Option<String>,
 }
 
+#[tracing::instrument(skip(services))]
 pub async fn upload_log_at(
     services: &LauncherServices,
     path: &Path,
@@ -62,8 +63,12 @@ pub async fn upload_log_at(
     let parsed: MclogsResponse = serde_json::from_slice(&bytes)?;
 
     if !parsed.success {
-        return Err(LogsError::Upload(parsed.error.unwrap_or_else(|| "unknown error".into())).into());
+        let reason = parsed.error.unwrap_or_else(|| "unknown error".into());
+        tracing::warn!(reason = %reason, "mclogs upload failed");
+        return Err(LogsError::Upload(reason).into());
     }
+
+    tracing::info!(url = parsed.url.as_deref().unwrap_or(""), "uploaded log to mclo.gs");
 
     Ok(MclogsUploadResponse {
         id: parsed.id.unwrap_or_default(),

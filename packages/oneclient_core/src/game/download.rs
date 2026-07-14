@@ -6,6 +6,7 @@ use crate::http::{RequestClient, ResponseExt, ResponseNotifyOptions, ResponseOpt
 use crate::notification::{GroupedProgressSession, NotificationService, TaskPhase};
 use crate::{LauncherError, LauncherResult};
 
+#[tracing::instrument(skip(requester, notifier, progress, label, expected_sha1), fields(%url), level = "debug")]
 pub async fn download_to_path(
     requester: &RequestClient,
     notifier: &NotificationService,
@@ -56,6 +57,7 @@ pub async fn download_to_path(
     Ok(())
 }
 
+#[tracing::instrument(skip(requester, notifier, progress, label), fields(%url), level = "debug")]
 pub async fn fetch_bytes_verified(
     requester: &RequestClient,
     notifier: &NotificationService,

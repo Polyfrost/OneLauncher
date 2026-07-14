@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
+
 use crate::LauncherResult;
 
+#[tracing::instrument(level = "debug", skip(exclude_top))]
 pub async fn copy_tree(src: &Path, dst: &Path, exclude_top: &[&str]) -> LauncherResult<()> {
     let mut stack: Vec<(PathBuf, PathBuf, bool)> =
         vec![(src.to_path_buf(), dst.to_path_buf(), true)];

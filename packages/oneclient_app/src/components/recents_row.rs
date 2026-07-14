@@ -14,6 +14,7 @@ use crate::utils::sort_clusters_for_home;
 const ROW_HEIGHT_PX: f32 = 208.0;
 const CARD_GAP_PX: f32 = 24.0;
 const MORE_TILE_WIDTH_PX: f32 = 96.0;
+const MIN_CARD_WIDTH_PX: f32 = 300.0;
 const MAX_CARD_WIDTH_PX: f32 = 480.0;
 const CARD_MS: u64 = 460;
 const STAGGER_MS: u64 = 85;
@@ -100,6 +101,10 @@ impl Component for ClusterCard {
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
         let total = CARD_MS as f32 + (self.count.saturating_sub(1) as f32) * STAGGER_MS as f32;
         let elapsed = self.progress * total;
         let local =
@@ -121,6 +126,7 @@ impl Component for ClusterCard {
         rect()
             .key(self.cluster.id)
             .width(Size::flex(1.0))
+            .min_width(Size::px(MIN_CARD_WIDTH_PX))
             .max_width(Size::px(MAX_CARD_WIDTH_PX))
             .height(Size::fill())
             .offset_y(rise)
@@ -133,7 +139,7 @@ impl Component for ClusterCard {
                     .corner_radius(CornerRadius::new_all(12.))
                     .overflow(Overflow::Clip)
                     .border(
-                        if active {
+                        if active || focused {
                             border_all_color(2., colors::brand())
                         } else if *hovering.read() {
                             border_all_color(1., colors::component_border_hover())
@@ -142,6 +148,9 @@ impl Component for ClusterCard {
                         }
                         .alignment(BorderAlignment::Outer),
                     )
+                    .a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Button)
                     .on_pointer_over(move |_| {
                         if !*hovering.peek() {
                             *hovering.write() = true;
@@ -158,7 +167,7 @@ impl Component for ClusterCard {
                             .y(0.)
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
-                    .on_press(on_press)
+                    .on_all_press(on_press)
                     .child(
                         rect()
                             .width(Size::fill())
@@ -218,17 +227,31 @@ impl Component for OtherVersionsTile {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
         rect()
             .width(Size::px(MORE_TILE_WIDTH_PX))
             .height(Size::fill())
             .corner_radius(CornerRadius::new_all(12.))
-            .border(border_all(1.))
+            .border(
+                if focused {
+                    border_all_color(2., colors::brand())
+                } else {
+                    border_all(1.)
+                }
+                .alignment(BorderAlignment::Outer),
+            )
             .background(if *hovering.read() {
                 colors::ghost_overlay_pressed()
             } else {
                 colors::ghost_overlay_hover()
             })
             .blur(32.)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
             })
@@ -243,7 +266,7 @@ impl Component for OtherVersionsTile {
                     .y(0.)
                     .color(Color::from_af32rgb(0.3, 0, 0, 0)),
             )
-            .on_press(|_| {
+            .on_all_press(|_| {
                 let _ = RouterContext::get().push(Route::Clusters {});
             })
             .child(
@@ -257,15 +280,11 @@ impl Component for OtherVersionsTile {
 }
 
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
-    const MORE_TILE_WIDTH: f32 = 96.0;
-    const GAP: f32 = 24.0;
-    const MIN_CARD_WIDTH: f32 = 300.0;
-
-    if row_width_px <= MORE_TILE_WIDTH + GAP {
+    if row_width_px <= MORE_TILE_WIDTH_PX + CARD_GAP_PX {
         return 0;
     }
 
-    let available = row_width_px - MORE_TILE_WIDTH - GAP;
-    let slot = MIN_CARD_WIDTH + GAP;
+    let available = row_width_px - MORE_TILE_WIDTH_PX;
+    let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
     (available / slot).floor() as usize
 }

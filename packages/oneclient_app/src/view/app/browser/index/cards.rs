@@ -66,6 +66,10 @@ impl Component for PackageCard {
         let icon_url = self.item.icon_url.clone();
         let cluster_id = self.cluster_id;
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
         use_drop(|| {
             Cursor::set(CursorIcon::default());
         });
@@ -76,11 +80,21 @@ impl Component for PackageCard {
             .height(Size::px(CARD_H))
             .corner_radius(CornerRadius::new_all(10.))
             .background(CARD_BG)
-            .border(border_all_color(1., colors::component_border()))
+            .border(border_all_color(
+                1.,
+                if focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
             .overflow(Overflow::Clip)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(
                 rect()
                     .margin(Gaps::new_all(1.))
@@ -141,9 +155,35 @@ impl Component for PackageCard {
 }
 
 pub(super) fn list_row(item: ProjectSummary, cluster_id: i64, package_type: &str) -> impl IntoElement {
-    let id = item.id.clone();
-    let provider = item.provider;
-    let package_type = package_type.to_string();
+    ListRow {
+        item,
+        cluster_id,
+        package_type: package_type.to_string(),
+    }
+}
+
+#[derive(PartialEq)]
+struct ListRow {
+    item: ProjectSummary,
+    cluster_id: i64,
+    package_type: String,
+}
+
+impl Component for ListRow {
+    fn render(&self) -> impl IntoElement {
+        let item = self.item.clone();
+        let cluster_id = self.cluster_id;
+        let id = item.id.clone();
+        let provider = item.provider;
+        let package_type = self.package_type.clone();
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        use_drop(|| {
+            Cursor::set(CursorIcon::default());
+        });
 
     rect()
         .horizontal()
@@ -154,12 +194,22 @@ pub(super) fn list_row(item: ProjectSummary, cluster_id: i64, package_type: &str
         .padding(Gaps::new_all(16.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(CARD_BG)
-        .border(border_all_color(1., colors::component_border()))
+        .border(border_all_color(
+            1.,
+            if focused {
+                colors::brand()
+            } else {
+                colors::component_border()
+            },
+        ))
         .overflow(Overflow::Clip)
         .content(Content::Flex)
+        .a11y_id(a11y_id)
+        .a11y_focusable(true)
+        .a11y_role(AccessibilityRole::Button)
         .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
         .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+        .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
         .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
         .child(
             rect()
@@ -198,6 +248,7 @@ pub(super) fn list_row(item: ProjectSummary, cluster_id: i64, package_type: &str
                 ),
         )
         .child(downloads_row(item.downloads))
+    }
 }
 
 fn downloads_row(downloads: u64) -> impl IntoElement {

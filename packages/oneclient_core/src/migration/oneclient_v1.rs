@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use tracing::instrument;
 
 use crate::LauncherResult;
 use crate::packages::domain::GameLoader;
@@ -33,7 +32,7 @@ pub fn category_from_bundle_name(name: &str) -> Option<String> {
     (!inner.is_empty()).then(|| inner.to_string())
 }
 
-#[instrument]
+#[tracing::instrument]
 pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     let Some(root) = old_root() else {
         return Ok(None);
@@ -60,6 +59,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     }
 }
 
+#[tracing::instrument(level = "debug")]
 async fn detect_inner(root: &Path, db_path: &Path) -> LauncherResult<MigrationDetection> {
     let opts = SqliteConnectOptions::new()
         .filename(db_path)
@@ -113,6 +113,7 @@ async fn detect_inner(root: &Path, db_path: &Path) -> LauncherResult<MigrationDe
     })
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn fetch_categories(pool: &sqlx::SqlitePool, cluster_id: i64) -> LauncherResult<Vec<String>> {
     let rows = sqlx::query(
         "SELECT DISTINCT bundle_name FROM cluster_packages \
@@ -137,7 +138,7 @@ async fn fetch_categories(pool: &sqlx::SqlitePool, cluster_id: i64) -> LauncherR
     Ok(categories)
 }
 
-#[instrument(skip(target))]
+#[tracing::instrument(skip(target))]
 pub async fn import_game_dir(folder_name: &str, target: ImportTarget) -> LauncherResult<()> {
     let Some(root) = old_root() else {
         return Ok(());

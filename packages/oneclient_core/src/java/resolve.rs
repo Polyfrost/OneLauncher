@@ -1,9 +1,11 @@
 use std::path::{Path, PathBuf};
 
+
 use crate::constants::JAVA_BIN;
 use crate::java::data::java_executable_relative_path;
 use crate::java::{JavaError, JavaResult};
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub fn resolve_java_executable(selection: impl AsRef<Path>) -> JavaResult<PathBuf> {
 	let selection = selection.as_ref();
 
@@ -41,6 +43,8 @@ pub fn resolve_java_executable(selection: impl AsRef<Path>) -> JavaResult<PathBu
 			}
 		}
 	}
+
+	tracing::warn!(path = %selection.display(), "no Java executable found in selection");
 
 	Err(JavaError::InvalidJavaPath {
 		path: selection.display().to_string(),

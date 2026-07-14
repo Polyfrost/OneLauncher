@@ -65,6 +65,7 @@ fn collect_dir(
     }
 }
 
+#[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> {
     let mut out = Vec::new();
 
@@ -148,12 +149,14 @@ pub(super) async fn read_file_string(path: &Path) -> LauncherResult<String> {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(opts))]
 pub async fn read_log_at(path: &Path, opts: &ReadOptions) -> LauncherResult<Vec<LogLine>> {
     let path = ensure_allowed(path)?;
     let content = read_file_string(&path).await?;
     Ok(lines_from(&content, opts))
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn delete_log_at(path: &Path) -> LauncherResult<()> {
     let path = ensure_allowed(path)?;
 

@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 
 use oneclient_core::LauncherResult;
 use oneclient_core::auth;

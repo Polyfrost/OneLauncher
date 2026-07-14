@@ -6,7 +6,6 @@ use interfrost::api::modded::Manifest as ModdedManifest;
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 
 use crate::api_config::metadata_api_url;
 use crate::metadata::MetadataError;
@@ -43,7 +42,7 @@ impl MetadataStore {
         Self::default()
     }
 
-    #[instrument(skip(self, services))]
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn get_vanilla_or_fetch(
         &mut self,
         services: &LauncherServices,
@@ -55,7 +54,7 @@ impl MetadataStore {
         self.get_vanilla()
     }
 
-    #[instrument(skip(self, services))]
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn get_modded_or_fetch(
         &mut self,
         services: &LauncherServices,
@@ -95,7 +94,7 @@ impl MetadataStore {
         .ok_or_else(|| MetadataError::FetchError.into())
     }
 
-    #[instrument(skip_all)]
+    #[tracing::instrument(skip_all)]
     pub async fn initialize(&mut self, services: &LauncherServices) -> LauncherResult<()> {
         let path = paths::caches_dir()?.join("metadata.json");
         let mut save_file = false;
@@ -130,7 +129,7 @@ impl MetadataStore {
         Ok(())
     }
 
-    #[instrument(skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn refetch_errored(&mut self, services: &LauncherServices) -> u8 {
         let mut changed: u8 = 0;
 
@@ -171,7 +170,7 @@ impl MetadataStore {
         changed
     }
 
-    #[instrument(skip_all)]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn fetch_all(&mut self, services: &LauncherServices) {
         let (minecraft, forge, neo, fabric, quilt, legacyfabric) = tokio::join!(
             fetch_vanilla_manifest(services),
@@ -190,6 +189,7 @@ impl MetadataStore {
         self.inner.legacyfabric = legacyfabric.ok();
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn get_loaders_for_version(
         &mut self,
         services: &LauncherServices,
@@ -233,6 +233,7 @@ impl MetadataStore {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn fetch_vanilla_manifest(services: &LauncherServices) -> LauncherResult<VanillaManifest> {
     match fetch_manifest::<VanillaManifest>(services, GameLoader::Vanilla).await {
         Ok(manifest) => Ok(manifest),
@@ -255,6 +256,7 @@ async fn fetch_vanilla_manifest(services: &LauncherServices) -> LauncherResult<V
     }
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn fetch_modded_manifest(
     services: &LauncherServices,
     loader: GameLoader,
@@ -262,6 +264,7 @@ async fn fetch_modded_manifest(
     fetch_manifest(services, loader).await
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn fetch_manifest<T: DeserializeOwned>(
     services: &LauncherServices,
     loader: GameLoader,

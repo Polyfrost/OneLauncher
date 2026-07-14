@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 #[cfg(debug_assertions)]
 pub mod dev;
 

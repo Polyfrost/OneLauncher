@@ -3,7 +3,6 @@ use std::path::Path;
 use reqwest::header;
 use reqwest::{Method, StatusCode};
 use tokio::sync::RwLock;
-use tracing::instrument;
 
 use crate::api_config::meta_url_base;
 use crate::paths;
@@ -23,7 +22,7 @@ impl VersionsManager {
         }
     }
 
-    #[instrument(skip(self, services))]
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn sync(&self, services: &LauncherServices) -> LauncherResult<bool> {
         let Some((manifest, changed)) = Self::fetch_manifest(services).await? else {
             tracing::debug!("skipping versions sync; no remote or cached manifest available");
@@ -37,6 +36,7 @@ impl VersionsManager {
         self.manifest.read().await.metadata()
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     async fn fetch_manifest(
         services: &LauncherServices,
     ) -> LauncherResult<Option<(VersionsManifest, bool)>> {

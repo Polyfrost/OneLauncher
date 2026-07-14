@@ -7,7 +7,7 @@ use oneclient_core::notification::NotificationLevel;
 use crate::{
     components::{Button, ButtonSize, Icon, IconType},
     hooks::{use_dispatch, use_notifications_snapshot},
-    notifications::InboxEntry,
+    notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
 };
 
@@ -263,11 +263,7 @@ fn message_card(
 }
 
 fn action_card(entry: &InboxEntry, dispatch: crate::BridgeDispatch, id: u64, ttl_pct: f32) -> Rect {
-    let review_label = entry
-        .actions
-        .first()
-        .cloned()
-        .unwrap_or_else(|| "Review".to_string());
+    let action = entry.actions.first().cloned();
 
     toast_shell(entry)
         .child(
@@ -287,58 +283,58 @@ fn action_card(entry: &InboxEntry, dispatch: crate::BridgeDispatch, id: u64, ttl
                         .child(header(entry)),
                 )
                 .child(divider())
-                .child(action_row(review_label, dispatch, id)),
+                .child(action_row(action, dispatch, id)),
         )
         .child(ttl_bar(entry, ttl_pct))
 }
 
-fn action_row(review_label: String, dispatch: crate::BridgeDispatch, id: u64) -> impl IntoElement {
+fn action_row(
+    action: Option<crate::notifications::NotificationAction>,
+    dispatch: crate::BridgeDispatch,
+    id: u64,
+) -> impl IntoElement {
     let dismiss = dispatch.clone();
+    let review_label = action
+        .as_ref()
+        .map(|a| a.label.clone())
+        .unwrap_or_else(|| "Review".to_string());
+    let review_kind = action.map(|a| a.kind);
+
     rect()
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .padding(Gaps::new(0., 30., 0., 30.))
+        .spacing(8.)
         .child(
-            rect()
-                .horizontal()
+            Button::new()
+                .small()
+                .secondary()
                 .width(Size::flex(1.0))
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .on_press(move |_| dispatch.mark_notification_read(id))
-                .child(
-                    Icon::new(IconType::Eye)
-                        .size(18.)
-                        .color(colors::toast_action()),
-                )
-                .child(
-                    label()
-                        .text(review_label)
-                        .font_size(12.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::toast_action()),
-                ),
+                .on_press(move |_| dismiss.dismiss_toast(id))
+                .child(Icon::new(IconType::XClose).size(16.))
+                .text("Dismiss"),
         )
         .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .on_press(move |_| dismiss.dismiss_toast(id))
-                .child(
-                    Icon::new(IconType::XClose)
-                        .size(18.)
-                        .color(colors::toast_action()),
-                )
-                .child(
-                    label()
-                        .text("Dismiss")
-                        .font_size(12.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::toast_action()),
-                ),
+            Button::new()
+                .small()
+                .primary()
+                .width(Size::flex(1.0))
+                .on_press(move |_| match &review_kind {
+                    Some(kind) => run_action(&dispatch, kind),
+                    None => dispatch.mark_notification_read(id),
+                })
+                .child(Icon::new(IconType::Eye).size(16.))
+                .text(review_label),
         )
+}
+
+fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {
+    match kind {
+        NotificationActionKind::OpenClusterUpdate(summary) => {
+            dispatch.open_cluster_update(summary.clone());
+        }
+    }
 }
 
 fn progress_card(entry: &InboxEntry) -> Rect {

@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
-use chrono::Utc;
 use uuid::Uuid;
 
 use super::error::AuthError;
 use super::offline::{offline_account, validate_offline_username};
-use super::data::{AccountKind, DeviceCodeLogin, MinecraftAccount};
+use super::data::{AccountKind, MinecraftAccount};
 use crate::paths;
 use crate::state::LauncherServices;
 use crate::LauncherResult;
@@ -17,6 +16,7 @@ pub struct CredentialsStore {
 }
 
 impl CredentialsStore {
+    #[tracing::instrument(level = "debug")]
     pub async fn load() -> LauncherResult<Self> {
         let path = paths::auth_file()?;
         if !path.exists() {
@@ -32,6 +32,7 @@ impl CredentialsStore {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn save(&self) -> LauncherResult<()> {
         let path = paths::auth_file()?;
 
@@ -57,23 +58,7 @@ impl CredentialsStore {
         self.users.get(&id)
     }
 
-    pub async fn finish_device_login(
-        &mut self,
-        flow: &DeviceCodeLogin,
-        services: &LauncherServices,
-    ) -> LauncherResult<MinecraftAccount> {
-        let client = services.requester.http();
-        let progress_id = Uuid::new_v4();
-        let notifier = services.notifier.clone();
-        let account = super::msa::finish_device_login(client, flow, |label, current, total| {
-            notifier.send_progress(&progress_id, label, current, total);
-        })
-        .await
-        .map_err(AuthError::from)?;
-
-        self.commit_account(account, services).await
-    }
-
+    #[tracing::instrument(level = "debug", skip_all, fields(username = %account.username))]
     pub async fn commit_account(
         &mut self,
         account: MinecraftAccount,
@@ -86,6 +71,7 @@ impl CredentialsStore {
         }
 
         self.save().await?;
+        tracing::debug!("committed account to credentials store");
         services
             .notifier
             .send_info("Account added", &format!("Signed in as {}", account.username));
@@ -97,6 +83,7 @@ impl CredentialsStore {
         Ok(account)
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(username = %username))]
     pub async fn add_offline_account_and_save(
         &mut self,
         username: String,
@@ -126,30 +113,18 @@ impl CredentialsStore {
         Ok(account)
     }
 
-    pub async fn refresh_microsoft_account(
+    #[tracing::instrument(level = "debug", skip_all, fields(%account.id))]
+    pub async fn commit_refreshed_account(
         &mut self,
-        id: Uuid,
-        services: &LauncherServices,
-    ) -> LauncherResult<Option<MinecraftAccount>> {
-        let Some(existing) = self.users.get(&id).cloned() else {
-            return Ok(None);
-        };
-
-        if existing.kind != AccountKind::Microsoft {
-            return Ok(Some(existing));
-        }
-
-        let client = services.requester.http();
-        let account = super::msa::refresh_microsoft_account(client, &existing)
-            .await
-            .map_err(AuthError::from)?;
-
-        self.users.insert(id, account.clone());
+        account: MinecraftAccount,
+    ) -> LauncherResult<()> {
+        self.users.insert(account.id, account);
         self.save().await?;
-
-        Ok(Some(account))
+        tracing::debug!("stored refreshed Microsoft account");
+        Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn remove_account(&mut self, id: Uuid) -> LauncherResult<Option<MinecraftAccount>> {
         let removed = self.users.remove(&id);
 
@@ -161,6 +136,7 @@ impl CredentialsStore {
         Ok(removed)
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(?id))]
     pub async fn set_default_user(&mut self, id: Option<Uuid>) -> LauncherResult<()> {
         if let Some(id) = id
             && !self.users.contains_key(&id)
@@ -173,10 +149,8 @@ impl CredentialsStore {
         Ok(())
     }
 
-    pub async fn default_account(
-        &mut self,
-        services: &LauncherServices,
-    ) -> LauncherResult<Option<MinecraftAccount>> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn resolve_default_id(&mut self) -> LauncherResult<Option<Uuid>> {
         let id = self
             .default_user
             .or_else(|| self.users.keys().copied().next());
@@ -185,68 +159,38 @@ impl CredentialsStore {
             return Ok(None);
         };
 
-        let Some(account) = self.users.get(&id).cloned() else {
+        if !self.users.contains_key(&id) {
             return Ok(None);
-        };
+        }
 
         if self.default_user != Some(id) {
             self.default_user = Some(id);
             self.save().await?;
         }
 
-        if account.kind == AccountKind::Offline {
-            if !self.has_microsoft_account() {
-                return Err(AuthError::OfflineRequiresMicrosoft.into());
-            }
-            return Ok(Some(account));
-        }
-
-        if account.expires >= Utc::now() {
-            return Ok(Some(account));
-        }
-
-        let old = account.clone();
-        match self.refresh_microsoft_account(id, services).await {
-            Ok(Some(updated)) => Ok(Some(updated)),
-            Ok(None) => Ok(None),
-            Err(err) => {
-                if is_transient_auth_error(&err) {
-                    Ok(Some(old))
-                } else {
-                    Err(err)
-                }
-            }
-        }
+        Ok(Some(id))
     }
 
-    pub async fn account_for_launch(
-        &mut self,
-        id: Uuid,
-        services: &LauncherServices,
-    ) -> LauncherResult<MinecraftAccount> {
-        if !self.users.contains_key(&id) {
-            return Err(AuthError::AccountNotFound(id).into());
-        }
+    /// The current account as stored. Never touches the network: callers that
+    /// need a usable token go through [`crate::auth::account_for_launch`].
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn default_account(&mut self) -> LauncherResult<Option<MinecraftAccount>> {
+        let Some(id) = self.resolve_default_id().await? else {
+            return Ok(None);
+        };
+        let Some(account) = self.users.get(&id).cloned() else {
+            return Ok(None);
+        };
 
-        let previous_default = self.default_user;
-        self.default_user = Some(id);
-
-        let account = self
-            .default_account(services)
-            .await?
-            .ok_or(AuthError::AccountNotFound(id))?;
-
-        self.default_user = previous_default;
-
-        if account.kind == AccountKind::Offline && !self.has_microsoft_account() {
+        if account.is_offline() && !self.has_microsoft_account() {
             return Err(AuthError::OfflineRequiresMicrosoft.into());
         }
 
-        Ok(account)
+        Ok(Some(account))
     }
 }
 
-fn is_transient_auth_error(err: &crate::LauncherError) -> bool {
+pub(super) fn is_transient_auth_error(err: &crate::LauncherError) -> bool {
     match err {
         crate::LauncherError::AuthError(super::error::AuthError::Minecraft(
             super::error::MinecraftAuthError::RequestError { source, .. },

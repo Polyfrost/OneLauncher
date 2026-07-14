@@ -87,6 +87,7 @@ impl RequestClient {
 }
 
 impl RequestClient {
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn send(&self, request: impl Into<HttpRequest>) -> Result<Response, RequestError> {
         let request: HttpRequest = request.into();
         let mut retries = 0;
@@ -102,6 +103,12 @@ impl RequestClient {
         };
 
         let mut active_request = request.request;
+
+        tracing::debug!(
+            method = %active_request.method(),
+            url = %active_request.url(),
+            "dispatching http request"
+        );
 
         let res = loop {
             let permit = if request.options.use_semaphore {
@@ -159,6 +166,7 @@ impl RequestClient {
         Ok(res)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, request, options, services), fields(dest = %dest.as_ref().display()))]
     pub async fn download_file(
         &self,
         request: impl Into<HttpRequest>,
@@ -169,12 +177,13 @@ impl RequestClient {
         let res = self.send(request).await?;
         let http_stream = res.stream(options, &services.notifier).await?;
         let http_stream = std::pin::pin!(http_stream);
-        
+
         polyio::write_stream(dest, http_stream).await?;
 
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn send_as<T: DeserializeOwned>(&self, request: impl Into<HttpRequest>) -> Result<T, RequestError> {
         let res = self.send(request).await?;
         let status = res.status();
@@ -198,6 +207,7 @@ impl RequestClient {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, body, extra_headers), fields(method = %method, %url))]
     pub async fn send_json<T: DeserializeOwned>(
         &self,
         method: reqwest::Method,

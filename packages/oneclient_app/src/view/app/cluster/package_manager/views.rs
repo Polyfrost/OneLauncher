@@ -1,5 +1,6 @@
 use super::*;
 
+use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
 use oneclient_core::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
@@ -184,7 +185,6 @@ struct FilterButton {
 impl Component for FilterButton {
     fn render(&self) -> impl IntoElement {
         let mut open = use_state(|| false);
-        let mut hovering = use_state(|| false);
 
         let sort = self.sort;
         let current_sort = self.current_sort;
@@ -194,11 +194,6 @@ impl Component for FilterButton {
         let active =
             current_sort != SortMode::NameAsc || *enabled_filter.read() != EnabledFilter::All;
 
-        let bg = if is_open || hovering() {
-            colors::component_bg_hover()
-        } else {
-            colors::component_bg()
-        };
         let icon_color = if active {
             colors::brand()
         } else {
@@ -208,21 +203,11 @@ impl Component for FilterButton {
         rect()
             .width(Size::px(FILTER_BTN_W))
             .child(
-                rect()
+                Button::new()
+                    .secondary()
+                    .icon()
                     .width(Size::px(FILTER_BTN_W))
                     .height(Size::px(34.))
-                    .center()
-                    .corner_radius(CornerRadius::new_all(8.))
-                    .background(bg)
-                    .border(crate::ui::border_all_color(1., colors::component_border()))
-                    .on_pointer_enter(move |_| {
-                        hovering.set(true);
-                        Cursor::set(CursorIcon::Pointer);
-                    })
-                    .on_pointer_leave(move |_| {
-                        hovering.set(false);
-                        Cursor::set(CursorIcon::default());
-                    })
                     .on_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         open.toggle();
@@ -230,67 +215,112 @@ impl Component for FilterButton {
                     .child(Icon::new(IconType::Sliders04).size(16.).color(icon_color)),
             )
             .maybe_child(is_open.then(|| {
-                filter_popover(sort, current_sort, enabled_filter, move || open.set(false))
-                    .into_element()
+                let on_close: EventHandler<()> = (move |()| open.set(false)).into();
+                FilterPopover {
+                    sort,
+                    current_sort,
+                    enabled_filter,
+                    on_close,
+                }
+                .into_element()
             }))
     }
 }
 
-fn filter_popover(
-    mut sort: State<Option<String>>,
+#[derive(PartialEq)]
+struct FilterPopover {
+    sort: State<Option<String>>,
     current_sort: SortMode,
-    mut enabled_filter: State<EnabledFilter>,
-    on_close: impl FnMut() + Clone + 'static,
-) -> impl IntoElement {
-    let mut close_backdrop = on_close.clone();
+    enabled_filter: State<EnabledFilter>,
+    on_close: EventHandler<()>,
+}
 
-    let show = *enabled_filter.read();
+impl Component for FilterPopover {
+    fn render(&self) -> impl IntoElement {
+        let mut sort = self.sort;
+        let current_sort = self.current_sort;
+        let mut enabled_filter = self.enabled_filter;
+        let backdrop_close = self.on_close.clone();
+        let key_close = self.on_close.clone();
 
-    let mut panel = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(4.)
-        .padding(Gaps::new_all(8.))
-        .corner_radius(CornerRadius::new_all(10.))
-        .border(crate::ui::border_all_color(1., colors::component_border()))
-        .background(colors::page_elevated())
-        .child(section_label("Sort by"));
+        let a11y_id = use_a11y();
 
-    for mode in SortMode::ALL {
-        let selected = mode == current_sort;
-        panel = panel.child(choice_row(mode.label(), selected, move |_| {
-            sort.set(Some(mode.key().to_string()));
-        }));
+        let fade = use_animation(|conf| {
+            conf.on_creation(OnCreation::Run);
+            AnimNum::new(0., 1.).time(160).ease(Ease::Out)
+        });
+        let progress = fade.read().value();
+
+        let show = *enabled_filter.read();
+
+        let mut panel = rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(4.)
+            .padding(Gaps::new_all(8.))
+            .opacity(progress)
+            .offset_y((progress - 1.0) * 6.)
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(colors::page_elevated().with_a(230))
+            .blur(12.)
+            .border(crate::ui::border_all_color(1., colors::component_border()))
+            .shadow(Shadow::from((0., 8., 32., 0., Color::from_argb(120, 0, 0, 0))))
+            .a11y_id(a11y_id)
+            .a11y_role(AccessibilityRole::Dialog)
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) {
+                    key_close.call(());
+                }
+            })
+            .child(section_label("Sort by"));
+
+        for mode in SortMode::ALL {
+            let selected = mode == current_sort;
+            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+                sort.set(Some(mode.key().to_string()));
+            })
+            .into();
+            panel = panel.child(ChoiceRow {
+                text: mode.label(),
+                selected,
+                on_press,
+            });
+        }
+
+        panel = panel.child(section_label("Show"));
+        for filter in EnabledFilter::ALL {
+            let selected = filter == show;
+            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+                enabled_filter.set(filter);
+            })
+            .into();
+            panel = panel.child(ChoiceRow {
+                text: filter.label(),
+                selected,
+                on_press,
+            });
+        }
+
+        rect()
+            .height(Size::px(0.))
+            .width(Size::px(FILTER_PANEL_W))
+            .layer(Layer::Overlay)
+            .child(
+                rect()
+                    .layer(Layer::RelativeOverlay(10))
+                    .position(Position::new_global().top(0.).left(0.))
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .on_press(move |_| backdrop_close.call(())),
+            )
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .layer(Layer::RelativeOverlay(12))
+                    .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
+                    .child(panel),
+            )
     }
-
-    panel = panel.child(section_label("Show"));
-    for filter in EnabledFilter::ALL {
-        let selected = filter == show;
-        panel = panel.child(choice_row(filter.label(), selected, move |_| {
-            enabled_filter.set(filter);
-        }));
-    }
-
-    rect()
-        .height(Size::px(0.))
-        .width(Size::px(FILTER_PANEL_W))
-        .layer(Layer::Overlay)
-        .child(
-            rect()
-                .layer(Layer::RelativeOverlay(10))
-                .position(Position::new_global().top(0.).left(0.))
-                .width(Size::window_percent(100.))
-                .height(Size::window_percent(100.))
-                .on_press(move |_| close_backdrop()),
-        )
-        .child(
-            rect()
-                .width(Size::fill())
-                .layer(Layer::RelativeOverlay(12))
-                .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
-                .child(panel),
-        )
-        .into_element()
 }
 
 fn section_label(text: &'static str) -> impl IntoElement {
@@ -301,45 +331,68 @@ fn section_label(text: &'static str) -> impl IntoElement {
         .color(colors::fg_secondary())
 }
 
-fn choice_row(
+#[derive(PartialEq)]
+struct ChoiceRow {
     text: &'static str,
     selected: bool,
-    on_press: impl FnMut(Event<PressEventData>) + 'static,
-) -> impl IntoElement {
-    let color = if selected {
-        colors::fg_primary()
-    } else {
-        colors::fg_secondary()
-    };
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .padding(Gaps::new_symmetric(5., 8.))
-        .corner_radius(CornerRadius::new_all(6.))
-        .background(if selected {
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for ChoiceRow {
+    fn render(&self) -> impl IntoElement {
+        let text = self.text;
+        let selected = self.selected;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let color = if selected {
+            colors::fg_primary()
+        } else {
+            colors::fg_secondary()
+        };
+
+        let bg = if selected {
             colors::component_bg()
+        } else if focused {
+            colors::ghost_overlay_hover()
         } else {
             Color::TRANSPARENT
-        })
-        .content(Content::Flex)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_press(on_press)
-        .child(
-            label()
-                .text(text)
-                .font_size(12.)
-                .width(Size::flex(1.0))
-                .color(color),
-        )
-        .maybe_child(selected.then(|| {
-            Icon::new(IconType::Check)
-                .size(14.)
-                .color(colors::brand())
-                .into_element()
-        }))
+        };
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(5., 8.))
+            .corner_radius(CornerRadius::new_all(6.))
+            .background(bg)
+            .content(Content::Flex)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::MenuItemRadio)
+            .maybe(focused, |el| {
+                el.border(crate::ui::border_all_color(1., colors::brand()))
+            })
+            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .on_all_press(self.on_press.clone())
+            .child(
+                label()
+                    .text(text)
+                    .font_size(12.)
+                    .width(Size::flex(1.0))
+                    .color(color),
+            )
+            .maybe_child(selected.then(|| {
+                Icon::new(IconType::Check)
+                    .size(14.)
+                    .color(colors::brand())
+                    .into_element()
+            }))
+    }
 }
 
 fn add_from_file_button(
@@ -352,16 +405,18 @@ fn add_from_file_button(
         .on_press(move |_| {
             let dispatch = dispatch.clone();
             spawn(async move {
-                if let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Select a file to import")
-                    .pick_file()
+                if let Some(handles) = rfd::AsyncFileDialog::new()
+                    .set_title("Select files to import")
+                    .pick_files()
                     .await
                 {
-                    dispatch.import_local_file(
-                        cluster_id,
-                        content_type,
-                        handle.path().to_path_buf(),
-                    );
+                    for handle in handles {
+                        dispatch.import_local_file(
+                            cluster_id,
+                            content_type,
+                            handle.path().to_path_buf(),
+                        );
+                    }
                 }
             });
         })
@@ -470,14 +525,29 @@ impl Component for ContentBox {
             ContentKind::Other => empty_state(noun_plural).into_element(),
         });
 
+        let header = (count > 0)
+            .then(|| match kind {
+                ContentKind::External => Some(
+                    action_header(browse_button(cluster_id, package_type)).into_element(),
+                ),
+                ContentKind::Local => Some(
+                    action_header(add_from_file_button(cluster_id, content_type, dispatch.clone()))
+                        .into_element(),
+                ),
+                ContentKind::Other => None,
+            })
+            .flatten();
+
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
         let drop_dispatch = dispatch.clone();
 
         rect()
+            .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
+            .spacing(8.)
             .padding(Gaps::new_all(8.))
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
@@ -498,9 +568,20 @@ impl Component for ContentBox {
                     drop_dispatch.import_local_file(cluster_id, content_type, path.clone());
                 }
             })
+            .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty)
     }
+}
+
+fn action_header(button: impl IntoElement) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .content(Content::Flex)
+        .child(rect().width(Size::flex(1.0)))
+        .child(button)
 }
 
 fn grid_content(

@@ -10,19 +10,25 @@ use oneclient_core::logger;
 async fn main() -> LauncherResult<()> {
     logger::init_debug()?;
 
-    let major: u32 = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "21".to_string())
-        .parse()
-        .expect("usage: java_list_providers [major_version]");
+    let arg = env::args().nth(1).unwrap_or_else(|| "21".to_string());
+    let major: Option<u32> = if arg == "all" {
+        None
+    } else {
+        Some(arg.parse().expect("usage: java_list_providers [major|all]"))
+    };
 
     let services = dev::ephemeral_services().await?;
 
-    println!("Listing JRE packages for Java {major} (metadata only):\n");
+    match major {
+        Some(major) => println!("Listing JRE packages for Java {major} (metadata only):\n"),
+        None => println!("Listing JRE packages for all majors (metadata only):\n"),
+    }
 
     for provider in runtime_providers() {
-        let packages = provider.list_packages_by_major(major, &services).await?;
-        print_vendor(provider.vendor(), &packages);
+        match provider.list_packages(major, &services).await {
+            Ok(packages) => print_vendor(provider.vendor(), &packages),
+            Err(err) => println!("{:?}: ERROR {err}", provider.vendor()),
+        }
     }
 
     Ok(())

@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+
 use crate::constants::JAVA_BIN;
 use crate::java::checker::{check_java_runtime, JavaCheckInfo};
 use crate::java::data::java_executable_relative_path;
 use crate::LauncherResult;
 
+#[tracing::instrument(level = "debug")]
 pub async fn locate_java() -> LauncherResult<HashMap<PathBuf, JavaCheckInfo>> {
 	let paths = internal_locate_java();
 	let mut valid = HashMap::new();
@@ -18,10 +20,13 @@ pub async fn locate_java() -> LauncherResult<HashMap<PathBuf, JavaCheckInfo>> {
 		valid.insert(path, info);
 	}
 
+	tracing::debug!(count = valid.len(), "located Java runtimes");
+
 	Ok(valid)
 }
 
 #[cfg(target_os = "windows")]
+#[tracing::instrument(level = "debug")]
 fn internal_locate_java() -> Vec<PathBuf> {
 	let mut java_homes = Vec::new();
 
@@ -78,6 +83,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "macos")]
+#[tracing::instrument(level = "debug")]
 fn internal_locate_java() -> Vec<PathBuf> {
 	let mut found = Vec::new();
 
@@ -115,6 +121,7 @@ fn internal_locate_java() -> Vec<PathBuf> {
 }
 
 #[cfg(target_os = "linux")]
+#[tracing::instrument(level = "debug")]
 fn internal_locate_java() -> Vec<PathBuf> {
 	let mut found = Vec::new();
 

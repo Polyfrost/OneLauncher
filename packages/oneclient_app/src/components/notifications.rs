@@ -9,7 +9,7 @@ use crate::{
     Route,
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
     hooks::{use_dispatch, use_notifications_snapshot},
-    notifications::InboxEntry,
+    notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
 };
 
@@ -139,18 +139,13 @@ impl Component for NotifEntryRow {
         let id = entry.id;
         let dispatch = use_dispatch();
         let enter_dispatch = dispatch.clone();
+        let body_dispatch = dispatch.clone();
         let click_dismissable = entry.click_dismissable();
+        let has_actions = !entry.actions.is_empty();
 
         let mut hovered = use_state(|| false);
         let expanded = use_state(|| false);
-        let intro = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(240).ease(Ease::Out)
-        });
 
-        let progress = intro.read().value();
-        let slide = (1.0 - progress) * 16.0;
-        
         let content = rect()
             .horizontal()
             .width(Size::fill())
@@ -158,9 +153,7 @@ impl Component for NotifEntryRow {
             .cross_align(Alignment::Start)
             .padding(Gaps::new_all(8.))
             .corner_radius(CornerRadius::new_all(8.))
-            .opacity(progress)
-            .margin(Gaps::new(0., 0., 0., slide))
-            .maybe(*hovered.read(), |el| {
+            .maybe(*hovered.read() && !has_actions, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
             .on_pointer_enter(move |_| {
@@ -183,7 +176,7 @@ impl Component for NotifEntryRow {
                             .color(level_color(&entry.level)),
                     ),
             )
-            .child(row_body(&entry));
+            .child(row_body(&entry, body_dispatch));
 
         rect()
             .vertical()
@@ -307,7 +300,7 @@ fn phase_badge(phase: &str) -> impl IntoElement {
         .into_element()
 }
 
-fn row_body(entry: &InboxEntry) -> impl IntoElement {
+fn row_body(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -354,10 +347,10 @@ fn row_body(entry: &InboxEntry) -> impl IntoElement {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(row_extra(entry))
+        .child(row_extra(entry, dispatch))
 }
 
-fn row_extra(entry: &InboxEntry) -> impl IntoElement {
+fn row_extra(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
         return rect()
@@ -377,23 +370,54 @@ fn row_extra(entry: &InboxEntry) -> impl IntoElement {
     }
 
     if !entry.actions.is_empty() {
+        let id = entry.id;
+        let dismiss_dispatch = dispatch.clone();
+
         let mut row = rect()
             .horizontal()
-            .spacing(16.)
-            .margin(Gaps::new(8., 0., 0., 0.));
+            .width(Size::fill())
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .margin(Gaps::new(8., 0., 0., 0.))
+            .child(
+                Button::new()
+                    .small()
+                    .secondary()
+                    .width(Size::flex(1.0))
+                    .text("Dismiss")
+                    .on_press(move |_| dismiss_dispatch.dismiss_notification(id)),
+            );
 
-        for (i, text) in entry.actions.iter().enumerate() {
-            row = row.child(Button::new().small().text(text.clone()).variant(if i == 0 {
-                ButtonVariant::Primary
-            } else {
-                ButtonVariant::Secondary
-            }));
+        for (i, action) in entry.actions.iter().enumerate() {
+            let action_dispatch = dispatch.clone();
+            let kind = action.kind.clone();
+            row = row.child(
+                Button::new()
+                    .small()
+                    .width(Size::flex(1.0))
+                    .text(action.label.clone())
+                    .variant(if i == 0 {
+                        ButtonVariant::Primary
+                    } else {
+                        ButtonVariant::Secondary
+                    })
+                    .on_press(move |_| run_action(&action_dispatch, &kind)),
+            );
         }
 
         return row.into_element();
     }
 
     rect().into_element()
+}
+
+fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {
+    match kind {
+        NotificationActionKind::OpenClusterUpdate(summary) => {
+            dispatch.open_cluster_update(summary.clone());
+        }
+    }
 }
 
 fn divider() -> impl IntoElement {

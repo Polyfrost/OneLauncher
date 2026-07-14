@@ -6,7 +6,7 @@ use oneclient_core::packages::domain::GameLoader;
 use oneclient_core::settings::{GameSettingsProfile, ProfileUpdate, Resolution};
 
 use crate::components::{
-    Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled, validate_number,
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled, validate_number
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, try_game_profile, use_cluster_mutation,
@@ -147,16 +147,15 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         colors::fg_secondary().with_a(60)
     };
 
-    rect()
-        .center()
-        .width(Size::px(30.))
-        .height(Size::px(30.))
+    Button::new()
+        .small()
+		.ghost()
+		.icon()
         .corner_radius(CornerRadius::new_all(7.))
         .maybe(overridden, |el| {
-            el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| on_reset.call(()))
+            el.on_press(move |_| on_reset.call(()))
         })
+		.enabled(overridden)
         .child(Icon::new(IconType::RefreshCcw02).size(15.).color(color))
         .into_element()
 }

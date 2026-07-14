@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType};
+use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -45,18 +45,11 @@ impl Component for Pagination {
 
         let icon_btn = move |target: usize, enabled: bool, icon: IconType| {
             let mut page = page;
-            rect()
-                .center()
-                .width(Size::px(32.))
-                .height(Size::px(32.))
-                .corner_radius(CornerRadius::new_all(8.))
-                .background(colors::component_bg())
-                .border(border_all_color(1., colors::component_border()))
-                .maybe(enabled, |el| {
-                    el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                        .on_press(move |_| page.set(target))
-                })
+            Button::new()
+                .secondary()
+                .icon()
+                .enabled(enabled)
+                .on_press(move |_| page.set(target))
                 .child(Icon::new(icon).size(14.).color(if enabled {
                     colors::fg_primary()
                 } else {
@@ -68,43 +61,38 @@ impl Component for Pagination {
         let num_btn = move |target: usize| {
             let mut page = page;
             let is_current = target == current;
-            rect()
-                .center()
+
+            if is_current {
+                return rect()
+                    .center()
+                    .width(Size::px(32.))
+                    .height(Size::px(32.))
+                    .corner_radius(CornerRadius::new_all(8.))
+                    .background(colors::component_bg_pressed())
+                    .border(border_all_color(1., colors::brand()))
+                    .child(
+                        label()
+                            .text(format!("{}", target + 1))
+                            .font_size(12.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .color(colors::fg_primary()),
+                    )
+                    .into_element();
+            }
+
+            Button::new()
+                .secondary()
                 .width(Size::px(32.))
                 .height(Size::px(32.))
-                .corner_radius(CornerRadius::new_all(8.))
-                .background(if is_current {
-                    colors::component_bg_pressed()
-                } else {
-                    colors::component_bg()
-                })
-                .border(border_all_color(
-                    1.,
-                    if is_current {
-                        colors::brand()
-                    } else {
-                        colors::component_border()
-                    },
-                ))
-                .maybe(!is_current, |el| {
-                    el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                        .on_press(move |_| page.set(target))
-                })
+                .padding(Gaps::new_symmetric(6., 0.))
+                .on_press(move |_| page.set(target))
                 .child(
                     label()
                         .text(format!("{}", target + 1))
                         .font_size(12.)
-                        .font_weight(if is_current {
-                            FontWeight::SEMI_BOLD
-                        } else {
-                            FontWeight::NORMAL
-                        })
-                        .color(if is_current {
-                            colors::fg_primary()
-                        } else {
-                            colors::fg_secondary()
-                        }),
+                        .font_weight(FontWeight::NORMAL)
+                        .max_lines(1)
+                        .color(colors::fg_secondary()),
                 )
                 .into_element()
         };

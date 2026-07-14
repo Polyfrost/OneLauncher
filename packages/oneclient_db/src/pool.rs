@@ -2,14 +2,13 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
-use tracing::instrument;
 
 use crate::DbError;
 
 pub type DbPool = SqlitePool;
 
-#[instrument(
-    skip(database_path), 
+#[tracing::instrument(
+    skip(database_path),
     fields(database_path = %database_path.as_ref().display())
 )]
 pub async fn connect(database_path: impl AsRef<Path>) -> Result<DbPool, DbError> {

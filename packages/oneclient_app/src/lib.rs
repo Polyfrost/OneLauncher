@@ -1,5 +1,7 @@
 // TODO: Remove this once freya has some workaround for this
 #![allow(float_literal_f32_fallback)]
+// Deeply nested async call chains through instrumented oneclient_core fns exceed the default limit
+#![recursion_limit = "256"]
 
 mod assets;
 mod bridge;

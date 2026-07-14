@@ -40,8 +40,11 @@ pub async fn launch_cluster(
     account: &MinecraftAccount,
     search_for_java: bool,
 ) -> LauncherResult<LaunchedGame> {
+    tracing::info!(cluster_id, search_for_java, "launching cluster");
+
     let parallel = state.settings.read().allow_parallel_running_clusters;
     if !parallel && state.games.is_running(cluster_id) {
+        tracing::warn!(cluster_id, "cluster already running; refusing launch");
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
@@ -435,6 +438,7 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     }
 }
 
+#[tracing::instrument(skip(cwd), fields(hook), level = "debug")]
 async fn run_hook(hook: Option<&str>, cwd: &Path) {
     let Some(hook) = hook.map(str::trim).filter(|h| !h.is_empty()) else {
         return;

@@ -106,7 +106,7 @@ impl Component for NavLink {
             Cursor::set(CursorIcon::default());
         });
 
-        let color = if active || *hovering.peek() || focused.peek().is_focused() {
+        let color = if active || hovering() || focused().is_focused() {
             theme::colors::fg_primary()
         } else {
             theme::colors::fg_secondary()
@@ -114,7 +114,7 @@ impl Component for NavLink {
 
         let underline_width = if active {
             27.
-        } else if *hovering.peek() || focused.peek().is_focused() {
+        } else if hovering() || focused().is_focused() {
             18.
         } else {
             0.
@@ -170,7 +170,7 @@ struct NavbarRight;
 impl Component for NavbarRight {
     fn render(&self) -> impl IntoElement {
         let current_account = use_current_account();
-        let dispatch: crate::BridgeDispatch = use_dispatch();
+        let dispatch = use_dispatch();
         let unread = use_notifications_snapshot().unread_count();
 
         let account_uuid = try_default_account(&current_account)
@@ -178,8 +178,14 @@ impl Component for NavbarRight {
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
 
         // open notification center
+        let notif_dispatch = dispatch.clone();
         let open_notifications = move |_| {
-            dispatch.toggle_notification_center();
+            notif_dispatch.toggle_notification_center();
+        };
+
+        // open account switcher
+        let open_account_switcher = move |_| {
+            dispatch.toggle_account_switcher();
         };
 
         // open settings
@@ -204,11 +210,14 @@ impl Component for NavbarRight {
                     .on_press(open_settings),
             )
             .child(
-                super::navbar_button().padding(0.0).child(
-                    Avatar::new(account_uuid)
-                        .width(Size::px(24.))
-                        .height(Size::px(24.)),
-                ),
+                super::navbar_button()
+                    .padding(0.0)
+                    .on_press(open_account_switcher)
+                    .child(
+                        Avatar::new(account_uuid)
+                            .width(Size::px(24.))
+                            .height(Size::px(24.)),
+                    ),
             )
             .child(super::window_controls())
     }

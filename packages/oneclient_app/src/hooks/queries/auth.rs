@@ -6,7 +6,7 @@ use freya::query::{
     QueryStateData, UseMutation, UseQuery, use_mutation, use_query,
 };
 use oneclient_core::LauncherError;
-use oneclient_core::auth::{self, AccountKind, MinecraftAccount, MinecraftLogin};
+use oneclient_core::auth::{self, AccountKind, MicrosoftLoginSession, MinecraftAccount};
 use uuid::Uuid;
 
 static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
@@ -18,6 +18,10 @@ pub fn login_code_already_handled(user_code: &str) -> bool {
     }
     *handled = Some(user_code.to_string());
     false
+}
+
+pub fn reset_login_code_dedup() {
+    *HANDLED_LOGIN_CODE.lock().unwrap() = None;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -141,7 +145,7 @@ async fn invalidate_auth_queries(account_id: Option<Uuid>) {
 pub struct BeginMicrosoftLoginMutation;
 
 impl MutationCapability for BeginMicrosoftLoginMutation {
-    type Ok = MinecraftLogin;
+    type Ok = MicrosoftLoginSession;
     type Err = LauncherError;
     type Keys = ();
 
@@ -156,7 +160,7 @@ pub struct FinishMicrosoftLoginMutation;
 impl MutationCapability for FinishMicrosoftLoginMutation {
     type Ok = MinecraftAccount;
     type Err = LauncherError;
-    type Keys = MinecraftLogin;
+    type Keys = MicrosoftLoginSession;
 
     async fn run(&self, flow: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         auth::finish_microsoft_login(flow.clone()).await
@@ -166,6 +170,27 @@ impl MutationCapability for FinishMicrosoftLoginMutation {
         if let Ok(account) = result {
             invalidate_auth_queries(Some(account.id)).await;
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CancelMicrosoftLoginMutation;
+
+/// Drops a pending browser login server-side when the user cancels before the
+/// flow reaches the point of no return. Keyed by the session's CSRF state token.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CancelMicrosoftLoginKeys {
+    pub state_token: String,
+}
+
+impl MutationCapability for CancelMicrosoftLoginMutation {
+    type Ok = ();
+    type Err = LauncherError;
+    type Keys = CancelMicrosoftLoginKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        auth::cancel_microsoft_login(&keys.state_token).await;
+        Ok(())
     }
 }
 
@@ -270,7 +295,7 @@ pub struct RefreshAccountKeys {
 }
 
 impl MutationCapability for RefreshAccountMutation {
-    type Ok = Option<MinecraftAccount>;
+    type Ok = MinecraftAccount;
     type Err = LauncherError;
     type Keys = RefreshAccountKeys;
 
@@ -314,6 +339,10 @@ pub fn use_begin_microsoft_login() -> UseMutation<BeginMicrosoftLoginMutation> {
 
 pub fn use_finish_microsoft_login() -> UseMutation<FinishMicrosoftLoginMutation> {
     use_mutation(Mutation::new(FinishMicrosoftLoginMutation))
+}
+
+pub fn use_cancel_microsoft_login() -> UseMutation<CancelMicrosoftLoginMutation> {
+    use_mutation(Mutation::new(CancelMicrosoftLoginMutation))
 }
 
 pub fn use_add_microsoft_account() -> UseMutation<AddMicrosoftAccountMutation> {

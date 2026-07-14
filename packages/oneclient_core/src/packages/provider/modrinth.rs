@@ -43,11 +43,13 @@ impl PackageProvider for ModrinthProvider {
         ProviderId::Modrinth
     }
 
+    #[tracing::instrument(level = "debug", skip(self, filters, services))]
     async fn search(
         &self,
         filters: &SearchFilters,
         services: &LauncherServices,
     ) -> LauncherResult<Page<ProjectSummary>> {
+        tracing::debug!(query = ?filters.query, "searching modrinth");
         let mut url = Url::parse(&v2("/search"))?;
         {
             let limit = filters
@@ -152,6 +154,7 @@ impl PackageProvider for ModrinthProvider {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn get_project(
         &self,
         project_id: &str,
@@ -172,6 +175,7 @@ impl PackageProvider for ModrinthProvider {
         Ok(detail)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_categories(
         &self,
         content_type: ContentType,
@@ -192,6 +196,7 @@ impl PackageProvider for ModrinthProvider {
             .collect())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, project_ids, services))]
     async fn get_projects(
         &self,
         project_ids: &[String],
@@ -205,7 +210,7 @@ impl PackageProvider for ModrinthProvider {
             .map(|id| format!("\"{id}\""))
             .collect::<Vec<_>>()
             .join(",");
-        
+
         let raw: Vec<ModrinthProject> = fetch_json(
             &services.requester,
             Method::GET,
@@ -220,7 +225,7 @@ impl PackageProvider for ModrinthProvider {
             .collect::<HashSet<_>>()
             .into_iter()
             .collect();
-        
+
         let mut members_by_team = fetch_modrinth_team_members(&services.requester, &team_ids)
             .await
             .unwrap_or_default();
@@ -238,6 +243,7 @@ impl PackageProvider for ModrinthProvider {
             .collect())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_versions(
         &self,
         project_id: &str,
@@ -276,6 +282,7 @@ impl PackageProvider for ModrinthProvider {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, _project_id, services))]
     async fn get_version(
         &self,
         _project_id: &str,
@@ -292,6 +299,7 @@ impl PackageProvider for ModrinthProvider {
         Ok(raw.into())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, version_ids, services))]
     async fn get_versions(
         &self,
         version_ids: &[String],
@@ -315,6 +323,7 @@ impl PackageProvider for ModrinthProvider {
         Ok(raw.into_iter().map(Into::into).collect())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn lookup_versions(
         &self,
         identities: &[FileIdentity],
@@ -355,6 +364,7 @@ impl PackageProvider for ModrinthProvider {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(client, team_ids))]
 async fn fetch_modrinth_team_members(
     client: &RequestClient,
     team_ids: &[String],

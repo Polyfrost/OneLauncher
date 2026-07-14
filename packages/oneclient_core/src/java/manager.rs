@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ pub struct AvailableJava {
 pub struct JavaManager;
 
 impl JavaManager {
+	#[tracing::instrument(skip(state))]
 	pub async fn prepare_java(
 		state: &Arc<LauncherState>,
 		major: u32,
@@ -31,6 +33,7 @@ impl JavaManager {
 		Self::prepare_java_with_services(&state.services, major, search_system, false).await
 	}
 
+	#[tracing::instrument(skip(state))]
 	pub async fn prepare_java_auto(
 		state: &Arc<LauncherState>,
 		major: u32,
@@ -39,6 +42,7 @@ impl JavaManager {
 		Self::prepare_java_with_services(&state.services, major, search_system, true).await
 	}
 
+	#[tracing::instrument(level = "debug", skip(services))]
 	pub async fn prepare_java_with_services(
 		services: &LauncherServices,
 		major: u32,
@@ -68,15 +72,18 @@ impl JavaManager {
 		}
 	}
 
+	#[tracing::instrument(level = "debug", skip(pool))]
 	pub async fn list_runtimes(pool: &DbPool) -> LauncherResult<Vec<JavaRuntime>> {
 		let rows = dao::java::list_all(pool).await?;
 		Ok(rows.into_iter().map(JavaRuntime::from_row).collect())
 	}
 
+	#[tracing::instrument(level = "debug", skip(pool))]
 	pub async fn rescan(pool: &DbPool) -> LauncherResult<()> {
 		register_located_runtimes(pool, java::locate::locate_java().await?).await
 	}
 
+	#[tracing::instrument(skip(services))]
 	pub async fn install_runtime(
 		services: &LauncherServices,
 		major: u32,
@@ -84,6 +91,7 @@ impl JavaManager {
 		download_and_register(major, services).await
 	}
 
+	#[tracing::instrument(level = "debug", skip(services))]
 	pub async fn available_versions(
 		services: &LauncherServices,
 		vendor: &JavaVendor,
@@ -92,28 +100,29 @@ impl JavaManager {
 			return Ok(Vec::new());
 		};
 
-		let results = futures_util::future::join_all(INSTALLABLE_MAJORS.iter().map(|&major| {
-			let provider = &provider;
-			async move {
-				(major, provider.latest_package_by_major(major, services).await)
-			}
-		}))
-		.await;
+		let packages = provider.list_packages(None, services).await?;
 
-		let mut available = Vec::new();
-		for (major, result) in results {
-			match result {
-				Ok(Some(package)) => available.push(AvailableJava { major, package }),
-				Ok(None) => {}
-				Err(err) => tracing::warn!(?vendor, major, "failed to query packages: {err}"),
-			}
+		let mut by_major =
+			BTreeMap::<u32, JavaPackage>::new();
+
+		for package in packages {
+			let Some(&major) = package.java_version.first() else {
+				continue;
+			};
+			by_major.entry(major).or_insert(package);
 		}
+
+		let mut available: Vec<AvailableJava> = by_major
+			.into_iter()
+			.map(|(major, package)| AvailableJava { major, package })
+			.collect();
 
 		available.sort_by_key(|b| std::cmp::Reverse(b.major));
 
 		Ok(available)
 	}
 
+	#[tracing::instrument(skip(services))]
 	pub async fn install_runtime_from(
 		services: &LauncherServices,
 		vendor: &JavaVendor,
@@ -129,6 +138,7 @@ impl JavaManager {
 		register_checked_java(&services.db, &executable, Some(major)).await
 	}
 
+	#[tracing::instrument(skip(pool))]
 	pub async fn add_custom_runtime(
 		pool: &DbPool,
 		folder: PathBuf,
@@ -137,11 +147,14 @@ impl JavaManager {
 		register_checked_java(pool, &executable, None).await
 	}
 
+	#[tracing::instrument(skip(pool))]
 	pub async fn remove_runtime(pool: &DbPool, absolute_path: &str) -> LauncherResult<()> {
 		dao::java::delete_by_path(pool, absolute_path).await?;
+		tracing::info!("removed Java runtime");
 		Ok(())
 	}
 
+	#[tracing::instrument(level = "debug", skip(pool))]
 	pub async fn java_for_profile(
 		pool: &DbPool,
 		java_path: Option<&str>,
@@ -164,6 +177,7 @@ fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRunti
 		.find(|provider| &provider.vendor() == vendor)
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn download_and_register(
 	major: u32,
 	services: &LauncherServices,
@@ -171,10 +185,10 @@ async fn download_and_register(
 	for provider in vendors::runtime_providers() {
 		let vendor = provider.vendor();
 
-        let packages = provider.list_packages_by_major(major, services).await;
+        let packages = provider.list_packages(Some(major), services).await;
 
 		let package = match &packages {
-			Ok(packages) => match packages.first() {
+			Ok(packages) => match packages.iter().find(|p| p.java_version.first() == Some(&major)).or_else(|| packages.first()) {
                 Some(package) => package,
                 None => {
                     tracing::warn!(?vendor, major, "no packages found");
@@ -202,6 +216,7 @@ async fn download_and_register(
 	Err(JavaError::PackageNotFound { major }.into())
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn register_custom_java(
 	pool: &DbPool,
 	selection: PathBuf,
@@ -211,6 +226,7 @@ async fn register_custom_java(
 	register_checked_java(pool, &executable, Some(expected_major)).await
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn register_checked_java(
 	pool: &DbPool,
 	executable: &Path,
@@ -232,11 +248,13 @@ async fn register_checked_java(
 	persist_runtime(pool, executable, &info).await
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn get_latest_runtime(pool: &DbPool, major: u32) -> LauncherResult<Option<JavaRuntime>> {
 	let row = dao::java::get_latest_by_major(pool, major).await?;
 	Ok(row.map(JavaRuntime::from_row))
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn register_located_runtimes(
 	pool: &DbPool,
 	located: impl IntoIterator<Item = (PathBuf, JavaCheckInfo)>,
@@ -247,6 +265,7 @@ async fn register_located_runtimes(
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn persist_runtime(
 	pool: &DbPool,
 	executable: &Path,

@@ -42,7 +42,7 @@ pub(crate) fn scrollbar_pos_and_size(inner: f32, viewport: f32, scroll: f32) -> 
     let scroll_range = inner - viewport;
     let thumb_range = viewport - thumb;
     let normalized = -scroll / scroll_range;
-    
+
     (normalized * thumb_range, thumb)
 }
 
@@ -307,30 +307,46 @@ impl ScrollArea {
         let us_thumb = on_user_scroll.clone();
         let us_h_thumb = on_user_scroll;
 
+        let can_scroll_v = vp_h > 0. && vp_h < ct_h;
+        let can_scroll_h = horizontal && vp_w > 0. && vp_w < content_w;
+
         let on_wheel = move |e: Event<WheelEventData>| {
-            e.stop_propagation();
+            let shift = *shift_held.read();
 
-            if (e.delta_y != 0.0 || e.delta_x != 0.0)
-                && let Some(cb) = &us_wheel
-            {
-                cb.call(());
-            }
+            let h_delta = if horizontal {
+                if shift && e.delta_x == 0.0 { e.delta_y } else { e.delta_x }
+            } else {
+                0.0
+            };
+            let v_delta = if horizontal && shift { 0.0 } else { e.delta_y };
 
-            if horizontal && *shift_held.read() {
-                let delta = if e.delta_x != 0.0 { e.delta_x } else { e.delta_y };
-                if delta != 0.0 {
-                    let cur_x = corrected_scroll(content_w, vp_w, *scroll_x.read());
-                    let new_x = scroll_pos_from_wheel(delta as f32, content_w, vp_w, cur_x);
-                    scroll_x.set(new_x as f32);
-                }
+            let do_h = h_delta != 0.0 && can_scroll_h;
+            let do_v = v_delta != 0.0 && can_scroll_v;
+
+            // check if scrollable
+            if !do_h && !do_v {
                 return;
             }
 
-            let (_, cur_y) = controller.into();
-            let current = corrected_scroll(ct_h, vp_h, cur_y as f32);
-            let new_y = scroll_pos_from_wheel(e.delta_y as f32, ct_h, vp_h, current);
-            if new_y != cur_y {
-                controller.scroll_to_y(new_y);
+            e.stop_propagation();
+
+            if let Some(cb) = &us_wheel {
+                cb.call(());
+            }
+
+            if do_h {
+                let cur_x = corrected_scroll(content_w, vp_w, *scroll_x.read());
+                let new_x = scroll_pos_from_wheel(h_delta as f32, content_w, vp_w, cur_x);
+                scroll_x.set(new_x as f32);
+            }
+
+            if do_v {
+                let (_, cur_y) = controller.into();
+                let current = corrected_scroll(ct_h, vp_h, cur_y as f32);
+                let new_y = scroll_pos_from_wheel(v_delta as f32, ct_h, vp_h, current);
+                if new_y != cur_y {
+                    controller.scroll_to_y(new_y);
+                }
             }
         };
 
@@ -393,6 +409,11 @@ impl ScrollArea {
         rect()
             .width(self.width.clone())
             .height(self.height.clone())
+            .scrollable(true)
+            .a11y_builder(move |node| {
+                node.set_scroll_x(corrected_x as f64);
+                node.set_scroll_y(corrected_y as f64);
+            })
             .on_wheel(on_wheel)
             .on_capture_global_pointer_move(on_global_move)
             .on_capture_global_pointer_press(on_global_release)

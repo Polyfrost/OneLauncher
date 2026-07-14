@@ -3,6 +3,7 @@ use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType, TextInput, toggle};
 use crate::hooks::use_dispatch;
+use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationActionKind};
 use crate::routes::Route;
 use crate::theme::colors;
 
@@ -20,48 +21,58 @@ impl Component for Debug {
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
-            .overflow(Overflow::Clip)
             .padding(40.)
             .spacing(8.)
             .child(
-                rect()
-                    .vertical()
+                ScrollView::new()
                     .child(
-                        label()
-                            .text("Debug")
-                            .font_size(32.)
-                            .font_weight(FontWeight::BOLD)
-                            .color(colors::fg_primary()),
+                        rect()
+                            .vertical()
+                            .child(
+                                label()
+                                    .text("Debug")
+                                    .font_size(32.)
+                                    .font_weight(FontWeight::BOLD)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text("The end user won't really be looking at this page.")
+                                    .font_size(13.)
+                                    .color(colors::fg_secondary()),
+                            ),
                     )
-                    .child(
-                        label()
-                            .text("The end user won't really be looking at this page.")
-                            .font_size(13.)
-                            .color(colors::fg_secondary()),
-                    ),
+                    .child(divider())
+                    .child(section(
+                        "Settings",
+                        vec![
+                            toggle_row("Log Debug Info", log_debug_info),
+                            toggle_row("Show Dev stuff", show_dev_stuff),
+                            toggle_row("Seen Onboarding", seen_onboarding),
+                            toggle_row("Use Grid On Mods List", use_grid_on_mods_list),
+                        ],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Toast Controller",
+                        vec![ToastController.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Cluster Update Simulator",
+                        vec![ClusterUpdateSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Other",
+                        vec![action_row(vec![
+                            ("Open Dev Tools", IconType::CodeSnippet02),
+                            ("Open Onboarding", IconType::Rocket02),
+                            ("Open Launcher Data", IconType::Folder),
+                            ("Log Running Processes", IconType::Terminal),
+                        ])],
+                    )),
             )
-            .child(divider())
-            .child(section(
-                "Settings",
-                vec![
-                    toggle_row("Log Debug Info", log_debug_info),
-                    toggle_row("Show Dev stuff", show_dev_stuff),
-                    toggle_row("Seen Onboarding", seen_onboarding),
-                    toggle_row("Use Grid On Mods List", use_grid_on_mods_list),
-                ],
-            ))
-            .child(divider())
-            .child(section("Toast Controller", vec![ToastController.into_element()]))
-            .child(divider())
-            .child(section(
-                "Other",
-                vec![action_row(vec![
-                    ("Open Dev Tools", IconType::CodeSnippet02),
-                    ("Open Onboarding", IconType::Rocket02),
-                    ("Open Launcher Data", IconType::Folder),
-                    ("Log Running Processes", IconType::Terminal),
-                ])],
-            ))
     }
 }
 
@@ -123,7 +134,8 @@ impl Component for ToastController {
                             .child(Icon::new(IconType::AlertTriangle).size(16.))
                             .text("Send Error")
                             .on_press(move |_| {
-                                error.notify(title.read().clone())
+                                error
+                                    .notify(title.read().clone())
                                     .body(body.read().clone())
                                     .error()
                                     .send();
@@ -152,6 +164,101 @@ impl Component for ToastController {
             )
             .into_element()
     }
+}
+
+#[derive(PartialEq)]
+struct ClusterUpdateSimulator;
+
+impl Component for ClusterUpdateSimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let cluster_id = use_state(|| "1".to_string());
+        let cluster_name = use_state(|| "PolyBlock".to_string());
+        let updated = use_state(|| "Sodium 0.5 → 0.6, Iris 1.7 → 1.8".to_string());
+        let added = use_state(|| "Lithium".to_string());
+        let removed = use_state(|| "OptiFine".to_string());
+
+        let simulate = dispatch;
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(12.)
+                    .child(
+                        rect()
+                            .width(Size::px(120.))
+                            .child(TextInput::new(cluster_id).placeholder("Cluster ID")),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::flex(1.0))
+                            .child(TextInput::new(cluster_name).placeholder("Cluster name")),
+                    ),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(12.)
+                    .child(
+                        rect().width(Size::flex(1.0)).child(
+                            TextInput::new(updated).placeholder("Updated (comma separated)"),
+                        ),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::flex(1.0))
+                            .child(TextInput::new(added).placeholder("Added (comma separated)")),
+                    )
+                    .child(
+                        rect().width(Size::flex(1.0)).child(
+                            TextInput::new(removed).placeholder("Removed (comma separated)"),
+                        ),
+                    ),
+            )
+            .child(
+                Button::new()
+                    .primary()
+                    .child(Icon::new(IconType::DownloadCloud02).size(16.))
+                    .text("Simulate Cluster Update")
+                    .on_press(move |_| {
+                        let name = cluster_name.read().clone();
+                        let summary = ClusterUpdateSummary {
+                            cluster_id: cluster_id.read().trim().parse().unwrap_or(1),
+                            cluster_name: name.clone(),
+                            updated: split_csv(&updated.read()),
+                            added: split_csv(&added.read()),
+                            removed: split_csv(&removed.read()),
+                        };
+                        let total = summary.total();
+                        simulate
+                            .notify("Cluster updated")
+                            .body(format!(
+                                "{total} package{} changed in {name}",
+                                if total == 1 { "" } else { "s" }
+                            ))
+                            .icon(IconType::DownloadCloud02)
+                            .action(NotificationAction {
+                                label: "View changes".to_string(),
+                                kind: NotificationActionKind::OpenClusterUpdate(summary),
+                            })
+                            .send();
+                    }),
+            )
+            .into_element()
+    }
+}
+
+fn split_csv(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 fn divider() -> impl IntoElement {
@@ -230,10 +337,7 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
 }
 
 fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
-    let mut row = rect()
-        .horizontal()
-        .width(Size::fill())
-        .spacing(12.);
+    let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
 
     for (text, icon) in buttons {
         let mut button = Button::new()

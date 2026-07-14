@@ -233,6 +233,7 @@ pub struct Analytics {
 	pub servers: Vec<ServerStat>,
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn global_analytics() -> LauncherResult<Analytics> {
 	let state = LauncherState::get()?;
 	let db = &state.services.db;
@@ -244,6 +245,7 @@ pub async fn global_analytics() -> LauncherResult<Analytics> {
 	})
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn cluster_analytics(cluster_id: i64) -> LauncherResult<Analytics> {
 	let state = LauncherState::get()?;
 	let db = &state.services.db;

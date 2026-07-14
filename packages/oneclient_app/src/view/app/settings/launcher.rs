@@ -19,24 +19,18 @@ impl Component for SettingsLauncher {
             let v = settings.discord_enabled;
             move || v
         });
-        let browser_login = use_state({
-            let v = settings.microsoft_login_use_browser;
-            move || v
-        });
 
         let mut first = use_state(|| true);
         {
             let settings = settings.clone();
             use_side_effect(move || {
                 let discord = *discord_rpc.read();
-                let browser = *browser_login.read();
                 if *first.peek() {
                     first.set(false);
                     return;
                 }
                 let mut next = settings.clone();
                 next.discord_enabled = discord;
-                next.microsoft_login_use_browser = browser;
                 dispatch.set_settings(next);
             });
         }
@@ -51,12 +45,6 @@ impl Component for SettingsLauncher {
                 "Discord RPC",
                 "Enable Discord Rich Presence.",
                 toggle(discord_rpc),
-            ))
-            .child(settings_row(
-                IconType::Globe01,
-                "Browser sign-in",
-                "Sign in to Microsoft by opening your browser instead of entering a code.",
-                toggle(browser_login),
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(settings_row(

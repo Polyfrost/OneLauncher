@@ -1,4 +1,4 @@
-use oneclient_core::notification::{NotificationLevel, Notification, NotificationService};
+use oneclient_core::notification::{Notification, NotificationLevel, NotificationService};
 use oneclient_core::packages::PackageStore;
 use oneclient_core::settings::store::{
     self, create_profile_from_global, create_settings_profile, delete_named_profile,
@@ -7,8 +7,10 @@ use oneclient_core::settings::store::{
 use oneclient_core::{ClusterManager, LauncherState};
 use tokio::sync::{mpsc, watch};
 
+use crate::components::IconType;
 use crate::notifications::{
-    InboxEntry, MESSAGE_TOAST_TTL, NotificationState, PendingPrompt, PendingPromptView,
+    ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction, NotificationActionKind,
+    NotificationSpec, NotificationState, PendingPrompt, PendingPromptView,
 };
 
 use super::commands::BridgeCommand;
@@ -145,6 +147,10 @@ impl CoreBridgeRuntime {
                             }
                             Notification::GameFailed { cluster_id, message } => {
                                 apply_game_failed(snapshots, cluster_id, message);
+                                immediate = true;
+                            }
+                            Notification::MicrosoftLoginStatus(status) => {
+                                snapshots.microsoft_login = status;
                                 immediate = true;
                             }
                             other => {
@@ -402,18 +408,24 @@ impl CoreBridgeRuntime {
                 bump_clusters_generation(snapshots);
             }
 
-            BridgeCommand::ImportLauncher { source, folder_name, target } => {
+            BridgeCommand::ImportLauncher {
+                source,
+                folder_name,
+                target,
+            } => {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
                     let notifier = state.services.notifier.clone();
-                    match oneclient_core::import_migration_game_dir(source, &folder_name, target).await {
+                    match oneclient_core::import_migration_game_dir(source, &folder_name, target)
+                        .await
+                    {
                         Ok(()) => {
                             notifier.send_info(
                                 "Import complete",
                                 &format!("Copied your files from {}.", source.display_name()),
                             );
 
-							notifier.invalidate_clusters();
+                            notifier.invalidate_clusters();
                         }
                         Err(err) => {
                             notifier.send_error("Import failed", &err.to_string());
@@ -432,11 +444,7 @@ impl CoreBridgeRuntime {
                     )
                     .await
                     {
-                        Ok(runtime) => {
-                            notifier.send_info(
-                                "Java installed",
-                                &format!("Java {} ({})", runtime.major, runtime.vendor),
-                            );
+                        Ok(_) => {
                             notifier.invalidate_java();
                         }
                         Err(err) => {
@@ -482,6 +490,12 @@ impl CoreBridgeRuntime {
             BridgeCommand::CloseNotificationCenter => {
                 *notification_center_open = false;
             }
+            BridgeCommand::ToggleAccountSwitcher => {
+                snapshots.account_switcher_open = !snapshots.account_switcher_open;
+            }
+            BridgeCommand::CloseAccountSwitcher => {
+                snapshots.account_switcher_open = false;
+            }
             BridgeCommand::ClearNotificationInbox => {
                 inbox.clear();
                 notification_engine.clear_inbox();
@@ -503,6 +517,13 @@ impl CoreBridgeRuntime {
                     let _ = reply_tx.send(choice);
                 }
             }
+            BridgeCommand::OpenClusterUpdate(summary) => {
+                notification_engine.open_cluster_update(summary);
+                *notification_center_open = false;
+            }
+            BridgeCommand::CloseClusterUpdate => {
+                notification_engine.close_cluster_update();
+            }
             BridgeCommand::SendNotification { spec } => {
                 notification_engine.push_custom(inbox, spec);
             }
@@ -519,14 +540,11 @@ impl CoreBridgeRuntime {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
                     let notifier = state.services.notifier.clone();
-                    let account = match oneclient_core::auth::get_default_account().await {
-                        Ok(Some(account)) => Some(account),
-                        Ok(None) => oneclient_core::auth::list_accounts()
-                            .await
-                            .ok()
-                            .and_then(|accounts| accounts.into_iter().next()),
+                    // Renews a lapsed token before launching
+                    let account = match oneclient_core::auth::default_account_for_launch().await {
+                        Ok(account) => account,
                         Err(err) => {
-                            notifier.game_failed(cluster_id, err.to_string());
+                            notifier.game_failed(cluster_id, format!("{err:#}"));
                             return;
                         }
                     };
@@ -591,7 +609,8 @@ impl CoreBridgeRuntime {
                 version_id,
             } => {
                 let state = LauncherState::get()?;
-                match install_package(&state, provider, &project_id, &version_id, cluster_id).await {
+                match install_package(&state, provider, &project_id, &version_id, cluster_id).await
+                {
                     Ok(()) => {
                         state
                             .services
@@ -624,29 +643,98 @@ impl CoreBridgeRuntime {
             }
             BridgeCommand::ApplyBundleUpdates { cluster_id } => {
                 let state = LauncherState::get()?;
-                oneclient_core::apply_bundle_updates(
+                let result = oneclient_core::apply_bundle_updates(
                     cluster_id,
                     state.bundles.as_ref(),
                     &state.services,
                 )
                 .await?;
                 bump_clusters_generation(snapshots);
+                if let Some(spec) =
+                    cluster_update_notification(cluster_id, &result, &state.services).await
+                {
+                    notification_engine.push_custom(inbox, spec);
+                }
             }
             BridgeCommand::SyncBundles => {
                 let state = LauncherState::get()?;
                 state.bundles.sync(&state.services).await?;
                 oneclient_core::clusters::ensure_from_bundles(&state).await?;
-                oneclient_core::bundles::sync_all_cluster_bundles(
+                let changed = oneclient_core::bundles::sync_all_cluster_bundles(
                     state.bundles.as_ref(),
                     &state.services,
                 )
                 .await;
                 bump_clusters_generation(snapshots);
+                for (cluster_id, result) in &changed {
+                    if let Some(spec) =
+                        cluster_update_notification(*cluster_id, result, &state.services).await
+                    {
+                        notification_engine.push_custom(inbox, spec);
+                    }
+                }
             }
         }
 
         Ok(())
     }
+}
+
+async fn cluster_update_notification(
+    cluster_id: i64,
+    result: &oneclient_core::ApplyBundleUpdatesResult,
+    services: &oneclient_core::LauncherServices,
+) -> Option<NotificationSpec> {
+    let updated: Vec<String> = result
+        .updates_applied
+        .iter()
+        .map(|u| u.new_file.display_name())
+        .collect();
+    let added: Vec<String> = result
+        .additions_applied
+        .iter()
+        .map(|a| a.new_file.display_name())
+        .collect();
+    let removed: Vec<String> = result
+        .removals_applied
+        .iter()
+        .map(|r| r.package_id.clone())
+        .collect();
+
+    if updated.is_empty() && added.is_empty() && removed.is_empty() {
+        return None;
+    }
+
+    let cluster_name = PackageStore::get_cluster(cluster_id, services)
+        .await
+        .map(|c| c.name)
+        .unwrap_or_else(|_| "Cluster".to_string());
+
+    let summary = ClusterUpdateSummary {
+        cluster_id,
+        cluster_name: cluster_name.clone(),
+        updated,
+        added,
+        removed,
+    };
+
+    let total = summary.total();
+    let body = format!(
+        "{total} package{} changed in {cluster_name}",
+        if total == 1 { "" } else { "s" }
+    );
+
+    Some(NotificationSpec {
+        title: "Cluster updated".to_string(),
+        body,
+        level: NotificationLevel::Info,
+        icon: Some(IconType::DownloadCloud02),
+        progress: None,
+        actions: vec![NotificationAction {
+            label: "View changes".to_string(),
+            kind: NotificationActionKind::OpenClusterUpdate(summary),
+        }],
+    })
 }
 
 fn publish(tx: &watch::Sender<BridgeSnapshot>, snapshots: &BridgeSnapshot) {
@@ -706,21 +794,35 @@ async fn install_package(
     cluster_id: i64,
 ) -> anyhow::Result<()> {
     let provider_impl = state.services.packages.get(provider)?;
-    let project = provider_impl.get_project(project_id, &state.services).await?;
+    let project = provider_impl
+        .get_project(project_id, &state.services)
+        .await?;
     let version = provider_impl
         .get_version(project_id, version_id, &state.services)
         .await?;
 
-    PackageStore::install_to_cluster(
+    let session = oneclient_core::notification::GroupedProgressSession::start(
+        &state.services.notifier,
+        format!("Installing {}", project.name),
+    );
+    let size = version.primary_file().map(|f| f.size).unwrap_or(0);
+    let child = session.child(project.name.clone(), size);
+
+    let result = PackageStore::install_to_cluster(
         provider,
         &project,
         &version,
         cluster_id,
         false,
         false,
+        Some(&child),
         &state.services,
     )
-    .await?;
+    .await;
+
+    child.finish();
+    session.finish();
+    result?;
     Ok(())
 }
 
@@ -736,7 +838,10 @@ fn apply_game_stage(snapshots: &mut BridgeSnapshot, cluster_id: i64, stage: Laun
 }
 
 fn apply_game_failed(snapshots: &mut BridgeSnapshot, cluster_id: i64, message: String) {
-    snapshots.game.stages.insert(cluster_id, LaunchStage::Exited);
+    snapshots
+        .game
+        .stages
+        .insert(cluster_id, LaunchStage::Exited);
     snapshots.game.error = Some(message);
 }
 

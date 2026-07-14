@@ -9,6 +9,7 @@ use crate::packages::error::PackageError;
 use crate::paths;
 use crate::{LauncherError, LauncherResult};
 
+#[tracing::instrument(level = "debug", skip(artifact, cluster))]
 pub async fn link_artifact_to_cluster(
 	artifact: &ArtifactRow,
 	cluster: &ClusterRow,
@@ -47,6 +48,7 @@ pub async fn link_artifact_to_cluster(
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn link_or_copy(src: &Path, dest: &Path) -> LauncherResult<()> {
 	if dest.exists() {
 		polyio::remove_file(dest).await?;
@@ -60,6 +62,7 @@ pub async fn link_or_copy(src: &Path, dest: &Path) -> LauncherResult<()> {
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(cluster))]
 pub async fn unlink_cluster_file(
 	cluster: &ClusterRow,
 	content_type: ContentType,

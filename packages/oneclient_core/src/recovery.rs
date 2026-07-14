@@ -6,7 +6,6 @@ use oneclient_db::dao::{
 use oneclient_db::models::NewCluster;
 use oneclient_db::DbPool;
 use strum::IntoEnumIterator;
-use tracing::instrument;
 
 use crate::clusters::{ClusterManager, ClusterStage};
 use crate::crypto::sha1_file;
@@ -37,7 +36,7 @@ impl RecoveryReport {
 	}
 }
 
-#[instrument(skip(state))]
+#[tracing::instrument(skip(state))]
 pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<RecoveryReport> {
 	let mut report = RecoveryReport::default();
 
@@ -77,6 +76,7 @@ pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<Reco
 	Ok(report)
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn orphan_cluster_folders(
 	pool: &DbPool,
 	clusters_dir: &Path,
@@ -90,6 +90,7 @@ async fn orphan_cluster_folders(
 	Ok(orphans)
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn rebuild_artifact_cache(pool: &DbPool) -> LauncherResult<usize> {
 	let cache_root = paths::packages_cache_dir()?;
 	if !cache_root.exists() {
@@ -143,6 +144,7 @@ async fn rebuild_artifact_cache(pool: &DbPool) -> LauncherResult<usize> {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(level = "debug", skip(pool, launcher_dir, file))]
 async fn index_cache_file(
 	pool: &DbPool,
 	launcher_dir: &Path,
@@ -189,6 +191,7 @@ async fn index_cache_file(
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(state, report))]
 async fn adopt_cluster(
 	state: &LauncherState,
 	folder_name: &str,
@@ -226,6 +229,7 @@ async fn adopt_cluster(
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(state, report))]
 async fn relink_cluster_files(
 	state: &LauncherState,
 	cluster_id: i64,
@@ -284,7 +288,7 @@ async fn relink_cluster_files(
 	Ok(())
 }
 
-#[instrument(skip(state))]
+#[tracing::instrument(skip(state))]
 pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()> {
 	let clusters = ClusterManager::list(state).await?;
 

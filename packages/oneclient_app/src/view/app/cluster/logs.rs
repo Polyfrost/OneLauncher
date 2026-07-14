@@ -355,6 +355,9 @@ impl Component for LogPicker {
         let mut open = use_state(|| false);
         let filter = use_state(String::new);
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let enabled = self.enabled;
         let label_text = self.label.clone();
         let files = self.files.clone();
@@ -400,14 +403,24 @@ impl Component for LogPicker {
                     .padding(Gaps::new_symmetric(0., 12.))
                     .corner_radius(CornerRadius::new_all(9.))
                     .background(colors::component_bg())
-                    .border(ui::border_all_color(1., colors::component_border()))
+                    .a11y_id(a11y_id)
+                    .a11y_focusable(enabled)
+                    .a11y_role(AccessibilityRole::Button)
+                    .border(ui::border_all_color(
+                        1.,
+                        if enabled && focus().is_focused() {
+                            colors::brand()
+                        } else {
+                            colors::component_border()
+                        },
+                    ))
                     .on_pointer_enter(move |_| {
                         if enabled {
                             Cursor::set(CursorIcon::Pointer)
                         }
                     })
                     .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_press(move |e: Event<PressEventData>| {
+                    .on_all_press(move |e: Event<PressEventData>| {
                         if !enabled {
                             return;
                         }
@@ -495,6 +508,9 @@ impl Component for PickerRow {
         let mut hovering = use_state(|| false);
         let file = self.file.clone();
 
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         rect()
             .width(Size::fill())
             .horizontal()
@@ -503,7 +519,10 @@ impl Component for PickerRow {
             .spacing(8.)
             .padding(Gaps::new_symmetric(6., 8.))
             .corner_radius(CornerRadius::new_all(7.))
-            .background(if hovering() {
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .background(if hovering() || focus().is_focused() {
                 colors::ghost_overlay_hover()
             } else {
                 Color::TRANSPARENT
@@ -516,7 +535,7 @@ impl Component for PickerRow {
                 hovering.set(false);
                 Cursor::set(CursorIcon::default());
             })
-            .on_press(self.on_press.clone())
+            .on_all_press(self.on_press.clone())
             .child(
                 rect()
                     .vertical()

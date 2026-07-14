@@ -2,12 +2,11 @@ use std::{fs::Metadata, path::PathBuf};
 
 use async_tempfile::{TempDir, TempFile};
 use serde::{Serialize, de::DeserializeOwned};
-use tracing::instrument;
 
 use crate::{IOError, PolyIOResult};
 
 /// Returns a stream over the entries within a directory.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -24,7 +23,7 @@ pub async fn read_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<tokio::
 }
 
 /// Creates a directory if they are missing.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -44,7 +43,7 @@ pub async fn create_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
 }
 
 /// Recursively creates a directory and all of its parent components if they are missing.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -60,7 +59,7 @@ pub async fn create_dir_all(path: impl AsRef<std::path::Path>) -> PolyIOResult<(
 }
 
 /// Removes a directory at this path, after removing all its contents. Use carefully!
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -77,7 +76,7 @@ pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> PolyIOResult<(
 }
 
 /// Checks if a path exists
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -93,7 +92,7 @@ pub async fn try_exists(path: impl AsRef<std::path::Path>) -> PolyIOResult<bool>
 }
 
 /// Creates a future which will open a gzip compressed file for reading and read the entire contents into a string and return said string.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -111,7 +110,7 @@ pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResul
 }
 
 /// Creates a future which will open a file for reading and read the entire contents into a string and return said string.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -128,7 +127,7 @@ pub async fn read_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResult<S
 }
 
 /// Asynchronously reads the entire contents of a file into a bytes vector.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -145,7 +144,7 @@ pub async fn read(path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<u8>> {
 }
 
 /// Asynchronously read a file as JSON and return the deserialized object
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -161,7 +160,7 @@ pub async fn read_json<T: DeserializeOwned>(
 }
 
 /// Asynchrously write to a file.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path, data),
     fields(path = %path.as_ref().display())
@@ -181,7 +180,7 @@ pub async fn write(
 }
 
 /// Asynchronously write buffered data to a file, creating it if it does not exist.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path, f),
     fields(path = %path.as_ref().display())
@@ -206,7 +205,7 @@ where
 	Ok(())
 }
 
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path, stream),
     fields(path = %path.as_ref().display())
@@ -243,7 +242,7 @@ where
 }
 
 /// Asynchronously write json to a file, creating it if it does not exist.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path, data),
     fields(path = %path.as_ref().display())
@@ -261,7 +260,7 @@ pub async fn write_json<T: Serialize>(
 }
 
 /// Renames a file or directory to a new name, replacing the original file if `to` already exists.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(from, to),
     fields(
@@ -285,7 +284,7 @@ pub async fn rename(
 }
 
 /// Copies the contents of one file to another. This function will also copy the permission bits of the original file to the destination file. This function will overwrite the contents of to.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(from, to),
     fields(
@@ -309,7 +308,7 @@ pub async fn copy(
 }
 
 /// Removes a file from the filesystem.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -328,7 +327,7 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> 
 ///
 /// Unlike [`stat`], if `path` is a symlink this returns metadata about the
 /// link itself, not its target.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -348,7 +347,7 @@ pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> PolyIOResult
 /// On Unix this creates a symlink. On Windows it creates a hard link
 /// instead (both paths must then live on the same volume). Either way the
 /// caller gets a file at `link` that shares the contents of `original`.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(original, link),
     fields(
@@ -379,7 +378,7 @@ pub async fn symlink_file(
 /// On Windows this creates a directory *junction* (a reparse point), which
 /// needs no elevated privilege unlike a real directory symlink. On Unix it
 /// creates an ordinary directory symlink. Remove it with [`remove_symlink_dir`].
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(original, link),
     fields(
@@ -394,19 +393,15 @@ pub async fn symlink_dir(
 	let original = original.as_ref();
 	let link = link.as_ref();
 
-	// tokio has no async junction API, so the Windows path runs the blocking
-	// std call on the blocking pool; Unix uses tokio's async symlink directly.
 	#[cfg(windows)]
 	{
 		let path = link.to_string_lossy().to_string();
 		let original = original.to_path_buf();
 		let link = link.to_path_buf();
-		return tokio::task::spawn_blocking(move || {
-			std::os::windows::fs::junction_point(&original, &link)
-		})
-		.await
-		.map_err(std::io::Error::other)?
-		.map_err(|e| IOError::PathIOError { source: e, path });
+		return tokio::task::spawn_blocking(move || junction::create(&original, &link))
+			.await
+			.map_err(std::io::Error::other)?
+			.map_err(|e| IOError::PathIOError { source: e, path });
 	}
 
 	#[cfg(not(windows))]
@@ -422,7 +417,7 @@ pub async fn symlink_dir(
 ///
 /// On Windows a junction must be removed with `remove_dir` rather than
 /// `remove_file`; this handles the platform difference.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -443,19 +438,19 @@ pub async fn remove_symlink_dir(path: impl AsRef<std::path::Path>) -> PolyIOResu
 }
 
 /// Creates a temporary directory.
-#[instrument(level = "debug")]
+#[tracing::instrument(level = "debug")]
 pub async fn tempdir() -> PolyIOResult<TempDir> {
 	Ok(TempDir::new().await?)
 }
 
 /// Creates a temporary file.
-#[instrument(level = "debug")]
+#[tracing::instrument(level = "debug")]
 pub async fn tempfile() -> PolyIOResult<TempFile> {
 	Ok(TempFile::new().await?)
 }
 
 /// Makes sure a path is a valid path
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())
@@ -470,7 +465,7 @@ pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
 }
 
 /// Returns file metadata
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(path),
     fields(path = %path.as_ref().display())

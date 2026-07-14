@@ -9,7 +9,6 @@ use reqwest::Method;
 use reqwest::header;
 use reqwest::StatusCode;
 use tokio::sync::RwLock;
-use tracing::instrument;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::manifest::{BundleManifest as RemoteBundleManifest, RemoteBundleRef};
@@ -73,6 +72,7 @@ impl BundlesManager {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn sync(&self, services: &LauncherServices) -> LauncherResult<bool> {
         let Some((manifest, manifest_changed)) = Self::fetch_manifest(services).await? else {
             tracing::debug!(
@@ -112,6 +112,7 @@ impl BundlesManager {
         Ok(true)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn archives_for(
         &self,
         services: &LauncherServices,
@@ -126,6 +127,7 @@ impl BundlesManager {
         Ok(archives)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn manifest_for_archive(
         &self,
         path: &Path,
@@ -141,6 +143,7 @@ impl BundlesManager {
         Ok(manifest)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn list_for(
         &self,
         services: &LauncherServices,
@@ -156,6 +159,7 @@ impl BundlesManager {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    #[tracing::instrument(level = "debug", skip(self, entry, services, bundles_root), fields(remote_path = %entry.remote_path))]
     async fn sync_bundle(
         &self,
         entry: &RemoteBundleRef,
@@ -208,6 +212,7 @@ impl BundlesManager {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     async fn fetch_manifest(
         services: &LauncherServices,
     ) -> LauncherResult<Option<(RemoteBundleManifest, bool)>> {
@@ -288,7 +293,7 @@ async fn read_cached_manifest(
     Ok(Some((manifest, changed)))
 }
 
-#[instrument(skip(services))]
+#[tracing::instrument(level = "debug", skip(services))]
 async fn download_bundle_if_needed(
     services: &LauncherServices,
     url: &str,

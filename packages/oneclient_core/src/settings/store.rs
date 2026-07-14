@@ -1,6 +1,5 @@
 use oneclient_db::DbPool;
 use parking_lot::RwLock;
-use tracing::instrument;
 
 use crate::notification::NotificationService;
 use crate::patch::Patch;
@@ -10,7 +9,7 @@ use crate::{LauncherError, LauncherResult};
 use super::launcher::LauncherSettings;
 use super::profile::{GameSettingsProfile, Resolution, SettingsOsExtra};
 
-#[instrument(skip(notify))]
+#[tracing::instrument(level = "debug", skip(notify))]
 pub async fn load_settings(notify: Option<&NotificationService>) -> LauncherSettings {
     match async {
         let path = paths::settings_file()?;
@@ -38,7 +37,7 @@ pub async fn load_settings(notify: Option<&NotificationService>) -> LauncherSett
     }
 }
 
-#[instrument(skip(settings))]
+#[tracing::instrument(level = "debug", skip(settings))]
 pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     let path = paths::settings_file()?;
 
@@ -51,6 +50,7 @@ pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(pool, settings))]
 pub async fn get_profile_or_default(
     pool: &DbPool,
     settings: &LauncherSettings,
@@ -65,6 +65,7 @@ pub async fn get_profile_or_default(
     Ok(settings.global_game_settings.clone())
 }
 
+#[tracing::instrument(level = "debug", skip(pool, settings))]
 pub async fn resolve_cluster_profile(
     pool: &DbPool,
     settings: &LauncherSettings,
@@ -88,6 +89,7 @@ pub async fn resolve_cluster_profile(
     Ok(profile)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn upsert_named_profile(
     pool: &DbPool,
     profile: &GameSettingsProfile,
@@ -103,6 +105,7 @@ pub async fn upsert_named_profile(
     GameSettingsProfile::from_row(saved)
 }
 
+#[tracing::instrument(level = "debug", skip(pool, settings))]
 pub async fn create_profile_from_global(
     pool: &DbPool,
     settings: &LauncherSettings,
@@ -124,6 +127,7 @@ pub async fn create_profile_from_global(
     upsert_named_profile(pool, &profile).await
 }
 
+#[tracing::instrument(level = "debug", skip(pool, settings))]
 pub async fn create_settings_profile(
     pool: &DbPool,
     settings: &LauncherSettings,
@@ -132,6 +136,7 @@ pub async fn create_settings_profile(
     create_profile_from_global(pool, settings, name, None, None).await
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 pub async fn list_named_profiles(pool: &DbPool) -> LauncherResult<Vec<GameSettingsProfile>> {
     let rows = oneclient_db::dao::setting_profile::list_all(pool).await?;
     rows.into_iter()
@@ -139,6 +144,7 @@ pub async fn list_named_profiles(pool: &DbPool) -> LauncherResult<Vec<GameSettin
         .collect()
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 pub async fn delete_named_profile(pool: &DbPool, name: &str) -> LauncherResult<()> {
     oneclient_db::dao::setting_profile::delete_by_name(pool, name).await?;
     Ok(())
@@ -178,6 +184,7 @@ impl ProfileUpdate {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(pool, update))]
 pub async fn update_named_profile(
     pool: &DbPool,
     name: &str,
@@ -195,6 +202,7 @@ pub async fn update_named_profile(
     upsert_named_profile(pool, &profile).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn save_global_profile(
     settings: &RwLock<LauncherSettings>,
     global: GameSettingsProfile,

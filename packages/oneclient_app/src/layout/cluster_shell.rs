@@ -249,14 +249,13 @@ fn cluster_header(
         .horizontal()
         .content(Content::Flex)
         .width(Size::fill())
-        .height(Size::px(HEADER_HEIGHT))
+        .min_height(Size::px(HEADER_HEIGHT))
         .cross_align(Alignment::Center)
         .spacing(12.)
         .child(
             rect()
                 .vertical()
                 .width(Size::flex(1.0))
-                .height(Size::fill())
                 .main_align(Alignment::Center)
                 .spacing(6.)
                 .child(

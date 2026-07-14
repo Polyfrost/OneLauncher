@@ -77,10 +77,15 @@ impl KeyExt for CategoryRow {
 impl Component for CategoryRow {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
         let selected = self.selected;
         let on_toggle = self.on_toggle.clone();
         let hovered = *hovering.read();
-        let color = if selected || hovered {
+        let focused = focus().is_focused();
+        let color = if selected || hovered || focused {
             colors::fg_primary()
         } else {
             colors::fg_secondary()
@@ -89,6 +94,9 @@ impl Component for CategoryRow {
         rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(3., 0.))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| {
                 hovering.set(true);
                 Cursor::set(CursorIcon::Pointer);
@@ -97,7 +105,7 @@ impl Component for CategoryRow {
                 hovering.set(false);
                 Cursor::set(CursorIcon::default());
             })
-            .on_press(move |_| on_toggle.call(()))
+            .on_all_press(move |_| on_toggle.call(()))
             .child(
                 label()
                     .text(capitalize(&self.name))

@@ -8,7 +8,6 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::instrument;
 
 use crate::bundles::install::{install_package_from_bundle, remove_artifact_from_cluster};
 use crate::bundles::manager::BundlesManager;
@@ -34,6 +33,7 @@ fn cluster_lock(cluster_id: i64) -> Arc<AsyncMutex<()>> {
         .clone()
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn check_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -43,7 +43,7 @@ pub async fn check_bundle_updates(
     check_bundle_updates_inner(cluster_id, bundles, services, &overrides).await
 }
 
-#[instrument(skip(bundles, services, overrides))]
+#[tracing::instrument(level = "debug", skip(bundles, services, overrides))]
 async fn check_bundle_updates_inner(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -307,6 +307,7 @@ async fn check_bundle_updates_inner(
     })
 }
 
+#[tracing::instrument(skip(bundles, services))]
 pub async fn apply_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -316,6 +317,14 @@ pub async fn apply_bundle_updates(
     let _guard = lock.lock().await;
     let overrides = bundle_dao::list_overrides(&services.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, services, &overrides).await?;
+
+    tracing::info!(
+        cluster_id,
+        updates = check.updates_available.len(),
+        additions = check.additions_available.len(),
+        removals = check.removals_available.len(),
+        "applying bundle updates"
+    );
 
     let mut result = ApplyBundleUpdatesResult::default();
 
@@ -328,8 +337,21 @@ pub async fn apply_bundle_updates(
         }
     }
 
+    let session = (!check.updates_available.is_empty() || !check.additions_available.is_empty())
+        .then(|| {
+            crate::notification::GroupedProgressSession::start(
+                &services.notifier,
+                "Updating bundle content",
+            )
+        });
+
     for update in check.updates_available {
-        match apply_single_update(&update, &overrides, services).await {
+        let child = session.as_ref().map(|s| {
+            let c = s.child(update.new_file.display_name(), update.new_file.size.max(1));
+            c.set_phase(crate::notification::TaskPhase::Downloading);
+            c
+        });
+        match apply_single_update(&update, &overrides, child.as_ref(), services).await {
             Ok(_) => result.updates_applied.push(update),
             Err(err) => result.updates_failed.push(err.to_string()),
         }
@@ -337,28 +359,22 @@ pub async fn apply_bundle_updates(
 
     for addition in check.additions_available {
         let file_id = addition.new_file.kind.package_id();
-        match apply_single_addition(&addition, &overrides, services).await {
+        let child = session.as_ref().map(|s| {
+            let c = s.child(addition.new_file.display_name(), addition.new_file.size.max(1));
+            c.set_phase(crate::notification::TaskPhase::Downloading);
+            c
+        });
+        match apply_single_addition(&addition, &overrides, child.as_ref(), services).await {
             Ok(_) => result.additions_applied.push(addition),
             Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
         }
     }
 
-    let has_changes = !result.updates_applied.is_empty()
-        || !result.removals_applied.is_empty()
-        || !result.additions_applied.is_empty();
+    if let Some(session) = session {
+        session.finish();
+    }
 
-    if has_changes {
-        let mut affected = HashSet::new();
-        for u in &result.updates_applied {
-            affected.insert(u.bundle_name.clone());
-        }
-        for r in &result.removals_applied {
-            affected.insert(r.bundle_name.clone());
-        }
-        for a in &result.additions_applied {
-            affected.insert(a.bundle_name.clone());
-        }
-
+    {
         let cluster = PackageStore::get_cluster(cluster_id, services).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles
@@ -366,12 +382,19 @@ pub async fn apply_bundle_updates(
             .await
         {
             for archive in archives {
-                if affected.contains(&archive.manifest.name) {
-                    let _ = overrides::extract_bundle_overrides_no_overwrite(
-                        &archive.bundle.path,
-                        &cluster,
-                    )
-                    .await;
+                if let Err(err) = overrides::sync_bundle_overrides(
+                    &archive.bundle.path,
+                    &archive.manifest.name,
+                    &cluster,
+                    Some(&services.notifier),
+                )
+                .await
+                {
+                    tracing::warn!(
+                        bundle = %archive.manifest.name,
+                        error = %err,
+                        "failed to sync bundle overrides during update"
+                    );
                 }
             }
         }
@@ -386,9 +409,11 @@ pub async fn apply_bundle_updates(
     Ok(result)
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn apply_single_update(
     update: &BundlePackageUpdate,
     overrides: &[ClusterBundleOverrideRow],
+    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let hash = install_package_from_bundle(
@@ -396,9 +421,14 @@ async fn apply_single_update(
         update.cluster_id,
         &update.bundle_name,
         true,
+        child,
         services,
     )
     .await?;
+    if let Some(child) = child {
+        child.set_phase(crate::notification::TaskPhase::Installing);
+        child.finish();
+    }
 
     let file_id = update.new_file.kind.package_id();
     if should_be_disabled(&update.bundle_name, &file_id, overrides) {
@@ -412,9 +442,11 @@ async fn apply_single_update(
     remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, services).await
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = addition.cluster_id, bundle = %addition.bundle_name))]
 async fn apply_single_addition(
     addition: &BundlePackageAddition,
     overrides: &[ClusterBundleOverrideRow],
+    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let hash = install_package_from_bundle(
@@ -422,9 +454,14 @@ async fn apply_single_addition(
         addition.cluster_id,
         &addition.bundle_name,
         true,
+        child,
         services,
     )
     .await?;
+    if let Some(child) = child {
+        child.set_phase(crate::notification::TaskPhase::Installing);
+        child.finish();
+    }
 
     let file_id = addition.new_file.kind.package_id();
     if should_be_disabled(&addition.bundle_name, &file_id, overrides) {
@@ -446,6 +483,7 @@ fn should_be_disabled(
     })
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 async fn sync_cluster_loader_version_from_bundles(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -494,6 +532,7 @@ async fn sync_cluster_loader_version_from_bundles(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn get_bundles_with_update_status(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -590,20 +629,30 @@ pub async fn get_bundles_with_update_status(
     Ok(results)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn apply_bundle_updates_for_all_clusters(
     bundles: &BundlesManager,
     services: &LauncherServices,
-) -> LauncherResult<()> {
+) -> LauncherResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
+    let mut changed = Vec::new();
     for cluster in cluster_dao::list_all(&services.db).await? {
-        if let Err(err) = apply_bundle_updates(cluster.id, bundles, services).await {
-            tracing::warn!(
+        match apply_bundle_updates(cluster.id, bundles, services).await {
+            Ok(result) => {
+                if !result.updates_applied.is_empty()
+                    || !result.additions_applied.is_empty()
+                    || !result.removals_applied.is_empty()
+                {
+                    changed.push((cluster.id, result));
+                }
+            }
+            Err(err) => tracing::warn!(
                 cluster_id = cluster.id,
                 error = %err,
                 "bundle update apply failed for cluster"
-            );
+            ),
         }
     }
-    Ok(())
+    Ok(changed)
 }
 
 fn bundle_package_key(
@@ -620,6 +669,7 @@ fn bundle_package_key(
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn installed_bundle_keys(
     services: &LauncherServices,
     linked: &[LinkedArtifactInfo],

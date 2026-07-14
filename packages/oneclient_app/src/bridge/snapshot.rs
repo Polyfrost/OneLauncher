@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use oneclient_core::notification::LaunchStage;
+use oneclient_core::notification::{LaunchStage, MicrosoftLoginStatus};
 use oneclient_core::settings::LauncherSettings;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -98,4 +98,6 @@ pub struct BridgeSnapshot {
     pub java: JavaSnapshot,
     pub notifications: crate::notifications::NotificationSnapshot,
     pub game: GameSnapshot,
+    pub account_switcher_open: bool,
+    pub microsoft_login: Option<MicrosoftLoginStatus>,
 }

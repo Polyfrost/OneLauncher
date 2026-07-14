@@ -31,11 +31,13 @@ impl PackageProvider for CurseForgeProvider {
         ProviderId::CurseForge
     }
 
+    #[tracing::instrument(level = "debug", skip(self, filters, services))]
     async fn search(
         &self,
         filters: &SearchFilters,
         services: &LauncherServices,
     ) -> LauncherResult<Page<ProjectSummary>> {
+        tracing::debug!(query = ?filters.query, "searching curseforge");
         let mut url = Url::parse(&api_url("/mods/search"))?;
 
         {
@@ -93,6 +95,7 @@ impl PackageProvider for CurseForgeProvider {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn get_project(
         &self,
         project_id: &str,
@@ -109,6 +112,7 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into_detail())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, project_ids, services))]
     async fn get_projects(
         &self,
         project_ids: &[String],
@@ -127,6 +131,7 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into_iter().map(CfMod::into_detail).collect())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_versions(
         &self,
         project_id: &str,
@@ -172,6 +177,7 @@ impl PackageProvider for CurseForgeProvider {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_categories(
         &self,
         content_type: ContentType,
@@ -197,6 +203,7 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into_iter().map(|c| c.name).collect())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, _project_id, services))]
     async fn get_version(
         &self,
         _project_id: &str,
@@ -214,6 +221,7 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into())
     }
 
+    #[tracing::instrument(level = "debug", skip(self, version_ids, services))]
     async fn get_versions(
         &self,
         version_ids: &[String],
@@ -232,6 +240,7 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into_iter().map(Into::into).collect())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn lookup_versions(
         &self,
         identities: &[FileIdentity],

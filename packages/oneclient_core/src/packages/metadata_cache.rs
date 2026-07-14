@@ -23,6 +23,7 @@ pub struct CachedPackageMeta {
 	pub icon_url: Option<String>,
 }
 
+#[tracing::instrument(level = "debug", skip(services, project_ids))]
 pub async fn read_cached_package_meta(
 	services: &LauncherServices,
 	provider: ProviderId,
@@ -53,6 +54,7 @@ pub async fn read_cached_package_meta(
 		.collect()
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn cached_project_detail(
 	services: &LauncherServices,
 	provider: ProviderId,
@@ -89,6 +91,7 @@ pub async fn cached_project_detail(
 	}
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn get_version_cached(
 	services: &LauncherServices,
 	provider: ProviderId,
@@ -106,6 +109,7 @@ pub async fn get_version_cached(
 		.await
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn cached_version_detail(
 	services: &LauncherServices,
 	provider: ProviderId,
@@ -157,6 +161,7 @@ async fn cached_version_detail(
 	})
 }
 
+#[tracing::instrument(level = "debug", skip(services, project_ids))]
 pub async fn fetch_package_meta(
 	services: &LauncherServices,
 	provider: ProviderId,
@@ -192,6 +197,8 @@ pub async fn fetch_package_meta(
 	if missing.is_empty() {
 		return Ok(out);
 	}
+
+	tracing::debug!(count = missing.len(), "fetching missing package metadata from provider");
 
 	let details = services
 		.packages

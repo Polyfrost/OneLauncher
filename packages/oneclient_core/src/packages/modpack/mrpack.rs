@@ -41,11 +41,13 @@ struct MrpackHashes {
 }
 
 impl MrpackInstaller {
+    #[tracing::instrument(skip(services))]
     pub async fn install_archive(
         archive_path: PathBuf,
         cluster_id: i64,
         services: &LauncherServices,
     ) -> LauncherResult<()> {
+        tracing::info!("installing mrpack archive to cluster");
         let cluster = PackageStore::get_cluster(cluster_id, services).await?;
         let cluster_root = crate::paths::clusters_dir()?.join(&cluster.folder_name);
 
@@ -131,13 +133,16 @@ impl MrpackInstaller {
         .await?;
 
         if failed > 0 {
+            tracing::error!(failed, total, "modpack install completed with failures");
             return Err(PackageError::PartialModpackInstall { failed, total }.into());
         }
 
+        tracing::info!(total, "modpack install complete");
         Ok(())
     }
 }
 
+#[tracing::instrument(level = "debug", skip(entry, cluster, services))]
 async fn install_mrpack_file(
     entry: MrpackFileEntry,
     content_type: ContentType,
@@ -168,6 +173,7 @@ async fn install_mrpack_file(
             &project,
             &version,
             false,
+            None,
             services,
         )
         .await?;
@@ -189,7 +195,7 @@ async fn install_mrpack_file(
         content_type,
     };
 
-    let artifact = store::download_external(&external, false, services).await?;
+    let artifact = store::download_external(&external, false, None, services).await?;
     PackageStore::link_artifact(&artifact, cluster, Some(&file_name), services).await?;
 
     Ok(())
@@ -207,6 +213,7 @@ fn io_err(err: impl std::error::Error + Send + Sync + 'static) -> polyio::IOErro
     }
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn install_mrpack_to_cluster(
     archive_path: PathBuf,
     cluster_id: i64,

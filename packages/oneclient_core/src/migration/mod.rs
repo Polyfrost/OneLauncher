@@ -65,6 +65,7 @@ pub enum ImportTarget {
     Dedicated { new_cluster_id: i64 },
 }
 
+#[tracing::instrument]
 pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     for source in MigrationSource::ALL.iter().copied() {
         let detection = match source {
@@ -80,6 +81,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     Ok(None)
 }
 
+#[tracing::instrument]
 pub async fn import_game_dir(
     source: MigrationSource,
     folder_name: &str,

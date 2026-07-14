@@ -1,16 +1,20 @@
 use super::*;
 
+use freya::query::QueryStateData;
 use oneclient_core::packages::types::{
     GalleryImage, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
 };
 use oneclient_core::packages::ProviderId;
 
 use crate::BridgeDispatch;
-use crate::components::{Button, Icon, IconType};
-use crate::hooks::VERSIONS_PAGE_SIZE;
+use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
+use crate::hooks::{use_cached_image, VERSIONS_PAGE_SIZE};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
+
+const GALLERY_IMAGE_H: f32 = 360.;
+const GALLERY_EDGE: u32 = 1024;
 
 
 pub(super) fn loading_body() -> impl IntoElement {
@@ -27,40 +31,15 @@ pub(super) fn loading_body() -> impl IntoElement {
         .into_element()
 }
 
-pub(super) fn tabs(current: usize, active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
-    let mut labels: Vec<&str> = vec!["About", "Versions"];
+pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
+    let mut control = SegmentedControl::new(active_tab)
+        .height(36.)
+        .segment(Segment::new(0usize).label("About"))
+        .segment(Segment::new(1usize).label("Versions"));
     if has_gallery {
-        labels.push("Gallery");
+        control = control.segment(Segment::new(2usize).label("Gallery"));
     }
-    rect()
-        .horizontal()
-        .spacing(6.)
-        .padding(Gaps::new_all(4.))
-        .corner_radius(CornerRadius::new_all(9.))
-        .background(colors::component_bg())
-        .children(labels.into_iter().enumerate().map(move |(i, t)| {
-            let selected = i == current;
-            let mut active_tab = active_tab;
-            rect()
-                .center()
-                .padding(Gaps::new_symmetric(6., 16.))
-                .corner_radius(CornerRadius::new_all(7.))
-                .background(if selected {
-                    colors::component_bg_pressed()
-                } else {
-                    Color::TRANSPARENT
-                })
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| *active_tab.write() = i)
-                .child(label().text(t).font_size(13.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                }))
-                .into_element()
-        }))
-        .into_element()
+    control
 }
 
 pub(super) fn about_panel(project: &ProjectDetail) -> impl IntoElement {
@@ -137,6 +116,31 @@ impl KeyExt for GalleryTile {
 
 impl Component for GalleryTile {
     fn render(&self) -> impl IntoElement {
+        let query = use_cached_image(Some(self.image.url.clone()), GALLERY_EDGE);
+        let reader = query.read();
+        let loaded = match &*reader.state() {
+            QueryStateData::Settled { res: Ok(bytes), .. }
+            | QueryStateData::Loading {
+                res: Some(Ok(bytes)),
+            } => Some((self.image.url.clone(), bytes.clone())),
+            _ => None,
+        };
+
+        let preview = rect()
+            .width(Size::fill())
+            .height(Size::px(GALLERY_IMAGE_H))
+            .center()
+            .overflow(Overflow::Clip)
+            .background(colors::component_bg())
+            .maybe_child(loaded.map(|(url, bytes)| {
+                ImageViewer::new((url, bytes))
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .aspect_ratio(AspectRatio::Max)
+                    .image_cover(ImageCover::Center)
+                    .into_element()
+            }));
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -144,7 +148,7 @@ impl Component for GalleryTile {
             .overflow(Overflow::Clip)
             .background(PANEL_BG)
             .border(border_all_color(1., colors::component_border()))
-            .child(PackageBanner::new(Some(self.image.url.clone()), 240.))
+            .child(preview)
             .maybe(self.image.title.is_some(), |el| {
                 el.child(
                     rect()

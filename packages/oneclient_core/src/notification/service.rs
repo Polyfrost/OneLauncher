@@ -2,7 +2,8 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::notification::{
-	LaunchStage, Notification, NotificationError, NotificationLevel, PromptKind, UserChoice,
+	LaunchStage, MicrosoftLoginStatus, Notification, NotificationError, NotificationLevel,
+	PromptKind, UserChoice,
 };
 
 #[derive(Clone)]
@@ -40,6 +41,7 @@ impl NotificationService {
 		}
 	}
 
+	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn prompt_java_install(&self, major: u32) -> Result<UserChoice, NotificationError> {
 		self.prompt(
 			"Java required",
@@ -51,6 +53,7 @@ impl NotificationService {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn prompt_update(&self, version: &str) -> Result<UserChoice, NotificationError> {
 		self.prompt(
 			"Update available",
@@ -60,6 +63,7 @@ impl NotificationService {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(self, question))]
 	pub async fn prompt(
 		&self,
 		title: &str,
@@ -78,6 +82,15 @@ impl NotificationService {
 			.map_err(|_| NotificationError::ServiceDown)?;
 
 		reply_rx.await.map_err(|_| NotificationError::ServiceDown)
+	}
+
+	pub fn microsoft_login_status(&self, status: Option<MicrosoftLoginStatus>) {
+		if let Err(err) = self
+			.channel
+			.send(Notification::MicrosoftLoginStatus(status))
+		{
+			tracing::error!("{err}");
+		}
 	}
 
 	pub fn send_info(&self, title: &str, body: &str) {

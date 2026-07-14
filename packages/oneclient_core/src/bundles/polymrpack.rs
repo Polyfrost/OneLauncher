@@ -56,6 +56,7 @@ struct PolyMrpackHashes {
     pub sha1: String,
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn read_meta_from_archive(path: &Path) -> LauncherResult<PolyMrpackMeta> {
     let manifest = read_manifest_from_archive(path).await?;
     Ok(PolyMrpackMeta {
@@ -69,6 +70,7 @@ pub async fn read_meta_from_archive(path: &Path) -> LauncherResult<PolyMrpackMet
     })
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn read_manifest_from_archive(path: &Path) -> LauncherResult<BundleManifest> {
     let file = tokio::fs::File::open(path).await?;
     let reader = tokio::io::BufReader::new(file);

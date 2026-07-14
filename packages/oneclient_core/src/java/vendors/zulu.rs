@@ -23,10 +23,13 @@ impl JavaRuntimeProvider for ZuluRuntimeProvider {
 		JavaVendor::Zulu
 	}
 
-	async fn list_packages_by_major(&self, major: u32, services: &LauncherServices) -> LauncherResult<Vec<JavaPackage>> {
+	#[tracing::instrument(level = "debug", skip(self, services))]
+	async fn list_packages(&self, major: Option<u32>, services: &LauncherServices) -> LauncherResult<Vec<JavaPackage>> {
         let url = zulu_url(major)?;
         let packages = services.requester.send_as::<Vec<ZuluPackage>>(Request::new(Method::GET, url)).await?;
-        let packages = packages.into_iter().map(map_zulu_package).collect();
+        let packages: Vec<JavaPackage> = packages.into_iter().map(map_zulu_package).collect();
+
+        tracing::debug!(count = packages.len(), "listed Zulu packages");
 
         Ok(packages)
 	}
@@ -42,8 +45,26 @@ fn map_zulu_package(pkg: ZuluPackage) -> JavaPackage {
     }
 }
 
-fn zulu_url(major: u32) -> LauncherResult<Url> {
-    Ok(Url::parse(&format!("https://api.azul.com/metadata/v1/zulu/packages/?java_version={major}&os={ZULU_OS}&arch={ZULU_ARCH}&archive_type=zip&java_package_type=jre&javafx_bundled=false&release_status=ga&availability_types=CA&certifications=tck&page=1&page_size=5"))?)
+fn zulu_url(major: Option<u32>) -> LauncherResult<Url> {
+    let mut url = Url::parse("https://api.azul.com/metadata/v1/zulu/packages/")?;
+    {
+        let mut q = url.query_pairs_mut();
+        q.append_pair("os", ZULU_OS)
+            .append_pair("arch", ZULU_ARCH)
+            .append_pair("archive_type", "zip")
+            .append_pair("java_package_type", "jre")
+            .append_pair("javafx_bundled", "false")
+            .append_pair("release_status", "ga")
+            .append_pair("availability_types", "CA")
+            .append_pair("certifications", "tck")
+            .append_pair("latest", "true")
+            .append_pair("page", "1")
+            .append_pair("page_size", "100");
+        if let Some(major) = major {
+            q.append_pair("java_version", &major.to_string());
+        }
+    }
+    Ok(url)
 }
 
 const ZULU_ARCH: &str = cfg_select! {

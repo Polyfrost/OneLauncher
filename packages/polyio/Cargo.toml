@@ -37,3 +37,6 @@ serde_json.workspace = true
 dunce.workspace = true
 bytes.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+junction.workspace = true
+

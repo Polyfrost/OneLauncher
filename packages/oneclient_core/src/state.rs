@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use oneclient_db::DbPool;
 use tokio::sync::{Mutex, OnceCell};
-use tracing::instrument;
 
 use crate::auth::{CredentialsStore, PendingBrowserLogin};
 use crate::bundles::BundlesManager;
@@ -42,7 +41,7 @@ pub struct LauncherState {
 }
 
 impl LauncherState {
-    #[instrument(skip(notifier))]
+    #[tracing::instrument(skip(notifier))]
 	pub async fn initialize(
 		notifier: NotificationService,
 	) -> LauncherResult<Arc<Self>> {

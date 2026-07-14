@@ -10,7 +10,7 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
-use crate::notification::{GroupedProgressSession, TaskPhase};
+use crate::notification::{GroupedProgressChild, GroupedProgressSession, TaskPhase};
 use crate::packages::domain::{ContentType, GameLoader};
 use crate::packages::error::PackageError;
 use crate::packages::store::{PackageStore, unlink_cluster_file};
@@ -21,11 +21,13 @@ fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+#[tracing::instrument(level = "debug", skip(file, child, services), fields(package = %file.display_name()))]
 pub async fn install_package_from_bundle(
     file: &BundleFile,
     cluster_id: i64,
     bundle_name: &str,
     skip_compatibility: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<String> {
     let cluster = PackageStore::get_cluster(cluster_id, services).await?;
@@ -63,13 +65,14 @@ pub async fn install_package_from_bundle(
                 cluster_id,
                 skip_compatibility,
                 false,
+                child,
                 services,
             )
             .await?;
             artifact.hash
         }
         BundleFileKind::External(ext) => {
-            install_external(ext, &cluster, skip_compatibility, services).await?
+            install_external(ext, &cluster, skip_compatibility, child, services).await?
         }
     };
 
@@ -86,28 +89,34 @@ pub async fn install_package_from_bundle(
     Ok(hash)
 }
 
+#[tracing::instrument(level = "debug", skip(ext, cluster, child, services), fields(file = %ext.name))]
 async fn install_external(
     ext: &ExternalFile,
     cluster: &ClusterRow,
     skip_compatibility: bool,
+    child: Option<&GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<String> {
-    let artifact = crate::packages::store::download_external(ext, false, services).await?;
+    let artifact = crate::packages::store::download_external(ext, false, child, services).await?;
     PackageStore::link_artifact(&artifact, cluster, Some(&ext.name), services).await?;
 
     let _ = skip_compatibility;
     Ok(artifact.hash)
 }
 
+#[tracing::instrument(level = "debug", skip(archive, services), fields(bundle = %archive.manifest.name))]
 pub async fn extract_bundle_overrides_for_cluster(
     archive: &BundleArchive,
     cluster_id: i64,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, services).await?;
-    overrides::extract_bundle_overrides(&archive.bundle.path, &cluster).await
+    overrides::sync_bundle_overrides(&archive.bundle.path, &archive.manifest.name, &cluster, None)
+        .await?;
+    Ok(())
 }
 
+#[tracing::instrument(skip(bundles, services))]
 pub async fn install_bundle(
     cluster_id: i64,
     bundle_name: &str,
@@ -132,6 +141,7 @@ pub async fn install_bundle(
     install_enabled_bundle_files(&archive, cluster_id, skip_compatibility, None, services).await
 }
 
+#[tracing::instrument(level = "debug", skip(archive, progress, services), fields(bundle = %archive.manifest.name))]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
     cluster_id: i64,
@@ -194,11 +204,18 @@ pub async fn install_enabled_bundle_files(
         .cloned()
         .collect();
 
+    tracing::info!(
+        cluster_id,
+        bundle = %bundle_name,
+        to_install = to_install.len(),
+        "installing enabled bundle files"
+    );
+
     let bundle_name = &bundle_name;
     let results = futures_util::stream::iter(to_install.into_iter().map(|file| async move {
         let child = progress.map(|p| {
-            let c = p.child(format!("Mod {}", file.display_name()), 1);
-            c.set_phase(TaskPhase::Installing);
+            let c = p.child(format!("Mod {}", file.display_name()), file.size.max(1));
+            c.set_phase(TaskPhase::Downloading);
             c
         });
 
@@ -207,11 +224,13 @@ pub async fn install_enabled_bundle_files(
             cluster_id,
             bundle_name,
             skip_compatibility,
+            child.as_ref(),
             services,
         )
         .await;
 
         if let Some(child) = child {
+            child.set_phase(TaskPhase::Installing);
             child.finish();
         }
         (file.display_name(), result)
@@ -234,6 +253,7 @@ pub async fn install_enabled_bundle_files(
 
 const BUNDLE_INSTALL_CONCURRENCY: usize = 6;
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn enabled_bundle_bytes(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -296,6 +316,7 @@ pub async fn enabled_bundle_bytes(
     Ok(total)
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
     bundle_name: &str,
@@ -319,6 +340,7 @@ pub async fn set_bundle_package_enabled(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn list_cluster_bundle_overrides(
     cluster_id: i64,
     services: &LauncherServices,
@@ -330,6 +352,7 @@ pub async fn list_cluster_bundle_overrides(
         .collect())
 }
 
+#[tracing::instrument(skip(bundles, progress, services))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -366,6 +389,7 @@ pub async fn install_cluster_bundles(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn on_user_remove_artifact(
     cluster_id: i64,
     hash: &str,
@@ -374,6 +398,7 @@ pub async fn on_user_remove_artifact(
     handle_user_artifact_action(cluster_id, hash, services, OverrideType::Removed).await
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn on_user_disable_artifact(
     cluster_id: i64,
     hash: &str,
@@ -382,6 +407,7 @@ pub async fn on_user_disable_artifact(
     handle_user_artifact_action(cluster_id, hash, services, OverrideType::Disabled).await
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn on_user_enable_artifact(
     cluster_id: i64,
     hash: &str,
@@ -395,6 +421,7 @@ pub async fn on_user_enable_artifact(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn handle_user_artifact_action(
     cluster_id: i64,
     hash: &str,
@@ -422,6 +449,7 @@ async fn handle_user_artifact_action(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn remove_artifact_from_cluster(
     cluster_id: i64,
     hash: &str,

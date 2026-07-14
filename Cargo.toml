@@ -95,6 +95,7 @@ sanitize-filename = { version = "=0.6.0" }
 regex = { version = "=1.12.3" }
 parking_lot = { version = "=0.12.5" }
 dunce = { version = "=1.0.5" }
+junction = { version = "=2.0.0" }
 bytes = { version = "=1.11.1" }
 indicatif = { version = "=0.18.4", features = [ "tokio" ]}
 sysinfo = { version = "=0.39.5" }

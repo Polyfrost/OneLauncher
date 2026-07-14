@@ -393,19 +393,15 @@ pub async fn symlink_dir(
 	let original = original.as_ref();
 	let link = link.as_ref();
 
-	// tokio has no async junction API, so the Windows path runs the blocking
-	// std call on the blocking pool; Unix uses tokio's async symlink directly.
 	#[cfg(windows)]
 	{
 		let path = link.to_string_lossy().to_string();
 		let original = original.to_path_buf();
 		let link = link.to_path_buf();
-		return tokio::task::spawn_blocking(move || {
-			std::os::windows::fs::junction_point(&original, &link)
-		})
-		.await
-		.map_err(std::io::Error::other)?
-		.map_err(|e| IOError::PathIOError { source: e, path });
+		return tokio::task::spawn_blocking(move || junction::create(&original, &link))
+			.await
+			.map_err(std::io::Error::other)?
+			.map_err(|e| IOError::PathIOError { source: e, path });
 	}
 
 	#[cfg(not(windows))]

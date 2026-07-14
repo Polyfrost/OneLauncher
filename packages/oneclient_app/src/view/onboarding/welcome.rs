@@ -27,7 +27,7 @@ impl Component for OnboardingWelcome {
             .spacing(16.)
             .child(step_heading(
                 "OneClient",
-                "Let's get you all set-up with the most advanced launcher.",
+                "Let's get you all set-up with the most advanced client.",
             ))
             .child(
                 label()

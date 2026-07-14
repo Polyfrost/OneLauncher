@@ -168,6 +168,7 @@ pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
     Ok(parsed)
 }
 
+#[tracing::instrument(skip_all, level = "debug")]
 pub async fn main_class(path: impl AsRef<std::path::Path>) -> LauncherResult<Option<String>> {
     let data = polyio::read(path.as_ref()).await?;
     let mut class_name = None;

@@ -20,6 +20,7 @@ const SWAP_TYPES: [ContentType; 3] = [
 
 const FABRIC_DEP_OVERRIDES: &str = "config/fabric_loader_dependencies.json";
 
+#[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id, game_dir = %game_dir.display()), level = "debug")]
 pub async fn sync_shared_content(
     services: &LauncherServices,
     cluster: &Cluster,
@@ -71,6 +72,7 @@ pub async fn sync_shared_content(
     Ok(())
 }
 
+#[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
 pub async fn import_manual_content(
     services: &LauncherServices,
     cluster: &Cluster,
@@ -117,7 +119,7 @@ pub async fn import_manual_content(
 
             match PackageStore::import_local_file(&path, content_type, cluster.id, services).await {
                 Ok(_) => {
-                    tracing::info!(file = name, "registered manually-added shared content")
+                    tracing::debug!(file = name, "registered manually-added shared content")
                 }
                 Err(err) => tracing::warn!(
                     file = name,
@@ -140,6 +142,7 @@ fn has_content_extension(content_type: ContentType, name: &str) -> bool {
 
 const ALLOWED_SYMLINKS_NAME: &str = "allowed_symlinks.txt";
 
+#[tracing::instrument(level = "debug")]
 pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
     let root = crate::paths::launcher_dir()?;
     let base = polyio::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
@@ -203,6 +206,7 @@ async fn ensure_note(dir: &Path, content_type: ContentType) {
     .ok();
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn clear_shared_content(game_dir: &Path) -> LauncherResult<()> {
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());
@@ -213,6 +217,7 @@ pub async fn clear_shared_content(game_dir: &Path) -> LauncherResult<()> {
     Ok(())
 }
 
+#[tracing::instrument(skip(cluster), fields(cluster_id = cluster.id), level = "debug")]
 pub async fn link_cluster_logs(cluster: &Cluster, game_dir: &Path) {
     let cluster_dir = match cluster.dir() {
         Ok(dir) => dir,
@@ -268,6 +273,7 @@ async fn redirect_dir(shared: &Path, target: &Path) -> LauncherResult<()> {
     Ok(())
 }
 
+#[tracing::instrument(level = "debug")]
 pub async fn unlink_cluster_logs(game_dir: &Path) {
     for name in REDIRECTED_DIRS {
         let shared = game_dir.join(name);

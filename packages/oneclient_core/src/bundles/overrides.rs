@@ -53,6 +53,7 @@ pub struct OverrideSyncReport {
     pub deleted: Vec<String>,
 }
 
+#[tracing::instrument(level = "debug", skip(cluster, notifier))]
 pub async fn sync_bundle_overrides(
     archive_path: &Path,
     bundle_name: &str,
@@ -63,6 +64,7 @@ pub async fn sync_bundle_overrides(
     sync_bundle_overrides_at(archive_path, bundle_name, &root, notifier).await
 }
 
+#[tracing::instrument(level = "debug", skip(notifier))]
 async fn sync_bundle_overrides_at(
     archive_path: &Path,
     bundle_name: &str,
@@ -154,6 +156,14 @@ async fn sync_bundle_overrides_at(
     if let Err(err) = lock.save(root).await {
         tracing::warn!(error = %err, "failed to persist bundle override lock");
     }
+
+    tracing::debug!(
+        bundle = bundle_name,
+        written = report.written.len(),
+        conflicts = report.conflicts.len(),
+        deleted = report.deleted.len(),
+        "synced bundle overrides"
+    );
 
     if !report.conflicts.is_empty() {
         notify_conflicts(notifier, bundle_name, &report.conflicts);

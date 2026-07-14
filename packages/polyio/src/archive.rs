@@ -5,12 +5,11 @@ use async_zip::StoredZipEntry;
 use async_zip::base::read::WithoutEntry;
 use futures_util::{Stream, TryStreamExt, pin_mut};
 use tokio_util::compat::TokioAsyncWriteCompatExt;
-use tracing::instrument;
 
 use crate::{IOError, PolyIOResult};
 
 /// Reads a zip archive from a byte array
-#[instrument(skip(data, f), level = "debug")]
+#[tracing::instrument(skip(data, f), level = "debug")]
 pub async fn read_zip_entries_bytes<F>(data: Vec<u8>, mut f: F) -> PolyIOResult<()>
 where
 	F: AsyncFnMut(
@@ -40,7 +39,7 @@ where
 }
 
 /// Reads a zip archive from a byte array and returns a stream of entries.
-#[instrument(skip(data), level = "debug")]
+#[tracing::instrument(skip(data), level = "debug")]
 pub fn stream_zip_entries_bytes(
 	data: Vec<u8>,
 ) -> impl Stream<
@@ -66,7 +65,7 @@ pub fn stream_zip_entries_bytes(
 }
 
 /// Unzips a zip archive from a byte array
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(data, dest_path),
     fields(
@@ -81,7 +80,7 @@ pub async fn unzip_bytes(
 }
 
 /// Unzips a zip archive from a byte array
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(data, filter_entries, dest_path),
     fields(
@@ -128,7 +127,7 @@ pub async fn unzip_bytes_filtered(
 	Ok(())
 }
 
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(zip_path, dest_path),
     fields(
@@ -150,7 +149,7 @@ pub async fn extract_zip(
 }
 
 /// Unzips a zip archive from a file
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(zip_path, dest_path, filter_entries, modify_entry_name),
     fields(
@@ -212,7 +211,7 @@ pub async fn extract_zip_filtered(
 /// Returns `(entry_name, bytes)` pairs. Each matching entry is read fully into
 /// memory, so this is meant for small files (e.g. bundle config overrides), not
 /// large archives.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(zip_path, filter),
     fields(zip_path = %zip_path.as_ref().display())
@@ -247,7 +246,7 @@ pub async fn read_zip_file_entries(
 }
 
 /// Returns a zip file entry's bytes without reading the entire file into memory.
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(reader)
 )]
@@ -278,7 +277,7 @@ where
 	Ok(data)
 }
 
-#[instrument(
+#[tracing::instrument(
     level = "debug",
     skip(archive, dest),
     fields(

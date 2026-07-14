@@ -17,6 +17,7 @@ pub struct CredentialsStore {
 }
 
 impl CredentialsStore {
+    #[tracing::instrument(level = "debug")]
     pub async fn load() -> LauncherResult<Self> {
         let path = paths::auth_file()?;
         if !path.exists() {
@@ -32,6 +33,7 @@ impl CredentialsStore {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn save(&self) -> LauncherResult<()> {
         let path = paths::auth_file()?;
 
@@ -57,6 +59,7 @@ impl CredentialsStore {
         self.users.get(&id)
     }
 
+    #[tracing::instrument(level = "debug", skip_all, fields(username = %account.username))]
     pub async fn commit_account(
         &mut self,
         account: MinecraftAccount,
@@ -69,6 +72,7 @@ impl CredentialsStore {
         }
 
         self.save().await?;
+        tracing::debug!("committed account to credentials store");
         services
             .notifier
             .send_info("Account added", &format!("Signed in as {}", account.username));
@@ -80,6 +84,7 @@ impl CredentialsStore {
         Ok(account)
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(username = %username))]
     pub async fn add_offline_account_and_save(
         &mut self,
         username: String,
@@ -109,6 +114,7 @@ impl CredentialsStore {
         Ok(account)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services), fields(%id))]
     pub async fn refresh_microsoft_account(
         &mut self,
         id: Uuid,
@@ -129,10 +135,12 @@ impl CredentialsStore {
 
         self.users.insert(id, account.clone());
         self.save().await?;
+        tracing::debug!("refreshed Microsoft account");
 
         Ok(Some(account))
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn remove_account(&mut self, id: Uuid) -> LauncherResult<Option<MinecraftAccount>> {
         let removed = self.users.remove(&id);
 
@@ -144,6 +152,7 @@ impl CredentialsStore {
         Ok(removed)
     }
 
+    #[tracing::instrument(level = "debug", skip(self), fields(?id))]
     pub async fn set_default_user(&mut self, id: Option<Uuid>) -> LauncherResult<()> {
         if let Some(id) = id
             && !self.users.contains_key(&id)
@@ -156,6 +165,7 @@ impl CredentialsStore {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn default_account(
         &mut self,
         services: &LauncherServices,
@@ -202,6 +212,7 @@ impl CredentialsStore {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services), fields(%id))]
     pub async fn account_for_launch(
         &mut self,
         id: Uuid,

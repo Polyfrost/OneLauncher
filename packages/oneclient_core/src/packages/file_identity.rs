@@ -1,5 +1,6 @@
 use std::path::Path;
 
+
 use crate::LauncherResult;
 use crate::crypto::{normalize_hash, sha1_bytes};
 
@@ -17,6 +18,7 @@ impl FileIdentity {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(path))]
     pub async fn from_path(path: impl AsRef<Path>) -> LauncherResult<Self> {
         let bytes = polyio::read(path).await?;
         Ok(Self::from_bytes(&bytes))

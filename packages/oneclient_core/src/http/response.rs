@@ -58,6 +58,7 @@ pub trait ResponseExt {
 
 #[async_trait::async_trait]
 impl ResponseExt for Response {
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn stream(
         self,
         options: ResponseOptions,

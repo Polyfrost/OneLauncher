@@ -1,6 +1,5 @@
 use oneclient_db::dao::{cluster as cluster_dao, setting_profile as profile_dao};
 use oneclient_db::models::{ClusterId, ClusterPatch, NewCluster};
-use tracing::instrument;
 
 use crate::packages::domain::ContentType;
 use crate::settings::store::{
@@ -28,6 +27,7 @@ impl ClusterManager {
 		name.trim().to_string()
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn get(state: &LauncherState, cluster_id: ClusterId) -> LauncherResult<Cluster> {
 		let row = cluster_dao::get_by_id(&state.services.db, cluster_id)
 			.await?
@@ -35,6 +35,7 @@ impl ClusterManager {
 		Ok(Cluster::try_from_row(row)?)
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn list(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
 		let rows = cluster_dao::list_all(&state.services.db).await?;
 		rows.into_iter()
@@ -43,7 +44,7 @@ impl ClusterManager {
 			.map_err(Into::into)
 	}
 
-	#[instrument(skip(state))]
+	#[tracing::instrument(skip(state))]
 	pub async fn create(
 		state: &LauncherState,
 		options: CreateClusterOptions,
@@ -57,14 +58,19 @@ impl ClusterManager {
 		let cluster_path = crate::paths::clusters_dir()?.join(&folder_name);
 
 		match create_inner(state, &options, &name, &folder_name, &cluster_path).await {
-			Ok(cluster) => Ok(cluster),
+			Ok(cluster) => {
+				tracing::info!(cluster_id = cluster.id, name = %cluster.name, "created cluster");
+				Ok(cluster)
+			}
 			Err(err) => {
+				tracing::warn!(name = %name, error = %err, "cluster creation failed, cleaning up directory");
 				let _ = polyio::remove_dir_all(&cluster_path).await;
 				Err(err)
 			}
 		}
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn update(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -92,6 +98,7 @@ impl ClusterManager {
 		Ok(Cluster::try_from_row(row)?)
 	}
 
+	#[tracing::instrument(skip(state))]
 	pub async fn delete(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -110,9 +117,11 @@ impl ClusterManager {
 			}
 		}
 
+		tracing::info!(cluster_id, remove_files, "deleted cluster");
 		Ok(())
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn set_stage(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -122,6 +131,7 @@ impl ClusterManager {
 		Ok(Cluster::try_from_row(row)?)
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn uses_dedicated_dir(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -129,6 +139,7 @@ impl ClusterManager {
 		Ok(Self::get(state, cluster_id).await?.uses_dedicated_dir())
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn set_dedicated_dir(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -149,6 +160,7 @@ impl ClusterManager {
 		Ok(())
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn add_playtime(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -160,6 +172,7 @@ impl ClusterManager {
 		Ok(Cluster::try_from_row(row)?)
 	}
 
+	#[tracing::instrument(level = "debug", skip(state, cluster), fields(cluster_id = cluster.id))]
 	pub async fn resolve_settings(
 		state: &LauncherState,
 		cluster: &Cluster,
@@ -174,6 +187,7 @@ impl ClusterManager {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(state, update))]
 	pub async fn update_profile(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -187,6 +201,7 @@ impl ClusterManager {
 		update_named_profile(&state.services.db, &profile_name, update).await
 	}
 
+	#[tracing::instrument(skip(state, shared_progress))]
 	pub async fn prepare(
 		state: &Arc<LauncherState>,
 		cluster_id: ClusterId,
@@ -208,6 +223,7 @@ impl ClusterManager {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(state))]
 	pub async fn create_and_assign_profile(
 		state: &LauncherState,
 		cluster_id: ClusterId,
@@ -235,6 +251,7 @@ impl ClusterManager {
 	}
 }
 
+#[tracing::instrument(level = "debug", skip(state, options))]
 async fn create_inner(
 	state: &LauncherState,
 	options: &CreateClusterOptions,
@@ -273,6 +290,7 @@ async fn create_inner(
 	Ok(Cluster::try_from_row(row)?)
 }
 
+#[tracing::instrument(level = "debug", skip(pool))]
 async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> LauncherResult<()> {
 	if profile_dao::get_by_name(pool, name).await?.is_none() {
 		return Err(ClusterError::ProfileNotFound(name.to_string()).into());
@@ -280,6 +298,7 @@ async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> Launc
 	Ok(())
 }
 
+#[tracing::instrument(level = "debug")]
 async fn resolve_unique_folder_name(name: &str) -> LauncherResult<String> {
 	let cluster_dir = crate::paths::clusters_dir()?;
 	let mut folder_name = name.to_string();
@@ -301,6 +320,7 @@ async fn resolve_unique_folder_name(name: &str) -> LauncherResult<String> {
 	Ok(folder_name)
 }
 
+#[tracing::instrument(level = "debug")]
 async fn ensure_content_dirs(cluster_path: &std::path::Path) -> LauncherResult<()> {
 	for content_type in [
 		ContentType::Mod,

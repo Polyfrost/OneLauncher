@@ -41,6 +41,7 @@ impl NotificationService {
 		}
 	}
 
+	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn prompt_java_install(&self, major: u32) -> Result<UserChoice, NotificationError> {
 		self.prompt(
 			"Java required",
@@ -52,6 +53,7 @@ impl NotificationService {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn prompt_update(&self, version: &str) -> Result<UserChoice, NotificationError> {
 		self.prompt(
 			"Update available",
@@ -61,6 +63,7 @@ impl NotificationService {
 		.await
 	}
 
+	#[tracing::instrument(level = "debug", skip(self, question))]
 	pub async fn prompt(
 		&self,
 		title: &str,

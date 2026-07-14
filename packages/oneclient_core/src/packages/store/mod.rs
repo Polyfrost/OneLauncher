@@ -21,6 +21,7 @@ use std::path::Path;
 pub struct PackageStore;
 
 impl PackageStore {
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn get_cluster(
         cluster_id: i64,
         services: &LauncherServices,
@@ -30,6 +31,7 @@ impl PackageStore {
             .ok_or(PackageError::ClusterNotFound(cluster_id).into())
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn cached_artifact(
         hash: &str,
         services: &LauncherServices,
@@ -41,6 +43,7 @@ impl PackageStore {
         Ok(Some(row_to_cached(row, services).await?))
     }
 
+    #[tracing::instrument(level = "debug", skip(project, version, child, services), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn download_and_cache(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -65,6 +68,7 @@ impl PackageStore {
     }
 
 	#[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(skip(project, version, child, services), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster(
         provider_id: ProviderId,
         project: &ProjectDetail,
@@ -75,6 +79,7 @@ impl PackageStore {
         child: Option<&GroupedProgressChild>,
         services: &LauncherServices,
     ) -> LauncherResult<ArtifactRow> {
+        tracing::info!("installing package to cluster");
         let cluster = Self::get_cluster(cluster_id, services).await?;
 
         if !skip_compatibility {
@@ -95,6 +100,7 @@ impl PackageStore {
         Ok(artifact)
     }
 
+    #[tracing::instrument(level = "debug", skip(artifact, cluster, services))]
     pub async fn link_artifact(
         artifact: &ArtifactRow,
         cluster: &ClusterRow,
@@ -109,6 +115,7 @@ impl PackageStore {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn link_by_hash(
         hash: &str,
         cluster_id: i64,
@@ -124,6 +131,7 @@ impl PackageStore {
         Self::link_artifact(&artifact, &cluster, cluster_file_name, services).await
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn unlink_from_cluster(
         hash: &str,
         cluster_id: i64,
@@ -132,6 +140,7 @@ impl PackageStore {
         crate::bundles::remove_artifact_from_cluster(cluster_id, hash, true, services).await
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn unlink_from_cluster_system(
         hash: &str,
         cluster_id: i64,
@@ -140,6 +149,7 @@ impl PackageStore {
         crate::bundles::remove_artifact_from_cluster(cluster_id, hash, false, services).await
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn list_linked_artifacts(
         cluster_id: i64,
         services: &LauncherServices,
@@ -176,6 +186,7 @@ impl PackageStore {
         Ok(items)
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn toggle_artifact_enabled(
         cluster_id: i64,
         hash: &str,
@@ -228,6 +239,7 @@ impl PackageStore {
         Ok(enabled)
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn import_local_file(
         path: &Path,
         content_type: ContentType,
@@ -278,6 +290,7 @@ impl PackageStore {
         Ok(row)
     }
 
+    #[tracing::instrument(level = "debug", skip(services))]
     pub async fn resolve_or_download(
         provider_id: ProviderId,
         project_id: &str,
@@ -296,6 +309,7 @@ impl PackageStore {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(row, services), fields(hash = %row.hash))]
 async fn row_to_cached(
     row: ArtifactRow,
     services: &LauncherServices,

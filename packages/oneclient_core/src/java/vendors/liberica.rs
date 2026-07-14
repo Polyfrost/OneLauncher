@@ -30,6 +30,7 @@ impl JavaRuntimeProvider for LibericaRuntimeProvider {
         JavaVendor::Liberica
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_packages(
         &self,
         major: Option<u32>,
@@ -67,6 +68,8 @@ impl JavaRuntimeProvider for LibericaRuntimeProvider {
                 }
             })
             .collect();
+
+        tracing::debug!(count = packages.len(), "listed Liberica packages");
 
         Ok(packages)
     }

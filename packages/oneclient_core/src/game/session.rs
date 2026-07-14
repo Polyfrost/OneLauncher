@@ -50,6 +50,7 @@ pub(crate) struct SessionRecorder {
 }
 
 impl SessionRecorder {
+	#[tracing::instrument(skip(state, java), fields(cluster_id, ram_allocated_mb), level = "debug")]
 	pub(crate) async fn start(
 		state: &Arc<LauncherState>,
 		cluster_id: i64,
@@ -110,6 +111,7 @@ impl SessionRecorder {
 		}
 	}
 
+	#[tracing::instrument(skip(self), fields(exit_code), level = "debug")]
 	pub(crate) async fn finish(self, exit_code: Option<i64>) {
 		if let Some(open) = self.open_server.lock().await.take()
 			&& let Err(err) = session_dao::finish_server(&self.db, &open).await
@@ -125,6 +127,7 @@ impl SessionRecorder {
 	}
 }
 
+#[tracing::instrument(skip(state), fields(cluster_id), level = "debug")]
 async fn count_enabled_mods(state: &Arc<LauncherState>, cluster_id: i64) -> usize {
 	match PackageStore::list_linked_artifacts(cluster_id, &state.services).await {
 		Ok(linked) => linked

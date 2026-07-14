@@ -31,9 +31,13 @@ impl GameProcessManager {
         self.kills.lock().unwrap().insert(cluster_id, tx);
     }
 
+    #[tracing::instrument(skip(self), level = "debug")]
     pub fn kill(&self, cluster_id: i64) -> bool {
         match self.kills.lock().unwrap().remove(&cluster_id) {
-            Some(tx) => tx.send(()).is_ok(),
+            Some(tx) => {
+                tracing::debug!(cluster_id, "signalling kill to running game");
+                tx.send(()).is_ok()
+            }
             None => false,
         }
     }

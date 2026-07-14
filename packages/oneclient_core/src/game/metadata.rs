@@ -4,7 +4,6 @@ use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{AssetsIndex, DownloadType, Library, Os, Version, VersionInfo};
 use interfrost::api::modded::LoaderVersion;
 use reqwest::Method;
-use tracing::instrument;
 
 use crate::game::GameError;
 use crate::game::download::{download_to_path, fetch_bytes_verified};
@@ -18,7 +17,7 @@ use crate::paths;
 use crate::state::LauncherServices;
 use crate::{LauncherError, LauncherResult};
 
-#[instrument(skip_all)]
+#[tracing::instrument(skip_all)]
 pub async fn download_minecraft(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
@@ -51,7 +50,7 @@ pub async fn download_minecraft(
     Ok(())
 }
 
-#[instrument(skip(services, progress))]
+#[tracing::instrument(skip(services, progress), level = "debug")]
 pub async fn download_version_info(
     services: &LauncherServices,
     progress: Option<&GroupedProgressSession>,
@@ -71,7 +70,7 @@ pub async fn download_version_info(
         let data = polyio::read(&path).await?;
         serde_json::from_slice(&data)?
     } else {
-        tracing::info!(
+        tracing::debug!(
             version_id = %version_id,
             "downloading Minecraft version metadata"
         );
@@ -150,7 +149,7 @@ pub async fn download_version_info(
     Ok(result)
 }
 
-#[instrument(skip_all)]
+#[tracing::instrument(skip_all, level = "debug")]
 pub async fn download_assets_index(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
@@ -180,7 +179,7 @@ pub async fn download_assets_index(
     polyio::read_json(&path).await.map_err(Into::into)
 }
 
-#[instrument(skip_all)]
+#[tracing::instrument(skip_all, level = "debug")]
 pub async fn download_assets(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
@@ -245,6 +244,7 @@ pub async fn download_assets(
     Ok(failed)
 }
 
+#[tracing::instrument(skip(services, progress, version), fields(version_id = %version.id, force), level = "debug")]
 pub async fn download_client(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
@@ -283,6 +283,7 @@ pub async fn download_client(
     Ok(path)
 }
 
+#[tracing::instrument(skip(version_info), level = "debug")]
 pub fn libraries_missing(
     version_info: &VersionInfo,
     java_arch: &str,
@@ -317,6 +318,7 @@ fn lib_short(name: &str) -> String {
     }
 }
 
+#[tracing::instrument(skip(services, progress, libraries), level = "debug")]
 pub async fn download_libraries(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
@@ -452,6 +454,7 @@ pub async fn download_libraries(
     Ok(failed)
 }
 
+#[tracing::instrument(skip(metadata, services), level = "debug")]
 pub async fn get_loader_versions(
     metadata: &mut MetadataStore,
     services: &LauncherServices,
@@ -475,6 +478,7 @@ pub async fn get_loader_versions(
     Ok(Vec::new())
 }
 
+#[tracing::instrument(skip(metadata, services), level = "debug")]
 pub async fn get_loader_version(
     metadata: &mut MetadataStore,
     services: &LauncherServices,
@@ -557,6 +561,7 @@ pub async fn get_loader_version(
     }
 }
 
+#[tracing::instrument(skip(metadata, services), level = "debug")]
 pub async fn resolve_minecraft_version(
     metadata: &mut MetadataStore,
     services: &LauncherServices,
@@ -581,6 +586,7 @@ pub async fn resolve_minecraft_version(
     ))
 }
 
+#[tracing::instrument(skip(metadata, services), level = "debug")]
 pub async fn get_game_versions(
     metadata: &mut MetadataStore,
     services: &LauncherServices,
@@ -589,6 +595,7 @@ pub async fn get_game_versions(
     Ok(manifest.versions.clone())
 }
 
+#[tracing::instrument(skip(metadata, services), level = "debug")]
 pub async fn get_loaders_for_version(
     metadata: &mut MetadataStore,
     services: &LauncherServices,

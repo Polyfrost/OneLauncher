@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use bytes::Bytes;
 use reqwest::Method;
 use tokio::sync::Mutex;
-use tracing::instrument;
 
 use crate::crypto::sha1_bytes;
 use crate::http::RequestError;
@@ -25,7 +24,7 @@ impl ImageCacheStore {
         Self::default()
     }
 
-    #[instrument(skip(self, services))]
+    #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn get(
         &self,
         services: &LauncherServices,
@@ -109,6 +108,7 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     Some(Bytes::from(out))
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 async fn download(services: &LauncherServices, url: &str) -> LauncherResult<Bytes> {
     let parsed = url.parse().map_err(RequestError::from)?;
     let request = reqwest::Request::new(Method::GET, parsed);

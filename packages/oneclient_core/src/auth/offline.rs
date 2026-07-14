@@ -40,7 +40,9 @@ pub fn validate_offline_username(username: &str) -> LauncherResult<()> {
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", fields(username = %username))]
 pub fn offline_account(username: String) -> MinecraftAccount {
+    tracing::info!("creating offline account");
     MinecraftAccount {
         id: offline_uuid(&username),
         username,

@@ -39,6 +39,7 @@ impl QueryCapability for PackageSearchQuery {
     type Err = LauncherError;
     type Keys = PackageSearchKeys;
 
+    #[tracing::instrument(name = "package_search", level = "debug", skip(self, keys), fields(provider = ?keys.provider, page = keys.page))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
         let provider = state.services.packages.get(keys.provider)?;
@@ -165,6 +166,7 @@ impl QueryCapability for PackageMetaBatchQuery {
     type Err = LauncherError;
     type Keys = PackageMetaBatchKeys;
 
+    #[tracing::instrument(name = "package_meta_batch", level = "debug", skip(self, keys), fields(provider = ?keys.provider, ids = keys.project_ids.len()))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
         oneclient_core::packages::fetch_package_meta(
@@ -286,6 +288,7 @@ impl QueryCapability for PackageCategoriesQuery {
     type Err = LauncherError;
     type Keys = PackageCategoriesKeys;
 
+    #[tracing::instrument(name = "package_categories", level = "debug", skip(self, keys), fields(provider = ?keys.provider))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
         let provider = state.services.packages.get(keys.provider)?;

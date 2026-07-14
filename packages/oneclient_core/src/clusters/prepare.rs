@@ -4,7 +4,6 @@ use std::sync::Arc;
 use interfrost::api::minecraft::{DownloadType, VersionInfo};
 use interfrost::api::modded::SidedDataEntry;
 use tokio::process::Command;
-use tracing::instrument;
 
 use crate::clusters::cluster::Cluster;
 use crate::clusters::error::ClusterError;
@@ -21,7 +20,7 @@ use crate::paths;
 use crate::state::LauncherState;
 use crate::{GameError, LauncherResult};
 
-#[instrument(skip(state, metadata, shared_progress))]
+#[tracing::instrument(skip(state, metadata, shared_progress))]
 pub async fn prepare_cluster(
     state: &Arc<LauncherState>,
     metadata: &mut MetadataStore,
@@ -33,6 +32,14 @@ pub async fn prepare_cluster(
 ) -> LauncherResult<Cluster> {
     let cluster = ClusterManager::get(state, cluster_id).await?;
     let continuing = cluster.stage == ClusterStage::Downloading;
+
+    tracing::info!(
+        cluster_id,
+        mc_version = %cluster.mc_version,
+        force,
+        continuing,
+        "preparing cluster"
+    );
 
     if !continuing {
         ClusterManager::set_stage(state, cluster_id, ClusterStage::Downloading).await?;
@@ -62,6 +69,7 @@ pub async fn prepare_cluster(
     }
 
     if let Err(err) = result {
+        tracing::error!(cluster_id, error = %err, "cluster preparation failed");
         if !continuing {
             let _ = ClusterManager::set_stage(state, cluster_id, ClusterStage::NotReady).await;
         }
@@ -69,6 +77,7 @@ pub async fn prepare_cluster(
     }
 
     let cluster = ClusterManager::set_stage(state, cluster_id, ClusterStage::Ready).await?;
+    tracing::debug!(cluster_id, "cluster stage set to Ready");
     Ok(cluster)
 }
 
@@ -91,6 +100,7 @@ fn game_download_bytes(info: &VersionInfo) -> u64 {
     client + assets + libraries
 }
 
+#[tracing::instrument(level = "debug", skip(state, bundles))]
 pub async fn estimate_cluster_download(
     state: &Arc<LauncherState>,
     cluster_id: i64,
@@ -134,6 +144,7 @@ pub async fn estimate_cluster_download(
     Ok(total)
 }
 
+#[tracing::instrument(skip(state, metadata, cluster, progress), fields(cluster_id = cluster.id))]
 async fn install_cluster(
     state: &Arc<LauncherState>,
     metadata: &mut MetadataStore,
@@ -205,6 +216,7 @@ async fn install_cluster(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(cluster, version_info, java), fields(cluster_id = cluster.id))]
 async fn run_forge_processors(
     cluster: &Cluster,
     version_info: &mut VersionInfo,

@@ -5,6 +5,7 @@ use crate::http::{RequestClient, RequestError, ResponseNotifyOptions, ResponseOp
 use crate::notification::GroupedProgressChild;
 use crate::state::LauncherServices;
 
+#[tracing::instrument(level = "debug", skip(client, url, body))]
 pub async fn fetch_json<T: DeserializeOwned>(
     client: &RequestClient,
     method: Method,
@@ -15,6 +16,7 @@ pub async fn fetch_json<T: DeserializeOwned>(
     client.send_json(method, url, body, &[]).await
 }
 
+#[tracing::instrument(level = "debug", skip(client, url, body, headers))]
 pub async fn fetch_json_with_headers<T: DeserializeOwned>(
     client: &RequestClient,
     method: Method,
@@ -30,6 +32,7 @@ pub async fn fetch_json_with_headers<T: DeserializeOwned>(
     client.send_json(method, url, body, &borrowed).await
 }
 
+#[tracing::instrument(level = "debug", skip(client, dest, child, services))]
 pub async fn download_url(
     client: &RequestClient,
     url: &str,

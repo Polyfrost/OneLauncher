@@ -1,5 +1,6 @@
 use std::{path::PathBuf, str::FromStr};
 
+
 use crate::java::JavaPackage;
 use crate::state::LauncherServices;
 use crate::LauncherResult;
@@ -34,6 +35,7 @@ pub trait JavaRuntimeProvider: Send + Sync {
 		services: &LauncherServices,
 	) -> LauncherResult<Vec<JavaPackage>>;
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn latest_package_by_major(
         &self,
         major: u32,
@@ -43,6 +45,7 @@ pub trait JavaRuntimeProvider: Send + Sync {
         Ok(packages.into_iter().find(|p| p.java_version.first() == Some(&major)))
     }
 
+	#[tracing::instrument(level = "debug", skip_all)]
 	async fn install_package(
 		&self,
 		package: &JavaPackage,

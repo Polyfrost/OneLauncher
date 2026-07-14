@@ -21,6 +21,7 @@ impl QueryCapability for CachedImageQuery {
     type Err = LauncherError;
     type Keys = CachedImageKeys;
 
+    #[tracing::instrument(name = "cached_image", level = "debug", skip(self, keys), fields(url = %keys.url, max_edge = keys.max_edge))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         if keys.url.is_empty() {
             return Err(LauncherError::Minecraft("no image url".to_string()));

@@ -23,10 +23,13 @@ impl JavaRuntimeProvider for ZuluRuntimeProvider {
 		JavaVendor::Zulu
 	}
 
+	#[tracing::instrument(level = "debug", skip(self, services))]
 	async fn list_packages(&self, major: Option<u32>, services: &LauncherServices) -> LauncherResult<Vec<JavaPackage>> {
         let url = zulu_url(major)?;
         let packages = services.requester.send_as::<Vec<ZuluPackage>>(Request::new(Method::GET, url)).await?;
-        let packages = packages.into_iter().map(map_zulu_package).collect();
+        let packages: Vec<JavaPackage> = packages.into_iter().map(map_zulu_package).collect();
+
+        tracing::debug!(count = packages.len(), "listed Zulu packages");
 
         Ok(packages)
 	}

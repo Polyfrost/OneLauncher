@@ -44,6 +44,7 @@ fn ensure_in_clusters(path: &Path) -> LauncherResult<PathBuf> {
     Err(ScreenshotsError::InvalidPath(path.display().to_string()).into())
 }
 
+#[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub fn list_cluster_screenshots(cluster: &Cluster) -> LauncherResult<Vec<ScreenshotInfo>> {
     let dir = cluster.game_dir()?.join("screenshots");
     let mut out = Vec::new();
@@ -91,6 +92,7 @@ pub fn list_cluster_screenshots(cluster: &Cluster) -> LauncherResult<Vec<Screens
     Ok(out)
 }
 
+#[tracing::instrument(level = "debug")]
 pub fn load_screenshot(path: &Path, max_edge: Option<u32>) -> LauncherResult<Bytes> {
     let path = ensure_in_clusters(path)?;
     let raw = std::fs::read(&path).map_err(ScreenshotsError::Io)?;
@@ -114,9 +116,10 @@ fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
     Some(Bytes::from(out))
 }
 
+#[tracing::instrument(level = "debug")]
 pub fn delete_screenshot(path: &Path) -> LauncherResult<()> {
     let path = ensure_in_clusters(path)?;
-    
+
     // TODO: maybe async?
     match trash::delete(&path) {
         Ok(()) => Ok(()),

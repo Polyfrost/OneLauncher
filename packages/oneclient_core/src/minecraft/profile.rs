@@ -126,6 +126,7 @@ fn auth_headers(access_token: &str) -> [(&'static str, String); 1] {
     [("Authorization", format!("Bearer {access_token}"))]
 }
 
+#[tracing::instrument(level = "debug", skip(client))]
 pub async fn fetch_player_profile(
     client: &RequestClient,
     uuid: &str,
@@ -213,6 +214,7 @@ pub async fn fetch_player_profile(
     })
 }
 
+#[tracing::instrument(level = "debug", skip(client, access_token))]
 pub async fn fetch_logged_in_profile(
     client: &RequestClient,
     access_token: &str,
@@ -241,6 +243,7 @@ pub async fn fetch_logged_in_profile(
     Ok(profile)
 }
 
+#[tracing::instrument(level = "debug", skip(client, access_token))]
 pub async fn fetch_player_profile_view(
     client: &RequestClient,
     uuid: &str,

@@ -19,6 +19,7 @@ pub fn init() -> LauncherResult<()> {
 
 pub fn init_filtered(filter: impl FnOnce() -> EnvFilter) -> LauncherResult<()> {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| filter());
+
     let stdout_layer = tracing_subscriber::fmt::layer().with_writer(io::stdout);
 
     #[cfg(debug_assertions)]

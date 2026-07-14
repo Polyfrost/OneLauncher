@@ -125,10 +125,12 @@ impl Component for DataSync {
             last_clusters.set(clusters_pulse);
             spawn(async move { invalidate_cluster_queries().await });
         }
+
         if *last_profiles.peek() != profiles_pulse {
             last_profiles.set(profiles_pulse);
             spawn(async move { invalidate_profile_queries().await });
         }
+
         if *last_java.peek() != java_pulse {
             last_java.set(java_pulse);
             spawn(async move { invalidate_java_queries().await });

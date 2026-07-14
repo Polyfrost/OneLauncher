@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use oneclient_db::dao::{bundle as bundle_dao, cluster as cluster_dao};
-use tracing::instrument;
 
 use crate::packages::domain::GameLoader;
 use crate::state::LauncherState;
@@ -12,7 +11,7 @@ use super::cluster::Cluster;
 use super::manager::ClusterManager;
 use super::options::CreateClusterOptions;
 
-#[instrument(skip(state))]
+#[tracing::instrument(skip(state))]
 pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
     let groups = bundle_dao::list_distinct_version_loaders(&state.services.db).await?;
     let mut created = Vec::new();
@@ -69,7 +68,7 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
     Ok(created)
 }
 
-#[instrument(skip(state))]
+#[tracing::instrument(skip(state))]
 pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
     let metadata = state.versions.metadata().await;
     let mut created = Vec::new();

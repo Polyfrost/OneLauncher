@@ -11,6 +11,7 @@ use crate::packages::provider::http::download_url;
 use crate::packages::types::{ExternalFile, VersionDetail, VersionFile};
 use crate::state::LauncherServices;
 
+#[tracing::instrument(level = "debug", skip(child, services))]
 pub async fn ensure_artifact_file(
     hash: &str,
     url: &str,
@@ -28,6 +29,7 @@ pub async fn ensure_artifact_file(
         tokio::fs::remove_file(dest).await?;
     }
 
+    tracing::debug!("downloading artifact file");
     download_url(&services.requester, url, dest, child, services).await?;
 
     if let Some(child) = child {
@@ -35,6 +37,7 @@ pub async fn ensure_artifact_file(
     }
     let actual = sha1_file(dest).await?;
     if normalize_hash(&actual) != normalize_hash(hash) {
+        tracing::warn!(expected = %hash, %actual, "downloaded artifact hash mismatch");
         return Err(PackageError::HashMismatch {
             expected: hash.to_string(),
             actual,
@@ -46,6 +49,7 @@ pub async fn ensure_artifact_file(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[tracing::instrument(level = "debug", skip(version, file, child, services))]
 pub async fn download_version_file(
     provider: ProviderId,
     project_id: &str,
@@ -107,6 +111,7 @@ pub async fn download_version_file(
     Ok(row)
 }
 
+#[tracing::instrument(level = "debug", skip(file, child, services), fields(name = %file.name))]
 pub async fn download_external(
     file: &ExternalFile,
     force: bool,

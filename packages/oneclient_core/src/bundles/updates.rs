@@ -8,7 +8,6 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 use tokio::sync::Mutex as AsyncMutex;
-use tracing::instrument;
 
 use crate::bundles::install::{install_package_from_bundle, remove_artifact_from_cluster};
 use crate::bundles::manager::BundlesManager;
@@ -34,6 +33,7 @@ fn cluster_lock(cluster_id: i64) -> Arc<AsyncMutex<()>> {
         .clone()
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn check_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -43,7 +43,7 @@ pub async fn check_bundle_updates(
     check_bundle_updates_inner(cluster_id, bundles, services, &overrides).await
 }
 
-#[instrument(skip(bundles, services, overrides))]
+#[tracing::instrument(level = "debug", skip(bundles, services, overrides))]
 async fn check_bundle_updates_inner(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -307,6 +307,7 @@ async fn check_bundle_updates_inner(
     })
 }
 
+#[tracing::instrument(skip(bundles, services))]
 pub async fn apply_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -316,6 +317,14 @@ pub async fn apply_bundle_updates(
     let _guard = lock.lock().await;
     let overrides = bundle_dao::list_overrides(&services.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, services, &overrides).await?;
+
+    tracing::info!(
+        cluster_id,
+        updates = check.updates_available.len(),
+        additions = check.additions_available.len(),
+        removals = check.removals_available.len(),
+        "applying bundle updates"
+    );
 
     let mut result = ApplyBundleUpdatesResult::default();
 
@@ -400,6 +409,7 @@ pub async fn apply_bundle_updates(
     Ok(result)
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn apply_single_update(
     update: &BundlePackageUpdate,
     overrides: &[ClusterBundleOverrideRow],
@@ -432,6 +442,7 @@ async fn apply_single_update(
     remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, services).await
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = addition.cluster_id, bundle = %addition.bundle_name))]
 async fn apply_single_addition(
     addition: &BundlePackageAddition,
     overrides: &[ClusterBundleOverrideRow],
@@ -472,6 +483,7 @@ fn should_be_disabled(
     })
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 async fn sync_cluster_loader_version_from_bundles(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -520,6 +532,7 @@ async fn sync_cluster_loader_version_from_bundles(
     Ok(())
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn get_bundles_with_update_status(
     cluster_id: i64,
     bundles: &BundlesManager,
@@ -616,6 +629,7 @@ pub async fn get_bundles_with_update_status(
     Ok(results)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn apply_bundle_updates_for_all_clusters(
     bundles: &BundlesManager,
     services: &LauncherServices,
@@ -655,6 +669,7 @@ fn bundle_package_key(
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn installed_bundle_keys(
     services: &LauncherServices,
     linked: &[LinkedArtifactInfo],

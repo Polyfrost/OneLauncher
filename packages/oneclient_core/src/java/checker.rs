@@ -2,7 +2,6 @@ use std::{collections::HashMap, path::PathBuf};
 
 use async_tempfile::TempDir;
 use tokio::sync::OnceCell;
-use tracing::instrument;
 
 use crate::java::{JavaError, JavaResult};
 
@@ -15,7 +14,7 @@ pub struct JavaCheckInfo {
     pub os_arch: String,
 }
 
-#[instrument(level = "info", skip(absolute_path))]
+#[tracing::instrument(level = "debug", skip(absolute_path))]
 pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckInfo> {
     let temp_dir = get_java_info_dir().await?;
 
@@ -33,7 +32,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect();
 
-    tracing::info!("running command: {} {}", program, args.join(" "));
+    tracing::debug!("running command: {} {}", program, args.join(" "));
 
     let output = command.output().await
         .map_err(|e| JavaError::RuntimeCheckError {
@@ -72,6 +71,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 
 static TEMP_JAVA_INFO: OnceCell<TempDir> = OnceCell::const_new();
 
+#[tracing::instrument(level = "debug")]
 async fn get_java_info_dir() -> Result<&'static PathBuf, polyio::IOError> {
     let dir: Result<&TempDir, polyio::IOError> = TEMP_JAVA_INFO
         .get_or_try_init(async || {

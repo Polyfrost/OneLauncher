@@ -35,6 +35,7 @@ pub fn parse_changelog(data: &str) -> Vec<ChangelogGroup> {
     groups
 }
 
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn fetch_changelog(services: &LauncherServices) -> LauncherResult<String> {
     let url = format!("{}/oneclient/CHANGE_LOG.md", meta_url_base());
     let cache_path = paths::caches_dir()?.join("CHANGE_LOG.md");

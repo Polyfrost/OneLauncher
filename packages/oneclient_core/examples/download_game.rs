@@ -1,4 +1,4 @@
-
+#![recursion_limit = "256"]
 use oneclient_core::clusters::{ClusterManager, CreateClusterOptions};
 use oneclient_core::dev;
 use oneclient_core::packages::domain::GameLoader;

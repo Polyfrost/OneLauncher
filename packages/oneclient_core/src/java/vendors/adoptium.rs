@@ -45,6 +45,7 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
         JavaVendor::Adoptium
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services))]
     async fn list_packages(
         &self,
         major: Option<u32>,
@@ -96,6 +97,8 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
                 });
             }
         }
+
+        tracing::debug!(count = packages.len(), "listed Adoptium packages");
 
         Ok(packages)
     }

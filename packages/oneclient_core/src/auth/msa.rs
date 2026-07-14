@@ -30,16 +30,19 @@ const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0
 const AUTH_STEPS: u64 = 5;
 
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn begin_device_login(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
     request_device_code(client).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn finish_dual_login(
     client: &Client,
     pending: PendingBrowserLogin,
     device: &DeviceCodeLogin,
     on_progress: impl Fn(&str, u64, u64),
 ) -> Result<MinecraftAccount, MinecraftAuthError> {
+    tracing::info!("waiting for Microsoft sign-in (browser or device code)");
     on_progress("Waiting for sign-in", 0, AUTH_STEPS);
 
     let deadline = Duration::from_secs(device.expires_in);
@@ -50,6 +53,7 @@ pub async fn finish_dual_login(
     account_from_msa_token(client, msa, on_progress).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn race_msa_token(
     client: &Client,
     pending: &PendingBrowserLogin,
@@ -97,6 +101,7 @@ pub struct PendingBrowserLogin {
     csrf_state: String,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 pub async fn begin_browser_login() -> Result<(BrowserLogin, PendingBrowserLogin), MinecraftAuthError>
 {
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -139,6 +144,7 @@ pub async fn begin_browser_login() -> Result<(BrowserLogin, PendingBrowserLogin)
     Ok((login, pending))
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn browser_msa_token(
     client: &Client,
     pending: &PendingBrowserLogin,
@@ -147,6 +153,7 @@ async fn browser_msa_token(
     exchange_auth_code(client, &code, pending).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, MinecraftAuthError> {
     loop {
         let (mut stream, _) = pending
@@ -186,6 +193,7 @@ async fn wait_for_redirect(pending: &PendingBrowserLogin) -> Result<String, Mine
         }
 
         if let Some(error) = error {
+            tracing::warn!(%error, "browser authorization failed");
             respond(&mut stream, RedirectPage::Failed).await;
             return Err(MinecraftAuthError::BrowserAuthorizationFailed { error });
         }
@@ -292,6 +300,7 @@ p{{font-size:14px;line-height:1.55;color:#6b7280}}
     )
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn exchange_auth_code(
     client: &Client,
     code: &str,
@@ -336,10 +345,12 @@ fn pkce_challenge(verifier: &str) -> String {
     BASE64_URL_SAFE_NO_PAD.encode(digest)
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(username = %creds.username))]
 pub async fn refresh_microsoft_account(
     client: &Client,
     creds: &MinecraftAccount,
 ) -> Result<MinecraftAccount, MinecraftAuthError> {
+    tracing::debug!("refreshing Microsoft account token");
     let msa = refresh_msa_token(client, &creds.refresh_token).await?;
     let mut account = account_from_msa_token(client, msa, |_, _, _| {}).await?;
     account.id = creds.id;
@@ -347,6 +358,7 @@ pub async fn refresh_microsoft_account(
     Ok(account)
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn request_device_code(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
     let body = [
         ("client_id", MICROSOFT_CLIENT_ID),
@@ -369,6 +381,7 @@ async fn request_device_code(client: &Client) -> Result<DeviceCodeLogin, Minecra
     parse_json_response(res, MinecraftAuthStep::DeviceCodeRequest).await
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn poll_device_token(
     client: &Client,
     flow: &DeviceCodeLogin,
@@ -452,6 +465,7 @@ async fn poll_device_token(
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn refresh_msa_token(
     client: &Client,
     refresh_token: &str,
@@ -498,6 +512,7 @@ impl MsaToken {
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn account_from_msa_token(
     client: &Client,
     msa: MsaToken,
@@ -536,6 +551,7 @@ async fn account_from_msa_token(
     })
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn xbl_authenticate(
     client: &Client,
     rps_ticket: &str,
@@ -576,6 +592,7 @@ async fn xbl_authenticate(
     })
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn xsts_authorize(
     client: &Client,
     user_token: &str,
@@ -612,6 +629,7 @@ struct MinecraftToken {
     access_token: String,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn minecraft_login(
     client: &Client,
     uhs: &str,
@@ -641,6 +659,7 @@ struct MinecraftProfile {
     name: String,
 }
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn minecraft_profile(
     client: &Client,
     token: &str,
@@ -665,6 +684,7 @@ async fn minecraft_profile(
 #[serde(rename_all = "camelCase")]
 struct MinecraftEntitlements {}
 
+#[tracing::instrument(level = "debug", skip_all)]
 async fn minecraft_entitlements(
     client: &Client,
     token: &str,

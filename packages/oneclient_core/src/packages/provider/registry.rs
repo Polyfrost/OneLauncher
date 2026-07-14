@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+
 use super::{CurseForgeProvider, ModrinthProvider, PackageProvider};
 use crate::LauncherResult;
 use crate::packages::domain::ProviderId;
@@ -51,6 +52,7 @@ impl PackageProviderRegistry {
             .collect()
     }
 
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn lookup_versions(
         &self,
         identities: &[FileIdentity],
@@ -76,6 +78,7 @@ impl PackageProviderRegistry {
         Ok(merged)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, sha1, services))]
     pub async fn lookup_version(
         &self,
         sha1: impl AsRef<str>,
@@ -96,6 +99,7 @@ impl PackageProviderRegistry {
         Ok(None)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, services), fields(sha1 = %identity.sha1))]
     pub async fn lookup_version_identity(
         &self,
         identity: &FileIdentity,
@@ -123,6 +127,7 @@ impl Default for PackageProviderRegistry {
     }
 }
 
+#[tracing::instrument(level = "debug", skip(identity, services), fields(sha1 = %identity.sha1))]
 async fn enrich_curseforge_fingerprint(
     identity: &mut FileIdentity,
     services: &LauncherServices,

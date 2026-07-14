@@ -540,14 +540,11 @@ impl CoreBridgeRuntime {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
                     let notifier = state.services.notifier.clone();
-                    let account = match oneclient_core::auth::get_default_account().await {
-                        Ok(Some(account)) => Some(account),
-                        Ok(None) => oneclient_core::auth::list_accounts()
-                            .await
-                            .ok()
-                            .and_then(|accounts| accounts.into_iter().next()),
+                    // Renews a lapsed token before launching
+                    let account = match oneclient_core::auth::default_account_for_launch().await {
+                        Ok(account) => account,
                         Err(err) => {
-                            notifier.game_failed(cluster_id, err.to_string());
+                            notifier.game_failed(cluster_id, format!("{err:#}"));
                             return;
                         }
                     };

@@ -295,7 +295,7 @@ pub struct RefreshAccountKeys {
 }
 
 impl MutationCapability for RefreshAccountMutation {
-    type Ok = Option<MinecraftAccount>;
+    type Ok = MinecraftAccount;
     type Err = LauncherError;
     type Keys = RefreshAccountKeys;
 

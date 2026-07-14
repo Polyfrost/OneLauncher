@@ -12,6 +12,10 @@ pub use data::{
 };
 pub use msa::PendingBrowserLogin;
 
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex as StdMutex};
+
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::LauncherResult;
@@ -112,7 +116,7 @@ pub async fn get_account(id: Uuid) -> LauncherResult<Option<MinecraftAccount>> {
 pub async fn get_default_account() -> LauncherResult<Option<MinecraftAccount>> {
     let state = LauncherState::get()?;
     let mut auth = state.auth.lock().await;
-    auth.default_account(&state.services).await
+    auth.default_account().await
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -130,24 +134,100 @@ pub async fn remove_account(id: Uuid) -> LauncherResult<()> {
     Ok(())
 }
 
+/// Serialises token renewal per account.
+///
+/// Microsoft rotates the refresh token on every use, so two concurrent renewals
+/// of one account would race: the loser spends an already-consumed refresh token
+/// and the account gets signed out. Clusters can launch in parallel, so this is
+/// reachable — the guard makes the second caller wait and reuse the first
+/// caller's result instead of starting its own chain.
+static REFRESH_GUARDS: LazyLock<StdMutex<HashMap<Uuid, Arc<Mutex<()>>>>> =
+    LazyLock::new(|| StdMutex::new(HashMap::new()));
+
+fn refresh_guard(id: Uuid) -> Arc<Mutex<()>> {
+    Arc::clone(
+        REFRESH_GUARDS
+            .lock()
+            .expect("refresh guard registry poisoned")
+            .entry(id)
+            .or_default(),
+    )
+}
+
+/// Clones an account out of the store, returning an owned value so no caller
+/// keeps the credentials-store lock alive past this call.
+async fn account_snapshot(
+    state: &Arc<LauncherState>,
+    id: Uuid,
+) -> LauncherResult<MinecraftAccount> {
+    let auth = state.auth.lock().await;
+    auth.get_account(id)
+        .cloned()
+        .ok_or_else(|| AuthError::AccountNotFound(id).into())
+}
+
+/// Renews `id`'s access token if it has lapsed, returning a usable account.
+///
+/// The credentials-store lock is deliberately not held across the Microsoft
+/// handshake, only around the reads and the final write. Holding it across
+/// those six sequential round trips is what used to stall every other account
+/// read behind a multi-second network call.
+#[tracing::instrument(level = "debug", skip(state), fields(%id))]
+async fn renew_token(
+    state: &Arc<LauncherState>,
+    id: Uuid,
+    force: bool,
+) -> LauncherResult<MinecraftAccount> {
+    let existing = account_snapshot(state, id).await?;
+    if !existing.is_microsoft() || (!force && !existing.is_expired()) {
+        return Ok(existing);
+    }
+
+    let guard = refresh_guard(id);
+    let _serialised = guard.lock().await;
+
+    let existing = account_snapshot(state, id).await?;
+    if !existing.is_microsoft() || (!force && !existing.is_expired()) {
+        return Ok(existing);
+    }
+
+    tracing::info!(username = %existing.username, "renewing Microsoft access token");
+    match msa::refresh_microsoft_account(state.services.requester.http(), &existing).await {
+        Ok(refreshed) => {
+            state
+                .auth
+                .lock()
+                .await
+                .commit_refreshed_account(refreshed.clone())
+                .await?;
+            Ok(refreshed)
+        }
+        Err(err) => {
+            let err = crate::LauncherError::from(AuthError::from(err));
+            if store::is_transient_auth_error(&err) {
+                tracing::warn!("keeping existing token after transient renewal failure: {err}");
+                Ok(existing)
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
 #[tracing::instrument(level = "debug", skip_all, fields(%id))]
-pub async fn refresh_account(id: Uuid) -> LauncherResult<Option<MinecraftAccount>> {
+pub async fn refresh_account(id: Uuid) -> LauncherResult<MinecraftAccount> {
     let state = LauncherState::get()?;
-    let mut auth = state.auth.lock().await;
-    auth.refresh_microsoft_account(id, &state.services).await
+    renew_token(&state, id, true).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn refresh_all_accounts() -> LauncherResult<Vec<MinecraftAccount>> {
     let state = LauncherState::get()?;
-    let mut auth = state.auth.lock().await;
-    let ids: Vec<Uuid> = auth.users.keys().copied().collect();
+    let ids: Vec<Uuid> = state.auth.lock().await.users.keys().copied().collect();
     let mut refreshed = Vec::with_capacity(ids.len());
 
     for id in ids {
-        if let Some(account) = auth.refresh_microsoft_account(id, &state.services).await? {
-            refreshed.push(account);
-        }
+        refreshed.push(renew_token(&state, id, true).await?);
     }
 
     Ok(refreshed)
@@ -156,8 +236,22 @@ pub async fn refresh_all_accounts() -> LauncherResult<Vec<MinecraftAccount>> {
 #[tracing::instrument(level = "debug", skip_all, fields(%id))]
 pub async fn account_for_launch(id: Uuid) -> LauncherResult<MinecraftAccount> {
     let state = LauncherState::get()?;
-    let mut auth = state.auth.lock().await;
-    auth.account_for_launch(id, &state.services).await
+    let account = renew_token(&state, id, false).await?;
+
+    if account.is_offline() && !state.auth.lock().await.has_microsoft_account() {
+        return Err(AuthError::OfflineRequiresMicrosoft.into());
+    }
+
+    Ok(account)
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+pub async fn default_account_for_launch() -> LauncherResult<Option<MinecraftAccount>> {
+    let state = LauncherState::get()?;
+    let Some(id) = state.auth.lock().await.resolve_default_id().await? else {
+        return Ok(None);
+    };
+    Ok(Some(account_for_launch(id).await?))
 }
 
 pub async fn has_microsoft_account() -> LauncherResult<bool> {

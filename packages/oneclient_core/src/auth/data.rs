@@ -32,6 +32,10 @@ impl MinecraftAccount {
     pub fn is_offline(&self) -> bool {
         self.kind == AccountKind::Offline
     }
+
+    pub fn is_expired(&self) -> bool {
+        self.expires <= Utc::now() + chrono::TimeDelta::seconds(60)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -1,5 +1,6 @@
 use super::*;
 
+use freya::query::QueryStateData;
 use oneclient_core::packages::types::{
     GalleryImage, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
 };
@@ -7,10 +8,13 @@ use oneclient_core::packages::ProviderId;
 
 use crate::BridgeDispatch;
 use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
-use crate::hooks::VERSIONS_PAGE_SIZE;
+use crate::hooks::{use_cached_image, VERSIONS_PAGE_SIZE};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
+
+const GALLERY_IMAGE_H: f32 = 360.;
+const GALLERY_EDGE: u32 = 1024;
 
 
 pub(super) fn loading_body() -> impl IntoElement {
@@ -112,6 +116,31 @@ impl KeyExt for GalleryTile {
 
 impl Component for GalleryTile {
     fn render(&self) -> impl IntoElement {
+        let query = use_cached_image(Some(self.image.url.clone()), GALLERY_EDGE);
+        let reader = query.read();
+        let loaded = match &*reader.state() {
+            QueryStateData::Settled { res: Ok(bytes), .. }
+            | QueryStateData::Loading {
+                res: Some(Ok(bytes)),
+            } => Some((self.image.url.clone(), bytes.clone())),
+            _ => None,
+        };
+
+        let preview = rect()
+            .width(Size::fill())
+            .height(Size::px(GALLERY_IMAGE_H))
+            .center()
+            .overflow(Overflow::Clip)
+            .background(colors::component_bg())
+            .maybe_child(loaded.map(|(url, bytes)| {
+                ImageViewer::new((url, bytes))
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .aspect_ratio(AspectRatio::Max)
+                    .image_cover(ImageCover::Center)
+                    .into_element()
+            }));
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -119,7 +148,7 @@ impl Component for GalleryTile {
             .overflow(Overflow::Clip)
             .background(PANEL_BG)
             .border(border_all_color(1., colors::component_border()))
-            .child(PackageBanner::new(Some(self.image.url.clone()), 240.))
+            .child(preview)
             .maybe(self.image.title.is_some(), |el| {
                 el.child(
                     rect()

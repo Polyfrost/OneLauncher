@@ -142,6 +142,35 @@ pub async fn save_override(
     Ok(())
 }
 
+pub async fn save_overrides(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    overrides: &[(String, String, OverrideType)],
+) -> Result<(), sqlx::Error> {
+    if overrides.is_empty() {
+        return Ok(());
+    }
+
+    let mut tx = pool.begin().await?;
+    for (bundle_name, package_id, override_type) in overrides {
+        sqlx::query!(
+            r#"
+        INSERT INTO cluster_bundle_overrides (cluster_id, bundle_name, package_id, override_type)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(cluster_id, bundle_name, package_id) DO UPDATE SET
+            override_type = excluded.override_type
+        "#,
+            cluster_id,
+            bundle_name,
+            package_id,
+            override_type.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
 pub async fn remove_override(
     pool: &SqlitePool,
     cluster_id: i64,

@@ -127,7 +127,7 @@ impl Route {
             Route::OnboardingLanguage { .. } => "Language".to_string(),
             Route::OnboardingAccount { .. } => "Account".to_string(),
             Route::OnboardingPreferences { .. } => "Accessibility".to_string(),
-            Route::OnboardingBundles { .. } => "Bundles".to_string(),
+            Route::OnboardingBundles { .. } => "Mods".to_string(),
             Route::OnboardingDownloading { .. } => "Finishing".to_string(),
             Route::Home { .. } => "Home".to_string(),
             Route::Clusters { .. } => "Versions".to_string(),

@@ -4,8 +4,16 @@ mod downloading;
 mod language;
 mod migration;
 mod preferences;
+mod selection;
 mod terms;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod welcome;
+
+pub(crate) use selection::{
+    archive_selected, default_selection, is_default_bundle, is_optional_file, pkg_key,
+    set_archive_selected,
+};
 
 pub use account::OnboardingAccount;
 pub use bundles::OnboardingBundles;
@@ -215,6 +223,109 @@ pub(crate) fn predownload_toggle_row(predownload: State<bool>) -> impl IntoEleme
                 ),
         )
         .child(toggle(predownload))
+        .into_element()
+}
+
+pub(crate) fn choice_row(
+    title: &str,
+    subtitle: &str,
+    active: bool,
+    on_press: impl FnMut(()) + 'static,
+) -> Element {
+    choice_row_sized(title, subtitle, active, Size::auto(), on_press)
+}
+
+pub(crate) fn choice_row_sized(
+    title: &str,
+    subtitle: &str,
+    active: bool,
+    height: Size,
+    on_press: impl FnMut(()) + 'static,
+) -> Element {
+    let mut on_press = on_press;
+    let border_color = if active {
+        colors::fg_primary()
+    } else {
+        colors::component_border()
+    };
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .height(height)
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(10.)
+        .padding(Gaps::new_symmetric(8., 12.))
+        .corner_radius(CornerRadius::new_all(8.))
+        .border(border_all_color(1., border_color))
+        .a11y_role(AccessibilityRole::Button)
+        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .on_press(move |_| on_press(()))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(title.to_string())
+                        .font_size(13.)
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                )
+                .maybe_child((!subtitle.is_empty()).then(|| {
+                    label()
+                        .text(subtitle.to_string())
+                        .font_size(11.)
+                        .color(colors::fg_primary())
+                        .into_element()
+                })),
+        )
+        .maybe_child(active.then(|| Icon::new(IconType::Check).size(15.)))
+        .into_element()
+}
+
+pub(crate) fn version_chip(
+    text: &str,
+    active: bool,
+    on_press: impl FnMut(()) + 'static,
+) -> Element {
+    let mut on_press = on_press;
+    let (bg, border, fg) = if active {
+        (
+            colors::brand().with_a(38),
+            colors::brand(),
+            colors::fg_primary(),
+        )
+    } else {
+        (
+            Color::TRANSPARENT,
+            colors::component_border(),
+            colors::fg_secondary(),
+        )
+    };
+
+    rect()
+        .horizontal()
+        .height(Size::px(32.))
+        .center()
+        .padding(Gaps::new_symmetric(0., 14.))
+        .corner_radius(CornerRadius::new_all(999.))
+        .background(bg)
+        .border(border_all_color(1.5, border))
+        .a11y_role(AccessibilityRole::Button)
+        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .on_press(move |_| on_press(()))
+        .child(
+            label()
+                .text(text.to_string())
+                .font_size(13.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(fg),
+        )
         .into_element()
 }
 

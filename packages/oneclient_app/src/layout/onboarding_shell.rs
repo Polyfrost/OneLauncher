@@ -10,15 +10,18 @@ use crate::hooks::{
     use_onboarding_bundles, use_provide_onboarding_selection,
 };
 use crate::theme::colors;
-use crate::view::onboarding::{LoadingBackdrop, onboarding_step_index, onboarding_total};
+use crate::view::onboarding::{
+    LoadingBackdrop, default_selection, onboarding_step_index, onboarding_total,
+};
 
 #[derive(PartialEq)]
 pub struct OnboardingShell;
 
 impl Component for OnboardingShell {
     fn render(&self) -> impl IntoElement {
-        let selected = use_state(HashSet::new);
-        let seeded = use_state(|| false);
+        let mut selected = use_state(HashSet::new);
+        let user_touched = use_state(|| false);
+        let migrated_categories = use_state(|| None::<Vec<String>>);
         let language = use_state(|| "English".to_string());
         let reduce_motion = use_state(|| false);
         let predownload = use_state(|| true);
@@ -27,7 +30,8 @@ impl Component for OnboardingShell {
         let import_dedicated = use_state(|| false);
         use_provide_onboarding_selection(OnboardingSelectionState {
             selected,
-            seeded,
+            user_touched,
+            migrated_categories,
             language,
             reduce_motion,
             predownload,
@@ -43,6 +47,20 @@ impl Component for OnboardingShell {
         let step_index = onboarding_step_index(&route, detected_migration);
 
         let bundles = use_onboarding_bundles();
+
+        use_side_effect(move || {
+            if *user_touched.peek() {
+                return;
+            }
+            let Some(items) = onboarding_bundles_items(&bundles) else {
+                return;
+            };
+            let categories = migrated_categories.read().clone();
+            let defaults = default_selection(&items, categories.as_deref());
+            if *selected.peek() != defaults {
+                selected.set(defaults);
+            }
+        });
         let show_backdrop =
             matches!(&route, Route::OnboardingDownloading {}) && *setup_started.read();
         let backdrop = show_backdrop.then(|| {

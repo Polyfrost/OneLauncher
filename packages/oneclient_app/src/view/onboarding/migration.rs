@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::SourceInstance;
@@ -12,51 +10,18 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::onboarding::{onboarding_illustration, onboarding_slide, step_heading};
+use crate::view::onboarding::{choice_row, onboarding_illustration, onboarding_slide, step_heading};
 
-/// Bundle-selection key, identical to `bundles::pkg_key` and the format the
-/// downloading step reads. Must stay in sync with those.
-fn pkg_key(cluster_id: i64, bundle_name: &str, package_id: &str) -> String {
-    format!("{cluster_id}|{bundle_name}|{package_id}")
-}
-
-/// Build the pre-selected bundle set from the source install: for each new
-/// cluster, match a source instance by version+loader, then select every
-/// enabled/visible file of bundles whose category the user had installed.
-fn build_migrated_selection(source: &[SourceInstance], new: &[ClusterBundles]) -> HashSet<String> {
-    let mut selected = HashSet::new();
-
-    for cb in new {
-        let Some(instance) = source
-            .iter()
-            .find(|o| o.mc_version == cb.cluster.mc_version && o.mc_loader == cb.cluster.mc_loader)
-        else {
-            continue;
-        };
-
-        for archive in &cb.archives {
-            let category = archive.manifest.category.trim();
-            let wanted = instance
-                .categories
-                .iter()
-                .any(|c| c.eq_ignore_ascii_case(category));
-            if !wanted {
-                continue;
-            }
-
-            for file in &archive.manifest.files {
-                if file.enabled && !file.hidden {
-                    selected.insert(pkg_key(
-                        cb.cluster.id,
-                        &archive.manifest.name,
-                        &file.kind.package_id(),
-                    ));
-                }
+fn migrated_categories(source: &[SourceInstance]) -> Vec<String> {
+    let mut categories: Vec<String> = Vec::new();
+    for instance in source {
+        for category in &instance.categories {
+            if !categories.iter().any(|c| c.eq_ignore_ascii_case(category)) {
+                categories.push(category.clone());
             }
         }
     }
-
-    selected
+    categories
 }
 
 /// Whether a new cluster exists matching this source instance's version+loader
@@ -81,8 +46,7 @@ impl Component for OnboardingMigration {
         let migration_query = use_migration();
         let bundles_query = use_onboarding_bundles();
         let selection = use_onboarding_selection();
-        let mut selected = selection.selected;
-        let mut seeded = selection.seeded;
+        let mut categories = selection.migrated_categories;
         // Shared across the flow; the file import is dispatched later, on Setup.
         let mut import_folder = selection.import_folder;
         let import_dedicated = selection.import_dedicated;
@@ -201,14 +165,7 @@ impl Component for OnboardingMigration {
                     ),
             ))
             .child(migration_nav(bundles_loaded, move || {
-                // Apply migrated category selection and mark seeded so the
-                // Bundles page does not overwrite it with "everything on". The
-                // file import itself is deferred to the Setup step, like every
-                // other onboarding action; the chosen folder/mode lives in the
-                // shared selection state.
-                let migrated = build_migrated_selection(&detection.instances, &new_clusters);
-                selected.set(migrated);
-                seeded.set(true);
+                categories.set(Some(migrated_categories(&detection.instances)));
 
                 let _ = RouterContext::get().replace(Route::OnboardingLanguage {});
             }))
@@ -316,7 +273,7 @@ fn version_card(
                     .font_size(12.)
                     .color(colors::fg_primary()),
             )
-            .child(target_option(
+            .child(choice_row(
                 "Shared game directory",
                 "Available to every version.",
                 !dedicated,
@@ -324,7 +281,7 @@ fn version_card(
             ));
 
         if dedicated_available {
-            targets = targets.child(target_option(
+            targets = targets.child(choice_row(
                 "This version only",
                 "Keep the files isolated to the matching version.",
                 dedicated,
@@ -395,56 +352,6 @@ fn import_choice_card(
                 .then(|| Icon::new(IconType::Check).size(16.))
                 .or_else(|| trailing.map(|i| Icon::new(i).size(16.))),
         )
-        .into_element()
-}
-
-/// A shared/dedicated radio row nested inside a selected version card.
-fn target_option(
-    title: &str,
-    subtitle: &str,
-    active: bool,
-    on_press: impl FnMut(()) + 'static,
-) -> Element {
-    let mut on_press = on_press;
-    let border_color = if active {
-        colors::fg_primary()
-    } else {
-        colors::component_border()
-    };
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(10.)
-        .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(CornerRadius::new_all(8.))
-        .border(border_all_color(1., border_color))
-        .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_press(move |_| on_press(()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(2.)
-                .child(
-                    label()
-                        .text(title.to_string())
-                        .font_size(13.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(subtitle.to_string())
-                        .font_size(11.)
-                        .color(colors::fg_primary()),
-                ),
-        )
-        .maybe_child(active.then(|| Icon::new(IconType::Check).size(15.)))
         .into_element()
 }
 

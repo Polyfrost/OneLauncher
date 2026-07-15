@@ -70,7 +70,13 @@ pub fn use_browser_state_store() -> State<HashMap<String, BrowserUiState>> {
 #[derive(Clone)]
 pub struct OnboardingSelectionState {
     pub selected: State<HashSet<String>>,
-    pub seeded: State<bool>,
+    /// Set once the user changes the selection themselves. Until then the shell
+    /// keeps re-deriving `selected` from the catalog, so a bundle list that
+    /// settles late still gets the right defaults.
+    pub user_touched: State<bool>,
+    /// Bundle categories the user had in their v1 install, once the migration
+    /// step has been answered. `None` means "no migration decision yet".
+    pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
     pub predownload: State<bool>,

@@ -38,9 +38,11 @@ pub mod version;
 pub mod versions;
 
 pub use bundles::{
-    apply_bundle_updates, check_bundle_updates, install_bundle, install_cluster_bundles,
+    apply_bundle_updates, check_bundle_updates, effective_enabled, install_bundle,
+    install_cluster_bundles,
     install_package_from_bundle, is_bundle_syncing, list_cluster_bundle_overrides,
-    set_bundle_package_enabled,
+    set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
+    set_bundle_package_overrides,
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile,
     BundleFileKind, BundleManifest, BundlesManager, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, get_bundles_with_update_status,

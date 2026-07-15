@@ -257,3 +257,40 @@ pub async fn ephemeral_services() -> LauncherResult<LauncherServices> {
 		packages: PackageProviderRegistry::new(),
 	})
 }
+
+pub async fn seed_bundle_archive(
+	state: &LauncherState,
+	manifest: crate::bundles::BundleManifest,
+) -> LauncherResult<()> {
+	let disk_path = format!("bundles/{}.mrpack", manifest.name);
+	let loader = manifest.loader as i64;
+
+	oneclient_db::dao::bundle::upsert_bundle(
+		&state.services.db,
+		oneclient_db::models::NewBundle {
+			remote_path: &disk_path,
+			mc_version: &manifest.mc_version,
+			mc_loader: loader,
+			file_name: &format!("{}.mrpack", manifest.name),
+			name: Some(&manifest.name),
+			version_id: Some(&manifest.version_id),
+			category: Some(&manifest.category),
+			loader_version: Some(&manifest.loader_version),
+			disk_path: &disk_path,
+			hidden: false,
+			etag: None,
+			synced_at: None,
+		},
+	)
+	.await?;
+
+	let path = crate::paths::launcher_dir()?.join(&disk_path);
+	state
+		.bundles
+		.archive_cache
+		.write()
+		.await
+		.insert(path, manifest);
+
+	Ok(())
+}

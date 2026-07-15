@@ -44,6 +44,7 @@ pub struct PackageEntry {
     pub enabled: bool,
     pub installed: bool,
     pub hash: Option<String>,
+    pub manifest_default: bool,
 }
 
 impl PackageEntry {
@@ -113,6 +114,7 @@ impl Component for PackageRow {
             let bundle_name = item.bundle_name.clone();
             let package_id = item.package_id.clone();
             let enabled_now = item.enabled;
+            let manifest_default = item.manifest_default;
             (move |()| {
                 if let Some(h) = &hash {
                     cluster.mutate(ClusterAction::ToggleArtifact {
@@ -125,6 +127,7 @@ impl Component for PackageRow {
                         bundle_name: bundle.clone(),
                         package_id: package_id.clone(),
                         enabled: !enabled_now,
+                        manifest_default,
                     });
                 }
             })
@@ -442,7 +445,7 @@ fn meta_size(size: u64) -> impl IntoElement {
         .into_element()
 }
 
-fn provider_badge(provider: ProviderId) -> Element {
+pub fn provider_badge(provider: ProviderId) -> Element {
     badge(
         Icon::new(provider).size(12.).into_element(),
         provider.to_string(),

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
 use oneclient_core::LauncherState;
 use oneclient_core::packages::{ContentType, PackageStore};
-use oneclient_db::models::ClusterId;
+use oneclient_db::models::{ClusterId, OverrideType};
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
 use super::cluster_content::ClusterContentQuery;
@@ -53,6 +53,10 @@ pub enum ClusterAction {
         bundle_name: String,
         package_id: String,
         enabled: bool,
+        /// The bundle manifest's `enabled` flag, so we know whether the user's
+        /// choice matches the default (clear the override) or contradicts it
+        /// (write `Enabled` / `Disabled`).
+        manifest_default: bool,
     },
     ImportLocalFile {
         cluster_id: ClusterId,
@@ -90,12 +94,20 @@ impl MutationCapability for ClusterMutation {
                 bundle_name,
                 package_id,
                 enabled,
+                manifest_default,
             } => {
-                oneclient_core::set_bundle_package_enabled(
+                // Matching the manifest default means "no opinion" -> clear the
+                // override. Contradicting it pins the choice in either direction.
+                let override_type = match (*enabled, *manifest_default) {
+                    (true, true) | (false, false) => None,
+                    (true, false) => Some(OverrideType::Enabled),
+                    (false, true) => Some(OverrideType::Disabled),
+                };
+                oneclient_core::set_bundle_package_override(
                     *cluster_id,
                     bundle_name,
                     package_id,
-                    *enabled,
+                    override_type,
                     services,
                 )
                 .await

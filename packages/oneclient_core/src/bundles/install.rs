@@ -21,6 +21,39 @@ fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>) -> bool {
+    match user_override {
+        Some(OverrideType::Removed | OverrideType::Disabled) => false,
+        Some(OverrideType::Enabled) => true,
+        None => file.enabled,
+    }
+}
+
+fn find_override(
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    bundle_name: &str,
+    package_id: &str,
+) -> Option<OverrideType> {
+    overrides
+        .iter()
+        .find(|o| o.bundle_name == bundle_name && o.package_id == package_id)
+        .and_then(|o| OverrideType::parse(&o.override_type))
+}
+
+async fn clear_suppressing_override(
+    cluster_id: i64,
+    bundle_name: &str,
+    package_id: &str,
+    services: &LauncherServices,
+) -> LauncherResult<()> {
+    let overrides = bundle_dao::list_overrides(&services.db, cluster_id).await?;
+    if let Some(OverrideType::Enabled) = find_override(&overrides, bundle_name, package_id) {
+        return Ok(());
+    }
+    bundle_dao::remove_override(&services.db, cluster_id, bundle_name, package_id).await?;
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(file, child, services), fields(package = %file.display_name()))]
 pub async fn install_package_from_bundle(
     file: &BundleFile,
@@ -178,19 +211,8 @@ pub async fn install_enabled_bundle_files(
         .files
         .iter()
         .filter(|file| {
-            if !file.enabled {
-                return false;
-            }
             let package_id = file.kind.package_id();
-            let overridden = overrides.iter().any(|o| {
-                o.bundle_name == bundle_name
-                    && o.package_id == package_id
-                    && matches!(
-                        OverrideType::parse(&o.override_type),
-                        Some(OverrideType::Removed | OverrideType::Disabled)
-                    )
-            });
-            if overridden {
+            if !effective_enabled(file, find_override(&overrides, &bundle_name, &package_id)) {
                 return false;
             }
             let already_installed = match &file.kind {
@@ -285,19 +307,8 @@ pub async fn enabled_bundle_bytes(
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
         for file in &archive.manifest.files {
-            if !file.enabled {
-                continue;
-            }
             let package_id = file.kind.package_id();
-            let overridden = overrides.iter().any(|o| {
-                &o.bundle_name == bundle_name
-                    && o.package_id == package_id
-                    && matches!(
-                        OverrideType::parse(&o.override_type),
-                        Some(OverrideType::Removed | OverrideType::Disabled)
-                    )
-            });
-            if overridden {
+            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id)) {
                 continue;
             }
             let already_installed = match &file.kind {
@@ -317,6 +328,26 @@ pub async fn enabled_bundle_bytes(
 }
 
 #[tracing::instrument(level = "debug", skip(services))]
+pub async fn set_bundle_package_override(
+    cluster_id: i64,
+    bundle_name: &str,
+    package_id: &str,
+    override_type: Option<OverrideType>,
+    services: &LauncherServices,
+) -> LauncherResult<()> {
+    match override_type {
+        Some(ty) => {
+            bundle_dao::save_override(&services.db, cluster_id, bundle_name, package_id, ty).await?;
+        }
+        None => {
+            bundle_dao::remove_override(&services.db, cluster_id, bundle_name, package_id).await?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument(level = "debug", skip(services))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
     bundle_name: &str,
@@ -324,20 +355,38 @@ pub async fn set_bundle_package_enabled(
     enabled: bool,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
-    if enabled {
-        bundle_dao::remove_override(&services.db, cluster_id, bundle_name, package_id).await?;
+    let override_type = if enabled {
+        None
     } else {
-        bundle_dao::save_override(
-            &services.db,
-            cluster_id,
-            bundle_name,
-            package_id,
-            OverrideType::Disabled,
-        )
-        .await?;
-    }
+        Some(OverrideType::Disabled)
+    };
+    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, services).await
+}
 
+#[tracing::instrument(level = "debug", skip(overrides, services), fields(count = overrides.len()))]
+pub async fn set_bundle_package_overrides(
+    cluster_id: i64,
+    overrides: &[(String, String, OverrideType)],
+    services: &LauncherServices,
+) -> LauncherResult<()> {
+    bundle_dao::save_overrides(&services.db, cluster_id, overrides).await?;
     Ok(())
+}
+
+#[tracing::instrument(level = "debug", skip(services))]
+pub async fn set_bundle_package_opt_in(
+    cluster_id: i64,
+    bundle_name: &str,
+    package_id: &str,
+    opted_in: bool,
+    services: &LauncherServices,
+) -> LauncherResult<()> {
+    let override_type = if opted_in {
+        Some(OverrideType::Enabled)
+    } else {
+        None
+    };
+    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, services).await
 }
 
 #[tracing::instrument(level = "debug", skip(services))]
@@ -415,8 +464,7 @@ pub async fn on_user_enable_artifact(
 ) -> LauncherResult<()> {
     if let Some(tracked) = bundle_dao::get_bundle_tracked(&services.db, cluster_id, hash).await?
         && let (Some(bundle_name), Some(package_id)) = (tracked.bundle_name, tracked.package_id) {
-            bundle_dao::remove_override(&services.db, cluster_id, &bundle_name, &package_id)
-                .await?;
+            clear_suppressing_override(cluster_id, &bundle_name, &package_id, services).await?;
         }
     Ok(())
 }
@@ -500,11 +548,11 @@ pub async fn remove_artifact_from_cluster(
                 )
                 .await?;
                 if !replacement_exists {
-                    bundle_dao::remove_override(
-                        &services.db,
+                    clear_suppressing_override(
                         cluster_id,
                         &bundle_name,
                         &package_id,
+                        services,
                     )
                     .await?;
                 }
@@ -512,4 +560,85 @@ pub async fn remove_artifact_from_cluster(
         }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::packages::domain::ContentType;
+    use oneclient_db::models::ClusterBundleOverrideRow;
+
+    fn file(enabled: bool) -> BundleFile {
+        BundleFile {
+            enabled,
+            hidden: false,
+            path: "mods/example.jar".to_string(),
+            size: 1,
+            kind: BundleFileKind::External(ExternalFile {
+                name: "example.jar".to_string(),
+                url: "https://example.invalid/example.jar".to_string(),
+                sha1: "abc123".to_string(),
+                size: 1,
+                content_type: ContentType::Mod,
+            }),
+        }
+    }
+
+    #[test]
+    fn override_none_falls_back_to_manifest_default() {
+        assert!(effective_enabled(&file(true), None));
+        assert!(!effective_enabled(&file(false), None));
+    }
+
+    #[test]
+    fn suppressing_overrides_win_over_enabled_manifest() {
+        assert!(!effective_enabled(&file(true), Some(OverrideType::Disabled)));
+        assert!(!effective_enabled(&file(true), Some(OverrideType::Removed)));
+    }
+
+    #[test]
+    fn enabled_override_wins_over_disabled_manifest() {
+        assert!(effective_enabled(&file(false), Some(OverrideType::Enabled)));
+    }
+
+    #[test]
+    fn enabled_override_round_trips_through_the_db_string() {
+        let parsed = OverrideType::parse(OverrideType::Enabled.as_str());
+        assert_eq!(parsed, Some(OverrideType::Enabled));
+    }
+
+    #[test]
+    fn unknown_override_string_is_ignored() {
+        assert_eq!(OverrideType::parse("something-new"), None);
+        assert!(!effective_enabled(&file(false), None));
+    }
+
+    fn row(bundle: &str, pid: &str, ty: OverrideType) -> ClusterBundleOverrideRow {
+        ClusterBundleOverrideRow {
+            id: 1,
+            cluster_id: 1,
+            bundle_name: bundle.to_string(),
+            package_id: pid.to_string(),
+            override_type: ty.as_str().to_string(),
+        }
+    }
+
+    #[test]
+    fn find_override_matches_on_bundle_and_package() {
+        let rows = vec![
+            row("Bundle A", "pkg-1", OverrideType::Enabled),
+            row("Bundle B", "pkg-2", OverrideType::Disabled),
+        ];
+        assert_eq!(
+            find_override(&rows, "Bundle A", "pkg-1"),
+            Some(OverrideType::Enabled)
+        );
+        assert_eq!(
+            find_override(&rows, "Bundle B", "pkg-2"),
+            Some(OverrideType::Disabled)
+        );
+        // Same package id under a different bundle must not collide.
+        assert_eq!(find_override(&rows, "Bundle B", "pkg-1"), None);
+        assert_eq!(find_override(&rows, "Bundle A", "pkg-3"), None);
+    }
 }

@@ -51,7 +51,7 @@ pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;
 pub use overlay_popup::OverlayPopup;
-pub use package_row::{CardLayout, PackageEntry, PackageRow};
+pub use package_row::{CardLayout, PackageEntry, PackageRow, provider_badge};
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;
 pub use recents_row::RecentsRow;

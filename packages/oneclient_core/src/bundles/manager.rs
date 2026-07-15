@@ -61,7 +61,7 @@ impl Bundle {
 
 pub struct BundlesManager {
     manifest: RwLock<RemoteBundleManifest>,
-    archive_cache: RwLock<HashMap<PathBuf, crate::bundles::types::BundleManifest>>,
+    pub(crate) archive_cache: RwLock<HashMap<PathBuf, crate::bundles::types::BundleManifest>>,
 }
 
 impl BundlesManager {
@@ -74,12 +74,17 @@ impl BundlesManager {
 
     #[tracing::instrument(skip_all)]
     pub async fn sync(&self, services: &LauncherServices) -> LauncherResult<bool> {
-        let Some((manifest, manifest_changed)) = Self::fetch_manifest(services).await? else {
+        let Some(fetched) = Self::fetch_manifest(services).await? else {
             tracing::debug!(
                 "skipping bundle sync because no remote or cached manifest is available"
             );
             return Ok(false);
         };
+        let FetchedManifest {
+            manifest,
+            changed: manifest_changed,
+            etag,
+        } = fetched;
         *self.manifest.write().await = manifest.clone();
         self.archive_cache.write().await.clear();
 
@@ -99,14 +104,28 @@ impl BundlesManager {
         let bundles_root = paths::bundles_dir()?;
         polyio::create_dir_all(&bundles_root.join("bundles")).await?;
 
+        let mut synced_all = true;
         for entry in manifest.remote_paths() {
             if let Err(err) = self.sync_bundle(&entry, services, &bundles_root).await {
+                synced_all = false;
                 tracing::warn!(
                     remote_path = %entry.remote_path,
                     error = %err,
                     "failed to sync bundle"
                 );
             }
+        }
+
+        if synced_all {
+            if let Some(etag) = etag {
+                let etag_path = paths::bundles_dir()?.join("metadata.json.etag");
+                let _ = polyio::write(&etag_path, etag.as_bytes()).await;
+            }
+        } else {
+            tracing::warn!(
+                "bundle catalog incomplete; not caching the manifest etag so the next \
+                 sync retries the missing bundles"
+            );
         }
 
         Ok(true)
@@ -215,7 +234,7 @@ impl BundlesManager {
     #[tracing::instrument(level = "debug", skip(services))]
     async fn fetch_manifest(
         services: &LauncherServices,
-    ) -> LauncherResult<Option<(RemoteBundleManifest, bool)>> {
+    ) -> LauncherResult<Option<FetchedManifest>> {
         let manifest_path = paths::bundles_dir()?.join("metadata.json");
         let etag_path = paths::bundles_dir()?.join("metadata.json.etag");
 
@@ -244,11 +263,12 @@ impl BundlesManager {
                     polyio::create_dir_all(parent).await?;
                 }
                 polyio::write(&manifest_path, &bytes).await?;
-                if let Some(etag) = server_etag {
-                    let _ = polyio::write(&etag_path, etag.as_bytes()).await;
-                }
 
-                Ok(Some((manifest, true)))
+                Ok(Some(FetchedManifest {
+                    manifest,
+                    changed: true,
+                    etag: server_etag,
+                }))
             }
             Err(err) if manifest_path.exists() => {
                 tracing::debug!(
@@ -281,16 +301,26 @@ impl Default for BundlesManager {
     }
 }
 
+struct FetchedManifest {
+    manifest: RemoteBundleManifest,
+    changed: bool,
+    etag: Option<String>,
+}
+
 async fn read_cached_manifest(
     manifest_path: &Path,
     changed: bool,
-) -> LauncherResult<Option<(RemoteBundleManifest, bool)>> {
+) -> LauncherResult<Option<FetchedManifest>> {
     if !manifest_path.exists() {
         return Ok(None);
     }
     let bytes = polyio::read(manifest_path).await?;
     let manifest: RemoteBundleManifest = serde_json::from_slice(&bytes)?;
-    Ok(Some((manifest, changed)))
+    Ok(Some(FetchedManifest {
+        manifest,
+        changed,
+        etag: None,
+    }))
 }
 
 #[tracing::instrument(level = "debug", skip(services))]

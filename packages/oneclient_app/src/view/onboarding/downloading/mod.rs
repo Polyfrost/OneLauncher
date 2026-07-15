@@ -4,10 +4,11 @@ use std::time::{Duration, Instant};
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::ImportTarget;
+use oneclient_core::{BundleArchive, BundleFile, ImportTarget};
 use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
+use oneclient_db::models::OverrideType;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -18,7 +19,7 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::view::onboarding::matching_new_cluster_id;
+use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
 
 mod backdrop;
 mod progress;
@@ -36,7 +37,9 @@ const MAX_TASK_ROWS: usize = 6;
 struct ClusterPlan {
     cluster_id: i64,
     mc_version: String,
-    overrides: Vec<(String, String)>,
+    /// `(bundle_name, package_id, override)` for every file whose fate differs
+    /// from the bundle manifest's default.
+    overrides: Vec<(String, String, OverrideType)>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -448,16 +451,7 @@ fn build_plans(
         .map(|cb| {
             let mut overrides = Vec::new();
             for archive in &cb.archives {
-                for file in &archive.manifest.files {
-                    if file.hidden {
-                        continue;
-                    }
-                    let package_id = file.kind.package_id();
-                    let key = format!("{}|{}|{}", cb.cluster.id, archive.manifest.name, package_id);
-                    if file.enabled && !selected.contains(&key) {
-                        overrides.push((archive.manifest.name.clone(), package_id));
-                    }
-                }
+                overrides.extend(archive_overrides(cb.cluster.id, archive, selected));
             }
             ClusterPlan {
                 cluster_id: cb.cluster.id,
@@ -466,6 +460,44 @@ fn build_plans(
             }
         })
         .collect()
+}
+
+fn archive_overrides(
+    cluster_id: i64,
+    archive: &BundleArchive,
+    selected: &std::collections::HashSet<String>,
+) -> Vec<(String, String, OverrideType)> {
+    let bundle_name = &archive.manifest.name;
+    let wants = |file: &BundleFile| {
+        selected.contains(&pkg_key(cluster_id, bundle_name, &file.kind.package_id()))
+    };
+
+    // Hidden files are dependencies the user never sees, so they follow the
+    // bundle: kept if anything from it was taken (including a single opted-in
+    // extra, which would otherwise lose its dependencies), dropped if not.
+    let bundle_taken = archive
+        .manifest
+        .files
+        .iter()
+        .filter(|f| !f.hidden)
+        .any(wants);
+
+    let mut overrides = Vec::new();
+    for file in &archive.manifest.files {
+        let wanted = if file.hidden { bundle_taken } else { wants(file) };
+
+        let override_type = match (wanted, file.enabled) {
+            // Matches the manifest default; nothing to record.
+            (true, true) | (false, false) => continue,
+            // Opting into a mod the bundle ships turned off.
+            (true, false) => OverrideType::Enabled,
+            // Declined: don't fetch it at all.
+            (false, true) => OverrideType::Removed,
+        };
+
+        overrides.push((bundle_name.clone(), file.kind.package_id(), override_type));
+    }
+    overrides
 }
 
 const GAME_SIZE_GUESS: u64 = 180_000_000;
@@ -478,17 +510,29 @@ fn rough_download_estimate(
     let mut total: u64 = 0;
     for cb in items {
         for archive in &cb.archives {
+            let dropped: std::collections::HashSet<String> =
+                archive_overrides(cb.cluster.id, archive, selected)
+                    .into_iter()
+                    .filter(|(_, _, ty)| *ty == OverrideType::Removed)
+                    .map(|(_, pid, _)| pid)
+                    .collect();
+            let opted_in: std::collections::HashSet<String> =
+                archive_overrides(cb.cluster.id, archive, selected)
+                    .into_iter()
+                    .filter(|(_, _, ty)| *ty == OverrideType::Enabled)
+                    .map(|(_, pid, _)| pid)
+                    .collect();
+
             for file in &archive.manifest.files {
-                if !file.enabled {
-                    continue;
-                }
-                let key = format!(
-                    "{}|{}|{}",
-                    cb.cluster.id,
-                    archive.manifest.name,
-                    file.kind.package_id()
-                );
-                if file.hidden || selected.contains(&key) {
+                let pid = file.kind.package_id();
+                let installing = if opted_in.contains(&pid) {
+                    true
+                } else if dropped.contains(&pid) {
+                    false
+                } else {
+                    file.enabled
+                };
+                if installing {
                     total += file.size;
                 }
             }
@@ -658,17 +702,13 @@ async fn install_one(
             "Saving your package choices...".to_string(),
         ));
     }
-    for (bundle_name, package_id) in &plan.overrides {
-        oneclient_core::set_bundle_package_enabled(
-            plan.cluster_id,
-            bundle_name,
-            package_id,
-            false,
-            &state.services,
-        )
-        .await
-        .map_err(|err| err.to_string())?;
-    }
+    oneclient_core::set_bundle_package_overrides(
+        plan.cluster_id,
+        &plan.overrides,
+        &state.services,
+    )
+    .await
+    .map_err(|err| err.to_string())?;
 
     if !predownload {
         return Ok(());
@@ -800,4 +840,153 @@ fn finish_onboarding(
         dispatch.mark_onboarding_seen();
         let _ = RouterContext::get().replace(Route::Home {});
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::onboarding::test_support::{archive, cluster, file};
+    use std::collections::HashSet;
+
+    fn skyblock() -> BundleArchive {
+        archive(
+            "SkyBlock",
+            false,
+            vec![
+                file("skyblock-main", true, false),
+                file("skycubed", false, false),
+                file("sb-dep", true, true),
+            ],
+        )
+    }
+
+    fn items(archives: Vec<BundleArchive>) -> Vec<ClusterBundles> {
+        vec![ClusterBundles {
+            cluster: cluster(1),
+            archives,
+        }]
+    }
+
+    fn keys(archive: &BundleArchive, pids: &[&str]) -> HashSet<String> {
+        pids.iter()
+            .map(|p| pkg_key(1, &archive.manifest.name, p))
+            .collect()
+    }
+
+    #[test]
+    fn declining_a_bundle_removes_its_visible_and_hidden_files() {
+        let sb = skyblock();
+        let plans = build_plans(&items(vec![sb.clone()]), &HashSet::new());
+
+        let ov = &plans[0].overrides;
+        // The hidden dependency must be dropped too, or it installs anyway.
+        assert!(ov.contains(&(
+            sb.manifest.name.clone(),
+            "sb-dep".to_string(),
+            OverrideType::Removed
+        )));
+        assert!(ov.contains(&(
+            sb.manifest.name.clone(),
+            "skyblock-main".to_string(),
+            OverrideType::Removed
+        )));
+        assert!(!ov.iter().any(|(_, pid, _)| pid == "skycubed"));
+    }
+
+    #[test]
+    fn accepting_a_bundle_records_nothing_for_its_defaults() {
+        let sb = skyblock();
+        let selected = keys(&sb, &["skyblock-main"]);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+
+        assert!(plans[0].overrides.is_empty());
+    }
+
+    #[test]
+    fn opting_into_an_extra_writes_enabled() {
+        let sb = skyblock();
+        let selected = keys(&sb, &["skyblock-main", "skycubed"]);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+
+        assert_eq!(
+            plans[0].overrides,
+            vec![(
+                sb.manifest.name.clone(),
+                "skycubed".to_string(),
+                OverrideType::Enabled
+            )]
+        );
+    }
+
+    #[test]
+    fn an_extra_alone_still_keeps_hidden_dependencies() {
+        let sb = skyblock();
+        let selected = keys(&sb, &["skycubed"]);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+        let ov = &plans[0].overrides;
+
+        assert!(ov.contains(&(
+            sb.manifest.name.clone(),
+            "skycubed".to_string(),
+            OverrideType::Enabled
+        )));
+        assert!(!ov.iter().any(|(_, pid, _)| pid == "sb-dep"));
+        assert!(ov.contains(&(
+            sb.manifest.name.clone(),
+            "skyblock-main".to_string(),
+            OverrideType::Removed
+        )));
+    }
+
+    #[test]
+    fn rejections_are_removed_never_disabled() {
+        let plans = build_plans(&items(vec![skyblock()]), &HashSet::new());
+
+        assert!(
+            !plans[0]
+                .overrides
+                .iter()
+                .any(|(_, _, ty)| *ty == OverrideType::Disabled)
+        );
+    }
+
+    #[test]
+    fn per_cluster_choices_are_independent() {
+        let sb = skyblock();
+        let both = vec![
+            ClusterBundles {
+                cluster: cluster(1),
+                archives: vec![sb.clone()],
+            },
+            ClusterBundles {
+                cluster: cluster(2),
+                archives: vec![sb.clone()],
+            },
+        ];
+        let selected: HashSet<String> =
+            [pkg_key(1, &sb.manifest.name, "skyblock-main")].into();
+        let plans = build_plans(&both, &selected);
+
+        assert!(plans[0].overrides.is_empty());
+        assert!(plans[1].overrides.iter().any(|(_, pid, ty)| pid
+            == "skyblock-main"
+            && *ty == OverrideType::Removed));
+    }
+
+    #[test]
+    fn estimate_skips_declined_bundles_and_counts_opted_in_extras() {
+        let sb = skyblock();
+        let all = items(vec![sb.clone()]);
+        let baseline = GAME_SIZE_GUESS + JRE_SIZE_GUESS;
+
+        let declined = rough_download_estimate(&all, &HashSet::new());
+        assert_eq!(declined, baseline, "declined bundle should cost nothing");
+
+        let accepted = rough_download_estimate(&all, &keys(&sb, &["skyblock-main"]));
+        assert_eq!(accepted, baseline + 2);
+
+        let with_extra =
+            rough_download_estimate(&all, &keys(&sb, &["skyblock-main", "skycubed"]));
+        assert_eq!(with_extra, baseline + 3);
+    }
 }

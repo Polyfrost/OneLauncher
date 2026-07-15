@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_core::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_db::models::OverrideType;
 
 use crate::components::{CardLayout, PackageEntry};
 use crate::hooks::{package_meta_batch, use_package_meta_batch, use_view_state};
@@ -113,7 +114,7 @@ pub fn bundle_packages(
                 .map(String::as_str);
             let enabled = match installed_info {
                 Some(info) => info.enabled,
-                None => file.enabled && ov != Some("disabled") && ov != Some("removed"),
+                None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
             };
 
             let categories = if file.hidden || category.is_empty() {
@@ -129,6 +130,7 @@ pub fn bundle_packages(
                 file.size,
                 categories,
                 enabled,
+                file.enabled,
                 installed_info,
                 meta,
                 file.display_name(),
@@ -151,6 +153,7 @@ pub fn bundle_packages(
             0,
             Vec::new(),
             info.enabled,
+            true,
             Some(info),
             meta,
             info.display_name
@@ -170,6 +173,7 @@ fn make_row(
     size: u64,
     categories: Vec<String>,
     enabled: bool,
+    manifest_default: bool,
     installed_info: Option<&LinkedArtifactInfo>,
     meta: &PackageMetaMap,
     fallback_name: String,
@@ -208,6 +212,7 @@ fn make_row(
         size,
         categories,
         enabled,
+        manifest_default,
         installed: installed_info.is_some(),
         hash: installed_info.map(|i| i.hash.clone()),
     }

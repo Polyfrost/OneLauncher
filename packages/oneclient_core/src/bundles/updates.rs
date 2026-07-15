@@ -80,20 +80,42 @@ async fn check_bundle_updates_inner(
         .filter(|name| !loaded_bundle_names.contains(name))
         .collect();
 
+    let overrides_map: HashMap<(String, String), OverrideType> = overrides
+        .iter()
+        .filter_map(|o| {
+            OverrideType::parse(&o.override_type)
+                .map(|t| ((o.bundle_name.clone(), o.package_id.clone()), t))
+        })
+        .collect();
+
     let mut bundle_versions: HashMap<
         String,
         HashMap<String, (String, crate::bundles::types::BundleFile)>,
     > = HashMap::new();
     let mut hidden_dependency_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
     let mut hidden_explicit_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut shipped_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
 
     for archive in &archives {
         let mut files_map = HashMap::new();
         let mut hidden_dependency_keys = HashSet::new();
         let mut hidden_explicit_keys = HashSet::new();
+        let mut shipped_keys = HashSet::new();
 
         for file in &archive.manifest.files {
-            if !file.enabled {
+            shipped_keys.insert(match &file.kind {
+                BundleFileKind::Managed {
+                    provider,
+                    project_id,
+                    ..
+                } => managed_bundle_key(*provider, project_id),
+                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
+            });
+
+            let user_override = overrides_map
+                .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                .copied();
+            if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
             match &file.kind {
@@ -126,6 +148,7 @@ async fn check_bundle_updates_inner(
         hidden_dependency_keys_by_bundle
             .insert(archive.manifest.name.clone(), hidden_dependency_keys);
         hidden_explicit_keys_by_bundle.insert(archive.manifest.name.clone(), hidden_explicit_keys);
+        shipped_keys_by_bundle.insert(archive.manifest.name.clone(), shipped_keys);
         bundle_versions.insert(archive.manifest.name.clone(), files_map);
     }
 
@@ -164,14 +187,6 @@ async fn check_bundle_updates_inner(
         .iter()
         .filter(|a| subscribed_bundles.contains(&a.manifest.name))
         .map(|a| a.manifest.name.as_str())
-        .collect();
-
-    let overrides_map: HashMap<(String, String), OverrideType> = overrides
-        .iter()
-        .filter_map(|o| {
-            OverrideType::parse(&o.override_type)
-                .map(|t| ((o.bundle_name.clone(), o.package_id.clone()), t))
-        })
         .collect();
 
     let mut updates_available = Vec::new();
@@ -237,6 +252,17 @@ async fn check_bundle_updates_inner(
                 });
             }
         } else {
+            let user_disabled = matches!(
+                overrides_map.get(&(bundle_name.clone(), pkg_id.clone())),
+                Some(OverrideType::Disabled)
+            );
+            let still_shipped = shipped_keys_by_bundle
+                .get(bundle_name)
+                .is_some_and(|keys| keys.contains(&installed_key));
+            if user_disabled && still_shipped {
+                continue;
+            }
+
             removals_available.push(BundlePackageRemoval {
                 cluster_id,
                 hash: bundle_pkg.hash.clone(),
@@ -266,7 +292,11 @@ async fn check_bundle_updates_inner(
         }
 
         for file in &archive.manifest.files {
-            if !file.enabled {
+            let file_id = file.kind.package_id();
+            let user_override = overrides_map
+                .get(&(archive.manifest.name.clone(), file_id.clone()))
+                .copied();
+            if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
 
@@ -279,14 +309,6 @@ async fn check_bundle_updates_inner(
                 BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
             };
             if planned_addition_keys.contains(&file_key) {
-                continue;
-            }
-
-            let file_id = file.kind.package_id();
-            if matches!(
-                overrides_map.get(&(archive.manifest.name.clone(), file_id.clone())),
-                Some(OverrideType::Removed)
-            ) {
                 continue;
             }
 

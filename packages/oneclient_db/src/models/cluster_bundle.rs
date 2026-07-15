@@ -4,6 +4,8 @@ use sqlx::FromRow;
 pub enum OverrideType {
     Removed,
     Disabled,
+    /// Opt-in: install a file the bundle manifest ships with `enabled: false`.
+    Enabled,
 }
 
 impl OverrideType {
@@ -11,6 +13,7 @@ impl OverrideType {
         match self {
             Self::Removed => "removed",
             Self::Disabled => "disabled",
+            Self::Enabled => "enabled",
         }
     }
 
@@ -18,6 +21,7 @@ impl OverrideType {
         match value {
             "removed" => Some(Self::Removed),
             "disabled" => Some(Self::Disabled),
+            "enabled" => Some(Self::Enabled),
             _ => None,
         }
     }

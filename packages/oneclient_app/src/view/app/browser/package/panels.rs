@@ -1,21 +1,20 @@
 use super::*;
 
 use freya::query::QueryStateData;
+use oneclient_core::packages::ProviderId;
 use oneclient_core::packages::types::{
     GalleryImage, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
 };
-use oneclient_core::packages::ProviderId;
 
 use crate::BridgeDispatch;
 use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
-use crate::hooks::{use_cached_image, VERSIONS_PAGE_SIZE};
+use crate::hooks::{VERSIONS_PAGE_SIZE, use_cached_image};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
 const GALLERY_IMAGE_H: f32 = 360.;
 const GALLERY_EDGE: u32 = 1024;
-
 
 pub(super) fn loading_body() -> impl IntoElement {
     rect()
@@ -356,4 +355,3 @@ fn release_badge(release_type: ReleaseType) -> impl IntoElement {
                 .color(color),
         )
 }
-

@@ -3,9 +3,9 @@ use freya::prelude::*;
 use oneclient_core::game::{Analytics, Persona};
 
 use crate::components::{Icon, IconType};
-use crate::utils::format_duration_hm;
 use crate::theme::colors;
 use crate::ui::border_all_color;
+use crate::utils::format_duration_hm;
 
 use super::card;
 
@@ -19,10 +19,22 @@ pub(super) fn tiles_row(analytics: &Analytics) -> Element {
     let total_joins: i64 = analytics.servers.iter().map(|s| s.joins).sum();
 
     let mut tiles = vec![
-        stat_tile(IconType::ClockRewind, "Total playtime", format_duration_hm(stats.total_secs)),
+        stat_tile(
+            IconType::ClockRewind,
+            "Total playtime",
+            format_duration_hm(stats.total_secs),
+        ),
         stat_tile(IconType::Play, "Sessions", stats.session_count.to_string()),
-        stat_tile(IconType::Calendar, "Avg / session", format_duration_hm(avg_session)),
-        stat_tile(IconType::Rocket02, "Active days", stats.active_days.to_string()),
+        stat_tile(
+            IconType::Calendar,
+            "Avg / session",
+            format_duration_hm(avg_session),
+        ),
+        stat_tile(
+            IconType::Rocket02,
+            "Active days",
+            stats.active_days.to_string(),
+        ),
     ];
     if !analytics.servers.is_empty() {
         tiles.push(stat_tile(
@@ -97,7 +109,11 @@ fn persona_card(persona: Persona) -> Element {
                 .corner_radius(CornerRadius::new_all(22.))
                 .background(colors::brand().with_a(40))
                 .center()
-                .child(Icon::new(persona_icon(persona)).size(22.).color(colors::brand())),
+                .child(
+                    Icon::new(persona_icon(persona))
+                        .size(22.)
+                        .color(colors::brand()),
+                ),
         )
         .child(
             rect()

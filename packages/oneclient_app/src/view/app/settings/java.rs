@@ -1,12 +1,12 @@
 use freya::prelude::*;
 use oneclient_core::java::{AvailableJava, JavaRuntime, JavaVendor};
 
+use super::settings_page;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
-    java_runtimes, provider_versions, use_dispatch, use_java_runtimes, use_provider_versions,
-    BridgeDispatch,
+    BridgeDispatch, java_runtimes, provider_versions, use_dispatch, use_java_runtimes,
+    use_provider_versions,
 };
-use super::settings_page;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -151,15 +151,13 @@ fn table_header() -> impl IntoElement {
         .child(head("VENDOR", Size::px(130.)))
         .child(head("VERSION", Size::px(90.)))
         .child(
-            rect()
-                .width(Size::flex(1.0))
-                .child(
-                    label()
-                        .text("PATH")
-                        .font_size(11.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_secondary()),
-                ),
+            rect().width(Size::flex(1.0)).child(
+                label()
+                    .text("PATH")
+                    .font_size(11.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_secondary()),
+            ),
         )
         .child(rect().width(Size::px(34.)))
         .into_element()
@@ -206,7 +204,10 @@ impl Component for RuntimeRow {
                         .fill(colors::component_border()),
                 )
             })
-            .child(cell(format!("{} {}", runtime.vendor, runtime.major), Size::px(130.)))
+            .child(cell(
+                format!("{} {}", runtime.vendor, runtime.major),
+                Size::px(130.),
+            ))
             .child(cell(runtime.version.clone(), Size::px(90.)))
             .child(
                 rect()
@@ -241,7 +242,11 @@ fn remove_button(dispatch: BridgeDispatch, path: String) -> impl IntoElement {
         .ghost()
         .small()
         .on_press(move |_| dispatch.remove_java_runtime(path.clone()))
-        .child(Icon::new(IconType::Trash01).size(14.).color(colors::danger()))
+        .child(
+            Icon::new(IconType::Trash01)
+                .size(14.)
+                .color(colors::danger()),
+        )
         .into_element()
 }
 

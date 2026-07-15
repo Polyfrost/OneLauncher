@@ -56,9 +56,17 @@ path = "examples/launch_game.rs"
 name = "notifications"
 path = "examples/notifications.rs"
 
+[[example]]
+name = "discord_rpc"
+path = "examples/discord_rpc.rs"
+
+[dev-dependencies]
+async-tungstenite = { version = "=0.32.1", features = ["tokio-runtime"] }
+
 [dependencies]
 # core (extra)
 # gamemode_rs.workspace = true
+discord-rich-presence.workspace = true
 interfrost.workspace = true
 oneclient_db.workspace = true
 polyio.workspace = true
@@ -68,6 +76,9 @@ tracing.workspace = true
 tracing-futures.workspace = true
 tracing-subscriber.workspace = true
 
+sentry.workspace = true
+sentry-tracing.workspace = true
+
 # database
 sqlx.workspace = true
 
@@ -76,9 +87,10 @@ async-trait.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 tokio-util.workspace = true
-futures-util = { workspace = true, features = ["std"] }
+futures-util = { workspace = true, features = ["std", "sink"] }
 futures-lite.workspace = true
 reqwest.workspace = true
+reqwest-websocket.workspace = true
 async_zip.workspace = true
 async-tempfile.workspace = true
 async-stream.workspace = true

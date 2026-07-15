@@ -1,15 +1,12 @@
 use super::*;
 
-use oneclient_core::packages::types::{
-    ProjectDetail, ProjectMember,
-};
 use oneclient_core::packages::ProviderId;
+use oneclient_core::packages::types::{ProjectDetail, ProjectMember};
 
 use crate::BridgeDispatch;
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,

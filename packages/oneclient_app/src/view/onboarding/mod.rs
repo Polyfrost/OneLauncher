@@ -4,6 +4,7 @@ mod downloading;
 mod language;
 mod migration;
 mod preferences;
+mod terms;
 mod welcome;
 
 pub use account::OnboardingAccount;
@@ -13,6 +14,7 @@ pub use language::OnboardingLanguage;
 pub use migration::OnboardingMigration;
 pub(crate) use migration::matching_new_cluster_id;
 pub use preferences::OnboardingPreferences;
+pub use terms::OnboardingTerms;
 pub use welcome::OnboardingWelcome;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,7 +32,7 @@ use crate::ui::{border_all_color, entrance_motion_layer};
 /// Number of onboarding steps. The v1-migration step only exists (and is only
 /// counted) when old launcher data was detected.
 pub fn onboarding_total(has_migration: bool) -> usize {
-    if has_migration { 7 } else { 6 }
+    if has_migration { 8 } else { 7 }
 }
 
 pub fn onboarding_step_index(route: &Route, has_migration: bool) -> usize {
@@ -38,12 +40,13 @@ pub fn onboarding_step_index(route: &Route, has_migration: bool) -> usize {
 
     match route {
         Route::OnboardingWelcome {} => 0,
-        Route::OnboardingMigration {} => 1,
-        Route::OnboardingLanguage {} => 1 + shift,
-        Route::OnboardingAccount {} => 2 + shift,
-        Route::OnboardingBundles {} => 3 + shift,
-        Route::OnboardingPreferences {} => 4 + shift,
-        Route::OnboardingDownloading {} => 5 + shift,
+        Route::OnboardingTerms {} => 1,
+        Route::OnboardingMigration {} => 2,
+        Route::OnboardingLanguage {} => 2 + shift,
+        Route::OnboardingAccount {} => 3 + shift,
+        Route::OnboardingBundles {} => 4 + shift,
+        Route::OnboardingPreferences {} => 5 + shift,
+        Route::OnboardingDownloading {} => 6 + shift,
         _ => 0,
     }
 }
@@ -80,8 +83,16 @@ pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
         }
     });
 
-    let p = if anim_finished { 1.0 } else { anim.get().value() };
-    let slide_x = if motion { direction * (1. - p) * SLIDE_DISTANCE } else { 0. };
+    let p = if anim_finished {
+        1.0
+    } else {
+        anim.get().value()
+    };
+    let slide_x = if motion {
+        direction * (1. - p) * SLIDE_DISTANCE
+    } else {
+        0.
+    };
     let opacity = if motion && !anim_finished { p } else { 1. };
 
     rect()
@@ -91,7 +102,11 @@ pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
         .into_element()
 }
 
-pub(crate) fn onboarding_page(illustration: impl IntoElement, content: impl IntoElement, nav: impl IntoElement) -> impl IntoElement {
+pub(crate) fn onboarding_page(
+    illustration: impl IntoElement,
+    content: impl IntoElement,
+    nav: impl IntoElement,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::fill())
@@ -130,7 +145,11 @@ pub(crate) fn onboarding_illustration(icon: IconType) -> impl IntoElement {
     Icon::new(icon).size(240.).color(Color::WHITE)
 }
 
-pub(crate) fn onboarding_nav(back: Option<Route>, next: Route, next_enabled: bool) -> impl IntoElement {
+pub(crate) fn onboarding_nav(
+    back: Option<Route>,
+    next: Route,
+    next_enabled: bool,
+) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())

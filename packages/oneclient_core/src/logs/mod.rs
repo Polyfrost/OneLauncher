@@ -15,6 +15,7 @@ pub use parse::parse_level;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LogKind {
     Game { cluster_id: i64 },
+    Launcher,
     Minecraft,
     CrashReport,
     Other,

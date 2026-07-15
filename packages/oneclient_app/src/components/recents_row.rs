@@ -49,7 +49,9 @@ impl Component for RecentsRow {
             conf.on_creation(OnCreation::Run);
             conf.on_change(OnChange::Rerun);
             let total = CARD_MS + (count.saturating_sub(1) as u64) * STAGGER_MS;
-            AnimNum::new(0., 1.).time(total.max(1)).function(Function::Linear)
+            AnimNum::new(0., 1.)
+                .time(total.max(1))
+                .function(Function::Linear)
         });
         let progress = intro.get().value();
 
@@ -112,11 +114,7 @@ impl Component for ClusterCard {
         let eased = 1.0 - (1.0 - local).powi(3);
         let rise = (1.0 - eased) * CARD_RISE_PX;
 
-        let title = format!(
-            "{} {}",
-            self.cluster.mc_version,
-            self.cluster.mc_loader
-        );
+        let title = format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader);
 
         let cluster_id = self.cluster.id;
         let on_press = move |_| {

@@ -60,7 +60,9 @@ impl Component for ActiveClusterPanel {
         let p = intro.get().value();
         let slide_x = (p - 1.0) * 48.0;
 
-        let parsed = active.as_ref().and_then(|c| parse_mc_version(&c.mc_version));
+        let parsed = active
+            .as_ref()
+            .and_then(|c| parse_mc_version(&c.mc_version));
         let metadata = use_version_metadata(
             parsed.as_ref().map(|p| p.major),
             parsed.and_then(|p| p.minor),
@@ -114,7 +116,11 @@ impl Component for ActiveClusterPanel {
                     .spacing(8.)
                     .cross_align(Alignment::Center)
                     .margin(Gaps::new(8., 0., 0., 0.))
-                    .child(launch_button(cluster_id, dispatch, launch_button_state(&game, cluster_id)))
+                    .child(launch_button(
+                        cluster_id,
+                        dispatch,
+                        launch_button_state(&game, cluster_id),
+                    ))
                     .child(cluster_settings_button(cluster_id)),
             )
     }

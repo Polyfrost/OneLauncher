@@ -3,7 +3,10 @@ use freya::{prelude::*, router::*};
 
 use crate::AppAssets;
 use crate::Route;
-use crate::hooks::{use_launcher, use_notifications_snapshot, use_settings_snapshot};
+use crate::hooks::{
+    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
+    use_settings_snapshot, use_terms,
+};
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -14,6 +17,7 @@ impl Component for Startup {
         let launcher = use_launcher();
         let settings = use_settings_snapshot();
         let notifications = use_notifications_snapshot();
+        let terms = use_terms();
 
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -34,37 +38,49 @@ impl Component for Startup {
 
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-        if launcher.ready && !launcher.fetching {
-            let destination = if settings.settings.seen_onboarding {
-                Route::Home {}
-            } else {
+        if launcher.ready && !launcher.fetching && !terms_is_loading(&terms) {
+            let document = terms_document(&terms);
+            let required_terms = document.as_ref().map(|doc| doc.version).unwrap_or(1);
+            let required_privacy = document
+                .as_ref()
+                .map(|doc| doc.privacy_version())
+                .unwrap_or(1);
+
+            let stale = settings.settings.accepted_tos_version < required_terms
+                || settings.settings.accepted_privacy_version < required_privacy;
+
+            let destination = if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
+            } else if stale {
+                Route::OnboardingTerms {}
+            } else {
+                Route::Home {}
             };
             let _ = RouterContext::get().replace(destination);
             return rect().into_element();
         }
 
-        let active = notifications
-            .inbox
-            .iter()
-            .find(|entry| entry.is_loading);
+        let active = notifications.inbox.iter().find(|entry| entry.is_loading);
 
-        let (message, detail): (String, Option<String>) = if let Some(err) = launcher.error.as_deref() {
-            ("Couldn't start OneClient".to_string(), Some(err.to_string()))
-
-        } else if let Some(entry) = active {
-            let detail = entry
-                .tasks
-                .iter()
-                .find(|t| t.total == 0 || t.current < t.total)
-                .map(|t| t.label.clone())
-                .or_else(|| entry.progress.map(|(c, t)| format!("{c} / {t}")));
-            (entry.title.clone(), detail)
-        } else if launcher.ready {
-            ("Fetching versions and bundles...".to_string(), None)
-        } else {
-            ("Starting OneClient...".to_string(), None)
-        };
+        let (message, detail): (String, Option<String>) =
+            if let Some(err) = launcher.error.as_deref() {
+                (
+                    "Couldn't start OneClient".to_string(),
+                    Some(err.to_string()),
+                )
+            } else if let Some(entry) = active {
+                let detail = entry
+                    .tasks
+                    .iter()
+                    .find(|t| t.total == 0 || t.current < t.total)
+                    .map(|t| t.label.clone())
+                    .or_else(|| entry.progress.map(|(c, t)| format!("{c} / {t}")));
+                (entry.title.clone(), detail)
+            } else if launcher.ready {
+                ("Fetching versions and bundles...".to_string(), None)
+            } else {
+                ("Starting OneClient...".to_string(), None)
+            };
 
         let is_error = launcher.error.is_some();
 

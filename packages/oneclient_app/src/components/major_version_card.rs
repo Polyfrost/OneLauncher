@@ -55,11 +55,7 @@ impl Component for MajorVersionCard {
         let on_press = self.on_press.clone();
 
         let opacity = if selected || hovered || focused {
-            if selected {
-                1.0
-            } else {
-                0.85
-            }
+            if selected { 1.0 } else { 0.85 }
         } else {
             0.6
         };
@@ -108,7 +104,10 @@ impl Component for MajorVersionCard {
                             .main_align(Alignment::SpaceBetween)
                             .corner_radius(CornerRadius::new_all(12.))
                             .cross_align(Alignment::Start)
-                            .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
+                            .border(
+                                border_all_color(1., border_color)
+                                    .alignment(BorderAlignment::Inner),
+                            )
                             .layer(Layer::Relative(3))
                             .background(
                                 LinearGradient::new()

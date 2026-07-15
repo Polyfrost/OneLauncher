@@ -1,10 +1,10 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 
+use super::settings_page;
 use crate::Route;
 use crate::components::{Button, IconType, link_button, toggle};
 use crate::hooks::{use_browser_compat, use_dispatch, use_settings_snapshot};
-use super::settings_page;
 use crate::view::app::settings::{section_header, settings_row};
 
 #[derive(PartialEq)]
@@ -67,7 +67,7 @@ impl Component for SettingsDeveloper {
                 "Debug Page",
                 "View the debug page.",
                 link_button().on_press(move |_| {
-                    let _ = RouterContext::get().push(Route::Debug {  });
+                    let _ = RouterContext::get().push(Route::Debug {});
                 }),
             ))
             .into_element()

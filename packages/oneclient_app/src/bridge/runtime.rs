@@ -9,8 +9,8 @@ use tokio::sync::{mpsc, watch};
 
 use crate::components::IconType;
 use crate::notifications::{
-    ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction, NotificationActionKind,
-    NotificationSpec, NotificationState, PendingPrompt, PendingPromptView,
+    ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction,
+    NotificationActionKind, NotificationSpec, NotificationState, PendingPrompt, PendingPromptView,
 };
 
 use super::commands::BridgeCommand;
@@ -243,6 +243,7 @@ impl CoreBridgeRuntime {
         LauncherState::initialize(notifier).await?;
 
         oneclient_core::status::start();
+        oneclient_core::plus::start();
 
         let data_dir = oneclient_core::paths::launcher_dir()
             .map(|p| p.display().to_string())
@@ -277,10 +278,12 @@ impl CoreBridgeRuntime {
                 snapshots.settings.error = None;
                 let state = LauncherState::get()?;
                 let loaded = store::load_settings(Some(&state.services.notifier)).await;
+                let discord_enabled = loaded.discord_enabled;
                 {
                     let mut lock = state.settings.write();
                     *lock = loaded;
                 }
+                state.discord.set_enabled(discord_enabled);
                 refresh_settings(snapshots)?;
             }
             BridgeCommand::SaveSettings => {
@@ -298,6 +301,7 @@ impl CoreBridgeRuntime {
                 mutate_settings(snapshots, |s| *s = settings)?;
                 let state = LauncherState::get()?;
                 let snapshot = state.settings.read().clone();
+                state.discord.set_enabled(snapshot.discord_enabled);
                 if let Err(err) = save_settings(&snapshot).await {
                     snapshots.settings.error = Some(err.to_string());
                 }
@@ -312,6 +316,20 @@ impl CoreBridgeRuntime {
             BridgeCommand::MarkOnboardingSeen => {
                 mutate_settings(snapshots, |settings| {
                     settings.seen_onboarding = true;
+                })?;
+                let state = LauncherState::get()?;
+                let snapshot = state.settings.read().clone();
+                if let Err(err) = save_settings(&snapshot).await {
+                    snapshots.settings.error = Some(err.to_string());
+                }
+            }
+            BridgeCommand::AcceptTos {
+                terms_version,
+                privacy_version,
+            } => {
+                mutate_settings(snapshots, |settings| {
+                    settings.accepted_tos_version = terms_version;
+                    settings.accepted_privacy_version = privacy_version;
                 })?;
                 let state = LauncherState::get()?;
                 let snapshot = state.settings.read().clone();
@@ -609,20 +627,18 @@ impl CoreBridgeRuntime {
                 version_id,
             } => {
                 let state = LauncherState::get()?;
-                match install_package(&state, provider, &project_id, &version_id, cluster_id).await
-                {
-                    Ok(()) => {
-                        state
-                            .services
-                            .notifier
-                            .send_info("Installed", "Package added to cluster");
-                        bump_clusters_generation(snapshots);
+                tokio::spawn(async move {
+                    let notifier = state.services.notifier.clone();
+                    match install_package(&state, provider, &project_id, &version_id, cluster_id)
+                        .await
+                    {
+                        Ok(name) => {
+                            notifier.send_info("Installed", &format!("Added {name}"));
+                            notifier.invalidate_clusters();
+                        }
+                        Err(err) => notifier.send_error("Install failed", &err.to_string()),
                     }
-                    Err(err) => state
-                        .services
-                        .notifier
-                        .send_error("Install failed", &err.to_string()),
-                }
+                });
             }
 
             BridgeCommand::InstallBundle {
@@ -631,15 +647,24 @@ impl CoreBridgeRuntime {
                 skip_compatibility,
             } => {
                 let state = LauncherState::get()?;
-                oneclient_core::install_bundle(
-                    cluster_id,
-                    &bundle_name,
-                    skip_compatibility,
-                    state.bundles.as_ref(),
-                    &state.services,
-                )
-                .await?;
-                bump_clusters_generation(snapshots);
+                tokio::spawn(async move {
+                    let notifier = state.services.notifier.clone();
+                    match oneclient_core::install_bundle(
+                        cluster_id,
+                        &bundle_name,
+                        skip_compatibility,
+                        state.bundles.as_ref(),
+                        &state.services,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            notifier.send_info("Installed", &format!("Added {bundle_name}"));
+                            notifier.invalidate_clusters();
+                        }
+                        Err(err) => notifier.send_error("Install failed", &err.to_string()),
+                    }
+                });
             }
             BridgeCommand::ApplyBundleUpdates { cluster_id } => {
                 let state = LauncherState::get()?;
@@ -792,7 +817,7 @@ async fn install_package(
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let provider_impl = state.services.packages.get(provider)?;
     let project = provider_impl
         .get_project(project_id, &state.services)
@@ -823,7 +848,7 @@ async fn install_package(
     child.finish();
     session.finish();
     result?;
-    Ok(())
+    Ok(project.name)
 }
 
 fn apply_game_stage(snapshots: &mut BridgeSnapshot, cluster_id: i64, stage: LaunchStage) {

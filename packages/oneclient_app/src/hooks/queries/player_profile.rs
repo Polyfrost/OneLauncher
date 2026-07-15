@@ -39,7 +39,10 @@ impl QueryCapability for FetchPlayerProfileQuery {
     // }
 }
 
-pub fn use_player_profile(uuid: impl Into<String>, access_token: Option<impl Into<String>>) -> UseQuery<FetchPlayerProfileQuery> {
+pub fn use_player_profile(
+    uuid: impl Into<String>,
+    access_token: Option<impl Into<String>>,
+) -> UseQuery<FetchPlayerProfileQuery> {
     use_query(
         Query::new(
             PlayerProfileQueryKeys {

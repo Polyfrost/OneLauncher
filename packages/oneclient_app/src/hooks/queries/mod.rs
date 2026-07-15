@@ -14,6 +14,7 @@ mod player_profile;
 mod screenshots;
 mod settings_profiles;
 mod skin;
+mod tos;
 mod version_metadata;
 mod versions;
 
@@ -69,5 +70,6 @@ pub use settings_profiles::{
     use_named_profiles,
 };
 pub use skin::use_player_skin;
+pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{pick_version_metadata, use_version_metadata};
 pub use versions::{loader_versions, use_loader_versions, use_versions};

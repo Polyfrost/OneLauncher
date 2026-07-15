@@ -1,6 +1,6 @@
 use freya::query::QueryStateData;
-use oneclient_core::packages::domain::GameLoader;
 use oneclient_core::VersionMetadata;
+use oneclient_core::packages::domain::GameLoader;
 
 use super::use_versions;
 
@@ -46,7 +46,9 @@ pub fn use_version_metadata(
     let state = reader.state();
     let list = match &*state {
         QueryStateData::Settled { res: Ok(list), .. } => list,
-        QueryStateData::Loading { res: Some(Ok(list)) } => list,
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list,
         _ => return None,
     };
 

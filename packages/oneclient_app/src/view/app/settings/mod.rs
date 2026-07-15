@@ -15,14 +15,14 @@ pub use apis::SettingsApis;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
 // pub use feedback::SettingsFeedback;
-pub use java::SettingsJava;
 pub use appearance::SettingsAppearance;
+pub use java::SettingsJava;
 pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
 pub use minecraft::SettingsMinecraft;
 
 use crate::{
-    components::{IconType, Icon},
+    components::{Icon, IconType},
     theme::colors,
 };
 

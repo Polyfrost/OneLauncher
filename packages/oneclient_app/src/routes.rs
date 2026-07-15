@@ -17,13 +17,13 @@ use crate::view::{
             ClusterShaders, ClusterTextures, ProcessLogs,
         },
         settings::{
-            SettingsApis, SettingsAppearance, SettingsChangelog, SettingsDeveloper,
-            SettingsJava, SettingsLanguage, SettingsLauncher, SettingsMinecraft,
+            SettingsApis, SettingsAppearance, SettingsChangelog, SettingsDeveloper, SettingsJava,
+            SettingsLanguage, SettingsLauncher, SettingsMinecraft,
         },
     },
     onboarding::{
         OnboardingAccount, OnboardingBundles, OnboardingDownloading, OnboardingLanguage,
-        OnboardingMigration, OnboardingPreferences, OnboardingWelcome,
+        OnboardingMigration, OnboardingPreferences, OnboardingTerms, OnboardingWelcome,
     },
 };
 
@@ -37,6 +37,8 @@ pub enum Route {
         #[layout(OnboardingShell)]
             #[route("/onboarding")]
             OnboardingWelcome {},
+            #[route("/onboarding/terms")]
+            OnboardingTerms {},
             #[route("/onboarding/migration")]
             OnboardingMigration {},
             #[route("/onboarding/language")]
@@ -120,6 +122,7 @@ impl Route {
         match self {
             Route::Startup { .. } => "Startup".to_string(),
             Route::OnboardingWelcome { .. } => "Welcome".to_string(),
+            Route::OnboardingTerms { .. } => "Terms & Privacy".to_string(),
             Route::OnboardingMigration { .. } => "Migration".to_string(),
             Route::OnboardingLanguage { .. } => "Language".to_string(),
             Route::OnboardingAccount { .. } => "Account".to_string(),

@@ -239,6 +239,7 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
 		versions: Arc::new(crate::versions::VersionsManager::new()),
 		images: crate::images::ImageCacheStore::new(),
 		games: crate::game::GameProcessManager::new(),
+		discord: crate::discord::DiscordRpc::spawn(false),
 	}))
 }
 

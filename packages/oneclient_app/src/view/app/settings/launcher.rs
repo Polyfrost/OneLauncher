@@ -1,8 +1,8 @@
 use freya::prelude::*;
 
+use super::settings_page;
 use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{use_dispatch, use_launcher, use_settings_snapshot};
-use super::settings_page;
 use crate::platform;
 use crate::view::app::settings::{section_header, settings_row};
 
@@ -20,17 +20,24 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let crash_reporting = use_state({
+            let v = settings.crash_reporting;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         {
             let settings = settings.clone();
             use_side_effect(move || {
                 let discord = *discord_rpc.read();
+                let crash = *crash_reporting.read();
                 if *first.peek() {
                     first.set(false);
                     return;
                 }
                 let mut next = settings.clone();
                 next.discord_enabled = discord;
+                next.crash_reporting = crash;
                 dispatch.set_settings(next);
             });
         }
@@ -45,6 +52,12 @@ impl Component for SettingsLauncher {
                 "Discord RPC",
                 "Enable Discord Rich Presence.",
                 toggle(discord_rpc),
+            ))
+            .child(settings_row(
+                IconType::AlertTriangle,
+                "Crash Reporting",
+                "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
+                toggle(crash_reporting),
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(settings_row(

@@ -19,7 +19,7 @@ impl Component for UpdatePromptOverlay {
         let Some(prompt) = snapshot.pending_prompt.clone() else {
             return rect().into_element();
         };
-		
+
         if prompt.kind != PromptKind::Update {
             return rect().into_element();
         }

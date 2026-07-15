@@ -154,7 +154,7 @@ pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
     Ok(())
 }
 
-const EMPTY_NOTE_NAME: &str = "PLEASE_READ_ME.txt";
+const EMPTY_NOTE_NAME: &str = "WHY_NOTHING_HERE.txt";
 
 async fn clear_content_files(dir: &Path) {
     let Ok(mut entries) = polyio::read_dir(dir).await else {

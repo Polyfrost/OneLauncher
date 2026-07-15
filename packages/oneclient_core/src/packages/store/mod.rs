@@ -346,16 +346,18 @@ fn ensure_compatible(
         return Ok(());
     }
 
-    let cluster_loader =
-        GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
+    if project.content_type == ContentType::Mod {
+        let cluster_loader =
+            GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
 
-    if !version.loaders.is_empty()
-        && !version
-            .loaders
-            .iter()
-            .any(|l| cluster_loader.compatible_with(*l))
-    {
-        return Err(PackageError::IncompatibleLoader.into());
+        if !version.loaders.is_empty()
+            && !version
+                .loaders
+                .iter()
+                .any(|l| cluster_loader.compatible_with(*l))
+        {
+            return Err(PackageError::IncompatibleLoader.into());
+        }
     }
 
     if !version.game_versions.is_empty()
@@ -368,4 +370,106 @@ fn ensure_compatible(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::packages::types::PackageBody;
+    use chrono::Utc;
+
+    fn project(content_type: ContentType) -> ProjectDetail {
+        ProjectDetail {
+            id: "p".into(),
+            slug: "p".into(),
+            provider: ProviderId::Modrinth,
+            content_type,
+            name: "p".into(),
+            summary: String::new(),
+            author: String::new(),
+            members: Vec::new(),
+            gallery: Vec::new(),
+            body: PackageBody::Raw(String::new()),
+            license: None,
+            links: Vec::new(),
+            version_ids: Vec::new(),
+            game_versions: Vec::new(),
+            loaders: Vec::new(),
+            icon_url: None,
+            created: Utc::now(),
+            updated: Utc::now(),
+            downloads: 0,
+        }
+    }
+
+    fn version(loaders: Vec<GameLoader>, game_versions: Vec<&str>) -> VersionDetail {
+        VersionDetail {
+            version_id: "v".into(),
+            project_id: "p".into(),
+            name: "v".into(),
+            version_number: "1".into(),
+            changelog: None,
+            game_versions: game_versions.into_iter().map(Into::into).collect(),
+            loaders,
+            published: Utc::now(),
+            downloads: 0,
+            files: Vec::new(),
+        }
+    }
+
+    fn cluster(loader: GameLoader, mc_version: &str) -> ClusterRow {
+        ClusterRow {
+            id: 1,
+            name: "c".into(),
+            folder_name: "c".into(),
+            setting_profile_name: None,
+            mc_version: mc_version.into(),
+            mc_loader: loader as i64,
+            stage: 0,
+            mc_loader_version: None,
+            created_at: None,
+            last_played: None,
+            overall_played: None,
+            linked_modpack_hash: None,
+        }
+    }
+
+    #[test]
+    fn resource_pack_installs_into_modded_cluster() {
+        let result = ensure_compatible(
+            &project(ContentType::ResourcePack),
+            &version(vec![GameLoader::Vanilla], vec!["1.21.4"]),
+            &cluster(GameLoader::Fabric, "1.21.4"),
+        );
+
+        assert!(result.is_ok(), "resource packs are not bound to the loader");
+    }
+
+    #[test]
+    fn mod_still_rejects_incompatible_loader() {
+        let result = ensure_compatible(
+            &project(ContentType::Mod),
+            &version(vec![GameLoader::Forge], vec!["1.21.4"]),
+            &cluster(GameLoader::Fabric, "1.21.4"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(LauncherError::PackageError(PackageError::IncompatibleLoader))
+        ));
+    }
+
+    #[test]
+    fn resource_pack_still_rejects_incompatible_mc_version() {
+        let result = ensure_compatible(
+            &project(ContentType::ResourcePack),
+            &version(vec![GameLoader::Vanilla], vec!["1.7.10"]),
+            &cluster(GameLoader::Fabric, "1.21.4"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(LauncherError::PackageError(PackageError::IncompatibleMcVersion))
+        ));
+    }
 }

@@ -65,7 +65,8 @@ enum Confirm {
 
 fn kind_badge(kind: LogKind) -> &'static str {
     match kind {
-        LogKind::Game { .. } => "Launcher",
+        LogKind::Game { .. } => "Game output",
+        LogKind::Launcher => "Launcher logs",
         LogKind::Minecraft => "Minecraft",
         LogKind::CrashReport => "Crash report",
         LogKind::Other => "Other",
@@ -151,7 +152,7 @@ impl Component for ClusterLogs {
             let value = search.read().clone();
             (!value.trim().is_empty()).then_some(value)
         };
-        
+
         let content_query = use_log_content(
             selected_path.clone(),
             level.read().to_level(),
@@ -162,7 +163,7 @@ impl Component for ClusterLogs {
         let Some(cluster) = load_cluster(cluster_id) else {
             return cluster_not_found();
         };
-        let folder = cluster.game_dir().ok().map(|d| d.join("logs"));
+        let folder = cluster.dir().ok().map(|d| d.join("logs"));
 
         let files = try_cluster_logs(&logs_query).unwrap_or_default();
         let has_log = !files.is_empty();

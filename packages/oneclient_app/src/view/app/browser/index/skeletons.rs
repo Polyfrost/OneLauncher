@@ -1,8 +1,6 @@
 use super::*;
 
-use freya::animation::{
-    AnimNum, Ease, Function, OnCreation, OnFinish, use_animation,
-};
+use freya::animation::{AnimNum, Ease, Function, OnCreation, OnFinish, use_animation};
 
 use crate::theme::colors;
 use crate::ui::border_all_color;

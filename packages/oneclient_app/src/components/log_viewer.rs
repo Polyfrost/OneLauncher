@@ -1,4 +1,3 @@
-
 use std::sync::{Arc, LazyLock};
 
 use freya::prelude::*;
@@ -289,12 +288,11 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         } else {
             colors::fg_secondary()
         }))
-        .child(
-            label()
-                .text("Auto-scroll")
-                .font_size(11.)
-                .color(if on { colors::brand() } else { colors::fg_secondary() }),
-        )
+        .child(label().text("Auto-scroll").font_size(11.).color(if on {
+            colors::brand()
+        } else {
+            colors::fg_secondary()
+        }))
         .into_element()
 }
 
@@ -308,11 +306,15 @@ struct PosGeom {
     corrected_y: f32,
 }
 
-fn pos_at_screen(lines: &[Arc<str>], geom: PosGeom, screen_x: f32, screen_y: f32) -> (usize, usize) {
+fn pos_at_screen(
+    lines: &[Arc<str>],
+    geom: PosGeom,
+    screen_x: f32,
+    screen_y: f32,
+) -> (usize, usize) {
     let region_y = screen_y - geom.viewport_top_px;
     let band_y = region_y - geom.corrected_y - BODY_PAD_TOP;
-    let line =
-        ((band_y / LINE_H).floor() as i64).clamp(0, (geom.count as i64 - 1).max(0)) as usize;
+    let line = ((band_y / LINE_H).floor() as i64).clamp(0, (geom.count as i64 - 1).max(0)) as usize;
 
     let text_origin_x = ROW_PAD_X + geom.num_col_w + NUM_GAP;
     let local_x = screen_x - geom.viewport_left_px - geom.corrected_x - text_origin_x;

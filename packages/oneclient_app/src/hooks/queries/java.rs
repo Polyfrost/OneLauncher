@@ -1,6 +1,4 @@
-use freya::query::{
-    QueriesStorage, Query, QueryCapability, QueryStateData, UseQuery, use_query,
-};
+use freya::query::{QueriesStorage, Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_core::LauncherState;
 use oneclient_core::java::{AvailableJava, JavaManager, JavaRuntime, JavaVendor};
 
@@ -31,7 +29,9 @@ pub fn java_runtimes(query: &UseQuery<ListJavaRuntimesQuery>) -> Vec<JavaRuntime
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading { res: Some(Ok(list)) } => list.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list.clone(),
         _ => Vec::new(),
     }
 }
@@ -68,14 +68,14 @@ pub fn use_provider_versions(vendor: JavaVendor) -> UseQuery<ProviderVersionsQue
     ))
 }
 
-pub fn provider_versions(
-    query: &UseQuery<ProviderVersionsQuery>,
-) -> (Vec<AvailableJava>, bool) {
+pub fn provider_versions(query: &UseQuery<ProviderVersionsQuery>) -> (Vec<AvailableJava>, bool) {
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => (list.clone(), false),
         QueryStateData::Settled { res: Err(_), .. } => (Vec::new(), false),
-        QueryStateData::Loading { res: Some(Ok(list)) } => (list.clone(), true),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => (list.clone(), true),
         _ => (Vec::new(), true),
     }
 }

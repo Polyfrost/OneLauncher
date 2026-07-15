@@ -1,8 +1,8 @@
 use freya::prelude::*;
 
+use super::settings_page;
 use crate::components::{Icon, IconType};
 use crate::hooks::{changelog_error, changelog_groups, changelog_is_loading, use_changelog};
-use super::settings_page;
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -119,14 +119,16 @@ impl Component for ReleaseCard {
                     .spacing(4.)
                     .padding(Gaps::new(0., 0., 0., 6.))
                     .children(if changes.is_empty() {
-                        vec![rect()
-                            .child(
-                                label()
-                                    .text("No changes recorded for this version.")
-                                    .font_size(12.)
-                                    .color(colors::fg_secondary()),
-                            )
-                            .into_element()]
+                        vec![
+                            rect()
+                                .child(
+                                    label()
+                                        .text("No changes recorded for this version.")
+                                        .font_size(12.)
+                                        .color(colors::fg_secondary()),
+                                )
+                                .into_element(),
+                        ]
                     } else {
                         changes
                             .into_iter()

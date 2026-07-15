@@ -19,7 +19,7 @@ impl TabItem {
         }
     }
 
-	#[allow(dead_code)]
+    #[allow(dead_code)]
     pub fn count_text(mut self, text: impl Into<String>) -> Self {
         self.count = Some(text.into());
         self

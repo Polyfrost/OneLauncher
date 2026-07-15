@@ -1,14 +1,14 @@
 use freya::prelude::*;
-use oneclient_core::packages::{ContentType, ProviderId};
+use oneclient_core::packages::ContentType;
 
 use crate::hooks::{
-    bundle_overrides_map, bundles_with_status_items, cluster_content_items, package_meta_batch,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_meta_batch,
+    bundle_overrides_map, bundles_with_status_items, cluster_content_items, use_bundle_overrides,
+    use_bundles_with_status, use_cluster_content,
 };
 use crate::layout::cluster_content;
 
 use super::package_manager::{
-    PackageManager, bundle_categories, bundle_packages, managed_project_ids,
+    PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
 use super::{cluster_not_found, load_cluster};
 
@@ -23,8 +23,8 @@ impl Component for ClusterShaders {
         let bundles = use_bundles_with_status(self.cluster_id);
         let overrides = use_bundle_overrides(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
-        let project_ids = managed_project_ids(&bundle_items, ContentType::Shader);
-        let meta = use_package_meta_batch(ProviderId::Modrinth, project_ids);
+        let content_items = cluster_content_items(&content);
+        let meta = use_content_meta(&content_items, &bundle_items, ContentType::Shader);
 
         let Some(_cluster) = load_cluster(self.cluster_id) else {
             return cluster_not_found();
@@ -32,10 +32,10 @@ impl Component for ClusterShaders {
 
         let all_categories = bundle_categories(&bundle_items);
         let items = bundle_packages(
-            cluster_content_items(&content),
+            content_items,
             &bundle_items,
             &bundle_overrides_map(&overrides),
-            &package_meta_batch(&meta),
+            &meta,
             ContentType::Shader,
         );
 

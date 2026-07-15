@@ -6,12 +6,8 @@ use freya::query::QueryStateData;
 use oneclient_core::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::{BundleArchive, BundleFileKind};
 
-use crate::components::{
-    Button, Icon, OverlayPopup, ScrollArea, TabBar, TabItem,
-};
-use crate::hooks::{
-    package_meta_batch, use_cached_image, use_package_meta_batch,
-};
+use crate::components::{Button, Icon, OverlayPopup, ScrollArea, TabBar, TabItem};
+use crate::hooks::{package_meta_batch, use_cached_image, use_package_meta_batch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;

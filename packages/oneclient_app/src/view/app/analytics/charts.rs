@@ -62,7 +62,10 @@ impl Component for WhenChart {
                 )
             }
             WhenMode::Hour => {
-                let hour = self.peak_hour.map(format_hour).unwrap_or_else(|| "—".to_string());
+                let hour = self
+                    .peak_hour
+                    .map(format_hour)
+                    .unwrap_or_else(|| "—".to_string());
                 (
                     format!("Peak around {hour}"),
                     BarChart::new(self.per_hour.clone(), hour_labels())
@@ -148,7 +151,12 @@ impl Component for DailyChart {
         let win_total: i64 = values.iter().sum();
         let subtitle = match (slice.first(), slice.last()) {
             (Some((a, _)), Some((b, _))) => {
-                format!("{} · {} – {}", format_duration_hm(win_total), format_day(*a), format_day(*b))
+                format!(
+                    "{} · {} – {}",
+                    format_duration_hm(win_total),
+                    format_day(*a),
+                    format_day(*b)
+                )
             }
             _ => format_duration_hm(win_total),
         };
@@ -159,24 +167,16 @@ impl Component for DailyChart {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .child(nav_button(
-                IconType::ChevronsLeft,
-                can_older,
-                move |_| {
-                    if can_older {
-                        *offset.write() = off + 1;
-                    }
-                },
-            ))
-            .child(nav_button(
-                IconType::ChevronsRight,
-                can_newer,
-                move |_| {
-                    if can_newer {
-                        *offset.write() = off - 1;
-                    }
-                },
-            ))
+            .child(nav_button(IconType::ChevronsLeft, can_older, move |_| {
+                if can_older {
+                    *offset.write() = off + 1;
+                }
+            }))
+            .child(nav_button(IconType::ChevronsRight, can_newer, move |_| {
+                if can_newer {
+                    *offset.write() = off - 1;
+                }
+            }))
             .child(
                 SegmentedControl::new(range)
                     .height(30.)
@@ -272,6 +272,12 @@ fn weekday_labels() -> Vec<String> {
 
 fn hour_labels() -> Vec<String> {
     (0..24)
-        .map(|h| if h % 6 == 0 { format_hour(h) } else { String::new() })
+        .map(|h| {
+            if h % 6 == 0 {
+                format_hour(h)
+            } else {
+                String::new()
+            }
+        })
         .collect()
 }

@@ -1,4 +1,3 @@
-
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_core::packages::domain::GameLoader;
 use oneclient_core::packages::types::{
@@ -48,7 +47,8 @@ impl QueryCapability for PackageSearchQuery {
                 &SearchFilters {
                     query: (!keys.query.trim().is_empty()).then(|| keys.query.trim().to_string()),
                     content_type: Some(keys.content_type),
-                    game_versions: (!keys.game_versions.is_empty()).then(|| keys.game_versions.clone()),
+                    game_versions: (!keys.game_versions.is_empty())
+                        .then(|| keys.game_versions.clone()),
                     loaders: (!keys.loaders.is_empty()).then(|| keys.loaders.clone()),
                     categories: (!keys.categories.is_empty()).then(|| keys.categories.clone()),
                     sort: Some(keys.sort),
@@ -91,7 +91,9 @@ pub fn search_items(query: &UseQuery<PackageSearchQuery>) -> Vec<ProjectSummary>
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(page), .. } => page.items.clone(),
-        QueryStateData::Loading { res: Some(Ok(page)) } => page.items.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(page)),
+        } => page.items.clone(),
         _ => Vec::new(),
     }
 }
@@ -100,13 +102,18 @@ pub fn search_total(query: &UseQuery<PackageSearchQuery>) -> usize {
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(page), .. } => page.total,
-        QueryStateData::Loading { res: Some(Ok(page)) } => page.total,
+        QueryStateData::Loading {
+            res: Some(Ok(page)),
+        } => page.total,
         _ => 0,
     }
 }
 
 pub fn search_pending(query: &UseQuery<PackageSearchQuery>) -> bool {
-    matches!(&*query.read().state(), QueryStateData::Pending | QueryStateData::Loading { .. })
+    matches!(
+        &*query.read().state(),
+        QueryStateData::Pending | QueryStateData::Loading { .. }
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -126,7 +133,9 @@ impl QueryCapability for PackageProjectQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
         let provider = state.services.packages.get(keys.provider)?;
-        provider.get_project(&keys.project_id, &state.services).await
+        provider
+            .get_project(&keys.project_id, &state.services)
+            .await
     }
 }
 
@@ -146,8 +155,12 @@ pub fn use_package_project(
 pub fn project_detail(query: &UseQuery<PackageProjectQuery>) -> Option<ProjectDetail> {
     let reader = query.read();
     match &*reader.state() {
-        QueryStateData::Settled { res: Ok(detail), .. } => Some(detail.clone()),
-        QueryStateData::Loading { res: Some(Ok(detail)) } => Some(detail.clone()),
+        QueryStateData::Settled {
+            res: Ok(detail), ..
+        } => Some(detail.clone()),
+        QueryStateData::Loading {
+            res: Some(Ok(detail)),
+        } => Some(detail.clone()),
         _ => None,
     }
 }
@@ -260,7 +273,9 @@ pub fn version_list(query: &UseQuery<PackageVersionsQuery>) -> Vec<VersionSummar
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(page), .. } => page.items.clone(),
-        QueryStateData::Loading { res: Some(Ok(page)) } => page.items.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(page)),
+        } => page.items.clone(),
         _ => Vec::new(),
     }
 }
@@ -269,7 +284,9 @@ pub fn versions_total(query: &UseQuery<PackageVersionsQuery>) -> usize {
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(page), .. } => page.total,
-        QueryStateData::Loading { res: Some(Ok(page)) } => page.total,
+        QueryStateData::Loading {
+            res: Some(Ok(page)),
+        } => page.total,
         _ => 0,
     }
 }
@@ -315,7 +332,9 @@ pub fn category_list(query: &UseQuery<PackageCategoriesQuery>) -> Vec<String> {
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading { res: Some(Ok(list)) } => list.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list.clone(),
         _ => Vec::new(),
     }
 }

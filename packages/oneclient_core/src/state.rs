@@ -6,6 +6,7 @@ use tokio::sync::{Mutex, OnceCell};
 
 use crate::auth::{CredentialsStore, PendingBrowserLogin};
 use crate::bundles::BundlesManager;
+use crate::discord::DiscordRpc;
 use crate::http::RequestClient;
 use crate::images::ImageCacheStore;
 use crate::java::JavaManager;
@@ -38,6 +39,7 @@ pub struct LauncherState {
 	pub versions: Arc<VersionsManager>,
 	pub images: ImageCacheStore,
 	pub games: crate::game::GameProcessManager,
+	pub discord: DiscordRpc,
 }
 
 impl LauncherState {
@@ -59,6 +61,7 @@ impl LauncherState {
         let settings = store::load_settings(Some(&services.notifier)).await;
         let auth = CredentialsStore::load().await?;
         let java = JavaManager;
+        let discord = DiscordRpc::spawn(settings.discord_enabled);
 
 		let state = Arc::new(Self {
 			services,
@@ -71,6 +74,7 @@ impl LauncherState {
 			versions: Arc::new(VersionsManager::new()),
 			images: ImageCacheStore::new(),
 			games: crate::game::GameProcessManager::new(),
+			discord,
 		});
 
 		STATE

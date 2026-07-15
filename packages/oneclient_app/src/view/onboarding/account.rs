@@ -125,12 +125,7 @@ fn sign_in_card(
                         .size(13.)
                         .color(colors::danger()),
                 )
-                .child(
-                    label()
-                        .text(message)
-                        .font_size(12.)
-                        .color(colors::danger()),
-                )
+                .child(label().text(message).font_size(12.).color(colors::danger()))
                 .into_element()
         }))
         .into_element()

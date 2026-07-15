@@ -22,11 +22,14 @@ pub fn init_filtered(filter: impl FnOnce() -> EnvFilter) -> LauncherResult<()> {
 
     let stdout_layer = tracing_subscriber::fmt::layer().with_writer(io::stdout);
 
+    let sentry_layer = sentry_tracing::layer();
+
     #[cfg(debug_assertions)]
     {
         tracing_subscriber::registry()
             .with(filter)
             .with(stdout_layer)
+            .with(sentry_layer)
             .init();
     }
 
@@ -50,6 +53,7 @@ pub fn init_filtered(filter: impl FnOnce() -> EnvFilter) -> LauncherResult<()> {
             .with(filter)
             .with(stdout_layer)
             .with(file_layer)
+            .with(sentry_layer)
             .init();
 
         tracing::info!(path = %log_path.display(), "writing logs to file");

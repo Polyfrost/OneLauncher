@@ -17,14 +17,12 @@ pub fn border_all(width: f32) -> Border {
 }
 
 pub fn border_all_color(width: f32, color: Color) -> Border {
-    Border::new()
-        .fill(color)
-        .width(BorderWidth {
-            top: width,
-            right: width,
-            bottom: width,
-            left: width,
-        })
+    Border::new().fill(color).width(BorderWidth {
+        top: width,
+        right: width,
+        bottom: width,
+        left: width,
+    })
 }
 
 pub fn border_left(width: f32) -> Border {

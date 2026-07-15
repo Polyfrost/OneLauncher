@@ -1,13 +1,11 @@
 use freya::prelude::*;
 
-use crate::components::{IconType, Icon};
 use super::settings_page;
+use crate::components::{Icon, IconType};
 use crate::theme::colors;
 use crate::view::app::settings::section_header;
 
-const LANGUAGES: &[(&str, &str)] = &[
-    ("English", "English (US)"),
-];
+const LANGUAGES: &[(&str, &str)] = &[("English", "English (US)")];
 
 #[derive(PartialEq)]
 pub struct SettingsLanguage;
@@ -63,8 +61,11 @@ fn language_row(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .maybe_child(
-            is_selected.then(|| Icon::new(IconType::Check).size(20.).color(colors::brand()).into_element()),
-        )
+        .maybe_child(is_selected.then(|| {
+            Icon::new(IconType::Check)
+                .size(20.)
+                .color(colors::brand())
+                .into_element()
+        }))
         .into_element()
 }

@@ -33,7 +33,7 @@ pub fn normalize_hash(hash: &str) -> String {
 	hash.trim().to_ascii_lowercase()
 }
 
-fn to_hex(data: &[u8]) -> String {
+pub(crate) fn to_hex(data: &[u8]) -> String {
 	data.iter().fold(String::new(), |mut out, b| {
 		let _ = write!(out, "{b:02x}");
 		out

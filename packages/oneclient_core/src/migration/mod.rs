@@ -58,7 +58,7 @@ pub struct MigrationDetection {
 /// Where an imported game directory should land in *this* launcher.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportTarget {
-    /// Copy into the shared `<launcher_dir>/minecraft`.
+    /// Copy into the shared `<launcher_dir>/.minecraft`.
     Shared,
     /// Copy into a specific new cluster's own folder and mark it dedicated so
     /// `Cluster::game_dir()` resolves there instead of the shared dir.

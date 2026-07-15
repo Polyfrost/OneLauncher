@@ -89,7 +89,9 @@ where
 {
     match &*query.read().state() {
         QueryStateData::Settled { res: Ok(value), .. } => Some(value.clone()),
-        QueryStateData::Loading { res: Some(Ok(value)) } => Some(value.clone()),
+        QueryStateData::Loading {
+            res: Some(Ok(value)),
+        } => Some(value.clone()),
         _ => None,
     }
 }

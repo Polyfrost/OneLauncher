@@ -1,4 +1,3 @@
-
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_core::packages::{ContentType, PackageStore};
 use oneclient_core::{LauncherError, LauncherState, LinkedArtifactInfo};
@@ -51,7 +50,9 @@ pub fn cluster_content_items(query: &UseQuery<ClusterContentQuery>) -> Vec<Linke
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading { res: Some(Ok(list)) } => list.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list.clone(),
         _ => Vec::new(),
     }
 }

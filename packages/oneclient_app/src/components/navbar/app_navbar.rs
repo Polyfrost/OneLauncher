@@ -37,7 +37,7 @@ impl Component for Navbar {
                     .window_drag()
                     .width(Size::window_percent(100.))
                     .height(Size::px(theme::NAVBAR_HEIGHT_PX))
-                    .position(Position::new_absolute().top(0.).left(0.).right(0.))
+                    .position(Position::new_absolute().top(0.).left(0.).right(0.)),
             )
     }
 }
@@ -95,8 +95,8 @@ struct NavLink {
 impl Component for NavLink {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
-		let a11y_id = use_a11y();
-		let focused = use_focus(a11y_id);
+        let a11y_id = use_a11y();
+        let focused = use_focus(a11y_id);
 
         let active = self.active;
         let target = self.target.clone();
@@ -125,12 +125,12 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .spacing(2.)
             .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-			// TODO: Hacky workaround for weird freya measurement bug, where if a rectangle has a transparent background (so in dec = 0), it will be measured weirdly.
-			// This basically fools freya into thinking it indeed has a box and properly handles pointer events
-			.background(Color::RED.with_a(0))
-			.a11y_id(a11y_id)
-			.a11y_focusable(true)
-			.a11y_role(AccessibilityRole::Button)
+            // TODO: Hacky workaround for weird freya measurement bug, where if a rectangle has a transparent background (so in dec = 0), it will be measured weirdly.
+            // This basically fools freya into thinking it indeed has a box and properly handles pointer events
+            .background(Color::RED.with_a(0))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
             .on_all_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
                 let _ = RouterContext::get().push(target.clone());

@@ -8,8 +8,7 @@ use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
 
 use crate::components::ScrollArea;
 use crate::hooks::{
-    ClusterBundles, onboarding_bundles_items,
-    use_onboarding_bundles, use_onboarding_selection,
+    ClusterBundles, onboarding_bundles_items, use_onboarding_bundles, use_onboarding_selection,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -321,4 +320,3 @@ impl Component for OnboardingBundles {
             .maybe_child(popup)
     }
 }
-

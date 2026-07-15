@@ -33,7 +33,7 @@ impl ClusterViewShellTab {
         match self {
             Self::Overview => "Overview",
             Self::Logs => "Logs",
-            Self::GameLog => "Game Log",
+            Self::GameLog => "Live Log",
             Self::Screenshots => "Screenshots",
             Self::Mods => "Mods",
             Self::Shaders => "Shaders",

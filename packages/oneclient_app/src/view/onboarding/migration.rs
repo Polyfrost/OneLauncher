@@ -27,9 +27,10 @@ fn build_migrated_selection(source: &[SourceInstance], new: &[ClusterBundles]) -
     let mut selected = HashSet::new();
 
     for cb in new {
-        let Some(instance) = source.iter().find(|o| {
-            o.mc_version == cb.cluster.mc_version && o.mc_loader == cb.cluster.mc_loader
-        }) else {
+        let Some(instance) = source
+            .iter()
+            .find(|o| o.mc_version == cb.cluster.mc_version && o.mc_loader == cb.cluster.mc_loader)
+        else {
             continue;
         };
 
@@ -89,7 +90,10 @@ impl Component for OnboardingMigration {
         // No detection yet -> render nothing meaningful; the shell only routes
         // here when a source was detected, so this is a transient loading state.
         let Some(detection) = migration_detection(&migration_query) else {
-            return rect().width(Size::fill()).height(Size::fill()).into_element();
+            return rect()
+                .width(Size::fill())
+                .height(Size::fill())
+                .into_element();
         };
         let source_name = detection.source.display_name();
         let new_clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
@@ -103,8 +107,7 @@ impl Component for OnboardingMigration {
         let mut version_cards: Vec<Element> = Vec::new();
         for instance in &detection.instances {
             let selected_import = chosen_folder.as_deref() == Some(instance.folder_name.as_str());
-            let dedicated_available =
-                matching_new_cluster_id(instance, &new_clusters).is_some();
+            let dedicated_available = matching_new_cluster_id(instance, &new_clusters).is_some();
 
             version_cards.push(version_card(
                 instance,
@@ -259,26 +262,16 @@ fn version_card(
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
-                .child(
-                    label()
-                        .text(subtitle)
-                        .font_size(11.)
-                        .color(if selected {
-                            colors::fg_primary()
-                        } else {
-                            colors::fg_secondary()
-                        }),
-                )
-                .child(
-                    label()
-                        .text(categories)
-                        .font_size(11.)
-                        .color(if selected {
-                            colors::fg_primary()
-                        } else {
-                            colors::fg_secondary()
-                        }),
-                ),
+                .child(label().text(subtitle).font_size(11.).color(if selected {
+                    colors::fg_primary()
+                } else {
+                    colors::fg_secondary()
+                }))
+                .child(label().text(categories).font_size(11.).color(if selected {
+                    colors::fg_primary()
+                } else {
+                    colors::fg_secondary()
+                })),
         )
         // Selection affordance only when the instance actually has files.
         .maybe_child(importable.then(|| {
@@ -471,7 +464,7 @@ fn migration_nav(next_enabled: bool, on_next: impl FnMut() + 'static) -> impl In
                 .secondary()
                 .width(Size::px(128.))
                 .on_press(move |_| {
-                    let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
+                    let _ = RouterContext::get().replace(Route::OnboardingTerms {});
                 })
                 .text("Back"),
         )

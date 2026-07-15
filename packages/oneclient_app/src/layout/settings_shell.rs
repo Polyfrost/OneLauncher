@@ -198,7 +198,10 @@ const SEARCH_INDEX: &[SearchItem] = &[
         icon: IconType::Globe01,
         title: "Language",
         description: "Choose the launcher language.",
-        keywords: &["language", "locale", "english", "spanish", "french", "german", "russian", "japanese", "chinese"],
+        keywords: &[
+            "language", "locale", "english", "spanish", "french", "german", "russian", "japanese",
+            "chinese",
+        ],
         route: Route::SettingsLanguage {},
     },
     // Developer
@@ -332,10 +335,7 @@ const GROUPS: &[SettingsGroup] = &[
     },
     SettingsGroup {
         label: "ABOUT",
-        tabs: &[
-            SettingsTab::DeveloperOptions,
-            SettingsTab::Changelog,
-        ],
+        tabs: &[SettingsTab::DeveloperOptions, SettingsTab::Changelog],
     },
 ];
 
@@ -490,18 +490,20 @@ fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
     matches.truncate(SEARCH_RESULTS_MAX);
 
     if matches.is_empty() {
-        return vec![rect()
-            .width(Size::fill())
-            .padding(Gaps::new_symmetric(10., 14.))
-            .corner_radius(CornerRadius::new_all(12.))
-            .background(colors::page_elevated())
-            .child(
-                label()
-                    .text("No settings matched your search.")
-                    .font_size(12.)
-                    .color(colors::fg_secondary()),
-            )
-            .into_element()];
+        return vec![
+            rect()
+                .width(Size::fill())
+                .padding(Gaps::new_symmetric(10., 14.))
+                .corner_radius(CornerRadius::new_all(12.))
+                .background(colors::page_elevated())
+                .child(
+                    label()
+                        .text("No settings matched your search.")
+                        .font_size(12.)
+                        .color(colors::fg_secondary()),
+                )
+                .into_element(),
+        ];
     }
 
     let mut out: Vec<Element> = Vec::with_capacity(matches.len() + 1);
@@ -696,11 +698,11 @@ impl Component for SidebarInfo {
             .spacing(4.)
             .font_size(12.)
             .color(colors::fg_secondary())
-            .children(items.into_iter().map(|item| {
-                label()
-                    .text(item)
-                    .into_element()
-            }))
+            .children(
+                items
+                    .into_iter()
+                    .map(|item| label().text(item).into_element()),
+            )
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
             .on_press(copy_to_clipboard)

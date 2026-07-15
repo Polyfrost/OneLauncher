@@ -12,7 +12,12 @@ use super::{card, card_header};
 
 pub(super) fn servers_section(servers: &[ServerStat]) -> Element {
     let total_joins: i64 = servers.iter().map(|s| s.joins).sum();
-    let max_secs = servers.iter().map(|s| s.total_secs).max().unwrap_or(0).max(1);
+    let max_secs = servers
+        .iter()
+        .map(|s| s.total_secs)
+        .max()
+        .unwrap_or(0)
+        .max(1);
 
     let mut list = rect().vertical().width(Size::fill()).spacing(4.);
     for server in servers.iter().take(10) {
@@ -155,9 +160,12 @@ impl Component for ServerIcon {
         let reader = query.read();
         let loaded = match (&self.url, &*reader.state()) {
             (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-            | (Some(url), QueryStateData::Loading { res: Some(Ok(bytes)) }) => {
-                Some((url.clone(), bytes.clone()))
-            }
+            | (
+                Some(url),
+                QueryStateData::Loading {
+                    res: Some(Ok(bytes)),
+                },
+            ) => Some((url.clone(), bytes.clone())),
             _ => None,
         };
 
@@ -185,7 +193,11 @@ fn server_icon_placeholder(is_ip: bool, size: f32) -> Element {
         .height(Size::px(size))
         .corner_radius(CornerRadius::new_all(6.))
         .background(colors::component_bg())
-        .child(Icon::new(icon).size(size * 0.5).color(colors::fg_secondary()))
+        .child(
+            Icon::new(icon)
+                .size(size * 0.5)
+                .color(colors::fg_secondary()),
+        )
         .into_element()
 }
 

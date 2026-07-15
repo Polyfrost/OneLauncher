@@ -81,8 +81,8 @@ impl Component for Dropdown {
         };
 
         let visible = options.len().min(MAX_VISIBLE_OPTIONS);
-        let list_h = visible as f32 * OPTION_HEIGHT
-            + visible.saturating_sub(1) as f32 * OPTION_SPACING;
+        let list_h =
+            visible as f32 * OPTION_HEIGHT + visible.saturating_sub(1) as f32 * OPTION_SPACING;
 
         let offset_y = match (button_area(), list_size()) {
             (Some(button), Some(list)) => {
@@ -141,10 +141,10 @@ impl Component for Dropdown {
                             .font_size(12.)
                             .color(colors::fg_primary()),
                     )
-                    .child(Icon::new(
-                        IconType::ChevronDown)
-                        .size(14.)
-                        .color(colors::fg_secondary()),
+                    .child(
+                        Icon::new(IconType::ChevronDown)
+                            .size(14.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .maybe_child(is_open.then(|| {

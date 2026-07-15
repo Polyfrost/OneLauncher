@@ -1,4 +1,3 @@
-
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
@@ -6,7 +5,7 @@ use oneclient_core::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 
 use crate::components::{CardLayout, PackageEntry};
-use crate::hooks::use_view_state;
+use crate::hooks::{package_meta_batch, use_package_meta_batch, use_view_state};
 
 mod views;
 use views::{ContentBox, ContentKind, EnabledFilter, SortMode, toolbar_bar};
@@ -18,9 +17,13 @@ const GRID_GAP: f32 = 10.;
 const GRID_MIN_W: f32 = 260.;
 const LAZY_OVERSCAN: i64 = 2;
 
-pub fn managed_project_ids(
+pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
+
+fn provider_project_ids(
+    content: &[LinkedArtifactInfo],
     bundles: &[BundleWithUpdateStatus],
     content_type: ContentType,
+    provider: ProviderId,
 ) -> Vec<String> {
     let mut ids = Vec::new();
     for bundle in bundles {
@@ -28,19 +31,49 @@ pub fn managed_project_ids(
             if file.content_type() != content_type {
                 continue;
             }
-            if let BundleFileKind::Managed { project_id, .. } = &file.kind {
+            if let BundleFileKind::Managed {
+                project_id,
+                provider: file_provider,
+                ..
+            } = &file.kind
+                && *file_provider == provider
+            {
                 ids.push(project_id.clone());
             }
         }
     }
+    for info in content {
+        if info.content_type != content_type || info.provider != Some(provider) {
+            continue;
+        }
+        if let Some(project_id) = &info.project_id {
+            ids.push(project_id.clone());
+        }
+    }
     ids
+}
+
+pub fn use_content_meta(
+    content: &[LinkedArtifactInfo],
+    bundles: &[BundleWithUpdateStatus],
+    content_type: ContentType,
+) -> PackageMetaMap {
+    let mut out = PackageMetaMap::new();
+    for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
+        let ids = provider_project_ids(content, bundles, content_type, provider);
+        let query = use_package_meta_batch(provider, ids);
+        for (project_id, meta) in package_meta_batch(&query) {
+            out.insert((provider, project_id), meta);
+        }
+    }
+    out
 }
 
 pub fn bundle_packages(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
     overrides: &HashMap<(String, String), String>,
-    meta: &HashMap<String, CachedPackageMeta>,
+    meta: &PackageMetaMap,
     content_type: ContentType,
 ) -> Vec<PackageEntry> {
     let mut by_project: HashMap<&str, &LinkedArtifactInfo> = HashMap::new();
@@ -104,10 +137,7 @@ pub fn bundle_packages(
     }
 
     for info in &content {
-        let in_bundle = info
-            .project_id
-            .as_deref()
-            .is_some_and(|p| seen.contains(p))
+        let in_bundle = info.project_id.as_deref().is_some_and(|p| seen.contains(p))
             || seen.contains(&info.hash);
         if in_bundle {
             continue;
@@ -141,10 +171,10 @@ fn make_row(
     categories: Vec<String>,
     enabled: bool,
     installed_info: Option<&LinkedArtifactInfo>,
-    meta: &HashMap<String, CachedPackageMeta>,
+    meta: &PackageMetaMap,
     fallback_name: String,
 ) -> PackageEntry {
-    let m = meta.get(&package_id);
+    let m = meta.get(&(provider, package_id.clone()));
     let name = m
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())

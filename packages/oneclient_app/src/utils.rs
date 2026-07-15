@@ -16,7 +16,10 @@ pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
         let Some(parsed) = parse_mc_version(&cluster.mc_version) else {
             continue;
         };
-        groups.entry(parsed.major).or_default().push(cluster.clone());
+        groups
+            .entry(parsed.major)
+            .or_default()
+            .push(cluster.clone());
     }
 
     for list in groups.values_mut() {
@@ -82,9 +85,7 @@ pub fn resolve_cluster(
         .iter()
         .find(|cluster| {
             let version_ok = minor.is_none_or(|minor| {
-                parse_mc_version(&cluster.mc_version)
-                    .and_then(|parsed| parsed.minor)
-                    == Some(minor)
+                parse_mc_version(&cluster.mc_version).and_then(|parsed| parsed.minor) == Some(minor)
             });
             let loader_ok = loader.is_none_or(|loader| cluster.mc_loader == loader);
             version_ok && loader_ok
@@ -241,21 +242,22 @@ fn version_sort_key(cluster: &Cluster) -> (u32, u32) {
         .unwrap_or((0, 0))
 }
 
-
 #[cfg(not(target_os = "linux"))]
 pub fn is_wayland() -> bool {
-	false
+    false
 }
 
 #[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {
-	static IS_WAYLAND: OnceLock<bool> = OnceLock::new();
+    static IS_WAYLAND: OnceLock<bool> = OnceLock::new();
 
-	*IS_WAYLAND.get_or_init(|| {
-		if cfg!(target_os = "linux") {
-			std::env::var("XDG_SESSION_TYPE").map(|v| v == "wayland").unwrap_or(false)
-		} else {
-			false
-		}
-	})
+    *IS_WAYLAND.get_or_init(|| {
+        if cfg!(target_os = "linux") {
+            std::env::var("XDG_SESSION_TYPE")
+                .map(|v| v == "wayland")
+                .unwrap_or(false)
+        } else {
+            false
+        }
+    })
 }

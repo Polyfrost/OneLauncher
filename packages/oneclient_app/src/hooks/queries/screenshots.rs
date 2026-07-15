@@ -12,7 +12,6 @@ use tokio::sync::Semaphore;
 
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterScreenshotsKeys {
     pub cluster_id: i64,
@@ -95,7 +94,6 @@ pub fn try_cluster_screenshots(
         _ => None,
     }
 }
-
 
 pub async fn invalidate_screenshots_queries() {
     QueriesStorage::<ClusterScreenshotsQuery>::try_invalidate_all().await;

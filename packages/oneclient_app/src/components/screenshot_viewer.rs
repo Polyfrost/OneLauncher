@@ -102,11 +102,15 @@ impl Component for ScreenshotViewer {
                                             .height(Size::fill())
                                             .child(preview),
                                     )
-                                    .child(chevron_btn(IconType::ArrowRight, has_next, move |_| {
-                                        if idx + 1 < len {
-                                            index.set(idx + 1);
-                                        }
-                                    })),
+                                    .child(chevron_btn(
+                                        IconType::ArrowRight,
+                                        has_next,
+                                        move |_| {
+                                            if idx + 1 < len {
+                                                index.set(idx + 1);
+                                            }
+                                        },
+                                    )),
                             )
                             .child(
                                 rect()
@@ -119,7 +123,9 @@ impl Component for ScreenshotViewer {
                                             .secondary()
                                             .on_press(move |_| {
                                                 if let Some(dir) = open_path.parent() {
-                                                    crate::platform::open_url(&dir.to_string_lossy());
+                                                    crate::platform::open_url(
+                                                        &dir.to_string_lossy(),
+                                                    );
                                                 }
                                             })
                                             .child(Icon::new(IconType::Folder).size(14.))
@@ -198,8 +204,12 @@ fn header_row(
     len: usize,
     on_close: impl Into<EventHandler<Event<PressEventData>>>,
 ) -> impl IntoElement {
-    let mut meta = format!("{} • {}", format_size(info.size_bytes), fmt_date(info.created));
-    
+    let mut meta = format!(
+        "{} • {}",
+        format_size(info.size_bytes),
+        fmt_date(info.created)
+    );
+
     if let Some(res) = info.resolution {
         meta = format!("{} • {}", format_res(res), meta);
     }

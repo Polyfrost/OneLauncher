@@ -32,10 +32,7 @@ impl GameSnapshot {
     }
 
     pub fn logs_for(&self, cluster_id: i64) -> Arc<Vec<Arc<str>>> {
-        self.logs
-            .get(&cluster_id)
-            .cloned()
-            .unwrap_or_default()
+        self.logs.get(&cluster_id).cloned().unwrap_or_default()
     }
 }
 

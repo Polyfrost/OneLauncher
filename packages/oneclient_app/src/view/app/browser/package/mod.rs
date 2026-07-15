@@ -3,8 +3,8 @@ use oneclient_core::packages::{ContentType, ProviderId};
 
 use crate::components::ScrollArea;
 use crate::hooks::{
-    content_type_for_slug, project_detail, use_browser_compat, use_dispatch,
-    use_link_confirm, use_package_project, use_package_versions, version_list, versions_total,
+    content_type_for_slug, project_detail, use_browser_compat, use_dispatch, use_link_confirm,
+    use_package_project, use_package_versions, version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -205,4 +205,3 @@ impl Component for BrowserPackage {
             .into_element()
     }
 }
-

@@ -49,7 +49,13 @@ fn dialog(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> im
         .corner_radius(CornerRadius::new_all(16.))
         .background(CARD_BG)
         .border(border_all_color(1., colors::component_border()))
-        .shadow(Shadow::from((0., 18., 52., 0., Color::from_argb(150, 0, 0, 0))))
+        .shadow(Shadow::from((
+            0.,
+            18.,
+            52.,
+            0.,
+            Color::from_argb(150, 0, 0, 0),
+        )))
         .child(banner(summary))
         .child(content(summary, dispatch))
 }
@@ -93,7 +99,11 @@ fn banner(summary: &ClusterUpdateSummary) -> impl IntoElement {
                                 .horizontal()
                                 .cross_align(Alignment::Center)
                                 .spacing(5.)
-                                .child(Icon::new(IconType::RefreshCw01).size(12.).color(Color::WHITE))
+                                .child(
+                                    Icon::new(IconType::RefreshCw01)
+                                        .size(12.)
+                                        .color(Color::WHITE),
+                                )
                                 .child(
                                     label()
                                         .text("Updated")

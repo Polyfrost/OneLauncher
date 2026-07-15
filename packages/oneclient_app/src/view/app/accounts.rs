@@ -1,7 +1,9 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
+use freya::animation::{AnimNum, Function, OnFinish, use_animation};
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use oneclient_core::auth::{AccountKind, MinecraftAccount};
+use uuid::Uuid;
 
 use crate::components::{
     Avatar, Button, Icon, IconType, OverlayPopup, PlayerModel, ScrollArea, TextInput,
@@ -74,13 +76,17 @@ impl Component for Accounts {
         let mut rows: Vec<Element> = accounts
             .iter()
             .map(|account| {
-                account_row(
-                    account,
-                    Some(account.id) == default_id,
+                AccountRow {
+                    id: account.id,
+                    username: account.username.clone(),
+                    kind: account.kind,
+                    expires: account.expires,
+                    is_default: Some(account.id) == default_id,
                     set_default,
                     remove,
                     refresh,
-                )
+                }
+                .into_element()
             })
             .collect();
         if rows.is_empty() {
@@ -339,113 +345,182 @@ fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
         .into_element()
 }
 
-fn account_row(
-    account: &MinecraftAccount,
+const REFRESH_SPIN_TIME: u64 = 800;
+
+const REFRESHING_OPACITY: f32 = 0.7;
+
+struct AccountRow {
+    id: Uuid,
+    username: String,
+    kind: AccountKind,
+    expires: DateTime<Utc>,
     is_default: bool,
     set_default: crate::hooks::UseSetDefaultAccount,
     remove: crate::hooks::UseRemoveAccount,
     refresh: crate::hooks::UseRefreshAccount,
-) -> Element {
-    let id = account.id;
-    let is_microsoft = account.is_microsoft();
-    let expired = is_microsoft && account.expires <= Utc::now();
+}
 
-    let border_color = if expired {
-        colors::danger()
-    } else if is_default {
-        colors::brand()
-    } else {
-        colors::component_border()
-    };
+impl PartialEq for AccountRow {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.username == other.username
+            && self.kind == other.kind
+            && self.expires == other.expires
+            && self.is_default == other.is_default
+    }
+}
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .content(Content::Flex)
-        .spacing(16.)
-        .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., border_color))
-        .a11y_role(AccessibilityRole::Button)
-        .maybe(!is_default, |el| {
-            el.on_press(move |_| set_default.mutate(SetDefaultAccountKeys { id: Some(id) }))
-        })
-        .child(
-            Avatar::new(id.to_string())
-                .width(Size::px(40.))
-                .height(Size::px(40.)),
-        )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(4.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .spacing(8.)
-                        .child(
-                            label()
-                                .text(account.username.clone())
-                                .font_size(16.)
-                                .font_weight(FontWeight::MEDIUM)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(kind_badge(account.kind))
-                        .maybe_child(is_default.then(default_badge))
-                        .maybe_child(expired.then(expired_badge)),
-                )
-                .child(
-                    label()
-                        .text(id.to_string())
-                        .font_size(11.)
+impl Component for AccountRow {
+    fn render_key(&self) -> DiffKey {
+        DiffKey::from(&self.id)
+    }
+
+    fn render(&self) -> impl IntoElement {
+        let id = self.id;
+        let is_default = self.is_default;
+        let set_default = self.set_default;
+        let remove = self.remove;
+        let refresh = self.refresh;
+
+        let is_microsoft = self.kind == AccountKind::Microsoft;
+        let expired = is_microsoft && self.expires <= Utc::now();
+
+        let mut refreshing = use_state(|| false);
+        let is_refreshing = *refreshing.read();
+
+        let spin = use_animation(|conf| {
+            conf.on_finish(OnFinish::restart());
+            AnimNum::new(0., 360.)
+                .time(REFRESH_SPIN_TIME)
+                .function(Function::Linear)
+        });
+
+        use_side_effect_with_deps(&is_refreshing, move |&is_refreshing| {
+            let mut spin = spin;
+            if is_refreshing {
+                spin.start();
+            } else {
+                spin.reset();
+            }
+        });
+
+        let rotation = if is_refreshing {
+            spin.get().value()
+        } else {
+            0.
+        };
+
+        let border_color = if expired {
+            colors::danger()
+        } else if is_default {
+            colors::brand()
+        } else {
+            colors::component_border()
+        };
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .content(Content::Flex)
+            .spacing(16.)
+            .padding(Gaps::new_all(12.))
+            .corner_radius(CornerRadius::new_all(12.))
+            .background(colors::page_elevated())
+            .border(border_all_color(1., border_color))
+            .opacity(if is_refreshing {
+                REFRESHING_OPACITY
+            } else {
+                1.
+            })
+            .a11y_role(AccessibilityRole::Button)
+            .maybe(!is_default, |el| {
+                el.on_press(move |_| set_default.mutate(SetDefaultAccountKeys { id: Some(id) }))
+            })
+            .child(
+                Avatar::new(id.to_string())
+                    .width(Size::px(40.))
+                    .height(Size::px(40.)),
+            )
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(4.)
+                    .child(
+                        rect()
+                            .horizontal()
+                            .cross_align(Alignment::Center)
+                            .spacing(8.)
+                            .child(
+                                label()
+                                    .text(self.username.clone())
+                                    .font_size(16.)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(kind_badge(self.kind))
+                            .maybe_child(is_default.then(default_badge))
+                            .maybe_child(expired.then(expired_badge)),
+                    )
+                    .child(
+                        label()
+                            .text(id.to_string())
+                            .font_size(11.)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .maybe_child(is_microsoft.then(|| {
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        if *refreshing.peek() {
+                            return;
+                        }
+                        refreshing.set(true);
+                        spawn(async move {
+                            refresh.mutate_async(RefreshAccountKeys { id }).await;
+                            refreshing.set(false);
+                        });
+                    })
+                    .child(
+                        rect().rotate(rotation).child(
+                            Icon::new(IconType::RefreshCw01)
+                                .size(18.)
+                                .color(if expired {
+                                    colors::danger()
+                                } else {
+                                    colors::fg_secondary()
+                                }),
+                        ),
+                    )
+                    .into_element()
+            }))
+            .child(
+                Button::new().ghost().icon().enabled(false).child(
+                    Icon::new(IconType::Pencil01)
+                        .size(18.)
                         .color(colors::fg_secondary()),
                 ),
-        )
-        .maybe_child(is_microsoft.then(|| {
-            Button::new()
-                .ghost()
-                .icon()
-                .on_press(move |e: Event<PressEventData>| {
-                    e.stop_propagation();
-                    refresh.mutate(RefreshAccountKeys { id });
-                })
-                .child(
-                    Icon::new(IconType::RefreshCw01)
-                        .size(18.)
-                        .color(if expired {
-                            colors::danger()
-                        } else {
-                            colors::fg_secondary()
-                        }),
-                )
-                .into_element()
-        }))
-        .child(
-            Button::new().ghost().icon().enabled(false).child(
-                Icon::new(IconType::Pencil01)
-                    .size(18.)
-                    .color(colors::fg_secondary()),
-            ),
-        )
-        .child(
-            Button::new()
-                .ghost()
-                .icon()
-                .on_press(move |e: Event<PressEventData>| {
-                    e.stop_propagation();
-                    remove.mutate(RemoveAccountKeys { id });
-                })
-                .child(
-                    Icon::new(IconType::Trash01)
-                        .size(18.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .into_element()
+            )
+            .child(
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        remove.mutate(RemoveAccountKeys { id });
+                    })
+                    .child(
+                        Icon::new(IconType::Trash01)
+                            .size(18.)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .into_element()
+    }
 }
 
 fn kind_badge(kind: AccountKind) -> impl IntoElement {

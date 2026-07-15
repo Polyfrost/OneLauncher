@@ -39,12 +39,15 @@ fn main() {
     let _tokio_guard = rt.enter();
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
-    
+
     if settings.log_debug {
         oneclient_core::logger::init_debug()
     } else {
         oneclient_core::logger::init()
-    }.expect("Failed to initialize logger");
+    }
+    .expect("Failed to initialize logger");
+
+    let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
     let (bridge, handle): (OneClientBridge, CoreBridgeHandle) = OneClientBridge::new();
     handle.spawn_runtime();
@@ -67,7 +70,7 @@ fn main() {
             std::env::var("ONECLIENT_GPU_CACHE_MB")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(32)
+                .unwrap_or(32),
         )
         .with_default_font(theme::DEFAULT_FONT);
 

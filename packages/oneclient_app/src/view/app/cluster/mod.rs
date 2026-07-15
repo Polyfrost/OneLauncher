@@ -1,23 +1,23 @@
-mod overview;
 mod logs;
+mod overview;
 mod package_manager;
 
 mod cluster_settings;
 mod mods;
+mod process_logs;
 mod screenshots;
 mod shaders;
 mod textures;
-mod process_logs;
 
-pub use overview::ClusterOverview;
 pub use logs::ClusterLogs;
+pub use overview::ClusterOverview;
 
 pub use cluster_settings::ClusterSettings;
 pub use mods::ClusterMods;
+pub use process_logs::ProcessLogs;
 pub use screenshots::ClusterScreenshots;
 pub use shaders::ClusterShaders;
 pub use textures::ClusterTextures;
-pub use process_logs::ProcessLogs;
 
 use freya::prelude::*;
 use freya::query::QueryStateData;

@@ -50,7 +50,14 @@ pub(super) fn use_onboarding_tip() -> String {
             let Ok(state) = oneclient_core::LauncherState::get() else {
                 return;
             };
-            match state.services.requester.http().get(FUNFACTS_URL).send().await {
+            match state
+                .services
+                .requester
+                .http()
+                .get(FUNFACTS_URL)
+                .send()
+                .await
+            {
                 Ok(res) if res.status().is_success() => match res.text().await {
                     Ok(text) => {
                         let parsed = parse_funfacts(&text);

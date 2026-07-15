@@ -1,7 +1,7 @@
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::clusters::{Cluster, ClusterManager};
 use oneclient_core::LauncherError;
 use oneclient_core::LauncherState;
+use oneclient_core::clusters::{Cluster, ClusterManager};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListClustersQuery;
@@ -23,5 +23,3 @@ impl QueryCapability for ListClustersQuery {
 pub fn use_clusters() -> UseQuery<ListClustersQuery> {
     use_query(Query::new(ListClustersKeys, ListClustersQuery))
 }
-
-

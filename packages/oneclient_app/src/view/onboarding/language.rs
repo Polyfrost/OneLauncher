@@ -14,9 +14,10 @@ struct Language {
     percentage: u32,
 }
 
-const LANGUAGES: [Language; 1] = [
-    Language { name: "English", percentage: 100 },
-];
+const LANGUAGES: [Language; 1] = [Language {
+    name: "English",
+    percentage: 100,
+}];
 
 #[derive(PartialEq)]
 pub struct OnboardingLanguage;
@@ -29,15 +30,13 @@ impl Component for OnboardingLanguage {
         let back = if has_migration_data(&migration_query) {
             Route::OnboardingMigration {}
         } else {
-            Route::OnboardingWelcome {}
+            Route::OnboardingTerms {}
         };
 
         let rows: Vec<Element> = LANGUAGES
             .iter()
             .enumerate()
-            .map(|(index, lang)| {
-                language_row(lang, index == *selected.read(), selected, language)
-            })
+            .map(|(index, lang)| language_row(lang, index == *selected.read(), selected, language))
             .collect();
 
         let content = rect()
@@ -55,7 +54,13 @@ impl Component for OnboardingLanguage {
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
-            .child(rect().vertical().width(Size::fill()).spacing(4.).children(rows))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(4.)
+                    .children(rows),
+            )
             .into_element();
 
         onboarding_page(
@@ -92,7 +97,9 @@ fn language_row(
         .padding(Gaps::new_symmetric(14., 20.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(background)
-        .maybe(active, |el| el.border(border_all_color(1., colors::brand())))
+        .maybe(active, |el| {
+            el.border(border_all_color(1., colors::brand()))
+        })
         .a11y_role(AccessibilityRole::Button)
         .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
         .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))

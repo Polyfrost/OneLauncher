@@ -391,9 +391,12 @@ fn remote_icon(
     let reader = icon_query.read();
     let loaded = match (icon_url, &*reader.state()) {
         (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-        | (Some(url), QueryStateData::Loading { res: Some(Ok(bytes)) }) => {
-            Some((url.clone(), bytes.clone()))
-        }
+        | (
+            Some(url),
+            QueryStateData::Loading {
+                res: Some(Ok(bytes)),
+            },
+        ) => Some((url.clone(), bytes.clone())),
         _ => None,
     };
 
@@ -420,7 +423,11 @@ fn icon_box(icon: IconType, size: f32) -> Element {
         .height(Size::px(size))
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
-        .child(Icon::new(icon).size(size * 0.4).color(colors::fg_secondary()))
+        .child(
+            Icon::new(icon)
+                .size(size * 0.4)
+                .color(colors::fg_secondary()),
+        )
         .into_element()
 }
 
@@ -436,7 +443,10 @@ fn meta_size(size: u64) -> impl IntoElement {
 }
 
 fn provider_badge(provider: ProviderId) -> Element {
-    badge(Icon::new(provider).size(12.).into_element(), provider.to_string())
+    badge(
+        Icon::new(provider).size(12.).into_element(),
+        provider.to_string(),
+    )
 }
 
 fn local_badge() -> Element {

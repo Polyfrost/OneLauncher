@@ -52,7 +52,9 @@ pub fn onboarding_bundles_items(
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => Some(list.clone()),
-        QueryStateData::Loading { res: Some(Ok(list)) } => Some(list.clone()),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => Some(list.clone()),
         _ => None,
     }
 }
@@ -75,12 +77,8 @@ impl QueryCapability for BundlesWithStatusQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = LauncherState::get()?;
-        get_bundles_with_update_status(
-            self.cluster_id,
-            state.bundles.as_ref(),
-            &state.services,
-        )
-        .await
+        get_bundles_with_update_status(self.cluster_id, state.bundles.as_ref(), &state.services)
+            .await
     }
 }
 
@@ -90,7 +88,9 @@ pub fn bundles_with_status_items(
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading { res: Some(Ok(list)) } => list.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list.clone(),
         _ => Vec::new(),
     }
 }

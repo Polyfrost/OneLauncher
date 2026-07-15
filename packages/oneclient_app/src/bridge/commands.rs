@@ -1,4 +1,3 @@
-
 use std::path::PathBuf;
 
 use oneclient_core::notification::UserChoice;
@@ -12,25 +11,43 @@ use crate::notifications::{ClusterUpdateSummary, NotificationSpec};
 pub enum BridgeCommand {
     ReloadSettings,
     SaveSettings,
-    SetSettings { settings: LauncherSettings },
-    RecordSeenVersion { version: String },
+    SetSettings {
+        settings: LauncherSettings,
+    },
+    RecordSeenVersion {
+        version: String,
+    },
     MarkOnboardingSeen,
+    AcceptTos {
+        terms_version: u32,
+        privacy_version: u32,
+    },
 
-    SaveGlobalProfile { profile: GameSettingsProfile },
-    UpdateGlobalProfile { update: ProfileUpdate },
+    SaveGlobalProfile {
+        profile: GameSettingsProfile,
+    },
+    UpdateGlobalProfile {
+        update: ProfileUpdate,
+    },
 
-    CreateSettingsProfile { name: String },
+    CreateSettingsProfile {
+        name: String,
+    },
     CreateProfileFromGlobal {
         name: String,
         mem_max: Option<u32>,
         force_fullscreen: Option<bool>,
     },
-    UpsertNamedProfile { profile: GameSettingsProfile },
+    UpsertNamedProfile {
+        profile: GameSettingsProfile,
+    },
     UpdateNamedProfile {
         name: String,
         update: ProfileUpdate,
     },
-    DeleteNamedProfile { name: String },
+    DeleteNamedProfile {
+        name: String,
+    },
 
     UpdateClusterProfile {
         cluster_id: ClusterId,
@@ -49,8 +66,12 @@ pub enum BridgeCommand {
         vendor: oneclient_core::java::JavaVendor,
         major: u32,
     },
-    AddCustomJavaRuntime { path: PathBuf },
-    RemoveJavaRuntime { path: String },
+    AddCustomJavaRuntime {
+        path: PathBuf,
+    },
+    RemoveJavaRuntime {
+        path: String,
+    },
 
     ToggleNotificationCenter,
     CloseNotificationCenter,
@@ -64,14 +85,20 @@ pub enum BridgeCommand {
     AnswerPrompt(UserChoice),
     OpenClusterUpdate(ClusterUpdateSummary),
     CloseClusterUpdate,
-    SendNotification { spec: NotificationSpec },
+    SendNotification {
+        spec: NotificationSpec,
+    },
     SendTestProgress {
         current: u64,
         total: u64,
     },
 
-    LaunchCluster { cluster_id: ClusterId },
-    KillCluster { cluster_id: ClusterId },
+    LaunchCluster {
+        cluster_id: ClusterId,
+    },
+    KillCluster {
+        cluster_id: ClusterId,
+    },
     DismissGameError,
 
     ImportLocalFile {
@@ -91,7 +118,9 @@ pub enum BridgeCommand {
         bundle_name: String,
         skip_compatibility: bool,
     },
-    ApplyBundleUpdates { cluster_id: ClusterId },
+    ApplyBundleUpdates {
+        cluster_id: ClusterId,
+    },
     SyncBundles,
 
     ImportLauncher {

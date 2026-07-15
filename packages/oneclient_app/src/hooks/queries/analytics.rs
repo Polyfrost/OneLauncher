@@ -2,7 +2,6 @@ use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_core::LauncherError;
 use oneclient_core::game::{Analytics, cluster_analytics, global_analytics};
 
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GlobalAnalyticsKeys;
 
@@ -32,7 +31,6 @@ pub fn try_global_analytics(query: &UseQuery<GlobalAnalyticsQuery>) -> Option<An
         _ => None,
     }
 }
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterAnalyticsKeys {

@@ -1,6 +1,5 @@
 use freya::animation::{
-    AnimNum, Ease, Function, OnChange, OnCreation,
-    use_animation_with_dependencies,
+    AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
 };
 use freya::prelude::*;
 use oneclient_core::packages::types::ProjectSummary;
@@ -174,7 +173,9 @@ impl Component for Browser {
             match mode {
                 ViewLayout::Grid => {
                     let rows = BROWSE_PAGE_SIZE.div_ceil(GRID_COLUMNS);
-                    sa.lazy(rows, CARD_H, GRID_SPACING, |_| skeleton_grid_row().into_element())
+                    sa.lazy(rows, CARD_H, GRID_SPACING, |_| {
+                        skeleton_grid_row().into_element()
+                    })
                 }
                 ViewLayout::List => sa.lazy(BROWSE_PAGE_SIZE, LIST_ROW_H, LIST_SPACING, |_| {
                     SkeletonListRow.into_element()
@@ -289,4 +290,3 @@ fn controls(
                 ),
         )
 }
-

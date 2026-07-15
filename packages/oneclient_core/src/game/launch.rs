@@ -12,6 +12,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use crate::auth::MinecraftAccount;
 use crate::ClusterStage;
 use crate::clusters::ClusterManager;
+use crate::discord::Presence;
 use crate::game::{
     GameError, arguments, download_minecraft, download_version_info, get_loader_version,
     libraries_missing, resolve_minecraft_version,
@@ -298,6 +299,10 @@ pub async fn launch_cluster(
     stage(LaunchStage::Running);
     state.games.set_pid(cluster_id, pid);
     state.games.set_dir(cluster_id, cwd.clone());
+    state.discord.set_presence(Presence::Playing {
+        cluster: cluster.name.clone(),
+        mc_version: cluster.mc_version.clone(),
+    });
 
     let log_path = crate::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
@@ -343,6 +348,10 @@ pub async fn launch_cluster(
 
         state.games.remove(cluster_id);
         state.services.notifier.game_stage(cluster_id, LaunchStage::Exited);
+
+        if state.games.running_ids().is_empty() {
+            state.discord.set_presence(Presence::Idle);
+        }
 
         if played > Duration::from_secs(1) {
             let _ = ClusterManager::add_playtime(&state, cluster_id, played).await;

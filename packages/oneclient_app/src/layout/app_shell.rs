@@ -9,8 +9,8 @@ use skia_safe::sampling_options::CubicResampler;
 
 use crate::Route;
 use crate::components::Button;
-use crate::layout::AnimatedAppOutlet;
 use crate::components::{AppNavbar, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_db::models::ClusterId;

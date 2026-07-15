@@ -1,4 +1,3 @@
-
 use freya::prelude::*;
 
 use crate::components::LogViewer;
@@ -30,9 +29,7 @@ impl Component for ProcessLogs {
             not_running()
         };
 
-        cluster_content()
-            .child(body)
-            .into_element()
+        cluster_content().child(body).into_element()
     }
 }
 

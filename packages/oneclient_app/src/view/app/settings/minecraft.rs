@@ -2,9 +2,9 @@ use freya::prelude::*;
 use oneclient_core::Patch;
 use oneclient_core::settings::{ProfileUpdate, Resolution};
 
+use super::settings_page;
 use crate::components::{Icon, IconType, TextInput, toggle, validate_number};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
-use super::settings_page;
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
 
@@ -21,11 +21,17 @@ impl Component for SettingsMinecraft {
             move || v
         });
         let width = use_state({
-            let v = profile.resolution.map(|r| r.width.to_string()).unwrap_or_default();
+            let v = profile
+                .resolution
+                .map(|r| r.width.to_string())
+                .unwrap_or_default();
             move || v
         });
         let height = use_state({
-            let v = profile.resolution.map(|r| r.height.to_string()).unwrap_or_default();
+            let v = profile
+                .resolution
+                .map(|r| r.height.to_string())
+                .unwrap_or_default();
             move || v
         });
         let memory = use_state({
@@ -165,7 +171,11 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
                 .width(Size::px(70.))
                 .text_align(TextAlign::Center),
         )
-        .child(Icon::new(IconType::X).size(14.).color(colors::fg_secondary()))
+        .child(
+            Icon::new(IconType::X)
+                .size(14.)
+                .color(colors::fg_secondary()),
+        )
         .child(
             TextInput::new(height)
                 .placeholder("480")

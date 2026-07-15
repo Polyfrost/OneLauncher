@@ -32,7 +32,6 @@ impl Variant {
             Self::Message
         }
     }
-
 }
 
 fn entry_icon(entry: &InboxEntry) -> (IconType, Color) {

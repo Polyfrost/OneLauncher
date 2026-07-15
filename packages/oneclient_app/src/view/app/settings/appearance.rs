@@ -1,8 +1,8 @@
 use freya::prelude::*;
 
+use super::settings_page;
 use crate::components::{Icon, IconType, toggle};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
-use super::settings_page;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::settings_row;

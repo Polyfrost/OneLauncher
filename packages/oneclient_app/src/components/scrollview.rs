@@ -314,7 +314,11 @@ impl ScrollArea {
             let shift = *shift_held.read();
 
             let h_delta = if horizontal {
-                if shift && e.delta_x == 0.0 { e.delta_y } else { e.delta_x }
+                if shift && e.delta_x == 0.0 {
+                    e.delta_y
+                } else {
+                    e.delta_x
+                }
             } else {
                 0.0
             };

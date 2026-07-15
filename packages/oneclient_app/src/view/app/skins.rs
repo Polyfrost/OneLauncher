@@ -1,4 +1,3 @@
-
 use freya::prelude::*;
 
 use crate::components::{Button, ButtonVariant, Icon, IconType, PlayerModel};
@@ -120,7 +119,11 @@ fn side_panel() -> impl IntoElement {
 
 fn action_button(text: &'static str, icon: IconType, primary: bool) -> impl IntoElement {
     Button::new()
-        .variant(if primary { ButtonVariant::Primary } else { ButtonVariant::Secondary })
+        .variant(if primary {
+            ButtonVariant::Primary
+        } else {
+            ButtonVariant::Secondary
+        })
         .child(Icon::new(icon).size(16.).color(colors::fg_primary()))
         .text(text)
         .into_element()

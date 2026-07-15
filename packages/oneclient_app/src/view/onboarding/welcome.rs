@@ -1,7 +1,6 @@
 use freya::prelude::*;
 
 use crate::components::IconType;
-use crate::hooks::{has_migration_data, use_migration};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -13,14 +12,6 @@ pub struct OnboardingWelcome;
 
 impl Component for OnboardingWelcome {
     fn render(&self) -> impl IntoElement {
-        let migration_query = use_migration();
-
-		let next = if has_migration_data(&migration_query) {
-            Route::OnboardingMigration {}
-        } else {
-            Route::OnboardingLanguage {}
-        };
-
         let content = rect()
             .vertical()
             .width(Size::fill())
@@ -40,7 +31,7 @@ impl Component for OnboardingWelcome {
         onboarding_page(
             onboarding_illustration(IconType::OnboardingWelcome),
             content,
-            onboarding_nav(None, next, true),
+            onboarding_nav(None, Route::OnboardingTerms {}, true),
         )
     }
 }

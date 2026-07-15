@@ -1,31 +1,28 @@
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::{
-    ChangelogGroup, LauncherError, LauncherState, fetch_changelog, parse_changelog,
-};
+use oneclient_core::{LauncherError, LauncherState, TermsDocument, fetch_terms};
 
 use crate::hooks::use_settings_snapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ChangelogKeys {
+pub struct TermsKeys {
     pub meta_url_base: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ChangelogQuery;
+pub struct TermsQuery;
 
-impl QueryCapability for ChangelogQuery {
-    type Ok = Vec<ChangelogGroup>;
+impl QueryCapability for TermsQuery {
+    type Ok = TermsDocument;
     type Err = LauncherError;
-    type Keys = ChangelogKeys;
+    type Keys = TermsKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = LauncherState::get()?;
-        let markdown = fetch_changelog(&state.services).await?;
-        Ok(parse_changelog(&markdown))
+        fetch_terms(&state.services).await
     }
 }
 
-pub fn use_changelog() -> UseQuery<ChangelogQuery> {
+pub fn use_terms() -> UseQuery<TermsQuery> {
     let settings = use_settings_snapshot().settings;
     let meta_url_base = settings
         .custom_meta_url_base
@@ -34,29 +31,29 @@ pub fn use_changelog() -> UseQuery<ChangelogQuery> {
         .trim()
         .to_string();
 
-    use_query(Query::new(ChangelogKeys { meta_url_base }, ChangelogQuery))
+    use_query(Query::new(TermsKeys { meta_url_base }, TermsQuery))
 }
 
-pub fn changelog_groups(query: &UseQuery<ChangelogQuery>) -> Option<Vec<ChangelogGroup>> {
+pub fn terms_document(query: &UseQuery<TermsQuery>) -> Option<TermsDocument> {
     match &*query.read().state() {
         QueryStateData::Settled {
-            res: Ok(groups), ..
-        } => Some(groups.clone()),
+            res: Ok(document), ..
+        } => Some(document.clone()),
         QueryStateData::Loading {
-            res: Some(Ok(groups)),
-        } => Some(groups.clone()),
+            res: Some(Ok(document)),
+        } => Some(document.clone()),
         _ => None,
     }
 }
 
-pub fn changelog_error(query: &UseQuery<ChangelogQuery>) -> Option<String> {
+pub fn terms_error(query: &UseQuery<TermsQuery>) -> Option<String> {
     match &*query.read().state() {
         QueryStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
         _ => None,
     }
 }
 
-pub fn changelog_is_loading(query: &UseQuery<ChangelogQuery>) -> bool {
+pub fn terms_is_loading(query: &UseQuery<TermsQuery>) -> bool {
     matches!(
         &*query.read().state(),
         QueryStateData::Pending | QueryStateData::Loading { res: None }

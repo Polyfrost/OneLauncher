@@ -1,8 +1,8 @@
 use freya::prelude::*;
 
+use super::settings_page;
 use crate::components::{IconType, TextInput};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
-use super::settings_page;
 use crate::view::app::settings::{section_header, settings_row};
 
 fn normalize(value: &str) -> Option<String> {

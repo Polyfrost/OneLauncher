@@ -1,4 +1,3 @@
-
 use freya::prelude::*;
 use oneclient_core::Patch;
 use oneclient_core::java::JavaRuntime;
@@ -6,7 +5,8 @@ use oneclient_core::packages::domain::GameLoader;
 use oneclient_core::settings::{GameSettingsProfile, ProfileUpdate, Resolution};
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled, validate_number
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled,
+    validate_number,
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, try_game_profile, use_cluster_mutation,
@@ -37,7 +37,10 @@ impl Component for ClusterSettings {
             .as_ref()
             .map(|c| c.mc_version.clone())
             .unwrap_or_default();
-        let loader = cluster.as_ref().map(|c| c.mc_loader).unwrap_or(GameLoader::Fabric);
+        let loader = cluster
+            .as_ref()
+            .map(|c| c.mc_loader)
+            .unwrap_or(GameLoader::Fabric);
         let versions_query = use_loader_versions(mc_version, loader);
         let runtimes_query = use_java_runtimes();
 
@@ -149,13 +152,11 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
 
     Button::new()
         .small()
-		.ghost()
-		.icon()
+        .ghost()
+        .icon()
         .corner_radius(CornerRadius::new_all(7.))
-        .maybe(overridden, |el| {
-            el.on_press(move |_| on_reset.call(()))
-        })
-		.enabled(overridden)
+        .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
+        .enabled(overridden)
         .child(Icon::new(IconType::RefreshCcw02).size(15.).color(color))
         .into_element()
 }
@@ -394,7 +395,11 @@ impl Component for ResolutionRow {
                     .text_align(TextAlign::Center)
                     .width(Size::px(70.)),
             )
-            .child(Icon::new(IconType::X).size(14.).color(colors::fg_secondary()))
+            .child(
+                Icon::new(IconType::X)
+                    .size(14.)
+                    .color(colors::fg_secondary()),
+            )
             .child(
                 TextInput::new(height)
                     .placeholder("480")
@@ -527,7 +532,12 @@ impl Component for TextRow {
             .placeholder(placeholder)
             .width(Size::px(220.));
 
-        settings_row(icon, title, description, override_cell(control, overridden, on_reset))
+        settings_row(
+            icon,
+            title,
+            description,
+            override_cell(control, overridden, on_reset),
+        )
     }
 }
 
@@ -564,8 +574,7 @@ impl Component for JavaRow {
                 .map(runtime_label)
                 .unwrap_or_else(|| "Automatic".into());
 
-            let paths: Vec<String> =
-                runtimes.iter().map(|r| r.absolute_path.clone()).collect();
+            let paths: Vec<String> = runtimes.iter().map(|r| r.absolute_path.clone()).collect();
 
             let dispatch = dispatch.clone();
             Dropdown::new(selected, options)
@@ -641,7 +650,10 @@ impl Component for LoaderRow {
         settings_row(
             IconType::Rocket02,
             "Loader Version",
-            format!("The {} loader version used to launch this cluster.", self.loader),
+            format!(
+                "The {} loader version used to launch this cluster.",
+                self.loader
+            ),
             control,
         )
     }

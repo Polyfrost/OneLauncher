@@ -120,4 +120,3 @@ impl Component for CategoryRow {
             )
     }
 }
-

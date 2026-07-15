@@ -1,4 +1,3 @@
-
 use std::path::PathBuf;
 
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
@@ -37,9 +36,18 @@ pub struct ClusterMutation;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ClusterAction {
-    ToggleArtifact { cluster_id: ClusterId, hash: String },
-    RemoveArtifact { cluster_id: ClusterId, hash: String },
-    RemoveBundlePackageFromDisk { cluster_id: ClusterId, hash: String },
+    ToggleArtifact {
+        cluster_id: ClusterId,
+        hash: String,
+    },
+    RemoveArtifact {
+        cluster_id: ClusterId,
+        hash: String,
+    },
+    RemoveBundlePackageFromDisk {
+        cluster_id: ClusterId,
+        hash: String,
+    },
     SetBundlePackageEnabled {
         cluster_id: ClusterId,
         bundle_name: String,
@@ -106,10 +114,14 @@ impl MutationCapability for ClusterMutation {
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
-            } => oneclient_core::clusters::ClusterManager::set_dedicated_dir(
-                &state, *cluster_id, *dedicated,
-            )
-            .await,
+            } => {
+                oneclient_core::clusters::ClusterManager::set_dedicated_dir(
+                    &state,
+                    *cluster_id,
+                    *dedicated,
+                )
+                .await
+            }
         };
         result.map_err(|e| e.to_string())
     }

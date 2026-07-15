@@ -264,7 +264,13 @@ impl Component for FilterPopover {
             .background(colors::page_elevated().with_a(230))
             .blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
-            .shadow(Shadow::from((0., 8., 32., 0., Color::from_argb(120, 0, 0, 0))))
+            .shadow(Shadow::from((
+                0.,
+                8.,
+                32.,
+                0.,
+                Color::from_argb(120, 0, 0, 0),
+            )))
             .a11y_id(a11y_id)
             .a11y_role(AccessibilityRole::Dialog)
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
@@ -527,12 +533,16 @@ impl Component for ContentBox {
 
         let header = (count > 0)
             .then(|| match kind {
-                ContentKind::External => Some(
-                    action_header(browse_button(cluster_id, package_type)).into_element(),
-                ),
+                ContentKind::External => {
+                    Some(action_header(browse_button(cluster_id, package_type)).into_element())
+                }
                 ContentKind::Local => Some(
-                    action_header(add_from_file_button(cluster_id, content_type, dispatch.clone()))
-                        .into_element(),
+                    action_header(add_from_file_button(
+                        cluster_id,
+                        content_type,
+                        dispatch.clone(),
+                    ))
+                    .into_element(),
                 ),
                 ContentKind::Other => None,
             })

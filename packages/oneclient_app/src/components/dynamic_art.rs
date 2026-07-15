@@ -83,9 +83,12 @@ pub fn use_art_bytes(
     let state = reader.state();
     match (&art_url, &*state) {
         (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-        | (Some(url), QueryStateData::Loading { res: Some(Ok(bytes)) }) => {
-            (format!("{max_edge}|{url}"), bytes.clone())
-        }
+        | (
+            Some(url),
+            QueryStateData::Loading {
+                res: Some(Ok(bytes)),
+            },
+        ) => (format!("{max_edge}|{url}"), bytes.clone()),
         _ => (
             format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
             fallback.read().clone(),

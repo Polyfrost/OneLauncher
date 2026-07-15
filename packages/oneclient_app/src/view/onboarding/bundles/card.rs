@@ -2,9 +2,7 @@ use super::*;
 
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{
-    Button, DynamicArt, Icon, IconType,
-};
+use crate::components::{Button, DynamicArt, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 

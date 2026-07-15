@@ -10,6 +10,7 @@ pub mod changelog;
 pub mod clusters;
 pub mod constants;
 pub mod crypto;
+pub mod discord;
 mod error;
 pub mod game;
 pub mod http;
@@ -25,10 +26,13 @@ pub mod os_ext;
 pub mod packages;
 pub mod patch;
 pub mod paths;
+pub mod plus;
 pub mod recovery;
+pub mod reporting;
 pub mod screenshots;
 pub mod settings;
 pub mod status;
+pub mod tos;
 mod state;
 pub mod version;
 pub mod versions;
@@ -42,6 +46,8 @@ pub use bundles::{
     BundleWithUpdateStatus, FileUpdateStatus, get_bundles_with_update_status,
 };
 pub use changelog::{fetch_changelog, parse_changelog, ChangelogGroup};
+pub use tos::{fetch_terms, TermsDocument};
+pub use discord::{DiscordRpc, Presence};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
     ensure_from_bundles, ensure_from_versions, estimate_cluster_download,

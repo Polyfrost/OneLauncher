@@ -8,7 +8,6 @@ use crate::components::{Button, ClusterLandscapeArt, Dropdown, Icon, IconType, M
 use crate::hooks::{
     use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_version_metadata,
 };
-use crate::view::app::launch_button_state;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -16,6 +15,7 @@ use crate::utils::{
     default_loader, default_major, default_minor, group_clusters_by_major, loaders_for_major,
     major_pretty_name, minor_label, minor_versions, resolve_cluster,
 };
+use crate::view::app::launch_button_state;
 
 const GRID_GAP_PX: f32 = 12.;
 const MIN_CARD_WIDTH_PX: f32 = 280.;
@@ -212,7 +212,10 @@ fn detail_sidebar(
         .as_ref()
         .and_then(|m| m.long_description.clone())
         .unwrap_or_else(|| PLACEHOLDER_VERSION_INFO.to_string());
-    let tags = metadata.as_ref().map(|m| m.tags.clone()).unwrap_or_default();
+    let tags = metadata
+        .as_ref()
+        .map(|m| m.tags.clone())
+        .unwrap_or_default();
 
     rect()
         .width(Size::px(SIDEBAR_WIDTH_PX))
@@ -225,17 +228,9 @@ fn detail_sidebar(
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
-        .child(
-            rect()
-                .width(Size::fill())
-                .max_height(Size::px(140.))
-                .child(ClusterLandscapeArt::for_version(
-                    major,
-                    minor_value,
-                    loader_value,
-                    false,
-                )),
-        )
+        .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
+            ClusterLandscapeArt::for_version(major, minor_value, loader_value, false),
+        ))
         .child(
             rect()
                 .vertical()
@@ -274,7 +269,11 @@ fn detail_sidebar(
                         .content(Content::Flex)
                         .main_align(Alignment::Center)
                         .spacing(8.)
-                        .child(play_button(cluster_id, dispatch, launch_button_state(&game, cluster_id)))
+                        .child(play_button(
+                            cluster_id,
+                            dispatch,
+                            launch_button_state(&game, cluster_id),
+                        ))
                         .child(view_button(cluster_id, active_id)),
                 ),
         )

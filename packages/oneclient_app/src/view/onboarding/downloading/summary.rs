@@ -46,7 +46,10 @@ pub(super) fn summary_view(
 
     let migration_section: Element = match migration {
         Some((source, folder, target)) => {
-            let mut rows = vec![summary_line("From", &source), summary_line("Files", &folder)];
+            let mut rows = vec![
+                summary_line("From", &source),
+                summary_line("Files", &folder),
+            ];
             if !target.is_empty() {
                 rows.push(summary_line("Destination", &target));
             }

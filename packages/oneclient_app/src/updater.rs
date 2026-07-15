@@ -55,10 +55,7 @@ fn check_for_update() -> anyhow::Result<Option<Update>> {
     Ok(check_update(current, config)?)
 }
 
-async fn download_and_install(
-    update: Update,
-    notifier: NotificationService,
-) -> anyhow::Result<()> {
+async fn download_and_install(update: Update, notifier: NotificationService) -> anyhow::Result<()> {
     let progress_id = Uuid::new_v4();
     let version = update.version.clone();
     let label = format!("Downloading OneClient {version}");

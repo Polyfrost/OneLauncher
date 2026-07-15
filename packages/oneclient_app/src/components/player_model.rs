@@ -128,7 +128,7 @@ impl Component for PlayerModel {
 
             let (w, h) = (ctx.size.width, ctx.size.height);
 
-			if w <= 0.0 || h <= 0.0 {
+            if w <= 0.0 || h <= 0.0 {
                 return;
             }
 

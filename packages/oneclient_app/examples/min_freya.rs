@@ -1,4 +1,3 @@
-
 use freya::prelude::*;
 
 struct MinApp;

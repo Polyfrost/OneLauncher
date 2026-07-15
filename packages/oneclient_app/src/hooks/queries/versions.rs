@@ -69,7 +69,9 @@ pub fn loader_versions(query: &UseQuery<LoaderVersionsQuery>) -> Vec<String> {
     let reader = query.read();
     match &*reader.state() {
         QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading { res: Some(Ok(list)) } => list.clone(),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => list.clone(),
         _ => Vec::new(),
     }
 }

@@ -8,8 +8,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
-    open_folder_button,
-    Segment, SegmentedControl,
+    Segment, SegmentedControl, open_folder_button,
 };
 use crate::hooks::{
     ScreenshotAction, try_cluster_screenshots, use_cluster_screenshots, use_dispatch,
@@ -57,7 +56,14 @@ impl Component for ClusterScreenshots {
         let grid_width = use_state(|| 0f32);
         let mut menu = use_state(|| None::<(f32, f32, PathBuf)>);
 
-        let toolbar = toolbar_row(&shots, folder, view_mode, edit_mode, selected, confirm_delete);
+        let toolbar = toolbar_row(
+            &shots,
+            folder,
+            view_mode,
+            edit_mode,
+            selected,
+            confirm_delete,
+        );
 
         let content: Element = if shots.is_empty() {
             empty_state(matches!(
@@ -210,7 +216,12 @@ fn toolbar_row(
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(10.)
-        .maybe_child((!editing).then_some(folder).flatten().map(open_folder_button));
+        .maybe_child(
+            (!editing)
+                .then_some(folder)
+                .flatten()
+                .map(open_folder_button),
+        );
 
     if editing {
         let select_all_paths = all_paths.clone();
@@ -421,8 +432,6 @@ fn confirm_panel(
         )
         .into_element()
 }
-
-
 
 fn res_badge(res: Option<(u32, u32)>) -> Option<Element> {
     res.map(format_res).map(|text| {

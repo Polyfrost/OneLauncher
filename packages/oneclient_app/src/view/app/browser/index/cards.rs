@@ -1,17 +1,19 @@
 use super::*;
 
 use freya::router::RouterContext;
-use oneclient_core::packages::types::ProjectSummary;
 use oneclient_core::packages::ProviderId;
+use oneclient_core::packages::types::ProjectSummary;
 
-use crate::components::{
-    Icon, IconType,
-};
+use crate::components::{Icon, IconType};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-pub(super) fn grid_row(row: Vec<ProjectSummary>, cluster_id: i64, package_type: &str) -> impl IntoElement {
+pub(super) fn grid_row(
+    row: Vec<ProjectSummary>,
+    cluster_id: i64,
+    package_type: &str,
+) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = GRID_COLUMNS - row.len();
 
@@ -154,7 +156,11 @@ impl Component for PackageCard {
     }
 }
 
-pub(super) fn list_row(item: ProjectSummary, cluster_id: i64, package_type: &str) -> impl IntoElement {
+pub(super) fn list_row(
+    item: ProjectSummary,
+    cluster_id: i64,
+    package_type: &str,
+) -> impl IntoElement {
     ListRow {
         item,
         cluster_id,
@@ -185,69 +191,69 @@ impl Component for ListRow {
             Cursor::set(CursorIcon::default());
         });
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::px(LIST_ROW_H))
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(10.))
-        .background(CARD_BG)
-        .border(border_all_color(
-            1.,
-            if focused {
-                colors::brand()
-            } else {
-                colors::component_border()
-            },
-        ))
-        .overflow(Overflow::Clip)
-        .content(Content::Flex)
-        .a11y_id(a11y_id)
-        .a11y_focusable(true)
-        .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
-        .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .spacing(6.)
-                        .child(
-                            label()
-                                .text(item.name.clone())
-                                .font_size(15.)
-                                .font_weight(FontWeight::MEDIUM)
-                                .max_lines(1)
-                                .color(CARD_NAME),
-                        )
-                        .child(
-                            label()
-                                .text(format!("by {}", item.author))
-                                .font_size(10.)
-                                .max_lines(1)
-                                .color(colors::fg_secondary()),
-                        )
-                        .child(Icon::new(item.provider).size(12.)),
-                )
-                .child(
-                    label()
-                        .text(item.summary.clone())
-                        .font_size(11.)
-                        .max_lines(2)
-                        .width(Size::fill())
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(downloads_row(item.downloads))
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(LIST_ROW_H))
+            .cross_align(Alignment::Center)
+            .spacing(12.)
+            .padding(Gaps::new_all(16.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(CARD_BG)
+            .border(border_all_color(
+                1.,
+                if focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(3.)
+                    .child(
+                        rect()
+                            .horizontal()
+                            .cross_align(Alignment::Center)
+                            .spacing(6.)
+                            .child(
+                                label()
+                                    .text(item.name.clone())
+                                    .font_size(15.)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .max_lines(1)
+                                    .color(CARD_NAME),
+                            )
+                            .child(
+                                label()
+                                    .text(format!("by {}", item.author))
+                                    .font_size(10.)
+                                    .max_lines(1)
+                                    .color(colors::fg_secondary()),
+                            )
+                            .child(Icon::new(item.provider).size(12.)),
+                    )
+                    .child(
+                        label()
+                            .text(item.summary.clone())
+                            .font_size(11.)
+                            .max_lines(2)
+                            .width(Size::fill())
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .child(downloads_row(item.downloads))
     }
 }
 

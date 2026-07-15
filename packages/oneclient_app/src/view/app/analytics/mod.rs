@@ -45,11 +45,7 @@ fn charts_grid(cards: Vec<Element>) -> Element {
     let mut grid = rect().vertical().width(Size::fill()).spacing(16.);
     for pair in cards.chunks(2) {
         if pair.len() == 1 {
-            grid = grid.child(
-                rect()
-                    .width(Size::fill())
-                    .child(pair[0].clone()),
-            );
+            grid = grid.child(rect().width(Size::fill()).child(pair[0].clone()));
             continue;
         }
 

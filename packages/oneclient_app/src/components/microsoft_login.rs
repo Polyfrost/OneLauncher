@@ -84,7 +84,7 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
             return;
         }
 
-		// open the browser immediately
+        // open the browser immediately
         platform::open_url(session.auth_url());
         finish.mutate(session.clone());
         pending_login.set(Some(session));
@@ -100,7 +100,7 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
         }
     });
 
-	// is true once the flow has some status updates (just to ensure the user has seen the popup) and the flow is still in progress
+    // is true once the flow has some status updates (just to ensure the user has seen the popup) and the flow is still in progress
     let locked = status.as_ref().is_some_and(|s| s.current > 0);
     let in_flight = begin.read().state().is_loading() || finish.read().state().is_loading();
     let pending = in_flight && !*cancelled.read();

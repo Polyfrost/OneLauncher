@@ -87,12 +87,21 @@ pub fn list_cluster_logs(cluster: &Cluster) -> LauncherResult<Vec<LogFileInfo>> 
 
     push_file(
         cluster_output_log(cluster)?,
-        "Launcher output".to_string(),
+        "Game output".to_string(),
         LogKind::Game {
             cluster_id: cluster.id,
         },
         &mut out,
     );
+
+    if let Ok(logs_dir) = paths::logs_dir() {
+        collect_dir(
+            &logs_dir,
+            LogKind::Launcher,
+            |name| name.ends_with(".log") || name.ends_with(".log.gz"),
+            &mut out,
+        );
+    }
 
     out.sort_by_key(|info| std::cmp::Reverse(info.modified));
     Ok(out)

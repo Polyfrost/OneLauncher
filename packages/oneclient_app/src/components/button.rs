@@ -3,7 +3,10 @@ use std::borrow::Cow;
 
 use freya::prelude::*;
 
-use crate::{components::{IconType, Icon}, theme::colors};
+use crate::{
+    components::{Icon, IconType},
+    theme::colors,
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ButtonVariant {
@@ -285,8 +288,7 @@ impl Component for Button {
 
         rect.get_style().clone_from(&self.style);
 
-        rect = rect.background(background)
-            .color(foreground);
+        rect = rect.background(background).color(foreground);
 
         if let Some(border) = border_color {
             rect = rect.border(
@@ -420,7 +422,11 @@ fn size_layout(size: ButtonSize) -> (Gaps, CornerRadius, f32, Size, Size) {
 pub fn link_button() -> Button {
     Button::new()
         .primary()
-        .child(Icon::new(IconType::LinkExternal01).size(14.).color(colors::fg_primary()))
+        .child(
+            Icon::new(IconType::LinkExternal01)
+                .size(14.)
+                .color(colors::fg_primary()),
+        )
         .child(label().text("Open"))
 }
 

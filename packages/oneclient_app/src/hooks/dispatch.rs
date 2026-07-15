@@ -42,6 +42,13 @@ impl BridgeDispatch {
         self.send(BridgeCommand::MarkOnboardingSeen);
     }
 
+    pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
+        self.send(BridgeCommand::AcceptTos {
+            terms_version,
+            privacy_version,
+        });
+    }
+
     pub fn import_launcher(
         &self,
         source: oneclient_core::MigrationSource,
@@ -64,9 +71,7 @@ impl BridgeDispatch {
     }
 
     pub fn create_settings_profile(&self, name: impl Into<String>) {
-        self.send(BridgeCommand::CreateSettingsProfile {
-            name: name.into(),
-        });
+        self.send(BridgeCommand::CreateSettingsProfile { name: name.into() });
     }
 
     pub fn create_profile_from_global(
@@ -94,20 +99,11 @@ impl BridgeDispatch {
     }
 
     pub fn delete_named_profile(&self, name: impl Into<String>) {
-        self.send(BridgeCommand::DeleteNamedProfile {
-            name: name.into(),
-        });
+        self.send(BridgeCommand::DeleteNamedProfile { name: name.into() });
     }
 
-    pub fn update_cluster_profile(
-        &self,
-        cluster_id: ClusterId,
-        update: ProfileUpdate,
-    ) {
-        self.send(BridgeCommand::UpdateClusterProfile {
-            cluster_id,
-            update,
-        });
+    pub fn update_cluster_profile(&self, cluster_id: ClusterId, update: ProfileUpdate) {
+        self.send(BridgeCommand::UpdateClusterProfile { cluster_id, update });
     }
 
     pub fn create_and_assign_cluster_profile(
@@ -121,11 +117,7 @@ impl BridgeDispatch {
         });
     }
 
-    pub fn set_cluster_loader_version(
-        &self,
-        cluster_id: ClusterId,
-        version: impl Into<String>,
-    ) {
+    pub fn set_cluster_loader_version(&self, cluster_id: ClusterId, version: impl Into<String>) {
         self.send(BridgeCommand::SetClusterLoaderVersion {
             cluster_id,
             version: version.into(),
@@ -318,6 +310,7 @@ impl NotificationBuilder {
     }
 
     pub fn send(self) {
-        self.dispatch.send(BridgeCommand::SendNotification { spec: self.spec });
+        self.dispatch
+            .send(BridgeCommand::SendNotification { spec: self.spec });
     }
 }

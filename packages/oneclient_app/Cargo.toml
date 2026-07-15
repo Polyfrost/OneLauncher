@@ -71,6 +71,7 @@ icons = [
 [package.metadata.packager.macos]
 minimum-system-version = "10.15"
 entitlements = "distribution/App.entitlements"
+info-plist-path = "distribution/Info.plist"
 
 [package.metadata.packager.dmg]
 background = "distribution/dmg-background.tiff"

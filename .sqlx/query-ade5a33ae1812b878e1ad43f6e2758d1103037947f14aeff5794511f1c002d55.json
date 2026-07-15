@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM java_versions WHERE absolute_path = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "ade5a33ae1812b878e1ad43f6e2758d1103037947f14aeff5794511f1c002d55"
+}

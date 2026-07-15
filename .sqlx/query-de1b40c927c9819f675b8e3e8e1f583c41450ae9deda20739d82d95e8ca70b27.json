@@ -1,0 +1,146 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "java_path",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "java_path"
+          }
+        }
+      },
+      {
+        "name": "resolution",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "resolution"
+          }
+        }
+      },
+      {
+        "name": "force_fullscreen",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "force_fullscreen"
+          }
+        }
+      },
+      {
+        "name": "mem_max",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "mem_max"
+          }
+        }
+      },
+      {
+        "name": "launch_args",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "launch_args"
+          }
+        }
+      },
+      {
+        "name": "launch_env",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "launch_env"
+          }
+        }
+      },
+      {
+        "name": "hook_pre",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "hook_pre"
+          }
+        }
+      },
+      {
+        "name": "hook_wrapper",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "hook_wrapper"
+          }
+        }
+      },
+      {
+        "name": "hook_post",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "hook_post"
+          }
+        }
+      },
+      {
+        "name": "os_extra",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "os_extra"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "de1b40c927c9819f675b8e3e8e1f583c41450ae9deda20739d82d95e8ca70b27"
+}

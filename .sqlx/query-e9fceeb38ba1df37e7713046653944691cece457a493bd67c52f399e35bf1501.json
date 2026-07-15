@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT\n\t\t\tprovider as \"provider!: i64\", project_id, version_id, hash,\n\t\t\tdisplay_name, display_version, published_at, mc_versions, mc_loaders\n\t\tFROM provider_releases\n\t\tWHERE hash = ?\n\t\tLIMIT 1\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "display_version",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_version"
+          }
+        }
+      },
+      {
+        "name": "published_at",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "published_at"
+          }
+        }
+      },
+      {
+        "name": "mc_versions",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "mc_versions"
+          }
+        }
+      },
+      {
+        "name": "mc_loaders",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "mc_loaders"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e9fceeb38ba1df37e7713046653944691cece457a493bd67c52f399e35bf1501"
+}

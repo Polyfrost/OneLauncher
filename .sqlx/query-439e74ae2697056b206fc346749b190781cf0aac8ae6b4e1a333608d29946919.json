@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT hash, content_type, path, file_name, size_bytes\n\t\tFROM artifacts\n\t\tWHERE hash = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "content_type",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "name": "path",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "path"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "size_bytes",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "size_bytes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "439e74ae2697056b206fc346749b190781cf0aac8ae6b4e1a333608d29946919"
+}

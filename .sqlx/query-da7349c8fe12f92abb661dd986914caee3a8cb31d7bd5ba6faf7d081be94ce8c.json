@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO provider_releases (\n\t\t\tprovider, project_id, version_id, hash,\n\t\t\tdisplay_name, display_version, published_at, mc_versions, mc_loaders\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(provider, project_id, version_id) DO UPDATE SET\n\t\t\thash = excluded.hash,\n\t\t\tdisplay_name = excluded.display_name,\n\t\t\tdisplay_version = excluded.display_version,\n\t\t\tpublished_at = excluded.published_at,\n\t\t\tmc_versions = excluded.mc_versions,\n\t\t\tmc_loaders = excluded.mc_loaders\n\t\tRETURNING\n\t\t\tprovider as \"provider!: i64\", project_id, version_id, hash,\n\t\t\tdisplay_name, display_version, published_at, mc_versions, mc_loaders\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "display_version",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_version"
+          }
+        }
+      },
+      {
+        "name": "published_at",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "published_at"
+          }
+        }
+      },
+      {
+        "name": "mc_versions",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "mc_versions"
+          }
+        }
+      },
+      {
+        "name": "mc_loaders",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "mc_loaders"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": [
+      null,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "da7349c8fe12f92abb661dd986914caee3a8cb31d7bd5ba6faf7d081be94ce8c"
+}

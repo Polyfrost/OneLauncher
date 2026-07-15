@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT s.session_started_at, s.address, s.port, s.joined_at, s.disconnected_at\n\t\tFROM game_session_servers s\n\t\tJOIN game_sessions g ON g.started_at = s.session_started_at\n\t\tWHERE g.cluster_id = ?\n\t\tORDER BY s.joined_at ASC\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "session_started_at",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "session_started_at"
+          }
+        }
+      },
+      {
+        "name": "address",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "name": "port",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "port"
+          }
+        }
+      },
+      {
+        "name": "joined_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "joined_at"
+          }
+        }
+      },
+      {
+        "name": "disconnected_at",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "disconnected_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "53373194f104bdefd553ff6669b53d367c52a142b7afdae2f1bf8c07444d9e30"
+}

@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO bundles (\n            remote_path, mc_version, mc_loader, file_name, name, version_id,\n            category, loader_version, disk_path, hidden, etag, synced_at\n        )\n        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n        ON CONFLICT(remote_path) DO UPDATE SET\n            mc_version = excluded.mc_version,\n            mc_loader = excluded.mc_loader,\n            file_name = excluded.file_name,\n            name = COALESCE(excluded.name, bundles.name),\n            version_id = COALESCE(excluded.version_id, bundles.version_id),\n            category = COALESCE(excluded.category, bundles.category),\n            loader_version = COALESCE(excluded.loader_version, bundles.loader_version),\n            disk_path = excluded.disk_path,\n            hidden = excluded.hidden,\n            etag = COALESCE(excluded.etag, bundles.etag),\n            synced_at = COALESCE(excluded.synced_at, bundles.synced_at)\n        RETURNING\n            remote_path, mc_version, mc_loader, file_name, name, version_id,\n            category, loader_version, disk_path, hidden, etag, synced_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "remote_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "remote_path"
+          }
+        }
+      },
+      {
+        "name": "mc_version",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_version"
+          }
+        }
+      },
+      {
+        "name": "mc_loader",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_loader"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "category",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "name": "loader_version",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "loader_version"
+          }
+        }
+      },
+      {
+        "name": "disk_path",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "disk_path"
+          }
+        }
+      },
+      {
+        "name": "hidden",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "hidden"
+          }
+        }
+      },
+      {
+        "name": "etag",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "etag"
+          }
+        }
+      },
+      {
+        "name": "synced_at",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "synced_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "5c51104ad11fd39178c9eb43f8c3a9b4f796753ab1fbb28efcbf71562b3fafa1"
+}

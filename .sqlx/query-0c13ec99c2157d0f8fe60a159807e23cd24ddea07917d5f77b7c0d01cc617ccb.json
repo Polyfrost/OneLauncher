@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT started_at, ended_at\n\t\tFROM game_sessions\n\t\tWHERE ended_at IS NOT NULL\n\t\tORDER BY started_at ASC\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "started_at",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "ended_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "ended_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "0c13ec99c2157d0f8fe60a159807e23cd24ddea07917d5f77b7c0d01cc617ccb"
+}

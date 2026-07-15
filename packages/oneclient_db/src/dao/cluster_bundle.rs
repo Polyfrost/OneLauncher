@@ -102,16 +102,16 @@ pub async fn has_bundle_mapping(
     bundle_name: &str,
     package_id: &str,
 ) -> Result<bool, sqlx::Error> {
-    let row: Option<(i64,)> = sqlx::query_as(
+    let row = sqlx::query_scalar!(
         r#"
         SELECT 1 FROM cluster_artifacts
         WHERE cluster_id = ? AND bundle_name = ? AND package_id = ?
         LIMIT 1
         "#,
+        cluster_id,
+        bundle_name,
+        package_id
     )
-    .bind(cluster_id)
-    .bind(bundle_name)
-    .bind(package_id)
     .fetch_optional(pool)
     .await?;
 

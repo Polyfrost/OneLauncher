@@ -44,8 +44,8 @@ impl BridgeDispatch {
         });
     }
 
-    pub fn set_onboarding_seen(&self, seen: bool) {
-        self.send(BridgeCommand::SetOnboardingSeen { seen });
+    pub fn mark_onboarding_seen(&self) {
+        self.send(BridgeCommand::MarkOnboardingSeen);
     }
 
     pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {

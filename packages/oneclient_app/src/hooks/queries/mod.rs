@@ -52,7 +52,7 @@ pub use logs::{
     UseUploadLog, invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs,
     use_log_action, use_log_content, use_upload_log,
 };
-pub use migration::{MigrationQuery, has_migration_data, migration_detections, use_migration};
+pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use mutations::{
     ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
 };

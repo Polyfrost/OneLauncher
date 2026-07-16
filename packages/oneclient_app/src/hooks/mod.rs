@@ -6,11 +6,11 @@ mod view_state;
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, ImportSelection,
-    LinkConfirmState, OnboardingSelectionState, use_active_cluster_id, use_browser_compat,
-    use_browser_state_store, use_link_confirm, use_onboarding_selection,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_link_confirm, use_provide_onboarding_selection,
+    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, LinkConfirmState,
+    OnboardingSelectionState, use_active_cluster_id, use_browser_compat, use_browser_state_store,
+    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_link_confirm,
+    use_provide_onboarding_selection,
 };
 
 pub use dispatch::BridgeDispatch;
@@ -26,7 +26,7 @@ pub use queries::{
     content_type_for_slug, has_migration_data, invalidate_cluster_queries, invalidate_java_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
     java_runtimes, latest_changelog_version, loader_versions, login_code_already_handled,
-    migration_detections,
+    migration_detection,
     mutation_error, mutation_is_pending, onboarding_bundles_items, package_meta_batch,
     pick_version_metadata, project_detail, provider_versions, reset_login_code_dedup, search_items,
     search_pending, search_total, terms_document, terms_error, terms_is_loading, try_account,

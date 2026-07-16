@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType, TextInput, toggle};
-use crate::hooks::use_dispatch;
+use crate::hooks::{BridgeDispatch, use_dispatch};
 use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationActionKind};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -12,6 +12,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -65,7 +66,7 @@ impl Component for Debug {
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(vec![
+                        vec![action_row(dispatch, vec![
                             ("Open Dev Tools", IconType::CodeSnippet02),
                             ("Open Onboarding", IconType::Rocket02),
                             ("Open Launcher Data", IconType::Folder),
@@ -336,7 +337,7 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
         .into_element()
 }
 
-fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
+fn action_row(dispatch: BridgeDispatch, buttons: Vec<(&'static str, IconType)>) -> Element {
     let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
 
     for (text, icon) in buttons {
@@ -346,7 +347,9 @@ fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
             .text(text);
 
         if text == "Open Onboarding" {
-            button = button.on_press(|_| {
+            let dispatch = dispatch.clone();
+            button = button.on_press(move |_| {
+                dispatch.set_onboarding_seen(false);
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

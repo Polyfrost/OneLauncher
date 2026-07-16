@@ -6,8 +6,8 @@ use freya::router::{Outlet, use_route};
 use crate::Route;
 use crate::components::OnboardingNavbar;
 use crate::hooks::{
-    ImportSelection, OnboardingSelectionState, has_migration_data, onboarding_bundles_items,
-    use_migration, use_onboarding_bundles, use_provide_onboarding_selection,
+    OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_migration,
+    use_onboarding_bundles, use_provide_onboarding_selection,
 };
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -26,7 +26,7 @@ impl Component for OnboardingShell {
         let reduce_motion = use_state(|| false);
         let predownload = use_state(|| true);
         let setup_started = use_state(|| false);
-        let import_selection = use_state(|| None::<ImportSelection>);
+        let import_folder = use_state(|| None::<String>);
         let import_dedicated = use_state(|| false);
         use_provide_onboarding_selection(OnboardingSelectionState {
             selected,
@@ -36,7 +36,7 @@ impl Component for OnboardingShell {
             reduce_motion,
             predownload,
             setup_started,
-            import_selection,
+            import_folder,
             import_dedicated,
         });
 

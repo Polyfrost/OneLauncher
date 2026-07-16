@@ -1,15 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use oneclient_core::MigrationSource;
 use oneclient_core::packages::ProviderId;
 use oneclient_db::models::ClusterId;
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct ImportSelection {
-    pub source: MigrationSource,
-    pub folder_name: String,
-}
 
 #[derive(Clone)]
 pub struct ActiveClusterState(pub State<Option<ClusterId>>);
@@ -81,12 +74,16 @@ pub struct OnboardingSelectionState {
     /// keeps re-deriving `selected` from the catalog, so a bundle list that
     /// settles late still gets the right defaults.
     pub user_touched: State<bool>,
+    /// Bundle categories the user had in their v1 install, once the migration
+    /// step has been answered. `None` means "no migration decision yet".
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
     pub predownload: State<bool>,
     pub setup_started: State<bool>,
-    pub import_selection: State<Option<ImportSelection>>,
+    /// v1-migration: source folder to import files from (`None` = don't import).
+    pub import_folder: State<Option<String>>,
+    /// v1-migration: import into the matching cluster's own dir instead of shared.
     pub import_dedicated: State<bool>,
 }
 

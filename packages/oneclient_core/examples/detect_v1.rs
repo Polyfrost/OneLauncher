@@ -1,8 +1,6 @@
-use oneclient_core::migration::oneclient_v1;
-
 #[tokio::main]
 async fn main() {
-    match oneclient_v1::detect().await {
+    match oneclient_core::detect_migration().await {
         Ok(Some(detection)) => {
             println!(
                 "source: {} ({})",
@@ -23,7 +21,7 @@ async fn main() {
                 );
             }
         }
-        Ok(None) => println!("no v1 install detected"),
+        Ok(None) => println!("no migratable launcher detected"),
         Err(err) => eprintln!("detection error: {err}"),
     }
 }

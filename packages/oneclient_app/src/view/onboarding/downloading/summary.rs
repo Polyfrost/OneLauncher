@@ -14,6 +14,7 @@ use crate::view::onboarding::{onboarding_illustration, predownload_toggle_row, s
 pub(super) fn summary_view(
     items: &[ClusterBundles],
     selected: &std::collections::HashSet<String>,
+    versions: &[VersionMetadata],
     language: &str,
     reduce_motion: bool,
     parallax: bool,
@@ -34,10 +35,26 @@ pub(super) fn summary_view(
         })
         .collect();
 
-    let packages_note = if *predownload.read() {
-        let est = rough_download_estimate(items, selected);
+    let ready_now = items
+        .iter()
+        .filter(|cb| cluster_predownloads(versions, &cb.cluster))
+        .count();
+
+    let packages_note = if *predownload.read() && ready_now > 0 {
+        let est = rough_download_estimate(items, selected, versions);
+        let (scope, rest) = if ready_now == items.len() {
+            ("Your selected content is".to_string(), "")
+        } else {
+            (
+                format!(
+                    "Content for {ready_now} version{} is",
+                    if ready_now == 1 { "" } else { "s" }
+                ),
+                " Everything else is downloaded the first time you launch it.",
+            )
+        };
         format!(
-            "Your selected content is downloaded now, during setup. About {} total.",
+            "{scope} downloaded now, during setup. About {} total.{rest}",
             format_size(est)
         )
     } else {

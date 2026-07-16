@@ -7,7 +7,7 @@ use freya::router::RouterContext;
 use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
-use oneclient_core::{BundleArchive, BundleFile, ImportTarget};
+use oneclient_core::{BundleArchive, BundleFile, Cluster, ImportTarget, VersionMetadata};
 use oneclient_db::models::OverrideType;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -16,6 +16,7 @@ use crate::hooks::{
     BridgeDispatch, ClusterBundles, invalidate_cluster_queries, migration_detections,
     onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
     use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
+    use_versions, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -40,6 +41,9 @@ struct ClusterPlan {
     /// `(bundle_name, package_id, override)` for every file whose fate differs
     /// from the bundle manifest's default.
     overrides: Vec<(String, String, OverrideType)>,
+    /// The manifest's `predownload` flag for this version. Versions without it
+    /// only ever record their package choices here and fetch on first launch.
+    predownload: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -193,6 +197,7 @@ impl Component for OnboardingDownloading {
         let dispatch = use_dispatch();
         let bundles_query = use_onboarding_bundles();
         let migration_query = use_migration();
+        let versions_query = use_versions();
         let selection = use_onboarding_selection();
         let settings = use_settings_snapshot().settings;
         let account_query = use_current_account();
@@ -237,8 +242,11 @@ impl Component for OnboardingDownloading {
             let Some(items) = onboarding_bundles_items(&bundles_query) else {
                 return;
             };
+            let Some(versions) = versions_metadata(&versions_query) else {
+                return;
+            };
             let selected = selected_state.peek().clone();
-            let plans = build_plans(&items, &selected);
+            let plans = build_plans(&items, &selected, &versions);
             let predownload = *predownload_state.peek();
             started.set(true);
             run_install_batch(plans, predownload, handles);
@@ -341,6 +349,7 @@ impl Component for OnboardingDownloading {
             return summary_view(
                 &items,
                 &selected,
+                &versions_metadata(&versions_query).unwrap_or_default(),
                 &language,
                 reduce_motion,
                 settings.dynamic_background_enabled,
@@ -440,6 +449,7 @@ impl Component for OnboardingDownloading {
 fn build_plans(
     items: &[ClusterBundles],
     selected: &std::collections::HashSet<String>,
+    versions: &[VersionMetadata],
 ) -> Vec<ClusterPlan> {
     items
         .iter()
@@ -452,9 +462,24 @@ fn build_plans(
                 cluster_id: cb.cluster.id,
                 mc_version: cb.cluster.mc_version.clone(),
                 overrides,
+                predownload: cluster_predownloads(versions, &cb.cluster),
             }
         })
         .collect()
+}
+
+/// Whether the manifest asks for this cluster's version to be fetched up front.
+/// Clusters with no manifest row (e.g. seeded from the bundle catalog alone)
+/// are not predownloaded.
+fn cluster_predownloads(versions: &[VersionMetadata], cluster: &Cluster) -> bool {
+    let loader = cluster.mc_loader.to_string();
+    versions.iter().any(|m| {
+        m.predownload
+            && m.mc_version().as_deref() == Some(cluster.mc_version.as_str())
+            && m.loader
+                .as_deref()
+                .is_none_or(|l| l.eq_ignore_ascii_case(&loader))
+    })
 }
 
 fn archive_overrides(
@@ -505,9 +530,13 @@ const JRE_SIZE_GUESS: u64 = 45_000_000;
 fn rough_download_estimate(
     items: &[ClusterBundles],
     selected: &std::collections::HashSet<String>,
+    versions: &[VersionMetadata],
 ) -> u64 {
     let mut total: u64 = 0;
     for cb in items {
+        if !cluster_predownloads(versions, &cb.cluster) {
+            continue;
+        }
         for archive in &cb.archives {
             let dropped: std::collections::HashSet<String> =
                 archive_overrides(cb.cluster.id, archive, selected)
@@ -646,7 +675,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             ));
             if let Ok(state) = oneclient_core::LauncherState::get() {
                 let mut sum = 0u64;
-                for plan in &plans {
+                for plan in plans.iter().filter(|p| p.predownload) {
                     match oneclient_core::estimate_cluster_download(
                         &state,
                         plan.cluster_id,
@@ -672,7 +701,8 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
                 label: plan.mc_version.clone(),
             }));
 
-            if let Err(reason) = install_one(&plan, predownload, &notifier, &ui_tx).await {
+            let fetch_now = predownload && plan.predownload;
+            if let Err(reason) = install_one(&plan, fetch_now, &notifier, &ui_tx).await {
                 tracing::error!(
                     cluster_id = plan.cluster_id,
                     mc_version = %plan.mc_version,
@@ -868,10 +898,29 @@ mod tests {
             .collect()
     }
 
+    /// Manifest row matching `test_support::cluster` (1.21.11 fabric).
+    fn version_row(predownload: bool) -> VersionMetadata {
+        VersionMetadata {
+            major_version: 21,
+            minor_version: Some(11),
+            patch_version: None,
+            loader: Some("fabric".to_string()),
+            name: "Mounts of Mayhem".to_string(),
+            art_url: None,
+            long_description: None,
+            tags: Vec::new(),
+            predownload,
+        }
+    }
+
+    fn versions() -> Vec<VersionMetadata> {
+        vec![version_row(true)]
+    }
+
     #[test]
     fn declining_a_bundle_removes_its_visible_and_hidden_files() {
         let sb = skyblock();
-        let plans = build_plans(&items(vec![sb.clone()]), &HashSet::new());
+        let plans = build_plans(&items(vec![sb.clone()]), &HashSet::new(), &versions());
 
         let ov = &plans[0].overrides;
         // The hidden dependency must be dropped too, or it installs anyway.
@@ -892,7 +941,7 @@ mod tests {
     fn accepting_a_bundle_records_nothing_for_its_defaults() {
         let sb = skyblock();
         let selected = keys(&sb, &["skyblock-main"]);
-        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected, &versions());
 
         assert!(plans[0].overrides.is_empty());
     }
@@ -901,7 +950,7 @@ mod tests {
     fn opting_into_an_extra_writes_enabled() {
         let sb = skyblock();
         let selected = keys(&sb, &["skyblock-main", "skycubed"]);
-        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected, &versions());
 
         assert_eq!(
             plans[0].overrides,
@@ -917,7 +966,7 @@ mod tests {
     fn an_extra_alone_still_keeps_hidden_dependencies() {
         let sb = skyblock();
         let selected = keys(&sb, &["skycubed"]);
-        let plans = build_plans(&items(vec![sb.clone()]), &selected);
+        let plans = build_plans(&items(vec![sb.clone()]), &selected, &versions());
         let ov = &plans[0].overrides;
 
         assert!(ov.contains(&(
@@ -935,7 +984,7 @@ mod tests {
 
     #[test]
     fn rejections_are_removed_never_disabled() {
-        let plans = build_plans(&items(vec![skyblock()]), &HashSet::new());
+        let plans = build_plans(&items(vec![skyblock()]), &HashSet::new(), &versions());
 
         assert!(
             !plans[0]
@@ -959,7 +1008,7 @@ mod tests {
             },
         ];
         let selected: HashSet<String> = [pkg_key(1, &sb.manifest.name, "skyblock-main")].into();
-        let plans = build_plans(&both, &selected);
+        let plans = build_plans(&both, &selected, &versions());
 
         assert!(plans[0].overrides.is_empty());
         assert!(
@@ -976,13 +1025,48 @@ mod tests {
         let all = items(vec![sb.clone()]);
         let baseline = GAME_SIZE_GUESS + JRE_SIZE_GUESS;
 
-        let declined = rough_download_estimate(&all, &HashSet::new());
+        let declined = rough_download_estimate(&all, &HashSet::new(), &versions());
         assert_eq!(declined, baseline, "declined bundle should cost nothing");
 
-        let accepted = rough_download_estimate(&all, &keys(&sb, &["skyblock-main"]));
+        let accepted = rough_download_estimate(&all, &keys(&sb, &["skyblock-main"]), &versions());
         assert_eq!(accepted, baseline + 2);
 
-        let with_extra = rough_download_estimate(&all, &keys(&sb, &["skyblock-main", "skycubed"]));
+        let with_extra = rough_download_estimate(
+            &all,
+            &keys(&sb, &["skyblock-main", "skycubed"]),
+            &versions(),
+        );
         assert_eq!(with_extra, baseline + 3);
+    }
+
+    #[test]
+    fn plans_take_predownload_from_the_manifest() {
+        let all = items(vec![skyblock()]);
+        assert!(build_plans(&all, &HashSet::new(), &versions())[0].predownload);
+        assert!(!build_plans(&all, &HashSet::new(), &[version_row(false)])[0].predownload);
+        // A cluster with no manifest row at all is never predownloaded.
+        assert!(!build_plans(&all, &HashSet::new(), &[])[0].predownload);
+    }
+
+    #[test]
+    fn a_predownload_row_for_another_version_does_not_match() {
+        let mut other = version_row(true);
+        other.minor_version = Some(10);
+        assert!(!build_plans(&items(vec![skyblock()]), &HashSet::new(), &[other])[0].predownload);
+    }
+
+    #[test]
+    fn a_predownload_row_for_another_loader_does_not_match() {
+        let mut other = version_row(true);
+        other.loader = Some("forge".to_string());
+        assert!(!build_plans(&items(vec![skyblock()]), &HashSet::new(), &[other])[0].predownload);
+    }
+
+    #[test]
+    fn the_estimate_ignores_versions_that_are_not_predownloaded() {
+        let all = items(vec![skyblock()]);
+        let selected = keys(&skyblock(), &["skyblock-main"]);
+
+        assert_eq!(rough_download_estimate(&all, &selected, &[]), 0);
     }
 }

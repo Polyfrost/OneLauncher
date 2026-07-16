@@ -28,6 +28,21 @@ pub fn use_versions() -> UseQuery<VersionsMetadataQuery> {
     use_query(Query::new(VersionsMetadataKeys, VersionsMetadataQuery))
 }
 
+/// The manifest rows once the query has settled, `None` while it is still
+/// loading. A failed fetch reads as an empty list rather than `None`, so
+/// callers that block on this don't wait forever when the network is down.
+pub fn versions_metadata(query: &UseQuery<VersionsMetadataQuery>) -> Option<Vec<VersionMetadata>> {
+    let reader = query.read();
+    match &*reader.state() {
+        QueryStateData::Settled { res: Ok(list), .. } => Some(list.clone()),
+        QueryStateData::Settled { res: Err(_), .. } => Some(Vec::new()),
+        QueryStateData::Loading {
+            res: Some(Ok(list)),
+        } => Some(list.clone()),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoaderVersionsQuery;
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::api_config::meta_url_base;
-use crate::version::VersionKey;
+use crate::version::{VersionKey, format_mc_version};
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VersionsManifest {
@@ -22,6 +22,9 @@ pub struct RemoteCluster {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Default for every entry in this cluster; an entry's own key wins.
+    #[serde(default)]
+    pub predownload: Option<bool>,
     #[serde(default)]
     pub entries: Vec<RemoteEntry>,
 }
@@ -41,6 +44,8 @@ pub struct RemoteEntry {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub predownload: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -71,12 +76,26 @@ pub struct VersionMetadata {
     pub art_url: Option<String>,
     pub long_description: Option<String>,
     pub tags: Vec<String>,
+    /// Whether this version is fetched up front during onboarding, rather than
+    /// on first launch. Cluster rows carry the cluster's own default.
+    pub predownload: bool,
 }
 
 impl VersionMetadata {
     #[must_use]
     pub fn key(&self) -> Option<VersionKey> {
         Some((self.minor_version?, self.patch_version))
+    }
+
+    /// The `mc_version` string this row maps to, or `None` for the synthetic
+    /// cluster-level row (which has no minor version of its own).
+    #[must_use]
+    pub fn mc_version(&self) -> Option<String> {
+        Some(format_mc_version(
+            self.major_version,
+            self.minor_version?,
+            self.patch_version,
+        ))
     }
 }
 
@@ -104,6 +123,7 @@ impl VersionsManifest {
                 art_url: art_url(&cluster.art),
                 long_description: cluster.long_description.clone(),
                 tags: cluster.tags.clone(),
+                predownload: cluster.predownload.unwrap_or(false),
             });
 
             for entry in &cluster.entries {
@@ -119,6 +139,7 @@ impl VersionsManifest {
                         .clone()
                         .or_else(|| cluster.long_description.clone()),
                     tags: entry.tags.clone().unwrap_or_else(|| cluster.tags.clone()),
+                    predownload: entry.predownload.or(cluster.predownload).unwrap_or(false),
                 });
             }
         }
@@ -163,6 +184,56 @@ mod tests {
             .expect("entry present");
         assert_eq!(entry.patch_version, Some(2));
         assert_eq!(entry.key(), Some((1, Some(2))));
+    }
+
+    #[test]
+    fn predownload_inherits_from_cluster_and_entry_overrides() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[
+                {"major_version":26,"predownload":true,"entries":[
+                    {"minor_version":1},
+                    {"minor_version":2,"predownload":false}
+                ]},
+                {"major_version":21,"entries":[
+                    {"minor_version":1},
+                    {"minor_version":11,"predownload":true}
+                ]}
+            ]}"#,
+        )
+        .expect("should parse");
+
+        let metadata = manifest.metadata();
+        let flag = |major: u32, minor: Option<u32>| {
+            metadata
+                .iter()
+                .find(|m| m.major_version == major && m.minor_version == minor)
+                .expect("row present")
+                .predownload
+        };
+
+        // Cluster default flows down to entries that stay silent.
+        assert!(flag(26, None));
+        assert!(flag(26, Some(1)));
+        // An entry's own key wins over the cluster default, in both directions.
+        assert!(!flag(26, Some(2)));
+        assert!(flag(21, Some(11)));
+        // Absent everywhere means off.
+        assert!(!flag(21, None));
+        assert!(!flag(21, Some(1)));
+    }
+
+    #[test]
+    fn mc_version_skips_the_cluster_row() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[{"major_version":26,"entries":[
+                {"minor_version":1,"patch_version":2}
+            ]}]}"#,
+        )
+        .expect("should parse");
+
+        let metadata = manifest.metadata();
+        assert_eq!(metadata[0].mc_version(), None);
+        assert_eq!(metadata[1].mc_version().as_deref(), Some("26.1.2"));
     }
 
     #[test]

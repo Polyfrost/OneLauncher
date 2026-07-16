@@ -4,7 +4,7 @@ use crate::components::ScrollArea;
 use crate::hooks::{try_cluster_analytics, use_cluster_analytics};
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::view::app::analytics_body;
+use crate::view::app::{analytics_body, analytics_placeholder};
 
 use super::{cluster_not_found, load_cluster};
 
@@ -26,9 +26,9 @@ impl Component for ClusterOverview {
 
         let body: Element = match &analytics {
             None => centered_note("Loading play history…"),
-            Some(a) if a.playtime.session_count == 0 => {
-                centered_note("No sessions recorded for this cluster yet. Launch it and come back!")
-            }
+            Some(a) if a.playtime.session_count == 0 => analytics_placeholder(
+                "No sessions recorded for this cluster yet. Launch it and come back!",
+            ),
             Some(a) => analytics_body(a),
         };
 
@@ -41,7 +41,7 @@ impl Component for ClusterOverview {
                         rect()
                             .vertical()
                             .width(Size::fill())
-                            .spacing(20.)
+                            .spacing(24.)
                             .child(overview_header(&cluster.name))
                             .child(body),
                     ),

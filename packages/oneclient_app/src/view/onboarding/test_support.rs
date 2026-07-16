@@ -64,4 +64,3 @@ pub fn cluster(id: i64) -> Cluster {
         linked_modpack_hash: None,
     }
 }
-

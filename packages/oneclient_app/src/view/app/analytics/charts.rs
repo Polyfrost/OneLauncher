@@ -68,8 +68,7 @@ impl Component for WhenChart {
                     .unwrap_or_else(|| "—".to_string());
                 (
                     format!("Peak around {hour}"),
-                    BarChart::new(self.per_hour.clone(), hour_labels())
-                        .readout_labels((0..24).map(format_hour).collect())
+                    BarChart::new(self.per_hour.clone(), (0..24).map(format_hour).collect())
                         .highlight(self.peak_hour)
                         .unit(ValueUnit::Duration)
                         .gap(3.)
@@ -135,18 +134,7 @@ impl Component for DailyChart {
         let slice = &series[start..end];
 
         let values: Vec<i64> = slice.iter().map(|(_, s)| *s).collect();
-        let readout_labels: Vec<String> = slice.iter().map(|(d, _)| format_day(*d)).collect();
-        let labels: Vec<String> = slice
-            .iter()
-            .enumerate()
-            .map(|(i, (d, _))| {
-                if i == 0 || i == slice.len() - 1 {
-                    format_day(*d)
-                } else {
-                    String::new()
-                }
-            })
-            .collect();
+        let labels: Vec<String> = slice.iter().map(|(d, _)| format_day(*d)).collect();
 
         let win_total: i64 = values.iter().sum();
         let subtitle = match (slice.first(), slice.last()) {
@@ -192,7 +180,6 @@ impl Component for DailyChart {
             subtitle,
             Some(nav),
             BarChart::new(values, labels)
-                .readout_labels(readout_labels)
                 .unit(ValueUnit::Duration)
                 .gap(3.)
                 .into_element(),
@@ -224,17 +211,17 @@ fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
     out
 }
 
-pub(super) fn distribution_card(session_secs: &[i64]) -> Option<Element> {
-    if session_secs.len() < 2 {
+pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Element> {
+    if session_secs.len() < 2 && !force {
         return None;
     }
 
     const EDGES: [(i64, &str); 6] = [
         (15 * 60, "<15m"),
-        (30 * 60, "15–30"),
-        (60 * 60, "30–60"),
-        (2 * 3600, "1–2h"),
-        (4 * 3600, "2–4h"),
+        (30 * 60, "15m-30m"),
+        (60 * 60, "30m-60m"),
+        (2 * 3600, "1h-2h"),
+        (4 * 3600, "2h-4h"),
         (i64::MAX, "4h+"),
     ];
 
@@ -268,16 +255,4 @@ pub(super) fn distribution_card(session_secs: &[i64]) -> Option<Element> {
 
 fn weekday_labels() -> Vec<String> {
     WEEKDAY_LABELS.iter().map(|s| (*s).to_string()).collect()
-}
-
-fn hour_labels() -> Vec<String> {
-    (0..24)
-        .map(|h| {
-            if h % 6 == 0 {
-                format_hour(h)
-            } else {
-                String::new()
-            }
-        })
-        .collect()
 }

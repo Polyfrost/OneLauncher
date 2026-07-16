@@ -10,7 +10,9 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::onboarding::{choice_row, onboarding_illustration, onboarding_slide, step_heading};
+use crate::view::onboarding::{
+    choice_row, onboarding_illustration, onboarding_slide, step_heading,
+};
 
 fn migrated_categories(source: &[SourceInstance]) -> Vec<String> {
     let mut categories: Vec<String> = Vec::new();

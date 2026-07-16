@@ -35,7 +35,7 @@ pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
-pub use charts::{BarChart, ValueUnit};
+pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use cluster_landscape_art::ClusterLandscapeArt;
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use context_menu::ContextMenu;

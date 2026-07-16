@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use oneclient_core::notification::{Notification, NotificationLevel, NotificationService};
 use oneclient_core::packages::PackageStore;
 use oneclient_core::settings::store::{
@@ -813,7 +815,7 @@ fn refresh_settings(snapshots: &mut BridgeSnapshot) -> anyhow::Result<()> {
 }
 
 async fn install_package(
-    state: &std::sync::Arc<LauncherState>,
+    state: &Arc<LauncherState>,
     provider: oneclient_core::packages::ProviderId,
     project_id: &str,
     version_id: &str,
@@ -856,10 +858,7 @@ fn apply_game_stage(snapshots: &mut BridgeSnapshot, cluster_id: i64, stage: Laun
     snapshots.game.stages.insert(cluster_id, stage);
     if stage == LaunchStage::Checking {
         snapshots.game.error = None;
-        snapshots
-            .game
-            .logs
-            .insert(cluster_id, std::sync::Arc::new(Vec::new()));
+        snapshots.game.logs.insert(cluster_id, Arc::new(Vec::new()));
     }
 }
 
@@ -873,7 +872,7 @@ fn apply_game_failed(snapshots: &mut BridgeSnapshot, cluster_id: i64, message: S
 
 fn apply_game_log(snapshots: &mut BridgeSnapshot, cluster_id: i64, line: String) {
     let buffer = snapshots.game.logs.entry(cluster_id).or_default();
-    std::sync::Arc::make_mut(buffer).push(std::sync::Arc::from(line));
+    Arc::make_mut(buffer).push(Arc::from(line));
 }
 
 fn bump_profiles_generation(snapshots: &mut BridgeSnapshot) {

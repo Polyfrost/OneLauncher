@@ -9,7 +9,7 @@ use crate::utils::format_duration_hm;
 
 use super::card;
 
-pub(super) fn tiles_row(analytics: &Analytics) -> Element {
+pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
     let stats = &analytics.playtime;
     let avg_session = if stats.session_count > 0 {
         stats.total_secs / stats.session_count as i64
@@ -36,7 +36,7 @@ pub(super) fn tiles_row(analytics: &Analytics) -> Element {
             stats.active_days.to_string(),
         ),
     ];
-    if !analytics.servers.is_empty() {
+    if force_all || !analytics.servers.is_empty() {
         tiles.push(stat_tile(
             IconType::Globe01,
             "Server joins",

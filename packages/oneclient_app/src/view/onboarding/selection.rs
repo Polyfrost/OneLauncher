@@ -83,11 +83,7 @@ pub fn set_archive_selected(
     selected: &mut HashSet<String>,
 ) {
     for file in archive.manifest.files.iter().filter(|f| is_default_file(f)) {
-        let key = pkg_key(
-            cluster_id,
-            &archive.manifest.name,
-            &file.kind.package_id(),
-        );
+        let key = pkg_key(cluster_id, &archive.manifest.name, &file.kind.package_id());
         if on {
             selected.insert(key);
         } else {

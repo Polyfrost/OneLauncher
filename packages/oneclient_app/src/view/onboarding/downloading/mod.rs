@@ -4,10 +4,10 @@ use std::time::{Duration, Instant};
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::{BundleArchive, BundleFile, ImportTarget};
 use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
+use oneclient_core::{BundleArchive, BundleFile, ImportTarget};
 use oneclient_db::models::OverrideType;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -484,7 +484,11 @@ fn archive_overrides(
 
     let mut overrides = Vec::new();
     for file in &archive.manifest.files {
-        let wanted = if file.hidden { bundle_taken } else { wants(file) };
+        let wanted = if file.hidden {
+            bundle_taken
+        } else {
+            wants(file)
+        };
 
         let override_type = match (wanted, file.enabled) {
             // Matches the manifest default; nothing to record.
@@ -702,13 +706,9 @@ async fn install_one(
             "Saving your package choices...".to_string(),
         ));
     }
-    oneclient_core::set_bundle_package_overrides(
-        plan.cluster_id,
-        &plan.overrides,
-        &state.services,
-    )
-    .await
-    .map_err(|err| err.to_string())?;
+    oneclient_core::set_bundle_package_overrides(plan.cluster_id, &plan.overrides, &state.services)
+        .await
+        .map_err(|err| err.to_string())?;
 
     if !predownload {
         return Ok(());
@@ -963,14 +963,16 @@ mod tests {
                 archives: vec![sb.clone()],
             },
         ];
-        let selected: HashSet<String> =
-            [pkg_key(1, &sb.manifest.name, "skyblock-main")].into();
+        let selected: HashSet<String> = [pkg_key(1, &sb.manifest.name, "skyblock-main")].into();
         let plans = build_plans(&both, &selected);
 
         assert!(plans[0].overrides.is_empty());
-        assert!(plans[1].overrides.iter().any(|(_, pid, ty)| pid
-            == "skyblock-main"
-            && *ty == OverrideType::Removed));
+        assert!(
+            plans[1]
+                .overrides
+                .iter()
+                .any(|(_, pid, ty)| pid == "skyblock-main" && *ty == OverrideType::Removed)
+        );
     }
 
     #[test]
@@ -985,8 +987,7 @@ mod tests {
         let accepted = rough_download_estimate(&all, &keys(&sb, &["skyblock-main"]));
         assert_eq!(accepted, baseline + 2);
 
-        let with_extra =
-            rough_download_estimate(&all, &keys(&sb, &["skyblock-main", "skycubed"]));
+        let with_extra = rough_download_estimate(&all, &keys(&sb, &["skyblock-main", "skycubed"]));
         assert_eq!(with_extra, baseline + 3);
     }
 }

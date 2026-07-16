@@ -24,7 +24,7 @@ pub fn launch_button_state(game: &GameSnapshot, cluster_id: i64) -> (&'static st
 }
 
 pub use accounts::Accounts;
-pub(crate) use analytics::analytics_body;
+pub(crate) use analytics::{analytics_body, analytics_placeholder};
 pub use clusters::Clusters;
 pub use debug::Debug;
 pub use home::Home;

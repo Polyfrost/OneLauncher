@@ -69,7 +69,13 @@ impl OptInBundle {
     fn mod_count(&self) -> usize {
         self.members
             .first()
-            .map(|(_, a)| a.manifest.files.iter().filter(|f| f.enabled && !f.hidden).count())
+            .map(|(_, a)| {
+                a.manifest
+                    .files
+                    .iter()
+                    .filter(|f| f.enabled && !f.hidden)
+                    .count()
+            })
             .unwrap_or(0)
     }
 }
@@ -133,7 +139,12 @@ fn optional_mods(clusters: &[ClusterBundles]) -> Vec<OptionalMod> {
 
     for cb in clusters {
         for archive in &cb.archives {
-            for file in archive.manifest.files.iter().filter(|f| is_optional_file(f)) {
+            for file in archive
+                .manifest
+                .files
+                .iter()
+                .filter(|f| is_optional_file(f))
+            {
                 let package_id = file.kind.package_id();
                 let entry = map.entry(package_id.clone()).or_insert_with(|| {
                     order.push(package_id.clone());
@@ -227,9 +238,8 @@ impl Component for OnboardingBundles {
         let mut sections: Vec<Element> = Vec::new();
 
         for bundle in &opt_ins {
-            sections.push(
-                opt_in_card(bundle, &selected_set, selected, user_touched).into_element(),
-            );
+            sections
+                .push(opt_in_card(bundle, &selected_set, selected, user_touched).into_element());
         }
 
         if !extras.is_empty() {
@@ -336,12 +346,7 @@ fn opt_in_card(
                                 if wanted {
                                     return;
                                 }
-                                set_bundle_versions(
-                                    selected,
-                                    user_touched,
-                                    &yes_bundle,
-                                    &yes_ids,
-                                )
+                                set_bundle_versions(selected, user_touched, &yes_bundle, &yes_ids)
                             },
                         )),
                 )
@@ -354,9 +359,7 @@ fn opt_in_card(
                             "",
                             !wanted,
                             Size::fill(),
-                            move |()| {
-                                set_bundle_versions(selected, user_touched, &no_bundle, &[])
-                            },
+                            move |()| set_bundle_versions(selected, user_touched, &no_bundle, &[]),
                         )),
                 ),
         );

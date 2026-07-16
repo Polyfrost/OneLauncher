@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::ScrollArea;
 use crate::hooks::{try_global_analytics, use_global_analytics};
 use crate::theme::colors;
-use crate::view::app::analytics_body;
+use crate::view::app::{analytics_body, analytics_placeholder};
 
 #[derive(PartialEq)]
 pub struct Stats;
@@ -15,7 +15,9 @@ impl Component for Stats {
 
         let body: Element = match &analytics {
             None => loading_state(),
-            Some(a) if a.playtime.session_count == 0 => empty_state(),
+            Some(a) if a.playtime.session_count == 0 => {
+                analytics_placeholder("No playtime recorded yet. Launch a game and come back!")
+            }
             Some(a) => analytics_body(a),
         };
 
@@ -32,7 +34,7 @@ impl Component for Stats {
                         rect()
                             .vertical()
                             .width(Size::fill())
-                            .padding(40.)
+                            .padding(Gaps::new(0., 40., 40., 40.))
                             .spacing(24.)
                             .child(header())
                             .child(body),
@@ -63,10 +65,6 @@ fn header() -> Element {
 
 fn loading_state() -> Element {
     centered_note("Crunching your playtime…")
-}
-
-fn empty_state() -> Element {
-    centered_note("No playtime recorded yet. Launch a game and come back!")
 }
 
 fn centered_note(text: &str) -> Element {

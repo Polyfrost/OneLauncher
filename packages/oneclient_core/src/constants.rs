@@ -11,7 +11,6 @@ pub const MODRINTH_CDN_PREFIX: &str = "https://cdn.modrinth.com/data/";
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/v1";
 pub const CURSEFORGE_GAME_ID: u32 = 432;
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
-pub const FEATURED_PACKAGES_URL: &str = "https://polyfrost.org/meta/onelauncher/featured.json";
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 pub const SKYCLIENT_BASE_URL: &str =
 	"https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";

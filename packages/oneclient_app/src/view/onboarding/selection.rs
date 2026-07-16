@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn selection_is_per_cluster() {
-        let items = vec![
+        let items = [
             ClusterBundles {
                 cluster: cluster(1),
                 archives: vec![archive("SkyBlock", false, vec![file("sb-a", true, false)])],

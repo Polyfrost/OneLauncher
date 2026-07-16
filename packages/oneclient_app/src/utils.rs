@@ -27,7 +27,7 @@ pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
     }
 
     for list in groups.values_mut() {
-        list.sort_by(|a, b| cluster_key(b).cmp(&cluster_key(a)));
+        list.sort_by_key(|b| std::cmp::Reverse(cluster_key(b)));
     }
 
     groups

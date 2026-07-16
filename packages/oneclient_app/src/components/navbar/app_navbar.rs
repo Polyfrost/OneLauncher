@@ -1,4 +1,5 @@
 use freya::{
+    animation::*,
     prelude::*,
     router::{RouterContext, use_route},
 };
@@ -10,11 +11,23 @@ use crate::{
     theme,
 };
 
+const NAVBAR_INTRO_MS: u64 = 460;
+
 #[derive(PartialEq)]
 pub struct Navbar;
 
 impl Component for Navbar {
     fn render(&self) -> impl IntoElement {
+        let intro = use_animation(|conf| {
+            conf.on_creation(OnCreation::Run);
+            AnimNum::new(0., 1.)
+                .time(NAVBAR_INTRO_MS)
+                .ease(Ease::Out)
+                .function(Function::Cubic)
+        });
+        let eased = intro.get().value();
+        let slide = (1.0 - eased) * -theme::NAVBAR_HEIGHT_PX;
+
         rect()
             .width(Size::fill())
             .height(Size::px(theme::NAVBAR_HEIGHT_PX))
@@ -28,6 +41,8 @@ impl Component for Navbar {
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
                     .padding(Gaps::new_symmetric(0.0, 40.0))
+                    .offset_y(slide)
+                    .opacity(eased)
                     .child(navbar_left())
                     .child(navbar_center())
                     .child(NavbarRight),

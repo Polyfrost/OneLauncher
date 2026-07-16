@@ -44,11 +44,12 @@ impl Component for RecentsRow {
         let display = sorted.into_iter().take(slots).collect::<Vec<_>>();
         let count = display.len();
 
-        let dep = (*use_active_cluster_id().read(), count);
-        let intro = use_animation_with_dependencies(&dep, |conf, (_, count)| {
+        let items = count + 1;
+
+        let intro = use_animation_with_dependencies(&items, |conf, items| {
             conf.on_creation(OnCreation::Run);
             conf.on_change(OnChange::Rerun);
-            let total = CARD_MS + (count.saturating_sub(1) as u64) * STAGGER_MS;
+            let total = CARD_MS + (items.saturating_sub(1) as u64) * STAGGER_MS;
             AnimNum::new(0., 1.)
                 .time(total.max(1))
                 .function(Function::Linear)
@@ -72,19 +73,30 @@ impl Component for RecentsRow {
                 ClusterCard {
                     cluster: cluster.clone(),
                     index,
-                    count,
+                    items,
                     progress,
                 }
                 .into_element()
             }))
-            .child(OtherVersionsTile)
+            .child(OtherVersionsTile {
+                index: count,
+                items,
+                progress,
+            })
     }
+}
+
+fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
+    let total = CARD_MS as f32 + (items.saturating_sub(1) as f32) * STAGGER_MS as f32;
+    let elapsed = progress * total;
+    let local = ((elapsed - index as f32 * STAGGER_MS as f32) / CARD_MS as f32).clamp(0., 1.);
+    1.0 - (1.0 - local).powi(3)
 }
 
 struct ClusterCard {
     cluster: Cluster,
     index: usize,
-    count: usize,
+    items: usize,
     progress: f32,
 }
 
@@ -92,7 +104,7 @@ impl PartialEq for ClusterCard {
     fn eq(&self, other: &Self) -> bool {
         self.cluster.id == other.cluster.id
             && self.index == other.index
-            && self.count == other.count
+            && self.items == other.items
             && self.progress == other.progress
     }
 }
@@ -107,11 +119,7 @@ impl Component for ClusterCard {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        let total = CARD_MS as f32 + (self.count.saturating_sub(1) as f32) * STAGGER_MS as f32;
-        let elapsed = self.progress * total;
-        let local =
-            ((elapsed - self.index as f32 * STAGGER_MS as f32) / CARD_MS as f32).clamp(0., 1.);
-        let eased = 1.0 - (1.0 - local).powi(3);
+        let eased = stagger_eased(self.progress, self.index, self.items);
         let rise = (1.0 - eased) * CARD_RISE_PX;
 
         let title = format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader);
@@ -219,7 +227,11 @@ impl Component for ClusterCard {
 }
 
 #[derive(PartialEq)]
-struct OtherVersionsTile;
+struct OtherVersionsTile {
+    index: usize,
+    items: usize,
+    progress: f32,
+}
 
 impl Component for OtherVersionsTile {
     fn render(&self) -> impl IntoElement {
@@ -229,9 +241,14 @@ impl Component for OtherVersionsTile {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
+        let eased = stagger_eased(self.progress, self.index, self.items);
+        let rise = (1.0 - eased) * CARD_RISE_PX;
+
         rect()
             .width(Size::px(MORE_TILE_WIDTH_PX))
             .height(Size::fill())
+            .offset_y(rise)
+            .opacity(eased)
             .corner_radius(CornerRadius::new_all(12.))
             .border(
                 if focused {

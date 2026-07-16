@@ -14,6 +14,15 @@ pub fn toggle(value: State<bool>) -> impl IntoElement {
     Switch {
         value,
         on_press: (move |()| v.toggle()).into(),
+        disabled: false,
+    }
+}
+
+pub fn toggle_disabled(value: State<bool>) -> impl IntoElement {
+    Switch {
+        value,
+        on_press: (|()| {}).into(),
+        disabled: true,
     }
 }
 
@@ -34,6 +43,7 @@ impl Component for ToggleControlled {
         Switch {
             value,
             on_press: self.on_toggle.clone(),
+            disabled: false,
         }
     }
 }
@@ -42,6 +52,7 @@ impl Component for ToggleControlled {
 struct Switch {
     value: State<bool>,
     on_press: EventHandler<()>,
+    disabled: bool,
 }
 
 impl Component for Switch {
@@ -49,13 +60,14 @@ impl Component for Switch {
         let value = self.value;
         let on_press = self.on_press.clone();
         let on = *value.read();
+        let disabled = self.disabled;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
 
         let knob_align = if on { Alignment::End } else { Alignment::Start };
 
-        let track_border = if focus().is_focused() {
+        let track_border = if focus().is_focused() && !disabled {
             colors::fg_primary()
         } else {
             colors::component_border()
@@ -94,12 +106,14 @@ impl Component for Switch {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .a11y_id(a11y_id)
-            .a11y_focusable(true)
+            .a11y_focusable(!disabled)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| {
-                on_press.call(());
+            .maybe(!disabled, |el| {
+                el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .on_all_press(move |_| {
+                        on_press.call(());
+                    })
             })
             .child(
                 label()
@@ -115,14 +129,22 @@ impl Component for Switch {
                     .padding(Gaps::new_all(3.))
                     .main_align(knob_align)
                     .cross_align(Alignment::Center)
-                    .background(&*background.read())
+                    .background(if disabled {
+                        colors::component_bg_disabled()
+                    } else {
+                        background.read().value()
+                    })
                     .border(ui::border_all_color(1., track_border))
                     .child(
                         rect()
                             .width(Size::px(HANDLE_SIZE))
                             .height(Size::px(HANDLE_SIZE))
                             .corner_radius(CornerRadius::new_all(8.))
-                            .background(Color::WHITE)
+                            .background(if disabled {
+                                colors::fg_secondary()
+                            } else {
+                                Color::WHITE
+                            })
                             .position(Position::new_absolute().right(right_offset.read().value())),
                     ),
             )

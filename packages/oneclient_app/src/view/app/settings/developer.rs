@@ -43,24 +43,12 @@ impl Component for SettingsDeveloper {
                 "Filter the content browser to the active cluster's version and loader.",
                 toggle(browser_compat),
             ))
-            .child(settings_row(
-                IconType::InfoCircle,
-                "Open Debug Info",
-                "View runtime and environment details.",
-                Button::new(),
-            ))
             .child(section_header("DEV TOOLS"))
             .child(settings_row(
                 IconType::Terminal,
                 "Log Debug Info",
                 "WARNING! This requires a restart to apply. Logs out debug info.",
                 toggle(log_debug),
-            ))
-            .child(settings_row(
-                IconType::CodeSnippet02,
-                "Show Dev stuff",
-                "Enable the dev tools and shows the debug page.",
-                toggle(show_dev),
             ))
             .child(settings_row(
                 IconType::CodeSnippet02,

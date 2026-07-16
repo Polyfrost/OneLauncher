@@ -49,8 +49,28 @@ pub fn settings_row(
     description: impl Into<String>,
     trailing: impl IntoElement,
 ) -> impl IntoElement {
+    settings_row_inner(icon, title, description, trailing, false)
+}
+
+pub fn settings_row_disabled(
+    icon: IconType,
+    title: &'static str,
+    description: impl Into<String>,
+    trailing: impl IntoElement,
+) -> impl IntoElement {
+    settings_row_inner(icon, title, description, trailing, true)
+}
+
+fn settings_row_inner(
+    icon: IconType,
+    title: &'static str,
+    description: impl Into<String>,
+    trailing: impl IntoElement,
+    disabled: bool,
+) -> impl IntoElement {
     let description = description.into();
     rect()
+        .maybe(disabled, |el| el.opacity(0.4))
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)

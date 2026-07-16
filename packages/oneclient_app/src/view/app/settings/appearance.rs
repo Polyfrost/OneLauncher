@@ -1,11 +1,11 @@
 use freya::prelude::*;
 
 use super::settings_page;
-use crate::components::{Icon, IconType, toggle};
+use crate::components::{Icon, IconType, toggle, toggle_disabled};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::app::settings::settings_row;
+use crate::view::app::settings::{settings_row, settings_row_disabled};
 
 #[derive(Clone, Copy)]
 struct ThemePreview {
@@ -104,6 +104,7 @@ fn theme_section(selected: State<usize>) -> impl IntoElement {
     rect()
         .horizontal()
         .spacing(16.)
+        .opacity(0.4)
         .child(big_preview(current))
         .child(
             rect()
@@ -150,7 +151,7 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
         .into_element()
 }
 
-fn theme_card(theme: ThemePreview, index: usize, mut selected: State<usize>) -> Element {
+fn theme_card(theme: ThemePreview, index: usize, selected: State<usize>) -> Element {
     let is_selected = *selected.read() == index;
     let border_color = if is_selected {
         colors::brand()
@@ -167,9 +168,6 @@ fn theme_card(theme: ThemePreview, index: usize, mut selected: State<usize>) -> 
         .border(border_all_color(1., border_color))
         .padding(8.)
         .spacing(20.)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-        .on_press(move |_| *selected.write() = index)
         .child(mock_line(108., line_tint(theme)))
         .child(split_bar(theme.accent, 96.))
         .into_element()
@@ -210,7 +208,7 @@ fn line_tint(theme: ThemePreview) -> Color {
 }
 
 fn accent_color_row() -> impl IntoElement {
-    settings_row(
+    settings_row_disabled(
         IconType::PaintPour,
         "Accent color",
         "The main color used across the launcher. This doesn't edit your theme.",
@@ -233,7 +231,7 @@ fn accent_color_row() -> impl IntoElement {
 }
 
 fn custom_theme_row() -> impl IntoElement {
-    settings_row(
+    settings_row_disabled(
         IconType::Colors,
         "Custom theme",
         "Create, edit, and import launcher themes",
@@ -251,10 +249,10 @@ fn dynamic_background_row(enabled: State<bool>) -> impl IntoElement {
 }
 
 fn animations_row(animations_on: State<bool>) -> impl IntoElement {
-    settings_row(
+    settings_row_disabled(
         IconType::Play,
         "Animations",
         "Toggle all animations in the launcher. May cause buggy behavior.",
-        toggle(animations_on),
+        toggle_disabled(animations_on),
     )
 }

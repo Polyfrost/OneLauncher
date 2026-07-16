@@ -124,6 +124,7 @@ url.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 parking_lot.workspace = true
+sysinfo.workspace = true
 sanitize-filename.workspace = true
 dunce.workspace = true
 bytes.workspace = true

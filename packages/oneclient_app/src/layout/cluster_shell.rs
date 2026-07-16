@@ -118,14 +118,18 @@ impl Component for ClusterShell {
         let show_game_log = game.is_active(cluster_id);
         let launch_state = launch_button_state(&game, cluster_id);
 
+        // Queried out here rather than where it is used: the shell can mount
+        // before the cluster list settles, and a hook that only runs once the
+        // cluster resolves would change this component's hook count mid-life.
+        let parsed = cluster.as_ref().and_then(|c| parse_mc_version(&c.mc_version));
+        let metadata = use_version_metadata(
+            parsed.as_ref().map(|p| p.major),
+            parsed.and_then(|p| p.key()),
+            cluster.as_ref().map(|c| c.mc_loader),
+        );
+
         let header = cluster.as_ref().map(|cluster| {
             let title = format!("{} {}", cluster.mc_loader, cluster.mc_version);
-            let parsed = parse_mc_version(&cluster.mc_version);
-            let metadata = use_version_metadata(
-                parsed.as_ref().map(|p| p.major),
-                parsed.and_then(|p| p.key()),
-                Some(cluster.mc_loader),
-            );
             let subtitle = metadata
                 .and_then(|m| m.long_description)
                 .unwrap_or_else(|| cluster.name.clone());

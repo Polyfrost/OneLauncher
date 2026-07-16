@@ -57,7 +57,7 @@ pub async fn install_package(
 			.await;
 	}
 
-	let _ = tokio::fs::remove_file(&archive_path).await;
+	let _ = polyio::remove_file(&archive_path).await;
 
 	tracing::info!(vendor = %package.vendor, major, "installed Java runtime");
 

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT cluster_id, started_at, pid, pid_started_at\n\t\tFROM game_sessions\n\t\tWHERE ended_at IS NULL\n\t\tORDER BY started_at ASC\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "pid",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "pid"
+          }
+        }
+      },
+      {
+        "name": "pid_started_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "pid_started_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "c49ab599ef0aa31813f2a84d86f79235e2470eeec5b10f1e768fcf54d37d57fe"
+}

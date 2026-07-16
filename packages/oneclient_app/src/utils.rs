@@ -35,7 +35,7 @@ pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
 
 pub fn major_pretty_name(major: u32) -> String {
     if major >= 26 {
-        format!("{major}.x")
+        format!("{major}")
     } else {
         format!("1.{major}")
     }

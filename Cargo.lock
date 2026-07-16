@@ -4577,6 +4577,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "strum",
+ "sysinfo",
  "thiserror 2.0.18",
  "tokio",
  "tokio-stream",

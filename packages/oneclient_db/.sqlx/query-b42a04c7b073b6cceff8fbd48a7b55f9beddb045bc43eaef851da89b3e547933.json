@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tDELETE FROM game_session_servers\n\t\tWHERE session_started_at = ?\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "b42a04c7b073b6cceff8fbd48a7b55f9beddb045bc43eaef851da89b3e547933"
+}

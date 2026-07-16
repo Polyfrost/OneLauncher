@@ -15,6 +15,9 @@ pub(crate) struct ServerJoin {
 	pub port: Option<u16>,
 }
 
+/// The session row's identity — its `started_at`, which is the primary key.
+pub(crate) type SessionId = String;
+
 pub(crate) fn parse_server_join(line: &str) -> Option<ServerJoin> {
 	const MARKER: &str = "Connecting to ";
 	let idx = line.find(MARKER)?;
@@ -85,11 +88,49 @@ impl SessionRecorder {
 		})
 	}
 
-	pub(crate) async fn observe(&self, line: &str) {
-		let Some(join) = parse_server_join(line) else {
-			return;
-		};
+	/// Re-attach to a session row left open by a previous launcher run, so a
+	/// game that outlived the launcher keeps recording into the same session.
+	pub(crate) fn resume(db: DbPool, session_started_at: SessionId, open_server: Option<String>) -> Self {
+		Self {
+			session_started_at,
+			db,
+			open_server: Arc::new(Mutex::new(open_server)),
+		}
+	}
 
+	/// When the session row says it began. Playtime is measured against this so
+	/// it agrees with the session span analytics reads back out of the row.
+	pub(crate) fn started_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+		chrono::DateTime::parse_from_rfc3339(&self.session_started_at)
+			.ok()
+			.map(|at| at.with_timezone(&chrono::Utc))
+	}
+
+	/// Remember which OS process backs this session. Without it, a launcher
+	/// restart cannot tell a live game from one that exited unobserved.
+	#[tracing::instrument(skip(self), level = "debug")]
+	pub(crate) async fn record_process(&self, pid: u32, pid_started_at: Option<u64>) {
+		if let Err(err) = session_dao::set_session_process(
+			&self.db,
+			&self.session_started_at,
+			Some(i64::from(pid)),
+			pid_started_at.map(|t| t as i64),
+		)
+		.await
+		{
+			tracing::warn!(pid, error = %err, "failed to record session process");
+		}
+	}
+
+	pub(crate) async fn observe(&self, line: &str) {
+		if let Some(join) = parse_server_join(line) {
+			self.open(join).await;
+		} else if super::log_replay::is_leave_marker(line) {
+			self.close_open().await;
+		}
+	}
+
+	async fn open(&self, join: ServerJoin) {
 		let mut open = self.open_server.lock().await;
 		if let Some(prev) = open.take()
 			&& let Err(err) = session_dao::finish_server(&self.db, &prev).await
@@ -111,16 +152,27 @@ impl SessionRecorder {
 		}
 	}
 
+	async fn close_open(&self) {
+		if let Some(prev) = self.open_server.lock().await.take()
+			&& let Err(err) = session_dao::finish_server(&self.db, &prev).await
+		{
+			tracing::warn!(error = %err, "failed to close server row");
+		}
+	}
+
+	/// Close the session. The time is explicit because an exit is not always
+	/// observed as it happens — one recovered from a log ended in the past.
 	#[tracing::instrument(skip(self), fields(exit_code), level = "debug")]
-	pub(crate) async fn finish(self, exit_code: Option<i64>) {
+	pub(crate) async fn finish_at(self, ended_at: &str, exit_code: Option<i64>) {
 		if let Some(open) = self.open_server.lock().await.take()
-			&& let Err(err) = session_dao::finish_server(&self.db, &open).await
+			&& let Err(err) = session_dao::finish_server_at(&self.db, &open, ended_at).await
 		{
 			tracing::warn!(error = %err, "failed to close open server on exit");
 		}
 
 		if let Err(err) =
-			session_dao::finish_session(&self.db, &self.session_started_at, exit_code).await
+			session_dao::finish_session_at(&self.db, &self.session_started_at, ended_at, exit_code)
+				.await
 		{
 			tracing::warn!(session = %self.session_started_at, error = %err, "failed to finish game session");
 		}

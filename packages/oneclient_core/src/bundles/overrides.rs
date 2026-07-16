@@ -331,7 +331,7 @@ mod tests {
     }
 
     async fn read(path: &Path) -> Option<Vec<u8>> {
-        tokio::fs::read(path).await.ok()
+        polyio::read(path).await.ok()
     }
 
     async fn sync(zip: &Path, root: &Path) -> OverrideSyncReport {
@@ -403,7 +403,7 @@ mod tests {
         write_bundle(&v1, &[("overrides/config/a.toml", b"alpha")]).await;
         sync(&v1, &root).await;
 
-        tokio::fs::write(root.join("config/a.toml"), b"user-edit")
+        polyio::write(root.join("config/a.toml"), b"user-edit")
             .await
             .unwrap();
 
@@ -423,7 +423,7 @@ mod tests {
         write_bundle(&v1, &[("overrides/config/a.toml", b"alpha")]).await;
         sync(&v1, &root).await;
 
-        tokio::fs::write(root.join("config/a.toml"), b"user-edit")
+        polyio::write(root.join("config/a.toml"), b"user-edit")
             .await
             .unwrap();
 
@@ -455,7 +455,7 @@ mod tests {
         write_bundle(&v1, &[(&format!("overrides/{path}"), b"deps-v1")]).await;
         sync(&v1, &root).await;
 
-        tokio::fs::write(root.join(path), b"runtime-mutated")
+        polyio::write(root.join(path), b"runtime-mutated")
             .await
             .unwrap();
 
@@ -482,7 +482,7 @@ mod tests {
         sync(&v1, &root).await;
 
         // User modified kept.toml; gone.toml untouched.
-        tokio::fs::write(root.join("config/kept.toml"), b"edited")
+        polyio::write(root.join("config/kept.toml"), b"edited")
             .await
             .unwrap();
 
@@ -503,10 +503,10 @@ mod tests {
     async fn bootstrap_pre_existing_edit_is_never_overwritten() {
         let root = tmp_root("bootstrap");
 
-        tokio::fs::create_dir_all(root.join("config"))
+        polyio::create_dir_all(root.join("config"))
             .await
             .unwrap();
-        tokio::fs::write(root.join("config/a.toml"), b"pre-existing")
+        polyio::write(root.join("config/a.toml"), b"pre-existing")
             .await
             .unwrap();
 

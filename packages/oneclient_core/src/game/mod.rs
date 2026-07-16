@@ -3,11 +3,14 @@ mod arguments;
 mod download;
 mod error;
 mod launch;
+mod log_replay;
 mod metadata;
 mod process;
+mod reattach;
 mod rules;
 mod session;
 mod shared_dir;
+mod tail;
 
 pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
@@ -20,7 +23,10 @@ pub use arguments::{
 pub use download::{download_to_path, fetch_bytes_verified};
 pub use error::GameError;
 pub use launch::{LaunchedGame, is_running, launch_cluster};
-pub use process::{GameProcess, GameProcessManager};
+pub use process::{
+    GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
+};
+pub use reattach::recover_sessions;
 pub use metadata::{
     download_minecraft, download_version_info, get_game_versions, get_loader_version,
     get_loader_versions, get_loaders_for_version, is_version_updated, libraries_missing,

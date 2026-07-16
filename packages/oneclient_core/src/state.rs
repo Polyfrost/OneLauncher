@@ -91,6 +91,8 @@ impl LauncherState {
 				}
 			};
 
+			crate::game::recover_sessions(&background).await;
+
 			let (versions_res, bundles_res) = tokio::join!(
 				background.versions.sync(&background.services),
 				background.bundles.sync(&background.services),

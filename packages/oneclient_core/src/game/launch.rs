@@ -1,23 +1,22 @@
-
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::sync::Mutex as AsyncMutex;
 
-use crate::auth::MinecraftAccount;
 use crate::ClusterStage;
-use crate::clusters::ClusterManager;
+use crate::auth::MinecraftAccount;
+use crate::clusters::{Cluster, ClusterManager};
 use crate::discord::Presence;
+use crate::game::session::SessionRecorder;
+use crate::game::tail::spawn_log_tail;
 use crate::game::{
     GameError, arguments, download_minecraft, download_version_info, get_loader_version,
     libraries_missing, resolve_minecraft_version,
 };
-use crate::game::session::SessionRecorder;
 use crate::java::JavaManager;
 use crate::notification::{GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
@@ -125,9 +124,14 @@ pub async fn launch_cluster(
         )
         .await?;
 
-        let version_info =
-            download_version_info(&state.services, Some(&progress), &version, loader_version.as_ref(), false)
-                .await;
+        let version_info = download_version_info(
+            &state.services,
+            Some(&progress),
+            &version,
+            loader_version.as_ref(),
+            false,
+        )
+        .await;
 
         (version, updated, loader_version, version_info)
     };
@@ -141,9 +145,10 @@ pub async fn launch_cluster(
         }
     };
 
-    let version_name = loader_version
-        .as_ref()
-        .map_or_else(|| version.id.clone(), |lv| format!("{}-{}", version.id, lv.id));
+    let version_name = loader_version.as_ref().map_or_else(
+        || version.id.clone(),
+        |lv| format!("{}-{}", version.id, lv.id),
+    );
 
     tracing::info!(
         cluster_id,
@@ -172,8 +177,7 @@ pub async fn launch_cluster(
     match libraries_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
-            let _ =
-                ClusterManager::set_stage(state, cluster_id, ClusterStage::Repairing).await;
+            let _ = ClusterManager::set_stage(state, cluster_id, ClusterStage::Repairing).await;
             stage(LaunchStage::Downloading);
             if let Err(err) = download_minecraft(
                 &state.services,
@@ -200,16 +204,14 @@ pub async fn launch_cluster(
     stage(LaunchStage::Launching);
 
     let cwd = game_dir;
-    tokio::fs::create_dir_all(&cwd).await.ok();
+    polyio::create_dir_all(&cwd).await.ok();
 
     if let Err(err) = crate::game::write_allowed_symlinks(&cwd).await {
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
     if !dedicated {
-        if let Err(err) =
-            crate::game::sync_shared_content(&state.services, &cluster, &cwd).await
-        {
+        if let Err(err) = crate::game::sync_shared_content(&state.services, &cluster, &cwd).await {
             tracing::warn!(cluster_id, error = %err, "failed to sync shared content");
         }
         // Redirect the shared dir's `logs`/`crash-reports` into this cluster's
@@ -263,11 +265,7 @@ pub async fn launch_cluster(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    arguments::append_profile_game_arguments(
-        &mut mc_args,
-        profile.force_fullscreen,
-        None,
-    );
+    arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
 
     run_hook(profile.hook_pre.as_deref(), &cwd).await;
 
@@ -289,7 +287,39 @@ pub async fn launch_cluster(
         .args(mc_args)
         .current_dir(&cwd);
 
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let log_path = crate::logs::cluster_output_log(&cluster)?;
+    if let Some(parent) = log_path.parent() {
+        polyio::create_dir_all(parent).await.ok();
+    }
+
+    // The game's output goes straight to the log file rather than through pipes
+    // held by the launcher. A pipe would tie the game's lifetime to ours: once
+    // the launcher exits its read end closes, and the game's next write to a
+    // broken stdout takes it down with us. Writing to a file keeps the two
+    // independent, and the launcher tails that file for the live console.
+    // A cloned handle shares the file offset, so stdout and stderr interleave
+    // into one stream instead of overwriting each other.
+    // `Stdio` needs owned std handles, so the tokio files are unwrapped only
+    // once the async work of opening and cloning them is done.
+    let handles = match tokio::fs::File::create(&log_path).await {
+        Ok(out) => match out.try_clone().await {
+            Ok(err) => Ok((out.into_std().await, err.into_std().await)),
+            Err(err) => Err(err),
+        },
+        Err(err) => Err(err),
+    };
+
+    match handles {
+        Ok((out, err)) => {
+            command.stdout(Stdio::from(out)).stderr(Stdio::from(err));
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "failed to open game log; discarding output");
+            command.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+    }
+    command.stdin(Stdio::null());
+    detach(&mut command);
 
     let mut child = command
         .spawn()
@@ -304,39 +334,30 @@ pub async fn launch_cluster(
         mc_version: cluster.mc_version.clone(),
     });
 
-    let log_path = crate::logs::cluster_output_log(&cluster)?;
-    if let Some(parent) = log_path.parent() {
-        tokio::fs::create_dir_all(parent).await.ok();
-    }
-    let log_file = tokio::fs::File::create(&log_path)
-        .await
-        .ok()
-        .map(|file| Arc::new(tokio::sync::Mutex::new(file)));
+    let recorder =
+        SessionRecorder::start(state, cluster_id, profile.mem_max.unwrap_or(2048), &java).await;
 
-    let recorder = SessionRecorder::start(
-        state,
-        cluster_id,
-        profile.mem_max.unwrap_or(2048),
-        &java,
-    )
-    .await;
+    // Pin the process to the session row so that if the launcher exits before
+    // the game does, the next start can tell whether it is still playing.
+    if let (Some(recorder), Some(pid)) = (recorder.as_ref(), pid) {
+        recorder
+            .record_process(pid, crate::game::process_start_time(pid))
+            .await;
+    }
 
-    if let Some(stdout) = child.stdout.take() {
-        spawn_log_reader(cluster_id, stdout, notifier.clone(), log_file.clone(), recorder.clone());
-    }
-    if let Some(stderr) = child.stderr.take() {
-        spawn_log_reader(cluster_id, stderr, notifier.clone(), log_file.clone(), recorder.clone());
-    }
+    let started_at = recorder
+        .as_ref()
+        .and_then(SessionRecorder::started_at)
+        .unwrap_or_else(Utc::now);
+    let tail = spawn_log_tail(cluster_id, log_path, notifier.clone(), recorder.clone());
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
     state.games.register_kill(cluster_id, kill_tx);
 
     let state = Arc::clone(state);
     let post_hook = profile.hook_post.clone();
-    let cluster_name = cluster.name.clone();
     tokio::spawn(async move {
         let cluster = cluster;
-        let started = Instant::now();
         let status = tokio::select! {
             status = child.wait() => status,
             _ = kill_rx => {
@@ -344,79 +365,154 @@ pub async fn launch_cluster(
                 child.wait().await
             }
         };
-        let played = started.elapsed();
 
+        tail.stop().await;
+
+        let outcome = match status {
+            Ok(status) => Exit::Observed {
+                code: status.code().map(i64::from),
+                success: status.success(),
+                display: status.to_string(),
+            },
+            Err(err) => Exit::Failed(err.to_string()),
+        };
+
+        finalize_session(
+            &state,
+            &cluster,
+            &cwd,
+            dedicated,
+            post_hook.as_deref(),
+            recorder,
+            SessionEnd {
+                started_at,
+                ended_at: Utc::now(),
+                outcome,
+                owns_slot: true,
+            },
+        )
+        .await;
+    });
+
+    Ok(LaunchedGame { cluster_id, pid })
+}
+
+/// Cut the game loose from the launcher's process group / console, so signals
+/// aimed at the launcher (a terminal Ctrl-C, a console window closing) don't
+/// reach the game as collateral.
+fn detach(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        command
+            .as_std_mut()
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
+    }
+}
+
+/// How a session ended, as far as anyone could tell.
+pub(crate) enum Exit {
+    /// The launcher was there and saw the process exit.
+    Observed {
+        code: Option<i64>,
+        success: bool,
+        display: String,
+    },
+    /// Waiting on the process itself failed.
+    Failed(String),
+    /// The game exited while the launcher was closed; the time was recovered
+    /// from its log, and the exit code is gone for good.
+    Inferred,
+}
+
+pub(crate) struct SessionEnd {
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+    pub outcome: Exit,
+    /// Whether this session is the one currently holding the cluster's running
+    /// slot. A stale session recovered from the database may share its cluster
+    /// with a game that is playing right now — booking the old session's
+    /// playtime is right, but clearing that slot would report the live game as
+    /// exited.
+    pub owns_slot: bool,
+}
+
+/// Everything that has to happen once a game is gone: clear its running state,
+/// bank the playtime, close the session row, run the post hook and unwind the
+/// shared-directory plumbing. Shared by the live exit path and by recovery of
+/// sessions that outlived the launcher.
+pub(crate) async fn finalize_session(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+    cwd: &Path,
+    dedicated: bool,
+    post_hook: Option<&str>,
+    recorder: Option<SessionRecorder>,
+    end: SessionEnd,
+) {
+    let cluster_id = cluster.id;
+    let played = (end.ended_at - end.started_at).to_std().unwrap_or_default();
+
+    if end.owns_slot {
         state.games.remove(cluster_id);
-        state.services.notifier.game_stage(cluster_id, LaunchStage::Exited);
+        state
+            .services
+            .notifier
+            .game_stage(cluster_id, LaunchStage::Exited);
 
         if state.games.running_ids().is_empty() {
             state.discord.set_presence(Presence::Idle);
         }
+    }
 
-        if played > Duration::from_secs(1) {
-            let _ = ClusterManager::add_playtime(&state, cluster_id, played).await;
+    if played > Duration::from_secs(1) {
+        let _ = ClusterManager::add_playtime(state, cluster_id, played).await;
+    }
+
+    if let Some(recorder) = recorder {
+        let code = match &end.outcome {
+            Exit::Observed { code, .. } => *code,
+            Exit::Failed(_) | Exit::Inferred => None,
+        };
+        recorder.finish_at(&end.ended_at.to_rfc3339(), code).await;
+    }
+
+    run_hook(post_hook, cwd).await;
+
+    if !dedicated {
+        crate::game::import_manual_content(&state.services, cluster, cwd).await;
+        if let Err(err) = crate::game::clear_shared_content(cwd).await {
+            tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
         }
+        crate::game::unlink_cluster_logs(cwd).await;
+    }
 
-        if let Some(recorder) = recorder {
-            let exit_code = status.as_ref().ok().and_then(|s| s.code()).map(i64::from);
-            recorder.finish(exit_code).await;
-        }
-
-        run_hook(post_hook.as_deref(), &cwd).await;
-
-        if !dedicated {
-            crate::game::import_manual_content(&state.services, &cluster, &cwd).await;
-            if let Err(err) = crate::game::clear_shared_content(&cwd).await {
-                tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
-            }
-            crate::game::unlink_cluster_logs(&cwd).await;
-        }
-
-        match status {
-            Ok(status) if status.success() => state
-                .services
-                .notifier
-                .send_info("Game closed", &format!("{cluster_name} exited")),
-            Ok(status) => state.services.notifier.send_error(
-                "Game crashed",
-                &format!("{cluster_name} exited with {status}"),
-            ),
-            Err(err) => state
-                .services
-                .notifier
-                .send_error("Game error", &format!("{cluster_name}: {err}")),
-        }
-    });
-
-    Ok(LaunchedGame {
-        cluster_id,
-        pid,
-    })
-}
-
-fn spawn_log_reader<R>(
-    cluster_id: i64,
-    reader: R,
-    notifier: crate::notification::NotificationService,
-    file: Option<Arc<AsyncMutex<tokio::fs::File>>>,
-    recorder: Option<SessionRecorder>,
-) where
-    R: tokio::io::AsyncRead + Unpin + Send + 'static,
-{
-    tokio::spawn(async move {
-        let mut lines = BufReader::new(reader).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Some(file) = &file {
-                let mut handle = file.lock().await;
-                let _ = handle.write_all(line.as_bytes()).await;
-                let _ = handle.write_all(b"\n").await;
-            }
-            if let Some(recorder) = &recorder {
-                recorder.observe(&line).await;
-            }
-            notifier.game_log(cluster_id, line);
-        }
-    });
+    let name = &cluster.name;
+    match end.outcome {
+        Exit::Observed { success: true, .. } => state
+            .services
+            .notifier
+            .send_info("Game closed", &format!("{name} exited")),
+        Exit::Observed { display, .. } => state
+            .services
+            .notifier
+            .send_error("Game crashed", &format!("{name} exited with {display}")),
+        Exit::Failed(err) => state
+            .services
+            .notifier
+            .send_error("Game error", &format!("{name}: {err}")),
+        // Nothing was watching, so there is no crash to report and no news the
+        // user wants a popup about — the session is simply booked and closed.
+        Exit::Inferred => {}
+    }
 }
 
 fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {

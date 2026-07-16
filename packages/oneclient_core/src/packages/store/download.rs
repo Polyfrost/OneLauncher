@@ -24,9 +24,9 @@ pub async fn ensure_artifact_file(
     if dest.exists() {
         let existing = sha1_file(dest).await?;
         if normalize_hash(&existing) == normalize_hash(hash) {
-            return Ok(tokio::fs::metadata(dest).await?.len());
+            return Ok(polyio::stat(dest).await?.len());
         }
-        tokio::fs::remove_file(dest).await?;
+        polyio::remove_file(dest).await?;
     }
 
     tracing::debug!("downloading artifact file");
@@ -45,7 +45,7 @@ pub async fn ensure_artifact_file(
         .into());
     }
 
-    Ok(tokio::fs::metadata(dest).await?.len())
+    Ok(polyio::stat(dest).await?.len())
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -160,7 +160,7 @@ async fn index_cache_file(
 		.file_name()
 		.map(|n| n.to_string_lossy().into_owned())
 		.unwrap_or_default();
-	let size = tokio::fs::metadata(file).await.ok().map(|m| m.len() as i64);
+	let size = polyio::stat(file).await.ok().map(|m| m.len() as i64);
 
 	artifact_dao::insert_artifact(
 		pool,
@@ -265,7 +265,7 @@ async fn relink_cluster_files(
 
 			if artifact_dao::get_artifact_by_hash(pool, &hash).await?.is_none() {
 				let stored_path = relative_launcher_path(launcher_dir, &file);
-				let size = tokio::fs::metadata(&file).await.ok().map(|m| m.len() as i64);
+				let size = polyio::stat(&file).await.ok().map(|m| m.len() as i64);
 				artifact_dao::insert_artifact(
 					pool,
 					&hash,
@@ -388,7 +388,7 @@ fn relative_launcher_path(launcher_dir: &Path, abs: &Path) -> String {
 
 async fn list_dir_names(dir: &Path) -> LauncherResult<Vec<String>> {
 	let mut names = Vec::new();
-	let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
+	let Ok(mut entries) = polyio::read_dir(dir).await else {
 		return Ok(names);
 	};
 	while let Some(entry) = entries.next_entry().await? {
@@ -401,7 +401,7 @@ async fn list_dir_names(dir: &Path) -> LauncherResult<Vec<String>> {
 
 async fn list_files(dir: &Path) -> LauncherResult<Vec<PathBuf>> {
 	let mut files = Vec::new();
-	let Ok(mut entries) = tokio::fs::read_dir(dir).await else {
+	let Ok(mut entries) = polyio::read_dir(dir).await else {
 		return Ok(files);
 	};
 	while let Some(entry) = entries.next_entry().await? {

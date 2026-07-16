@@ -153,9 +153,9 @@ impl ClusterManager {
 		let marker = cluster.dedicated_marker()?;
 		if dedicated {
 			polyio::create_dir_all(cluster.dir()?).await?;
-			tokio::fs::write(&marker, b"").await.ok();
+			polyio::write(&marker, b"").await.ok();
 		} else if marker.exists() {
-			tokio::fs::remove_file(&marker).await.ok();
+			polyio::remove_file(&marker).await.ok();
 		}
 		Ok(())
 	}

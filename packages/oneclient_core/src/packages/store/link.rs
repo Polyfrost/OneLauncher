@@ -74,7 +74,7 @@ pub async fn unlink_cluster_file(
 		.join(file_name);
 
 	if path.exists() {
-		tokio::fs::remove_file(&path).await?;
+		polyio::remove_file(&path).await?;
 	}
 	Ok(())
 }

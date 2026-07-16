@@ -4,9 +4,54 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::sync::oneshot;
 
 use crate::notification::LaunchStage;
+
+fn probe(pid: u32) -> Option<(System, Pid)> {
+	let pid = Pid::from_u32(pid);
+	let mut sys = System::new();
+	sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+	sys.process(pid)?;
+	Some((sys, pid))
+}
+
+/// Process start time in unix seconds — pids get recycled, this pins identity.
+pub fn process_start_time(pid: u32) -> Option<u64> {
+	let (sys, pid) = probe(pid)?;
+	Some(sys.process(pid)?.start_time())
+}
+
+/// Whether `pid` is still the process we launched. A matching pid whose start
+/// time differs is a recycled pid belonging to someone else — never ours.
+pub fn is_process_alive(pid: u32, started_at: Option<u64>) -> bool {
+	let Some(actual) = process_start_time(pid) else {
+		return false;
+	};
+	match started_at {
+		Some(expected) => actual == expected,
+		// Pre-migration sessions have no recorded start time. Liveness alone is
+		// a weaker signal, but treating the game as running is the safer error:
+		// worst case the exit time is recovered on a later start.
+		None => true,
+	}
+}
+
+/// Ask a process to exit. Used for games re-adopted after a launcher restart,
+/// where no `Child` handle survives to kill through.
+pub fn kill_process(pid: u32) -> bool {
+	let Some((sys, pid)) = probe(pid) else {
+		return false;
+	};
+	let Some(process) = sys.process(pid) else {
+		return false;
+	};
+	// Prefer a graceful terminate so the game can save and shut down cleanly.
+	process
+		.kill_with(Signal::Term)
+		.unwrap_or_else(|| process.kill())
+}
 
 #[derive(Debug, Clone)]
 pub struct GameProcess {
@@ -80,6 +125,10 @@ impl GameProcessManager {
             .iter()
             .find(|(id, d)| **id != exclude && d.as_path() == dir)
             .map(|(id, _)| *id)
+    }
+
+    pub fn pid(&self, cluster_id: i64) -> Option<u32> {
+        self.inner.lock().unwrap().get(&cluster_id).and_then(|p| p.pid)
     }
 
     pub fn is_running(&self, cluster_id: i64) -> bool {

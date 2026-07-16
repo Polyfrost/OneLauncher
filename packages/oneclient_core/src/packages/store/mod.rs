@@ -270,9 +270,9 @@ impl PackageStore {
         if let Some(parent) = dest.parent() {
             polyio::create_dir_all(parent).await?;
         }
-        tokio::fs::copy(path, &dest).await?;
+        polyio::copy(path, &dest).await?;
 
-        let size = tokio::fs::metadata(&dest).await?.len();
+        let size = polyio::stat(&dest).await?.len();
         let stored_path = relative_cache_path(&dest)?;
 
         let row = artifact_dao::insert_artifact(

@@ -16,7 +16,7 @@ pub use cluster_bundle::{
 };
 pub use game_session::{
     GameSessionId, GameSessionRow, GameSessionServerRow, NewGameSession, ServerJoinCount,
-    SessionSpan,
+    SessionSpan, UnfinishedSession,
 };
 pub use java::JavaVersionRow;
 pub use setting_profile::SettingProfileRow;

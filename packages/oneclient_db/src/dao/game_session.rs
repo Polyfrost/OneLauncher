@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::models::{
 	GameSessionRow, GameSessionServerRow, NewGameSession, ServerJoinCount, SessionSpan,
+	UnfinishedSession,
 };
 
 pub async fn insert_session(
@@ -36,7 +37,17 @@ pub async fn finish_session(
 	started_at: &str,
 	exit_code: Option<i64>,
 ) -> Result<(), sqlx::Error> {
-	let ended_at = Utc::now().to_rfc3339();
+	finish_session_at(pool, started_at, &Utc::now().to_rfc3339(), exit_code).await
+}
+
+/// Close a session at an explicit time. Used when the exit time is inferred
+/// from the game's log rather than observed live.
+pub async fn finish_session_at(
+	pool: &SqlitePool,
+	started_at: &str,
+	ended_at: &str,
+	exit_code: Option<i64>,
+) -> Result<(), sqlx::Error> {
 	sqlx::query!(
 		r#"
 		UPDATE game_sessions
@@ -52,13 +63,58 @@ pub async fn finish_session(
 	Ok(())
 }
 
+pub async fn set_session_process(
+	pool: &SqlitePool,
+	started_at: &str,
+	pid: Option<i64>,
+	pid_started_at: Option<i64>,
+) -> Result<(), sqlx::Error> {
+	sqlx::query!(
+		r#"
+		UPDATE game_sessions
+		SET pid = ?, pid_started_at = ?
+		WHERE started_at = ?
+		"#,
+		pid,
+		pid_started_at,
+		started_at
+	)
+	.execute(pool)
+	.await?;
+	Ok(())
+}
+
+pub async fn unfinished_sessions(pool: &SqlitePool) -> Result<Vec<UnfinishedSession>, sqlx::Error> {
+	sqlx::query_as!(
+		UnfinishedSession,
+		r#"
+		SELECT cluster_id, started_at, pid, pid_started_at
+		FROM game_sessions
+		WHERE ended_at IS NULL
+		ORDER BY started_at ASC
+		"#
+	)
+	.fetch_all(pool)
+	.await
+}
+
 pub async fn insert_server_join(
 	pool: &SqlitePool,
 	session_started_at: &str,
 	address: &str,
 	port: Option<i64>,
 ) -> Result<String, sqlx::Error> {
-	let joined_at = Utc::now().to_rfc3339();
+	insert_server_join_at(pool, session_started_at, address, port, &Utc::now().to_rfc3339()).await
+}
+
+/// Record a join at an explicit time, for spans replayed out of a game log.
+pub async fn insert_server_join_at(
+	pool: &SqlitePool,
+	session_started_at: &str,
+	address: &str,
+	port: Option<i64>,
+	joined_at: &str,
+) -> Result<String, sqlx::Error> {
 	sqlx::query!(
 		r#"
 		INSERT INTO game_session_servers (session_started_at, address, port, joined_at)
@@ -71,11 +127,19 @@ pub async fn insert_server_join(
 	)
 	.execute(pool)
 	.await?;
-	Ok(joined_at)
+	Ok(joined_at.to_string())
 }
 
 pub async fn finish_server(pool: &SqlitePool, joined_at: &str) -> Result<(), sqlx::Error> {
-	let disconnected_at = Utc::now().to_rfc3339();
+	finish_server_at(pool, joined_at, &Utc::now().to_rfc3339()).await
+}
+
+/// Close a server span at an explicit time, for spans replayed out of a log.
+pub async fn finish_server_at(
+	pool: &SqlitePool,
+	joined_at: &str,
+	disconnected_at: &str,
+) -> Result<(), sqlx::Error> {
 	sqlx::query!(
 		r#"
 		UPDATE game_session_servers
@@ -126,6 +190,23 @@ pub async fn list_session_servers(
 	)
 	.fetch_all(pool)
 	.await
+}
+
+/// Drop every server span of a session, so a log replay can rewrite them from scratch.
+pub async fn delete_session_servers(
+	pool: &SqlitePool,
+	session_started_at: &str,
+) -> Result<(), sqlx::Error> {
+	sqlx::query!(
+		r#"
+		DELETE FROM game_session_servers
+		WHERE session_started_at = ?
+		"#,
+		session_started_at
+	)
+	.execute(pool)
+	.await?;
+	Ok(())
 }
 
 pub async fn server_join_counts(

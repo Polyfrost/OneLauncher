@@ -24,6 +24,14 @@ pub struct NewGameSession<'a> {
 }
 
 #[derive(Debug, Clone, FromRow)]
+pub struct UnfinishedSession {
+	pub cluster_id: i64,
+	pub started_at: String,
+	pub pid: Option<i64>,
+	pub pid_started_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
 pub struct GameSessionServerRow {
 	pub session_started_at: String,
 	pub address: String,

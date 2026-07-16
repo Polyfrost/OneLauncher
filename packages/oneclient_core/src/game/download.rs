@@ -43,7 +43,7 @@ pub async fn download_to_path(
         child.set_phase(TaskPhase::Verifying);
         let actual = sha1_file(dest).await?;
         if normalize_hash(&actual) != normalize_hash(expected) {
-            let _ = tokio::fs::remove_file(dest).await;
+            let _ = polyio::remove_file(dest).await;
             return Err(GameError::HashMismatch {
                 path: dest.display().to_string(),
                 expected: expected.to_string(),

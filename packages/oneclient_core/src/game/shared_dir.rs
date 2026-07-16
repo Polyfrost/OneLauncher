@@ -308,7 +308,7 @@ async fn move_dir_contents(from: &Path, to: &Path) {
 
         let dest = to.join(name);
 
-        if tokio::fs::rename(&src, &dest).await.is_err() {
+        if polyio::rename(&src, &dest).await.is_err() {
             tracing::warn!(file = %src.display(), "failed to salvage leaked log file");
         }
     }

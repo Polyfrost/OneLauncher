@@ -7,7 +7,9 @@ use freya::router::RouterContext;
 use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
-use oneclient_core::{BundleArchive, BundleFile, Cluster, ImportTarget, VersionMetadata};
+use oneclient_core::{
+    BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, VersionMetadata,
+};
 use oneclient_db::models::OverrideType;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -326,9 +328,11 @@ impl Component for OnboardingDownloading {
 
             let migration_summary = import_detection.as_ref().map(|detection| {
                 let source_name = detection.source.display_name().to_string();
+                let is_vanilla = detection.source == MigrationSource::Vanilla;
                 match import_folder.read().clone() {
                     Some(folder) => {
-                        let dedicated = *import_dedicated.read()
+                        let dedicated = !is_vanilla
+                            && *import_dedicated.read()
                             && detection
                                 .instances
                                 .iter()
@@ -340,7 +344,12 @@ impl Component for OnboardingDownloading {
                         } else {
                             "Shared game directory"
                         };
-                        (source_name, folder, target.to_string())
+                        let files = if is_vanilla {
+                            "Your Minecraft folder".to_string()
+                        } else {
+                            folder
+                        };
+                        (source_name, files, target.to_string())
                     }
                     None => (source_name, "No files imported".to_string(), String::new()),
                 }
@@ -360,7 +369,9 @@ impl Component for OnboardingDownloading {
                     if let (Some(detection), Some(folder)) =
                         (import_detection.as_ref(), import_folder.peek().clone())
                     {
-                        let target = if *import_dedicated.peek() {
+                        let target = if detection.source != MigrationSource::Vanilla
+                            && *import_dedicated.peek()
+                        {
                             detection
                                 .instances
                                 .iter()

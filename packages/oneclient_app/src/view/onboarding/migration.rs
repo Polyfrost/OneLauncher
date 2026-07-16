@@ -1,6 +1,6 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::SourceInstance;
+use oneclient_core::{MigrationDetection, MigrationSource, SourceInstance};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::{
@@ -62,74 +62,60 @@ impl Component for OnboardingMigration {
                 .into_element();
         };
         let source_name = detection.source.display_name();
+        let is_vanilla = detection.source == MigrationSource::Vanilla;
         let new_clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
 
         let chosen_folder = import_folder.read().clone();
         let any_importable = detection.instances.iter().any(|c| c.has_game_dir);
 
-        // One card per detected version. Importable cards double as the file-
-        // import selector; non-importable ones stay informational.
-        let mut version_cards: Vec<Element> = Vec::new();
-        for instance in &detection.instances {
-            let selected_import = chosen_folder.as_deref() == Some(instance.folder_name.as_str());
-            let dedicated_available = matching_new_cluster_id(instance, &new_clusters).is_some();
-
-            version_cards.push(version_card(
-                instance,
-                selected_import,
-                *import_dedicated.read(),
-                dedicated_available,
-                import_dedicated,
-                {
-                    let folder = instance.folder_name.clone();
-                    move |_| import_folder.set(Some(folder.clone()))
-                },
-            ));
-        }
+        let (title, subtitle) = if is_vanilla {
+            (
+                "Bring over your Minecraft files",
+                "We found a Minecraft installation on this PC. We can copy your worlds, \
+                 settings, screenshots and servers over. Mods, resource packs and shaders stay \
+                 behind — OneClient manages those for you."
+                    .to_string(),
+            )
+        } else {
+            (
+                "Bring over your setup",
+                format!(
+                    "We found data from your previous {source_name} install. Your installed \
+                     categories are reselected automatically. Optionally, pick one version to \
+                     copy its files (worlds, config, and packs)."
+                ),
+            )
+        };
+        let heading = step_heading(title, &subtitle);
 
         let content = rect()
             .vertical()
             .width(Size::fill())
             .spacing(16.)
-            .child(step_heading(
-                "Bring over your setup",
-                &format!(
-                    "We found data from your previous {source_name} install. Your installed \
-                     categories are reselected automatically. Optionally, pick one version to \
-                     copy its files (worlds, config, and packs)."
-                ),
-            ))
+            .child(heading)
             // "Don't import files" is the default choice, pinned above the list.
             .maybe_child(any_importable.then(|| {
                 import_choice_card(
                     "Don't import files",
-                    "Start fresh — only your bundle selection carries over.",
+                    if is_vanilla {
+                        "Start fresh — nothing is copied over."
+                    } else {
+                        "Start fresh — only your bundle selection carries over."
+                    },
                     None,
                     chosen_folder.is_none(),
                     move |_| import_folder.set(None),
                 )
             }))
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(10.)
-                    .child(
-                        label()
-                            .text("Detected versions")
-                            .font_size(13.)
-                            .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_secondary()),
-                    )
-                    .child(
-                        rect()
-                            .vertical()
-                            .width(Size::fill())
-                            .spacing(8.)
-                            .children(version_cards),
-                    ),
-            )
+            .child(import_body(
+                &detection,
+                is_vanilla,
+                chosen_folder.as_deref(),
+                &new_clusters,
+                import_folder,
+                import_dedicated,
+            ))
             .into_element();
 
         rect()
@@ -149,7 +135,11 @@ impl Component for OnboardingMigration {
                             .height(Size::fill())
                             .center()
                             .padding(Gaps::new_all(48.))
-                            .child(onboarding_illustration(IconType::ClockRewind)),
+                            .child(onboarding_illustration(if is_vanilla {
+                                IconType::FolderDownload
+                            } else {
+                                IconType::ClockRewind
+                            })),
                     )
                     .child(
                         rect()
@@ -173,6 +163,69 @@ impl Component for OnboardingMigration {
             }))
             .into_element()
     }
+}
+
+fn import_body(
+    detection: &MigrationDetection,
+    is_vanilla: bool,
+    chosen_folder: Option<&str>,
+    new_clusters: &[ClusterBundles],
+    mut import_folder: State<Option<String>>,
+    import_dedicated: State<bool>,
+) -> Element {
+    if is_vanilla {
+        let folder = detection
+            .instances
+            .first()
+            .map(|instance| instance.folder_name.clone())
+            .unwrap_or_default();
+
+        return import_choice_card(
+            "Copy my Minecraft files",
+            "Worlds, settings, screenshots and servers move to your shared game directory.",
+            None,
+            chosen_folder.is_some(),
+            move |_| import_folder.set(Some(folder.clone())),
+        );
+    }
+
+    let mut version_cards: Vec<Element> = Vec::new();
+    for instance in &detection.instances {
+        let selected_import = chosen_folder == Some(instance.folder_name.as_str());
+        let dedicated_available = matching_new_cluster_id(instance, new_clusters).is_some();
+
+        version_cards.push(version_card(
+            instance,
+            selected_import,
+            *import_dedicated.read(),
+            dedicated_available,
+            import_dedicated,
+            {
+                let folder = instance.folder_name.clone();
+                move |_| import_folder.set(Some(folder.clone()))
+            },
+        ));
+    }
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .child(
+            label()
+                .text("Detected versions")
+                .font_size(13.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(8.)
+                .children(version_cards),
+        )
+        .into_element()
 }
 
 /// A detected source instance rendered as a card. Shows version + categories

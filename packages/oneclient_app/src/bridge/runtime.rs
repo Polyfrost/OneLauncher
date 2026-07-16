@@ -332,9 +332,9 @@ impl CoreBridgeRuntime {
                     }
                 }
             }
-            BridgeCommand::MarkOnboardingSeen => {
+            BridgeCommand::SetOnboardingSeen { seen } => {
                 mutate_settings(snapshots, |settings| {
-                    settings.seen_onboarding = true;
+                    settings.seen_onboarding = seen;
                 })?;
                 let state = LauncherState::get()?;
                 let snapshot = state.settings.read().clone();
@@ -453,6 +453,11 @@ impl CoreBridgeRuntime {
                 let state = LauncherState::get()?;
                 tokio::spawn(async move {
                     let notifier = state.services.notifier.clone();
+
+                    if let Err(err) = oneclient_core::import_migration_settings(source).await {
+                        tracing::warn!(error = %err, "failed to import launcher settings");
+                    }
+
                     match oneclient_core::import_migration_game_dir(source, &folder_name, target)
                         .await
                     {

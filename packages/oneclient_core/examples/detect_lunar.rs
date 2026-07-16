@@ -1,8 +1,8 @@
-use oneclient_core::migration::oneclient_v1;
+use oneclient_core::migration::lunar_client;
 
 #[tokio::main]
 async fn main() {
-    match oneclient_v1::detect().await {
+    match lunar_client::detect().await {
         Ok(Some(detection)) => {
             println!(
                 "source: {} ({})",
@@ -23,7 +23,7 @@ async fn main() {
                 );
             }
         }
-        Ok(None) => println!("no v1 install detected"),
+        Ok(None) => println!("no lunar client install detected"),
         Err(err) => eprintln!("detection error: {err}"),
     }
 }

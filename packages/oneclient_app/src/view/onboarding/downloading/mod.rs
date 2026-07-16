@@ -13,14 +13,14 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::hooks::{
-    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, migration_detection,
+    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, migration_detections,
     onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
     use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
     use_versions, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
+use crate::view::onboarding::{find_instance, matching_new_cluster_id, pkg_key, sources_sentence};
 
 mod backdrop;
 mod progress;
@@ -319,20 +319,17 @@ impl Component for OnboardingDownloading {
                 .unwrap_or_else(|| "Not signed in".to_string());
 
             let import_dispatch = dispatch.clone();
-            let import_folder = selection.import_folder;
+            let import_selection = selection.import_selection;
             let import_dedicated = selection.import_dedicated;
-            let import_detection = migration_detection(&migration_query);
+            let import_detections = migration_detections(&migration_query);
             let import_items = items.clone();
 
-            let migration_summary = import_detection.as_ref().map(|detection| {
-                let source_name = detection.source.display_name().to_string();
-                match import_folder.read().clone() {
-                    Some(folder) => {
+            let migration_summary =
+                (!import_detections.is_empty()).then(|| match import_selection.read().clone() {
+                    Some(chosen) => {
+                        let source_name = chosen.source.display_name().to_string();
                         let dedicated = *import_dedicated.read()
-                            && detection
-                                .instances
-                                .iter()
-                                .find(|c| c.folder_name == folder)
+                            && find_instance(&import_detections, &chosen)
                                 .and_then(|inst| matching_new_cluster_id(inst, &items))
                                 .is_some();
                         let target = if dedicated {
@@ -340,11 +337,14 @@ impl Component for OnboardingDownloading {
                         } else {
                             "Shared game directory"
                         };
-                        (source_name, folder, target.to_string())
+                        (source_name, chosen.folder_name, target.to_string())
                     }
-                    None => (source_name, "No files imported".to_string(), String::new()),
-                }
-            });
+                    None => (
+                        sources_sentence(&import_detections),
+                        "No files imported".to_string(),
+                        String::new(),
+                    ),
+                });
 
             return summary_view(
                 &items,
@@ -357,21 +357,16 @@ impl Component for OnboardingDownloading {
                 migration_summary,
                 predownload_state,
                 move |_| {
-                    if let (Some(detection), Some(folder)) =
-                        (import_detection.as_ref(), import_folder.peek().clone())
-                    {
+                    if let Some(chosen) = import_selection.peek().clone() {
                         let target = if *import_dedicated.peek() {
-                            detection
-                                .instances
-                                .iter()
-                                .find(|c| c.folder_name == folder)
+                            find_instance(&import_detections, &chosen)
                                 .and_then(|inst| matching_new_cluster_id(inst, &import_items))
                                 .map(|new_cluster_id| ImportTarget::Dedicated { new_cluster_id })
                                 .unwrap_or(ImportTarget::Shared)
                         } else {
                             ImportTarget::Shared
                         };
-                        import_dispatch.import_launcher(detection.source, folder, target);
+                        import_dispatch.import_launcher(chosen.source, chosen.folder_name, target);
                     }
 
                     setup_started.set(true);
@@ -867,7 +862,7 @@ fn finish_onboarding(
             dispatch.record_seen_version(version);
         }
 
-        dispatch.mark_onboarding_seen();
+        dispatch.set_onboarding_seen(true);
         let _ = RouterContext::get().replace(Route::Home {});
     });
 }

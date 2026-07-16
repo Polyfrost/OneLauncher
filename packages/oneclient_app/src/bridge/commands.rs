@@ -17,7 +17,9 @@ pub enum BridgeCommand {
     RecordSeenVersion {
         version: String,
     },
-    MarkOnboardingSeen,
+    SetOnboardingSeen {
+        seen: bool,
+    },
     AcceptTos {
         terms_version: u32,
         privacy_version: u32,

@@ -20,7 +20,7 @@ pub use bundles::OnboardingBundles;
 pub use downloading::{LoadingBackdrop, OnboardingDownloading};
 pub use language::OnboardingLanguage;
 pub use migration::OnboardingMigration;
-pub(crate) use migration::matching_new_cluster_id;
+pub(crate) use migration::{find_instance, matching_new_cluster_id, sources_sentence};
 pub use preferences::OnboardingPreferences;
 pub use terms::OnboardingTerms;
 pub use welcome::OnboardingWelcome;

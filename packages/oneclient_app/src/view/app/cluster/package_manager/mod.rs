@@ -220,6 +220,7 @@ fn make_row(
 
 #[derive(Clone)]
 pub(super) enum Tab {
+    All,
     Category(String),
     External,
     Local,
@@ -228,6 +229,7 @@ pub(super) enum Tab {
 impl Tab {
     pub(super) fn label(&self) -> String {
         match self {
+            Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
             Tab::External => "External".to_string(),
             Tab::Local => "Local".to_string(),
@@ -236,6 +238,8 @@ impl Tab {
 
     pub(super) fn matches(&self, p: &PackageEntry) -> bool {
         match self {
+            // Every package assigned to the cluster, regardless of origin.
+            Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             // External = remote provider content that is NOT provided by a bundle.
             Tab::External => p.is_remote() && !p.in_bundle(),
@@ -265,12 +269,13 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
         }
     }
 
-    // Category tabs are hidden when empty; External + Local are always shown.
-    let mut tabs: Vec<Tab> = cats
-        .into_iter()
-        .map(Tab::Category)
-        .filter(|t| items.iter().any(|p| t.matches(p)))
-        .collect();
+    // Category tabs are hidden when empty; All + External + Local are always shown.
+    let mut tabs: Vec<Tab> = vec![Tab::All];
+    tabs.extend(
+        cats.into_iter()
+            .map(Tab::Category)
+            .filter(|t| items.iter().any(|p| t.matches(p))),
+    );
 
     tabs.push(Tab::External);
     tabs.push(Tab::Local);

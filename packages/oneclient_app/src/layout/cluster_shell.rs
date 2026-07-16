@@ -123,7 +123,7 @@ impl Component for ClusterShell {
             let parsed = parse_mc_version(&cluster.mc_version);
             let metadata = use_version_metadata(
                 parsed.as_ref().map(|p| p.major),
-                parsed.and_then(|p| p.minor),
+                parsed.and_then(|p| p.key()),
                 Some(cluster.mc_loader),
             );
             let subtitle = metadata

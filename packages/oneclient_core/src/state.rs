@@ -108,6 +108,10 @@ impl LauncherState {
 				tracing::warn!("bundle tracking restore failed: {err:#}");
 			}
 
+			if let Err(err) = crate::clusters::apply_remote_migrations(&background).await {
+				tracing::error!("cluster migrations failed: {err:#}");
+			}
+
 			if let Err(err) = crate::clusters::ensure_from_versions(&background).await {
 				tracing::error!("versions cluster provisioning failed: {err:#}");
 			} else {

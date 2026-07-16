@@ -90,7 +90,7 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
             continue;
         };
 
-        let mc_version = format_mc_version(entry.major_version, minor);
+        let mc_version = format_mc_version(entry.major_version, minor, entry.patch_version);
 
         if cluster_dao::find_by_version_loader(&state.services.db, &mc_version, loader as i64)
             .await?

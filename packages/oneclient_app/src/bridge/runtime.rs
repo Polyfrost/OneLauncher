@@ -684,6 +684,7 @@ impl CoreBridgeRuntime {
             BridgeCommand::SyncBundles => {
                 let state = LauncherState::get()?;
                 state.bundles.sync(&state.services).await?;
+                oneclient_core::clusters::apply_remote_migrations(&state).await?;
                 oneclient_core::clusters::ensure_from_bundles(&state).await?;
                 let changed = oneclient_core::bundles::sync_all_cluster_bundles(
                     state.bundles.as_ref(),

@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use crate::api_config::meta_url_base;
 use crate::paths;
 use crate::state::LauncherServices;
-use crate::versions::manifest::{VersionMetadata, VersionsManifest};
+use crate::versions::manifest::{RemoteMigration, VersionMetadata, VersionsManifest};
 use crate::{LauncherError, LauncherResult};
 
 pub struct VersionsManager {
@@ -34,6 +34,10 @@ impl VersionsManager {
 
     pub async fn metadata(&self) -> Vec<VersionMetadata> {
         self.manifest.read().await.metadata()
+    }
+
+    pub async fn migrations(&self) -> Vec<RemoteMigration> {
+        self.manifest.read().await.migrations.clone()
     }
 
     #[tracing::instrument(level = "debug", skip(services))]

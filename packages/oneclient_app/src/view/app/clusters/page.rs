@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::query::QueryStateData;
 use freya::router::RouterContext;
+use oneclient_core::VersionKey;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::packages::domain::GameLoader;
 
@@ -12,8 +13,8 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{
-    default_loader, default_major, default_minor, group_clusters_by_major, loaders_for_major,
-    major_pretty_name, minor_label, minor_versions, resolve_cluster,
+    default_loader, default_major, default_version_key, group_clusters_by_major, loaders_for_major,
+    major_pretty_name, resolve_cluster, version_keys, version_label,
 };
 use crate::view::app::launch_button_state;
 
@@ -31,7 +32,7 @@ impl Component for Clusters {
         let clusters_query = use_clusters();
         let active_id = use_active_cluster_id();
         let mut selected_major = use_state(|| None::<u32>);
-        let mut selected_minor = use_state(|| None::<u32>);
+        let mut selected_version = use_state(|| None::<VersionKey>);
         let mut selected_loader = use_state(|| None::<GameLoader>);
         let mut grid_columns = use_state(|| 2_usize);
 
@@ -90,12 +91,12 @@ impl Component for Clusters {
 
         let clusters_for_major = groups.get(&major).cloned().unwrap_or_default();
 
-        if selected_minor.read().is_none() {
+        if selected_version.read().is_none() {
             let preferred = active_cluster
                 .as_ref()
                 .and_then(|c| oneclient_core::parse_mc_version(&c.mc_version))
-                .and_then(|p| p.minor);
-            *selected_minor.write() = default_minor(&clusters_for_major, preferred);
+                .and_then(|p| p.key());
+            *selected_version.write() = default_version_key(&clusters_for_major, preferred);
         }
 
         if selected_loader.read().is_none() {
@@ -105,7 +106,7 @@ impl Component for Clusters {
 
         let cluster = resolve_cluster(
             &clusters_for_major,
-            *selected_minor.read(),
+            *selected_version.read(),
             *selected_loader.read(),
         )
         .or_else(|| clusters_for_major.first().cloned());
@@ -152,12 +153,12 @@ impl Component for Clusters {
                                         let list = groups.get(&major).cloned().unwrap_or_default();
                                         let selected = *selected_major.read() == Some(major);
                                         let mut selected_major = selected_major;
-                                        let mut selected_minor = selected_minor;
+                                        let mut selected_version = selected_version;
                                         let mut selected_loader = selected_loader;
 
                                         MajorVersionCard::new(major, &list, selected, move |_| {
                                             *selected_major.write() = Some(major);
-                                            *selected_minor.write() = None;
+                                            *selected_version.write() = None;
                                             *selected_loader.write() = None;
                                         })
                                         .into_element()
@@ -176,7 +177,7 @@ impl Component for Clusters {
                             major,
                             cluster,
                             &clusters_for_major,
-                            selected_minor,
+                            selected_version,
                             selected_loader,
                         ),
                         None => sidebar_error(),
@@ -189,20 +190,20 @@ fn detail_sidebar(
     major: u32,
     cluster: Cluster,
     clusters_for_major: &[Cluster],
-    selected_minor: State<Option<u32>>,
+    selected_version: State<Option<VersionKey>>,
     selected_loader: State<Option<GameLoader>>,
 ) -> Element {
     let active_id = use_active_cluster_id();
     let dispatch = use_dispatch();
     let game = use_game_snapshot();
-    let minors = minor_versions(clusters_for_major);
+    let keys = version_keys(clusters_for_major);
     let loaders = loaders_for_major(clusters_for_major);
     let cluster_id = cluster.id;
     let version_title = major_pretty_name(major);
-    let minor_value = *selected_minor.read();
+    let version_value = *selected_version.read();
     let loader_value = *selected_loader.read();
 
-    let metadata = use_version_metadata(Some(major), minor_value, loader_value);
+    let metadata = use_version_metadata(Some(major), version_value, loader_value);
 
     let heading = metadata
         .as_ref()
@@ -229,7 +230,7 @@ fn detail_sidebar(
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
         .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
-            ClusterLandscapeArt::for_version(major, minor_value, loader_value, false),
+            ClusterLandscapeArt::for_version(major, version_value, loader_value, false),
         ))
         .child(
             rect()
@@ -259,7 +260,7 @@ fn detail_sidebar(
                                 .font_size(12.)
                                 .color(colors::fg_secondary()),
                         )
-                        .children(minor_rows(major, &minors, minor_value, selected_minor))
+                        .children(version_rows(major, &keys, version_value, selected_version))
                         .children(loader_rows(&loaders, loader_value, selected_loader)),
                 )
                 .child(
@@ -308,28 +309,28 @@ fn tags_row(tags: &[String]) -> Option<Element> {
     )
 }
 
-fn minor_rows(
+fn version_rows(
     major: u32,
-    minors: &[u32],
-    selected: Option<u32>,
-    mut selected_minor: State<Option<u32>>,
+    keys: &[VersionKey],
+    selected: Option<VersionKey>,
+    mut selected_version: State<Option<VersionKey>>,
 ) -> Option<Element> {
-    if minors.len() <= 1 {
+    if keys.len() <= 1 {
         return None;
     }
 
-    let options: Vec<String> = minors.iter().map(|m| minor_label(major, *m)).collect();
+    let options: Vec<String> = keys.iter().map(|k| version_label(major, *k)).collect();
     let current = selected
-        .and_then(|s| minors.iter().position(|m| *m == s))
+        .and_then(|s| keys.iter().position(|k| *k == s))
         .unwrap_or(0);
-    let minors = minors.to_vec();
+    let keys = keys.to_vec();
 
     Some(info_row(
         "Minor Version",
         Dropdown::new(options[current].clone(), options)
             .on_select(move |idx: usize| {
-                if let Some(minor) = minors.get(idx).copied() {
-                    *selected_minor.write() = Some(minor);
+                if let Some(key) = keys.get(idx).copied() {
+                    *selected_version.write() = Some(key);
                 }
             })
             .into_element(),

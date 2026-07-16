@@ -1,4 +1,5 @@
 use freya::prelude::*;
+use oneclient_core::VersionKey;
 use oneclient_core::packages::domain::GameLoader;
 
 use crate::components::DynamicArt;
@@ -14,12 +15,12 @@ pub struct ClusterLandscapeArt {
 impl ClusterLandscapeArt {
     pub fn for_version(
         major: u32,
-        minor: Option<u32>,
+        key: Option<VersionKey>,
         loader: Option<GameLoader>,
         selected: bool,
     ) -> Self {
         Self {
-            art: DynamicArt::for_version(major, minor, loader).max_edge(512),
+            art: DynamicArt::for_version(major, key, loader).max_edge(512),
             selected,
         }
     }

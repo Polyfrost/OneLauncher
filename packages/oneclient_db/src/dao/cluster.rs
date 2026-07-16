@@ -149,6 +149,40 @@ pub async fn update(
 	.await
 }
 
+pub async fn migrate_version(
+	pool: &SqlitePool,
+	id: i64,
+	mc_version: &str,
+	name: Option<&str>,
+	folder_name: &str,
+) -> Result<ClusterRow, sqlx::Error> {
+	let existing = get_by_id(pool, id)
+		.await?
+		.ok_or(sqlx::Error::RowNotFound)?;
+
+	let name = name.unwrap_or(&existing.name);
+
+	sqlx::query_as!(
+		ClusterRow,
+		r#"
+		UPDATE clusters
+		SET mc_version = ?,
+		    name = ?,
+		    folder_name = ?
+		WHERE id = ?
+		RETURNING
+			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+		"#,
+		mc_version,
+		name,
+		folder_name,
+		id
+	)
+	.fetch_one(pool)
+	.await
+}
+
 pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<ClusterRow, sqlx::Error> {
 	sqlx::query_as!(
 		ClusterRow,
@@ -199,4 +233,103 @@ pub async fn delete_by_id(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Erro
 		.await?;
 
 	Ok(result.rows_affected() > 0)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::dao::applied_migration;
+
+	async fn pool() -> SqlitePool {
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory sqlite");
+		sqlx::migrate!().run(&pool).await.expect("migrations run");
+		pool
+	}
+
+	async fn seed(pool: &SqlitePool, mc_version: &str, folder: &str) -> ClusterRow {
+		insert(
+			pool,
+			&NewCluster {
+				name: &format!("{mc_version} fabric"),
+				folder_name: folder,
+				mc_version,
+				mc_loader: 1,
+				mc_loader_version: None,
+				setting_profile_name: None,
+				stage: 0,
+			},
+		)
+		.await
+		.expect("insert cluster")
+	}
+
+	#[tokio::test]
+	async fn migrate_version_rewrites_identity_and_keeps_history() {
+		let pool = pool().await;
+		let cluster = seed(&pool, "26.1", "26.1 fabric").await;
+		add_playtime(&pool, cluster.id, 3600)
+			.await
+			.expect("record playtime");
+
+		let migrated = migrate_version(
+			&pool,
+			cluster.id,
+			"26.1.2",
+			Some("26.1.2 fabric"),
+			"26.1.2 fabric",
+		)
+		.await
+		.expect("migrate");
+
+		assert_eq!(migrated.id, cluster.id, "must move the row, not replace it");
+		assert_eq!(migrated.mc_version, "26.1.2");
+		assert_eq!(migrated.folder_name, "26.1.2 fabric");
+		assert_eq!(migrated.name, "26.1.2 fabric");
+		assert_eq!(migrated.overall_played, Some(3600));
+		assert_eq!(migrated.created_at, cluster.created_at);
+
+		assert!(
+			find_by_version_loader(&pool, "26.1", 1)
+				.await
+				.unwrap()
+				.is_none()
+		);
+		assert_eq!(
+			find_by_version_loader(&pool, "26.1.2", 1)
+				.await
+				.unwrap()
+				.unwrap()
+				.id,
+			cluster.id
+		);
+	}
+
+	#[tokio::test]
+	async fn migrate_version_can_leave_name_and_folder_untouched() {
+		let pool = pool().await;
+		let cluster = seed(&pool, "26.1", "my cool pack").await;
+
+		let migrated = migrate_version(&pool, cluster.id, "26.1.2", None, "my cool pack")
+			.await
+			.expect("migrate");
+
+		assert_eq!(migrated.mc_version, "26.1.2");
+		assert_eq!(migrated.name, "26.1 fabric", "custom name must survive");
+		assert_eq!(migrated.folder_name, "my cool pack");
+	}
+
+	#[tokio::test]
+	async fn applied_migrations_ledger_is_idempotent() {
+		let pool = pool().await;
+
+		assert!(!applied_migration::is_applied(&pool, "rule-a").await.unwrap());
+		applied_migration::mark_applied(&pool, "rule-a").await.unwrap();
+		assert!(applied_migration::is_applied(&pool, "rule-a").await.unwrap());
+
+		applied_migration::mark_applied(&pool, "rule-a").await.unwrap();
+		assert!(applied_migration::is_applied(&pool, "rule-a").await.unwrap());
+		assert!(!applied_migration::is_applied(&pool, "rule-b").await.unwrap());
+	}
 }

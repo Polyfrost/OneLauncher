@@ -65,7 +65,7 @@ impl Component for ActiveClusterPanel {
             .and_then(|c| parse_mc_version(&c.mc_version));
         let metadata = use_version_metadata(
             parsed.as_ref().map(|p| p.major),
-            parsed.and_then(|p| p.minor),
+            parsed.and_then(|p| p.key()),
             active.as_ref().map(|c| c.mc_loader),
         );
 

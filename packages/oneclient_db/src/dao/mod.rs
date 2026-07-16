@@ -1,3 +1,4 @@
+pub mod applied_migration;
 pub mod artifact;
 pub mod bundle;
 pub mod cluster;

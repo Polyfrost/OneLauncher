@@ -5,9 +5,13 @@ use std::sync::OnceLock;
 use chrono::{Datelike, NaiveDate};
 use oneclient_core::clusters::Cluster;
 use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::{format_mc_version, parse_mc_version};
+use oneclient_core::{VersionKey, format_mc_version, parse_mc_version};
 
 pub type ClusterGroups = BTreeMap<u32, Vec<Cluster>>;
+
+fn cluster_key(cluster: &Cluster) -> Option<VersionKey> {
+    parse_mc_version(&cluster.mc_version).and_then(|parsed| parsed.key())
+}
 
 pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
     let mut groups: ClusterGroups = BTreeMap::new();
@@ -23,7 +27,7 @@ pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
     }
 
     for list in groups.values_mut() {
-        list.sort_by(|a, b| a.mc_version.cmp(&b.mc_version).reverse());
+        list.sort_by(|a, b| cluster_key(b).cmp(&cluster_key(a)));
     }
 
     groups
@@ -51,18 +55,17 @@ pub fn loader_tags(clusters: &[Cluster]) -> Vec<String> {
     tags
 }
 
-pub fn minor_versions(clusters: &[Cluster]) -> Vec<u32> {
-    let mut minors = Vec::new();
+pub fn version_keys(clusters: &[Cluster]) -> Vec<VersionKey> {
+    let mut keys = Vec::new();
     for cluster in clusters {
-        if let Some(parsed) = parse_mc_version(&cluster.mc_version)
-            && let Some(minor) = parsed.minor
-            && !minors.contains(&minor)
+        if let Some(key) = cluster_key(cluster)
+            && !keys.contains(&key)
         {
-            minors.push(minor);
+            keys.push(key);
         }
     }
-    minors.sort();
-    minors
+    keys.sort();
+    keys
 }
 
 pub fn loaders_for_major(clusters: &[Cluster]) -> Vec<GameLoader> {
@@ -78,15 +81,13 @@ pub fn loaders_for_major(clusters: &[Cluster]) -> Vec<GameLoader> {
 
 pub fn resolve_cluster(
     clusters: &[Cluster],
-    minor: Option<u32>,
+    key: Option<VersionKey>,
     loader: Option<GameLoader>,
 ) -> Option<Cluster> {
     clusters
         .iter()
         .find(|cluster| {
-            let version_ok = minor.is_none_or(|minor| {
-                parse_mc_version(&cluster.mc_version).and_then(|parsed| parsed.minor) == Some(minor)
-            });
+            let version_ok = key.is_none_or(|key| cluster_key(cluster) == Some(key));
             let loader_ok = loader.is_none_or(|loader| cluster.mc_loader == loader);
             version_ok && loader_ok
         })
@@ -102,17 +103,20 @@ pub fn default_major(groups: &ClusterGroups, active: Option<Cluster>) -> Option<
     groups.keys().next().copied()
 }
 
-pub fn default_minor(clusters: &[Cluster], preferred: Option<u32>) -> Option<u32> {
-    let minors = minor_versions(clusters);
-    if minors.is_empty() {
+pub fn default_version_key(
+    clusters: &[Cluster],
+    preferred: Option<VersionKey>,
+) -> Option<VersionKey> {
+    let keys = version_keys(clusters);
+    if keys.is_empty() {
         return None;
     }
-    if let Some(minor) = preferred
-        && minors.contains(&minor)
+    if let Some(key) = preferred
+        && keys.contains(&key)
     {
-        return Some(minor);
+        return Some(key);
     }
-    minors.last().copied()
+    keys.last().copied()
 }
 
 pub fn default_loader(clusters: &[Cluster], preferred: Option<GameLoader>) -> Option<GameLoader> {
@@ -128,8 +132,8 @@ pub fn default_loader(clusters: &[Cluster], preferred: Option<GameLoader>) -> Op
     Some(loaders[0])
 }
 
-pub fn minor_label(major: u32, minor: u32) -> String {
-    format_mc_version(major, minor)
+pub fn version_label(major: u32, (minor, patch): VersionKey) -> String {
+    format_mc_version(major, minor, patch)
 }
 
 /// Human-readable byte size (B / KB / MB).
@@ -236,10 +240,10 @@ fn compare_last_played(a: &Cluster, b: &Cluster) -> Ordering {
     }
 }
 
-fn version_sort_key(cluster: &Cluster) -> (u32, u32) {
+fn version_sort_key(cluster: &Cluster) -> (u32, u32, u32) {
     parse_mc_version(&cluster.mc_version)
-        .map(|v| (v.major, v.minor.unwrap_or(0)))
-        .unwrap_or((0, 0))
+        .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
+        .unwrap_or((0, 0, 0))
 }
 
 #[cfg(not(target_os = "linux"))]

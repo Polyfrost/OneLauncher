@@ -4,7 +4,7 @@ use freya::query::QueryStateData;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::images::DEFAULT_IMAGE_EDGE;
 use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::parse_mc_version;
+use oneclient_core::{VersionKey, parse_mc_version};
 
 use crate::AppAssets;
 use crate::hooks::{use_cached_image, use_version_metadata};
@@ -13,16 +13,16 @@ use crate::layout::HOME_BACKGROUND_ASSET;
 #[derive(PartialEq, Clone)]
 pub struct DynamicArt {
     major: Option<u32>,
-    minor: Option<u32>,
+    key: Option<VersionKey>,
     loader: Option<GameLoader>,
     max_edge: u32,
 }
 
 impl DynamicArt {
-    pub fn for_version(major: u32, minor: Option<u32>, loader: Option<GameLoader>) -> Self {
+    pub fn for_version(major: u32, key: Option<VersionKey>, loader: Option<GameLoader>) -> Self {
         Self {
             major: Some(major),
-            minor,
+            key,
             loader,
             max_edge: DEFAULT_IMAGE_EDGE,
         }
@@ -31,7 +31,7 @@ impl DynamicArt {
     pub fn for_major(major: u32) -> Self {
         Self {
             major: Some(major),
-            minor: None,
+            key: None,
             loader: None,
             max_edge: DEFAULT_IMAGE_EDGE,
         }
@@ -41,7 +41,7 @@ impl DynamicArt {
         let parsed = parse_mc_version(&cluster.mc_version);
         Self {
             major: parsed.as_ref().map(|p| p.major),
-            minor: parsed.and_then(|p| p.minor),
+            key: parsed.and_then(|p| p.key()),
             loader: Some(cluster.mc_loader),
             max_edge: DEFAULT_IMAGE_EDGE,
         }
@@ -50,7 +50,7 @@ impl DynamicArt {
     pub fn fallback() -> Self {
         Self {
             major: None,
-            minor: None,
+            key: None,
             loader: None,
             max_edge: DEFAULT_IMAGE_EDGE,
         }
@@ -63,19 +63,19 @@ impl DynamicArt {
     }
 
     pub fn use_bytes(&self) -> (String, Bytes) {
-        use_art_bytes(self.major, self.minor, self.loader, self.max_edge)
+        use_art_bytes(self.major, self.key, self.loader, self.max_edge)
     }
 }
 
 pub fn use_art_bytes(
     major: Option<u32>,
-    minor: Option<u32>,
+    key: Option<VersionKey>,
     loader: Option<GameLoader>,
     max_edge: u32,
 ) -> (String, Bytes) {
     let fallback = use_memo(|| AppAssets::get_bytes(HOME_BACKGROUND_ASSET).unwrap_or_default());
 
-    let art_url = use_version_metadata(major, minor, loader).and_then(|m| m.art_url);
+    let art_url = use_version_metadata(major, key, loader).and_then(|m| m.art_url);
 
     let image_query = use_cached_image(art_url.clone(), max_edge);
 

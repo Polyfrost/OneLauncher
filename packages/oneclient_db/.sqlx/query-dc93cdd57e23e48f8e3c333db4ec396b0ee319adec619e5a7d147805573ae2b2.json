@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT 1 FROM cluster_artifacts\n        WHERE cluster_id = ? AND bundle_name = ? AND package_id = ?\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "1",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "dc93cdd57e23e48f8e3c333db4ec396b0ee319adec619e5a7d147805573ae2b2"
+}

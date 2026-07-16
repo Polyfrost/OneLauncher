@@ -2,7 +2,10 @@ use freya::prelude::*;
 
 use super::settings_page;
 use crate::components::{Icon, IconType};
-use crate::hooks::{changelog_error, changelog_groups, changelog_is_loading, use_changelog};
+use crate::hooks::{
+    changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version,
+    use_changelog, use_dispatch, use_settings_snapshot,
+};
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -11,7 +14,23 @@ pub struct SettingsChangelog;
 impl Component for SettingsChangelog {
     fn render(&self) -> impl IntoElement {
         let query = use_changelog();
+        let dispatch = use_dispatch();
+        let settings = use_settings_snapshot().settings;
+        let mut marked = use_state(|| None::<String>);
         let installed_version = env!("CARGO_PKG_VERSION").to_string();
+
+        // Opening this page counts as reading the changelog, so clear the sidebar
+        // dot once the newest entry is known. `marked` keeps us from re-sending the
+        // command while the settings snapshot catches up.
+        if let Some(latest) = latest_changelog_version(&query) {
+            let already_marked = marked.peek().as_deref() == Some(latest.as_str());
+            let already_seen = settings.seen_changelog_version.as_deref() == Some(latest.as_str());
+
+            if !already_marked && !already_seen {
+                marked.set(Some(latest.clone()));
+                dispatch.set_seen_changelog_version(latest);
+            }
+        }
 
         if changelog_is_loading(&query) {
             return settings_page()

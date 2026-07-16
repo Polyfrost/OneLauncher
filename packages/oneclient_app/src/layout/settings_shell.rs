@@ -11,6 +11,7 @@ use sysinfo::RefreshKind;
 use sysinfo::System;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput};
+use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::use_dispatch;
@@ -360,6 +361,8 @@ impl Component for SettingsShell {
         let route = use_route::<Route>();
         let active = route_tab(&route);
 
+        let changelog_unread = has_unread_changelog();
+
         let search = use_state(String::new);
         let query = search.read().trim().to_string();
         let scroll = use_scroll_controller(ScrollConfig::default);
@@ -400,7 +403,7 @@ impl Component for SettingsShell {
             .overflow(Overflow::Clip)
             .padding(Gaps::new(0., 40., 40., 32.))
             .spacing(40.)
-            .child(sidebar(active))
+            .child(sidebar(active, changelog_unread))
             .child(
                 rect()
                     .vertical()
@@ -574,7 +577,20 @@ fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
     out
 }
 
-fn sidebar(active: SettingsTab) -> impl IntoElement {
+/// True when the newest changelog entry is newer than the one the user last read.
+/// While the changelog is still loading or failed to load we show no dot rather
+/// than guessing.
+fn has_unread_changelog() -> bool {
+    let settings = use_settings_snapshot().settings;
+    let query = use_changelog();
+
+    match latest_changelog_version(&query) {
+        Some(latest) => settings.seen_changelog_version.as_deref() != Some(latest.as_str()),
+        None => false,
+    }
+}
+
+fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::px(SIDEBAR_WIDTH_PX))
@@ -606,6 +622,7 @@ fn sidebar(active: SettingsTab) -> impl IntoElement {
                             SidebarItem {
                                 tab: *tab,
                                 active: *tab == active,
+                                has_dot: matches!(tab, SettingsTab::Changelog) && changelog_unread,
                             }
                             .into_element()
                         }))
@@ -713,6 +730,7 @@ impl Component for SidebarInfo {
 struct SidebarItem {
     tab: SettingsTab,
     active: bool,
+    has_dot: bool,
 }
 
 impl Component for SidebarItem {
@@ -734,7 +752,7 @@ impl Component for SidebarItem {
             Color::TRANSPARENT
         };
 
-        let has_dot = matches!(tab, SettingsTab::Changelog);
+        let has_dot = self.has_dot;
 
         let mut el = rect()
             .horizontal()

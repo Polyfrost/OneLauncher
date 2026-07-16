@@ -38,6 +38,12 @@ impl BridgeDispatch {
         });
     }
 
+    pub fn set_seen_changelog_version(&self, version: impl Into<String>) {
+        self.send(BridgeCommand::SetSeenChangelogVersion {
+            version: version.into(),
+        });
+    }
+
     pub fn set_onboarding_seen(&self, seen: bool) {
         self.send(BridgeCommand::SetOnboardingSeen { seen });
     }

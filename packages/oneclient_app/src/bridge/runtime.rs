@@ -315,6 +315,23 @@ impl CoreBridgeRuntime {
                     }
                 })?;
             }
+            BridgeCommand::SetSeenChangelogVersion { version } => {
+                let mut changed = false;
+                mutate_settings(snapshots, |settings| {
+                    if settings.seen_changelog_version.as_deref() != Some(version.as_str()) {
+                        settings.seen_changelog_version = Some(version);
+                        changed = true;
+                    }
+                })?;
+
+                if changed {
+                    let state = LauncherState::get()?;
+                    let snapshot = state.settings.read().clone();
+                    if let Err(err) = save_settings(&snapshot).await {
+                        snapshots.settings.error = Some(err.to_string());
+                    }
+                }
+            }
             BridgeCommand::SetOnboardingSeen { seen } => {
                 mutate_settings(snapshots, |settings| {
                     settings.seen_onboarding = seen;

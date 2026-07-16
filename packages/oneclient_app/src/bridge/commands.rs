@@ -17,6 +17,9 @@ pub enum BridgeCommand {
     RecordSeenVersion {
         version: String,
     },
+    SetSeenChangelogVersion {
+        version: String,
+    },
     SetOnboardingSeen {
         seen: bool,
     },

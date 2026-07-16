@@ -49,6 +49,10 @@ pub fn changelog_groups(query: &UseQuery<ChangelogQuery>) -> Option<Vec<Changelo
     }
 }
 
+pub fn latest_changelog_version(query: &UseQuery<ChangelogQuery>) -> Option<String> {
+    changelog_groups(query).and_then(|groups| groups.first().map(|group| group.version.clone()))
+}
+
 pub fn changelog_error(query: &UseQuery<ChangelogQuery>) -> Option<String> {
     match &*query.read().state() {
         QueryStateData::Settled { res: Err(err), .. } => Some(err.to_string()),

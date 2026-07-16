@@ -36,10 +36,6 @@ pub fn meta_url_base() -> String {
         .to_string()
 }
 
-pub fn curseforge_headers() -> Vec<(String, String)> {
-    vec![("x-api-key".to_string(), curseforge_api_key())]
-}
-
 pub fn modrinth_headers() -> Vec<(String, String)> {
     match modrinth_api_key() {
         Some(token) => vec![("Authorization".to_string(), token)],

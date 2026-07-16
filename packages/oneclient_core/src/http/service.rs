@@ -31,6 +31,42 @@ fn backoff_delay(attempt: u32) -> std::time::Duration {
     std::time::Duration::from_millis(capped + jitter)
 }
 
+fn is_curseforge_host(url: &reqwest::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+
+    matches!(host.as_str(), "curseforge.com" | "forgecdn.net")
+        || host.ends_with(".curseforge.com")
+        || host.ends_with(".forgecdn.net")
+}
+
+fn apply_curseforge_auth(request: &mut reqwest::Request) -> Result<(), RequestError> {
+    const API_KEY_HEADER: reqwest::header::HeaderName =
+        reqwest::header::HeaderName::from_static("x-api-key");
+
+    if !is_curseforge_host(request.url()) {
+        return Ok(());
+    }
+
+    let headers = request.headers_mut();
+    if headers.contains_key(&API_KEY_HEADER) {
+        return Ok(());
+    }
+
+    let mut value =
+        reqwest::header::HeaderValue::try_from(crate::api_config::curseforge_api_key())?;
+    value.set_sensitive(true);
+    headers.insert(API_KEY_HEADER, value);
+
+    Ok(())
+}
+
 fn body_snippet(bytes: &[u8]) -> String {
     const MAX: usize = 240;
     if bytes.is_empty() {
@@ -89,9 +125,11 @@ impl RequestClient {
 impl RequestClient {
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn send(&self, request: impl Into<HttpRequest>) -> Result<Response, RequestError> {
-        let request: HttpRequest = request.into();
+        let mut request: HttpRequest = request.into();
         let mut retries = 0;
         let mut throttle_retries = 0u32;
+
+        apply_curseforge_auth(&mut request.request)?;
 
         let cloned_backup = request.request.try_clone();
         let cloneable = cloned_backup.is_some();
@@ -233,5 +271,61 @@ impl RequestClient {
         }
 
         self.send_as(request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(url: &str) -> reqwest::Request {
+        reqwest::Request::new(reqwest::Method::GET, url.parse().unwrap())
+    }
+
+    fn api_key_of(url: &str) -> Option<String> {
+        let mut req = request(url);
+        apply_curseforge_auth(&mut req).unwrap();
+        req.headers()
+            .get("x-api-key")
+            .map(|v| v.to_str().unwrap().to_string())
+    }
+
+    #[test]
+    fn attaches_key_to_curseforge_api_and_cdn() {
+        for url in [
+            "https://api.curseforge.com/v1/mods/search",
+            "https://media.forgecdn.net/avatars/1/2/icon.png",
+            "https://edge.forgecdn.net/files/1/2/mod.jar",
+            "https://www.curseforge.com/minecraft",
+            "https://forgecdn.net/thing",
+        ] {
+            assert_eq!(
+                api_key_of(url).as_deref(),
+                Some(crate::constants::CURSEFORGE_API_KEY),
+                "expected key on {url}"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_unrelated_and_insecure_hosts() {
+        for url in [
+            "https://api.modrinth.com/v2/search",
+            "https://cdn.modrinth.com/data/x/y.jar",
+            "https://notcurseforge.com/x",
+            "https://evil-forgecdn.net.attacker.com/x",
+            "http://media.forgecdn.net/insecure.png",
+        ] {
+            assert_eq!(api_key_of(url), None, "unexpected key on {url}");
+        }
+    }
+
+    #[test]
+    fn does_not_override_explicit_key() {
+        let mut req = request("https://api.curseforge.com/v1/mods");
+        req.headers_mut()
+            .insert("x-api-key", reqwest::header::HeaderValue::from_static("mine"));
+        apply_curseforge_auth(&mut req).unwrap();
+        assert_eq!(req.headers()["x-api-key"], "mine");
     }
 }

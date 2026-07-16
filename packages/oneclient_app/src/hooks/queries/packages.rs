@@ -134,7 +134,7 @@ impl QueryCapability for PackageProjectQuery {
         let state = LauncherState::get()?;
         let provider = state.services.packages.get(keys.provider)?;
         provider
-            .get_project(&keys.project_id, &state.services)
+            .get_project_with_body(&keys.project_id, &state.services)
             .await
     }
 }

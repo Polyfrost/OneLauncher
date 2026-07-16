@@ -32,6 +32,18 @@ pub trait PackageProvider: Send + Sync {
         services: &LauncherServices,
     ) -> LauncherResult<ProjectDetail>;
 
+    /// Same as [`PackageProvider::get_project`], but guarantees [`ProjectDetail::body`]
+    /// is populated when the provider has one. Only worth calling when the body is
+    /// actually rendered: providers that serve descriptions separately pay an extra
+    /// request here, so install paths should stay on `get_project`.
+    async fn get_project_with_body(
+        &self,
+        project_id: &str,
+        services: &LauncherServices,
+    ) -> LauncherResult<ProjectDetail> {
+        self.get_project(project_id, services).await
+    }
+
     async fn get_projects(
         &self,
         project_ids: &[String],

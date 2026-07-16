@@ -6,8 +6,7 @@ use serde::Deserialize;
 use url::Url;
 
 use super::PackageProvider;
-use super::http::fetch_json_with_headers;
-use crate::api_config::curseforge_headers;
+use super::http::fetch_json;
 use crate::LauncherResult;
 use crate::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
 use crate::packages::domain::{ContentType, GameLoader, ProviderId};
@@ -74,12 +73,11 @@ impl PackageProvider for CurseForgeProvider {
             }
         }
 
-        let response: CfPaged<Vec<CfMod>> = fetch_json_with_headers(
+        let response: CfPaged<Vec<CfMod>> = fetch_json(
             &services.requester,
             Method::GET,
             url.as_str(),
             None,
-            &curseforge_headers(),
         )
         .await?;
 
@@ -101,15 +99,25 @@ impl PackageProvider for CurseForgeProvider {
         project_id: &str,
         services: &LauncherServices,
     ) -> LauncherResult<ProjectDetail> {
-        let response: CfData<CfMod> = fetch_json_with_headers(
+        let response: CfData<CfMod> = fetch_json(
             &services.requester,
             Method::GET,
             &api_url(&format!("/mods/{project_id}")),
             None,
-            &curseforge_headers(),
         )
         .await?;
         Ok(response.data.into_detail())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, services))]
+    async fn get_project_with_body(
+        &self,
+        project_id: &str,
+        services: &LauncherServices,
+    ) -> LauncherResult<ProjectDetail> {
+        let mut detail = self.get_project(project_id, services).await?;
+        detail.body = fetch_body(project_id, &detail, services).await;
+        Ok(detail)
     }
 
     #[tracing::instrument(level = "debug", skip(self, project_ids, services))]
@@ -120,12 +128,11 @@ impl PackageProvider for CurseForgeProvider {
     ) -> LauncherResult<Vec<ProjectDetail>> {
         let mod_ids: Vec<u32> = project_ids.iter().filter_map(|s| s.parse().ok()).collect();
         let body = serde_json::json!({ "modIds": mod_ids });
-        let response: CfData<Vec<CfMod>> = fetch_json_with_headers(
+        let response: CfData<Vec<CfMod>> = fetch_json(
             &services.requester,
             Method::POST,
             &api_url("/mods"),
             Some(body),
-            &curseforge_headers(),
         )
         .await?;
         Ok(response.data.into_iter().map(CfMod::into_detail).collect())
@@ -151,12 +158,11 @@ impl PackageProvider for CurseForgeProvider {
                 params.append_pair("modLoaderType", &t.to_string());
             }
         }
-        let response: CfPaged<Vec<CfFile>> = fetch_json_with_headers(
+        let response: CfPaged<Vec<CfFile>> = fetch_json(
             &services.requester,
             Method::GET,
             url.as_str(),
             None,
-            &curseforge_headers(),
         )
         .await?;
 
@@ -192,12 +198,11 @@ impl PackageProvider for CurseForgeProvider {
         url.query_pairs_mut()
             .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
             .append_pair("classId", &cf_class_id(content_type).to_string());
-        let response: CfData<Vec<CfCategory>> = fetch_json_with_headers(
+        let response: CfData<Vec<CfCategory>> = fetch_json(
             &services.requester,
             Method::GET,
             url.as_str(),
             None,
-            &curseforge_headers(),
         )
         .await?;
         Ok(response.data.into_iter().map(|c| c.name).collect())
@@ -210,12 +215,11 @@ impl PackageProvider for CurseForgeProvider {
         version_id: &str,
         services: &LauncherServices,
     ) -> LauncherResult<VersionDetail> {
-        let response: CfData<CfFile> = fetch_json_with_headers(
+        let response: CfData<CfFile> = fetch_json(
             &services.requester,
             Method::GET,
             &api_url(&format!("/mods/files/{version_id}")),
             None,
-            &curseforge_headers(),
         )
         .await?;
         Ok(response.data.into())
@@ -229,12 +233,11 @@ impl PackageProvider for CurseForgeProvider {
     ) -> LauncherResult<Vec<VersionDetail>> {
         let file_ids: Vec<u32> = version_ids.iter().filter_map(|s| s.parse().ok()).collect();
         let body = serde_json::json!({ "fileIds": file_ids });
-        let response: CfData<Vec<CfFile>> = fetch_json_with_headers(
+        let response: CfData<Vec<CfFile>> = fetch_json(
             &services.requester,
             Method::POST,
             &api_url("/mods/files"),
             Some(body),
-            &curseforge_headers(),
         )
         .await?;
         Ok(response.data.into_iter().map(Into::into).collect())
@@ -270,12 +273,11 @@ impl PackageProvider for CurseForgeProvider {
             file: CfFile,
         }
 
-        let response: CfData<Response> = fetch_json_with_headers(
+        let response: CfData<Response> = fetch_json(
             &services.requester,
             Method::POST,
             &api_url(&format!("/mods/fingerprints/{CURSEFORGE_GAME_ID}")),
             Some(body),
-            &curseforge_headers(),
         )
         .await?;
 
@@ -308,6 +310,54 @@ struct CfData<T> {
 struct CfPaged<T> {
     data: T,
     pagination: CfPagination,
+}
+
+#[tracing::instrument(level = "debug", skip(detail, services))]
+async fn fetch_body(
+    project_id: &str,
+    detail: &ProjectDetail,
+    services: &LauncherServices,
+) -> PackageBody {
+    let fallback = || {
+        detail
+            .links
+            .iter()
+            .find(|(label, _)| label == "Website")
+            .map(|(_, url)| PackageBody::Url(url.clone()))
+            .unwrap_or_else(|| PackageBody::Raw(String::new()))
+    };
+
+    let response: Result<CfData<String>, _> = fetch_json(
+        &services.requester,
+        Method::GET,
+        &api_url(&format!("/mods/{project_id}/description")),
+        None,
+    )
+    .await;
+
+    match response {
+        Ok(response) => match html_to_markdown(&response.data) {
+            Some(markdown) => PackageBody::Raw(markdown),
+            None => fallback(),
+        },
+        Err(err) => {
+            tracing::warn!(project_id, %err, "failed to fetch curseforge description");
+            fallback()
+        }
+    }
+}
+
+fn html_to_markdown(html: &str) -> Option<String> {
+    let markdown = htmd::convert(html).ok()?;
+    let markdown = markdown.trim();
+
+    (!markdown.is_empty()).then(|| absolutize_links(markdown))
+}
+
+fn absolutize_links(markdown: &str) -> String {
+    markdown
+        .replace("](/linkout?remoteUrl=", "](https://www.curseforge.com/linkout?remoteUrl=")
+        .replace("](/", "](https://www.curseforge.com/")
 }
 
 #[derive(Deserialize)]

@@ -99,6 +99,9 @@ async-compression.workspace = true
 # image decode/resize
 image.workspace = true
 
+# used to confirm html to markdown
+htmd.workspace = true
+
 # move-to-trash for deletions
 trash.workspace = true
 

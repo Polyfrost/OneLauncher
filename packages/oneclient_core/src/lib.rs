@@ -76,4 +76,6 @@ pub use settings::ProfileUpdate;
 pub use state::LauncherServices;
 pub use state::LauncherState;
 pub use version::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
-pub use versions::{RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest};
+pub use versions::{
+    RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
+};

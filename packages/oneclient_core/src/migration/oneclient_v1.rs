@@ -98,6 +98,7 @@ async fn detect_inner(root: &Path, db_path: &Path) -> LauncherResult<MigrationDe
             instance_id: cluster_id,
             folder_name,
             mc_version,
+            target_mc_version: None,
             mc_loader,
             categories,
             has_game_dir,

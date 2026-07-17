@@ -92,6 +92,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
             instance_id: 0,
             folder_name: ROOT_INSTANCE_NAME.to_string(),
             mc_version: String::new(),
+            target_mc_version: None,
             mc_loader: GameLoader::Vanilla,
             categories: Vec::new(),
             has_game_dir: true,

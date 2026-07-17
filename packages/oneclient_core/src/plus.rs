@@ -89,6 +89,8 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
         .tcp_keepalive(Some(Duration::from_secs(15)))
         .connect_timeout(Duration::from_secs(10))
+        // reqwest-websocket only supports Http <1.1
+        .http1_only()
         .tls_backend_rustls()
         .user_agent(format!(
             "OneClient {} ({})",

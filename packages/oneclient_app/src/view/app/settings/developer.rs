@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 
 use super::settings_page;
 use crate::Route;
-use crate::components::{Button, IconType, link_button, toggle};
+use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{use_browser_compat, use_dispatch, use_settings_snapshot};
 use crate::view::app::settings::{section_header, settings_row};
 
@@ -32,7 +32,6 @@ impl Component for SettingsDeveloper {
             dispatch.set_settings(next);
         });
 
-        let show_dev = use_state(|| false);
         let browser_compat = use_browser_compat();
 
         settings_page()

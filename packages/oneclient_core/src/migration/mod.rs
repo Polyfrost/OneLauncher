@@ -46,6 +46,8 @@ pub struct SourceInstance {
     pub instance_id: i64,
     pub folder_name: String,
     pub mc_version: String,
+	/// Used for any "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
+    pub target_mc_version: Option<String>,
     pub mc_loader: GameLoader,
     /// Bundle categories the user had installed on this instance, e.g.
     /// `["HUD", "Performance"]`. Empty when the source has no category concept.
@@ -58,6 +60,13 @@ pub struct MigrationDetection {
     pub source: MigrationSource,
     pub root: PathBuf,
     pub instances: Vec<SourceInstance>,
+}
+
+impl SourceInstance {
+    #[must_use]
+    pub fn import_version(&self) -> &str {
+        self.target_mc_version.as_deref().unwrap_or(&self.mc_version)
+    }
 }
 
 /// Where an imported game directory should land in *this* launcher.
@@ -106,6 +115,23 @@ mod tests {
     #[test]
     fn vanilla_is_the_last_resort() {
         assert_eq!(MigrationSource::ALL.last(), Some(&MigrationSource::Vanilla));
+    }
+
+    #[test]
+    fn import_version_prefers_resolved_target() {
+        let mut instance = SourceInstance {
+            instance_id: 1,
+            folder_name: "26.1 fabric".to_string(),
+            mc_version: "26.1".to_string(),
+            target_mc_version: None,
+            mc_loader: GameLoader::Fabric,
+            categories: Vec::new(),
+            has_game_dir: true,
+        };
+        assert_eq!(instance.import_version(), "26.1");
+
+        instance.target_mc_version = Some("26.1.2".to_string());
+        assert_eq!(instance.import_version(), "26.1.2");
     }
 
     #[test]

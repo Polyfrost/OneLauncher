@@ -1,5 +1,7 @@
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::{LauncherError, MigrationDetection, detect_migration};
+use oneclient_core::{
+    LauncherError, LauncherState, MigrationDetection, detect_migration, resolve_migration_chain,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MigrationQuery;
@@ -13,7 +15,28 @@ impl QueryCapability for MigrationQuery {
     type Keys = MigrationKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        detect_migration().await
+        let Some(mut detection) = detect_migration().await? else {
+            return Ok(None);
+        };
+
+        // remote cluster migrations run on startup (so before we even get to launcher migrations)
+		// this pretty much tries to migrate the source instance to the latest version in the migration chain,
+		// so that we can import it into the correct cluster
+        let rules = LauncherState::get()?.versions.migrations().await;
+        if !rules.is_empty() {
+            for instance in &mut detection.instances {
+                if instance.mc_version.is_empty() {
+                    continue;
+                }
+                let resolved =
+                    resolve_migration_chain(&instance.mc_version, instance.mc_loader, &rules);
+                if resolved != instance.mc_version {
+                    instance.target_mc_version = Some(resolved);
+                }
+            }
+        }
+
+        Ok(Some(detection))
     }
 }
 

@@ -253,20 +253,24 @@ jobs:
 
           base="$unique"
           mkdir -p fragments
+          case "$OS_KEY" in
+            darwin) KEYS="darwin-${ARCH} macos-${ARCH}" ;;
+            *)      KEYS="${OS_KEY}-${ARCH}" ;;
+          esac
           SIG="$(cat "$updater_file.sig")" \
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${base}" \
           FMT="$fmt" \
-          KEY="${OS_KEY}-${ARCH}" \
+          KEYS="$KEYS" \
+          FRAG_NAME="${OS_KEY}-${ARCH}" \
           python3 - <<'PY'
           import json, os
-          frag = {
-            os.environ["KEY"]: {
-              "signature": os.environ["SIG"],
-              "url": os.environ["URL"],
-              "format": os.environ["FMT"],
-            }
+          entry = {
+            "signature": os.environ["SIG"],
+            "url": os.environ["URL"],
+            "format": os.environ["FMT"],
           }
-          with open(f"fragments/{os.environ['KEY']}.json", "w") as f:
+          frag = {key: entry for key in os.environ["KEYS"].split()}
+          with open(f"fragments/{os.environ['FRAG_NAME']}.json", "w") as f:
               json.dump(frag, f)
           PY
 

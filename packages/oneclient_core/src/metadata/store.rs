@@ -165,20 +165,18 @@ impl MetadataStore {
         check_modded!(neo);
         check_modded!(fabric);
         check_modded!(quilt);
-        check_modded!(legacyfabric);
 
         changed
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn fetch_all(&mut self, services: &LauncherServices) {
-        let (minecraft, forge, neo, fabric, quilt, legacyfabric) = tokio::join!(
+        let (minecraft, forge, neo, fabric, quilt) = tokio::join!(
             fetch_vanilla_manifest(services),
             fetch_modded_manifest(services, GameLoader::Forge),
             fetch_modded_manifest(services, GameLoader::NeoForge),
             fetch_modded_manifest(services, GameLoader::Fabric),
             fetch_modded_manifest(services, GameLoader::Quilt),
-            fetch_modded_manifest(services, GameLoader::LegacyFabric),
         );
 
         self.inner.minecraft = minecraft.ok();
@@ -186,7 +184,6 @@ impl MetadataStore {
         self.inner.neo = neo.ok();
         self.inner.fabric = fabric.ok();
         self.inner.quilt = quilt.ok();
-        self.inner.legacyfabric = legacyfabric.ok();
     }
 
     #[tracing::instrument(level = "debug", skip(self, services))]

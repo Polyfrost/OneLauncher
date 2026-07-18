@@ -163,13 +163,7 @@ impl GameLoader {
     }
 
     pub const fn modded_loaders() -> &'static [Self] {
-        &[
-            Self::Forge,
-            Self::NeoForge,
-            Self::Quilt,
-            Self::Fabric,
-            Self::LegacyFabric,
-        ]
+        &[Self::Forge, Self::NeoForge, Self::Quilt, Self::Fabric]
     }
 
     pub fn compatible_with(self, other: Self) -> bool {

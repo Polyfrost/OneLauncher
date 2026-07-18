@@ -22,7 +22,6 @@ use oneclient_core::notification::LaunchStage;
 pub struct CoreBridgeRuntime {
     pub snapshots_tx: watch::Sender<BridgeSnapshot>,
     pub commands_rx: mpsc::UnboundedReceiver<BridgeCommand>,
-    #[allow(dead_code)]
     pub commands_tx: mpsc::UnboundedSender<BridgeCommand>,
 }
 
@@ -65,6 +64,10 @@ impl CoreBridgeRuntime {
                 &pending_prompt,
             );
             publish(&self.snapshots_tx, &snapshots);
+
+            if let Err(err) = self.commands_tx.send(BridgeCommand::SyncBundles) {
+                tracing::error!("failed to queue startup bundle sync: {err}");
+            }
         }
 
         loop {

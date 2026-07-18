@@ -260,7 +260,13 @@ async fn register_located_runtimes(
 	located: impl IntoIterator<Item = (PathBuf, JavaCheckInfo)>,
 ) -> LauncherResult<()> {
 	for (path, info) in located {
-		let _ = persist_runtime(pool, &path, &info).await?;
+		if let Err(err) = persist_runtime(pool, &path, &info).await {
+			tracing::warn!(
+				path = %path.display(),
+				version = %info.version,
+				"skipping located Java runtime: {err}"
+			);
+		}
 	}
 	Ok(())
 }

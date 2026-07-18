@@ -37,31 +37,39 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
     let output = command.output().await
         .map_err(|e| JavaError::RuntimeCheckError {
             source: e,
-            path: absolute_path,
+            path: absolute_path.clone(),
         })?;
 
     let java_info = String::from_utf8_lossy(&output.stdout);
 
     let info = java_info
         .lines()
-        .map(|line| {
+        .filter_map(|line| {
             let mut parts = line.splitn(2, '=');
-            let key = parts.next().unwrap_or("unknown");
-            let value = parts.next().unwrap_or("unknown");
+            let key = parts.next()?;
+            let value = parts.next()?;
 
-            (key.to_string(), value.to_string())
+            Some((key.to_string(), value.to_string()))
         })
         .collect::<HashMap<_, _>>();
+
+    let Some(version) = info.get("java.version").cloned() else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::warn!(
+            path = %absolute_path,
+            status = ?output.status.code(),
+            "java probe did not report java.version; stderr: {}",
+            stderr.trim()
+        );
+        return Err(JavaError::InvalidJavaPath { path: absolute_path });
+    };
 
     Ok(JavaCheckInfo {
         os_arch: info
             .get("os.arch")
             .cloned()
             .unwrap_or_else(|| String::from("unknown")),
-        version: info
-            .get("java.version")
-            .cloned()
-            .unwrap_or_else(|| String::from("unknown")),
+        version,
         vendor: info
             .get("java.vendor")
             .cloned()

@@ -102,8 +102,8 @@ impl RequestClient {
     }
 
     pub fn new() -> Result<Self, RequestError> {
-        let client = ClientBuilder::new()
-            .hickory_dns(true)
+        #[cfg_attr(target_os = "windows", allow(unused_mut))]
+        let mut builder = ClientBuilder::new()
             .connect_timeout(std::time::Duration::from_secs(10))
             .read_timeout(std::time::Duration::from_secs(30))
             .timeout(std::time::Duration::from_mins(10))
@@ -112,8 +112,14 @@ impl RequestClient {
                 "OneClient {} ({})",
                 env!("CARGO_PKG_VERSION"),
                 env!("CARGO_PKG_HOMEPAGE")
-            ))
-            .build()?;
+            ));
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            builder = builder.hickory_dns(true);
+        }
+
+        let client = builder.build()?;
 
         Ok(Self {
             client,

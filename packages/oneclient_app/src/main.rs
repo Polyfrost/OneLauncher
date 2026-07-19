@@ -31,11 +31,15 @@ impl App for OneClientApp {
 }
 
 fn main() {
-    let rt = Builder::new_multi_thread()
-        .enable_all()
-        .max_blocking_threads(16)
-        .build()
-        .unwrap();
+    let mut builder = Builder::new_multi_thread();
+    builder.enable_all().max_blocking_threads(16);
+
+    // Debug builds emit unoptimized async code, which can cause stack overflows in some cases.
+	// Default stack size is 2MB, so we'll increase it to 4MB for debug builds
+    #[cfg(debug_assertions)]
+    builder.thread_stack_size(4 * 1024 * 1024);
+
+    let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));

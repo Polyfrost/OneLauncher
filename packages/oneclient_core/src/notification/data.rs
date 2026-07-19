@@ -179,6 +179,10 @@ pub enum UserChoice {
 	Accept,
 	Cancel,
 	Folder(PathBuf),
+	Install {
+		vendor: crate::java::JavaVendor,
+		major: u32,
+	},
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -68,6 +68,9 @@ impl JavaManager {
 		match services.notifier.prompt_java_install(major).await? {
 			UserChoice::Accept => download_and_register(major, services).await,
 			UserChoice::Folder(folder) => register_custom_java(&services.db, folder, major).await,
+			UserChoice::Install { vendor, .. } => {
+				Self::install_runtime_from(services, &vendor, major).await
+			}
 			UserChoice::Cancel => Err(JavaError::Cancelled.into()),
 		}
 	}

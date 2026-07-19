@@ -312,15 +312,6 @@ impl NotificationState {
                 kind,
                 reply_tx,
             } => {
-                let entry_id = self.push_inbox(
-                    inbox,
-                    title.clone(),
-                    question.clone(),
-                    NotificationLevel::Info,
-                    None,
-                    false,
-                );
-                self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
                 let pending_prompt = Some(PendingPrompt {
                     title: title.clone(),
                     question: question.clone(),

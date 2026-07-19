@@ -244,9 +244,19 @@ jobs:
           cp "$updater_file" "$OUT_DIR/$unique"
           cp "$updater_file.sig" "$OUT_DIR/$unique.sig"
 
-          # Upload human-facing installers (dmg/deb/AppImage/signed exe) + the renamed
+          # cargo-packager names the .deb after the binary (oneclient_app_<ver>_amd64.deb).
+          # Rename it to the same OneClient_<ver>_<os>_<arch> scheme as the other assets so
+          # the AUR oneclient-bin package can point at a stable, predictable URL.
+          deb_unique=""
+          deb_matches=("$OUT_DIR"/*.deb)
+          if [ -e "${deb_matches[0]}" ]; then
+            deb_unique="OneClient_${VERSION}_${OS_KEY}_${ARCH}.deb"
+            cp "${deb_matches[0]}" "$OUT_DIR/$deb_unique"
+          fi
+
+          # Upload human-facing installers (dmg/renamed deb/AppImage/signed exe) + the renamed
           # updater bundle and its .sig. Skip the un-renamed updater bundle to avoid clashes.
-          for f in "$OUT_DIR"/*.dmg "$OUT_DIR"/*.deb "$OUT_DIR"/*.AppImage "$OUT_DIR"/*-setup.exe "$OUT_DIR/$unique" "$OUT_DIR/$unique.sig"; do
+          for f in "$OUT_DIR"/*.dmg ${deb_unique:+"$OUT_DIR/$deb_unique"} "$OUT_DIR"/*.AppImage "$OUT_DIR"/*-setup.exe "$OUT_DIR/$unique" "$OUT_DIR/$unique.sig"; do
             [ -e "$f" ] || continue
             gh release upload "$TAG" "$f" --clobber
           done

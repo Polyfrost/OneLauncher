@@ -1,0 +1,97 @@
+name: Publish AUR Packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. oneclient-2.0.1)'
+        required: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse release tag
+        id: parse
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ "$TAG" =~ ^oneclient-(.+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tag '$TAG' does not match oneclient-*"
+            exit 1
+          fi
+
+  publish-source:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute source sha256
+        id: hash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          URL="https://github.com/${{ github.repository }}/archive/refs/tags/oneclient-${VERSION}.tar.gz"
+          SHA=$(curl -sL "$URL" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare PKGBUILD
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          PKGBUILD="distribution/aur/oneclient/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" "$PKGBUILD"
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: oneclient
+          pkgbuild: distribution/aur/oneclient/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "oneclient ${{ needs.resolve.outputs.version }}-1"
+
+  publish-bin:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute deb sha256
+        id: hash
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          URL="https://github.com/${{ github.repository }}/releases/download/oneclient-${VERSION}/OneClient_${VERSION}_linux_x86_64.deb"
+          SHA=$(curl -sL "$URL" | sha256sum | cut -d' ' -f1)
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare PKGBUILD
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          PKGBUILD="distribution/aur/oneclient-bin/PKGBUILD"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "$PKGBUILD"
+          sed -i "s/^pkgrel=.*/pkgrel=1/" "$PKGBUILD"
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" "$PKGBUILD"
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: oneclient-bin
+          pkgbuild: distribution/aur/oneclient-bin/PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "oneclient-bin ${{ needs.resolve.outputs.version }}-1"

@@ -83,6 +83,17 @@ application-folder-position = { x = 440, y = 190 }
 digest-algorithm = "sha256"
 timestamp-url = "https://timestamp.digicert.com"
 
+[package.metadata.packager.nsis]
+preinstall-section = """
+Section "-OneClientTauriMigration"
+  ; Stale Tauri root start-menu shortcut (this build only writes the sub-folder one).
+  Delete "$SMPROGRAMS\\${PRODUCTNAME}.lnk"
+  ; Old Tauri main binary (renamed OneClient.exe -> oneclient_app.exe). Locked while
+  ; the outdated app is running during an auto-update, so fall back to reboot removal.
+  Delete /REBOOTOK "$INSTDIR\\OneClient.exe"
+SectionEnd
+"""
+
 [package.metadata.packager.deb]
 desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
 

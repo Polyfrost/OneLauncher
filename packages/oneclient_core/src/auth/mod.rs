@@ -78,6 +78,13 @@ pub async fn finish_microsoft_login(
 
     if let Err(err) = &result {
         tracing::warn!("Microsoft login failed: {err}");
+        let mut chain = String::new();
+        let mut source = std::error::Error::source(err);
+        while let Some(cause) = source {
+            chain.push_str(&format!("\n  caused by: {cause}"));
+            source = cause.source();
+        }
+        tracing::warn!("Microsoft login failed: {err}{chain}");
     }
 
     let account = result?;

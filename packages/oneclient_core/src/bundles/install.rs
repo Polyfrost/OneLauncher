@@ -10,7 +10,7 @@ use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
-use crate::notification::{GroupedProgressChild, GroupedProgressSession, TaskPhase};
+use crate::notification::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 use crate::packages::domain::{ContentType, GameLoader};
 use crate::packages::error::PackageError;
 use crate::packages::store::{PackageStore, unlink_cluster_file};
@@ -233,10 +233,19 @@ pub async fn install_enabled_bundle_files(
         "installing enabled bundle files"
     );
 
+    if let Some(p) = progress {
+        let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
+        p.expect(TaskCategory::Packages, to_install.len() as u64, reserved_bytes);
+    }
+
     let bundle_name = &bundle_name;
     let results = futures_util::stream::iter(to_install.into_iter().map(|file| async move {
         let child = progress.map(|p| {
-            let c = p.child(format!("Mod {}", file.display_name()), file.size.max(1));
+            let c = p.child(
+                format!("Mod {}", file.display_name()),
+                file.size.max(1),
+                crate::notification::TaskCategory::Packages,
+            );
             c.set_phase(TaskPhase::Downloading);
             c
         });

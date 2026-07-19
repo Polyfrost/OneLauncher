@@ -1,22 +1,41 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use uuid::Uuid;
 
-use super::data::GroupedProgressEvent;
 use super::NotificationService;
+use super::data::{GroupedProgressEvent, TaskCategory};
 
-#[derive(Clone)]
 struct SessionInner {
     session_id: Uuid,
     notifier: NotificationService,
+    ended: AtomicBool,
 }
 
-#[derive(Clone)]
+impl SessionInner {
+    fn end(&self) {
+        if self.ended.swap(true, Ordering::Relaxed) {
+            return;
+        }
+
+        self.notifier.send_grouped(GroupedProgressEvent::End {
+            session_id: self.session_id,
+        });
+    }
+}
+
+impl Drop for SessionInner {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+
 struct ChildInner {
     session_id: Uuid,
     child_id: Uuid,
     notifier: NotificationService,
     label: String,
+    total: AtomicU64,
     finished: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -41,6 +60,7 @@ impl GroupedProgressSession {
             inner: Arc::new(SessionInner {
                 session_id,
                 notifier: notifier.clone(),
+                ended: AtomicBool::new(false),
             }),
         }
     }
@@ -49,17 +69,41 @@ impl GroupedProgressSession {
         self.inner.session_id
     }
 
-    pub fn child(&self, label: impl Into<String>, total: u64) -> GroupedProgressChild {
+    /// Reserve the expected work for a category before its children are added.
+    /// `count` = number of files, `total` = sum of their sizes in bytes.
+    pub fn expect(&self, category: TaskCategory, count: u64, total: u64) {
+        if count == 0 {
+            return;
+        }
+        self.inner
+            .notifier
+            .send_grouped(GroupedProgressEvent::Expect {
+                session_id: self.inner.session_id,
+                category,
+                count,
+                total,
+            });
+    }
+
+    pub fn child(
+        &self,
+        label: impl Into<String>,
+        total: u64,
+        category: TaskCategory,
+    ) -> GroupedProgressChild {
         let child_id = Uuid::new_v4();
         let label = label.into();
         let total = total.max(1);
 
-        self.inner.notifier.send_grouped(GroupedProgressEvent::AddChild {
-            session_id: self.inner.session_id,
-            child_id,
-            label: label.clone(),
-            total,
-        });
+        self.inner
+            .notifier
+            .send_grouped(GroupedProgressEvent::AddChild {
+                session_id: self.inner.session_id,
+                child_id,
+                label: label.clone(),
+                total,
+                category,
+            });
 
         GroupedProgressChild {
             inner: Arc::new(ChildInner {
@@ -67,6 +111,7 @@ impl GroupedProgressSession {
                 child_id,
                 notifier: self.inner.notifier.clone(),
                 label,
+                total: AtomicU64::new(total),
                 finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             }),
         }
@@ -76,13 +121,14 @@ impl GroupedProgressSession {
         &self,
         label: impl Into<String>,
         total: u64,
+        category: TaskCategory,
         f: F,
     ) -> Result<T, E>
     where
         F: FnOnce(GroupedProgressChild) -> Fut,
         Fut: std::future::Future<Output = Result<T, E>>,
     {
-        let child = self.child(label, total);
+        let child = self.child(label, total, category);
         let result = f(child.clone()).await;
         if result.is_ok() {
             child.finish();
@@ -91,11 +137,7 @@ impl GroupedProgressSession {
     }
 
     pub fn finish(self) {
-        self.inner
-            .notifier
-            .send_grouped(GroupedProgressEvent::End {
-                session_id: self.inner.session_id,
-            });
+        self.inner.end();
     }
 }
 
@@ -105,28 +147,48 @@ impl GroupedProgressChild {
     }
 
     pub fn set_phase(&self, phase: super::data::TaskPhase) {
-        if self.inner.finished.load(std::sync::atomic::Ordering::Relaxed) {
+        if self
+            .inner
+            .finished
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             return;
         }
-        self.inner.notifier.send_grouped(GroupedProgressEvent::SetChildPhase {
-            session_id: self.inner.session_id,
-            child_id: self.inner.child_id,
-            phase,
-        });
+        self.inner
+            .notifier
+            .send_grouped(GroupedProgressEvent::SetChildPhase {
+                session_id: self.inner.session_id,
+                child_id: self.inner.child_id,
+                phase,
+            });
     }
 
     pub fn set_progress(&self, current: u64, total: Option<u64>) {
-        if self.inner.finished.load(std::sync::atomic::Ordering::Relaxed) {
+        if self
+            .inner
+            .finished
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             return;
         }
 
-        let total = total.unwrap_or(1).max(1);
-        self.inner.notifier.send_grouped(GroupedProgressEvent::UpdateChild {
-            session_id: self.inner.session_id,
-            child_id: self.inner.child_id,
-            current,
-            total,
-        });
+        // Prefer the largest known total. Streaming reports Content-Length which is
+        // often missing (1) for compressed/chunked responses; when the child was
+        // created with a real expected size (from a manifest) we must not let that
+        // stale header clobber it — otherwise the download bar reads 100%/frozen.
+        let stored = self.inner.total.load(Ordering::Relaxed);
+        let total = total.unwrap_or(0).max(stored).max(1);
+        if total > stored {
+            self.inner.total.store(total, Ordering::Relaxed);
+        }
+        self.inner
+            .notifier
+            .send_grouped(GroupedProgressEvent::UpdateChild {
+                session_id: self.inner.session_id,
+                child_id: self.inner.child_id,
+                current,
+                total,
+            });
     }
 
     pub fn finish(&self) {
@@ -138,10 +200,12 @@ impl GroupedProgressChild {
             return;
         }
 
-        self.inner.notifier.send_grouped(GroupedProgressEvent::FinishChild {
-            session_id: self.inner.session_id,
-            child_id: self.inner.child_id,
-        });
+        self.inner
+            .notifier
+            .send_grouped(GroupedProgressEvent::FinishChild {
+                session_id: self.inner.session_id,
+                child_id: self.inner.child_id,
+            });
     }
 }
 
@@ -150,4 +214,3 @@ impl Drop for GroupedProgressChild {
         self.finish();
     }
 }
-

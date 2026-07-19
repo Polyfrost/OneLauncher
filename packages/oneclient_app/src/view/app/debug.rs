@@ -1,11 +1,16 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_core::LauncherState;
+use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
 use crate::components::{Button, Icon, IconType, TextInput, toggle};
 use crate::hooks::use_dispatch;
 use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationActionKind};
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::ui::border_all_color;
+
+type SqlResult = Option<Result<ConsoleQueryResult, String>>;
 
 #[derive(PartialEq)]
 pub struct Debug;
@@ -62,6 +67,8 @@ impl Component for Debug {
                         "Cluster Update Simulator",
                         vec![ClusterUpdateSimulator.into_element()],
                     ))
+                    .child(divider())
+                    .child(section("SQL Console", vec![SqlConsole.into_element()]))
                     .child(divider())
                     .child(section(
                         "Other",
@@ -252,6 +259,170 @@ impl Component for ClusterUpdateSimulator {
             )
             .into_element()
     }
+}
+
+#[derive(PartialEq)]
+struct SqlConsole;
+
+impl Component for SqlConsole {
+    fn render(&self) -> impl IntoElement {
+        let query = use_state(|| "SELECT * FROM clusters;".to_string());
+        let result = use_state(|| None::<Result<ConsoleQueryResult, String>>);
+        let running = use_state(|| false);
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        rect().width(Size::flex(1.0)).child(
+                            TextInput::new(query)
+                                .placeholder("SELECT * FROM …")
+                                .on_submit(move |_| run_sql(query, result, running)),
+                        ),
+                    )
+                    .child(
+                        Button::new()
+                            .primary()
+                            .child(Icon::new(IconType::Terminal).size(16.))
+                            .text(if *running.read() { "Running…" } else { "Run" })
+                            .on_press(move |_| run_sql(query, result, running)),
+                    ),
+            )
+            .child(sql_result(&result.read()))
+            .into_element()
+    }
+}
+
+fn run_sql(query: State<String>, mut result: State<SqlResult>, mut running: State<bool>) {
+    if *running.read() {
+        return;
+    }
+    let sql = query.read().clone();
+    if sql.trim().is_empty() {
+        return;
+    }
+
+    running.set(true);
+    spawn(async move {
+        let res = match LauncherState::get() {
+            Ok(state) => run_console_query(&state.services.db, &sql)
+                .await
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        result.set(Some(res));
+        running.set(false);
+    });
+}
+
+fn sql_result(state: &SqlResult) -> Element {
+    match state {
+        None => label()
+            .text("No query run yet.")
+            .font_size(13.)
+            .color(colors::fg_secondary())
+            .into_element(),
+        Some(Err(err)) => rect()
+            .width(Size::fill())
+            .padding(Gaps::new_symmetric(10., 14.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
+            .border(border_all_color(1., colors::danger()))
+            .child(
+                label()
+                    .text(err.clone())
+                    .font_size(13.)
+                    .color(colors::danger()),
+            )
+            .into_element(),
+        Some(Ok(res)) if !res.is_select => label()
+            .text(format!("OK — {} row(s) affected.", res.rows_affected))
+            .font_size(13.)
+            .color(colors::success())
+            .into_element(),
+        Some(Ok(res)) => sql_table(res),
+    }
+}
+
+fn sql_table(res: &ConsoleQueryResult) -> Element {
+    if res.columns.is_empty() {
+        return label()
+            .text("0 rows returned.")
+            .font_size(13.)
+            .color(colors::fg_secondary())
+            .into_element();
+    }
+
+    let header = table_row(&res.columns, true);
+    let mut table = rect()
+        .vertical()
+        .width(Size::fill())
+        .corner_radius(CornerRadius::new_all(8.))
+        .border(border_all_color(1., colors::component_border()))
+        .child(header);
+
+    for row in &res.rows {
+        table = table.child(table_row(row, false));
+    }
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(6.)
+        .child(
+            label()
+                .text(format!("{} row(s)", res.rows.len()))
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .child(table)
+        .into_element()
+}
+
+fn table_row(cells: &[String], header: bool) -> Element {
+    let mut row = rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .background(if header {
+            colors::page_elevated()
+        } else {
+            colors::component_bg()
+        });
+
+    for cell in cells {
+        row = row.child(
+            rect()
+                .width(Size::flex(1.0))
+                .padding(Gaps::new_symmetric(6., 10.))
+                .border(border_all_color(0.5, colors::component_border()))
+                .child(
+                    label()
+                        .text(cell.clone())
+                        .font_size(12.)
+                        .max_lines(1)
+                        .font_weight(if header {
+                            FontWeight::SEMI_BOLD
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        .color(if header {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                ),
+        );
+    }
+
+    row.into_element()
 }
 
 fn split_csv(raw: &str) -> Vec<String> {

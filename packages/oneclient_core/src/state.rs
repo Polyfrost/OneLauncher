@@ -40,6 +40,7 @@ pub struct LauncherState {
 	pub images: ImageCacheStore,
 	pub games: crate::game::GameProcessManager,
 	pub discord: DiscordRpc,
+	pub provisioning: Mutex<()>,
 }
 
 impl LauncherState {
@@ -75,6 +76,7 @@ impl LauncherState {
 			images: ImageCacheStore::new(),
 			games: crate::game::GameProcessManager::new(),
 			discord,
+			provisioning: Mutex::new(()),
 		});
 
 		STATE

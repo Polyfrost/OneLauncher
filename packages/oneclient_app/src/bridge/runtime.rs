@@ -854,7 +854,11 @@ async fn install_package(
         format!("Installing {}", project.name),
     );
     let size = version.primary_file().map(|f| f.size).unwrap_or(0);
-    let child = session.child(project.name.clone(), size);
+    let child = session.child(
+        project.name.clone(),
+        size,
+        oneclient_core::notification::TaskCategory::Packages,
+    );
 
     let result = PackageStore::install_to_cluster(
         provider,

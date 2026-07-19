@@ -12,7 +12,7 @@ use crate::metadata::MetadataError;
 use crate::metadata::MetadataStore;
 use crate::os_ext::OsExt;
 use crate::packages::domain::GameLoader;
-use crate::notification::GroupedProgressSession;
+use crate::notification::{GroupedProgressSession, TaskCategory};
 use crate::paths;
 use crate::state::LauncherServices;
 use crate::{LauncherError, LauncherResult};
@@ -80,7 +80,11 @@ pub async fn download_version_info(
         let mut info: VersionInfo = match progress {
             Some(progress) => {
                 progress
-                    .run_child(format!("Version metadata ({version_id})"), 1, |child| {
+                    .run_child(
+                        format!("Version metadata ({version_id})"),
+                        1,
+                        TaskCategory::Metadata,
+                        |child| {
                         let requester = requester.clone();
                         async move {
                             child.set_progress(0, Some(1));
@@ -106,7 +110,11 @@ pub async fn download_version_info(
             let partial: interfrost::api::modded::PartialVersionInfo = match progress {
                 Some(progress) => {
                     progress
-                        .run_child(format!("Loader metadata ({version_id})"), 1, |child| {
+                        .run_child(
+                            format!("Loader metadata ({version_id})"),
+                            1,
+                            TaskCategory::Metadata,
+                            |child| {
                             let requester = requester.clone();
                             async move {
                                 child.set_progress(0, Some(1));
@@ -170,6 +178,8 @@ pub async fn download_assets_index(
         &services.notifier,
         progress,
         format!("Assets index ({})", version.asset_index.id),
+        TaskCategory::Assets,
+        u64::from(version.asset_index.size),
         &version.asset_index.url,
         &path,
         Some(version.asset_index.sha1.as_str()),
@@ -223,6 +233,8 @@ pub async fn download_assets(
                 &notifier,
                 &progress,
                 format!("Asset {name}"),
+                TaskCategory::Assets,
+                u64::from(asset.size),
                 &url,
                 &path,
                 Some(hash),
@@ -275,6 +287,8 @@ pub async fn download_client(
         &services.notifier,
         progress,
         format!("Client {}", version.id),
+        TaskCategory::Client,
+        u64::from(client.size),
         &client.url,
         &path,
         Some(&client.sha1),
@@ -375,6 +389,8 @@ pub async fn download_libraries(
                             &notifier,
                             &progress,
                             format!("Library {}", lib_short(&lib.name)),
+                            TaskCategory::Libraries,
+                            u64::from(artifact.size),
                             &artifact.url,
                             &path,
                             Some(&artifact.sha1),
@@ -395,6 +411,8 @@ pub async fn download_libraries(
                         &notifier,
                         &progress,
                         format!("Library {}", lib_short(&lib.name)),
+                        TaskCategory::Libraries,
+                        0,
                         &url,
                         &path,
                         None,
@@ -416,12 +434,18 @@ pub async fn download_libraries(
                                 &notifier,
                                 &progress,
                                 format!("Natives {}", lib_short(&lib.name)),
+                                TaskCategory::Natives,
+                                u64::from(native.size),
                                 &native.url,
                                 &native.sha1,
                             )
                             .await?;
 
-                            let extract = progress.child(format!("Natives {}", lib_short(&lib.name)), 1);
+                            let extract = progress.child(
+                                format!("Natives {}", lib_short(&lib.name)),
+                                1,
+                                TaskCategory::Natives,
+                            );
                             extract.set_phase(crate::notification::TaskPhase::Extracting);
                             polyio::unzip_bytes_filtered(
                                 data,

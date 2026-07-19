@@ -802,6 +802,7 @@ fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
             agg.children.clear();
             agg.done_units = 0;
         }
+        GroupedProgressEvent::Expect { .. } => {}
         GroupedProgressEvent::AddChild {
             child_id,
             label,

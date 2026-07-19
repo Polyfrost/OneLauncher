@@ -171,6 +171,7 @@ pub async fn launch_cluster(
             .as_ref()
             .map(|v| v.major_version)
             .ok_or(GameError::MissingJavaVersion)?;
+
         JavaManager::prepare_java(state, major, search_for_java).await?
     };
 

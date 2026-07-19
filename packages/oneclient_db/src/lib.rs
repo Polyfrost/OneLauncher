@@ -1,6 +1,7 @@
 mod error;
 mod pool;
 
+pub mod console;
 pub mod dao;
 pub mod models;
 

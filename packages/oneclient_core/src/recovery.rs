@@ -40,6 +40,11 @@ impl RecoveryReport {
 pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<RecoveryReport> {
 	let mut report = RecoveryReport::default();
 
+	// Hold the provisioning lock across the whole scan+adopt so a concurrent
+	// cluster create (folder-on-disk written before its DB row commits) can't be
+	// misclassified as an orphan and adopted into a duplicate row.
+	let _guard = state.provisioning.lock().await;
+
 	let clusters_dir = paths::clusters_dir()?;
 	let orphans = orphan_cluster_folders(&state.services.db, &clusters_dir).await?;
 	if orphans.is_empty() {

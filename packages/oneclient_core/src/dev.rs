@@ -87,11 +87,13 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                             },
                         );
                     }
+                    GroupedProgressEvent::Expect { .. } => {}
                     GroupedProgressEvent::AddChild {
                         session_id,
                         child_id,
                         label,
                         total,
+                        ..
                     } => {
                         let Some(session) = grouped_sessions.get_mut(&session_id) else {
                             continue;
@@ -240,6 +242,7 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
 		images: crate::images::ImageCacheStore::new(),
 		games: crate::game::GameProcessManager::new(),
 		discord: crate::discord::DiscordRpc::spawn(false),
+		provisioning: tokio::sync::Mutex::new(()),
 	}))
 }
 

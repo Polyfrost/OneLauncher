@@ -1,0 +1,126 @@
+name: OneClient Nightly (Unsigned)
+
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: oneclient-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            os_key: darwin
+            arch: aarch64
+            formats: app,dmg
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            os_key: darwin
+            arch: x86_64
+            formats: app,dmg
+          - platform: ubuntu-22.04
+            target: ''
+            os_key: linux
+            arch: x86_64
+            formats: deb,appimage
+          - platform: windows-latest
+            target: ''
+            os_key: windows
+            arch: x86_64
+            formats: nsis
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          target: ${{ matrix.target }}
+          save-cache: true
+          restore-cache: true
+
+      - name: (Linux) Install system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config clang python3 \
+            libfontconfig-dev libfreetype-dev \
+            libgl1-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libdbus-1-dev \
+            libfuse2
+
+      - name: Install cargo-packager
+        shell: bash
+        run: cargo install cargo-packager --version 0.11.8 --locked
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.target }}" ]; then
+            cargo build --release --bin oneclient_app --target ${{ matrix.target }}
+          else
+            cargo build --release --bin oneclient_app
+          fi
+
+      - name: Package (unsigned)
+        shell: bash
+        env:
+          CI: 'true'
+        run: |
+          ARGS="--release --formats ${{ matrix.formats }}"
+          if [ -n "${{ matrix.target }}" ]; then
+            ARGS="$ARGS --target ${{ matrix.target }}"
+          fi
+          cargo packager $ARGS --verbose
+
+      - name: Resolve packager output dir
+        id: outdir
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.target }}" ]; then
+            echo "dir=target/${{ matrix.target }}/release" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=target/release" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Collect installers
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p dist
+          # Human-facing installers only; skip the .sig-paired updater bundles
+          # (no updater manifest is produced for unsigned nightly builds).
+          for f in "${{ steps.outdir.outputs.dir }}"/*.dmg \
+                   "${{ steps.outdir.outputs.dir }}"/*.deb \
+                   "${{ steps.outdir.outputs.dir }}"/*.AppImage \
+                   "${{ steps.outdir.outputs.dir }}"/*-setup.exe; do
+            [ -e "$f" ] || continue
+            cp "$f" dist/
+          done
+          if [ -z "$(ls -A dist)" ]; then
+            echo "::error::No installers found in ${{ steps.outdir.outputs.dir }}"
+            exit 1
+          fi
+          ls -la dist
+
+      - name: Upload unsigned installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneclient-nightly-${{ matrix.os_key }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

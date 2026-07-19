@@ -49,6 +49,37 @@ impl ClusterManager {
 		state: &LauncherState,
 		options: CreateClusterOptions,
 	) -> LauncherResult<Cluster> {
+		let _guard = state.provisioning.lock().await;
+		Self::create_core(state, options).await
+	}
+
+	/// Create a cluster for a version/loader that doesn't exist yet, and provision it.
+	#[tracing::instrument(level = "debug", skip(state))]
+	pub async fn create_provisioned(
+		state: &LauncherState,
+		options: CreateClusterOptions,
+	) -> LauncherResult<Option<Cluster>> {
+		let _guard = state.provisioning.lock().await;
+		if cluster_dao::find_by_version_loader(
+			&state.services.db,
+			&options.mc_version,
+			options.mc_loader as i64,
+		)
+		.await?
+		.is_some()
+		{
+			return Ok(None);
+		}
+		Self::create_core(state, options).await.map(Some)
+	}
+
+	/// Folder-resolve + insert core shared by `create` and `create_provisioned`.
+	/// Callers MUST hold `state.provisioning` — this does not lock.
+	#[tracing::instrument(level = "debug", skip(state))]
+	async fn create_core(
+		state: &LauncherState,
+		options: CreateClusterOptions,
+	) -> LauncherResult<Cluster> {
 		let name = Self::sanitize_name(&options.name);
 		if name.is_empty() {
 			return Err(ClusterError::EmptyName.into());

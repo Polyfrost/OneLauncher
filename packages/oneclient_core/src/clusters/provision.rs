@@ -39,13 +39,13 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
 
         let mc_version = group.mc_version.clone();
         let name = format!("{mc_version} {loader}");
-        match ClusterManager::create(
+        match ClusterManager::create_provisioned(
             state,
             CreateClusterOptions::new(name, mc_version.clone(), loader),
         )
         .await
         {
-            Ok(cluster) => {
+            Ok(Some(cluster)) => {
                 tracing::info!(
                     cluster_id = cluster.id,
                     mc_version = %cluster.mc_version,
@@ -54,6 +54,7 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
                 );
                 created.push(cluster);
             }
+            Ok(None) => {}
             Err(err) => {
                 tracing::warn!(
                     mc_version = %mc_version,
@@ -100,13 +101,13 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
         }
 
         let name = format!("{mc_version} {loader}");
-        match ClusterManager::create(
+        match ClusterManager::create_provisioned(
             state,
             CreateClusterOptions::new(name, mc_version.clone(), loader),
         )
         .await
         {
-            Ok(cluster) => {
+            Ok(Some(cluster)) => {
                 tracing::info!(
                     cluster_id = cluster.id,
                     mc_version = %cluster.mc_version,
@@ -115,6 +116,7 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
                 );
                 created.push(cluster);
             }
+            Ok(None) => {}
             Err(err) => {
                 tracing::warn!(
                     mc_version = %mc_version,

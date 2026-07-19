@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use oneclient_core::notification::{
-    GroupedProgressEvent, Notification, NotificationLevel, PromptKind, UserChoice,
+    GroupedProgressEvent, Notification, NotificationLevel, PromptKind, TaskCategory, UserChoice,
 };
 use oneclient_db::models::ClusterId;
 use tokio::sync::oneshot;
@@ -51,14 +51,26 @@ pub struct InboxEntry {
     pub created_at: Instant,
     pub actions: Vec<NotificationAction>,
     pub tasks: Vec<TaskView>,
+    /// Live transfer stats for grouped downloads (bytes/sec, seconds remaining).
+    pub transfer: Option<TransferStats>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransferStats {
+    pub speed_bps: f64,
+    pub eta_secs: Option<u64>,
+}
+
+/// One row in the expandable task list — an aggregate over all children of a
+/// single [`TaskCategory`] (e.g. all libraries collapse into one "Libraries" row).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskView {
     pub label: String,
     pub phase: &'static str,
     pub current: u64,
     pub total: u64,
+    pub done_count: u64,
+    pub total_count: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -137,28 +149,97 @@ pub struct NotificationState {
     cluster_update: Option<ClusterUpdateSummary>,
 }
 
+/// Fixed display order for the category rows.
+const CATEGORY_ORDER: [TaskCategory; 6] = [
+    TaskCategory::Client,
+    TaskCategory::Libraries,
+    TaskCategory::Natives,
+    TaskCategory::Assets,
+    TaskCategory::Metadata,
+    TaskCategory::Packages,
+];
+
+struct ChildRec {
+    category: TaskCategory,
+    phase: &'static str,
+    current: u64,
+    total: u64,
+}
+
 #[derive(Default)]
 struct GroupedTasks {
     title: String,
-    children: HashMap<Uuid, TaskView>,
-    seen: u64,
-    done: u64,
-    done_units: u64,
-    current: Option<String>,
+    children: HashMap<Uuid, ChildRec>,
+    done_units: HashMap<TaskCategory, u64>,
+    done_count: HashMap<TaskCategory, u64>,
+    seen_count: HashMap<TaskCategory, u64>,
+    /// Expected counts/bytes announced up-front so totals don't climb mid-download.
+    reserved_count: HashMap<TaskCategory, u64>,
+    reserved_units: HashMap<TaskCategory, u64>,
+    /// (timestamp, completed bytes) of the last speed sample.
+    last_sample: Option<(Instant, u64)>,
+    speed_bps: f64,
 }
 
 impl GroupedTasks {
+    /// Aggregate live + finished children into one row per category, in display order.
     fn task_list(&self) -> Vec<TaskView> {
-        let mut tasks: Vec<TaskView> = self.children.values().cloned().collect();
-        tasks.sort_by(|a, b| a.label.cmp(&b.label));
-        tasks
+        CATEGORY_ORDER
+            .iter()
+            .filter_map(|&cat| {
+                let seen_count = self.seen_count.get(&cat).copied().unwrap_or(0);
+                let reserved_count = self.reserved_count.get(&cat).copied().unwrap_or(0);
+                let total_count = seen_count.max(reserved_count);
+                if total_count == 0 {
+                    return None;
+                }
+                let done_units = self.done_units.get(&cat).copied().unwrap_or(0);
+                let done_count = self.done_count.get(&cat).copied().unwrap_or(0);
+                let reserved_units = self.reserved_units.get(&cat).copied().unwrap_or(0);
+
+                let live: Vec<&ChildRec> =
+                    self.children.values().filter(|c| c.category == cat).collect();
+                let live_current: u64 = live.iter().map(|c| c.current.min(c.total)).sum();
+                let live_total: u64 = live.iter().map(|c| c.total).sum();
+
+                // Surface the most advanced phase among live children; default Downloading.
+                let phase = live
+                    .iter()
+                    .map(|c| c.phase)
+                    .find(|p| *p != "Downloading")
+                    .unwrap_or("Downloading");
+
+                Some(TaskView {
+                    label: cat.label().to_string(),
+                    phase,
+                    current: done_units + live_current,
+                    // Reserved total keeps the denominator stable while children are
+                    // still being added; fall back to what we've actually seen.
+                    total: reserved_units.max(done_units + live_total),
+                    done_count,
+                    total_count,
+                })
+            })
+            .collect()
     }
 
-    fn describe(task: &TaskView) -> String {
-        if task.phase == "Verifying" {
-            format!("Verifying {} checksum", task.label)
+    /// Which coarse group is currently downloading, for the notification body.
+    fn active_body(&self) -> Option<&'static str> {
+        let mut minecraft = false;
+        let mut packages = false;
+        for child in self.children.values() {
+            if child.category.is_minecraft() {
+                minecraft = true;
+            } else {
+                packages = true;
+            }
+        }
+        if minecraft {
+            Some("Downloading Minecraft")
+        } else if packages {
+            Some("Downloading Packages")
         } else {
-            format!("{} {}", task.phase, task.label)
+            None
         }
     }
 }
@@ -359,6 +440,7 @@ impl NotificationState {
                 created_at: Instant::now(),
                 actions: Vec::new(),
                 tasks: Vec::new(),
+                transfer: None,
             },
         );
         id
@@ -392,6 +474,7 @@ impl NotificationState {
                 created_at: Instant::now(),
                 actions,
                 tasks: Vec::new(),
+                transfer: None,
             },
         );
 
@@ -506,22 +589,39 @@ impl NotificationState {
                     },
                 );
             }
-            GroupedProgressEvent::AddChild {
+            GroupedProgressEvent::Expect {
                 session_id,
-                child_id,
-                label,
+                category,
+                count,
                 total,
             } => {
                 if let Some(group) = self.grouped_tasks.get_mut(&session_id) {
-                    let task = TaskView {
-                        label,
-                        phase: "Downloading",
-                        current: 0,
-                        total: total.max(1),
-                    };
-                    group.current = Some(GroupedTasks::describe(&task));
-                    group.children.insert(child_id, task);
-                    group.seen += 1;
+                    *group.reserved_count.entry(category).or_default() += count;
+                    *group.reserved_units.entry(category).or_default() += total;
+                }
+                self.refresh_grouped_entry(inbox, session_id);
+                if let Some(&entry_id) = self.grouped_entries.get(&session_id) {
+                    self.ensure_progress_toast(entry_id);
+                }
+            }
+            GroupedProgressEvent::AddChild {
+                session_id,
+                child_id,
+                label: _,
+                total,
+                category,
+            } => {
+                if let Some(group) = self.grouped_tasks.get_mut(&session_id) {
+                    group.children.insert(
+                        child_id,
+                        ChildRec {
+                            category,
+                            phase: "Downloading",
+                            current: 0,
+                            total: total.max(1),
+                        },
+                    );
+                    *group.seen_count.entry(category).or_default() += 1;
                 }
                 self.refresh_grouped_entry(inbox, session_id);
                 if let Some(&entry_id) = self.grouped_entries.get(&session_id) {
@@ -539,8 +639,6 @@ impl NotificationState {
                 {
                     task.current = current;
                     task.total = total.max(1);
-                    let desc = GroupedTasks::describe(task);
-                    group.current = Some(desc);
                 }
                 self.refresh_grouped_entry(inbox, session_id);
             }
@@ -553,8 +651,6 @@ impl NotificationState {
                     && let Some(task) = group.children.get_mut(&child_id)
                 {
                     task.phase = phase.label();
-                    let desc = GroupedTasks::describe(task);
-                    group.current = Some(desc);
                 }
                 self.refresh_grouped_entry(inbox, session_id);
             }
@@ -565,8 +661,8 @@ impl NotificationState {
                 if let Some(group) = self.grouped_tasks.get_mut(&session_id)
                     && let Some(task) = group.children.remove(&child_id)
                 {
-                    group.done += 1;
-                    group.done_units += task.total;
+                    *group.done_units.entry(task.category).or_default() += task.total;
+                    *group.done_count.entry(task.category).or_default() += 1;
                 }
                 self.refresh_grouped_entry(inbox, session_id);
             }
@@ -584,40 +680,70 @@ impl NotificationState {
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
                         entry.tasks = Vec::new();
+                        entry.transfer = None;
                     }
                 }
             }
         }
     }
 
-    fn refresh_grouped_entry(&self, inbox: &mut [InboxEntry], session_id: Uuid) {
+    fn refresh_grouped_entry(&mut self, inbox: &mut [InboxEntry], session_id: Uuid) {
         let Some(&entry_id) = self.grouped_entries.get(&session_id) else {
             return;
         };
-        let Some(group) = self.grouped_tasks.get(&session_id) else {
-            return;
-        };
-        let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) else {
+        let Some(group) = self.grouped_tasks.get_mut(&session_id) else {
             return;
         };
 
         let tasks = group.task_list();
-        entry.title = group.title.clone();
-        entry.body = group
-            .current
-            .clone()
+        let body = group
+            .active_body()
+            .map(str::to_string)
             .unwrap_or_else(|| "Preparing...".to_string());
-        let completed: u64 = group.done_units
-            + group
-                .children
-                .values()
-                .map(|t| t.current.min(t.total))
-                .sum::<u64>();
-        let total: u64 = group.done_units + group.children.values().map(|t| t.total).sum::<u64>();
-        entry.progress = Some((completed, total.max(1)));
+        let title = group.title.clone();
+
+        let completed: u64 = tasks.iter().map(|t| t.current.min(t.total)).sum();
+        let total: u64 = tasks.iter().map(|t| t.total).sum::<u64>().max(1);
+
+        // Smooth the transfer rate with an EMA so the readout doesn't jitter.
+        let now = Instant::now();
+        let transfer = match group.last_sample {
+            Some((t0, b0)) => {
+                let dt = now.duration_since(t0).as_secs_f64();
+                if dt >= 0.25 {
+                    let inst = completed.saturating_sub(b0) as f64 / dt;
+                    group.speed_bps = if group.speed_bps <= 0.0 {
+                        inst
+                    } else {
+                        group.speed_bps * 0.7 + inst * 0.3
+                    };
+                    group.last_sample = Some((now, completed));
+                }
+                let speed = group.speed_bps;
+                (speed >= 1.0).then(|| {
+                    let remaining = total.saturating_sub(completed);
+                    TransferStats {
+                        speed_bps: speed,
+                        eta_secs: Some((remaining as f64 / speed) as u64),
+                    }
+                })
+            }
+            None => {
+                group.last_sample = Some((now, completed));
+                None
+            }
+        };
+
+        let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) else {
+            return;
+        };
+        entry.title = title;
+        entry.body = body;
+        entry.progress = Some((completed, total));
         entry.is_loading = true;
         entry.read = false;
         entry.tasks = tasks;
+        entry.transfer = transfer;
     }
 }
 

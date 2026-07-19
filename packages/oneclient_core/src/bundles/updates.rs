@@ -367,9 +367,24 @@ pub async fn apply_bundle_updates(
             )
         });
 
+    if let Some(s) = session.as_ref() {
+        let count = (check.updates_available.len() + check.additions_available.len()) as u64;
+        let bytes: u64 = check
+            .updates_available
+            .iter()
+            .map(|u| u.new_file.size.max(1))
+            .chain(check.additions_available.iter().map(|a| a.new_file.size.max(1)))
+            .sum();
+        s.expect(crate::notification::TaskCategory::Packages, count, bytes);
+    }
+
     for update in check.updates_available {
         let child = session.as_ref().map(|s| {
-            let c = s.child(update.new_file.display_name(), update.new_file.size.max(1));
+            let c = s.child(
+                update.new_file.display_name(),
+                update.new_file.size.max(1),
+                crate::notification::TaskCategory::Packages,
+            );
             c.set_phase(crate::notification::TaskPhase::Downloading);
             c
         });
@@ -382,7 +397,11 @@ pub async fn apply_bundle_updates(
     for addition in check.additions_available {
         let file_id = addition.new_file.kind.package_id();
         let child = session.as_ref().map(|s| {
-            let c = s.child(addition.new_file.display_name(), addition.new_file.size.max(1));
+            let c = s.child(
+                addition.new_file.display_name(),
+                addition.new_file.size.max(1),
+                crate::notification::TaskCategory::Packages,
+            );
             c.set_phase(crate::notification::TaskPhase::Downloading);
             c
         });

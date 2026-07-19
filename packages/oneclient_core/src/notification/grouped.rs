@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use uuid::Uuid;
 
-use super::data::GroupedProgressEvent;
+use super::data::{GroupedProgressEvent, TaskCategory};
 use super::NotificationService;
 
 #[derive(Clone)]
@@ -11,12 +12,12 @@ struct SessionInner {
     notifier: NotificationService,
 }
 
-#[derive(Clone)]
 struct ChildInner {
     session_id: Uuid,
     child_id: Uuid,
     notifier: NotificationService,
     label: String,
+    total: AtomicU64,
     finished: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -49,7 +50,26 @@ impl GroupedProgressSession {
         self.inner.session_id
     }
 
-    pub fn child(&self, label: impl Into<String>, total: u64) -> GroupedProgressChild {
+    /// Reserve the expected work for a category before its children are added.
+    /// `count` = number of files, `total` = sum of their sizes in bytes.
+    pub fn expect(&self, category: TaskCategory, count: u64, total: u64) {
+        if count == 0 {
+            return;
+        }
+        self.inner.notifier.send_grouped(GroupedProgressEvent::Expect {
+            session_id: self.inner.session_id,
+            category,
+            count,
+            total,
+        });
+    }
+
+    pub fn child(
+        &self,
+        label: impl Into<String>,
+        total: u64,
+        category: TaskCategory,
+    ) -> GroupedProgressChild {
         let child_id = Uuid::new_v4();
         let label = label.into();
         let total = total.max(1);
@@ -59,6 +79,7 @@ impl GroupedProgressSession {
             child_id,
             label: label.clone(),
             total,
+            category,
         });
 
         GroupedProgressChild {
@@ -67,6 +88,7 @@ impl GroupedProgressSession {
                 child_id,
                 notifier: self.inner.notifier.clone(),
                 label,
+                total: AtomicU64::new(total),
                 finished: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             }),
         }
@@ -76,13 +98,14 @@ impl GroupedProgressSession {
         &self,
         label: impl Into<String>,
         total: u64,
+        category: TaskCategory,
         f: F,
     ) -> Result<T, E>
     where
         F: FnOnce(GroupedProgressChild) -> Fut,
         Fut: std::future::Future<Output = Result<T, E>>,
     {
-        let child = self.child(label, total);
+        let child = self.child(label, total, category);
         let result = f(child.clone()).await;
         if result.is_ok() {
             child.finish();
@@ -120,7 +143,15 @@ impl GroupedProgressChild {
             return;
         }
 
-        let total = total.unwrap_or(1).max(1);
+        // Prefer the largest known total. Streaming reports Content-Length which is
+        // often missing (1) for compressed/chunked responses; when the child was
+        // created with a real expected size (from a manifest) we must not let that
+        // stale header clobber it — otherwise the download bar reads 100%/frozen.
+        let stored = self.inner.total.load(Ordering::Relaxed);
+        let total = total.unwrap_or(0).max(stored).max(1);
+        if total > stored {
+            self.inner.total.store(total, Ordering::Relaxed);
+        }
         self.inner.notifier.send_grouped(GroupedProgressEvent::UpdateChild {
             session_id: self.inner.session_id,
             child_id: self.inner.child_id,

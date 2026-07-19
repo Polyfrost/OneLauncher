@@ -87,11 +87,13 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                             },
                         );
                     }
+                    GroupedProgressEvent::Expect { .. } => {}
                     GroupedProgressEvent::AddChild {
                         session_id,
                         child_id,
                         label,
                         total,
+                        ..
                     } => {
                         let Some(session) = grouped_sessions.get_mut(&session_id) else {
                             continue;

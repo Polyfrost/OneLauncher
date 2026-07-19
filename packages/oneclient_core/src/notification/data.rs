@@ -9,11 +9,21 @@ pub enum GroupedProgressEvent {
         session_id: Uuid,
         title: String,
     },
+    /// Pre-announce how many children (and total bytes) a category will have,
+    /// so the aggregate total is known up-front instead of climbing as each
+    /// child is added during a `buffer_unordered` fan-out.
+    Expect {
+        session_id: Uuid,
+        category: TaskCategory,
+        count: u64,
+        total: u64,
+    },
     AddChild {
         session_id: Uuid,
         child_id: Uuid,
         label: String,
         total: u64,
+        category: TaskCategory,
     },
     UpdateChild {
         session_id: Uuid,
@@ -52,6 +62,37 @@ impl TaskPhase {
             Self::Extracting => "Extracting",
             Self::Installing => "Installing",
         }
+    }
+}
+
+/// Coarse grouping of a grouped-progress child. Drives the notification body text
+/// ("Downloading Minecraft" vs "Downloading Packages") and the per-category task rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum TaskCategory {
+    Client,
+    Metadata,
+    Libraries,
+    Natives,
+    Assets,
+    #[default]
+    Packages,
+}
+
+impl TaskCategory {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Client => "Client",
+            Self::Metadata => "Metadata",
+            Self::Libraries => "Libraries",
+            Self::Natives => "Natives",
+            Self::Assets => "Assets",
+            Self::Packages => "Packages",
+        }
+    }
+
+    /// True for everything that is part of the Minecraft install (not user packages).
+    pub fn is_minecraft(self) -> bool {
+        !matches!(self, Self::Packages)
     }
 }
 

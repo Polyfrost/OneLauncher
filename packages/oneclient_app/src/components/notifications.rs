@@ -9,8 +9,9 @@ use crate::{
     Route,
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
     hooks::{use_dispatch, use_notifications_snapshot},
-    notifications::{InboxEntry, NotificationActionKind},
+    notifications::{InboxEntry, NotificationActionKind, TransferStats},
     theme::colors,
+    utils::{format_duration_hms, format_size},
 };
 
 #[derive(PartialEq)]
@@ -212,15 +213,7 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                     let now = !*expanded.peek();
                     expanded.set(now);
                 })
-                .child(
-                    Icon::new(if is_expanded {
-                        IconType::ChevronDown
-                    } else {
-                        IconType::ChevronRight
-                    })
-                    .size(14.)
-                    .color(colors::fg_secondary()),
-                )
+                .child(ChevronToggle { expanded: is_expanded })
                 .child(
                     label()
                         .text(if is_expanded {
@@ -269,6 +262,14 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )
+        .maybe(task.total_count > 1, |el| {
+            el.child(
+                label()
+                    .text(format!("{}/{}", task.done_count, task.total_count))
+                    .font_size(10.)
+                    .color(colors::fg_secondary()),
+            )
+        })
         .child(
             label()
                 .text(format!("{percent}%"))
@@ -276,6 +277,35 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
                 .color(colors::fg_secondary()),
         )
         .into_element()
+}
+
+/// A right-facing chevron that rotates 90° down when `expanded`, animated.
+#[derive(PartialEq)]
+struct ChevronToggle {
+    expanded: bool,
+}
+
+impl Component for ChevronToggle {
+    fn render(&self) -> impl IntoElement {
+        let expanded = self.expanded;
+        let anim = use_animation(|_| AnimNum::new(0., 90.).time(160).ease(Ease::Out));
+
+        use_side_effect_with_deps(&expanded, move |&expanded| {
+            let mut anim = anim;
+            if expanded {
+                anim.start();
+            } else {
+                anim.reverse();
+            }
+        });
+
+        let deg = anim.get().value();
+        rect().rotate(deg).child(
+            Icon::new(IconType::ChevronRight)
+                .size(14.)
+                .color(colors::fg_secondary()),
+        )
+    }
 }
 
 fn phase_badge(phase: &str) -> impl IntoElement {
@@ -353,10 +383,9 @@ fn row_body(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoEle
 fn row_extra(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
-        return rect()
+        let bar = rect()
             .width(Size::fill())
             .height(Size::px(6.))
-            .margin(Gaps::new(8., 0., 0., 0.))
             .corner_radius(CornerRadius::new_all(50.))
             .background(colors::brand().with_a(128))
             .child(
@@ -365,7 +394,15 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoEl
                     .height(Size::px(6.))
                     .corner_radius(CornerRadius::new_all(50.))
                     .background(colors::brand()),
-            )
+            );
+
+        return rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(5.)
+            .margin(Gaps::new(8., 0., 0., 0.))
+            .child(bar)
+            .maybe_child(entry.transfer.map(transfer_footer))
             .into_element();
     }
 
@@ -410,6 +447,34 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoEl
     }
 
     rect().into_element()
+}
+
+fn transfer_footer(stats: TransferStats) -> Element {
+    let speed = format!("{}/s", format_size(stats.speed_bps as u64));
+    let eta = stats
+        .eta_secs
+        .map(|secs| format!("{} left", format_duration_hms(secs as i64)));
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .main_align(Alignment::SpaceBetween)
+        .child(
+            label()
+                .text(speed)
+                .font_size(10.)
+                .color(colors::fg_secondary()),
+        )
+        .maybe_child(eta.map(|eta| {
+            label()
+                .text(eta)
+                .font_size(10.)
+                .color(colors::fg_secondary())
+                .into_element()
+        }))
+        .into_element()
 }
 
 fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {

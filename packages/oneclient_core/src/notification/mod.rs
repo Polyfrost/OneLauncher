@@ -1,6 +1,6 @@
 pub use data::{
     GroupedProgressEvent, LaunchStage, MicrosoftLoginStatus, Notification, NotificationLevel,
-    PromptKind, TaskPhase, UserChoice,
+    PromptKind, TaskCategory, TaskPhase, UserChoice,
 };
 pub use grouped::{GroupedProgressChild, GroupedProgressSession};
 pub use service::NotificationService;

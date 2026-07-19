@@ -81,11 +81,11 @@ reqwest-websocket = {version = "=0.6.0"}
 tokio = {version = "=1.52.3", features = ["full"]}
 tokio-stream = {version = "=0.1.18", features = ["full"]}
 tokio-util = {version = "=0.7.18", features = ["full"]}
-async_zip = { version = "=0.0.18", features = ["full"]}
+async_zip = { version = "=0.0.18", features = ["chrono", "tokio", "tokio-fs", "deflate", "deflate64"]}
 astral-tokio-tar = { version = "=0.6.2" }
 async-tempfile = { version = "=0.7.0", features = ["uuid"] }
 async-stream = { version = "=0.3.6" }
-async-compression = { version = "=0.4.42", features = ["all"] }
+async-compression = { version = "=0.4.42", features = ["tokio", "gzip"] }
 
 # crypto (content hashing)
 digest = { version = "=0.10.7", features = ["std"] }

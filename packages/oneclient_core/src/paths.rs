@@ -7,7 +7,12 @@ use crate::LauncherResult;
 
 const QUALIFIER: &str = "org";
 const ORGANIZATION: &str = "Polyfrost";
+#[cfg(not(debug_assertions))]
 const APPLICATION: &str = "OneClient";
+// Dev builds use a separate launcher dir (e.g. `oneclient-dev`) so a running
+// dev environment never touches prod data.
+#[cfg(debug_assertions)]
+const APPLICATION: &str = "OneClient-dev";
 
 static PROJECT_DIRS: OnceLock<ProjectDirs> = OnceLock::new();
 static LAUNCHER_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();

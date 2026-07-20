@@ -47,9 +47,9 @@ freya.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
 
-# Build then package (per OS):
-#   cargo build --release -p oneclient_app
-#   cargo packager --release -p oneclient_app --formats <nsis|app,dmg|deb,appimage>
+[target.'cfg(windows)'.build-dependencies]
+winresource = "=0.1.31"
+
 [package.metadata.packager]
 product-name = "OneClient"
 identifier = "org.polyfrost.OneClient"

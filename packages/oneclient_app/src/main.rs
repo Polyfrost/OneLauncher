@@ -63,7 +63,10 @@ fn main() {
         .with_window(
             WindowConfig::new_app(OneClientApp { bridge })
                 .with_title(constants::WINDOW_TITLE)
-                .with_app_id(constants::APP_ID)
+                .with_app_id(constants::WINDOW_APP_ID)
+                .with_icon(LaunchConfig::window_icon(include_bytes!(
+                    "../icons/128x128.png"
+                )))
                 .with_size(1200., 800.)
                 .with_min_size(800., 600.)
                 .with_decorations(false)
@@ -74,7 +77,7 @@ fn main() {
             std::env::var("ONECLIENT_GPU_CACHE_MB")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(32),
+                .unwrap_or(32 * 1024 * 1024),
         )
         .with_default_font(theme::DEFAULT_FONT);
 

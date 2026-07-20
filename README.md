@@ -65,3 +65,7 @@ All crates live under **`packages/`** in a single Cargo workspace.
 - [**`oneclient_db/`**](./packages/oneclient_db/) - SQLx-based database layer.
 - [**`oneclient_macro/`**](./packages/oneclient_macro/) - Macro definitions to simplify some code.
 - [**`polyio/`**](./packages/polyio/) - PolyIO-rs. Shared IO utilities (archives, files, system helpers).
+
+## Code signing
+
+This program uses free code signing provided by [SignPath.io](https://signpath.io?utm_source=foundation&utm_medium=github&utm_campaign=0install), and a certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundation&utm_medium=github&utm_campaign=0install). We thank them very much to their contributions to OSS software!

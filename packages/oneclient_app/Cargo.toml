@@ -92,6 +92,31 @@ Section "-OneClientTauriMigration"
   ; the outdated app is running during an auto-update, so fall back to reboot removal.
   Delete /REBOOTOK "$INSTDIR\\OneClient.exe"
 SectionEnd
+
+Section "-VCRedist"
+  SetRegView 64
+  ReadRegDWORD $R0 HKLM "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X64" "Installed"
+  ReadRegDWORD $R1 HKLM "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X64" "Minor"
+  SetRegView lastused
+
+  ${If} $R0 == 1
+  ${AndIf} $R1 >= 20
+    Goto vcredist_done
+  ${EndIf}
+
+  DetailPrint "Installing Microsoft Visual C++ Redistributable (x64)..."
+  nsis_tauri_utils::Download "https://aka.ms/vs/17/release/vc_redist.x64.exe" "$PLUGINSDIR\\vc_redist.x64.exe"
+  Pop $R2
+  ${If} $R2 == 0
+    ExecWait '"$PLUGINSDIR\\vc_redist.x64.exe" /quiet /norestart' $R3
+    ${If} $R3 == 3010
+      SetRebootFlag true
+    ${EndIf}
+  ${ElseIf} $PassiveMode != 1
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Could not download the Microsoft Visual C++ Redistributable. OneClient may fail to start until you install it manually from https://aka.ms/vs/17/release/vc_redist.x64.exe"
+  ${EndIf}
+  vcredist_done:
+SectionEnd
 """
 
 [package.metadata.packager.deb]

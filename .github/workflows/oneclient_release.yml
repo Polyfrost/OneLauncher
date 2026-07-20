@@ -249,7 +249,7 @@ jobs:
           # the AUR oneclient-bin package can point at a stable, predictable URL.
           deb_unique=""
           deb_matches=("$OUT_DIR"/*.deb)
-          if [ -e "${deb_matches[0]}" ]; then
+          if [ -e "${deb_matches[0]:-}" ]; then
             deb_unique="OneClient_${VERSION}_${OS_KEY}_${ARCH}.deb"
             cp "${deb_matches[0]}" "$OUT_DIR/$deb_unique"
           fi

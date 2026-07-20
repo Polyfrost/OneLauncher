@@ -100,7 +100,7 @@ Section "-VCRedist"
   SetRegView lastused
 
   ${If} $R0 == 1
-  ${AndIf} $R1 >= 20
+  ${AndIf} $R1 >= 40
     Goto vcredist_done
   ${EndIf}
 

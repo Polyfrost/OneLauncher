@@ -16,7 +16,7 @@ use url::Url;
 use uuid::Uuid;
 
 use super::data::{AccountKind, BrowserLogin, DeviceCodeLogin, MinecraftAccount};
-use super::error::{MinecraftAuthError, MinecraftAuthStep};
+use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
 use crate::constants::{MICROSOFT_CLIENT_ID, MINECRAFT_SCOPES};
 
 const DEVICE_CODE_URL: &str =
@@ -758,10 +758,20 @@ fn check_xbox_error(
         return Ok(());
     }
 
+    let message = friendly_xbox_error(token.x_err)
+        .map(String::from)
+        .unwrap_or_else(|| {
+            if token.message.is_empty() {
+                format!("Xbox rejected sign-in (error {}).", token.x_err)
+            } else {
+                token.message.clone()
+            }
+        });
+
     Err(MinecraftAuthError::XboxError {
         step,
         error_code: token.x_err,
-        message: token.message.clone(),
+        message,
         redirect: token.redirect.clone(),
     })
 }
@@ -780,11 +790,17 @@ async fn parse_json_response<T: for<'de> Deserialize<'de>>(
         tracing::error!("[auth] step={step:?} status={status} body={text}");
     }
 
-    serde_json::from_str(&text).map_err(|source| MinecraftAuthError::DeserializeError {
-        step,
-        raw: text,
-        source,
-        status_code: status,
+    serde_json::from_str(&text).map_err(|source| {
+        if !status.is_success() {
+            MinecraftAuthError::ServiceError { step, status_code: status }
+        } else {
+            MinecraftAuthError::DeserializeError {
+                step,
+                raw: text,
+                source,
+                status_code: status,
+            }
+        }
     })
 }
 

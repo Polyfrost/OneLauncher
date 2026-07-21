@@ -51,6 +51,7 @@ pub use local_image::LocalImage;
 pub use log_viewer::LogViewer;
 pub use major_version_card::MajorVersionCard;
 pub use microsoft_login::use_microsoft_login;
+pub(crate) use microsoft_login::login_dialog;
 pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;

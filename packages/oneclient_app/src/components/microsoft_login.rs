@@ -1,7 +1,8 @@
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use freya::text_edit::Clipboard;
-use oneclient_core::auth::MicrosoftLoginSession;
+use oneclient_core::LauncherError;
+use oneclient_core::auth::{AuthErrorGuidance, MicrosoftLoginSession};
 use oneclient_core::notification::MicrosoftLoginStatus;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
@@ -24,6 +25,7 @@ pub struct MicrosoftLogin {
     locked: bool,
     pub pending: bool,
     pub error: Option<String>,
+    error_guidance: Option<AuthErrorGuidance>,
 }
 
 impl MicrosoftLogin {
@@ -59,6 +61,7 @@ impl MicrosoftLogin {
                 handle.clone(),
                 handle.status.clone(),
                 handle.error.clone(),
+                handle.error_guidance.clone(),
             )
         })
     }
@@ -104,7 +107,11 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
     let locked = status.as_ref().is_some_and(|s| s.current > 0);
     let in_flight = begin.read().state().is_loading() || finish.read().state().is_loading();
     let pending = in_flight && !*cancelled.read();
-    let error = mutation_err_text(&finish).or_else(|| mutation_err_text(&begin));
+    let error_info = mutation_err_info(&finish).or_else(|| mutation_err_info(&begin));
+    let (error, error_guidance) = match error_info {
+        Some(info) => (Some(info.message), info.guidance),
+        None => (None, None),
+    };
 
     MicrosoftLogin {
         begin,
@@ -115,19 +122,28 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
         locked,
         pending,
         error,
+        error_guidance,
     }
 }
 
-fn mutation_err_text<M>(mutation: &UseMutation<M>) -> Option<String>
+struct AuthErrorInfo {
+    message: String,
+    guidance: Option<AuthErrorGuidance>,
+}
+
+fn mutation_err_info<M>(mutation: &UseMutation<M>) -> Option<AuthErrorInfo>
 where
-    M: MutationCapability,
-    M::Err: std::fmt::Display,
+    M: MutationCapability<Err = LauncherError>,
 {
-    match &*mutation.read().state() {
-        MutationStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
-        MutationStateData::Loading {
+    let read = mutation.read();
+    match &*read.state() {
+        MutationStateData::Settled { res: Err(err), .. }
+        | MutationStateData::Loading {
             res: Some(Err(err)),
-        } => Some(err.to_string()),
+        } => Some(AuthErrorInfo {
+            message: err.to_string(),
+            guidance: err.auth_guidance(),
+        }),
         _ => None,
     }
 }
@@ -137,13 +153,36 @@ fn microsoft_dialog(
     handle: MicrosoftLogin,
     status: Option<MicrosoftLoginStatus>,
     error: Option<String>,
+    guidance: Option<AuthErrorGuidance>,
 ) -> impl IntoElement {
-    let locked = handle.locked;
-    let close_handle = handle.clone();
-    let cancel_handle = handle;
+    let close = handle.clone();
+    login_dialog(
+        login.auth_url().to_string(),
+        login.user_code().to_string(),
+        login.verification_uri().to_string(),
+        handle.locked,
+        status,
+        error,
+        guidance,
+        move || close.cancel(),
+    )
+}
+
+#[expect(clippy::too_many_arguments)]
+pub(crate) fn login_dialog(
+    auth_url: String,
+    user_code: String,
+    verification_uri: String,
+    locked: bool,
+    status: Option<MicrosoftLoginStatus>,
+    error: Option<String>,
+    guidance: Option<AuthErrorGuidance>,
+    on_close: impl FnMut() + Clone + 'static,
+) -> impl IntoElement {
+    let mut close_scrim = on_close.clone();
+    let mut close_cancel = on_close;
     OverlayPopup::new()
-        // Backdrop / Esc only dismiss while the flow is still cancellable, if its locked the popup can't be closed and cancelling aborts everything.
-        .on_close(move |()| close_handle.cancel())
+        .on_close(move |()| close_scrim())
         .child(
             rect()
                 .width(Size::window_percent(100.))
@@ -154,6 +193,7 @@ fn microsoft_dialog(
                         .vertical()
                         .width(Size::px(420.))
                         .max_width(Size::window_percent(90.))
+                        .max_height(Size::window_percent(90.))
                         .cross_align(Alignment::Center)
                         .spacing(18.)
                         .padding(Gaps::new_all(28.))
@@ -167,17 +207,31 @@ fn microsoft_dialog(
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
-                        .child(browser_dialog_body(login.auth_url().to_string()))
-                        .child(dialog_divider())
-                        .child(device_code_dialog_body(
-                            login.user_code().to_string(),
-                            login.verification_uri().to_string(),
-                        ))
-                        .child(status_row(status, error))
+                        .child(
+                            ScrollView::new()
+                                .width(Size::fill())
+                                .height(Size::auto())
+                                .max_height(Size::window_percent(70.))
+                                .child(
+                                    rect()
+                                        .vertical()
+                                        .width(Size::fill())
+                                        .cross_align(Alignment::Center)
+                                        .spacing(18.)
+                                        .child(browser_dialog_body(auth_url))
+                                        .child(dialog_divider())
+                                        .child(device_code_dialog_body(
+                                            user_code,
+                                            verification_uri,
+                                        ))
+                                        .child(status_row(status, error))
+                                        .maybe_child(guidance.map(guidance_block)),
+                                ),
+                        )
                         .maybe_child((!locked).then(|| {
                             Button::new()
                                 .ghost()
-                                .on_press(move |_| cancel_handle.cancel())
+                                .on_press(move |_| close_cancel())
                                 .text("Cancel")
                                 .into_element()
                         })),
@@ -251,6 +305,58 @@ fn status_row(status: Option<MicrosoftLoginStatus>, error: Option<String>) -> im
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
+        .into_element()
+}
+
+fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
+    let mut steps = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(6.)
+        .child(
+            label()
+                .text("What you can do:")
+                .font_size(12.)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_primary()),
+        );
+
+    for (index, step) in guidance.steps_to_fix.into_iter().enumerate() {
+        steps = steps.child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .spacing(6.)
+                .child(
+                    label()
+                        .text(format!("{}.", index + 1))
+                        .font_size(12.)
+                        .color(colors::fg_secondary()),
+                )
+                .child(
+                    label()
+                        .text(step)
+                        .font_size(12.)
+                        .color(colors::fg_secondary()),
+                ),
+        );
+    }
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .padding(Gaps::new_all(14.))
+        .corner_radius(CornerRadius::new_all(12.))
+        .background(colors::component_bg())
+        .border(border_all_color(1., colors::component_border()))
+        .child(
+            label()
+                .text(guidance.what_happened)
+                .font_size(12.)
+                .color(colors::fg_primary()),
+        )
+        .child(steps)
         .into_element()
 }
 

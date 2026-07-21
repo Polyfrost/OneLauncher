@@ -3,8 +3,12 @@ mod msa;
 mod offline;
 mod store;
 mod data;
+mod diagnostics;
 
 pub use error::{AuthError, MinecraftAuthError, MinecraftAuthStep};
+pub use diagnostics::{
+    diagnose_auth_error, preview_samples, AuthErrorGuidance, AuthErrorSample,
+};
 pub use offline::{offline_account, offline_uuid, validate_offline_username};
 pub use store::CredentialsStore;
 pub use data::{

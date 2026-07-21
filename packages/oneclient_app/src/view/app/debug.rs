@@ -3,7 +3,9 @@ use freya::router::RouterContext;
 use oneclient_core::LauncherState;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
-use crate::components::{Button, Icon, IconType, TextInput, toggle};
+use oneclient_core::auth::preview_samples;
+
+use crate::components::{Button, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
 use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationActionKind};
 use crate::routes::Route;
@@ -66,6 +68,11 @@ impl Component for Debug {
                     .child(section(
                         "Cluster Update Simulator",
                         vec![ClusterUpdateSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Auth Error Guidance",
+                        vec![AuthGuidancePreview.into_element()],
                     ))
                     .child(divider())
                     .child(section("SQL Console", vec![SqlConsole.into_element()]))
@@ -258,6 +265,71 @@ impl Component for ClusterUpdateSimulator {
                     }),
             )
             .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct AuthGuidancePreview;
+
+impl Component for AuthGuidancePreview {
+    fn render(&self) -> impl IntoElement {
+        let selected = use_state(|| None::<Option<usize>>);
+        let samples = preview_samples();
+
+        let mut controls = rect().vertical().width(Size::fill()).spacing(10.).child(
+            label()
+                .text("Each button opens the real Microsoft sign-in popup exactly as users see it, in the chosen error state.")
+                .font_size(13.)
+                .color(colors::fg_secondary()),
+        );
+
+        let mut labels: Vec<(&'static str, Option<usize>)> = vec![("No error (in progress)", None)];
+        labels.extend(samples.iter().enumerate().map(|(i, s)| (s.label, Some(i))));
+
+        for chunk in labels.chunks(3) {
+            let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
+            for (text, target) in chunk.iter().copied() {
+                let mut sel = selected;
+                let mut button = Button::new()
+                    .secondary()
+                    .text(text)
+                    .on_press(move |_| sel.set(Some(target)));
+                if text.contains("No error") {
+                    button = button.child(Icon::new(IconType::CheckCircle).size(16.));
+                } else {
+                    button = button.child(Icon::new(IconType::AlertTriangle).size(16.));
+                }
+                row = row.child(rect().width(Size::flex(1.0)).child(button));
+            }
+            for _ in chunk.len()..3 {
+                row = row.child(rect().width(Size::flex(1.0)));
+            }
+            controls = controls.child(row);
+        }
+
+        let current = *selected.read();
+        let popup = current.map(|choice| {
+            let (error, guidance) = match choice {
+                None => (None, None),
+                Some(i) => {
+                    let s = &samples[i];
+                    (Some(s.message.clone()), s.guidance.clone())
+                }
+            };
+            let mut sel = selected;
+            login_dialog(
+                "https://login.live.com/oauth20_authorize (preview)".to_string(),
+                "ABCD-EFGH".to_string(),
+                "https://www.microsoft.com/link".to_string(),
+                false,
+                None,
+                error,
+                guidance,
+                move || sel.set(None),
+            )
+        });
+
+        controls.maybe_child(popup).into_element()
     }
 }
 

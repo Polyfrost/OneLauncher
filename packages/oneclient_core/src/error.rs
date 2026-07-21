@@ -69,4 +69,16 @@ pub enum LauncherError {
     Minecraft(String),
 }
 
+impl LauncherError {
+    #[must_use]
+    pub fn auth_guidance(&self) -> Option<crate::auth::AuthErrorGuidance> {
+        match self {
+            LauncherError::AuthError(crate::auth::AuthError::Minecraft(err)) => {
+                crate::auth::diagnose_auth_error(err)
+            }
+            _ => None,
+        }
+    }
+}
+
 pub type LauncherResult<T> = Result<T, LauncherError>;

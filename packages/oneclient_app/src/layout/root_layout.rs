@@ -2,9 +2,10 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, JavaPromptOverlay, NotificationCenter, StatusBar, Toasts,
-    UpdatePromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, JavaPromptOverlay, NotificationCenter, SplashCurtain,
+    StatusBar, Toasts, UpdatePromptOverlay,
 };
+use crate::hooks::{SplashState, use_provide_splash};
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::colors;
@@ -14,6 +15,10 @@ pub struct RootLayout;
 
 impl Component for RootLayout {
     fn render(&self) -> impl IntoElement {
+        let active = use_state(|| false);
+        let home_ready = use_state(|| false);
+        use_provide_splash(SplashState { active, home_ready });
+
         rect()
             .width(Size::fill())
             .height(Size::fill())
@@ -35,5 +40,6 @@ impl Component for RootLayout {
             .child(JavaPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(StatusBar)
+            .child(SplashCurtain)
     }
 }

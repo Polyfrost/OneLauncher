@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::components::IconType;
 use crate::notifications::{
-    ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction,
+    ClusterUpdateItem, ClusterUpdateSummary, InboxEntry, MESSAGE_TOAST_TTL, NotificationAction,
     NotificationActionKind, NotificationSpec, NotificationState, PendingPrompt, PendingPromptView,
 };
 
@@ -219,6 +219,7 @@ impl CoreBridgeRuntime {
                                 &mut inbox,
                                 &mut notification_center_open,
                                 &mut pending_prompt,
+                                &self.commands_tx,
                             )
                             .await
                             {
@@ -257,6 +258,7 @@ impl CoreBridgeRuntime {
         snapshots.launcher = LauncherInit {
             ready: true,
             fetching: true,
+            syncing_bundles: true,
             error: None,
             data_dir,
         };
@@ -276,6 +278,7 @@ impl CoreBridgeRuntime {
         inbox: &mut Vec<InboxEntry>,
         notification_center_open: &mut bool,
         pending_prompt: &mut Option<PendingPrompt>,
+        commands_tx: &mpsc::UnboundedSender<BridgeCommand>,
     ) -> anyhow::Result<()> {
         match command {
             BridgeCommand::ReloadSettings => {
@@ -704,23 +707,57 @@ impl CoreBridgeRuntime {
                 }
             }
             BridgeCommand::SyncBundles => {
-                let state = LauncherState::get()?;
-                state.bundles.sync(&state.services).await?;
-                oneclient_core::clusters::apply_remote_migrations(&state).await?;
-                oneclient_core::clusters::ensure_from_bundles(&state).await?;
-                let changed = oneclient_core::bundles::sync_all_cluster_bundles(
-                    state.bundles.as_ref(),
-                    &state.services,
-                )
-                .await;
-                bump_clusters_generation(snapshots);
-                for (cluster_id, result) in &changed {
-                    if let Some(spec) =
-                        cluster_update_notification(*cluster_id, result, &state.services).await
-                    {
-                        notification_engine.push_custom(inbox, spec);
+                // Run the cluster-bundle download in the background so the main
+                // app can load while it finishes. The launch buttons stay
+                // disabled via `syncing_bundles` until BundleSyncComplete lands.
+                snapshots.launcher.syncing_bundles = true;
+                let commands_tx = commands_tx.clone();
+                tokio::spawn(async move {
+                    let state = match LauncherState::get() {
+                        Ok(state) => state,
+                        Err(err) => {
+                            tracing::error!("bundle sync: launcher not ready: {err:#}");
+                            return;
+                        }
+                    };
+                    if let Err(err) = state.bundles.sync(&state.services).await {
+                        tracing::error!("bundle catalog sync failed: {err:#}");
                     }
-                }
+                    if let Err(err) = oneclient_core::clusters::apply_remote_migrations(&state).await
+                    {
+                        tracing::error!("cluster migrations failed: {err:#}");
+                    }
+                    if let Err(err) = oneclient_core::clusters::ensure_from_bundles(&state).await {
+                        tracing::error!("bundle cluster provisioning failed: {err:#}");
+                    }
+                    // One shared grouped session for the whole batch, so every
+                    // cluster's downloads surface as a single "update in progress"
+                    // notification. `detach` hands that entry to the bridge, which
+                    // converts it to the finished "view changes" state in place.
+                    let session = oneclient_core::notification::GroupedProgressSession::start(
+                        &state.services.notifier,
+                        "Updating mods",
+                    );
+                    let changed = oneclient_core::bundles::sync_all_cluster_bundles(
+                        state.bundles.as_ref(),
+                        &state.services,
+                        Some(&session),
+                    )
+                    .await;
+                    let session_id = session.detach();
+                    let _ = commands_tx
+                        .send(BridgeCommand::BundleSyncComplete { changed, session_id });
+                });
+            }
+            BridgeCommand::BundleSyncComplete {
+                changed,
+                session_id,
+            } => {
+                snapshots.launcher.syncing_bundles = false;
+                bump_clusters_generation(snapshots);
+                let state = LauncherState::get()?;
+                let spec = combined_cluster_update_spec(&changed, &state.services).await;
+                notification_engine.finish_grouped_as_actions(inbox, session_id, spec);
             }
         }
 
@@ -728,25 +765,51 @@ impl CoreBridgeRuntime {
     }
 }
 
-async fn cluster_update_notification(
+fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdateItem {
+    match &file.kind {
+        oneclient_core::BundleFileKind::Managed {
+            provider,
+            project_id,
+            ..
+        } => ClusterUpdateItem {
+            provider: *provider,
+            project_id: Some(project_id.clone()),
+            fallback: file.display_name(),
+        },
+        oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
+            provider: oneclient_core::packages::ProviderId::Local,
+            project_id: None,
+            fallback: file.display_name(),
+        },
+    }
+}
+
+async fn cluster_update_summary(
     cluster_id: i64,
     result: &oneclient_core::ApplyBundleUpdatesResult,
     services: &oneclient_core::LauncherServices,
-) -> Option<NotificationSpec> {
-    let updated: Vec<String> = result
+) -> Option<ClusterUpdateSummary> {
+    let updated: Vec<ClusterUpdateItem> = result
         .updates_applied
         .iter()
-        .map(|u| u.new_file.display_name())
+        .map(|u| item_from_bundle_file(&u.new_file))
         .collect();
-    let added: Vec<String> = result
+    let added: Vec<ClusterUpdateItem> = result
         .additions_applied
         .iter()
-        .map(|a| a.new_file.display_name())
+        .map(|a| item_from_bundle_file(&a.new_file))
         .collect();
-    let removed: Vec<String> = result
+    let removed: Vec<ClusterUpdateItem> = result
         .removals_applied
         .iter()
-        .map(|r| r.package_id.clone())
+        .map(|r| ClusterUpdateItem {
+            provider: r.provider.unwrap_or(oneclient_core::packages::ProviderId::Local),
+            project_id: r.project_id.clone(),
+            fallback: r
+                .display_name
+                .clone()
+                .unwrap_or_else(|| r.package_id.clone()),
+        })
         .collect();
 
     if updated.is_empty() && added.is_empty() && removed.is_empty() {
@@ -758,18 +821,26 @@ async fn cluster_update_notification(
         .map(|c| c.name)
         .unwrap_or_else(|_| "Cluster".to_string());
 
-    let summary = ClusterUpdateSummary {
+    Some(ClusterUpdateSummary {
         cluster_id,
-        cluster_name: cluster_name.clone(),
+        cluster_name,
         updated,
         added,
         removed,
-    };
+    })
+}
 
+async fn cluster_update_notification(
+    cluster_id: i64,
+    result: &oneclient_core::ApplyBundleUpdatesResult,
+    services: &oneclient_core::LauncherServices,
+) -> Option<NotificationSpec> {
+    let summary = cluster_update_summary(cluster_id, result, services).await?;
     let total = summary.total();
     let body = format!(
-        "{total} package{} changed in {cluster_name}",
-        if total == 1 { "" } else { "s" }
+        "{total} package{} changed in {}",
+        if total == 1 { "" } else { "s" },
+        summary.cluster_name
     );
 
     Some(NotificationSpec {
@@ -782,6 +853,46 @@ async fn cluster_update_notification(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(summary),
         }],
+    })
+}
+
+/// Builds a single notification summarising a batch bundle sync, with one
+/// "view changes" action per changed cluster. `None` when nothing changed.
+async fn combined_cluster_update_spec(
+    changed: &[(i64, oneclient_core::ApplyBundleUpdatesResult)],
+    services: &oneclient_core::LauncherServices,
+) -> Option<NotificationSpec> {
+    let mut actions = Vec::new();
+    let mut total_changes = 0usize;
+
+    for (cluster_id, result) in changed {
+        if let Some(summary) = cluster_update_summary(*cluster_id, result, services).await {
+            total_changes += summary.total();
+            actions.push(NotificationAction {
+                label: summary.cluster_name.clone(),
+                kind: NotificationActionKind::OpenClusterUpdate(summary),
+            });
+        }
+    }
+
+    if actions.is_empty() {
+        return None;
+    }
+
+    let cluster_count = actions.len();
+    let body = format!(
+        "{total_changes} package{} updated across {cluster_count} cluster{}",
+        if total_changes == 1 { "" } else { "s" },
+        if cluster_count == 1 { "" } else { "s" }
+    );
+
+    Some(NotificationSpec {
+        title: "Mods updated".to_string(),
+        body,
+        level: NotificationLevel::Info,
+        icon: Some(IconType::DownloadCloud02),
+        progress: None,
+        actions,
     })
 }
 

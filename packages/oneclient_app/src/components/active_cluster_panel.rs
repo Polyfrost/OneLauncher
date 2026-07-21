@@ -7,7 +7,8 @@ use crate::components::{Button, Icon, IconType};
 use oneclient_core::parse_mc_version;
 
 use crate::hooks::{
-    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_version_metadata,
+    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher,
+    use_version_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -23,6 +24,8 @@ impl Component for ActiveClusterPanel {
         let mut active_id = use_active_cluster_id();
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
+        let launcher = use_launcher();
+        let syncing = launcher.fetching || launcher.syncing_bundles;
 
         let clusters = {
             let reader = clusters_query.read();
@@ -119,7 +122,7 @@ impl Component for ActiveClusterPanel {
                     .child(launch_button(
                         cluster_id,
                         dispatch,
-                        launch_button_state(&game, cluster_id),
+                        launch_button_state(&game, cluster_id, syncing),
                     ))
                     .child(cluster_settings_button(cluster_id)),
             )

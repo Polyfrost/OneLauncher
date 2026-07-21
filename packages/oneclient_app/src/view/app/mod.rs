@@ -13,14 +13,23 @@ pub mod settings;
 use crate::bridge::GameSnapshot;
 use oneclient_core::notification::LaunchStage;
 
-pub fn launch_button_state(game: &GameSnapshot, cluster_id: i64) -> (&'static str, bool) {
-    match game.stage(cluster_id) {
+pub fn launch_button_state(
+    game: &GameSnapshot,
+    cluster_id: i64,
+    syncing: bool,
+) -> (&'static str, bool) {
+    let state = match game.stage(cluster_id) {
         Some(LaunchStage::Checking) => ("Checking", false),
         Some(LaunchStage::Downloading) => ("Downloading", false),
         Some(LaunchStage::Launching) => ("Launching", false),
         Some(LaunchStage::Running) => ("Running", false),
         _ => ("Launch", true),
+    };
+    // Block launching while the startup bundle download is still running.
+    if syncing && state.1 {
+        return (state.0, false);
     }
+    state
 }
 
 pub use accounts::Accounts;

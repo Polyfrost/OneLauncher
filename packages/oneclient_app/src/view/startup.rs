@@ -4,8 +4,8 @@ use freya::{prelude::*, router::*};
 use crate::AppAssets;
 use crate::Route;
 use crate::hooks::{
-    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
-    use_settings_snapshot, use_terms,
+    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot, use_settings_snapshot,
+    use_splash, use_terms,
 };
 use crate::theme::colors;
 
@@ -18,6 +18,7 @@ impl Component for Startup {
         let settings = use_settings_snapshot();
         let notifications = use_notifications_snapshot();
         let terms = use_terms();
+        let splash = use_splash();
 
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -38,7 +39,7 @@ impl Component for Startup {
 
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-        if launcher.ready && !launcher.fetching && !terms_is_loading(&terms) {
+        if launcher.ready && !terms_is_loading(&terms) {
             let document = terms_document(&terms);
             let required_terms = document.as_ref().map(|doc| doc.version).unwrap_or(1);
             let required_privacy = document
@@ -56,8 +57,27 @@ impl Component for Startup {
             } else {
                 Route::Home {}
             };
-            let _ = RouterContext::get().replace(destination);
-            return rect().into_element();
+
+            // Onboarding needs the bundle catalog before it can render its steps,
+            // so gate it on the fetch. Returning users go straight to the app and
+            // let the bundle download finish in the background.
+            let heading_to_onboarding = matches!(
+                destination,
+                Route::OnboardingWelcome { .. } | Route::OnboardingTerms { .. }
+            );
+            if !heading_to_onboarding || !launcher.fetching {
+                // Heading into Home: raise the splash curtain so the hard route
+                // swap is hidden until Home's clusters/art have settled, then it
+                // fades out. Onboarding animates itself, so skip the curtain.
+                if !heading_to_onboarding {
+                    let mut active = splash.active;
+                    let mut home_ready = splash.home_ready;
+                    home_ready.set(false);
+                    active.set(true);
+                }
+                let _ = RouterContext::get().replace(destination);
+                return rect().into_element();
+            }
         }
 
         let active = notifications.inbox.iter().find(|entry| entry.is_loading);

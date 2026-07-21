@@ -15,6 +15,25 @@ pub fn use_active_cluster_id() -> State<Option<ClusterId>> {
     consume_root_context::<ActiveClusterState>().0
 }
 
+/// Drives the startup splash "curtain": a full-screen cover that stays up after
+/// the router leaves the Startup route until the home view's clusters/art have
+/// settled, then fades out — so the app never reveals a half-populated home.
+#[derive(Clone, Copy)]
+pub struct SplashState {
+    /// The curtain is covering the screen (raised when heading into Home).
+    pub active: State<bool>,
+    /// Home content (clusters + background) has finished loading.
+    pub home_ready: State<bool>,
+}
+
+pub fn use_provide_splash(state: SplashState) {
+    use_provide_root_context(move || state);
+}
+
+pub fn use_splash() -> SplashState {
+    consume_root_context::<SplashState>()
+}
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 

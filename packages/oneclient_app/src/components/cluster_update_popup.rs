@@ -1,16 +1,63 @@
-use freya::{prelude::*, router::RouterContext};
+use std::collections::HashMap;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{use_dispatch, use_notifications_snapshot};
-use crate::notifications::ClusterUpdateSummary;
+use freya::{prelude::*, router::RouterContext};
+use oneclient_core::packages::{CachedPackageMeta, ProviderId};
+
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem};
+use crate::hooks::{package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch};
+use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const DIALOG_W: f32 = 680.;
+const DIALOG_W: f32 = 420.;
 const DIALOG_H: f32 = 400.;
-const BANNER_W: f32 = 300.;
+
+type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UpdateTab {
+    Updates,
+    Additions,
+    Removals,
+}
+
+impl UpdateTab {
+    const ALL: [UpdateTab; 3] = [UpdateTab::Updates, UpdateTab::Additions, UpdateTab::Removals];
+
+    fn label(self) -> &'static str {
+        match self {
+            UpdateTab::Updates => "Updated",
+            UpdateTab::Additions => "Added",
+            UpdateTab::Removals => "Removed",
+        }
+    }
+
+    fn icon(self) -> IconType {
+        match self {
+            UpdateTab::Updates => IconType::RefreshCw01,
+            UpdateTab::Additions => IconType::Plus,
+            UpdateTab::Removals => IconType::Trash01,
+        }
+    }
+
+    fn accent(self) -> Color {
+        match self {
+            UpdateTab::Updates => colors::brand(),
+            UpdateTab::Additions => colors::success(),
+            UpdateTab::Removals => colors::danger(),
+        }
+    }
+
+    fn items(self, summary: &ClusterUpdateSummary) -> &[ClusterUpdateItem] {
+        match self {
+            UpdateTab::Updates => &summary.updated,
+            UpdateTab::Additions => &summary.added,
+            UpdateTab::Removals => &summary.removed,
+        }
+    }
+}
 
 #[derive(PartialEq)]
 pub struct ClusterUpdatePopup;
@@ -19,8 +66,31 @@ impl Component for ClusterUpdatePopup {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
+        let active = use_state(|| UpdateTab::Updates);
 
-        let Some(summary) = snapshot.cluster_update.clone() else {
+        let summary = snapshot.cluster_update.clone();
+
+        // Resolve pretty display names through the package-meta cache. Hooks
+        // must run unconditionally, so gather ids (empty when no summary) and
+        // query every remote provider before the early return below.
+        let all_items: Vec<&ClusterUpdateItem> = summary
+            .iter()
+            .flat_map(|s| s.updated.iter().chain(&s.added).chain(&s.removed))
+            .collect();
+        let mut meta = MetaMap::new();
+        for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
+            let ids: Vec<String> = all_items
+                .iter()
+                .filter(|i| i.provider == provider)
+                .filter_map(|i| i.project_id.clone())
+                .collect();
+            let query = use_package_meta_batch(provider, ids);
+            for (pid, m) in package_meta_batch(&query) {
+                meta.insert((provider, pid), m);
+            }
+        }
+
+        let Some(summary) = summary else {
             return rect().into_element();
         };
 
@@ -33,15 +103,29 @@ impl Component for ClusterUpdatePopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&summary, dispatch)),
+                    .child(dialog(&summary, &meta, active, dispatch)),
             )
             .into_element()
     }
 }
 
-fn dialog(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> impl IntoElement {
+fn resolve_name(item: &ClusterUpdateItem, meta: &MetaMap) -> String {
+    item.project_id
+        .as_ref()
+        .and_then(|pid| meta.get(&(item.provider, pid.clone())))
+        .map(|m| m.name.clone())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| item.fallback.clone())
+}
+
+fn dialog(
+    summary: &ClusterUpdateSummary,
+    meta: &MetaMap,
+    active: State<UpdateTab>,
+    dispatch: crate::BridgeDispatch,
+) -> impl IntoElement {
     rect()
-        .horizontal()
+        .vertical()
         .width(Size::px(DIALOG_W))
         .height(Size::px(DIALOG_H))
         .max_width(Size::window_percent(95.))
@@ -56,75 +140,15 @@ fn dialog(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> im
             0.,
             Color::from_argb(150, 0, 0, 0),
         )))
-        .child(banner(summary))
-        .child(content(summary, dispatch))
+        .child(content(summary, meta, active, dispatch))
 }
 
-fn banner(summary: &ClusterUpdateSummary) -> impl IntoElement {
-    rect()
-        .vertical()
-        .width(Size::px(BANNER_W))
-        .height(Size::fill())
-        .overflow(Overflow::Clip)
-        .background(colors::brand().with_a(30))
-        .main_align(Alignment::SpaceBetween)
-        // watermark
-        .child(
-            rect()
-                .width(Size::fill())
-                .height(Size::flex(1.0))
-                .center()
-                .child(
-                    Icon::new(IconType::DownloadCloud02)
-                        .size(150.)
-                        .color(colors::brand().with_a(34)),
-                ),
-        )
-        // seated title block
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(10.)
-                .padding(Gaps::new(24., 20., 20., 20.))
-                .background(CARD_BG.with_a(170))
-                .child(
-                    rect()
-                        .center()
-                        .padding(Gaps::new_symmetric(4., 10.))
-                        .corner_radius(CornerRadius::new_all(999.))
-                        .background(colors::brand())
-                        .child(
-                            rect()
-                                .horizontal()
-                                .cross_align(Alignment::Center)
-                                .spacing(5.)
-                                .child(
-                                    Icon::new(IconType::RefreshCw01)
-                                        .size(12.)
-                                        .color(Color::WHITE),
-                                )
-                                .child(
-                                    label()
-                                        .text("Updated")
-                                        .font_size(11.)
-                                        .font_weight(FontWeight::SEMI_BOLD)
-                                        .color(Color::WHITE),
-                                ),
-                        ),
-                )
-                .child(
-                    label()
-                        .text(summary.cluster_name.clone())
-                        .font_size(23.)
-                        .font_weight(FontWeight::BOLD)
-                        .max_lines(2)
-                        .color(colors::fg_primary()),
-                ),
-        )
-}
-
-fn content(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> impl IntoElement {
+fn content(
+    summary: &ClusterUpdateSummary,
+    meta: &MetaMap,
+    active: State<UpdateTab>,
+    dispatch: crate::BridgeDispatch,
+) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let cluster_id = summary.cluster_id;
     let open = move |_| {
@@ -133,40 +157,31 @@ fn content(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> i
     };
 
     let total = summary.total();
+    let active_tab = *active.read();
 
-    let mut sections = ScrollArea::new()
+    // Tab row: every category always shown with a count pill, even at zero, so
+    // the modal shape stays stable across clusters.
+    let tabs = TabBar::new()
         .width(Size::fill())
-        .height(Size::flex(1.0))
-        .spacing(10.);
+        .height(Size::px(30.))
+        .spacing(20.)
+        .tabs(UpdateTab::ALL.into_iter().map(|tab| {
+            let count = tab.items(summary).len();
+            let mut set = active;
+            TabItem::new(tab.label(), tab == active_tab)
+                .count_text(count.to_string())
+                .on_press(move |_| *set.write() = tab)
+        }));
 
-    if !summary.updated.is_empty() {
-        sections = sections.child(change_section(
-            IconType::RefreshCw01,
-            "Updated",
-            colors::brand(),
-            &summary.updated,
-        ));
-    }
-    if !summary.added.is_empty() {
-        sections = sections.child(change_section(
-            IconType::Plus,
-            "Added",
-            colors::success(),
-            &summary.added,
-        ));
-    }
-    if !summary.removed.is_empty() {
-        sections = sections.child(change_section(
-            IconType::Trash01,
-            "Removed",
-            colors::danger(),
-            &summary.removed,
-        ));
-    }
+    let names: Vec<String> = active_tab
+        .items(summary)
+        .iter()
+        .map(|item| resolve_name(item, meta))
+        .collect();
 
     rect()
         .vertical()
-        .width(Size::flex(1.0))
+        .width(Size::fill())
         .height(Size::fill())
         .content(Content::Flex)
         .padding(Gaps::new_all(22.))
@@ -194,7 +209,8 @@ fn content(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> i
                         .color(colors::fg_secondary()),
                 ),
         )
-        .child(sections)
+        .child(tabs)
+        .child(change_list(active_tab, &names))
         .child(
             rect()
                 .horizontal()
@@ -218,31 +234,43 @@ fn content(summary: &ClusterUpdateSummary, dispatch: crate::BridgeDispatch) -> i
         )
 }
 
-fn change_section(
-    icon: IconType,
-    heading: &str,
-    accent: Color,
-    items: &[String],
-) -> impl IntoElement {
-    let mut list = rect().vertical().width(Size::fill()).spacing(1.);
-    for item in items {
-        list = list.child(
+fn change_list(tab: UpdateTab, names: &[String]) -> impl IntoElement {
+    let accent = tab.accent();
+
+    let mut scroll = ScrollArea::new()
+        .width(Size::fill())
+        .height(Size::flex(1.0))
+        .spacing(1.);
+
+    if names.is_empty() {
+        return scroll
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(80.))
+                    .center()
+                    .child(
+                        label()
+                            .text(format!("No {} in this update.", tab.label().to_lowercase()))
+                            .font_size(12.5)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .into_element();
+    }
+
+    for name in names {
+        scroll = scroll.child(
             rect()
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
                 .spacing(9.)
-                .padding(Gaps::new_symmetric(4., 4.))
-                .child(
-                    rect()
-                        .width(Size::px(5.))
-                        .height(Size::px(5.))
-                        .corner_radius(CornerRadius::new_all(3.))
-                        .background(accent),
-                )
+                .padding(Gaps::new_symmetric(5., 6.))
+                .child(Icon::new(tab.icon()).size(13.).color(accent))
                 .child(
                     label()
-                        .text(item.clone())
+                        .text(name.clone())
                         .font_size(12.5)
                         .max_lines(1)
                         .width(Size::flex(1.0))
@@ -251,27 +279,5 @@ fn change_section(
         );
     }
 
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(5.)
-        .padding(Gaps::new(9., 11., 11., 11.))
-        .corner_radius(CornerRadius::new_all(10.))
-        .background(colors::page_elevated().with_a(140))
-        .border(border_all_color(1., colors::component_border().with_a(120)))
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(7.)
-                .child(Icon::new(icon).size(14.).color(accent))
-                .child(
-                    label()
-                        .text(format!("{heading} · {}", items.len()))
-                        .font_size(12.)
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(accent),
-                ),
-        )
-        .child(list)
+    scroll.into_element()
 }

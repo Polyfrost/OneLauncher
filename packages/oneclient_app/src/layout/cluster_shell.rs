@@ -6,7 +6,9 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
-use crate::hooks::{use_clusters, use_dispatch, use_game_snapshot, use_version_metadata};
+use crate::hooks::{
+    use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
@@ -113,10 +115,12 @@ impl Component for ClusterShell {
 
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
+        let launcher = use_launcher();
+        let syncing = launcher.fetching || launcher.syncing_bundles;
         let cluster = load_cluster(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
-        let launch_state = launch_button_state(&game, cluster_id);
+        let launch_state = launch_button_state(&game, cluster_id, syncing);
 
         // Queried out here rather than where it is used: the shell can mount
         // before the cluster list settles, and a hook that only runs once the

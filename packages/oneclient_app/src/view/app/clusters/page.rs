@@ -7,7 +7,8 @@ use oneclient_core::packages::domain::GameLoader;
 
 use crate::components::{Button, ClusterLandscapeArt, Dropdown, Icon, IconType, MajorVersionCard};
 use crate::hooks::{
-    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_version_metadata,
+    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher,
+    use_version_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -196,6 +197,8 @@ fn detail_sidebar(
     let active_id = use_active_cluster_id();
     let dispatch = use_dispatch();
     let game = use_game_snapshot();
+    let launcher = use_launcher();
+    let syncing = launcher.fetching || launcher.syncing_bundles;
     let keys = version_keys(clusters_for_major);
     let loaders = loaders_for_major(clusters_for_major);
     let cluster_id = cluster.id;
@@ -273,7 +276,7 @@ fn detail_sidebar(
                         .child(play_button(
                             cluster_id,
                             dispatch,
-                            launch_button_state(&game, cluster_id),
+                            launch_button_state(&game, cluster_id, syncing),
                         ))
                         .child(view_button(cluster_id, active_id)),
                 ),

@@ -139,6 +139,14 @@ impl GroupedProgressSession {
     pub fn finish(self) {
         self.inner.end();
     }
+
+    /// Consumes the session without emitting an `End` event, returning its id.
+    /// Use when another actor (e.g. the UI bridge) will take over the session's
+    /// notification entry and convert it to a finished state itself.
+    pub fn detach(self) -> Uuid {
+        self.inner.ended.store(true, Ordering::Relaxed);
+        self.inner.session_id
+    }
 }
 
 impl GroupedProgressChild {

@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+use uuid::Uuid;
+
+use oneclient_core::ApplyBundleUpdatesResult;
 use oneclient_core::notification::UserChoice;
 use oneclient_core::packages::{ContentType, ProviderId};
 use oneclient_core::settings::{GameSettingsProfile, LauncherSettings, ProfileUpdate};
@@ -125,6 +128,12 @@ pub enum BridgeCommand {
         cluster_id: ClusterId,
     },
     SyncBundles,
+    /// Emitted by the background bundle sync task when it finishes; carries the
+    /// per-cluster changes so the loop can raise "view update" notifications.
+    BundleSyncComplete {
+        changed: Vec<(ClusterId, ApplyBundleUpdatesResult)>,
+        session_id: Uuid,
+    },
 
     ImportLauncher {
         source: oneclient_core::MigrationSource,

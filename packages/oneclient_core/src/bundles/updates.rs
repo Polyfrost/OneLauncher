@@ -263,11 +263,21 @@ async fn check_bundle_updates_inner(
                 continue;
             }
 
+            let linked = all_linked_by_hash.get(&bundle_pkg.hash);
             removals_available.push(BundlePackageRemoval {
                 cluster_id,
                 hash: bundle_pkg.hash.clone(),
                 package_id: pkg_id.clone(),
                 bundle_name: bundle_name.clone(),
+                provider: linked.and_then(|i| i.provider),
+                project_id: linked
+                    .and_then(|i| i.project_id.clone())
+                    .or_else(|| Some(pkg_id.clone())),
+                display_name: linked.map(|i| {
+                    i.display_name
+                        .clone()
+                        .unwrap_or_else(|| i.file_name.clone())
+                }),
             });
         }
     }
@@ -335,6 +345,27 @@ pub async fn apply_bundle_updates(
     bundles: &BundlesManager,
     services: &LauncherServices,
 ) -> LauncherResult<ApplyBundleUpdatesResult> {
+    // Manual, single-cluster path: its own short-lived progress notification.
+    let session = crate::notification::GroupedProgressSession::start(
+        &services.notifier,
+        "Updating bundle content",
+    );
+    let result = apply_bundle_updates_with(cluster_id, bundles, services, Some(&session)).await;
+    session.finish();
+    result
+}
+
+/// Applies pending bundle updates for one cluster. When `session` is provided,
+/// download progress is reported into that (possibly shared) grouped session, so
+/// a whole batch of clusters can surface as a single notification. The caller
+/// owns the session's lifetime.
+#[tracing::instrument(skip(bundles, services, session))]
+pub async fn apply_bundle_updates_with(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    services: &LauncherServices,
+    session: Option<&crate::notification::GroupedProgressSession>,
+) -> LauncherResult<ApplyBundleUpdatesResult> {
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
     let overrides = bundle_dao::list_overrides(&services.db, cluster_id).await?;
@@ -359,15 +390,9 @@ pub async fn apply_bundle_updates(
         }
     }
 
-    let session = (!check.updates_available.is_empty() || !check.additions_available.is_empty())
-        .then(|| {
-            crate::notification::GroupedProgressSession::start(
-                &services.notifier,
-                "Updating bundle content",
-            )
-        });
-
-    if let Some(s) = session.as_ref() {
+    let has_downloads =
+        !check.updates_available.is_empty() || !check.additions_available.is_empty();
+    if let Some(s) = session.filter(|_| has_downloads) {
         let count = (check.updates_available.len() + check.additions_available.len()) as u64;
         let bytes: u64 = check
             .updates_available
@@ -379,7 +404,7 @@ pub async fn apply_bundle_updates(
     }
 
     for update in check.updates_available {
-        let child = session.as_ref().map(|s| {
+        let child = session.map(|s| {
             let c = s.child(
                 update.new_file.display_name(),
                 update.new_file.size.max(1),
@@ -396,7 +421,7 @@ pub async fn apply_bundle_updates(
 
     for addition in check.additions_available {
         let file_id = addition.new_file.kind.package_id();
-        let child = session.as_ref().map(|s| {
+        let child = session.map(|s| {
             let c = s.child(
                 addition.new_file.display_name(),
                 addition.new_file.size.max(1),
@@ -409,10 +434,6 @@ pub async fn apply_bundle_updates(
             Ok(_) => result.additions_applied.push(addition),
             Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
         }
-    }
-
-    if let Some(session) = session {
-        session.finish();
     }
 
     {
@@ -674,10 +695,11 @@ pub async fn get_bundles_with_update_status(
 pub async fn apply_bundle_updates_for_all_clusters(
     bundles: &BundlesManager,
     services: &LauncherServices,
+    session: Option<&crate::notification::GroupedProgressSession>,
 ) -> LauncherResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
     let mut changed = Vec::new();
     for cluster in cluster_dao::list_all(&services.db).await? {
-        match apply_bundle_updates(cluster.id, bundles, services).await {
+        match apply_bundle_updates_with(cluster.id, bundles, services, session).await {
             Ok(result) => {
                 if !result.updates_applied.is_empty()
                     || !result.additions_applied.is_empty()

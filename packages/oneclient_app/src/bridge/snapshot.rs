@@ -48,6 +48,9 @@ pub enum AsyncStatus {
 pub struct LauncherInit {
     pub ready: bool,
     pub fetching: bool,
+    /// True while the background cluster-bundle download is running. Launch is
+    /// disabled until it clears.
+    pub syncing_bundles: bool,
     pub error: Option<String>,
     pub data_dir: String,
 }

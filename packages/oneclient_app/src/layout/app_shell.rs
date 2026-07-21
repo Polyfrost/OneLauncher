@@ -17,8 +17,8 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BrowserCompatState, BrowserStateStore, use_active_cluster_id, use_clusters,
-    use_game_snapshot, use_provide_active_cluster, use_provide_browser_compat,
-    use_provide_browser_state,
+    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
+    use_provide_browser_state, use_splash,
 };
 use crate::theme::colors;
 use oneclient_core::notification::LaunchStage;
@@ -245,6 +245,24 @@ impl Component for AppHomeBackground {
         let parallax_enabled = use_settings_snapshot().settings.dynamic_background_enabled;
         let clusters_query = use_clusters();
         let active_id = use_active_cluster_id();
+        let launcher = use_launcher();
+        let splash = use_splash();
+
+        // Once the cluster list has settled and the startup fetch is done, the
+        // home view is populated — let the splash curtain fade out.
+        let clusters_settled = matches!(
+            &*clusters_query.read().state(),
+            QueryStateData::Settled { .. }
+        );
+        let home_ready = clusters_settled && !launcher.fetching;
+        use_side_effect_with_deps(&home_ready, move |&ready| {
+            if ready {
+                let mut flag = splash.home_ready;
+                if !*flag.peek() {
+                    flag.set(true);
+                }
+            }
+        });
 
         let (art, art_dep) = {
             let reader = clusters_query.read();

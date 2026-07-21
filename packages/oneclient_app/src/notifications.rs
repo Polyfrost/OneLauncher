@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use oneclient_core::notification::{
     GroupedProgressEvent, Notification, NotificationLevel, PromptKind, TaskCategory, UserChoice,
 };
+use oneclient_core::packages::ProviderId;
 use oneclient_db::models::ClusterId;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -23,13 +24,33 @@ pub enum NotificationActionKind {
     OpenClusterUpdate(ClusterUpdateSummary),
 }
 
+/// One changed package in a cluster update, carrying enough identity to
+/// resolve a pretty display name through the package-meta cache in the UI.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClusterUpdateItem {
+    pub provider: ProviderId,
+    pub project_id: Option<String>,
+    /// Name shown when the meta cache has no entry (file name / package id).
+    pub fallback: String,
+}
+
+impl ClusterUpdateItem {
+    pub fn from_name(name: impl Into<String>) -> Self {
+        Self {
+            provider: ProviderId::Local,
+            project_id: None,
+            fallback: name.into(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterUpdateSummary {
     pub cluster_id: ClusterId,
     pub cluster_name: String,
-    pub updated: Vec<String>,
-    pub added: Vec<String>,
-    pub removed: Vec<String>,
+    pub updated: Vec<ClusterUpdateItem>,
+    pub added: Vec<ClusterUpdateItem>,
+    pub removed: Vec<ClusterUpdateItem>,
 }
 
 impl ClusterUpdateSummary {
@@ -674,6 +695,73 @@ impl NotificationState {
                         entry.transfer = None;
                     }
                 }
+            }
+        }
+    }
+
+    /// Converts a still-open grouped-progress entry into its finished state,
+    /// reusing the same inbox id. `spec: None` forgets the entry entirely (used
+    /// when a sync completed with nothing to show). This lets a download progress
+    /// notification morph into a "view changes" notification without ever
+    /// becoming a second entry.
+    pub fn finish_grouped_as_actions(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        session_id: Uuid,
+        spec: Option<NotificationSpec>,
+    ) {
+        self.grouped_tasks.remove(&session_id);
+        let entry_id = self.grouped_entries.remove(&session_id);
+
+        let Some(spec) = spec else {
+            // Nothing changed: drop the progress entry if one was created.
+            if let Some(entry_id) = entry_id {
+                self.forget_entry(inbox, entry_id);
+            }
+            return;
+        };
+
+        let NotificationSpec {
+            title,
+            body,
+            level,
+            icon,
+            progress: _,
+            actions,
+        } = spec;
+
+        match entry_id.and_then(|id| inbox.iter_mut().find(|e| e.id == id)) {
+            Some(entry) => {
+                entry.title = title;
+                entry.body = body;
+                entry.level = level;
+                entry.icon = icon;
+                entry.progress = None;
+                entry.is_loading = false;
+                entry.read = false;
+                entry.created_at = Instant::now();
+                entry.actions = actions;
+                entry.tasks = Vec::new();
+                entry.transfer = None;
+                // The progress toast (if any) is already armed for this entry;
+                // leaving it in `active_toasts` lets the loop give it a dismiss
+                // timer now that it is no longer loading.
+                self.ensure_progress_toast(entry.id);
+            }
+            None => {
+                // Progress entry never materialised (e.g. no downloads happened);
+                // fall back to a fresh notification so the result still shows.
+                self.push_custom(
+                    inbox,
+                    NotificationSpec {
+                        title,
+                        body,
+                        level,
+                        icon,
+                        progress: None,
+                        actions,
+                    },
+                );
             }
         }
     }

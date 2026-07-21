@@ -7,7 +7,9 @@ use oneclient_core::auth::preview_samples;
 
 use crate::components::{Button, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
-use crate::notifications::{ClusterUpdateSummary, NotificationAction, NotificationActionKind};
+use crate::notifications::{
+    ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -245,9 +247,18 @@ impl Component for ClusterUpdateSimulator {
                         let summary = ClusterUpdateSummary {
                             cluster_id: cluster_id.read().trim().parse().unwrap_or(1),
                             cluster_name: name.clone(),
-                            updated: split_csv(&updated.read()),
-                            added: split_csv(&added.read()),
-                            removed: split_csv(&removed.read()),
+                            updated: split_csv(&updated.read())
+                                .into_iter()
+                                .map(ClusterUpdateItem::from_name)
+                                .collect(),
+                            added: split_csv(&added.read())
+                                .into_iter()
+                                .map(ClusterUpdateItem::from_name)
+                                .collect(),
+                            removed: split_csv(&removed.read())
+                                .into_iter()
+                                .map(ClusterUpdateItem::from_name)
+                                .collect(),
                         };
                         let total = summary.total();
                         simulate

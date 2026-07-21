@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use freya::animation::{
     AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
 };
@@ -12,7 +14,7 @@ use crate::components::{
 };
 use crate::hooks::{
     BROWSE_PAGE_SIZE, BrowserUiState, category_list, content_type_for_slug, search_items,
-    search_pending, search_total, use_browser_compat, use_browser_state_store,
+    search_pending, search_total, use_browser_compat, use_browser_state_store, use_debounced,
     use_package_categories, use_package_search, use_view_state,
 };
 use crate::theme::colors;
@@ -37,6 +39,7 @@ const BANNER_H: f32 = 100.;
 const LIST_ROW_H: f32 = 78.;
 const GRID_SPACING: f32 = 12.;
 const LIST_SPACING: f32 = 8.;
+const SEARCH_DEBOUNCE_MS: u64 = 250;
 
 fn type_title(package_type: &str) -> &'static str {
     match package_type {
@@ -87,6 +90,12 @@ impl Component for Browser {
             });
         }
 
+        // Debounce the search query so typing doesn't fire a request per keystroke.
+        let debounced_query = use_debounced(
+            query.read().clone(),
+            Duration::from_millis(SEARCH_DEBOUNCE_MS),
+        );
+
         let cluster = load_cluster(cluster_id);
         let provider_id = *provider.read();
         let compat = *compatible_only.read();
@@ -107,7 +116,7 @@ impl Component for Browser {
         let mut page_state = page;
         let signature = format!(
             "{provider_id:?}|{}|{compat}|{}",
-            query.read().trim().to_lowercase(),
+            debounced_query.read().trim().to_lowercase(),
             cats.join(",")
         );
         let mut last_signature = use_state(|| signature.clone());
@@ -121,7 +130,7 @@ impl Component for Browser {
         let search = use_package_search(
             provider_id,
             content_type,
-            query.read().clone(),
+            debounced_query.read().clone(),
             game_versions,
             loaders,
             cats.clone(),

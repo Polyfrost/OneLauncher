@@ -1,8 +1,10 @@
 mod active_cluster;
+mod debounce;
 mod dispatch;
 mod queries;
 mod view_state;
 
+pub use debounce::use_debounced;
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{

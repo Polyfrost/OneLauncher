@@ -59,20 +59,37 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
+    let window_config = WindowConfig::new_app(OneClientApp { bridge })
+        .with_title(constants::WINDOW_TITLE)
+        .with_app_id(constants::WINDOW_APP_ID)
+        .with_icon(LaunchConfig::window_icon(include_bytes!(
+            "../icons/128x128.png"
+        )))
+        .with_size(1200., 800.)
+        .with_min_size(800., 600.)
+        .with_transparency(true)
+        .with_background(Color::TRANSPARENT);
+
+    // macOS: keep the native frame (rounded corners + drop shadow) but hide the
+    // titlebar and extend content into it. Other platforms stay borderless.
+    #[cfg(target_os = "macos")]
+    let window_config = window_config
+        .with_decorations(true)
+        .with_window_attributes(|attrs, _| {
+            use freya::winit::platform::macos::WindowAttributesExtMacOS;
+            attrs
+                .with_titlebar_hidden(true)
+                .with_title_hidden(true)
+                .with_titlebar_transparent(true)
+                .with_titlebar_buttons_hidden(true)
+                .with_fullsize_content_view(true)
+        });
+
+    #[cfg(not(target_os = "macos"))]
+    let window_config = window_config.with_decorations(false);
+
     let mut launch_config = LaunchConfig::new()
-        .with_window(
-            WindowConfig::new_app(OneClientApp { bridge })
-                .with_title(constants::WINDOW_TITLE)
-                .with_app_id(constants::WINDOW_APP_ID)
-                .with_icon(LaunchConfig::window_icon(include_bytes!(
-                    "../icons/128x128.png"
-                )))
-                .with_size(1200., 800.)
-                .with_min_size(800., 600.)
-                .with_decorations(false)
-                .with_transparency(true)
-                .with_background(Color::TRANSPARENT),
-        )
+        .with_window(window_config)
         .with_gpu_resource_cache_limit(
             std::env::var("ONECLIENT_GPU_CACHE_MB")
                 .ok()

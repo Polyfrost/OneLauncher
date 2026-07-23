@@ -282,13 +282,9 @@ jobs:
             cp "${rpm_matches[0]}" "$OUT_DIR/$rpm_unique"
           fi
 
-          # Upload human-facing installers + the renamed updater bundle and its .sig.
-          # For linux/windows the updater artifact IS the installer (AppImage/exe), so the
-          # renamed $unique copy is the only one uploaded — do NOT also glob the un-renamed
-          # *.AppImage / *-setup.exe original, or the release ends up with two AppImages / two
-          # setup exes (one named oneclient_app_*, one OneClient_*). For darwin the human
-          # installer (.dmg) is separate from the .app.tar.gz updater bundle, so both go up.
-          for f in "$OUT_DIR"/*.dmg ${deb_unique:+"$OUT_DIR/$deb_unique"} ${rpm_unique:+"$OUT_DIR/$rpm_unique"} "$OUT_DIR/$unique" "$OUT_DIR/$unique.sig"; do
+          # Upload human-facing installers (dmg/renamed deb/renamed rpm/AppImage/signed exe) +
+          # the renamed updater bundle and its .sig. Skip the un-renamed updater bundle to avoid clashes.
+          for f in "$OUT_DIR"/*.dmg ${deb_unique:+"$OUT_DIR/$deb_unique"} ${rpm_unique:+"$OUT_DIR/$rpm_unique"} "$OUT_DIR"/*.AppImage "$OUT_DIR"/*-setup.exe "$OUT_DIR/$unique" "$OUT_DIR/$unique.sig"; do
             [ -e "$f" ] || continue
             gh release upload "$TAG" "$f" --clobber
           done

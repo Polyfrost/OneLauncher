@@ -70,19 +70,17 @@ fn main() {
         .with_transparency(true)
         .with_background(Color::TRANSPARENT);
 
-    // macOS: keep the native frame (rounded corners + drop shadow) but hide the
-    // titlebar and extend content into it. Other platforms stay borderless.
     #[cfg(target_os = "macos")]
     let window_config = window_config
         .with_decorations(true)
         .with_window_attributes(|attrs, _| {
             use freya::winit::platform::macos::WindowAttributesExtMacOS;
             attrs
-                .with_titlebar_hidden(true)
                 .with_title_hidden(true)
                 .with_titlebar_transparent(true)
                 .with_titlebar_buttons_hidden(true)
                 .with_fullsize_content_view(true)
+				.with_has_shadow(true)
         });
 
     #[cfg(not(target_os = "macos"))]

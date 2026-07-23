@@ -5,6 +5,9 @@
 # OneLauncher  |  OneClient
 The monorepo containing the code for OneLauncher, OneClient, and their core backend.
 
+OneClient is a Minecraft client featuring fully 100% open-source components, offering many packaged and pre-configured mods in one click.
+OneLauncher is a WIP Minecraft launcher giving power-users the greatest customization whilst featuring a clean UI.
+
 </div>
 
 > [!NOTE]

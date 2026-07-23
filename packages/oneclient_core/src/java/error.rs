@@ -41,3 +41,18 @@ pub enum JavaError {
 	#[error("failed to extract archive '{archive}'")]
 	ArchiveExtractFailed { archive: String },
 }
+
+impl crate::error::SentryExclusion for JavaError {
+	fn is_sentry_excluded(&self) -> bool {
+		match self {
+			// Expected outcomes: no build exists for the requested version, or the
+			// user cancelled setup.
+			JavaError::PackageNotFound { .. } | JavaError::Cancelled => true,
+			// Environmental IO (e.g. out of disk while extracting the runtime).
+			JavaError::RuntimeCheckError { source, .. }
+			| JavaError::ArchiveExtract { source, .. } => source.is_sentry_excluded(),
+			JavaError::PolyIOError(source) => source.is_sentry_excluded(),
+			_ => false,
+		}
+	}
+}

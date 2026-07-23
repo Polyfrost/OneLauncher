@@ -8,7 +8,8 @@ use oneclient_core::notification::{
     GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
 };
 use oneclient_core::{
-    BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, VersionMetadata,
+    BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, SentryExclusion,
+    VersionMetadata,
 };
 use oneclient_db::models::OverrideType;
 use tokio::sync::mpsc;
@@ -718,13 +719,28 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             }));
 
             let fetch_now = predownload && plan.predownload;
-            if let Err(reason) = install_one(&plan, fetch_now, &notifier, &ui_tx).await {
-                tracing::error!(
-                    cluster_id = plan.cluster_id,
-                    mc_version = %plan.mc_version,
-                    "onboarding install failed: {reason}"
-                );
-                failed.push(InstallFailure { plan, reason });
+            if let Err(err) = install_one(&plan, fetch_now, &notifier, &ui_tx).await {
+                // Environmental / expected failures (out of disk, offline, no Java
+                // build for this version, ...) are surfaced to the user but aren't
+                // crashes, so log them at warn! (breadcrumb) instead of error!
+                // (a reported Sentry event). See LauncherError::is_sentry_excluded.
+                if err.is_sentry_excluded() {
+                    tracing::warn!(
+                        cluster_id = plan.cluster_id,
+                        mc_version = %plan.mc_version,
+                        "onboarding install failed (expected): {err}"
+                    );
+                } else {
+                    tracing::error!(
+                        cluster_id = plan.cluster_id,
+                        mc_version = %plan.mc_version,
+                        "onboarding install failed: {err}"
+                    );
+                }
+                failed.push(InstallFailure {
+                    plan,
+                    reason: err.to_string(),
+                });
             }
             let _ = ui_tx.send(InstallUiEvent::Progress(index + 1, total));
         }
@@ -739,8 +755,8 @@ async fn install_one(
     predownload: bool,
     notifier: &NotificationService,
     ui_tx: &mpsc::UnboundedSender<InstallUiEvent>,
-) -> Result<(), String> {
-    let state = oneclient_core::LauncherState::get().map_err(|err| err.to_string())?;
+) -> oneclient_core::LauncherResult<()> {
+    let state = oneclient_core::LauncherState::get()?;
 
     if !plan.overrides.is_empty() {
         let _ = ui_tx.send(InstallUiEvent::Activity(
@@ -748,8 +764,7 @@ async fn install_one(
         ));
     }
     oneclient_core::set_bundle_package_overrides(plan.cluster_id, &plan.overrides, &state.services)
-        .await
-        .map_err(|err| err.to_string())?;
+        .await?;
 
     if !predownload {
         return Ok(());
@@ -791,8 +806,8 @@ async fn install_one(
 
     session.finish();
 
-    prepared.map_err(|err| err.to_string())?;
-    bundles_result.map_err(|err| err.to_string())?;
+    prepared?;
+    bundles_result?;
     Ok(())
 }
 

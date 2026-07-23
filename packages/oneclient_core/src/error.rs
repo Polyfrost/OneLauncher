@@ -6,7 +6,7 @@ pub enum LauncherError {
     JsonError(#[from] serde_json::Error),
 
     #[error("Database execution failed: {0}")]
-    DatabaseError(#[from] sqlx::Error),
+    SqlError(#[from] sqlx::Error),
 
     #[error(transparent)]
     IoError(#[from] polyio::IOError),
@@ -77,6 +77,77 @@ impl LauncherError {
                 crate::auth::diagnose_auth_error(err)
             }
             _ => None,
+        }
+    }
+}
+
+pub trait SentryExclusion {
+    /// Whether this error is expected/environmental noise that should be kept out
+    /// of Sentry rather than reported as a crash.
+    fn is_sentry_excluded(&self) -> bool {
+        false
+    }
+}
+
+impl SentryExclusion for LauncherError {
+    fn is_sentry_excluded(&self) -> bool {
+        match self {
+            LauncherError::StdIoError(e) => e.is_sentry_excluded(),
+            LauncherError::IoError(e) => e.is_sentry_excluded(),
+            LauncherError::RequestError(e) => e.is_sentry_excluded(),
+            LauncherError::JavaError(e) => e.is_sentry_excluded(),
+            _ => false,
+        }
+    }
+}
+
+impl SentryExclusion for std::io::Error {
+    fn is_sentry_excluded(&self) -> bool {
+        use std::io::ErrorKind;
+
+        // Out of disk space. `ErrorKind::StorageFull` is still unstable, so match
+        // the raw OS codes instead. Codes are platform-gated so a Unix errno can't
+        // collide with a Windows code (112 is the unrelated EHOSTDOWN on Linux).
+        if let Some(code) = self.raw_os_error() {
+            #[cfg(unix)]
+            if code == 28 {
+                // ENOSPC
+                return true;
+            }
+            #[cfg(windows)]
+            if code == 112 || code == 39 {
+                // ERROR_DISK_FULL / ERROR_HANDLE_DISK_FULL
+                return true;
+            }
+            let _ = code;
+        }
+
+        // Lost/refused network connections during downloads.
+        matches!(
+            self.kind(),
+            ErrorKind::ConnectionRefused
+                | ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::NotConnected
+                | ErrorKind::TimedOut
+        )
+    }
+}
+
+impl SentryExclusion for reqwest::Error {
+    fn is_sentry_excluded(&self) -> bool {
+        // Connectivity problems (offline, connection refused, timed out) are the
+        // user's network, not a launcher bug.
+        self.is_timeout() || self.is_connect()
+    }
+}
+
+impl SentryExclusion for polyio::IOError {
+    fn is_sentry_excluded(&self) -> bool {
+        match self {
+            polyio::IOError::IOError(source)
+            | polyio::IOError::PathIOError { source, .. } => source.is_sentry_excluded(),
+            _ => false,
         }
     }
 }

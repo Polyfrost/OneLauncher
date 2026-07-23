@@ -45,3 +45,15 @@ pub enum RequestError {
     #[error("Invalid HTTP header value: {0}")]
     InvalidHeaderValue(#[from] reqwest::header::InvalidHeaderValue),
 }
+
+impl crate::error::SentryExclusion for RequestError {
+    fn is_sentry_excluded(&self) -> bool {
+        // Only connectivity / disk failures are noise; malformed requests, bad
+        // URLs, and unexpected response shapes are bugs worth reporting.
+        match self {
+            RequestError::ReqwestError(source) => source.is_sentry_excluded(),
+            RequestError::IOError(source) => source.is_sentry_excluded(),
+            _ => false,
+        }
+    }
+}

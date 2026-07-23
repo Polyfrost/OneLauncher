@@ -95,6 +95,27 @@ jobs:
             echo "dir=target/release" >> "$GITHUB_OUTPUT"
           fi
 
+      # Upload debug info (dSYM / .dwp / .pdb produced by the release profile's
+      # split-debuginfo) to Sentry so nightly crash reports get real file/function/
+      # line stack traces instead of raw addresses. Runs on every main push, so
+      # each unique build's symbols land in Sentry (matched by debug-id). Skips
+      # silently unless SENTRY_AUTH_TOKEN secret + SENTRY_ORG/SENTRY_PROJECT vars
+      # are configured.
+      - name: Upload debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          OUT_DIR: ${{ steps.outdir.outputs.dir }}
+        run: |
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
+            echo "Sentry credentials not configured (need SENTRY_AUTH_TOKEN secret + SENTRY_ORG/SENTRY_PROJECT vars); skipping debug-symbol upload."
+            exit 0
+          fi
+          curl -sL https://sentry.io/get-cli/ | bash
+          sentry-cli debug-files upload --include-sources "$OUT_DIR"
+
       - name: Collect installers
         id: collect
         shell: bash

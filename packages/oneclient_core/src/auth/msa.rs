@@ -787,7 +787,7 @@ async fn parse_json_response<T: for<'de> Deserialize<'de>>(
         .map_err(|source| MinecraftAuthError::RequestError { step, source })?;
 
     if !status.is_success() {
-        tracing::error!("[auth] step={step:?} status={status} body={text}");
+        tracing::error!(sentry = false, ?step, %status, body = %text, "MSA endpoint returned a non-success status");
     }
 
     serde_json::from_str(&text).map_err(|source| {

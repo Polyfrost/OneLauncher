@@ -137,9 +137,16 @@ freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+# Keep the *shipped* binary stripped and small, but still emit debug info into
+# separate files (macOS: .dSYM, Linux: .dwp, Windows: .pdb) so Sentry can
+# symbolicate crash reports. CI uploads those files with `sentry-cli debug-files
+# upload`; they are never shipped to users. Without this, release stack traces
+# are just raw addresses. Use "full" instead of "line-tables-only" if you also
+# want inlined-frame / variable info (larger debug files, slower builds).
 strip = true
 panic = "abort"
-debug = false
+debug = "line-tables-only"
+split-debuginfo = "packed"
 
 [profile.release-profiling]
 inherits = "release"

@@ -54,7 +54,7 @@ pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
     ensure_from_bundles, ensure_from_versions, estimate_cluster_download,
 };
-pub use error::{LauncherError, LauncherResult};
+pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{GameError, LaunchedGame, get_loader_versions, launch_cluster};
 pub use images::ImageCacheStore;
 pub use logs::{

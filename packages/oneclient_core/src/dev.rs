@@ -71,6 +71,13 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                         pb.set_position(current);
                     }
                 }
+                Notification::ProgressComplete { id, title, body } => {
+                    if let Some(pb) = progress_bars.remove(&id) {
+                        pb.finish_with_message(format!("{title}: {body}"));
+                    } else {
+                        mp.suspend(|| tracing::info!(%title, %body));
+                    }
+                }
                 Notification::GroupedProgress(event) => match event {
                     GroupedProgressEvent::Start { session_id, title } => {
                         let parent = mp.add(ProgressBar::new(1));

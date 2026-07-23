@@ -32,7 +32,7 @@ jobs:
             target: ''
             os_key: linux
             arch: x86_64
-            formats: deb,appimage
+            formats: deb,rpm,appimage
           - platform: windows-latest
             target: ''
             os_key: windows
@@ -127,6 +127,7 @@ jobs:
           # (no updater manifest is produced for unsigned nightly builds).
           for f in "${{ steps.outdir.outputs.dir }}"/*.dmg \
                    "${{ steps.outdir.outputs.dir }}"/*.deb \
+                   "${{ steps.outdir.outputs.dir }}"/*.rpm \
                    "${{ steps.outdir.outputs.dir }}"/*.AppImage \
                    "${{ steps.outdir.outputs.dir }}"/*-setup.exe; do
             [ -e "$f" ] || continue

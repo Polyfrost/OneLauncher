@@ -73,6 +73,11 @@ impl Component for Debug {
                     ))
                     .child(divider())
                     .child(section(
+                        "Launcher Auto Update",
+                        vec![LauncherUpdateSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
                         "Auth Error Guidance",
                         vec![AuthGuidancePreview.into_element()],
                     ))
@@ -274,6 +279,45 @@ impl Component for ClusterUpdateSimulator {
                             })
                             .send();
                     }),
+            )
+            .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct LauncherUpdateSimulator;
+
+impl Component for LauncherUpdateSimulator {
+    fn render(&self) -> impl IntoElement {
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release — no network or disk. \"Check for Updates Now\" runs the real check against the release feed.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(12.)
+                    .child(
+                        Button::new()
+                            .primary()
+                            .child(Icon::new(IconType::DownloadCloud02).size(16.))
+                            .text("Simulate Auto Update")
+                            .on_press(|_| crate::updater::spawn_simulated_update()),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .child(Icon::new(IconType::RefreshCw01).size(16.))
+                            .text("Check for Updates Now")
+                            .on_press(|_| crate::updater::spawn_update_check(false)),
+                    ),
             )
             .into_element()
     }

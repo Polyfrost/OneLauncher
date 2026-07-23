@@ -58,7 +58,7 @@ publisher = "Polyfrost"
 copyright = "© 2026 Polyfrost Inc."
 homepage = "https://polyfrost.org/projects/oneclient"
 long-description = "Next-generation open source Minecraft launcher"
-formats = ["nsis", "app", "dmg", "deb", "appimage"]
+formats = ["nsis", "app", "dmg", "deb", "rpm", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
 icons = [
   "icons/32x32.png",
@@ -120,6 +120,9 @@ SectionEnd
 """
 
 [package.metadata.packager.deb]
+desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
+
+[package.metadata.packager.rpm]
 desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
 
 [package.metadata.packager.appimage]

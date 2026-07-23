@@ -41,6 +41,19 @@ impl NotificationService {
 		}
 	}
 
+	/// Finish an in-flight progress notification (identified by the same `id` passed to
+	/// [`send_progress`](Self::send_progress)) by converting its card into a completed
+	/// message in place, rather than emitting a separate follow-up notification.
+	pub fn finish_progress(&self, id: &Uuid, title: &str, body: &str) {
+		if let Err(err) = self.channel.send(Notification::ProgressComplete {
+			id: *id,
+			title: title.to_string(),
+			body: body.to_string(),
+		}) {
+			tracing::error!("{err}");
+		}
+	}
+
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn prompt_java_install(&self, major: u32) -> Result<UserChoice, NotificationError> {
 		self.prompt(

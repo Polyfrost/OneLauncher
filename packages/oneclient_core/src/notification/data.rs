@@ -111,6 +111,15 @@ pub enum Notification {
 		total: u64,
 	},
 
+	/// Convert an in-flight [`Notification::Progress`] entry (matched by `id`) into a
+	/// finished message in place, so a download and its completion notice are a single
+	/// notification instead of two separate cards.
+	ProgressComplete {
+		id: Uuid,
+		title: String,
+		body: String,
+	},
+
 	GroupedProgress(GroupedProgressEvent),
 
 	GameStage {

@@ -317,6 +317,9 @@ impl NotificationState {
             } => {
                 self.handle_progress(inbox, id, label, current, total);
             }
+            Notification::ProgressComplete { id, title, body } => {
+                self.handle_progress_complete(inbox, id, title, body);
+            }
             Notification::GroupedProgress(event) => {
                 self.handle_grouped_progress(inbox, event);
             }
@@ -572,8 +575,29 @@ impl NotificationState {
         self.update_inbox_entry(inbox, entry_id, label, body, progress, !done);
         self.ensure_progress_toast(entry_id);
 
-        if done {
-            self.progress_entries.remove(&id);
+        // NOTE: the id→entry mapping is intentionally kept even once `done`, so a
+        // later `ProgressComplete` can convert this same card into its finished state
+        // (see `handle_progress_complete`). The mapping is cleaned up when the entry is
+        // dismissed or the engine is reset.
+    }
+
+    /// Convert an in-flight progress card into a finished message in place. Used so an
+    /// operation and its "done" notice stay a single notification. Falls back to a fresh
+    /// message if the progress entry is already gone (e.g. dismissed mid-flight).
+    fn handle_progress_complete(
+        &mut self,
+        inbox: &mut Vec<InboxEntry>,
+        id: Uuid,
+        title: String,
+        body: String,
+    ) {
+        if let Some(entry_id) = self.progress_entries.remove(&id) {
+            self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            self.ensure_progress_toast(entry_id);
+        } else {
+            let entry_id =
+                self.push_inbox(inbox, title, body, NotificationLevel::Info, None, false);
+            self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
 

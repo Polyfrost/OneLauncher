@@ -118,12 +118,20 @@ jobs:
           SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           OUT_DIR: ${{ steps.outdir.outputs.dir }}
         run: |
+          set -euo pipefail
           if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
             echo "Sentry credentials not configured (need SENTRY_AUTH_TOKEN secret + SENTRY_ORG/SENTRY_PROJECT vars); skipping debug-symbol upload."
             exit 0
           fi
           curl -sL https://sentry.io/get-cli/ | bash
-          sentry-cli debug-files upload --include-sources "$OUT_DIR"
+          export PATH="/usr/local/bin:$PATH"
+          SYMS="$(mktemp -d)"
+          shopt -s nullglob
+          for f in "$OUT_DIR"/oneclient_app "$OUT_DIR"/oneclient_app.exe \
+                   "$OUT_DIR"/oneclient_app.pdb "$OUT_DIR"/*.dwp "$OUT_DIR"/*.dSYM; do
+            cp -R "$f" "$SYMS/"
+          done
+          sentry-cli debug-files upload --include-sources "$SYMS"
 
       - name: Collect installers
         id: collect

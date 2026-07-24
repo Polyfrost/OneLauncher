@@ -252,7 +252,7 @@ pub fn is_wayland() -> bool {
 
 #[cfg(target_os = "linux")]
 pub fn is_wayland() -> bool {
-    static IS_WAYLAND: OnceLock<bool> = OnceLock::new();
+    static IS_WAYLAND: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
     *IS_WAYLAND.get_or_init(|| {
         if cfg!(target_os = "linux") {

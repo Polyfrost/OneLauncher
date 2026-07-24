@@ -32,7 +32,7 @@ jobs:
             target: ''
             os_key: linux
             arch: x86_64
-            formats: deb,rpm,appimage
+            formats: deb,appimage
           - platform: windows-latest
             target: ''
             os_key: windows
@@ -94,6 +94,15 @@ jobs:
           else
             echo "dir=target/release" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: (Linux) Build RPM
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-generate-rpm --version 0.21.0 --locked
+          cargo generate-rpm -p oneclient_app
+          cp target/generate-rpm/*.rpm "${{ steps.outdir.outputs.dir }}/"
 
       # Upload debug info (dSYM / .dwp / .pdb produced by the release profile's
       # split-debuginfo) to Sentry so nightly crash reports get real file/function/

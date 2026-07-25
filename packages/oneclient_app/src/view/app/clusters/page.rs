@@ -5,7 +5,9 @@ use oneclient_core::VersionKey;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::packages::domain::GameLoader;
 
-use crate::components::{Button, ClusterLandscapeArt, Dropdown, Icon, IconType, MajorVersionCard};
+use crate::components::{
+    Button, ClusterLandscapeArt, Dropdown, Icon, IconType, ScrollArea, VersionCard,
+};
 use crate::hooks::{
     use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher,
     use_version_metadata,
@@ -14,8 +16,8 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{
-    default_loader, default_major, default_version_key, group_clusters_by_major, loaders_for_major,
-    major_pretty_name, resolve_cluster, version_keys, version_label,
+    ReleaseLine, default_line, default_loader, default_version_key, group_clusters_by_release,
+    line_title, loaders_for_line, resolve_cluster, version_keys, version_label,
 };
 use crate::view::app::launch_button_state;
 
@@ -32,7 +34,7 @@ impl Component for Clusters {
     fn render(&self) -> impl IntoElement {
         let clusters_query = use_clusters();
         let active_id = use_active_cluster_id();
-        let mut selected_major = use_state(|| None::<u32>);
+        let mut selected_line = use_state(|| None::<ReleaseLine>);
         let mut selected_version = use_state(|| None::<VersionKey>);
         let mut selected_loader = use_state(|| None::<GameLoader>);
         let mut grid_columns = use_state(|| 2_usize);
@@ -48,10 +50,11 @@ impl Component for Clusters {
             }
         };
 
-        let groups = group_clusters_by_major(&clusters);
-        let majors: Vec<u32> = groups.keys().copied().collect();
+        let groups = group_clusters_by_release(&clusters);
+        // Newest version first.
+        let lines: Vec<ReleaseLine> = groups.keys().rev().copied().collect();
 
-        if majors.is_empty() {
+        if lines.is_empty() {
             return rect()
                 .vertical()
                 .width(Size::fill())
@@ -78,42 +81,42 @@ impl Component for Clusters {
             .read()
             .and_then(|id| clusters.iter().find(|c| c.id == id).cloned());
 
-        if selected_major.read().is_none() {
-            *selected_major.write() = default_major(&groups, active_cluster.clone());
+        if selected_line.read().is_none() {
+            *selected_line.write() = default_line(&groups, active_cluster.clone());
         }
 
-        let major = (*selected_major.read())
-            .filter(|m| groups.contains_key(m))
-            .unwrap_or(majors[0]);
+        let line = (*selected_line.read())
+            .filter(|l| groups.contains_key(l))
+            .unwrap_or(lines[0]);
 
-        if *selected_major.read() != Some(major) {
-            *selected_major.write() = Some(major);
+        if *selected_line.read() != Some(line) {
+            *selected_line.write() = Some(line);
         }
 
-        let clusters_for_major = groups.get(&major).cloned().unwrap_or_default();
+        let clusters_for_line = groups.get(&line).cloned().unwrap_or_default();
 
         if selected_version.read().is_none() {
             let preferred = active_cluster
                 .as_ref()
                 .and_then(|c| oneclient_core::parse_mc_version(&c.mc_version))
                 .and_then(|p| p.key());
-            *selected_version.write() = default_version_key(&clusters_for_major, preferred);
+            *selected_version.write() = default_version_key(&clusters_for_line, preferred);
         }
 
         if selected_loader.read().is_none() {
             let preferred = active_cluster.as_ref().map(|c| c.mc_loader);
-            *selected_loader.write() = default_loader(&clusters_for_major, preferred);
+            *selected_loader.write() = default_loader(&clusters_for_line, preferred);
         }
 
         let cluster = resolve_cluster(
-            &clusters_for_major,
+            &clusters_for_line,
             *selected_version.read(),
             *selected_loader.read(),
         )
-        .or_else(|| clusters_for_major.first().cloned());
+        .or_else(|| clusters_for_line.first().cloned());
 
         let columns = *grid_columns.read();
-        let grid_rows = chunk_majors(&majors, columns);
+        let grid_rows = chunk_lines(&lines, columns);
 
         rect()
             .vertical()
@@ -142,42 +145,49 @@ impl Component for Clusters {
                             .vertical()
                             .width(Size::flex(1.0))
                             .height(Size::fill())
-                            .spacing(GRID_GAP_PX)
-                            .children(grid_rows.into_iter().map(|row| {
-                                let row_len = row.len();
-                                rect()
-                                    .horizontal()
+                            .overflow(Overflow::Clip)
+                            .child(
+                                ScrollArea::new()
                                     .width(Size::fill())
-                                    .content(Content::Flex)
+                                    .height(Size::fill())
                                     .spacing(GRID_GAP_PX)
-                                    .children(row.into_iter().map(|major| {
-                                        let list = groups.get(&major).cloned().unwrap_or_default();
-                                        let selected = *selected_major.read() == Some(major);
-                                        let mut selected_major = selected_major;
-                                        let mut selected_version = selected_version;
-                                        let mut selected_loader = selected_loader;
-
-                                        MajorVersionCard::new(major, &list, selected, move |_| {
-                                            *selected_major.write() = Some(major);
-                                            *selected_version.write() = None;
-                                            *selected_loader.write() = None;
-                                        })
-                                        .into_element()
-                                    }))
-                                    .children((row_len..columns).map(|_| {
+                                    .children(grid_rows.into_iter().map(|row| {
+                                        let row_len = row.len();
                                         rect()
-                                            .width(Size::flex(1.0))
-                                            .height(Size::px(CARD_HEIGHT_PX))
+                                            .horizontal()
+                                            .width(Size::fill())
+                                            .content(Content::Flex)
+                                            .spacing(GRID_GAP_PX)
+                                            .children(row.into_iter().map(|line| {
+                                                let list =
+                                                    groups.get(&line).cloned().unwrap_or_default();
+                                                let selected = *selected_line.read() == Some(line);
+                                                let mut selected_line = selected_line;
+                                                let mut selected_version = selected_version;
+                                                let mut selected_loader = selected_loader;
+
+                                                VersionCard::new(line, &list, selected, move |_| {
+                                                    *selected_line.write() = Some(line);
+                                                    *selected_version.write() = None;
+                                                    *selected_loader.write() = None;
+                                                })
+                                                .into_element()
+                                            }))
+                                            .children((row_len..columns).map(|_| {
+                                                rect()
+                                                    .width(Size::flex(1.0))
+                                                    .height(Size::px(CARD_HEIGHT_PX))
+                                                    .into_element()
+                                            }))
                                             .into_element()
-                                    }))
-                                    .into_element()
-                            })),
+                                    })),
+                            ),
                     )
                     .child(match cluster {
                         Some(cluster) => detail_sidebar(
-                            major,
+                            line,
                             cluster,
-                            &clusters_for_major,
+                            &clusters_for_line,
                             selected_version,
                             selected_loader,
                         ),
@@ -188,9 +198,9 @@ impl Component for Clusters {
 }
 
 fn detail_sidebar(
-    major: u32,
+    line: ReleaseLine,
     cluster: Cluster,
-    clusters_for_major: &[Cluster],
+    clusters_for_line: &[Cluster],
     selected_version: State<Option<VersionKey>>,
     selected_loader: State<Option<GameLoader>>,
 ) -> Element {
@@ -199,14 +209,14 @@ fn detail_sidebar(
     let game = use_game_snapshot();
     let launcher = use_launcher();
     let syncing = launcher.fetching || launcher.syncing_bundles;
-    let keys = version_keys(clusters_for_major);
-    let loaders = loaders_for_major(clusters_for_major);
+    let keys = version_keys(clusters_for_line);
+    let loaders = loaders_for_line(clusters_for_line);
     let cluster_id = cluster.id;
-    let version_title = major_pretty_name(major);
+    let version_title = line_title(line, clusters_for_line);
     let version_value = *selected_version.read();
     let loader_value = *selected_loader.read();
 
-    let metadata = use_version_metadata(Some(major), version_value, loader_value);
+    let metadata = use_version_metadata(Some(line.major), version_value, loader_value);
 
     let heading = metadata
         .as_ref()
@@ -233,7 +243,7 @@ fn detail_sidebar(
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
         .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
-            ClusterLandscapeArt::for_version(major, version_value, loader_value, false),
+            ClusterLandscapeArt::for_version(line.major, version_value, loader_value, false),
         ))
         .child(
             rect()
@@ -263,7 +273,7 @@ fn detail_sidebar(
                                 .font_size(12.)
                                 .color(colors::fg_secondary()),
                         )
-                        .children(version_rows(major, &keys, version_value, selected_version))
+                        .children(version_rows(line, &keys, version_value, selected_version))
                         .children(loader_rows(&loaders, loader_value, selected_loader)),
                 )
                 .child(
@@ -312,8 +322,10 @@ fn tags_row(tags: &[String]) -> Option<Element> {
     )
 }
 
+/// Only shown when the line holds more than one version — a single-version line
+/// already names it on the card and in the heading.
 fn version_rows(
-    major: u32,
+    line: ReleaseLine,
     keys: &[VersionKey],
     selected: Option<VersionKey>,
     mut selected_version: State<Option<VersionKey>>,
@@ -322,14 +334,14 @@ fn version_rows(
         return None;
     }
 
-    let options: Vec<String> = keys.iter().map(|k| version_label(major, *k)).collect();
+    let options: Vec<String> = keys.iter().map(|k| version_label(line.major, *k)).collect();
     let current = selected
         .and_then(|s| keys.iter().position(|k| *k == s))
         .unwrap_or(0);
     let keys = keys.to_vec();
 
     Some(info_row(
-        "Minor Version",
+        "Version",
         Dropdown::new(options[current].clone(), options)
             .on_select(move |idx: usize| {
                 if let Some(key) = keys.get(idx).copied() {
@@ -458,16 +470,16 @@ fn sidebar_error() -> Element {
         )
         .child(
             label()
-                .text("Try selecting a different minor version or mod loader.")
+                .text("Try selecting a different version or mod loader.")
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )
         .into_element()
 }
 
-fn chunk_majors(majors: &[u32], columns: usize) -> Vec<Vec<u32>> {
+fn chunk_lines(lines: &[ReleaseLine], columns: usize) -> Vec<Vec<ReleaseLine>> {
     let columns = columns.max(1);
-    majors.chunks(columns).map(|chunk| chunk.to_vec()).collect()
+    lines.chunks(columns).map(|chunk| chunk.to_vec()).collect()
 }
 
 fn grid_columns_for_width(available_width_px: f32) -> usize {

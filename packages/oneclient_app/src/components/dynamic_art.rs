@@ -28,15 +28,6 @@ impl DynamicArt {
         }
     }
 
-    pub fn for_major(major: u32) -> Self {
-        Self {
-            major: Some(major),
-            key: None,
-            loader: None,
-            max_edge: DEFAULT_IMAGE_EDGE,
-        }
-    }
-
     pub fn for_cluster(cluster: &Cluster) -> Self {
         let parsed = parse_mc_version(&cluster.mc_version);
         Self {

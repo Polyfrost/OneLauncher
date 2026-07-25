@@ -1,48 +1,52 @@
 use freya::prelude::*;
+use oneclient_core::VersionKey;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::ClusterLandscapeArt;
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::{loader_tags, major_pretty_name};
+use crate::utils::{ReleaseLine, line_art_key, line_title, loader_tags};
 
 const CARD_HEIGHT_PX: f32 = 240.;
 
-pub struct MajorVersionCard {
-    pub major: u32,
+pub struct VersionCard {
+    pub line: ReleaseLine,
+    pub art_key: Option<VersionKey>,
     pub tags: Vec<String>,
     pub title: String,
     pub selected: bool,
     pub on_press: EventHandler<Event<PressEventData>>,
 }
 
-impl MajorVersionCard {
+impl VersionCard {
     pub fn new(
-        major: u32,
+        line: ReleaseLine,
         clusters: &[Cluster],
         selected: bool,
         on_press: impl Into<EventHandler<Event<PressEventData>>>,
     ) -> Self {
         Self {
-            major,
+            line,
+            art_key: line_art_key(line, clusters),
             tags: loader_tags(clusters),
-            title: major_pretty_name(major),
+            title: line_title(line, clusters),
             selected,
             on_press: on_press.into(),
         }
     }
 }
 
-impl PartialEq for MajorVersionCard {
+impl PartialEq for VersionCard {
     fn eq(&self, other: &Self) -> bool {
-        self.major == other.major
+        self.line == other.line
+            && self.art_key == other.art_key
             && self.tags == other.tags
             && self.title == other.title
             && self.selected == other.selected
     }
 }
 
-impl Component for MajorVersionCard {
+impl Component for VersionCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
 
@@ -69,7 +73,7 @@ impl Component for MajorVersionCard {
         };
 
         rect()
-            .key(self.major)
+            .key(self.line)
             .width(Size::flex(1.0))
             .height(Size::px(CARD_HEIGHT_PX))
             .a11y_id(a11y_id)
@@ -94,7 +98,12 @@ impl Component for MajorVersionCard {
                             .width(Size::fill())
                             .height(Size::fill())
                             .position(Position::new_absolute())
-                            .child(ClusterLandscapeArt::for_major(self.major, false)),
+                            .child(ClusterLandscapeArt::for_version(
+                                self.line.major,
+                                self.art_key,
+                                None,
+                                false,
+                            )),
                     )
                     .child(
                         rect()

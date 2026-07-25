@@ -4,25 +4,91 @@ use std::collections::BTreeMap;
 use chrono::{Datelike, NaiveDate};
 use oneclient_core::clusters::Cluster;
 use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::{VersionKey, format_mc_version, parse_mc_version};
+use oneclient_core::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
 
-pub type ClusterGroups = BTreeMap<u32, Vec<Cluster>>;
+pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
+
+/// One entry on the versions page. The modern scheme puts a full release in the
+/// first two components (`26.1`, `26.2`), so each minor is its own line; legacy
+/// `1.x` versions keep the whole major (`1.21`) as one line. A line that holds a
+/// single concrete version is presented as that version — see [`line_title`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ReleaseLine {
+    pub major: u32,
+    /// `Some` only for the modern scheme, where the minor is part of the line.
+    pub minor: Option<u32>,
+}
+
+impl ReleaseLine {
+    fn from_parsed(parsed: &ParsedMcVersion) -> Option<Self> {
+        let minor = if parsed.major >= 26 {
+            Some(parsed.minor?)
+        } else {
+            None
+        };
+        Some(Self {
+            major: parsed.major,
+            minor,
+        })
+    }
+
+    pub fn from_version(version: &str) -> Option<Self> {
+        Self::from_parsed(&parse_mc_version(version)?)
+    }
+
+    pub fn for_cluster(cluster: &Cluster) -> Option<Self> {
+        Self::from_version(&cluster.mc_version)
+    }
+
+    /// The generic name of the line: `26.1`, `1.21`.
+    pub fn pretty_name(&self) -> String {
+        match self.minor {
+            Some(minor) => format!("{}.{minor}", self.major),
+            None => format!("1.{}", self.major),
+        }
+    }
+
+    /// Metadata/art lookup key for the line itself, when no single version
+    /// stands in for it.
+    fn art_key(&self) -> Option<VersionKey> {
+        self.minor.map(|minor| (minor, None))
+    }
+}
 
 fn cluster_key(cluster: &Cluster) -> Option<VersionKey> {
     parse_mc_version(&cluster.mc_version).and_then(|parsed| parsed.key())
 }
 
-pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
+/// The one concrete version behind `clusters`, if they all share it.
+fn sole_version_key(clusters: &[Cluster]) -> Option<VersionKey> {
+    match version_keys(clusters).as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    }
+}
+
+/// A line with a single version is shown as that full version (`26.1.2`);
+/// otherwise the generic line name (`1.21`), with the versions in a dropdown.
+pub fn line_title(line: ReleaseLine, clusters: &[Cluster]) -> String {
+    match sole_version_key(clusters) {
+        Some(key) => version_label(line.major, key),
+        None => line.pretty_name(),
+    }
+}
+
+/// Metadata/art key matching [`line_title`].
+pub fn line_art_key(line: ReleaseLine, clusters: &[Cluster]) -> Option<VersionKey> {
+    sole_version_key(clusters).or_else(|| line.art_key())
+}
+
+pub fn group_clusters_by_release(clusters: &[Cluster]) -> ClusterGroups {
     let mut groups: ClusterGroups = BTreeMap::new();
 
     for cluster in clusters {
-        let Some(parsed) = parse_mc_version(&cluster.mc_version) else {
+        let Some(line) = ReleaseLine::for_cluster(cluster) else {
             continue;
         };
-        groups
-            .entry(parsed.major)
-            .or_default()
-            .push(cluster.clone());
+        groups.entry(line).or_default().push(cluster.clone());
     }
 
     for list in groups.values_mut() {
@@ -30,14 +96,6 @@ pub fn group_clusters_by_major(clusters: &[Cluster]) -> ClusterGroups {
     }
 
     groups
-}
-
-pub fn major_pretty_name(major: u32) -> String {
-    if major >= 26 {
-        format!("{major}")
-    } else {
-        format!("1.{major}")
-    }
 }
 
 pub fn loader_tags(clusters: &[Cluster]) -> Vec<String> {
@@ -67,7 +125,7 @@ pub fn version_keys(clusters: &[Cluster]) -> Vec<VersionKey> {
     keys
 }
 
-pub fn loaders_for_major(clusters: &[Cluster]) -> Vec<GameLoader> {
+pub fn loaders_for_line(clusters: &[Cluster]) -> Vec<GameLoader> {
     let mut loaders = Vec::new();
     for cluster in clusters {
         if cluster.mc_loader.is_modded() && !loaders.contains(&cluster.mc_loader) {
@@ -93,13 +151,14 @@ pub fn resolve_cluster(
         .cloned()
 }
 
-pub fn default_major(groups: &ClusterGroups, active: Option<Cluster>) -> Option<u32> {
+/// The line the page opens on: the active cluster's line, else the newest.
+pub fn default_line(groups: &ClusterGroups, active: Option<Cluster>) -> Option<ReleaseLine> {
     if let Some(cluster) = active
-        && let Some(parsed) = parse_mc_version(&cluster.mc_version)
+        && let Some(line) = ReleaseLine::for_cluster(&cluster)
     {
-        return Some(parsed.major);
+        return Some(line);
     }
-    groups.keys().next().copied()
+    groups.keys().next_back().copied()
 }
 
 pub fn default_version_key(
@@ -119,7 +178,7 @@ pub fn default_version_key(
 }
 
 pub fn default_loader(clusters: &[Cluster], preferred: Option<GameLoader>) -> Option<GameLoader> {
-    let loaders = loaders_for_major(clusters);
+    let loaders = loaders_for_line(clusters);
     if loaders.is_empty() {
         return clusters.first().map(|c| c.mc_loader);
     }
@@ -263,4 +322,93 @@ pub fn is_wayland() -> bool {
             false
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::onboarding::test_support::cluster;
+
+    fn versioned(id: i64, mc_version: &str) -> Cluster {
+        Cluster {
+            mc_version: mc_version.to_string(),
+            ..cluster(id)
+        }
+    }
+
+    fn line(major: u32, minor: Option<u32>) -> ReleaseLine {
+        ReleaseLine { major, minor }
+    }
+
+    fn lines_of(clusters: &[Cluster]) -> Vec<ReleaseLine> {
+        group_clusters_by_release(clusters)
+            .keys()
+            .copied()
+            .collect()
+    }
+
+    #[test]
+    fn modern_minors_are_separate_lines() {
+        let clusters = [
+            versioned(1, "26.1"),
+            versioned(2, "26.2"),
+            versioned(3, "26.2.1"),
+        ];
+
+        assert_eq!(
+            lines_of(&clusters),
+            vec![line(26, Some(1)), line(26, Some(2))]
+        );
+    }
+
+    #[test]
+    fn legacy_minors_share_one_line() {
+        let clusters = [versioned(1, "1.21.5"), versioned(2, "1.21.11")];
+
+        assert_eq!(lines_of(&clusters), vec![line(21, None)]);
+    }
+
+    #[test]
+    fn a_lone_version_is_shown_in_full() {
+        let clusters = [versioned(1, "26.1.2")];
+        let line = line(26, Some(1));
+
+        assert_eq!(line_title(line, &clusters), "26.1.2");
+        assert_eq!(line_art_key(line, &clusters), Some((1, Some(2))));
+    }
+
+    #[test]
+    fn several_loaders_of_one_version_still_count_as_one() {
+        let clusters = [
+            versioned(1, "26.1.2"),
+            Cluster {
+                mc_loader: GameLoader::Vanilla,
+                ..versioned(2, "26.1.2")
+            },
+        ];
+
+        assert_eq!(line_title(line(26, Some(1)), &clusters), "26.1.2");
+    }
+
+    #[test]
+    fn several_versions_fall_back_to_the_generic_name() {
+        let legacy = [
+            versioned(1, "1.21.1"),
+            versioned(2, "1.21.10"),
+            versioned(3, "1.21.11"),
+        ];
+        assert_eq!(line_title(line(21, None), &legacy), "1.21");
+        assert_eq!(line_art_key(line(21, None), &legacy), None);
+
+        let modern = [versioned(4, "26.1"), versioned(5, "26.1.2")];
+        assert_eq!(line_title(line(26, Some(1)), &modern), "26.1");
+        assert_eq!(line_art_key(line(26, Some(1)), &modern), Some((1, None)));
+    }
+
+    #[test]
+    fn a_bare_legacy_version_keeps_its_line_name() {
+        let clusters = [versioned(1, "1.21")];
+
+        assert_eq!(line_title(line(21, None), &clusters), "1.21");
+    }
 }

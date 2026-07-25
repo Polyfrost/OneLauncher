@@ -24,13 +24,6 @@ impl ClusterLandscapeArt {
             selected,
         }
     }
-
-    pub fn for_major(major: u32, selected: bool) -> Self {
-        Self {
-            art: DynamicArt::for_major(major).max_edge(512),
-            selected,
-        }
-    }
 }
 
 impl Component for ClusterLandscapeArt {

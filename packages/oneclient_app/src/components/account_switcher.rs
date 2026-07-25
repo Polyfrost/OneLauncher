@@ -161,9 +161,10 @@ impl Component for AccountRow {
         let mut hovered = use_state(|| false);
 
         let switch = move |_| {
-            if !active {
-                set_default.mutate(SetDefaultAccountKeys { id: Some(id) });
+            if active {
+                return;
             }
+            set_default.mutate(SetDefaultAccountKeys { id: Some(id) });
             dispatch.close_account_switcher();
         };
 

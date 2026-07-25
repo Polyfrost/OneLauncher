@@ -166,8 +166,12 @@ impl BridgeDispatch {
         self.send(BridgeCommand::DismissToast(entry_id));
     }
 
-    pub fn bump_toast(&self, entry_id: u64) {
-        self.send(BridgeCommand::BumpToast(entry_id));
+    pub fn pause_toasts(&self) {
+        self.send(BridgeCommand::PauseToasts);
+    }
+
+    pub fn resume_toasts(&self) {
+        self.send(BridgeCommand::ResumeToasts);
     }
 
     pub fn mark_notification_read(&self, entry_id: u64) {

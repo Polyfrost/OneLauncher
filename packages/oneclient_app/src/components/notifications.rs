@@ -1,12 +1,10 @@
 use freya::{
     animation::{AnimNum, Ease, OnCreation, use_animation},
     prelude::*,
-    router::RouterContext,
 };
 use oneclient_core::notification::NotificationLevel;
 
 use crate::{
-    Route,
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind, TransferStats},
@@ -498,36 +496,25 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let clear_dispatch = dispatch.clone();
-        let open_settings = move |_| {
-            dispatch.close_notification_center();
-            let _ = RouterContext::get().push(Route::SettingsAppearance {});
-        };
+        let is_empty = use_notifications_snapshot().inbox.is_empty();
 
         rect()
             .horizontal()
             .width(Size::fill())
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .main_align(Alignment::SpaceBetween)
             .child(
                 Button::new()
                     .ghost()
                     .small()
-                    .on_press(move |_| clear_dispatch.clear_notification_inbox())
-                    .child(
-                        Icon::new(IconType::Trash01)
-                            .size(16.)
-                            .color(colors::fg_primary()),
-                    )
+                    .disabled(is_empty)
+                    .on_press(move |_| dispatch.clear_notification_inbox())
+                    .child(Icon::new(IconType::Trash01).size(16.).color(if is_empty {
+                        colors::fg_primary_disabled()
+                    } else {
+                        colors::fg_primary()
+                    }))
                     .text("Clear all"),
-            )
-            .child(
-                Button::new()
-                    .ghost()
-                    .icon()
-                    .on_press(open_settings)
-                    .child(Icon::new(IconType::Settings02).size(18.)),
             )
     }
 }

@@ -1,5 +1,10 @@
+use std::{cell::Cell, rc::Rc, time::Instant};
+
 use freya::{
-    animation::{AnimNum, Ease, Function, OnCreation, use_animation},
+    animation::{
+        AnimNum, Ease, Function, OnChange, OnCreation, use_animation,
+        use_animation_with_dependencies,
+    },
     prelude::*,
 };
 use oneclient_core::notification::NotificationLevel;
@@ -51,6 +56,8 @@ pub struct Toasts;
 impl Component for Toasts {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
+        // How many toasts the pointer is over; while any is hovered, every toast's timer pauses.
+        let hovering = use_state(|| 0usize);
 
         let entries: Vec<InboxEntry> = snapshot
             .active_toast_entry_ids
@@ -73,6 +80,7 @@ impl Component for Toasts {
             stack = stack.child(
                 ToastCard {
                     entry,
+                    hovering,
                     key: DiffKey::None,
                 }
                 .key(id),
@@ -86,6 +94,8 @@ impl Component for Toasts {
 #[derive(PartialEq)]
 struct ToastCard {
     entry: InboxEntry,
+    /// Shared across every toast: how many of them the pointer is currently over.
+    hovering: State<usize>,
     key: DiffKey,
 }
 
@@ -114,17 +124,61 @@ impl Component for ToastCard {
             AnimNum::new(0., 1.).time(260).ease(Ease::Out)
         });
 
-        let mut ttl_bar_anim = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(100., 0.).time(TTL_MS as u64)
-        });
+        // Hovering any toast freezes this bar where it is; leaving runs out the remaining TTL.
+        let paused = *self.hovering.read() > 0;
+        let mut was_paused = use_state(|| false);
+        let mut from_pct = use_state(|| 100.);
+        let mut run_start = use_state(Instant::now);
 
-        let bump_enter = dispatch.clone();
-        let bump_move = dispatch.clone();
+        if paused != *was_paused.peek() {
+            if paused {
+                let elapsed_pct = run_start.peek().elapsed().as_secs_f32() * 1000. / TTL_MS * 100.;
+                let remaining = *from_pct.peek() - elapsed_pct;
+                from_pct.set(remaining.clamp(0., 100.));
+            } else {
+                run_start.set(Instant::now());
+            }
+            was_paused.set(paused);
+        }
+
+        let ttl_bar_anim =
+            use_animation_with_dependencies(&(paused, *from_pct.peek()), |conf, deps| {
+                let &(paused, from) = deps;
+                conf.on_creation(if paused {
+                    OnCreation::Nothing
+                } else {
+                    OnCreation::Run
+                });
+                conf.on_change(if paused {
+                    OnChange::Reset
+                } else {
+                    OnChange::Rerun
+                });
+                AnimNum::new(from, 0.).time(((TTL_MS * from / 100.) as u64).max(1))
+            });
 
         let offset = slide.read().value();
         let opacity = fade.read().value();
         let ttl_pct = ttl_bar_anim.read().value();
+
+        // A card can be unmounted while hovered (dismissing it), which emits no `out` event.
+        let mut hovering = self.hovering;
+        let hover_flag = use_hook(|| Rc::new(Cell::new(false)));
+        let (over_flag, out_flag, drop_flag) =
+            (hover_flag.clone(), hover_flag.clone(), hover_flag.clone());
+        let over_dispatch = dispatch.clone();
+        let out_dispatch = dispatch.clone();
+        let drop_dispatch = dispatch.clone();
+
+        use_drop(move || {
+            if drop_flag.replace(false) {
+                let count = hovering.peek().saturating_sub(1);
+                hovering.set(count);
+                if count == 0 {
+                    drop_dispatch.resume_toasts();
+                }
+            }
+        });
 
         let card = match variant {
             Variant::Progress => progress_card(&entry),
@@ -136,13 +190,27 @@ impl Component for ToastCard {
             .width(Size::px(TOAST_W))
             .offset_x(offset)
             .opacity(opacity)
-            .on_pointer_enter(move |_| {
-                bump_enter.bump_toast(id);
-                ttl_bar_anim.start();
+            // `over`/`out` rather than `enter`/`leave`: the latter are exclusive to the deepest
+            // node, so moving onto the close button would count as leaving the toast.
+            .on_pointer_over(move |_| {
+                if over_flag.replace(true) {
+                    return;
+                }
+                let count = *hovering.peek() + 1;
+                hovering.set(count);
+                if count == 1 {
+                    over_dispatch.pause_toasts();
+                }
             })
-            .on_pointer_move(move |_| {
-                bump_move.bump_toast(id);
-                ttl_bar_anim.start();
+            .on_pointer_out(move |_| {
+                if !out_flag.replace(false) {
+                    return;
+                }
+                let count = hovering.peek().saturating_sub(1);
+                hovering.set(count);
+                if count == 0 {
+                    out_dispatch.resume_toasts();
+                }
             })
             .child(card)
     }

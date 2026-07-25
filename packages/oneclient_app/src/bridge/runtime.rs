@@ -33,8 +33,10 @@ impl CoreBridgeRuntime {
         let mut notification_center_open = false;
         let mut pending_prompt: Option<PendingPrompt> = None;
 
-        let mut armed_toasts: std::collections::HashMap<u64, tokio::time::Instant> =
+        let mut armed_toasts: std::collections::HashMap<u64, ToastTimer> =
             std::collections::HashMap::new();
+        // Hovering any toast pauses every toast's timer, including ones that arrive while hovering.
+        let mut toasts_paused = false;
 
         let mut game_flush_deadline: Option<tokio::time::Instant> = None;
         const GAME_LOG_FLUSH: std::time::Duration = std::time::Duration::from_millis(120);
@@ -79,8 +81,8 @@ impl CoreBridgeRuntime {
         loop {
             let next_deadline = armed_toasts
                 .values()
+                .filter_map(ToastTimer::deadline)
                 .min()
-                .copied()
                 .into_iter()
                 .chain(game_flush_deadline)
                 .min();
@@ -96,7 +98,7 @@ impl CoreBridgeRuntime {
                     let now = tokio::time::Instant::now();
                     let due: Vec<u64> = armed_toasts
                         .iter()
-                        .filter(|(_, deadline)| **deadline <= now)
+                        .filter(|(_, timer)| timer.deadline().is_some_and(|deadline| deadline <= now))
                         .map(|(id, _)| *id)
                         .collect();
                     let toasts_expired = !due.is_empty();
@@ -120,7 +122,7 @@ impl CoreBridgeRuntime {
                     }
                     publish(&self.snapshots_tx, &snapshots);
                     if toasts_expired {
-                        reconcile_toasts(&snapshots, &inbox, &mut armed_toasts);
+                        reconcile_toasts(&snapshots, &inbox, &mut armed_toasts, toasts_paused);
                     }
                 }
                 notification = notifier_rx.recv() => {
@@ -200,7 +202,7 @@ impl CoreBridgeRuntime {
                         publish(&self.snapshots_tx, &snapshots);
                         game_flush_deadline = None;
                         if touched_engine {
-                            reconcile_toasts(&snapshots, &inbox, &mut armed_toasts);
+                            reconcile_toasts(&snapshots, &inbox, &mut armed_toasts, toasts_paused);
                         }
                     } else if saw_game_log && game_flush_deadline.is_none() {
                         game_flush_deadline = Some(tokio::time::Instant::now() + GAME_LOG_FLUSH);
@@ -209,10 +211,17 @@ impl CoreBridgeRuntime {
                 command = self.commands_rx.recv() => {
                     let Some(command) = command else { break };
                     match command {
-                        BridgeCommand::BumpToast(entry_id) => {
-                            if armed_toasts.contains_key(&entry_id) {
-                                armed_toasts
-                                    .insert(entry_id, tokio::time::Instant::now() + MESSAGE_TOAST_TTL);
+                        BridgeCommand::PauseToasts => {
+                            toasts_paused = true;
+                            for timer in armed_toasts.values_mut() {
+                                timer.pause();
+                            }
+                            continue;
+                        }
+                        BridgeCommand::ResumeToasts => {
+                            toasts_paused = false;
+                            for timer in armed_toasts.values_mut() {
+                                timer.resume();
                             }
                             continue;
                         }
@@ -240,7 +249,7 @@ impl CoreBridgeRuntime {
                         &pending_prompt,
                     );
                     publish(&self.snapshots_tx, &snapshots);
-                    reconcile_toasts(&snapshots, &inbox, &mut armed_toasts);
+                    reconcile_toasts(&snapshots, &inbox, &mut armed_toasts, toasts_paused);
                 }
             }
         }
@@ -551,7 +560,7 @@ impl CoreBridgeRuntime {
             BridgeCommand::DismissToast(entry_id) => {
                 notification_engine.dismiss_toast(inbox, entry_id);
             }
-            BridgeCommand::BumpToast(_) => {}
+            BridgeCommand::PauseToasts | BridgeCommand::ResumeToasts => {}
             BridgeCommand::MarkNotificationRead(entry_id) => {
                 notification_engine.mark_read(inbox, entry_id);
             }
@@ -922,10 +931,48 @@ fn sync_notifications(
     snapshots.notifications = engine.snapshot(inbox, center_open, pending_view);
 }
 
+/// A toast's time-to-live, which hovering the toast pauses and un-hovering resumes.
+#[derive(Clone, Copy)]
+enum ToastTimer {
+    Running(tokio::time::Instant),
+    Paused(std::time::Duration),
+}
+
+impl ToastTimer {
+    fn armed(paused: bool) -> Self {
+        if paused {
+            Self::Paused(MESSAGE_TOAST_TTL)
+        } else {
+            Self::Running(tokio::time::Instant::now() + MESSAGE_TOAST_TTL)
+        }
+    }
+
+    /// The instant this toast expires, or `None` while paused.
+    fn deadline(&self) -> Option<tokio::time::Instant> {
+        match self {
+            Self::Running(deadline) => Some(*deadline),
+            Self::Paused(_) => None,
+        }
+    }
+
+    fn pause(&mut self) {
+        if let Self::Running(deadline) = *self {
+            *self = Self::Paused(deadline.saturating_duration_since(tokio::time::Instant::now()));
+        }
+    }
+
+    fn resume(&mut self) {
+        if let Self::Paused(remaining) = *self {
+            *self = Self::Running(tokio::time::Instant::now() + remaining);
+        }
+    }
+}
+
 fn reconcile_toasts(
     snapshots: &BridgeSnapshot,
     inbox: &[InboxEntry],
-    armed: &mut std::collections::HashMap<u64, tokio::time::Instant>,
+    armed: &mut std::collections::HashMap<u64, ToastTimer>,
+    paused: bool,
 ) {
     let want: std::collections::HashSet<u64> = snapshots
         .notifications
@@ -936,9 +983,7 @@ fn reconcile_toasts(
         .collect();
 
     for id in &want {
-        armed
-            .entry(*id)
-            .or_insert_with(|| tokio::time::Instant::now() + MESSAGE_TOAST_TTL);
+        armed.entry(*id).or_insert_with(|| ToastTimer::armed(paused));
     }
 
     armed.retain(|id, _| want.contains(id));

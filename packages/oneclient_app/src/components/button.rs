@@ -26,6 +26,9 @@ pub enum ButtonSize {
     Icon,
 }
 
+/// How much a disabled button is faded out.
+const DISABLED_OPACITY: f32 = 0.5;
+
 struct ButtonColors {
     background: Color,
     hover_background: Color,
@@ -289,6 +292,10 @@ impl Component for Button {
         rect.get_style().clone_from(&self.style);
 
         rect = rect.background(background).color(foreground);
+
+        if !enabled() {
+            rect = rect.opacity(DISABLED_OPACITY);
+        }
 
         if let Some(border) = border_color {
             rect = rect.border(

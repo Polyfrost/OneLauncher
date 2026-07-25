@@ -42,7 +42,7 @@ impl Component for WhenChart {
 
         let control = SegmentedControl::new(mode)
             .height(30.)
-            .segment(Segment::new(WhenMode::Weekday).label("Weekday"))
+            .segment(Segment::new(WhenMode::Weekday).label("Day"))
             .segment(Segment::new(WhenMode::Hour).label("Hour"))
             .into_element();
 

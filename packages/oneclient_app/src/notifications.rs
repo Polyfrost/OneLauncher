@@ -21,7 +21,10 @@ pub struct NotificationAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NotificationActionKind {
-    OpenClusterUpdate(ClusterUpdateSummary),
+    /// Opens the changes modal for every cluster touched by one sync. Kept as a
+    /// list so a batch sync stays a single "View changes" action instead of one
+    /// button per cluster.
+    OpenClusterUpdate(Vec<ClusterUpdateSummary>),
 }
 
 /// One changed package in a cluster update, carrying enough identity to
@@ -149,7 +152,7 @@ pub struct NotificationSnapshot {
     pub inbox: Vec<InboxEntry>,
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
-    pub cluster_update: Option<ClusterUpdateSummary>,
+    pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
     pub active_toast_entry_ids: Vec<u64>,
 }
 
@@ -167,7 +170,7 @@ pub struct NotificationState {
     grouped_entries: HashMap<Uuid, u64>,
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
-    cluster_update: Option<ClusterUpdateSummary>,
+    cluster_update: Option<Vec<ClusterUpdateSummary>>,
 }
 
 /// Fixed display order for the category rows.
@@ -282,8 +285,11 @@ impl NotificationState {
         }
     }
 
-    pub fn open_cluster_update(&mut self, summary: ClusterUpdateSummary) {
-        self.cluster_update = Some(summary);
+    pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>) {
+        if summaries.is_empty() {
+            return;
+        }
+        self.cluster_update = Some(summaries);
     }
 
     pub fn close_cluster_update(&mut self) {

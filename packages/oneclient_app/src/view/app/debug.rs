@@ -199,12 +199,18 @@ impl Component for ClusterUpdateSimulator {
         let added = use_state(|| "Lithium".to_string());
         let removed = use_state(|| "OptiFine".to_string());
 
-        let simulate = dispatch;
+        let simulate = dispatch.clone();
 
         rect()
             .vertical()
             .width(Size::fill())
             .spacing(10.)
+            .child(
+                label()
+                    .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed cluster, opened into the changes modal.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
             .child(
                 rect()
                     .horizontal()
@@ -248,40 +254,180 @@ impl Component for ClusterUpdateSimulator {
                     .child(Icon::new(IconType::DownloadCloud02).size(16.))
                     .text("Simulate Cluster Update")
                     .on_press(move |_| {
-                        let name = cluster_name.read().clone();
                         let summary = ClusterUpdateSummary {
                             cluster_id: cluster_id.read().trim().parse().unwrap_or(1),
-                            cluster_name: name.clone(),
-                            updated: split_csv(&updated.read())
-                                .into_iter()
-                                .map(ClusterUpdateItem::from_name)
-                                .collect(),
-                            added: split_csv(&added.read())
-                                .into_iter()
-                                .map(ClusterUpdateItem::from_name)
-                                .collect(),
-                            removed: split_csv(&removed.read())
-                                .into_iter()
-                                .map(ClusterUpdateItem::from_name)
-                                .collect(),
+                            cluster_name: cluster_name.read().clone(),
+                            updated: cluster_update_items(&split_csv(&updated.read())),
+                            added: cluster_update_items(&split_csv(&added.read())),
+                            removed: cluster_update_items(&split_csv(&removed.read())),
                         };
-                        let total = summary.total();
-                        simulate
-                            .notify("Cluster updated")
-                            .body(format!(
-                                "{total} package{} changed in {name}",
-                                if total == 1 { "" } else { "s" }
-                            ))
-                            .icon(IconType::DownloadCloud02)
-                            .action(NotificationAction {
-                                label: "View changes".to_string(),
-                                kind: NotificationActionKind::OpenClusterUpdate(summary),
-                            })
-                            .send();
+                        send_cluster_update(&simulate, vec![summary]);
                     }),
             )
+            .child(
+                label()
+                    .text("Presets — every shape the notification and modal can take.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .children(cluster_update_preset_rows(&dispatch))
             .into_element()
     }
+}
+
+type ClusterUpdatePreset = fn() -> Vec<ClusterUpdateSummary>;
+
+/// Each preset pins down one variation the changes modal has to handle: the
+/// singular/plural copy, an empty category tab, the single- vs multi-cluster
+/// footer, per-tab cluster grouping, and header overflow.
+const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
+    (
+        "1 cluster · all categories",
+        IconType::DownloadCloud02,
+        || {
+            vec![preset_summary(
+                1,
+                "PolyBlock",
+                &["Sodium 0.5 → 0.6", "Iris 1.7 → 1.8", "Patcher 1.8 → 1.9"],
+                &["Lithium", "FerriteCore"],
+                &["OptiFine"],
+            )]
+        },
+    ),
+    ("1 cluster · updates only", IconType::RefreshCw01, || {
+        vec![preset_summary(
+            1,
+            "PolyBlock",
+            &[
+                "Sodium 0.5 → 0.6",
+                "Iris 1.7 → 1.8",
+                "Indium 1.0 → 1.1",
+                "Fabric API 0.92 → 0.100",
+            ],
+            &[],
+            &[],
+        )]
+    }),
+    ("1 cluster · single change", IconType::Plus, || {
+        vec![preset_summary(1, "PolyBlock", &[], &["Lithium"], &[])]
+    }),
+    ("3 clusters · mixed", IconType::DotsGrid, || {
+        vec![
+            preset_summary(
+                1,
+                "PolyBlock",
+                &["Sodium 0.5 → 0.6", "Iris 1.7 → 1.8"],
+                &["Lithium"],
+                &[],
+            ),
+            preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"]),
+            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[]),
+        ]
+    }),
+    ("2 clusters · removals only", IconType::Trash01, || {
+        vec![
+            preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"]),
+            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"]),
+        ]
+    }),
+    ("6 clusters · long names", IconType::Database01, || {
+        (1..=6)
+            .map(|i| {
+                ClusterUpdateSummary {
+                    cluster_id: i,
+                    cluster_name: format!(
+                        "Cluster {i} with a deliberately overlong name that has to truncate"
+                    ),
+                    updated: cluster_update_items(&[
+                        format!("Sodium 0.{i} → 0.{}", i + 1),
+                        format!("Iris 1.{i} → 1.{}", i + 1),
+                    ]),
+                    added: cluster_update_items(&[format!("Lithium {i}")]),
+                    removed: Vec::new(),
+                }
+            })
+            .collect()
+    }),
+];
+
+fn cluster_update_preset_rows(dispatch: &crate::BridgeDispatch) -> Vec<Element> {
+    CLUSTER_UPDATE_PRESETS
+        .chunks(3)
+        .map(|chunk| {
+            let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
+
+            for (text, icon, build) in chunk {
+                let dispatch = dispatch.clone();
+                let build = *build;
+                row = row.child(
+                    Button::new()
+                        .secondary()
+                        .child(Icon::new(*icon).size(16.))
+                        .text(*text)
+                        .on_press(move |_| send_cluster_update(&dispatch, build())),
+                );
+            }
+
+            row.into_element()
+        })
+        .collect()
+}
+
+fn preset_summary(
+    cluster_id: i64,
+    cluster_name: &str,
+    updated: &[&str],
+    added: &[&str],
+    removed: &[&str],
+) -> ClusterUpdateSummary {
+    ClusterUpdateSummary {
+        cluster_id,
+        cluster_name: cluster_name.to_string(),
+        updated: cluster_update_items(updated),
+        added: cluster_update_items(added),
+        removed: cluster_update_items(removed),
+    }
+}
+
+fn cluster_update_items(names: &[impl AsRef<str>]) -> Vec<ClusterUpdateItem> {
+    names
+        .iter()
+        .map(|name| ClusterUpdateItem::from_name(name.as_ref()))
+        .collect()
+}
+
+/// Mirrors the copy the bridge builds for real syncs so the simulated
+/// notification is indistinguishable from the real one.
+fn send_cluster_update(dispatch: &crate::BridgeDispatch, summaries: Vec<ClusterUpdateSummary>) {
+    if summaries.is_empty() {
+        return;
+    }
+
+    let total: usize = summaries.iter().map(|s| s.total()).sum();
+    let plural = if total == 1 { "" } else { "s" };
+    let (title, body) = match summaries.as_slice() {
+        [only] => (
+            "Cluster updated",
+            format!("{total} package{plural} changed in {}", only.cluster_name),
+        ),
+        many => (
+            "Mods updated",
+            format!(
+                "{total} package{plural} updated across {} clusters",
+                many.len()
+            ),
+        ),
+    };
+
+    dispatch
+        .notify(title)
+        .body(body)
+        .icon(IconType::DownloadCloud02)
+        .action(NotificationAction {
+            label: "View changes".to_string(),
+            kind: NotificationActionKind::OpenClusterUpdate(summaries),
+        })
+        .send();
 }
 
 #[derive(PartialEq)]

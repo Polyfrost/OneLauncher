@@ -182,8 +182,8 @@ impl BridgeDispatch {
         self.send(BridgeCommand::AnswerPrompt(choice));
     }
 
-    pub fn open_cluster_update(&self, summary: ClusterUpdateSummary) {
-        self.send(BridgeCommand::OpenClusterUpdate(summary));
+    pub fn open_cluster_update(&self, summaries: Vec<ClusterUpdateSummary>) {
+        self.send(BridgeCommand::OpenClusterUpdate(summaries));
     }
 
     pub fn close_cluster_update(&self) {

@@ -89,7 +89,7 @@ pub enum BridgeCommand {
     MarkNotificationRead(u64),
     DismissNotification(u64),
     AnswerPrompt(UserChoice),
-    OpenClusterUpdate(ClusterUpdateSummary),
+    OpenClusterUpdate(Vec<ClusterUpdateSummary>),
     CloseClusterUpdate,
     SendNotification {
         spec: NotificationSpec,

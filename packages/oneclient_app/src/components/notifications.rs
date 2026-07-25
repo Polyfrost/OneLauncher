@@ -479,8 +479,8 @@ fn transfer_footer(stats: TransferStats) -> Element {
 
 fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {
     match kind {
-        NotificationActionKind::OpenClusterUpdate(summary) => {
-            dispatch.open_cluster_update(summary.clone());
+        NotificationActionKind::OpenClusterUpdate(summaries) => {
+            dispatch.open_cluster_update(summaries.clone());
         }
     }
 }

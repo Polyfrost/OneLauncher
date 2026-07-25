@@ -34,6 +34,15 @@ impl UpdateTab {
         }
     }
 
+    /// Empty-state copy; the tab labels don't read as sentences on their own.
+    fn empty_text(self) -> &'static str {
+        match self {
+            UpdateTab::Updates => "Nothing was updated.",
+            UpdateTab::Additions => "Nothing was added.",
+            UpdateTab::Removals => "Nothing was removed.",
+        }
+    }
+
     fn icon(self) -> IconType {
         match self {
             UpdateTab::Updates => IconType::RefreshCw01,
@@ -59,6 +68,13 @@ impl UpdateTab {
     }
 }
 
+/// One cluster's resolved package names for the active tab.
+struct ClusterGroup {
+    cluster_id: i64,
+    cluster_name: String,
+    names: Vec<String>,
+}
+
 #[derive(PartialEq)]
 pub struct ClusterUpdatePopup;
 
@@ -68,13 +84,14 @@ impl Component for ClusterUpdatePopup {
         let dispatch = use_dispatch();
         let active = use_state(|| UpdateTab::Updates);
 
-        let summary = snapshot.cluster_update.clone();
+        let summaries = snapshot.cluster_update.clone();
 
         // Resolve pretty display names through the package-meta cache. Hooks
         // must run unconditionally, so gather ids (empty when no summary) and
         // query every remote provider before the early return below.
-        let all_items: Vec<&ClusterUpdateItem> = summary
+        let all_items: Vec<&ClusterUpdateItem> = summaries
             .iter()
+            .flatten()
             .flat_map(|s| s.updated.iter().chain(&s.added).chain(&s.removed))
             .collect();
         let mut meta = MetaMap::new();
@@ -90,7 +107,7 @@ impl Component for ClusterUpdatePopup {
             }
         }
 
-        let Some(summary) = summary else {
+        let Some(summaries) = summaries.filter(|s| !s.is_empty()) else {
             return rect().into_element();
         };
 
@@ -103,7 +120,7 @@ impl Component for ClusterUpdatePopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&summary, &meta, active, dispatch)),
+                    .child(dialog(&summaries, &meta, active, dispatch)),
             )
             .into_element()
     }
@@ -119,7 +136,7 @@ fn resolve_name(item: &ClusterUpdateItem, meta: &MetaMap) -> String {
 }
 
 fn dialog(
-    summary: &ClusterUpdateSummary,
+    summaries: &[ClusterUpdateSummary],
     meta: &MetaMap,
     active: State<UpdateTab>,
     dispatch: crate::BridgeDispatch,
@@ -140,24 +157,37 @@ fn dialog(
             0.,
             Color::from_argb(150, 0, 0, 0),
         )))
-        .child(content(summary, meta, active, dispatch))
+        .child(content(summaries, meta, active, dispatch))
 }
 
 fn content(
-    summary: &ClusterUpdateSummary,
+    summaries: &[ClusterUpdateSummary],
     meta: &MetaMap,
     active: State<UpdateTab>,
     dispatch: crate::BridgeDispatch,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
-    let cluster_id = summary.cluster_id;
-    let open = move |_| {
-        dispatch.close_cluster_update();
-        let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
+    let total: usize = summaries.iter().map(|s| s.total()).sum();
+    let active_tab = *active.read();
+
+    // A batch sync can touch several clusters; a single-cluster update keeps the
+    // plain wording and the "Open cluster" shortcut in the footer.
+    let single = match summaries {
+        [only] => Some((only.cluster_id, only.cluster_name.clone())),
+        _ => None,
     };
 
-    let total = summary.total();
-    let active_tab = *active.read();
+    let subtitle = match &single {
+        Some((_, name)) => format!(
+            "{total} change{} synced to {name}.",
+            if total == 1 { "" } else { "s" }
+        ),
+        None => format!(
+            "{total} change{} across {} clusters.",
+            if total == 1 { "" } else { "s" },
+            summaries.len()
+        ),
+    };
 
     // Tab row: every category always shown with a count pill, even at zero, so
     // the modal shape stays stable across clusters.
@@ -166,17 +196,29 @@ fn content(
         .height(Size::px(30.))
         .spacing(20.)
         .tabs(UpdateTab::ALL.into_iter().map(|tab| {
-            let count = tab.items(summary).len();
+            let count: usize = summaries.iter().map(|s| tab.items(s).len()).sum();
             let mut set = active;
             TabItem::new(tab.label(), tab == active_tab)
                 .count_text(count.to_string())
                 .on_press(move |_| *set.write() = tab)
         }));
 
-    let names: Vec<String> = active_tab
-        .items(summary)
+    // Clusters with nothing in the active category drop out, so the list never
+    // shows an empty section header.
+    let groups: Vec<ClusterGroup> = summaries
         .iter()
-        .map(|item| resolve_name(item, meta))
+        .filter_map(|summary| {
+            let names: Vec<String> = active_tab
+                .items(summary)
+                .iter()
+                .map(|item| resolve_name(item, meta))
+                .collect();
+            (!names.is_empty()).then(|| ClusterGroup {
+                cluster_id: summary.cluster_id,
+                cluster_name: summary.cluster_name.clone(),
+                names,
+            })
+        })
         .collect();
 
     rect()
@@ -200,17 +242,19 @@ fn content(
                 )
                 .child(
                     label()
-                        .text(format!(
-                            "{total} change{} synced to this cluster.",
-                            if total == 1 { "" } else { "s" }
-                        ))
+                        .text(subtitle)
                         .font_size(12.5)
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 ),
         )
         .child(tabs)
-        .child(change_list(active_tab, &names))
+        .child(change_list(
+            active_tab,
+            &groups,
+            single.is_none(),
+            &dispatch,
+        ))
         .child(
             rect()
                 .horizontal()
@@ -224,17 +268,29 @@ fn content(
                         .on_press(move |_| dismiss.close_cluster_update())
                         .text("Dismiss"),
                 )
-                .child(
+                .maybe_child(single.map(|(cluster_id, _)| {
+                    let open = dispatch.clone();
                     Button::new()
                         .primary()
-                        .on_press(open)
+                        .on_press(move |_| open_cluster(&open, cluster_id))
                         .text("Open cluster")
-                        .child(Icon::new(IconType::ArrowRight).size(15.)),
-                ),
+                        .child(Icon::new(IconType::ArrowRight).size(15.))
+                        .into_element()
+                })),
         )
 }
 
-fn change_list(tab: UpdateTab, names: &[String]) -> impl IntoElement {
+fn open_cluster(dispatch: &crate::BridgeDispatch, cluster_id: i64) {
+    dispatch.close_cluster_update();
+    let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
+}
+
+fn change_list(
+    tab: UpdateTab,
+    groups: &[ClusterGroup],
+    show_headers: bool,
+    dispatch: &crate::BridgeDispatch,
+) -> impl IntoElement {
     let accent = tab.accent();
 
     let mut scroll = ScrollArea::new()
@@ -242,7 +298,7 @@ fn change_list(tab: UpdateTab, names: &[String]) -> impl IntoElement {
         .height(Size::flex(1.0))
         .spacing(1.);
 
-    if names.is_empty() {
+    if groups.is_empty() {
         return scroll
             .child(
                 rect()
@@ -251,7 +307,7 @@ fn change_list(tab: UpdateTab, names: &[String]) -> impl IntoElement {
                     .center()
                     .child(
                         label()
-                            .text(format!("No {} in this update.", tab.label().to_lowercase()))
+                            .text(tab.empty_text())
                             .font_size(12.5)
                             .color(colors::fg_secondary()),
                     ),
@@ -259,25 +315,77 @@ fn change_list(tab: UpdateTab, names: &[String]) -> impl IntoElement {
             .into_element();
     }
 
-    for name in names {
-        scroll = scroll.child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .cross_align(Alignment::Center)
-                .spacing(9.)
-                .padding(Gaps::new_symmetric(5., 6.))
-                .child(Icon::new(tab.icon()).size(13.).color(accent))
-                .child(
-                    label()
-                        .text(name.clone())
-                        .font_size(12.5)
-                        .max_lines(1)
-                        .width(Size::flex(1.0))
-                        .color(colors::fg_primary()),
-                ),
-        );
+    for (index, group) in groups.iter().enumerate() {
+        if show_headers {
+            scroll = scroll.child(cluster_header(group, index == 0, dispatch.clone()));
+        }
+
+        for name in &group.names {
+            scroll = scroll.child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(9.)
+                    .padding(Gaps::new_symmetric(5., 6.))
+                    .child(Icon::new(tab.icon()).size(13.).color(accent))
+                    .child(
+                        label()
+                            .text(name.clone())
+                            .font_size(12.5)
+                            .max_lines(1)
+                            .width(Size::flex(1.0))
+                            .color(colors::fg_primary()),
+                    ),
+            );
+        }
     }
 
     scroll.into_element()
+}
+
+/// Section header naming the cluster a run of changes belongs to. Pressing it
+/// jumps straight to that cluster, which is the multi-cluster stand-in for the
+/// footer's "Open cluster" shortcut.
+fn cluster_header(
+    group: &ClusterGroup,
+    first: bool,
+    dispatch: crate::BridgeDispatch,
+) -> impl IntoElement {
+    let cluster_id = group.cluster_id;
+    let count = group.names.len();
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .padding(Gaps::new_symmetric(6., 8.))
+        .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
+        .corner_radius(CornerRadius::new_all(8.))
+        .background(colors::component_bg())
+        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .on_press(move |_| open_cluster(&dispatch, cluster_id))
+        .child(
+            label()
+                .text(group.cluster_name.clone())
+                .font_size(12.)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .max_lines(1)
+                .width(Size::flex(1.0))
+                .color(colors::fg_primary()),
+        )
+        .child(
+            label()
+                .text(count.to_string())
+                .font_size(11.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            Icon::new(IconType::ArrowRight)
+                .size(12.)
+                .color(colors::fg_secondary()),
+        )
 }

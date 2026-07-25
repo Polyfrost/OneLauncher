@@ -856,35 +856,34 @@ async fn cluster_update_notification(
         progress: None,
         actions: vec![NotificationAction {
             label: "View changes".to_string(),
-            kind: NotificationActionKind::OpenClusterUpdate(summary),
+            kind: NotificationActionKind::OpenClusterUpdate(vec![summary]),
         }],
     })
 }
 
-/// Builds a single notification summarising a batch bundle sync, with one
-/// "view changes" action per changed cluster. `None` when nothing changed.
+/// Builds a single notification summarising a batch bundle sync. Every changed
+/// cluster rides along on one "View changes" action so the notification keeps
+/// exactly two buttons no matter how many clusters moved; the modal does the
+/// per-cluster breakdown. `None` when nothing changed.
 async fn combined_cluster_update_spec(
     changed: &[(i64, oneclient_core::ApplyBundleUpdatesResult)],
     services: &oneclient_core::LauncherServices,
 ) -> Option<NotificationSpec> {
-    let mut actions = Vec::new();
+    let mut summaries = Vec::new();
     let mut total_changes = 0usize;
 
     for (cluster_id, result) in changed {
         if let Some(summary) = cluster_update_summary(*cluster_id, result, services).await {
             total_changes += summary.total();
-            actions.push(NotificationAction {
-                label: summary.cluster_name.clone(),
-                kind: NotificationActionKind::OpenClusterUpdate(summary),
-            });
+            summaries.push(summary);
         }
     }
 
-    if actions.is_empty() {
+    if summaries.is_empty() {
         return None;
     }
 
-    let cluster_count = actions.len();
+    let cluster_count = summaries.len();
     let body = format!(
         "{total_changes} package{} updated across {cluster_count} cluster{}",
         if total_changes == 1 { "" } else { "s" },
@@ -897,7 +896,10 @@ async fn combined_cluster_update_spec(
         level: NotificationLevel::Info,
         icon: Some(IconType::DownloadCloud02),
         progress: None,
-        actions,
+        actions: vec![NotificationAction {
+            label: "View changes".to_string(),
+            kind: NotificationActionKind::OpenClusterUpdate(summaries),
+        }],
     })
 }
 

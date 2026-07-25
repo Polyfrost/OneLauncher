@@ -1,13 +1,14 @@
 use std::collections::HashSet;
+use std::fs::FileType;
 use std::path::Path;
 
 use oneclient_db::dao::artifact as artifact_dao;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
-use crate::packages::PackageStore;
 use crate::packages::domain::ContentType;
 use crate::packages::store::{artifact_absolute_path, link_or_copy};
+use crate::packages::{LinkedArtifactInfo, PackageStore};
 use crate::state::LauncherServices;
 
 const REDIRECTED_DIRS: [&str; 2] = ["logs", "crash-reports"];
@@ -30,14 +31,22 @@ pub async fn sync_shared_content(
 
     import_manual_content(services, cluster, game_dir).await;
 
+    let linked = PackageStore::list_linked_artifacts(cluster.id, services).await?;
+
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());
+        let stash = cluster.dir()?.join(content_type.folder_name());
         polyio::create_dir_all(&dir).await.ok();
-        clear_content_files(&dir).await;
+
+        let managed = managed_names(&linked, content_type);
+
+        // Anything still here belongs to whoever played last (or crashed last)
+        // — take it into this cluster rather than deleting it.
+        stash_content_files(&dir, &stash, &managed).await;
         ensure_note(&dir, content_type).await;
+        restore_stashed(&stash, &dir, &managed).await;
     }
 
-    let linked = PackageStore::list_linked_artifacts(cluster.id, services).await?;
     for link in linked {
         if !link.enabled || !SWAP_TYPES.contains(&link.content_type) {
             continue;
@@ -156,14 +165,33 @@ pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
 
 const EMPTY_NOTE_NAME: &str = "WHY_NOTHING_HERE.txt";
 
-async fn clear_content_files(dir: &Path) {
+/// The file names the package store owns inside a content folder. Everything
+/// else in there was put there by the game or the user.
+fn managed_names(linked: &[LinkedArtifactInfo], content_type: ContentType) -> HashSet<String> {
+    linked
+        .iter()
+        .filter(|link| link.content_type == content_type)
+        .map(|link| link.cluster_file_name.clone())
+        .collect()
+}
+
+/// Empty a shared content folder without losing anything the game wrote into
+/// it.
+///
+/// Managed content is dropped — the cluster folder already holds an equivalent
+/// link into the artifact cache. Everything else (a shaderpack's settings
+/// sidecar, an unzipped pack, a stray config) is *moved* into the cluster's own
+/// copy of the folder, and [`restore_stashed`] links it back on the next
+/// launch. That is what keeps shader configs attached to the cluster they were
+/// tuned in instead of being wiped by the next launch of any cluster.
+async fn stash_content_files(dir: &Path, stash: &Path, managed: &HashSet<String>) {
     let Ok(mut entries) = polyio::read_dir(dir).await else {
         return;
     };
 
     while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_owned) else {
             continue;
         };
         if name == EMPTY_NOTE_NAME || name.starts_with('.') {
@@ -174,12 +202,97 @@ async fn clear_content_files(dir: &Path) {
             continue;
         };
 
-        if !file_type.is_file() && !file_type.is_symlink() {
+        // Ours: either a link we made this launch, or a name the store tracks
+        // (on Windows `symlink_file` hard-links, so ours is not always a
+        // symlink). Either way the cluster folder has it covered.
+        if file_type.is_symlink() || managed.contains(&name) {
+            remove_entry(&path, file_type).await;
             continue;
         }
 
-        polyio::remove_file(&path).await.ok();
+        let dest = stash.join(&name);
+        if let Err(err) = move_entry(&path, &dest).await {
+            tracing::warn!(
+                file = %name,
+                error = %err,
+                "failed to stash shared content into cluster; leaving it in place"
+            );
+        }
     }
+}
+
+/// Link the cluster's stashed leftovers back into the shared folder so the
+/// game finds them where it left them. The game writes straight through the
+/// link, so edits land in the cluster folder even if we never get to run on
+/// exit.
+async fn restore_stashed(stash: &Path, dir: &Path, managed: &HashSet<String>) {
+    let Ok(mut entries) = polyio::read_dir(stash).await else {
+        return;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_owned) else {
+            continue;
+        };
+        if name == EMPTY_NOTE_NAME || name.starts_with('.') || managed.contains(&name) {
+            continue;
+        }
+
+        let Ok(file_type) = entry.file_type().await else {
+            continue;
+        };
+        // A link into the artifact cache — managed content is linked from the
+        // database further down, not from here.
+        if file_type.is_symlink() {
+            continue;
+        }
+
+        let dest = dir.join(&name);
+        let result = if file_type.is_dir() {
+            polyio::symlink_dir(&path, &dest).await.map_err(Into::into)
+        } else {
+            link_or_copy(&path, &dest).await
+        };
+
+        if let Err(err) = result {
+            tracing::warn!(
+                file = %name,
+                error = %err,
+                "failed to restore stashed content into shared dir"
+            );
+        }
+    }
+}
+
+async fn remove_entry(path: &Path, file_type: FileType) {
+    if file_type.is_dir() {
+        polyio::remove_dir_all(path).await.ok();
+    } else if polyio::remove_file(path).await.is_err() {
+        // A Windows junction has to go through `remove_dir`.
+        polyio::remove_symlink_dir(path).await.ok();
+    }
+}
+
+async fn move_entry(src: &Path, dest: &Path) -> LauncherResult<()> {
+    if let Some(parent) = dest.parent() {
+        polyio::create_dir_all(parent).await.ok();
+    }
+
+    // A stash left from an earlier session is always older than what the game
+    // just wrote, so it loses.
+    if let Ok(meta) = polyio::symlink_metadata(dest).await {
+        remove_entry(dest, meta.file_type()).await;
+    }
+
+    if polyio::rename(src, dest).await.is_ok() {
+        return Ok(());
+    }
+
+    // `rename` cannot cross devices; fall back to a copy for plain files.
+    polyio::copy(src, dest).await?;
+    polyio::remove_file(src).await.ok();
+    Ok(())
 }
 
 async fn ensure_note(dir: &Path, content_type: ContentType) {
@@ -206,12 +319,24 @@ async fn ensure_note(dir: &Path, content_type: ContentType) {
     .ok();
 }
 
-#[tracing::instrument(level = "debug")]
-pub async fn clear_shared_content(game_dir: &Path) -> LauncherResult<()> {
+#[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
+pub async fn clear_shared_content(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    game_dir: &Path,
+) -> LauncherResult<()> {
+    // Run after `import_manual_content`, so anything the user dropped in is
+    // already a tracked artifact by now and gets dropped rather than stashed.
+    let linked = PackageStore::list_linked_artifacts(cluster.id, services)
+        .await
+        .unwrap_or_default();
+
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());
+        let stash = cluster.dir()?.join(content_type.folder_name());
         polyio::create_dir_all(&dir).await.ok();
-        clear_content_files(&dir).await;
+
+        stash_content_files(&dir, &stash, &managed_names(&linked, content_type)).await;
         ensure_note(&dir, content_type).await;
     }
     Ok(())
@@ -328,4 +453,118 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::*;
+
+    fn tmp_root(tag: &str) -> PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+
+        let dir =
+            std::env::temp_dir().join(format!("oneclient_shd_{}_{tag}_{n}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        dir
+    }
+
+    fn managed(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| (*n).to_string()).collect()
+    }
+
+    /// A shaderpack's settings sidecar has to survive a launch/exit cycle, and
+    /// end up in the cluster rather than the shared dir.
+    #[tokio::test]
+    async fn shader_settings_survive_a_session() {
+        let root = tmp_root("shader_settings");
+        let shared = root.join("shared").join("shaderpacks");
+        let stash = root.join("cluster").join("shaderpacks");
+        polyio::create_dir_all(&shared).await.unwrap();
+
+        let names = managed(&["bsl.zip"]);
+
+        // Play: the pack is linked in, the game writes its settings next to it.
+        polyio::write(shared.join("bsl.zip"), b"pack".as_slice())
+            .await
+            .unwrap();
+        polyio::write(shared.join("bsl.zip.txt"), b"BLOOM=off".as_slice())
+            .await
+            .unwrap();
+
+        // Exit.
+        stash_content_files(&shared, &stash, &names).await;
+        assert!(!shared.join("bsl.zip").exists(), "managed pack left behind");
+        assert!(!shared.join("bsl.zip.txt").exists(), "sidecar left behind");
+        assert_eq!(
+            polyio::read_to_string(stash.join("bsl.zip.txt")).await.unwrap(),
+            "BLOOM=off"
+        );
+
+        // Next launch.
+        restore_stashed(&stash, &shared, &names).await;
+        assert_eq!(
+            polyio::read_to_string(shared.join("bsl.zip.txt")).await.unwrap(),
+            "BLOOM=off"
+        );
+
+        // The game edits its settings through the link we restored.
+        polyio::write(stash.join("bsl.zip.txt"), b"BLOOM=on".as_slice())
+            .await
+            .unwrap();
+        assert_eq!(
+            polyio::read_to_string(shared.join("bsl.zip.txt")).await.unwrap(),
+            "BLOOM=on"
+        );
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// An unzipped pack is a directory; it moves out and comes back as a link.
+    #[tokio::test]
+    async fn unpacked_dirs_move_into_the_cluster() {
+        let root = tmp_root("unpacked");
+        let shared = root.join("shared").join("shaderpacks");
+        let stash = root.join("cluster").join("shaderpacks");
+        polyio::create_dir_all(shared.join("Loose/shaders")).await.unwrap();
+        polyio::write(shared.join("Loose/shaders/final.fsh"), b"void main".as_slice())
+            .await
+            .unwrap();
+
+        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        assert!(!shared.join("Loose").exists());
+        assert!(stash.join("Loose/shaders/final.fsh").exists());
+
+        restore_stashed(&stash, &shared, &HashSet::new()).await;
+        assert!(shared.join("Loose/shaders/final.fsh").exists());
+
+        // Only the link goes, never the stashed original.
+        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        assert!(!shared.join("Loose").exists());
+        assert!(stash.join("Loose/shaders/final.fsh").exists());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// The note explaining the empty folder is ours, and stays put.
+    #[tokio::test]
+    async fn note_is_never_stashed() {
+        let root = tmp_root("note");
+        let shared = root.join("shared").join("mods");
+        let stash = root.join("cluster").join("mods");
+        polyio::create_dir_all(&shared).await.unwrap();
+        polyio::write(shared.join(EMPTY_NOTE_NAME), b"hi".as_slice())
+            .await
+            .unwrap();
+
+        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        assert!(shared.join(EMPTY_NOTE_NAME).exists());
+        assert!(!stash.join(EMPTY_NOTE_NAME).exists());
+
+        std::fs::remove_dir_all(&root).ok();
+    }
 }

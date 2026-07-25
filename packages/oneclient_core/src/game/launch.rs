@@ -490,7 +490,7 @@ pub(crate) async fn finalize_session(
 
     if !dedicated {
         crate::game::import_manual_content(&state.services, cluster, cwd).await;
-        if let Err(err) = crate::game::clear_shared_content(cwd).await {
+        if let Err(err) = crate::game::clear_shared_content(&state.services, cluster, cwd).await {
             tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
         }
         crate::game::unlink_cluster_logs(cwd).await;

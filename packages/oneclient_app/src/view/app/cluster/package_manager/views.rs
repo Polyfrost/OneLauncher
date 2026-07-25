@@ -495,7 +495,6 @@ impl Component for ContentBox {
         let layout = self.layout;
 
         let dispatch = use_dispatch();
-        let mut dropping = use_state(|| false);
 
         let count = items.len();
         let scroll = (count > 0).then(|| match layout {
@@ -551,8 +550,8 @@ impl Component for ContentBox {
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
-        let drop_dispatch = dispatch.clone();
-
+        // File drops are handled window-wide by the app shell, which prompts for
+        // a destination — this box deliberately doesn't claim them.
         rect()
             .vertical()
             .width(Size::fill())
@@ -562,22 +561,6 @@ impl Component for ContentBox {
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
-            .maybe(*dropping.read(), |el| {
-                el.border(
-                    Border::new()
-                        .fill(colors::brand())
-                        .width(2.)
-                        .alignment(BorderAlignment::Inner),
-                )
-            })
-            .on_global_file_hover(move |_| dropping.set(true))
-            .on_global_file_hover_cancelled(move |_| dropping.set(false))
-            .on_file_drop(move |e: Event<FileEventData>| {
-                dropping.set(false);
-                if let Some(path) = &e.file_path {
-                    drop_dispatch.import_local_file(cluster_id, content_type, path.clone());
-                }
-            })
             .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty)

@@ -9,7 +9,9 @@ use skia_safe::sampling_options::CubicResampler;
 
 use crate::Route;
 use crate::components::Button;
-use crate::components::{AppNavbar, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{
+    AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup, ScrollArea,
+};
 use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
@@ -23,6 +25,7 @@ use crate::hooks::{
 use crate::theme::colors;
 use oneclient_core::notification::LaunchStage;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 #[derive(PartialEq)]
 pub struct AppShell;
@@ -37,6 +40,13 @@ impl Component for AppShell {
 
         let browser_state = use_state(HashMap::new);
         use_provide_browser_state(BrowserStateStore(browser_state));
+
+        // Window-wide file drops. `FileDrop` bubbles, so anything a dedicated
+        // drop zone doesn't claim with `stop_propagation()` ends up here and the
+        // user gets asked where it should go. Only the overlay reads these, so
+        // hovering a file doesn't re-render the shell.
+        let mut drop_hovering = use_state(|| false);
+        let mut drop_pending = use_state(Vec::<PathBuf>::new);
 
         let game = use_game_snapshot();
 
@@ -60,6 +70,14 @@ impl Component for AppShell {
             .height(Size::fill())
             .color(colors::fg_primary())
             .overflow(Overflow::Clip)
+            .on_global_file_hover(move |_| drop_hovering.set(true))
+            .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
+            .on_file_drop(move |e: Event<FileEventData>| {
+                drop_hovering.set(false);
+                if let Some(path) = &e.file_path {
+                    drop_pending.write().push(path.clone());
+                }
+            })
             .child(AppNavbar)
             .child(AppHomeBackground)
             .child(
@@ -68,6 +86,10 @@ impl Component for AppShell {
                     .height(Size::fill())
                     .child(AnimatedRouter::<Route>::new(AnimatedAppOutlet)),
             )
+            .child(FileDropOverlay {
+                hovering: drop_hovering,
+                pending: drop_pending,
+            })
             .maybe_child(
                 game.error
                     .clone()

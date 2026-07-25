@@ -89,6 +89,7 @@ pub async fn download_to_path(
 }
 
 #[tracing::instrument(skip(requester, notifier, progress, label), fields(%url), level = "debug")]
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_bytes_verified(
     requester: &RequestClient,
     notifier: &NotificationService,

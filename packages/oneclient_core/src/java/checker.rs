@@ -45,9 +45,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
     let info = java_info
         .lines()
         .filter_map(|line| {
-            let mut parts = line.splitn(2, '=');
-            let key = parts.next()?;
-            let value = parts.next()?;
+            let (key, value) = line.split_once('=')?;
 
             Some((key.to_string(), value.to_string()))
         })

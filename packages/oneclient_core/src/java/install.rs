@@ -113,9 +113,9 @@ fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> P
     {
         use crate::java::vendors::JavaVendor;
 
-        if !base_path.join("Contents").join("Home").exists() {
-            if let Ok(mut entries) = std::fs::read_dir(&base_path) {
-                if let Some(dir) = entries.flatten().find(|entry| {
+        if !base_path.join("Contents").join("Home").exists()
+            && let Ok(entries) = std::fs::read_dir(&base_path)
+                && let Some(dir) = entries.flatten().find(|entry| {
                     let file_name = entry.file_name();
                     let name = file_name.to_string_lossy();
                     (name.ends_with(".jre") || name.ends_with(".jdk") || name.contains("zulu"))
@@ -123,17 +123,14 @@ fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> P
                 }) {
                     base_path = dir.path();
                 }
-            }
-        }
 
-        if package.vendor == JavaVendor::Zulu {
-            if let Some(major) = package.java_version.first() {
+        if package.vendor == JavaVendor::Zulu
+            && let Some(major) = package.java_version.first() {
                 let zulu_bundle = base_path.join(format!("zulu-{major}.jre"));
                 if zulu_bundle.join("Contents").join("Home").exists() {
                     base_path = zulu_bundle;
                 }
             }
-        }
 
         base_path.join(java_executable_relative_path())
     }

@@ -366,12 +366,13 @@ async fn download_bundle_if_needed(
         polyio::create_dir_all(parent).await?;
     }
 
+    let size_hint = res.content_length();
     let stream = res
         .stream(ResponseOptions::default(), &services.notifier)
         .await
         .map_err(map_request_error)?;
     let stream = std::pin::pin!(stream);
-    polyio::write_stream(disk_path, stream)
+    polyio::write_stream(disk_path, stream, size_hint)
         .await
         .map_err(map_request_error)?;
 

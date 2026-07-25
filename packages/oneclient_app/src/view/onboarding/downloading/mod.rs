@@ -5,7 +5,7 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::notification::{
-    GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService,
+    GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService, TaskCategory,
 };
 use oneclient_core::{
     BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, SentryExclusion,
@@ -61,7 +61,19 @@ struct TaskLine {
     phase: &'static str,
     current: u64,
     total: u64,
+    category: TaskCategory,
 }
+
+/// Display order for the task rows, mirroring the notification centre.
+const TASK_LANES: [TaskCategory; 7] = [
+    TaskCategory::Java,
+    TaskCategory::Client,
+    TaskCategory::Libraries,
+    TaskCategory::Natives,
+    TaskCategory::Assets,
+    TaskCategory::Metadata,
+    TaskCategory::Packages,
+];
 
 #[derive(Clone, PartialEq, Default)]
 struct GroupedAgg {
@@ -86,9 +98,37 @@ impl GroupedAgg {
         }
     }
 
+    /// One lane per category, taken round-robin.
+    ///
+    /// Assets run 32-at-a-time and sort before everything alphabetically, so a
+    /// flat sorted list showed nothing but assets for the whole game download —
+    /// libraries, natives and the client were downloading at the same time and
+    /// never got a row. Round-robin gives every active category a slot before
+    /// any category gets a second one.
     fn task_list(&self) -> Vec<TaskLine> {
-        let mut tasks: Vec<TaskLine> = self.children.values().cloned().collect();
-        tasks.sort_by(|a, b| a.label.cmp(&b.label));
+        let mut lanes: Vec<Vec<TaskLine>> = TASK_LANES
+            .iter()
+            .map(|category| {
+                let mut lane: Vec<TaskLine> = self
+                    .children
+                    .values()
+                    .filter(|task| task.category == *category)
+                    .cloned()
+                    .collect();
+                lane.sort_by(|a, b| a.label.cmp(&b.label));
+                lane
+            })
+            .collect();
+
+        let deepest = lanes.iter().map(Vec::len).max().unwrap_or(0);
+        let mut tasks = Vec::new();
+        for index in 0..deepest {
+            for lane in &mut lanes {
+                if let Some(task) = lane.get(index) {
+                    tasks.push(task.clone());
+                }
+            }
+        }
         tasks
     }
 
@@ -822,6 +862,7 @@ fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
             child_id,
             label,
             total,
+            category,
             ..
         } => {
             agg.children.insert(
@@ -831,6 +872,7 @@ fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
                     phase: "Downloading",
                     current: 0,
                     total: total.max(1),
+                    category,
                 },
             );
         }

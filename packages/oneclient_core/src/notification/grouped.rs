@@ -218,7 +218,105 @@ impl GroupedProgressChild {
 }
 
 impl Drop for GroupedProgressChild {
+    /// Only the *last* handle finishes the task.
+    ///
+    /// `finished` lives in the shared inner, so finishing on every clone's drop
+    /// ended the task the moment any temporary copy died — and copies are handed
+    /// around routinely (into `ResponseOptions`, into stream closures). A
+    /// download would emit `FinishChild` before its first byte arrived, after
+    /// which every `set_progress` silently no-opped and the UI removed the row.
+    /// The safety net for early returns still works: on an error path the last
+    /// handle goes out of scope too.
     fn drop(&mut self) {
-        self.finish();
+        if Arc::strong_count(&self.inner) == 1 {
+            self.finish();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::notification::Notification;
+
+    fn drain(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<Notification>,
+    ) -> Vec<GroupedProgressEvent> {
+        let mut events = Vec::new();
+        while let Ok(notification) = rx.try_recv() {
+            if let Notification::GroupedProgress(event) = notification {
+                events.push(event);
+            }
+        }
+        events
+    }
+
+    fn has_finish(events: &[GroupedProgressEvent]) -> bool {
+        events
+            .iter()
+            .any(|e| matches!(e, GroupedProgressEvent::FinishChild { .. }))
+    }
+
+    /// A child handle gets cloned into `ResponseOptions` and into the streaming
+    /// closure. If dropping one of those copies finished the task, the download
+    /// would report completion before its first byte and every later progress
+    /// update would be dropped on the floor.
+    #[test]
+    fn dropping_a_clone_does_not_finish_the_task() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let notifier = NotificationService::new(tx);
+        let session = GroupedProgressSession::start(&notifier, "test");
+        let child = session.child("file", 100, TaskCategory::Assets);
+        let _ = drain(&mut rx);
+
+        drop(child.clone());
+        assert!(
+            !has_finish(&drain(&mut rx)),
+            "a cloned handle going out of scope must not finish the task"
+        );
+
+        child.set_progress(50, Some(100));
+        let events = drain(&mut rx);
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                GroupedProgressEvent::UpdateChild { current: 50, .. }
+            )),
+            "progress must still be reported after a clone is dropped: {events:?}"
+        );
+
+        drop(child);
+        assert!(
+            has_finish(&drain(&mut rx)),
+            "the last handle going out of scope should finish the task"
+        );
+    }
+
+    #[test]
+    fn explicit_finish_reports_once() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let notifier = NotificationService::new(tx);
+        let session = GroupedProgressSession::start(&notifier, "test");
+        let child = session.child("file", 100, TaskCategory::Assets);
+        let _ = drain(&mut rx);
+
+        child.finish();
+        assert_eq!(drain(&mut rx).iter().filter(|e| matches!(e, GroupedProgressEvent::FinishChild { .. })).count(), 1);
+
+        drop(child);
+        assert!(!has_finish(&drain(&mut rx)), "drop must not finish twice");
+    }
+
+    #[test]
+    fn progress_after_finish_is_ignored() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let notifier = NotificationService::new(tx);
+        let session = GroupedProgressSession::start(&notifier, "test");
+        let child = session.child("file", 100, TaskCategory::Assets);
+        child.finish();
+        let _ = drain(&mut rx);
+
+        child.set_progress(75, Some(100));
+        assert!(drain(&mut rx).is_empty());
     }
 }

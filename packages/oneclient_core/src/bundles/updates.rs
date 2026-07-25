@@ -9,7 +9,11 @@ use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 use tokio::sync::Mutex as AsyncMutex;
 
-use crate::bundles::install::{install_package_from_bundle, remove_artifact_from_cluster};
+use futures_util::StreamExt;
+
+use crate::bundles::install::{
+    BUNDLE_INSTALL_CONCURRENCY, install_package_from_bundle, remove_artifact_from_cluster,
+};
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{
@@ -403,35 +407,94 @@ pub async fn apply_bundle_updates_with(
         s.expect(crate::notification::TaskCategory::Packages, count, bytes);
     }
 
-    for update in check.updates_available {
-        let child = session.map(|s| {
-            let c = s.child(
-                update.new_file.display_name(),
-                update.new_file.size.max(1),
-                crate::notification::TaskCategory::Packages,
-            );
-            c.set_phase(crate::notification::TaskPhase::Downloading);
-            c
-        });
-        match apply_single_update(&update, &overrides, child.as_ref(), services).await {
-            Ok(_) => result.updates_applied.push(update),
+    // Fetch concurrently, reconcile in order. The install path already fans out
+    // over its files; applying updates one at a time made the same work take
+    // several times longer here than it does during a fresh install.
+    //
+    // Splitting fetch from reconcile is what makes the fan-out safe: no artifact
+    // is unlinked while another package is still downloading, so an update that
+    // supersedes a hash another update is installing can't race it.
+    let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
+        |update| async move {
+            let child = session.map(|s| {
+                let c = s.child(
+                    update.new_file.display_name(),
+                    update.new_file.size.max(1),
+                    crate::notification::TaskCategory::Packages,
+                );
+                c.set_phase(crate::notification::TaskPhase::Downloading);
+                c
+            });
+            let installed = install_package_from_bundle(
+                &update.new_file,
+                update.cluster_id,
+                &update.bundle_name,
+                true,
+                child.as_ref(),
+                services,
+            )
+            .await;
+            if let Some(child) = child {
+                child.set_phase(crate::notification::TaskPhase::Installing);
+                child.finish();
+            }
+            (update, installed)
+        },
+    ))
+    .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+
+    for (update, installed) in fetched_updates {
+        match installed {
+            Ok(hash) => match reconcile_update(&update, &hash, &overrides, services).await {
+                Ok(()) => result.updates_applied.push(update),
+                Err(err) => result.updates_failed.push(err.to_string()),
+            },
             Err(err) => result.updates_failed.push(err.to_string()),
         }
     }
 
-    for addition in check.additions_available {
+    let fetched_additions = futures_util::stream::iter(check.additions_available.into_iter().map(
+        |addition| async move {
+            let child = session.map(|s| {
+                let c = s.child(
+                    addition.new_file.display_name(),
+                    addition.new_file.size.max(1),
+                    crate::notification::TaskCategory::Packages,
+                );
+                c.set_phase(crate::notification::TaskPhase::Downloading);
+                c
+            });
+            let installed = install_package_from_bundle(
+                &addition.new_file,
+                addition.cluster_id,
+                &addition.bundle_name,
+                true,
+                child.as_ref(),
+                services,
+            )
+            .await;
+            if let Some(child) = child {
+                child.set_phase(crate::notification::TaskPhase::Installing);
+                child.finish();
+            }
+            (addition, installed)
+        },
+    ))
+    .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
+
+    for (addition, installed) in fetched_additions {
         let file_id = addition.new_file.kind.package_id();
-        let child = session.map(|s| {
-            let c = s.child(
-                addition.new_file.display_name(),
-                addition.new_file.size.max(1),
-                crate::notification::TaskCategory::Packages,
-            );
-            c.set_phase(crate::notification::TaskPhase::Downloading);
-            c
-        });
-        match apply_single_addition(&addition, &overrides, child.as_ref(), services).await {
-            Ok(_) => result.additions_applied.push(addition),
+        match installed {
+            Ok(hash) => {
+                match reconcile_addition(&addition, &hash, &overrides, services).await {
+                    Ok(()) => result.additions_applied.push(addition),
+                    Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
+                }
+            }
             Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
         }
     }
@@ -471,30 +534,19 @@ pub async fn apply_bundle_updates_with(
     Ok(result)
 }
 
+/// Local bookkeeping for an update whose new file is already downloaded and
+/// linked: apply the user's enable/disable choice, then drop the artifact the
+/// update supersedes.
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
-async fn apply_single_update(
+async fn reconcile_update(
     update: &BundlePackageUpdate,
+    hash: &str,
     overrides: &[ClusterBundleOverrideRow],
-    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
-    let hash = install_package_from_bundle(
-        &update.new_file,
-        update.cluster_id,
-        &update.bundle_name,
-        true,
-        child,
-        services,
-    )
-    .await?;
-    if let Some(child) = child {
-        child.set_phase(crate::notification::TaskPhase::Installing);
-        child.finish();
-    }
-
     let file_id = update.new_file.kind.package_id();
     if should_be_disabled(&update.bundle_name, &file_id, overrides) {
-        PackageStore::toggle_artifact_enabled(update.cluster_id, &hash, services).await?;
+        PackageStore::toggle_artifact_enabled(update.cluster_id, hash, services).await?;
     }
 
     if hash == update.installed_hash {
@@ -505,29 +557,15 @@ async fn apply_single_update(
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = addition.cluster_id, bundle = %addition.bundle_name))]
-async fn apply_single_addition(
+async fn reconcile_addition(
     addition: &BundlePackageAddition,
+    hash: &str,
     overrides: &[ClusterBundleOverrideRow],
-    child: Option<&crate::notification::GroupedProgressChild>,
     services: &LauncherServices,
 ) -> LauncherResult<()> {
-    let hash = install_package_from_bundle(
-        &addition.new_file,
-        addition.cluster_id,
-        &addition.bundle_name,
-        true,
-        child,
-        services,
-    )
-    .await?;
-    if let Some(child) = child {
-        child.set_phase(crate::notification::TaskPhase::Installing);
-        child.finish();
-    }
-
     let file_id = addition.new_file.kind.package_id();
     if should_be_disabled(&addition.bundle_name, &file_id, overrides) {
-        PackageStore::toggle_artifact_enabled(addition.cluster_id, &hash, services).await?;
+        PackageStore::toggle_artifact_enabled(addition.cluster_id, hash, services).await?;
     }
 
     Ok(())

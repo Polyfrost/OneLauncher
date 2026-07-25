@@ -44,7 +44,7 @@ impl CoreBridgeRuntime {
         if let Err(err) = Self::initialize_launcher(&mut snapshots, notifier_tx).await {
             let message = err.to_string();
             snapshots.launcher.error = Some(message.clone());
-            let (notif, _timers, _) = notification_engine.dispatch(
+            notification_engine.dispatch(
                 &mut inbox,
                 Notification::Message {
                     title: "Launcher failed to start".into(),
@@ -52,7 +52,13 @@ impl CoreBridgeRuntime {
                     level: NotificationLevel::Error,
                 },
             );
-            snapshots.notifications = notif;
+            sync_notifications(
+                &mut snapshots,
+                &notification_engine,
+                &inbox,
+                notification_center_open,
+                &pending_prompt,
+            );
             publish(&self.snapshots_tx, &snapshots);
             tracing::error!("launcher init failed: {err:#}");
         } else {
@@ -159,8 +165,7 @@ impl CoreBridgeRuntime {
                                 immediate = true;
                             }
                             other => {
-                                let (notif, _timers, prompt) = engine.dispatch(inbox, other);
-                                snapshots.notifications = notif;
+                                let (_timers, prompt) = engine.dispatch(inbox, other);
                                 if let Some(prompt) = prompt {
                                     *pending = Some(prompt);
                                 }

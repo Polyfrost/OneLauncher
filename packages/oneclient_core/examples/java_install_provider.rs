@@ -51,7 +51,7 @@ async fn main() -> LauncherResult<()> {
 
     println!("Installing package {:#?} to '{:?}'", package, java_dir()?);
 
-    let executable = provider.install_package(&package, &services).await?;
+    let executable = provider.install_package(&package, &services, None).await?;
 
 	println!("Installed: {}", executable.display());
 

@@ -17,7 +17,7 @@ use crate::java::JavaManager;
 use crate::metadata::MetadataStore;
 use crate::notification::GroupedProgressSession;
 use crate::paths;
-use crate::state::LauncherState;
+use crate::state::{LauncherServices, LauncherState};
 use crate::{GameError, LauncherResult};
 
 #[tracing::instrument(skip(state, metadata, shared_progress))]
@@ -83,21 +83,44 @@ pub async fn prepare_cluster(
 
 const JRE_ESTIMATE_BYTES: u64 = 45_000_000;
 
-fn game_download_bytes(info: &VersionInfo) -> u64 {
-    let client = info
-        .downloads
-        .get(&DownloadType::Client)
-        .map(|d| d.size as u64)
-        .unwrap_or(0);
-    let assets = info.asset_index.total_size as u64;
-    let libraries: u64 = info
-        .libraries
-        .iter()
-        .filter_map(|lib| lib.downloads.as_ref())
-        .filter_map(|dl| dl.artifact.as_ref())
-        .map(|artifact| artifact.size as u64)
-        .sum();
-    client + assets + libraries
+/// Bytes the game install still needs. Falls back to the manifest's full size
+/// when the asset index isn't cached yet — which is exactly the case where
+/// nothing is on disk, so the full size is the right answer anyway.
+async fn game_download_bytes(services: &LauncherServices, info: &VersionInfo) -> u64 {
+    let Some(assets_index) = cached_assets_index(info).await else {
+        let client = info
+            .downloads
+            .get(&DownloadType::Client)
+            .map_or(0, |d| d.size as u64);
+        let libraries: u64 = info
+            .libraries
+            .iter()
+            .filter_map(|lib| lib.downloads.as_ref())
+            .filter_map(|dl| dl.artifact.as_ref())
+            .map(|artifact| artifact.size as u64)
+            .sum();
+        return client + info.asset_index.total_size as u64 + libraries;
+    };
+
+    let _ = services;
+    // The estimate runs before a Java runtime is resolved, so rules are checked
+    // against the host architecture. That only shifts natives-related edge cases.
+    match game::plan_downloads(info, assets_index, std::env::consts::ARCH, false, false).await {
+        Ok(plan) => plan.total_bytes(),
+        Err(err) => {
+            tracing::warn!("download plan failed, estimating full size: {err}");
+            info.asset_index.total_size as u64
+        }
+    }
+}
+
+async fn cached_assets_index(
+    info: &VersionInfo,
+) -> Option<interfrost::api::minecraft::AssetsIndex> {
+    let path = paths::assets_index_dir()
+        .ok()?
+        .join(format!("{}.json", info.asset_index.id));
+    polyio::read_json(&path).await.ok()
 }
 
 #[tracing::instrument(level = "debug", skip(state, bundles))]
@@ -126,7 +149,7 @@ pub async fn estimate_cluster_download(
         download_version_info(&state.services, None, &version, loader_version.as_ref(), false).await?
     };
 
-    let mut total = game_download_bytes(&info);
+    let mut total = game_download_bytes(&state.services, &info).await;
 
     if let Some(java) = &info.java_version {
         let installed = JavaManager::list_runtimes(&state.services.db)
@@ -197,6 +220,7 @@ async fn install_cluster(
             java_major,
             search_for_java,
             auto_install_java,
+            Some(progress),
         )
         .await?
     };

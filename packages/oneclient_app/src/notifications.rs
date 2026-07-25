@@ -171,7 +171,8 @@ pub struct NotificationState {
 }
 
 /// Fixed display order for the category rows.
-const CATEGORY_ORDER: [TaskCategory; 6] = [
+const CATEGORY_ORDER: [TaskCategory; 7] = [
+    TaskCategory::Java,
     TaskCategory::Client,
     TaskCategory::Libraries,
     TaskCategory::Natives,
@@ -293,15 +294,15 @@ impl NotificationState {
         inbox.iter().filter(|entry| !entry.read).count()
     }
 
+    /// Folds one notification into the engine state. Deliberately does not build
+    /// a [`NotificationSnapshot`]: during a download this runs tens of thousands
+    /// of times, and every snapshot deep-clones the whole inbox only for the
+    /// caller to discard all but the last. Callers snapshot once, after draining.
     pub fn dispatch(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
         notification: Notification,
-    ) -> (
-        NotificationSnapshot,
-        Vec<ToastDismissTimer>,
-        Option<PendingPrompt>,
-    ) {
+    ) -> (Vec<ToastDismissTimer>, Option<PendingPrompt>) {
         self.pending_timers.clear();
 
         match notification {
@@ -337,27 +338,18 @@ impl NotificationState {
                 reply_tx,
             } => {
                 let pending_prompt = Some(PendingPrompt {
-                    title: title.clone(),
-                    question: question.clone(),
-                    kind,
-                    reply_tx: Some(reply_tx),
-                });
-                let pending_view = Some(PendingPromptView {
                     title,
                     question,
                     kind,
+                    reply_tx: Some(reply_tx),
                 });
                 let timers = std::mem::take(&mut self.pending_timers);
-                return (
-                    self.snapshot(inbox, false, pending_view),
-                    timers,
-                    pending_prompt,
-                );
+                return (timers, pending_prompt);
             }
         }
 
         let timers = std::mem::take(&mut self.pending_timers);
-        (self.snapshot(inbox, false, None), timers, None)
+        (timers, None)
     }
 
     pub fn toggle_center(&mut self, _inbox: &mut [InboxEntry], center_open: bool) -> bool {

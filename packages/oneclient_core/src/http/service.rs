@@ -8,6 +8,13 @@ use crate::{LauncherServices, http::{HttpRequest, RequestError, ResponseExt, Res
 
 const MAX_THROTTLE_RETRIES: u32 = 6;
 
+/// Ceiling on requests waiting for response headers. This is a backstop against
+/// a runaway fan-out, not the download throttle — per-phase concurrency is set
+/// by the callers, and this has to stay above their sum or it becomes the
+/// bottleneck instead. Permits are released once headers arrive, so streaming
+/// bodies don't hold a slot.
+const MAX_INFLIGHT_REQUESTS: usize = 64;
+
 fn retry_after(response: &Response) -> Option<std::time::Duration> {
     let raw = response
         .headers()
@@ -123,7 +130,7 @@ impl RequestClient {
 
         Ok(Self {
             client,
-            semaphore: Arc::new(Semaphore::new(12)),
+            semaphore: Arc::new(Semaphore::new(MAX_INFLIGHT_REQUESTS)),
         })
     }
 }
@@ -219,10 +226,11 @@ impl RequestClient {
         services: &LauncherServices,
     ) -> Result<(), RequestError> {
         let res = self.send(request).await?;
+        let size_hint = res.content_length();
         let http_stream = res.stream(options, &services.notifier).await?;
         let http_stream = std::pin::pin!(http_stream);
 
-        polyio::write_stream(dest, http_stream).await?;
+        polyio::write_stream(dest, http_stream, size_hint).await?;
 
         Ok(())
     }

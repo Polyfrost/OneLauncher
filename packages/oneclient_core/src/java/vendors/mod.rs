@@ -50,8 +50,9 @@ pub trait JavaRuntimeProvider: Send + Sync {
 		&self,
 		package: &JavaPackage,
 		services: &LauncherServices,
+		progress: Option<&crate::notification::GroupedProgressSession>,
 	) -> LauncherResult<PathBuf> {
-        super::install_package(package, services).await
+        super::install_package(package, services, progress).await
     }
 }
 

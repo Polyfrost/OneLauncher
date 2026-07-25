@@ -28,7 +28,7 @@ pub use process::{
 };
 pub use reattach::recover_sessions;
 pub use metadata::{
-    download_minecraft, download_version_info, get_game_versions, get_loader_version,
+    DownloadPlan, download_minecraft, plan_downloads, download_version_info, get_game_versions, get_loader_version,
     get_loader_versions, get_loaders_for_version, is_version_updated, libraries_missing,
     resolve_minecraft_version,
 };

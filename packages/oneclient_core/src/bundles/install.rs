@@ -282,7 +282,9 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
-const BUNDLE_INSTALL_CONCURRENCY: usize = 6;
+/// How many bundle packages are fetched at once. Kept modest because each one
+/// also costs a provider API call, and those are rate limited per-minute.
+pub(crate) const BUNDLE_INSTALL_CONCURRENCY: usize = 6;
 
 #[tracing::instrument(level = "debug", skip(bundles, services))]
 pub async fn enabled_bundle_bytes(

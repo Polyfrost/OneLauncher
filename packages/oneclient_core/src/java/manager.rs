@@ -30,7 +30,7 @@ impl JavaManager {
 		major: u32,
 		search_system: bool,
 	) -> LauncherResult<JavaRuntime> {
-		Self::prepare_java_with_services(&state.services, major, search_system, false).await
+		Self::prepare_java_with_services(&state.services, major, search_system, false, None).await
 	}
 
 	#[tracing::instrument(skip(state))]
@@ -39,15 +39,16 @@ impl JavaManager {
 		major: u32,
 		search_system: bool,
 	) -> LauncherResult<JavaRuntime> {
-		Self::prepare_java_with_services(&state.services, major, search_system, true).await
+		Self::prepare_java_with_services(&state.services, major, search_system, true, None).await
 	}
 
-	#[tracing::instrument(level = "debug", skip(services))]
+	#[tracing::instrument(level = "debug", skip(services, progress))]
 	pub async fn prepare_java_with_services(
 		services: &LauncherServices,
 		major: u32,
 		search_system: bool,
 		auto_install: bool,
+		progress: Option<&crate::notification::GroupedProgressSession>,
 	) -> LauncherResult<JavaRuntime> {
 		if let Some(runtime) = get_latest_runtime(&services.db, major).await? {
 			return Ok(runtime);
@@ -62,11 +63,11 @@ impl JavaManager {
 		}
 
 		if auto_install {
-			return download_and_register(major, services).await;
+			return download_and_register(major, services, progress).await;
 		}
 
 		match services.notifier.prompt_java_install(major).await? {
-			UserChoice::Accept => download_and_register(major, services).await,
+			UserChoice::Accept => download_and_register(major, services, progress).await,
 			UserChoice::Folder(folder) => register_custom_java(&services.db, folder, major).await,
 			UserChoice::Install { vendor, .. } => {
 				Self::install_runtime_from(services, &vendor, major).await
@@ -91,7 +92,7 @@ impl JavaManager {
 		services: &LauncherServices,
 		major: u32,
 	) -> LauncherResult<JavaRuntime> {
-		download_and_register(major, services).await
+		download_and_register(major, services, None).await
 	}
 
 	#[tracing::instrument(level = "debug", skip(services))]
@@ -137,7 +138,7 @@ impl JavaManager {
 			.latest_package_by_major(major, services)
 			.await?
 			.ok_or(JavaError::PackageNotFound { major })?;
-		let executable = provider.install_package(&package, services).await?;
+		let executable = provider.install_package(&package, services, None).await?;
 		register_checked_java(&services.db, &executable, Some(major)).await
 	}
 
@@ -180,10 +181,11 @@ fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRunti
 		.find(|provider| &provider.vendor() == vendor)
 }
 
-#[tracing::instrument(level = "debug", skip(services))]
+#[tracing::instrument(level = "debug", skip(services, progress))]
 async fn download_and_register(
 	major: u32,
 	services: &LauncherServices,
+	progress: Option<&crate::notification::GroupedProgressSession>,
 ) -> LauncherResult<JavaRuntime> {
 	for provider in vendors::runtime_providers() {
 		let vendor = provider.vendor();
@@ -206,7 +208,7 @@ async fn download_and_register(
 
 		tracing::info!(?vendor, major, "downloading Java runtime");
 
-		match provider.install_package(package, services).await {
+		match provider.install_package(package, services, progress).await {
 			Ok(executable) => {
 				return register_checked_java(&services.db, &executable, Some(major)).await;
 			}

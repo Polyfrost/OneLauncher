@@ -7,14 +7,16 @@ use crate::http::{ResponseNotifyOptions, ResponseOptions};
 use crate::java::data::{
 	java_executable_relative_path, JavaPackage, PackageArchive,
 };
+use crate::notification::{GroupedProgressSession, TaskCategory, TaskPhase};
 use crate::paths;
 use crate::state::LauncherServices;
 use crate::LauncherResult;
 
-#[tracing::instrument(level = "debug", skip(services))]
+#[tracing::instrument(level = "debug", skip(services, progress))]
 pub async fn install_package(
 	package: &JavaPackage,
 	services: &LauncherServices,
+	progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<PathBuf> {
 	let java_dir = paths::java_dir()?;
 	polyio::create_dir_all(&java_dir).await?;
@@ -22,24 +24,40 @@ pub async fn install_package(
 	let archive_path = java_dir.join(polyio::sanitize_path(&package.name));
 
 	let major = package.java_version.first().copied().unwrap_or(0);
+
+	// When a caller owns a grouped session (onboarding, cluster prepare) the
+	// runtime is one of that session's tasks. Only a standalone install — from
+	// settings, say — gets its own notification.
+	// No size in the package metadata; the child picks up its real total from
+	// Content-Length as soon as the response headers land.
+	let child = progress
+		.map(|session| session.child(format!("{} {}", package.vendor, major), 0, TaskCategory::Java));
+
+	let notify = match &child {
+		Some(child) => ResponseNotifyOptions::grouped(child.clone()),
+		None => ResponseNotifyOptions::standalone(format!(
+			"Installing {} {}",
+			package.vendor, major
+		))
+		.done_label(format!("Installed {} {}", package.vendor, major)),
+	};
+
 	services.requester
 		.download_file(
 			reqwest::Request::new(Method::GET, Url::parse(&package.download_url)?),
 			&archive_path,
 			ResponseOptions {
-				notify: Some(
-					ResponseNotifyOptions::standalone(format!(
-						"Installing {} {}",
-						package.vendor, major
-					))
-					.done_label(format!("Installed {} {}", package.vendor, major)),
-				),
+				notify: Some(notify),
 			},
 			services,
 		)
 		.await?;
 
 	let extract_root = java_dir.join(stem_without_archive(&package.name));
+
+	if let Some(child) = &child {
+		child.set_phase(TaskPhase::Extracting);
+	}
 
 	match package.archive {
 		PackageArchive::Zip => polyio::extract_zip(&archive_path, &extract_root).await?,

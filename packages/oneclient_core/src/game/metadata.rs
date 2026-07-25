@@ -1,7 +1,9 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use futures_util::{StreamExt, stream};
-use interfrost::api::minecraft::{AssetsIndex, DownloadType, Library, Os, Version, VersionInfo};
+use interfrost::api::minecraft::{
+    Asset, AssetsIndex, DownloadType, Library, Os, Version, VersionInfo,
+};
 use interfrost::api::modded::LoaderVersion;
 use reqwest::Method;
 
@@ -17,6 +19,146 @@ use crate::paths;
 use crate::state::LauncherServices;
 use crate::{LauncherError, LauncherResult};
 
+/// Asset objects are tiny (median ~10 KiB) and latency-bound, so throughput
+/// scales with how many are in flight, not with bandwidth.
+const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
+/// Libraries are larger and fewer; less fan-out is needed to saturate the link.
+const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
+
+/// Everything a version still needs, with what is already on disk subtracted.
+///
+/// Computed once, up-front, so the size shown before a download starts and the
+/// denominators the progress bars fill against come from the same numbers —
+/// previously the estimate assumed a full download while the bars discovered
+/// their own total as files were added, so neither matched reality.
+#[derive(Debug, Default)]
+pub struct DownloadPlan {
+    pub assets: Vec<(String, Asset)>,
+    pub asset_bytes: u64,
+    pub libraries: Vec<Library>,
+    pub library_bytes: u64,
+    pub client: bool,
+    pub client_bytes: u64,
+}
+
+impl DownloadPlan {
+    #[must_use]
+    pub fn total_bytes(&self) -> u64 {
+        self.asset_bytes + self.library_bytes + self.client_bytes
+    }
+}
+
+fn asset_object_path(dir: &Path, name: &str, hash: &str, legacy: bool) -> PathBuf {
+    if legacy {
+        dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
+    } else {
+        dir.join(&hash[0..2]).join(hash)
+    }
+}
+
+fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
+    let Some((os_key, classifiers)) = lib.natives.as_ref().and_then(|natives| {
+        Some((
+            natives.get(&Os::native_arch(java_arch))?,
+            lib.downloads.as_ref()?.classifiers.as_ref()?,
+        ))
+    }) else {
+        return 0;
+    };
+
+    let parsed = os_key.replace("${arch}", crate::constants::ARCH_WIDTH);
+    classifiers
+        .get(&parsed)
+        .map_or(0, |native| u64::from(native.size))
+}
+
+/// Stats every candidate file, so it runs on the blocking pool — an asset index
+/// is thousands of entries. Doing it here also means the download fan-outs no
+/// longer stat each file from inside a concurrency slot.
+#[tracing::instrument(skip_all, level = "debug")]
+pub async fn plan_downloads(
+    version: &VersionInfo,
+    assets_index: AssetsIndex,
+    java_arch: &str,
+    minecraft_updated: bool,
+    force: bool,
+) -> LauncherResult<DownloadPlan> {
+    let legacy = version.assets == "legacy";
+    let asset_dir = if legacy {
+        paths::legacy_assets_dir()?
+    } else {
+        paths::assets_object_dir()?
+    };
+    let lib_dir = paths::libraries_dir()?;
+
+    let client = version.downloads.get(&DownloadType::Client).map(|client| {
+        (
+            paths::versions_dir()
+                .map(|dir| dir.join(&version.id).join(format!("{}.jar", version.id))),
+            u64::from(client.size),
+        )
+    });
+
+    let libraries = version.libraries.clone();
+    let java_arch = java_arch.to_string();
+
+    tokio::task::spawn_blocking(move || {
+        let mut plan = DownloadPlan::default();
+
+        for (name, asset) in assets_index.objects {
+            let path = asset_object_path(&asset_dir, &name, &asset.hash, legacy);
+            if !force && path.exists() {
+                continue;
+            }
+            plan.asset_bytes += u64::from(asset.size);
+            plan.assets.push((name, asset));
+        }
+
+        for lib in libraries {
+            if let Some(rules) = &lib.rules
+                && !validate_rules(rules, &java_arch, minecraft_updated)
+            {
+                continue;
+            }
+            if !lib.downloadable {
+                continue;
+            }
+
+            // A library whose coordinates don't resolve is kept in the plan so the
+            // download path still reports it as a failure rather than skipping it.
+            let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
+                plan.libraries.push(lib);
+                continue;
+            };
+
+            if !force && lib_dir.join(&artifact_path).exists() {
+                continue;
+            }
+
+            plan.library_bytes += lib
+                .downloads
+                .as_ref()
+                .and_then(|downloads| downloads.artifact.as_ref())
+                .map_or(0, |artifact| u64::from(artifact.size));
+            plan.library_bytes += native_download_size(&lib, &java_arch);
+            plan.libraries.push(lib);
+        }
+
+        if let Some((path, size)) = client {
+            let present = path.map(|path| path.exists()).unwrap_or(false);
+            if force || !present {
+                plan.client = true;
+                plan.client_bytes = size;
+            }
+        }
+
+        plan
+    })
+    .await
+    .map_err(std::io::Error::other)
+    .map_err(Into::into)
+}
+
 #[tracing::instrument(skip_all)]
 pub async fn download_minecraft(
     services: &LauncherServices,
@@ -26,26 +168,58 @@ pub async fn download_minecraft(
     minecraft_updated: bool,
     force: bool,
 ) -> LauncherResult<()> {
+    let started = std::time::Instant::now();
     let asset_index = download_assets_index(services, progress, version, force).await?;
+    let plan = plan_downloads(version, asset_index, java_arch, minecraft_updated, force).await?;
+
+    tracing::info!(
+        version = %version.id,
+        assets = plan.assets.len(),
+        libraries = plan.libraries.len(),
+        bytes = plan.total_bytes(),
+        "planned minecraft download"
+    );
+
+    // Reserve each category's real total before any child appears, so the bars
+    // start at the right denominator instead of growing towards it.
+    progress.expect(
+        TaskCategory::Assets,
+        plan.assets.len() as u64,
+        plan.asset_bytes,
+    );
+    progress.expect(
+        TaskCategory::Libraries,
+        plan.libraries.len() as u64,
+        plan.library_bytes,
+    );
+    progress.expect(TaskCategory::Client, u64::from(plan.client), plan.client_bytes);
+
+    let DownloadPlan {
+        assets, libraries, ..
+    } = plan;
+
     tokio::try_join!(
         download_assets(
             services,
             progress,
             version.assets == "legacy",
-            asset_index,
-            force
+            assets,
         ),
         download_client(services, progress, version, force),
         download_libraries(
             services,
             progress,
             version.id.clone(),
-            version.libraries.clone(),
+            libraries,
             java_arch,
-            minecraft_updated,
-            force,
         ),
     )?;
+
+    tracing::info!(
+        version = %version.id,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "minecraft download complete"
+    );
 
     Ok(())
 }
@@ -194,9 +368,12 @@ pub async fn download_assets(
     services: &LauncherServices,
     progress: &GroupedProgressSession,
     legacy: bool,
-    assets_index: AssetsIndex,
-    force: bool,
+    assets: Vec<(String, Asset)>,
 ) -> LauncherResult<usize> {
+    if assets.is_empty() {
+        return Ok(0);
+    }
+
     let dir = if legacy {
         paths::legacy_assets_dir()?
     } else {
@@ -205,10 +382,25 @@ pub async fn download_assets(
 
     polyio::create_dir_all(&dir).await?;
 
+    // Objects are sharded into 256 fixed subdirectories; creating them once
+    // here saves a blocking-pool round trip on every one of the ~5000 files.
+    if !legacy {
+        let dir = dir.clone();
+        tokio::task::spawn_blocking(move || {
+            for subhash in 0u16..256 {
+                let _ = std::fs::create_dir_all(dir.join(format!("{subhash:02x}")));
+            }
+        })
+        .await
+        .map_err(std::io::Error::other)?;
+    }
+
+    let started = std::time::Instant::now();
+    let count = assets.len();
     let requester = services.requester.clone();
     let notifier = services.notifier.clone();
     let progress = progress.clone();
-    let requests = stream::iter(assets_index.objects.into_iter().map(|(name, asset)| {
+    let requests = stream::iter(assets.into_iter().map(|(name, asset)| {
         let dir = dir.clone();
         let requester = requester.clone();
         let notifier = notifier.clone();
@@ -217,15 +409,7 @@ pub async fn download_assets(
         async move {
             let hash = &asset.hash;
             let subhash = &hash[0..2];
-            let path = if legacy {
-                dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
-            } else {
-                dir.join(subhash).join(hash)
-            };
-
-            if path.exists() && !force {
-                return Ok::<(), LauncherError>(());
-            }
+            let path = asset_object_path(&dir, &name, hash, legacy);
 
             let url = format!("https://resources.download.minecraft.net/{subhash}/{hash}");
             download_to_path(
@@ -242,7 +426,7 @@ pub async fn download_assets(
             .await
         }
     }))
-    .buffer_unordered(7)
+    .buffer_unordered(ASSET_DOWNLOAD_CONCURRENCY)
     .collect::<Vec<_>>();
 
     let mut failed = 0;
@@ -252,6 +436,13 @@ pub async fn download_assets(
             failed += 1;
         }
     }
+
+    tracing::info!(
+        count,
+        failed,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "assets ready"
+    );
 
     Ok(failed)
 }
@@ -339,9 +530,11 @@ pub async fn download_libraries(
     version: String,
     libraries: Vec<Library>,
     java_arch: &str,
-    minecraft_updated: bool,
-    force: bool,
 ) -> LauncherResult<usize> {
+    if libraries.is_empty() {
+        return Ok(0);
+    }
+
     let lib_dir = paths::libraries_dir()?;
     let natives_dest = paths::natives_dir()?.join(&version);
     let java_arch = java_arch.to_string();
@@ -349,6 +542,8 @@ pub async fn download_libraries(
     polyio::create_dir_all(&lib_dir).await?;
     polyio::create_dir_all(&natives_dest).await?;
 
+    let started = std::time::Instant::now();
+    let count = libraries.len();
     let requests = stream::iter(libraries.into_iter().map(|lib| {
         let lib_dir = lib_dir.clone();
         let natives_dest = natives_dest.clone();
@@ -358,23 +553,11 @@ pub async fn download_libraries(
         let progress = progress.clone();
 
         async move {
-            if let Some(rules) = &lib.rules
-                && !validate_rules(rules, &java_arch, minecraft_updated)
-            {
-                return Ok::<(), LauncherError>(());
-            }
-
-            if !lib.downloadable {
-                return Ok(());
-            }
-
+            // Rule evaluation and the on-disk check already happened in
+            // `plan_downloads`; everything here is known to need fetching.
             let artifact_path = interfrost::utils::get_path_from_artifact(&lib.name)
                 .map_err(|_| GameError::LibraryPath(lib.name.clone()))?;
             let path = lib_dir.join(&artifact_path);
-
-            if path.exists() && !force {
-                return Ok(());
-            }
 
             tokio::try_join!(
                 async {
@@ -461,10 +644,10 @@ pub async fn download_libraries(
                 }
             )?;
 
-            Ok(())
+            Ok::<(), LauncherError>(())
         }
     }))
-    .buffer_unordered(7)
+    .buffer_unordered(LIBRARY_DOWNLOAD_CONCURRENCY)
     .collect::<Vec<_>>();
 
     let mut failed = 0;
@@ -474,6 +657,13 @@ pub async fn download_libraries(
             failed += 1;
         }
     }
+
+    tracing::info!(
+        count,
+        failed,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "libraries ready"
+    );
 
     Ok(failed)
 }

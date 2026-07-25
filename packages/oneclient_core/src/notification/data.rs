@@ -74,6 +74,7 @@ pub enum TaskCategory {
     Libraries,
     Natives,
     Assets,
+    Java,
     #[default]
     Packages,
 }
@@ -86,6 +87,7 @@ impl TaskCategory {
             Self::Libraries => "Libraries",
             Self::Natives => "Natives",
             Self::Assets => "Assets",
+            Self::Java => "Java runtime",
             Self::Packages => "Packages",
         }
     }

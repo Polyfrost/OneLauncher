@@ -7,6 +7,7 @@ use crate::LauncherResult;
 
 const QUALIFIER: &str = "org";
 const ORGANIZATION: &str = "Polyfrost";
+
 #[cfg(not(debug_assertions))]
 const APPLICATION: &str = "OneClient";
 // Dev builds use a separate launcher dir (e.g. `oneclient-dev`) so a running

@@ -32,7 +32,7 @@ impl App for OneClientApp {
 
 fn main() {
     let mut builder = Builder::new_multi_thread();
-    builder.enable_all().max_blocking_threads(16);
+    builder.enable_all().max_blocking_threads(64);
 
     // Debug builds emit unoptimized async code, which can cause stack overflows in some cases.
 	// Default stack size is 2MB, so we'll increase it to 4MB for debug builds

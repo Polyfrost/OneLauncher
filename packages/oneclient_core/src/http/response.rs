@@ -4,6 +4,9 @@ use uuid::Uuid;
 use crate::http::RequestError;
 use crate::notification::{GroupedProgressChild, NotificationService};
 
+/// Minimum gap between progress events emitted for a single response body.
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
 #[derive(Clone, Default)]
 pub struct ResponseOptions {
     pub notify: Option<ResponseNotifyOptions>,
@@ -92,21 +95,33 @@ impl ResponseExt for Response {
         }
 
         let notifier = notifier.clone();
+        // A chunk arrives every few KiB; forwarding one event per chunk buries the
+        // UI in tens of thousands of updates per download session, all of which
+        // collapse into the same repainted progress bar. Sample instead, and
+        // always emit the last one so the bar lands on complete.
+        let mut last_emit: Option<std::time::Instant> = None;
         let stream = futures_lite::StreamExt::map(self.bytes_stream(), move |item| {
             match item {
                 Ok(chunk) => {
                     current += chunk.len() as u64;
 
-                    if let Some(ref child) = grouped_child {
-                        child.set_progress(current, Some(total));
-                    } else if let (Some(id), Some(label)) = (&standalone_id, &standalone_label) {
-                        let done = current >= total;
-                        let label = if done {
-                            done_label.as_deref().unwrap_or(label)
-                        } else {
-                            label
-                        };
-                        notifier.send_progress(id, label, current, total);
+                    let now = std::time::Instant::now();
+                    let due = current >= total
+                        || last_emit.is_none_or(|last| now.duration_since(last) >= PROGRESS_INTERVAL);
+
+                    if due {
+                        last_emit = Some(now);
+                        if let Some(ref child) = grouped_child {
+                            child.set_progress(current, Some(total));
+                        } else if let (Some(id), Some(label)) = (&standalone_id, &standalone_label) {
+                            let done = current >= total;
+                            let label = if done {
+                                done_label.as_deref().unwrap_or(label)
+                            } else {
+                                label
+                            };
+                            notifier.send_progress(id, label, current, total);
+                        }
                     }
 
                     Ok(chunk)

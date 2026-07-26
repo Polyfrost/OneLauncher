@@ -28,6 +28,7 @@ jobs:
             os_key: darwin
             arch: x86_64
             formats: app,dmg
+            macos_deployment_target: '10.14'
           - platform: ubuntu-22.04
             target: ''
             os_key: linux
@@ -42,6 +43,11 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: (macOS) Pin deployment target
+        if: matrix.macos_deployment_target != ''
+        shell: bash
+        run: echo "MACOSX_DEPLOYMENT_TARGET=${{ matrix.macos_deployment_target }}" >> "$GITHUB_ENV"
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
@@ -72,6 +78,19 @@ jobs:
             cargo build --release --bin oneclient_app --target ${{ matrix.target }}
           else
             cargo build --release --bin oneclient_app
+          fi
+
+      - name: (macOS) Verify deployment target
+        if: matrix.macos_deployment_target != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="target/${{ matrix.target }}/release/oneclient_app"
+          minos="$(vtool -show-build "$bin" | awk '/minos/ {print $2; exit}')"
+          echo "linked minos=$minos, declared minimum=${{ matrix.macos_deployment_target }}"
+          if [ "$(printf '%s\n%s\n' "$minos" "${{ matrix.macos_deployment_target }}" | sort -V | tail -n1)" != "${{ matrix.macos_deployment_target }}" ]; then
+            echo "::error::Binary requires macOS $minos but the bundle advertises ${{ matrix.macos_deployment_target }}."
+            exit 1
           fi
 
       - name: Package (unsigned)

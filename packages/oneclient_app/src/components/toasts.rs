@@ -20,6 +20,10 @@ use crate::{
 const TOAST_W: f32 = 300.;
 const TRAVEL: f32 = 320.;
 const TTL_MS: f32 = 5000.;
+/// Toasts sit below the navbar rather than on top of it: the startup/bundle-sync
+/// progress toast is on screen exactly when Home first appears, and at any
+/// smaller offset its card covered the nav links and account controls.
+const TOP_PX: f32 = crate::theme::NAVBAR_HEIGHT_PX + 12.;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Variant {
@@ -73,7 +77,7 @@ impl Component for Toasts {
         let mut stack = rect()
             .vertical()
             .spacing(12.)
-            .position(Position::new_global().top(64.).right(24.))
+            .position(Position::new_global().top(TOP_PX).right(24.))
             .layer(Layer::OverlayLevel(3));
 
         for entry in entries {

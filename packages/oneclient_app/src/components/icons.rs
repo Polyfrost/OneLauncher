@@ -8,6 +8,7 @@ pub struct Icon {
     pub icon: IconType,
     pub size_px: f32,
     pub color: Option<Color>,
+    pub rotation: Option<f32>,
 }
 
 impl Icon {
@@ -23,6 +24,7 @@ impl Icon {
             icon,
             size_px: 24.,
             color,
+            rotation: None,
         }
     }
 
@@ -33,6 +35,12 @@ impl Icon {
 
     pub fn color(mut self, color: Color) -> Self {
         self.color = Some(color);
+        self
+    }
+
+    /// Rotation in degrees, clockwise.
+    pub fn rotate(mut self, degrees: f32) -> Self {
+        self.rotation = Some(degrees);
         self
     }
 }
@@ -48,6 +56,7 @@ impl Component for Icon {
             .height(Size::px(self.size_px))
             // .fill(color)
             .map(self.color, |svg, color| svg.color(color))
+            .map(self.rotation, |svg, degrees| svg.rotate(degrees))
     }
 }
 

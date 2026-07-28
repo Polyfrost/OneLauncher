@@ -62,6 +62,25 @@ pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
+/// Whether the cluster folder is currently holding `file_name`, following the
+/// same symlink-tolerant rule as [`unlink_cluster_file`].
+pub async fn cluster_file_present(
+	cluster: &ClusterRow,
+	content_type: ContentType,
+	file_name: &str,
+) -> bool {
+	let Ok(clusters) = paths::clusters_dir() else {
+		return false;
+	};
+
+	let path = clusters
+		.join(&cluster.folder_name)
+		.join(content_type.folder_name())
+		.join(file_name);
+
+	polyio::symlink_metadata(&path).await.is_ok()
+}
+
 #[tracing::instrument(level = "debug", skip(cluster))]
 pub async fn unlink_cluster_file(
 	cluster: &ClusterRow,

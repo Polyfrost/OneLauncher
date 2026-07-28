@@ -213,6 +213,19 @@ pub async fn launch_cluster(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
+    // Settle any enable/disable made while a previous session held these files
+    // open. Shared clusters get their game dir rebuilt from the database below
+    // anyway; this is what makes the cluster folder itself — and so a dedicated
+    // cluster's game dir — agree with what the UI has been showing.
+    if let Err(err) = oneclient_content::packages::PackageStore::reconcile_cluster_links(
+        cluster_id,
+        &state.services.content(),
+    )
+    .await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to reconcile cluster content links");
+    }
+
     if !dedicated {
         if let Err(err) = crate::game::sync_shared_content(&state.services, &cluster, &cwd).await {
             tracing::warn!(cluster_id, error = %err, "failed to sync shared content");

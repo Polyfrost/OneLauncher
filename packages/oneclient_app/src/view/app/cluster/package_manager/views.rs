@@ -175,6 +175,38 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
+/// Shown while this cluster is being played. Enabling or disabling still takes
+/// effect — it is stored, and the folder is brought in line at the next launch
+/// — but the session already running cannot pick it up.
+pub(super) fn running_notice(noun_plural: &'static str) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .content(Content::Flex)
+        .spacing(10.)
+        .margin(Gaps::new(8., 0., 0., 0.))
+        .padding(Gaps::new_symmetric(9., 12.))
+        .corner_radius(CornerRadius::new_all(10.))
+        .background(colors::brand().with_a(30))
+        .border(crate::ui::border_all_color(1., colors::brand().with_a(90)))
+        .child(
+            Icon::new(IconType::InfoCircle)
+                .size(16.)
+                .color(colors::brand()),
+        )
+        .child(
+            label()
+                .text(format!(
+                    "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
+                ))
+                .font_size(12.)
+                .width(Size::flex(1.0))
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
 #[derive(PartialEq)]
 struct FilterButton {
     sort: State<Option<String>>,

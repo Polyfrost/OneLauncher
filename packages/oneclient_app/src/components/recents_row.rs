@@ -51,8 +51,7 @@ impl Component for RecentsRow {
             .height(Size::px(ROW_HEIGHT_PX))
             .content(Content::Flex)
             .on_sized(move |event: Event<SizedEventData>| {
-                let width = event.data().area.width();
-                let next = recent_card_slots_for_width(width).max(1);
+                let next = recent_card_slots_for_width(event.data().area.width());
                 if next != *visible_slots.peek() {
                     *visible_slots.write() = next;
                 }
@@ -122,7 +121,6 @@ impl Component for ClusterCard {
         rect()
             .key(self.cluster.id)
             .width(Size::flex(1.0))
-            .min_width(Size::px(MIN_CARD_WIDTH_PX))
             .max_width(Size::px(MAX_CARD_WIDTH_PX))
             .height(Size::fill())
             .offset_y(rise)
@@ -284,12 +282,20 @@ impl Component for OtherVersionsTile {
     }
 }
 
+/// How many cards fit beside the "other versions" tile at `row_width_px`.
+///
+/// `n` cards sit in `n` gaps' worth of spacing — `n - 1` between the cards and
+/// one before the tile — so `n * (MIN + GAP) + MORE` has to fit. One card is
+/// always shown: below that width it just renders narrower than the minimum,
+/// which is why the card carries no `min_width`. With one, a stale count during
+/// a live resize used to push the row past its bounds and leave a card cut off
+/// or stretched until the next measurement landed.
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
-    if row_width_px <= MORE_TILE_WIDTH_PX + CARD_GAP_PX {
-        return 0;
+    if !row_width_px.is_finite() {
+        return 1;
     }
 
     let available = row_width_px - MORE_TILE_WIDTH_PX;
     let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
-    (available / slot).floor() as usize
+    (available / slot).floor().max(1.0) as usize
 }

@@ -121,19 +121,6 @@ impl Component for StatusBanner {
         });
         let p = intro.get().value();
 
-        let content = rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(8.)
-            .child(Icon::new(issue.icon()).size(15.).color(Color::WHITE))
-            .child(
-                label()
-                    .text(issue.message())
-                    .font_size(12.)
-                    .font_weight(FontWeight::MEDIUM)
-                    .color(Color::WHITE),
-            );
-
         let close = issue.closeable().then(|| {
             rect()
                 .position(Position::new_absolute().right(10.))
@@ -147,8 +134,12 @@ impl Component for StatusBanner {
                     dismissed.write().insert(issue);
                 })
                 .child(Icon::new(IconType::XClose).size(14.).color(Color::WHITE))
+                .into_element()
         });
 
+        // The icon+message row is laid out directly in the bar rather than in a
+        // nested auto-sized wrapper: a transparent rect with no explicit size
+        // measures to nothing here, which is what was swallowing the message.
         rect()
             .width(Size::window_percent(100.))
             .height(Size::px(BAR_HEIGHT))
@@ -156,14 +147,20 @@ impl Component for StatusBanner {
             .layer(Layer::OverlayLevel(u8::MAX - 20))
             .background(issue.background())
             .opacity(p)
+            .horizontal()
+            .main_align(Alignment::Center)
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 40.))
+            .child(Icon::new(issue.icon()).size(15.).color(Color::WHITE))
             .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .center()
-                    .padding(Gaps::new_symmetric(0., 16.))
-                    .child(content)
-                    .maybe_child(close),
+                label()
+                    .text(issue.message())
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
+                    .color(Color::WHITE),
             )
+            .maybe_child(close)
     }
 }

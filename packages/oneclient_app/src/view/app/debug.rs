@@ -3,6 +3,7 @@ use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
 use oneclient_auth::preview_samples;
+use oneclient_net::status::{self, ServiceStatus};
 
 use crate::components::{Button, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
@@ -74,6 +75,11 @@ impl Component for Debug {
                     .child(section(
                         "Launcher Auto Update",
                         vec![LauncherUpdateSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Connectivity Status Bar",
+                        vec![StatusBarSimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section(
@@ -462,6 +468,114 @@ impl Component for LauncherUpdateSimulator {
                             .child(Icon::new(IconType::RefreshCw01).size(16.))
                             .text("Check for Updates Now")
                             .on_press(|_| crate::updater::spawn_update_check(false)),
+                    ),
+            )
+            .into_element()
+    }
+}
+
+/// Pins `oneclient_net::status` so the connectivity banner can be looked at
+/// without unplugging anything. Each preset is one banner the bar knows how to
+/// draw; the bar itself picks the first active issue.
+#[derive(PartialEq)]
+struct StatusBarSimulator;
+
+const STATUS_PRESETS: [(&str, IconType, ServiceStatus); 4] = [
+    (
+        "No internet",
+        IconType::Globe01,
+        ServiceStatus {
+            online: false,
+            mc_auth_up: false,
+            polyfrost_up: false,
+        },
+    ),
+    (
+        "Minecraft auth down",
+        IconType::AlertTriangle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: false,
+            polyfrost_up: true,
+        },
+    ),
+    (
+        "Polyfrost down",
+        IconType::AlertCircle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: true,
+            polyfrost_up: false,
+        },
+    ),
+    (
+        "Both services down",
+        IconType::AlertTriangle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: false,
+            polyfrost_up: false,
+        },
+    ),
+];
+
+impl Component for StatusBarSimulator {
+    fn render(&self) -> impl IntoElement {
+        let mut pinned = use_state(status::forced);
+
+        let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
+        for (text, icon, forced) in STATUS_PRESETS {
+            row = row.child(
+                Button::new()
+                    .secondary()
+                    .child(Icon::new(icon).size(16.))
+                    .text(text)
+                    .on_press(move |_| {
+                        status::force(Some(forced));
+                        pinned.set(Some(forced));
+                    }),
+            );
+        }
+
+        let current = *pinned.read();
+        let state_text = match current {
+            Some(_) => "Pinned. Probing still runs, but its result is not published.".to_string(),
+            None => "Not pinned; showing the real probe result.".to_string(),
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("Forces what the connectivity prober reports, so the real status bar renders its banner. Dismissing a banner is remembered until the issue clears.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(row)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        Button::new()
+                            .primary()
+                            .child(Icon::new(IconType::RefreshCw01).size(16.))
+                            .text("Clear + recheck")
+                            .enabled(current.is_some())
+                            .on_press(move |_| {
+                                status::force(None);
+                                pinned.set(None);
+                            }),
+                    )
+                    .child(
+                        label()
+                            .text(state_text)
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .into_element()

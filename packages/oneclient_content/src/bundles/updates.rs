@@ -295,6 +295,15 @@ async fn check_bundle_updates_inner(
         )
     });
 
+    let addition_eligible_bundles = addition_eligible_bundles(
+        ctx,
+        &bundle_packages,
+        &all_linked,
+        &candidate_keys_by_bundle,
+        overrides,
+    )
+    .await?;
+
     let mut additions_available = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
     for hash in all_installed_external_hashes {
@@ -302,7 +311,7 @@ async fn check_bundle_updates_inner(
     }
 
     for archive in &archives {
-        if !subscribed_bundles.contains(&archive.manifest.name) {
+        if !addition_eligible_bundles.contains(&archive.manifest.name) {
             continue;
         }
 
@@ -771,10 +780,55 @@ fn bundle_package_key(
     }
 }
 
+/// Bundles that may still take on files the catalog has newly added.
+///
+/// Subscription is deliberately looser than this: a bundle whose mods are all
+/// installed-but-disabled still wants version updates and still owns its files.
+/// New content is different. Removing or disabling everything a bundle ships is
+/// how a user opts out of that bundle, and an absent per-file override is not
+/// consent for a file that did not exist when they opted out — so gating
+/// additions on subscription alone let one catalog addition quietly reinstate a
+/// bundle the user had emptied.
+///
+/// A bundle qualifies while any of it is still live here: a tracked artifact
+/// that is enabled, an enabled artifact that can only have come from this bundle
+/// (the untracked/migrated case), or an explicit opt-in override.
 #[tracing::instrument(level = "debug", skip_all)]
-async fn installed_bundle_keys(
+async fn addition_eligible_bundles(
     ctx: &ContentCtx,
-    linked: &[LinkedArtifactInfo],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    all_linked: &[LinkedArtifactInfo],
+    candidate_keys_by_bundle: &HashMap<String, HashSet<String>>,
+    overrides: &[ClusterBundleOverrideRow],
+) -> ContentResult<HashSet<String>> {
+    let (live_managed_keys, _) =
+        installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
+
+    let mut eligible: HashSet<String> = bundle_packages
+        .iter()
+        .filter(|bp| bp.enabled != 0)
+        .filter_map(|bp| bp.bundle_name.clone())
+        .collect();
+
+    eligible.extend(infer_bundle_names_from_unique_installed_keys(
+        candidate_keys_by_bundle,
+        &live_managed_keys,
+    ));
+
+    eligible.extend(
+        overrides
+            .iter()
+            .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled))
+            .map(|o| o.bundle_name.clone()),
+    );
+
+    Ok(eligible)
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+async fn installed_bundle_keys<'a>(
+    ctx: &ContentCtx,
+    linked: impl IntoIterator<Item = &'a LinkedArtifactInfo>,
 ) -> ContentResult<(HashSet<String>, HashSet<String>)> {
     let mut managed = HashSet::new();
     let mut external = HashSet::new();

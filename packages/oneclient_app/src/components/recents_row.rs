@@ -3,7 +3,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{DynamicArt, Icon, IconType};
+use crate::components::{ART_PREVIEW_EDGE, DynamicArt, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -190,7 +190,7 @@ impl Component for ClusterCard {
                                     .height(Size::fill())
                                     .position(Position::new_absolute())
                                     .layer(Layer::Relative(1))
-                                    .child(DynamicArt::for_cluster(&self.cluster).max_edge(512)),
+                                    .child(DynamicArt::for_cluster(&self.cluster).max_edge(ART_PREVIEW_EDGE)),
                             )
                             .child(
                                 rect()

@@ -108,7 +108,7 @@ impl LauncherState {
 			clusters,
 			metadata: Mutex::new(MetadataStore::new()),
 			bundles: Arc::new(BundlesManager::new()),
-			versions: Arc::new(VersionsManager::new()),
+			versions: Arc::new(VersionsManager::from_cache().await),
 			images: ImageCacheStore::new(),
 			games: crate::game::GameProcessManager::new(),
 			discord,

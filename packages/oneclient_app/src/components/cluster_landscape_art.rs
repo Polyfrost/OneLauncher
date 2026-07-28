@@ -2,7 +2,7 @@ use freya::prelude::*;
 use oneclient_common::VersionKey;
 use oneclient_common::domain::GameLoader;
 
-use crate::components::DynamicArt;
+use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -20,7 +20,7 @@ impl ClusterLandscapeArt {
         selected: bool,
     ) -> Self {
         Self {
-            art: DynamicArt::for_version(major, key, loader).max_edge(512),
+            art: DynamicArt::for_version(major, key, loader).max_edge(ART_PREVIEW_EDGE),
             selected,
         }
     }

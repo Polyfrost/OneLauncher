@@ -6,6 +6,7 @@ use crate::components::{
     StatusBar, Toasts, UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_splash};
+use crate::layout::HomeArtPrefetch;
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::colors;
@@ -73,5 +74,6 @@ impl Component for RootLayout {
             .child(ClusterUpdatePopup)
             .child(StatusBar)
             .child(SplashCurtain)
+            .child(HomeArtPrefetch)
     }
 }

@@ -469,6 +469,7 @@ fn browse_button(cluster_id: i64, package_type: &'static str) -> impl IntoElemen
             let _ = RouterContext::get().push(Route::Browser {
                 cluster_id,
                 package_type: package_type.to_string(),
+                pick_cluster: false,
             });
         })
         .child(Icon::new(IconType::SearchMd).size(14.))

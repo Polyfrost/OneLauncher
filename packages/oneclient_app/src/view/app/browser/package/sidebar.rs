@@ -8,6 +8,7 @@ use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
     latest_version: Option<String>,
@@ -15,6 +16,8 @@ pub(super) fn sidebar(
     cluster_id: i64,
     dispatch: Actions,
     confirm: State<Option<String>>,
+    installed: Option<Installed>,
+    installing: bool,
 ) -> impl IntoElement {
     let Some(project) = project else {
         return rect()
@@ -24,7 +27,13 @@ pub(super) fn sidebar(
     };
 
     let project_id = project.id.clone();
-    let can_install = latest_version.is_some();
+    // Nothing to do when the cluster already has exactly this version, and
+    // nothing to do twice while the install that was just started is running.
+    let have_latest = match (&installed, &latest_version) {
+        (Some(installed), Some(latest)) => installed.is_version(latest),
+        _ => false,
+    };
+    let can_install = latest_version.is_some() && !have_latest && !installing;
 
     rect()
         .vertical()
@@ -54,22 +63,12 @@ pub(super) fn sidebar(
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
                         )
-                        .child(
-                            rect()
-                                .horizontal()
-                                .cross_align(Alignment::Center)
-                                .spacing(4.)
-                                .child(Icon::new(project.provider).size(12.))
-                                .child(
-                                    label()
-                                        .text(format!(
-                                            "{} on {}",
-                                            project.content_type, project.provider
-                                        ))
-                                        .font_size(11.)
-                                        .color(colors::fg_secondary()),
-                                ),
-                        )
+                        .child(ProviderTag {
+                            text: format!("{} on {}", project.content_type, project.provider),
+                            provider: project.provider,
+                            url: provider_project_url(&project),
+                            confirm,
+                        })
                         .maybe(!project.summary.is_empty(), |el| {
                             el.child(
                                 label()
@@ -101,6 +100,11 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
+        .maybe_child(
+            installed
+                .as_ref()
+                .map(|installed| installed_badge(installed.source, 12.).into_element()),
+        )
         .child(
             Button::new()
                 .primary()
@@ -117,7 +121,13 @@ pub(super) fn sidebar(
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
-                .text("Install latest"),
+                .text(if installing {
+                    "Installing..."
+                } else if have_latest {
+                    "Latest installed"
+                } else {
+                    "Install latest"
+                }),
         )
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
@@ -130,11 +140,87 @@ pub(super) fn sidebar(
         .into_element()
 }
 
+/// The package's own page on the provider's site. Modrinth doesn't hand one
+/// out, so it's rebuilt from the slug; CurseForge already lists it as "Website".
+fn provider_project_url(project: &ProjectDetail) -> Option<String> {
+    match project.provider {
+        ProviderId::Modrinth => Some(format!(
+            "{}{}/{}",
+            ProviderId::Modrinth.website(),
+            project.content_type.modrinth_type(),
+            project.slug
+        )),
+        ProviderId::CurseForge => project
+            .links
+            .iter()
+            .find(|(label, _)| label == "Website")
+            .map(|(_, url)| url.clone()),
+        ProviderId::Local => None,
+    }
+}
+
+/// "Mod on Modrinth", linking out to the package's page there when the provider
+/// has one. Plain text otherwise, so a local package doesn't look clickable.
+#[derive(PartialEq)]
+struct ProviderTag {
+    text: String,
+    provider: ProviderId,
+    url: Option<String>,
+    confirm: State<Option<String>>,
+}
+
+impl Component for ProviderTag {
+    fn render(&self) -> impl IntoElement {
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let url = self.url.clone();
+        let interactive = url.is_some();
+        let mut confirm = self.confirm;
+
+        rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(4.)
+            .child(Icon::new(self.provider).size(12.))
+            .child(
+                label()
+                    .text(self.text.clone())
+                    .font_size(11.)
+                    .color(if interactive {
+                        colors::code_info()
+                    } else {
+                        colors::fg_secondary()
+                    }),
+            )
+            .maybe(interactive, |el| {
+                let url = url.clone().unwrap_or_default();
+                el.a11y_id(a11y_id)
+                    .a11y_focusable(true)
+                    .a11y_role(AccessibilityRole::Link)
+                    .corner_radius(CornerRadius::new_all(6.))
+                    .maybe(focused, |el| {
+                        el.border(border_all_color(1., colors::brand()))
+                    })
+                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
+                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+            })
+    }
+}
+
 fn card(title: &str, rows: Vec<Element>) -> impl IntoElement {
+    card_spaced(title, rows, 10.)
+}
+
+/// `card` with the gap between rows chosen by the caller: a list of one-line
+/// links reads better tight than the multi-line author and detail rows do.
+fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::fill())
-        .spacing(10.)
+        .spacing(spacing)
         .padding(Gaps::new_all(16.))
         .corner_radius(CornerRadius::new_all(12.))
         .background(PANEL_BG)
@@ -310,7 +396,7 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
         .iter()
         .map(|(lbl, url)| link_row(lbl.clone(), url.clone(), confirm))
         .collect();
-    card("Links", rows)
+    card_spaced("Links", rows, 2.)
 }
 
 fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {
@@ -344,10 +430,10 @@ impl Component for LinkRow {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .corner_radius(CornerRadius::new_all(6.))
-            .padding(Gaps::new_all(4.))
+            .padding(Gaps::new_symmetric(2., 4.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::Button)
+            .a11y_role(AccessibilityRole::Link)
             .maybe(focused, |el| {
                 el.border(border_all_color(1., colors::brand()))
             })

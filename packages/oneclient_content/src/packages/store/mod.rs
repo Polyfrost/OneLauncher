@@ -157,6 +157,7 @@ impl PackageStore {
                 content_type,
                 file_name: artifact.file_name,
                 project_id: release.as_ref().map(|r| r.project_id.clone()),
+                version_id: release.as_ref().map(|r| r.version_id.clone()),
                 display_name: release.as_ref().map(|r| r.display_name.clone()),
                 display_version: release.as_ref().map(|r| r.display_version.clone()),
                 provider: release

@@ -3,14 +3,16 @@ use oneclient_content::packages::{ContentType, ProviderId};
 
 use crate::components::ScrollArea;
 use crate::hooks::{
-    content_type_for_slug, project_detail, use_browser_compat, use_dispatch, use_link_confirm,
-    use_package_project, use_package_versions, version_list, versions_total,
+    bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
+    use_browser_compat, use_bundles_with_status, use_cluster_content, use_dispatch,
+    use_installs_snapshot, use_link_confirm, use_package_project, use_package_versions,
+    version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::hooks::use_cluster;
 
-use super::{PackageBanner, Thumbnail};
+use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
 use crate::utils::abbreviate_number;
 
 mod panels;
@@ -136,6 +138,14 @@ impl Component for BrowserPackage {
             *versions_page.read(),
         );
 
+        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+
+        let installed = installed_map(
+            cluster_content_items(&use_cluster_content(cluster_id, content_type)),
+            &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+        )
+        .remove(&(provider, project_id.clone()));
+
         let project = project_detail(&project_query);
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
@@ -160,6 +170,8 @@ impl Component for BrowserPackage {
                 project.id.clone(),
                 cluster_id,
                 dispatch.clone(),
+                installed.clone(),
+                installing,
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
@@ -178,6 +190,8 @@ impl Component for BrowserPackage {
                 cluster_id,
                 dispatch,
                 confirm,
+                installed,
+                installing,
             ))
             .child(
                 rect()

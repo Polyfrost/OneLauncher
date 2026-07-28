@@ -50,7 +50,9 @@ pub use queries::{
 };
 
 use crate::notifications::NotificationSnapshot;
-use crate::state::{AppChannel, GameState, LauncherInit, LoginProgress, SettingsState};
+use crate::state::{
+    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
+};
 use freya::prelude::*;
 use freya::radio::use_radio;
 
@@ -100,6 +102,10 @@ pub fn use_account_switcher_open() -> bool {
 
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
+}
+
+pub fn use_installs_snapshot() -> InstallState {
+    use_radio(AppChannel::Installs).read().installs.clone()
 }
 
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {

@@ -9,10 +9,11 @@
 //! station only requires `'static`, this owns [`NotificationState`] outright
 //! rather than cloning a snapshot out of it on every event.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use freya::radio::RadioChannel;
+use oneclient_common::domain::ProviderId;
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
 
@@ -34,6 +35,8 @@ pub enum AppChannel {
     AccountSwitcher,
     /// Live progress of an in-flight Microsoft sign-in.
     MicrosoftLogin,
+    /// Packages currently being installed into a cluster.
+    Installs,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -57,6 +60,31 @@ pub struct AppState {
     pub game: GameState,
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
+    pub installs: InstallState,
+}
+
+/// Package installs that are in flight, so the button that started one can stay
+/// disabled until it lands — and come back if it failed.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InstallState {
+    pending: HashSet<(i64, ProviderId, String)>,
+}
+
+impl InstallState {
+    pub fn begin(&mut self, cluster_id: i64, provider: ProviderId, project_id: String) {
+        self.pending.insert((cluster_id, provider, project_id));
+    }
+
+    pub fn finish(&mut self, cluster_id: i64, provider: ProviderId, project_id: &str) {
+        self.pending
+            .remove(&(cluster_id, provider, project_id.to_string()));
+    }
+
+    #[must_use]
+    pub fn is_installing(&self, cluster_id: i64, provider: ProviderId, project_id: &str) -> bool {
+        self.pending
+            .contains(&(cluster_id, provider, project_id.to_string()))
+    }
 }
 
 #[derive(Clone, Debug, Default)]

@@ -152,20 +152,45 @@ pub async fn combined_cluster_update_spec(
     })
 }
 
+/// An install's outcome together with the progress session it ran under.
+///
+/// The session is detached rather than finished so the caller can convert that
+/// same notification into the "Installed" / "Install failed" result, instead of
+/// leaving a finished progress card and raising a second notification beside it.
+/// `session_id` is `None` when the install never got as far as downloading.
+pub struct PackageInstall {
+    pub session_id: Option<uuid::Uuid>,
+    pub result: anyhow::Result<String>,
+}
+
 pub async fn install_package(
     state: &Arc<LauncherState>,
     provider: oneclient_content::packages::ProviderId,
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
-) -> anyhow::Result<String> {
-    let provider_impl = state.services.packages.get(provider)?;
-    let project = provider_impl
-        .get_project(project_id, &state.services.content())
-        .await?;
-    let version = provider_impl
-        .get_version(project_id, version_id, &state.services.content())
-        .await?;
+) -> PackageInstall {
+    let lookup = async {
+        let provider_impl = state.services.packages.get(provider)?;
+        let project = provider_impl
+            .get_project(project_id, &state.services.content())
+            .await?;
+        let version = provider_impl
+            .get_version(project_id, version_id, &state.services.content())
+            .await?;
+        anyhow::Ok((project, version))
+    }
+    .await;
+
+    let (project, version) = match lookup {
+        Ok(found) => found,
+        Err(err) => {
+            return PackageInstall {
+                session_id: None,
+                result: Err(err),
+            };
+        }
+    };
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
@@ -191,7 +216,9 @@ pub async fn install_package(
     .await;
 
     child.finish();
-    session.finish();
-    result?;
-    Ok(project.name)
+
+    PackageInstall {
+        session_id: Some(session.detach()),
+        result: result.map(|_| project.name).map_err(anyhow::Error::from),
+    }
 }

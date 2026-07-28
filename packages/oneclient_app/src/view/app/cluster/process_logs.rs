@@ -5,7 +5,8 @@ use crate::hooks::use_game_snapshot;
 use crate::layout::cluster_content;
 use crate::theme::colors;
 
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
 pub struct ProcessLogs {
@@ -15,7 +16,7 @@ pub struct ProcessLogs {
 impl Component for ProcessLogs {
     fn render(&self) -> impl IntoElement {
         let game = use_game_snapshot();
-        let Some(_cluster) = load_cluster(self.cluster_id) else {
+        let Some(_cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
 

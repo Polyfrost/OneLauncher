@@ -1,11 +1,11 @@
 
 use oneclient_core::dev;
-use oneclient_core::packages::domain::{ContentType, ProviderId};
-use oneclient_core::packages::types::{PackageBody, SearchFilters};
+use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_content::packages::types::{PackageBody, SearchFilters};
 
 #[test]
 fn registry_get_unknown_provider_errors() {
-    let registry = oneclient_core::packages::PackageProviderRegistry::new();
+    let registry = oneclient_content::packages::PackageProviderRegistry::new();
 
     let err = match registry.get(ProviderId::Local) {
         Err(e) => e,
@@ -17,7 +17,7 @@ fn registry_get_unknown_provider_errors() {
 
 #[tokio::test]
 async fn registry_providers_match_ids() {
-    let registry = oneclient_core::packages::PackageProviderRegistry::new();
+    let registry = oneclient_content::packages::PackageProviderRegistry::new();
 
     for id in registry.remote_ids() {
         assert_eq!(registry.get(id).unwrap().id(), id);
@@ -27,8 +27,8 @@ async fn registry_providers_match_ids() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn modrinth_search_returns_hits() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::Modrinth).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::Modrinth).unwrap();
 
     let page = provider
         .search(
@@ -54,8 +54,8 @@ async fn modrinth_search_returns_hits() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn modrinth_get_project_and_versions() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::Modrinth).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::Modrinth).unwrap();
 
     let project = provider.get_project("AANobbMI", &env).await.unwrap();
     assert_eq!(project.slug, "sodium");
@@ -71,8 +71,8 @@ async fn modrinth_get_project_and_versions() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn curseforge_search_returns_hits() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::CurseForge).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::CurseForge).unwrap();
 
     let page = provider
         .search(
@@ -93,8 +93,8 @@ async fn curseforge_search_returns_hits() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn modrinth_lookup_version_by_sha1() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::Modrinth).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::Modrinth).unwrap();
 
     let versions = provider
         .list_versions("AANobbMI", Some("1.20.1"), None, 0, 1, &env)
@@ -110,7 +110,7 @@ async fn modrinth_lookup_version_by_sha1() {
         .sha1
         .clone();
 
-    let found = env.packages.lookup_version(&sha1, &env).await.unwrap();
+    let found = env.providers.lookup_version(&sha1, &env).await.unwrap();
     assert!(found.is_some());
     
     let (provider_id, _) = found.unwrap();
@@ -120,8 +120,8 @@ async fn modrinth_lookup_version_by_sha1() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn curseforge_get_project_fetches_markdown_body() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::CurseForge).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::CurseForge).unwrap();
 
     // 238222 = Just Enough Items (JEI)
     let project = provider
@@ -149,8 +149,8 @@ async fn curseforge_get_project_fetches_markdown_body() {
 #[tokio::test]
 #[ignore = "requires network"]
 async fn modrinth_get_project_with_body_has_markdown() {
-    let env = dev::ephemeral_services().await.unwrap();
-    let provider = env.packages.get(ProviderId::Modrinth).unwrap();
+    let env = dev::ephemeral_services().await.unwrap().content();
+    let provider = env.providers.get(ProviderId::Modrinth).unwrap();
 
     let project = provider
         .get_project_with_body("AANobbMI", &env)

@@ -4,9 +4,9 @@
 //! down with it. That leaves two loose ends to tidy on the next start, both of
 //! them sessions whose row still has no `ended_at`:
 //!
-//! * the game is **still running** — re-adopt it, so the UI shows it as playing
-//!   and its exit is recorded properly when it finally happens;
-//! * the game **already exited** unobserved — its log is the only witness, so
+//! * the game is still running, so re-adopt it and the UI shows it as playing
+//!   with its exit recorded properly when it finally happens;
+//! * the game already exited unobserved, and its log is the only witness, so
 //!   replay it to recover when it ended and which servers it visited.
 
 use std::path::{Path, PathBuf};
@@ -17,14 +17,14 @@ use chrono::{DateTime, Utc};
 use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::UnfinishedSession;
 
-use crate::clusters::{Cluster, ClusterManager};
-use crate::discord::Presence;
+use crate::clusters::Cluster;
+use oneclient_discord::Presence;
 use crate::game::launch::{Exit, SessionEnd, finalize_session};
 use crate::game::log_replay::{self, ServerSpan};
 use crate::game::process::{is_process_alive, kill_process};
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::notification::LaunchStage;
+use oneclient_events::LaunchStage;
 use crate::state::LauncherState;
 
 /// How often to check whether a re-adopted game is still alive. It is only a
@@ -64,8 +64,8 @@ pub async fn recover_sessions(state: &Arc<LauncherState>) {
 	}
 
 	// Re-adopt the live games first. Reconciling an exited session tears down
-	// its shared game directory, which a still-running cluster may be sharing —
-	// registering the live ones up front is what makes that check possible.
+	// its shared game directory, which a still-running cluster may be sharing.
+	// That check reads the live registrations, so they have to go in first.
 	for (cluster, session, started_at, pid) in live {
 		readopt(state, cluster, session, started_at, pid).await;
 	}
@@ -99,7 +99,7 @@ async fn classify(
 
 	// The cluster is gone, so there is no log to consult and no playtime worth
 	// attributing. Just close the row so it stops being reconsidered forever.
-	let Ok(cluster) = ClusterManager::get(state, cluster_id).await else {
+	let Ok(cluster) = state.clusters.get(cluster_id).await else {
 		tracing::warn!(cluster_id, "cluster missing for unfinished session; closing it");
 		close_untraceable(state, &session).await;
 		return None;
@@ -154,19 +154,19 @@ async fn readopt(
 	state.games.set_stage(cluster_id, LaunchStage::Running);
 	state.games.set_pid(cluster_id, Some(pid));
 	state.games.set_dir(cluster_id, cwd.clone());
-	state.services.notifier.game_stage(cluster_id, LaunchStage::Running);
+	state.services.events.game_stage(cluster_id, LaunchStage::Running);
 	state.discord.set_presence(Presence::Playing {
 		cluster: cluster.name.clone(),
 		mc_version: cluster.mc_version.clone(),
 	});
 
-	let Ok(log_path) = crate::logs::cluster_output_log(&cluster) else {
+	let Ok(log_path) = oneclient_cluster::logs::cluster_output_log(&cluster) else {
 		return;
 	};
 	let tail = spawn_log_tail(
 		cluster_id,
 		log_path,
-		state.services.notifier.clone(),
+		state.services.events.clone(),
 		Some(recorder.clone()),
 	);
 
@@ -175,7 +175,8 @@ async fn readopt(
 
 	// The post hook belongs to whichever settings apply now; resolve it up front
 	// so the watcher task doesn't have to reach back into the state.
-	let post_hook = ClusterManager::resolve_settings(state, &cluster)
+	let global = state.settings.read().global_game_settings.clone();
+	let post_hook = state.clusters.resolve_settings(&global, &cluster)
 		.await
 		.ok()
 		.and_then(|profile| profile.hook_post);
@@ -284,26 +285,26 @@ async fn reconcile(
 		&cluster,
 		&cwd,
 		cluster.uses_dedicated_dir() || shared_dir_busy,
-		// The post hook is deliberately skipped. It is an *on exit* hook, and
-		// the exit already happened — possibly days ago. Firing it now, during
-		// startup, would surprise anyone whose hook does something real.
+		// The post hook is skipped on purpose. It is an *on exit* hook, and the exit
+		// already happened, possibly days ago. Firing it now, during startup, would
+		// surprise anyone whose hook does something real.
 		None,
 		Some(recorder),
 		SessionEnd {
 			started_at,
 			ended_at,
 			outcome: Exit::Inferred,
-			// This session is over, but the cluster may have a newer one playing
-			// right now — only claim the slot if nothing else holds it.
+			// This session is over, but the cluster may have a newer one playing right
+			// now, so only claim the slot if nothing else holds it.
 			owns_slot: !state.games.is_active(cluster_id),
 		},
 	)
 	.await;
 }
 
-/// Rewrite a session's server spans from the log replay, which — unlike the
-/// live rows — covers the whole session including the part we missed. Returns
-/// the `joined_at` of a span still left open, for the caller to close.
+/// Rewrite a session's server spans from the log replay, which unlike the live
+/// rows covers the whole session including the part we missed. Returns the
+/// `joined_at` of a span still left open, for the caller to close.
 async fn apply_spans(
 	state: &Arc<LauncherState>,
 	session_id: &str,
@@ -385,7 +386,7 @@ struct SessionLog {
 /// whereas `latest.log` is the game's own and may already have been rotated.
 async fn read_session_log(cluster: &Cluster) -> Option<SessionLog> {
 	let mut candidates: Vec<PathBuf> = Vec::new();
-	if let Ok(path) = crate::logs::cluster_output_log(cluster) {
+	if let Ok(path) = oneclient_cluster::logs::cluster_output_log(cluster) {
 		candidates.push(path);
 	}
 	if let Ok(dir) = cluster.dir() {

@@ -1,18 +1,13 @@
 use bytes::Bytes;
 use freya::prelude::*;
-use freya::query::QueryStateData;
 
 use crate::AppAssets;
 
 pub fn use_player_skin(uuid: String) -> (Bytes, bool) {
     let profile = super::use_player_profile(uuid.clone(), None::<String>);
 
-    let (skin_url, is_slim) = match &*profile.read().state() {
-        QueryStateData::Settled {
-            res: Ok(profile), ..
-        } => (profile.skin_url.clone(), profile.is_slim),
-        _ => (None, false),
-    };
+    let (skin_url, is_slim) = crate::hooks::settled_or_loading(&profile)
+        .map_or((None, false), |profile| (profile.skin_url, profile.is_slim));
 
     let skin_query = super::use_cached_image(skin_url.clone(), 256);
 
@@ -22,17 +17,10 @@ pub fn use_player_skin(uuid: String) -> (Bytes, bool) {
     // No custom skin: pick alex (slim) or steve (classic) from the UUID.
     let default_slim = (java_string_hash(&uuid) & 1) == 1;
 
-    let reader = skin_query.read();
-    match (&skin_url, &*reader.state()) {
-        (Some(_), QueryStateData::Settled { res: Ok(bytes), .. })
-        | (
-            Some(_),
-            QueryStateData::Loading {
-                res: Some(Ok(bytes)),
-            },
-        ) => (bytes.clone(), is_slim),
-        _ if default_slim => (alex.read().clone(), true),
-        _ => (steve.read().clone(), false),
+    match crate::hooks::loaded_image(skin_url.as_deref(), &skin_query) {
+        Some((_, bytes)) => (bytes, is_slim),
+        None if default_slim => (alex.read().clone(), true),
+        None => (steve.read().clone(), false),
     }
 }
 

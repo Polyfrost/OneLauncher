@@ -1,9 +1,8 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::LauncherState;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
-use oneclient_core::auth::preview_samples;
+use oneclient_auth::preview_samples;
 
 use crate::components::{Button, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
@@ -266,7 +265,7 @@ impl Component for ClusterUpdateSimulator {
             )
             .child(
                 label()
-                    .text("Presets — every shape the notification and modal can take.")
+                    .text("Presets: every shape the notification and modal can take.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -350,7 +349,7 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
     }),
 ];
 
-fn cluster_update_preset_rows(dispatch: &crate::BridgeDispatch) -> Vec<Element> {
+fn cluster_update_preset_rows(dispatch: &crate::Actions) -> Vec<Element> {
     CLUSTER_UPDATE_PRESETS
         .chunks(3)
         .map(|chunk| {
@@ -398,7 +397,7 @@ fn cluster_update_items(names: &[impl AsRef<str>]) -> Vec<ClusterUpdateItem> {
 
 /// Mirrors the copy the bridge builds for real syncs so the simulated
 /// notification is indistinguishable from the real one.
-fn send_cluster_update(dispatch: &crate::BridgeDispatch, summaries: Vec<ClusterUpdateSummary>) {
+fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSummary>) {
     if summaries.is_empty() {
         return;
     }
@@ -441,7 +440,7 @@ impl Component for LauncherUpdateSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release — no network or disk. \"Check for Updates Now\" runs the real check against the release feed.")
+                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Check for Updates Now\" runs the real check against the release feed.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -584,7 +583,7 @@ fn run_sql(query: State<String>, mut result: State<SqlResult>, mut running: Stat
 
     running.set(true);
     spawn(async move {
-        let res = match LauncherState::get() {
+        let res = match crate::launcher::state() {
             Ok(state) => run_console_query(&state.services.db, &sql)
                 .await
                 .map_err(|e| e.to_string()),
@@ -616,7 +615,7 @@ fn sql_result(state: &SqlResult) -> Element {
             )
             .into_element(),
         Some(Ok(res)) if !res.is_select => label()
-            .text(format!("OK — {} row(s) affected.", res.rows_affected))
+            .text(format!("OK, {} row(s) affected.", res.rows_affected))
             .font_size(13.)
             .color(colors::success())
             .into_element(),
@@ -705,13 +704,12 @@ fn split_csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
+/// The debug page's rule: the shared one, but inset and rounded to sit
+/// between its loose stacks of rows rather than butt up against them.
 fn divider() -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(1.))
+    crate::ui::divider()
         .margin(Gaps::new_symmetric(8., 0.))
         .corner_radius(CornerRadius::new_all(1.))
-        .background(colors::component_border())
         .into_element()
 }
 

@@ -5,10 +5,10 @@ use bytes::Bytes;
 use reqwest::Method;
 use tokio::sync::Mutex;
 
-use crate::crypto::sha1_bytes;
-use crate::http::RequestError;
-use crate::paths;
-use crate::state::LauncherServices;
+use polyio::sha1_bytes;
+use oneclient_net::RequestError;
+use oneclient_common::paths;
+use oneclient_net::RequestClient;
 use crate::LauncherResult;
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1600;
@@ -24,10 +24,10 @@ impl ImageCacheStore {
         Self::default()
     }
 
-    #[tracing::instrument(level = "debug", skip(self, services))]
+    #[tracing::instrument(level = "debug", skip(self, net))]
     pub async fn get(
         &self,
-        services: &LauncherServices,
+        net: &RequestClient,
         url: &str,
         max_edge: u32,
     ) -> LauncherResult<Bytes> {
@@ -44,7 +44,7 @@ impl ImageCacheStore {
             return Ok(bytes);
         }
 
-        let raw = download(services, url).await?;
+        let raw = download(net, url).await?;
         let bytes = downscale_if_oversized(raw, max_edge).await;
 
         if let Some(parent) = path.parent() {
@@ -108,11 +108,11 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     Some(Bytes::from(out))
 }
 
-#[tracing::instrument(level = "debug", skip(services))]
-async fn download(services: &LauncherServices, url: &str) -> LauncherResult<Bytes> {
+#[tracing::instrument(level = "debug", skip(net))]
+async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
     let parsed = url.parse().map_err(RequestError::from)?;
     let request = reqwest::Request::new(Method::GET, parsed);
-    let res = services.requester.send(request).await?;
+    let res = net.send(request).await?;
     let bytes = res.bytes().await.map_err(RequestError::from)?;
     Ok(bytes)
 }

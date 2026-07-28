@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::VersionKey;
+use oneclient_common::VersionKey;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::ClusterLandscapeArt;

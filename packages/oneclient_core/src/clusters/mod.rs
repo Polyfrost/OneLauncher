@@ -1,17 +1,22 @@
-mod cluster;
-mod error;
-mod manager;
+//! Cluster orchestration: preparing a cluster for launch, provisioning from the
+//! remote catalog, and applying version migrations.
+//!
+//! The records themselves, plus settings profiles, logs and screenshots, live
+//! in `oneclient_cluster`. These three modules are what compose that crate with
+//! Java, Minecraft metadata, the package store and the versions manifest, which
+//! is why they stay here.
+
 mod migrate;
-mod options;
 mod prepare;
 mod provision;
-mod stage;
 
-pub use cluster::{Cluster, ClusterLinkTarget};
-pub use error::ClusterError;
-pub use manager::ClusterManager;
 pub use migrate::apply_remote_migrations;
-pub use options::{ClusterUpdate, CreateClusterOptions};
-pub use prepare::{estimate_cluster_download, prepare_cluster};
+pub use prepare::{estimate_cluster_download, prepare_cluster, prepare_cluster_locked};
 pub use provision::{ensure_from_bundles, ensure_from_versions};
-pub use stage::ClusterStage;
+
+// Re-exported so the rest of the launcher keeps addressing these through
+// `clusters::`, as it did before the split.
+pub use oneclient_cluster::{
+    Cluster, ClusterError, ClusterLinkTarget, ClusterManager, ClusterStage, ClusterUpdate,
+    CreateClusterOptions,
+};

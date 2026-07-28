@@ -1,28 +1,26 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use oneclient_db::DbPool;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::Mutex;
 
-use crate::auth::{CredentialsStore, PendingBrowserLogin};
-use crate::bundles::BundlesManager;
-use crate::discord::DiscordRpc;
-use crate::http::RequestClient;
+use oneclient_auth::AuthService;
+use crate::clusters::ClusterManager;
+use oneclient_content::bundles::BundlesManager;
+use oneclient_discord::DiscordRpc;
+use oneclient_net::RequestClient;
 use crate::images::ImageCacheStore;
-use crate::java::JavaManager;
-use crate::notification::NotificationService;
-use crate::metadata::MetadataStore;
-use crate::packages::provider::PackageProviderRegistry;
-use crate::paths;
+use oneclient_java::JavaService;
+use oneclient_events::EventBus;
+use oneclient_mc::MetadataStore;
+use oneclient_content::packages::provider::PackageProviderRegistry;
+use oneclient_common::paths;
 use crate::settings::{store, LauncherSettings};
 use crate::versions::VersionsManager;
-use crate::{LauncherError, LauncherResult};
-
-static STATE: OnceCell<Arc<LauncherState>> = OnceCell::const_new();
+use crate::LauncherResult;
 
 #[derive(Clone)]
 pub struct LauncherServices {
-	pub notifier: NotificationService,
+	pub events: EventBus,
 	pub requester: RequestClient,
 	pub db: DbPool,
 	pub packages: PackageProviderRegistry,
@@ -31,60 +29,103 @@ pub struct LauncherServices {
 pub struct LauncherState {
 	pub services: LauncherServices,
 	pub settings: parking_lot::RwLock<LauncherSettings>,
-	pub auth: Mutex<CredentialsStore>,
-	pub microsoft_logins: Mutex<HashMap<String, PendingBrowserLogin>>,
-	pub java: JavaManager,
+	pub auth: Arc<AuthService>,
+	pub java: JavaService,
+	pub clusters: ClusterManager,
 	pub metadata: Mutex<MetadataStore>,
 	pub bundles: Arc<BundlesManager>,
 	pub versions: Arc<VersionsManager>,
 	pub images: ImageCacheStore,
 	pub games: crate::game::GameProcessManager,
 	pub discord: DiscordRpc,
-	pub provisioning: Mutex<()>,
+}
+
+impl LauncherServices {
+	/// What the content crate needs: db, client, bus and the provider registry.
+	///
+	/// Unlike [`LauncherServices::mc`] this is the whole of `LauncherServices`; the
+	/// packages and bundles code uses all four fields.
+	#[must_use]
+	pub fn content(&self) -> oneclient_content::ContentCtx {
+		oneclient_content::ContentCtx::new(
+			self.db.clone(),
+			self.requester.clone(),
+			self.events.clone(),
+			self.packages.clone(),
+		)
+	}
+
+	/// The subset the Minecraft content crate needs: a client and a bus.
+	///
+	/// Both are refcounted handles, so this is cheap enough to build per call
+	/// rather than store alongside the fields it is made of.
+	#[must_use]
+	pub fn mc(&self) -> oneclient_mc::McCtx {
+		oneclient_mc::McCtx::new(self.requester.clone(), self.events.clone())
+	}
 }
 
 impl LauncherState {
-    #[tracing::instrument(skip(notifier))]
-	pub async fn initialize(
-		notifier: NotificationService,
-	) -> LauncherResult<Arc<Self>> {
-		if let Some(state) = STATE.get() {
-			return Ok(Arc::clone(state));
-		}
-
+	/// Builds the launcher's services and returns the handle.
+	///
+	/// Construction has no side effects beyond opening the database and reading
+	/// settings: the background startup work is [`run_startup_tasks`], which the
+	/// caller kicks off when it is ready. That split is why the state can be
+	/// constructed twice, or in a test only once.
+    #[tracing::instrument(skip(events))]
+	pub async fn new(events: EventBus) -> LauncherResult<Arc<Self>> {
         let services = LauncherServices {
-			notifier,
+			events,
 			db: oneclient_db::connect(paths::database_file()?).await?,
-			requester: RequestClient::new()?,
+			// Built with defaults because loading settings needs the event bus,
+			// which is already inside `services`. The user's endpoints and keys
+			// are pushed in immediately below, before anything makes a request.
+			requester: RequestClient::new(oneclient_net::NetConfig::default())?,
 			packages: PackageProviderRegistry::new(),
 		};
 
-        let settings = store::load_settings(Some(&services.notifier)).await;
-        let auth = CredentialsStore::load().await?;
-        let java = JavaManager;
+        let settings = store::load_settings(Some(&services.events)).await;
+		services
+			.requester
+			.set_config(crate::settings::net_config(&settings));
+        let auth = Arc::new(
+			AuthService::load(services.requester.clone(), services.events.clone()).await?,
+		);
+        let java = JavaService::new(
+			std::sync::Arc::new(crate::java_store::SqlJavaStore::new(services.db.clone())),
+			services.requester.clone(),
+			services.events.clone(),
+		);
         let discord = DiscordRpc::spawn(settings.discord_enabled);
+
+		let clusters = ClusterManager::new(services.db.clone());
 
 		let state = Arc::new(Self {
 			services,
 			settings: parking_lot::RwLock::new(settings),
-			auth: Mutex::new(auth),
-			microsoft_logins: Mutex::new(HashMap::new()),
+			auth,
 			java,
+			clusters,
 			metadata: Mutex::new(MetadataStore::new()),
 			bundles: Arc::new(BundlesManager::new()),
 			versions: Arc::new(VersionsManager::new()),
 			images: ImageCacheStore::new(),
 			games: crate::game::GameProcessManager::new(),
 			discord,
-			provisioning: Mutex::new(()),
 		});
 
-		STATE
-			.set(Arc::clone(&state))
-			.map_err(|_| LauncherError::AlreadyInitialized)?;
+		Ok(state)
+	}
+}
 
-		let background = Arc::clone(&state);
-		tokio::spawn(async move {
+/// Reconstructs anything missing from disk, adopts orphaned game sessions, then
+/// syncs the remote catalogs.
+///
+/// Split out so constructing a `LauncherState` is just construction. The caller
+/// decides when, and whether, this runs.
+pub fn run_startup_tasks(state: &Arc<LauncherState>) {
+	let background = Arc::clone(state);
+	tokio::spawn(async move {
 			let recovery = match crate::recovery::reconstruct_from_disk(&background).await {
 				Ok(report) => report,
 				Err(err) => {
@@ -95,9 +136,10 @@ impl LauncherState {
 
 			crate::game::recover_sessions(&background).await;
 
+			let content = background.services.content();
 			let (versions_res, bundles_res) = tokio::join!(
 				background.versions.sync(&background.services),
-				background.bundles.sync(&background.services),
+				background.bundles.sync(&content),
 			);
 			if let Err(err) = versions_res {
 				tracing::error!("versions manifest sync failed: {err:#}");
@@ -119,18 +161,8 @@ impl LauncherState {
 			if let Err(err) = crate::clusters::ensure_from_versions(&background).await {
 				tracing::error!("versions cluster provisioning failed: {err:#}");
 			} else {
-				background.services.notifier.invalidate_clusters();
+				background.services.events.signal(oneclient_events::Signal::ClustersChanged);
 			}
-			background.services.notifier.sync_complete();
-		});
-
-		Ok(state)
-	}
-
-	pub fn get() -> LauncherResult<Arc<Self>> {
-		STATE
-			.get()
-			.cloned()
-			.ok_or(LauncherError::NotInitialized)
-	}
+		background.services.events.signal(oneclient_events::Signal::SyncComplete);
+	});
 }

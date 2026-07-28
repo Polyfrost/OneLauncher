@@ -7,9 +7,10 @@ use freya::{
     },
     prelude::*,
 };
-use oneclient_core::notification::NotificationLevel;
+use oneclient_events::Level;
 
 use crate::{
+    ui::{divider},
     components::{Button, ButtonSize, Icon, IconType},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
@@ -45,8 +46,8 @@ fn entry_icon(entry: &InboxEntry) -> (IconType, Color) {
     }
 
     match entry.level {
-        NotificationLevel::Error => (IconType::AlertTriangle, colors::danger()),
-        NotificationLevel::Info => (IconType::DownloadCloud02, colors::fg_primary()),
+        Level::Error => (IconType::AlertTriangle, colors::danger()),
+        Level::Info => (IconType::DownloadCloud02, colors::fg_primary()),
     }
 }
 
@@ -218,8 +219,8 @@ impl Component for ToastCard {
 
 fn toast_shell(entry: &InboxEntry) -> Rect {
     let border_color = match entry.level {
-        NotificationLevel::Error => colors::danger(),
-        NotificationLevel::Info => colors::component_border(),
+        Level::Error => colors::danger(),
+        Level::Info => colors::component_border(),
     };
     rect()
         .width(Size::px(TOAST_W))
@@ -246,8 +247,8 @@ fn icon_badge(entry: &InboxEntry) -> impl IntoElement {
 
 fn header(entry: &InboxEntry) -> impl IntoElement {
     let title_color = match entry.level {
-        NotificationLevel::Error => colors::danger(),
-        NotificationLevel::Info => colors::fg_primary(),
+        Level::Error => colors::danger(),
+        Level::Info => colors::fg_primary(),
     };
     let body_color = colors::fg_secondary();
 
@@ -273,8 +274,8 @@ fn header(entry: &InboxEntry) -> impl IntoElement {
 
 fn ttl_bar(entry: &InboxEntry, pct: f32) -> impl IntoElement {
     let color = match entry.level {
-        NotificationLevel::Error => colors::danger(),
-        NotificationLevel::Info => colors::brand(),
+        Level::Error => colors::danger(),
+        Level::Info => colors::brand(),
     };
     rect()
         .width(Size::fill())
@@ -289,7 +290,7 @@ fn ttl_bar(entry: &InboxEntry, pct: f32) -> impl IntoElement {
         )
 }
 
-fn close_button(dispatch: crate::BridgeDispatch, id: u64) -> impl IntoElement {
+fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
     rect()
         .position(Position::new_absolute().top(8.).right(8.))
         .child(
@@ -309,7 +310,7 @@ fn close_button(dispatch: crate::BridgeDispatch, id: u64) -> impl IntoElement {
 
 fn message_card(
     entry: &InboxEntry,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     id: u64,
     ttl_pct: f32,
 ) -> Rect {
@@ -329,7 +330,7 @@ fn message_card(
         .child(ttl_bar(entry, ttl_pct))
 }
 
-fn action_card(entry: &InboxEntry, dispatch: crate::BridgeDispatch, id: u64, ttl_pct: f32) -> Rect {
+fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f32) -> Rect {
     let action = entry.actions.first().cloned();
 
     toast_shell(entry)
@@ -357,7 +358,7 @@ fn action_card(entry: &InboxEntry, dispatch: crate::BridgeDispatch, id: u64, ttl
 
 fn action_row(
     action: Option<crate::notifications::NotificationAction>,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     id: u64,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
@@ -396,7 +397,7 @@ fn action_row(
         )
 }
 
-fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {
+fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
@@ -455,11 +456,4 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                     ),
             ),
     )
-}
-
-fn divider() -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(1.))
-        .background(colors::component_border())
 }

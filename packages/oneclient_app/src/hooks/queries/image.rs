@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::{LauncherError, LauncherState};
+use oneclient_core::LauncherError;
 
 const IMAGE_STALE: Duration = Duration::from_secs(60 * 60);
 const IMAGE_CLEAN: Duration = Duration::from_secs(6 * 60 * 60);
@@ -27,12 +27,22 @@ impl QueryCapability for CachedImageQuery {
             return Err(LauncherError::Minecraft("no image url".to_string()));
         }
 
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         state
             .images
-            .get(&state.services, &keys.url, keys.max_edge)
+            .get(&state.services.requester, &keys.url, keys.max_edge)
             .await
     }
+}
+
+/// The bytes of a cached image, once they are there.
+///
+/// The url comes back with them because callers key their image handle on it;
+/// a stale url paired with fresh bytes renders the wrong picture for a frame.
+pub fn loaded_image(url: Option<&str>, query: &UseQuery<CachedImageQuery>) -> Option<(String, Bytes)> {
+    let url = url?;
+    let bytes = super::state::settled_or_loading(query)?;
+    Some((url.to_string(), bytes))
 }
 
 pub fn use_cached_image(url: Option<String>, max_edge: u32) -> UseQuery<CachedImageQuery> {

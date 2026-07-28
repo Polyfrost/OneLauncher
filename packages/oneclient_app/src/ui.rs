@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::time::Instant;
 
 use freya::prelude::*;
@@ -25,37 +24,51 @@ pub fn border_all_color(width: f32, color: Color) -> Border {
     })
 }
 
-pub fn border_left(width: f32) -> Border {
-    Border::new()
-        .fill(theme::colors::component_border())
-        .width(BorderWidth {
-            left: width,
-            ..Default::default()
-        })
-}
-
-pub fn border_right(width: f32) -> Border {
-    Border::new()
-        .fill(theme::colors::component_border())
-        .width(BorderWidth {
-            right: width,
-            ..Default::default()
-        })
-}
-
 pub fn fmt_date(ts: chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M").to_string()
 }
 
+/// How long ago, for a timestamp shown next to something that happened.
+///
+/// Nothing re-renders on a timer, so the shortest band is a whole minute: a
+/// seconds counter would freeze at whatever it read when the row was drawn and
+/// quietly lie from then on. The version this replaced had a seconds band and
+/// no callers.
 pub fn relative_time(created_at: Instant) -> String {
     let secs = created_at.elapsed().as_secs();
     match secs {
-        0..=9 => "Just now".to_string(),
-        10..=59 => format!("{secs}s ago"),
+        0..=59 => "Just now".to_string(),
         60..=3599 => format!("{}m ago", secs / 60),
         3600..=86_399 => format!("{}h ago", secs / 3600),
         _ => format!("{}d ago", secs / 86_400),
     }
+}
+
+/// A one-pixel rule in the component-border colour.
+///
+/// Returns the `Rect` rather than an `Element` so a caller that wants it inset
+/// or rounded can say so without copying the whole thing out again.
+pub fn divider() -> Rect {
+    rect()
+        .width(Size::fill())
+        .height(Size::px(1.))
+        .background(theme::colors::component_border())
+}
+
+/// A quiet line of text centred in a fixed block: "nothing here yet", or a
+/// failure where a chart would otherwise be.
+pub fn centered_note(text: &str) -> Element {
+    rect()
+        .width(Size::fill())
+        .height(Size::px(240.))
+        .center()
+        .child(
+            label()
+                .text(text.to_string())
+                .font_size(14.)
+                .color(theme::colors::fg_secondary()),
+        )
+        .into_element()
 }
 
 pub fn entrance_motion_layer(

@@ -6,9 +6,9 @@ use oneclient_db::dao::artifact as artifact_dao;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
-use crate::packages::domain::ContentType;
-use crate::packages::store::{artifact_absolute_path, link_or_copy};
-use crate::packages::{LinkedArtifactInfo, PackageStore};
+use oneclient_common::domain::ContentType;
+use oneclient_content::packages::store::{artifact_absolute_path, link_or_copy};
+use oneclient_content::packages::{LinkedArtifactInfo, PackageStore};
 use crate::state::LauncherServices;
 
 const REDIRECTED_DIRS: [&str; 2] = ["logs", "crash-reports"];
@@ -31,7 +31,7 @@ pub async fn sync_shared_content(
 
     import_manual_content(services, cluster, game_dir).await;
 
-    let linked = PackageStore::list_linked_artifacts(cluster.id, services).await?;
+    let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content()).await?;
 
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());
@@ -40,8 +40,8 @@ pub async fn sync_shared_content(
 
         let managed = managed_names(&linked, content_type);
 
-        // Anything still here belongs to whoever played last (or crashed last)
-        // — take it into this cluster rather than deleting it.
+        // Anything still here belongs to whoever played last (or crashed last), so
+        // take it into this cluster rather than deleting it.
         stash_content_files(&dir, &stash, &managed).await;
         ensure_note(&dir, content_type).await;
         restore_stashed(&stash, &dir, &managed).await;
@@ -87,7 +87,7 @@ pub async fn import_manual_content(
     cluster: &Cluster,
     game_dir: &Path,
 ) {
-    let linked = match PackageStore::list_linked_artifacts(cluster.id, services).await {
+    let linked = match PackageStore::list_linked_artifacts(cluster.id, &services.content()).await {
         Ok(linked) => linked,
         Err(err) => {
             tracing::warn!(error = %err, "failed to list links; skipping manual-content import");
@@ -126,7 +126,7 @@ pub async fn import_manual_content(
                 continue;
             }
 
-            match PackageStore::import_local_file(&path, content_type, cluster.id, services).await {
+            match PackageStore::import_local_file(&path, content_type, cluster.id, &services.content()).await {
                 Ok(_) => {
                     tracing::debug!(file = name, "registered manually-added shared content")
                 }
@@ -153,7 +153,7 @@ const ALLOWED_SYMLINKS_NAME: &str = "allowed_symlinks.txt";
 
 #[tracing::instrument(level = "debug")]
 pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
-    let root = crate::paths::launcher_dir()?;
+    let root = oneclient_common::paths::launcher_dir()?;
     let base = polyio::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let sep = std::path::MAIN_SEPARATOR;
 
@@ -178,7 +178,7 @@ fn managed_names(linked: &[LinkedArtifactInfo], content_type: ContentType) -> Ha
 /// Empty a shared content folder without losing anything the game wrote into
 /// it.
 ///
-/// Managed content is dropped — the cluster folder already holds an equivalent
+/// Managed content is dropped, since the cluster folder already holds an
 /// link into the artifact cache. Everything else (a shaderpack's settings
 /// sidecar, an unzipped pack, a stray config) is *moved* into the cluster's own
 /// copy of the folder, and [`restore_stashed`] links it back on the next
@@ -242,7 +242,7 @@ async fn restore_stashed(stash: &Path, dir: &Path, managed: &HashSet<String>) {
         let Ok(file_type) = entry.file_type().await else {
             continue;
         };
-        // A link into the artifact cache — managed content is linked from the
+        // A link into the artifact cache. Managed content is linked from the
         // database further down, not from here.
         if file_type.is_symlink() {
             continue;
@@ -327,7 +327,7 @@ pub async fn clear_shared_content(
 ) -> LauncherResult<()> {
     // Run after `import_manual_content`, so anything the user dropped in is
     // already a tracked artifact by now and gets dropped rather than stashed.
-    let linked = PackageStore::list_linked_artifacts(cluster.id, services)
+    let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content())
         .await
         .unwrap_or_default();
 
@@ -457,21 +457,8 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::*;
-
-    fn tmp_root(tag: &str) -> PathBuf {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-
-        let dir =
-            std::env::temp_dir().join(format!("oneclient_shd_{}_{tag}_{n}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-
-        dir
-    }
 
     fn managed(names: &[&str]) -> HashSet<String> {
         names.iter().map(|n| (*n).to_string()).collect()
@@ -481,7 +468,7 @@ mod tests {
     /// end up in the cluster rather than the shared dir.
     #[tokio::test]
     async fn shader_settings_survive_a_session() {
-        let root = tmp_root("shader_settings");
+        let root = polyio::testing::ScratchDir::new("shader_settings");
         let shared = root.join("shared").join("shaderpacks");
         let stash = root.join("cluster").join("shaderpacks");
         polyio::create_dir_all(&shared).await.unwrap();
@@ -521,13 +508,13 @@ mod tests {
             "BLOOM=on"
         );
 
-        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(root.path()).ok();
     }
 
     /// An unzipped pack is a directory; it moves out and comes back as a link.
     #[tokio::test]
     async fn unpacked_dirs_move_into_the_cluster() {
-        let root = tmp_root("unpacked");
+        let root = polyio::testing::ScratchDir::new("unpacked");
         let shared = root.join("shared").join("shaderpacks");
         let stash = root.join("cluster").join("shaderpacks");
         polyio::create_dir_all(shared.join("Loose/shaders")).await.unwrap();
@@ -547,13 +534,13 @@ mod tests {
         assert!(!shared.join("Loose").exists());
         assert!(stash.join("Loose/shaders/final.fsh").exists());
 
-        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(root.path()).ok();
     }
 
     /// The note explaining the empty folder is ours, and stays put.
     #[tokio::test]
     async fn note_is_never_stashed() {
-        let root = tmp_root("note");
+        let root = polyio::testing::ScratchDir::new("note");
         let shared = root.join("shared").join("mods");
         let stash = root.join("cluster").join("mods");
         polyio::create_dir_all(&shared).await.unwrap();
@@ -565,6 +552,6 @@ mod tests {
         assert!(shared.join(EMPTY_NOTE_NAME).exists());
         assert!(!stash.join(EMPTY_NOTE_NAME).exists());
 
-        std::fs::remove_dir_all(&root).ok();
+        std::fs::remove_dir_all(root.path()).ok();
     }
 }

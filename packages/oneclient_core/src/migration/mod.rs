@@ -1,4 +1,3 @@
-mod fs;
 pub mod oneclient_v1;
 pub mod vanilla;
 
@@ -7,9 +6,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::LauncherResult;
-use crate::packages::domain::GameLoader;
-
-pub use fs::copy_tree;
+use oneclient_common::domain::GameLoader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MigrationSource {
@@ -96,15 +93,18 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     Ok(None)
 }
 
-#[tracing::instrument]
+#[tracing::instrument(skip(state))]
 pub async fn import_game_dir(
+    state: &std::sync::Arc<crate::LauncherState>,
     source: MigrationSource,
     folder_name: &str,
     target: ImportTarget,
 ) -> LauncherResult<()> {
     match source {
-        MigrationSource::OneClientV1 => oneclient_v1::import_game_dir(folder_name, target).await,
-        MigrationSource::Vanilla => vanilla::import_game_dir(target).await,
+        MigrationSource::OneClientV1 => {
+            oneclient_v1::import_game_dir(state, folder_name, target).await
+        }
+        MigrationSource::Vanilla => vanilla::import_game_dir(state, target).await,
     }
 }
 

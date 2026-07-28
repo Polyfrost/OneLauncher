@@ -1,12 +1,11 @@
 use std::path::PathBuf;
 
 use freya::query::{
-    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, QueryStateData,
+    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_core::clusters::ClusterManager;
 use oneclient_core::{
-    LauncherError, LauncherState, LogFileInfo, LogLevel, LogLine, MclogsUploadResponse, ReadOptions,
+    LauncherError, LogFileInfo, LogLevel, LogLine, MclogsUploadResponse, ReadOptions,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -23,9 +22,9 @@ impl QueryCapability for ClusterLogsQuery {
     type Keys = ClusterLogsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        let cluster = ClusterManager::get(&state, keys.cluster_id).await?;
-        oneclient_core::list_cluster_logs(&cluster)
+        let state = crate::launcher::state()?;
+        let cluster = state.clusters.get(keys.cluster_id).await?;
+        Ok(oneclient_core::list_cluster_logs(&cluster)?)
     }
 }
 
@@ -49,7 +48,7 @@ impl QueryCapability for LogContentQuery {
         if keys.path.as_os_str().is_empty() {
             return Ok(Vec::new());
         }
-        oneclient_core::read_log_at(
+        Ok(oneclient_core::read_log_at(
             &keys.path,
             &ReadOptions {
                 level_filter: keys.level,
@@ -57,7 +56,7 @@ impl QueryCapability for LogContentQuery {
                 max_lines: keys.max_lines,
             },
         )
-        .await
+        .await?)
     }
 }
 
@@ -82,26 +81,12 @@ pub fn use_log_content(
     ))
 }
 
-fn settled_ok<Q>(query: &UseQuery<Q>) -> Option<Q::Ok>
-where
-    Q: QueryCapability,
-    Q::Ok: Clone,
-{
-    match &*query.read().state() {
-        QueryStateData::Settled { res: Ok(value), .. } => Some(value.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(value)),
-        } => Some(value.clone()),
-        _ => None,
-    }
-}
-
 pub fn try_cluster_logs(query: &UseQuery<ClusterLogsQuery>) -> Option<Vec<LogFileInfo>> {
-    settled_ok(query)
+    super::state::settled_or_loading(query)
 }
 
 pub fn try_log_content(query: &UseQuery<LogContentQuery>) -> Option<Vec<LogLine>> {
-    settled_ok(query)
+    super::state::settled_or_loading(query)
 }
 
 pub async fn invalidate_logs_queries() {
@@ -123,8 +108,8 @@ impl MutationCapability for UploadLogMutation {
     type Keys = UploadLogKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        oneclient_core::upload_log_at(&state.services, &keys.path).await
+        let state = crate::launcher::state()?;
+        Ok(oneclient_core::upload_log_at(&state.services.requester, &keys.path).await?)
     }
 }
 
@@ -149,7 +134,7 @@ impl MutationCapability for LogActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         match keys {
-            LogAction::Delete { path } => oneclient_core::delete_log_at(path).await,
+            LogAction::Delete { path } => Ok(oneclient_core::delete_log_at(path).await?),
         }
     }
 

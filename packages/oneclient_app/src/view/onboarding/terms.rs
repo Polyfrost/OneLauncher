@@ -54,11 +54,11 @@ impl Component for OnboardingTerms {
         let terms_url = document
             .as_ref()
             .map(|doc| doc.terms_url().to_string())
-            .unwrap_or_else(|| oneclient_core::constants::TOS_URL.to_string());
+            .unwrap_or_else(|| oneclient_common::constants::TOS_URL.to_string());
         let privacy_url = document
             .as_ref()
             .map(|doc| doc.privacy_url().to_string())
-            .unwrap_or_else(|| oneclient_core::constants::PRIVACY_URL.to_string());
+            .unwrap_or_else(|| oneclient_common::constants::PRIVACY_URL.to_string());
 
         let privacy_body = document.as_ref().and_then(|doc| doc.privacy_body());
         let tabs = privacy_body.is_some().then(|| tab_switcher(tab));

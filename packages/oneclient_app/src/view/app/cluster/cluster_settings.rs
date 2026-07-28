@@ -1,7 +1,7 @@
 use freya::prelude::*;
-use oneclient_core::Patch;
-use oneclient_core::java::JavaRuntime;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::Patch;
+use oneclient_java::JavaRuntime;
+use oneclient_common::domain::GameLoader;
 use oneclient_core::settings::{GameSettingsProfile, ProfileUpdate, Resolution};
 
 use crate::components::{
@@ -16,7 +16,8 @@ use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
 
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
 pub struct ClusterSettings {
@@ -28,7 +29,7 @@ impl Component for ClusterSettings {
         let cluster_id = self.cluster_id;
         let global = use_settings_snapshot().settings.global_game_settings;
 
-        let cluster = load_cluster(cluster_id);
+        let cluster = use_cluster(cluster_id);
         let profile_name = cluster
             .as_ref()
             .and_then(|c| c.setting_profile_name.clone());

@@ -5,10 +5,9 @@ pub use index::Browser;
 pub use package::BrowserPackage;
 
 use freya::prelude::*;
-use freya::query::QueryStateData;
 
 use crate::components::{Icon, IconType};
-use crate::hooks::use_cached_image;
+use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
@@ -48,17 +47,7 @@ impl Component for Thumbnail {
         let size = self.size;
         let radius = self.radius;
         let query = use_cached_image(self.icon_url.clone(), 256);
-        let reader = query.read();
-        let loaded = match (&self.icon_url, &*reader.state()) {
-            (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-            | (
-                Some(url),
-                QueryStateData::Loading {
-                    res: Some(Ok(bytes)),
-                },
-            ) => Some((url.clone(), bytes.clone())),
-            _ => None,
-        };
+        let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
         match loaded {
             Some((url, bytes)) => ImageViewer::new((url, bytes))
@@ -111,17 +100,7 @@ impl Component for PackageBanner {
         let h = self.height;
         let icon = h * 0.62;
         let query = use_cached_image(self.icon_url.clone(), 512);
-        let reader = query.read();
-        let loaded = match (&self.icon_url, &*reader.state()) {
-            (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-            | (
-                Some(url),
-                QueryStateData::Loading {
-                    res: Some(Ok(bytes)),
-                },
-            ) => Some((url.clone(), bytes.clone())),
-            _ => None,
-        };
+        let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
         let banner = rect()
             .width(Size::fill())

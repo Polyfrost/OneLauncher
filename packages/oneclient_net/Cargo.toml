@@ -1,0 +1,36 @@
+[package]
+name = "oneclient_net"
+description = "OneClient HTTP transport: retries, throttling, ETag caching and verified downloads"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+oneclient_common.workspace = true
+oneclient_events.workspace = true
+polyio.workspace = true
+
+reqwest.workspace = true
+tokio.workspace = true
+futures-lite.workspace = true
+futures-util.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+
+# Config read on every outbound request, written only on a settings save.
+arc-swap.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true

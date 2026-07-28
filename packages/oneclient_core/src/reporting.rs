@@ -5,7 +5,7 @@ use std::time::Duration;
 use sentry::protocol::{Context, Event};
 use sentry::{ClientInitGuard, ClientOptions};
 
-use crate::constants::SENTRY_DSN;
+use oneclient_common::constants::SENTRY_DSN;
 
 const PANIC_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 const TRACING_FIELDS_CONTEXT: &str = "Rust Tracing Fields";

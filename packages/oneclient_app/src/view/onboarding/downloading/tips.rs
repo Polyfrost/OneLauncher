@@ -47,7 +47,7 @@ pub(super) fn use_onboarding_tip() -> String {
 
     use_hook(move || {
         spawn(async move {
-            let Ok(state) = oneclient_core::LauncherState::get() else {
+            let Ok(state) = crate::launcher::state() else {
                 return;
             };
             match state

@@ -1,6 +1,6 @@
 use freya::prelude::*;
-use oneclient_core::VersionKey;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::VersionKey;
+use oneclient_common::domain::GameLoader;
 
 use crate::components::DynamicArt;
 use crate::theme::colors;

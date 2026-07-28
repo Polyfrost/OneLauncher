@@ -4,9 +4,13 @@
 #![recursion_limit = "256"]
 
 mod assets;
-mod bridge;
 mod components;
 pub mod hooks;
+pub mod events;
+mod install;
+mod launcher;
+pub mod state;
+mod transfer;
 mod layout;
 mod notifications;
 pub mod platform;
@@ -20,7 +24,8 @@ mod view;
 pub mod constants;
 
 pub use assets::AppAssets;
-pub use bridge::*;
+pub use events::EventPump;
+pub use state::{AppChannel, AppState};
 pub use components::ConfirmLinkOverlay;
 pub use hooks::*;
 pub use routes::{Route, router};

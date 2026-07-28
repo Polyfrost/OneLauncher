@@ -1,11 +1,11 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::packages::types::{
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::GameLoader;
+use oneclient_content::packages::types::{
     DEFAULT_PAGE_SIZE, Page, ProjectDetail, ProjectSummary, SearchFilters, SearchSort,
     VersionSummary,
 };
-use oneclient_core::packages::{CachedPackageMeta, ContentType, ProviderId};
-use oneclient_core::{LauncherError, LauncherState};
+use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
+use oneclient_core::LauncherError;
 
 pub const BROWSE_PAGE_SIZE: usize = DEFAULT_PAGE_SIZE;
 pub const VERSIONS_PAGE_SIZE: usize = 20;
@@ -40,9 +40,9 @@ impl QueryCapability for PackageSearchQuery {
 
     #[tracing::instrument(name = "package_search", level = "debug", skip(self, keys), fields(provider = ?keys.provider, page = keys.page))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let provider = state.services.packages.get(keys.provider)?;
-        provider
+        Ok(provider
             .search(
                 &SearchFilters {
                     query: (!keys.query.trim().is_empty()).then(|| keys.query.trim().to_string()),
@@ -55,9 +55,9 @@ impl QueryCapability for PackageSearchQuery {
                     offset: Some(keys.page * BROWSE_PAGE_SIZE),
                     limit: Some(BROWSE_PAGE_SIZE),
                 },
-                &state.services,
+                &state.services.content(),
             )
-            .await
+            .await?)
     }
 }
 
@@ -88,32 +88,19 @@ pub fn use_package_search(
 }
 
 pub fn search_items(query: &UseQuery<PackageSearchQuery>) -> Vec<ProjectSummary> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(page), .. } => page.items.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(page)),
-        } => page.items.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query)
+        .map(|page| page.items)
+        .unwrap_or_default()
 }
 
 pub fn search_total(query: &UseQuery<PackageSearchQuery>) -> usize {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(page), .. } => page.total,
-        QueryStateData::Loading {
-            res: Some(Ok(page)),
-        } => page.total,
-        _ => 0,
-    }
+    super::state::settled_or_loading(query)
+        .map(|page| page.total)
+        .unwrap_or(0)
 }
 
 pub fn search_pending(query: &UseQuery<PackageSearchQuery>) -> bool {
-    matches!(
-        &*query.read().state(),
-        QueryStateData::Pending | QueryStateData::Loading { .. }
-    )
+    super::state::query_is_busy(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -131,11 +118,11 @@ impl QueryCapability for PackageProjectQuery {
     type Keys = PackageProjectKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let provider = state.services.packages.get(keys.provider)?;
-        provider
-            .get_project_with_body(&keys.project_id, &state.services)
-            .await
+        Ok(provider
+            .get_project_with_body(&keys.project_id, &state.services.content())
+            .await?)
     }
 }
 
@@ -153,16 +140,7 @@ pub fn use_package_project(
 }
 
 pub fn project_detail(query: &UseQuery<PackageProjectQuery>) -> Option<ProjectDetail> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled {
-            res: Ok(detail), ..
-        } => Some(detail.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(detail)),
-        } => Some(detail.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -181,13 +159,13 @@ impl QueryCapability for PackageMetaBatchQuery {
 
     #[tracing::instrument(name = "package_meta_batch", level = "debug", skip(self, keys), fields(provider = ?keys.provider, ids = keys.project_ids.len()))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        oneclient_core::packages::fetch_package_meta(
-            &state.services,
+        let state = crate::launcher::state()?;
+        Ok(oneclient_content::packages::fetch_package_meta(
+            &state.services.content(),
             keys.provider,
             &keys.project_ids,
         )
-        .await
+        .await?)
     }
 }
 
@@ -209,12 +187,7 @@ pub fn use_package_meta_batch(
 pub fn package_meta_batch(
     query: &UseQuery<PackageMetaBatchQuery>,
 ) -> std::collections::HashMap<String, CachedPackageMeta> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(map), .. } => map.clone(),
-        QueryStateData::Loading { res: Some(Ok(map)) } => map.clone(),
-        _ => std::collections::HashMap::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -235,18 +208,18 @@ impl QueryCapability for PackageVersionsQuery {
     type Keys = PackageVersionsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let provider = state.services.packages.get(keys.provider)?;
-        provider
+        Ok(provider
             .list_versions(
                 &keys.project_id,
                 keys.game_version.as_deref(),
                 keys.loader,
                 keys.page * VERSIONS_PAGE_SIZE,
                 VERSIONS_PAGE_SIZE,
-                &state.services,
+                &state.services.content(),
             )
-            .await
+            .await?)
     }
 }
 
@@ -270,25 +243,15 @@ pub fn use_package_versions(
 }
 
 pub fn version_list(query: &UseQuery<PackageVersionsQuery>) -> Vec<VersionSummary> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(page), .. } => page.items.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(page)),
-        } => page.items.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query)
+        .map(|page| page.items)
+        .unwrap_or_default()
 }
 
 pub fn versions_total(query: &UseQuery<PackageVersionsQuery>) -> usize {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(page), .. } => page.total,
-        QueryStateData::Loading {
-            res: Some(Ok(page)),
-        } => page.total,
-        _ => 0,
-    }
+    super::state::settled_or_loading(query)
+        .map(|page| page.total)
+        .unwrap_or(0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -307,11 +270,11 @@ impl QueryCapability for PackageCategoriesQuery {
 
     #[tracing::instrument(name = "package_categories", level = "debug", skip(self, keys), fields(provider = ?keys.provider))]
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let provider = state.services.packages.get(keys.provider)?;
-        provider
-            .list_categories(keys.content_type, &state.services)
-            .await
+        Ok(provider
+            .list_categories(keys.content_type, &state.services.content())
+            .await?)
     }
 }
 
@@ -329,12 +292,5 @@ pub fn use_package_categories(
 }
 
 pub fn category_list(query: &UseQuery<PackageCategoriesQuery>) -> Vec<String> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }

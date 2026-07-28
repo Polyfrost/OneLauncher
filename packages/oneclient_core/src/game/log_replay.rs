@@ -5,7 +5,7 @@
 //! it to recover when the session ended and which servers it visited.
 //!
 //! Minecraft logs a bare wall-clock time (`[12:29:00]`) in the machine's local
-//! zone — no date, no offset. Absolute timestamps therefore have to be rebuilt
+//! zone: no date, no offset. Absolute timestamps therefore have to be rebuilt
 //! by anchoring at the session start and walking forward.
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
@@ -18,7 +18,7 @@ const ROLLOVER_SLACK_SECS: i64 = 12 * 60 * 60;
 
 /// Lines that mean "no longer connected to the server we were tracking".
 /// Absent any of these the span is closed by the next join, or by the session
-/// end — a missing marker costs accuracy, never correctness.
+/// end. A missing marker costs accuracy, never correctness.
 const LEAVE_MARKERS: &[&str] = &[
 	"Stopping!",
 	"Stopping worker threads",
@@ -62,8 +62,8 @@ fn local_to_utc(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
 		// better guess for a forward-walking log.
 		LocalResult::Ambiguous(first, _) => first.with_timezone(&Utc),
 		// DST start: this wall-clock time never existed, so step over the gap
-		// rather than reading the local time as if it were UTC — that would be
-		// wrong by the zone's whole offset.
+		// rather than reading the local time as if it were UTC, which would be wrong
+		// by the zone's whole offset.
 		LocalResult::None => Local
 			.from_local_datetime(&(naive + chrono::Duration::hours(1)))
 			.earliest()
@@ -112,7 +112,7 @@ pub(crate) struct ServerSpan {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct LogReplay {
-	/// Timestamp of the last line carrying one — a lower bound on the exit.
+	/// Timestamp of the last line carrying one, a lower bound on the exit.
 	pub last_activity: Option<DateTime<Utc>>,
 	/// Set when the game logged a clean shutdown.
 	pub stopped_at: Option<DateTime<Utc>>,

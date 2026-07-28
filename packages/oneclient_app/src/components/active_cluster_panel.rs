@@ -1,15 +1,11 @@
 use freya::animation::*;
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType};
-use oneclient_core::parse_mc_version;
+use oneclient_common::parse_mc_version;
 
-use crate::hooks::{
-    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher,
-    use_version_metadata,
-};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
@@ -27,16 +23,7 @@ impl Component for ActiveClusterPanel {
         let launcher = use_launcher();
         let syncing = launcher.fetching || launcher.syncing_bundles;
 
-        let clusters = {
-            let reader = clusters_query.read();
-            match &*reader.state() {
-                QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-                QueryStateData::Loading {
-                    res: Some(Ok(list)),
-                } => list.clone(),
-                _ => Vec::new(),
-            }
-        };
+        let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let sorted = sort_clusters_for_home(clusters);
 
@@ -131,7 +118,7 @@ impl Component for ActiveClusterPanel {
 
 fn launch_button(
     cluster_id: i64,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     state: (&'static str, bool),
 ) -> impl IntoElement {
     let (label, enabled) = state;

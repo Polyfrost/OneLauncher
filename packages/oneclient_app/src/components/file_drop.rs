@@ -15,15 +15,14 @@ use std::path::{Path, PathBuf};
 
 use freya::animation::{AnimNum, Ease, Function, OnCreation, use_animation};
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::use_route;
 use oneclient_core::clusters::Cluster;
-use oneclient_core::packages::ContentType;
+use oneclient_content::packages::ContentType;
 use oneclient_db::models::ClusterId;
 
 use crate::Route;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -41,7 +40,7 @@ const IMPORTABLE: [ContentType; 3] = [
     ContentType::Shader,
 ];
 
-/// Names that give away a shaderpack. Only a starting guess — every row has a
+/// Names that give away a shaderpack. Only a starting guess; every row has a
 /// dropdown, so a wrong sniff costs the user one click.
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
 
@@ -89,10 +88,6 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
         _ => None,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Overlay
-// ---------------------------------------------------------------------------
 
 /// Renders the shell's drop affordance and, once files land, the prompt asking
 /// where they should go.
@@ -197,10 +192,6 @@ fn icon_badge(icon: IconType, size: f32, icon_size: f32) -> impl IntoElement {
         .child(Icon::new(icon).size(icon_size).color(colors::brand()))
 }
 
-// ---------------------------------------------------------------------------
-// Prompt
-// ---------------------------------------------------------------------------
-
 #[derive(PartialEq)]
 struct DropPrompt {
     files: Vec<PathBuf>,
@@ -224,17 +215,7 @@ impl Component for DropPrompt {
         // the inferred type, so a second drop landing mid-prompt still gets one.
         let overrides = use_state(HashMap::<PathBuf, ContentType>::new);
 
-        let clusters: Vec<Cluster> = {
-            let reader = clusters_query.read();
-            let state = reader.state();
-            match &*state {
-                QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-                QueryStateData::Loading {
-                    res: Some(Ok(list)),
-                } => list.clone(),
-                _ => Vec::new(),
-            }
-        };
+        let clusters: Vec<Cluster> = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let body = if clusters.is_empty() {
             no_clusters_body(pending)
@@ -343,7 +324,7 @@ fn prompt_body(
     route_type: Option<ContentType>,
     selected_cluster: State<Option<ClusterId>>,
     overrides: State<HashMap<PathBuf, ContentType>>,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     mut pending: State<Vec<PathBuf>>,
 ) -> Element {
     // The remembered cluster may have been deleted while the prompt was open.

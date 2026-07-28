@@ -1,6 +1,6 @@
 use freya::prelude::*;
-use oneclient_core::java::JavaVendor;
-use oneclient_core::notification::{PromptKind, UserChoice};
+use oneclient_java::{JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JavaVendor};
+use oneclient_events::Answer;
 
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
@@ -24,9 +24,23 @@ impl Component for JavaPromptOverlay {
             return rect().into_element();
         };
 
-        let PromptKind::JavaInstall { major } = prompt.kind else {
+        // Identified by the choices it offers rather than a prompt-kind enum.
+        if !prompt.has_choice(JAVA_CHOICE_DOWNLOAD) {
             return rect().into_element();
-        };
+        }
+
+        // The vendor list needs a major to highlight. It is not on the prompt (the
+        // core only sends display text) so recover it from the folder choice's dialog
+        // title, which the core builds from the same number.
+        let major = prompt
+            .choice(JAVA_CHOICE_FOLDER)
+            .and_then(|choice| match &choice.input {
+                Some(oneclient_events::ChoiceInput::Folder { title }) => title
+                    .split_whitespace()
+                    .find_map(|word| word.parse::<u32>().ok()),
+                _ => None,
+            })
+            .unwrap_or(0);
 
         // Download opens the install manager with the required major highlighted.
         if *show_manager.read() {
@@ -35,7 +49,9 @@ impl Component for JavaPromptOverlay {
                 .suggested(Some(major))
                 .on_install(move |(vendor, _row_major): (JavaVendor, u32)| {
                     // The launch needs `major`; the manager only picks the vendor.
-                    install.answer_prompt(UserChoice::Install { vendor, major });
+                    install.answer_prompt(
+                        Answer::new(JAVA_CHOICE_DOWNLOAD).with_selection(vendor.to_string()),
+                    );
                     show_manager.set(false);
                 })
                 .on_close(move |()| show_manager.set(false))
@@ -54,13 +70,15 @@ impl Component for JavaPromptOverlay {
                     .pick_folder()
                     .await
                 {
-                    dispatch.answer_prompt(UserChoice::Folder(handle.path().to_path_buf()));
+                    dispatch.answer_prompt(
+                        Answer::new(JAVA_CHOICE_FOLDER).with_folder(handle.path()),
+                    );
                 }
             });
         };
 
         OverlayPopup::new()
-            .on_close(move |_| close.answer_prompt(UserChoice::Cancel))
+            .on_close(move |_| close.dismiss_prompt())
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -112,7 +130,7 @@ impl Component for JavaPromptOverlay {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| {
-                                                cancel.answer_prompt(UserChoice::Cancel)
+                                                cancel.dismiss_prompt()
                                             })
                                             .text("Cancel"),
                                     )

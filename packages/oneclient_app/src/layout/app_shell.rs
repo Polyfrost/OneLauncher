@@ -23,7 +23,7 @@ use crate::hooks::{
     use_provide_browser_state, use_splash,
 };
 use crate::theme::colors;
-use oneclient_core::notification::LaunchStage;
+use oneclient_events::LaunchStage;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -206,7 +206,7 @@ impl Component for LaunchErrorDialog {
     }
 }
 
-fn copy_error_button(message: &str, dispatch: crate::BridgeDispatch) -> impl IntoElement {
+fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElement {
     let message = message.to_string();
     Button::new()
         .secondary()
@@ -271,7 +271,7 @@ impl Component for AppHomeBackground {
         let splash = use_splash();
 
         // Once the cluster list has settled and the startup fetch is done, the
-        // home view is populated — let the splash curtain fade out.
+        // home view is populated, so let the splash curtain fade out.
         let clusters_settled = matches!(
             &*clusters_query.read().state(),
             QueryStateData::Settled { .. }
@@ -289,13 +289,7 @@ impl Component for AppHomeBackground {
         let (art, art_dep) = {
             let reader = clusters_query.read();
             let state = reader.state();
-            let clusters = match &*state {
-                QueryStateData::Settled { res: Ok(list), .. } => list.as_slice(),
-                QueryStateData::Loading {
-                    res: Some(Ok(list)),
-                } => list.as_slice(),
-                _ => &[],
-            };
+            let clusters = state.ok().map_or(&[][..], Vec::as_slice);
             let chosen = (*active_id.read())
                 .and_then(|id| clusters.iter().find(|c| c.id == id))
                 .or_else(|| clusters.first());

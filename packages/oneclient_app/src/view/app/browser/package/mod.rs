@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::packages::{ContentType, ProviderId};
+use oneclient_content::packages::{ContentType, ProviderId};
 
 use crate::components::ScrollArea;
 use crate::hooks::{
@@ -8,7 +8,7 @@ use crate::hooks::{
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::app::cluster::load_cluster;
+use crate::hooks::use_cluster;
 
 use super::{PackageBanner, Thumbnail};
 use crate::utils::abbreviate_number;
@@ -108,7 +108,7 @@ impl Component for BrowserPackage {
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
 
-        let cluster = load_cluster(cluster_id);
+        let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
         let (game_version, loader) = match (compat, &cluster) {
             (true, Some(c)) => (

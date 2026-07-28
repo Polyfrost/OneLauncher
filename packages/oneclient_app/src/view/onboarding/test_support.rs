@@ -1,6 +1,6 @@
 use oneclient_core::clusters::{Cluster, ClusterStage};
-use oneclient_core::packages::domain::{ContentType, GameLoader};
-use oneclient_core::packages::types::ExternalFile;
+use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_content::packages::types::ExternalFile;
 use oneclient_core::{Bundle, BundleArchive, BundleFile, BundleFileKind, BundleManifest};
 use std::path::PathBuf;
 

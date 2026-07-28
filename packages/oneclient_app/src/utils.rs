@@ -3,15 +3,15 @@ use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
 use oneclient_core::clusters::Cluster;
-use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
 
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
 /// One entry on the versions page. The modern scheme puts a full release in the
 /// first two components (`26.1`, `26.2`), so each minor is its own line; legacy
 /// `1.x` versions keep the whole major (`1.21`) as one line. A line that holds a
-/// single concrete version is presented as that version — see [`line_title`].
+/// single concrete version is presented as that version (see [`line_title`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReleaseLine {
     pub major: u32,

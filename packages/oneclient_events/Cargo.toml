@@ -1,0 +1,20 @@
+[package]
+name = "oneclient_events"
+description = "The OneClient event bus: notifications, progress, prompts and signals"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+thiserror.workspace = true
+tokio = { workspace = true }
+tracing.workspace = true
+uuid.workspace = true

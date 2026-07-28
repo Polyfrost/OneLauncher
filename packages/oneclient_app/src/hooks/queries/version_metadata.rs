@@ -1,7 +1,6 @@
-use freya::query::QueryStateData;
-use oneclient_core::VersionKey;
+use oneclient_common::VersionKey;
 use oneclient_core::VersionMetadata;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 
 use super::use_versions;
 
@@ -51,15 +50,10 @@ pub fn use_version_metadata(
     let versions_query = use_versions();
 
     let major = major?;
+    // Borrowed, not cloned: the manifest is long and this runs per render.
     let reader = versions_query.read();
     let state = reader.state();
-    let list = match &*state {
-        QueryStateData::Settled { res: Ok(list), .. } => list,
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list,
-        _ => return None,
-    };
+    let list = state.ok()?;
 
     pick_version_metadata(list, major, key, loader)
 }

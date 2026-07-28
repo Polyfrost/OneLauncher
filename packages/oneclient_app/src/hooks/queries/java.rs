@@ -1,6 +1,5 @@
-use freya::query::{QueriesStorage, Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::LauncherState;
-use oneclient_core::java::{AvailableJava, JavaManager, JavaRuntime, JavaVendor};
+use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
+use oneclient_java::{AvailableJava, JavaRuntime, JavaVendor};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListJavaRuntimesQuery;
@@ -14,8 +13,8 @@ impl QueryCapability for ListJavaRuntimesQuery {
     type Keys = ListJavaRuntimesKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
-        JavaManager::list_runtimes(&state.services.db)
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        state.java.list_runtimes()
             .await
             .map_err(|e| e.to_string())
     }
@@ -26,14 +25,7 @@ pub fn use_java_runtimes() -> UseQuery<ListJavaRuntimesQuery> {
 }
 
 pub fn java_runtimes(query: &UseQuery<ListJavaRuntimesQuery>) -> Vec<JavaRuntime> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 pub async fn invalidate_java_queries() {
@@ -54,8 +46,8 @@ impl QueryCapability for ProviderVersionsQuery {
     type Keys = ProviderVersionsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
-        JavaManager::available_versions(&state.services, &keys.vendor)
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        state.java.available_versions(&keys.vendor)
             .await
             .map_err(|e| e.to_string())
     }
@@ -69,13 +61,8 @@ pub fn use_provider_versions(vendor: JavaVendor) -> UseQuery<ProviderVersionsQue
 }
 
 pub fn provider_versions(query: &UseQuery<ProviderVersionsQuery>) -> (Vec<AvailableJava>, bool) {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => (list.clone(), false),
-        QueryStateData::Settled { res: Err(_), .. } => (Vec::new(), false),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => (list.clone(), true),
-        _ => (Vec::new(), true),
-    }
+    (
+        super::state::settled_or_loading(query).unwrap_or_default(),
+        super::state::query_is_busy(query),
+    )
 }

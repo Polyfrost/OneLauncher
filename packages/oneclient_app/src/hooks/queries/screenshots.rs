@@ -3,11 +3,10 @@ use std::sync::{Arc, OnceLock};
 
 use bytes::Bytes;
 use freya::query::{
-    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, QueryStateData,
+    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_core::clusters::ClusterManager;
-use oneclient_core::{LauncherError, LauncherState, ScreenshotInfo};
+use oneclient_core::{LauncherError, ScreenshotInfo};
 use tokio::sync::Semaphore;
 
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -26,9 +25,9 @@ impl QueryCapability for ClusterScreenshotsQuery {
     type Keys = ClusterScreenshotsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        let cluster = ClusterManager::get(&state, keys.cluster_id).await?;
-        oneclient_core::list_cluster_screenshots(&cluster)
+        let state = crate::launcher::state()?;
+        let cluster = state.clusters.get(keys.cluster_id).await?;
+        Ok(oneclient_core::list_cluster_screenshots(&cluster)?)
     }
 }
 
@@ -63,9 +62,11 @@ impl QueryCapability for LocalImageQuery {
             None
         };
 
-        tokio::task::spawn_blocking(move || oneclient_core::load_screenshot(&path, max_edge))
-            .await
-            .map_err(|e| LauncherError::Minecraft(e.to_string()))?
+        Ok(
+            tokio::task::spawn_blocking(move || oneclient_core::load_screenshot(&path, max_edge))
+                .await
+                .map_err(|e| LauncherError::Minecraft(e.to_string()))??,
+        )
     }
 }
 
@@ -86,13 +87,7 @@ pub fn use_local_image(path: PathBuf, max_edge: u32) -> UseQuery<LocalImageQuery
 pub fn try_cluster_screenshots(
     query: &UseQuery<ClusterScreenshotsQuery>,
 ) -> Option<Vec<ScreenshotInfo>> {
-    match &*query.read().state() {
-        QueryStateData::Settled { res: Ok(value), .. } => Some(value.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(value)),
-        } => Some(value.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }
 
 pub async fn invalidate_screenshots_queries() {
@@ -115,7 +110,7 @@ impl MutationCapability for ScreenshotActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         match keys {
-            ScreenshotAction::Delete { path } => oneclient_core::delete_screenshot(path),
+            ScreenshotAction::Delete { path } => Ok(oneclient_core::delete_screenshot(path)?),
         }
     }
 

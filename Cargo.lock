@@ -432,6 +432,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arc-swap"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
+
+[[package]]
 name = "arg_enum_proc_macro"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2121,6 +2127,7 @@ dependencies = [
  "freya-markdown",
  "freya-performance-plugin",
  "freya-query",
+ "freya-radio",
  "freya-router",
  "freya-sdk",
  "freya-winit",
@@ -2274,6 +2281,14 @@ dependencies = [
  "async-io",
  "freya-core",
  "futures-util",
+]
+
+[[package]]
+name = "freya-radio"
+version = "0.4.0-rc.23"
+source = "git+https://github.com/marc2332/freya.git?branch=fix%2Fblur#be57ee3184e047ac932057cd063f7858741d41d9"
+dependencies = [
+ "freya-core",
 ]
 
 [[package]]
@@ -4496,9 +4511,18 @@ dependencies = [
  "freya-skia-safe",
  "image",
  "mimalloc",
+ "oneclient_auth",
+ "oneclient_cluster",
+ "oneclient_common",
+ "oneclient_content",
  "oneclient_core",
  "oneclient_db",
+ "oneclient_events",
+ "oneclient_java",
  "oneclient_macro",
+ "oneclient_mc",
+ "oneclient_net",
+ "oneclient_polyplus",
  "open",
  "polyio",
  "regex",
@@ -4510,6 +4534,89 @@ dependencies = [
  "tracing-subscriber",
  "uuid 1.23.1",
  "winresource",
+]
+
+[[package]]
+name = "oneclient_auth"
+version = "2.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "md-5 0.10.6",
+ "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
+ "polyio",
+ "rand 0.10.1",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "oneclient_cluster"
+version = "2.1.0"
+dependencies = [
+ "bytes 1.11.1",
+ "chrono",
+ "image",
+ "oneclient_common",
+ "oneclient_db",
+ "oneclient_net",
+ "polyio",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "sqlx",
+ "strum",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "trash",
+]
+
+[[package]]
+name = "oneclient_common"
+version = "2.1.0"
+dependencies = [
+ "directories",
+ "interfrost",
+ "serde",
+ "strum",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "oneclient_content"
+version = "2.1.0"
+dependencies = [
+ "async-trait",
+ "async_zip",
+ "chrono",
+ "futures-lite",
+ "futures-util",
+ "htmd",
+ "oneclient_common",
+ "oneclient_db",
+ "oneclient_events",
+ "oneclient_net",
+ "polyio",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
 ]
 
 [[package]]
@@ -4536,7 +4643,17 @@ dependencies = [
  "indicatif",
  "interfrost",
  "md-5 0.10.6",
+ "oneclient_auth",
+ "oneclient_cluster",
+ "oneclient_common",
+ "oneclient_content",
  "oneclient_db",
+ "oneclient_discord",
+ "oneclient_events",
+ "oneclient_java",
+ "oneclient_mc",
+ "oneclient_net",
+ "oneclient_polyplus",
  "parking_lot",
  "polyio",
  "rand 0.10.1",
@@ -4581,12 +4698,123 @@ dependencies = [
 ]
 
 [[package]]
+name = "oneclient_discord"
+version = "2.1.0"
+dependencies = [
+ "chrono",
+ "discord-rich-presence",
+ "oneclient_common",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "oneclient_events"
+version = "2.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "oneclient_java"
+version = "2.1.0"
+dependencies = [
+ "astral-tokio-tar",
+ "async-tempfile",
+ "async-trait",
+ "async_zip",
+ "futures-lite",
+ "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
+ "polyio",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "oneclient_macro"
 version = "2.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "oneclient_mc"
+version = "2.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "futures-util",
+ "interfrost",
+ "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
+ "polyio",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "oneclient_net"
+version = "2.1.0"
+dependencies = [
+ "arc-swap",
+ "async-trait",
+ "bytes 1.11.1",
+ "futures-lite",
+ "futures-util",
+ "oneclient_common",
+ "oneclient_events",
+ "polyio",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "oneclient_polyplus"
+version = "2.1.0"
+dependencies = [
+ "async-tungstenite",
+ "bytes 1.11.1",
+ "futures-util",
+ "oneclient_auth",
+ "oneclient_common",
+ "polyio",
+ "rand 0.10.1",
+ "reqwest 0.13.3",
+ "reqwest-websocket",
+ "serde",
+ "serde_json",
+ "sha1 0.10.6",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid 1.23.1",
 ]
 
 [[package]]
@@ -4853,6 +5081,7 @@ dependencies = [
  "async-tempfile",
  "async_zip",
  "bytes 1.11.1",
+ "digest 0.10.7",
  "dunce",
  "futures-lite",
  "futures-util",
@@ -4860,6 +5089,7 @@ dependencies = [
  "sanitize-filename",
  "serde",
  "serde_json",
+ "sha1 0.10.6",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",

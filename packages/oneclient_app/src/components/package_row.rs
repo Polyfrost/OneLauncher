@@ -1,10 +1,9 @@
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::RouterContext;
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, toggle_controlled};
-use crate::hooks::{ClusterAction, use_cached_image, use_cluster_mutation};
+use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -391,17 +390,7 @@ fn remote_icon(
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
 ) -> Element {
-    let reader = icon_query.read();
-    let loaded = match (icon_url, &*reader.state()) {
-        (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-        | (
-            Some(url),
-            QueryStateData::Loading {
-                res: Some(Ok(bytes)),
-            },
-        ) => Some((url.clone(), bytes.clone())),
-        _ => None,
-    };
+    let loaded = loaded_image(icon_url.as_deref(), icon_query);
 
     match loaded {
         Some((url, bytes)) => ImageViewer::new((url, bytes))

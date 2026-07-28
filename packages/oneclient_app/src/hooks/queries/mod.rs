@@ -1,3 +1,20 @@
+use crate::hooks::use_settings_snapshot;
+
+/// The cache key for anything fetched from the metadata server.
+///
+/// Not the url itself, just enough of the setting to notice when it changes,
+/// so pointing the launcher at a different meta host refetches instead of
+/// serving the old host's answer. The queries read the real base out of
+/// settings when they run.
+fn use_meta_url_key() -> String {
+    use_settings_snapshot()
+        .settings
+        .custom_meta_url_base
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
 mod analytics;
 mod auth;
 mod bundles;
@@ -14,6 +31,7 @@ mod player_profile;
 mod screenshots;
 mod settings_profiles;
 mod skin;
+mod state;
 mod tos;
 mod version_metadata;
 mod versions;
@@ -41,8 +59,8 @@ pub use changelog::{
     changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version, use_changelog,
 };
 pub use cluster_content::{cluster_content_items, use_cluster_content};
-pub use clusters::use_clusters;
-pub use image::{CachedImageQuery, use_cached_image};
+pub use clusters::{use_cluster, use_clusters};
+pub use image::{CachedImageQuery, loaded_image, use_cached_image};
 pub use java::{
     invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,
     use_provider_versions,
@@ -72,6 +90,7 @@ pub use settings_profiles::{
     use_named_profiles,
 };
 pub use skin::use_player_skin;
+pub use state::{query_error, query_is_busy, query_is_loading, settled_or_loading};
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{pick_version_metadata, use_version_metadata};
 pub use versions::{loader_versions, use_loader_versions, use_versions, versions_metadata};

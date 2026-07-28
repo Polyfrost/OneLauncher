@@ -1,4 +1,4 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::LauncherError;
 use oneclient_core::game::{Analytics, cluster_analytics, global_analytics};
 
@@ -14,7 +14,8 @@ impl QueryCapability for GlobalAnalyticsQuery {
     type Keys = GlobalAnalyticsKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        global_analytics().await
+        let state = crate::launcher::state()?;
+        global_analytics(&state.services.db).await
     }
 }
 
@@ -23,13 +24,7 @@ pub fn use_global_analytics() -> UseQuery<GlobalAnalyticsQuery> {
 }
 
 pub fn try_global_analytics(query: &UseQuery<GlobalAnalyticsQuery>) -> Option<Analytics> {
-    match &*query.read().state() {
-        QueryStateData::Settled { res: Ok(value), .. } => Some(value.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(value)),
-        } => Some(value.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -46,7 +41,8 @@ impl QueryCapability for ClusterAnalyticsQuery {
     type Keys = ClusterAnalyticsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        cluster_analytics(keys.cluster_id).await
+        let state = crate::launcher::state()?;
+        cluster_analytics(&state.services.db, keys.cluster_id).await
     }
 }
 
@@ -58,11 +54,5 @@ pub fn use_cluster_analytics(cluster_id: i64) -> UseQuery<ClusterAnalyticsQuery>
 }
 
 pub fn try_cluster_analytics(query: &UseQuery<ClusterAnalyticsQuery>) -> Option<Analytics> {
-    match &*query.read().state() {
-        QueryStateData::Settled { res: Ok(value), .. } => Some(value.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(value)),
-        } => Some(value.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }

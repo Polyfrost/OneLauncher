@@ -15,6 +15,8 @@ path = "src/lib.rs"
 
 [features]
 default = []
+# Test-only helpers (`polyio::testing`). Enable as a dev-dependency.
+testing = []
 
 [dependencies]
 tracing.workspace = true
@@ -36,6 +38,10 @@ serde.workspace = true
 serde_json.workspace = true
 dunce.workspace = true
 bytes.workspace = true
+
+# content hashing
+digest.workspace = true
+sha1.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

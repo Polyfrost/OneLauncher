@@ -5,8 +5,8 @@ use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::NewGameSession;
 use tokio::sync::Mutex;
 
-use crate::java::JavaRuntime;
-use crate::packages::{ContentType, PackageStore};
+use oneclient_java::JavaRuntime;
+use oneclient_content::packages::{ContentType, PackageStore};
 use crate::state::LauncherState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,7 +15,7 @@ pub(crate) struct ServerJoin {
 	pub port: Option<u16>,
 }
 
-/// The session row's identity — its `started_at`, which is the primary key.
+/// The session row's identity: its `started_at`, which is the primary key.
 pub(crate) type SessionId = String;
 
 pub(crate) fn parse_server_join(line: &str) -> Option<ServerJoin> {
@@ -161,7 +161,7 @@ impl SessionRecorder {
 	}
 
 	/// Close the session. The time is explicit because an exit is not always
-	/// observed as it happens — one recovered from a log ended in the past.
+	/// observed as it happens; one recovered from a log ended in the past.
 	#[tracing::instrument(skip(self), fields(exit_code), level = "debug")]
 	pub(crate) async fn finish_at(self, ended_at: &str, exit_code: Option<i64>) {
 		if let Some(open) = self.open_server.lock().await.take()
@@ -181,7 +181,7 @@ impl SessionRecorder {
 
 #[tracing::instrument(skip(state), fields(cluster_id), level = "debug")]
 async fn count_enabled_mods(state: &Arc<LauncherState>, cluster_id: i64) -> usize {
-	match PackageStore::list_linked_artifacts(cluster_id, &state.services).await {
+	match PackageStore::list_linked_artifacts(cluster_id, &state.services.content()).await {
 		Ok(linked) => linked
 			.into_iter()
 			.filter(|a| a.enabled && a.content_type == ContentType::Mod)

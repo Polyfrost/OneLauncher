@@ -1,10 +1,8 @@
 use std::time::Duration;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::{
-    LauncherError, LauncherState,
-    minecraft::{self, PlayerProfileView},
-};
+use oneclient_core::LauncherError;
+use oneclient_mc::{self as minecraft, PlayerProfileView};
 
 // image cache
 const PROFILE_STALE: Duration = Duration::from_secs(30 * 60);
@@ -27,10 +25,10 @@ impl QueryCapability for FetchPlayerProfileQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let access_token = keys.access_token.clone();
 
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let client = &state.services.requester;
 
-        minecraft::fetch_player_profile_view(client, &keys.uuid, access_token.as_deref()).await
+        Ok(minecraft::fetch_player_profile_view(client, &keys.uuid, access_token.as_deref()).await?)
     }
 
     // TODO: Cache

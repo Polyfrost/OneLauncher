@@ -1,9 +1,9 @@
 use freya::prelude::*;
-use oneclient_core::java::{JavaRuntime, JavaVendor};
+use oneclient_java::{JavaRuntime, JavaVendor};
 
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, ScrollArea};
-use crate::hooks::{BridgeDispatch, java_runtimes, use_dispatch, use_java_runtimes};
+use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -234,7 +234,7 @@ fn path_content_width(path: &str) -> f32 {
     (path.chars().count() as f32 * 7.0).max(1.0)
 }
 
-fn remove_button(dispatch: BridgeDispatch, path: String) -> impl IntoElement {
+fn remove_button(dispatch: Actions, path: String) -> impl IntoElement {
     Button::new()
         .ghost()
         .small()

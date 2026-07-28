@@ -2,7 +2,7 @@ use super::*;
 
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
-use oneclient_core::packages::ContentType;
+use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
@@ -12,7 +12,7 @@ use crate::components::{
 use crate::hooks::use_dispatch;
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::{BridgeDispatch, utils};
+use crate::{Actions, utils};
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SortMode {
@@ -404,7 +404,7 @@ impl Component for ChoiceRow {
 fn add_from_file_button(
     cluster_id: i64,
     content_type: ContentType,
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
 ) -> impl IntoElement {
     Button::new()
         .primary()
@@ -550,8 +550,8 @@ impl Component for ContentBox {
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
-        // File drops are handled window-wide by the app shell, which prompts for
-        // a destination — this box deliberately doesn't claim them.
+        // File drops are handled window-wide by the app shell, which prompts for a
+        // destination, so this box does not claim them.
         rect()
             .vertical()
             .width(Size::fill())
@@ -680,7 +680,7 @@ fn external_empty(cluster_id: i64, package_type: &'static str) -> impl IntoEleme
 fn local_empty(
     cluster_id: i64,
     content_type: ContentType,
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
     noun_plural: &'static str,
 ) -> impl IntoElement {
     let is_wayland = utils::is_wayland();

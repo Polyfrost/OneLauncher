@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 
 use crate::LauncherResult;
-use crate::packages::domain::GameLoader;
-use crate::paths;
+use oneclient_common::domain::GameLoader;
+use oneclient_common::paths;
 
-use super::fs::{copy_tree, dir_has_content};
 use super::{ImportTarget, MigrationDetection, MigrationSource, SourceInstance};
 
 const ROOT_INSTANCE_NAME: &str = ".minecraft";
@@ -50,7 +49,7 @@ pub fn old_root() -> Option<PathBuf> {
         {
             d.data_dir().join(".minecraft")
         }
-        // macOS: `~/Library/Application Support/minecraft` — no leading dot.
+        // macOS: `~/Library/Application Support/minecraft`, no leading dot.
         #[cfg(target_os = "macos")]
         {
             d.data_dir().join("minecraft")
@@ -79,7 +78,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
         return Ok(None);
     };
 
-    if !dir_has_content(&root).await {
+    if !polyio::dir_has_content(&root).await {
         tracing::debug!(root = %root.display(), "vanilla migration: empty install, skipping");
         return Ok(None);
     }
@@ -101,8 +100,11 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
     }))
 }
 
-#[tracing::instrument(skip(target))]
-pub async fn import_game_dir(target: ImportTarget) -> LauncherResult<()> {
+#[tracing::instrument(skip(state, target))]
+pub async fn import_game_dir(
+    state: &std::sync::Arc<crate::LauncherState>,
+    target: ImportTarget,
+) -> LauncherResult<()> {
     let Some(src) = old_root() else {
         return Ok(());
     };
@@ -110,8 +112,7 @@ pub async fn import_game_dir(target: ImportTarget) -> LauncherResult<()> {
     let dest = match &target {
         ImportTarget::Shared => paths::shared_minecraft_dir()?,
         ImportTarget::Dedicated { new_cluster_id } => {
-            let state = crate::state::LauncherState::get()?;
-            let cluster = crate::clusters::ClusterManager::get(&state, *new_cluster_id).await?;
+            let cluster = state.clusters.get(*new_cluster_id).await?;
             let dir = cluster.dir()?;
             polyio::create_dir_all(&dir).await?;
             polyio::write(cluster.dedicated_marker()?, Vec::new()).await?;
@@ -120,7 +121,7 @@ pub async fn import_game_dir(target: ImportTarget) -> LauncherResult<()> {
     };
 
     polyio::create_dir_all(&dest).await?;
-    copy_tree(&src, &dest, IMPORT_EXCLUDE_TOP).await?;
+    polyio::copy_dir(&src, &dest, IMPORT_EXCLUDE_TOP).await?;
 
     Ok(())
 }
@@ -210,7 +211,7 @@ mod tests {
             polyio::write(path, b"x".to_vec()).await.unwrap();
         }
 
-        copy_tree(src, dst, IMPORT_EXCLUDE_TOP).await.unwrap();
+        polyio::copy_dir(src, dst, IMPORT_EXCLUDE_TOP).await.unwrap();
 
         for kept in [
             "options.txt",

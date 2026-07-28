@@ -1,0 +1,37 @@
+[package]
+name = "oneclient_java"
+description = "Locating, probing and installing Java runtimes"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+oneclient_common.workspace = true
+oneclient_events.workspace = true
+oneclient_net.workspace = true
+polyio.workspace = true
+
+async-trait.workspace = true
+async-tempfile.workspace = true
+async_zip.workspace = true
+astral-tokio-tar.workspace = true
+futures-lite.workspace = true
+tokio.workspace = true
+
+reqwest.workspace = true
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

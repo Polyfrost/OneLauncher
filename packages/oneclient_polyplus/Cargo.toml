@@ -1,0 +1,38 @@
+[package]
+name = "oneclient_polyplus"
+description = "Poly+ playtime reporting"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+oneclient_auth.workspace = true
+oneclient_common.workspace = true
+polyio.workspace = true
+
+reqwest.workspace = true
+reqwest-websocket.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+
+bytes.workspace = true
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+async-tungstenite = { version = "=0.32.1", features = ["tokio-runtime"] }
+tokio = { workspace = true }

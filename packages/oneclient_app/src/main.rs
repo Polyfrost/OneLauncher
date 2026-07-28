@@ -2,21 +2,58 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
+#![recursion_limit = "256"]
 
 use freya::prelude::*;
+use freya::radio::use_init_radio_station;
+use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
-    ConfirmLinkOverlay, CoreBridgeHandle, DataSync, LinkConfirmState, OneClientBridge, constants,
-    router, theme, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
+    use_provide_actions, use_provide_link_confirm,
 };
 use tokio::runtime::Builder;
 
-struct OneClientApp {
-    bridge: OneClientBridge,
-}
+struct OneClientApp;
 
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
-        oneclient_app::use_provide_bridge(&self.bridge);
+        // The station holds all app state, and radio state is `!Send`, so
+        // everything that writes it runs on the UI thread. `spawn_forever`, not
+        // `spawn`: these must outlive any component scope.
+        let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
+
+        let actions = use_hook(move || {
+            let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (events_bus, events_rx) = oneclient_events::EventBus::channel();
+            let actions = Actions::new(station, signals_tx);
+
+            // Started first so nothing emitted during startup waits on a
+            // consumer, though the bus is unbounded either way.
+            spawn_forever(
+                EventPump {
+                    events: events_rx,
+                    signals: signals_rx,
+                    station,
+                }
+                .run(),
+            );
+
+            let startup = actions.clone();
+            spawn_forever(async move {
+                match events::start_launcher(station, events_bus).await {
+                    // Chained rather than called alongside: `sync_bundles` needs
+                    // the launcher handle, and it sets `syncing_bundles` before
+                    // spawning its work, so firing it early would both fail and
+                    // leave the flag stuck, disabling every launch button.
+                    Ok(()) => startup.sync_bundles(),
+                    Err(err) => events::report_startup_failure(&station, &err),
+                }
+            });
+
+            actions
+        });
+
+        use_provide_actions(&actions);
 
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
@@ -24,7 +61,6 @@ impl App for OneClientApp {
         rect()
             .width(Size::fill())
             .height(Size::fill())
-            .child(DataSync)
             .child(ConfirmLinkOverlay)
             .child(router())
     }
@@ -35,9 +71,9 @@ fn main() {
     builder.enable_all().max_blocking_threads(64);
 
     // Debug builds emit unoptimized async code, which can cause stack overflows in some cases.
-	// Default stack size is 2MB, so we'll increase it to 4MB for debug builds
+	// Default stack size is 2MB, so we'll increase it to 3MB for debug builds
     #[cfg(debug_assertions)]
-    builder.thread_stack_size(4 * 1024 * 1024);
+    builder.thread_stack_size(3 * 1024 * 1024);
 
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
@@ -53,13 +89,11 @@ fn main() {
 
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
-    let (bridge, handle): (OneClientBridge, CoreBridgeHandle) = OneClientBridge::new();
-    handle.spawn_runtime();
 
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    let window_config = WindowConfig::new_app(OneClientApp { bridge })
+    let window_config = WindowConfig::new_app(OneClientApp)
         .with_title(constants::WINDOW_TITLE)
         .with_app_id(constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(

@@ -3,9 +3,10 @@ use freya::{
     prelude::*,
     router::RouterContext,
 };
-use oneclient_core::auth::MinecraftAccount;
+use oneclient_auth::MinecraftAccount;
 
 use crate::{
+    ui::{divider},
     Route,
     components::{Avatar, Button, Icon, IconType, OverlayPopup},
     hooks::{
@@ -224,13 +225,6 @@ impl Component for AccountRow {
                 )
             })
     }
-}
-
-fn divider() -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(1.))
-        .background(colors::component_border())
 }
 
 #[derive(PartialEq)]

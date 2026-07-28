@@ -4,9 +4,11 @@ use crate::components::ScrollArea;
 use crate::hooks::{try_cluster_analytics, use_cluster_analytics};
 use crate::layout::cluster_content;
 use crate::theme::colors;
+use crate::ui::{centered_note};
 use crate::view::app::{analytics_body, analytics_placeholder};
 
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
 pub struct ClusterOverview {
@@ -17,7 +19,7 @@ impl Component for ClusterOverview {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
 
-        let Some(cluster) = load_cluster(cluster_id) else {
+        let Some(cluster) = use_cluster(cluster_id) else {
             return cluster_content().child(cluster_not_found()).into_element();
         };
 
@@ -65,20 +67,6 @@ fn overview_header(name: &str) -> Element {
             label()
                 .text(format!("Play history & servers for {name}"))
                 .font_size(12.)
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
-}
-
-fn centered_note(text: &str) -> Element {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(240.))
-        .center()
-        .child(
-            label()
-                .text(text.to_string())
-                .font_size(14.)
                 .color(colors::fg_secondary()),
         )
         .into_element()

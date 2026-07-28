@@ -20,7 +20,8 @@ use crate::theme::colors;
 use crate::ui;
 use crate::utils::format_size;
 
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const PICKER_ROW_H: f32 = 44.;
 const PICKER_ROW_SPACING: f32 = 2.;
@@ -160,7 +161,7 @@ impl Component for ClusterLogs {
             None,
         );
 
-        let Some(cluster) = load_cluster(cluster_id) else {
+        let Some(cluster) = use_cluster(cluster_id) else {
             return cluster_not_found();
         };
         let folder = cluster.dir().ok().map(|d| d.join("logs"));

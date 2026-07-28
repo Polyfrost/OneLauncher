@@ -1,6 +1,6 @@
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::{LauncherError, LauncherState, VersionMetadata};
+use oneclient_common::domain::GameLoader;
+use oneclient_core::{LauncherError, VersionMetadata};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VersionsMetadataQuery;
@@ -14,13 +14,13 @@ impl QueryCapability for VersionsMetadataQuery {
     type Keys = VersionsMetadataKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        let metadata = state.versions.metadata().await;
+        let state = crate::launcher::state()?;
+        let metadata = state.versions.metadata(&state.services.requester.config().meta_url_base).await;
         if !metadata.is_empty() {
             return Ok(metadata);
         }
         state.versions.sync(&state.services).await?;
-        Ok(state.versions.metadata().await)
+        Ok(state.versions.metadata(&state.services.requester.config().meta_url_base).await)
     }
 }
 
@@ -33,13 +33,12 @@ pub fn use_versions() -> UseQuery<VersionsMetadataQuery> {
 /// callers that block on this don't wait forever when the network is down.
 pub fn versions_metadata(query: &UseQuery<VersionsMetadataQuery>) -> Option<Vec<VersionMetadata>> {
     let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => Some(list.clone()),
+    let state = reader.state();
+    match &*state {
+        // A failed fetch reads as an empty list rather than `None`, so callers
+        // that block on this don't wait forever when the network is down.
         QueryStateData::Settled { res: Err(_), .. } => Some(Vec::new()),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => Some(list.clone()),
-        _ => None,
+        other => other.ok().cloned(),
     }
 }
 
@@ -58,15 +57,15 @@ impl QueryCapability for LoaderVersionsQuery {
     type Keys = LoaderVersionsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
+        let state = crate::launcher::state()?;
         let mut metadata = state.metadata.lock().await;
-        oneclient_core::get_loader_versions(
+        Ok(oneclient_core::get_loader_versions(
             &mut metadata,
-            &state.services,
+            &state.services.mc(),
             &keys.mc_version,
             keys.loader,
         )
-        .await
+        .await?)
     }
 }
 
@@ -81,12 +80,5 @@ pub fn use_loader_versions(
 }
 
 pub fn loader_versions(query: &UseQuery<LoaderVersionsQuery>) -> Vec<String> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }

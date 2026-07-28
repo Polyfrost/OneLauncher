@@ -2,13 +2,15 @@ use freya::{
     animation::{AnimNum, Ease, OnCreation, use_animation},
     prelude::*,
 };
-use oneclient_core::notification::NotificationLevel;
+use oneclient_events::Level;
 
 use crate::{
+    ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
     hooks::{use_dispatch, use_notifications_snapshot},
-    notifications::{InboxEntry, NotificationActionKind, TransferStats},
+    notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
+    transfer::TransferStats,
     utils::{format_duration_hms, format_size},
 };
 
@@ -328,7 +330,7 @@ fn phase_badge(phase: &str) -> impl IntoElement {
         .into_element()
 }
 
-fn row_body(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoElement {
+fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -354,7 +356,7 @@ fn row_body(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoEle
                         .spacing(6.)
                         .child(
                             label()
-                                .text(relative_time(entry))
+                                .text(relative_time(entry.created_at))
                                 .font_size(10.)
                                 .color(colors::fg_secondary()),
                         )
@@ -378,7 +380,7 @@ fn row_body(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoEle
         .child(row_extra(entry, dispatch))
 }
 
-fn row_extra(entry: &InboxEntry, dispatch: crate::BridgeDispatch) -> impl IntoElement {
+fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
         let bar = rect()
@@ -475,19 +477,12 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .into_element()
 }
 
-fn run_action(dispatch: &crate::BridgeDispatch, kind: &NotificationActionKind) {
+fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
     }
-}
-
-fn divider() -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(1.))
-        .background(colors::component_border())
 }
 
 #[derive(PartialEq)]
@@ -527,27 +522,15 @@ fn icon_for(entry: &InboxEntry) -> IconType {
         return IconType::DownloadCloud02;
     }
     match entry.level {
-        NotificationLevel::Error => IconType::AlertTriangle,
-        NotificationLevel::Info => IconType::InfoCircle,
+        Level::Error => IconType::AlertTriangle,
+        Level::Info => IconType::InfoCircle,
     }
 }
 
-fn level_color(level: &NotificationLevel) -> Color {
+fn level_color(level: &Level) -> Color {
     match level {
-        NotificationLevel::Info => colors::fg_primary(),
-        NotificationLevel::Error => colors::danger(),
+        Level::Info => colors::fg_primary(),
+        Level::Error => colors::danger(),
     }
 }
 
-fn relative_time(entry: &InboxEntry) -> String {
-    let secs = entry.created_at.elapsed().as_secs();
-    if secs < 60 {
-        "Just now".to_string()
-    } else if secs < 3600 {
-        format!("{}m ago", secs / 60)
-    } else if secs < 86400 {
-        format!("{}h ago", secs / 3600)
-    } else {
-        format!("{}d ago", secs / 86400)
-    }
-}

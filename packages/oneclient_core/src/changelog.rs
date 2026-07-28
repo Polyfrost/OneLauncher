@@ -1,11 +1,8 @@
-use std::path::Path;
 
-use reqwest::header;
-use reqwest::{Method, StatusCode};
 
-use crate::api_config::meta_url_base;
-use crate::paths;
-use crate::state::LauncherServices;
+use oneclient_common::paths;
+use oneclient_net::{EtagPolicy, fetch_cached};
+use oneclient_net::RequestClient;
 use crate::{LauncherError, LauncherResult};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,100 +32,21 @@ pub fn parse_changelog(data: &str) -> Vec<ChangelogGroup> {
     groups
 }
 
-#[tracing::instrument(level = "debug", skip(services))]
-pub async fn fetch_changelog(services: &LauncherServices) -> LauncherResult<String> {
-    let url = format!("{}/oneclient/CHANGE_LOG.md", meta_url_base());
+#[tracing::instrument(level = "debug", skip(net))]
+pub async fn fetch_changelog(net: &RequestClient) -> LauncherResult<String> {
+    let url = format!(
+        "{}/oneclient/CHANGE_LOG.md",
+        net.config().meta_url_base
+    );
     let cache_path = paths::caches_dir()?.join("CHANGE_LOG.md");
-    let etag_path = paths::caches_dir()?.join("CHANGE_LOG.md.etag");
 
-    let stored_etag = read_sidecar_etag(&etag_path).await;
-    let url_parsed = url.parse().map_err(LauncherError::UrlError)?;
+    let fetched = fetch_cached(net, &url, &cache_path, EtagPolicy::CommitNow)
+        .await?
+        .ok_or_else(|| LauncherError::InvalidSettingsProfile {
+            reason: "changelog is unavailable and not cached".to_string(),
+        })?;
 
-    let mut request = reqwest::Request::new(Method::GET, url_parsed);
-    if let Some(etag) = &stored_etag {
-        insert_if_none_match(&mut request, etag);
-    }
-
-    match services.requester.send(request).await {
-        Ok(res) if res.status() == StatusCode::NOT_MODIFIED => {
-            tracing::debug!("changelog cache hit (304)");
-            read_cached_changelog(&cache_path).await
-        }
-        Ok(res) if res.status().is_success() => {
-            let server_etag = etag_from_response(&res);
-            let bytes = res
-                .bytes()
-                .await
-                .map_err(|err| LauncherError::InvalidSettingsProfile {
-                    reason: err.to_string(),
-                })?;
-
-            if let Some(parent) = cache_path.parent() {
-                polyio::create_dir_all(parent).await?;
-            }
-            polyio::write(&cache_path, &bytes).await?;
-            if let Some(etag) = server_etag {
-                let _ = polyio::write(&etag_path, etag.as_bytes()).await;
-            }
-
-            String::from_utf8(bytes.to_vec()).map_err(|err| LauncherError::InvalidSettingsProfile {
-                reason: err.to_string(),
-            })
-        }
-        Err(err) if cache_path.exists() => {
-            tracing::debug!(
-                "falling back to cached changelog after remote fetch failed: {err}"
-            );
-            read_cached_changelog(&cache_path).await
-        }
-        Err(err) => {
-            tracing::error!("failed to fetch changelog from remote: {err}");
-            Err(LauncherError::InvalidSettingsProfile {
-                reason: err.to_string(),
-            })
-        }
-        Ok(res) => {
-            tracing::warn!(
-                status = %res.status(),
-                "unexpected changelog response; using cache when available"
-            );
-            if cache_path.exists() {
-                read_cached_changelog(&cache_path).await
-            } else {
-                Err(LauncherError::InvalidSettingsProfile {
-                    reason: format!("changelog request failed with HTTP {}", res.status()),
-                })
-            }
-        }
-    }
-}
-
-async fn read_cached_changelog(path: &Path) -> LauncherResult<String> {
-    let bytes = polyio::read(path).await?;
-    String::from_utf8(bytes).map_err(|err| LauncherError::InvalidSettingsProfile {
-        reason: err.to_string(),
-    })
-}
-
-fn insert_if_none_match(request: &mut reqwest::Request, etag: &str) {
-    if let Ok(value) = header::HeaderValue::from_str(etag) {
-        request.headers_mut().insert(header::IF_NONE_MATCH, value);
-    }
-}
-
-fn etag_from_response(res: &reqwest::Response) -> Option<String> {
-    res.headers()
-        .get(header::ETAG)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string)
-}
-
-async fn read_sidecar_etag(path: &Path) -> Option<String> {
-    polyio::read(path)
-        .await
-        .ok()
-        .and_then(|bytes| String::from_utf8(bytes).ok())
-        .filter(|etag| !etag.is_empty())
+    Ok(fetched.text())
 }
 
 #[cfg(test)]

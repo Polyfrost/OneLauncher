@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::clusters::{Cluster, ClusterManager};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_core::clusters::Cluster;
 use oneclient_core::{
-    BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError, LauncherState,
+    BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError,
     get_bundles_with_update_status, list_cluster_bundle_overrides,
 };
 use oneclient_db::models::ClusterId;
@@ -26,14 +26,14 @@ impl QueryCapability for OnboardingBundlesQuery {
     type Keys = OnboardingBundlesKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        let clusters = ClusterManager::list(&state).await?;
+        let state = crate::launcher::state()?;
+        let clusters = state.clusters.list().await?;
 
         let mut out = Vec::with_capacity(clusters.len());
         for cluster in clusters {
             let archives = state
                 .bundles
-                .archives_for(&state.services, &cluster.mc_version, cluster.mc_loader)
+                .archives_for(&state.services.content(), &cluster.mc_version, cluster.mc_loader)
                 .await
                 .unwrap_or_default();
             out.push(ClusterBundles { cluster, archives });
@@ -49,14 +49,7 @@ pub fn use_onboarding_bundles() -> UseQuery<OnboardingBundlesQuery> {
 pub fn onboarding_bundles_items(
     query: &UseQuery<OnboardingBundlesQuery>,
 ) -> Option<Vec<ClusterBundles>> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => Some(list.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => Some(list.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -76,23 +69,22 @@ impl QueryCapability for BundlesWithStatusQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
-        let state = LauncherState::get()?;
-        get_bundles_with_update_status(self.cluster_id, state.bundles.as_ref(), &state.services)
-            .await
+        let state = crate::launcher::state()?;
+        Ok(
+            get_bundles_with_update_status(
+                self.cluster_id,
+                state.bundles.as_ref(),
+                &state.services.content(),
+            )
+            .await?,
+        )
     }
 }
 
 pub fn bundles_with_status_items(
     query: &UseQuery<BundlesWithStatusQuery>,
 ) -> Vec<BundleWithUpdateStatus> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 pub fn use_bundles_with_status(cluster_id: ClusterId) -> UseQuery<BundlesWithStatusQuery> {
@@ -119,8 +111,8 @@ impl QueryCapability for BundleOverridesQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
-        let state = LauncherState::get()?;
-        let rows = list_cluster_bundle_overrides(self.cluster_id, &state.services).await?;
+        let state = crate::launcher::state()?;
+        let rows = list_cluster_bundle_overrides(self.cluster_id, &state.services.content()).await?;
         Ok(rows
             .into_iter()
             .map(|(bundle, pkg, ty)| ((bundle, pkg), ty))
@@ -138,12 +130,7 @@ pub fn use_bundle_overrides(cluster_id: ClusterId) -> UseQuery<BundleOverridesQu
 pub fn bundle_overrides_map(
     query: &UseQuery<BundleOverridesQuery>,
 ) -> HashMap<(String, String), String> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(map), .. } => map.clone(),
-        QueryStateData::Loading { res: Some(Ok(map)) } => map.clone(),
-        _ => HashMap::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -163,13 +150,13 @@ impl QueryCapability for BundleUpdatesQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
-        let state = LauncherState::get()?;
-        oneclient_core::check_bundle_updates(
+        let state = crate::launcher::state()?;
+        Ok(oneclient_core::check_bundle_updates(
             self.cluster_id,
             state.bundles.as_ref(),
-            &state.services,
+            &state.services.content(),
         )
-        .await
+        .await?)
     }
 }
 

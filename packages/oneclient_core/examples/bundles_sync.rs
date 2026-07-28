@@ -1,6 +1,6 @@
 
 use oneclient_core::dev;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -8,11 +8,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = dev::ephemeral_state().await?;
 
-    state.bundles.sync(&state.services).await?;
+    state.bundles.sync(&state.services.content()).await?;
 
     let bundles = state
         .bundles
-        .list_for(&state.services, "1.21.11", GameLoader::Fabric)
+        .list_for(&state.services.content(), "1.21.11", GameLoader::Fabric)
         .await?;
 
     println!("Visible Fabric bundles for 1.21.11: {}", bundles.len());

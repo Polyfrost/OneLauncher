@@ -5,13 +5,13 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use oneclient_content::packages::provider::PackageProviderRegistry;
+use oneclient_net::RequestClient;
+use oneclient_events::{
+	Event, EventBus, GameEvent, GroupedProgressEvent, Level, Notification, ProgressEvent,
+};
+
 use crate::{
-	auth::CredentialsStore,
-	http::RequestClient,
-	notification::{
-		GroupedProgressEvent, NotificationLevel, Notification, NotificationService,
-	},
-	packages::provider::PackageProviderRegistry,
 	LauncherResult, LauncherServices, LauncherState,
 };
 
@@ -22,7 +22,7 @@ struct GroupedSessionUi {
 	child_bytes: HashMap<Uuid, (u64, u64)>,
 }
 
-fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
+fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
     tokio::spawn(async move {
         let mp = MultiProgress::new();
         let mut progress_bars: HashMap<Uuid, ProgressBar> = HashMap::new();
@@ -46,15 +46,16 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
         .unwrap()
         .progress_chars("#>-");
 
-        while let Some(notification) = rx.recv().await {
-            match notification {
-                Notification::Message { title, body, level } => {
-                    mp.suspend(|| match level {
-                        NotificationLevel::Info => tracing::info!(%title, %body),
-                        NotificationLevel::Error => tracing::error!(%title, %body),
+        while let Some(event) = rx.recv().await {
+            match event {
+                Event::Notification(Notification::Message(message)) => {
+                    let (title, body) = (message.title, message.body);
+                    mp.suspend(|| match message.level {
+                        Level::Info => tracing::info!(%title, %body),
+                        Level::Error => tracing::error!(%title, %body),
                     });
                 }
-                Notification::Progress { id, label, current, total } => {
+                Event::Progress(ProgressEvent::Update { id, label, current, total }) => {
                     if current >= total {
                         if let Some(pb) = progress_bars.remove(&id) {
                             pb.finish_with_message(format!("{label} Done!"));
@@ -71,14 +72,14 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                         pb.set_position(current);
                     }
                 }
-                Notification::ProgressComplete { id, title, body } => {
+                Event::Progress(ProgressEvent::Complete { id, title, body }) => {
                     if let Some(pb) = progress_bars.remove(&id) {
                         pb.finish_with_message(format!("{title}: {body}"));
                     } else {
                         mp.suspend(|| tracing::info!(%title, %body));
                     }
                 }
-                Notification::GroupedProgress(event) => match event {
+                Event::Progress(ProgressEvent::Grouped(event)) => match event {
                     GroupedProgressEvent::Start { session_id, title } => {
                         let parent = mp.add(ProgressBar::new(1));
                         parent.set_style(parent_style.clone());
@@ -166,26 +167,30 @@ fn spawn_notification_handler(mut rx: mpsc::UnboundedReceiver<Notification>) {
                         }
                     }
                 },
-                Notification::InvalidateClusters => {}
-                Notification::InvalidateJava => {}
-                Notification::SyncComplete => {}
-                Notification::MicrosoftLoginStatus(status) => {
-                    mp.suspend(|| tracing::info!(?status, "microsoft login status"));
-                }
-                Notification::GameStage { cluster_id, stage } => {
+                Event::Signal(_) => {}
+                Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     mp.suspend(|| tracing::info!(cluster_id, ?stage, "game stage"));
                 }
-                Notification::GameLog { line, .. } => {
+                Event::Game(GameEvent::Log { line, .. }) => {
                     mp.suspend(|| tracing::info!("[game] {line}"));
                 }
-                Notification::GameFailed { cluster_id, message } => {
+                Event::Game(GameEvent::Failed { cluster_id, message }) => {
                     mp.suspend(|| tracing::error!(cluster_id, "launch failed: {message}"));
                 }
-                Notification::Prompt { title, question, kind, .. } => {
+                // No TTY dialog here: answer `None` so the waiting task sees a
+                // dismissal and fails cleanly, rather than hanging on a prompt
+                // nobody can answer.
+                Event::Notification(Notification::Prompt(request)) => {
+                    let choices: Vec<&str> = request.choices.iter().map(|c| c.id).collect();
                     mp.suspend(|| {
-                        tracing::warn!("{title}: {question} | {kind:#?}");
-                        tracing::warn!("prompt not implemented");
+                        tracing::warn!(
+                            "{}: {} | choices: {choices:?}",
+                            request.title,
+                            request.body
+                        );
+                        tracing::warn!("prompts are not interactive in dev; dismissing");
                     });
+                    let _ = request.reply.send(None);
                 }
             }
         }
@@ -208,7 +213,7 @@ pub async fn initialize() -> LauncherResult<Arc<LauncherState>> {
 
     spawn_notification_handler(rx);
 
-    LauncherState::initialize(NotificationService::new(tx)).await
+    LauncherState::new(EventBus::new(tx)).await
 }
 
 async fn ephemeral_root() -> LauncherResult<std::path::PathBuf> {
@@ -224,7 +229,7 @@ async fn ephemeral_root() -> LauncherResult<std::path::PathBuf> {
 
 pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
 	let root = ephemeral_root().await?;
-	crate::paths::set_launcher_dir(root.clone());
+	oneclient_common::paths::set_launcher_dir(root.clone());
 
 	let (tx, rx) = mpsc::unbounded_channel();
 	spawn_notification_handler(rx);
@@ -232,37 +237,51 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
 	let db = oneclient_db::connect(root.join("example.db")).await?;
 	let settings = crate::settings::store::load_settings(None).await;
 
+	let services = LauncherServices {
+		events: EventBus::new(tx),
+		requester: RequestClient::new(oneclient_net::NetConfig::default())?,
+		db,
+		packages: PackageProviderRegistry::new(),
+	};
+	let auth = Arc::new(oneclient_auth::AuthService::with_store(
+		Default::default(),
+		services.requester.clone(),
+		services.events.clone(),
+	));
+
+	let clusters = crate::clusters::ClusterManager::new(services.db.clone());
+
+	let java = oneclient_java::JavaService::new(
+		Arc::new(crate::java_store::SqlJavaStore::new(services.db.clone())),
+		services.requester.clone(),
+		services.events.clone(),
+	);
+
 	Ok(Arc::new(LauncherState {
-		services: LauncherServices {
-			notifier: NotificationService::new(tx),
-			requester: RequestClient::new()?,
-			db,
-			packages: PackageProviderRegistry::new(),
-		},
+		services,
+		auth,
+		java,
+		clusters,
 		settings: parking_lot::RwLock::new(settings),
-		auth: tokio::sync::Mutex::new(CredentialsStore::default()),
-		microsoft_logins: tokio::sync::Mutex::new(std::collections::HashMap::new()),
-		java: crate::java::JavaManager,
-		metadata: tokio::sync::Mutex::new(crate::metadata::MetadataStore::new()),
-		bundles: Arc::new(crate::bundles::BundlesManager::new()),
+		metadata: tokio::sync::Mutex::new(oneclient_mc::MetadataStore::new()),
+		bundles: Arc::new(oneclient_content::bundles::BundlesManager::new()),
 		versions: Arc::new(crate::versions::VersionsManager::new()),
 		images: crate::images::ImageCacheStore::new(),
 		games: crate::game::GameProcessManager::new(),
-		discord: crate::discord::DiscordRpc::spawn(false),
-		provisioning: tokio::sync::Mutex::new(()),
+		discord: oneclient_discord::DiscordRpc::spawn(false),
 	}))
 }
 
 pub async fn ephemeral_services() -> LauncherResult<LauncherServices> {
 	let root = ephemeral_root().await?;
-	crate::paths::set_launcher_dir(root.clone());
+	oneclient_common::paths::set_launcher_dir(root.clone());
 	let db = oneclient_db::connect(root.join("example.db")).await?;
 	let (tx, rx) = mpsc::unbounded_channel();
 	spawn_notification_handler(rx);
 
 	Ok(LauncherServices {
-		notifier: NotificationService::new(tx),
-		requester: RequestClient::new()?,
+		events: EventBus::new(tx),
+		requester: RequestClient::new(oneclient_net::NetConfig::default())?,
 		db,
 		packages: PackageProviderRegistry::new(),
 	})
@@ -270,7 +289,7 @@ pub async fn ephemeral_services() -> LauncherResult<LauncherServices> {
 
 pub async fn seed_bundle_archive(
 	state: &LauncherState,
-	manifest: crate::bundles::BundleManifest,
+	manifest: oneclient_content::bundles::BundleManifest,
 ) -> LauncherResult<()> {
 	let disk_path = format!("bundles/{}.mrpack", manifest.name);
 	let loader = manifest.loader as i64;
@@ -294,13 +313,8 @@ pub async fn seed_bundle_archive(
 	)
 	.await?;
 
-	let path = crate::paths::launcher_dir()?.join(&disk_path);
-	state
-		.bundles
-		.archive_cache
-		.write()
-		.await
-		.insert(path, manifest);
+	let path = oneclient_common::paths::launcher_dir()?.join(&disk_path);
+	state.bundles.cache_archive_manifest(path, manifest).await;
 
 	Ok(())
 }

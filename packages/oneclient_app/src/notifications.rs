@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use oneclient_core::notification::{
-    GroupedProgressEvent, Notification, NotificationLevel, PromptKind, TaskCategory, UserChoice,
+use oneclient_events::{
+    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
 };
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 use oneclient_db::models::ClusterId;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::components::IconType;
+use crate::transfer::{TransferMeter, TransferStats};
 
 pub const MESSAGE_TOAST_TTL: Duration = Duration::from_secs(5);
 
@@ -64,7 +65,7 @@ impl ClusterUpdateSummary {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InboxEntry {
-    pub level: NotificationLevel,
+    pub level: Level,
     pub id: u64,
     pub title: String,
     pub body: String,
@@ -79,13 +80,7 @@ pub struct InboxEntry {
     pub transfer: Option<TransferStats>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct TransferStats {
-    pub speed_bps: f64,
-    pub eta_secs: Option<u64>,
-}
-
-/// One row in the expandable task list — an aggregate over all children of a
+/// One row in the expandable task list, an aggregate over all children of a
 /// single [`TaskCategory`] (e.g. all libraries collapse into one "Libraries" row).
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskView {
@@ -101,7 +96,7 @@ pub struct TaskView {
 pub struct NotificationSpec {
     pub title: String,
     pub body: String,
-    pub level: NotificationLevel,
+    pub level: Level,
     pub icon: Option<IconType>,
     pub progress: Option<(u64, u64)>,
     pub actions: Vec<NotificationAction>,
@@ -128,15 +123,33 @@ pub struct ActiveToast {
 pub struct PendingPrompt {
     pub title: String,
     pub question: String,
-    pub kind: PromptKind,
-    pub reply_tx: Option<oneshot::Sender<UserChoice>>,
+    pub choices: Vec<Choice>,
+    pub dismiss: Option<String>,
+    /// Taken when answered, so a second answer cannot fire the oneshot twice.
+    pub reply_tx: Option<oneshot::Sender<Option<Answer>>>,
 }
 
+/// The renderable half of a [`PendingPrompt`]: everything except the reply
+/// channel, which cannot be cloned into the snapshot.
 #[derive(Clone, Debug)]
 pub struct PendingPromptView {
     pub title: String,
     pub question: String,
-    pub kind: PromptKind,
+    pub choices: Vec<Choice>,
+    pub dismiss: Option<String>,
+}
+
+impl PendingPromptView {
+    /// Whether this prompt offers a choice with the given id. Lets a
+    /// specialised overlay (the Java one) recognise a prompt it knows how to
+    /// render richly, without the event layer naming the subsystem.
+    pub fn has_choice(&self, id: &str) -> bool {
+        self.choices.iter().any(|choice| choice.id == id)
+    }
+
+    pub fn choice(&self, id: &str) -> Option<&Choice> {
+        self.choices.iter().find(|choice| choice.id == id)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -201,9 +214,8 @@ struct GroupedTasks {
     /// Expected counts/bytes announced up-front so totals don't climb mid-download.
     reserved_count: HashMap<TaskCategory, u64>,
     reserved_units: HashMap<TaskCategory, u64>,
-    /// (timestamp, completed bytes) of the last speed sample.
-    last_sample: Option<(Instant, u64)>,
-    speed_bps: f64,
+    /// Transfer rate and ETA for this group's downloads.
+    meter: TransferMeter,
 }
 
 impl GroupedTasks {
@@ -285,6 +297,12 @@ impl NotificationState {
         }
     }
 
+    /// Entry ids with a toast currently showing.
+    #[must_use]
+    pub fn active_toast_entry_ids(&self) -> Vec<u64> {
+        self.active_toasts.iter().map(|t| t.entry_id).collect()
+    }
+
     pub fn open_cluster_update(&mut self, summaries: Vec<ClusterUpdateSummary>) {
         if summaries.is_empty() {
             return;
@@ -300,54 +318,58 @@ impl NotificationState {
         inbox.iter().filter(|entry| !entry.read).count()
     }
 
-    /// Folds one notification into the engine state. Deliberately does not build
-    /// a [`NotificationSnapshot`]: during a download this runs tens of thousands
+    /// Folds one notification into the engine state. Does not build a
+    /// [`NotificationSnapshot`]: during a download this runs tens of thousands
     /// of times, and every snapshot deep-clones the whole inbox only for the
     /// caller to discard all but the last. Callers snapshot once, after draining.
     pub fn dispatch(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
-        notification: Notification,
+        event: Event,
     ) -> (Vec<ToastDismissTimer>, Option<PendingPrompt>) {
         self.pending_timers.clear();
 
-        match notification {
-            Notification::Message { title, body, level } => {
-                let entry_id = self.push_inbox(inbox, title, body, level, None, false);
+        match event {
+            Event::Notification(Notification::Message(message)) => {
+                let entry_id = self.push_inbox(
+                    inbox,
+                    message.title,
+                    message.body,
+                    message.level,
+                    None,
+                    false,
+                );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
-            Notification::Progress {
+            // The Microsoft login renders its own progress in the sign-in
+            // modal, so it must not also become a toast. This is a front-end
+            // policy decision about a progress id the core merely names.
+            Event::Progress(ProgressEvent::Update { id, .. })
+                if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}
+            Event::Progress(ProgressEvent::Update {
                 id,
                 label,
                 current,
                 total,
-            } => {
+            }) => {
                 self.handle_progress(inbox, id, label, current, total);
             }
-            Notification::ProgressComplete { id, title, body } => {
+            Event::Progress(ProgressEvent::Complete { id, title, body }) => {
                 self.handle_progress_complete(inbox, id, title, body);
             }
-            Notification::GroupedProgress(event) => {
+            Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
             }
-            Notification::InvalidateClusters => {}
-            Notification::InvalidateJava => {}
-            Notification::SyncComplete => {}
-            Notification::MicrosoftLoginStatus(_) => {}
-            Notification::GameStage { .. }
-            | Notification::GameLog { .. }
-            | Notification::GameFailed { .. } => {}
-            Notification::Prompt {
-                title,
-                question,
-                kind,
-                reply_tx,
-            } => {
+            // Signals and game events drive the snapshot directly in the
+            // runtime loop; they never become inbox entries.
+            Event::Signal(_) | Event::Game(_) => {}
+            Event::Notification(Notification::Prompt(request)) => {
                 let pending_prompt = Some(PendingPrompt {
-                    title,
-                    question,
-                    kind,
-                    reply_tx: Some(reply_tx),
+                    title: request.title,
+                    question: request.body,
+                    choices: request.choices,
+                    dismiss: request.dismiss,
+                    reply_tx: Some(request.reply),
                 });
                 let timers = std::mem::take(&mut self.pending_timers);
                 return (timers, pending_prompt);
@@ -433,7 +455,7 @@ impl NotificationState {
         inbox: &mut Vec<InboxEntry>,
         title: String,
         body: String,
-        level: NotificationLevel,
+        level: Level,
         progress: Option<(u64, u64)>,
         is_loading: bool,
     ) -> u64 {
@@ -562,7 +584,7 @@ impl NotificationState {
                 inbox,
                 label.clone(),
                 body.clone(),
-                NotificationLevel::Info,
+                Level::Info,
                 progress,
                 !done,
             );
@@ -573,10 +595,10 @@ impl NotificationState {
         self.update_inbox_entry(inbox, entry_id, label, body, progress, !done);
         self.ensure_progress_toast(entry_id);
 
-        // NOTE: the id→entry mapping is intentionally kept even once `done`, so a
-        // later `ProgressComplete` can convert this same card into its finished state
-        // (see `handle_progress_complete`). The mapping is cleaned up when the entry is
-        // dismissed or the engine is reset.
+        // The id->entry mapping is kept even once `done`, so a later
+        // `ProgressComplete` can convert this same card into its finished state (see
+        // `handle_progress_complete`). It is cleaned up when the entry is dismissed
+        // or the engine is reset.
     }
 
     /// Convert an in-flight progress card into a finished message in place. Used so an
@@ -594,7 +616,7 @@ impl NotificationState {
             self.ensure_progress_toast(entry_id);
         } else {
             let entry_id =
-                self.push_inbox(inbox, title, body, NotificationLevel::Info, None, false);
+                self.push_inbox(inbox, title, body, Level::Info, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -610,7 +632,7 @@ impl NotificationState {
                     inbox,
                     title.clone(),
                     "Preparing...".to_string(),
-                    NotificationLevel::Info,
+                    Level::Info,
                     None,
                     true,
                 );
@@ -806,34 +828,11 @@ impl NotificationState {
         let completed: u64 = tasks.iter().map(|t| t.current.min(t.total)).sum();
         let total: u64 = tasks.iter().map(|t| t.total).sum::<u64>().max(1);
 
-        // Smooth the transfer rate with an EMA so the readout doesn't jitter.
-        let now = Instant::now();
-        let transfer = match group.last_sample {
-            Some((t0, b0)) => {
-                let dt = now.duration_since(t0).as_secs_f64();
-                if dt >= 0.25 {
-                    let inst = completed.saturating_sub(b0) as f64 / dt;
-                    group.speed_bps = if group.speed_bps <= 0.0 {
-                        inst
-                    } else {
-                        group.speed_bps * 0.7 + inst * 0.3
-                    };
-                    group.last_sample = Some((now, completed));
-                }
-                let speed = group.speed_bps;
-                (speed >= 1.0).then(|| {
-                    let remaining = total.saturating_sub(completed);
-                    TransferStats {
-                        speed_bps: speed,
-                        eta_secs: Some((remaining as f64 / speed) as u64),
-                    }
-                })
-            }
-            None => {
-                group.last_sample = Some((now, completed));
-                None
-            }
-        };
+        // Below 1 B/s the estimate is noise, not information.
+        let transfer = group
+            .meter
+            .sample(completed, total)
+            .filter(|stats| stats.speed_bps >= 1.0);
 
         let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) else {
             return;

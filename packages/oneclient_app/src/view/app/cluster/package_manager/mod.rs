@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use oneclient_core::packages::{CachedPackageMeta, ContentType, ProviderId};
+use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 

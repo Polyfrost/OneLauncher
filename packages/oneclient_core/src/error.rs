@@ -15,10 +15,10 @@ pub enum LauncherError {
     StdIoError(#[from] std::io::Error),
 
     #[error(transparent)]
-    RequestError(#[from] crate::http::RequestError),
+    RequestError(#[from] oneclient_net::RequestError),
 
-    #[error("Could not resolve launcher data directory")]
-    DataDirUnavailable,
+    #[error(transparent)]
+    PathsError(#[from] oneclient_common::PathsError),
 
     #[error(transparent)]
     DbError(#[from] oneclient_db::DbError),
@@ -33,37 +33,40 @@ pub enum LauncherError {
     InvalidSettingsProfile { reason: String },
 
     #[error(transparent)]
-    JavaError(#[from] crate::java::JavaError),
+    JavaError(#[from] oneclient_java::JavaError),
 
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
 
     #[error(transparent)]
-    NotificationError(#[from] crate::notification::NotificationError),
+    EventError(#[from] oneclient_events::EventError),
 
     #[error(transparent)]
-    PackageError(#[from] crate::packages::PackageError),
+    PackageError(#[from] oneclient_content::packages::PackageError),
 
     #[error(transparent)]
-    AuthError(#[from] crate::auth::AuthError),
+    AuthError(#[from] oneclient_auth::AuthError),
 
     #[error(transparent)]
     ClusterError(#[from] crate::clusters::ClusterError),
 
     #[error(transparent)]
-    MetadataError(#[from] crate::metadata::MetadataError),
+    McError(#[from] oneclient_mc::McError),
 
     #[error(transparent)]
-    BundleError(#[from] crate::bundles::BundleError),
+    ContentError(#[from] oneclient_content::ContentError),
+
+    #[error(transparent)]
+    BundleError(#[from] oneclient_content::bundles::BundleError),
 
     #[error(transparent)]
     GameError(#[from] crate::game::GameError),
 
     #[error(transparent)]
-    LogsError(#[from] crate::logs::LogsError),
+    LogsError(#[from] oneclient_cluster::logs::LogsError),
 
     #[error(transparent)]
-    ScreenshotsError(#[from] crate::screenshots::ScreenshotsError),
+    ScreenshotsError(#[from] oneclient_cluster::screenshots::ScreenshotsError),
 
     #[error("minecraft: {0}")]
     Minecraft(String),
@@ -71,10 +74,10 @@ pub enum LauncherError {
 
 impl LauncherError {
     #[must_use]
-    pub fn auth_guidance(&self) -> Option<crate::auth::AuthErrorGuidance> {
+    pub fn auth_guidance(&self) -> Option<oneclient_auth::AuthErrorGuidance> {
         match self {
-            LauncherError::AuthError(crate::auth::AuthError::Minecraft(err)) => {
-                crate::auth::diagnose_auth_error(err)
+            LauncherError::AuthError(oneclient_auth::AuthError::Minecraft(err)) => {
+                oneclient_auth::diagnose_auth_error(err)
             }
             _ => None,
         }
@@ -94,8 +97,8 @@ impl SentryExclusion for LauncherError {
         match self {
             LauncherError::StdIoError(e) => e.is_sentry_excluded(),
             LauncherError::IoError(e) => e.is_sentry_excluded(),
-            LauncherError::RequestError(e) => e.is_sentry_excluded(),
-            LauncherError::JavaError(e) => e.is_sentry_excluded(),
+            LauncherError::RequestError(e) => e.is_transient(),
+            LauncherError::JavaError(e) => e.is_transient(),
             _ => false,
         }
     }

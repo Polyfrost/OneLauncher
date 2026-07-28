@@ -2,8 +2,8 @@ use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use freya::text_edit::Clipboard;
 use oneclient_core::LauncherError;
-use oneclient_core::auth::{AuthErrorGuidance, MicrosoftLoginSession};
-use oneclient_core::notification::MicrosoftLoginStatus;
+use oneclient_auth::{AuthErrorGuidance, MicrosoftLoginSession};
+use crate::state::LoginProgress;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{
@@ -21,7 +21,7 @@ pub struct MicrosoftLogin {
     cancel: UseMutation<crate::hooks::CancelMicrosoftLoginMutation>,
     pending_login: State<Option<MicrosoftLoginSession>>,
     cancelled: State<bool>,
-    status: Option<MicrosoftLoginStatus>,
+    status: Option<LoginProgress>,
     locked: bool,
     pub pending: bool,
     pub error: Option<String>,
@@ -151,7 +151,7 @@ where
 fn microsoft_dialog(
     login: MicrosoftLoginSession,
     handle: MicrosoftLogin,
-    status: Option<MicrosoftLoginStatus>,
+    status: Option<LoginProgress>,
     error: Option<String>,
     guidance: Option<AuthErrorGuidance>,
 ) -> impl IntoElement {
@@ -174,7 +174,7 @@ pub(crate) fn login_dialog(
     user_code: String,
     verification_uri: String,
     locked: bool,
-    status: Option<MicrosoftLoginStatus>,
+    status: Option<LoginProgress>,
     error: Option<String>,
     guidance: Option<AuthErrorGuidance>,
     on_close: impl FnMut() + Clone + 'static,
@@ -268,7 +268,7 @@ fn dialog_divider() -> impl IntoElement {
         .into_element()
 }
 
-fn status_row(status: Option<MicrosoftLoginStatus>, error: Option<String>) -> impl IntoElement {
+fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl IntoElement {
     if let Some(error) = error {
         return rect()
             .horizontal()

@@ -1,9 +1,9 @@
 use super::*;
 
-use oneclient_core::packages::ProviderId;
-use oneclient_core::packages::types::{ProjectDetail, ProjectMember};
+use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
 
-use crate::BridgeDispatch;
+use crate::Actions;
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -13,7 +13,7 @@ pub(super) fn sidebar(
     latest_version: Option<String>,
     provider: ProviderId,
     cluster_id: i64,
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
     confirm: State<Option<String>>,
 ) -> impl IntoElement {
     let Some(project) = project else {

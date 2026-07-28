@@ -1,6 +1,6 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::packages::{ContentType, PackageStore};
-use oneclient_core::{LauncherError, LauncherState, LinkedArtifactInfo};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_content::packages::{ContentType, PackageStore};
+use oneclient_core::{LauncherError, LinkedArtifactInfo};
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -21,8 +21,8 @@ impl QueryCapability for ClusterContentQuery {
     type Keys = ClusterContentKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        let all = PackageStore::list_linked_artifacts(self.cluster_id, &state.services).await?;
+        let state = crate::launcher::state()?;
+        let all = PackageStore::list_linked_artifacts(self.cluster_id, &state.services.content()).await?;
         Ok(all
             .into_iter()
             .filter(|item| item.content_type == self.content_type)
@@ -47,12 +47,5 @@ pub fn use_cluster_content(
 }
 
 pub fn cluster_content_items(query: &UseQuery<ClusterContentQuery>) -> Vec<LinkedArtifactInfo> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-        QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    }
+    super::state::settled_or_loading(query).unwrap_or_default()
 }

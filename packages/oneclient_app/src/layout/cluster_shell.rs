@@ -1,14 +1,10 @@
 use freya::animation::*;
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::*;
-use oneclient_core::clusters::Cluster;
-use oneclient_core::parse_mc_version;
+use oneclient_common::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
-use crate::hooks::{
-    use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
-};
+use crate::hooks::{use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
@@ -91,19 +87,6 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
     })
 }
 
-fn load_cluster(cluster_id: i64) -> Option<Cluster> {
-    let clusters_query = use_clusters();
-    let reader = clusters_query.read();
-    let list = match &*reader.state() {
-        QueryStateData::Settled { res: Ok(list), .. }
-        | QueryStateData::Loading {
-            res: Some(Ok(list)),
-        } => list.clone(),
-        _ => Vec::new(),
-    };
-    list.into_iter().find(|c| c.id == cluster_id)
-}
-
 #[derive(PartialEq)]
 pub struct ClusterShell;
 
@@ -117,7 +100,7 @@ impl Component for ClusterShell {
         let game = use_game_snapshot();
         let launcher = use_launcher();
         let syncing = launcher.fetching || launcher.syncing_bundles;
-        let cluster = load_cluster(cluster_id);
+        let cluster = use_cluster(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
         let launch_state = launch_button_state(&game, cluster_id, syncing);
@@ -246,7 +229,7 @@ fn cluster_header(
     title: String,
     subtitle: String,
     cluster_id: i64,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     launch_state: (&'static str, bool),
     running: bool,
     folder: Option<std::path::PathBuf>,

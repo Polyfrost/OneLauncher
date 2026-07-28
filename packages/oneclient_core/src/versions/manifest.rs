@@ -2,9 +2,8 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::api_config::meta_url_base;
-use crate::packages::domain::GameLoader;
-use crate::version::{VersionKey, format_mc_version};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::version::{VersionKey, format_mc_version};
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VersionsManifest {
@@ -137,13 +136,12 @@ impl VersionMetadata {
     }
 }
 
-fn art_url(path: &Option<String>) -> Option<String> {
-    path.as_ref()
-        .map(|p| format!("{}{p}", meta_url_base()))
+fn art_url(path: &Option<String>, meta_url_base: &str) -> Option<String> {
+    path.as_ref().map(|p| format!("{meta_url_base}{p}"))
 }
 
 impl VersionsManifest {
-    pub fn metadata(&self) -> Vec<VersionMetadata> {
+    pub fn metadata(&self, meta_url_base: &str) -> Vec<VersionMetadata> {
         let mut out = Vec::new();
 
         for cluster in &self.clusters {
@@ -158,7 +156,7 @@ impl VersionsManifest {
                 patch_version: None,
                 loader: None,
                 name: cluster_name.clone(),
-                art_url: art_url(&cluster.art),
+                art_url: art_url(&cluster.art, meta_url_base),
                 long_description: cluster.long_description.clone(),
                 tags: cluster.tags.clone(),
                 predownload: cluster.predownload.unwrap_or(false),
@@ -171,7 +169,7 @@ impl VersionsManifest {
                     patch_version: entry.patch_version,
                     loader: entry.loader.clone(),
                     name: entry.name.clone().unwrap_or_else(|| cluster_name.clone()),
-                    art_url: art_url(&entry.art).or_else(|| art_url(&cluster.art)),
+                    art_url: art_url(&entry.art, meta_url_base).or_else(|| art_url(&cluster.art, meta_url_base)),
                     long_description: entry
                         .long_description
                         .clone()
@@ -215,7 +213,7 @@ mod tests {
         )
         .expect("should parse");
 
-        let metadata = manifest.metadata();
+        let metadata = manifest.metadata("https://example.test");
         let entry = metadata
             .iter()
             .find(|m| m.minor_version == Some(1))
@@ -240,7 +238,7 @@ mod tests {
         )
         .expect("should parse");
 
-        let metadata = manifest.metadata();
+        let metadata = manifest.metadata("https://example.test");
         let flag = |major: u32, minor: Option<u32>| {
             metadata
                 .iter()
@@ -269,7 +267,7 @@ mod tests {
         )
         .expect("should parse");
 
-        let metadata = manifest.metadata();
+        let metadata = manifest.metadata("https://example.test");
         assert_eq!(metadata[0].mc_version(), None);
         assert_eq!(metadata[1].mc_version().as_deref(), Some("26.1.2"));
     }

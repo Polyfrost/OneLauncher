@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 
 use crate::{AppAssets, theme::colors};
 

@@ -7,13 +7,13 @@ use oneclient_db::models::NewCluster;
 use oneclient_db::DbPool;
 use strum::IntoEnumIterator;
 
-use crate::clusters::{ClusterManager, ClusterStage};
-use crate::crypto::sha1_file;
-use crate::packages::domain::{ContentType, GameLoader, ProviderId};
-use crate::paths;
-use crate::settings::store::create_profile_from_global;
+use crate::clusters::ClusterStage;
+use polyio::sha1_file;
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_common::paths;
+use oneclient_cluster::profiles::create_profile_from_global;
 use crate::state::LauncherState;
-use crate::version::parse_mc_version;
+use oneclient_common::version::parse_mc_version;
 use crate::LauncherResult;
 
 const FILE_CONTENT_TYPES: [ContentType; 4] = [
@@ -43,7 +43,7 @@ pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<Reco
 	// Hold the provisioning lock across the whole scan+adopt so a concurrent
 	// cluster create (folder-on-disk written before its DB row commits) can't be
 	// misclassified as an orphan and adopted into a duplicate row.
-	let _guard = state.provisioning.lock().await;
+	let _guard = state.clusters.provisioning_guard().await;
 
 	let clusters_dir = paths::clusters_dir()?;
 	let orphans = orphan_cluster_folders(&state.services.db, &clusters_dir).await?;
@@ -56,7 +56,7 @@ pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<Reco
 		"user_data.db appears reset; reconstructing from disk"
 	);
 
-	if let Err(err) = crate::java::JavaManager::rescan(&state.services.db).await {
+	if let Err(err) = state.java.rescan().await {
 		tracing::warn!("java rescan during recovery failed: {err:#}");
 	}
 
@@ -204,8 +204,8 @@ async fn adopt_cluster(
 ) -> LauncherResult<()> {
 	let (name, mc_version, loader) = parse_folder_identity(folder_name);
 
-	let settings = state.settings.read().clone();
-	let profile = create_profile_from_global(&state.services.db, &settings, &name, None, None).await?;
+	let global = state.settings.read().global_game_settings.clone();
+	let profile = create_profile_from_global(&state.services.db, &global, &name, None, None).await?;
 
 	let row = cluster_dao::insert(
 		&state.services.db,
@@ -295,12 +295,12 @@ async fn relink_cluster_files(
 
 #[tracing::instrument(skip(state))]
 pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()> {
-	let clusters = ClusterManager::list(state).await?;
+	let clusters = state.clusters.list().await?;
 
 	for cluster in clusters {
 		let archives = match state
 			.bundles
-			.archives_for(&state.services, &cluster.mc_version, cluster.mc_loader)
+			.archives_for(&state.services.content(), &cluster.mc_version, cluster.mc_loader)
 			.await
 		{
 			Ok(archives) => archives,
@@ -316,7 +316,7 @@ pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()
 		for archive in archives {
 			let bundle_name = &archive.manifest.name;
 			for file in &archive.manifest.files {
-				use crate::bundles::BundleFileKind;
+				use oneclient_content::bundles::BundleFileKind;
 				let BundleFileKind::Managed {
 					provider,
 					project_id,

@@ -1,7 +1,7 @@
 
 use std::env;
 
-use oneclient_core::packages::domain::ProviderId;
+use oneclient_common::domain::ProviderId;
 use oneclient_core::{dev, logger, LauncherResult};
 
 #[tokio::main]
@@ -14,8 +14,8 @@ async fn main() -> LauncherResult<()> {
 	let mc_version = args.next();
 
 	let provider_id = parse_provider(&provider_name)?;
-	let env = dev::ephemeral_services().await?;
-	let provider = env.packages.get(provider_id)?;
+	let env = dev::ephemeral_services().await?.content();
+	let provider = env.providers.get(provider_id)?;
 
 	let project = provider.get_project(&project_ref, &env).await?;
 

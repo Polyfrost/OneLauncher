@@ -1,0 +1,25 @@
+[package]
+name = "oneclient_discord"
+description = "Discord rich presence for OneClient"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+oneclient_common.workspace = true
+
+chrono.workspace = true
+discord-rich-presence.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

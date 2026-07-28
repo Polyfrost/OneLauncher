@@ -1,6 +1,6 @@
-use oneclient_core::bundles::{BundleFile, BundleFileKind, BundleManifest, check_bundle_updates};
-use oneclient_core::clusters::{ClusterManager, CreateClusterOptions};
-use oneclient_core::packages::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_content::bundles::{BundleFile, BundleFileKind, BundleManifest, check_bundle_updates};
+use oneclient_core::clusters::CreateClusterOptions;
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_core::LauncherState;
 use oneclient_db::dao::{artifact as artifact_dao, cluster_bundle as bundle_dao};
 use oneclient_db::models::OverrideType;
@@ -40,8 +40,9 @@ fn manifest(files: Vec<BundleFile>) -> BundleManifest {
 }
 
 async fn cluster_with_tracked_mod(state: &LauncherState) -> i64 {
-    let cluster = ClusterManager::create(
-        state,
+    let global = state.settings.read().global_game_settings.clone();
+    let cluster = state.clusters.create(
+        &global,
         CreateClusterOptions::new("Bundle Cluster", MC_VERSION, GameLoader::Fabric),
     )
     .await
@@ -99,7 +100,7 @@ async fn mod_still_in_manifest_is_not_removed() {
         .unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
 
-    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services)
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
         .await
         .unwrap();
 
@@ -120,7 +121,7 @@ async fn mod_dropped_from_manifest_is_removed() {
         .unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
 
-    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services)
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
         .await
         .unwrap();
 
@@ -153,7 +154,7 @@ async fn disabled_mod_dropped_from_manifest_is_still_removed() {
     .await
     .unwrap();
 
-    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services)
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
         .await
         .unwrap();
 
@@ -185,7 +186,7 @@ async fn user_disabled_mod_is_not_treated_as_a_removal() {
     .await
     .unwrap();
 
-    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services)
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
         .await
         .unwrap();
 

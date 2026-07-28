@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use oneclient_core::clusters::{ClusterManager, ClusterStage, CreateClusterOptions};
-use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::patch::Patch;
-use oneclient_core::settings::store::create_settings_profile;
+use oneclient_core::clusters::{ClusterStage, CreateClusterOptions};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::patch::Patch;
+use oneclient_cluster::profiles::create_settings_profile;
 use oneclient_core::ProfileUpdate;
 
 #[tokio::test]
@@ -11,9 +11,14 @@ async fn cluster_lifecycle_with_settings_profile() {
 	let state = oneclient_core::dev::ephemeral_state().await.unwrap();
 	let settings = state.settings.read().clone();
 
-	let cluster = ClusterManager::create(
-		&state,
-		CreateClusterOptions::new("Test Cluster", "1.21.1", GameLoader::Fabric),
+	let global = state.settings.read().global_game_settings.clone();
+
+	// Deliberately not the global default of 4096, so the assertions below
+	// distinguish "the cluster's own profile was used" from "we fell back to
+	// global and happened to match".
+	let cluster = state.clusters.create(
+        &global,
+        CreateClusterOptions::new("Test Cluster", "1.21.1", GameLoader::Fabric).mem_max(2048),
 	)
 	.await
 	.unwrap();
@@ -24,53 +29,49 @@ async fn cluster_lifecycle_with_settings_profile() {
 	assert!(cluster.setting_profile_name.is_some());
 	assert!(cluster.created_at.is_some());
 
-	let resolved = ClusterManager::resolve_settings(&state, &cluster)
+	let resolved = state.clusters.resolve_settings(&global, &cluster)
 		.await
 		.unwrap();
 	assert_eq!(resolved.mem_max, Some(2048));
 
-	ClusterManager::update_profile(
-		&state,
-		cluster.id,
+	state.clusters.update_profile(cluster.id,
 		ProfileUpdate {
-			mem_max: Patch::Set(4096),
+			mem_max: Patch::Set(6144),
 			..Default::default()
 		},
 	)
 	.await
 	.unwrap();
 
-	let updated = ClusterManager::resolve_settings(&state, &cluster)
+	let updated = state.clusters.resolve_settings(&global, &cluster)
 		.await
 		.unwrap();
-	assert_eq!(updated.mem_max, Some(4096));
+	assert_eq!(updated.mem_max, Some(6144));
 
-	let shared = create_settings_profile(&state.services.db, &settings, "Shared Profile")
+	let shared = create_settings_profile(&state.services.db, &settings.global_game_settings, "Shared Profile")
 		.await
 		.unwrap();
 
-	ClusterManager::update(
-		&state,
-		cluster.id,
+	state.clusters.update(cluster.id,
 		oneclient_core::ClusterUpdate::default().setting_profile(shared.name.clone()),
 	)
 	.await
 	.unwrap();
 
-	let reassigned = ClusterManager::get(&state, cluster.id).await.unwrap();
+	let reassigned = state.clusters.get(cluster.id).await.unwrap();
 	assert_eq!(
 		reassigned.setting_profile_name.as_deref(),
 		Some("Shared Profile")
 	);
 
-	let after_play = ClusterManager::add_playtime(&state, cluster.id, Duration::from_secs(120))
+	let after_play = state.clusters.add_playtime(cluster.id, Duration::from_secs(120))
 		.await
 		.unwrap();
 	assert_eq!(after_play.overall_played, Duration::from_secs(120));
 	assert!(after_play.last_played.is_some());
 
-	ClusterManager::delete(&state, cluster.id, true).await.unwrap();
-	assert!(ClusterManager::get(&state, cluster.id).await.is_err());
+	state.clusters.delete(cluster.id, true).await.unwrap();
+	assert!(state.clusters.get(cluster.id).await.is_err());
 }
 
 #[tokio::test]
@@ -82,18 +83,18 @@ async fn cleared_profile_fields_inherit_from_global() {
 		settings.global_game_settings.mem_max = Some(8192);
 	}
 
-	let cluster = ClusterManager::create(
-		&state,
-		CreateClusterOptions::new("Inherit Test", "1.21.1", GameLoader::Vanilla).mem_max(2048),
+	// Read the baseline *after* the write above, so the new cluster inherits it.
+	let global = state.settings.read().global_game_settings.clone();
+	let cluster = state.clusters.create(
+        &global,
+        CreateClusterOptions::new("Inherit Test", "1.21.1", GameLoader::Vanilla).mem_max(2048),
 	)
 	.await
 	.unwrap();
 
 	let profile_name = cluster.setting_profile_name.clone().unwrap();
 
-	ClusterManager::update_profile(
-		&state,
-		cluster.id,
+	state.clusters.update_profile(cluster.id,
 		ProfileUpdate {
 			mem_max: Patch::Clear,
 			force_fullscreen: Patch::Clear,
@@ -103,10 +104,10 @@ async fn cleared_profile_fields_inherit_from_global() {
 	.await
 	.unwrap();
 
-    let settings = state.settings.read().clone();
-	let stored = oneclient_core::settings::store::get_profile_or_default(
+    let global = state.settings.read().global_game_settings.clone();
+	let stored = oneclient_cluster::profiles::get_profile_or_default(
 		&state.services.db,
-		&settings,
+		&global,
 		Some(&profile_name),
 	)
 	.await
@@ -114,7 +115,7 @@ async fn cleared_profile_fields_inherit_from_global() {
 	assert_eq!(stored.mem_max, None);
 	assert_eq!(stored.force_fullscreen, None);
 
-	let resolved = ClusterManager::resolve_settings(&state, &cluster)
+	let resolved = state.clusters.resolve_settings(&global, &cluster)
 		.await
 		.unwrap();
 	assert_eq!(resolved.mem_max, Some(8192));

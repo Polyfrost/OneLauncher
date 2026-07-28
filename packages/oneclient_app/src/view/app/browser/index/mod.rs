@@ -4,9 +4,9 @@ use freya::animation::{
     AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
 };
 use freya::prelude::*;
-use oneclient_core::packages::types::ProjectSummary;
-use oneclient_core::packages::types::SearchSort;
-use oneclient_core::packages::{ContentType, ProviderId};
+use oneclient_content::packages::types::ProjectSummary;
+use oneclient_content::packages::types::SearchSort;
+use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
@@ -18,7 +18,7 @@ use crate::hooks::{
     use_package_categories, use_package_search, use_view_state,
 };
 use crate::theme::colors;
-use crate::view::app::cluster::load_cluster;
+use crate::hooks::use_cluster;
 
 use super::{PackageBanner, Thumbnail};
 use crate::utils::abbreviate_number;
@@ -96,7 +96,7 @@ impl Component for Browser {
             Duration::from_millis(SEARCH_DEBOUNCE_MS),
         );
 
-        let cluster = load_cluster(cluster_id);
+        let cluster = use_cluster(cluster_id);
         let provider_id = *provider.read();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();

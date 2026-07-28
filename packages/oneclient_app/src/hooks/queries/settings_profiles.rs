@@ -1,9 +1,8 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::settings::GameSettingsProfile;
-use oneclient_core::settings::store::{
+use oneclient_cluster::profiles::{
     get_profile_or_default, list_named_profiles, resolve_cluster_profile,
 };
-use oneclient_core::{ClusterManager, LauncherState};
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -18,7 +17,7 @@ impl QueryCapability for ListNamedProfilesQuery {
     type Keys = ListNamedProfilesKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
         list_named_profiles(&state.services.db)
             .await
             .map_err(|e| e.to_string())
@@ -44,9 +43,9 @@ impl QueryCapability for GameProfileQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let name = keys.name.clone();
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
-        let settings = state.settings.read().clone();
-        get_profile_or_default(&state.services.db, &settings, name.as_deref())
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        let global = state.settings.read().global_game_settings.clone();
+        get_profile_or_default(&state.services.db, &global, name.as_deref())
             .await
             .map_err(|e| e.to_string())
     }
@@ -76,9 +75,9 @@ impl QueryCapability for ClusterProfileQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let profile_name = keys.profile_name.clone();
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
-        let settings = state.settings.read().clone();
-        resolve_cluster_profile(&state.services.db, &settings, profile_name.as_deref())
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        let global = state.settings.read().global_game_settings.clone();
+        resolve_cluster_profile(&state.services.db, &global, profile_name.as_deref())
             .await
             .map_err(|e| e.to_string())
     }
@@ -110,11 +109,12 @@ impl QueryCapability for ClusterSettingsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let cluster_id = keys.cluster_id;
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
-        let cluster = ClusterManager::get(&state, cluster_id)
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        let cluster = state.clusters.get(cluster_id)
             .await
             .map_err(|e| e.to_string())?;
-        ClusterManager::resolve_settings(&state, &cluster)
+        let global = state.settings.read().global_game_settings.clone();
+        state.clusters.resolve_settings(&global, &cluster)
             .await
             .map_err(|e| e.to_string())
     }
@@ -128,14 +128,5 @@ pub fn use_cluster_settings(cluster_id: ClusterId) -> UseQuery<ClusterSettingsQu
 }
 
 pub fn try_game_profile(query: &UseQuery<GameProfileQuery>) -> Option<GameSettingsProfile> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled {
-            res: Ok(profile), ..
-        } => Some(profile.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(profile)),
-        } => Some(profile.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }

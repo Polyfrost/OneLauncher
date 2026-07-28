@@ -1,7 +1,8 @@
-use oneclient_core::crypto::{Sha1Stream, sha1_bytes, sha1_file};
 use oneclient_core::dev;
 use oneclient_core::game::download_to_path;
-use oneclient_core::notification::{GroupedProgressSession, TaskCategory};
+use oneclient_events::{GroupedProgressSession, TaskCategory};
+use polyio::testing::ScratchDir as Scratch;
+use polyio::{Sha1Stream, sha1_bytes, sha1_file};
 
 /// A Minecraft asset object. Objects are content-addressed and immutable, so
 /// this URL/hash pair stays valid.
@@ -9,30 +10,6 @@ const ASSET_SHA1: &str = "af96f55a90eaf11b327f1b5f8834a051027dc506";
 const ASSET_URL: &str =
     "https://resources.download.minecraft.net/af/af96f55a90eaf11b327f1b5f8834a051027dc506";
 const ASSET_SIZE: u64 = 2063;
-
-/// Scratch directory unique to one test, removed by [`Scratch`]'s drop.
-struct Scratch(std::path::PathBuf);
-
-impl Scratch {
-    fn new(tag: &str) -> Self {
-        static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path =
-            std::env::temp_dir().join(format!("oneclient-{tag}-{}-{n}", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
-        Self(path)
-    }
-
-    fn join(&self, name: &str) -> std::path::PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
 
 #[test]
 fn sha1_stream_matches_one_shot_hash() {
@@ -76,13 +53,13 @@ async fn sha1_file_handles_empty_file() {
 #[ignore = "requires network"]
 async fn download_to_path_accepts_matching_hash() {
     let services = dev::ephemeral_services().await.unwrap();
-    let progress = GroupedProgressSession::start(&services.notifier, "test");
+    let progress = GroupedProgressSession::start(&services.events, "test");
     let dir = Scratch::new("download-ok");
     let dest = dir.join("nested").join("icon.png");
 
     download_to_path(
         &services.requester,
-        &services.notifier,
+        &services.events,
         &progress,
         "icon",
         TaskCategory::Assets,
@@ -102,13 +79,13 @@ async fn download_to_path_accepts_matching_hash() {
 #[ignore = "requires network"]
 async fn download_to_path_rejects_mismatched_hash_and_removes_file() {
     let services = dev::ephemeral_services().await.unwrap();
-    let progress = GroupedProgressSession::start(&services.notifier, "test");
+    let progress = GroupedProgressSession::start(&services.events, "test");
     let dir = Scratch::new("download-bad");
     let dest = dir.join("icon.png");
 
     let err = download_to_path(
         &services.requester,
-        &services.notifier,
+        &services.events,
         &progress,
         "icon",
         TaskCategory::Assets,
@@ -128,13 +105,13 @@ async fn download_to_path_rejects_mismatched_hash_and_removes_file() {
 #[ignore = "requires network"]
 async fn download_to_path_without_expected_hash_still_writes() {
     let services = dev::ephemeral_services().await.unwrap();
-    let progress = GroupedProgressSession::start(&services.notifier, "test");
+    let progress = GroupedProgressSession::start(&services.events, "test");
     let dir = Scratch::new("download-nohash");
     let dest = dir.join("icon.png");
 
     download_to_path(
         &services.requester,
-        &services.notifier,
+        &services.events,
         &progress,
         "icon",
         TaskCategory::Assets,

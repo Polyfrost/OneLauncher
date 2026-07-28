@@ -14,6 +14,15 @@ authors = { workspace = true }
 default = []
 
 [dependencies]
+oneclient_auth.workspace = true
+oneclient_cluster.workspace = true
+oneclient_common.workspace = true
+oneclient_content.workspace = true
+oneclient_events.workspace = true
+oneclient_java.workspace = true
+oneclient_mc.workspace = true
+oneclient_polyplus.workspace = true
+oneclient_net.workspace = true
 oneclient_core.workspace = true
 oneclient_db.workspace = true
 chrono.workspace = true
@@ -62,6 +71,7 @@ formats = ["nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
 icons = [
   "icons/32x32.png",
+  "icons/64x64.png",
   "icons/128x128.png",
   "icons/128x128@2x.png",
   "icons/icon.icns",
@@ -131,6 +141,7 @@ assets = [
   { source = "target/release/oneclient_app", dest = "/usr/bin/oneclient_app", mode = "755" },
   { source = "target/release/.cargo-packager/deb/*/data/usr/share/applications/oneclient_app.desktop", dest = "/usr/share/applications/", mode = "644" },
   { source = "icons/32x32.png", dest = "/usr/share/icons/hicolor/32x32/apps/oneclient_app.png", mode = "644" },
+  { source = "icons/64x64.png", dest = "/usr/share/icons/hicolor/64x64/apps/oneclient_app.png", mode = "644" },
   { source = "icons/128x128.png", dest = "/usr/share/icons/hicolor/128x128/apps/oneclient_app.png", mode = "644" },
   { source = "icons/512x512.png", dest = "/usr/share/icons/hicolor/512x512/apps/oneclient_app.png", mode = "644" },
 ]

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub fn use_active_cluster_id() -> State<Option<ClusterId>> {
 
 /// Drives the startup splash "curtain": a full-screen cover that stays up after
 /// the router leaves the Startup route until the home view's clusters/art have
-/// settled, then fades out — so the app never reveals a half-populated home.
+/// settled, then fades out, so the app never reveals a half-populated home.
 #[derive(Clone, Copy)]
 pub struct SplashState {
     /// The curtain is covering the screen (raised when heading into Home).

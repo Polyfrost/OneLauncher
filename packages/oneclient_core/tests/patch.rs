@@ -1,4 +1,4 @@
-use oneclient_core::patch::Patch;
+use oneclient_common::patch::Patch;
 
 #[test]
 fn patch_apply_to_option() {

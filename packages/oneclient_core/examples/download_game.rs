@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
-use oneclient_core::clusters::{ClusterManager, CreateClusterOptions};
+use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_core::dev;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 use oneclient_core::LauncherResult;
 
 #[tokio::main]
@@ -17,8 +17,10 @@ async fn main() -> LauncherResult<()> {
         .unwrap_or(GameLoader::Vanilla);
     let loader_version = args.get(2).map(String::as_str);
 
-    let cluster = ClusterManager::create(
-        &state,
+    let global = state.settings.read().global_game_settings.clone();
+
+    let cluster = state.clusters.create(
+        &global,
         CreateClusterOptions {
             name: format!("download-{mc_version}"),
             mc_version: mc_version.to_string(),
@@ -34,7 +36,7 @@ async fn main() -> LauncherResult<()> {
         cluster.name, cluster.mc_version, cluster.mc_loader
     );
 
-    let ready = ClusterManager::prepare(&state, cluster.id, false, true, true, None).await?;
+    let ready = oneclient_core::clusters::prepare_cluster_locked(&state, cluster.id, false, true, true, None).await?;
     println!("Cluster ready at {}", ready.dir()?.display());
 
     Ok(())

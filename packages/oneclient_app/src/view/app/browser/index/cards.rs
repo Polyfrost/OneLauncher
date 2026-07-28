@@ -1,8 +1,8 @@
 use super::*;
 
 use freya::router::RouterContext;
-use oneclient_core::packages::ProviderId;
-use oneclient_core::packages::types::ProjectSummary;
+use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::ProjectSummary;
 
 use crate::components::{Icon, IconType};
 use crate::routes::Route;

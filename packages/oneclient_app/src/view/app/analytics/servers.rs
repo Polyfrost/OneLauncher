@@ -1,12 +1,11 @@
 use freya::prelude::*;
-use freya::query::QueryStateData;
 
 use oneclient_core::game::ServerStat;
 
 use crate::components::{
     Button, Icon, IconType, OverlayPopup, PieChart, ScrollArea, ValueUnit, slice_color,
 };
-use crate::hooks::use_cached_image;
+use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{format_duration_hm, plural};
@@ -168,7 +167,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>) -> Element {
 }
 
 /// A Component (not a plain builder) because it mounts a `ScrollArea`, whose
-/// hooks run in the caller's render scope — mounting it conditionally from
+/// hooks run in the caller's render scope. Mounting it conditionally from
 /// `ServersSection` would change that scope's hook count and panic Freya.
 #[derive(PartialEq)]
 struct ServerDetailsPopup {
@@ -372,17 +371,7 @@ impl Component for ServerIcon {
     fn render(&self) -> impl IntoElement {
         let size = self.size;
         let query = use_cached_image(self.url.clone(), SERVER_ICON_EDGE);
-        let reader = query.read();
-        let loaded = match (&self.url, &*reader.state()) {
-            (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-            | (
-                Some(url),
-                QueryStateData::Loading {
-                    res: Some(Ok(bytes)),
-                },
-            ) => Some((url.clone(), bytes.clone())),
-            _ => None,
-        };
+        let loaded = loaded_image(self.url.as_deref(), &query);
 
         match loaded {
             Some((url, bytes)) => ImageViewer::new((url, bytes))

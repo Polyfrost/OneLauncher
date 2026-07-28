@@ -1,7 +1,5 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
-use oneclient_core::{LauncherError, LauncherState, TermsDocument, fetch_terms};
-
-use crate::hooks::use_settings_snapshot;
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_core::{LauncherError, TermsDocument, fetch_terms};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TermsKeys {
@@ -17,45 +15,25 @@ impl QueryCapability for TermsQuery {
     type Keys = TermsKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = LauncherState::get()?;
-        fetch_terms(&state.services).await
+        let state = crate::launcher::state()?;
+        fetch_terms(&state.services.requester).await
     }
 }
 
 pub fn use_terms() -> UseQuery<TermsQuery> {
-    let settings = use_settings_snapshot().settings;
-    let meta_url_base = settings
-        .custom_meta_url_base
-        .clone()
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    let meta_url_base = super::use_meta_url_key();
 
     use_query(Query::new(TermsKeys { meta_url_base }, TermsQuery))
 }
 
 pub fn terms_document(query: &UseQuery<TermsQuery>) -> Option<TermsDocument> {
-    match &*query.read().state() {
-        QueryStateData::Settled {
-            res: Ok(document), ..
-        } => Some(document.clone()),
-        QueryStateData::Loading {
-            res: Some(Ok(document)),
-        } => Some(document.clone()),
-        _ => None,
-    }
+    super::state::settled_or_loading(query)
 }
 
 pub fn terms_error(query: &UseQuery<TermsQuery>) -> Option<String> {
-    match &*query.read().state() {
-        QueryStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
-        _ => None,
-    }
+    super::state::query_error(query)
 }
 
 pub fn terms_is_loading(query: &UseQuery<TermsQuery>) -> bool {
-    matches!(
-        &*query.read().state(),
-        QueryStateData::Pending | QueryStateData::Loading { res: None }
-    )
+    super::state::query_is_loading(query)
 }

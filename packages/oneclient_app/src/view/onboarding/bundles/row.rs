@@ -1,9 +1,8 @@
 use freya::prelude::*;
-use freya::query::QueryStateData;
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, provider_badge};
-use crate::hooks::use_cached_image;
+use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -29,19 +28,7 @@ pub(super) struct OnboardingModCard {
 impl Component for OnboardingModCard {
     fn render(&self) -> impl IntoElement {
         let icon_query = use_cached_image(self.icon_url.clone(), 128);
-        let loaded = {
-            let reader = icon_query.read();
-            match (&self.icon_url, &*reader.state()) {
-                (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-                | (
-                    Some(url),
-                    QueryStateData::Loading {
-                        res: Some(Ok(bytes)),
-                    },
-                ) => Some((url.clone(), bytes.clone())),
-                _ => None,
-            }
-        };
+        let loaded = loaded_image(self.icon_url.as_deref(), &icon_query);
 
         let icon = match loaded {
             Some((url, bytes)) => ImageViewer::new((url, bytes))

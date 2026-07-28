@@ -8,20 +8,21 @@ use interfrost::api::minecraft::ArgumentType;
 use tokio::process::Command;
 
 use crate::ClusterStage;
-use crate::auth::MinecraftAccount;
-use crate::clusters::{Cluster, ClusterManager};
-use crate::discord::Presence;
+use oneclient_auth::MinecraftAccount;
+use crate::clusters::Cluster;
+use oneclient_discord::Presence;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::game::{
-    GameError, arguments, download_minecraft, download_version_info, get_loader_version,
+use crate::game::GameError;
+use oneclient_mc::{
+    self as arguments, download_minecraft, download_version_info, get_loader_version,
     libraries_missing, resolve_minecraft_version,
 };
-use crate::java::JavaManager;
-use crate::notification::{GroupedProgressSession, LaunchStage};
+use oneclient_events::{GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
 use crate::state::LauncherState;
-use crate::{LauncherResult, paths};
+use crate::LauncherResult;
+use oneclient_common::paths;
 
 pub fn is_running(state: &LauncherState, cluster_id: i64) -> bool {
     state.games.is_running(cluster_id)
@@ -48,15 +49,15 @@ pub async fn launch_cluster(
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
-    let notifier = state.services.notifier.clone();
+    let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
         state.games.set_stage(cluster_id, s);
-        notifier.game_stage(cluster_id, s);
+        events.game_stage(cluster_id, s);
     };
 
     stage(LaunchStage::Checking);
 
-    let existing = ClusterManager::get(state, cluster_id).await?;
+    let existing = state.clusters.get(cluster_id).await?;
 
     let game_dir = existing.game_dir()?;
     if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
@@ -66,7 +67,7 @@ pub async fn launch_cluster(
     let dedicated = existing.uses_dedicated_dir();
 
     let progress = GroupedProgressSession::start(
-        &state.services.notifier,
+        &state.services.events,
         format!("Launching {}", existing.name),
     );
 
@@ -74,7 +75,7 @@ pub async fn launch_cluster(
         existing
     } else {
         stage(LaunchStage::Downloading);
-        match ClusterManager::prepare(
+        match crate::clusters::prepare_cluster_locked(
             state,
             cluster_id,
             false,
@@ -92,32 +93,33 @@ pub async fn launch_cluster(
             }
         }
     };
-    if let Err(err) = crate::bundles::install_cluster_bundles(
+    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
         cluster_id,
         state.bundles.as_ref(),
         Some(&progress),
-        &state.services,
+        &state.services.content(),
     )
     .await
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
 
-    let profile = ClusterManager::resolve_settings(state, &cluster).await?;
+    let global = state.settings.read().global_game_settings.clone();
+    let profile = state.clusters.resolve_settings(&global, &cluster).await?;
 
-    let mc_version = crate::version::normalize_mc_version_input(&cluster.mc_version);
+    let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
     let (version, updated, loader_version, version_info) = {
         let mut metadata = state.metadata.lock().await;
 
         let (version, _index, updated) =
-            resolve_minecraft_version(&mut metadata, &state.services, &mc_version)
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
                 .await
                 .map_err(|_| GameError::InvalidVersion(cluster.mc_version.clone()))?;
 
         let loader_version = get_loader_version(
             &mut metadata,
-            &state.services,
+            &state.services.mc(),
             &mc_version,
             cluster.mc_loader,
             cluster.mc_loader_version.as_deref(),
@@ -125,7 +127,7 @@ pub async fn launch_cluster(
         .await?;
 
         let version_info = download_version_info(
-            &state.services,
+            &state.services.mc(),
             Some(&progress),
             &version,
             loader_version.as_ref(),
@@ -141,7 +143,7 @@ pub async fn launch_cluster(
         Err(err) => {
             progress.finish();
             stage(LaunchStage::Exited);
-            return Err(err);
+            return Err(err.into());
         }
     };
 
@@ -162,7 +164,7 @@ pub async fn launch_cluster(
     );
 
     let java = if let Some(runtime) =
-        JavaManager::java_for_profile(&state.services.db, profile.java_path.as_deref()).await?
+        state.java.runtime_for_profile(profile.java_path.as_deref()).await?
     {
         runtime
     } else {
@@ -172,16 +174,16 @@ pub async fn launch_cluster(
             .map(|v| v.major_version)
             .ok_or(GameError::MissingJavaVersion)?;
 
-        JavaManager::prepare_java(state, major, search_for_java).await?
+        state.java.prepare(major, search_for_java, false, None).await?
     };
 
     match libraries_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
-            let _ = ClusterManager::set_stage(state, cluster_id, ClusterStage::Repairing).await;
+            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Repairing).await;
             stage(LaunchStage::Downloading);
             if let Err(err) = download_minecraft(
-                &state.services,
+                &state.services.mc(),
                 &progress,
                 &version_info,
                 &java.os_arch,
@@ -192,9 +194,9 @@ pub async fn launch_cluster(
             {
                 progress.finish();
                 stage(LaunchStage::Exited);
-                return Err(err);
+                return Err(err.into());
             }
-            let _ = ClusterManager::set_stage(state, cluster_id, ClusterStage::Ready).await;
+            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await;
         }
         Ok(false) => {}
         Err(err) => tracing::warn!(cluster_id, error = %err, "repair check failed"),
@@ -288,7 +290,7 @@ pub async fn launch_cluster(
         .args(mc_args)
         .current_dir(&cwd);
 
-    let log_path = crate::logs::cluster_output_log(&cluster)?;
+    let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
         polyio::create_dir_all(parent).await.ok();
     }
@@ -350,7 +352,7 @@ pub async fn launch_cluster(
         .as_ref()
         .and_then(SessionRecorder::started_at)
         .unwrap_or_else(Utc::now);
-    let tail = spawn_log_tail(cluster_id, log_path, notifier.clone(), recorder.clone());
+    let tail = spawn_log_tail(cluster_id, log_path, events.clone(), recorder.clone());
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
     state.games.register_kill(cluster_id, kill_tx);
@@ -440,7 +442,7 @@ pub(crate) struct SessionEnd {
     pub outcome: Exit,
     /// Whether this session is the one currently holding the cluster's running
     /// slot. A stale session recovered from the database may share its cluster
-    /// with a game that is playing right now — booking the old session's
+    /// with a game that is playing right now. Booking the old session's
     /// playtime is right, but clearing that slot would report the live game as
     /// exited.
     pub owns_slot: bool,
@@ -466,7 +468,7 @@ pub(crate) async fn finalize_session(
         state.games.remove(cluster_id);
         state
             .services
-            .notifier
+            .events
             .game_stage(cluster_id, LaunchStage::Exited);
 
         if state.games.running_ids().is_empty() {
@@ -475,7 +477,7 @@ pub(crate) async fn finalize_session(
     }
 
     if played > Duration::from_secs(1) {
-        let _ = ClusterManager::add_playtime(state, cluster_id, played).await;
+        let _ = state.clusters.add_playtime(cluster_id, played).await;
     }
 
     if let Some(recorder) = recorder {
@@ -500,18 +502,18 @@ pub(crate) async fn finalize_session(
     match end.outcome {
         Exit::Observed { success: true, .. } => state
             .services
-            .notifier
-            .send_info("Game closed", &format!("{name} exited")),
+            .events
+            .notify("Game closed").body(format!("{name} exited")).send(),
         Exit::Observed { display, .. } => state
             .services
-            .notifier
-            .send_error("Game crashed", &format!("{name} exited with {display}")),
+            .events
+            .notify("Game crashed").body(format!("{name} exited with {display}")).error().send(),
         Exit::Failed(err) => state
             .services
-            .notifier
-            .send_error("Game error", &format!("{name}: {err}")),
+            .events
+            .notify("Game error").body(format!("{name}: {err}")).error().send(),
         // Nothing was watching, so there is no crash to report and no news the
-        // user wants a popup about — the session is simply booked and closed.
+        // user wants a popup about, so the session is just booked and closed.
         Exit::Inferred => {}
     }
 }

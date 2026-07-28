@@ -1,6 +1,6 @@
-use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
+use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::{
-    LauncherError, LauncherState, MigrationDetection, detect_migration, resolve_migration_chain,
+    LauncherError, MigrationDetection, detect_migration, resolve_migration_chain,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -22,7 +22,7 @@ impl QueryCapability for MigrationQuery {
         // remote cluster migrations run on startup (so before we even get to launcher migrations)
 		// this pretty much tries to migrate the source instance to the latest version in the migration chain,
 		// so that we can import it into the correct cluster
-        let rules = LauncherState::get()?.versions.migrations().await;
+        let rules = crate::launcher::state()?.versions.migrations().await;
         if !rules.is_empty() {
             for instance in &mut detection.instances {
                 if instance.mc_version.is_empty() {
@@ -45,12 +45,7 @@ pub fn use_migration() -> UseQuery<MigrationQuery> {
 }
 
 pub fn migration_detection(query: &UseQuery<MigrationQuery>) -> Option<MigrationDetection> {
-    let reader = query.read();
-    match &*reader.state() {
-        QueryStateData::Settled { res: Ok(opt), .. } => opt.clone(),
-        QueryStateData::Loading { res: Some(Ok(opt)) } => opt.clone(),
-        _ => None,
-    }
+    super::state::settled_or_loading(query).flatten()
 }
 
 pub fn has_migration_data(query: &UseQuery<MigrationQuery>) -> bool {

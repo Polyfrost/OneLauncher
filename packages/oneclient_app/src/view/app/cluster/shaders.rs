@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::packages::ContentType;
+use oneclient_content::packages::ContentType;
 
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, use_bundle_overrides,
@@ -10,7 +10,8 @@ use crate::layout::cluster_content;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
 pub struct ClusterShaders {
@@ -26,7 +27,7 @@ impl Component for ClusterShaders {
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Shader);
 
-        let Some(_cluster) = load_cluster(self.cluster_id) else {
+        let Some(_cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
 

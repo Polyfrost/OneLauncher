@@ -72,7 +72,7 @@ impl Component for OnboardingMigration {
                 "Bring over your Minecraft files",
                 "We found a Minecraft installation on this PC. We can copy your worlds, \
                  settings, screenshots and servers over. Mods, resource packs and shaders stay \
-                 behind — OneClient manages those for you."
+                 behind; OneClient manages those for you."
                     .to_string(),
             )
         } else {
@@ -97,9 +97,9 @@ impl Component for OnboardingMigration {
                 import_choice_card(
                     "Don't import files",
                     if is_vanilla {
-                        "Start fresh — nothing is copied over."
+                        "Start fresh. Nothing is copied over."
                     } else {
-                        "Start fresh — only your bundle selection carries over."
+                        "Start fresh. Only your bundle selection carries over."
                     },
                     None,
                     chosen_folder.is_none(),

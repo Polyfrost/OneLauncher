@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use freya::animation::{AnimNum, Function, OnFinish, use_animation};
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
-use oneclient_core::auth::{AccountKind, MinecraftAccount};
+use oneclient_auth::{AccountKind, MinecraftAccount};
 use uuid::Uuid;
 
 use crate::components::{
@@ -60,7 +60,7 @@ impl Component for Accounts {
 
         let offline_name = username.read().trim().to_string();
         let offline_uuid = (!offline_name.is_empty())
-            .then(|| oneclient_core::auth::offline_uuid(&offline_name).to_string());
+            .then(|| oneclient_auth::offline_uuid(&offline_name).to_string());
 
         let offline_error = mutation_err_text(&add_offline);
 

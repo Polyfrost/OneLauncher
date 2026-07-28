@@ -1,14 +1,13 @@
 use super::*;
 
-use freya::query::QueryStateData;
-use oneclient_core::packages::ProviderId;
-use oneclient_core::packages::types::{
+use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::{
     GalleryImage, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
 };
 
-use crate::BridgeDispatch;
+use crate::Actions;
 use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
-use crate::hooks::{VERSIONS_PAGE_SIZE, use_cached_image};
+use crate::hooks::{VERSIONS_PAGE_SIZE, loaded_image, use_cached_image};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -116,14 +115,7 @@ impl KeyExt for GalleryTile {
 impl Component for GalleryTile {
     fn render(&self) -> impl IntoElement {
         let query = use_cached_image(Some(self.image.url.clone()), GALLERY_EDGE);
-        let reader = query.read();
-        let loaded = match &*reader.state() {
-            QueryStateData::Settled { res: Ok(bytes), .. }
-            | QueryStateData::Loading {
-                res: Some(Ok(bytes)),
-            } => Some((self.image.url.clone(), bytes.clone())),
-            _ => None,
-        };
+        let loaded = loaded_image(Some(&self.image.url), &query);
 
         let preview = rect()
             .width(Size::fill())
@@ -172,7 +164,7 @@ pub(super) fn versions_panel(
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
@@ -271,7 +263,7 @@ fn version_row(
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use freya::animation::{AnimNum, Ease, Function, OnCreation, use_animation};
 use freya::prelude::*;
-use oneclient_core::status::{self, ServiceStatus};
+use oneclient_net::status::{self, ServiceStatus};
 
 use crate::components::{Icon, IconType};
 use crate::theme::colors;

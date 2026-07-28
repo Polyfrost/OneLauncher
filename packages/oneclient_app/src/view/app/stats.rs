@@ -3,6 +3,7 @@ use freya::prelude::*;
 use crate::components::ScrollArea;
 use crate::hooks::{try_global_analytics, use_global_analytics};
 use crate::theme::colors;
+use crate::ui::{centered_note};
 use crate::view::app::{analytics_body, analytics_placeholder};
 
 #[derive(PartialEq)]
@@ -65,18 +66,4 @@ fn header() -> Element {
 
 fn loading_state() -> Element {
     centered_note("Crunching your playtime…")
-}
-
-fn centered_note(text: &str) -> Element {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(240.))
-        .center()
-        .child(
-            label()
-                .text(text.to_string())
-                .font_size(14.)
-                .color(colors::fg_secondary()),
-        )
-        .into_element()
 }

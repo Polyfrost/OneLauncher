@@ -1,13 +1,12 @@
 use bytes::Bytes;
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::images::DEFAULT_IMAGE_EDGE;
-use oneclient_core::packages::domain::GameLoader;
-use oneclient_core::{VersionKey, parse_mc_version};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::{VersionKey, parse_mc_version};
 
 use crate::AppAssets;
-use crate::hooks::{use_cached_image, use_version_metadata};
+use crate::hooks::{loaded_image, use_cached_image, use_version_metadata};
 use crate::layout::HOME_BACKGROUND_ASSET;
 
 #[derive(PartialEq, Clone)]
@@ -70,17 +69,9 @@ pub fn use_art_bytes(
 
     let image_query = use_cached_image(art_url.clone(), max_edge);
 
-    let reader = image_query.read();
-    let state = reader.state();
-    match (&art_url, &*state) {
-        (Some(url), QueryStateData::Settled { res: Ok(bytes), .. })
-        | (
-            Some(url),
-            QueryStateData::Loading {
-                res: Some(Ok(bytes)),
-            },
-        ) => (format!("{max_edge}|{url}"), bytes.clone()),
-        _ => (
+    match loaded_image(art_url.as_deref(), &image_query) {
+        Some((url, bytes)) => (format!("{max_edge}|{url}"), bytes),
+        None => (
             format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
             fallback.read().clone(),
         ),

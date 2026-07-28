@@ -1,0 +1,39 @@
+[package]
+name = "oneclient_mc"
+description = "Minecraft content: assets, libraries, natives, client jars, launch arguments and player profiles"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+oneclient_common.workspace = true
+oneclient_events.workspace = true
+oneclient_net.workspace = true
+polyio.workspace = true
+
+# Mojang / modded metadata schemas
+interfrost.workspace = true
+
+futures-util.workspace = true
+tokio.workspace = true
+
+base64.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

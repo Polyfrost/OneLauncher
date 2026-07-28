@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::notification::{
-    GroupedProgressEvent, GroupedProgressSession, Notification, NotificationService, TaskCategory,
+use oneclient_events::{
+    EventBus, GroupedProgressEvent, GroupedProgressSession, ProgressEvent, TaskCategory,
 };
 use oneclient_core::{
     BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, SentryExclusion,
@@ -16,13 +16,14 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::hooks::{
-    BridgeDispatch, ClusterBundles, invalidate_cluster_queries, migration_detection,
+    Actions, ClusterBundles, invalidate_cluster_queries, migration_detection,
     onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
     use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
     use_versions, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::transfer::{TransferMeter, TransferStats};
 use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
 
 mod backdrop;
@@ -101,7 +102,7 @@ impl GroupedAgg {
     /// One lane per category, taken round-robin.
     ///
     /// Assets run 32-at-a-time and sort before everything alphabetically, so a
-    /// flat sorted list showed nothing but assets for the whole game download —
+    /// flat sorted list showed nothing but assets for the whole game download;
     /// libraries, natives and the client were downloading at the same time and
     /// never got a row. Round-robin gives every active category a slot before
     /// any category gets a second one.
@@ -178,11 +179,6 @@ impl GroupedAgg {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Default)]
-struct Meter {
-    speed_bps: f64,
-}
-
 fn categorize(label: &str) -> &'static str {
     if label.starts_with("Assets index") {
         "asset index"
@@ -225,7 +221,7 @@ struct InstallHandles {
     stage: State<DownloadStage>,
     activity: State<String>,
     started_at: State<Option<Instant>>,
-    meter: State<Meter>,
+    meter: State<Option<TransferStats>>,
     total_estimate: State<u64>,
     failures: State<Vec<InstallFailure>>,
     running: State<bool>,
@@ -258,7 +254,7 @@ impl Component for OnboardingDownloading {
         let stage = use_state(DownloadStage::default);
         let activity = use_state(String::new);
         let started_at = use_state(|| None::<Instant>);
-        let meter = use_state(Meter::default);
+        let meter = use_state(|| None::<TransferStats>);
         let total_estimate = use_state(|| 0u64);
         let failures = use_state(Vec::<InstallFailure>::new);
         let running = use_state(|| false);
@@ -309,7 +305,7 @@ impl Component for OnboardingDownloading {
         let stage_now = stage.read().clone();
         let agg_now = agg.read().clone();
         let activity_now = activity.read().clone();
-        let meter_now = *meter.read();
+        let transfer = *meter.read();
         let total_estimate_now = *total_estimate.read();
         let elapsed_secs = (*started_at.read()).map(|s| s.elapsed().as_secs());
         let predownload = *predownload_state.read();
@@ -488,7 +484,7 @@ impl Component for OnboardingDownloading {
                         stage: &stage_now,
                         agg: &agg_now,
                         activity: &activity_now,
-                        speed_bps: meter_now.speed_bps,
+                        transfer,
                         total_estimate: total_estimate_now,
                         elapsed_secs,
                         done,
@@ -645,37 +641,25 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
     complete.set(false);
     failures.set(Vec::new());
     agg.set(GroupedAgg::default());
-    meter.set(Meter::default());
+    meter.set(None);
     total_estimate.set(0);
     activity.set("Getting started...".to_string());
     started_at.set(Some(Instant::now()));
     let total = plans.len();
     progress.set((0, total));
 
-    let (notif_tx, mut notif_rx) = mpsc::unbounded_channel::<Notification>();
-    let notifier = NotificationService::new(notif_tx);
+    let (events, mut notif_rx) = EventBus::channel();
 
     let (ui_tx, mut ui_rx) = mpsc::unbounded_channel::<InstallUiEvent>();
 
     spawn(async move {
-        let mut prev = 0u64;
-        let mut speed = 0f64;
+        let mut transfer = TransferMeter::default();
 
         loop {
             tokio::time::sleep(Duration::from_millis(1000)).await;
 
             let downloaded = agg.peek().downloaded_bytes();
-            let delta = downloaded.saturating_sub(prev);
-            let inst = delta as f64;
-
-            speed = if speed <= 0.0 {
-                inst
-            } else {
-                speed * 0.6 + inst * 0.4
-            };
-
-            prev = downloaded;
-            meter.set(Meter { speed_bps: speed });
+            meter.set(transfer.sample(downloaded, *total_estimate.peek()));
 
             if !*running.peek() {
                 break;
@@ -689,12 +673,12 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             let Some(first) = notif_rx.recv().await else {
                 break;
             };
-            if let Notification::GroupedProgress(event) = first {
+            if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) = first {
                 apply_grouped(&mut local, event);
             }
             // Drain everything already queued in one pass.
             while let Ok(notification) = notif_rx.try_recv() {
-                if let Notification::GroupedProgress(event) = notification {
+                if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) = notification {
                     apply_grouped(&mut local, event);
                 }
             }
@@ -730,7 +714,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             let _ = ui_tx.send(InstallUiEvent::Activity(
                 "Calculating download size...".to_string(),
             ));
-            if let Ok(state) = oneclient_core::LauncherState::get() {
+            if let Ok(state) = crate::launcher::state() {
                 let mut sum = 0u64;
                 for plan in plans.iter().filter(|p| p.predownload) {
                     match oneclient_core::estimate_cluster_download(
@@ -759,7 +743,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             }));
 
             let fetch_now = predownload && plan.predownload;
-            if let Err(err) = install_one(&plan, fetch_now, &notifier, &ui_tx).await {
+            if let Err(err) = install_one(&plan, fetch_now, &events, &ui_tx).await {
                 // Environmental / expected failures (out of disk, offline, no Java
                 // build for this version, ...) are surfaced to the user but aren't
                 // crashes, so log them at warn! (breadcrumb) instead of error!
@@ -785,7 +769,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             let _ = ui_tx.send(InstallUiEvent::Progress(index + 1, total));
         }
 
-        drop(notifier);
+        drop(events);
         let _ = ui_tx.send(InstallUiEvent::Finished(failed));
     });
 }
@@ -793,17 +777,17 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
 async fn install_one(
     plan: &ClusterPlan,
     predownload: bool,
-    notifier: &NotificationService,
+    events: &EventBus,
     ui_tx: &mpsc::UnboundedSender<InstallUiEvent>,
 ) -> oneclient_core::LauncherResult<()> {
-    let state = oneclient_core::LauncherState::get()?;
+    let state = crate::launcher::state()?;
 
     if !plan.overrides.is_empty() {
         let _ = ui_tx.send(InstallUiEvent::Activity(
             "Saving your package choices...".to_string(),
         ));
     }
-    oneclient_core::set_bundle_package_overrides(plan.cluster_id, &plan.overrides, &state.services)
+    oneclient_core::set_bundle_package_overrides(plan.cluster_id, &plan.overrides, &state.services.content())
         .await?;
 
     if !predownload {
@@ -811,14 +795,14 @@ async fn install_one(
     }
 
     let session =
-        GroupedProgressSession::start(notifier, format!("Downloading {}", plan.mc_version));
+        GroupedProgressSession::start(events, format!("Downloading {}", plan.mc_version));
 
     let _ = ui_tx.send(InstallUiEvent::Activity(format!(
         "Downloading Minecraft {}...",
         plan.mc_version
     )));
 
-    let prepared = oneclient_core::ClusterManager::prepare(
+    let prepared = oneclient_core::clusters::prepare_cluster_locked(
         &state,
         plan.cluster_id,
         false,
@@ -837,7 +821,7 @@ async fn install_one(
             plan.cluster_id,
             state.bundles.as_ref(),
             Some(&session),
-            &state.services,
+            &state.services.content(),
         )
         .await
     } else {
@@ -913,7 +897,7 @@ fn apply_grouped(agg: &mut GroupedAgg, event: GroupedProgressEvent) {
 }
 
 fn finish_onboarding(
-    dispatch: BridgeDispatch,
+    dispatch: Actions,
     bundles_query: &freya::query::UseQuery<crate::hooks::OnboardingBundlesQuery>,
 ) {
     let versions: Vec<String> = onboarding_bundles_items(bundles_query)

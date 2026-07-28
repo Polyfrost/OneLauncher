@@ -5,7 +5,7 @@ use oneclient_db::dao::{applied_migration as migration_dao, cluster as cluster_d
 use oneclient_db::models::ClusterRow;
 
 use crate::LauncherResult;
-use crate::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 use crate::state::LauncherState;
 use crate::versions::RemoteMigration;
 
@@ -113,7 +113,7 @@ async fn migrate_cluster(
     let from = &rule.from.mc_version;
     let to = &rule.to.mc_version;
 
-    let clusters_dir = crate::paths::clusters_dir()?;
+    let clusters_dir = oneclient_common::paths::clusters_dir()?;
     let old_dir = clusters_dir.join(&source.folder_name);
 
     let new_folder = resolve_new_folder(&clusters_dir, &source.folder_name, from, to).await?;

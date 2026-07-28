@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader};
 
 use crate::game::session::SessionRecorder;
-use crate::notification::NotificationService;
+use oneclient_events::EventBus;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
@@ -28,14 +28,14 @@ impl LogTail {
 pub(crate) fn spawn_log_tail(
 	cluster_id: i64,
 	path: PathBuf,
-	notifier: NotificationService,
+	events: EventBus,
 	recorder: Option<SessionRecorder>,
 ) -> LogTail {
 	let stop = Arc::new(AtomicBool::new(false));
 	let flag = Arc::clone(&stop);
 
 	let handle = tokio::spawn(async move {
-		if let Err(err) = tail(cluster_id, &path, &notifier, recorder.as_ref(), &flag).await {
+		if let Err(err) = tail(cluster_id, &path, &events, recorder.as_ref(), &flag).await {
 			tracing::warn!(cluster_id, path = %path.display(), error = %err, "game log tail stopped");
 		}
 	});
@@ -46,7 +46,7 @@ pub(crate) fn spawn_log_tail(
 async fn tail(
 	cluster_id: i64,
 	path: &PathBuf,
-	notifier: &NotificationService,
+	events: &EventBus,
 	recorder: Option<&SessionRecorder>,
 	stop: &AtomicBool,
 ) -> std::io::Result<()> {
@@ -92,11 +92,11 @@ async fn tail(
 		// A partial line means the game is mid-write; wait for the newline
 		// rather than emitting half a line and re-emitting the rest.
 		if !line.ends_with('\n') {
-			// Unless the game is already gone — a process killed mid-write
+			// Unless the game is already gone. A process killed mid-write
 			// leaves a newline that will never arrive, and waiting for it would
 			// hang the caller of `stop()` forever.
 			if stop.load(Ordering::Relaxed) {
-				emit(cluster_id, &line, notifier, recorder).await;
+				emit(cluster_id, &line, events, recorder).await;
 				return Ok(());
 			}
 			reader.seek(std::io::SeekFrom::Start(offset - read as u64)).await?;
@@ -105,14 +105,14 @@ async fn tail(
 			continue;
 		}
 
-		emit(cluster_id, &line, notifier, recorder).await;
+		emit(cluster_id, &line, events, recorder).await;
 	}
 }
 
 async fn emit(
 	cluster_id: i64,
 	line: &str,
-	notifier: &NotificationService,
+	events: &EventBus,
 	recorder: Option<&SessionRecorder>,
 ) {
 	// Blank lines are kept: the game prints them, and the console should read
@@ -121,20 +121,19 @@ async fn emit(
 	if let Some(recorder) = recorder {
 		recorder.observe(&text).await;
 	}
-	notifier.game_log(cluster_id, text);
+	events.game_log(cluster_id, text);
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::notification::Notification;
 	use tokio::io::AsyncWriteExt;
 	use tokio::sync::mpsc;
 
 	struct Harness {
 		dir: async_tempfile::TempDir,
-		rx: mpsc::UnboundedReceiver<Notification>,
-		notifier: NotificationService,
+		rx: oneclient_events::EventReceiver,
+		events: EventBus,
 	}
 
 	impl Harness {
@@ -145,7 +144,7 @@ mod tests {
 			Self {
 				dir,
 				rx,
-				notifier: NotificationService::new(tx),
+				events: EventBus::new(tx),
 			}
 		}
 
@@ -156,7 +155,9 @@ mod tests {
 		/// Drain whatever the tail has emitted so far.
 		fn drain(&mut self) -> Vec<String> {
 			let mut out = Vec::new();
-			while let Ok(Notification::GameLog { line, .. }) = self.rx.try_recv() {
+			while let Ok(oneclient_events::Event::Game(oneclient_events::GameEvent::Log { line, .. })) =
+				self.rx.try_recv()
+			{
 				out.push(line);
 			}
 			out
@@ -174,7 +175,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] first\n").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		settle().await;
 
 		let mut file = tokio::fs::OpenOptions::new()
@@ -195,7 +196,7 @@ mod tests {
 		let mut h = Harness::new().await;
 		let path = h.path();
 
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		settle().await;
 		polyio::write(&path, "[12:00:00] late\n").await.unwrap();
 		settle().await;
@@ -210,7 +211,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] half").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		settle().await;
 		// A line mid-write must not be emitted, or it would arrive twice.
 		assert!(h.drain().is_empty());
@@ -234,7 +235,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] old session line\n").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		settle().await;
 		assert_eq!(h.drain(), vec!["[12:00:00] old session line"]);
 
@@ -254,7 +255,7 @@ mod tests {
 		// A process killed mid-write leaves a newline that never arrives.
 		polyio::write(&path, "[12:00:00] cut off mid-writ").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		settle().await;
 
 		// Waiting for that newline would hang the exit path forever.
@@ -271,7 +272,7 @@ mod tests {
 
 		// Stopping immediately, as the exit path does, must still flush the
 		// reason the game exited rather than race past it.
-		let tail = spawn_log_tail(7, path.clone(), h.notifier.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
 		tail.stop().await;
 
 		assert_eq!(h.drain(), vec!["[12:00:00] Stopping!"]);

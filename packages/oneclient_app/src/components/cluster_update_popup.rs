@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use freya::{prelude::*, router::RouterContext};
-use oneclient_core::packages::{CachedPackageMeta, ProviderId};
+use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem};
 use crate::hooks::{package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch};
@@ -139,7 +139,7 @@ fn dialog(
     summaries: &[ClusterUpdateSummary],
     meta: &MetaMap,
     active: State<UpdateTab>,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -164,7 +164,7 @@ fn content(
     summaries: &[ClusterUpdateSummary],
     meta: &MetaMap,
     active: State<UpdateTab>,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let total: usize = summaries.iter().map(|s| s.total()).sum();
@@ -280,7 +280,7 @@ fn content(
         )
 }
 
-fn open_cluster(dispatch: &crate::BridgeDispatch, cluster_id: i64) {
+fn open_cluster(dispatch: &crate::Actions, cluster_id: i64) {
     dispatch.close_cluster_update();
     let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
 }
@@ -289,7 +289,7 @@ fn change_list(
     tab: UpdateTab,
     groups: &[ClusterGroup],
     show_headers: bool,
-    dispatch: &crate::BridgeDispatch,
+    dispatch: &crate::Actions,
 ) -> impl IntoElement {
     let accent = tab.accent();
 
@@ -350,7 +350,7 @@ fn change_list(
 fn cluster_header(
     group: &ClusterGroup,
     first: bool,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
 ) -> impl IntoElement {
     let cluster_id = group.cluster_id;
     let count = group.names.len();

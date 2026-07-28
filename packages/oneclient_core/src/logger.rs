@@ -35,7 +35,7 @@ pub fn init_filtered(filter: impl FnOnce() -> EnvFilter) -> LauncherResult<()> {
 
     #[cfg(not(debug_assertions))]
     {
-        let logs_dir = crate::paths::logs_dir()?;
+        let logs_dir = oneclient_common::paths::logs_dir()?;
         std::fs::create_dir_all(&logs_dir)?;
 
         let log_path = logs_dir.join(format!("{}.log", chrono::Local::now().to_rfc3339().replace(':', "-")));

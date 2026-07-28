@@ -1,4 +1,5 @@
-use std::{fs::Metadata, path::PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::{fs::Metadata, path::{Path, PathBuf}};
 
 use async_tempfile::{TempDir, TempFile};
 use serde::{Serialize, de::DeserializeOwned};
@@ -283,6 +284,187 @@ pub async fn write_json<T: Serialize>(
     ).await
 }
 
+/// Counter for [`temp_sibling`] names, so two concurrent atomic writes to the
+/// same path can't pick the same scratch file.
+static ATOMIC_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// A scratch path next to `path`, so the subsequent rename stays within one
+/// filesystem. A temp dir would not: `rename` across mount points fails with
+/// `EXDEV`, which is exactly the case on Linux where `/tmp` is often a tmpfs.
+fn temp_sibling(path: &Path) -> PathBuf {
+	let n = ATOMIC_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
+	let stem = path
+		.file_name()
+		.map(|n| n.to_string_lossy().to_string())
+		.unwrap_or_else(|| "tmp".to_string());
+
+	let name = format!(".{stem}.{}.{n}.tmp", std::process::id());
+	match path.parent() {
+		Some(parent) => parent.join(name),
+		None => PathBuf::from(name),
+	}
+}
+
+/// Writes a file such that a reader only ever sees the old contents or the
+/// complete new ones, never a half-written file.
+///
+/// Writes to a sibling scratch file, fsyncs it, then renames over `path`.
+/// Without the fsync the rename can land before the data does, so a crash
+/// leaves a correctly-named zero-length file, worse than the torn write this
+/// is meant to prevent. Parent directories are created if missing.
+#[tracing::instrument(
+    level = "debug",
+    skip(path, data),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn write_atomic(
+	path: impl AsRef<Path>,
+	data: impl AsRef<[u8]>,
+) -> PolyIOResult<()> {
+	let path = path.as_ref();
+
+	if let Some(parent) = path.parent()
+		&& !parent.as_os_str().is_empty()
+	{
+		create_dir_all(parent).await?;
+	}
+
+	let tmp = temp_sibling(path);
+	let ctx = |e: std::io::Error| IOError::PathIOError {
+		source: e,
+		path: tmp.to_string_lossy().to_string(),
+	};
+
+	let write = async {
+		let mut file = tokio::fs::File::create(&tmp).await.map_err(ctx)?;
+		tokio::io::AsyncWriteExt::write_all(&mut file, data.as_ref())
+			.await
+			.map_err(ctx)?;
+		file.sync_all().await.map_err(ctx)?;
+		Ok::<_, IOError>(())
+	}
+	.await;
+
+	if let Err(err) = write {
+		let _ = tokio::fs::remove_file(&tmp).await;
+		return Err(err);
+	}
+
+	if let Err(err) = rename(&tmp, path).await {
+		let _ = tokio::fs::remove_file(&tmp).await;
+		return Err(err);
+	}
+
+	Ok(())
+}
+
+/// [`write_atomic`] for a serializable value, mirroring [`write_json`].
+#[tracing::instrument(
+    level = "debug",
+    skip(path, data),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn write_json_atomic<T: Serialize>(
+	path: impl AsRef<Path>,
+	data: T,
+) -> PolyIOResult<()> {
+	let bytes = serde_json::to_vec(&data).map_err(|err| IOError::JsonFileWrite {
+		source: err,
+		file: path.as_ref().to_path_buf(),
+	})?;
+
+	write_atomic(path, bytes).await
+}
+
+/// Canonicalises `path` and returns it only if it lies under one of `roots`.
+///
+/// This is the guard for paths that arrive from outside (a log or screenshot
+/// the UI asked to open) so that `../` cannot walk out of the launcher's own
+/// directories. Returns `Ok(None)` when the path resolves outside every root;
+/// `Err` only when `path` itself cannot be canonicalised.
+///
+/// Roots that cannot be canonicalised (typically because they don't exist yet)
+/// are skipped rather than treated as a match.
+#[tracing::instrument(
+    level = "debug",
+    skip(path, roots),
+    fields(path = %path.as_ref().display())
+)]
+pub fn ensure_under<R: AsRef<Path>>(
+	path: impl AsRef<Path>,
+	roots: impl IntoIterator<Item = R>,
+) -> PolyIOResult<Option<PathBuf>> {
+	// `canonicalize` rather than `std::fs::canonicalize`: on Windows the latter
+	// returns a `\\?\` UNC path while the roots are plain paths, so `starts_with`
+	// would never match and every path would look like an escape.
+	let canon = crate::canonicalize(path)?;
+
+	for root in roots {
+		if let Ok(root) = crate::canonicalize(root)
+			&& canon.starts_with(&root)
+		{
+			return Ok(Some(canon));
+		}
+	}
+
+	Ok(None)
+}
+
+/// Recursively copies `src` into `dst`, creating directories as needed.
+///
+/// Entries named in `exclude_top` are skipped, but only at the top level; a
+/// nested directory of the same name is still copied. Symlinks are followed,
+/// copied as their target's contents.
+#[tracing::instrument(level = "debug", skip(exclude_top))]
+pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIOResult<()> {
+	let mut stack: Vec<(PathBuf, PathBuf, bool)> =
+		vec![(src.to_path_buf(), dst.to_path_buf(), true)];
+
+	while let Some((cur_src, cur_dst, is_top)) = stack.pop() {
+		let mut entries = read_dir(&cur_src).await?;
+		while let Some(entry) = entries.next_entry().await? {
+			let name = entry.file_name();
+
+			if is_top
+				&& let Some(name_str) = name.to_str()
+				&& exclude_top.iter().any(|e| e.eq_ignore_ascii_case(name_str))
+			{
+				continue;
+			}
+
+			let child_src = entry.path();
+			let child_dst = cur_dst.join(&name);
+			let file_type = entry.file_type().await?;
+
+			if file_type.is_dir() {
+				create_dir_all(&child_dst).await?;
+
+				stack.push((child_src, child_dst, false));
+			} else if file_type.is_file() {
+				if let Some(parent) = child_dst.parent() {
+					create_dir_all(parent).await?;
+				}
+
+				copy(&child_src, &child_dst).await?;
+			}
+		}
+	}
+
+	Ok(())
+}
+
+/// Whether `dir` is a directory containing at least one entry.
+pub async fn dir_has_content(dir: &Path) -> bool {
+	if !dir.is_dir() {
+		return false;
+	}
+
+	match read_dir(dir).await {
+		Ok(mut entries) => matches!(entries.next_entry().await, Ok(Some(_))),
+		Err(_) => false,
+	}
+}
+
 /// Renames a file or directory to a new name, replacing the original file if `to` already exists.
 #[tracing::instrument(
     level = "debug",
@@ -473,7 +655,7 @@ pub async fn tempfile() -> PolyIOResult<TempFile> {
 	Ok(TempFile::new().await?)
 }
 
-/// Makes sure a path is a valid path
+/// Sanitises every component of a path and normalises separators to `/`.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -517,5 +699,116 @@ mod tests {
 	fn write_buffer_falls_back_without_a_length() {
 		assert_eq!(write_buffer_size(None), DEFAULT_WRITE_BUFFER);
 		assert_eq!(write_buffer_size(Some(0)), DEFAULT_WRITE_BUFFER);
+	}
+
+	fn scratch(tag: &str) -> PathBuf {
+		static N: AtomicU64 = AtomicU64::new(0);
+		let dir = std::env::temp_dir().join(format!(
+			"polyio-{tag}-{}-{}",
+			std::process::id(),
+			N.fetch_add(1, Ordering::Relaxed)
+		));
+		std::fs::create_dir_all(&dir).unwrap();
+		dir
+	}
+
+	#[tokio::test]
+	async fn write_atomic_creates_missing_parents() {
+		let dir = scratch("atomic-parents");
+		let target = dir.join("a").join("b").join("settings.json");
+
+		write_atomic(&target, b"{}").await.unwrap();
+
+		assert_eq!(std::fs::read(&target).unwrap(), b"{}");
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[tokio::test]
+	async fn write_atomic_replaces_and_leaves_no_scratch_files() {
+		let dir = scratch("atomic-replace");
+		let target = dir.join("settings.json");
+
+		write_atomic(&target, b"old").await.unwrap();
+		write_atomic(&target, b"new-and-longer").await.unwrap();
+
+		assert_eq!(std::fs::read(&target).unwrap(), b"new-and-longer");
+
+		// The scratch sibling must not survive a successful write.
+		let leftovers: Vec<_> = std::fs::read_dir(&dir)
+			.unwrap()
+			.flatten()
+			.map(|e| e.file_name().to_string_lossy().to_string())
+			.filter(|n| n != "settings.json")
+			.collect();
+		assert!(leftovers.is_empty(), "left scratch files behind: {leftovers:?}");
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[test]
+	fn ensure_under_accepts_a_path_inside_a_root() {
+		let dir = scratch("under-inside");
+		let nested = dir.join("clusters").join("logs");
+		std::fs::create_dir_all(&nested).unwrap();
+		let file = nested.join("latest.log");
+		std::fs::write(&file, b"").unwrap();
+
+		let resolved = ensure_under(&file, [&dir]).unwrap();
+		assert!(resolved.is_some());
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[test]
+	fn ensure_under_rejects_a_traversal_out_of_every_root() {
+		let dir = scratch("under-escape");
+		let root = dir.join("clusters");
+		let outside = dir.join("secrets");
+		std::fs::create_dir_all(&root).unwrap();
+		std::fs::create_dir_all(&outside).unwrap();
+		let file = outside.join("auth.json");
+		std::fs::write(&file, b"").unwrap();
+
+		// The classic shape: a path that only escapes once resolved.
+		let sneaky = root.join("..").join("secrets").join("auth.json");
+		assert_eq!(ensure_under(&sneaky, [&root]).unwrap(), None);
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[test]
+	fn ensure_under_skips_roots_that_do_not_exist() {
+		let dir = scratch("under-missing-root");
+		let file = dir.join("a.log");
+		std::fs::write(&file, b"").unwrap();
+
+		let missing = dir.join("not-created-yet");
+		let resolved = ensure_under(&file, [&missing, &dir]).unwrap();
+		assert!(resolved.is_some(), "a missing root must not shadow a real one");
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[tokio::test]
+	async fn copy_dir_excludes_only_at_the_top_level() {
+		let dir = scratch("copy-dir");
+		let src = dir.join("src");
+		let dst = dir.join("dst");
+		std::fs::create_dir_all(src.join("mods")).unwrap();
+		std::fs::create_dir_all(src.join("keep").join("mods")).unwrap();
+		std::fs::write(src.join("mods").join("top.jar"), b"top").unwrap();
+		std::fs::write(src.join("keep").join("mods").join("nested.jar"), b"nested").unwrap();
+		std::fs::write(src.join("options.txt"), b"opts").unwrap();
+
+		copy_dir(&src, &dst, &["mods"]).await.unwrap();
+
+		assert!(!dst.join("mods").exists(), "top-level `mods` should be excluded");
+		assert!(dst.join("options.txt").exists());
+		assert!(
+			dst.join("keep").join("mods").join("nested.jar").exists(),
+			"exclusion must not apply below the top level"
+		);
+
+		std::fs::remove_dir_all(&dir).unwrap();
 	}
 }

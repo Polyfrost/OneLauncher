@@ -1,11 +1,10 @@
 use freya::animation::*;
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::{DynamicArt, Icon, IconType};
-use crate::hooks::{use_active_cluster_id, use_clusters};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{border_all, border_all_color};
@@ -28,16 +27,7 @@ impl Component for RecentsRow {
         let clusters_query = use_clusters();
         let mut visible_slots = use_state(|| 1_usize);
 
-        let clusters = {
-            let reader = clusters_query.read();
-            match &*reader.state() {
-                QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-                QueryStateData::Loading {
-                    res: Some(Ok(list)),
-                } => list.clone(),
-                _ => Vec::new(),
-            }
-        };
+        let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
         let slots = *visible_slots.read();

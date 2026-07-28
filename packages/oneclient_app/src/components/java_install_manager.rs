@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::java::{AvailableJava, JavaVendor};
+use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{provider_versions, use_provider_versions};

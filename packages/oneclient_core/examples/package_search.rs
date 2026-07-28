@@ -1,8 +1,8 @@
 
 use std::env;
 
-use oneclient_core::packages::domain::{ContentType, ProviderId};
-use oneclient_core::packages::types::SearchFilters;
+use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_content::packages::types::SearchFilters;
 use oneclient_core::{LauncherResult, dev, logger};
 
 #[tokio::main]
@@ -14,8 +14,8 @@ async fn main() -> LauncherResult<()> {
     let query = args.next().unwrap_or_else(|| "sodium".into());
 
     let provider_id = parse_provider(&provider_name)?;
-    let env = dev::ephemeral_services().await?;
-    let provider = env.packages.get(provider_id)?;
+    let env = dev::ephemeral_services().await?.content();
+    let provider = env.providers.get(provider_id)?;
 
     let page = provider
         .search(

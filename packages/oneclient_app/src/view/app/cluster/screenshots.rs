@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use oneclient_core::ScreenshotInfo;
 use oneclient_core::settings::ViewLayout;
 
@@ -10,16 +9,14 @@ use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
     Segment, SegmentedControl, open_folder_button,
 };
-use crate::hooks::{
-    ScreenshotAction, try_cluster_screenshots, use_cluster_screenshots, use_dispatch,
-    use_screenshot_action, use_view_state,
-};
+use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_view_state};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::{border_all_color, fmt_date};
 use crate::utils::{format_res, format_size};
 
-use super::{cluster_not_found, load_cluster};
+use super::cluster_not_found;
+use crate::hooks::use_cluster;
 
 const THUMB_EDGE: u32 = 480;
 const MAX_COL_W: f32 = 400.;
@@ -36,7 +33,7 @@ pub struct ClusterScreenshots {
 
 impl Component for ClusterScreenshots {
     fn render(&self) -> impl IntoElement {
-        let Some(cluster) = load_cluster(self.cluster_id) else {
+        let Some(cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
         let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
@@ -66,10 +63,7 @@ impl Component for ClusterScreenshots {
         );
 
         let content: Element = if shots.is_empty() {
-            empty_state(matches!(
-                &*query.read().state(),
-                QueryStateData::Loading { res: None }
-            ))
+            empty_state(query_is_loading(&query))
             .into_element()
         } else {
             let mut items: Vec<Element> = Vec::new();

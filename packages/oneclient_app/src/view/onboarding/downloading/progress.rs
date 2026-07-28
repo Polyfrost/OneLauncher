@@ -94,7 +94,8 @@ pub(super) struct ProgressView<'a> {
     pub(super) stage: &'a DownloadStage,
     pub(super) agg: &'a GroupedAgg,
     pub(super) activity: &'a str,
-    pub(super) speed_bps: f64,
+    /// `None` until the meter has two samples to work from.
+    pub(super) transfer: Option<TransferStats>,
     pub(super) total_estimate: u64,
     pub(super) elapsed_secs: Option<u64>,
     pub(super) done: usize,
@@ -109,7 +110,7 @@ pub(super) fn progress_panel(view: ProgressView) -> impl IntoElement {
         stage,
         agg,
         activity,
-        speed_bps,
+        transfer,
         total_estimate,
         elapsed_secs,
         done,
@@ -124,7 +125,7 @@ pub(super) fn progress_panel(view: ProgressView) -> impl IntoElement {
         "Done".to_string()
     } else if predownload && stage.total > 0 {
         format!(
-            "Version {} of {} — {}",
+            "Version {} of {}: {}",
             (stage.index + 1).min(stage.total),
             stage.total,
             stage.label
@@ -151,7 +152,7 @@ pub(super) fn progress_panel(view: ProgressView) -> impl IntoElement {
 
     let stats = build_stats(StatsView {
         global,
-        speed_bps,
+        transfer,
         total_estimate,
         elapsed_secs,
         running,
@@ -221,7 +222,7 @@ pub(super) fn progress_panel(view: ProgressView) -> impl IntoElement {
 
 struct StatsView {
     global: f32,
-    speed_bps: f64,
+    transfer: Option<TransferStats>,
     total_estimate: u64,
     elapsed_secs: Option<u64>,
     running: bool,
@@ -232,7 +233,7 @@ struct StatsView {
 fn build_stats(view: StatsView) -> Option<Element> {
     let StatsView {
         global,
-        speed_bps,
+        transfer,
         total_estimate,
         elapsed_secs,
         running,
@@ -248,18 +249,18 @@ fn build_stats(view: StatsView) -> Option<Element> {
     if finished {
         parts.push("Complete".to_string());
     } else {
-        if global > 2.0 && global < 100.0 {
-            let remaining = (elapsed as f64) * ((100.0 - global as f64) / global as f64);
-            parts.push(format!(
+        // Both readings come off the same smoothed rate, so the countdown and
+        // the throughput beside it always agree.
+        match transfer.and_then(|t| t.eta_secs) {
+            Some(remaining) => parts.push(format!(
                 "~{} left",
-                format_duration_hms(remaining.round() as i64)
-            ));
-        } else {
-            parts.push("~— left".to_string());
+                format_duration_hms(remaining as i64)
+            )),
+            None => parts.push("~— left".to_string()),
         }
 
-        if speed_bps >= 1.0 {
-            parts.push(format!("{}/s", format_size(speed_bps as u64)));
+        if let Some(speed) = transfer.map(|t| t.speed_bps).filter(|s| *s >= 1.0) {
+            parts.push(format!("{}/s", format_size(speed as u64)));
         }
     }
 

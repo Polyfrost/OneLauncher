@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::Patch;
+use oneclient_common::Patch;
 use oneclient_core::settings::{ProfileUpdate, Resolution};
 
 use super::settings_page;

@@ -10,8 +10,8 @@ pub mod browser;
 pub mod cluster;
 pub mod settings;
 
-use crate::bridge::GameSnapshot;
-use oneclient_core::notification::LaunchStage;
+use crate::state::GameState as GameSnapshot;
+use oneclient_events::LaunchStage;
 
 pub fn launch_button_state(
     game: &GameSnapshot,

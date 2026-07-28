@@ -7,9 +7,8 @@ use freya::animation::{
 use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 use freya::engine::prelude::{SkData, SkImage};
 use freya::prelude::*;
-use freya::query::QueryStateData;
 
-use crate::hooks::use_local_image;
+use crate::hooks::{settled_or_loading, use_local_image};
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -40,11 +39,7 @@ impl Component for LocalImage {
     fn render(&self) -> impl IntoElement {
         let query = use_local_image(self.path.clone(), self.max_edge);
 
-        let bytes: Option<Bytes> = match &*query.read().state() {
-            QueryStateData::Settled { res: Ok(b), .. }
-            | QueryStateData::Loading { res: Some(Ok(b)) } => Some(b.clone()),
-            _ => None,
-        };
+        let bytes: Option<Bytes> = settled_or_loading(&query);
 
         let mut cache = use_state(|| None::<(usize, ImageHandle)>);
         let holder = bytes.and_then(|bytes| {

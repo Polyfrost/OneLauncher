@@ -1,5 +1,7 @@
 use freya::prelude::*;
-use oneclient_core::notification::{PromptKind, UserChoice};
+use oneclient_events::Answer;
+
+use crate::updater::UPDATE_CHOICE_INSTALL;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
@@ -20,16 +22,27 @@ impl Component for UpdatePromptOverlay {
             return rect().into_element();
         };
 
-        if prompt.kind != PromptKind::Update {
+        // Recognise the update prompt by the choice it offers rather than by a
+        // prompt-kind enum, so the event layer needn't enumerate every prompt.
+        if !prompt.has_choice(UPDATE_CHOICE_INSTALL) {
             return rect().into_element();
         }
+
+        let dismiss_label = prompt
+            .dismiss
+            .clone()
+            .unwrap_or_else(|| "Not now".to_string());
+        let install_label = prompt
+            .choice(UPDATE_CHOICE_INSTALL)
+            .map(|choice| choice.label.clone())
+            .unwrap_or_else(|| "Download".to_string());
 
         let close = dispatch.clone();
         let cancel = dispatch.clone();
         let accept = dispatch.clone();
 
         OverlayPopup::new()
-            .on_close(move |_| close.answer_prompt(UserChoice::Cancel))
+            .on_close(move |_| close.dismiss_prompt())
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -80,19 +93,19 @@ impl Component for UpdatePromptOverlay {
                                     .child(
                                         Button::new()
                                             .secondary()
-                                            .on_press(move |_| {
-                                                cancel.answer_prompt(UserChoice::Cancel)
-                                            })
-                                            .text("Not now"),
+                                            .on_press(move |_| cancel.dismiss_prompt())
+                                            .text(dismiss_label),
                                     )
                                     .child(
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| {
-                                                accept.answer_prompt(UserChoice::Accept)
+                                                accept.answer_prompt(Answer::new(
+                                                    UPDATE_CHOICE_INSTALL,
+                                                ))
                                             })
                                             .child(Icon::new(IconType::DownloadCloud02).size(14.))
-                                            .text("Download"),
+                                            .text(install_label),
                                     ),
                             ),
                     ),

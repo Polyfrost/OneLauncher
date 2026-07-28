@@ -2,14 +2,13 @@ use std::str::FromStr;
 
 use oneclient_db::dao::{bundle as bundle_dao, cluster as cluster_dao};
 
-use crate::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 use crate::state::LauncherState;
-use crate::version::format_mc_version;
+use oneclient_common::version::format_mc_version;
 use crate::LauncherResult;
 
-use super::cluster::Cluster;
-use super::manager::ClusterManager;
-use super::options::CreateClusterOptions;
+use oneclient_cluster::Cluster;
+use oneclient_cluster::CreateClusterOptions;
 
 #[tracing::instrument(skip(state))]
 pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
@@ -39,10 +38,13 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
 
         let mc_version = group.mc_version.clone();
         let name = format!("{mc_version} {loader}");
-        match ClusterManager::create_provisioned(
-            state,
-            CreateClusterOptions::new(name, mc_version.clone(), loader),
-        )
+        let global = state.settings.read().global_game_settings.clone();
+        match state
+            .clusters
+            .create_provisioned(
+                &global,
+                CreateClusterOptions::new(name, mc_version.clone(), loader),
+            )
         .await
         {
             Ok(Some(cluster)) => {
@@ -71,7 +73,7 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
 
 #[tracing::instrument(skip(state))]
 pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
-    let metadata = state.versions.metadata().await;
+    let metadata = state.versions.metadata(&state.services.requester.config().meta_url_base).await;
     let mut created = Vec::new();
 
     for entry in metadata {
@@ -101,10 +103,13 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
         }
 
         let name = format!("{mc_version} {loader}");
-        match ClusterManager::create_provisioned(
-            state,
-            CreateClusterOptions::new(name, mc_version.clone(), loader),
-        )
+        let global = state.settings.read().global_game_settings.clone();
+        match state
+            .clusters
+            .create_provisioned(
+                &global,
+                CreateClusterOptions::new(name, mc_version.clone(), loader),
+            )
         .await
         {
             Ok(Some(cluster)) => {

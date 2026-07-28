@@ -6,7 +6,6 @@ use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::{GameSessionServerRow, SessionSpan};
 
 use crate::error::LauncherResult;
-use crate::state::LauncherState;
 
 const NIGHT_HOURS: [usize; 8] = [22, 23, 0, 1, 2, 3, 4, 5];
 const NIGHT_OWL_SHARE: f64 = 0.35;
@@ -233,10 +232,8 @@ pub struct Analytics {
 	pub servers: Vec<ServerStat>,
 }
 
-#[tracing::instrument(level = "debug")]
-pub async fn global_analytics() -> LauncherResult<Analytics> {
-	let state = LauncherState::get()?;
-	let db = &state.services.db;
+#[tracing::instrument(level = "debug", skip(db))]
+pub async fn global_analytics(db: &oneclient_db::DbPool) -> LauncherResult<Analytics> {
 	let spans = session_dao::all_session_spans(db).await?;
 	let servers = session_dao::all_session_servers(db).await?;
 	Ok(Analytics {
@@ -245,10 +242,8 @@ pub async fn global_analytics() -> LauncherResult<Analytics> {
 	})
 }
 
-#[tracing::instrument(level = "debug")]
-pub async fn cluster_analytics(cluster_id: i64) -> LauncherResult<Analytics> {
-	let state = LauncherState::get()?;
-	let db = &state.services.db;
+#[tracing::instrument(level = "debug", skip(db))]
+pub async fn cluster_analytics(db: &oneclient_db::DbPool, cluster_id: i64) -> LauncherResult<Analytics> {
 	let spans = session_dao::session_spans_for_cluster(db, cluster_id).await?;
 	let servers = session_dao::session_servers_for_cluster(db, cluster_id).await?;
 	Ok(Analytics {

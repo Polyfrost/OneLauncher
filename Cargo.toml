@@ -21,12 +21,21 @@ version = "2.1.0"
 [workspace.dependencies]
 # core
 polyio = { path = "./packages/polyio" }
+oneclient_auth = { path = "./packages/oneclient_auth" }
+oneclient_cluster = { path = "./packages/oneclient_cluster" }
+oneclient_common = { path = "./packages/oneclient_common" }
+oneclient_content = { path = "./packages/oneclient_content" }
+oneclient_discord = { path = "./packages/oneclient_discord" }
+oneclient_events = { path = "./packages/oneclient_events" }
+oneclient_java = { path = "./packages/oneclient_java" }
+oneclient_mc = { path = "./packages/oneclient_mc" }
+oneclient_net = { path = "./packages/oneclient_net" }
+oneclient_polyplus = { path = "./packages/oneclient_polyplus" }
 oneclient_core = { path = "./packages/oneclient_core" }
 oneclient_db = { path = "./packages/oneclient_db" }
 oneclient_macro = { path = "./packages/oneclient_macro" }
 
 # core (extra)
-gamemode_rs = {path = "./packages/gamemode_rs"}
 interfrost = {version = "=1.3.2"}
 discord-rich-presence = {version = "=1.1.0"}
 
@@ -107,6 +116,7 @@ uuid = {version = "=1.23.1", features = ["serde", "v4"]}
 sanitize-filename = { version = "=0.6.0" }
 regex = { version = "=1.12.3" }
 parking_lot = { version = "=0.12.5" }
+arc-swap = { version = "=1.7.1" }
 dunce = { version = "=1.0.5" }
 junction = { version = "=2.0.0" }
 bytes = { version = "=1.11.1" }
@@ -128,7 +138,7 @@ trash = {version = "=5.2.6"}
 
 # required for the SKSL player renderer
 freya-skia-safe = "=0.98.0"
-freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "titlebar"] }
+freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"] }
 
 [patch.crates-io]
 freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }

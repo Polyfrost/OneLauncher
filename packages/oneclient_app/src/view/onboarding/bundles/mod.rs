@@ -1,18 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use oneclient_core::clusters::Cluster;
-use oneclient_core::packages::ProviderId;
+use oneclient_content::packages::ProviderId;
 use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
 
 use crate::components::ScrollArea;
-use crate::hooks::{
-    ClusterBundles, onboarding_bundles_items, package_meta_batch, use_onboarding_bundles,
-    use_onboarding_selection, use_package_meta_batch,
-};
+use crate::hooks::{ClusterBundles, onboarding_bundles_items, package_meta_batch, query_error, query_is_loading, use_onboarding_bundles, use_onboarding_selection, use_package_meta_batch};
 
-type MetaMap = HashMap<String, oneclient_core::packages::CachedPackageMeta>;
+type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -212,17 +208,10 @@ impl Component for OnboardingBundles {
 
         let clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
-        let catalog_msg = {
-            let reader = bundles_query.read();
-            match &*reader.state() {
-                QueryStateData::Settled { res: Err(err), .. } => {
-                    format!("Couldn't load bundles: {err}")
-                }
-                QueryStateData::Pending | QueryStateData::Loading { res: None } => {
-                    "Loading bundles...".to_string()
-                }
-                _ => "No optional bundles available".to_string(),
-            }
+        let catalog_msg = match query_error(&bundles_query) {
+            Some(err) => format!("Couldn't load bundles: {err}"),
+            None if query_is_loading(&bundles_query) => "Loading bundles...".to_string(),
+            None => "No optional bundles available".to_string(),
         };
 
         let selected_set = selected.read().clone();

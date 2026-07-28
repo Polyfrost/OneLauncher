@@ -1,15 +1,14 @@
 
 use std::process::Command;
 
-use oneclient_core::auth::{self};
 use oneclient_core::{dev, logger, LauncherResult};
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
     logger::init_debug()?;
-    dev::initialize().await?;
+    let state = dev::initialize().await?;
 
-    let session = auth::begin_microsoft_login().await?;
+    let session = state.auth.begin_microsoft_login().await?;
 
     println!("Sign in with EITHER method:\n");
     println!("  Browser: opening {}", session.browser.auth_url);
@@ -20,13 +19,13 @@ async fn main() -> LauncherResult<()> {
     );
 
     println!("Waiting for you to sign in...");
-    let account = auth::finish_microsoft_login(session).await?;
+    let account = state.auth.finish_microsoft_login(session).await?;
 
     println!(
         "Signed in as {} ({})\n  token expires: {}",
         account.username, account.id, account.expires
     );
-    println!("Account saved to {}", oneclient_core::paths::auth_file()?.display());
+    println!("Account saved to {}", oneclient_common::paths::auth_file()?.display());
 
     Ok(())
 }

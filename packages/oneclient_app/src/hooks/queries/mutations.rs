@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
-use oneclient_core::LauncherState;
-use oneclient_core::packages::{ContentType, PackageStore};
+use oneclient_content::packages::{ContentType, PackageStore};
 use oneclient_db::models::{ClusterId, OverrideType};
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
@@ -75,19 +74,20 @@ impl MutationCapability for ClusterMutation {
     type Keys = ClusterAction;
 
     async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
-        let state = LauncherState::get().map_err(|e| e.to_string())?;
+        let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
+        let content = &state.services.content();
         let result = match keys {
             ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                PackageStore::toggle_artifact_enabled(*cluster_id, hash, services)
+                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
                     .await
                     .map(|_| ())
             }
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
-                PackageStore::unlink_from_cluster(hash, *cluster_id, services).await
+                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
-                PackageStore::unlink_from_cluster_system(hash, *cluster_id, services).await
+                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content).await
             }
             ClusterAction::SetBundlePackageEnabled {
                 cluster_id,
@@ -108,7 +108,7 @@ impl MutationCapability for ClusterMutation {
                     bundle_name,
                     package_id,
                     override_type,
-                    services,
+                    content,
                 )
                 .await
             }
@@ -116,23 +116,28 @@ impl MutationCapability for ClusterMutation {
                 cluster_id,
                 content_type,
                 path,
-            } => PackageStore::import_local_file(path, *content_type, *cluster_id, services)
+            } => PackageStore::import_local_file(path, *content_type, *cluster_id, content)
                 .await
                 .map(|row| {
                     services
-                        .notifier
-                        .send_info("Imported", &format!("Added {}", row.file_name));
+                        .events
+                        .notify("Imported").body(format!("Added {}", row.file_name)).send();
                 }),
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
             } => {
-                oneclient_core::clusters::ClusterManager::set_dedicated_dir(
-                    &state,
-                    *cluster_id,
-                    *dedicated,
-                )
-                .await
+                state
+                    .clusters
+                    .set_dedicated_dir(
+                        *cluster_id,
+                        *dedicated,
+                        state.games.is_active(*cluster_id),
+                    )
+                    .await
+                .map_err(|err| oneclient_content::ContentError::InvalidData {
+                    reason: err.to_string(),
+                })
             }
         };
         result.map_err(|e| e.to_string())
@@ -140,9 +145,9 @@ impl MutationCapability for ClusterMutation {
 
     async fn on_settled(&self, _keys: &ClusterAction, result: &Result<(), String>) {
         if let Err(err) = result
-            && let Ok(state) = LauncherState::get()
+            && let Ok(state) = crate::launcher::state()
         {
-            state.services.notifier.send_error("Action failed", err);
+            state.services.events.notify("Action failed").body(err).error().send();
         }
         invalidate_cluster_queries().await;
     }

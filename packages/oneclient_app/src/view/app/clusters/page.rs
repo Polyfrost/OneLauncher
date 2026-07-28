@@ -1,17 +1,13 @@
 use freya::prelude::*;
-use freya::query::QueryStateData;
 use freya::router::RouterContext;
-use oneclient_core::VersionKey;
+use oneclient_common::VersionKey;
 use oneclient_core::clusters::Cluster;
-use oneclient_core::packages::domain::GameLoader;
+use oneclient_common::domain::GameLoader;
 
 use crate::components::{
     Button, ClusterLandscapeArt, Dropdown, Icon, IconType, ScrollArea, VersionCard,
 };
-use crate::hooks::{
-    use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher,
-    use_version_metadata,
-};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -39,16 +35,7 @@ impl Component for Clusters {
         let mut selected_loader = use_state(|| None::<GameLoader>);
         let mut grid_columns = use_state(|| 2_usize);
 
-        let clusters = {
-            let reader = clusters_query.read();
-            match &*reader.state() {
-                QueryStateData::Settled { res: Ok(list), .. } => list.clone(),
-                QueryStateData::Loading {
-                    res: Some(Ok(list)),
-                } => list.clone(),
-                _ => Vec::new(),
-            }
-        };
+        let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let groups = group_clusters_by_release(&clusters);
         // Newest version first.
@@ -98,7 +85,7 @@ impl Component for Clusters {
         if selected_version.read().is_none() {
             let preferred = active_cluster
                 .as_ref()
-                .and_then(|c| oneclient_core::parse_mc_version(&c.mc_version))
+                .and_then(|c| oneclient_common::parse_mc_version(&c.mc_version))
                 .and_then(|p| p.key());
             *selected_version.write() = default_version_key(&clusters_for_line, preferred);
         }
@@ -322,7 +309,7 @@ fn tags_row(tags: &[String]) -> Option<Element> {
     )
 }
 
-/// Only shown when the line holds more than one version — a single-version line
+/// Only shown when the line holds more than one version; a single-version line
 /// already names it on the card and in the heading.
 fn version_rows(
     line: ReleaseLine,
@@ -400,7 +387,7 @@ fn info_row(label_text: impl Into<String>, control: impl IntoElement) -> Element
 
 fn play_button(
     cluster_id: i64,
-    dispatch: crate::BridgeDispatch,
+    dispatch: crate::Actions,
     state: (&'static str, bool),
 ) -> impl IntoElement {
     let (label, enabled) = state;

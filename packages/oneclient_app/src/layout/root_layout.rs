@@ -26,7 +26,7 @@ impl Component for RootLayout {
 
         // Other platforms are borderless: Freya rounds, squared when maximized so
         // there's no gap to the screen edge. No reactive maximized signal exists,
-        // so mirror it — root_size changes on every maximize/restore/resize, which
+        // so mirror it: root_size changes on every maximize/restore/resize, which
         // re-runs the effect to re-query.
         #[cfg(not(target_os = "macos"))]
         let corner = {

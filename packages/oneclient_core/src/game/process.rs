@@ -7,7 +7,7 @@ use std::time::Instant;
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
 use tokio::sync::oneshot;
 
-use crate::notification::LaunchStage;
+use oneclient_events::LaunchStage;
 
 fn probe(pid: u32) -> Option<(System, Pid)> {
 	let pid = Pid::from_u32(pid);
@@ -17,14 +17,14 @@ fn probe(pid: u32) -> Option<(System, Pid)> {
 	Some((sys, pid))
 }
 
-/// Process start time in unix seconds — pids get recycled, this pins identity.
+/// Process start time in unix seconds. Pids get recycled, this pins identity.
 pub fn process_start_time(pid: u32) -> Option<u64> {
 	let (sys, pid) = probe(pid)?;
 	Some(sys.process(pid)?.start_time())
 }
 
 /// Whether `pid` is still the process we launched. A matching pid whose start
-/// time differs is a recycled pid belonging to someone else — never ours.
+/// time differs is a recycled pid belonging to someone else, never ours.
 pub fn is_process_alive(pid: u32, started_at: Option<u64>) -> bool {
 	let Some(actual) = process_start_time(pid) else {
 		return false;

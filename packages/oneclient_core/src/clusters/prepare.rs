@@ -5,22 +5,46 @@ use interfrost::api::minecraft::{DownloadType, VersionInfo};
 use interfrost::api::modded::SidedDataEntry;
 use tokio::process::Command;
 
-use crate::clusters::cluster::Cluster;
-use crate::clusters::error::ClusterError;
-use crate::clusters::stage::ClusterStage;
-use crate::clusters::ClusterManager;
+use oneclient_cluster::Cluster;
+use oneclient_cluster::ClusterError;
+use oneclient_cluster::ClusterStage;
 use crate::game::{
     self, download_minecraft, download_version_info, get_loader_version, resolve_minecraft_version,
 };
-use crate::java::JavaRuntime;
-use crate::java::JavaManager;
-use crate::metadata::MetadataStore;
-use crate::notification::GroupedProgressSession;
-use crate::paths;
+use oneclient_java::JavaRuntime;
+use oneclient_mc::MetadataStore;
+use oneclient_events::GroupedProgressSession;
+use oneclient_common::paths;
 use crate::state::{LauncherServices, LauncherState};
 use crate::{GameError, LauncherResult};
 
-#[tracing::instrument(skip(state, metadata, shared_progress))]
+/// Locks the metadata store, then prepares the cluster.
+///
+/// Was `ClusterManager::prepare`, which only existed to take that lock before
+/// delegating here. It lives with `prepare` rather than with cluster records,
+/// because the metadata store is a download concern.
+#[tracing::instrument(skip(state, shared_progress))]
+pub async fn prepare_cluster_locked(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    force: bool,
+    search_for_java: bool,
+    auto_install_java: bool,
+    shared_progress: Option<&GroupedProgressSession>,
+) -> LauncherResult<Cluster> {
+    let mut metadata = state.metadata.lock().await;
+    prepare_cluster(
+        state,
+        &mut metadata,
+        cluster_id,
+        force,
+        search_for_java,
+        auto_install_java,
+        shared_progress,
+    )
+    .await
+}
+
 pub async fn prepare_cluster(
     state: &Arc<LauncherState>,
     metadata: &mut MetadataStore,
@@ -30,7 +54,7 @@ pub async fn prepare_cluster(
     auto_install_java: bool,
     shared_progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<Cluster> {
-    let cluster = ClusterManager::get(state, cluster_id).await?;
+    let cluster = state.clusters.get(cluster_id).await?;
     let continuing = cluster.stage == ClusterStage::Downloading;
 
     tracing::info!(
@@ -42,12 +66,12 @@ pub async fn prepare_cluster(
     );
 
     if !continuing {
-        ClusterManager::set_stage(state, cluster_id, ClusterStage::Downloading).await?;
+        state.clusters.set_stage(cluster_id, ClusterStage::Downloading).await?;
     }
 
     let owned = shared_progress.is_none().then(|| {
         GroupedProgressSession::start(
-            &state.services.notifier,
+            &state.services.events,
             format!("Downloading game - {}", cluster.mc_version),
         )
     });
@@ -71,12 +95,12 @@ pub async fn prepare_cluster(
     if let Err(err) = result {
         tracing::error!(cluster_id, error = %err, "cluster preparation failed");
         if !continuing {
-            let _ = ClusterManager::set_stage(state, cluster_id, ClusterStage::NotReady).await;
+            let _ = state.clusters.set_stage(cluster_id, ClusterStage::NotReady).await;
         }
         return Err(err);
     }
 
-    let cluster = ClusterManager::set_stage(state, cluster_id, ClusterStage::Ready).await?;
+    let cluster = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await?;
     tracing::debug!(cluster_id, "cluster stage set to Ready");
     Ok(cluster)
 }
@@ -84,8 +108,8 @@ pub async fn prepare_cluster(
 const JRE_ESTIMATE_BYTES: u64 = 45_000_000;
 
 /// Bytes the game install still needs. Falls back to the manifest's full size
-/// when the asset index isn't cached yet — which is exactly the case where
-/// nothing is on disk, so the full size is the right answer anyway.
+/// when the asset index isn't cached yet, which is also the case where nothing
+/// is on disk, so the full size is the right answer anyway.
 async fn game_download_bytes(services: &LauncherServices, info: &VersionInfo) -> u64 {
     let Some(assets_index) = cached_assets_index(info).await else {
         let client = info
@@ -127,32 +151,32 @@ async fn cached_assets_index(
 pub async fn estimate_cluster_download(
     state: &Arc<LauncherState>,
     cluster_id: i64,
-    bundles: &crate::bundles::BundlesManager,
+    bundles: &oneclient_content::bundles::BundlesManager,
 ) -> LauncherResult<u64> {
-    let cluster = ClusterManager::get(state, cluster_id).await?;
-    let mc_version = crate::version::normalize_mc_version_input(&cluster.mc_version);
+    let cluster = state.clusters.get(cluster_id).await?;
+    let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
     let info = {
         let mut metadata = state.metadata.lock().await;
         let (version, _index, _updated) =
-            resolve_minecraft_version(&mut metadata, &state.services, &mc_version)
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
                 .await
                 .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
         let loader_version = get_loader_version(
             &mut metadata,
-            &state.services,
+            &state.services.mc(),
             &mc_version,
             cluster.mc_loader,
             cluster.mc_loader_version.as_deref(),
         )
         .await?;
-        download_version_info(&state.services, None, &version, loader_version.as_ref(), false).await?
+        download_version_info(&state.services.mc(), None, &version, loader_version.as_ref(), false).await?
     };
 
     let mut total = game_download_bytes(&state.services, &info).await;
 
     if let Some(java) = &info.java_version {
-        let installed = JavaManager::list_runtimes(&state.services.db)
+        let installed = state.java.list_runtimes()
             .await
             .unwrap_or_default();
         if !installed.iter().any(|rt| rt.major == java.major_version) {
@@ -160,7 +184,7 @@ pub async fn estimate_cluster_download(
         }
     }
 
-    total += crate::bundles::enabled_bundle_bytes(cluster_id, bundles, &state.services)
+    total += oneclient_content::bundles::enabled_bundle_bytes(cluster_id, bundles, &state.services.content())
         .await
         .unwrap_or(0);
 
@@ -177,18 +201,19 @@ async fn install_cluster(
     search_for_java: bool,
     auto_install_java: bool,
 ) -> LauncherResult<()> {
-    let profile = ClusterManager::resolve_settings(state, cluster).await?;
+    let global = state.settings.read().global_game_settings.clone();
+    let profile = state.clusters.resolve_settings(&global, cluster).await?;
 
-    let mc_version = crate::version::normalize_mc_version_input(&cluster.mc_version);
+    let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
     let (version, _version_index, minecraft_updated) =
-        resolve_minecraft_version(metadata, &state.services, &mc_version)
+        resolve_minecraft_version(metadata, &state.services.mc(), &mc_version)
             .await
             .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
 
     let loader_version = get_loader_version(
         metadata,
-        &state.services,
+        &state.services.mc(),
         &mc_version,
         cluster.mc_loader,
         cluster.mc_loader_version.as_deref(),
@@ -196,7 +221,7 @@ async fn install_cluster(
     .await?;
 
     let mut version_info = download_version_info(
-        &state.services,
+        &state.services.mc(),
         Some(progress),
         &version,
         loader_version.as_ref(),
@@ -211,22 +236,18 @@ async fn install_cluster(
         .ok_or(ClusterError::MissingJavaVersion)?;
 
     let java = if let Some(runtime) =
-        JavaManager::java_for_profile(&state.services.db, profile.java_path.as_deref()).await?
+        state.java.runtime_for_profile(profile.java_path.as_deref()).await?
     {
         runtime
     } else {
-        JavaManager::prepare_java_with_services(
-            &state.services,
-            java_major,
-            search_for_java,
-            auto_install_java,
-            Some(progress),
-        )
-        .await?
+        state
+            .java
+            .prepare(java_major, search_for_java, auto_install_java, Some(progress))
+            .await?
     };
 
     download_minecraft(
-        &state.services,
+        &state.services.mc(),
         progress,
         &version_info,
         &java.os_arch,

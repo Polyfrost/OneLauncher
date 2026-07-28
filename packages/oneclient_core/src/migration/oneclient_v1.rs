@@ -4,10 +4,9 @@ use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use crate::LauncherResult;
-use crate::packages::domain::GameLoader;
-use crate::paths;
+use oneclient_common::domain::GameLoader;
+use oneclient_common::paths;
 
-use super::fs::{copy_tree, dir_has_content};
 use super::{ImportTarget, MigrationDetection, MigrationSource, SourceInstance};
 
 const IMPORT_EXCLUDE_TOP: &[&str] = &["mods", "logs"];
@@ -92,7 +91,7 @@ async fn detect_inner(root: &Path, db_path: &Path) -> LauncherResult<MigrationDe
 
         let categories = fetch_categories(&pool, cluster_id).await?;
 
-        let has_game_dir = dir_has_content(&root.join("clusters").join(&folder_name)).await;
+        let has_game_dir = polyio::dir_has_content(&root.join("clusters").join(&folder_name)).await;
 
         instances.push(SourceInstance {
             instance_id: cluster_id,
@@ -139,8 +138,12 @@ async fn fetch_categories(pool: &sqlx::SqlitePool, cluster_id: i64) -> LauncherR
     Ok(categories)
 }
 
-#[tracing::instrument(skip(target))]
-pub async fn import_game_dir(folder_name: &str, target: ImportTarget) -> LauncherResult<()> {
+#[tracing::instrument(skip(state, target))]
+pub async fn import_game_dir(
+    state: &std::sync::Arc<crate::LauncherState>,
+    folder_name: &str,
+    target: ImportTarget,
+) -> LauncherResult<()> {
     let Some(root) = old_root() else {
         return Ok(());
     };
@@ -153,8 +156,7 @@ pub async fn import_game_dir(folder_name: &str, target: ImportTarget) -> Launche
     let dest = match &target {
         ImportTarget::Shared => paths::shared_minecraft_dir()?,
         ImportTarget::Dedicated { new_cluster_id } => {
-            let state = crate::state::LauncherState::get()?;
-            let cluster = crate::clusters::ClusterManager::get(&state, *new_cluster_id).await?;
+            let cluster = state.clusters.get(*new_cluster_id).await?;
             let dir = cluster.dir()?;
             polyio::create_dir_all(&dir).await?;
             // Mark dedicated so game_dir() resolves to this cluster's own dir.
@@ -164,7 +166,7 @@ pub async fn import_game_dir(folder_name: &str, target: ImportTarget) -> Launche
     };
 
     polyio::create_dir_all(&dest).await?;
-    copy_tree(&src, &dest, IMPORT_EXCLUDE_TOP).await?;
+    polyio::copy_dir(&src, &dest, IMPORT_EXCLUDE_TOP).await?;
 
     Ok(())
 }

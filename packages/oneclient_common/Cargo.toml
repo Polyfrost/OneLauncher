@@ -1,0 +1,23 @@
+[package]
+name = "oneclient_common"
+description = "Shared vocabulary for OneClient: paths, constants, platform and content types"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+documentation.workspace = true
+readme.workspace = true
+homepage.workspace = true
+authors.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Minecraft/modded metadata vocabulary (Os, loader format versions)
+interfrost.workspace = true
+
+directories.workspace = true
+serde.workspace = true
+strum.workspace = true
+thiserror.workspace = true

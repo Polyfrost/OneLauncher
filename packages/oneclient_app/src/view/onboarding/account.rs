@@ -1,5 +1,5 @@
 use freya::prelude::*;
-use oneclient_core::auth::MinecraftAccount;
+use oneclient_auth::MinecraftAccount;
 
 use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
 use crate::hooks::{try_default_account, use_current_account};

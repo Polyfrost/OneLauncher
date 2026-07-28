@@ -56,7 +56,7 @@ impl Component for Icon {
             .height(Size::px(self.size_px))
             // .fill(color)
             .map(self.color, |svg, color| svg.color(color))
-            .map(self.rotation, |svg, degrees| svg.rotate(degrees))
+            .map(self.rotation, |svg, degrees| svg.rotation(degrees))
     }
 }
 

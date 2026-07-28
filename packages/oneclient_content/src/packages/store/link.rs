@@ -68,13 +68,28 @@ pub async fn unlink_cluster_file(
 	content_type: ContentType,
 	file_name: &str,
 ) -> ContentResult<()> {
-	let path = paths::clusters_dir()?
+	let dir = paths::clusters_dir()?
 		.join(&cluster.folder_name)
-		.join(content_type.folder_name())
-		.join(file_name);
+		.join(content_type.folder_name());
 
-	if path.exists() {
-		polyio::remove_file(&path).await?;
+	// Both spellings: the database always stores the bare name, but the folder
+	// can still be holding a `<name>.disabled` left by an older launcher or by
+	// the user renaming it by hand. Removing a package has to take both.
+	remove_entry(&dir.join(file_name)).await?;
+	remove_entry(&dir.join(format!("{file_name}.disabled"))).await?;
+	Ok(())
+}
+
+/// Deletes `path` if anything is there, symlink or not.
+///
+/// `Path::exists` resolves symlinks, so a link whose artifact was evicted from
+/// the cache reads as absent and the dead link survives every unlink; the
+/// package then keeps showing up in the folder it was removed from.
+async fn remove_entry(path: &Path) -> ContentResult<()> {
+	if polyio::symlink_metadata(path).await.is_err() {
+		return Ok(());
 	}
+
+	polyio::remove_file(path).await?;
 	Ok(())
 }

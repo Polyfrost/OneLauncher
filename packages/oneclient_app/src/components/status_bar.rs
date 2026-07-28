@@ -153,7 +153,7 @@ impl Component for StatusBanner {
             .width(Size::window_percent(100.))
             .height(Size::px(BAR_HEIGHT))
             .position(Position::new_global().bottom(0.).left(0.))
-            .layer(Layer::RelativeOverlay(u8::MAX - 20))
+            .layer(Layer::OverlayLevel(u8::MAX - 20))
             .background(issue.background())
             .opacity(p)
             .child(

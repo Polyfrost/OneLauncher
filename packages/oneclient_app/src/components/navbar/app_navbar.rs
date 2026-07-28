@@ -32,7 +32,7 @@ impl Component for Navbar {
             .width(Size::fill())
             .height(Size::px(theme::NAVBAR_HEIGHT_PX))
             .position(Position::new_absolute().top(0.).left(0.))
-            .layer(Layer::RelativeOverlay(2))
+            .layer(Layer::OverlayLevel(2))
             .child(
                 rect()
                     .width(Size::fill())
@@ -68,7 +68,8 @@ fn navbar_left() -> impl IntoElement {
 fn navbar_logo() -> impl IntoElement {
     let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-    svg(bytes.read().cloned())
+    SvgViewer::new(("logo.svg", bytes.read().cloned()))
+        .show_loader(false)
         .height(Size::px(44.))
         .width(Size::px(214.))
         .color(theme::colors::fg_primary())

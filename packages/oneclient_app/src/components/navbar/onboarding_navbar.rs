@@ -36,7 +36,8 @@ impl Component for OnboardingNavbar {
 fn logo() -> impl IntoElement {
     let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-    svg(bytes.read().cloned())
+    SvgViewer::new(("logo.svg", bytes.read().cloned()))
+        .show_loader(false)
         .height(Size::px(36.))
         .width(Size::px(170.))
         .color(colors::fg_primary())

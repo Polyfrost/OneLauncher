@@ -74,7 +74,7 @@ impl Component for Toasts {
             .vertical()
             .spacing(12.)
             .position(Position::new_global().top(64.).right(24.))
-            .layer(Layer::RelativeOverlay(3));
+            .layer(Layer::OverlayLevel(3));
 
         for entry in entries {
             let id = entry.id;

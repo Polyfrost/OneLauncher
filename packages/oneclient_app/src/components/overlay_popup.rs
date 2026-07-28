@@ -84,7 +84,7 @@ impl Component for OverlayPopup {
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
-                    .layer(Layer::RelativeOverlay(10))
+                    .layer(Layer::OverlayLevel(10))
                     .background(Color::from_argb(alpha, 0, 0, 0))
                     .on_press(move |_| {
                         if let Some(on_close) = scrim_close.as_ref() {
@@ -99,7 +99,7 @@ impl Component for OverlayPopup {
                     .a11y_focusable(true)
                     .a11y_auto_focus(true)
                     .a11y_role(AccessibilityRole::Dialog)
-                    .layer(Layer::RelativeOverlay(12))
+                    .layer(Layer::OverlayLevel(12))
                     .on_global_key_down(move |e: Event<KeyboardEventData>| {
                         if e.key == Key::Named(NamedKey::Escape)
                             && let Some(on_close) = key_close.as_ref()

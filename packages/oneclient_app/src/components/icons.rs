@@ -42,7 +42,8 @@ impl Component for Icon {
         let path = self.icon.path();
         let bytes = use_memo(move || AppAssets::get_bytes(path).unwrap_or_default());
 
-        svg(bytes.read().cloned())
+        SvgViewer::new((path, bytes.read().cloned()))
+            .show_loader(false)
             .width(Size::px(self.size_px))
             .height(Size::px(self.size_px))
             // .fill(color)

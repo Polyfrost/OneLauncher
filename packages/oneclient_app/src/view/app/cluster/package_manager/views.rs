@@ -313,7 +313,7 @@ impl Component for FilterPopover {
             .layer(Layer::Overlay)
             .child(
                 rect()
-                    .layer(Layer::RelativeOverlay(10))
+                    .layer(Layer::OverlayLevel(10))
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
@@ -322,7 +322,7 @@ impl Component for FilterPopover {
             .child(
                 rect()
                     .width(Size::fill())
-                    .layer(Layer::RelativeOverlay(12))
+                    .layer(Layer::OverlayLevel(12))
                     .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
                     .child(panel),
             )

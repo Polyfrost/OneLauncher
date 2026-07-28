@@ -41,7 +41,7 @@ pub fn window_controls() -> impl IntoElement {
         .main_align(Alignment::End)
         .cross_align(Alignment::Center)
         .spacing(8.)
-        .layer(Layer::RelativeOverlay(u8::MAX))
+        .layer(Layer::OverlayLevel(u8::MAX))
         .child(
             navbar_button()
                 .child(Icon::new(IconType::Minus))

@@ -126,6 +126,21 @@ pub async fn import_manual_content(
                 continue;
             }
 
+            // The shared dir is rebuilt from the database on every launch, so
+            // anything here that the launcher already has in its artifact cache
+            // is a leftover from a session whose cleanup never ran — a crash, or
+            // a bundle update that dropped the package in between. Importing it
+            // would re-link the package the update just removed, and the next
+            // launch would put it back in the game. Drop it instead; the cache
+            // still holds the file if it is ever wanted again.
+            if is_cached_artifact(services, &path).await {
+                tracing::debug!(file = name, "discarding stale launcher content in shared dir");
+                if let Err(err) = polyio::remove_file(&path).await {
+                    tracing::warn!(file = name, error = %err, "failed to discard stale shared content");
+                }
+                continue;
+            }
+
             match PackageStore::import_local_file(&path, content_type, cluster.id, &services.content()).await {
                 Ok(_) => {
                     tracing::debug!(file = name, "registered manually-added shared content")
@@ -138,6 +153,21 @@ pub async fn import_manual_content(
             }
         }
     }
+}
+
+/// Whether `path` is a copy of something already in the launcher's artifact
+/// cache, i.e. content the launcher itself put in the shared dir rather than
+/// something the user dropped there.
+async fn is_cached_artifact(services: &LauncherServices, path: &Path) -> bool {
+    let Ok(hash) = polyio::sha1_file(path).await else {
+        return false;
+    };
+
+    artifact_dao::get_artifact_by_hash(&services.db, &polyio::normalize_hash(&hash))
+        .await
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 fn has_content_extension(content_type: ContentType, name: &str) -> bool {

@@ -661,28 +661,73 @@ impl Actions {
         version_id: impl Into<String>,
     ) {
         let (project_id, version_id) = (project_id.into(), version_id.into());
+        let actions = self.clone();
+
+        self.station
+            .clone()
+            .write_channel(AppChannel::Installs)
+            .installs
+            .begin(cluster_id, provider, project_id.clone());
+
         spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            let events = state.services.events.clone();
-            match crate::install::install_package(
+            let finish = |actions: &Actions| {
+                actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs)
+                    .installs
+                    .finish(cluster_id, provider, &project_id);
+            };
+
+            let Ok(state) = launcher::state() else {
+                finish(&actions);
+                return;
+            };
+
+            let install = crate::install::install_package(
                 &state,
                 provider,
                 &project_id,
                 &version_id,
                 cluster_id,
             )
-            .await
-            {
-                Ok(name) => {
-                    events.notify("Installed").body(format!("Added {name}")).send();
-                    events.signal(oneclient_events::Signal::ClustersChanged);
-                }
-                Err(err) => events
-                    .notify("Install failed")
-                    .body(err.to_string())
-                    .error()
-                    .send(),
+            .await;
+
+            // The download already raised a progress notification; the outcome
+            // replaces it in place rather than arriving as a second one.
+            let spec = match &install.result {
+                Ok(name) => NotificationSpec {
+                    title: "Installed".to_string(),
+                    body: format!("Added {name}"),
+                    level: Level::Info,
+                    icon: Some(IconType::Download01),
+                    progress: None,
+                    actions: Vec::new(),
+                },
+                Err(err) => NotificationSpec {
+                    title: "Install failed".to_string(),
+                    body: err.to_string(),
+                    level: Level::Error,
+                    icon: None,
+                    progress: None,
+                    actions: Vec::new(),
+                },
+            };
+
+            let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
+            actions.with_engine(|app| {
+                app.notifications
+                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+            });
+
+            if install.result.is_ok() {
+                state
+                    .services
+                    .events
+                    .signal(oneclient_events::Signal::ClustersChanged);
             }
+
+            finish(&actions);
         });
     }
 

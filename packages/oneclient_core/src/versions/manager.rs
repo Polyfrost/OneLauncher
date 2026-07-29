@@ -19,6 +19,36 @@ impl VersionsManager {
         }
     }
 
+    /// Seeds the manifest from the last synced copy on disk.
+    ///
+    /// Without this the manifest is empty until the network answers, and
+    /// everything read off it — a version's art, name, description — waits on a
+    /// request that, for a returning user, ends in a 304 and the very same file.
+    /// The UI would rather render slightly stale metadata now and pick up the
+    /// sync when it lands.
+    #[must_use]
+    pub async fn from_cache() -> Self {
+        let manifest = Self::cached_manifest()
+            .await
+            .unwrap_or_else(VersionsManifest::default);
+
+        Self {
+            manifest: RwLock::new(manifest),
+        }
+    }
+
+    async fn cached_manifest() -> Option<VersionsManifest> {
+        let path = paths::caches_dir().ok()?.join("versions.json");
+        let bytes = polyio::read(&path).await.ok()?;
+        match serde_json::from_slice(&bytes) {
+            Ok(manifest) => Some(manifest),
+            Err(err) => {
+                tracing::warn!("cached versions manifest is unreadable: {err}");
+                None
+            }
+        }
+    }
+
     #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn sync(&self, services: &LauncherServices) -> LauncherResult<bool> {
         let Some((manifest, changed)) = Self::fetch_manifest(services).await? else {

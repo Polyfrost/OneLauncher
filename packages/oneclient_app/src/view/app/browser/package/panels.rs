@@ -157,6 +157,7 @@ impl Component for GalleryTile {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
     total_versions: usize,
@@ -165,6 +166,8 @@ pub(super) fn versions_panel(
     project_id: String,
     cluster_id: i64,
     dispatch: Actions,
+    installed: Option<Installed>,
+    installing: bool,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
@@ -187,12 +190,18 @@ pub(super) fn versions_panel(
             .width(Size::fill())
             .spacing(8.)
             .children(versions.into_iter().map(move |v| {
+                let tag = installed
+                    .as_ref()
+                    .filter(|installed| installed.is_version(&v.version_id))
+                    .map(|installed| installed.source);
                 version_row(
                     v,
                     provider,
                     project_id.clone(),
                     cluster_id,
                     dispatch.clone(),
+                    tag,
+                    installing,
                 )
                 .into_element()
             }))
@@ -258,12 +267,15 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
         .into_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn version_row(
     v: VersionSummary,
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
     dispatch: Actions,
+    installed: Option<InstallSource>,
+    installing: bool,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
@@ -311,10 +323,12 @@ fn version_row(
                         .color(colors::fg_secondary()),
                 ),
         )
+        .maybe_child(installed.map(|installed| installed_badge(installed, 11.).into_element()))
         .child(
             Button::new()
                 .secondary()
                 .small()
+                .enabled(installed.is_none() && !installing)
                 .on_press(move |_| {
                     dispatch.install_package(
                         cluster_id,

@@ -8,6 +8,7 @@ pub struct Icon {
     pub icon: IconType,
     pub size_px: f32,
     pub color: Option<Color>,
+    pub rotation: Option<f32>,
 }
 
 impl Icon {
@@ -23,6 +24,7 @@ impl Icon {
             icon,
             size_px: 24.,
             color,
+            rotation: None,
         }
     }
 
@@ -35,6 +37,12 @@ impl Icon {
         self.color = Some(color);
         self
     }
+
+    /// Rotation in degrees, clockwise.
+    pub fn rotate(mut self, degrees: f32) -> Self {
+        self.rotation = Some(degrees);
+        self
+    }
 }
 
 impl Component for Icon {
@@ -42,11 +50,13 @@ impl Component for Icon {
         let path = self.icon.path();
         let bytes = use_memo(move || AppAssets::get_bytes(path).unwrap_or_default());
 
-        svg(bytes.read().cloned())
+        SvgViewer::new((path, bytes.read().cloned()))
+            .show_loader(false)
             .width(Size::px(self.size_px))
             .height(Size::px(self.size_px))
             // .fill(color)
             .map(self.color, |svg, color| svg.color(color))
+            .map(self.rotation, |svg, degrees| svg.rotation(degrees))
     }
 }
 

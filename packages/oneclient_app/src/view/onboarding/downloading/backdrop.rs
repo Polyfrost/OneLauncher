@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use oneclient_core::clusters::Cluster;
 
-use crate::components::DynamicArt;
+use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::hooks::use_settings_snapshot;
 use crate::layout::gradient_overlay_radial;
 use crate::theme::colors;
@@ -102,10 +102,15 @@ impl Component for LoadingBackdrop {
         let pan_x = cx * sw * PARALLAX_STRENGTH;
         let pan_y = cy * sh * PARALLAX_STRENGTH;
 
+        // Left at the default edge on purpose: this is the same full-screen art
+        // the home background shows next, so asking for the same variant means
+        // the onboarding download is the one home renders instead of it having
+        // to fetch the same picture again at a different size.
         let art = match clusters.get(current) {
-            Some(cluster) => DynamicArt::for_cluster(cluster).max_edge(1280),
-            None => DynamicArt::fallback().max_edge(1280),
-        };
+            Some(cluster) => DynamicArt::for_cluster(cluster),
+            None => DynamicArt::fallback(),
+        }
+        .preview_edge(ART_PREVIEW_EDGE);
 
         let fade = use_animation_with_dependencies(&current, |conf, _| {
             conf.on_creation(OnCreation::Run);

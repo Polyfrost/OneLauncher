@@ -10,6 +10,14 @@ use crate::theme::colors;
 const BAR_HEIGHT: f32 = 34.;
 const AMBER: Color = Color::from_rgb(191, 122, 26);
 
+/// `Layer::RelativeOverlay(n)` resolves to `n * (i16::MAX / 16)`, so any `n`
+/// past 16 pins to `i16::MAX`. Children resolve to `parent + 1`, which saturates
+/// to the *same* layer — and a layer is an unordered set, so the bar's own
+/// background painted over its contents about as often as not. That is what
+/// made the message and the close button come and go. 14 keeps the bar above
+/// every popup while leaving its children room to sit in front of it.
+const BAR_LAYER: u8 = 14;
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Issue {
     NoInternet,
@@ -121,49 +129,83 @@ impl Component for StatusBanner {
         });
         let p = intro.get().value();
 
-        let content = rect()
+        let mut close_hover = use_state(|| false);
+
+        // Pressing close unmounts the banner from under the pointer, so there is
+        // no `leave` to put the cursor back.
+        use_drop(|| Cursor::set(CursorIcon::default()));
+
+        let close = issue.closeable().then(|| {
+            rect()
+                .center()
+                .width(Size::px(22.))
+                .height(Size::px(22.))
+                .corner_radius(CornerRadius::new_all(6.))
+                .background(if *close_hover.read() {
+                    Color::WHITE.with_a(46)
+                } else {
+                    Color::TRANSPARENT
+                })
+                .on_pointer_enter(move |_| {
+                    close_hover.set(true);
+                    Cursor::set(CursorIcon::Pointer);
+                })
+                .on_pointer_leave(move |_| {
+                    close_hover.set(false);
+                    Cursor::set(CursorIcon::default());
+                })
+                .on_press(move |_| {
+                    dismissed.write().insert(issue);
+                })
+                .child(Icon::new(IconType::XClose).size(14.).color(Color::WHITE))
+                .into_element()
+        });
+
+        // The message is centred by a flex spacer on each side, and the close
+        // button rides the end of the trailing one. It used to be absolutely
+        // positioned, which pinned it to the top of the content box — inside the
+        // bar's horizontal padding, so it sat high and well short of the edge.
+        let leading = rect().width(Size::flex(1.0)).height(Size::fill());
+
+        let message = rect()
             .horizontal()
+            .height(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(8.)
+            .layer(Layer::OverlayLevel(u8::MAX - 20))
             .child(Icon::new(issue.icon()).size(15.).color(Color::WHITE))
             .child(
                 label()
                     .text(issue.message())
                     .font_size(12.)
                     .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
                     .color(Color::WHITE),
             );
 
-        let close = issue.closeable().then(|| {
-            rect()
-                .position(Position::new_absolute().right(10.))
-                .center()
-                .width(Size::px(20.))
-                .height(Size::px(20.))
-                .corner_radius(CornerRadius::new_all(6.))
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| {
-                    dismissed.write().insert(issue);
-                })
-                .child(Icon::new(IconType::XClose).size(14.).color(Color::WHITE))
-        });
+        let trailing = rect()
+            .width(Size::flex(1.0))
+            .height(Size::fill())
+            .horizontal()
+            .main_align(Alignment::End)
+            .cross_align(Alignment::Center)
+            .layer(Layer::Relative(1))
+            .maybe_child(close);
 
         rect()
             .width(Size::window_percent(100.))
             .height(Size::px(BAR_HEIGHT))
             .position(Position::new_global().bottom(0.).left(0.))
-            .layer(Layer::RelativeOverlay(u8::MAX - 20))
+            .layer(Layer::OverlayLevel(BAR_LAYER))
             .background(issue.background())
             .opacity(p)
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .center()
-                    .padding(Gaps::new_symmetric(0., 16.))
-                    .child(content)
-                    .maybe_child(close),
-            )
+            .horizontal()
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 10.))
+            .child(leading)
+            .child(message)
+            .child(trailing)
     }
 }

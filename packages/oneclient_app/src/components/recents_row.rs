@@ -3,7 +3,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{DynamicArt, Icon, IconType};
+use crate::components::{ART_PREVIEW_EDGE, DynamicArt, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -18,6 +18,8 @@ const MAX_CARD_WIDTH_PX: f32 = 480.0;
 const CARD_MS: u64 = 460;
 const STAGGER_MS: u64 = 85;
 const CARD_RISE_PX: f32 = 48.0;
+/// Items the intro staggers individually; past this they rise together.
+const INTRO_ITEMS: usize = 6;
 
 #[derive(PartialEq)]
 pub struct RecentsRow;
@@ -31,17 +33,22 @@ impl Component for RecentsRow {
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
         let slots = *visible_slots.read();
-        let display = sorted.into_iter().take(slots).collect::<Vec<_>>();
-        let count = display.len();
 
-        let items = count + 1;
+        // Budgeted off the clusters we have, never off the slots we can show. An
+        // offset is the one thing a card must not change on a frame where the row
+        // is re-measured: the layout engine treats an offset-only change as "inner
+        // layout" and hands back the card's *cached* area instead of measuring it,
+        // so a rerun triggered by the slot count would freeze the surviving cards
+        // at their pre-resize widths while the new ones come in at the new width.
+        let items = intro_items(sorted.len());
+
+        let display = sorted.into_iter().take(slots).collect::<Vec<_>>();
 
         let intro = use_animation_with_dependencies(&items, |conf, items| {
             conf.on_creation(OnCreation::Run);
             conf.on_change(OnChange::Rerun);
-            let total = CARD_MS + (items.saturating_sub(1) as u64) * STAGGER_MS;
             AnimNum::new(0., 1.)
-                .time(total.max(1))
+                .time(intro_ms(*items).max(1))
                 .function(Function::Linear)
         });
         let progress = intro.get().value();
@@ -51,8 +58,7 @@ impl Component for RecentsRow {
             .height(Size::px(ROW_HEIGHT_PX))
             .content(Content::Flex)
             .on_sized(move |event: Event<SizedEventData>| {
-                let width = event.data().area.width();
-                let next = recent_card_slots_for_width(width).max(1);
+                let next = recent_card_slots_for_width(event.data().area.width());
                 if next != *visible_slots.peek() {
                     *visible_slots.write() = next;
                 }
@@ -69,17 +75,28 @@ impl Component for RecentsRow {
                 .into_element()
             }))
             .child(OtherVersionsTile {
-                index: count,
+                index: items.saturating_sub(1),
                 items,
                 progress,
             })
     }
 }
 
+/// Items to stagger for `clusters` recents, counting the "other versions" tile.
+fn intro_items(clusters: usize) -> usize {
+    (clusters + 1).min(INTRO_ITEMS)
+}
+
+fn intro_ms(items: usize) -> u64 {
+    CARD_MS + (items.saturating_sub(1) as u64) * STAGGER_MS
+}
+
 fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
-    let total = CARD_MS as f32 + (items.saturating_sub(1) as f32) * STAGGER_MS as f32;
-    let elapsed = progress * total;
-    let local = ((elapsed - index as f32 * STAGGER_MS as f32) / CARD_MS as f32).clamp(0., 1.);
+    let elapsed = progress * intro_ms(items) as f32;
+    // Anything past the budget shares the last slot, so every item still lands on
+    // a finished 1.0 rather than freezing part-way with a leftover offset.
+    let start = index.min(items.saturating_sub(1)) as f32 * STAGGER_MS as f32;
+    let local = ((elapsed - start) / CARD_MS as f32).clamp(0., 1.);
     1.0 - (1.0 - local).powi(3)
 }
 
@@ -122,7 +139,6 @@ impl Component for ClusterCard {
         rect()
             .key(self.cluster.id)
             .width(Size::flex(1.0))
-            .min_width(Size::px(MIN_CARD_WIDTH_PX))
             .max_width(Size::px(MAX_CARD_WIDTH_PX))
             .height(Size::fill())
             .offset_y(rise)
@@ -174,7 +190,7 @@ impl Component for ClusterCard {
                                     .height(Size::fill())
                                     .position(Position::new_absolute())
                                     .layer(Layer::Relative(1))
-                                    .child(DynamicArt::for_cluster(&self.cluster).max_edge(512)),
+                                    .child(DynamicArt::for_cluster(&self.cluster).max_edge(ART_PREVIEW_EDGE)),
                             )
                             .child(
                                 rect()
@@ -284,12 +300,74 @@ impl Component for OtherVersionsTile {
     }
 }
 
+/// How many cards fit beside the "other versions" tile at `row_width_px`.
+///
+/// `n` cards sit in `n` gaps' worth of spacing — `n - 1` between the cards and
+/// one before the tile — so `n * (MIN + GAP) + MORE` has to fit. One card is
+/// always shown: below that width it just renders narrower than the minimum,
+/// which is why the card carries no `min_width`. With one, a stale count during
+/// a live resize used to push the row past its bounds and leave a card cut off
+/// or stretched until the next measurement landed.
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
-    if row_width_px <= MORE_TILE_WIDTH_PX + CARD_GAP_PX {
-        return 0;
+    if !row_width_px.is_finite() {
+        return 1;
     }
 
     let available = row_width_px - MORE_TILE_WIDTH_PX;
     let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
-    (available / slot).floor() as usize
+    (available / slot).floor().max(1.0) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row_fits(slots: usize, row_width_px: f32) -> bool {
+        let cards = slots as f32 * MIN_CARD_WIDTH_PX;
+        let gaps = slots as f32 * CARD_GAP_PX;
+        cards + gaps + MORE_TILE_WIDTH_PX <= row_width_px
+    }
+
+    #[test]
+    fn slots_fill_the_row_without_overflowing_it() {
+        for width in (200..3200).step_by(4) {
+            let width = width as f32;
+            let slots = recent_card_slots_for_width(width);
+
+            assert!(slots >= 1, "{width}px left no room for a card");
+            if slots > 1 {
+                assert!(row_fits(slots, width), "{slots} cards overflow {width}px");
+            }
+            assert!(
+                !row_fits(slots + 1, width),
+                "{width}px had room for {} cards",
+                slots + 1
+            );
+        }
+    }
+
+    #[test]
+    fn every_item_settles_when_the_intro_ends() {
+        // A card left with a leftover offset keeps changing it, and an offset-only
+        // change is what makes the layout engine reuse a card's cached width.
+        for clusters in 0..24 {
+            let items = intro_items(clusters);
+            for index in 0..=clusters {
+                assert_eq!(
+                    stagger_eased(1.0, index, items),
+                    1.0,
+                    "item {index} of {clusters} never finished rising"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_intro_runs_the_same_length_whatever_fits_on_screen() {
+        // The window width decides how many cards show, so anything the intro is
+        // measured against has to be independent of it.
+        assert_eq!(intro_items(3), intro_items(3));
+        assert_eq!(intro_ms(intro_items(30)), intro_ms(INTRO_ITEMS));
+        assert_eq!(intro_ms(intro_items(0)), CARD_MS);
+    }
 }

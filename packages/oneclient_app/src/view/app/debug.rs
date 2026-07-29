@@ -3,8 +3,9 @@ use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
 use oneclient_auth::preview_samples;
+use oneclient_net::status::{self, ServiceStatus};
 
-use crate::components::{Button, Icon, IconType, TextInput, login_dialog, toggle};
+use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
@@ -74,6 +75,11 @@ impl Component for Debug {
                     .child(section(
                         "Launcher Auto Update",
                         vec![LauncherUpdateSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Connectivity Status Bar",
+                        vec![StatusBarSimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section(
@@ -468,55 +474,140 @@ impl Component for LauncherUpdateSimulator {
     }
 }
 
+/// Pins `oneclient_net::status` so the connectivity banner can be looked at
+/// without unplugging anything. Each preset is one banner the bar knows how to
+/// draw; the bar itself picks the first active issue.
+#[derive(PartialEq)]
+struct StatusBarSimulator;
+
+const STATUS_PRESETS: [(&str, IconType, ServiceStatus); 4] = [
+    (
+        "No internet",
+        IconType::Globe01,
+        ServiceStatus {
+            online: false,
+            mc_auth_up: false,
+            polyfrost_up: false,
+        },
+    ),
+    (
+        "Minecraft auth down",
+        IconType::AlertTriangle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: false,
+            polyfrost_up: true,
+        },
+    ),
+    (
+        "Polyfrost down",
+        IconType::AlertCircle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: true,
+            polyfrost_up: false,
+        },
+    ),
+    (
+        "Both services down",
+        IconType::AlertTriangle,
+        ServiceStatus {
+            online: true,
+            mc_auth_up: false,
+            polyfrost_up: false,
+        },
+    ),
+];
+
+impl Component for StatusBarSimulator {
+    fn render(&self) -> impl IntoElement {
+        let mut pinned = use_state(status::forced);
+
+        let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
+        for (text, icon, forced) in STATUS_PRESETS {
+            row = row.child(
+                Button::new()
+                    .secondary()
+                    .child(Icon::new(icon).size(16.))
+                    .text(text)
+                    .on_press(move |_| {
+                        status::force(Some(forced));
+                        pinned.set(Some(forced));
+                    }),
+            );
+        }
+
+        let current = *pinned.read();
+        let state_text = match current {
+            Some(_) => "Pinned. Probing still runs, but its result is not published.".to_string(),
+            None => "Not pinned; showing the real probe result.".to_string(),
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("Forces what the connectivity prober reports, so the real status bar renders its banner. Dismissing a banner is remembered until the issue clears.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(row)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        Button::new()
+                            .primary()
+                            .child(Icon::new(IconType::RefreshCw01).size(16.))
+                            .text("Clear + recheck")
+                            .enabled(current.is_some())
+                            .on_press(move |_| {
+                                status::force(None);
+                                pinned.set(None);
+                            }),
+                    )
+                    .child(
+                        label()
+                            .text(state_text)
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
+                    ),
+            )
+            .into_element()
+    }
+}
+
 #[derive(PartialEq)]
 struct AuthGuidancePreview;
 
 impl Component for AuthGuidancePreview {
     fn render(&self) -> impl IntoElement {
-        let selected = use_state(|| None::<Option<usize>>);
         let samples = preview_samples();
+        // Index 0 is the no-error state; the rest line up with `samples`, so a
+        // dropdown holds all ~16 cases in one row instead of six rows of
+        // full-width buttons.
+        let mut choice = use_state(|| 0usize);
+        let mut open = use_state(|| false);
 
-        let mut controls = rect().vertical().width(Size::fill()).spacing(10.).child(
-            label()
-                .text("Each button opens the real Microsoft sign-in popup exactly as users see it, in the chosen error state.")
-                .font_size(13.)
-                .color(colors::fg_secondary()),
-        );
+        let mut options: Vec<String> = vec!["No error (in progress)".to_string()];
+        options.extend(samples.iter().map(|s| s.label.to_string()));
 
-        let mut labels: Vec<(&'static str, Option<usize>)> = vec![("No error (in progress)", None)];
-        labels.extend(samples.iter().enumerate().map(|(i, s)| (s.label, Some(i))));
+        let index = (*choice.read()).min(options.len() - 1);
+        let selected_label = options[index].clone();
 
-        for chunk in labels.chunks(3) {
-            let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
-            for (text, target) in chunk.iter().copied() {
-                let mut sel = selected;
-                let mut button = Button::new()
-                    .secondary()
-                    .text(text)
-                    .on_press(move |_| sel.set(Some(target)));
-                if text.contains("No error") {
-                    button = button.child(Icon::new(IconType::CheckCircle).size(16.));
-                } else {
-                    button = button.child(Icon::new(IconType::AlertTriangle).size(16.));
-                }
-                row = row.child(rect().width(Size::flex(1.0)).child(button));
-            }
-            for _ in chunk.len()..3 {
-                row = row.child(rect().width(Size::flex(1.0)));
-            }
-            controls = controls.child(row);
-        }
-
-        let current = *selected.read();
-        let popup = current.map(|choice| {
-            let (error, guidance) = match choice {
+        let popup = open().then(|| {
+            let (error, guidance) = match index.checked_sub(1) {
                 None => (None, None),
                 Some(i) => {
                     let s = &samples[i];
                     (Some(s.message.clone()), s.guidance.clone())
                 }
             };
-            let mut sel = selected;
             login_dialog(
                 "https://login.live.com/oauth20_authorize (preview)".to_string(),
                 "ABCD-EFGH".to_string(),
@@ -525,11 +616,42 @@ impl Component for AuthGuidancePreview {
                 None,
                 error,
                 guidance,
-                move || sel.set(None),
+                move || open.set(false),
             )
         });
 
-        controls.maybe_child(popup).into_element()
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("Opens the real Microsoft sign-in popup exactly as users see it, in the chosen error state.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        Dropdown::new(selected_label, options)
+                            .width(Size::px(300.))
+                            .height(Size::px(34.))
+                            .on_select(move |idx: usize| choice.set(idx)),
+                    )
+                    .child(
+                        Button::new()
+                            .primary()
+                            .child(Icon::new(IconType::Eye).size(16.))
+                            .text("Open preview")
+                            .on_press(move |_| open.set(true)),
+                    ),
+            )
+            .maybe_child(popup)
+            .into_element()
     }
 }
 

@@ -9,12 +9,18 @@ use crate::AppAssets;
 use crate::hooks::{loaded_image, use_cached_image, use_version_metadata};
 use crate::layout::HOME_BACKGROUND_ASSET;
 
+/// The size the cluster cards ask for, and so the one variant of a version's
+/// art that is usually already cached by the time anything else wants it.
+/// Full-screen art stands in with it while its own download is in flight.
+pub const ART_PREVIEW_EDGE: u32 = 512;
+
 #[derive(PartialEq, Clone)]
 pub struct DynamicArt {
     major: Option<u32>,
     key: Option<VersionKey>,
     loader: Option<GameLoader>,
     max_edge: u32,
+    preview_edge: Option<u32>,
 }
 
 impl DynamicArt {
@@ -24,6 +30,7 @@ impl DynamicArt {
             key,
             loader,
             max_edge: DEFAULT_IMAGE_EDGE,
+            preview_edge: None,
         }
     }
 
@@ -34,6 +41,7 @@ impl DynamicArt {
             key: parsed.and_then(|p| p.key()),
             loader: Some(cluster.mc_loader),
             max_edge: DEFAULT_IMAGE_EDGE,
+            preview_edge: None,
         }
     }
 
@@ -43,6 +51,7 @@ impl DynamicArt {
             key: None,
             loader: None,
             max_edge: DEFAULT_IMAGE_EDGE,
+            preview_edge: None,
         }
     }
 
@@ -52,8 +61,27 @@ impl DynamicArt {
         self
     }
 
+    /// Stand in with a smaller variant of the same art until the full-size one
+    /// has downloaded.
+    ///
+    /// A full-size background is a few hundred KB and the cluster cards have
+    /// usually already cached the small one, so this puts the right picture on
+    /// screen right away and sharpens it later, instead of sitting on the
+    /// built-in fallback for the length of a download.
+    #[must_use]
+    pub fn preview_edge(mut self, preview_edge: u32) -> Self {
+        self.preview_edge = Some(preview_edge);
+        self
+    }
+
     pub fn use_bytes(&self) -> (String, Bytes) {
-        use_art_bytes(self.major, self.key, self.loader, self.max_edge)
+        use_art_bytes(
+            self.major,
+            self.key,
+            self.loader,
+            self.max_edge,
+            self.preview_edge,
+        )
     }
 }
 
@@ -62,6 +90,7 @@ pub fn use_art_bytes(
     key: Option<VersionKey>,
     loader: Option<GameLoader>,
     max_edge: u32,
+    preview_edge: Option<u32>,
 ) -> (String, Bytes) {
     let fallback = use_memo(|| AppAssets::get_bytes(HOME_BACKGROUND_ASSET).unwrap_or_default());
 
@@ -69,13 +98,24 @@ pub fn use_art_bytes(
 
     let image_query = use_cached_image(art_url.clone(), max_edge);
 
-    match loaded_image(art_url.as_deref(), &image_query) {
-        Some((url, bytes)) => (format!("{max_edge}|{url}"), bytes),
-        None => (
+    // Subscribed unconditionally to keep the hook order stable. Without a
+    // preview size it is the same query as the one above, so it costs nothing.
+    let preview_edge = preview_edge.unwrap_or(max_edge);
+    let preview_query = use_cached_image(art_url.clone(), preview_edge);
+
+    let full = loaded_image(art_url.as_deref(), &image_query)
+        .map(|(url, bytes)| (format!("{max_edge}|{url}"), bytes));
+    let preview = || {
+        loaded_image(art_url.as_deref(), &preview_query)
+            .map(|(url, bytes)| (format!("{preview_edge}|{url}"), bytes))
+    };
+
+    full.or_else(preview).unwrap_or_else(|| {
+        (
             format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
             fallback.read().clone(),
-        ),
-    }
+        )
+    })
 }
 
 impl Component for DynamicArt {

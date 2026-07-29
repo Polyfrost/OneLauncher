@@ -456,7 +456,7 @@ impl Component for LogPicker {
                             .position(Position::new_global().top(0.).left(0.))
                             .width(Size::window_percent(100.))
                             .height(Size::window_percent(100.))
-                            .layer(Layer::RelativeOverlay(10))
+                            .layer(Layer::OverlayLevel(10))
                             .on_press(move |_| open.set(false)),
                     )
                     .child(
@@ -464,7 +464,7 @@ impl Component for LogPicker {
                             .margin(Gaps::new(4., 0., 0., 0.))
                             .width(Size::px(320.))
                             .max_height(Size::px(360.))
-                            .layer(Layer::RelativeOverlay(12))
+                            .layer(Layer::OverlayLevel(12))
                             .vertical()
                             .spacing(4.)
                             .padding(6.)

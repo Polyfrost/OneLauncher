@@ -157,6 +157,7 @@ impl PackageStore {
                 content_type,
                 file_name: artifact.file_name,
                 project_id: release.as_ref().map(|r| r.project_id.clone()),
+                version_id: release.as_ref().map(|r| r.version_id.clone()),
                 display_name: release.as_ref().map(|r| r.display_name.clone()),
                 display_version: release.as_ref().map(|r| r.display_version.clone()),
                 provider: release
@@ -172,6 +173,12 @@ impl PackageStore {
     /// Flips an artifact's enabled flag and relinks it on disk, returning the
     /// new state.
     ///
+    /// `live` says a session is currently playing this cluster. Minecraft reads
+    /// its mods once at startup and holds the jars open, so the on-disk half
+    /// cannot take effect and, on Windows, cannot even be performed. The flag is
+    /// recorded either way and [`Self::reconcile_cluster_links`] settles the
+    /// folder at the next launch, so the choice survives instead of failing.
+    ///
     /// Storage only: bundle override bookkeeping is composed on top by
     /// [`crate::bundles::toggle_artifact_enabled`], because that is the layer that
     /// knows about bundles. Calling up into `bundles` from here would make the two
@@ -179,6 +186,7 @@ impl PackageStore {
     pub async fn set_artifact_enabled(
         cluster_id: i64,
         hash: &str,
+        live: bool,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
@@ -201,15 +209,8 @@ impl PackageStore {
             .trim_end_matches(".disabled")
             .to_string();
 
-        if enabled {
-            link::link_artifact_to_cluster(&artifact, &cluster, Some(&file_name)).await?;
-        } else {
-            link::unlink_cluster_file(&cluster, content_type, &link.cluster_file_name).await?;
-            if link.cluster_file_name != file_name {
-                link::unlink_cluster_file(&cluster, content_type, &file_name).await?;
-            }
-        }
-
+        // The database is the source of truth, so it goes first: a folder that
+        // cannot be touched right now must not cost the user their choice.
         artifact_dao::update_cluster_artifact(
             &ctx.db,
             cluster_id,
@@ -219,7 +220,78 @@ impl PackageStore {
         )
         .await?;
 
+        let applied = apply_enabled_to_disk(
+            &artifact,
+            &cluster,
+            content_type,
+            &link.cluster_file_name,
+            &file_name,
+            enabled,
+        )
+        .await;
+
+        match applied {
+            Ok(()) => {}
+            Err(err) if live => tracing::info!(
+                cluster_id,
+                hash,
+                error = %err,
+                "cluster folder is in use by a running game; the change applies at the next launch"
+            ),
+            Err(err) => return Err(err),
+        }
+
         Ok(enabled)
+    }
+
+    /// Makes the cluster folder match the database: every enabled artifact
+    /// linked in, every disabled one gone.
+    ///
+    /// Toggles made while the cluster was being played only reached the
+    /// database, so this is what lands them. Files already in the right state
+    /// are left alone, and failures are logged rather than returned: one
+    /// unwritable file must not stop a launch.
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn reconcile_cluster_links(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<()> {
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+
+        for link in artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id).await? {
+            let Some(artifact) = artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
+            else {
+                continue;
+            };
+            let Some(content_type) = ContentType::from_repr(artifact.content_type as u8) else {
+                continue;
+            };
+
+            let enabled = link.enabled != 0;
+            let present =
+                link::cluster_file_present(&cluster, content_type, &link.cluster_file_name).await;
+            if enabled == present {
+                continue;
+            }
+
+            let result = apply_enabled_to_disk(
+                &artifact,
+                &cluster,
+                content_type,
+                &link.cluster_file_name,
+                &link.cluster_file_name,
+                enabled,
+            )
+            .await;
+
+            if let Err(err) = result {
+                tracing::warn!(
+                    cluster_id,
+                    file = %link.cluster_file_name,
+                    error = %err,
+                    "failed to reconcile cluster link"
+                );
+            }
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -318,6 +390,30 @@ async fn row_to_cached(
         size_bytes: row.size_bytes.map(|s| s as u64),
         release,
     })
+}
+
+/// Brings one artifact's presence in the cluster folder in line with `enabled`.
+///
+/// `current_file_name` is what the folder may be holding, `file_name` the name
+/// the link should carry; they differ only while a legacy `.disabled` spelling
+/// is being cleaned up.
+async fn apply_enabled_to_disk(
+    artifact: &ArtifactRow,
+    cluster: &ClusterRow,
+    content_type: ContentType,
+    current_file_name: &str,
+    file_name: &str,
+    enabled: bool,
+) -> ContentResult<()> {
+    if enabled {
+        return link::link_artifact_to_cluster(artifact, cluster, Some(file_name)).await;
+    }
+
+    link::unlink_cluster_file(cluster, content_type, current_file_name).await?;
+    if current_file_name != file_name {
+        link::unlink_cluster_file(cluster, content_type, file_name).await?;
+    }
+    Ok(())
 }
 
 fn ensure_compatible(

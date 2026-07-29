@@ -4,24 +4,31 @@ use freya::animation::{
     AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
 };
 use freya::prelude::*;
+use freya::router::RouterContext;
+use oneclient_common::parse_mc_version;
 use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::types::SearchSort;
 use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::VersionMetadata;
+use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
+    Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
 };
 use crate::hooks::{
-    BROWSE_PAGE_SIZE, BrowserUiState, category_list, content_type_for_slug, search_items,
-    search_pending, search_total, use_browser_compat, use_browser_state_store, use_debounced,
-    use_package_categories, use_package_search, use_view_state,
+    BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
+    cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
+    search_pending, search_total, settled_or_loading, use_browser_compat, use_browser_state_store,
+    use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
+    use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
 };
+use crate::routes::Route;
 use crate::theme::colors;
 use crate::hooks::use_cluster;
 
-use super::{PackageBanner, Thumbnail};
-use crate::utils::abbreviate_number;
+use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
+use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
 mod cards;
 mod sidebar;
@@ -57,6 +64,9 @@ fn encode_package_id(provider: ProviderId, id: &str) -> String {
 pub struct Browser {
     pub cluster_id: i64,
     pub package_type: String,
+    /// Entered from the navbar rather than from a cluster's content page, so
+    /// the cluster it browses for is picked here instead of being decided.
+    pub pick_cluster: bool,
 }
 
 impl Component for Browser {
@@ -140,11 +150,29 @@ impl Component for Browser {
         let categories_query = use_package_categories(provider_id, content_type);
         let all_categories = category_list(&categories_query);
 
+        let installed = installed_map(
+            cluster_content_items(&use_cluster_content(cluster_id, content_type)),
+            &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+        );
+
         let packages = search_items(&search);
         let total = search_total(&search);
         let pending = search_pending(&search);
         let current_page = *page.read();
-        let total_pages = total.div_ceil(BROWSE_PAGE_SIZE).max(1);
+
+        // A page switch re-runs the search, which reports no total until it
+        // settles. Holding the last count keeps the pager in place — disabled
+        // while the page loads — instead of dropping out and back in.
+        let live_pages = (total > 0).then(|| total.div_ceil(BROWSE_PAGE_SIZE).max(1));
+        let mut settled_pages = use_state(|| live_pages);
+        if !pending {
+            settled_pages.set_if_modified(live_pages);
+        }
+        let pages = if pending {
+            *settled_pages.read()
+        } else {
+            live_pages
+        };
 
         let mode = *view_mode.read();
 
@@ -171,11 +199,11 @@ impl Component for Browser {
                         packages.chunks(GRID_COLUMNS).map(|c| c.to_vec()).collect();
 
                     sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
-                        grid_row(rows[i].clone(), cluster_id, &pkg).into_element()
+                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed).into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(packages.len(), LIST_ROW_H, LIST_SPACING, move |i| {
-                    list_row(packages[i].clone(), cluster_id, &pkg).into_element()
+                    list_row(packages[i].clone(), cluster_id, &pkg, &installed).into_element()
                 }),
             }
         } else if pending {
@@ -205,6 +233,10 @@ impl Component for Browser {
             .child(page_title(
                 &package_type,
                 cluster.as_ref().map(|c| c.name.clone()),
+                self.pick_cluster.then(|| ClusterPicker {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                }),
             ))
             .child(controls(provider, query, view_mode))
             .child(
@@ -233,13 +265,21 @@ impl Component for Browser {
                                     .child(results)
                                     .opacity(fade_opacity),
                             )
-                            .maybe(total > 0, |el| el.child(Pagination::new(page, total_pages))),
+                            .maybe_child(pages.map(|pages| {
+                                Pagination::new(page, pages)
+                                    .enabled(!pending)
+                                    .into_element()
+                            })),
                     ),
             )
     }
 }
 
-fn page_title(package_type: &str, cluster_name: Option<String>) -> impl IntoElement {
+fn page_title(
+    package_type: &str,
+    cluster_name: Option<String>,
+    picker: Option<ClusterPicker>,
+) -> impl IntoElement {
     rect()
         .vertical()
         .spacing(2.)
@@ -250,12 +290,89 @@ fn page_title(package_type: &str, cluster_name: Option<String>) -> impl IntoElem
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
-        .maybe_child(cluster_name.map(|name| {
-            label()
-                .text(format!("for {name}"))
-                .font_size(14.)
-                .color(colors::fg_secondary())
-        }))
+        .maybe_child(match picker {
+            Some(picker) => Some(picker.into_element()),
+            // Without the picker the cluster is fixed, so it's just a subtitle.
+            None => cluster_name.map(|name| {
+                label()
+                    .text(format!("for {name}"))
+                    .font_size(14.)
+                    .color(colors::fg_secondary())
+                    .into_element()
+            }),
+        })
+}
+
+/// The version's display name from the manifest ("Tricky Trials"), falling back
+/// to the bare version while the manifest hasn't arrived or doesn't cover it.
+fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
+    parse_mc_version(&cluster.mc_version)
+        .and_then(|parsed| {
+            pick_version_metadata(
+                metadata,
+                parsed.major,
+                parsed.key(),
+                Some(cluster.mc_loader),
+            )
+        })
+        .map(|m| m.name)
+        .unwrap_or_else(|| cluster.mc_version.clone())
+}
+
+/// Switches which cluster the browser installs into. The choice lives in the
+/// route, so going back and forward keeps the cluster that was being browsed.
+#[derive(PartialEq)]
+struct ClusterPicker {
+    cluster_id: i64,
+    package_type: String,
+}
+
+impl Component for ClusterPicker {
+    fn render(&self) -> impl IntoElement {
+        let clusters =
+            sort_clusters_for_home(settled_or_loading(&use_clusters()).unwrap_or_default());
+        let metadata = versions_metadata(&use_versions()).unwrap_or_default();
+
+        let labels: Vec<String> = clusters
+            .iter()
+            .map(|c| format!("{} · {}", c.name, version_name(&metadata, c)))
+            .collect();
+        let ids: Vec<i64> = clusters.iter().map(|c| c.id).collect();
+
+        let selected = ids
+            .iter()
+            .position(|id| *id == self.cluster_id)
+            .and_then(|idx| labels.get(idx).cloned())
+            .unwrap_or_else(|| "Select a version".to_string());
+
+        let package_type = self.package_type.clone();
+
+        rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .margin(Gaps::new(4., 0., 0., 0.))
+            .child(
+                label()
+                    .text("for")
+                    .font_size(14.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                Dropdown::new(selected, labels)
+                    .width(Size::px(240.))
+                    .height(Size::px(28.))
+                    .on_select(move |idx: usize| {
+                        if let Some(cluster_id) = ids.get(idx).copied() {
+                            let _ = RouterContext::get().replace(Route::Browser {
+                                cluster_id,
+                                package_type: package_type.clone(),
+                                pick_cluster: true,
+                            });
+                        }
+                    }),
+            )
+    }
 }
 
 fn controls(

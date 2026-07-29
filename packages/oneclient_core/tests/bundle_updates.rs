@@ -26,6 +26,23 @@ fn managed_file(enabled: bool) -> BundleFile {
     }
 }
 
+/// A file the catalog added after the cluster was last synced: nothing on the
+/// cluster tracks it, so it has no override either.
+fn newly_shipped_file() -> BundleFile {
+    BundleFile {
+        enabled: true,
+        hidden: false,
+        path: "mods/newcomer.jar".to_string(),
+        size: 1,
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: "newcomer".to_string(),
+            version_id: "v1".to_string(),
+            sha1: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        },
+    }
+}
+
 fn manifest(files: Vec<BundleFile>) -> BundleManifest {
     BundleManifest {
         name: BUNDLE.to_string(),
@@ -194,5 +211,152 @@ async fn user_disabled_mod_is_not_treated_as_a_removal() {
         check.removals_available.is_empty(),
         "a user-disabled mod is still shipped by the bundle and must not be removed: {:?}",
         check.removals_available
+    );
+}
+
+#[tokio::test]
+async fn live_bundle_takes_on_new_catalog_files() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        check.additions_available.len(),
+        1,
+        "a bundle the user still has enabled should pick up newly shipped files"
+    );
+    assert_eq!(
+        check.additions_available[0].new_file.kind.package_id(),
+        "newcomer"
+    );
+}
+
+#[tokio::test]
+async fn emptied_bundle_does_not_take_on_new_catalog_files() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    // The user disabled everything this bundle shipped, which is how you opt out
+    // of it. The newcomer has no override of its own precisely because it did not
+    // exist yet, and that absence must not read as consent.
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert!(
+        check.additions_available.is_empty(),
+        "a bundle whose content the user disabled must not reinstate itself: {:?}",
+        check
+            .additions_available
+            .iter()
+            .map(|a| a.new_file.kind.package_id())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn removed_bundle_content_does_not_take_on_new_catalog_files() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    oneclient_content::bundles::remove_artifact_from_cluster(
+        cluster_id,
+        HASH,
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert!(
+        check.additions_available.is_empty(),
+        "a bundle the user emptied by removal must not reinstate itself: {:?}",
+        check
+            .additions_available
+            .iter()
+            .map(|a| a.new_file.kind.package_id())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn opting_a_single_file_in_keeps_the_bundle_live() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        "newcomer",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        check.additions_available.len(),
+        1,
+        "an explicit opt-in is consent, even with the rest of the bundle disabled"
     );
 }

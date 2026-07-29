@@ -38,6 +38,10 @@ impl Component for SettingsMinecraft {
             let v = profile.mem_max.map(|m| m.to_string()).unwrap_or_default();
             move || v
         });
+        let jvm_args = use_state({
+            let v = profile.launch_args.clone().unwrap_or_default();
+            move || v
+        });
         let pre_launch_command = use_state({
             let v = profile.hook_pre.clone().unwrap_or_default();
             move || v
@@ -58,6 +62,7 @@ impl Component for SettingsMinecraft {
                 &width.read(),
                 &height.read(),
                 &memory.read(),
+                &jvm_args.read(),
                 &pre_launch_command.read(),
                 &wrapper_command.read(),
                 &post_exit_command.read(),
@@ -89,6 +94,14 @@ impl Component for SettingsMinecraft {
                 "The amount of memory in megabytes allocated for the game.",
                 memory_field(memory),
             ))
+            .child(settings_row(
+                IconType::Terminal,
+                "JVM Arguments",
+                "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
+                TextInput::new(jvm_args)
+                    .placeholder("-XX:+UseG1GC")
+                    .width(Size::px(220.)),
+            ))
             .child(section_header("PROCESS"))
             .child(settings_row(
                 IconType::FilePlus02,
@@ -118,11 +131,13 @@ impl Component for SettingsMinecraft {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_update(
     fullscreen: bool,
     width: &str,
     height: &str,
     memory: &str,
+    jvm_args: &str,
     pre: &str,
     wrapper: &str,
     post: &str,
@@ -144,6 +159,7 @@ fn build_update(
         force_fullscreen: Patch::Set(fullscreen),
         resolution,
         mem_max,
+        launch_args: command_patch(jvm_args),
         hook_pre: command_patch(pre),
         hook_wrapper: command_patch(wrapper),
         hook_post: command_patch(post),

@@ -1,5 +1,7 @@
 use super::*;
 
+use std::collections::HashMap;
+
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::ProjectSummary;
@@ -9,13 +11,26 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
+type InstalledMap = HashMap<(ProviderId, String), Installed>;
+
+fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
+    installed
+        .get(&(item.provider, item.id.clone()))
+        .map(|installed| installed.source)
+}
+
 pub(super) fn grid_row(
     row: Vec<ProjectSummary>,
     cluster_id: i64,
     package_type: &str,
+    installed: &InstalledMap,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = GRID_COLUMNS - row.len();
+    let installed: Vec<Option<InstallSource>> = row
+        .iter()
+        .map(|item| installed_for(installed, item))
+        .collect();
 
     rect()
         .horizontal()
@@ -23,9 +38,14 @@ pub(super) fn grid_row(
         .height(Size::px(CARD_H))
         .spacing(GRID_SPACING)
         .content(Content::Flex)
-        .children(row.into_iter().map(move |item| {
-            PackageCard::new(item, cluster_id, package_type.clone()).into_element()
-        }))
+        .children(
+            row.into_iter()
+                .zip(installed)
+                .map(move |(item, installed)| {
+                    PackageCard::new(item, cluster_id, package_type.clone(), installed)
+                        .into_element()
+                }),
+        )
         .maybe(fill > 0, move |mut el| {
             for _ in 0..fill {
                 el = el.child(rect().width(Size::flex(1.0)));
@@ -48,14 +68,21 @@ struct PackageCard {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
+    installed: Option<InstallSource>,
 }
 
 impl PackageCard {
-    fn new(item: ProjectSummary, cluster_id: i64, package_type: String) -> Self {
+    fn new(
+        item: ProjectSummary,
+        cluster_id: i64,
+        package_type: String,
+        installed: Option<InstallSource>,
+    ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
+            installed,
         }
     }
 }
@@ -151,7 +178,22 @@ impl Component for PackageCard {
                                     .color(colors::fg_secondary()),
                             ),
                     )
-                    .child(downloads_row(self.item.downloads)),
+                    .child(
+                        rect()
+                            .horizontal()
+                            .width(Size::fill())
+                            .cross_align(Alignment::Center)
+                            .content(Content::Flex)
+                            .child(downloads_row(self.item.downloads))
+                            .maybe_child(self.installed.map(|installed| {
+                                rect()
+                                    .horizontal()
+                                    .width(Size::flex(1.0))
+                                    .main_align(Alignment::End)
+                                    .child(installed_badge(installed, 10.))
+                                    .into_element()
+                            })),
+                    ),
             )
     }
 }
@@ -160,8 +202,10 @@ pub(super) fn list_row(
     item: ProjectSummary,
     cluster_id: i64,
     package_type: &str,
+    installed: &InstalledMap,
 ) -> impl IntoElement {
     ListRow {
+        installed: installed_for(installed, &item),
         item,
         cluster_id,
         package_type: package_type.to_string(),
@@ -173,6 +217,7 @@ struct ListRow {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
+    installed: Option<InstallSource>,
 }
 
 impl Component for ListRow {
@@ -252,6 +297,10 @@ impl Component for ListRow {
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
                     ),
+            )
+            .maybe_child(
+                self.installed
+                    .map(|installed| installed_badge(installed, 11.).into_element()),
             )
             .child(downloads_row(item.downloads))
     }

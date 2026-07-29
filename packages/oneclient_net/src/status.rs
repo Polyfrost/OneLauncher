@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -34,6 +34,9 @@ struct Connectivity {
     rx: watch::Receiver<ServiceStatus>,
     notify: Notify,
     started: AtomicBool,
+    /// Debug-only pin. While set, probe results are recorded but never
+    /// published, so the forced status survives a recheck.
+    forced: RwLock<Option<ServiceStatus>>,
 }
 
 fn connectivity() -> &'static Connectivity {
@@ -45,8 +48,32 @@ fn connectivity() -> &'static Connectivity {
             rx,
             notify: Notify::new(),
             started: AtomicBool::new(false),
+            forced: RwLock::new(None),
         }
     })
+}
+
+/// Pins the reported status to `status`, or releases the pin with `None` and
+/// re-probes. Exposed for the debug page: the connectivity banner is otherwise
+/// only reachable by actually taking a service down.
+pub fn force(status: Option<ServiceStatus>) {
+    let conn = connectivity();
+    *conn.forced.write().unwrap_or_else(|e| e.into_inner()) = status;
+
+    match status {
+        Some(status) => {
+            let _ = conn.tx.send(status);
+        }
+        None => request_recheck(),
+    }
+}
+
+#[must_use]
+pub fn forced() -> Option<ServiceStatus> {
+    *connectivity()
+        .forced
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
 }
 
 pub fn subscribe() -> watch::Receiver<ServiceStatus> {
@@ -78,7 +105,10 @@ pub fn start(client: RequestClient) {
 
     tokio::spawn(async move {
         loop {
-            let _ = conn.tx.send(check_service_status(&client).await);
+            let probed = check_service_status(&client).await;
+            if forced().is_none() {
+                let _ = conn.tx.send(probed);
+            }
             conn.notify.notified().await;
         }
     });

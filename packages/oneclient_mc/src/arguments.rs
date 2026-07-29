@@ -52,12 +52,47 @@ pub fn java_arguments(
     }
 
     parsed.push(format!("-Xmx{mem_max}M"));
-
-    if !custom_args.is_empty() {
-        parsed.push(custom_args);
-    }
+    parsed.extend(split_custom_args(&custom_args));
 
     Ok(parsed)
+}
+
+/// Splits a user-entered JVM argument string into individual arguments.
+///
+/// Whitespace-separated, with double quotes for values that contain spaces
+/// (`-Dfoo="a b"`), which is what people expect from every other launcher.
+/// Pushing the whole string as one argv entry, as this used to, means the JVM
+/// sees a single unrecognised option as soon as there is more than one.
+fn split_custom_args(raw: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut started = false;
+
+    for ch in raw.chars() {
+        match ch {
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            c if c.is_whitespace() && !quoted => {
+                if started {
+                    args.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            c => {
+                current.push(c);
+                started = true;
+            }
+        }
+    }
+
+    if started {
+        args.push(current);
+    }
+
+    args
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -414,4 +449,36 @@ where
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_custom_args;
+
+    #[test]
+    fn blank_input_contributes_nothing() {
+        assert!(split_custom_args("").is_empty());
+        assert!(split_custom_args("   \t ").is_empty());
+    }
+
+    #[test]
+    fn each_flag_becomes_its_own_argument() {
+        assert_eq!(
+            split_custom_args("-XX:+UseG1GC  -Xms2G"),
+            vec!["-XX:+UseG1GC", "-Xms2G"]
+        );
+    }
+
+    #[test]
+    fn quotes_hold_a_value_with_spaces_together() {
+        assert_eq!(
+            split_custom_args(r#"-Dname="My Server" -Xss1M"#),
+            vec!["-Dname=My Server", "-Xss1M"]
+        );
+    }
+
+    #[test]
+    fn an_empty_quoted_value_survives() {
+        assert_eq!(split_custom_args(r#"-Dempty="""#), vec!["-Dempty="]);
+    }
 }

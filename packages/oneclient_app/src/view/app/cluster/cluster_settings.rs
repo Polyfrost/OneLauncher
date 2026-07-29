@@ -79,6 +79,7 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -420,6 +421,7 @@ impl Component for ResolutionRow {
 
 #[derive(Clone, Copy, PartialEq)]
 enum TextField {
+    JvmArgs,
     Pre,
     Wrapper,
     Post,
@@ -428,6 +430,12 @@ enum TextField {
 impl TextField {
     fn meta(self) -> (IconType, &'static str, &'static str, &'static str) {
         match self {
+            Self::JvmArgs => (
+                IconType::Terminal,
+                "JVM Arguments",
+                "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
+                "-XX:+UseG1GC",
+            ),
             Self::Pre => (
                 IconType::FilePlus02,
                 "Pre-Launch Command",
@@ -451,6 +459,7 @@ impl TextField {
 
     fn value(self, profile: &GameSettingsProfile) -> Option<String> {
         match self {
+            Self::JvmArgs => profile.launch_args.clone(),
             Self::Pre => profile.hook_pre.clone(),
             Self::Wrapper => profile.hook_wrapper.clone(),
             Self::Post => profile.hook_post.clone(),
@@ -460,6 +469,7 @@ impl TextField {
     fn patch(self, value: Patch<String>) -> ProfileUpdate {
         let mut u = ProfileUpdate::default();
         match self {
+            Self::JvmArgs => u.launch_args = value,
             Self::Pre => u.hook_pre = value,
             Self::Wrapper => u.hook_wrapper = value,
             Self::Post => u.hook_post = value,

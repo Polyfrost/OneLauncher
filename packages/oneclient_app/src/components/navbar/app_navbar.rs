@@ -7,8 +7,12 @@ use freya::{
 use crate::{
     Route,
     components::{Avatar, Icon, IconType},
-    hooks::{try_default_account, use_current_account, use_dispatch, use_notifications_snapshot},
+    hooks::{
+        settled_or_loading, try_default_account, use_active_cluster_id, use_clusters,
+        use_current_account, use_dispatch, use_notifications_snapshot,
+    },
     theme,
+    utils::sort_clusters_for_home,
 };
 
 const NAVBAR_INTRO_MS: u64 = 460;
@@ -32,7 +36,7 @@ impl Component for Navbar {
             .width(Size::fill())
             .height(Size::px(theme::NAVBAR_HEIGHT_PX))
             .position(Position::new_absolute().top(0.).left(0.))
-            .layer(Layer::RelativeOverlay(2))
+            .layer(Layer::OverlayLevel(2))
             .child(
                 rect()
                     .width(Size::fill())
@@ -68,7 +72,8 @@ fn navbar_left() -> impl IntoElement {
 fn navbar_logo() -> impl IntoElement {
     let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-    svg(bytes.read().cloned())
+    SvgViewer::new(("logo.svg", bytes.read().cloned()))
+        .show_loader(false)
         .height(Size::px(44.))
         .width(Size::px(214.))
         .color(theme::colors::fg_primary())
@@ -76,13 +81,14 @@ fn navbar_logo() -> impl IntoElement {
 
 fn navbar_center() -> impl IntoElement {
     let route = use_route::<Route>();
+    let browse_target = browse_target();
 
     rect()
         .horizontal()
         .width(Size::flex(1.0))
         .main_align(Alignment::Center)
         .cross_align(Alignment::Center)
-        .spacing(64.)
+        .spacing(48.)
         .child(NavLink {
             active: route == Route::Home {},
             target: Route::Home {},
@@ -94,10 +100,42 @@ fn navbar_center() -> impl IntoElement {
             nav_label: "Versions",
         })
         .child(NavLink {
+            active: matches!(
+                route,
+                Route::Browser {
+                    pick_cluster: true,
+                    ..
+                }
+            ),
+            target: browse_target,
+            nav_label: "Browse",
+        })
+        .child(NavLink {
             active: route == Route::Stats {},
             target: Route::Stats {},
             nav_label: "Stats",
         })
+}
+
+/// Browsing always happens for some cluster, so the navbar picks the one the
+/// shell has active and falls back to the most recently played one. With no
+/// clusters at all there is nothing to browse for, so it points at Versions.
+fn browse_target() -> Route {
+    let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+    let active = *use_active_cluster_id().read();
+
+    let cluster_id = active
+        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
+        .or_else(|| sort_clusters_for_home(clusters).first().map(|c| c.id));
+
+    match cluster_id {
+        Some(cluster_id) => Route::Browser {
+            cluster_id,
+            package_type: "mod".to_string(),
+            pick_cluster: true,
+        },
+        None => Route::Clusters {},
+    }
 }
 
 #[derive(PartialEq)]

@@ -1,3 +1,6 @@
+use freya::animation::{
+    AnimNum, Ease, Function, OnChange, OnCreation, use_animation_with_dependencies,
+};
 use freya::prelude::*;
 
 use super::settings_page;
@@ -71,6 +74,10 @@ impl Component for SettingsChangelog {
     }
 }
 
+/// Chevron angle for a collapsed card: `ChevronDown` swung a quarter turn
+/// anticlockwise points right.
+const CHEVRON_CLOSED_DEG: f32 = -90.;
+
 #[derive(PartialEq)]
 struct ReleaseCard {
     version: String,
@@ -83,6 +90,24 @@ impl Component for ReleaseCard {
     fn render(&self) -> impl IntoElement {
         let mut open = use_state(|| self.initially_open);
         let is_open = *open.read();
+
+        // One chevron that swings between pointing right (collapsed) and down
+        // (expanded), so the arrow tracks the section instead of cutting to a
+        // different glyph that did not follow the state.
+        let swing = use_animation_with_dependencies(&is_open, |conf, open| {
+            conf.on_creation(OnCreation::Run);
+            conf.on_change(OnChange::Rerun);
+            let (from, to) = if *open {
+                (CHEVRON_CLOSED_DEG, 0.)
+            } else {
+                (0., CHEVRON_CLOSED_DEG)
+            };
+            AnimNum::new(from, to)
+                .time(180)
+                .ease(Ease::Out)
+                .function(Function::Cubic)
+        });
+        let chevron_deg = swing.get().value();
 
         let title = if self.current {
             format!("{} (Currently Installed)", self.version)
@@ -122,14 +147,7 @@ impl Component for ReleaseCard {
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
-                    .child(
-                        Icon::new(if is_open {
-                            IconType::ChevronDown
-                        } else {
-                            IconType::ChevronRight
-                        })
-                        .size(18.),
-                    ),
+                    .child(Icon::new(IconType::ChevronDown).size(18.).rotate(chevron_deg)),
             )
             .maybe_child(is_open.then(|| {
                 rect()

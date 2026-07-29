@@ -4,13 +4,129 @@ mod package;
 pub use index::Browser;
 pub use package::BrowserPackage;
 
+use std::collections::HashMap;
+
 use freya::prelude::*;
+use oneclient_content::packages::ProviderId;
+use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 
 use crate::components::{Icon, IconType};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
+
+/// How a browsed package is already present in the cluster.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum InstallSource {
+    /// Installed on its own.
+    Manual,
+    /// Comes from one of the cluster's bundles.
+    Bundled,
+}
+
+impl InstallSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Manual => "Installed",
+            Self::Bundled => "Bundled",
+        }
+    }
+
+    /// Bundled reads blue rather than green: the package is there, but the
+    /// cluster's bundle put it there, not the user.
+    fn color(self) -> Color {
+        match self {
+            Self::Manual => colors::success(),
+            Self::Bundled => colors::code_info(),
+        }
+    }
+}
+
+/// A browsed package the cluster already has.
+#[derive(Clone, PartialEq)]
+pub(crate) struct Installed {
+    pub source: InstallSource,
+    /// Which version is in there, when the provider recorded one. Used to mark
+    /// the matching row in a package's version list, never shown as text.
+    pub version_id: Option<String>,
+}
+
+impl Installed {
+    pub fn is_version(&self, version_id: &str) -> bool {
+        self.version_id.as_deref() == Some(version_id)
+    }
+}
+
+/// Indexes what the cluster already has by the project it came from, so a
+/// search result can tell at a glance whether it's in there and how it got
+/// there. Local files have no project to match a search result against and
+/// are left out, as are a bundle's external (non-provider) files.
+pub(crate) fn installed_map(
+    content: Vec<LinkedArtifactInfo>,
+    bundles: &[BundleWithUpdateStatus],
+) -> HashMap<(ProviderId, String), Installed> {
+    let mut map: HashMap<(ProviderId, String), Installed> = content
+        .into_iter()
+        .filter_map(|item| {
+            Some((
+                (item.provider?, item.project_id?),
+                Installed {
+                    source: InstallSource::Manual,
+                    version_id: item.version_id,
+                },
+            ))
+        })
+        .collect();
+
+    // Bundle membership wins: a bundle's files land in the cluster as ordinary
+    // content, so they'd otherwise read as hand-installed. The version on disk
+    // is the truth when there is one; the manifest's pin is the fallback.
+    for bundle in bundles {
+        for (file, _status) in &bundle.files {
+            if let BundleFileKind::Managed {
+                provider,
+                project_id,
+                version_id,
+                ..
+            } = &file.kind
+            {
+                map.entry((*provider, project_id.clone()))
+                    .and_modify(|installed| installed.source = InstallSource::Bundled)
+                    .or_insert_with(|| Installed {
+                        source: InstallSource::Bundled,
+                        version_id: Some(version_id.clone()),
+                    });
+            }
+        }
+    }
+
+    map
+}
+
+pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl IntoElement {
+    let color = installed.color();
+
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(4.)
+        .padding(Gaps::new_symmetric(2., 8.))
+        .corner_radius(CornerRadius::new_all(999.))
+        .background(color.with_a(38))
+        .child(
+            Icon::new(IconType::CheckCircle)
+                .size(font_size)
+                .color(color),
+        )
+        .child(
+            label()
+                .text(installed.label())
+                .font_size(font_size)
+                .max_lines(1)
+                .color(color),
+        )
+}
 
 #[derive(PartialEq)]
 pub(crate) struct Thumbnail {

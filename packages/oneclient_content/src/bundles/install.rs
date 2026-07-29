@@ -465,12 +465,16 @@ pub async fn on_user_remove_artifact(
 /// storage half and knows nothing about bundles; this adds the bookkeeping that
 /// only makes sense once bundles exist.
 #[tracing::instrument(level = "debug", skip(ctx))]
+///
+/// `live` says the cluster is currently being played; see
+/// [`PackageStore::set_artifact_enabled`].
 pub async fn toggle_artifact_enabled(
     cluster_id: i64,
     hash: &str,
+    live: bool,
     ctx: &ContentCtx,
 ) -> ContentResult<bool> {
-    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
+    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, live, ctx).await?;
 
     if enabled {
         on_user_enable_artifact(cluster_id, hash, ctx).await?;

@@ -2,7 +2,7 @@ use super::*;
 
 use freya::router::RouterContext;
 
-use crate::components::{Button, DynamicArt, Icon, IconType, ScrollArea};
+use crate::components::{ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, ScrollArea};
 use crate::hooks::ClusterBundles;
 use crate::routes::Route;
 use crate::theme::colors;
@@ -189,7 +189,7 @@ fn prefetch_art(items: &[ClusterBundles]) -> impl IntoElement {
             rect()
                 .width(Size::px(1.))
                 .height(Size::px(1.))
-                .child(DynamicArt::for_cluster(&cb.cluster).max_edge(512))
+                .child(DynamicArt::for_cluster(&cb.cluster).max_edge(ART_PREVIEW_EDGE))
                 .into_element()
         }))
         .into_element()

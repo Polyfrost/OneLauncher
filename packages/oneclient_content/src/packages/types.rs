@@ -200,6 +200,7 @@ pub struct LinkedArtifactInfo {
 	pub content_type: ContentType,
 	pub file_name: String,
 	pub project_id: Option<String>,
+	pub version_id: Option<String>,
 	pub display_name: Option<String>,
 	pub display_version: Option<String>,
 	pub provider: Option<ProviderId>,

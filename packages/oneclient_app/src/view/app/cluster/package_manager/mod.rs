@@ -6,7 +6,7 @@ use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo}
 use oneclient_db::models::OverrideType;
 
 use crate::components::{CardLayout, PackageEntry};
-use crate::hooks::{package_meta_batch, use_package_meta_batch, use_view_state};
+use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
 use views::{ContentBox, ContentKind, EnabledFilter, SortMode, toolbar_bar};
@@ -324,6 +324,10 @@ impl Component for PackageManager {
         let content_type = self.content_type;
 
         let tabs = build_tabs(&self.categories, &items);
+        // Minecraft reads its content once at startup, so a toggle made now is
+        // recorded but cannot reach the session already playing. Say so rather
+        // than letting the switch look like it did nothing.
+        let session_live = use_game_snapshot().is_active(cluster_id);
         let active = use_state(|| 0usize);
         let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
 
@@ -377,6 +381,7 @@ impl Component for PackageManager {
                 enabled_filter,
                 layout,
             ))
+            .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
             .child(ContentBox::new(
                 filtered,
                 noun_plural,

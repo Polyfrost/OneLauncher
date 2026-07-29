@@ -10,11 +10,13 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup, ScrollArea,
+    ART_PREVIEW_EDGE, AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup,
+    ScrollArea,
 };
 use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
@@ -259,6 +261,66 @@ pub(crate) fn appshell_overlay() -> Rect {
 
 pub const HOME_BACKGROUND_ASSET: &str = "backgrounds/CavesAndCliffs.jpg";
 
+/// The cluster the home background is drawn from: the active one, or the first
+/// in the list before anything is active.
+fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Cluster> {
+    active
+        .and_then(|id| clusters.iter().find(|c| c.id == id))
+        .or_else(|| clusters.first())
+}
+
+fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
+    cluster
+        .map_or_else(DynamicArt::fallback, DynamicArt::for_cluster)
+        .preview_edge(ART_PREVIEW_EDGE)
+}
+
+/// Loads the home background art as soon as the launcher is up, rather than
+/// when Home mounts.
+///
+/// The art is three async hops deep — the cluster list, then the version
+/// manifest holding its url, then the image itself — and none of them start
+/// until something subscribes. Mounted at the root, they overlap the rest of
+/// startup while the splash curtain is still up; left to Home, they run after
+/// it has lifted and show as the built-in fallback lingering on screen.
+///
+/// The queries are global and outlive this component's subscription, so Home
+/// finds them already settled and renders the real art on its first frame.
+#[derive(PartialEq, Clone, Copy)]
+pub struct HomeArtPrefetch;
+
+impl Component for HomeArtPrefetch {
+    fn render(&self) -> impl IntoElement {
+        // Before the launcher is ready every query errors out, and a settled
+        // error is not retried until a new subscriber mounts. Waiting means the
+        // inner component's hooks run once, when they can actually succeed.
+        if !use_launcher().ready {
+            return rect().into_element();
+        }
+        HomeArtWarm.into_element()
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+struct HomeArtWarm;
+
+impl Component for HomeArtWarm {
+    fn render(&self) -> impl IntoElement {
+        let clusters_query = use_clusters();
+        let art = {
+            let reader = clusters_query.read();
+            let state = reader.state();
+            // No active cluster this early, so this is the first in the list —
+            // the same one `AppHomeBackground` picks.
+            let clusters = state.ok().map_or(&[][..], Vec::as_slice);
+            home_art(home_cluster(clusters, None))
+        };
+        let _ = art.use_bytes();
+
+        rect().into_element()
+    }
+}
+
 #[derive(PartialEq, Clone, Copy)]
 pub struct AppHomeBackground;
 
@@ -290,12 +352,9 @@ impl Component for AppHomeBackground {
             let reader = clusters_query.read();
             let state = reader.state();
             let clusters = state.ok().map_or(&[][..], Vec::as_slice);
-            let chosen = (*active_id.read())
-                .and_then(|id| clusters.iter().find(|c| c.id == id))
-                .or_else(|| clusters.first());
+            let chosen = home_cluster(clusters, *active_id.read());
             let dep = chosen.map(|c| c.id);
-            let art = chosen.map_or_else(DynamicArt::fallback, DynamicArt::for_cluster);
-            (art, dep)
+            (home_art(chosen), dep)
         };
 
         let (_, art_bytes) = art.use_bytes();

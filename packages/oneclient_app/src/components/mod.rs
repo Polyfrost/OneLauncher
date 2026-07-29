@@ -44,7 +44,7 @@ pub use cluster_landscape_art::ClusterLandscapeArt;
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use context_menu::ContextMenu;
 pub use dropdown::Dropdown;
-pub use dynamic_art::DynamicArt;
+pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use file_drop::FileDropOverlay;
 pub use icons::{Icon, IconType};
 pub use java_install_manager::JavaInstallManager;

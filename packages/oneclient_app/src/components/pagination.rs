@@ -18,6 +18,7 @@ pub struct Pagination {
     page: State<usize>,
     total_pages: usize,
     window: usize,
+    enabled: bool,
 }
 
 impl Pagination {
@@ -26,6 +27,7 @@ impl Pagination {
             page,
             total_pages,
             window: 5,
+            enabled: true,
         }
     }
 
@@ -34,17 +36,26 @@ impl Pagination {
         self.window = window.max(1);
         self
     }
+
+    /// Greys out every control without unmounting the pager, for callers that
+    /// are still loading the page the user just asked for.
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
 }
 
 impl Component for Pagination {
     fn render(&self) -> impl IntoElement {
         let page = self.page;
         let total_pages = self.total_pages;
+        let interactive = self.enabled;
         let current = *page.read();
         let last = total_pages.saturating_sub(1);
 
-        let icon_btn = move |target: usize, enabled: bool, icon: IconType| {
+        let icon_btn = move |target: usize, available: bool, icon: IconType| {
             let mut page = page;
+            let enabled = available && interactive;
             Button::new()
                 .secondary()
                 .icon()
@@ -85,6 +96,7 @@ impl Component for Pagination {
                 .width(Size::px(32.))
                 .height(Size::px(32.))
                 .padding(Gaps::new_symmetric(6., 0.))
+                .enabled(interactive)
                 .on_press(move |_| page.set(target))
                 .child(
                     label()

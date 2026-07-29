@@ -89,7 +89,8 @@ impl Component for CurtainFade {
                     .vertical()
                     .spacing(14.)
                     .child(
-                        svg(logo.read().cloned())
+                        SvgViewer::new(("logo.svg", logo.read().cloned()))
+                            .show_loader(false)
                             .width(Size::px(288.))
                             .height(Size::px(60.))
                             .color(colors::fg_primary()),

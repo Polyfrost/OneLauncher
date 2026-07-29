@@ -162,6 +162,52 @@ jobs:
             exit 1
           fi
 
+      - name: (Windows) Upload unsigned app binary artifact
+        if: matrix.platform == 'windows-latest'
+        id: win_upload_unsigned_bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: oneclient-windows-binary-unsigned
+          path: target/release/oneclient_app.exe
+
+      - name: (Windows) Submit SignPath signing request for app binary
+        if: matrix.platform == 'windows-latest'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: onelauncher
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: onelauncher-binary
+          github-artifact-id: ${{ steps.win_upload_unsigned_bin.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-bin
+
+      - name: (Windows) Swap in signed app binary
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          signed="signed-bin/oneclient_app.exe"
+          if [ ! -e "$signed" ]; then
+            echo "::error::SignPath did not return signed-bin/oneclient_app.exe"
+            ls -R signed-bin || true
+            exit 1
+          fi
+          cp "$signed" target/release/oneclient_app.exe
+
+      - name: (Windows) Verify app binary is signed
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature 'target/release/oneclient_app.exe'
+          Write-Host "Authenticode status: $($sig.Status)"
+          Write-Host "Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -eq 'NotSigned') {
+            Write-Error 'oneclient_app.exe carries no Authenticode signature'
+            exit 1
+          }
+
       - name: Package
         shell: bash
         env:

@@ -3,7 +3,6 @@ use std::time::Duration;
 use freya::animation::{AnimNum, Ease, Function, use_animation};
 use freya::prelude::*;
 
-use crate::AppAssets;
 use crate::hooks::use_splash;
 use crate::theme::colors;
 
@@ -36,8 +35,6 @@ impl Component for CurtainFade {
     fn render(&self) -> impl IntoElement {
         let splash = use_splash();
         let ready = *splash.home_ready.read();
-
-        let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
         let fade = use_animation(|_| {
             AnimNum::new(1.0, 0.0)
@@ -81,27 +78,6 @@ impl Component for CurtainFade {
             .opacity(opacity)
             .background(colors::page())
             .window_drag()
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .center()
-                    .vertical()
-                    .spacing(14.)
-                    .child(
-                        SvgViewer::new(("logo.svg", logo.read().cloned()))
-                            .show_loader(false)
-                            .width(Size::px(288.))
-                            .height(Size::px(60.))
-                            .color(colors::fg_primary()),
-                    )
-                    .child(
-                        label()
-                            .text("The only Minecraft launcher you'll need.")
-                            .font_size(15.)
-                            .color(colors::fg_primary().with_a(140)),
-                    ),
-            )
             .into_element()
     }
 }

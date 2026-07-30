@@ -16,8 +16,9 @@ use oneclient_net::{RequestClient, RequestError};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary, ReleaseType,
-    SearchFilters, VersionDetail, VersionFile, VersionLookup, VersionSummary,
+    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
+    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
+    VersionSummary,
 };
 use crate::ctx::ContentCtx;
 
@@ -550,6 +551,33 @@ struct ModrinthVersion {
     files: Vec<ModrinthFile>,
     #[serde(default)]
     version_type: String,
+    #[serde(default)]
+    dependencies: Vec<ModrinthDependency>,
+}
+
+#[derive(Clone, Deserialize)]
+struct ModrinthDependency {
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    version_id: Option<String>,
+    #[serde(default)]
+    dependency_type: String,
+}
+
+impl From<ModrinthDependency> for VersionDependency {
+    fn from(d: ModrinthDependency) -> Self {
+        Self {
+            project_id: d.project_id.filter(|id| !id.is_empty()),
+            version_id: d.version_id.filter(|id| !id.is_empty()),
+            kind: match d.dependency_type.as_str() {
+                "required" => DependencyKind::Required,
+                "incompatible" => DependencyKind::Incompatible,
+                "embedded" => DependencyKind::Embedded,
+                _ => DependencyKind::Optional,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Deserialize)]
@@ -585,6 +613,7 @@ impl From<ModrinthVersion> for VersionDetail {
             published: v.date_published,
             downloads: v.downloads,
             files: v.files.into_iter().map(Into::into).collect(),
+            dependencies: v.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -646,5 +675,60 @@ fn parse_release_type(s: &str) -> ReleaseType {
         "beta" => ReleaseType::Beta,
         "alpha" => ReleaseType::Alpha,
         _ => ReleaseType::Release,
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Guards the field names against the shape Modrinth actually serves; a
+    /// rename here silently empties the dependency list.
+    #[test]
+    fn version_carries_its_dependencies() {
+        let raw = serde_json::json!({
+            "id": "abc",
+            "project_id": "sodium",
+            "name": "Sodium 0.6",
+            "version_number": "0.6",
+            "changelog": null,
+            "game_versions": ["1.21.4"],
+            "loaders": ["fabric"],
+            "date_published": "2025-01-01T00:00:00Z",
+            "downloads": 10,
+            "version_type": "release",
+            "files": [],
+            "dependencies": [
+                {"project_id": "fabric-api", "version_id": null, "dependency_type": "required"},
+                {"project_id": null, "version_id": "pinned", "dependency_type": "required"},
+                {"project_id": "sodium-extra", "version_id": null, "dependency_type": "optional"},
+                {"project_id": "optifine", "version_id": null, "dependency_type": "incompatible"},
+            ],
+        });
+
+        let version: VersionDetail = serde_json::from_value::<ModrinthVersion>(raw)
+            .expect("modrinth version")
+            .into();
+
+        assert_eq!(version.dependencies.len(), 4);
+        assert_eq!(
+            version.dependencies[0],
+            VersionDependency {
+                project_id: Some("fabric-api".into()),
+                version_id: None,
+                kind: DependencyKind::Required,
+            }
+        );
+        assert_eq!(
+            version.dependencies[1],
+            VersionDependency {
+                project_id: None,
+                version_id: Some("pinned".into()),
+                kind: DependencyKind::Required,
+            }
+        );
+        assert_eq!(version.dependencies[2].kind, DependencyKind::Optional);
+        assert_eq!(version.dependencies[3].kind, DependencyKind::Incompatible);
     }
 }

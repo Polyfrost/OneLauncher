@@ -159,6 +159,9 @@ async fn cached_version_detail(
 			size: artifact.size_bytes.unwrap_or(0) as u64,
 			fingerprint: None,
 		}],
+		// Not persisted with the release row; callers that need the dependency
+		// graph go to the provider.
+		dependencies: Vec::new(),
 	})
 }
 

@@ -142,6 +142,29 @@ pub struct VersionDetail {
 	pub published: DateTime<Utc>,
 	pub downloads: u64,
 	pub files: Vec<VersionFile>,
+	/// What the provider says this version needs alongside it. Only
+	/// [`DependencyKind::Required`] entries are pulled in automatically.
+	#[serde(default)]
+	pub dependencies: Vec<VersionDependency>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DependencyKind {
+	Required,
+	Optional,
+	Incompatible,
+	Embedded,
+}
+
+/// A provider-declared relation to another project. At least one of the two ids
+/// is set: Modrinth pins either a project, a specific version, or both, while
+/// CurseForge only ever names the project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VersionDependency {
+	pub project_id: Option<String>,
+	pub version_id: Option<String>,
+	pub kind: DependencyKind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

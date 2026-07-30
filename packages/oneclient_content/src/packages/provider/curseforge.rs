@@ -12,8 +12,9 @@ use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary, ReleaseType,
-    SearchFilters, VersionDetail, VersionFile, VersionLookup, VersionSummary,
+    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
+    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
+    VersionSummary,
 };
 use crate::ctx::ContentCtx;
 
@@ -460,6 +461,32 @@ struct CfFile {
     file_fingerprint: u32,
     download_url: String,
     file_length: u64,
+    #[serde(default)]
+    dependencies: Vec<CfDependency>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfDependency {
+    mod_id: u32,
+    relation_type: u8,
+}
+
+impl From<CfDependency> for VersionDependency {
+    fn from(d: CfDependency) -> Self {
+        Self {
+            project_id: Some(d.mod_id.to_string()),
+            version_id: None,
+            // 1 embedded library, 2 optional, 3 required, 4 tool, 5 incompatible,
+            // 6 include.
+            kind: match d.relation_type {
+                3 => DependencyKind::Required,
+                5 => DependencyKind::Incompatible,
+                1 | 6 => DependencyKind::Embedded,
+                _ => DependencyKind::Optional,
+            },
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -627,6 +654,7 @@ impl From<CfFile> for VersionDetail {
                 size: f.file_length,
                 fingerprint: Some(f.file_fingerprint.to_string()),
             }],
+            dependencies: f.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -696,5 +724,54 @@ fn cf_loader_type(loader: GameLoader) -> Option<u8> {
         GameLoader::Quilt => Some(5),
         GameLoader::NeoForge => Some(6),
         _ => None,
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Guards the camelCase contract; the relation type is a bare number, so a
+    /// mismap here quietly turns required libraries into optional ones.
+    #[test]
+    fn file_carries_its_dependencies() {
+        let raw = serde_json::json!({
+            "id": 1,
+            "modId": 2,
+            "displayName": "Sodium",
+            "fileName": "sodium.jar",
+            "releaseType": 1,
+            "fileDate": "2025-01-01T00:00:00Z",
+            "downloadCount": 10,
+            "gameVersions": ["1.21.4"],
+            "modLoaders": [],
+            "hashes": [],
+            "fileFingerprint": 123,
+            "downloadUrl": "https://example.invalid/sodium.jar",
+            "fileLength": 100,
+            "dependencies": [
+                {"modId": 10, "relationType": 3},
+                {"modId": 11, "relationType": 2},
+                {"modId": 12, "relationType": 5},
+                {"modId": 13, "relationType": 1}
+            ]
+        });
+
+        let version: VersionDetail = serde_json::from_value::<CfFile>(raw)
+            .expect("curseforge file")
+            .into();
+
+        assert_eq!(
+            version.dependencies[0],
+            VersionDependency {
+                project_id: Some("10".into()),
+                version_id: None,
+                kind: DependencyKind::Required,
+            }
+        );
+        assert_eq!(version.dependencies[1].kind, DependencyKind::Optional);
+        assert_eq!(version.dependencies[2].kind, DependencyKind::Incompatible);
+        assert_eq!(version.dependencies[3].kind, DependencyKind::Embedded);
     }
 }

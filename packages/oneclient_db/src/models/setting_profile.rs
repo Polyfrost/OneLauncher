@@ -13,5 +13,4 @@ pub struct SettingProfileRow {
 	pub hook_wrapper: Option<String>,
 	pub hook_post: Option<String>,
 	pub os_extra: Option<String>,
-	pub perf_flags: Option<i64>,
 }

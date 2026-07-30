@@ -265,7 +265,6 @@ pub async fn launch_cluster(
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,
         java.major,
-        profile.perf_flags.unwrap_or(true),
     )?;
 
     let mut mc_args = arguments::minecraft_arguments(

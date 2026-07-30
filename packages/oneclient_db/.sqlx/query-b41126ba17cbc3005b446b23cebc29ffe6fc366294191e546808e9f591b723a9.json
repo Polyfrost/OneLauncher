@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, perf_flags\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
+  "query": "\n\t\tINSERT INTO setting_profiles (\n\t\t\tname, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t\thook_pre, hook_wrapper, hook_post, os_extra\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(name) DO UPDATE SET\n\t\t\tjava_path = excluded.java_path,\n\t\t\tresolution = excluded.resolution,\n\t\t\tforce_fullscreen = excluded.force_fullscreen,\n\t\t\tmem_max = excluded.mem_max,\n\t\t\tlaunch_args = excluded.launch_args,\n\t\t\tlaunch_env = excluded.launch_env,\n\t\t\thook_pre = excluded.hook_pre,\n\t\t\thook_wrapper = excluded.hook_wrapper,\n\t\t\thook_post = excluded.hook_post,\n\t\t\tos_extra = excluded.os_extra\n\t\tRETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n                  hook_pre, hook_wrapper, hook_post, os_extra\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,26 +123,14 @@
             "name": "os_extra"
           }
         }
-      },
-      {
-        "name": "perf_flags",
-        "ordinal": 11,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "setting_profiles",
-            "name": "perf_flags"
-          }
-        }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 11
     },
     "nullable": [
       false,
-      true,
-      true,
+      false,
       true,
       true,
       true,
@@ -154,5 +142,5 @@
       true
     ]
   },
-  "hash": "eea8944fa38835f879435dfa511737722f7a32511b386d34d7e1ead8f2cbc9a4"
+  "hash": "b41126ba17cbc3005b446b23cebc29ffe6fc366294191e546808e9f591b723a9"
 }

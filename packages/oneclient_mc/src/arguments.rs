@@ -23,7 +23,6 @@ pub fn java_arguments(
     custom_args: String,
     java_arch: &str,
     java_major: u32,
-    perf_flags: bool,
 ) -> McResult<Vec<String>> {
     let mut parsed = Vec::new();
     if let Some(args) = arguments {
@@ -53,9 +52,7 @@ pub fn java_arguments(
         parsed.push(classpaths.to_string());
     }
 
-    if perf_flags {
-        parsed.extend(performance_flags(java_major, java_arch, mem_max));
-    }
+    parsed.extend(performance_flags(java_major, java_arch, mem_max));
 
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(split_custom_args(&custom_args));

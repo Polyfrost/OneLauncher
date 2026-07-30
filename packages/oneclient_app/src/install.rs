@@ -161,6 +161,42 @@ pub async fn combined_cluster_update_spec(
 pub struct PackageInstall {
     pub session_id: Option<uuid::Uuid>,
     pub result: anyhow::Result<String>,
+    /// Required dependencies pulled in alongside the package, by display name.
+    pub dependencies: Vec<String>,
+    /// Required dependencies that couldn't be resolved or downloaded. The
+    /// package still installs; the caller says so in the notification.
+    pub missing_dependencies: Vec<String>,
+}
+
+/// "Added Sodium with 2 dependencies. Could not add: Fabric API."
+pub fn install_body(name: &str, dependencies: &[String], missing: &[String]) -> String {
+    let mut body = format!("Added {name}");
+
+    if !dependencies.is_empty() {
+        body.push_str(&format!(
+            " with {} dependenc{}",
+            dependencies.len(),
+            if dependencies.len() == 1 { "y" } else { "ies" }
+        ));
+    }
+    body.push('.');
+
+    if !missing.is_empty() {
+        body.push_str(&format!(" Could not add: {}.", missing.join(", ")));
+    }
+
+    body
+}
+
+impl PackageInstall {
+    fn failed(err: anyhow::Error) -> Self {
+        Self {
+            session_id: None,
+            result: Err(err),
+            dependencies: Vec::new(),
+            missing_dependencies: Vec::new(),
+        }
+    }
 }
 
 pub async fn install_package(
@@ -184,19 +220,88 @@ pub async fn install_package(
 
     let (project, version) = match lookup {
         Ok(found) => found,
-        Err(err) => {
-            return PackageInstall {
-                session_id: None,
-                result: Err(err),
-            };
-        }
+        Err(err) => return PackageInstall::failed(err),
     };
+
+    // Worked out before the session starts so its children can be announced up
+    // front; a failure here leaves the package itself installable.
+    let mut resolution = oneclient_content::packages::DependencyResolution::default();
+    if oneclient_content::packages::resolves_dependencies(project.content_type) {
+        match oneclient_content::packages::resolve_required(
+            provider,
+            &version,
+            cluster_id,
+            &state.services.content(),
+        )
+        .await
+        {
+            Ok(resolved) => resolution = resolved,
+            Err(err) => {
+                tracing::warn!(%err, "dependency resolution failed, installing package alone");
+            }
+        }
+    }
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
         format!("Installing {}", project.name),
     );
+
     let size = version.primary_file().map(|f| f.size).unwrap_or(0);
+    let dependency_bytes: u64 = resolution
+        .install
+        .iter()
+        .map(|dep| dep.version.primary_file().map(|f| f.size).unwrap_or(0))
+        .sum();
+    session.expect(
+        oneclient_events::TaskCategory::Packages,
+        1 + resolution.install.len() as u64,
+        size + dependency_bytes,
+    );
+
+    let mut installed_dependencies = Vec::new();
+    let mut missing_dependencies = resolution.unresolved;
+
+    // Dependencies go in first so the package is never sitting in a cluster
+    // without them, however the run ends.
+    for dependency in &resolution.install {
+        let child = session.child(
+            dependency.project.name.clone(),
+            dependency
+                .version
+                .primary_file()
+                .map(|f| f.size)
+                .unwrap_or(0),
+            oneclient_events::TaskCategory::Packages,
+        );
+
+        let result = PackageStore::install_to_cluster(
+            provider,
+            &dependency.project,
+            &dependency.version,
+            cluster_id,
+            false,
+            false,
+            Some(&child),
+            &state.services.content(),
+        )
+        .await;
+
+        child.finish();
+
+        match result {
+            Ok(_) => installed_dependencies.push(dependency.project.name.clone()),
+            Err(err) => {
+                tracing::warn!(
+                    dependency = %dependency.project.name,
+                    %err,
+                    "failed to install dependency"
+                );
+                missing_dependencies.push(dependency.project.name.clone());
+            }
+        }
+    }
+
     let child = session.child(
         project.name.clone(),
         size,
@@ -220,5 +325,7 @@ pub async fn install_package(
     PackageInstall {
         session_id: Some(session.detach()),
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
+        dependencies: installed_dependencies,
+        missing_dependencies,
     }
 }

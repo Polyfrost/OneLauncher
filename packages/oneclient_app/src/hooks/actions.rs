@@ -698,7 +698,11 @@ impl Actions {
             let spec = match &install.result {
                 Ok(name) => NotificationSpec {
                     title: "Installed".to_string(),
-                    body: format!("Added {name}"),
+                    body: crate::install::install_body(
+                        name,
+                        &install.dependencies,
+                        &install.missing_dependencies,
+                    ),
                     level: Level::Info,
                     icon: Some(IconType::Download01),
                     progress: None,

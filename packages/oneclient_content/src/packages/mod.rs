@@ -1,3 +1,4 @@
+pub mod dependencies;
 pub mod error;
 pub mod metadata_cache;
 pub mod modpack;
@@ -13,6 +14,9 @@ pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, Provi
 pub use metadata_cache::{
     CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
     read_cached_package_meta,
+};
+pub use dependencies::{
+    DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };
 pub use file_identity::{curseforge_fingerprint, FileIdentity};
 pub use error::{PackageError, PackageResult};

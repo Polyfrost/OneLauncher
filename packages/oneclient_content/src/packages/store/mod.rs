@@ -493,6 +493,7 @@ mod tests {
             published: Utc::now(),
             downloads: 0,
             files: Vec::new(),
+            dependencies: Vec::new(),
         }
     }
 

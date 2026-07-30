@@ -132,6 +132,7 @@ pub struct ProfileUpdate {
     pub hook_wrapper: Patch<String>,
     pub hook_post: Patch<String>,
     pub os_extra: Patch<SettingsOsExtra>,
+    pub perf_flags: Patch<bool>,
 }
 
 impl ProfileUpdate {
@@ -151,6 +152,7 @@ impl ProfileUpdate {
         self.hook_post
             .apply_to_command_option(&mut profile.hook_post);
         self.os_extra.apply_to_option(&mut profile.os_extra);
+        self.perf_flags.apply_to_option(&mut profile.perf_flags);
     }
 }
 

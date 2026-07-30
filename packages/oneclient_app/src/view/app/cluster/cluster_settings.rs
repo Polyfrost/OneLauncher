@@ -79,11 +79,21 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(
+                        ToggleRow {
+                            cluster_id,
+                            field: BoolField::PerfFlags,
+                            value: profile.perf_flags,
+                            global: global.perf_flags.unwrap_or(true),
+                        }
+                        .into_element(),
+                    )
                     .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
                             cluster_id,
+                            field: BoolField::ForceFullscreen,
                             value: profile.force_fullscreen,
                             global: global.force_fullscreen.unwrap_or(false),
                         }
@@ -125,6 +135,7 @@ impl Component for ClusterSettings {
 #[derive(Clone, Copy, PartialEq)]
 enum Field {
     ForceFullscreen,
+    PerfFlags,
     Resolution,
     MemMax,
     JavaPath,
@@ -134,11 +145,51 @@ fn clear_update(field: Field) -> ProfileUpdate {
     let mut u = ProfileUpdate::default();
     match field {
         Field::ForceFullscreen => u.force_fullscreen = Patch::Clear,
+        Field::PerfFlags => u.perf_flags = Patch::Clear,
         Field::Resolution => u.resolution = Patch::Clear,
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
     }
     u
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum BoolField {
+    ForceFullscreen,
+    PerfFlags,
+}
+
+impl BoolField {
+    fn meta(self) -> (IconType, &'static str, &'static str) {
+        match self {
+            Self::ForceFullscreen => (
+                IconType::Maximize01,
+                "Force Fullscreen",
+                "Force Minecraft to start in fullscreen mode.",
+            ),
+            Self::PerfFlags => (
+                IconType::Rocket02,
+                "Performance JVM Flags",
+                "Tune the garbage collector, heap and string deduplication to suit this cluster's Java runtime.",
+            ),
+        }
+    }
+
+    fn patch(self, value: Patch<bool>) -> ProfileUpdate {
+        let mut u = ProfileUpdate::default();
+        match self {
+            Self::ForceFullscreen => u.force_fullscreen = value,
+            Self::PerfFlags => u.perf_flags = value,
+        }
+        u
+    }
+
+    fn field(self) -> Field {
+        match self {
+            Self::ForceFullscreen => Field::ForceFullscreen,
+            Self::PerfFlags => Field::PerfFlags,
+        }
+    }
 }
 
 fn runtime_label(runtime: &JavaRuntime) -> String {
@@ -180,6 +231,7 @@ fn override_cell(
 #[derive(PartialEq)]
 struct ToggleRow {
     cluster_id: i64,
+    field: BoolField,
     value: Option<bool>,
     global: bool,
 }
@@ -187,6 +239,7 @@ struct ToggleRow {
 impl Component for ToggleRow {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
+        let field = self.field;
         let overridden = self.value.is_some();
         let global = self.global;
         let dispatch = use_dispatch();
@@ -202,27 +255,22 @@ impl Component for ToggleRow {
                     return;
                 }
                 last.set(v);
-                dispatch.update_cluster_profile(
-                    cluster_id,
-                    ProfileUpdate {
-                        force_fullscreen: Patch::Set(v),
-                        ..Default::default()
-                    },
-                );
+                dispatch.update_cluster_profile(cluster_id, field.patch(Patch::Set(v)));
             });
         }
 
         let on_reset: EventHandler<()> = (move |()| {
             last.set(global);
             state.set(global);
-            dispatch.update_cluster_profile(cluster_id, clear_update(Field::ForceFullscreen));
+            dispatch.update_cluster_profile(cluster_id, clear_update(field.field()));
         })
         .into();
 
+        let (icon, title, description) = field.meta();
         settings_row(
-            IconType::Maximize01,
-            "Force Fullscreen",
-            "Force Minecraft to start in fullscreen mode.",
+            icon,
+            title,
+            description,
             override_cell(toggle(state), overridden, on_reset),
         )
     }

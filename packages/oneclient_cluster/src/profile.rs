@@ -17,6 +17,7 @@ pub struct GameSettingsProfile {
 	pub hook_wrapper: Option<String>,
 	pub hook_post: Option<String>,
 	pub os_extra: Option<SettingsOsExtra>,
+	pub perf_flags: Option<bool>,
 }
 
 // `Resolution` moved to oneclient_common: the launch-argument builder needs it
@@ -62,6 +63,7 @@ impl GameSettingsProfile {
 			hook_wrapper: None,
 			hook_post: None,
 			os_extra: Some(SettingsOsExtra::default()),
+			perf_flags: Some(true),
 		}
 	}
 
@@ -100,6 +102,9 @@ impl GameSettingsProfile {
 		if self.os_extra.is_none() {
 			self.os_extra = global.os_extra.clone();
 		}
+		if self.perf_flags.is_none() {
+			self.perf_flags = global.perf_flags;
+		}
 	}
 
 	pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
@@ -121,6 +126,7 @@ impl GameSettingsProfile {
 				.os_extra
 				.map(|json| serde_json::from_str(&json))
 				.transpose()?,
+			perf_flags: row.perf_flags.map(|v| v != 0),
 		})
 	}
 
@@ -144,6 +150,7 @@ impl GameSettingsProfile {
 				.as_ref()
 				.map(serde_json::to_string)
 				.transpose()?,
+			perf_flags: self.perf_flags.map(i64::from),
 		})
 	}
 }

@@ -38,6 +38,10 @@ impl Component for SettingsMinecraft {
             let v = profile.mem_max.map(|m| m.to_string()).unwrap_or_default();
             move || v
         });
+        let perf_flags = use_state({
+            let v = profile.perf_flags.unwrap_or(true);
+            move || v
+        });
         let jvm_args = use_state({
             let v = profile.launch_args.clone().unwrap_or_default();
             move || v
@@ -62,6 +66,7 @@ impl Component for SettingsMinecraft {
                 &width.read(),
                 &height.read(),
                 &memory.read(),
+                *perf_flags.read(),
                 &jvm_args.read(),
                 &pre_launch_command.read(),
                 &wrapper_command.read(),
@@ -93,6 +98,12 @@ impl Component for SettingsMinecraft {
                 "Memory",
                 "The amount of memory in megabytes allocated for the game.",
                 memory_field(memory),
+            ))
+            .child(settings_row(
+                IconType::Rocket02,
+                "Performance JVM Flags",
+                "Tune the garbage collector, heap and string deduplication to suit whichever Java runtime a cluster launches with.",
+                toggle(perf_flags),
             ))
             .child(settings_row(
                 IconType::Terminal,
@@ -137,6 +148,7 @@ fn build_update(
     width: &str,
     height: &str,
     memory: &str,
+    perf_flags: bool,
     jvm_args: &str,
     pre: &str,
     wrapper: &str,
@@ -159,6 +171,7 @@ fn build_update(
         force_fullscreen: Patch::Set(fullscreen),
         resolution,
         mem_max,
+        perf_flags: Patch::Set(perf_flags),
         launch_args: command_patch(jvm_args),
         hook_pre: command_patch(pre),
         hook_wrapper: command_patch(wrapper),

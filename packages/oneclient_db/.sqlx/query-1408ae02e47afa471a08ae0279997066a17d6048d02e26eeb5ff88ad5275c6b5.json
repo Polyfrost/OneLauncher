@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
+  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, perf_flags\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,6 +123,17 @@
             "name": "os_extra"
           }
         }
+      },
+      {
+        "name": "perf_flags",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "perf_flags"
+          }
+        }
       }
     ],
     "parameters": {
@@ -139,8 +150,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "4ab22fa481720e3bae5befee821fe1c0689d666f8bbcde98890e2d4715e9bc80"
+  "hash": "1408ae02e47afa471a08ae0279997066a17d6048d02e26eeb5ff88ad5275c6b5"
 }

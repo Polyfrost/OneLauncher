@@ -22,6 +22,8 @@ pub fn java_arguments(
     mem_max: u32,
     custom_args: String,
     java_arch: &str,
+    java_major: u32,
+    perf_flags: bool,
 ) -> McResult<Vec<String>> {
     let mut parsed = Vec::new();
     if let Some(args) = arguments {
@@ -51,10 +53,50 @@ pub fn java_arguments(
         parsed.push(classpaths.to_string());
     }
 
+    if perf_flags {
+        parsed.extend(performance_flags(java_major, java_arch, mem_max));
+    }
+
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(split_custom_args(&custom_args));
 
     Ok(parsed)
+}
+
+#[must_use]
+pub fn performance_flags(java_major: u32, java_arch: &str, mem_max: u32) -> Vec<String> {
+    let mut flags = vec![format!("-Xms{mem_max}M")];
+
+    if (7..=8).contains(&java_major) {
+        flags.push("-XX:+UseG1GC".to_string());
+    } else if java_major >= 21 && is_64_bit(java_arch) {
+        flags.push("-XX:+UseZGC".to_string());
+        if java_major <= 22 {
+            flags.push("-XX:+ZGenerational".to_string());
+        }
+        if java_major == 24 {
+            flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
+        }
+        if java_major >= 24 {
+            flags.push("-XX:+UseCompactObjectHeaders".to_string());
+        }
+    }
+
+    // Arrived in 8u20, so Java 7 is the one runtime that would reject it. Where
+    // the selected collector does not support dedup - anything but G1 before 18
+    // - the JVM ignores the flag instead of refusing to start, verified on 8.
+    if java_major >= 8 {
+        flags.push("-XX:+UseStringDeduplication".to_string());
+    }
+
+    flags
+}
+
+fn is_64_bit(java_arch: &str) -> bool {
+    matches!(
+        java_arch,
+        "amd64" | "x86_64" | "x64" | "aarch64" | "arm64" | "ppc64le" | "s390x" | "riscv64"
+    )
 }
 
 /// Splits a user-entered JVM argument string into individual arguments.
@@ -453,7 +495,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::split_custom_args;
+    use super::{performance_flags, split_custom_args};
 
     #[test]
     fn blank_input_contributes_nothing() {
@@ -480,5 +522,113 @@ mod tests {
     #[test]
     fn an_empty_quoted_value_survives() {
         assert_eq!(split_custom_args(r#"-Dempty="""#), vec!["-Dempty="]);
+    }
+
+    #[test]
+    fn a_java_8_runtime_gets_g1() {
+        assert_eq!(
+            performance_flags(8, "amd64", 4096),
+            vec!["-Xms4096M", "-XX:+UseG1GC", "-XX:+UseStringDeduplication"]
+        );
+    }
+
+    #[test]
+    fn the_versions_told_to_upgrade_get_no_collector() {
+        for major in [9, 11, 17, 20] {
+            let flags = performance_flags(major, "amd64", 4096);
+            assert_eq!(
+                flags,
+                vec!["-Xms4096M", "-XX:+UseStringDeduplication"],
+                "java {major} should get a fixed heap and no collector flag"
+            );
+        }
+    }
+
+    #[test]
+    fn a_32_bit_runtime_never_gets_zgc() {
+        for arch in ["x86", "arm", "i386", "unknown"] {
+            let flags = performance_flags(25, arch, 4096);
+            assert!(
+                !flags.iter().any(|f| f.contains("UseZGC")),
+                "{arch} must not select a collector it cannot load"
+            );
+            assert_eq!(flags, vec!["-Xms4096M", "-XX:+UseStringDeduplication"]);
+        }
+    }
+
+    #[test]
+    fn zgc_is_asked_for_a_young_generation_only_before_23() {
+        assert!(performance_flags(21, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(performance_flags(22, "aarch64", 4096).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(!performance_flags(23, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(!performance_flags(25, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
+    }
+
+    #[test]
+    fn compact_headers_are_unlocked_only_on_24() {
+        for major in [21, 23] {
+            assert!(
+                !performance_flags(major, "amd64", 4096)
+                    .contains(&"-XX:+UseCompactObjectHeaders".to_string()),
+                "java {major} predates compact object headers"
+            );
+        }
+
+        let j24 = performance_flags(24, "amd64", 4096);
+        let unlock = j24
+            .iter()
+            .position(|f| f == "-XX:+UnlockExperimentalVMOptions")
+            .expect("24 needs the unlock flag");
+        let compact = j24
+            .iter()
+            .position(|f| f == "-XX:+UseCompactObjectHeaders")
+            .expect("24 supports compact headers");
+        assert!(
+            unlock < compact,
+            "the unlock flag must precede the option it unlocks"
+        );
+
+        let j25 = performance_flags(25, "amd64", 4096);
+        assert!(j25.contains(&"-XX:+UseCompactObjectHeaders".to_string()));
+        assert!(!j25.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()));
+    }
+
+    #[test]
+    fn only_java_7_is_denied_string_deduplication() {
+        assert!(
+            !performance_flags(7, "amd64", 4096)
+                .contains(&"-XX:+UseStringDeduplication".to_string())
+        );
+        for major in [8, 17, 21, 24, 25] {
+            assert!(
+                performance_flags(major, "amd64", 4096)
+                    .contains(&"-XX:+UseStringDeduplication".to_string()),
+                "java {major} should deduplicate strings"
+            );
+        }
+    }
+
+    #[test]
+    fn a_modern_runtime_gets_the_full_set() {
+        assert_eq!(
+            performance_flags(25, "aarch64", 4096),
+            vec![
+                "-Xms4096M",
+                "-XX:+UseZGC",
+                "-XX:+UseCompactObjectHeaders",
+                "-XX:+UseStringDeduplication"
+            ]
+        );
+    }
+
+    #[test]
+    fn every_tier_pins_the_heap_to_the_memory_setting() {
+        for major in [8, 17, 21, 25] {
+            assert_eq!(
+                performance_flags(major, "amd64", 8192).first().unwrap(),
+                "-Xms8192M",
+                "java {major} should start at the memory setting"
+            );
+        }
     }
 }

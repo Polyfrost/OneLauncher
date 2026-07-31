@@ -1,6 +1,31 @@
+/// Renders an error together with every `source()` beneath it.
+///
+/// `reqwest::Error`'s own `Display` stops at "error sending request for url
+/// (...)". The fact that actually names the failure — a rustls handshake
+/// alert, an untrusted certificate, a DNS lookup failure, `ECONNREFUSED` —
+/// lives further down the chain, so without this every transport failure in a
+/// user report reads identically and is undiagnosable.
+#[must_use]
+pub fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut rendered = err.to_string();
+    let mut cursor = err.source();
+
+    while let Some(cause) = cursor {
+        let text = cause.to_string();
+        // hyper and reqwest repeat the same sentence across several layers.
+        if !rendered.ends_with(&text) {
+            rendered.push_str(": ");
+            rendered.push_str(&text);
+        }
+        cursor = cause.source();
+    }
+
+    rendered
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RequestError {
-    #[error(transparent)]
+    #[error("{}", error_chain(.0))]
     ReqwestError(#[from] reqwest::Error),
 
     #[error("IO Error: {0}")]

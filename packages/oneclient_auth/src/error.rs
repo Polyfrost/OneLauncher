@@ -33,7 +33,10 @@ pub enum MinecraftAuthError {
         source: serde_json::Error,
         status_code: reqwest::StatusCode,
     },
-    #[error("failed to request using HTTP during MSA step {step:?}: {source}")]
+    // `source` is rendered through `error_chain` rather than with `{source}`:
+    // reqwest's `Display` names only the URL, and the cause we need to tell
+    // apart (certificate, handshake, DNS, refused) is under it.
+    #[error("failed to request using HTTP during MSA step {step:?}: {}", oneclient_net::error_chain(source))]
     RequestError {
         step: MinecraftAuthStep,
         #[source]

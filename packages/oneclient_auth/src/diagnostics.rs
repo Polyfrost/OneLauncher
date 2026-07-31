@@ -31,7 +31,9 @@ pub fn diagnose_auth_error(err: &MinecraftAuthError) -> Option<AuthErrorGuidance
 
         MinecraftAuthError::DeserializeError { step, .. } => guidance_for_step(*step),
 
-        MinecraftAuthError::RequestError { .. } => Some(network_guidance()),
+        MinecraftAuthError::RequestError { source, .. } => {
+            Some(network_guidance(classify_network_failure(source)))
+        }
 
         MinecraftAuthError::BrowserAuthorizationExpired
         | MinecraftAuthError::BrowserLoginNotFound => Some(AuthErrorGuidance::new(
@@ -271,7 +273,22 @@ pub fn preview_samples() -> Vec<AuthErrorSample> {
     out.push(AuthErrorSample {
         label: "Network unreachable",
         message: "error sending request for url (https://user.auth.xboxlive.com/user/authenticate): connection closed".to_string(),
-        guidance: Some(network_guidance()),
+        guidance: Some(network_guidance(NetworkFailure::Generic)),
+    });
+    out.push(AuthErrorSample {
+        label: "TLS certificate rejected",
+        message: "error sending request for url (https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode): invalid peer certificate: UnknownIssuer".to_string(),
+        guidance: Some(network_guidance(NetworkFailure::Certificate)),
+    });
+    out.push(AuthErrorSample {
+        label: "TLS handshake failed",
+        message: "error sending request for url (https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode): received fatal alert: HandshakeFailure".to_string(),
+        guidance: Some(network_guidance(NetworkFailure::Handshake)),
+    });
+    out.push(AuthErrorSample {
+        label: "DNS lookup failed",
+        message: "error sending request for url (https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode): dns error: failed to lookup address information".to_string(),
+        guidance: Some(network_guidance(NetworkFailure::Dns)),
     });
     out
 }
@@ -285,15 +302,102 @@ fn xerr(code: u64) -> MinecraftAuthError {
     }
 }
 
-fn network_guidance() -> AuthErrorGuidance {
-    AuthErrorGuidance::new(
-        "OneClient could not connect to a Microsoft, Xbox, or Minecraft service needed for sign-in. This is usually a local network, DNS, proxy, firewall, hosts file, VPN, or antivirus issue.",
-        &[
-            "Restart OneClient and try signing in again",
-            "Check that your internet connection is working",
-            "Allow OneClient through your firewall, antivirus, proxy, VPN, and hosts file rules",
-            "Try a different network, or temporarily disable VPN/proxy software if you use one",
-            "If routing or DNS is the issue, a service like Cloudflare WARP can sometimes help",
-        ],
-    )
+/// Which layer of the connection failed.
+///
+/// reqwest reports every one of these as a connect error, so the text of the
+/// source chain is the only thing that separates "your antivirus is
+/// intercepting TLS" from "your DNS is broken" — and they need different
+/// instructions. A wrong guess here costs the user a wasted support round, so
+/// anything unrecognised falls back to the generic advice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NetworkFailure {
+    Certificate,
+    Handshake,
+    Dns,
+    Generic,
+}
+
+fn classify_network_failure(err: &reqwest::Error) -> NetworkFailure {
+    let chain = oneclient_net::error_chain(err).to_ascii_lowercase();
+
+    // Certificate before handshake: a rejected certificate also aborts the
+    // handshake, and the certificate wording is the more specific of the two.
+    const CERTIFICATE: &[&str] = &[
+        "invalid peer certificate",
+        "unknownissuer",
+        "certificate",
+        "certexpired",
+        "notvalidforname",
+    ];
+    const HANDSHAKE: &[&str] = &[
+        "handshake",
+        "received fatal alert",
+        "peer misbehaved",
+        "no cipher suites in common",
+        "protocol version",
+        "unsupported protocol",
+    ];
+    const DNS: &[&str] = &[
+        "dns error",
+        "failed to lookup address",
+        "no record found",
+        "nodename nor servname",
+        "name or service not known",
+        "no such host",
+    ];
+
+    let matches = |markers: &[&str]| markers.iter().any(|marker| chain.contains(marker));
+
+    if matches(CERTIFICATE) {
+        NetworkFailure::Certificate
+    } else if matches(HANDSHAKE) {
+        NetworkFailure::Handshake
+    } else if matches(DNS) {
+        NetworkFailure::Dns
+    } else {
+        NetworkFailure::Generic
+    }
+}
+
+fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
+    match failure {
+        NetworkFailure::Certificate => AuthErrorGuidance::new(
+            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection — usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
+            &[
+                "Turn off HTTPS/SSL scanning in your antivirus (often called \"encrypted connection scanning\", \"web shield\", or \"SSL interception\")",
+                "Temporarily disable your VPN or proxy and try signing in again",
+                "If you are on a school or workplace network, try a home network or phone hotspot to confirm",
+                "Check that your system date, time, and time zone are correct",
+            ],
+        ),
+        NetworkFailure::Handshake => AuthErrorGuidance::new(
+            "OneClient reached the Microsoft sign-in service, but the two could not agree on a secure connection. This normally means a proxy, filter, or antivirus in between is using outdated encryption settings.",
+            &[
+                "Turn off HTTPS/SSL scanning in your antivirus and try signing in again",
+                "Temporarily disable your VPN or proxy software",
+                "If you are on a school or workplace network, try a home network or phone hotspot to confirm",
+                "Make sure OneClient is up to date",
+            ],
+        ),
+        NetworkFailure::Dns => AuthErrorGuidance::new(
+            "OneClient could not look up the address of the Microsoft sign-in service. This is a DNS problem on this machine or network, not a problem with your account.",
+            &[
+                "Check that your internet connection is working",
+                "Temporarily disable your VPN or proxy and try signing in again",
+                "Check your hosts file for entries blocking Microsoft or Minecraft domains",
+                "Try a different DNS server, such as Cloudflare (1.1.1.1) or Google (8.8.8.8)",
+                "Restart OneClient and try signing in again",
+            ],
+        ),
+        NetworkFailure::Generic => AuthErrorGuidance::new(
+            "OneClient could not connect to a Microsoft, Xbox, or Minecraft service needed for sign-in. This is usually a local network, DNS, proxy, firewall, hosts file, VPN, or antivirus issue.",
+            &[
+                "Restart OneClient and try signing in again",
+                "Check that your internet connection is working",
+                "Allow OneClient through your firewall, antivirus, proxy, VPN, and hosts file rules",
+                "Try a different network, or temporarily disable VPN/proxy software if you use one",
+                "If routing or DNS is the issue, a service like Cloudflare WARP can sometimes help",
+            ],
+        ),
+    }
 }

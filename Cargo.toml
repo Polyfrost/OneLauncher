@@ -92,8 +92,6 @@ reqwest = {version = "=0.13.3", default-features = false, features = [
   "system-proxy",
 ]}
 reqwest-websocket = {version = "=0.6.0"}
-# Fallback trust roots for Windows. See `oneclient_net::service` for why.
-webpki-root-certs = {version = "=1.0.9"}
 tokio = {version = "=1.52.3", features = ["full"]}
 tokio-stream = {version = "=0.1.18", features = ["full"]}
 tokio-util = {version = "=0.7.18", features = ["full"]}

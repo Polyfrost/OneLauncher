@@ -81,36 +81,6 @@ fn apply_curseforge_auth(
     Ok(())
 }
 
-/// Adds the bundled Mozilla roots as a fallback behind the Windows trust store.
-///
-/// This does not replace the system store. `rustls-platform-verifier` builds
-/// the chain against Windows first and only retries with these roots when that
-/// came back untrusted or partial, so an intercepting proxy or an
-/// enterprise-installed CA still works exactly as before.
-///
-/// It matters because Windows populates its root store lazily from Windows
-/// Update. On a machine where root auto-update is disabled by policy — routine
-/// on managed school and workplace images — or on a trimmed-down install, a
-/// root that the rest of the world has can simply be absent. Every other
-/// client those users try carries its own roots (Chrome since 105, Firefox via
-/// NSS, Java-based launchers via `cacerts`), so sign-in works everywhere
-/// except here. macOS and Linux do not have this failure mode, and adding
-/// roots there would be additive rather than a fallback, so this is Windows
-/// only.
-#[cfg(target_os = "windows")]
-fn add_fallback_roots(mut builder: ClientBuilder) -> ClientBuilder {
-    for der in webpki_root_certs::TLS_SERVER_ROOT_CERTS {
-        match reqwest::Certificate::from_der(der) {
-            Ok(root) => builder = builder.add_root_certificate(root),
-            // A malformed entry would be a bug in the bundle, not something the
-            // user can act on. Dropping one root beats failing to build a client.
-            Err(err) => tracing::warn!("skipping malformed fallback root: {err}"),
-        }
-    }
-
-    builder
-}
-
 #[derive(Clone)]
 pub struct RequestClient {
     client: reqwest::Client,
@@ -150,14 +120,24 @@ impl RequestClient {
                 env!("CARGO_PKG_HOMEPAGE")
             ));
 
+        // reqwest defaults this to `cfg!(feature = "hickory-dns")`, so enabling
+        // the feature turns hickory on for *every* platform. Leaving it unset
+        // on Windows does not opt out — it has to be switched off explicitly.
+        //
+        // It has to be off there because hickory reads UDP responses into a
+        // fixed buffer, and Windows fails an oversized datagram with
+        // WSAEMSGSIZE (10040) instead of truncating it the way Unix does. A DNS
+        // reply that Linux and macOS truncate and retry over TCP is an outright
+        // lookup failure on Windows, so sign-in broke for whichever users had a
+        // resolver returning large enough answers.
+        #[cfg(target_os = "windows")]
+        {
+            builder = builder.no_hickory_dns();
+        }
+
         #[cfg(not(target_os = "windows"))]
         {
             builder = builder.hickory_dns(true);
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            builder = add_fallback_roots(builder);
         }
 
         let client = builder.build()?;

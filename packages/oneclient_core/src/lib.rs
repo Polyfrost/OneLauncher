@@ -14,6 +14,7 @@ pub mod migration;
 pub mod recovery;
 pub mod reporting;
 pub mod settings;
+pub mod storage;
 pub mod tos;
 mod state;
 pub mod versions;

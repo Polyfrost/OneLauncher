@@ -31,6 +31,6 @@ pub use oneclient_mc::{
     libraries_missing, plan_downloads, resolve_minecraft_version, validate_rules,
 };
 pub use shared_dir::{
-    clear_shared_content, import_manual_content, link_cluster_logs, sync_shared_content,
+    dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,
     unlink_cluster_logs, write_allowed_symlinks,
 };

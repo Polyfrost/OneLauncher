@@ -556,7 +556,7 @@ async fn reconcile_update(
 ) -> ContentResult<()> {
     let file_id = update.new_file.kind.package_id();
     if should_be_disabled(&update.bundle_name, &file_id, overrides) {
-        toggle_artifact_enabled(update.cluster_id, hash, false, ctx).await?;
+        toggle_artifact_enabled(update.cluster_id, hash, ctx).await?;
     }
 
     if hash == update.installed_hash {
@@ -575,7 +575,7 @@ async fn reconcile_addition(
 ) -> ContentResult<()> {
     let file_id = addition.new_file.kind.package_id();
     if should_be_disabled(&addition.bundle_name, &file_id, overrides) {
-        toggle_artifact_enabled(addition.cluster_id, hash, false, ctx).await?;
+        toggle_artifact_enabled(addition.cluster_id, hash, ctx).await?;
     }
 
     Ok(())

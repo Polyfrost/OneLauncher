@@ -70,6 +70,31 @@ pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
 	Ok(launcher_dir()?.join(".minecraft"))
 }
 
+/// Marks a cluster folder as being its own game directory rather than playing
+/// out of the shared `.minecraft`.
+pub const DEDICATED_MARKER: &str = ".dedicated_directory";
+
+pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
+	Ok(clusters_dir()?.join(folder_name))
+}
+
+pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
+	cluster_dir(folder_name).is_ok_and(|dir| dir.join(DEDICATED_MARKER).exists())
+}
+
+/// Where a cluster's game actually runs.
+///
+/// Lives here rather than on `Cluster` because the content layer has to resolve
+/// it from a bare `ClusterRow` too, and a second copy of the marker-file rule is
+/// exactly the kind of drift that leaves files behind.
+pub fn cluster_game_dir(folder_name: &str) -> PathsResult<PathBuf> {
+	if cluster_uses_dedicated_dir(folder_name) {
+		cluster_dir(folder_name)
+	} else {
+		shared_minecraft_dir()
+	}
+}
+
 pub fn packages_cache_dir() -> PathsResult<PathBuf> {
 	Ok(launcher_dir()?.join("metadata").join("packages"))
 }

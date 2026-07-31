@@ -49,6 +49,10 @@ pub async fn insert_artifact(
 	.await
 }
 
+/// Drops an artifact's row when no cluster refers to it any more.
+///
+/// `provider_releases` cascades, so the metadata goes with it. The cached file
+/// is the caller's to delete — this layer does not touch the disk.
 pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
 	let linked: (i64,) = sqlx::query_as(
 		"SELECT COUNT(*) FROM cluster_artifacts WHERE hash = ?",
@@ -66,6 +70,33 @@ pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<
 		.await?;
 
 	Ok(true)
+}
+
+/// Every artifact no cluster refers to any more.
+///
+/// Clusters are deleted with an `ON DELETE CASCADE` on `cluster_artifacts`, and
+/// bundle updates swap one version for another, so artifacts are orphaned in
+/// bulk and in places too far from the store to evict them one at a time.
+pub async fn list_unused_artifacts(pool: &SqlitePool) -> Result<Vec<ArtifactRow>, sqlx::Error> {
+	sqlx::query_as::<_, ArtifactRow>(
+		r#"
+		SELECT hash, content_type, path, file_name, size_bytes
+		FROM artifacts
+		WHERE hash NOT IN (SELECT hash FROM cluster_artifacts)
+		"#,
+	)
+	.fetch_all(pool)
+	.await
+}
+
+/// The stored path of every artifact, used to spot cached files that no row
+/// accounts for.
+pub async fn list_artifact_paths(pool: &SqlitePool) -> Result<Vec<String>, sqlx::Error> {
+	let rows: Vec<(String,)> = sqlx::query_as("SELECT path FROM artifacts")
+		.fetch_all(pool)
+		.await?;
+
+	Ok(rows.into_iter().map(|(path,)| path).collect())
 }
 
 #[allow(clippy::too_many_arguments)]

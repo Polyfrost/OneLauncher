@@ -12,8 +12,7 @@ use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 use oneclient_common::domain::{ContentType, GameLoader};
-use crate::packages::error::PackageError;
-use crate::packages::store::{PackageStore, unlink_cluster_file};
+use crate::packages::store::{PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
 use crate::ctx::ContentCtx;
 
@@ -188,22 +187,17 @@ pub async fn install_enabled_bundle_files(
     let bundle_name = archive.manifest.name.clone();
     let mut installed = Vec::new();
 
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
     let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let clusters_dir = oneclient_common::paths::clusters_dir()?;
+    // "Already installed" is what the database says, not what is on disk right
+    // now: content lives in the cache between sessions, so probing the folder
+    // would report every package as missing and reinstall the whole bundle.
     for info in &linked {
-        let path = clusters_dir
-            .join(&cluster.folder_name)
-            .join(info.content_type.folder_name())
-            .join(&info.cluster_file_name);
-        if path.exists() {
-            if let Some(pid) = &info.project_id {
-                linked_projects.insert(pid.as_str());
-            }
-            linked_hashes.insert(info.hash.as_str());
+        if let Some(pid) = &info.project_id {
+            linked_projects.insert(pid.as_str());
         }
+        linked_hashes.insert(info.hash.as_str());
     }
 
     let to_install: Vec<BundleFile> = archive
@@ -465,16 +459,12 @@ pub async fn on_user_remove_artifact(
 /// storage half and knows nothing about bundles; this adds the bookkeeping that
 /// only makes sense once bundles exist.
 #[tracing::instrument(level = "debug", skip(ctx))]
-///
-/// `live` says the cluster is currently being played; see
-/// [`PackageStore::set_artifact_enabled`].
 pub async fn toggle_artifact_enabled(
     cluster_id: i64,
     hash: &str,
-    live: bool,
     ctx: &ContentCtx,
 ) -> ContentResult<bool> {
-    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, live, ctx).await?;
+    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
 
     if enabled {
         on_user_enable_artifact(cluster_id, hash, ctx).await?;
@@ -542,26 +532,39 @@ pub async fn remove_artifact_from_cluster(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let bundle_data = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?;
+
+    // Everything needed for the eager folder cleanup is looked up first, but
+    // none of it is allowed to block the removal itself. A package whose
+    // artifact row has gone missing still has to be removable.
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    let artifact = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+    let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
-        .ok_or(PackageError::ArtifactMissing(hash.to_string()))?;
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
 
-    let content_type = ContentType::from_repr(artifact.content_type as u8).ok_or_else(|| {
-        ContentError::InvalidData {
-            reason: format!("unknown content type {}", artifact.content_type),
-        }
-    })?;
-
-    if let Some(link) = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id)
+    let link = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id)
         .await?
         .into_iter()
-        .find(|l| l.hash == hash)
-    {
-        unlink_cluster_file(&cluster, content_type, &link.cluster_file_name).await?;
+        .find(|l| l.hash == hash);
+
+    // The database first, and unconditionally. Removal used to delete the file
+    // before dropping the row, so a jar held open by a running game — on Windows
+    // that blocks deleting every hard link to it — failed the whole operation
+    // and left the package installed. Dropping the row always succeeds, and the
+    // game folder is rebuilt from the database at the next launch.
+    artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+    // Then a best-effort pass at the folder so it matches straight away when
+    // nothing is holding the file. Failure here is not an error.
+    if let (Some(content_type), Some(link)) = (target, link) {
+        try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
     }
 
-    artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+    // The cache is where the package actually lives, so it goes too once the
+    // last cluster stops asking for it. Still installed elsewhere means still
+    // needed, which `evict_if_unused` checks for us.
+    if let Err(err) = evict_if_unused(hash, ctx).await {
+        tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
+    }
 
     if let Some(tracked) = bundle_data
         && let (Some(bundle_name), Some(package_id)) =

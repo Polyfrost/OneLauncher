@@ -8,6 +8,7 @@ mod java;
 mod language;
 mod launcher;
 mod minecraft;
+mod storage;
 
 use freya::prelude::*;
 
@@ -20,6 +21,7 @@ pub use java::SettingsJava;
 pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
 pub use minecraft::SettingsMinecraft;
+pub use storage::SettingsStorage;
 
 use crate::{
     components::{Icon, IconType},

@@ -18,7 +18,7 @@ use crate::view::{
         },
         settings::{
             SettingsApis, SettingsAppearance, SettingsChangelog, SettingsDeveloper, SettingsJava,
-            SettingsLanguage, SettingsLauncher, SettingsMinecraft,
+            SettingsLanguage, SettingsLauncher, SettingsMinecraft, SettingsStorage,
         },
     },
     onboarding::{
@@ -100,6 +100,8 @@ pub enum Route {
                 SettingsLauncher {},
                 #[route("/app/settings/java")]
                 SettingsJava {},
+                #[route("/app/settings/storage")]
+                SettingsStorage {},
                 #[route("/app/settings/apis")]
                 SettingsApis {},
                 #[route("/app/settings/language")]
@@ -149,6 +151,7 @@ impl Route {
             Route::SettingsMinecraft { .. } => "Minecraft Settings".to_string(),
             Route::SettingsLauncher { .. } => "Launcher Settings".to_string(),
             Route::SettingsJava { .. } => "Java".to_string(),
+            Route::SettingsStorage { .. } => "Storage".to_string(),
             Route::SettingsApis { .. } => "APIs".to_string(),
             Route::SettingsLanguage { .. } => "Language".to_string(),
             Route::SettingsDeveloper { .. } => "Developer Options".to_string(),

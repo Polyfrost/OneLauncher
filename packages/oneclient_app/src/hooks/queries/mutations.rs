@@ -79,16 +79,13 @@ impl MutationCapability for ClusterMutation {
         let content = &state.services.content();
         let result = match keys {
             ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                // A live session holds the cluster's files open, so the toggle
-                // is recorded now and lands in the folder at the next launch.
-                oneclient_core::toggle_artifact_enabled(
-                    *cluster_id,
-                    hash,
-                    state.games.is_active(*cluster_id),
-                    content,
-                )
-                .await
-                .map(|_| ())
+                // Recorded in the database and applied to the game folder at the
+                // next launch, whether or not a session is live: Minecraft reads
+                // its mods once at startup, so there is nothing a mid-session
+                // write could achieve.
+                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
+                    .await
+                    .map(|_| ())
             }
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await

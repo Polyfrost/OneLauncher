@@ -163,6 +163,22 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 			} else {
 				background.services.events.signal(oneclient_events::Signal::ClustersChanged);
 			}
+
+			// Last, so it runs against a database that recovery, bundle tracking
+			// and provisioning have all finished settling. Judging an artifact
+			// unused before the rows that use it have been restored would evict
+			// content that is very much still wanted.
+			//
+			// Only the row-driven half runs unattended. Deciding from the
+			// filesystem which cached files nothing points at is the half that can
+			// misread a half-reconstructed install, so it lives behind the Storage
+			// settings page where the user sees what it proposes to delete.
+			if let Err(err) =
+				oneclient_content::packages::store::collect_unused_artifacts(&content).await
+			{
+				tracing::warn!("package cache cleanup failed: {err:#}");
+			}
+
 		background.services.events.signal(oneclient_events::Signal::SyncComplete);
 	});
 }

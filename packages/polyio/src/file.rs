@@ -99,6 +99,26 @@ pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> PolyIOResult<(
 		})
 }
 
+/// Removes an empty directory, failing if anything is still in it.
+///
+/// The refusal is the point: it makes "remove this if it is empty" a single
+/// atomic step, with no read-then-delete window for something to appear in.
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
+	let path = path.as_ref();
+
+	tokio::fs::remove_dir(path)
+		.await
+		.map_err(|e| IOError::PathIOError {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})
+}
+
 /// Checks if a path exists
 #[tracing::instrument(
     level = "debug",

@@ -21,6 +21,7 @@ fn is_sidebar_route(route: &Route) -> bool {
             | Route::SettingsMinecraft {}
             | Route::SettingsLauncher {}
             | Route::SettingsJava {}
+            | Route::SettingsStorage {}
             | Route::SettingsApis {}
             | Route::SettingsLanguage {}
             | Route::SettingsDeveloper {}

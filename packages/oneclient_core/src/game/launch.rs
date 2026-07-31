@@ -213,23 +213,15 @@ pub async fn launch_cluster(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
-    // Settle any enable/disable made while a previous session held these files
-    // open. Shared clusters get their game dir rebuilt from the database below
-    // anyway; this is what makes the cluster folder itself — and so a dedicated
-    // cluster's game dir — agree with what the UI has been showing.
-    if let Err(err) = oneclient_content::packages::PackageStore::reconcile_cluster_links(
-        cluster_id,
-        &state.services.content(),
-    )
-    .await
-    {
-        tracing::warn!(cluster_id, error = %err, "failed to reconcile cluster content links");
+    // The one moment nothing is holding the content open: put what the database
+    // says into the game dir, and clear out what it no longer says. This is
+    // where a package removed or disabled mid-session actually leaves the
+    // folder, for dedicated and shared clusters alike.
+    if let Err(err) = crate::game::materialize_content(&state.services, &cluster, &cwd).await {
+        tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
     }
 
     if !dedicated {
-        if let Err(err) = crate::game::sync_shared_content(&state.services, &cluster, &cwd).await {
-            tracing::warn!(cluster_id, error = %err, "failed to sync shared content");
-        }
         // Redirect the shared dir's `logs`/`crash-reports` into this cluster's
         // own folder so its output is attributable while it plays; unlinked on
         // exit. Keeps the shared `.minecraft` (and the launcher's own logs dir)
@@ -504,9 +496,14 @@ pub(crate) async fn finalize_session(
 
     run_hook(post_hook, cwd).await;
 
-    if !dedicated {
+    if dedicated {
+        // The folder stays materialized between sessions so it remains a real
+        // Minecraft directory for external tools; the next launch reconciles it.
+        // Adopting drop-ins now just means the UI is right the moment the game
+        // closes rather than at the next launch.
         crate::game::import_manual_content(&state.services, cluster, cwd).await;
-        if let Err(err) = crate::game::clear_shared_content(&state.services, cluster, cwd).await {
+    } else {
+        if let Err(err) = crate::game::dematerialize_content(&state.services, cluster, cwd).await {
             tracing::warn!(cluster_id, error = %err, "failed to clear shared content on exit");
         }
         crate::game::unlink_cluster_logs(cwd).await;

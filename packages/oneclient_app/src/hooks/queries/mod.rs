@@ -32,6 +32,7 @@ mod screenshots;
 mod settings_profiles;
 mod skin;
 mod state;
+mod storage;
 mod tos;
 mod version_metadata;
 mod versions;
@@ -44,7 +45,7 @@ pub use auth::{
     CancelMicrosoftLoginMutation, FinishMicrosoftLoginMutation, RefreshAccountKeys,
     RemoveAccountKeys, SetDefaultAccountKeys, UseRefreshAccount, UseRemoveAccount,
     UseSetDefaultAccount, accounts_have_microsoft, login_code_already_handled, mutation_error,
-    mutation_is_pending, reset_login_code_dedup, try_account, try_accounts, try_default_account,
+    mutation_is_pending, mutation_is_running, reset_login_code_dedup, try_account, try_accounts, try_default_account,
     use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
     use_begin_microsoft_login, use_cancel_microsoft_login, use_current_account,
     use_default_account, use_finish_microsoft_login, use_refresh_account, use_refresh_all_accounts,
@@ -71,6 +72,10 @@ pub use logs::{
     use_log_action, use_log_content, use_upload_log,
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
+pub use storage::{
+    StorageAction, StorageActionMutation, StorageReportQuery, UseStorageAction,
+    invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
+};
 pub use mutations::{
     ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
 };

@@ -8,6 +8,7 @@ use oneclient_db::DbPool;
 use strum::IntoEnumIterator;
 
 use crate::clusters::ClusterStage;
+use oneclient_content::packages::PackageStore;
 use polyio::sha1_file;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_common::paths;
@@ -234,6 +235,12 @@ async fn adopt_cluster(
 	Ok(())
 }
 
+/// Adopts the content sitting in a rediscovered cluster's folders.
+///
+/// Files are taken *into the artifact cache* rather than indexed where they lie.
+/// An artifact's `path` has to resolve to the cache, because that is the only
+/// place the launcher materializes content from; a row pointing back into a
+/// cluster folder would break the moment that folder was tidied.
 #[tracing::instrument(level = "debug", skip(state, report))]
 async fn relink_cluster_files(
 	state: &LauncherState,
@@ -242,8 +249,8 @@ async fn relink_cluster_files(
 	report: &mut RecoveryReport,
 ) -> LauncherResult<()> {
 	let pool = &state.services.db;
-	let launcher_dir = paths::launcher_dir()?;
-	let cluster_root = paths::clusters_dir()?.join(folder_name);
+	let content = state.services.content();
+	let cluster_root = paths::cluster_dir(folder_name)?;
 
 	for content_type in FILE_CONTENT_TYPES {
 		let dir = cluster_root.join(content_type.folder_name());
@@ -260,32 +267,28 @@ async fn relink_cluster_files(
 			let enabled = !file_name.ends_with(".disabled");
 			let base_name = file_name.trim_end_matches(".disabled").to_string();
 
-			let hash = match sha1_file(&file).await {
-				Ok(hash) => hash,
+			let row = match PackageStore::import_local_file(
+				&file,
+				content_type,
+				cluster_id,
+				&content,
+			)
+			.await
+			{
+				Ok(row) => row,
 				Err(err) => {
-					tracing::warn!(path = %file.display(), "failed to hash cluster file: {err:#}");
+					tracing::warn!(path = %file.display(), "failed to adopt cluster file: {err:#}");
 					continue;
 				}
 			};
 
-			if artifact_dao::get_artifact_by_hash(pool, &hash).await?.is_none() {
-				let stored_path = relative_launcher_path(launcher_dir, &file);
-				let size = polyio::stat(&file).await.ok().map(|m| m.len() as i64);
-				artifact_dao::insert_artifact(
-					pool,
-					&hash,
-					content_type as i64,
-					&stored_path,
-					&base_name,
-					size,
-				)
-				.await?;
+			// `import_local_file` links under the artifact's own name, which is
+			// the `.disabled` spelling for a file the user had switched off.
+			if !enabled {
+				artifact_dao::update_cluster_artifact(pool, cluster_id, &row.hash, &base_name, 0)
+					.await?;
 			}
 
-			artifact_dao::link_cluster_artifact(pool, cluster_id, &hash, &base_name).await?;
-			if !enabled {
-				artifact_dao::update_cluster_artifact(pool, cluster_id, &hash, &base_name, 0).await?;
-			}
 			report.relinked_files += 1;
 		}
 	}

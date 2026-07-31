@@ -1,0 +1,43 @@
+name: Install cargo tool
+description: >
+  Install a cargo binary from a prebuilt release instead of compiling it from
+  source, and skip the work entirely when the Rust cache already restored it.
+inputs:
+  tool:
+    description: Crate name providing the binary (e.g. cargo-packager)
+    required: true
+  version:
+    description: Exact version to install
+    required: true
+runs:
+  using: composite
+  steps:
+    # Swatinem/rust-cache restores $CARGO_HOME/bin, so on a cache hit the tool is
+    # already here and `cargo install` would otherwise re-resolve it every run.
+    - name: Check for an already-installed ${{ inputs.tool }}
+      id: check
+      shell: bash
+      run: |
+        if cargo install --list | grep -qF "${{ inputs.tool }} v${{ inputs.version }}:"; then
+          echo "Found ${{ inputs.tool }} v${{ inputs.version }} in \$CARGO_HOME/bin"
+          echo "installed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "installed=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Setup cargo-binstall
+      if: steps.check.outputs.installed == 'false'
+      uses: cargo-bins/cargo-binstall@main
+
+    - name: Install ${{ inputs.tool }}
+      if: steps.check.outputs.installed == 'false'
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        # Prebuilt download takes seconds; building cargo-packager from source
+        # takes minutes on every leg of the matrix. Fall back to a source build
+        # so a missing prebuilt artifact can never break a release.
+        cargo binstall --no-confirm "${TOOL}@${VERSION}" \
+          || cargo install "${TOOL}" --version "${VERSION}" --locked

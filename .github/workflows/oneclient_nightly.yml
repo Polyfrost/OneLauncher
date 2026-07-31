@@ -68,8 +68,10 @@ jobs:
             libfuse2
 
       - name: Install cargo-packager
-        shell: bash
-        run: cargo install cargo-packager --version 0.11.8 --locked
+        uses: ./.github/actions/install-cargo-tool
+        with:
+          tool: cargo-packager
+          version: 0.11.8
 
       - name: Build release binary
         shell: bash
@@ -114,12 +116,18 @@ jobs:
             echo "dir=target/release" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: (Linux) Install cargo-generate-rpm
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: ./.github/actions/install-cargo-tool
+        with:
+          tool: cargo-generate-rpm
+          version: 0.21.0
+
       - name: (Linux) Build RPM
         if: matrix.platform == 'ubuntu-22.04'
         shell: bash
         run: |
           set -euo pipefail
-          cargo install cargo-generate-rpm --version 0.21.0 --locked
           cargo generate-rpm -p packages/oneclient_app
           cp target/generate-rpm/*.rpm "${{ steps.outdir.outputs.dir }}/"
 

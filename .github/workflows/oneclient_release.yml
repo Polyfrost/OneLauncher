@@ -3,10 +3,28 @@ name: OneClient Release Build
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Bump the workspace version in Cargo.toml before releasing'
+        type: choice
+        required: false
+        default: none
+        options:
+          - none
+          - patch
+          - minor
+          - major
 
-env:
-  CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
-  CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
+# NOTE: CARGO_PACKAGER_SIGN_PRIVATE_KEY* are deliberately NOT declared at
+# workflow level. Swatinem/rust-cache folds every `CARGO*`-prefixed environment
+# variable into its cache key, so a workflow-level declaration gave this workflow
+# a cache namespace that the nightly workflow could never populate — every
+# release built the whole dependency graph from scratch. They are scoped to the
+# individual steps that actually need them instead.
+
+concurrency:
+  group: oneclient-release
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -16,29 +34,125 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      sha: ${{ steps.version.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve version from Cargo.toml
-        id: version
-        shell: bash
-        run: |
-          VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=oneclient-$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Setup Rust
+        if: inputs.bump != 'none'
+        uses: ./.github/actions/setup-rust
+        with:
+          restore-cache: false
 
-      - name: Create/ensure draft release
+      - name: Resolve version, bump if requested, refuse to clobber a release
+        id: version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
+          BUMP: ${{ inputs.bump }}
+        shell: bash
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          set -euo pipefail
+
+          read_version() {
+            sed -n -E '/^\[workspace\.package\]/,/^\[/ s/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n1
+          }
+
+          VERSION="$(read_version)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read version from [workspace.package] in Cargo.toml"
+            exit 1
+          fi
+          echo "Current version: $VERSION"
+
+          if [ "$BUMP" != "none" ]; then
+            if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "::error::Version '$VERSION' is not plain semver major.minor.patch; cannot bump automatically."
+              exit 1
+            fi
+            MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
+            case "$BUMP" in
+              major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+              minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+              patch) PATCH=$((PATCH + 1)) ;;
+            esac
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+            echo "Bumping ($BUMP): $VERSION -> $NEW_VERSION"
+
+            # Only rewrite the `version` key inside [workspace.package]; the
+            # dependency pins further down the file must not be touched.
+            NEW_VERSION="$NEW_VERSION" python3 - <<'PY'
+          import os, re
+          new = os.environ["NEW_VERSION"]
+          src = open("Cargo.toml").read()
+          start = src.index("[workspace.package]")
+          end = src.find("\n[", start + 1)
+          end = len(src) if end == -1 else end
+          section, count = re.subn(
+              r'(?m)^version\s*=\s*"[^"]+"', f'version = "{new}"', src[start:end], count=1
+          )
+          assert count == 1, "no version key found in [workspace.package]"
+          open("Cargo.toml", "w").write(src[:start] + section + src[end:])
+          PY
+
+            # Workspace members inherit `version.workspace = true`, so only the
+            # lockfile's own entries for those members need refreshing.
+            cargo update --workspace --offline || cargo update --workspace
+
+            ACTUAL="$(read_version)"
+            if [ "$ACTUAL" != "$NEW_VERSION" ]; then
+              echo "::error::Version rewrite failed (Cargo.toml still reports '$ACTUAL')"
+              exit 1
+            fi
+            VERSION="$NEW_VERSION"
+          fi
+
+          TAG="oneclient-$VERSION"
+
+          # Abort rather than clobber: a published release (or an existing tag,
+          # which only appears once a release is published) means this version
+          # already shipped. A *draft* is a previous failed/partial run of this
+          # same workflow, so reuse it.
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists on origin — OneClient $VERSION has already been released. Re-run with a bump, or bump the version in Cargo.toml."
+            exit 1
+          fi
+
+          RELEASE_EXISTS=0
+          IS_DRAFT=""
+          if IS_DRAFT="$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null)"; then
+            RELEASE_EXISTS=1
+          fi
+          if [ "$RELEASE_EXISTS" = "1" ] && [ "$IS_DRAFT" != "true" ]; then
+            echo "::error::Release $TAG already exists and is published — refusing to overwrite OneClient $VERSION. Re-run with a bump, or bump the version in Cargo.toml."
+            exit 1
+          fi
+
+          # Commit the bump only after the guards pass, so a rejected release
+          # does not leave a stray version bump on the branch.
+          if [ "$BUMP" != "none" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.toml Cargo.lock
+            git commit -m "chore: bump to $VERSION"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+          SHA="$(git rev-parse HEAD)"
+
+          if [ "$RELEASE_EXISTS" = "1" ]; then
+            echo "Reusing existing draft release $TAG"
+            gh release edit "$TAG" --target "$SHA"
+          else
             gh release create "$TAG" \
               --draft \
+              --target "$SHA" \
               --title "OneClient $VERSION" \
               --notes "Automated release for OneClient $VERSION."
           fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   package:
@@ -75,7 +189,11 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
+      # Pin to the commit `prepare` resolved — with `bump` that is the version
+      # commit it just pushed, which github.sha would not point at.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
 
       - name: (macOS) Pin deployment target
         if: matrix.macos_deployment_target != ''
@@ -101,8 +219,10 @@ jobs:
             libfuse2
 
       - name: Install cargo-packager
-        shell: bash
-        run: cargo install cargo-packager --version 0.11.8 --locked
+        uses: ./.github/actions/install-cargo-tool
+        with:
+          tool: cargo-packager
+          version: 0.11.8
 
       - name: Import Apple Developer certificate
         if: startsWith(matrix.platform, 'macos')
@@ -215,6 +335,8 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CI: ${{ startsWith(matrix.platform, 'macos') && 'false' || 'true' }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
         run: |
           ARGS="--release --formats ${{ matrix.formats }}"
           if [ -n "${{ matrix.target }}" ]; then
@@ -232,12 +354,18 @@ jobs:
             echo "dir=target/release" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: (Linux) Install cargo-generate-rpm
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: ./.github/actions/install-cargo-tool
+        with:
+          tool: cargo-generate-rpm
+          version: 0.21.0
+
       - name: (Linux) Build RPM
         if: matrix.platform == 'ubuntu-22.04'
         shell: bash
         run: |
           set -euo pipefail
-          cargo install cargo-generate-rpm --version 0.21.0 --locked
           cargo generate-rpm -p packages/oneclient_app
           cp target/generate-rpm/*.rpm "${{ steps.outdir.outputs.dir }}/"
 
@@ -299,6 +427,9 @@ jobs:
       - name: (Windows) Replace installer with signed one + recompute updater sig
         if: matrix.platform == 'windows-latest'
         shell: bash
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD }}
         run: |
           signed="$(ls signed/*-setup.exe | head -n1)"
           # Overwrite the unsigned installer in the packager out dir with the signed exe.

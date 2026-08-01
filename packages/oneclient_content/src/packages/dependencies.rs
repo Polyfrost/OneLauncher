@@ -156,7 +156,10 @@ async fn resolve_one(
 
 /// Picks the newest release of `project_id` that fits the cluster, falling back
 /// to the newest prerelease when that's all there is.
-async fn pick_version(
+///
+/// Shared with the browser update check, which asks the same question of an
+/// already-installed package: "what would we install for this cluster today?".
+pub(crate) async fn pick_version(
 	provider: &dyn PackageProvider,
 	project_id: &str,
 	cluster: &ClusterRow,

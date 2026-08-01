@@ -5,6 +5,7 @@ pub mod modpack;
 pub mod provider;
 pub mod store;
 pub mod types;
+pub mod updates;
 
 mod file_identity;
 
@@ -23,3 +24,8 @@ pub use error::{PackageError, PackageResult};
 pub use provider::{PackageProvider, PackageProviderRegistry};
 pub use store::PackageStore;
 pub use types::*;
+pub use updates::{
+    BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
+    cached_browser_package_updates, check_browser_package_updates,
+    refresh_browser_package_updates, skip_browser_package_update,
+};

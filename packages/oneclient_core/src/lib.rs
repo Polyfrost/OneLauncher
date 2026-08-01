@@ -54,6 +54,11 @@ pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_content::packages::updates::{
+    BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
+    cached_browser_package_updates, check_browser_package_updates,
+    refresh_browser_package_updates, skip_browser_package_update,
+};
 pub use settings::ProfileUpdate;
 pub use state::LauncherServices;
 pub use state::LauncherState;

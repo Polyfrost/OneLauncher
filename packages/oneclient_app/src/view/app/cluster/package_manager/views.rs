@@ -114,6 +114,8 @@ pub(super) fn toolbar_bar(
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     layout: State<ViewLayout>,
+    cluster_id: i64,
+    package_type: &'static str,
 ) -> impl IntoElement {
     let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -171,6 +173,15 @@ pub(super) fn toolbar_bar(
                 .equal_width(34.)
                 .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
                 .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
+        )
+        .child(
+            Button::new()
+                .primary()
+                .height(Size::px(34.))
+                .font_size(12.)
+                .on_press(move |_| open_browser(cluster_id, package_type))
+                .child(Icon::new(IconType::Plus).size(15.))
+                .text("Add Content"),
         )
         .into_element()
 }
@@ -462,23 +473,26 @@ fn add_from_file_button(
         .text("Add from file")
 }
 
+/// Opens the content browser scoped to this cluster and package type.
+fn open_browser(cluster_id: i64, package_type: &'static str) {
+    let _ = RouterContext::get().push(Route::Browser {
+        cluster_id,
+        package_type: package_type.to_string(),
+        pick_cluster: false,
+    });
+}
+
 fn browse_button(cluster_id: i64, package_type: &'static str) -> impl IntoElement {
     Button::new()
         .primary()
-        .on_press(move |_| {
-            let _ = RouterContext::get().push(Route::Browser {
-                cluster_id,
-                package_type: package_type.to_string(),
-                pick_cluster: false,
-            });
-        })
+        .on_press(move |_| open_browser(cluster_id, package_type))
         .child(Icon::new(IconType::SearchMd).size(14.))
         .text("Browse Content")
 }
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ContentKind {
-    External,
+    Browser,
     Local,
     Other,
 }
@@ -556,7 +570,7 @@ impl Component for ContentBox {
         });
 
         let empty = (count == 0).then(|| match kind {
-            ContentKind::External => external_empty(cluster_id, package_type).into_element(),
+            ContentKind::Browser => browser_empty(cluster_id, package_type).into_element(),
             ContentKind::Local => {
                 local_empty(cluster_id, content_type, dispatch.clone(), noun_plural).into_element()
             }
@@ -565,9 +579,9 @@ impl Component for ContentBox {
 
         let header = (count > 0)
             .then(|| match kind {
-                ContentKind::External => {
-                    Some(action_header(browse_button(cluster_id, package_type)).into_element())
-                }
+                // The toolbar above already carries a permanent "Add Content"
+                // button, so this list needs no browse action of its own.
+                ContentKind::Browser => None,
                 ContentKind::Local => Some(
                     action_header(add_from_file_button(
                         cluster_id,
@@ -699,9 +713,9 @@ fn empty_state(noun_plural: &'static str) -> impl IntoElement {
         .into_element()
 }
 
-fn external_empty(cluster_id: i64, package_type: &'static str) -> impl IntoElement {
+fn browser_empty(cluster_id: i64, package_type: &'static str) -> impl IntoElement {
     empty_shell(IconType::SearchMd)
-        .child(empty_title("No external content installed."))
+        .child(empty_title("No content installed from the browser."))
         .child(empty_hint(
             "Browse providers to add mods, resource packs and more.",
         ))

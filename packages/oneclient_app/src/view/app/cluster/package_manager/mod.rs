@@ -222,7 +222,7 @@ fn make_row(
 pub(super) enum Tab {
     All,
     Category(String),
-    External,
+    Browser,
     Local,
 }
 
@@ -231,7 +231,7 @@ impl Tab {
         match self {
             Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::External => "External".to_string(),
+            Tab::Browser => "Browser".to_string(),
             Tab::Local => "Local".to_string(),
         }
     }
@@ -241,8 +241,8 @@ impl Tab {
             // Every package assigned to the cluster, regardless of origin.
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            // External = remote provider content that is NOT provided by a bundle.
-            Tab::External => p.is_remote() && !p.in_bundle(),
+            // Browser = remote provider content that is NOT provided by a bundle.
+            Tab::Browser => p.is_remote() && !p.in_bundle(),
             Tab::Local => !p.is_remote(),
         }
     }
@@ -269,7 +269,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
         }
     }
 
-    // Category tabs are hidden when empty; All + External + Local are always shown.
+    // Category tabs are hidden when empty; All + Browser + Local are always shown.
     let mut tabs: Vec<Tab> = vec![Tab::All];
     tabs.extend(
         cats.into_iter()
@@ -277,7 +277,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
             .filter(|t| items.iter().any(|p| t.matches(p))),
     );
 
-    tabs.push(Tab::External);
+    tabs.push(Tab::Browser);
     tabs.push(Tab::Local);
     tabs
 }
@@ -348,7 +348,7 @@ impl Component for PackageManager {
 
         let tab_filter = tabs.get(active_idx);
         let content_kind = match tab_filter {
-            Some(Tab::External) => ContentKind::External,
+            Some(Tab::Browser) => ContentKind::Browser,
             Some(Tab::Local) => ContentKind::Local,
             _ => ContentKind::Other,
         };
@@ -380,6 +380,8 @@ impl Component for PackageManager {
                 sort_mode,
                 enabled_filter,
                 layout,
+                cluster_id,
+                package_type,
             ))
             .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
             .child(ContentBox::new(

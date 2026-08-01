@@ -33,6 +33,11 @@ pub enum GameError {
     #[error("another cluster ({0}) is already running in the same directory")]
     DirectoryInUse(i64),
 
+    #[error(
+        "{0} is already running in the shared game directory; close it before launching another cluster"
+    )]
+    SharedDirectoryBusy(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 }

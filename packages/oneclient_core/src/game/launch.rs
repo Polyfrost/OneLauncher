@@ -60,11 +60,21 @@ pub async fn launch_cluster(
     let existing = state.clusters.get(cluster_id).await?;
 
     let game_dir = existing.game_dir()?;
+    let dedicated = existing.uses_dedicated_dir();
+
+    // Every cluster without a dedicated folder plays out of the same shared
+    // directory, so a second game there would materialize its content over the
+    // running one's. `dir_in_use_by` waves a cluster past its own session, which
+    // parallel launches make reachable, so the directory is checked outright.
+    if !dedicated && let Some(other) = state.games.dir_in_use(&game_dir) {
+        tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
+        let name = running_cluster_name(state, other).await;
+        return Err(GameError::SharedDirectoryBusy(name).into());
+    }
+
     if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
         return Err(GameError::DirectoryInUse(other).into());
     }
-
-    let dedicated = existing.uses_dedicated_dir();
 
     let progress = GroupedProgressSession::start(
         &state.services.events,
@@ -404,6 +414,16 @@ pub async fn launch_cluster(
     });
 
     Ok(LaunchedGame { cluster_id, pid })
+}
+
+/// Names the cluster in the user's way for a refusal they have to act on.
+/// Falls back to the id, which is still better than no answer at all.
+async fn running_cluster_name(state: &Arc<LauncherState>, cluster_id: i64) -> String {
+    state
+        .clusters
+        .get(cluster_id)
+        .await
+        .map_or_else(|_| format!("Cluster {cluster_id}"), |cluster| cluster.name)
 }
 
 /// Cut the game loose from the launcher's process group / console, so signals

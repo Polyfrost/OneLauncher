@@ -118,6 +118,17 @@ impl GameProcessManager {
         self.dirs.lock().unwrap().insert(cluster_id, dir);
     }
 
+    /// Like [`Self::dir_in_use_by`], but counts a cluster's own session too. The
+    /// shared game directory holds one game at a time, whoever it belongs to.
+    pub fn dir_in_use(&self, dir: &Path) -> Option<i64> {
+        self.dirs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, d)| d.as_path() == dir)
+            .map(|(id, _)| *id)
+    }
+
     pub fn dir_in_use_by(&self, dir: &Path, exclude: i64) -> Option<i64> {
         self.dirs
             .lock()

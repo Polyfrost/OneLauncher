@@ -490,11 +490,16 @@ fn browse_button(cluster_id: i64, package_type: &'static str) -> impl IntoElemen
         .text("Browse Content")
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub(super) enum ContentKind {
     Browser,
     Local,
     Other,
+    /// A search returned nothing. `scope` names the tab that was searched when
+    /// it is narrower than "All".
+    NoMatches {
+        scope: Option<String>,
+    },
 }
 
 #[derive(PartialEq)]
@@ -538,7 +543,7 @@ impl Component for ContentBox {
         let content_type = self.content_type;
         let cluster_id = self.cluster_id;
         let noun_plural = self.noun_plural;
-        let kind = self.kind;
+        let kind = &self.kind;
         let layout = self.layout;
 
         let dispatch = use_dispatch();
@@ -575,6 +580,9 @@ impl Component for ContentBox {
                 local_empty(cluster_id, content_type, dispatch.clone(), noun_plural).into_element()
             }
             ContentKind::Other => empty_state(noun_plural).into_element(),
+            ContentKind::NoMatches { scope } => {
+                search_empty(noun_plural, scope.as_deref()).into_element()
+            }
         });
 
         let header = (count > 0)
@@ -590,7 +598,7 @@ impl Component for ContentBox {
                     ))
                     .into_element(),
                 ),
-                ContentKind::Other => None,
+                ContentKind::Other | ContentKind::NoMatches { .. } => None,
             })
             .flatten();
 
@@ -710,6 +718,26 @@ fn empty_state(noun_plural: &'static str) -> impl IntoElement {
         .child(empty_hint(
             "Add one from a file or browse provider content.",
         ))
+        .into_element()
+}
+
+/// The search only ever looks inside the active tab, so say which one came up
+/// empty and point at the tab that does cover everything.
+fn search_empty(noun_plural: &'static str, scope: Option<&str>) -> impl IntoElement {
+    let (title, hint) = match scope {
+        Some(tab) => (
+            format!("No {noun_plural} in \"{tab}\" match your search."),
+            "Try a different term, or search from the All tab.",
+        ),
+        None => (
+            format!("No {noun_plural} match your search."),
+            "Try a different term.",
+        ),
+    };
+
+    empty_shell(IconType::SearchMd)
+        .child(empty_title(title))
+        .child(empty_hint(hint))
         .into_element()
 }
 

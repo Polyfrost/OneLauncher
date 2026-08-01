@@ -248,6 +248,32 @@ impl Tab {
     }
 }
 
+/// `query` is expected to be lowercased already.
+fn matches_query(p: &PackageEntry, query: &str) -> bool {
+    query.is_empty()
+        || p.name.to_lowercase().contains(query)
+        || p.file_name.to_lowercase().contains(query)
+}
+
+/// Rows to show for the current toolbar state. The search is scoped to the
+/// active tab: a package has to belong to the tab *and* match the query, so
+/// typing in a category never pulls in packages from another one. `Tab::All`
+/// admits everything, which keeps a search from there a search over the whole
+/// cluster.
+fn visible_packages(
+    items: &[PackageEntry],
+    tab: Option<&Tab>,
+    query: &str,
+    show: EnabledFilter,
+) -> Vec<PackageEntry> {
+    items
+        .iter()
+        .filter(|p| tab.is_none_or(|t| t.matches(p)) && matches_query(p, query))
+        .filter(|p| show.keep(p))
+        .cloned()
+        .collect()
+}
+
 pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
     let mut cats: Vec<String> = Vec::new();
     for bundle in bundles {
@@ -347,25 +373,27 @@ impl Component for PackageManager {
         let card_layout = CardLayout::from(*layout.read());
 
         let tab_filter = tabs.get(active_idx);
-        let content_kind = match tab_filter {
-            Some(Tab::Browser) => ContentKind::Browser,
-            Some(Tab::Local) => ContentKind::Local,
-            _ => ContentKind::Other,
-        };
 
-        let mut filtered: Vec<PackageEntry> = items
-            .iter()
-            .filter(|p| tab_filter.is_none_or(|t| t.matches(p)))
-            .filter(|p| {
-                query.is_empty()
-                    || p.name.to_lowercase().contains(query.as_str())
-                    || p.file_name.to_lowercase().contains(query.as_str())
-            })
-            .filter(|p| show.keep(p))
-            .cloned()
-            .collect();
-
+        let mut filtered = visible_packages(&items, tab_filter, &query, show);
         sort_mode.sort(&mut filtered);
+
+        // Coming up empty during a search is about the query, not about the tab
+        // having nothing in it, so it gets its own empty state naming the tab
+        // that was searched.
+        let content_kind = if filtered.is_empty() && !query.is_empty() {
+            ContentKind::NoMatches {
+                scope: match tab_filter {
+                    Some(Tab::All) | None => None,
+                    Some(tab) => Some(tab.label()),
+                },
+            }
+        } else {
+            match tab_filter {
+                Some(Tab::Browser) => ContentKind::Browser,
+                Some(Tab::Local) => ContentKind::Local,
+                _ => ContentKind::Other,
+            }
+        };
 
         rect()
             .vertical()
@@ -393,5 +421,71 @@ impl Component for PackageManager {
                 content_kind,
                 card_layout,
             ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, provider: ProviderId, categories: &[&str]) -> PackageEntry {
+        PackageEntry {
+            package_id: name.to_string(),
+            bundle_name: (!categories.is_empty()).then(|| "bundle".to_string()),
+            provider,
+            name: name.to_string(),
+            file_name: format!("{}.jar", name.to_lowercase()),
+            author: String::new(),
+            description: String::new(),
+            icon_url: None,
+            size: 0,
+            categories: categories.iter().map(|c| (*c).to_string()).collect(),
+            enabled: true,
+            manifest_default: true,
+            installed: true,
+            hash: None,
+        }
+    }
+
+    fn items() -> Vec<PackageEntry> {
+        vec![
+            entry("Sodium", ProviderId::Modrinth, &["Performance"]),
+            entry("Sodium Extra", ProviderId::Modrinth, &["Visuals"]),
+            entry("Sodium Local", ProviderId::Local, &[]),
+        ]
+    }
+
+    fn names(rows: &[PackageEntry]) -> Vec<&str> {
+        rows.iter().map(|p| p.name.as_str()).collect()
+    }
+
+    #[test]
+    fn search_stays_inside_the_active_category() {
+        let items = items();
+        let tab = Tab::Category("Performance".to_string());
+        let rows = visible_packages(&items, Some(&tab), "sodium", EnabledFilter::All);
+        assert_eq!(names(&rows), ["Sodium"]);
+    }
+
+    #[test]
+    fn search_stays_inside_the_local_tab() {
+        let items = items();
+        let rows = visible_packages(&items, Some(&Tab::Local), "sodium", EnabledFilter::All);
+        assert_eq!(names(&rows), ["Sodium Local"]);
+    }
+
+    #[test]
+    fn all_tab_searches_every_package() {
+        let items = items();
+        let rows = visible_packages(&items, Some(&Tab::All), "sodium", EnabledFilter::All);
+        assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
+    }
+
+    #[test]
+    fn empty_query_keeps_the_whole_tab() {
+        let items = items();
+        let tab = Tab::Category("Visuals".to_string());
+        let rows = visible_packages(&items, Some(&tab), "", EnabledFilter::All);
+        assert_eq!(names(&rows), ["Sodium Extra"]);
     }
 }

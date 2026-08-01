@@ -13,6 +13,14 @@ inputs:
     description: Whether to restore the Rust cache
     required: false
     default: 'true'
+  cache-namespace:
+    description: >
+      Cache namespace. Workflows that compile with different profile settings
+      MUST use different namespaces — cargo fingerprints every dependency by its
+      profile, so sharing one would mean each workflow evicts artifacts the other
+      cannot use.
+    required: false
+    default: release-cache
 runs:
   using: composite
   steps:
@@ -29,7 +37,7 @@ runs:
       with:
         key: ${{ inputs.target }}
         save-if: ${{ inputs.save-cache }}
-        shared-key: release-cache
+        shared-key: ${{ inputs.cache-namespace }}
         # Release builds are long and can fail late (signing, notarization,
         # upload). Without this the whole compile is thrown away on those runs.
         cache-on-failure: true

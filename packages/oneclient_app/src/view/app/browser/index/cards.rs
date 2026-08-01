@@ -3,20 +3,22 @@ use super::*;
 use std::collections::HashMap;
 
 use freya::router::RouterContext;
-use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::ProjectSummary;
+use oneclient_content::packages::{ContentType, ProviderId};
 
-use crate::components::{Icon, IconType};
+use crate::components::{Button, Icon, IconType};
+use crate::hooks::{
+    content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
+    use_package_versions, version_list,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
-fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
-    installed
-        .get(&(item.provider, item.id.clone()))
-        .map(|installed| installed.source)
+fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<Installed> {
+    installed.get(&(item.provider, item.id.clone())).cloned()
 }
 
 pub(super) fn grid_row(
@@ -27,7 +29,7 @@ pub(super) fn grid_row(
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = GRID_COLUMNS - row.len();
-    let installed: Vec<Option<InstallSource>> = row
+    let installed: Vec<Option<Installed>> = row
         .iter()
         .map(|item| installed_for(installed, item))
         .collect();
@@ -68,7 +70,7 @@ struct PackageCard {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<Installed>,
 }
 
 impl PackageCard {
@@ -76,7 +78,7 @@ impl PackageCard {
         item: ProjectSummary,
         cluster_id: i64,
         package_type: String,
-        installed: Option<InstallSource>,
+        installed: Option<Installed>,
     ) -> Self {
         Self {
             item,
@@ -185,14 +187,23 @@ impl Component for PackageCard {
                             .cross_align(Alignment::Center)
                             .content(Content::Flex)
                             .child(downloads_row(self.item.downloads))
-                            .maybe_child(self.installed.map(|installed| {
+                            .child(
                                 rect()
                                     .horizontal()
                                     .width(Size::flex(1.0))
+                                    .cross_align(Alignment::Center)
                                     .main_align(Alignment::End)
-                                    .child(installed_badge(installed, 10.))
-                                    .into_element()
-                            })),
+                                    .spacing(6.)
+                                    .maybe_child(self.installed.as_ref().map(|installed| {
+                                        installed_badge(installed.source, 10.).into_element()
+                                    }))
+                                    .child(InstallButton::new(
+                                        &self.item,
+                                        self.cluster_id,
+                                        &self.package_type,
+                                        self.installed.clone(),
+                                    )),
+                            ),
                     ),
             )
     }
@@ -217,7 +228,7 @@ struct ListRow {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<Installed>,
 }
 
 impl Component for ListRow {
@@ -300,9 +311,113 @@ impl Component for ListRow {
             )
             .maybe_child(
                 self.installed
-                    .map(|installed| installed_badge(installed, 11.).into_element()),
+                    .as_ref()
+                    .map(|installed| installed_badge(installed.source, 11.).into_element()),
             )
             .child(downloads_row(item.downloads))
+            .child(InstallButton::new(
+                &self.item,
+                self.cluster_id,
+                &self.package_type,
+                self.installed.clone(),
+            ))
+    }
+}
+
+/// Installs a listing entry's latest compatible version without making the user
+/// open its page first. Same version pick, same dispatch and same in-flight
+/// handling as the install button on the package page.
+#[derive(PartialEq)]
+struct InstallButton {
+    provider: ProviderId,
+    project_id: String,
+    cluster_id: i64,
+    content_type: ContentType,
+    installed: Option<Installed>,
+}
+
+impl InstallButton {
+    fn new(
+        item: &ProjectSummary,
+        cluster_id: i64,
+        package_type: &str,
+        installed: Option<Installed>,
+    ) -> Self {
+        Self {
+            provider: item.provider,
+            project_id: item.id.clone(),
+            cluster_id,
+            content_type: content_type_for_slug(package_type),
+            installed,
+        }
+    }
+}
+
+impl Component for InstallButton {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let provider = self.provider;
+        let project_id = self.project_id.clone();
+
+        let dispatch = use_dispatch();
+        let compat = *use_browser_compat().read();
+        let cluster = use_cluster(cluster_id);
+
+        // The same narrowing the package page does before calling the first
+        // entry of the list "latest", so both agree on what gets installed.
+        let (game_version, loader) = match (compat, &cluster) {
+            (true, Some(c)) => (
+                Some(c.mc_version.clone()),
+                (self.content_type == ContentType::Mod).then_some(c.mc_loader),
+            ),
+            _ => (None, None),
+        };
+
+        let versions = version_list(&use_package_versions(
+            provider,
+            project_id.clone(),
+            game_version,
+            loader,
+            0,
+        ));
+        let latest = versions.first().map(|v| v.version_id.clone());
+
+        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        // Nothing to do when the cluster already has exactly this version, and
+        // nothing to do twice while the install that was just started is running.
+        let have_latest = match (&self.installed, &latest) {
+            (Some(installed), Some(latest)) => installed.is_version(latest),
+            _ => false,
+        };
+
+        rect()
+            // The card behind this is one big press target. A press on the
+            // button is not a press on the card, so it stops here rather than
+            // opening the package page on top of the install.
+            .on_all_press(|e: Event<PressEventData>| e.stop_propagation())
+            .child(
+                Button::new()
+                    .secondary()
+                    .small()
+                    .enabled(latest.is_some() && !have_latest && !installing)
+                    .on_press(move |_| {
+                        if let Some(version_id) = latest.clone() {
+                            dispatch.install_package(
+                                cluster_id,
+                                provider,
+                                project_id.clone(),
+                                version_id,
+                            );
+                        }
+                    })
+                    .text(if installing {
+                        "Installing..."
+                    } else if have_latest {
+                        "Installed"
+                    } else {
+                        "Install"
+                    }),
+            )
     }
 }
 

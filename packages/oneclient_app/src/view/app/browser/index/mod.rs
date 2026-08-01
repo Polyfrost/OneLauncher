@@ -27,7 +27,7 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::hooks::use_cluster;
 
-use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
+use super::{Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
 mod cards;

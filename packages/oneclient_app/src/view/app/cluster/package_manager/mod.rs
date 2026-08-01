@@ -86,6 +86,18 @@ pub fn bundle_packages(
         by_hash.insert(info.hash.as_str(), info);
     }
 
+    // A package another bundle ships as a normal, user-facing file. Hidden is a
+    // per-bundle property, so one bundle carrying a mod as a private dependency
+    // must not suppress the bundle that offers it openly.
+    let mut shown_elsewhere: HashSet<String> = HashSet::new();
+    for bundle in bundles {
+        for (file, _status) in &bundle.files {
+            if !file.hidden && file.content_type() == content_type {
+                shown_elsewhere.insert(file.kind.package_id());
+            }
+        }
+    }
+
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -97,7 +109,19 @@ pub fn bundle_packages(
                 continue;
             }
             let pid = file.kind.package_id();
+            // Let the bundle that lists it openly own the row, whatever the
+            // iteration order happens to be.
+            if file.hidden && shown_elsewhere.contains(&pid) {
+                continue;
+            }
             if !seen.insert(pid.clone()) {
+                continue;
+            }
+            // Hidden files are dependencies the bundle manages on the user's
+            // behalf: never listed, never toggleable. The id still counts as
+            // seen so the loose-content pass below does not resurrect the
+            // installed artifact as an unmanaged local file.
+            if file.hidden {
                 continue;
             }
 
@@ -117,7 +141,7 @@ pub fn bundle_packages(
                 None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
             };
 
-            let categories = if file.hidden || category.is_empty() {
+            let categories = if category.is_empty() {
                 Vec::new()
             } else {
                 vec![category.clone()]
@@ -427,6 +451,83 @@ impl Component for PackageManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::view::onboarding::test_support::{archive, file};
+    use oneclient_core::{BundleFile, FileUpdateStatus};
+
+    fn bundle(category: &str, files: Vec<BundleFile>) -> BundleWithUpdateStatus {
+        BundleWithUpdateStatus {
+            files: files
+                .iter()
+                .cloned()
+                .map(|f| (f, FileUpdateStatus::UpToDate))
+                .collect(),
+            archive: archive(category, true, files),
+            has_updates: false,
+        }
+    }
+
+    fn installed(package_id: &str) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            hash: package_id.to_string(),
+            cluster_file_name: format!("{package_id}.jar"),
+            enabled: true,
+            content_type: ContentType::Mod,
+            file_name: format!("{package_id}.jar"),
+            project_id: None,
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: None,
+        }
+    }
+
+    fn rows_for(
+        content: Vec<LinkedArtifactInfo>,
+        bundles: &[BundleWithUpdateStatus],
+    ) -> Vec<PackageEntry> {
+        bundle_packages(
+            content,
+            bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            ContentType::Mod,
+        )
+    }
+
+    fn ids(rows: &[PackageEntry]) -> Vec<String> {
+        rows.iter().map(|r| r.package_id.clone()).collect()
+    }
+
+    #[test]
+    fn hidden_bundle_files_are_not_listed() {
+        let bundles = vec![bundle(
+            "Core",
+            vec![file("visible", true, false), file("dep", true, true)],
+        )];
+        assert_eq!(ids(&rows_for(Vec::new(), &bundles)), ["visible"]);
+    }
+
+    #[test]
+    fn an_installed_hidden_file_does_not_come_back_as_loose_content() {
+        // The dependency really is in the cluster, so the pass over installed
+        // content would happily list it as an unmanaged local file.
+        let bundles = vec![bundle("Core", vec![file("dep", true, true)])];
+        assert!(rows_for(vec![installed("dep")], &bundles).is_empty());
+    }
+
+    #[test]
+    fn a_file_another_bundle_shows_openly_stays_visible() {
+        let bundles = vec![
+            bundle("Core", vec![file("shared", true, true)]),
+            bundle("Extras", vec![file("shared", true, false)]),
+        ];
+        let rows = rows_for(Vec::new(), &bundles);
+        assert_eq!(ids(&rows), ["shared"]);
+        assert_eq!(
+            rows[0].bundle_name.as_deref(),
+            Some("OneClient 1.21.11 Fabric [Extras]")
+        );
+    }
 
     fn entry(name: &str, provider: ProviderId, categories: &[&str]) -> PackageEntry {
         PackageEntry {

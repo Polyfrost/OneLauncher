@@ -53,6 +53,7 @@ pub struct Button {
 
     enabled: bool,
     focusable: bool,
+    alt: Option<Box<str>>,
     on_press: Option<EventHandler<Event<PressEventData>>>,
 
     elements: Vec<Element>,
@@ -110,6 +111,7 @@ impl Button {
             variant,
             enabled: true,
             focusable: true,
+            alt: None,
             on_press: None,
             elements: Vec::new(),
             key: DiffKey::None,
@@ -193,6 +195,13 @@ impl Button {
 
     pub fn on_press(mut self, on_press: impl Into<EventHandler<Event<PressEventData>>>) -> Self {
         self.on_press = Some(on_press.into());
+        self
+    }
+
+    /// The name a button carrying only an icon goes by, since there is no label
+    /// for accessibility to read out.
+    pub fn alt(mut self, alt: impl Into<Box<str>>) -> Self {
+        self.alt = Some(alt.into());
         self
     }
 
@@ -284,6 +293,7 @@ impl Component for Button {
             .a11y_id(a11y_id)
             .a11y_focusable(enabled() && self.focusable)
             .a11y_role(AccessibilityRole::Button)
+            .map(self.alt.clone(), |rect, alt| rect.a11y_alt(alt))
             .overflow(Overflow::Clip)
             .layout(self.layout.clone())
             .text_style(self.text_style.clone())

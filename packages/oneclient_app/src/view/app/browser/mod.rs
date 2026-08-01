@@ -13,6 +13,7 @@ use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo}
 use crate::components::{Icon, IconType};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
+use crate::ui::border_all_color;
 
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
 
@@ -105,6 +106,27 @@ pub(crate) fn installed_map(
 }
 
 pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl IntoElement {
+    badge(installed, font_size, installed.color().with_a(38), None)
+}
+
+/// The same badge sat on top of a card's artwork. The faint tint the in-card
+/// badge uses has nothing to read against there, so this one brings its own
+/// backdrop and outlines itself to stay legible over whatever the image is.
+pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElement {
+    badge(
+        installed,
+        10.,
+        BANNER_BG.with_a(225),
+        Some(installed.color().with_a(110)),
+    )
+}
+
+fn badge(
+    installed: InstallSource,
+    font_size: f32,
+    background: Color,
+    border: Option<Color>,
+) -> impl IntoElement {
     let color = installed.color();
 
     rect()
@@ -113,7 +135,8 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
         .corner_radius(CornerRadius::new_all(999.))
-        .background(color.with_a(38))
+        .background(background)
+        .map(border, |el, border| el.border(border_all_color(1., border)))
         .child(
             Icon::new(IconType::CheckCircle)
                 .size(font_size)

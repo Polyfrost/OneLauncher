@@ -16,6 +16,7 @@ use oneclient_core::settings::ViewLayout;
 use crate::components::{
     Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
 };
+use crate::hooks::use_cluster;
 use crate::hooks::{
     BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
     cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
@@ -25,9 +26,11 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::hooks::use_cluster;
 
-use super::{Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
+use super::{
+    InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_badge_overlay,
+    installed_map,
+};
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
 mod cards;

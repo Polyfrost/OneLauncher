@@ -130,12 +130,37 @@ pub struct GameState {
     pub stages: HashMap<i64, LaunchStage>,
     pub error: Option<String>,
     pub logs: HashMap<i64, Arc<Vec<Arc<str>>>>,
+    /// Clusters whose launch was started from the UI but has not been answered
+    /// by core yet.
+    ///
+    /// Core takes a few hundred ms to report [`LaunchStage::Checking`], and
+    /// every click that lands in that window used to spawn its own game.
+    pending: HashSet<i64>,
 }
 
 impl GameState {
     #[must_use]
     pub fn stage(&self, cluster_id: i64) -> Option<LaunchStage> {
         self.stages.get(&cluster_id).copied()
+    }
+
+    /// Claims the launch for this cluster, returning false if one is already in
+    /// flight — the re-entrancy guard behind the button's disabled state.
+    pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
+        if self.is_active(cluster_id) || self.is_launch_pending(cluster_id) {
+            return false;
+        }
+        self.pending.insert(cluster_id);
+        true
+    }
+
+    pub fn finish_launch(&mut self, cluster_id: i64) {
+        self.pending.remove(&cluster_id);
+    }
+
+    #[must_use]
+    pub fn is_launch_pending(&self, cluster_id: i64) -> bool {
+        self.pending.contains(&cluster_id)
     }
 
     #[must_use]
@@ -156,5 +181,53 @@ impl GameState {
     #[must_use]
     pub fn logs_for(&self, cluster_id: i64) -> Arc<Vec<Arc<str>>> {
         self.logs.get(&cluster_id).cloned().unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::app::launch_button_state;
+
+    #[test]
+    fn a_second_click_is_refused_before_core_answers() {
+        let mut game = GameState::default();
+
+        assert!(game.begin_launch(1));
+        assert!(!game.begin_launch(1));
+        assert!(game.begin_launch(2));
+    }
+
+    #[test]
+    fn a_running_cluster_cannot_be_launched_again() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+
+        assert!(!game.begin_launch(1));
+    }
+
+    #[test]
+    fn the_claim_is_released_when_the_launch_settles() {
+        let mut game = GameState::default();
+
+        assert!(game.begin_launch(1));
+        game.finish_launch(1);
+        assert!(game.begin_launch(1));
+    }
+
+    #[test]
+    fn the_button_disables_on_the_claim_alone() {
+        let mut game = GameState::default();
+        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
+
+        game.begin_launch(1);
+        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+
+        // Held past a failure, which parks the stage at `Exited`.
+        game.stages.insert(1, LaunchStage::Exited);
+        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+
+        game.finish_launch(1);
+        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
     }
 }

@@ -11,6 +11,7 @@
 //! app-scoped, not component-scoped.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
@@ -28,6 +29,12 @@ use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus};
+
+/// How long the launch button stays disabled after a click, at minimum.
+///
+/// Over-disabling is the cheaper mistake: a button that is dead for two seconds
+/// after a failed launch beats one that lets a second game start.
+const LAUNCH_HOLD: Duration = Duration::from_secs(2);
 
 /// Asks the event pump to do something it alone owns.
 ///
@@ -578,33 +585,40 @@ impl Actions {
 
     // --- game --------------------------------------------------------------
 
+    /// Starts a launch, at most one per cluster.
+    ///
+    /// The pending flag is raised synchronously, before the first `await`, so
+    /// the button is already disabled by the time a second click of a
+    /// double-click could be dispatched; waiting for core to report `Checking`
+    /// left a few hundred ms where every click spawned its own game. The claim
+    /// itself is the guard, so a click that bypasses the disabled attribute
+    /// (keyboard activation, replayed events) is dropped here too.
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
+        let claimed = self
+            .station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .begin_launch(cluster_id);
+        if !claimed {
+            return;
+        }
+
+        let station = self.station;
         spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            let events = state.services.events.clone();
+            let started = Instant::now();
+            launch(cluster_id).await;
 
-            // Renews a lapsed token before launching.
-            let account = match state.auth.default_account_for_launch().await {
-                Ok(account) => account,
-                Err(err) => {
-                    events.game_failed(cluster_id, format!("{err:#}"));
-                    return;
-                }
-            };
-
-            match account {
-                Some(account) => {
-                    if let Err(err) =
-                        oneclient_core::launch_cluster(&state, cluster_id, &account, true).await
-                    {
-                        events.game_failed(cluster_id, format!("{err:#}"));
-                    }
-                }
-                None => events.game_failed(
-                    cluster_id,
-                    "Add a Minecraft account before launching.".to_string(),
-                ),
+            // A launch that fails instantly would hand the button back inside
+            // the same click burst, so hold it for the floor either way.
+            if let Some(remaining) = LAUNCH_HOLD.checked_sub(started.elapsed()) {
+                tokio::time::sleep(remaining).await;
             }
+            station
+                .clone()
+                .write_channel(AppChannel::Game)
+                .game
+                .finish_launch(cluster_id);
         });
     }
 
@@ -867,6 +881,36 @@ impl Actions {
                     .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
             });
         });
+    }
+}
+
+/// The launch itself. Failures are reported as game events, so the caller only
+/// has to know that the attempt is over.
+async fn launch(cluster_id: ClusterId) {
+    let Ok(state) = launcher::state() else { return };
+    let events = state.services.events.clone();
+
+    // Renews a lapsed token before launching.
+    let account = match state.auth.default_account_for_launch().await {
+        Ok(account) => account,
+        Err(err) => {
+            events.game_failed(cluster_id, format!("{err:#}"));
+            return;
+        }
+    };
+
+    match account {
+        Some(account) => {
+            if let Err(err) =
+                oneclient_core::launch_cluster(&state, cluster_id, &account, true).await
+            {
+                events.game_failed(cluster_id, format!("{err:#}"));
+            }
+        }
+        None => events.game_failed(
+            cluster_id,
+            "Add a Minecraft account before launching.".to_string(),
+        ),
     }
 }
 

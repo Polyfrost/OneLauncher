@@ -23,6 +23,9 @@ pub fn launch_button_state(
         Some(LaunchStage::Downloading) => ("Downloading", false),
         Some(LaunchStage::Launching) => ("Launching", false),
         Some(LaunchStage::Running) => ("Running", false),
+        // The click's own flag, raised before core has said anything and held
+        // for a beat after a failure so a burst of clicks starts one game.
+        _ if game.is_launch_pending(cluster_id) => ("Launching", false),
         _ => ("Launch", true),
     };
     // Block launching while the startup bundle download is still running.

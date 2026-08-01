@@ -81,7 +81,8 @@ fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
         let mut q = url.query_pairs_mut();
         q.append_pair("os", LIBERICA_OS)
             .append_pair("arch", LIBERICA_ARCH)
-            .append_pair("bundle-type", "jre")
+            // Kits only, never a bare runtime image.
+            .append_pair("bundle-type", "jdk")
             .append_pair("bitness", LIBERICA_BITNESS)
             .append_pair("package-type", LIBERICA_PACKAGE)
             .append_pair("installation-type", "archive")
@@ -114,3 +115,16 @@ const LIBERICA_OS: &str = match HostTarget::CURRENT.os {
 };
 
 const LIBERICA_PACKAGE: &str = HostTarget::CURRENT.archive_ext();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_kits_are_ever_requested() {
+        let url = liberica_url(Some(21)).expect("a valid url");
+
+        assert!(url.query().is_some_and(|q| q.contains("bundle-type=jdk")));
+        assert!(!url.query().is_some_and(|q| q.contains("bundle-type=jre")));
+    }
+}

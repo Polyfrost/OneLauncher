@@ -115,7 +115,9 @@ fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
     url.query_pairs_mut()
         .append_pair("os", ADOPTIUM_OS)
         .append_pair("architecture", ADOPTIUM_ARCH)
-        .append_pair("image_type", "jre")
+        // Kits only: a JRE image is missing tooling the game and its mod
+        // loaders expect, so the launcher never installs one.
+        .append_pair("image_type", "jdk")
         .append_pair("jvm_impl", "hotspot")
         .append_pair("project", "jdk")
         .append_pair("heap_size", "normal")
@@ -144,3 +146,16 @@ const ADOPTIUM_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Linux { musl: true } => "alpine-linux",
     HostOs::Linux { musl: false } => "linux",
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_kits_are_ever_requested() {
+        let url = adoptium_url(21, 21).expect("a valid url");
+
+        assert!(url.query().is_some_and(|q| q.contains("image_type=jdk")));
+        assert!(!url.query().is_some_and(|q| q.contains("image_type=jre")));
+    }
+}

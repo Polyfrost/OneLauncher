@@ -53,7 +53,8 @@ fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
         q.append_pair("os", ZULU_OS)
             .append_pair("arch", ZULU_ARCH)
             .append_pair("archive_type", "zip")
-            .append_pair("java_package_type", "jre")
+            // Kits only, never a bare runtime image.
+            .append_pair("java_package_type", "jdk")
             .append_pair("javafx_bundled", "false")
             .append_pair("release_status", "ga")
             .append_pair("availability_types", "CA")
@@ -81,3 +82,22 @@ const ZULU_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Linux { musl: true } => "linux-musl",
     HostOs::Linux { musl: false } => "linux",
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_kits_are_ever_requested() {
+        let url = zulu_url(Some(21)).expect("a valid url");
+
+        assert!(
+            url.query()
+                .is_some_and(|q| q.contains("java_package_type=jdk"))
+        );
+        assert!(
+            !url.query()
+                .is_some_and(|q| q.contains("java_package_type=jre"))
+        );
+    }
+}

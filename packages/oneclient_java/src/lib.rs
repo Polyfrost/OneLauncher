@@ -21,7 +21,7 @@ pub use checker::{JavaCheckInfo, check_java_runtime};
 pub use data::{JavaPackage, JavaRuntime, PackageArchive, java_executable_relative_path};
 pub use error::{JavaError, JavaResult};
 pub use install::install_package;
-pub use locate::locate_java;
+pub use locate::{LocatedJava, best_for_major, locate_java};
 pub use platform::{HostArch, HostOs, HostTarget};
 pub use service::{
 	AvailableJava, INSTALLABLE_MAJORS, JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JAVA_VENDOR_HINT,

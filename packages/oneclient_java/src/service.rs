@@ -114,7 +114,7 @@ impl JavaService {
 	/// Re-scans the well-known install locations and records what it finds.
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn rescan(&self) -> JavaResult<()> {
-		self.register_located(crate::locate::locate_java().await?)
+		self.register_located(&crate::locate::locate_java().await?)
 			.await
 	}
 
@@ -134,6 +134,10 @@ impl JavaService {
 	// --- acquisition -------------------------------------------------------
 
 	/// Finds a usable Java `major`, downloading or asking the user if needed.
+	///
+	/// A JDK is preferred over a JRE of the same major throughout: a recorded
+	/// runtime that turns out to be a bare JRE is kept only as a fallback, so a
+	/// system scan gets its chance to turn up a kit first.
 	#[tracing::instrument(level = "debug", skip(self, progress))]
 	pub async fn prepare(
 		&self,
@@ -142,17 +146,29 @@ impl JavaService {
 		auto_install: bool,
 		progress: Option<&GroupedProgressSession>,
 	) -> JavaResult<JavaRuntime> {
-		if let Some(runtime) = self.store.latest_by_major(major).await? {
-			return Ok(runtime);
+		let recorded = self.store.latest_by_major(major).await?;
+
+		if let Some(runtime) = &recorded
+			&& checker::is_jdk_executable(&runtime.absolute_path)
+		{
+			return Ok(runtime.clone());
 		}
 
 		if search_system {
-			self.register_located(crate::locate::locate_java().await?)
-				.await?;
+			let located = crate::locate::locate_java().await?;
+			self.register_located(&located).await?;
 
-			if let Some(runtime) = self.store.latest_by_major(major).await? {
-				return Ok(runtime);
+			// Anything located only displaces what is already recorded when it
+			// is the kit that recording is not.
+			if let Some((path, info)) = crate::locate::best_for_major(&located, major)
+				&& (info.is_jdk || recorded.is_none())
+			{
+				return self.persist(path, info).await;
 			}
+		}
+
+		if let Some(runtime) = recorded {
+			return Ok(runtime);
 		}
 
 		if auto_install {
@@ -310,12 +326,9 @@ impl JavaService {
 	/// Records everything a filesystem scan turned up, skipping anything that
 	/// fails to probe. A broken JDK on the system should not abort the scan.
 	#[tracing::instrument(level = "debug", skip_all)]
-	async fn register_located(
-		&self,
-		located: impl IntoIterator<Item = (PathBuf, JavaCheckInfo)>,
-	) -> JavaResult<()> {
+	async fn register_located(&self, located: &[(PathBuf, JavaCheckInfo)]) -> JavaResult<()> {
 		for (path, info) in located {
-			if let Err(err) = self.persist(&path, &info).await {
+			if let Err(err) = self.persist(path, info).await {
 				tracing::warn!(
 					path = %path.display(),
 					version = %info.version,
@@ -350,7 +363,7 @@ fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRunti
 ///
 /// Java 8 and earlier report `1.8.0_412`, where the major is the *second*
 /// component; 9 and later report `21.0.3`, where it is the first.
-fn parse_major_version(version: &str) -> Result<u32, JavaError> {
+pub(crate) fn parse_major_version(version: &str) -> Result<u32, JavaError> {
 	if let Some(rest) = version.strip_prefix("1.") {
 		let digit = rest.chars().next().ok_or_else(|| JavaError::ParseVersion {
 			version: version.to_string(),

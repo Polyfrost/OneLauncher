@@ -1,4 +1,4 @@
-//! Downloads and probes one vendor's JRE, then records it in an in-memory store.
+//! Downloads and probes one vendor's JDK, then records it in an in-memory store.
 //!
 //! Runs against `MemoryJavaStore`, so it needs no database and no ephemeral
 //! `LauncherState` just to list packages.

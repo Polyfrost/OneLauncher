@@ -1,4 +1,4 @@
-//! Lists the JRE packages each vendor currently publishes.
+//! Lists the JDK packages each vendor currently publishes.
 //!
 //! Needs only a network client, no database or launcher state. That is the
 //! point of `JavaStore` being a port: the vendor providers are exercisable on
@@ -22,8 +22,8 @@ async fn main() -> JavaResult<()> {
     let net = RequestClient::new(NetConfig::default())?;
 
     match major {
-        Some(major) => println!("Listing JRE packages for Java {major} (metadata only):\n"),
-        None => println!("Listing JRE packages for all majors (metadata only):\n"),
+        Some(major) => println!("Listing JDK packages for Java {major} (metadata only):\n"),
+        None => println!("Listing JDK packages for all majors (metadata only):\n"),
     }
 
     for provider in runtime_providers() {

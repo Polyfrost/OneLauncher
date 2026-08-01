@@ -27,13 +27,9 @@ pub enum NotificationActionKind {
     /// list so a batch sync stays a single "View changes" action instead of one
     /// button per cluster.
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
-    /// Reopens the browser-package update modal for the clusters whose
-    /// launch-time check found something. Same reasoning as above: one action,
-    /// however many clusters are stale.
-    OpenPackageUpdates(Vec<PackageUpdateGroup>),
 }
 
-/// The stale browser packages of one cluster.
+/// The stale browser packages of the cluster being launched.
 ///
 /// Carries the core updates whole rather than a display projection: the modal's
 /// Update button hands one straight back to the apply path, and a trimmed copy
@@ -203,6 +199,11 @@ pub struct NotificationState {
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
+    /// Resumes the launch that opened the update modal. Held here rather than
+    /// by the launch task because every way the modal can end — the last row
+    /// answered, "Not now", Escape, the scrim — goes through this state, and
+    /// each of them has to let the game start.
+    package_updates_done: Option<oneshot::Sender<()>>,
 }
 
 /// Fixed display order for the category rows.
@@ -334,19 +335,37 @@ impl NotificationState {
         self.cluster_update = None;
     }
 
-    pub fn open_package_updates(&mut self, groups: Vec<PackageUpdateGroup>) {
+    /// Opens the pre-launch update modal, with `done` as the launch's
+    /// continuation.
+    ///
+    /// Nothing to show is answered immediately rather than left pending: a
+    /// launch must never be able to wait on a modal that was never drawn.
+    pub fn open_package_updates(
+        &mut self,
+        groups: Vec<PackageUpdateGroup>,
+        done: Option<oneshot::Sender<()>>,
+    ) {
         let groups: Vec<PackageUpdateGroup> = groups
             .into_iter()
             .filter(|group| !group.packages.is_empty())
             .collect();
+
         if groups.is_empty() {
+            if let Some(done) = done {
+                let _ = done.send(());
+            }
             return;
         }
+
+        // A second modal would strand the first launch, so hand the old
+        // continuation back before taking the new one.
+        self.finish_package_updates();
         self.package_updates = Some(groups);
+        self.package_updates_done = done;
     }
 
     pub fn close_package_updates(&mut self) {
-        self.package_updates = None;
+        self.finish_package_updates();
     }
 
     /// Drops one package from the open modal, closing it once the user has
@@ -366,7 +385,19 @@ impl NotificationState {
         groups.retain(|group| !group.packages.is_empty());
 
         if groups.is_empty() {
-            self.package_updates = None;
+            self.finish_package_updates();
+        }
+    }
+
+    /// Closes the modal and releases the launch waiting on it. Safe to call
+    /// when nothing is open; that is what makes every exit path able to call it
+    /// without first checking which one it is.
+    fn finish_package_updates(&mut self) {
+        self.package_updates = None;
+        if let Some(done) = self.package_updates_done.take() {
+            // The launch task is gone if this fails, which is not this layer's
+            // problem: there is simply nothing left to resume.
+            let _ = done.send(());
         }
     }
 
@@ -910,4 +941,101 @@ fn progress_body(label: &str, current: u64, total: u64) -> String {
 
     let percent = ((current as f64 / total as f64) * 100.0).round() as u64;
     format!("{label} - {percent}%")
+}
+
+#[cfg(test)]
+mod package_update_tests {
+    use super::*;
+    use oneclient_common::domain::ProviderId;
+
+    fn update(hash: &str) -> BrowserPackageUpdate {
+        BrowserPackageUpdate {
+            cluster_id: 1,
+            hash: hash.into(),
+            provider: ProviderId::Modrinth,
+            project_id: "sodium".into(),
+            installed_version_id: "v1".into(),
+            installed_version_name: "1.0".into(),
+            latest_version_id: "v2".into(),
+            latest_version_name: "2.0".into(),
+            display_name: "Sodium".into(),
+            skipped: false,
+        }
+    }
+
+    fn group(hashes: &[&str]) -> PackageUpdateGroup {
+        PackageUpdateGroup {
+            cluster_id: 1,
+            cluster_name: "Test".into(),
+            packages: hashes.iter().map(|hash| update(hash)).collect(),
+        }
+    }
+
+    #[test]
+    fn the_launch_resumes_once_every_row_is_answered() {
+        let mut state = NotificationState::default();
+        let (done, mut wait) = oneshot::channel();
+        state.open_package_updates(vec![group(&["a", "b"])], Some(done));
+
+        state.resolve_package_update(1, "a");
+        assert!(
+            wait.try_recv().is_err(),
+            "a launch must wait while rows are still unanswered"
+        );
+
+        state.resolve_package_update(1, "b");
+        assert!(wait.try_recv().is_ok(), "the last answer releases the launch");
+        assert!(state.package_updates.is_none());
+    }
+
+    #[test]
+    fn dismissing_the_modal_still_releases_the_launch() {
+        let mut state = NotificationState::default();
+        let (done, mut wait) = oneshot::channel();
+        state.open_package_updates(vec![group(&["a"])], Some(done));
+
+        state.close_package_updates();
+
+        assert!(
+            wait.try_recv().is_ok(),
+            "\"Not now\" declines the updates, not the launch"
+        );
+    }
+
+    #[test]
+    fn nothing_to_show_releases_the_launch_immediately() {
+        let mut state = NotificationState::default();
+        let (done, mut wait) = oneshot::channel();
+
+        state.open_package_updates(vec![group(&[])], Some(done));
+
+        assert!(wait.try_recv().is_ok(), "a modal that never opens cannot be answered");
+        assert!(state.package_updates.is_none());
+    }
+
+    #[test]
+    fn a_second_modal_does_not_strand_the_first_launch() {
+        let mut state = NotificationState::default();
+        let (first, mut first_wait) = oneshot::channel();
+        let (second, mut second_wait) = oneshot::channel();
+
+        state.open_package_updates(vec![group(&["a"])], Some(first));
+        state.open_package_updates(vec![group(&["b"])], Some(second));
+
+        assert!(first_wait.try_recv().is_ok(), "the replaced launch is let go");
+        assert!(second_wait.try_recv().is_err(), "the new one still waits");
+    }
+
+    #[test]
+    fn resolving_an_unknown_package_is_a_no_op() {
+        let mut state = NotificationState::default();
+        let (done, mut wait) = oneshot::channel();
+        state.open_package_updates(vec![group(&["a"])], Some(done));
+
+        state.resolve_package_update(1, "not-here");
+        state.resolve_package_update(99, "a");
+
+        assert!(wait.try_recv().is_err());
+        assert!(state.package_updates.is_some());
+    }
 }

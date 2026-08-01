@@ -11,6 +11,7 @@
 //! app-scoped, not component-scoped.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
@@ -37,6 +38,49 @@ use crate::state::{AppChannel, AppState, AsyncStatus};
 /// Over-disabling is the cheaper mistake: a button that is dead for two seconds
 /// after a failed launch beats one that lets a second game start.
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
+
+/// How long the pre-launch update check may take before the launch goes ahead
+/// without it.
+///
+/// Mirrors `oneclient_net`'s reachability probe rather than reqwest's own
+/// per-request timeouts, which are minutes long and sized for downloads. This
+/// one sits between the user pressing Play and the game starting.
+const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(8);
+
+/// What a launch should do about the updates its check turned up.
+#[derive(Debug, Clone, PartialEq)]
+enum LaunchUpdatePlan {
+    /// Launch straight away. The cache has still been written.
+    Nothing,
+    Apply(Vec<oneclient_core::BrowserPackageUpdate>),
+    Prompt(Vec<oneclient_core::BrowserPackageUpdate>),
+}
+
+/// Decides what a launch does with its pending updates.
+///
+/// Pure, and deliberately separate from the work it describes: the mode is the
+/// one piece of this flow with three-way behaviour worth pinning down in tests,
+/// and none of it needs a launcher, a database or a provider to be true.
+///
+/// `pending` has already had declined versions filtered out by
+/// `BrowserUpdateCheck::pending`, so nothing here re-asks a question the user
+/// has answered.
+fn plan_launch_updates(
+    mode: PackageUpdateMode,
+    pending: Vec<oneclient_core::BrowserPackageUpdate>,
+) -> LaunchUpdatePlan {
+    if pending.is_empty() {
+        return LaunchUpdatePlan::Nothing;
+    }
+
+    match mode {
+        // The check ran and the cache was written before this point; skipping
+        // is only ever about what the user is shown.
+        PackageUpdateMode::Skip => LaunchUpdatePlan::Nothing,
+        PackageUpdateMode::Automatic => LaunchUpdatePlan::Apply(pending),
+        PackageUpdateMode::Prompt => LaunchUpdatePlan::Prompt(pending),
+    }
+}
 
 /// Asks the event pump to do something it alone owns.
 ///
@@ -520,13 +564,6 @@ impl Actions {
         self.with_engine(|state| state.notifications.close_cluster_update());
     }
 
-    pub fn open_package_updates(&self, groups: Vec<PackageUpdateGroup>) {
-        self.with_engine(|state| {
-            state.notifications.open_package_updates(groups);
-            state.center_open = false;
-        });
-    }
-
     pub fn close_package_updates(&self) {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
@@ -598,14 +635,17 @@ impl Actions {
 
     // --- game --------------------------------------------------------------
 
-    /// Starts a launch, at most one per cluster.
+    /// The Play button. Starts a launch, at most one per cluster.
     ///
     /// The pending flag is raised synchronously, before the first `await`, so
     /// the button is already disabled by the time a second click of a
     /// double-click could be dispatched; waiting for core to report `Checking`
     /// left a few hundred ms where every click spawned its own game. The claim
     /// itself is the guard, so a click that bypasses the disabled attribute
-    /// (keyboard activation, replayed events) is dropped here too.
+    /// (keyboard activation, replayed events) is dropped here too. It also
+    /// covers the pre-launch work in [`launch`], which the core does not own —
+    /// otherwise the update modal could sit open above a Play button still
+    /// inviting a second press.
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         let claimed = self
             .station
@@ -618,9 +658,10 @@ impl Actions {
         }
 
         let station = self.station;
+        let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            launch(cluster_id).await;
+            launch(&actions, cluster_id).await;
 
             // A launch that fails instantly would hand the button back inside
             // the same click burst, so hold it for the floor either way.
@@ -893,131 +934,180 @@ impl Actions {
                 app.notifications
                     .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
             });
-
-            // Last, so browser packages are judged against a cluster the bundle
-            // sync has finished settling: a package a bundle has just taken over
-            // must not also be offered as a browser update.
-            actions.check_package_updates();
         });
     }
 
     // --- browser package updates -------------------------------------------
 
-    /// Checks every cluster's browser-installed packages for newer versions and
-    /// acts on each cluster's own `browser_update_mode`.
+    /// Brings the launching cluster's browser-installed packages up to date,
+    /// or asks about them, before the game starts.
     ///
-    /// The check runs and the cache is written whatever the setting says — that
-    /// is what keeps the "out of date" markers in the package manager honest for
-    /// users who never want the modal. The setting only decides what happens
-    /// next.
+    /// The check runs and the cache is written whatever the mode says — that is
+    /// what keeps the "Update available" markers in the package manager honest
+    /// for users who never want the modal. The mode only decides what the user
+    /// sees and whether anything is installed.
     ///
-    /// Offline is not a failure: the check leaves the previous cache in place,
-    /// finds nothing new, and this returns without saying anything.
-    pub fn check_package_updates(&self) {
-        let actions = self.clone();
-        spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            let content = state.services.content();
-            let global = state.settings.read().global_game_settings.clone();
+    /// Returns once the launch may proceed. In `Prompt` mode that means once
+    /// the user has answered every row or dismissed the modal; the applies
+    /// themselves complete before their rows disappear, so nothing is still
+    /// downloading into the cluster when the game starts.
+    ///
+    /// Never fails the launch. An unreachable provider, a check that runs long,
+    /// a failed install: all of them log and let the game start on what is
+    /// already installed.
+    async fn resolve_package_updates_before_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+    ) {
+        let content = state.services.content();
 
-            let clusters = match oneclient_db::dao::cluster::list_all(&state.services.db).await {
-                Ok(clusters) => clusters,
-                Err(err) => {
-                    tracing::error!("package update check skipped, cannot list clusters: {err:#}");
-                    return;
-                }
-            };
+        // Bounded because this sits between the user pressing Play and the game
+        // starting. A network that hangs rather than refuses would otherwise
+        // hold the launch for reqwest's own much longer timeouts, so the check
+        // gets the same budget the reachability probe uses and the launch
+        // continues on whatever is already installed.
+        let check = match tokio::time::timeout(
+            UPDATE_CHECK_BUDGET,
+            oneclient_core::refresh_browser_package_updates(cluster_id, &content),
+        )
+        .await
+        {
+            Ok(Ok(check)) => check,
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    cluster_id,
+                    error = %err,
+                    "browser package update check failed, launching anyway"
+                );
+                return;
+            }
+            Err(_elapsed) => {
+                tracing::debug!(
+                    cluster_id,
+                    "browser package update check exceeded its launch budget"
+                );
+                return;
+            }
+        };
 
-            let mut groups: Vec<PackageUpdateGroup> = Vec::new();
-            let mut applied = 0usize;
+        let pending = check.pending();
+        let mode = self.cluster_update_mode(state, cluster_id).await;
 
-            for cluster in clusters {
-                let check = match oneclient_core::refresh_browser_package_updates(
-                    cluster.id,
-                    &content,
-                )
-                .await
-                {
-                    Ok(check) => check,
-                    Err(err) => {
-                        tracing::warn!(
-                            cluster_id = cluster.id,
-                            error = %err,
-                            "browser package update check failed"
-                        );
-                        continue;
-                    }
-                };
-
-                let pending = check.pending();
-                if pending.is_empty() {
-                    continue;
-                }
-
-                let mode = oneclient_cluster::profiles::resolve_cluster_profile(
-                    &state.services.db,
-                    &global,
-                    cluster.setting_profile_name.as_deref(),
-                )
-                .await
-                .ok()
-                .and_then(|profile| profile.browser_update_mode)
-                .unwrap_or_default();
-
-                match mode {
-                    PackageUpdateMode::Skip => {}
-                    PackageUpdateMode::Automatic => {
-                        for update in &pending {
-                            match oneclient_core::apply_browser_package_update(
-                                update, None, &content,
-                            )
-                            .await
-                            {
-                                Ok(_) => applied += 1,
-                                Err(err) => tracing::warn!(
-                                    package = %update.display_name,
-                                    error = %err,
-                                    "automatic package update failed"
-                                ),
-                            }
-                        }
-                    }
-                    PackageUpdateMode::Prompt => {
-                        if let Some(group) = crate::install::package_update_group(
-                            cluster.id,
-                            &pending,
-                            &state.services,
-                        )
+        match plan_launch_updates(mode, pending) {
+            LaunchUpdatePlan::Nothing => {}
+            LaunchUpdatePlan::Apply(updates) => {
+                self.apply_updates_for_launch(state, &updates).await;
+            }
+            LaunchUpdatePlan::Prompt(updates) => {
+                let Some(group) =
+                    crate::install::package_update_group(cluster_id, &updates, &state.services)
                         .await
-                        {
-                            groups.push(group);
-                        }
-                    }
-                }
+                else {
+                    return;
+                };
+                self.prompt_package_updates(group).await;
             }
+        }
+    }
 
-            if applied > 0 {
-                super::invalidate_cluster_queries().await;
-                state
-                    .services
-                    .events
-                    .notify("Packages updated")
-                    .body(format!(
-                        "{applied} package{} updated automatically",
-                        if applied == 1 { "" } else { "s" }
-                    ))
-                    .send();
-            }
+    /// The launching cluster's effective mode, with the usual profile-over-
+    /// global inheritance. Anything unreadable falls back to the default rather
+    /// than blocking the launch on a settings lookup.
+    async fn cluster_update_mode(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+    ) -> PackageUpdateMode {
+        let global = state.settings.read().global_game_settings.clone();
 
-            if !groups.is_empty() {
-                // The notification carries the same list, so dismissing the
-                // modal without answering leaves a way back to it.
-                if let Some(spec) = crate::install::package_updates_notification(&groups) {
-                    actions.push_notification(spec);
-                }
-                actions.open_package_updates(groups);
+        let Ok(cluster) = state.clusters.get(cluster_id).await else {
+            return PackageUpdateMode::default();
+        };
+
+        state
+            .clusters
+            .resolve_settings(&global, &cluster)
+            .await
+            .ok()
+            .and_then(|profile| profile.browser_update_mode)
+            .unwrap_or_default()
+    }
+
+    /// Installs every pending update, in one grouped progress notification so
+    /// the pre-launch pause has something to show for itself.
+    async fn apply_updates_for_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        updates: &[oneclient_core::BrowserPackageUpdate],
+    ) {
+        let content = state.services.content();
+        let session = oneclient_events::GroupedProgressSession::start(
+            &state.services.events,
+            "Updating packages",
+        );
+        session.expect(
+            oneclient_events::TaskCategory::Packages,
+            updates.len() as u64,
+            updates.len() as u64,
+        );
+
+        let mut applied = 0usize;
+        for update in updates {
+            let child = session.child(
+                update.display_name.clone(),
+                1,
+                oneclient_events::TaskCategory::Packages,
+            );
+            match oneclient_core::apply_browser_package_update(update, Some(&child), &content).await
+            {
+                Ok(_) => applied += 1,
+                // One package failing is not a reason to hold the game back;
+                // the cache row survives, so the next launch offers it again.
+                Err(err) => tracing::warn!(
+                    package = %update.display_name,
+                    error = %err,
+                    "automatic package update failed"
+                ),
             }
+            child.finish();
+        }
+
+        let session_id = session.detach();
+        let spec = (applied > 0).then(|| NotificationSpec {
+            title: "Packages updated".to_string(),
+            body: format!(
+                "{applied} package{} updated before launch",
+                if applied == 1 { "" } else { "s" }
+            ),
+            level: Level::Info,
+            icon: Some(IconType::DownloadCloud02),
+            progress: None,
+            actions: Vec::new(),
         });
+
+        self.with_engine(|app| {
+            app.notifications
+                .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
+        });
+
+        if applied > 0 {
+            super::invalidate_cluster_queries().await;
+        }
+    }
+
+    /// Opens the modal and waits for the user to be done with it.
+    async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
+        let (done, wait) = tokio::sync::oneshot::channel();
+
+        self.with_engine(move |state| {
+            state.notifications.open_package_updates(vec![group], Some(done));
+            state.center_open = false;
+        });
+
+        // An error means the modal state was replaced or torn down, which is
+        // equally a reason to stop waiting and get on with the launch.
+        let _ = wait.await;
     }
 
     /// Applies one update from the modal, then drops that row from it.
@@ -1113,9 +1203,15 @@ impl Actions {
 
 /// The launch itself. Failures are reported as game events, so the caller only
 /// has to know that the attempt is over.
-async fn launch(cluster_id: ClusterId) {
+///
+/// Everything before [`oneclient_core::launch_cluster`] is pre-launch work the
+/// core does not own: renewing the account token, and bringing
+/// browser-installed packages up to date.
+async fn launch(actions: &Actions, cluster_id: ClusterId) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
+
+    events.game_stage(cluster_id, oneclient_events::LaunchStage::Checking);
 
     // Renews a lapsed token before launching.
     let account = match state.auth.default_account_for_launch().await {
@@ -1126,18 +1222,23 @@ async fn launch(cluster_id: ClusterId) {
         }
     };
 
-    match account {
-        Some(account) => {
-            if let Err(err) =
-                oneclient_core::launch_cluster(&state, cluster_id, &account, true).await
-            {
-                events.game_failed(cluster_id, format!("{err:#}"));
-            }
-        }
-        None => events.game_failed(
+    let Some(account) = account else {
+        events.game_failed(
             cluster_id,
             "Add a Minecraft account before launching.".to_string(),
-        ),
+        );
+        return;
+    };
+
+    // Before the game process, never after: Minecraft reads its mods once at
+    // startup, so an update applied to a live session would do nothing until
+    // the next launch anyway.
+    actions
+        .resolve_package_updates_before_launch(&state, cluster_id)
+        .await;
+
+    if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
+        events.game_failed(cluster_id, format!("{err:#}"));
     }
 }
 
@@ -1188,5 +1289,61 @@ impl NotificationBuilder {
 
     pub fn send(self) {
         self.actions.push_notification(self.spec);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oneclient_common::domain::ProviderId;
+
+    fn update(hash: &str) -> oneclient_core::BrowserPackageUpdate {
+        oneclient_core::BrowserPackageUpdate {
+            cluster_id: 1,
+            hash: hash.into(),
+            provider: ProviderId::Modrinth,
+            project_id: "sodium".into(),
+            installed_version_id: "v1".into(),
+            installed_version_name: "1.0".into(),
+            latest_version_id: "v2".into(),
+            latest_version_name: "2.0".into(),
+            display_name: "Sodium".into(),
+            skipped: false,
+        }
+    }
+
+    #[test]
+    fn skip_mode_launches_without_asking_or_installing() {
+        assert_eq!(
+            plan_launch_updates(PackageUpdateMode::Skip, vec![update("a")]),
+            LaunchUpdatePlan::Nothing,
+        );
+    }
+
+    #[test]
+    fn automatic_mode_installs_without_asking() {
+        assert_eq!(
+            plan_launch_updates(PackageUpdateMode::Automatic, vec![update("a")]),
+            LaunchUpdatePlan::Apply(vec![update("a")]),
+        );
+    }
+
+    #[test]
+    fn prompt_mode_is_the_default_and_asks() {
+        assert_eq!(
+            plan_launch_updates(PackageUpdateMode::default(), vec![update("a")]),
+            LaunchUpdatePlan::Prompt(vec![update("a")]),
+        );
+    }
+
+    #[test]
+    fn nothing_pending_never_opens_a_modal() {
+        for mode in PackageUpdateMode::ALL.iter().copied() {
+            assert_eq!(
+                plan_launch_updates(mode, Vec::new()),
+                LaunchUpdatePlan::Nothing,
+                "{mode:?} must not hold a launch up over an empty list",
+            );
+        }
     }
 }

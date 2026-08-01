@@ -501,6 +501,7 @@ mod tests {
             bundles,
             &HashMap::new(),
             &PackageMetaMap::new(),
+            &HashSet::new(),
             ContentType::Mod,
         )
     }
@@ -556,6 +557,7 @@ mod tests {
             manifest_default: true,
             installed: true,
             hash: None,
+            update_available: false,
         }
     }
 

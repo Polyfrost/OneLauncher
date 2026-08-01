@@ -482,9 +482,6 @@ fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
-        NotificationActionKind::OpenPackageUpdates(groups) => {
-            dispatch.open_package_updates(groups.clone());
-        }
     }
 }
 

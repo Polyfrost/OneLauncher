@@ -211,6 +211,39 @@ pub async fn link_cluster_artifact(
 	.await
 }
 
+/// Every artifact the cluster has from the same project as `exclude_hash`,
+/// excluding that one.
+///
+/// `provider_releases` is keyed by version, so one artifact can join several
+/// rows of it. Without `DISTINCT` a package would be reported once per release
+/// row and a caller unlinking the results would work from an inflated list.
+pub async fn list_cluster_artifacts_for_project(
+	pool: &SqlitePool,
+	cluster_id: i64,
+	provider: i64,
+	project_id: &str,
+	exclude_hash: &str,
+) -> Result<Vec<ClusterArtifactRow>, sqlx::Error> {
+	sqlx::query_as!(
+		ClusterArtifactRow,
+		r#"
+		SELECT DISTINCT ca.cluster_id, ca.hash, ca.cluster_file_name, ca.enabled
+		FROM cluster_artifacts ca
+		JOIN provider_releases pr ON pr.hash = ca.hash
+		WHERE ca.cluster_id = ?
+			AND pr.provider = ?
+			AND pr.project_id = ?
+			AND ca.hash <> ?
+		"#,
+		cluster_id,
+		provider,
+		project_id,
+		exclude_hash
+	)
+	.fetch_all(pool)
+	.await
+}
+
 pub async fn is_cluster_linked(
 	pool: &SqlitePool,
 	cluster_id: i64,

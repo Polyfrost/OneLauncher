@@ -9,7 +9,7 @@ use oneclient_content::packages::{ContentType, ProviderId};
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
     content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
-    use_package_versions, version_list,
+    use_package_versions_when, version_list,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -17,9 +17,6 @@ use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
-/// How tall a card's footer row is kept, so the row sits at the same height
-/// whether it holds the install button or only the download count.
-const CARD_FOOTER_H: f32 = 30.;
 /// Diameter of the round install button.
 const INSTALL_BUTTON: f32 = 30.;
 
@@ -146,12 +143,24 @@ impl Component for PackageCard {
                     .child(PackageBanner::new(icon_url, BANNER_H))
                     // Sat in the banner's top-left corner rather than down in
                     // the footer: it is the first thing worth knowing about a
-                    // result, and it leaves the footer to the install button.
+                    // result, and the opposite corner is the install button's.
                     .maybe_child(self.installed.map(|installed| {
                         rect()
                             .position(Position::new_absolute().top(8.).left(8.))
                             .layer(Layer::Relative(7))
                             .child(installed_badge_overlay(installed))
+                            .into_element()
+                    }))
+                    .maybe_child(self.installed.is_none().then(|| {
+                        rect()
+                            .position(Position::new_absolute().top(8.).right(8.))
+                            .layer(Layer::Relative(7))
+                            .child(InstallButton::new(
+                                &self.item,
+                                self.cluster_id,
+                                &self.package_type,
+                                false,
+                            ))
                             .into_element()
                     })),
             )
@@ -198,32 +207,7 @@ impl Component for PackageCard {
                                     .color(colors::fg_secondary()),
                             ),
                     )
-                    .child(
-                        rect()
-                            .horizontal()
-                            .width(Size::fill())
-                            // Held at the button's height so the download count
-                            // doesn't shift down on cards without one.
-                            .height(Size::px(CARD_FOOTER_H))
-                            .cross_align(Alignment::Center)
-                            .content(Content::Flex)
-                            .child(downloads_row(self.item.downloads))
-                            .child(
-                                rect()
-                                    .horizontal()
-                                    .width(Size::flex(1.0))
-                                    .cross_align(Alignment::Center)
-                                    .main_align(Alignment::End)
-                                    .maybe_child(self.installed.is_none().then(|| {
-                                        InstallButton::new(
-                                            &self.item,
-                                            self.cluster_id,
-                                            &self.package_type,
-                                        )
-                                        .into_element()
-                                    })),
-                            ),
-                    ),
+                    .child(downloads_row(self.item.downloads)),
             )
     }
 }
@@ -317,7 +301,15 @@ impl Component for ListRow {
                                     .max_lines(1)
                                     .color(colors::fg_secondary()),
                             )
-                            .child(Icon::new(item.provider).size(12.)),
+                            .child(Icon::new(item.provider).size(12.))
+                            // Beside the attribution rather than out at the far
+                            // right, where it drifted away from the package it
+                            // describes and crowded the install button.
+                            .maybe_child(
+                                self.installed.map(|installed| {
+                                    installed_badge(installed, 10.).into_element()
+                                }),
+                            ),
                     )
                     .child(
                         label()
@@ -328,36 +320,41 @@ impl Component for ListRow {
                             .color(colors::fg_secondary()),
                     ),
             )
-            .maybe_child(
-                self.installed
-                    .map(|installed| installed_badge(installed, 11.).into_element()),
-            )
             .child(downloads_row(item.downloads))
-            .maybe_child(self.installed.is_none().then(|| {
-                InstallButton::new(&self.item, self.cluster_id, &self.package_type).into_element()
-            }))
+            // Kept in place once the package is in the cluster, rather than
+            // dropped: a row that loses its button leaves the ones around it
+            // looking misaligned. Disabled says the same thing and holds still.
+            .child(InstallButton::new(
+                &self.item,
+                self.cluster_id,
+                &self.package_type,
+                self.installed.is_some(),
+            ))
     }
 }
 
 /// Installs a listing entry's latest compatible version without making the user
 /// open its page first. Same version pick and same dispatch as the install
-/// button on the package page. Only rendered for entries the cluster doesn't
-/// already have — an installed or bundled one wears its badge instead.
+/// button on the package page.
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
     content_type: ContentType,
+    /// The cluster already has this one, so there is nothing left to press.
+    /// Callers that hide the button entirely in that case pass `false`.
+    installed: bool,
 }
 
 impl InstallButton {
-    fn new(item: &ProjectSummary, cluster_id: i64, package_type: &str) -> Self {
+    fn new(item: &ProjectSummary, cluster_id: i64, package_type: &str, installed: bool) -> Self {
         Self {
             provider: item.provider,
             project_id: item.id.clone(),
             cluster_id,
             content_type: content_type_for_slug(package_type),
+            installed,
         }
     }
 }
@@ -382,7 +379,10 @@ impl Component for InstallButton {
             _ => (None, None),
         };
 
-        let versions = version_list(&use_package_versions(
+        let installed = self.installed;
+
+        let versions = version_list(&use_package_versions_when(
+            !installed,
             provider,
             project_id.clone(),
             game_version,
@@ -407,8 +407,14 @@ impl Component for InstallButton {
                     .height(Size::px(INSTALL_BUTTON))
                     .padding(Gaps::new_all(0.))
                     .corner_radius(CornerRadius::new_all(INSTALL_BUTTON / 2.))
-                    .alt(if installing { "Installing" } else { "Install" })
-                    .enabled(latest.is_some() && !installing)
+                    .alt(if installed {
+                        "Already installed"
+                    } else if installing {
+                        "Installing"
+                    } else {
+                        "Install"
+                    })
+                    .enabled(!installed && latest.is_some() && !installing)
                     .on_press(move |_| {
                         if let Some(version_id) = latest.clone() {
                             dispatch.install_package(

@@ -1,19 +1,14 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{
-    GalleryImage, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
-};
+use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
 
 use crate::Actions;
 use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
-use crate::hooks::{VERSIONS_PAGE_SIZE, loaded_image, use_cached_image};
+use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
-
-const GALLERY_IMAGE_H: f32 = 360.;
-const GALLERY_EDGE: u32 = 1024;
 
 pub(super) fn loading_body() -> impl IntoElement {
     rect()
@@ -83,80 +78,6 @@ impl Component for MarkdownPanel {
     }
 }
 
-pub(super) fn gallery_panel(images: Vec<GalleryImage>) -> impl IntoElement {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(12.)
-        .children(images.into_iter().map(|img| {
-            let key = img.url.clone();
-            GalleryTile {
-                image: img,
-                key: DiffKey::None,
-            }
-            .key(key)
-            .into_element()
-        }))
-        .into_element()
-}
-
-#[derive(PartialEq)]
-struct GalleryTile {
-    image: GalleryImage,
-    key: DiffKey,
-}
-
-impl KeyExt for GalleryTile {
-    fn write_key(&mut self) -> &mut DiffKey {
-        &mut self.key
-    }
-}
-
-impl Component for GalleryTile {
-    fn render(&self) -> impl IntoElement {
-        let query = use_cached_image(Some(self.image.url.clone()), GALLERY_EDGE);
-        let loaded = loaded_image(Some(&self.image.url), &query);
-
-        let preview = rect()
-            .width(Size::fill())
-            .height(Size::px(GALLERY_IMAGE_H))
-            .center()
-            .overflow(Overflow::Clip)
-            .background(colors::component_bg())
-            .maybe_child(loaded.map(|(url, bytes)| {
-                ImageViewer::new((url, bytes))
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .aspect_ratio(AspectRatio::Max)
-                    .image_cover(ImageCover::Center)
-                    .into_element()
-            }));
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .corner_radius(CornerRadius::new_all(10.))
-            .overflow(Overflow::Clip)
-            .background(PANEL_BG)
-            .border(border_all_color(1., colors::component_border()))
-            .child(preview)
-            .maybe(self.image.title.is_some(), |el| {
-                el.child(
-                    rect()
-                        .width(Size::fill())
-                        .padding(Gaps::new_all(10.))
-                        .child(
-                            label()
-                                .text(self.image.title.clone().unwrap_or_default())
-                                .font_size(12.)
-                                .max_lines(2)
-                                .color(colors::fg_secondary()),
-                        ),
-                )
-            })
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
@@ -192,8 +113,11 @@ pub(super) fn versions_panel(
             .children(versions.into_iter().map(move |v| {
                 let tag = installed
                     .as_ref()
-                    .filter(|installed| installed.is_version(&v.version_id))
-                    .map(|installed| installed.source);
+                    .and_then(|installed| installed.find_version(&v.version_id))
+                    .cloned();
+                let duplicated = installed
+                    .as_ref()
+                    .is_some_and(|installed| installed.is_duplicated());
                 version_row(
                     v,
                     provider,
@@ -201,6 +125,7 @@ pub(super) fn versions_panel(
                     cluster_id,
                     dispatch.clone(),
                     tag,
+                    duplicated,
                     installing,
                 )
                 .into_element()
@@ -274,7 +199,11 @@ fn version_row(
     project_id: String,
     cluster_id: i64,
     dispatch: Actions,
-    installed: Option<InstallSource>,
+    installed: Option<InstalledVersion>,
+    // Whether the cluster has more than one version of this package, which is
+    // the only situation where saying which one is live tells the user
+    // anything.
+    duplicated: bool,
     installing: bool,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
@@ -323,22 +252,79 @@ fn version_row(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .maybe_child(installed.map(|installed| installed_badge(installed, 11.).into_element()))
-        .child(
-            Button::new()
-                .secondary()
-                .small()
-                .enabled(installed.is_none() && !installing)
-                .on_press(move |_| {
-                    dispatch.install_package(
-                        cluster_id,
-                        provider,
-                        project_id.clone(),
-                        version_id.clone(),
-                    );
-                })
-                .text("Install"),
+        .maybe_child(
+            installed
+                .as_ref()
+                .map(|installed| installed_badge(installed.source, 11.).into_element()),
         )
+        .maybe_child(
+            installed
+                .as_ref()
+                .filter(|_| duplicated)
+                .map(|installed| activity_badge(installed.enabled).into_element()),
+        )
+        .child(version_button(
+            installed,
+            v.name,
+            provider,
+            project_id,
+            version_id,
+            cluster_id,
+            dispatch,
+            installing,
+        ))
+}
+
+/// Install, or remove the version that is already there.
+///
+/// A bundle that names this version without the cluster having linked anything
+/// yet leaves nothing to press: there is no artifact to remove, and installing
+/// it by hand would make a copy the bundle does not own.
+#[allow(clippy::too_many_arguments)]
+fn version_button(
+    installed: Option<InstalledVersion>,
+    version_name: String,
+    provider: ProviderId,
+    project_id: String,
+    version_id: String,
+    cluster_id: i64,
+    dispatch: Actions,
+    busy: bool,
+) -> impl IntoElement {
+    let Some(installed) = installed else {
+        return Button::new()
+            .secondary()
+            .small()
+            .enabled(!busy)
+            .on_press(move |_| {
+                dispatch.install_package(
+                    cluster_id,
+                    provider,
+                    project_id.clone(),
+                    version_id.clone(),
+                );
+            })
+            .text("Install");
+    };
+
+    let Some(hash) = installed.hash else {
+        return Button::new().secondary().small().enabled(false).text("Install");
+    };
+
+    Button::new()
+        .danger()
+        .small()
+        .enabled(!busy)
+        .on_press(move |_| {
+            dispatch.remove_package_version(
+                cluster_id,
+                provider,
+                project_id.clone(),
+                hash.clone(),
+                version_name.clone(),
+            );
+        })
+        .text("Remove")
 }
 
 fn release_badge(release_type: ReleaseType) -> impl IntoElement {

@@ -12,12 +12,17 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::hooks::use_cluster;
 
-use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_map};
+use super::{
+    Installed, InstalledVersion, PackageBanner, Thumbnail, activity_badge, installed_badge,
+    installed_badge_overlay, installed_map,
+};
 use crate::utils::abbreviate_number;
 
+mod gallery;
 mod panels;
 mod sidebar;
-use panels::{about_panel, gallery_panel, loading_body, tabs, versions_panel};
+use gallery::gallery_panel;
+use panels::{about_panel, loading_body, tabs, versions_panel};
 use sidebar::sidebar;
 
 const PANEL_BG: Color = Color::from_rgb(21, 28, 34);

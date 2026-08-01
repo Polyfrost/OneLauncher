@@ -227,4 +227,7 @@ pub struct LinkedArtifactInfo {
 	pub display_name: Option<String>,
 	pub display_version: Option<String>,
 	pub provider: Option<ProviderId>,
+	/// When the provider published this version, RFC 3339. Ordering two copies
+	/// of one project by recency is the only thing that reads it.
+	pub published_at: Option<String>,
 }

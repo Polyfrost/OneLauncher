@@ -48,7 +48,23 @@ pub(super) fn sidebar(
                 .overflow(Overflow::Clip)
                 .background(PANEL_BG)
                 .border(border_all_color(1., colors::component_border()))
-                .child(PackageBanner::new(project.icon_url.clone(), 110.))
+                // The badge rides on the artwork here for the same reason it
+                // does on a listing card: it belongs to the package, and it
+                // used to sit in a strip of its own between the card and the
+                // install button.
+                .child(
+                    rect()
+                        .width(Size::fill())
+                        .overflow(Overflow::Clip)
+                        .child(PackageBanner::new(project.icon_url.clone(), 110.))
+                        .maybe_child(installed.as_ref().map(|installed| {
+                            rect()
+                                .position(Position::new_absolute().top(8.).left(8.))
+                                .layer(Layer::Relative(7))
+                                .child(installed_badge_overlay(installed.source))
+                                .into_element()
+                        })),
+                )
                 .child(
                     rect()
                         .vertical()
@@ -99,11 +115,6 @@ pub(super) fn sidebar(
                                 ),
                         ),
                 ),
-        )
-        .maybe_child(
-            installed
-                .as_ref()
-                .map(|installed| installed_badge(installed.source, 12.).into_element()),
         )
         .child(
             Button::new()

@@ -175,6 +175,7 @@ impl PackageStore {
                 provider: release
                     .as_ref()
                     .and_then(|r| ProviderId::from_repr(r.provider as u8)),
+                published_at: release.as_ref().and_then(|r| r.published_at.clone()),
             });
         }
 
@@ -200,6 +201,30 @@ impl PackageStore {
         hash: &str,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
+        Self::write_artifact_enabled(cluster_id, hash, None, ctx).await
+    }
+
+    /// Puts an artifact into a known enabled state rather than flipping it.
+    ///
+    /// Returns the state it ended in, which is the requested one unless the
+    /// link was already there.
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn set_artifact_enabled_to(
+        cluster_id: i64,
+        hash: &str,
+        enabled: bool,
+        ctx: &ContentCtx,
+    ) -> ContentResult<bool> {
+        Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
+    }
+
+    /// `target` of `None` means "the opposite of whatever it is now".
+    async fn write_artifact_enabled(
+        cluster_id: i64,
+        hash: &str,
+        target: Option<bool>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<bool> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
         let artifact = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
             .await?
@@ -214,7 +239,7 @@ impl PackageStore {
                 reason: format!("unknown content type {}", artifact.content_type),
             })?;
 
-        let enabled = link.enabled == 0;
+        let enabled = target.unwrap_or(link.enabled == 0);
         let file_name = link
             .cluster_file_name
             .trim_end_matches(".disabled")

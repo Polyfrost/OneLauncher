@@ -793,10 +793,105 @@ impl Actions {
             });
 
             if install.result.is_ok() {
+                // Installing a second version of something the cluster already
+                // had leaves the newest live and the rest switched off. Done
+                // before the refresh below so the version list never renders the
+                // moment where both copies read as active.
+                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+                    cluster_id,
+                    &state.services.content(),
+                )
+                .await
+                {
+                    tracing::warn!(%err, "failed to resolve duplicate package versions");
+                }
+
+                // What the install button turns into is read straight off the
+                // cluster's content, so that is refreshed here and waited for
+                // before the busy flag drops. Left to the `ClustersChanged`
+                // signal alone, the button came back as a live "Install" the
+                // moment the download finished and only grew its "Installed"
+                // badge once an event-pump round trip and a full cluster-query
+                // sweep — network calls included — had gone by.
+                super::invalidate_cluster_content_queries().await;
+
+                // Everything else the install touched is nobody's blocker and
+                // catches up on the usual signal.
                 state
                     .services
                     .events
                     .signal(oneclient_events::Signal::ClustersChanged);
+            }
+
+            finish(&actions);
+        });
+    }
+
+    /// Drops one installed version of a browsed package.
+    ///
+    /// Shares the installs channel with [`Self::install_package`] so the whole
+    /// project reads as busy while this runs: the version list has a button per
+    /// row, and none of them should be pressable while one is being acted on.
+    ///
+    /// The removal is recorded as a bundle override when a bundle owns the
+    /// artifact — the same thing the package manager's remove does. Without it
+    /// the next sync puts the version straight back.
+    pub fn remove_package_version(
+        &self,
+        cluster_id: ClusterId,
+        provider: ProviderId,
+        project_id: impl Into<String>,
+        hash: impl Into<String>,
+        display_name: impl Into<String>,
+    ) {
+        let (project_id, hash, display_name) =
+            (project_id.into(), hash.into(), display_name.into());
+        let actions = self.clone();
+
+        self.station
+            .clone()
+            .write_channel(AppChannel::Installs)
+            .installs
+            .begin(cluster_id, provider, project_id.clone());
+
+        spawn_forever(async move {
+            let finish = |actions: &Actions| {
+                actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs)
+                    .installs
+                    .finish(cluster_id, provider, &project_id);
+            };
+
+            let Ok(state) = launcher::state() else {
+                finish(&actions);
+                return;
+            };
+
+            let events = state.services.events.clone();
+            match oneclient_core::remove_artifact_from_cluster(
+                cluster_id,
+                &hash,
+                true,
+                &state.services.content(),
+            )
+            .await
+            {
+                Ok(()) => {
+                    events.notify("Removed").body(display_name).send();
+
+                    // Same reasoning as the install path: what the row turns
+                    // back into is read straight off the cluster's content, so
+                    // that is refreshed before the busy flag drops.
+                    super::invalidate_cluster_content_queries().await;
+                    events.signal(oneclient_events::Signal::ClustersChanged);
+                }
+                Err(err) => events
+                    .notify("Remove failed")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
             }
 
             finish(&actions);

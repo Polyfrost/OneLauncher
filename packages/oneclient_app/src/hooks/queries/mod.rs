@@ -78,13 +78,15 @@ pub use storage::{
     invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
 };
 pub use mutations::{
-    ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
+    ClusterAction, invalidate_cluster_content_queries, invalidate_cluster_queries,
+    invalidate_profile_queries, use_cluster_mutation,
 };
 pub use package_updates::{package_updates, stale_hashes, use_package_updates};
 pub use packages::{
     BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE, category_list, content_type_for_slug, package_meta_batch,
     project_detail, search_items, search_pending, search_total, use_package_categories,
     use_package_meta_batch, use_package_project, use_package_search, use_package_versions,
+    use_package_versions_when,
     version_list, versions_total,
 };
 pub use player_profile::use_player_profile;

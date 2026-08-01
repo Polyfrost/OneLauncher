@@ -71,6 +71,61 @@ pub fn centered_note(text: &str) -> Element {
         .into_element()
 }
 
+/// How many columns no wider than `max_col` fit across `width`.
+///
+/// One column until the grid has measured itself, so the first frame renders
+/// something rather than dividing by an unknown.
+pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
+    if width <= 0. {
+        return 1;
+    }
+    (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
+}
+
+/// Lays `items` out in `cols` equal columns, filling row by row.
+///
+/// There is no wrapping flex row to lean on, so the split is done here from the
+/// width the grid last measured. It reports its own size back through `width`,
+/// which the caller feeds to [`grid_columns_for_width`] on the next render.
+/// Short final rows are padded with empty flex cells so their tiles keep the
+/// column width instead of stretching across the row.
+pub fn flow_grid(items: Vec<Element>, cols: usize, mut width: State<f32>, gap: f32) -> Element {
+    let cols = cols.max(1);
+
+    let mut root = rect().vertical().width(Size::fill()).spacing(gap);
+    let mut iter = items.into_iter();
+    let mut remaining = true;
+    while remaining {
+        let mut row = rect()
+            .horizontal()
+            .width(Size::fill())
+            .spacing(gap)
+            .content(Content::Flex);
+        let mut filled = 0;
+        for _ in 0..cols {
+            if let Some(item) = iter.next() {
+                row = row.child(item);
+                filled += 1;
+            } else {
+                row = row.child(rect().width(Size::flex(1.0)));
+            }
+        }
+        if filled == 0 {
+            break;
+        }
+        remaining = filled == cols;
+        root = root.child(row.into_element());
+    }
+
+    root.on_sized(move |event: Event<SizedEventData>| {
+        let w = event.data().area.width();
+        if (w - *width.peek()).abs() > 0.5 {
+            *width.write() = w;
+        }
+    })
+    .into_element()
+}
+
 pub fn entrance_motion_layer(
     slide_x: f32,
     slide_y: f32,

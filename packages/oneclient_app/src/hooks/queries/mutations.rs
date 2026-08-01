@@ -24,6 +24,16 @@ pub async fn invalidate_cluster_queries() {
     QueriesStorage::<LoaderVersionsQuery>::try_invalidate_all().await;
 }
 
+/// Just the query that decides whether a cluster already has a package.
+///
+/// Split out of [`invalidate_cluster_queries`] so an install can wait for
+/// exactly this before it stops calling itself busy. The full sweep reaches the
+/// network several times over, and waiting for all of it would trade one stale
+/// button for a slower one.
+pub async fn invalidate_cluster_content_queries() {
+    QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
+}
+
 pub async fn invalidate_profile_queries() {
     QueriesStorage::<ListNamedProfilesQuery>::try_invalidate_all().await;
     QueriesStorage::<GameProfileQuery>::try_invalidate_all().await;

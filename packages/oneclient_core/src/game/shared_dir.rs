@@ -58,6 +58,21 @@ pub async fn materialize_content(
 
     import_manual_content(services, cluster, game_dir).await;
 
+    // Before the folder is built, not after: a cluster holding several versions
+    // of one package would otherwise hand the game every enabled copy, and for
+    // mods that is a classloader conflict rather than a choice. Resolving to the
+    // newest here means the rest are simply not desired.
+    if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+        cluster.id,
+        &services.content(),
+    )
+    .await
+    {
+        // A launch is not worth blocking over this. The duplicates were already
+        // there and the game still gets a folder, just an untidy one.
+        tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
+    }
+
     let desired = desired_content(services, cluster).await?;
     let desired_paths: HashSet<String> = desired.iter().map(Desired::relative_path).collect();
 

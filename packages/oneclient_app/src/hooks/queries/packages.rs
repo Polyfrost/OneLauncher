@@ -238,6 +238,22 @@ pub fn use_package_versions(
     loader: Option<GameLoader>,
     page: usize,
 ) -> UseQuery<PackageVersionsQuery> {
+    use_package_versions_when(true, provider, project_id, game_version, loader, page)
+}
+
+/// The version list, fetched only when `enabled`.
+///
+/// A listing row keeps its install button after the package is in the cluster,
+/// so the hook still has to run there — but there is nothing left for it to
+/// install, and a request per already-installed row is pure waste.
+pub fn use_package_versions_when(
+    enabled: bool,
+    provider: ProviderId,
+    project_id: String,
+    game_version: Option<String>,
+    loader: Option<GameLoader>,
+    page: usize,
+) -> UseQuery<PackageVersionsQuery> {
     use_query(
         Query::new(
             PackageVersionsKeys {
@@ -249,6 +265,7 @@ pub fn use_package_versions(
             },
             PackageVersionsQuery,
         )
+        .enable(enabled)
         .stale_time(VERSIONS_STALE),
     )
 }

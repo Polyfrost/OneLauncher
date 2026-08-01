@@ -424,6 +424,11 @@ struct ModrinthProject {
 #[derive(Deserialize)]
 struct ModrinthGalleryItem {
     url: String,
+    /// The image as it was uploaded. `url` is Modrinth's own re-encoded copy,
+    /// small enough to look soft once it is blown up to fill a gallery tile, so
+    /// this is preferred where the API hands it out.
+    #[serde(default)]
+    raw_url: Option<String>,
     #[serde(default)]
     title: Option<String>,
 }
@@ -514,7 +519,10 @@ impl ModrinthProject {
                 .gallery
                 .into_iter()
                 .map(|g| GalleryImage {
-                    url: g.url,
+                    url: g
+                        .raw_url
+                        .filter(|url| !url.is_empty())
+                        .unwrap_or(g.url),
                     title: g.title.filter(|t| !t.is_empty()),
                 })
                 .collect(),

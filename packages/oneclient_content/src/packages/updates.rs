@@ -375,14 +375,26 @@ pub async fn apply_browser_package_update(
 		.await?
 		.map(|link| link.enabled != 0);
 
+	// Everything else of this project goes, not just the artifact the check
+	// happened to record. A cluster that already held two versions would
+	// otherwise come out of an update holding two again, and the recorded hash
+	// can itself be stale if the user installed a version by hand since the
+	// check ran.
+	unlink_other_versions(
+		update.cluster_id,
+		update.provider,
+		&update.project_id,
+		&installed.hash,
+		ctx,
+	)
+	.await?;
+
 	// Nothing moved: the provider handed back the file that is already linked.
 	// Leave the link, and its enabled flag, exactly as they were.
 	if installed.hash == update.hash {
 		update_dao::delete(&ctx.db, update.cluster_id, &update.hash).await?;
 		return Ok(installed.hash);
 	}
-
-	unlink_superseded(update.cluster_id, &update.hash, ctx).await?;
 
 	// A package the user had switched off stays off across an update; being out
 	// of date is not a reason to turn it back on. The fresh link starts enabled,
@@ -394,6 +406,53 @@ pub async fn apply_browser_package_update(
 	update_dao::delete(&ctx.db, update.cluster_id, &update.hash).await?;
 
 	Ok(installed.hash)
+}
+
+/// Drops every other version of `project_id` the cluster holds.
+///
+/// An update is a replacement, so what it leaves behind is exactly one artifact
+/// per project. Bundle-owned copies are stepped over rather than removed: this
+/// flow refuses to touch them at all, and unlinking one here would have the next
+/// bundle sync put it straight back.
+#[tracing::instrument(level = "debug", skip(ctx))]
+async fn unlink_other_versions(
+	cluster_id: i64,
+	provider: ProviderId,
+	project_id: &str,
+	keep_hash: &str,
+	ctx: &ContentCtx,
+) -> ContentResult<()> {
+	let others = artifact_dao::list_cluster_artifacts_for_project(
+		&ctx.db,
+		cluster_id,
+		provider as i64,
+		project_id,
+		keep_hash,
+	)
+	.await?;
+
+	for link in others {
+		if bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, &link.hash)
+			.await?
+			.is_some()
+		{
+			tracing::debug!(
+				hash = %link.hash,
+				"leaving a bundle-owned version of the project in place"
+			);
+			continue;
+		}
+
+		tracing::info!(
+			cluster_id,
+			project_id,
+			hash = %link.hash,
+			"dropping a superseded version of the project"
+		);
+		unlink_superseded(cluster_id, &link.hash, ctx).await?;
+	}
+
+	Ok(())
 }
 
 /// Drops the artifact an applied update replaced.
@@ -446,6 +505,7 @@ mod tests {
 			display_name: None,
 			display_version: None,
 			provider,
+			published_at: None,
 		}
 	}
 

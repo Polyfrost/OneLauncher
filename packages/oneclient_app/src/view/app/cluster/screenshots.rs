@@ -12,7 +12,7 @@ use crate::components::{
 use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_view_state};
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::ui::{border_all_color, fmt_date};
+use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
 use crate::utils::{format_res, format_size};
 
 use super::cluster_not_found;
@@ -114,8 +114,8 @@ impl Component for ClusterScreenshots {
 
             match *view_mode.read() {
                 ViewLayout::Grid => {
-                    let cols = grid_columns_for_width(*grid_width.read());
-                    grid(items, cols, grid_width).into_element()
+                    let cols = grid_columns_for_width(*grid_width.read(), MAX_COL_W, GRID_GAP);
+                    flow_grid(items, cols, grid_width, GRID_GAP)
                 }
                 ViewLayout::List => rect()
                     .vertical()
@@ -298,50 +298,6 @@ fn toolbar_row(
         )
         .child(right)
         .into_element()
-}
-
-fn grid_columns_for_width(width: f32) -> usize {
-    if width <= 0. {
-        return 1;
-    }
-    (((width + GRID_GAP) / (MAX_COL_W + GRID_GAP)).ceil() as usize).max(1)
-}
-
-fn grid(items: Vec<Element>, cols: usize, mut width: State<f32>) -> impl IntoElement {
-    let cols = cols.max(1);
-
-    let mut root = rect().vertical().width(Size::fill()).spacing(GRID_GAP);
-    let mut iter = items.into_iter();
-    let mut remaining = true;
-    while remaining {
-        let mut row = rect()
-            .horizontal()
-            .width(Size::fill())
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        let mut filled = 0;
-        for _ in 0..cols {
-            if let Some(card) = iter.next() {
-                row = row.child(card);
-                filled += 1;
-            } else {
-                row = row.child(rect().width(Size::flex(1.0)));
-            }
-        }
-        if filled == 0 {
-            break;
-        }
-        remaining = filled == cols;
-        root = root.child(row.into_element());
-    }
-
-    root.on_sized(move |event: Event<SizedEventData>| {
-        let w = event.data().area.width();
-        if (w - *width.peek()).abs() > 0.5 {
-            *width.write() = w;
-        }
-    })
-    .into_element()
 }
 
 fn empty_state(loading: bool) -> impl IntoElement {

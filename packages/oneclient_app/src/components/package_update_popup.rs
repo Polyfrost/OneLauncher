@@ -3,17 +3,19 @@
 //! Only ever shows packages the user installed from the browser; bundle content
 //! has its own flow and is never listed here.
 //!
-//! Every row is answered on its own — one Update button, one Skip button — so a
-//! user who wants a single mod moved forward is not made to take the rest with
-//! it. Answering removes the row; the modal closes when the last one is gone.
+//! Every row carries its own dropdown, so a user who wants a single mod moved
+//! forward is not made to take the rest with it. Nothing happens until Proceed:
+//! the choices are collected first and applied in one pass, which is why the
+//! rows stay put while they are being answered.
 
 use std::collections::HashMap;
 
 use freya::prelude::*;
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::BrowserPackageUpdate;
+use oneclient_db::models::ClusterId;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -22,10 +24,48 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const DIALOG_W: f32 = 460.;
+const DIALOG_W: f32 = 520.;
 const DIALOG_H: f32 = 420.;
+const CHOICE_DROPDOWN_W: f32 = 150.;
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
+
+/// What Proceed should do with one row.
+///
+/// The two skips differ only in whether the answer outlives the modal: a plain
+/// skip leaves the package stale and it is offered again next launch, while
+/// [`RowChoice::SkipVersion`] records that this exact version was declined and
+/// stops it being raised until a newer one appears.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum RowChoice {
+    #[default]
+    Update,
+    Skip,
+    SkipVersion,
+}
+
+impl RowChoice {
+    const ALL: [Self; 3] = [Self::Update, Self::Skip, Self::SkipVersion];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Update => "Update",
+            Self::Skip => "Skip for now",
+            Self::SkipVersion => "Skip this version",
+        }
+    }
+
+    fn options() -> Vec<String> {
+        Self::ALL.iter().map(|c| c.label().to_string()).collect()
+    }
+}
+
+/// Identifies a row across the whole modal, which may span several clusters.
+type RowKey = (ClusterId, String);
+
+fn row_key(update: &BrowserPackageUpdate) -> RowKey {
+    (update.cluster_id, update.hash.clone())
+}
 
 #[derive(PartialEq)]
 pub struct PackageUpdatePopup;
@@ -34,6 +74,11 @@ impl Component for PackageUpdatePopup {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
+
+        // Only the rows the user actually touched. Everything absent is an
+        // Update, so a group that arrives while the modal is open still gets a
+        // sensible default without being reconciled into the map.
+        let choices = use_state(HashMap::<RowKey, RowChoice>::new);
 
         let groups = snapshot.package_updates.clone();
 
@@ -67,7 +112,7 @@ impl Component for PackageUpdatePopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&groups, &meta, dispatch)),
+                    .child(dialog(&groups, &meta, dispatch, choices)),
             )
             .into_element()
     }
@@ -84,6 +129,7 @@ fn dialog(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
     dispatch: crate::Actions,
+    choices: State<HashMap<RowKey, RowChoice>>,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -101,26 +147,27 @@ fn dialog(
             0.,
             Color::from_argb(150, 0, 0, 0),
         )))
-        .child(content(groups, meta, dispatch))
+        .child(content(groups, meta, dispatch, choices))
 }
 
 fn content(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
     dispatch: crate::Actions,
+    choices: State<HashMap<RowKey, RowChoice>>,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
-    let update_all = dispatch.clone();
+    let proceed_dispatch = dispatch.clone();
     let total: usize = groups.iter().map(|group| group.packages.len()).sum();
 
     let subtitle = match groups {
         [only] => format!(
-            "{total} package{} in {} can be updated.",
+            "{total} package{} in {} can be updated. Pick what happens to each, then Proceed.",
             if total == 1 { "" } else { "s" },
             only.cluster_name
         ),
         _ => format!(
-            "{total} package{} across {} clusters can be updated.",
+            "{total} package{} across {} clusters can be updated. Pick what happens to each, then Proceed.",
             if total == 1 { "" } else { "s" },
             groups.len()
         ),
@@ -154,34 +201,52 @@ fn content(
                     label()
                         .text(subtitle)
                         .font_size(12.5)
-                        .max_lines(2)
+                        .max_lines(3)
                         .color(colors::fg_secondary()),
                 ),
         )
-        .child(update_list(groups, meta, groups.len() > 1, &dispatch))
+        .child(update_list(groups, meta, groups.len() > 1, choices))
         .child(
             rect()
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
-                .main_align(Alignment::SpaceBetween)
+                .main_align(Alignment::End)
                 .spacing(8.)
                 .child(
                     Button::new()
                         .ghost()
                         .on_press(move |_| dismiss.close_package_updates())
-                        .text("Not now"),
+                        .text("Cancel"),
                 )
                 .child(
                     Button::new()
                         .primary()
                         .on_press(move |_| {
+                            let answers = choices.read();
                             for update in &all {
-                                update_all.apply_package_update(update.clone());
+                                match answers
+                                    .get(&row_key(update))
+                                    .copied()
+                                    .unwrap_or_default()
+                                {
+                                    RowChoice::Update => {
+                                        proceed_dispatch.apply_package_update(update.clone());
+                                    }
+                                    // Nothing to record: the package stays
+                                    // stale and is offered again next launch.
+                                    RowChoice::Skip => {}
+                                    RowChoice::SkipVersion => proceed_dispatch
+                                        .skip_package_update(
+                                            update.cluster_id,
+                                            update.hash.clone(),
+                                        ),
+                                }
                             }
+                            proceed_dispatch.close_package_updates();
                         })
                         .child(Icon::new(IconType::DownloadCloud02).size(15.))
-                        .text("Update all"),
+                        .text("Proceed"),
                 ),
         )
 }
@@ -190,7 +255,7 @@ fn update_list(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
     show_headers: bool,
-    dispatch: &crate::Actions,
+    choices: State<HashMap<RowKey, RowChoice>>,
 ) -> impl IntoElement {
     let mut scroll = ScrollArea::new()
         .width(Size::fill())
@@ -204,8 +269,13 @@ fn update_list(
 
         for update in &group.packages {
             let key = format!("{}:{}", group.cluster_id, update.hash);
+            let choice = choices
+                .read()
+                .get(&row_key(update))
+                .copied()
+                .unwrap_or_default();
             scroll = scroll.child(
-                UpdateRow::new(resolve_name(update, meta), update.clone(), dispatch.clone())
+                UpdateRow::new(resolve_name(update, meta), update.clone(), choice, choices)
                     .key(key)
                     .into_element(),
             );
@@ -238,16 +308,23 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
 struct UpdateRow {
     name: String,
     update: BrowserPackageUpdate,
-    dispatch: crate::Actions,
+    choice: RowChoice,
+    choices: State<HashMap<RowKey, RowChoice>>,
     key: DiffKey,
 }
 
 impl UpdateRow {
-    fn new(name: String, update: BrowserPackageUpdate, dispatch: crate::Actions) -> Self {
+    fn new(
+        name: String,
+        update: BrowserPackageUpdate,
+        choice: RowChoice,
+        choices: State<HashMap<RowKey, RowChoice>>,
+    ) -> Self {
         Self {
             name,
             update,
-            dispatch,
+            choice,
+            choices,
             key: DiffKey::None,
         }
     }
@@ -255,7 +332,7 @@ impl UpdateRow {
 
 impl PartialEq for UpdateRow {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.update == other.update
+        self.name == other.name && self.update == other.update && self.choice == other.choice
     }
 }
 
@@ -268,11 +345,9 @@ impl KeyExt for UpdateRow {
 impl Component for UpdateRow {
     fn render(&self) -> impl IntoElement {
         let update = self.update.clone();
-        let cluster_id = update.cluster_id;
-        let skip_hash = update.hash.clone();
-
-        let apply_dispatch = self.dispatch.clone();
-        let skip_dispatch = self.dispatch.clone();
+        let choice = self.choice;
+        let mut choices = self.choices;
+        let key = row_key(&update);
 
         // "1.0.2 to 1.1.0" when both are known; a provider that records neither
         // still gets a usable row rather than an empty line.
@@ -326,20 +401,14 @@ impl Component for UpdateRow {
                     ),
             )
             .child(
-                Button::new()
-                    .small()
-                    .ghost()
-                    .on_press(move |_| {
-                        skip_dispatch.skip_package_update(cluster_id, skip_hash.clone())
-                    })
-                    .text("Skip"),
-            )
-            .child(
-                Button::new()
-                    .small()
-                    .primary()
-                    .on_press(move |_| apply_dispatch.apply_package_update(update.clone()))
-                    .text("Update"),
+                Dropdown::new(choice.label(), RowChoice::options())
+                    .width(Size::px(CHOICE_DROPDOWN_W))
+                    .height(Size::px(26.))
+                    .on_select(move |idx: usize| {
+                        if let Some(choice) = RowChoice::ALL.get(idx) {
+                            choices.write().insert(key.clone(), *choice);
+                        }
+                    }),
             )
     }
 }

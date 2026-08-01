@@ -489,6 +489,7 @@ mod tests {
             display_name: None,
             display_version: None,
             provider: None,
+            published_at: None,
         }
     }
 

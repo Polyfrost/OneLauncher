@@ -18,7 +18,7 @@ use crate::ui::border_all_color;
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
 
 /// How a browsed package is already present in the cluster.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {
     /// Installed on its own.
     Manual,
@@ -44,18 +44,50 @@ impl InstallSource {
     }
 }
 
+/// One version of a browsed package that the cluster has.
+#[derive(Clone, PartialEq)]
+pub(crate) struct InstalledVersion {
+    pub version_id: String,
+    /// The artifact to remove. `None` when a bundle names this version but
+    /// nothing is linked yet, which is a state the user cannot act on.
+    pub hash: Option<String>,
+    /// Whether the game loads this one. Only meaningful alongside a `hash`;
+    /// a bundle pin with nothing linked is neither on nor off, and the badge
+    /// that reads this never renders for one.
+    pub enabled: bool,
+    pub source: InstallSource,
+}
+
 /// A browsed package the cluster already has.
+///
+/// More than one version is not a state the launcher aims for, but nothing
+/// stops a cluster reaching it, so this holds every one it finds rather than an
+/// arbitrary winner — the version list marks each of them.
 #[derive(Clone, PartialEq)]
 pub(crate) struct Installed {
+    /// How the package as a whole got here, for the badge on cards and the
+    /// sidebar. A bundle claiming the project wins over a hand-installed copy.
     pub source: InstallSource,
-    /// Which version is in there, when the provider recorded one. Used to mark
-    /// the matching row in a package's version list, never shown as text.
-    pub version_id: Option<String>,
+    /// Every version in the cluster the provider recorded one for, in the order
+    /// the cluster reports them.
+    pub versions: Vec<InstalledVersion>,
 }
 
 impl Installed {
     pub fn is_version(&self, version_id: &str) -> bool {
-        self.version_id.as_deref() == Some(version_id)
+        self.find_version(version_id).is_some()
+    }
+
+    pub fn find_version(&self, version_id: &str) -> Option<&InstalledVersion> {
+        self.versions.iter().find(|v| v.version_id == version_id)
+    }
+
+    /// Whether the cluster holds more than one copy of this package.
+    ///
+    /// Counts linked artifacts only: a bundle pin the cluster never downloaded
+    /// is listed as a version but is not a second copy of anything.
+    pub fn is_duplicated(&self) -> bool {
+        self.versions.iter().filter(|v| v.hash.is_some()).count() > 1
     }
 }
 
@@ -67,22 +99,36 @@ pub(crate) fn installed_map(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
 ) -> HashMap<(ProviderId, String), Installed> {
-    let mut map: HashMap<(ProviderId, String), Installed> = content
-        .into_iter()
-        .filter_map(|item| {
-            Some((
-                (item.provider?, item.project_id?),
-                Installed {
-                    source: InstallSource::Manual,
-                    version_id: item.version_id,
-                },
-            ))
-        })
-        .collect();
+    let mut map: HashMap<(ProviderId, String), Installed> = HashMap::new();
+
+    for item in content {
+        let (Some(provider), Some(project_id)) = (item.provider, item.project_id) else {
+            continue;
+        };
+
+        // The entry is created even for an artifact with no recorded version:
+        // the package is in the cluster either way, and the card badge only
+        // asks that much. It just cannot be tied to a row in the version list.
+        let installed = map.entry((provider, project_id)).or_insert(Installed {
+            source: InstallSource::Manual,
+            versions: Vec::new(),
+        });
+
+        if let Some(version_id) = item.version_id {
+            installed.versions.push(InstalledVersion {
+                version_id,
+                hash: Some(item.hash),
+                enabled: item.enabled,
+                source: InstallSource::Manual,
+            });
+        }
+    }
 
     // Bundle membership wins: a bundle's files land in the cluster as ordinary
     // content, so they'd otherwise read as hand-installed. The version on disk
-    // is the truth when there is one; the manifest's pin is the fallback.
+    // is the truth when there is one; the manifest's pin is the fallback, and
+    // is deliberately not added alongside a linked version — a pin the cluster
+    // has not downloaded is not something the user has installed.
     for bundle in bundles {
         for (file, _status) in &bundle.files {
             if let BundleFileKind::Managed {
@@ -92,12 +138,32 @@ pub(crate) fn installed_map(
                 ..
             } = &file.kind
             {
-                map.entry((*provider, project_id.clone()))
-                    .and_modify(|installed| installed.source = InstallSource::Bundled)
-                    .or_insert_with(|| Installed {
-                        source: InstallSource::Bundled,
-                        version_id: Some(version_id.clone()),
-                    });
+                match map.get_mut(&(*provider, project_id.clone())) {
+                    Some(installed) => {
+                        installed.source = InstallSource::Bundled;
+                        if let Some(version) = installed
+                            .versions
+                            .iter_mut()
+                            .find(|v| &v.version_id == version_id)
+                        {
+                            version.source = InstallSource::Bundled;
+                        }
+                    }
+                    None => {
+                        map.insert(
+                            (*provider, project_id.clone()),
+                            Installed {
+                                source: InstallSource::Bundled,
+                                versions: vec![InstalledVersion {
+                                    version_id: version_id.clone(),
+                                    hash: None,
+                                    enabled: false,
+                                    source: InstallSource::Bundled,
+                                }],
+                            },
+                        );
+                    }
+                }
             }
         }
     }
@@ -119,6 +185,41 @@ pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElem
         BANNER_BG.with_a(225),
         Some(installed.color().with_a(110)),
     )
+}
+
+/// Which of several installed versions the game actually loads.
+///
+/// Only worth showing when a package has more than one copy in the cluster —
+/// with a single one "active" says nothing "installed" hasn't.
+///
+/// Reads the artifact's `enabled` flag rather than working the answer out
+/// itself, because
+/// [`reconcile_duplicate_activity`](oneclient_content::packages::reconcile_duplicate_activity)
+/// has already resolved duplicates to the newest copy. Exactly one row in a
+/// duplicated set should read Active; more than one means that pass has not run
+/// since the copies appeared.
+pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
+    let (text, color) = if active {
+        ("Active", colors::brand())
+    } else {
+        ("Inactive", colors::fg_secondary())
+    };
+
+    // No icon, unlike the source badges it sits beside: three pills in a row
+    // all wearing a tick reads as decoration rather than as three facts.
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .padding(Gaps::new_symmetric(2., 8.))
+        .corner_radius(CornerRadius::new_all(999.))
+        .background(color.with_a(38))
+        .child(
+            label()
+                .text(text)
+                .font_size(11.)
+                .max_lines(1)
+                .color(color),
+        )
 }
 
 fn badge(
@@ -302,5 +403,187 @@ impl Component for PackageBanner {
                     ),
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::onboarding::test_support::archive;
+    use oneclient_content::packages::ContentType;
+    use oneclient_core::{BundleFile, FileUpdateStatus};
+
+    fn linked(project_id: &str, version_id: Option<&str>, hash: &str) -> LinkedArtifactInfo {
+        disabled_linked(project_id, version_id, hash, true)
+    }
+
+    fn disabled_linked(
+        project_id: &str,
+        version_id: Option<&str>,
+        hash: &str,
+        enabled: bool,
+    ) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            hash: hash.to_string(),
+            cluster_file_name: format!("{hash}.jar"),
+            enabled,
+            content_type: ContentType::Mod,
+            file_name: format!("{hash}.jar"),
+            project_id: Some(project_id.to_string()),
+            version_id: version_id.map(Into::into),
+            display_name: None,
+            display_version: None,
+            provider: Some(ProviderId::Modrinth),
+            published_at: None,
+        }
+    }
+
+    fn managed(project_id: &str, version_id: &str) -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: format!("mods/{project_id}.jar"),
+            size: 1,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: project_id.to_string(),
+                version_id: version_id.to_string(),
+                sha1: format!("sha-{version_id}"),
+            },
+        }
+    }
+
+    fn bundles(files: Vec<BundleFile>) -> Vec<BundleWithUpdateStatus> {
+        vec![BundleWithUpdateStatus {
+            files: files
+                .iter()
+                .cloned()
+                .map(|f| (f, FileUpdateStatus::UpToDate))
+                .collect(),
+            archive: archive("performance", true, files),
+            has_updates: false,
+        }]
+    }
+
+    fn entry(map: &HashMap<(ProviderId, String), Installed>, project: &str) -> Installed {
+        map.get(&(ProviderId::Modrinth, project.to_string()))
+            .expect("project missing from the map")
+            .clone()
+    }
+
+    #[test]
+    fn every_installed_version_of_one_project_is_listed() {
+        let map = installed_map(
+            vec![
+                linked("sodium", Some("v1"), "hash-1"),
+                linked("sodium", Some("v2"), "hash-2"),
+            ],
+            &[],
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(sodium.is_version("v1"), "the older version is still in there");
+        assert!(sodium.is_version("v2"));
+        assert_eq!(
+            sodium.find_version("v2").and_then(|v| v.hash.clone()),
+            Some("hash-2".to_string()),
+            "each version carries the artifact the remove button needs"
+        );
+    }
+
+    #[test]
+    fn a_bundle_marks_only_the_version_it_ships() {
+        let map = installed_map(
+            vec![
+                linked("sodium", Some("v1"), "hash-1"),
+                linked("sodium", Some("v2"), "hash-2"),
+            ],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert_eq!(sodium.source, InstallSource::Bundled, "the bundle owns the project");
+        assert_eq!(
+            sodium.find_version("v1").map(|v| v.source),
+            Some(InstallSource::Bundled)
+        );
+        assert_eq!(
+            sodium.find_version("v2").map(|v| v.source),
+            Some(InstallSource::Manual),
+            "a version the user added themselves does not become the bundle's"
+        );
+    }
+
+    #[test]
+    fn an_unlinked_bundle_pin_is_the_fallback() {
+        let map = installed_map(Vec::new(), &bundles(vec![managed("sodium", "v1")]));
+
+        let sodium = entry(&map, "sodium");
+        assert_eq!(sodium.source, InstallSource::Bundled);
+        assert_eq!(
+            sodium.find_version("v1").map(|v| v.hash.clone()),
+            Some(None),
+            "nothing is linked, so there is no artifact to remove"
+        );
+    }
+
+    #[test]
+    fn a_bundle_pin_is_not_listed_beside_a_linked_version() {
+        let map = installed_map(
+            vec![linked("sodium", Some("v2"), "hash-2")],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(
+            !sodium.is_version("v1"),
+            "a pin the cluster never downloaded is not installed"
+        );
+        assert_eq!(sodium.versions.len(), 1);
+    }
+
+    #[test]
+    fn a_single_copy_is_not_a_duplicate() {
+        let map = installed_map(vec![linked("sodium", Some("v1"), "hash-1")], &[]);
+
+        assert!(!entry(&map, "sodium").is_duplicated());
+    }
+
+    #[test]
+    fn an_unlinked_bundle_pin_is_not_a_second_copy() {
+        let map = installed_map(Vec::new(), &bundles(vec![managed("sodium", "v1")]));
+
+        assert!(
+            !entry(&map, "sodium").is_duplicated(),
+            "one pin and nothing linked is not two of anything"
+        );
+    }
+
+    #[test]
+    fn each_copy_reports_whether_the_game_loads_it() {
+        let map = installed_map(
+            vec![
+                disabled_linked("sodium", Some("v1"), "hash-1", false),
+                linked("sodium", Some("v2"), "hash-2"),
+            ],
+            &[],
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(sodium.is_duplicated());
+        assert_eq!(sodium.find_version("v1").map(|v| v.enabled), Some(false));
+        assert_eq!(sodium.find_version("v2").map(|v| v.enabled), Some(true));
+    }
+
+    #[test]
+    fn an_artifact_with_no_recorded_version_still_marks_the_project() {
+        let map = installed_map(vec![linked("sodium", None, "hash-1")], &[]);
+
+        let sodium = entry(&map, "sodium");
+        assert!(
+            sodium.versions.is_empty(),
+            "there is no version to tie to a row in the list"
+        );
+        assert_eq!(sodium.source, InstallSource::Manual);
     }
 }

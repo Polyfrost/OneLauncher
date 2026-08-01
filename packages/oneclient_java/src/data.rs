@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use polyio::Checksum;
 use serde::{Deserialize, Serialize};
 
 use crate::vendors::JavaVendor;
@@ -21,6 +22,41 @@ pub struct JavaPackage {
 	pub java_version: Vec<u32>,
 	pub vendor: JavaVendor,
 	pub archive: PackageArchive,
+	/// What the vendor promises the archive hashes to. Every vendor publishes
+	/// one, in its own algorithm — SHA-256 for Adoptium, Corretto and Zulu,
+	/// SHA-1 for Liberica — so this carries the algorithm with it.
+	///
+	/// `None` only when a vendor's metadata omitted or malformed it. A runtime
+	/// that cannot be verified is still worth installing (the alternative is a
+	/// launcher that cannot start the game at all), so this degrades to an
+	/// unverified download rather than a hard failure.
+	pub checksum: Option<Checksum>,
+	/// Archive size in bytes when the vendor publishes it, for progress bars
+	/// that would otherwise wait on `Content-Length`.
+	pub size: Option<u64>,
+}
+
+impl JavaPackage {
+	/// Drops a checksum the vendor returned in an unusable shape.
+	///
+	/// A vendor that starts sending an empty string or a placeholder would
+	/// otherwise make every runtime install fail with what looks to the user
+	/// like a corrupt download, three retries deep.
+	#[must_use]
+	pub fn with_checksum(mut self, checksum: Option<Checksum>) -> Self {
+		self.checksum = checksum.filter(|sum| {
+			let ok = sum.is_well_formed();
+			if !ok {
+				tracing::warn!(
+					algorithm = sum.algorithm.name(),
+					hex = %sum.hex,
+					"vendor published a malformed checksum; installing unverified"
+				);
+			}
+			ok
+		});
+		self
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

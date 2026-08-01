@@ -3,6 +3,7 @@ use serde::Deserialize;
 use url::Url;
 
 use oneclient_net::RequestClient;
+use polyio::Checksum;
 
 use crate::data::{JavaPackage, PackageArchive};
 use crate::error::JavaResult;
@@ -16,6 +17,12 @@ struct ZuluPackage {
 	download_url: String,
 	name: String,
 	java_version: Vec<u32>,
+	/// Only present because `include_fields` asks for it; Azul omits it from
+	/// the default projection.
+	#[serde(default)]
+	sha256_hash: Option<String>,
+	#[serde(default)]
+	size: Option<u64>,
 }
 
 #[async_trait::async_trait]
@@ -37,13 +44,18 @@ impl JavaRuntimeProvider for ZuluRuntimeProvider {
 }
 
 fn map_zulu_package(pkg: ZuluPackage) -> JavaPackage {
+    let checksum = pkg.sha256_hash.as_deref().map(Checksum::sha256);
+
     JavaPackage {
         archive: PackageArchive::Zip,
         download_url: pkg.download_url,
         java_version: pkg.java_version,
         name: pkg.name,
         vendor: JavaVendor::Zulu,
+        checksum: None,
+        size: pkg.size,
     }
+    .with_checksum(checksum)
 }
 
 fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
@@ -60,6 +72,9 @@ fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
             .append_pair("availability_types", "CA")
             .append_pair("certifications", "tck")
             .append_pair("latest", "true")
+            // Azul's default projection omits the hash, so a download could
+            // only ever be verified by asking for it explicitly.
+            .append_pair("include_fields", "sha256_hash,size")
             .append_pair("page", "1")
             .append_pair("page_size", "100");
         if let Some(major) = major {

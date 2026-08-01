@@ -19,16 +19,21 @@ pub use oneclient_mc::{
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,
     processor_arguments,
 };
+pub mod diagnosis;
+
+pub use diagnosis::{CrashDiagnosis, diagnose};
 pub use error::GameError;
-pub use launch::{LaunchedGame, is_running, launch_cluster};
+pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
 pub use process::{
     GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
 };
 pub use reattach::recover_sessions;
 pub use oneclient_mc::{
-    DownloadPlan, download_minecraft, download_version_info, get_game_versions,
+    DownloadPlan, confirm_incomplete_install, download_minecraft, download_version_info, get_game_versions,
     get_loader_version, get_loader_versions, get_loaders_for_version, is_version_updated,
-    libraries_missing, plan_downloads, resolve_minecraft_version, validate_rules,
+    game_files_missing, libraries_missing, plan_downloads, resolve_minecraft_version,
+    validate_rules,
+    verify_game_files,
 };
 pub use shared_dir::{
     dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,

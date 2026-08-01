@@ -249,6 +249,19 @@ where
 	Ok(())
 }
 
+/// Streams `stream` into `path`, which only ever appears complete.
+///
+/// The bytes go to a sibling scratch file that is renamed over `path` once the
+/// stream ends cleanly, so a dropped connection cannot leave a truncated file
+/// sitting at the real path where every later `exists()` check would mistake it
+/// for a finished download. On any error the scratch file is removed and
+/// whatever was already at `path` is left untouched — a failed re-download of a
+/// good file is a no-op rather than a deletion.
+///
+/// Unlike [`write_atomic`] this deliberately does not fsync: that would be the
+/// single most expensive operation in a five-thousand-file asset download, and
+/// nothing here needs to survive power loss. A crash can still leave a short
+/// file behind, which the caller's size check catches on the next run.
 #[tracing::instrument(
     level = "debug",
     skip(path, stream),
@@ -264,24 +277,36 @@ where
     E: From<IOError>,
 {
     let path = path.as_ref();
-    let file = tokio::fs::File::create(path).await.map_err(IOError::from)?;
+    let tmp = temp_sibling(path);
 
-    let mut writer = tokio::io::BufWriter::with_capacity(write_buffer_size(size_hint), file);
+    let write = async {
+        let file = tokio::fs::File::create(&tmp).await.map_err(IOError::from)?;
+        let mut writer = tokio::io::BufWriter::with_capacity(write_buffer_size(size_hint), file);
 
-    let mut write_result = Ok(());
-    while let Some(chunk_result) = futures_lite::StreamExt::next(&mut stream).await {
-        let chunk = chunk_result?;
+        while let Some(chunk_result) = futures_lite::StreamExt::next(&mut stream).await {
+            let chunk = chunk_result?;
+            tokio::io::AsyncWriteExt::write_all(&mut writer, &chunk)
+                .await
+                .map_err(IOError::from)?;
+        }
 
-        write_result = tokio::io::AsyncWriteExt::write_all(&mut writer, &chunk).await.map_err(IOError::from);
-        if write_result.is_err() {
-            break;
-        };
-    };
+        tokio::io::AsyncWriteExt::flush(&mut writer)
+            .await
+            .map_err(IOError::from)?;
 
-    let flush_result = tokio::io::AsyncWriteExt::flush(&mut writer).await.map_err(IOError::from);
+        Ok::<_, E>(())
+    }
+    .await;
 
-    write_result?;
-    flush_result?;
+    if let Err(err) = write {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(err);
+    }
+
+    if let Err(err) = rename(&tmp, path).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(E::from(err));
+    }
 
     Ok(())
 }
@@ -761,6 +786,89 @@ mod tests {
 			.filter(|n| n != "settings.json")
 			.collect();
 		assert!(leftovers.is_empty(), "left scratch files behind: {leftovers:?}");
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	/// Builds a stream that yields `chunks` and then fails, standing in for a
+	/// connection dropped part-way through a download.
+	fn failing_stream(
+		chunks: Vec<&'static [u8]>,
+	) -> impl futures_lite::Stream<Item = Result<bytes::Bytes, IOError>> + Unpin + Send {
+		let items = chunks
+			.into_iter()
+			.map(|c| Ok(bytes::Bytes::from_static(c)))
+			.chain(std::iter::once(Err(IOError::IOError(
+				std::io::Error::from(std::io::ErrorKind::ConnectionReset),
+			))));
+
+		Box::pin(futures_lite::stream::iter(items))
+	}
+
+	#[tokio::test]
+	async fn write_stream_publishes_only_a_complete_file() {
+		let dir = scratch("stream-ok");
+		let target = dir.join("object.bin");
+
+		let chunks = vec![
+			Ok(bytes::Bytes::from_static(b"hello ")),
+			Ok(bytes::Bytes::from_static(b"world")),
+		];
+		let stream = Box::pin(futures_lite::stream::iter(chunks));
+
+		write_stream::<_, IOError>(&target, stream, Some(11))
+			.await
+			.unwrap();
+
+		assert_eq!(std::fs::read(&target).unwrap(), b"hello world");
+
+		// A successful write must not leave its scratch sibling behind either.
+		let leftovers: Vec<_> = std::fs::read_dir(&dir)
+			.unwrap()
+			.flatten()
+			.map(|e| e.file_name().to_string_lossy().to_string())
+			.filter(|n| n != "object.bin")
+			.collect();
+		assert!(leftovers.is_empty(), "left scratch files behind: {leftovers:?}");
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[tokio::test]
+	async fn write_stream_leaves_nothing_when_the_stream_dies() {
+		let dir = scratch("stream-drop");
+		let target = dir.join("object.bin");
+
+		write_stream::<_, IOError>(&target, failing_stream(vec![b"partial"]), Some(64))
+			.await
+			.expect_err("a dropped stream must fail");
+
+		// The whole point: no truncated file at the real path for a later
+		// `exists()` check to mistake for a finished download.
+		assert!(!target.exists(), "left a truncated file at the destination");
+
+		let leftovers: Vec<_> = std::fs::read_dir(&dir)
+			.unwrap()
+			.flatten()
+			.map(|e| e.file_name().to_string_lossy().to_string())
+			.collect();
+		assert!(leftovers.is_empty(), "left scratch files behind: {leftovers:?}");
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
+
+	#[tokio::test]
+	async fn write_stream_keeps_the_old_file_when_a_rewrite_fails() {
+		let dir = scratch("stream-keep");
+		let target = dir.join("object.bin");
+		std::fs::write(&target, b"known-good").unwrap();
+
+		write_stream::<_, IOError>(&target, failing_stream(vec![b"junk"]), Some(64))
+			.await
+			.expect_err("a dropped stream must fail");
+
+		// A failed repair must not be worse than no repair.
+		assert_eq!(std::fs::read(&target).unwrap(), b"known-good");
 
 		std::fs::remove_dir_all(&dir).unwrap();
 	}

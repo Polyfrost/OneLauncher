@@ -78,6 +78,10 @@ pub enum ClusterAction {
         cluster_id: ClusterId,
         dedicated: bool,
     },
+    /// Rehash every installed file and re-download whatever no longer matches.
+    VerifyFiles {
+        cluster_id: ClusterId,
+    },
 }
 
 impl MutationCapability for ClusterMutation {
@@ -154,6 +158,26 @@ impl MutationCapability for ClusterMutation {
                 .map_err(|err| oneclient_content::ContentError::InvalidData {
                     reason: err.to_string(),
                 })
+            }
+            ClusterAction::VerifyFiles { cluster_id } => {
+                // Reports its own outcome rather than going through the generic
+                // failure toast: a verify that finds nothing wrong is a useful
+                // result the user asked for, not a silent no-op.
+                match oneclient_core::verify_cluster_files(&state, *cluster_id).await {
+                    Ok(report) => {
+                        let notify = services.events.notify("Verification complete");
+                        let notify = notify.body(report.summary());
+                        if report.unrepairable.is_empty() {
+                            notify.send();
+                        } else {
+                            notify.error().send();
+                        }
+                        Ok(())
+                    }
+                    Err(err) => Err(oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    }),
+                }
             }
         };
         result.map_err(|e| e.to_string())

@@ -48,6 +48,28 @@ impl ResponseNotifyOptions {
         self.done_label = Some(label.into());
         self
     }
+
+    /// The grouped child these options report against, if any. Lets a caller
+    /// driving the download set phases and finish the child without having to
+    /// keep a second copy of it alongside the options.
+    #[must_use]
+    pub fn child(&self) -> Option<&GroupedProgressChild> {
+        self.child.as_ref()
+    }
+
+    /// Fixes the standalone notification's id, so a caller that sends the same
+    /// request more than once keeps updating one notification.
+    ///
+    /// Without this a retried download opens a fresh entry in the UI on every
+    /// attempt, and a flaky connection reads as several stalled installs rather
+    /// than one that is recovering.
+    #[must_use]
+    pub fn pinned(mut self) -> Self {
+        if self.standalone_label.is_some() && self.standalone_id.is_none() {
+            self.standalone_id = Some(Uuid::new_v4());
+        }
+        self
+    }
 }
 
 #[async_trait::async_trait]

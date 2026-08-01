@@ -3,6 +3,7 @@ use serde::Deserialize;
 use url::Url;
 
 use oneclient_net::RequestClient;
+use polyio::Checksum;
 
 use crate::data::{JavaPackage, PackageArchive};
 use crate::error::JavaResult;
@@ -38,6 +39,12 @@ struct AdoptiumBinary {
 struct AdoptiumPackage {
     name: String,
     link: String,
+    /// Adoptium's `checksum` is SHA-256; the API has no algorithm field because
+    /// it has only ever published one.
+    #[serde(default)]
+    checksum: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 #[async_trait::async_trait]
@@ -87,13 +94,20 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
             }
 
             for binary in release.binaries {
-                packages.push(JavaPackage {
-                    archive: PackageArchive::from_filename(&binary.package.name),
-                    download_url: binary.package.link,
-                    java_version: java_version.clone(),
-                    name: binary.package.name,
-                    vendor: JavaVendor::Adoptium,
-                });
+                let checksum = binary.package.checksum.as_deref().map(Checksum::sha256);
+
+                packages.push(
+                    JavaPackage {
+                        archive: PackageArchive::from_filename(&binary.package.name),
+                        download_url: binary.package.link,
+                        java_version: java_version.clone(),
+                        name: binary.package.name,
+                        vendor: JavaVendor::Adoptium,
+                        checksum: None,
+                        size: binary.package.size,
+                    }
+                    .with_checksum(checksum),
+                );
             }
         }
 

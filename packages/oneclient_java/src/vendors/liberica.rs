@@ -3,6 +3,7 @@ use serde::Deserialize;
 use url::Url;
 
 use oneclient_net::RequestClient;
+use polyio::Checksum;
 
 use crate::data::{JavaPackage, PackageArchive};
 use crate::error::JavaResult;
@@ -23,6 +24,11 @@ struct LibericaRelease {
     #[serde(rename = "buildVersion", default)]
     build_version: u32,
     version: String,
+    /// Liberica is the one vendor that publishes SHA-1 rather than SHA-256.
+    #[serde(default)]
+    sha1: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 #[async_trait::async_trait]
@@ -59,13 +65,18 @@ impl JavaRuntimeProvider for LibericaRuntimeProvider {
                     java_version.insert(0, r.feature_version);
                 }
 
+                let checksum = r.sha1.as_deref().map(Checksum::sha1);
+
                 JavaPackage {
                     archive: PackageArchive::from_filename(&r.filename),
                     download_url: r.download_url,
                     java_version,
                     name: r.filename,
                     vendor: JavaVendor::Liberica,
+                    checksum: None,
+                    size: r.size,
                 }
+                .with_checksum(checksum)
             })
             .collect();
 
@@ -88,7 +99,8 @@ fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
             .append_pair("installation-type", "archive")
             .append_pair(
                 "fields",
-                "downloadUrl,filename,featureVersion,updateVersion,buildVersion,version",
+                // `sha1` and `size` are only returned when named here.
+                "downloadUrl,filename,featureVersion,updateVersion,buildVersion,version,sha1,size",
             )
             .append_pair("output", "json");
         if let Some(major) = major {

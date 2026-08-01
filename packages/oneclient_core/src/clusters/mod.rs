@@ -7,7 +7,7 @@
 //! is why they stay here.
 
 mod migrate;
-mod prepare;
+pub(crate) mod prepare;
 mod provision;
 mod unlink_legacy;
 

@@ -22,14 +22,16 @@ pub async fn ensure_artifact_file(
     }
 
     tracing::debug!("downloading artifact file");
+    // Modrinth and CurseForge both index by SHA-1.
+    let expected = polyio::Checksum::sha1(hash);
     oneclient_net::download_verified(
         &ctx.net,
         &ctx.events,
         url,
         dest,
-        Some(hash),
+        Some(&expected),
         0,
-        child.cloned(),
+        child.cloned().map(oneclient_net::ResponseNotifyOptions::grouped),
     )
     .await?;
 

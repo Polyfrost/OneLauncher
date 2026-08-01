@@ -29,14 +29,18 @@ pub async fn download_to_path(
 ) -> McResult<()> {
     let child = progress.child(label, expected_size, category);
 
+    // Every hash in a Minecraft manifest is SHA-1, so callers here pass a bare
+    // string and the algorithm is implied.
+    let expected = expected_sha1.map(polyio::Checksum::sha1);
+
     oneclient_net::download_verified(
         requester,
         events,
         url,
         dest,
-        expected_sha1,
+        expected.as_ref(),
         expected_size,
-        Some(child),
+        Some(oneclient_net::ResponseNotifyOptions::grouped(child)),
     )
     .await?;
 

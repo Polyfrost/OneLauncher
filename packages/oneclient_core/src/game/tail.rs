@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader};
 
+use crate::game::diagnosis::CrashWatch;
 use crate::game::session::SessionRecorder;
 use oneclient_events::EventBus;
 
@@ -30,12 +31,13 @@ pub(crate) fn spawn_log_tail(
 	path: PathBuf,
 	events: EventBus,
 	recorder: Option<SessionRecorder>,
+	crash_watch: CrashWatch,
 ) -> LogTail {
 	let stop = Arc::new(AtomicBool::new(false));
 	let flag = Arc::clone(&stop);
 
 	let handle = tokio::spawn(async move {
-		if let Err(err) = tail(cluster_id, &path, &events, recorder.as_ref(), &flag).await {
+		if let Err(err) = tail(cluster_id, &path, &events, recorder.as_ref(), &crash_watch, &flag).await {
 			tracing::warn!(cluster_id, path = %path.display(), error = %err, "game log tail stopped");
 		}
 	});
@@ -48,6 +50,7 @@ async fn tail(
 	path: &PathBuf,
 	events: &EventBus,
 	recorder: Option<&SessionRecorder>,
+	crash_watch: &CrashWatch,
 	stop: &AtomicBool,
 ) -> std::io::Result<()> {
 	// The game may not have created the file yet on a re-adopt, and on launch it
@@ -96,7 +99,7 @@ async fn tail(
 			// leaves a newline that will never arrive, and waiting for it would
 			// hang the caller of `stop()` forever.
 			if stop.load(Ordering::Relaxed) {
-				emit(cluster_id, &line, events, recorder).await;
+				emit(cluster_id, &line, events, recorder, crash_watch).await;
 				return Ok(());
 			}
 			reader.seek(std::io::SeekFrom::Start(offset - read as u64)).await?;
@@ -105,7 +108,7 @@ async fn tail(
 			continue;
 		}
 
-		emit(cluster_id, &line, events, recorder).await;
+		emit(cluster_id, &line, events, recorder, crash_watch).await;
 	}
 }
 
@@ -114,6 +117,7 @@ async fn emit(
 	line: &str,
 	events: &EventBus,
 	recorder: Option<&SessionRecorder>,
+	crash_watch: &CrashWatch,
 ) {
 	// Blank lines are kept: the game prints them, and the console should read
 	// the way the log does.
@@ -121,6 +125,9 @@ async fn emit(
 	if let Some(recorder) = recorder {
 		recorder.observe(&text).await;
 	}
+	// Read on the way past rather than by re-opening the log afterwards: the
+	// line is already here, and a crash can take the log with it.
+	crash_watch.observe(&text);
 	events.game_log(cluster_id, text);
 }
 
@@ -175,7 +182,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] first\n").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		settle().await;
 
 		let mut file = tokio::fs::OpenOptions::new()
@@ -196,7 +203,7 @@ mod tests {
 		let mut h = Harness::new().await;
 		let path = h.path();
 
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		settle().await;
 		polyio::write(&path, "[12:00:00] late\n").await.unwrap();
 		settle().await;
@@ -211,7 +218,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] half").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		settle().await;
 		// A line mid-write must not be emitted, or it would arrive twice.
 		assert!(h.drain().is_empty());
@@ -235,7 +242,7 @@ mod tests {
 		let path = h.path();
 		polyio::write(&path, "[12:00:00] old session line\n").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		settle().await;
 		assert_eq!(h.drain(), vec!["[12:00:00] old session line"]);
 
@@ -255,7 +262,7 @@ mod tests {
 		// A process killed mid-write leaves a newline that never arrives.
 		polyio::write(&path, "[12:00:00] cut off mid-writ").await.unwrap();
 
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		settle().await;
 
 		// Waiting for that newline would hang the exit path forever.
@@ -272,7 +279,7 @@ mod tests {
 
 		// Stopping immediately, as the exit path does, must still flush the
 		// reason the game exited rather than race past it.
-		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None);
+		let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
 		tail.stop().await;
 
 		assert_eq!(h.drain(), vec!["[12:00:00] Stopping!"]);

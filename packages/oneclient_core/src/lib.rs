@@ -17,6 +17,8 @@ pub mod settings;
 pub mod storage;
 pub mod tos;
 mod state;
+pub mod simulate;
+pub mod verify;
 pub mod versions;
 
 pub use oneclient_content::bundles::{
@@ -60,6 +62,7 @@ pub use oneclient_content::packages::updates::{
     refresh_browser_package_updates, skip_browser_package_update,
 };
 pub use settings::ProfileUpdate;
+pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use state::LauncherServices;
 pub use state::LauncherState;
 pub use state::run_startup_tasks;

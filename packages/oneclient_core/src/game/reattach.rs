@@ -163,11 +163,16 @@ async fn readopt(
 	let Ok(log_path) = oneclient_cluster::logs::cluster_output_log(&cluster) else {
 		return;
 	};
+	// A re-adopted game is still writing to its log, so its crashes are still
+	// worth reading even though the exit code went with the launcher that
+	// spawned it.
+	let crash_watch = crate::game::diagnosis::CrashWatch::new();
 	let tail = spawn_log_tail(
 		cluster_id,
 		log_path,
 		state.services.events.clone(),
 		Some(recorder.clone()),
+		crash_watch.clone(),
 	);
 
 	let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
@@ -213,6 +218,7 @@ async fn readopt(
 				// fresh game on this cluster while the re-adopted one plays on,
 				// and that newer game now owns the slot.
 				owns_slot: state.games.pid(cluster_id) == Some(pid),
+				diagnosis: crash_watch.take(),
 			},
 		)
 		.await;
@@ -297,6 +303,9 @@ async fn reconcile(
 			// This session is over, but the cluster may have a newer one playing right
 			// now, so only claim the slot if nothing else holds it.
 			owns_slot: !state.games.is_active(cluster_id),
+			// Nothing was watching this session's log while it ran, so there is
+			// no crash to have recognised.
+			diagnosis: None,
 		},
 	)
 	.await;

@@ -34,6 +34,10 @@ pub enum McError {
 	#[error("no matching version found")]
 	NoMatchingVersion,
 
+	/// Files could not be downloaded and the user chose not to launch anyway.
+	#[error("cancelled: {failed} file(s) could not be downloaded")]
+	IncompleteInstallCancelled { failed: usize },
+
 	/// A Mojang response was well-formed JSON but not what the API documents.
 	#[error("minecraft: {0}")]
 	Minecraft(String),

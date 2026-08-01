@@ -1333,6 +1333,63 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         .await;
 
     if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
+        // A launch that failed because a file simply is not there is the one
+        // failure the launcher can fix by itself. Showing the user a path inside
+        // our own metadata folder and stopping leaves them with nothing to act
+        // on, so repair first and only report if that does not help.
+        if err.indicates_missing_files() {
+            repair_and_relaunch(&state, cluster_id, &account, err).await;
+            return;
+        }
+
+        events.game_failed(cluster_id, format!("{err:#}"));
+    }
+}
+
+/// Runs a verify-and-repair pass, then tries the launch once more.
+///
+/// Only ever one retry: if the game still cannot start after every file has
+/// been hashed and the broken ones re-downloaded, the problem is not missing
+/// files, and trying again would just spend another few minutes to show the
+/// same error.
+async fn repair_and_relaunch(
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster_id: ClusterId,
+    account: &oneclient_auth::MinecraftAccount,
+    original: oneclient_core::LauncherError,
+) {
+    let events = state.services.events.clone();
+
+    tracing::warn!(
+        cluster_id,
+        "launch failed on a missing file; repairing: {original:#}"
+    );
+    events
+        .notify("Repairing installation")
+        .body("Some game files are missing. Checking and re-downloading them.")
+        .send();
+
+    let report = match oneclient_core::verify_cluster_files(state, cluster_id).await {
+        Ok(report) => report,
+        Err(repair_err) => {
+            tracing::error!(cluster_id, "repair failed: {repair_err:#}");
+            // The original failure is what the user was trying to do, so lead
+            // with it; the repair failure explains why it was not fixed.
+            events.game_failed(
+                cluster_id,
+                format!("{original:#} (repair also failed: {repair_err:#})"),
+            );
+            return;
+        }
+    };
+
+    events
+        .notify("Repair complete")
+        .body(report.summary())
+        .send();
+
+    if let Err(err) = oneclient_core::launch_cluster(state, cluster_id, account, true).await {
+        tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));
     }
 }

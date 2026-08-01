@@ -16,7 +16,7 @@ use crate::game::tail::spawn_log_tail;
 use crate::game::GameError;
 use oneclient_mc::{
     self as arguments, download_minecraft, download_version_info, get_loader_version,
-    libraries_missing, resolve_minecraft_version,
+    game_files_missing, resolve_minecraft_version,
 };
 use oneclient_events::{GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
@@ -187,7 +187,7 @@ pub async fn launch_cluster(
         state.java.prepare(major, search_for_java, false, None).await?
     };
 
-    match libraries_missing(&version_info, &java.os_arch, updated) {
+    match game_files_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
             let _ = state.clusters.set_stage(cluster_id, ClusterStage::Repairing).await;
@@ -368,7 +368,14 @@ pub async fn launch_cluster(
         .as_ref()
         .and_then(SessionRecorder::started_at)
         .unwrap_or_else(Utc::now);
-    let tail = spawn_log_tail(cluster_id, log_path, events.clone(), recorder.clone());
+    let crash_watch = crate::game::diagnosis::CrashWatch::new();
+    let tail = spawn_log_tail(
+        cluster_id,
+        log_path,
+        events.clone(),
+        recorder.clone(),
+        crash_watch.clone(),
+    );
 
     let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
     state.games.register_kill(cluster_id, kill_tx);
@@ -408,6 +415,7 @@ pub async fn launch_cluster(
                 ended_at: Utc::now(),
                 outcome,
                 owns_slot: true,
+                diagnosis: crash_watch.take(),
             },
         )
         .await;
@@ -472,6 +480,10 @@ pub(crate) struct SessionEnd {
     /// playtime is right, but clearing that slot would report the live game as
     /// exited.
     pub owns_slot: bool,
+    /// What the game's own output said about why it died, when the launcher
+    /// recognised the cause. `None` for a clean exit, an unrecognised crash, or
+    /// a session recovered after the fact with no log being watched.
+    pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
 }
 
 /// Everything that has to happen once a game is gone: clear its running state,
@@ -530,6 +542,8 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
+    let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
+
     match end.outcome {
         Exit::Observed { success: true, .. } => state
             .services
@@ -546,6 +560,78 @@ pub(crate) async fn finalize_session(
         // Nothing was watching, so there is no crash to report and no news the
         // user wants a popup about, so the session is just booked and closed.
         Exit::Inferred => {}
+    }
+
+    // Only after the crash notice, and only when the game actually died: a
+    // `ZipException` the game recovered from is not worth interrupting a
+    // finished session over.
+    if crashed && let Some(diagnosis) = end.diagnosis {
+        offer_repair(state, cluster_id, &diagnosis).await;
+    }
+}
+
+/// Offers to verify and repair after a crash the launcher recognised.
+///
+/// Asks rather than acting: verification reads every installed file and can
+/// re-download a good part of the game, which is not something to start behind
+/// the user's back the moment they close a crashed session. Declining is a real
+/// answer — the same offer comes back on the next crash.
+#[tracing::instrument(skip(state, diagnosis), level = "debug")]
+pub async fn offer_repair(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    diagnosis: &crate::game::diagnosis::CrashDiagnosis,
+) {
+    enum Answer {
+        Verify,
+    }
+
+    let answer = state
+        .services
+        .events
+        .ask(
+            oneclient_events::Prompt::new("A damaged file crashed the game", diagnosis.body())
+                .option(
+                    oneclient_events::Choice::primary("verify", "Verify and repair"),
+                    Answer::Verify,
+                )
+                .dismiss("Not now"),
+        )
+        .await;
+
+    match answer {
+        Ok(Some(_)) => {}
+        // Dismissed, or nobody was there to ask. Neither is consent to spend
+        // several minutes re-downloading the game.
+        Ok(None) => {
+            tracing::info!(cluster_id, "user declined the post-crash repair");
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, "could not offer a post-crash repair: {err}");
+            return;
+        }
+    }
+
+    match crate::verify::verify_cluster_files(state, cluster_id).await {
+        Ok(report) => {
+            state
+                .services
+                .events
+                .notify("Repair complete")
+                .body(report.summary())
+                .send();
+        }
+        Err(err) => {
+            tracing::error!(cluster_id, "post-crash repair failed: {err:#}");
+            state
+                .services
+                .events
+                .notify("Repair failed")
+                .body(err.to_string())
+                .error()
+                .send();
+        }
     }
 }
 

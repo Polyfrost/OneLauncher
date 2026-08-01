@@ -3,6 +3,7 @@ use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
 use oneclient_auth::preview_samples;
+use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
@@ -85,6 +86,11 @@ impl Component for Debug {
                     .child(section(
                         "Auth Error Guidance",
                         vec![AuthGuidancePreview.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Corruption Simulator",
+                        vec![CorruptionSimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section("SQL Console", vec![SqlConsole.into_element()]))
@@ -653,6 +659,297 @@ impl Component for AuthGuidancePreview {
             .maybe_child(popup)
             .into_element()
     }
+}
+
+/// Breaks an installation on purpose, so the repair paths can be driven without
+/// waiting for a genuinely bad connection.
+///
+/// The presets are grouped by *which layer is supposed to catch them*, because
+/// that is the thing worth testing: same-length corruption is invisible to the
+/// launch-time size check and only the hashing pass finds it, truncation is
+/// caught cheaply on the next launch, and a deleted assets tree is the case that
+/// used to surface as a raw "No such file or directory".
+#[derive(PartialEq)]
+struct CorruptionSimulator;
+
+/// `(label, icon, what it does, which check is meant to catch it)`
+type DamagePreset = (&'static str, IconType, DamageKind, &'static str);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DamageKind {
+    Assets(usize, Damage),
+    Libraries(usize, Damage),
+    Content(usize, Damage),
+    DeleteAssetsTree,
+}
+
+const DAMAGE_PRESETS: [DamagePreset; 6] = [
+    (
+        "Corrupt 25 assets",
+        IconType::AlertTriangle,
+        DamageKind::Assets(25, Damage::Corrupt),
+        "Survives launch; only Verify Files finds it",
+    ),
+    (
+        "Truncate 25 assets",
+        IconType::FileX02,
+        DamageKind::Assets(25, Damage::Truncate),
+        "Caught at launch by the size check",
+    ),
+    (
+        "Delete 25 assets",
+        IconType::Trash01,
+        DamageKind::Assets(25, Damage::Delete),
+        "Caught at launch, re-downloaded",
+    ),
+    (
+        "Corrupt 5 libraries",
+        IconType::AlertCircle,
+        DamageKind::Libraries(5, Damage::Corrupt),
+        "Crashes with ZipException, then offers repair",
+    ),
+    (
+        "Corrupt 5 mods",
+        IconType::File02,
+        DamageKind::Content(5, Damage::Corrupt),
+        "Repaired from the provider, not Mojang",
+    ),
+    (
+        "Delete the assets tree",
+        IconType::Folder,
+        DamageKind::DeleteAssetsTree,
+        "The reported bug; auto-repairs on launch",
+    ),
+];
+
+impl Component for CorruptionSimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let cluster_id = use_state(|| "1".to_string());
+
+        let mut rows = Vec::new();
+        for chunk in DAMAGE_PRESETS.chunks(3) {
+            let mut row = rect().horizontal().width(Size::fill()).spacing(8.);
+
+            for (text, icon, kind, hint) in chunk {
+                let dispatch = dispatch.clone();
+                let kind = *kind;
+                let hint = *hint;
+
+                row = row.child(
+                    rect()
+                        .vertical()
+                        .width(Size::flex(1.0))
+                        .spacing(2.)
+                        .child(
+                            Button::new()
+                                .danger()
+                                .width(Size::fill())
+                                .child(Icon::new(*icon).size(16.))
+                                .text(*text)
+                                .on_press(move |_| {
+                                    let target =
+                                        cluster_id.read().trim().parse::<i64>().unwrap_or(1);
+                                    run_damage(&dispatch, kind, target);
+                                }),
+                        )
+                        .child(
+                            label()
+                                .text(hint)
+                                .font_size(11.)
+                                .max_lines(1)
+                                .color(colors::fg_secondary()),
+                        ),
+                );
+            }
+
+            rows.push(row.into_element());
+        }
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching — which is the point.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        label()
+                            .text("Cluster (for mods)")
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::px(120.))
+                            .child(TextInput::new(cluster_id).placeholder("Cluster ID")),
+                    ),
+            )
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(8.)
+                    .children(rows),
+            )
+            .child(
+                label()
+                    .text("Modals: the real prompts, built by the code that raises them for real.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(12.)
+                    .child(prompt_button(
+                        "Failed assets prompt",
+                        IconType::AlertTriangle,
+                        3,
+                        0,
+                    ))
+                    .child(prompt_button(
+                        "Failed libraries prompt",
+                        IconType::AlertCircle,
+                        0,
+                        2,
+                    ))
+                    .child(prompt_button("Mixed failures prompt", IconType::File02, 4, 1)),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(12.)
+                    .child(crash_repair_button(
+                        "Crash repair prompt (named jar)",
+                        Some("fabric-loader-0.15.11.jar"),
+                        cluster_id,
+                    ))
+                    .child(crash_repair_button(
+                        "Crash repair prompt (no jar named)",
+                        None,
+                        cluster_id,
+                    )),
+            )
+            .into_element()
+    }
+}
+
+/// Raises the genuine "some files could not be downloaded" prompt.
+///
+/// Calls the same function the download path calls, rather than rebuilding the
+/// copy here — a simulated modal that has drifted from the real one is worse
+/// than no simulator at all.
+fn prompt_button(
+    text: &'static str,
+    icon: IconType,
+    failed_assets: usize,
+    failed_libraries: usize,
+) -> impl IntoElement {
+    Button::new()
+        .secondary()
+        .child(Icon::new(icon).size(16.))
+        .text(text)
+        .on_press(move |_| {
+            spawn(async move {
+                let Ok(state) = crate::launcher::state() else {
+                    return;
+                };
+                let answer = oneclient_core::game::confirm_incomplete_install(
+                    &state.services.mc(),
+                    failed_assets,
+                    failed_libraries,
+                )
+                .await;
+                tracing::info!(?answer, "incomplete install prompt answered");
+            });
+        })
+}
+
+/// Raises the post-crash repair offer, as if the game had just died on a
+/// `java.util.zip.ZipException`.
+///
+/// Accepting really does run the verify pass, so this exercises the whole path
+/// and not just the copy. To test the detection itself rather than the offer,
+/// corrupt some libraries above and launch the game — the JVM will raise the
+/// real exception and the log watcher will read it out of the output.
+fn crash_repair_button(
+    text: &'static str,
+    jar: Option<&'static str>,
+    cluster_id: State<String>,
+) -> impl IntoElement {
+    Button::new()
+        .secondary()
+        .child(Icon::new(IconType::AlertCircle).size(16.))
+        .text(text)
+        .on_press(move |_| {
+            let target = cluster_id.read().trim().parse::<i64>().unwrap_or(1);
+            spawn(async move {
+                let Ok(state) = crate::launcher::state() else {
+                    return;
+                };
+                let diagnosis = oneclient_core::game::CrashDiagnosis::CorruptArchive {
+                    file: jar.map(str::to_string),
+                };
+                oneclient_core::game::offer_repair(&state, target, &diagnosis).await;
+            });
+        })
+}
+
+fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
+    let dispatch = dispatch.clone();
+    spawn(async move {
+        let result = match kind {
+            DamageKind::Assets(count, damage) => oneclient_core::simulate::damage_assets(count, damage)
+                .await
+                .map(|report| (report, damage.verb())),
+            DamageKind::Libraries(count, damage) => {
+                oneclient_core::simulate::damage_libraries(count, damage)
+                    .await
+                    .map(|report| (report, damage.verb()))
+            }
+            DamageKind::Content(count, damage) => match crate::launcher::state() {
+                Ok(state) => oneclient_core::simulate::damage_cluster_content(
+                    &state, cluster_id, count, damage,
+                )
+                .await
+                .map(|report| (report, damage.verb())),
+                Err(err) => Err(err),
+            },
+            DamageKind::DeleteAssetsTree => oneclient_core::simulate::delete_assets_tree()
+                .await
+                .map(|report| (report, "Deleted")),
+        };
+
+        match result {
+            Ok((report, verb)) => {
+                dispatch
+                    .notify("Damage simulated")
+                    .body(report.summary(verb))
+                    .icon(IconType::AlertTriangle)
+                    .error()
+                    .send();
+            }
+            Err(err) => {
+                dispatch
+                    .notify("Simulation failed")
+                    .body(err.to_string())
+                    .error()
+                    .send();
+            }
+        }
+    });
 }
 
 #[derive(PartialEq)]

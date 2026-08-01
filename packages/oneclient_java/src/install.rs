@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use reqwest::Method;
-use url::Url;
-
-use oneclient_net::{ResponseNotifyOptions, ResponseOptions};
+use oneclient_net::ResponseNotifyOptions;
 use crate::data::{
 	java_executable_relative_path, JavaPackage, PackageArchive,
 };
@@ -32,8 +29,14 @@ pub async fn install_package(
 	// settings, say) gets its own notification.
 	// No size in the package metadata; the child picks up its real total from
 	// Content-Length as soon as the response headers land.
-	let child = progress
-		.map(|session| session.child(format!("{} {}", package.vendor, major), 0, TaskCategory::Java));
+	let expected_size = package.size.unwrap_or(0);
+	let child = progress.map(|session| {
+		session.child(
+			format!("{} {}", package.vendor, major),
+			expected_size,
+			TaskCategory::Java,
+		)
+	});
 
 	let notify = match &child {
 		Some(child) => ResponseNotifyOptions::grouped(child.clone()),
@@ -44,16 +47,30 @@ pub async fn install_package(
 		.done_label(format!("Installed {} {}", package.vendor, major)),
 	};
 
-	net
-		.download_file(
-			reqwest::Request::new(Method::GET, Url::parse(&package.download_url)?),
-			&archive_path,
-			ResponseOptions {
-				notify: Some(notify),
-			},
-			events,
-		)
-		.await?;
+	if package.checksum.is_none() {
+		tracing::warn!(
+			vendor = %package.vendor,
+			major,
+			"vendor published no usable checksum; installing runtime unverified"
+		);
+	}
+
+	// A runtime is the largest single file the launcher downloads, so it is the
+	// most likely to be interrupted — and it used to be the one download with no
+	// verification at all. Now it is hashed from the bytes in flight against the
+	// vendor's own checksum, retried on a dropped connection, and only published
+	// to `archive_path` once it matches, so extraction never sees a partial
+	// archive.
+	oneclient_net::download_verified(
+		net,
+		events,
+		&package.download_url,
+		&archive_path,
+		package.checksum.as_ref(),
+		expected_size,
+		Some(notify),
+	)
+	.await?;
 
 	let extract_root = java_dir.join(stem_without_archive(&package.name));
 

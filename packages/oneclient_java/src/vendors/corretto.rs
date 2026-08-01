@@ -3,6 +3,7 @@ use serde_json::Value;
 use url::Url;
 
 use oneclient_net::RequestClient;
+use polyio::Checksum;
 
 use crate::data::{JavaPackage, PackageArchive};
 use crate::error::JavaResult;
@@ -52,26 +53,47 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
                 continue;
             }
 
-            let has_ext = by_ext
-                .as_object()
-                .is_some_and(|exts| exts.contains_key(CORRETTO_EXT.0));
-            if !has_ext {
+            let Some(entry) = by_ext.get(CORRETTO_EXT.0) else {
                 continue;
-            }
+            };
 
-            let download_url = latest_url(this_major, CORRETTO_EXT.0);
+            // Prefer the exact versioned URL the index names over the `latest`
+            // redirect. Both resolve to the same build today, but `latest` is
+            // resolved at download time: if Corretto publishes a new build in
+            // the window between listing and downloading, the redirect moves and
+            // the checksum from this index no longer describes those bytes. The
+            // download would then fail as corrupt, three retries deep, for a
+            // file that is perfectly intact.
+            let download_url = entry
+                .get("resource")
+                .and_then(Value::as_str)
+                .map_or_else(
+                    || latest_url(this_major, CORRETTO_EXT.0),
+                    |resource| format!("https://corretto.aws{resource}"),
+                );
+
+            let checksum = entry
+                .get("checksum_sha256")
+                .and_then(Value::as_str)
+                .map(Checksum::sha256);
+
             let name = format!(
                 "amazon-corretto-{this_major}-{CORRETTO_ARCH}-{CORRETTO_OS}-jdk.{}",
                 CORRETTO_EXT.0
             );
 
-            packages.push(JavaPackage {
-                archive: CORRETTO_EXT.1,
-                download_url,
-                java_version: vec![this_major],
-                name,
-                vendor: JavaVendor::Corretto,
-            });
+            packages.push(
+                JavaPackage {
+                    archive: CORRETTO_EXT.1,
+                    download_url,
+                    java_version: vec![this_major],
+                    name,
+                    vendor: JavaVendor::Corretto,
+                    checksum: None,
+                    size: None,
+                }
+                .with_checksum(checksum),
+            );
         }
 
         packages.sort_by_key(|p| std::cmp::Reverse(p.java_version.first().copied().unwrap_or(0)));

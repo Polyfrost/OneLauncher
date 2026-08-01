@@ -295,12 +295,13 @@ async fn download_bundle_if_needed(
     }
 
     tracing::debug!("downloading bundle from remote: {url}");
+    let expected = polyio::Checksum::sha1(expected_sha1);
     oneclient_net::download_verified(
         &ctx.net,
         &ctx.events,
         url,
         disk_path,
-        Some(expected_sha1),
+        Some(&expected),
         0,
         None,
     )

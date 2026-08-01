@@ -2,8 +2,9 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, JavaPromptOverlay, NotificationCenter, PackageUpdatePopup,
-    SplashCurtain, StatusBar, Toasts, UpdatePromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay,
+    NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
+    UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_splash};
 use crate::layout::HomeArtPrefetch;
@@ -71,6 +72,9 @@ impl Component for RootLayout {
             .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
+            // Last of the prompt overlays: it renders whatever the two above
+            // did not claim, so no prompt can reach the user as silence.
+            .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(PackageUpdatePopup)
             .child(StatusBar)

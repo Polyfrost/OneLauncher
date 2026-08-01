@@ -42,6 +42,7 @@ bytes.workspace = true
 # content hashing
 digest.workspace = true
 sha1.workspace = true
+sha2.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true

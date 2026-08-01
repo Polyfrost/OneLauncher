@@ -11,8 +11,9 @@ use crate::components::{
     validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, try_game_profile, use_cluster_mutation,
-    use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions, use_settings_snapshot,
+    ClusterAction, java_runtimes, loader_versions, mutation_is_running, try_game_profile,
+    use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions,
+    use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -127,7 +128,9 @@ impl Component for ClusterSettings {
                     .child(section_header("PROCESS"))
                     .child(text_row(cluster_id, TextField::Pre, &profile, &global))
                     .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Post, &profile, &global)),
+                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
+                    .child(section_header("REPAIR"))
+                    .child(VerifyFilesRow { cluster_id }.into_element()),
             )
             .into_element()
     }
@@ -237,6 +240,41 @@ impl Component for ToggleRow {
             "Force Fullscreen",
             "Force Minecraft to start in fullscreen mode.",
             override_cell(toggle(state), overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct VerifyFilesRow {
+    cluster_id: i64,
+}
+
+impl Component for VerifyFilesRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let mutation = use_cluster_mutation();
+        let running = mutation_is_running(&mutation);
+
+        let on_press = move |_| {
+            mutation.mutate(ClusterAction::VerifyFiles { cluster_id });
+        };
+
+        // The pass reads every installed file, so it is worth saying that it
+        // takes a while — otherwise a button that sits there for a minute reads
+        // as broken rather than busy.
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!running)
+            .maybe(!running, |el| el.on_press(on_press))
+            .text(if running { "Verifying..." } else { "Verify Files" });
+
+        settings_row(
+            IconType::ClipboardCheck,
+            "Verify Files",
+            "Check every installed file against its official checksum and \
+             re-download anything corrupt or missing. Takes a few minutes.",
+            button,
         )
     }
 }

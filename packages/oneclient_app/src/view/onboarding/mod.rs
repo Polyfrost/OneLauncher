@@ -215,8 +215,9 @@ pub(crate) fn predownload_toggle_row(predownload: State<bool>) -> impl IntoEleme
                 .child(
                     label()
                         .text(
-                            "Fetch your selected versions and mods during setup. Turn off to \
-                             download each version the first time you launch it.",
+                            "Downloads Minecraft and your chosen mods now, so you can play as \
+                             soon as setup finishes. Turn it off to download each version the \
+                             first time you play it.",
                         )
                         .font_size(11.)
                         .color(colors::fg_secondary()),

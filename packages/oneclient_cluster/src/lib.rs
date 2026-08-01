@@ -25,6 +25,6 @@ pub use cluster::{Cluster, ClusterLinkTarget};
 pub use error::{ClusterError, ClusterResult};
 pub use manager::ClusterManager;
 pub use options::{ClusterUpdate, CreateClusterOptions};
-pub use profile::{GameSettingsProfile, SettingsOsExtra};
+pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};
 pub use profiles::ProfileUpdate;
 pub use stage::ClusterStage;

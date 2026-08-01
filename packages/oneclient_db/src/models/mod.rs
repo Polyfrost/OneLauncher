@@ -1,4 +1,5 @@
 mod artifact;
+mod browser_package_update;
 mod bundle;
 mod cluster;
 mod cluster_bundle;
@@ -8,6 +9,7 @@ mod package_metadata;
 mod setting_profile;
 
 pub use artifact::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow};
+pub use browser_package_update::BrowserPackageUpdateRow;
 pub use package_metadata::PackageMetadataRow;
 pub use bundle::{BundleRow, NewBundle};
 pub use cluster::{ClusterId, ClusterPatch, ClusterRow, NewCluster};

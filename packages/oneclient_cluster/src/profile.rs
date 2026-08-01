@@ -17,11 +17,15 @@ pub struct GameSettingsProfile {
 	pub hook_wrapper: Option<String>,
 	pub hook_post: Option<String>,
 	pub os_extra: Option<SettingsOsExtra>,
+	/// What to do when a package installed from the browser has a newer
+	/// version. Bundle content is never touched by this.
+	pub browser_update_mode: Option<PackageUpdateMode>,
 }
 
 // `Resolution` moved to oneclient_common: the launch-argument builder needs it
 // too, and that crate cannot depend on the launcher settings.
 pub use oneclient_common::Resolution;
+pub use oneclient_common::domain::PackageUpdateMode;
 
 cfg_select! {
 	target_os = "windows" => {
@@ -62,6 +66,7 @@ impl GameSettingsProfile {
 			hook_wrapper: None,
 			hook_post: None,
 			os_extra: Some(SettingsOsExtra::default()),
+			browser_update_mode: Some(PackageUpdateMode::default()),
 		}
 	}
 
@@ -100,6 +105,9 @@ impl GameSettingsProfile {
 		if self.os_extra.is_none() {
 			self.os_extra = global.os_extra.clone();
 		}
+		if self.browser_update_mode.is_none() {
+			self.browser_update_mode = global.browser_update_mode;
+		}
 	}
 
 	pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
@@ -121,6 +129,12 @@ impl GameSettingsProfile {
 				.os_extra
 				.map(|json| serde_json::from_str(&json))
 				.transpose()?,
+			// An unrecognised value inherits rather than errors: a profile
+			// written by a newer build must not make the cluster unloadable.
+			browser_update_mode: row
+				.browser_update_mode
+				.as_deref()
+				.and_then(PackageUpdateMode::parse),
 		})
 	}
 
@@ -144,6 +158,9 @@ impl GameSettingsProfile {
 				.as_ref()
 				.map(serde_json::to_string)
 				.transpose()?,
+			browser_update_mode: self
+				.browser_update_mode
+				.map(|mode| mode.as_str().to_string()),
 		})
 	}
 }

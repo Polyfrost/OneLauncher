@@ -1,5 +1,6 @@
 pub mod applied_migration;
 pub mod artifact;
+pub mod browser_package_update;
 pub mod bundle;
 pub mod cluster;
 pub mod cluster_bundle;

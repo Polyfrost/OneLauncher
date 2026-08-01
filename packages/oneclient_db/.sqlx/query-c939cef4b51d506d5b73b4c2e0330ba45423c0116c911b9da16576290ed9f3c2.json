@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
+  "query": "\n\t\tINSERT INTO setting_profiles (\n\t\t\tname, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t\thook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(name) DO UPDATE SET\n\t\t\tjava_path = excluded.java_path,\n\t\t\tresolution = excluded.resolution,\n\t\t\tforce_fullscreen = excluded.force_fullscreen,\n\t\t\tmem_max = excluded.mem_max,\n\t\t\tlaunch_args = excluded.launch_args,\n\t\t\tlaunch_env = excluded.launch_env,\n\t\t\thook_pre = excluded.hook_pre,\n\t\t\thook_wrapper = excluded.hook_wrapper,\n\t\t\thook_post = excluded.hook_post,\n\t\t\tos_extra = excluded.os_extra,\n\t\t\tbrowser_update_mode = excluded.browser_update_mode\n\t\tRETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,12 +123,24 @@
             "name": "os_extra"
           }
         }
+      },
+      {
+        "name": "browser_update_mode",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "browser_update_mode"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 12
     },
     "nullable": [
+      false,
       false,
       true,
       true,
@@ -142,5 +154,5 @@
       true
     ]
   },
-  "hash": "4ab22fa481720e3bae5befee821fe1c0689d666f8bbcde98890e2d4715e9bc80"
+  "hash": "c939cef4b51d506d5b73b4c2e0330ba45423c0116c911b9da16576290ed9f3c2"
 }

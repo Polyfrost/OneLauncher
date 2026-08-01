@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
+  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
   "describe": {
     "columns": [
       {
@@ -123,10 +123,21 @@
             "name": "os_extra"
           }
         }
+      },
+      {
+        "name": "browser_update_mode",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "browser_update_mode"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -139,8 +150,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "de1b40c927c9819f675b8e3e8e1f583c41450ae9deda20739d82d95e8ca70b27"
+  "hash": "f68b9ade92feb989828ca81582c5960bf2968c4b75705e1a0e6800e97c3f4628"
 }

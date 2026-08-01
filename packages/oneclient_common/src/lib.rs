@@ -15,7 +15,9 @@ pub mod version;
 
 mod error;
 
-pub use domain::{ContentType, GameLoader, HashAlgorithm, ProviderId, Resolution};
+pub use domain::{
+    ContentType, GameLoader, HashAlgorithm, PackageUpdateMode, ProviderId, Resolution,
+};
 pub use error::{PathsError, PathsResult};
 pub use os_ext::OsExt;
 pub use patch::Patch;

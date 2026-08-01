@@ -125,6 +125,73 @@ pub enum HashAlgorithm {
     Sha1,
 }
 
+/// What the launcher does when a package the user installed from the browser
+/// has a newer version at launch.
+///
+/// Bundle-provided content is not covered by this: bundles carry their own
+/// update flow, and the two must not fight over the same file.
+///
+/// The check itself always runs; this only decides what happens with the
+/// result, so the "out of date" markers in the package manager are populated
+/// no matter which variant is selected.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    Default,
+    EnumIter,
+    StrumDisplay,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageUpdateMode {
+    /// Apply every update as soon as it is found, with no modal.
+    Automatic,
+    /// Never apply and never ask.
+    Skip,
+    /// Ask, listing each package so the user decides one at a time.
+    #[default]
+    Prompt,
+}
+
+impl PackageUpdateMode {
+    /// Display order, defaulting variant first.
+    pub const ALL: &[Self] = &[Self::Prompt, Self::Automatic, Self::Skip];
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Automatic => "Automatically update",
+            Self::Skip => "Always skip auto updates",
+            Self::Prompt => "Show the modal",
+        }
+    }
+
+    /// The value stored in the `setting_profiles.browser_update_mode` column.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::Skip => "skip",
+            Self::Prompt => "prompt",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "automatic" => Some(Self::Automatic),
+            "skip" => Some(Self::Skip),
+            "prompt" => Some(Self::Prompt),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, FromRepr)]
 #[repr(u8)]
 pub enum GameLoader {

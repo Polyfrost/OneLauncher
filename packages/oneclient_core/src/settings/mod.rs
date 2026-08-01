@@ -2,7 +2,9 @@ mod launcher;
 
 pub use launcher::{LauncherSettings, ViewLayout, ViewState};
 // Profiles moved to `oneclient_cluster`; re-exported for existing paths.
-pub use oneclient_cluster::{GameSettingsProfile, ProfileUpdate, SettingsOsExtra};
+pub use oneclient_cluster::{
+	GameSettingsProfile, PackageUpdateMode, ProfileUpdate, SettingsOsExtra,
+};
 pub use oneclient_common::Resolution;
 
 pub mod store;

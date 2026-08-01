@@ -1,0 +1,146 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO browser_package_updates (\n\t\t\tcluster_id, hash, provider, project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)\n\t\tON CONFLICT(cluster_id, hash) DO UPDATE SET\n\t\t\tprovider = excluded.provider,\n\t\t\tproject_id = excluded.project_id,\n\t\t\tinstalled_version_id = excluded.installed_version_id,\n\t\t\tinstalled_version_name = excluded.installed_version_name,\n\t\t\tlatest_version_name = excluded.latest_version_name,\n\t\t\tdisplay_name = excluded.display_name,\n\t\t\tchecked_at = excluded.checked_at,\n\t\t\tskipped = CASE\n\t\t\t\tWHEN browser_package_updates.latest_version_id = excluded.latest_version_id\n\t\t\t\tTHEN browser_package_updates.skipped\n\t\t\t\tELSE 0\n\t\t\tEND,\n\t\t\tlatest_version_id = excluded.latest_version_id\n\t\tRETURNING\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "provider!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "installed_version_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "installed_version_id"
+          }
+        }
+      },
+      {
+        "name": "installed_version_name",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "installed_version_name"
+          }
+        }
+      },
+      {
+        "name": "latest_version_id",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "latest_version_id"
+          }
+        }
+      },
+      {
+        "name": "latest_version_name",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "latest_version_name"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "checked_at",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "checked_at"
+          }
+        }
+      },
+      {
+        "name": "skipped",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "skipped"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5183d452802d8bbec7f2a52ceba7ffe26960fdc25855f6cc993d6ab5deb84c02"
+}

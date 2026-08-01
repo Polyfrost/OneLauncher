@@ -13,8 +13,73 @@ use oneclient_events::Level;
 use crate::components::IconType;
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
-    NotificationSpec,
+    NotificationSpec, PackageUpdateGroup,
 };
+
+/// Names a cluster for a notification or modal header, falling back rather than
+/// failing: a missing row is not a reason to lose the whole message.
+pub async fn cluster_display_name(
+    cluster_id: i64,
+    services: &oneclient_core::LauncherServices,
+) -> String {
+    PackageStore::get_cluster(cluster_id, &services.content())
+        .await
+        .map(|cluster| cluster.name)
+        .unwrap_or_else(|_| "Cluster".to_string())
+}
+
+/// Turns one cluster's pending browser updates into what the modal renders.
+/// `None` when the cluster has nothing to offer.
+pub async fn package_update_group(
+    cluster_id: i64,
+    updates: &[oneclient_core::BrowserPackageUpdate],
+    services: &oneclient_core::LauncherServices,
+) -> Option<PackageUpdateGroup> {
+    if updates.is_empty() {
+        return None;
+    }
+
+    Some(PackageUpdateGroup {
+        cluster_id,
+        cluster_name: cluster_display_name(cluster_id, services).await,
+        packages: updates.to_vec(),
+    })
+}
+
+/// One notification for a whole launch-time check, with a single action that
+/// reopens the modal. Mirrors [`combined_cluster_update_spec`]: however many
+/// clusters are stale, the user sees one card with one button.
+pub fn package_updates_notification(groups: &[PackageUpdateGroup]) -> Option<NotificationSpec> {
+    if groups.is_empty() {
+        return None;
+    }
+
+    let total: usize = groups.iter().map(|group| group.packages.len()).sum();
+    let body = match groups {
+        [only] => format!(
+            "{total} package{} in {} can be updated",
+            if total == 1 { "" } else { "s" },
+            only.cluster_name
+        ),
+        _ => format!(
+            "{total} package{} across {} clusters can be updated",
+            if total == 1 { "" } else { "s" },
+            groups.len()
+        ),
+    };
+
+    Some(NotificationSpec {
+        title: "Updates available".to_string(),
+        body,
+        level: Level::Info,
+        icon: Some(IconType::DownloadCloud02),
+        progress: None,
+        actions: vec![NotificationAction {
+            label: "Review".to_string(),
+            kind: NotificationActionKind::OpenPackageUpdates(groups.to_vec()),
+        }],
+    })
+}
 
 pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdateItem {
     match &file.kind {

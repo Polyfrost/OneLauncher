@@ -26,6 +26,7 @@ mod java;
 mod logs;
 mod migration;
 mod mutations;
+mod package_updates;
 mod packages;
 mod player_profile;
 mod screenshots;
@@ -79,6 +80,7 @@ pub use storage::{
 pub use mutations::{
     ClusterAction, invalidate_cluster_queries, invalidate_profile_queries, use_cluster_mutation,
 };
+pub use package_updates::{package_updates, stale_hashes, use_package_updates};
 pub use packages::{
     BROWSE_PAGE_SIZE, VERSIONS_PAGE_SIZE, category_list, content_type_for_slug, package_meta_batch,
     project_detail, search_items, search_pending, search_total, use_package_categories,

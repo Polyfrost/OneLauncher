@@ -15,7 +15,9 @@ use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
-use oneclient_cluster::{ClusterStage, ClusterUpdate, GameSettingsProfile, ProfileUpdate};
+use oneclient_cluster::{
+    ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
+};
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
@@ -26,7 +28,7 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::launcher;
 use crate::notifications::{
-    ClusterUpdateSummary, NotificationAction, NotificationSpec, PendingPrompt,
+    ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
@@ -518,6 +520,17 @@ impl Actions {
         self.with_engine(|state| state.notifications.close_cluster_update());
     }
 
+    pub fn open_package_updates(&self, groups: Vec<PackageUpdateGroup>) {
+        self.with_engine(|state| {
+            state.notifications.open_package_updates(groups);
+            state.center_open = false;
+        });
+    }
+
+    pub fn close_package_updates(&self) {
+        self.with_engine(|state| state.notifications.close_package_updates());
+    }
+
     /// Hovering any toast pauses every toast, including ones that arrive while
     /// hovering, which is why this is a pump signal rather than a state flag.
     pub fn pause_toasts(&self) {
@@ -880,6 +893,220 @@ impl Actions {
                 app.notifications
                     .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
             });
+
+            // Last, so browser packages are judged against a cluster the bundle
+            // sync has finished settling: a package a bundle has just taken over
+            // must not also be offered as a browser update.
+            actions.check_package_updates();
+        });
+    }
+
+    // --- browser package updates -------------------------------------------
+
+    /// Checks every cluster's browser-installed packages for newer versions and
+    /// acts on each cluster's own `browser_update_mode`.
+    ///
+    /// The check runs and the cache is written whatever the setting says — that
+    /// is what keeps the "out of date" markers in the package manager honest for
+    /// users who never want the modal. The setting only decides what happens
+    /// next.
+    ///
+    /// Offline is not a failure: the check leaves the previous cache in place,
+    /// finds nothing new, and this returns without saying anything.
+    pub fn check_package_updates(&self) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let content = state.services.content();
+            let global = state.settings.read().global_game_settings.clone();
+
+            let clusters = match oneclient_db::dao::cluster::list_all(&state.services.db).await {
+                Ok(clusters) => clusters,
+                Err(err) => {
+                    tracing::error!("package update check skipped, cannot list clusters: {err:#}");
+                    return;
+                }
+            };
+
+            let mut groups: Vec<PackageUpdateGroup> = Vec::new();
+            let mut applied = 0usize;
+
+            for cluster in clusters {
+                let check = match oneclient_core::refresh_browser_package_updates(
+                    cluster.id,
+                    &content,
+                )
+                .await
+                {
+                    Ok(check) => check,
+                    Err(err) => {
+                        tracing::warn!(
+                            cluster_id = cluster.id,
+                            error = %err,
+                            "browser package update check failed"
+                        );
+                        continue;
+                    }
+                };
+
+                let pending = check.pending();
+                if pending.is_empty() {
+                    continue;
+                }
+
+                let mode = oneclient_cluster::profiles::resolve_cluster_profile(
+                    &state.services.db,
+                    &global,
+                    cluster.setting_profile_name.as_deref(),
+                )
+                .await
+                .ok()
+                .and_then(|profile| profile.browser_update_mode)
+                .unwrap_or_default();
+
+                match mode {
+                    PackageUpdateMode::Skip => {}
+                    PackageUpdateMode::Automatic => {
+                        for update in &pending {
+                            match oneclient_core::apply_browser_package_update(
+                                update, None, &content,
+                            )
+                            .await
+                            {
+                                Ok(_) => applied += 1,
+                                Err(err) => tracing::warn!(
+                                    package = %update.display_name,
+                                    error = %err,
+                                    "automatic package update failed"
+                                ),
+                            }
+                        }
+                    }
+                    PackageUpdateMode::Prompt => {
+                        if let Some(group) = crate::install::package_update_group(
+                            cluster.id,
+                            &pending,
+                            &state.services,
+                        )
+                        .await
+                        {
+                            groups.push(group);
+                        }
+                    }
+                }
+            }
+
+            if applied > 0 {
+                super::invalidate_cluster_queries().await;
+                state
+                    .services
+                    .events
+                    .notify("Packages updated")
+                    .body(format!(
+                        "{applied} package{} updated automatically",
+                        if applied == 1 { "" } else { "s" }
+                    ))
+                    .send();
+            }
+
+            if !groups.is_empty() {
+                // The notification carries the same list, so dismissing the
+                // modal without answering leaves a way back to it.
+                if let Some(spec) = crate::install::package_updates_notification(&groups) {
+                    actions.push_notification(spec);
+                }
+                actions.open_package_updates(groups);
+            }
+        });
+    }
+
+    /// Applies one update from the modal, then drops that row from it.
+    pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            let session = oneclient_events::GroupedProgressSession::start(
+                &events,
+                format!("Updating {}", update.display_name),
+            );
+            let child = session.child(
+                update.display_name.clone(),
+                1,
+                oneclient_events::TaskCategory::Packages,
+            );
+
+            let result = oneclient_core::apply_browser_package_update(
+                &update,
+                Some(&child),
+                &state.services.content(),
+            )
+            .await;
+
+            child.finish();
+            let session_id = session.detach();
+
+            let spec = match &result {
+                Ok(_) => NotificationSpec {
+                    title: "Updated".to_string(),
+                    body: format!(
+                        "{} is now on {}",
+                        update.display_name, update.latest_version_name
+                    ),
+                    level: Level::Info,
+                    icon: Some(IconType::DownloadCloud02),
+                    progress: None,
+                    actions: Vec::new(),
+                },
+                Err(err) => NotificationSpec {
+                    title: "Update failed".to_string(),
+                    body: err.to_string(),
+                    level: Level::Error,
+                    icon: None,
+                    progress: None,
+                    actions: Vec::new(),
+                },
+            };
+
+            actions.with_engine(|app| {
+                app.notifications
+                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+            });
+
+            // A failed update stays in the list: the row is still out of date,
+            // and the user may want to try again.
+            if result.is_ok() {
+                actions.with_engine(|app| {
+                    app.notifications
+                        .resolve_package_update(update.cluster_id, &update.hash);
+                });
+                super::invalidate_cluster_queries().await;
+            }
+        });
+    }
+
+    /// Declines one update. The package stays marked out of date; only the
+    /// modal stops asking, and only for this version.
+    pub fn skip_package_update(&self, cluster_id: ClusterId, hash: impl Into<String>) {
+        let hash = hash.into();
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            if let Err(err) = oneclient_core::skip_browser_package_update(
+                cluster_id,
+                &hash,
+                &state.services.content(),
+            )
+            .await
+            {
+                tracing::warn!(error = %err, "failed to record a skipped package update");
+            }
+
+            actions.with_engine(|app| {
+                app.notifications.resolve_package_update(cluster_id, &hash);
+            });
+            super::invalidate_cluster_queries().await;
         });
     }
 }

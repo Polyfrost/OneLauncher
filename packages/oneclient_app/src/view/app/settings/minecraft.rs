@@ -1,9 +1,9 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_core::settings::{ProfileUpdate, Resolution};
+use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
-use crate::components::{Icon, IconType, TextInput, toggle, validate_number};
+use crate::components::{Dropdown, Icon, IconType, TextInput, toggle, validate_number};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -56,6 +56,7 @@ impl Component for SettingsMinecraft {
         });
 
         let mut first = use_state(|| true);
+        let batched = dispatch.clone();
         use_side_effect(move || {
             let update = build_update(
                 *fullscreen.read(),
@@ -71,7 +72,7 @@ impl Component for SettingsMinecraft {
                 first.set(false);
                 return;
             }
-            dispatch.update_global_profile(update);
+            batched.update_global_profile(update);
         });
 
         settings_page()
@@ -101,6 +102,16 @@ impl Component for SettingsMinecraft {
                 TextInput::new(jvm_args)
                     .placeholder("-XX:+UseG1GC")
                     .width(Size::px(220.)),
+            ))
+            .child(section_header("CONTENT"))
+            .child(settings_row(
+                IconType::RefreshCw01,
+                "Browser Package Updates",
+                "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
+                update_mode_field(
+                    profile.browser_update_mode.unwrap_or_default(),
+                    dispatch,
+                ),
             ))
             .child(section_header("PROCESS"))
             .child(settings_row(
@@ -165,6 +176,31 @@ fn build_update(
         hook_post: command_patch(post),
         ..Default::default()
     }
+}
+
+/// Dispatched on its own rather than folded into [`build_update`]: that effect
+/// mirrors text fields on every keystroke, and a dropdown has no intermediate
+/// states to debounce.
+fn update_mode_field(
+    selected: PackageUpdateMode,
+    dispatch: crate::Actions,
+) -> impl IntoElement {
+    let options: Vec<String> = PackageUpdateMode::ALL
+        .iter()
+        .map(|mode| mode.label().to_string())
+        .collect();
+
+    Dropdown::new(selected.label(), options)
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
+                dispatch.update_global_profile(ProfileUpdate {
+                    browser_update_mode: Patch::Set(mode),
+                    ..Default::default()
+                });
+            }
+        })
 }
 
 fn command_patch(value: &str) -> Patch<String> {

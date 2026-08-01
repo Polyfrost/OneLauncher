@@ -2,7 +2,9 @@ use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_java::JavaRuntime;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{GameSettingsProfile, ProfileUpdate, Resolution};
+use oneclient_core::settings::{
+    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
+};
 
 use crate::components::{
     Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled,
@@ -105,6 +107,15 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(section_header("CONTENT"))
+                    .child(
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header("DIRECTORY"))
                     .child(
                         DedicatedDirRow {
@@ -128,6 +139,7 @@ enum Field {
     Resolution,
     MemMax,
     JavaPath,
+    BrowserUpdateMode,
 }
 
 fn clear_update(field: Field) -> ProfileUpdate {
@@ -137,6 +149,7 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::Resolution => u.resolution = Patch::Clear,
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
+        Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
     }
     u
 }
@@ -616,6 +629,57 @@ impl Component for JavaRow {
             IconType::CodeSnippet02,
             "Java Runtime",
             "The Java runtime used to launch this cluster.",
+            override_cell(control, overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct BrowserUpdateModeRow {
+    cluster_id: i64,
+    value: Option<PackageUpdateMode>,
+    global: PackageUpdateMode,
+}
+
+impl Component for BrowserUpdateModeRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let overridden = self.value.is_some();
+        let resolved = self.value.unwrap_or(self.global);
+        let dispatch = use_dispatch();
+
+        let options: Vec<String> = PackageUpdateMode::ALL
+            .iter()
+            .map(|mode| mode.label().to_string())
+            .collect();
+
+        let control = {
+            let dispatch = dispatch.clone();
+            Dropdown::new(resolved.label(), options)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |idx: usize| {
+                    if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
+                        dispatch.update_cluster_profile(
+                            cluster_id,
+                            ProfileUpdate {
+                                browser_update_mode: Patch::Set(mode),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                })
+        };
+
+        let on_reset: EventHandler<()> = (move |()| {
+            dispatch.update_cluster_profile(cluster_id, clear_update(Field::BrowserUpdateMode));
+        })
+        .into();
+
+        settings_row(
+            IconType::RefreshCw01,
+            "Browser Package Updates",
+            "What to do when content installed from the browser has a newer version. Bundle content is not affected.",
             override_cell(control, overridden, on_reset),
         )
     }

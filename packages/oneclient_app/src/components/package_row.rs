@@ -44,6 +44,10 @@ pub struct PackageEntry {
     pub installed: bool,
     pub hash: Option<String>,
     pub manifest_default: bool,
+    /// The launch-time check found a newer version for this artifact. Only ever
+    /// set for browser-installed content: bundle packages report their staleness
+    /// through the bundle update flow instead.
+    pub update_available: bool,
 }
 
 impl PackageEntry {
@@ -53,6 +57,13 @@ impl PackageEntry {
 
     pub fn in_bundle(&self) -> bool {
         self.bundle_name.is_some()
+    }
+
+    /// Whether to mark the row out of date. A bundle package is never marked
+    /// here even if a row somehow says so, so the two update flows cannot
+    /// contradict each other on screen.
+    pub fn is_outdated(&self) -> bool {
+        self.update_available && self.is_remote() && !self.in_bundle()
     }
 }
 
@@ -263,7 +274,14 @@ fn grid_card(
                             .color(colors::fg_secondary().with_a(content_alpha)),
                     )
                 })
-                .child(badge),
+                .child(
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::Center)
+                        .spacing(6.)
+                        .child(badge)
+                        .maybe_child(item.is_outdated().then(outdated_badge)),
+                ),
         )
         .into_element();
 
@@ -361,7 +379,8 @@ fn package_info(
                             provider_badge(item.provider)
                         } else {
                             local_badge()
-                        }),
+                        })
+                        .maybe_child(item.is_outdated().then(outdated_badge)),
                 )
                 .maybe(!item.author.is_empty(), |el| {
                     el.child(
@@ -441,6 +460,19 @@ pub fn provider_badge(provider: ProviderId) -> Element {
     )
 }
 
+/// Says the installed version is behind the provider's newest compatible one.
+/// The update itself is offered by the launch-time modal, not from here.
+fn outdated_badge() -> Element {
+    accent_badge(
+        Icon::new(IconType::RefreshCw01)
+            .size(12.)
+            .color(colors::brand())
+            .into_element(),
+        "Update available".to_string(),
+        colors::brand(),
+    )
+}
+
 fn local_badge() -> Element {
     badge(
         Icon::new(IconType::File02)
@@ -452,6 +484,10 @@ fn local_badge() -> Element {
 }
 
 fn badge(icon: impl IntoElement, text: String) -> Element {
+    accent_badge(icon, text, colors::fg_secondary())
+}
+
+fn accent_badge(icon: impl IntoElement, text: String, accent: Color) -> Element {
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
@@ -466,7 +502,7 @@ fn badge(icon: impl IntoElement, text: String) -> Element {
                 .text(text)
                 .font_size(10.)
                 .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_secondary()),
+                .color(accent),
         )
         .into_element()
 }

@@ -5,6 +5,7 @@ use oneclient_events::{
     Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
 };
 use oneclient_content::packages::ProviderId;
+use oneclient_core::BrowserPackageUpdate;
 use oneclient_db::models::ClusterId;
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -26,6 +27,22 @@ pub enum NotificationActionKind {
     /// list so a batch sync stays a single "View changes" action instead of one
     /// button per cluster.
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
+    /// Reopens the browser-package update modal for the clusters whose
+    /// launch-time check found something. Same reasoning as above: one action,
+    /// however many clusters are stale.
+    OpenPackageUpdates(Vec<PackageUpdateGroup>),
+}
+
+/// The stale browser packages of one cluster.
+///
+/// Carries the core updates whole rather than a display projection: the modal's
+/// Update button hands one straight back to the apply path, and a trimmed copy
+/// would have to be re-looked-up to find the version it is meant to install.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PackageUpdateGroup {
+    pub cluster_id: ClusterId,
+    pub cluster_name: String,
+    pub packages: Vec<BrowserPackageUpdate>,
 }
 
 /// One changed package in a cluster update, carrying enough identity to
@@ -166,6 +183,7 @@ pub struct NotificationSnapshot {
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
     pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    pub package_updates: Option<Vec<PackageUpdateGroup>>,
     pub active_toast_entry_ids: Vec<u64>,
 }
 
@@ -184,6 +202,7 @@ pub struct NotificationState {
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    package_updates: Option<Vec<PackageUpdateGroup>>,
 }
 
 /// Fixed display order for the category rows.
@@ -293,6 +312,7 @@ impl NotificationState {
             center_open,
             pending_prompt,
             cluster_update: self.cluster_update.clone(),
+            package_updates: self.package_updates.clone(),
             active_toast_entry_ids: self.active_toasts.iter().map(|t| t.entry_id).collect(),
         }
     }
@@ -312,6 +332,42 @@ impl NotificationState {
 
     pub fn close_cluster_update(&mut self) {
         self.cluster_update = None;
+    }
+
+    pub fn open_package_updates(&mut self, groups: Vec<PackageUpdateGroup>) {
+        let groups: Vec<PackageUpdateGroup> = groups
+            .into_iter()
+            .filter(|group| !group.packages.is_empty())
+            .collect();
+        if groups.is_empty() {
+            return;
+        }
+        self.package_updates = Some(groups);
+    }
+
+    pub fn close_package_updates(&mut self) {
+        self.package_updates = None;
+    }
+
+    /// Drops one package from the open modal, closing it once the user has
+    /// answered for every row. Applying and skipping are the same thing here:
+    /// both are answers, and neither should leave a row the user has already
+    /// dealt with sitting in the list.
+    pub fn resolve_package_update(&mut self, cluster_id: ClusterId, hash: &str) {
+        let Some(groups) = self.package_updates.as_mut() else {
+            return;
+        };
+
+        for group in groups.iter_mut() {
+            if group.cluster_id == cluster_id {
+                group.packages.retain(|p| p.hash != hash);
+            }
+        }
+        groups.retain(|group| !group.packages.is_empty());
+
+        if groups.is_empty() {
+            self.package_updates = None;
+        }
     }
 
     pub fn unread_count(inbox: &[InboxEntry]) -> usize {

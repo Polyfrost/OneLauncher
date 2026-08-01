@@ -2,8 +2,8 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, JavaPromptOverlay, NotificationCenter, SplashCurtain,
-    StatusBar, Toasts, UpdatePromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, JavaPromptOverlay, NotificationCenter, PackageUpdatePopup,
+    SplashCurtain, StatusBar, Toasts, UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_splash};
 use crate::layout::HomeArtPrefetch;
@@ -72,6 +72,7 @@ impl Component for RootLayout {
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
             .child(ClusterUpdatePopup)
+            .child(PackageUpdatePopup)
             .child(StatusBar)
             .child(SplashCurtain)
             .child(HomeArtPrefetch)

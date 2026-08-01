@@ -70,11 +70,17 @@ pub fn use_content_meta(
     out
 }
 
+/// Builds the rows for one content type.
+///
+/// `stale` is the set of artifact hashes the last browser update check found a
+/// newer version for. Bundle-provided rows are built before it is consulted and
+/// never carry the flag, so the two update flows cannot both claim a package.
 pub fn bundle_packages(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
     overrides: &HashMap<(String, String), String>,
     meta: &PackageMetaMap,
+    stale: &HashSet<String>,
     content_type: ContentType,
 ) -> Vec<PackageEntry> {
     let mut by_project: HashMap<&str, &LinkedArtifactInfo> = HashMap::new();
@@ -158,6 +164,7 @@ pub fn bundle_packages(
                 installed_info,
                 meta,
                 file.display_name(),
+                false,
             ));
         }
     }
@@ -170,6 +177,7 @@ pub fn bundle_packages(
         }
         let provider = info.provider.unwrap_or(ProviderId::Local);
         let pid = info.project_id.clone().unwrap_or_else(|| info.hash.clone());
+        let outdated = stale.contains(&info.hash);
         rows.push(make_row(
             pid,
             None,
@@ -183,6 +191,7 @@ pub fn bundle_packages(
             info.display_name
                 .clone()
                 .unwrap_or_else(|| info.file_name.clone()),
+            outdated,
         ));
     }
 
@@ -201,6 +210,7 @@ fn make_row(
     installed_info: Option<&LinkedArtifactInfo>,
     meta: &PackageMetaMap,
     fallback_name: String,
+    update_available: bool,
 ) -> PackageEntry {
     let m = meta.get(&(provider, package_id.clone()));
     let name = m
@@ -239,6 +249,7 @@ fn make_row(
         manifest_default,
         installed: installed_info.is_some(),
         hash: installed_info.map(|i| i.hash.clone()),
+        update_available,
     }
 }
 

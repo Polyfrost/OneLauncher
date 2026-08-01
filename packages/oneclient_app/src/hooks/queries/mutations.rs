@@ -7,6 +7,7 @@ use oneclient_db::models::{ClusterId, OverrideType};
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
 use super::cluster_content::ClusterContentQuery;
 use super::clusters::ListClustersQuery;
+use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
     ClusterProfileQuery, ClusterSettingsQuery, GameProfileQuery, ListNamedProfilesQuery,
 };
@@ -18,6 +19,7 @@ pub async fn invalidate_cluster_queries() {
     QueriesStorage::<BundlesWithStatusQuery>::try_invalidate_all().await;
     QueriesStorage::<BundleOverridesQuery>::try_invalidate_all().await;
     QueriesStorage::<BundleUpdatesQuery>::try_invalidate_all().await;
+    QueriesStorage::<PackageUpdatesQuery>::try_invalidate_all().await;
     QueriesStorage::<VersionsMetadataQuery>::try_invalidate_all().await;
     QueriesStorage::<LoaderVersionsQuery>::try_invalidate_all().await;
 }

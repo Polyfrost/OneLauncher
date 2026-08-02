@@ -7,6 +7,7 @@ impl AppAssets {
         AppAssets::get(path).map(|file| match file.data {
             std::borrow::Cow::Borrowed(slice) => bytes::Bytes::copy_from_slice(slice),
             std::borrow::Cow::Owned(vec) => {
+				#[cfg(not(debug_assertions))]
                 tracing::warn!("Cloning asset data for '{}'", path);
                 bytes::Bytes::from(vec)
             }

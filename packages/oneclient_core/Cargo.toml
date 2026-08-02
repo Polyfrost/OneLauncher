@@ -1,14 +1,14 @@
 [package]
-name = "oneclient_core"
-description = "OneClient launcher core"
-version.workspace = true
-license.workspace = true
-edition.workspace = true
-repository.workspace = true
-documentation.workspace = true
-readme.workspace = true
-homepage.workspace = true
 authors.workspace = true
+description = "OneClient launcher core"
+documentation.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+name = "oneclient_core"
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [lib]
 path = "src/lib.rs"
@@ -16,45 +16,9 @@ path = "src/lib.rs"
 [features]
 default = []
 
-[[example]]
-name = "package_search"
-path = "examples/package_search.rs"
-
-[[example]]
-name = "package_project"
-path = "examples/package_project.rs"
-
-[[example]]
-name = "auth_msa"
-path = "examples/auth_msa.rs"
-
-[[example]]
-name = "cluster_manage"
-path = "examples/cluster_manage.rs"
-
-[[example]]
-name = "download_game"
-path = "examples/download_game.rs"
-
-[[example]]
-name = "bundles_sync"
-path = "examples/bundles_sync.rs"
-
-[[example]]
-name = "launch_game"
-path = "examples/launch_game.rs"
-
-[[example]]
-name = "notifications"
-path = "examples/notifications.rs"
-
-[[example]]
-name = "detect_v1"
-path = "examples/detect_v1.rs"
-
 [dev-dependencies]
-async-tungstenite = { version = "=0.32.1", features = ["tokio-runtime"] }
-polyio = { workspace = true, features = ["testing"] }
+async-tungstenite = {version = "=0.32.1", features = ["tokio-runtime"]}
+polyio = {workspace = true, features = ["testing"]}
 
 [dependencies]
 # core (extra)
@@ -64,73 +28,67 @@ oneclient_auth.workspace = true
 oneclient_cluster.workspace = true
 oneclient_common.workspace = true
 oneclient_content.workspace = true
+oneclient_db.workspace = true
 oneclient_discord.workspace = true
 oneclient_events.workspace = true
 oneclient_java.workspace = true
 oneclient_mc.workspace = true
-oneclient_polyplus.workspace = true
 oneclient_net.workspace = true
-oneclient_db.workspace = true
+oneclient_polyplus.workspace = true
 polyio.workspace = true
 
 # logging
-tracing.workspace = true
 tracing-futures.workspace = true
 tracing-subscriber.workspace = true
+tracing.workspace = true
 
-sentry.workspace = true
 sentry-tracing.workspace = true
+sentry.workspace = true
 
 # database
 sqlx.workspace = true
 
 # async
+async-compression.workspace = true
+async-stream.workspace = true
+async-tempfile.workspace = true
 async-trait.workspace = true
-tokio.workspace = true
+async_zip.workspace = true
+futures-lite.workspace = true
+futures-util = {workspace = true, features = ["std", "sink"]}
+reqwest-websocket.workspace = true
+reqwest.workspace = true
 tokio-stream.workspace = true
 tokio-util.workspace = true
-futures-util = { workspace = true, features = ["std", "sink"] }
-futures-lite.workspace = true
-reqwest.workspace = true
-reqwest-websocket.workspace = true
-async_zip.workspace = true
-async-tempfile.workspace = true
-async-stream.workspace = true
-async-compression.workspace = true
-
-# image decode/resize
-image.workspace = true
-
-# used to confirm html to markdown
-htmd.workspace = true
-
-# move-to-trash for deletions
-trash.workspace = true
+tokio.workspace = true
 
 # util (codegen/macro)
-strum.workspace = true
-serde_repr = { version = "=0.1.20" }
-thiserror.workspace = true
 regex.workspace = true
+serde_repr.workspace = true
+strum.workspace = true
+thiserror.workspace = true
 
 # crypto
 digest.workspace = true
+md-5.workspace = true
 sha1.workspace = true
 sha2.workspace = true
-md-5.workspace = true
 
 # util
+base64.workspace = true
+bytes.workspace = true
+chrono.workspace = true
 directories.workspace = true
+dunce.workspace = true
+htmd.workspace = true
+image.workspace = true
+indicatif.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+sanitize-filename.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-base64.workspace = true
-rand.workspace = true
+sysinfo.workspace = true
+trash.workspace = true
 url.workspace = true
 uuid.workspace = true
-chrono.workspace = true
-parking_lot.workspace = true
-sysinfo.workspace = true
-sanitize-filename.workspace = true
-dunce.workspace = true
-bytes.workspace = true
-indicatif.workspace = true

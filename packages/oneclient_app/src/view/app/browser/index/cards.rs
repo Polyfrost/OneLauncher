@@ -134,11 +134,7 @@ impl Component for PackageCard {
             .child(
                 rect()
                     .margin(Gaps::new_all(1.))
-                    .corner_radius(CornerRadius {
-                        top_left: 10.,
-                        top_right: 10.,
-                        ..Default::default()
-                    })
+                    .corner_radius(CornerRadius::new(10., 10., 0., 0.))
                     .overflow(Overflow::Clip)
                     .child(PackageBanner::new(icon_url, BANNER_H))
                     // Sat in the banner's top-left corner rather than down in

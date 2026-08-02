@@ -17,33 +17,28 @@ readme = "README.md"
 repository = "https://github.com/Polyfrost/OneLauncher"
 version = "2.1.4"
 
-
 [workspace.dependencies]
 # core
-polyio = { path = "./packages/polyio" }
-oneclient_auth = { path = "./packages/oneclient_auth" }
-oneclient_cluster = { path = "./packages/oneclient_cluster" }
-oneclient_common = { path = "./packages/oneclient_common" }
-oneclient_content = { path = "./packages/oneclient_content" }
-oneclient_discord = { path = "./packages/oneclient_discord" }
-oneclient_events = { path = "./packages/oneclient_events" }
-oneclient_java = { path = "./packages/oneclient_java" }
-oneclient_mc = { path = "./packages/oneclient_mc" }
-oneclient_net = { path = "./packages/oneclient_net" }
-oneclient_polyplus = { path = "./packages/oneclient_polyplus" }
-oneclient_core = { path = "./packages/oneclient_core" }
-oneclient_db = { path = "./packages/oneclient_db" }
-oneclient_macro = { path = "./packages/oneclient_macro" }
+oneclient_auth = {path = "./packages/oneclient_auth"}
+oneclient_cluster = {path = "./packages/oneclient_cluster"}
+oneclient_common = {path = "./packages/oneclient_common"}
+oneclient_content = {path = "./packages/oneclient_content"}
+oneclient_core = {path = "./packages/oneclient_core"}
+oneclient_db = {path = "./packages/oneclient_db"}
+oneclient_discord = {path = "./packages/oneclient_discord"}
+oneclient_events = {path = "./packages/oneclient_events"}
+oneclient_java = {path = "./packages/oneclient_java"}
+oneclient_macro = {path = "./packages/oneclient_macro"}
+oneclient_mc = {path = "./packages/oneclient_mc"}
+oneclient_net = {path = "./packages/oneclient_net"}
+oneclient_polyplus = {path = "./packages/oneclient_polyplus"}
+polyio = {path = "./packages/polyio"}
 
 # core (extra)
-interfrost = {version = "=1.3.2"}
 discord-rich-presence = {version = "=1.1.0"}
+interfrost = {version = "=1.3.2"}
 
 # logging
-tracing = {version = "=0.1.44"}
-tracing-futures = {version = "=0.2.5"}
-tracing-subscriber = {version = "=0.3.23", features = ["env-filter", "fmt", "ansi", "json", "parking_lot", "registry"]}
-
 sentry = {version = "=0.48.5", default-features = false, features = [
   "backtrace",
   "contexts",
@@ -54,6 +49,9 @@ sentry = {version = "=0.48.5", default-features = false, features = [
   "rustls",
 ]}
 sentry-tracing = {version = "=0.48.5"}
+tracing = {version = "=0.1.44"}
+tracing-futures = {version = "=0.2.5"}
+tracing-subscriber = {version = "=0.3.23", features = ["env-filter", "fmt", "ansi", "json", "parking_lot", "registry"]}
 
 # database
 sqlx = {version = "=0.9.0", default-features = false, features = [
@@ -69,9 +67,14 @@ sqlx = {version = "=0.9.0", default-features = false, features = [
 ]}
 
 # async
+astral-tokio-tar = {version = "=0.6.2"}
+async-compression = {version = "=0.4.42", features = ["tokio", "gzip"]}
+async-stream = {version = "=0.3.6"}
+async-tempfile = {version = "=0.7.0", features = ["uuid"]}
 async-trait = {version = "=0.1.89"}
+async_zip = {version = "=0.0.18", features = ["chrono", "tokio", "tokio-fs", "deflate", "deflate64"]}
+futures-lite = {version = "=2.6.1"}
 futures-util = {version = "=0.3.32", features = ["tokio-io"]}
-futures-lite = { version = "=2.6.1" }
 reqwest = {version = "=0.13.3", default-features = false, features = [
   "json",
   "stream",
@@ -84,10 +87,7 @@ reqwest = {version = "=0.13.3", default-features = false, features = [
   "gzip",
   "brotli",
   "form",
-  "hickory-dns",
-  # Without this reqwest sees only the HTTP_PROXY/HTTPS_PROXY env vars, and
-  # ignores the proxy configured in Windows Internet Options or macOS network
-  # preferences — which is how school and workplace networks are set up. Those
+  "hickory-dns", # Without this reqwest sees only the HTTP_PROXY/HTTPS_PROXY env vars, and  # ignores the proxy configured in Windows Internet Options or macOS network  # preferences — which is how school and workplace networks are set up. Those
   # users could reach every service in a browser but not from here.
   "system-proxy",
 ]}
@@ -95,70 +95,63 @@ reqwest-websocket = {version = "=0.6.0"}
 tokio = {version = "=1.52.3", features = ["full"]}
 tokio-stream = {version = "=0.1.18", features = ["full"]}
 tokio-util = {version = "=0.7.18", features = ["full"]}
-async_zip = { version = "=0.0.18", features = ["chrono", "tokio", "tokio-fs", "deflate", "deflate64"]}
-astral-tokio-tar = { version = "=0.6.2" }
-async-tempfile = { version = "=0.7.0", features = ["uuid"] }
-async-stream = { version = "=0.3.6" }
-async-compression = { version = "=0.4.42", features = ["tokio", "gzip"] }
 
 # crypto (content hashing)
-digest = { version = "=0.10.7", features = ["std"] }
-sha1 = { version = "=0.10.6", default-features = false }
-sha2 = { version = "=0.10.9", default-features = false }
-md-5 = { version = "=0.10.6", default-features = false }
-p256 = { version = "=0.13.2", features = ["ecdsa", "pkcs8"] }
-byteorder = { version = "=1.5.0" }
+byteorder = {version = "=1.5.0"}
+digest = {version = "=0.10.7", features = ["std"]}
+md-5 = {version = "=0.10.6", default-features = false}
+p256 = {version = "=0.13.2", features = ["ecdsa", "pkcs8"]}
+sha1 = {version = "=0.10.6", default-features = false}
+sha2 = {version = "=0.10.9", default-features = false}
 
 # util
+arboard = {version = "=3.6.1"}
+arc-swap = {version = "=1.7.1"}
 base64 = {version = "=0.22.1"}
+bytes = {version = "=1.11.1"}
 chrono = {version = "=0.4.44", features = ["serde"]}
 directories = {version = "=6.0.0"}
+dunce = {version = "=1.0.5"}
+htmd = {version = "=0.5.4"}
+indicatif = {version = "=0.18.4", features = ["tokio"]}
+junction = {version = "=2.0.0"}
+parking_lot = {version = "=0.12.5"}
 rand = {version = "=0.10.1"}
+regex = {version = "=1.12.3"}
+rust-embed = {version = "=8.12.0", features = ["include-exclude", "compression", "debug-embed"]}
+sanitize-filename = {version = "=0.6.0"}
 serde = {version = "=1.0.228"}
 serde_json = {version = "=1.0.150"}
+serde_repr = {version = "=0.1.20"}
+sysinfo = {version = "=0.39.5"}
+trash = {version = "=5.2.6"}
 url = {version = "=2.5.8", features = ["serde"]}
 uuid = {version = "=1.23.1", features = ["serde", "v4"]}
-sanitize-filename = { version = "=0.6.0" }
-regex = { version = "=1.12.3" }
-parking_lot = { version = "=0.12.5" }
-arc-swap = { version = "=1.7.1" }
-dunce = { version = "=1.0.5" }
-junction = { version = "=2.0.0" }
-bytes = { version = "=1.11.1" }
-indicatif = { version = "=0.18.4", features = [ "tokio" ]}
-sysinfo = { version = "=0.39.5" }
 
 # util (codegen/macro)
+anyhow = {version = "=1.0.102"}
 proc-macro2 = {version = "=1.0.106"}
 quote = {version = "=1.0.45"}
-thiserror = {version = "=2.0.18" }
-anyhow = {version = "=1.0.102"}
 strum = {version = "=0.28.0", features = ["derive"]}
 syn = {version = "=2.0.117"}
+thiserror = {version = "=2.0.18"}
 
+# ui
+freya = {version = "=0.5.0-rc.1", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"]}
+freya-skia-safe = "=0.98.1" # required for the SKSL player renderer
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}
-htmd = {version = "=0.5.4"}
-arboard = {version = "=3.6.1"}
-trash = {version = "=5.2.6"}
-
-# required for the SKSL player renderer
-freya-skia-safe = "=0.98.0"
-freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"] }
-
-[patch.crates-io]
-freya = { git = "https://github.com/marc2332/freya.git", branch = "fix/blur" }
 
 [profile.release]
-opt-level = 3
-lto = "fat"
 codegen-units = 1
-strip = true
-panic = "abort"
 debug = "line-tables-only"
+lto = "fat"
+opt-level = 3
+panic = "abort"
 split-debuginfo = "packed"
+strip = true
 
 [profile.release-profiling]
 inherits = "release"
 
-strip = false
 debug = true
+strip = false

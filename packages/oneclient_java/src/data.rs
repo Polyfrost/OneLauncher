@@ -12,6 +12,10 @@ pub struct JavaRuntime {
 	pub version: String,
 	pub vendor: JavaVendor,
 	pub os_arch: String,
+	/// Whether this is a development kit rather than a bare runtime image, as
+	/// the probe reported it when the runtime was recorded (see
+	/// [`crate::JavaCheckInfo::is_jdk`]).
+	pub is_jdk: bool,
 }
 
 

@@ -69,6 +69,11 @@ homepage = "https://polyfrost.org/projects/oneclient"
 long-description = "Next-generation open source Minecraft launcher"
 formats = ["nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
+# The macOS `icon.icns` is built from `icons/icon.iconset` (regenerate with
+# `iconutil -c icns icons/icon.iconset -o icons/icon.icns`). Unlike the flat PNGs
+# and the `.ico`, its artwork is inset to the inner ~80% of the canvas (824x824 of
+# 1024x1024) as Apple's icon grid requires — a full-bleed macOS icon renders
+# oversized in the Cmd-Tab switcher on older macOS versions.
 icons = [
   "icons/32x32.png",
   "icons/64x64.png",

@@ -23,7 +23,7 @@ use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
 use oneclient_db::models::ClusterId;
-use oneclient_events::{Answer, Level};
+use oneclient_events::{Answer, Level, Persistence};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
@@ -613,7 +613,9 @@ impl Actions {
                 icon: None,
                 progress: None,
                 actions: Vec::new(),
+                persistence: Persistence::Transient,
             },
+            persistence: None,
         }
     }
 
@@ -775,6 +777,9 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
+                    // The package is in the list the user is looking at; the
+                    // list is the record, not the notification.
+                    persistence: Persistence::Transient,
                 },
                 Err(err) => NotificationSpec {
                     title: "Install failed".to_string(),
@@ -783,6 +788,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    persistence: Persistence::Persistent,
                 },
             };
 
@@ -1179,6 +1185,9 @@ impl Actions {
             icon: Some(IconType::DownloadCloud02),
             progress: None,
             actions: Vec::new(),
+            // Applied automatically on the way into the game, so the user is
+            // told what changed at the worst possible moment to read it.
+            persistence: Persistence::Persistent,
         });
 
         self.with_engine(|app| {
@@ -1243,6 +1252,8 @@ impl Actions {
                     icon: Some(IconType::DownloadCloud02),
                     progress: None,
                     actions: Vec::new(),
+                    // The user pressed Update on this row and watched it go.
+                    persistence: Persistence::Transient,
                 },
                 Err(err) => NotificationSpec {
                     title: "Update failed".to_string(),
@@ -1251,6 +1262,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    persistence: Persistence::Persistent,
                 },
             };
 
@@ -1386,6 +1398,10 @@ async fn repair_and_relaunch(
     events
         .notify("Repair complete")
         .body(report.summary())
+        // The launcher repaired the install on its own initiative, between the
+        // user pressing Play and the game appearing; the summary is the only
+        // account of what it changed.
+        .persistent()
         .send();
 
     if let Err(err) = oneclient_core::launch_cluster(state, cluster_id, account, true).await {
@@ -1394,10 +1410,16 @@ async fn repair_and_relaunch(
     }
 }
 
+/// The front-end twin of [`oneclient_events::NotificationBuilder`], for
+/// notifications the UI raises itself. Same persistence rules, so a call site
+/// reads identically whichever side of the bus it lives on.
 #[must_use = "the notification is not raised until `.send()` is called"]
 pub struct NotificationBuilder {
     actions: Actions,
     spec: NotificationSpec,
+    /// Explicit choice; resolved against the level in `send`, so the order the
+    /// builder is called in cannot change where the notification lands.
+    persistence: Option<Persistence>,
 }
 
 impl NotificationBuilder {
@@ -1417,6 +1439,18 @@ impl NotificationBuilder {
 
     pub fn error(self) -> Self {
         self.level(Level::Error)
+    }
+
+    /// Files this notification in the notification center.
+    pub fn persistent(mut self) -> Self {
+        self.persistence = Some(Persistence::Persistent);
+        self
+    }
+
+    /// Shows this notification and forgets it.
+    pub fn transient(mut self) -> Self {
+        self.persistence = Some(Persistence::Transient);
+        self
     }
 
     pub fn icon(mut self, icon: IconType) -> Self {
@@ -1439,7 +1473,10 @@ impl NotificationBuilder {
         self
     }
 
-    pub fn send(self) {
+    pub fn send(mut self) {
+        self.spec.persistence = self
+            .persistence
+            .unwrap_or_else(|| Persistence::for_level(self.spec.level));
         self.actions.push_notification(self.spec);
     }
 }

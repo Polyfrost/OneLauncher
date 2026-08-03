@@ -438,6 +438,8 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(summaries),
         })
+        // Mirrors `install::cluster_update_notification`, which this simulates.
+        .persistent()
         .send();
 }
 
@@ -939,6 +941,7 @@ fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
                     .body(report.summary(verb))
                     .icon(IconType::AlertTriangle)
                     .error()
+                    .transient()
                     .send();
             }
             Err(err) => {
@@ -946,6 +949,7 @@ fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
                     .notify("Simulation failed")
                     .body(err.to_string())
                     .error()
+                    .transient()
                     .send();
             }
         }

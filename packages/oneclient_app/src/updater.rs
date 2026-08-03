@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use cargo_packager_updater::{Config, Update, check_update};
-use oneclient_events::{Choice, EventBus, Prompt};
+use oneclient_events::{Choice, EventBus, Persistence, Prompt};
 use uuid::Uuid;
 
 /// Choice id for the update prompt, so the overlay can recognise it among any
@@ -82,6 +82,7 @@ async fn run_simulated_update() -> anyhow::Result<()> {
         progress_id,
         "Finished Downloading",
         format!("OneClient {FAKE_VERSION} is ready. Restart to apply."),
+        Persistence::Persistent,
     );
 
     Ok(())
@@ -111,6 +112,9 @@ async fn run_check(auto_install: bool) -> anyhow::Result<()> {
                 "OneClient {} is available. Download the latest package from {} to update.",
                 update.version, RELEASES_URL
             ))
+            // Asks the user to go and download a package by hand; useless if it
+            // scrolls past while they are elsewhere.
+            .persistent()
             .send();
         return Ok(());
     }
@@ -191,6 +195,9 @@ async fn download_and_install(update: Update, events: EventBus) -> anyhow::Resul
             progress_id,
             "Finished Downloading",
             format!("OneClient {version} is ready. Restart to apply."),
+            // The update is only live after a restart the user has to perform,
+            // so this has to outlive the five seconds it is on screen for.
+            Persistence::Persistent,
         );
         Ok(())
     })

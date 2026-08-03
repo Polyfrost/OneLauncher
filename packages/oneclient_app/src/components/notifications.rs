@@ -8,7 +8,7 @@ use crate::{
     ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
     hooks::{use_dispatch, use_notifications_snapshot},
-    notifications::{InboxEntry, NotificationActionKind},
+    notifications::{InboxEntry, NotificationActionKind, NotificationState},
     theme::colors,
     transfer::TransferStats,
     utils::{format_duration_hms, format_size},
@@ -39,7 +39,13 @@ struct NotificationPanel;
 
 impl Component for NotificationPanel {
     fn render(&self) -> impl IntoElement {
-        let inbox = use_notifications_snapshot().inbox;
+        // Transient notifications ride the same inbox so their toast can find
+        // them, but they are not what this panel is for.
+        let inbox: Vec<InboxEntry> = NotificationState::center_entries(
+            &use_notifications_snapshot().inbox,
+        )
+        .cloned()
+        .collect();
 
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -491,7 +497,8 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let is_empty = use_notifications_snapshot().inbox.is_empty();
+        let is_empty =
+            NotificationState::center_entries(&use_notifications_snapshot().inbox).count() == 0;
 
         rect()
             .horizontal()

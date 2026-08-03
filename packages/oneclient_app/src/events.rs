@@ -384,6 +384,7 @@ pub fn report_startup_failure(
                 title: "Launcher failed to start".into(),
                 body: message,
                 level: oneclient_events::Level::Error,
+                persistence: oneclient_events::Persistence::Persistent,
             },
         )),
     );

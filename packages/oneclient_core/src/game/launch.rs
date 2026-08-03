@@ -620,6 +620,10 @@ pub async fn offer_repair(
                 .events
                 .notify("Repair complete")
                 .body(report.summary())
+                // What a repair replaced is the first thing anyone asks after
+                // the next crash, and it is several minutes of downloading
+                // after the user stopped watching.
+                .persistent()
                 .send();
         }
         Err(err) => {

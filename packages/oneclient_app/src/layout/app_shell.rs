@@ -217,6 +217,9 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
                     .notify("Copy failed")
                     .body("Could not copy the error to the clipboard.")
                     .error()
+                    // An error, but one the user answers by pressing Copy
+                    // again; nothing survives it that is worth reviewing.
+                    .transient()
                     .send();
             } else {
                 dispatch

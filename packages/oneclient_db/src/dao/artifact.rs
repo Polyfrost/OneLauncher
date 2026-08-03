@@ -1,6 +1,9 @@
 use sqlx::SqlitePool;
 
-use crate::models::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow};
+use crate::models::{
+	ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, OverrideType, ProviderReleaseRow,
+	ReleaseDependencyRow, UnsyncedReleaseRow,
+};
 
 pub async fn get_artifact_by_hash(
 	pool: &SqlitePool,
@@ -186,6 +189,245 @@ pub async fn get_release_by_hash(
 	)
 	.fetch_optional(pool)
 	.await
+}
+
+/// Replaces a release's recorded dependency list.
+///
+/// Delete-then-insert rather than an upsert per row: a version that dropped a
+/// dependency between two passes has to lose the row, or the reverse lookup
+/// would keep reporting a package as needed by something that no longer needs
+/// it. Empty `dependencies` is meaningful and still marks the release synced.
+pub async fn replace_release_dependencies(
+	pool: &SqlitePool,
+	provider_id: i64,
+	project_id: &str,
+	version_id: &str,
+	dependencies: &[(String, String, String)],
+) -> Result<(), sqlx::Error> {
+	let mut tx = pool.begin().await?;
+
+	sqlx::query!(
+		r#"
+		DELETE FROM provider_release_dependencies
+		WHERE provider = ? AND project_id = ? AND version_id = ?
+		"#,
+		provider_id,
+		project_id,
+		version_id
+	)
+	.execute(&mut *tx)
+	.await?;
+
+	for (dependency_project_id, dependency_version_id, kind) in dependencies {
+		sqlx::query!(
+			r#"
+			INSERT INTO provider_release_dependencies (
+				provider, project_id, version_id,
+				dependency_project_id, dependency_version_id, kind
+			)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(provider, project_id, version_id, dependency_project_id, dependency_version_id)
+			DO UPDATE SET kind = excluded.kind
+			"#,
+			provider_id,
+			project_id,
+			version_id,
+			dependency_project_id,
+			dependency_version_id,
+			kind
+		)
+		.execute(&mut *tx)
+		.await?;
+	}
+
+	sqlx::query!(
+		r#"
+		UPDATE provider_releases
+		SET dependencies_synced_at = datetime('now')
+		WHERE provider = ? AND project_id = ? AND version_id = ?
+		"#,
+		provider_id,
+		project_id,
+		version_id
+	)
+	.execute(&mut *tx)
+	.await?;
+
+	tx.commit().await
+}
+
+pub async fn list_release_dependencies(
+	pool: &SqlitePool,
+	provider_id: i64,
+	project_id: &str,
+	version_id: &str,
+) -> Result<Vec<ReleaseDependencyRow>, sqlx::Error> {
+	sqlx::query_as!(
+		ReleaseDependencyRow,
+		r#"
+		SELECT dependency_project_id, dependency_version_id, kind
+		FROM provider_release_dependencies
+		WHERE provider = ? AND project_id = ? AND version_id = ?
+		"#,
+		provider_id,
+		project_id,
+		version_id
+	)
+	.fetch_all(pool)
+	.await
+}
+
+/// Every dependency declared by an artifact this cluster has installed.
+///
+/// One query for the whole cluster: the reverse graph is only useful whole, and
+/// walking it one package at a time would be a round trip per hop.
+pub async fn list_cluster_dependency_edges(
+	pool: &SqlitePool,
+	cluster_id: i64,
+) -> Result<Vec<ClusterDependencyEdgeRow>, sqlx::Error> {
+	sqlx::query_as!(
+		ClusterDependencyEdgeRow,
+		r#"
+		SELECT
+			ca.hash,
+			pr.provider as "provider!: i64",
+			prd.dependency_project_id,
+			prd.dependency_version_id,
+			prd.kind
+		FROM cluster_artifacts ca
+		JOIN provider_releases pr ON pr.hash = ca.hash
+		JOIN provider_release_dependencies prd
+			ON prd.provider = pr.provider
+			AND prd.project_id = pr.project_id
+			AND prd.version_id = pr.version_id
+		WHERE ca.cluster_id = ?
+		"#,
+		cluster_id
+	)
+	.fetch_all(pool)
+	.await
+}
+
+/// The cluster's releases whose dependency list has never been recorded.
+///
+/// Everything installed before the dependency table existed lands here, which
+/// is what the backfill walks.
+pub async fn list_releases_missing_dependencies(
+	pool: &SqlitePool,
+	cluster_id: i64,
+) -> Result<Vec<UnsyncedReleaseRow>, sqlx::Error> {
+	sqlx::query_as!(
+		UnsyncedReleaseRow,
+		r#"
+		SELECT DISTINCT
+			pr.provider as "provider!: i64",
+			pr.project_id,
+			pr.version_id
+		FROM cluster_artifacts ca
+		JOIN provider_releases pr ON pr.hash = ca.hash
+		WHERE ca.cluster_id = ? AND pr.dependencies_synced_at IS NULL
+		"#,
+		cluster_id
+	)
+	.fetch_all(pool)
+	.await
+}
+
+/// Switches off a set of the cluster's artifacts, and records the matching
+/// bundle overrides, in one transaction.
+///
+/// The set is written whole or not at all. It is handed in as a set because a
+/// package is disabled together with everything that requires it, and a
+/// half-applied closure would leave the cluster in a state the user never
+/// picked — mods enabled with their library gone is exactly the crash the
+/// warning exists to prevent.
+///
+/// Bundle bookkeeping happens here rather than a layer up for the same reason:
+/// the override says "the user turned this off", and it belongs in the
+/// transaction that turns it off. `overrides` carries the rows that have no
+/// artifact of their own, i.e. a bundle package the cluster has not installed.
+pub async fn disable_cluster_artifacts(
+	pool: &SqlitePool,
+	cluster_id: i64,
+	hashes: &[String],
+	overrides: &[(String, String)],
+) -> Result<Vec<ClusterArtifactRow>, sqlx::Error> {
+	let mut tx = pool.begin().await?;
+	let mut updated = Vec::with_capacity(hashes.len());
+
+	for hash in hashes {
+		let Some(row) = sqlx::query!(
+			r#"
+			SELECT cluster_file_name, bundle_name, package_id
+			FROM cluster_artifacts
+			WHERE cluster_id = ? AND hash = ?
+			"#,
+			cluster_id,
+			hash
+		)
+		.fetch_optional(&mut *tx)
+		.await?
+		else {
+			continue;
+		};
+
+		// The suffix is how a disabled file used to be marked in the game
+		// folder; the flag is authoritative now, so the stored name is kept
+		// clean either way.
+		let file_name = row.cluster_file_name.trim_end_matches(".disabled").to_string();
+
+		updated.push(
+			sqlx::query_as!(
+				ClusterArtifactRow,
+				r#"
+				UPDATE cluster_artifacts
+				SET cluster_file_name = ?, enabled = 0
+				WHERE cluster_id = ? AND hash = ?
+				RETURNING cluster_id, hash, cluster_file_name, enabled
+				"#,
+				file_name,
+				cluster_id,
+				hash
+			)
+			.fetch_one(&mut *tx)
+			.await?,
+		);
+
+		if let (Some(bundle_name), Some(package_id)) = (row.bundle_name, row.package_id) {
+			save_override_tx(&mut tx, cluster_id, &bundle_name, &package_id).await?;
+		}
+	}
+
+	for (bundle_name, package_id) in overrides {
+		save_override_tx(&mut tx, cluster_id, bundle_name, package_id).await?;
+	}
+
+	tx.commit().await?;
+	Ok(updated)
+}
+
+async fn save_override_tx(
+	tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+	cluster_id: i64,
+	bundle_name: &str,
+	package_id: &str,
+) -> Result<(), sqlx::Error> {
+	let override_type = OverrideType::Disabled.as_str();
+	sqlx::query!(
+		r#"
+		INSERT INTO cluster_bundle_overrides (cluster_id, bundle_name, package_id, override_type)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(cluster_id, bundle_name, package_id) DO UPDATE SET
+			override_type = excluded.override_type
+		"#,
+		cluster_id,
+		bundle_name,
+		package_id,
+		override_type
+	)
+	.execute(&mut **tx)
+	.await?;
+	Ok(())
 }
 
 pub async fn link_cluster_artifact(

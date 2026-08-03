@@ -10,7 +10,9 @@ use oneclient_db::dao::package_metadata as meta_dao;
 use crate::packages::ProviderId;
 use oneclient_common::domain::{ContentType, GameLoader};
 use crate::packages::store::artifact_absolute_path;
-use crate::packages::types::{PackageBody, ProjectDetail, VersionDetail, VersionFile};
+use crate::packages::types::{
+	DependencyKind, PackageBody, ProjectDetail, VersionDependency, VersionDetail, VersionFile,
+};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 
@@ -132,6 +134,26 @@ async fn cached_version_detail(
 		return None;
 	}
 
+	let dependencies = artifact_dao::list_release_dependencies(
+		&ctx.db,
+		provider as i64,
+		project_id,
+		version_id,
+	)
+	.await
+	.unwrap_or_default()
+	.into_iter()
+	.filter_map(|row| {
+		Some(VersionDependency {
+			project_id: (!row.dependency_project_id.is_empty())
+				.then_some(row.dependency_project_id),
+			version_id: (!row.dependency_version_id.is_empty())
+				.then_some(row.dependency_version_id),
+			kind: DependencyKind::parse(&row.kind)?,
+		})
+	})
+	.collect();
+
 	let game_versions: Vec<String> = serde_json::from_str(&release.mc_versions).unwrap_or_default();
 	let loaders: Vec<GameLoader> = serde_json::from_str(&release.mc_loaders).unwrap_or_default();
 	let published = release
@@ -159,9 +181,10 @@ async fn cached_version_detail(
 			size: artifact.size_bytes.unwrap_or(0) as u64,
 			fingerprint: None,
 		}],
-		// Not persisted with the release row; callers that need the dependency
-		// graph go to the provider.
-		dependencies: Vec::new(),
+		// Recorded alongside the release since the reverse lookup needed them
+		// offline, so a cached version is no longer a version without a
+		// dependency list. A release from before that is simply empty here.
+		dependencies,
 	})
 }
 

@@ -8,10 +8,11 @@ pub use debounce::use_debounced;
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, LinkConfirmState,
-    OnboardingSelectionState, SplashState, use_active_cluster_id, use_browser_compat,
-    use_browser_state_store, use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
-    use_provide_browser_compat, use_provide_browser_state, use_provide_link_confirm,
+    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, DisableConfirmState,
+    LinkConfirmState, OnboardingSelectionState, SplashState, use_active_cluster_id,
+    use_browser_compat, use_browser_state_store, use_disable_confirm, use_link_confirm,
+    use_onboarding_selection, use_provide_active_cluster, use_provide_browser_compat,
+    use_provide_browser_state, use_provide_disable_confirm, use_provide_link_confirm,
     use_provide_onboarding_selection, use_provide_splash, use_splash,
 };
 

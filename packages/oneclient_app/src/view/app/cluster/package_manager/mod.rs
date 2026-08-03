@@ -343,6 +343,29 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
     tabs
 }
 
+/// Records the dependency lists of anything installed before the launcher kept
+/// them, once per visit to the list.
+///
+/// Disabling a package consults them, and would otherwise pay for the whole
+/// cluster's backfill while the user waits on a toggle. Failures are silent:
+/// the disable path re-runs this and can proceed without it.
+fn warm_dependencies(cluster_id: i64) {
+    use_hook(move || {
+        spawn_forever(async move {
+            let Ok(state) = crate::launcher::state() else {
+                return;
+            };
+
+            if let Err(err) =
+                oneclient_core::ensure_cluster_dependencies(cluster_id, &state.services.content())
+                    .await
+            {
+                tracing::debug!(%err, "could not record the cluster's package dependencies");
+            }
+        });
+    });
+}
+
 #[derive(PartialEq)]
 pub struct PackageManager {
     title: &'static str,
@@ -385,6 +408,7 @@ impl Component for PackageManager {
         let content_type = self.content_type;
 
         let tabs = build_tabs(&self.categories, &items);
+        warm_dependencies(cluster_id);
         // Minecraft reads its content once at startup, so a toggle made now is
         // recorded but cannot reach the session already playing. Say so rather
         // than letting the switch look like it did nothing.

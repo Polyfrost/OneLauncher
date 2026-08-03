@@ -56,6 +56,9 @@ pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_content::packages::dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+};
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates,

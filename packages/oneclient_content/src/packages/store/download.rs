@@ -98,7 +98,43 @@ pub async fn download_version_file(
     )
     .await?;
 
+    // The provider handed us the dependency list along with the version, and
+    // this is the only moment it is guaranteed to be in hand. Keeping it is what
+    // lets the launcher answer "what needs this?" later without a round trip
+    // per installed package — see `crate::packages::dependents`.
+    store_release_dependencies(provider, project_id, version, ctx).await?;
+
     Ok(row)
+}
+
+pub(crate) async fn store_release_dependencies(
+    provider: ProviderId,
+    project_id: &str,
+    version: &VersionDetail,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let dependencies: Vec<(String, String, String)> = version
+        .dependencies
+        .iter()
+        .map(|dep| {
+            (
+                dep.project_id.clone().unwrap_or_default(),
+                dep.version_id.clone().unwrap_or_default(),
+                dep.kind.as_str().to_string(),
+            )
+        })
+        .collect();
+
+    artifact_dao::replace_release_dependencies(
+        &ctx.db,
+        provider as i64,
+        project_id,
+        &version.version_id,
+        &dependencies,
+    )
+    .await?;
+
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(file, child, ctx), fields(name = %file.name))]

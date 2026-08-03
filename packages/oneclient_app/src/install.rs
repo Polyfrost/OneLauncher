@@ -3,12 +3,15 @@
 //! Lifted out of the bridge runtime so the actions layer can use them without
 //! the command loop existing.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use oneclient_core::LauncherState;
 
-use oneclient_content::packages::PackageStore;
-use oneclient_events::Level;
+use oneclient_content::packages::{
+    ContentType, InstalledCopy, PackageStore, ProjectDetail, VersionDetail,
+};
+use oneclient_events::{Choice, Level, Prompt};
 
 use crate::components::IconType;
 use crate::notifications::{
@@ -190,12 +193,31 @@ pub async fn combined_cluster_update_spec(
 /// `session_id` is `None` when the install never got as far as downloading.
 pub struct PackageInstall {
     pub session_id: Option<uuid::Uuid>,
-    pub result: anyhow::Result<String>,
+    pub outcome: InstallOutcome,
     /// Required dependencies pulled in alongside the package, by display name.
     pub dependencies: Vec<String>,
     /// Required dependencies that couldn't be resolved or downloaded. The
     /// package still installs; the caller says so in the notification.
     pub missing_dependencies: Vec<String>,
+}
+
+/// How an install ended.
+///
+/// Cancelled is its own arm rather than an error because backing out of the
+/// "already installed" warning is the warning working: the user was told what
+/// the cluster has and said no, and reporting that back to them as a failure
+/// would be telling them something they just decided.
+pub enum InstallOutcome {
+    /// Installed, named by the package's display name.
+    Installed(String),
+    Cancelled,
+    Failed(anyhow::Error),
+}
+
+impl InstallOutcome {
+    pub fn is_installed(&self) -> bool {
+        matches!(self, Self::Installed(_))
+    }
 }
 
 /// "Added Sodium with 2 dependencies. Could not add: Fabric API."
@@ -219,14 +241,198 @@ pub fn install_body(name: &str, dependencies: &[String], missing: &[String]) -> 
 }
 
 impl PackageInstall {
-    fn failed(err: anyhow::Error) -> Self {
+    fn ended(outcome: InstallOutcome) -> Self {
         Self {
             session_id: None,
-            result: Err(err),
+            outcome,
             dependencies: Vec::new(),
             missing_dependencies: Vec::new(),
         }
     }
+}
+
+/// The one answer the duplicate warnings offer besides backing out.
+enum GoAhead {
+    Yes,
+}
+
+/// Puts the warning up and reports whether the user wants to carry on.
+///
+/// A prompt nobody could answer counts as no. The bus is only closed when the
+/// window is going away, and the front-end holds a single pending prompt at a
+/// time — so the other way to land here is a second prompt having displaced this
+/// one, and quietly adding a duplicate the user was never shown is the worse of
+/// the two outcomes.
+async fn ask_to_continue(
+    state: &Arc<LauncherState>,
+    title: String,
+    body: String,
+    confirm: &'static str,
+) -> bool {
+    match state
+        .services
+        .events
+        .ask(
+            Prompt::new(title, body)
+                .option(Choice::primary("install-anyway", confirm), GoAhead::Yes)
+                .dismiss("Cancel"),
+        )
+        .await
+    {
+        Ok(Some(_)) => true,
+        Ok(None) => false,
+        Err(err) => {
+            tracing::warn!(%err, "could not warn about an existing copy; not installing over it");
+            false
+        }
+    }
+}
+
+/// Asks before a package the cluster already has is added again.
+///
+/// This sits on the install path rather than on the buttons that start one. The
+/// browser's listing cards, the package page's sidebar and its version list all
+/// come through [`install_package`], and a check attached to a button is a check
+/// the next button can forget to make.
+///
+/// Not knowing is not a reason to refuse: if the cluster's contents cannot be
+/// read the install goes ahead unwarned.
+async fn confirm_duplicate_package(
+    state: &Arc<LauncherState>,
+    project: &ProjectDetail,
+    version: &VersionDetail,
+    cluster_id: i64,
+) -> bool {
+    let copies = match oneclient_content::packages::installed_copies(
+        project.provider,
+        &project.id,
+        cluster_id,
+        &state.services.content(),
+    )
+    .await
+    {
+        Ok(copies) if copies.is_empty() => return true,
+        Ok(copies) => copies,
+        Err(err) => {
+            tracing::warn!(%err, "could not check the cluster for an existing copy");
+            return true;
+        }
+    };
+
+    let cluster = cluster_display_name(cluster_id, &state.services).await;
+    let installed = copies
+        .iter()
+        .map(|copy| copy.label.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // The same version again and a second version beside the first are
+    // different mistakes, and the warning is only worth reading if it says which
+    // one is about to happen.
+    let same_version = copies
+        .iter()
+        .any(|copy| copy.version_id.as_deref() == Some(version.version_id.as_str()));
+
+    let (body, confirm) = if same_version {
+        (
+            format!(
+                "{cluster} already has {installed}. Installing it again downloads the same files over the copy that is there."
+            ),
+            "Reinstall",
+        )
+    } else {
+        (
+            format!(
+                "{cluster} already has {installed}. Adding {} leaves both in the cluster, and only the newest one is loaded.",
+                version.name
+            ),
+            "Install anyway",
+        )
+    };
+
+    ask_to_continue(
+        state,
+        format!("{} is already installed", project.name),
+        body,
+        confirm,
+    )
+    .await
+}
+
+/// What a batch of dropped or picked files should turn into once the user has
+/// been told which of them the cluster already has. `None` means they cancelled.
+///
+/// Takes the whole batch because the front-end renders one prompt at a time: a
+/// five-file drop asked about five times over would leave four of the questions
+/// unanswerable.
+pub async fn confirm_duplicate_files(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    files: Vec<(ContentType, PathBuf)>,
+) -> Option<Vec<(ContentType, PathBuf)>> {
+    let mut fresh = Vec::new();
+    let mut duplicates: Vec<(ContentType, PathBuf, InstalledCopy)> = Vec::new();
+
+    for (content_type, path) in files {
+        match oneclient_content::packages::installed_local_copy(
+            &path,
+            content_type,
+            cluster_id,
+            &state.services.content(),
+        )
+        .await
+        {
+            Ok(Some(copy)) => duplicates.push((content_type, path, copy)),
+            Ok(None) => fresh.push((content_type, path)),
+            // Same as the browser path: a file we could not place is imported
+            // rather than held back, and the import reports its own failure.
+            Err(err) => {
+                tracing::warn!(%err, path = %path.display(), "could not check the cluster for this file");
+                fresh.push((content_type, path));
+            }
+        }
+    }
+
+    if duplicates.is_empty() {
+        return Some(fresh);
+    }
+
+    let cluster = cluster_display_name(cluster_id, &state.services).await;
+    let names = duplicates
+        .iter()
+        .map(|(_, _, copy)| copy.label.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let body = if fresh.is_empty() {
+        format!("{cluster} already has {names}. Adding them again replaces what is there.")
+    } else {
+        format!(
+            "{cluster} already has {names}. The other {} will be added either way.",
+            match fresh.len() {
+                1 => "file".to_string(),
+                n => format!("{n} files"),
+            }
+        )
+    };
+
+    let title = match duplicates.len() {
+        1 => "1 file is already in this cluster".to_string(),
+        n => format!("{n} files are already in this cluster"),
+    };
+
+    if ask_to_continue(state, title, body, "Add anyway").await {
+        fresh.extend(
+            duplicates
+                .into_iter()
+                .map(|(content_type, path, _)| (content_type, path)),
+        );
+        return Some(fresh);
+    }
+
+    // Backing out means "not the ones I already have", not "none of them" —
+    // the files the cluster has never seen were never in question.
+    (!fresh.is_empty()).then_some(fresh)
 }
 
 pub async fn install_package(
@@ -250,8 +456,14 @@ pub async fn install_package(
 
     let (project, version) = match lookup {
         Ok(found) => found,
-        Err(err) => return PackageInstall::failed(err),
+        Err(err) => return PackageInstall::ended(InstallOutcome::Failed(err)),
     };
+
+    // Asked before anything is resolved or downloaded, so declining costs the
+    // user nothing and no progress card appears behind the question.
+    if !confirm_duplicate_package(state, &project, &version, cluster_id).await {
+        return PackageInstall::ended(InstallOutcome::Cancelled);
+    }
 
     // Worked out before the session starts so its children can be announced up
     // front; a failure here leaves the package itself installable.
@@ -354,7 +566,10 @@ pub async fn install_package(
 
     PackageInstall {
         session_id: Some(session.detach()),
-        result: result.map(|_| project.name).map_err(anyhow::Error::from),
+        outcome: match result {
+            Ok(_) => InstallOutcome::Installed(project.name),
+            Err(err) => InstallOutcome::Failed(err.into()),
+        },
         dependencies: installed_dependencies,
         missing_dependencies,
     }

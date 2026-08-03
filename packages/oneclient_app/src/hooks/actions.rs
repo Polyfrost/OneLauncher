@@ -27,6 +27,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
+use crate::install::InstallOutcome;
 use crate::launcher;
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
@@ -693,30 +694,50 @@ impl Actions {
 
     // --- content -----------------------------------------------------------
 
-    pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
+    /// Imports dropped or picked files into a cluster.
+    ///
+    /// Takes the whole batch rather than a file at a time so the "already in
+    /// this cluster" warning can be asked once for it. The app holds a single
+    /// pending prompt, and a per-file question would leave every one but the
+    /// last unanswerable.
+    pub fn import_local_files(&self, cluster_id: ClusterId, files: Vec<(ContentType, PathBuf)>) {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match oneclient_content::packages::PackageStore::import_local_file(
-                &path,
-                content_type,
-                cluster_id,
-                &state.services.content(),
-            )
-            .await
-            {
-                Ok(row) => {
-                    events
-                        .notify("Imported")
-                        .body(format!("Added {}", row.file_name))
-                        .send();
-                    super::invalidate_cluster_queries().await;
+
+            let Some(files) =
+                crate::install::confirm_duplicate_files(&state, cluster_id, files).await
+            else {
+                return;
+            };
+
+            let mut imported = false;
+            for (content_type, path) in files {
+                match oneclient_content::packages::PackageStore::import_local_file(
+                    &path,
+                    content_type,
+                    cluster_id,
+                    &state.services.content(),
+                )
+                .await
+                {
+                    Ok(row) => {
+                        imported = true;
+                        events
+                            .notify("Imported")
+                            .body(format!("Added {}", row.file_name))
+                            .send();
+                    }
+                    Err(err) => events
+                        .notify("Import failed")
+                        .body(err.to_string())
+                        .error()
+                        .send(),
                 }
-                Err(err) => events
-                    .notify("Import failed")
-                    .body(err.to_string())
-                    .error()
-                    .send(),
+            }
+
+            if imported {
+                super::invalidate_cluster_queries().await;
             }
         });
     }
@@ -762,9 +783,11 @@ impl Actions {
             .await;
 
             // The download already raised a progress notification; the outcome
-            // replaces it in place rather than arriving as a second one.
-            let spec = match &install.result {
-                Ok(name) => NotificationSpec {
+            // replaces it in place rather than arriving as a second one. An
+            // install the user called off at the "already installed" warning
+            // never started one and has nothing to report back to them.
+            let spec = match &install.outcome {
+                InstallOutcome::Installed(name) => Some(NotificationSpec {
                     title: "Installed".to_string(),
                     body: crate::install::install_body(
                         name,
@@ -775,24 +798,30 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
-                },
-                Err(err) => NotificationSpec {
+                }),
+                InstallOutcome::Failed(err) => Some(NotificationSpec {
                     title: "Install failed".to_string(),
                     body: err.to_string(),
                     level: Level::Error,
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
-                },
+                }),
+                InstallOutcome::Cancelled => None,
             };
 
-            let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
-            });
+            if let Some(spec) = spec {
+                let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
+                actions.with_engine(|app| {
+                    app.notifications.finish_grouped_as_actions(
+                        &mut app.inbox,
+                        session_id,
+                        Some(spec),
+                    );
+                });
+            }
 
-            if install.result.is_ok() {
+            if install.outcome.is_installed() {
                 // Installing a second version of something the cluster already
                 // had leaves the newest live and the rest switched off. Done
                 // before the refresh below so the version list never renders the

@@ -349,11 +349,12 @@ fn prompt_body(
         })
         .collect();
 
-    let import_list = resolved.clone();
+    let import_list: Vec<(ContentType, PathBuf)> = resolved
+        .iter()
+        .map(|(path, content_type)| (*content_type, path.clone()))
+        .collect();
     let import = move |_| {
-        for (path, content_type) in &import_list {
-            dispatch.import_local_file(cluster_id, *content_type, path.clone());
-        }
+        dispatch.import_local_files(cluster_id, import_list.clone());
         pending.set(Vec::new());
     };
 

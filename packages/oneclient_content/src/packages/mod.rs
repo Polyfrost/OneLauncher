@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod dependencies;
 pub mod error;
+pub mod identify;
 pub mod installed;
 pub mod metadata_cache;
 pub mod modpack;
@@ -23,6 +24,10 @@ pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };
 pub use file_identity::{curseforge_fingerprint, FileIdentity};
+pub use identify::{
+    IdentifiedPackage, InstallIntent, already_identified, identify_for_install,
+    record_identified_package,
+};
 pub use installed::{InstalledCopy, installed_copies, installed_local_copy, local_copy_among};
 pub use error::{PackageError, PackageResult};
 pub use provider::{PackageProvider, PackageProviderRegistry};

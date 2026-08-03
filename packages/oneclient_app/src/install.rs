@@ -9,7 +9,7 @@ use std::sync::Arc;
 use oneclient_core::LauncherState;
 
 use oneclient_content::packages::{
-    ContentType, InstalledCopy, PackageStore, ProjectDetail, VersionDetail,
+    ContentType, IdentifiedPackage, InstalledCopy, PackageStore, ProjectDetail, VersionDetail,
 };
 use oneclient_events::{Choice, Level, Prompt};
 
@@ -359,36 +359,89 @@ async fn confirm_duplicate_package(
     .await
 }
 
+/// A file the user has agreed to import, and what the providers said about it.
+pub struct PendingImport {
+    pub content_type: ContentType,
+    pub path: PathBuf,
+    /// Set when a provider recognised the file. The import records it against
+    /// the artifact so what lands in the cluster is a browsed package rather
+    /// than a nameless local jar.
+    pub identified: Option<IdentifiedPackage>,
+}
+
 /// What a batch of dropped or picked files should turn into once the user has
 /// been told which of them the cluster already has. `None` means they cancelled.
 ///
 /// Takes the whole batch because the front-end renders one prompt at a time: a
 /// five-file drop asked about five times over would leave four of the questions
-/// unanswerable.
+/// unanswerable. The batch also makes the provider lookup one round trip per
+/// provider instead of one per file.
 pub async fn confirm_duplicate_files(
     state: &Arc<LauncherState>,
     cluster_id: i64,
     files: Vec<(ContentType, PathBuf)>,
-) -> Option<Vec<(ContentType, PathBuf)>> {
-    let mut fresh = Vec::new();
-    let mut duplicates: Vec<(ContentType, PathBuf, InstalledCopy)> = Vec::new();
+) -> Option<Vec<PendingImport>> {
+    let content = state.services.content();
 
-    for (content_type, path) in files {
-        match oneclient_content::packages::installed_local_copy(
-            &path,
+    // The one place a local file gets a name. Everything below — which question
+    // the user is asked, and what the import writes down afterwards — follows
+    // from whether a provider claimed the bytes.
+    let paths: Vec<PathBuf> = files.iter().map(|(_, path)| path.clone()).collect();
+    let identified = oneclient_content::packages::identify_for_install(
+        &paths,
+        oneclient_content::packages::InstallIntent::user_initiated(),
+        &content,
+    )
+    .await
+    .unwrap_or_else(|err| {
+        // Offline, or a provider having a bad day. The files still import; they
+        // just import as local files, which is what they were before.
+        tracing::warn!(%err, "could not identify the dropped files");
+        vec![None; files.len()]
+    });
+
+    let mut fresh: Vec<PendingImport> = Vec::new();
+    let mut duplicates: Vec<(PendingImport, InstalledCopy)> = Vec::new();
+
+    for ((content_type, path), identified) in files.into_iter().zip(identified) {
+        // A recognised file is asked about as the package it is, not as the file
+        // it arrived as: the cluster's copy of Sodium is a duplicate of this jar
+        // whatever either of them is called on disk, and only the project id can
+        // see that.
+        let existing = match &identified {
+            Some(found) => oneclient_content::packages::installed_copies(
+                found.provider,
+                &found.version.project_id,
+                cluster_id,
+                &content,
+            )
+            .await
+            .map(|copies| copies.into_iter().next()),
+            None => {
+                oneclient_content::packages::installed_local_copy(
+                    &path,
+                    content_type,
+                    cluster_id,
+                    &content,
+                )
+                .await
+            }
+        };
+
+        let pending = PendingImport {
             content_type,
-            cluster_id,
-            &state.services.content(),
-        )
-        .await
-        {
-            Ok(Some(copy)) => duplicates.push((content_type, path, copy)),
-            Ok(None) => fresh.push((content_type, path)),
+            path,
+            identified,
+        };
+
+        match existing {
+            Ok(Some(copy)) => duplicates.push((pending, copy)),
+            Ok(None) => fresh.push(pending),
             // Same as the browser path: a file we could not place is imported
             // rather than held back, and the import reports its own failure.
             Err(err) => {
-                tracing::warn!(%err, path = %path.display(), "could not check the cluster for this file");
-                fresh.push((content_type, path));
+                tracing::warn!(%err, path = %pending.path.display(), "could not check the cluster for this file");
+                fresh.push(pending);
             }
         }
     }
@@ -400,7 +453,7 @@ pub async fn confirm_duplicate_files(
     let cluster = cluster_display_name(cluster_id, &state.services).await;
     let names = duplicates
         .iter()
-        .map(|(_, _, copy)| copy.label.as_str())
+        .map(|(_, copy)| copy.label.as_str())
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -422,11 +475,7 @@ pub async fn confirm_duplicate_files(
     };
 
     if ask_to_continue(state, title, body, "Add anyway").await {
-        fresh.extend(
-            duplicates
-                .into_iter()
-                .map(|(content_type, path, _)| (content_type, path)),
-        );
+        fresh.extend(duplicates.into_iter().map(|(pending, _)| pending));
         return Some(fresh);
     }
 

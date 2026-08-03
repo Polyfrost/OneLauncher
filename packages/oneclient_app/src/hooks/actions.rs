@@ -700,6 +700,10 @@ impl Actions {
     /// this cluster" warning can be asked once for it. The app holds a single
     /// pending prompt, and a per-file question would leave every one but the
     /// last unanswerable.
+    ///
+    /// [`confirm_duplicate_files`](crate::install::confirm_duplicate_files) has
+    /// already asked the providers what these files are; this only writes the
+    /// answer down, once the import has an artifact to hang it on.
     pub fn import_local_files(&self, cluster_id: ClusterId, files: Vec<(ContentType, PathBuf)>) {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
@@ -711,21 +715,27 @@ impl Actions {
                 return;
             };
 
+            let content = state.services.content();
             let mut imported = false;
-            for (content_type, path) in files {
+
+            for file in files {
                 match oneclient_content::packages::PackageStore::import_local_file(
-                    &path,
-                    content_type,
+                    &file.path,
+                    file.content_type,
                     cluster_id,
-                    &state.services.content(),
+                    &content,
                 )
                 .await
                 {
                     Ok(row) => {
                         imported = true;
+                        let name = record_identity(&row.hash, file.identified, &content)
+                            .await
+                            .unwrap_or(row.file_name);
+
                         events
                             .notify("Imported")
-                            .body(format!("Added {}", row.file_name))
+                            .body(format!("Added {name}"))
                             .send();
                     }
                     Err(err) => events
@@ -1372,6 +1382,43 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         }
 
         events.game_failed(cluster_id, format!("{err:#}"));
+    }
+}
+
+/// Turns a just-imported file into a browsed package, when the providers
+/// recognised it. Returns the package's name, for the notification to use in
+/// place of the file's.
+///
+/// A file that was already a browsed package is left alone: the user
+/// re-importing a jar the launcher itself downloaded should not overwrite the
+/// release the download recorded with whatever a lookup returns today.
+///
+/// Failing to write the row is not worth telling the user about, or worth
+/// failing the import over. The file is in the cluster and works; it is just
+/// still a local file, which is what it was a moment ago and what it would have
+/// stayed without any of this.
+async fn record_identity(
+    hash: &str,
+    identified: Option<oneclient_content::packages::IdentifiedPackage>,
+    content: &oneclient_content::ContentCtx,
+) -> Option<String> {
+    let identified = identified?;
+
+    match oneclient_content::packages::already_identified(hash, content).await {
+        Ok(true) => return None,
+        Ok(false) => {}
+        Err(err) => {
+            tracing::warn!(%err, hash, "could not check whether this file is already a package");
+            return None;
+        }
+    }
+
+    match oneclient_content::packages::record_identified_package(hash, &identified, content).await {
+        Ok(()) => Some(identified.label()),
+        Err(err) => {
+            tracing::warn!(%err, hash, "could not record the identified package");
+            None
+        }
     }
 }
 

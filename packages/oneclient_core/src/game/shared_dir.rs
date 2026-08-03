@@ -11,7 +11,7 @@ use oneclient_content::packages::store::manifest::{
     self, ManifestEntry, MaterializedManifest,
 };
 use oneclient_content::packages::store::{artifact_absolute_path, link_or_copy, remove_entry};
-use oneclient_content::packages::PackageStore;
+use oneclient_content::packages::{InstalledCopy, PackageStore};
 use crate::state::LauncherServices;
 
 const REDIRECTED_DIRS: [&str; 2] = ["logs", "crash-reports"];
@@ -265,6 +265,21 @@ fn ours_in_folder(
     names
 }
 
+/// Adopts loose content the user put in the game directory by hand.
+///
+/// Files that turn out to be copies of something the cluster already has are
+/// still adopted; the user is told about them **afterwards, once, in a
+/// notification** rather than being asked about them one at a time.
+///
+/// The paths that ask first — the browser, a drop, the file picker — interrupt
+/// something the user is in the middle of, and backing out there leaves the
+/// cluster exactly as it was. Neither holds here. This runs unattended on the
+/// way into a launch, so a modal per file would stop a game the user has already
+/// started to ask a question they are not sitting in front of; and the file is
+/// *already in the folder*, so declining would undo nothing — Minecraft loads
+/// what is in `mods/` whether or not the launcher has a row for it. Refusing to
+/// adopt it would only cost the launcher its record of a file the game runs
+/// anyway, which is worse than adopting it and saying so.
 #[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
 pub async fn import_manual_content(
     services: &LauncherServices,
@@ -280,6 +295,7 @@ pub async fn import_manual_content(
     };
 
     let manifest = manifest::load(game_dir).await;
+    let mut duplicates: Vec<InstalledCopy> = Vec::new();
 
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());
@@ -332,9 +348,37 @@ pub async fn import_manual_content(
                 continue;
             }
 
+            // Asked before the import, because importing links the artifact and
+            // the file would then be found as a copy of itself. `linked` is
+            // handed over rather than re-read: the scan only adds rows, and a
+            // file cannot collide with one adopted moments ago in this same pass
+            // without being byte-identical to it, which `import_local_file`
+            // relinks instead of duplicating.
+            //
+            // Local evidence only. Recognising a loose jar as a *project* the
+            // cluster already has would take a provider lookup per file, and a
+            // scan is the wrong place to spend the network: it runs on every
+            // launch, for every cluster, whether or not anything changed.
+            let existing = match oneclient_content::packages::local_copy_among(
+                &linked,
+                &path,
+                content_type,
+            )
+            .await
+            {
+                Ok(found) => found,
+                Err(err) => {
+                    tracing::warn!(file = name, error = %err, "could not check for an existing copy");
+                    None
+                }
+            };
+
             match PackageStore::import_local_file(&path, content_type, cluster.id, &services.content()).await {
                 Ok(_) => {
-                    tracing::debug!(file = name, "registered manually-added content")
+                    tracing::debug!(file = name, "registered manually-added content");
+                    if let Some(copy) = existing {
+                        duplicates.push(copy);
+                    }
                 }
                 Err(err) => tracing::warn!(
                     file = name,
@@ -344,6 +388,50 @@ pub async fn import_manual_content(
             }
         }
     }
+
+    report_scan_duplicates(services, cluster, duplicates);
+}
+
+/// Tells the user, once for the whole scan, which of the files it just adopted
+/// are copies of something the cluster already had.
+///
+/// One notification rather than one per file: a folder holding five renamed jars
+/// is one mistake, not five, and five cards would bury the launch progress the
+/// user is actually watching. Info rather than an error — nothing failed, and a
+/// cluster holding two copies of a mod is a state the launcher supports.
+fn report_scan_duplicates(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    duplicates: Vec<InstalledCopy>,
+) {
+    if duplicates.is_empty() {
+        return;
+    }
+
+    let names = duplicates
+        .iter()
+        .map(|copy| copy.label.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let (title, body) = match duplicates.len() {
+        1 => (
+            "A file was added twice".to_string(),
+            format!(
+                "{} already had {names}, and a second copy was put in its folder by hand. Both are there now, and only the newest is loaded.",
+                cluster.name
+            ),
+        ),
+        n => (
+            format!("{n} files were added twice"),
+            format!(
+                "{} already had {names}, and second copies were put in its folders by hand. Both of each are there now, and only the newest of each is loaded.",
+                cluster.name
+            ),
+        ),
+    };
+
+    services.events.notify(title).body(body).send();
 }
 
 /// Whether `path` is a copy of something already in the launcher's artifact

@@ -85,7 +85,21 @@ pub async fn installed_local_copy(
     ctx: &ContentCtx,
 ) -> ContentResult<Option<InstalledCopy>> {
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    local_copy_among(&linked, path, content_type).await
+}
 
+/// [`installed_local_copy`] asked against links the caller already holds.
+///
+/// The folder scan puts this question to every loose file it turns up, and
+/// listing a cluster's links costs a query per artifact — re-reading the whole
+/// list once per file would turn one launch into hundreds of round trips for an
+/// answer that cannot change mid-scan.
+#[tracing::instrument(level = "debug", skip(linked))]
+pub async fn local_copy_among(
+    linked: &[LinkedArtifactInfo],
+    path: &Path,
+    content_type: ContentType,
+) -> ContentResult<Option<InstalledCopy>> {
     if let Some(name) = path.file_name().and_then(|name| name.to_str())
         && let Some(hit) = linked.iter().find(|l| matches_name(l, content_type, name))
     {
@@ -94,8 +108,9 @@ pub async fn installed_local_copy(
 
     let hash = normalize_hash(&sha1_file(path).await?);
     Ok(linked
-        .into_iter()
+        .iter()
         .find(|linked| linked.hash == hash)
+        .cloned()
         .map(InstalledCopy::from))
 }
 

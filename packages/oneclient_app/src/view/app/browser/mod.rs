@@ -125,10 +125,18 @@ pub(crate) fn installed_map(
     }
 
     // Bundle membership wins: a bundle's files land in the cluster as ordinary
-    // content, so they'd otherwise read as hand-installed. The version on disk
-    // is the truth when there is one; the manifest's pin is the fallback, and
-    // is deliberately not added alongside a linked version — a pin the cluster
-    // has not downloaded is not something the user has installed.
+    // content, so they'd otherwise read as hand-installed.
+    //
+    // Every pinned version gets a row, whether or not the cluster has linked it
+    // and whether or not some *other* version of the same project is linked. A
+    // bundle names a version as a fact about the bundle; nothing the user does
+    // to the cluster afterwards changes which version it ships, so nothing the
+    // user does should be able to take the label off it.
+    //
+    // A pin with nothing linked still carries `hash: None`, which is what keeps
+    // it from reading as installed: `is_duplicated` does not count it, and
+    // `version_button` leaves it unpressable rather than offering a copy the
+    // bundle would not own.
     for bundle in bundles {
         for (file, _status) in &bundle.files {
             if let BundleFileKind::Managed {
@@ -138,31 +146,31 @@ pub(crate) fn installed_map(
                 ..
             } = &file.kind
             {
-                match map.get_mut(&(*provider, project_id.clone())) {
-                    Some(installed) => {
-                        installed.source = InstallSource::Bundled;
-                        if let Some(version) = installed
-                            .versions
-                            .iter_mut()
-                            .find(|v| &v.version_id == version_id)
-                        {
-                            version.source = InstallSource::Bundled;
-                        }
-                    }
-                    None => {
-                        map.insert(
-                            (*provider, project_id.clone()),
-                            Installed {
-                                source: InstallSource::Bundled,
-                                versions: vec![InstalledVersion {
-                                    version_id: version_id.clone(),
-                                    hash: None,
-                                    enabled: false,
-                                    source: InstallSource::Bundled,
-                                }],
-                            },
-                        );
-                    }
+                let installed = map
+                    .entry((*provider, project_id.clone()))
+                    .or_insert_with(|| Installed {
+                        source: InstallSource::Bundled,
+                        versions: Vec::new(),
+                    });
+
+                installed.source = InstallSource::Bundled;
+
+                match installed
+                    .versions
+                    .iter_mut()
+                    .find(|v| &v.version_id == version_id)
+                {
+                    // Linked: the artifact on disk is the truth, and the pin only
+                    // says who it belongs to.
+                    Some(version) => version.source = InstallSource::Bundled,
+                    // Not linked: the pin is all there is to go on, so it becomes
+                    // the row itself.
+                    None => installed.versions.push(InstalledVersion {
+                        version_id: version_id.clone(),
+                        hash: None,
+                        enabled: false,
+                        source: InstallSource::Bundled,
+                    }),
                 }
             }
         }
@@ -528,18 +536,44 @@ mod tests {
     }
 
     #[test]
-    fn a_bundle_pin_is_not_listed_beside_a_linked_version() {
+    fn a_bundle_pin_survives_another_version_being_installed() {
+        // The bug this replaces a test for: the pin used to be listed only when
+        // the project had no entry at all, so installing any other version of it
+        // created one and the pin was dropped on the floor — taking the Bundled
+        // tag off the version list row with it. Which version a bundle ships is
+        // a fact about the bundle, not about what the cluster has linked.
         let map = installed_map(
             vec![linked("sodium", Some("v2"), "hash-2")],
             &bundles(vec![managed("sodium", "v1")]),
         );
 
         let sodium = entry(&map, "sodium");
-        assert!(
-            !sodium.is_version("v1"),
-            "a pin the cluster never downloaded is not installed"
+        assert_eq!(
+            sodium.find_version("v1").map(|v| v.source),
+            Some(InstallSource::Bundled),
+            "the bundle still ships v1, whatever else was installed beside it"
         );
-        assert_eq!(sodium.versions.len(), 1);
+        assert_eq!(
+            sodium.find_version("v1").map(|v| v.hash.clone()),
+            Some(None),
+            "still nothing linked for it, so still nothing to remove"
+        );
+        assert_eq!(
+            sodium.find_version("v2").map(|v| v.source),
+            Some(InstallSource::Manual),
+        );
+    }
+
+    #[test]
+    fn a_pin_the_cluster_never_downloaded_is_not_a_second_copy() {
+        // The pin is listed beside the linked version, but only the linked one
+        // is a copy of anything — the "Active" badge must stay off both.
+        let map = installed_map(
+            vec![linked("sodium", Some("v2"), "hash-2")],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        assert!(!entry(&map, "sodium").is_duplicated());
     }
 
     #[test]

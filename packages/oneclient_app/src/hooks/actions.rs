@@ -683,6 +683,12 @@ impl Actions {
         }
     }
 
+    /// The cluster whose live logs the tray's "Show logs" entry opens.
+    #[must_use]
+    pub fn running_cluster(&self) -> Option<ClusterId> {
+        self.station.peek().game.running_cluster()
+    }
+
     pub fn dismiss_game_error(&self) {
         self.station
             .clone()

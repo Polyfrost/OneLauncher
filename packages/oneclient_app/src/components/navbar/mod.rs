@@ -29,12 +29,10 @@ pub fn window_controls() -> impl IntoElement {
         });
     };
 
-    let close = |_| {
-        let platform = Platform::get();
-        Platform::get().with_window(None, move |window| {
-            platform.close_window(window.id());
-        });
-    };
+    // Not `close_window`: with a tray registered freya keeps the event loop
+    // running once the last window goes, so closing it would leave the launcher
+    // alive with nothing on screen.
+    let close = |_| crate::platform::quit(&Platform::get());
 
     rect()
         .horizontal()

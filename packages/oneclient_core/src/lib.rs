@@ -66,6 +66,7 @@ pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use state::LauncherServices;
 pub use state::LauncherState;
 pub use state::run_startup_tasks;
+pub use state::shutdown;
 pub use versions::{
     RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
 };

@@ -20,8 +20,18 @@ use crate::ui::border_all_color;
 
 /// The model is framed by the height of its canvas, so the hero pins both sides
 /// instead of letting it grow with the page.
-const MODEL_WIDTH_PX: f32 = 116.;
-const MODEL_HEIGHT_PX: f32 = 168.;
+///
+/// The SkSL renderer raymarches twelve boxes per fragment, so its cost is linear
+/// in `WIDTH * HEIGHT`. At 160x264 that is ~42k fragments — about 2.2x the old
+/// 116x168 frame, and still under a tenth of the window, so the larger preview is
+/// free in practice.
+///
+/// The shader scales the model off `res.y` alone and only crops horizontally, so
+/// the height is what actually makes the player bigger. The width is kept just
+/// wide enough to clear the arms (~26 model units visible vs ~17 needed) and
+/// otherwise left to the text column.
+const MODEL_WIDTH_PX: f32 = 160.;
+const MODEL_HEIGHT_PX: f32 = 264.;
 
 const AVATAR_SIZE_PX: f32 = 36.;
 
@@ -193,9 +203,14 @@ fn hero(
                         .width(Size::fill())
                         .spacing(8.)
                         .child(
+                            // The bigger model leaves ~245px beside it at the
+                            // 800px minimum, which the two buttons overflow, so
+                            // they wrap onto a second line there and sit side by
+                            // side again once there is room.
                             rect()
                                 .horizontal()
                                 .width(Size::fill())
+                                .content(Content::wrap_spacing(8.))
                                 .spacing(8.)
                                 .child(
                                     Button::new()
@@ -373,13 +388,23 @@ fn field_label(text: &str) -> impl IntoElement {
         .into_element()
 }
 
+/// The hint sits in whatever is left of the hero beside the model, so the text
+/// has to be free to wrap instead of pushing the row wider.
 fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
     rect()
         .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(6.)
         .child(Icon::new(icon).size(13.).color(color))
-        .child(label().text(text).font_size(12.).color(color))
+        .child(
+            label()
+                .text(text)
+                .font_size(12.)
+                .width(Size::flex(1.0))
+                .color(color),
+        )
         .into_element()
 }
 

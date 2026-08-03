@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
+use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
@@ -283,11 +284,10 @@ impl Tab {
     }
 }
 
-/// `query` is expected to be lowercased already.
-fn matches_query(p: &PackageEntry, query: &str) -> bool {
-    query.is_empty()
-        || p.name.to_lowercase().contains(query)
-        || p.file_name.to_lowercase().contains(query)
+/// A package is searched by what the user sees (its display name) and by what
+/// is on disk (its file name), whichever matches better.
+fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
+    query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
 /// Rows to show for the current toolbar state. The search is scoped to the
@@ -298,15 +298,22 @@ fn matches_query(p: &PackageEntry, query: &str) -> bool {
 fn visible_packages(
     items: &[PackageEntry],
     tab: Option<&Tab>,
-    query: &str,
+    query: &SearchQuery,
     show: EnabledFilter,
 ) -> Vec<PackageEntry> {
     items
         .iter()
-        .filter(|p| tab.is_none_or(|t| t.matches(p)) && matches_query(p, query))
+        .filter(|p| tab.is_none_or(|t| t.matches(p)) && query_score(p, query).is_some())
         .filter(|p| show.keep(p))
         .cloned()
         .collect()
+}
+
+/// Reorders search results so the closest matches come first. Stable, so the
+/// sort the user picked in the toolbar survives as the tie-break between rows
+/// that matched equally well.
+fn rank_by_query(rows: &mut [PackageEntry], query: &SearchQuery) {
+    rows.sort_by_key(|p| std::cmp::Reverse(query_score(p, query)));
 }
 
 pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
@@ -397,7 +404,7 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
-        let query = search.read().to_lowercase();
+        let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
             .as_deref()
@@ -411,6 +418,12 @@ impl Component for PackageManager {
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show);
         sort_mode.sort(&mut filtered);
+        // Relevance has to win while searching: with fuzzy matching, a name that
+        // only matched after forgiving a typo would otherwise sort above the one
+        // the user actually typed.
+        if !query.is_empty() {
+            rank_by_query(&mut filtered, &query);
+        }
 
         // Coming up empty during a search is about the query, not about the tab
         // having nothing in it, so it gets its own empty state naming the tab
@@ -574,25 +587,36 @@ mod tests {
         rows.iter().map(|p| p.name.as_str()).collect()
     }
 
+    /// The pipeline the package manager runs: filter, apply the toolbar's sort,
+    /// then let relevance override it while there is something to be relevant to.
+    fn search(items: &[PackageEntry], tab: Option<&Tab>, query: &str) -> Vec<PackageEntry> {
+        let query = SearchQuery::new(query);
+        let mut rows = visible_packages(items, tab, &query, EnabledFilter::All);
+        SortMode::NameAsc.sort(&mut rows);
+        if !query.is_empty() {
+            rank_by_query(&mut rows, &query);
+        }
+        rows
+    }
+
     #[test]
     fn search_stays_inside_the_active_category() {
         let items = items();
         let tab = Tab::Category("Performance".to_string());
-        let rows = visible_packages(&items, Some(&tab), "sodium", EnabledFilter::All);
-        assert_eq!(names(&rows), ["Sodium"]);
+        assert_eq!(names(&search(&items, Some(&tab), "sodium")), ["Sodium"]);
     }
 
     #[test]
     fn search_stays_inside_the_local_tab() {
         let items = items();
-        let rows = visible_packages(&items, Some(&Tab::Local), "sodium", EnabledFilter::All);
+        let rows = search(&items, Some(&Tab::Local), "sodium");
         assert_eq!(names(&rows), ["Sodium Local"]);
     }
 
     #[test]
     fn all_tab_searches_every_package() {
         let items = items();
-        let rows = visible_packages(&items, Some(&Tab::All), "sodium", EnabledFilter::All);
+        let rows = search(&items, Some(&Tab::All), "sodium");
         assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
     }
 
@@ -600,7 +624,31 @@ mod tests {
     fn empty_query_keeps_the_whole_tab() {
         let items = items();
         let tab = Tab::Category("Visuals".to_string());
-        let rows = visible_packages(&items, Some(&tab), "", EnabledFilter::All);
-        assert_eq!(names(&rows), ["Sodium Extra"]);
+        assert_eq!(names(&search(&items, Some(&tab), "")), ["Sodium Extra"]);
+    }
+
+    #[test]
+    fn stray_whitespace_does_not_change_the_results() {
+        let items = items();
+        let baseline = search(&items, Some(&Tab::All), "sodium extra");
+        for raw in ["  sodium extra", "sodium extra ", "sodium   extra"] {
+            let rows = search(&items, Some(&Tab::All), raw);
+            assert_eq!(names(&rows), names(&baseline), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn a_misspelled_query_still_finds_the_package() {
+        let items = items();
+        let rows = search(&items, Some(&Tab::All), "sodum");
+        assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
+    }
+
+    #[test]
+    fn the_closest_match_is_listed_first() {
+        // Alphabetically "Sodium" leads; by relevance the exact hit does.
+        let items = items();
+        let rows = search(&items, Some(&Tab::All), "sodium extra");
+        assert_eq!(names(&rows).first(), Some(&"Sodium Extra"));
     }
 }

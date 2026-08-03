@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
+use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::{
     DEFAULT_PAGE_SIZE, Page, ProjectDetail, ProjectSummary, SearchFilters, SearchSort,
     VersionSummary,
@@ -53,7 +54,7 @@ impl QueryCapability for PackageSearchQuery {
         Ok(provider
             .search(
                 &SearchFilters {
-                    query: (!keys.query.trim().is_empty()).then(|| keys.query.trim().to_string()),
+                    query: (!keys.query.is_empty()).then(|| keys.query.clone()),
                     content_type: Some(keys.content_type),
                     game_versions: (!keys.game_versions.is_empty())
                         .then(|| keys.game_versions.clone()),
@@ -84,7 +85,10 @@ pub fn use_package_search(
         PackageSearchKeys {
             provider,
             content_type,
-            query,
+            // Canonical form, because the key is also the cache key: without it
+            // "sodium" and "sodium " are two entries, and adding a trailing
+            // space throws the results away and refetches for nothing.
+            query: normalize_query(&query),
             game_versions,
             loaders,
             categories,

@@ -6,7 +6,9 @@ use oneclient_auth::preview_samples;
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
-use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, TextArea, TextInput, login_dialog, toggle,
+};
 use crate::hooks::use_dispatch;
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
@@ -961,10 +963,23 @@ impl Component for SqlConsole {
         let result = use_state(|| None::<Result<ConsoleQueryResult, String>>);
         let running = use_state(|| false);
 
+        let run_shortcut = if cfg!(target_os = "macos") {
+            "Cmd+Enter"
+        } else {
+            "Ctrl+Enter"
+        };
+
         rect()
             .vertical()
             .width(Size::fill())
             .spacing(10.)
+            .child(
+                TextArea::new(query)
+                    .monospace()
+                    .font_size(13.)
+                    .placeholder("SELECT * FROM …")
+                    .on_submit(move |_| run_sql(query, result, running)),
+            )
             .child(
                 rect()
                     .horizontal()
@@ -972,18 +987,17 @@ impl Component for SqlConsole {
                     .cross_align(Alignment::Center)
                     .spacing(12.)
                     .child(
-                        rect().width(Size::flex(1.0)).child(
-                            TextInput::new(query)
-                                .placeholder("SELECT * FROM …")
-                                .on_submit(move |_| run_sql(query, result, running)),
-                        ),
-                    )
-                    .child(
                         Button::new()
                             .primary()
                             .child(Icon::new(IconType::Terminal).size(16.))
                             .text(if *running.read() { "Running…" } else { "Run" })
                             .on_press(move |_| run_sql(query, result, running)),
+                    )
+                    .child(
+                        label()
+                            .text(format!("Enter breaks the line, {run_shortcut} runs it."))
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .child(sql_result(&result.read()))

@@ -169,6 +169,24 @@ mod tests {
         assert!(res.rows.is_empty());
     }
 
+    /// The console is a multi-line editor, so statements arrive with the line
+    /// breaks and indentation the user typed.
+    #[tokio::test]
+    async fn multiline_statement_is_recognised() {
+        let pool = pool().await;
+        sqlx::query("INSERT INTO t (name) VALUES ('a')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let res = run_console_query(&pool, "\nSELECT id, name\n  FROM t\n  WHERE id = 1;\n")
+            .await
+            .unwrap();
+
+        assert!(res.is_select);
+        assert_eq!(res.rows, vec![vec!["1".to_string(), "a".to_string()]]);
+    }
+
     #[tokio::test]
     async fn invalid_sql_errors() {
         let pool = pool().await;

@@ -25,7 +25,7 @@ runs:
   using: composite
   steps:
     - name: Install Rust (stable)
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch @ 2026-07-16
       with:
         toolchain: stable
         targets: ${{ inputs.target }}
@@ -33,7 +33,7 @@ runs:
 
     - name: Cache Rust
       if: ${{ inputs.restore-cache == 'true' }}
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       with:
         key: ${{ inputs.target }}
         save-if: ${{ inputs.save-cache }}

@@ -27,7 +27,7 @@ runs:
 
     - name: Setup cargo-binstall
       if: steps.check.outputs.installed == 'false'
-      uses: cargo-bins/cargo-binstall@main
+      uses: cargo-bins/cargo-binstall@e00d2c94cc0067b77737821097a62d91c0301baa # v1.21.1
 
     - name: Install ${{ inputs.tool }}
       if: steps.check.outputs.installed == 'false'

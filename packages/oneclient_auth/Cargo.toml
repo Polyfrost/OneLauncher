@@ -21,6 +21,7 @@ polyio.workspace = true
 
 reqwest.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 
 base64.workspace = true
 chrono.workspace = true

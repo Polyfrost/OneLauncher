@@ -83,6 +83,19 @@ impl LauncherError {
         }
     }
 
+    /// Whether this is the user backing out of their own sign-in.
+    ///
+    /// Worth telling apart because it is not something to report: by the time it
+    /// lands the dialog is already gone, and putting a red line under the button
+    /// would be complaining about the button the user just pressed.
+    #[must_use]
+    pub fn is_login_cancelled(&self) -> bool {
+        matches!(
+            self,
+            LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled)
+        )
+    }
+
     /// Whether this failure reads as "the install is missing pieces", and so is
     /// worth repairing rather than just reporting.
     ///

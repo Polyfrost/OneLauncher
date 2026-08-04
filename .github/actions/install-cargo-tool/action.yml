@@ -17,9 +17,13 @@ runs:
     - name: Check for an already-installed ${{ inputs.tool }}
       id: check
       shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        VERSION: ${{ inputs.version }}
       run: |
-        if cargo install --list | grep -qF "${{ inputs.tool }} v${{ inputs.version }}:"; then
-          echo "Found ${{ inputs.tool }} v${{ inputs.version }} in \$CARGO_HOME/bin"
+        if command -v "$TOOL" > /dev/null 2>&1 \
+          && cargo install --list | grep -qF "$TOOL v$VERSION:"; then
+          echo "Found $TOOL v$VERSION in \$CARGO_HOME/bin"
           echo "installed=true" >> "$GITHUB_OUTPUT"
         else
           echo "installed=false" >> "$GITHUB_OUTPUT"
@@ -39,5 +43,5 @@ runs:
         # Prebuilt download takes seconds; building cargo-packager from source
         # takes minutes on every leg of the matrix. Fall back to a source build
         # so a missing prebuilt artifact can never break a release.
-        cargo binstall --no-confirm "${TOOL}@${VERSION}" \
-          || cargo install "${TOOL}" --version "${VERSION}" --locked
+        cargo binstall --no-confirm --force "${TOOL}@${VERSION}" \
+          || cargo install "${TOOL}" --version "${VERSION}" --locked --force

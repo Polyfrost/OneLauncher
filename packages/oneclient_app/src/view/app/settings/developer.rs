@@ -6,6 +6,7 @@ use crate::Route;
 use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{use_browser_compat, use_dispatch, use_settings_snapshot};
 use crate::view::app::settings::{section_header, settings_row};
+use crate::view::console::open_log_console;
 
 #[derive(PartialEq)]
 pub struct SettingsDeveloper;
@@ -44,10 +45,16 @@ impl Component for SettingsDeveloper {
             ))
             .child(section_header("DEV TOOLS"))
             .child(settings_row(
-                IconType::Terminal,
+                IconType::Sliders04,
                 "Log Debug Info",
                 "WARNING! This requires a restart to apply. Logs out debug info.",
                 toggle(log_debug),
+            ))
+            .child(settings_row(
+                IconType::Terminal,
+                "Log Console",
+                "Stream the launcher's logs in a separate window. Nothing is captured while it is closed.",
+                link_button().on_press(move |_| open_log_console()),
             ))
             .child(settings_row(
                 IconType::CodeSnippet02,

@@ -9,8 +9,14 @@ use oneclient_common::paths;
 use super::parse::parse_level;
 use super::{LogFileInfo, LogKind, LogLevel, LogLine, LogsError, ReadOptions};
 
+/// Everything reachable from here lives under a cluster.
+///
+/// The launcher's own log directory used to be allowed too, back when this
+/// module listed launcher logs alongside the game's. It no longer does — those
+/// belong to the live console — so reading, deleting or uploading them is not
+/// something a cluster page should be able to reach.
 pub(super) fn ensure_allowed(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::logs_dir()?, paths::clusters_dir()?])?
+    polyio::ensure_under(path, [paths::clusters_dir()?])?
         .ok_or_else(|| LogsError::InvalidName(path.display().to_string()).into())
 }
 
@@ -56,6 +62,8 @@ fn collect_dir(
     }
 }
 
+/// Everything the game wrote for this cluster: its own logs, its crash reports,
+/// and the launcher's capture of the process' stdout.
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub fn list_cluster_logs(cluster: &Cluster) -> ClusterResult<Vec<LogFileInfo>> {
     let mut out = Vec::new();
@@ -84,15 +92,6 @@ pub fn list_cluster_logs(cluster: &Cluster) -> ClusterResult<Vec<LogFileInfo>> {
         },
         &mut out,
     );
-
-    if let Ok(logs_dir) = paths::logs_dir() {
-        collect_dir(
-            &logs_dir,
-            LogKind::Launcher,
-            |name| name.ends_with(".log") || name.ends_with(".log.gz"),
-            &mut out,
-        );
-    }
 
     out.sort_by_key(|info| std::cmp::Reverse(info.modified));
     Ok(out)

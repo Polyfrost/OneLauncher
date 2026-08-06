@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
-use freya::query::MutationStateData;
+use freya::query::{MutationStateData, UseQuery};
 use freya::text_edit::Clipboard;
 use oneclient_common::search::SearchQuery;
 use oneclient_core::{LogFileInfo, LogKind, LogLevel};
@@ -12,9 +12,9 @@ use crate::components::{
     TextInput, open_folder_button,
 };
 use crate::hooks::{
-    LogAction, UploadLogKeys, UseLogAction, UseUploadLog, invalidate_logs_queries,
-    try_cluster_logs, try_log_content, use_cluster_logs, use_dispatch, use_log_action,
-    use_log_content, use_upload_log,
+    ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
+    invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_dispatch,
+    use_log_action, use_log_content, use_upload_log,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -65,10 +65,46 @@ enum Confirm {
     Upload,
 }
 
+/// Which half of the cluster's files the picker is listing.
+///
+/// Crash reports and ordinary logs answer different questions, and a crash
+/// report buried among thirty rotated `.log.gz` files is one nobody finds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Category {
+    Logs,
+    CrashReports,
+}
+
+impl Category {
+    fn accepts(self, kind: LogKind) -> bool {
+        kind.is_crash_report() == matches!(self, Self::CrashReports)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Logs => "Logs",
+            Self::CrashReports => "Crash reports",
+        }
+    }
+
+    fn empty_label(self) -> &'static str {
+        match self {
+            Self::Logs => "No logs",
+            Self::CrashReports => "No crash reports",
+        }
+    }
+
+    fn empty_note(self) -> &'static str {
+        match self {
+            Self::Logs => "No logs recorded yet",
+            Self::CrashReports => "No crash reports, which is the good outcome",
+        }
+    }
+}
+
 fn kind_badge(kind: LogKind) -> &'static str {
     match kind {
         LogKind::Game { .. } => "Game output",
-        LogKind::Launcher => "Launcher logs",
         LogKind::Minecraft => "Minecraft",
         LogKind::CrashReport => "Crash report",
         LogKind::Other => "Other",
@@ -91,11 +127,15 @@ impl Component for ClusterLogs {
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
+        let category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
         let mut handled_upload = use_state(|| None::<String>);
 
+        // Reads `category` as well as the query, so switching the picker to
+        // crash reports re-picks a file instead of leaving the viewer on a
+        // selection that is no longer in the list.
         use_side_effect(move || {
-            let files = try_cluster_logs(&logs_query).unwrap_or_default();
+            let files = visible_files(&logs_query, *category.read());
 
             if files.is_empty() {
                 if !selected.peek().as_os_str().is_empty() {
@@ -167,7 +207,7 @@ impl Component for ClusterLogs {
         };
         let folder = cluster.dir().ok().map(|d| d.join("logs"));
 
-        let files = try_cluster_logs(&logs_query).unwrap_or_default();
+        let files = visible_files(&logs_query, *category.read());
         let has_log = !files.is_empty();
         let selected_info = files.iter().find(|f| f.path == selected_path).cloned();
 
@@ -179,11 +219,6 @@ impl Component for ClusterLogs {
                 .collect(),
         );
 
-        let size_text = selected_info
-            .as_ref()
-            .map(|i| format!("{} on disk", format_size(i.size_bytes)))
-            .unwrap_or_else(|| "No logs recorded yet".to_string());
-
         let body = rect()
             .vertical()
             .width(Size::fill())
@@ -192,11 +227,10 @@ impl Component for ClusterLogs {
             .child(top_bar(
                 files.clone(),
                 selected_info.clone(),
-                size_text,
-                has_log,
                 folder,
                 selected,
                 confirm,
+                category,
             ))
             .child(
                 rect().width(Size::fill()).height(Size::flex(1.0)).child(
@@ -214,19 +248,34 @@ impl Component for ClusterLogs {
     }
 }
 
+/// The files the picker should be showing right now.
+fn visible_files(query: &UseQuery<ClusterLogsQuery>, category: Category) -> Vec<LogFileInfo> {
+    try_cluster_logs(query)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|file| category.accepts(file.kind))
+        .collect()
+}
+
 fn top_bar(
     files: Vec<LogFileInfo>,
     selected_info: Option<LogFileInfo>,
-    size_text: String,
-    has_log: bool,
     folder: Option<PathBuf>,
     selected: State<PathBuf>,
     mut confirm: State<Option<Confirm>>,
+    category: State<Category>,
 ) -> impl IntoElement {
+    let has_log = !files.is_empty();
+
     let picker_label = selected_info
         .as_ref()
         .map(|i| i.name.clone())
-        .unwrap_or_else(|| "No logs".to_string());
+        .unwrap_or_else(|| category.read().empty_label().to_string());
+
+    let size_text = selected_info
+        .as_ref()
+        .map(|i| format!("{} on disk", format_size(i.size_bytes)))
+        .unwrap_or_else(|| category.read().empty_note().to_string());
 
     rect()
         .horizontal()
@@ -238,7 +287,7 @@ fn top_bar(
             LogPicker {
                 label: picker_label,
                 files,
-                enabled: has_log,
+                category,
                 on_select: (move |path: PathBuf| {
                     let mut selected = selected;
                     selected.set(path);
@@ -349,7 +398,10 @@ fn viewer_header(
 struct LogPicker {
     label: String,
     files: Vec<LogFileInfo>,
-    enabled: bool,
+    /// Owned by the page rather than by this component: the page filters
+    /// `files` by it and re-picks a selection when it changes, so both have to
+    /// be looking at the same value.
+    category: State<Category>,
     on_select: EventHandler<PathBuf>,
 }
 
@@ -361,13 +413,17 @@ impl Component for LogPicker {
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
 
-        let enabled = self.enabled;
+        let category = self.category;
         let label_text = self.label.clone();
         let files = self.files.clone();
         let on_select = self.on_select.clone();
-        let is_open = open() && enabled;
+        // Stays usable with an empty list: the category selector lives inside
+        // the panel, so a cluster with no crash reports still needs a way back
+        // to its logs.
+        let is_open = open();
 
         let query = SearchQuery::new(&filter.read());
+        let no_files = files.is_empty();
         let rows: Vec<Element> = files
             .into_iter()
             .filter(|f| query.matches(&f.name) || query.matches(kind_badge(f.kind)))
@@ -403,38 +459,29 @@ impl Component for LogPicker {
                     .corner_radius(CornerRadius::new_all(9.))
                     .background(colors::component_bg())
                     .a11y_id(a11y_id)
-                    .a11y_focusable(enabled)
+                    .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
                     .border(ui::border_all_color(
                         1.,
-                        if enabled && focus().is_focused() {
+                        if focus().is_focused() {
                             colors::brand()
                         } else {
                             colors::component_border()
                         },
                     ))
-                    .on_pointer_enter(move |_| {
-                        if enabled {
-                            Cursor::set(CursorIcon::Pointer)
-                        }
-                    })
+                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
                     .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
                     .on_all_press(move |e: Event<PressEventData>| {
-                        if !enabled {
-                            return;
-                        }
                         e.stop_propagation();
                         open.toggle();
                     })
                     .child(
                         rect().width(Size::flex(1.0)).child(
-                            label().text(label_text).font_size(13.).max_lines(1).color(
-                                if enabled {
-                                    colors::fg_primary()
-                                } else {
-                                    colors::fg_secondary().with_a(110)
-                                },
-                            ),
+                            label()
+                                .text(label_text)
+                                .font_size(13.)
+                                .max_lines(1)
+                                .color(colors::fg_primary()),
                         ),
                     )
                     .child(
@@ -460,7 +507,9 @@ impl Component for LogPicker {
                         rect()
                             .margin(Gaps::new(4., 0., 0., 0.))
                             .width(Size::px(320.))
-                            .max_height(Size::px(360.))
+                            // Room for the category selector above the search
+                            // box, on top of the list's own maximum.
+                            .max_height(Size::px(400.))
                             .layer(Layer::OverlayLevel(12))
                             .vertical()
                             .spacing(4.)
@@ -469,6 +518,16 @@ impl Component for LogPicker {
                             .border(ui::border_all_color(1., colors::component_border()))
                             .background(colors::page_elevated())
                             .overflow(Overflow::Clip)
+                            .child(
+                                SegmentedControl::new(category)
+                                    .no_tint()
+                                    .equal_width(147.)
+                                    .segments(
+                                        [Category::Logs, Category::CrashReports]
+                                            .into_iter()
+                                            .map(|value| Segment::new(value).label(value.label())),
+                                    ),
+                            )
                             .child(
                                 TextInput::new(filter)
                                     .auto_focus(true)
@@ -480,6 +539,20 @@ impl Component for LogPicker {
                                             .into_element(),
                                     ),
                             )
+                            .maybe_child(rows.is_empty().then(|| {
+                                label()
+                                    .text(if no_files {
+                                        category.read().empty_note()
+                                    } else {
+                                        "No matches"
+                                    })
+                                    .font_size(12.)
+                                    .width(Size::fill())
+                                    .text_align(TextAlign::Center)
+                                    .padding(Gaps::new_symmetric(12., 0.))
+                                    .color(colors::fg_secondary())
+                                    .into_element()
+                            }))
                             .child(
                                 ScrollArea::new()
                                     .height(Size::px(list_h))

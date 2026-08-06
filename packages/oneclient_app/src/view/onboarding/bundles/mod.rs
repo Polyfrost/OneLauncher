@@ -27,6 +27,43 @@ const MOD_GRID_COLS: usize = 3;
 
 const ANSWER_H: f32 = 48.;
 
+const FPS_WARNING_BUNDLE: &str = "SkyBlock";
+
+const FPS_WARNING_RUNS: &[(&str, bool, bool)] = &[
+    ("YOUR ", false, false),
+    ("FPS", true, false),
+    (" WILL BE ", false, false),
+    ("SIGNIFICANTLY WORSE", true, false),
+    (" WITH SKYBLOCK MODS. ", false, false),
+    ("DO NOT INSTALL", true, true),
+    (" UNLESS YOU PLAY HYPIXEL SKYBLOCK.", false, true),
+];
+
+fn fps_warning_banner() -> impl IntoElement {
+    let mut text = paragraph();
+    for (run, bold, underlined) in FPS_WARNING_RUNS {
+        let mut span = Span::new(*run)
+            .font_size(12.)
+            .font_weight(if *bold {
+                FontWeight::BOLD
+            } else {
+                FontWeight::NORMAL
+            })
+            .color(colors::code_warn());
+        if *underlined {
+            span = span.text_decoration(TextDecoration::Underline);
+        }
+        text = text.span(span);
+    }
+
+    rect()
+        .width(Size::fill())
+        .corner_radius(CornerRadius::new_all(8.))
+        .border(border_all_color(1., colors::code_warn()))
+        .padding(Gaps::new_all(8.))
+        .child(text)
+}
+
 fn file_provider(file: &BundleFile) -> ProviderId {
     match &file.kind {
         BundleFileKind::Managed { provider, .. } => *provider,
@@ -315,7 +352,9 @@ fn opt_in_card(
                 .font_size(15.)
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
-        )
+        );
+
+    card = card
         .child(
             rect()
                 .horizontal()
@@ -352,6 +391,10 @@ fn opt_in_card(
                         )),
                 ),
         );
+
+    if wanted && name.eq_ignore_ascii_case(FPS_WARNING_BUNDLE) {
+        card = card.child(fps_warning_banner());
+    }
 
     if wanted {
         let mut rows: Vec<Element> = Vec::new();

@@ -61,6 +61,15 @@ pub enum RequestError {
         actual: String,
     },
 
+    /// A download ended early without the transport reporting an error. Only
+    /// reachable when no hash was supplied; otherwise it fails as a mismatch.
+    #[error("{source_desc} ended after {actual} of {expected} bytes")]
+    IncompleteBody {
+        source_desc: String,
+        expected: u64,
+        actual: u64,
+    },
+
     #[error("Invalid URL: {0}")]
     UrlParseError(#[from] url::ParseError),
 

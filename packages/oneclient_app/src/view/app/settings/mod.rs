@@ -1,3 +1,4 @@
+mod accounts;
 mod appearance;
 
 mod apis;
@@ -12,6 +13,7 @@ mod storage;
 
 use freya::prelude::*;
 
+pub use accounts::SettingsAccounts;
 pub use apis::SettingsApis;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;

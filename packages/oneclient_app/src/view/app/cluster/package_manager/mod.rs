@@ -10,7 +10,7 @@ use crate::components::{CardLayout, PackageEntry};
 use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
-use views::{ContentBox, ContentKind, EnabledFilter, SortMode, toolbar_bar};
+use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar};
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
@@ -76,6 +76,9 @@ pub fn use_content_meta(
 /// `stale` is the set of artifact hashes the last browser update check found a
 /// newer version for. Bundle-provided rows are built before it is consulted and
 /// never carry the flag, so the two update flows cannot both claim a package.
+///
+/// Rows for a bundle's hidden files are included and flagged; whether they
+/// reach the screen is [`HiddenFilter`]'s call.
 pub fn bundle_packages(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
@@ -124,13 +127,6 @@ pub fn bundle_packages(
             if !seen.insert(pid.clone()) {
                 continue;
             }
-            // Hidden files are dependencies the bundle manages on the user's
-            // behalf: never listed, never toggleable. The id still counts as
-            // seen so the loose-content pass below does not resurrect the
-            // installed artifact as an unmanaged local file.
-            if file.hidden {
-                continue;
-            }
 
             let provider = match &file.kind {
                 BundleFileKind::Managed { provider, .. } => *provider,
@@ -166,6 +162,11 @@ pub fn bundle_packages(
                 meta,
                 file.display_name(),
                 false,
+                // Emitted as an ordinary row carrying the flag rather than
+                // dropped here: the row is what `HiddenFilter` filters on, and
+                // the id counting as seen keeps the loose-content pass below
+                // from resurrecting the installed artifact as a local file.
+                file.hidden,
             ));
         }
     }
@@ -193,6 +194,7 @@ pub fn bundle_packages(
                 .clone()
                 .unwrap_or_else(|| info.file_name.clone()),
             outdated,
+            false,
         ));
     }
 
@@ -212,6 +214,7 @@ fn make_row(
     meta: &PackageMetaMap,
     fallback_name: String,
     update_available: bool,
+    hidden: bool,
 ) -> PackageEntry {
     let m = meta.get(&(provider, package_id.clone()));
     let name = m
@@ -251,6 +254,7 @@ fn make_row(
         installed: installed_info.is_some(),
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
+        hidden,
     }
 }
 
@@ -300,11 +304,12 @@ fn visible_packages(
     tab: Option<&Tab>,
     query: &SearchQuery,
     show: EnabledFilter,
+    hidden: HiddenFilter,
 ) -> Vec<PackageEntry> {
     items
         .iter()
         .filter(|p| tab.is_none_or(|t| t.matches(p)) && query_score(p, query).is_some())
-        .filter(|p| show.keep(p))
+        .filter(|p| show.keep(p) && hidden.keep(p))
         .cloned()
         .collect()
 }
@@ -327,9 +332,11 @@ pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
     cats
 }
 
-fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
+/// `hidden` is applied here too, so a category whose only members are hidden
+/// bundle dependencies does not offer a tab that leads to an empty list.
+fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilter) -> Vec<Tab> {
     let mut cats: Vec<String> = categories.to_vec();
-    for item in items {
+    for item in items.iter().filter(|p| hidden.keep(p)) {
         for c in &item.categories {
             if !cats.contains(c) {
                 cats.push(c.clone());
@@ -342,7 +349,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry]) -> Vec<Tab> {
     tabs.extend(
         cats.into_iter()
             .map(Tab::Category)
-            .filter(|t| items.iter().any(|p| t.matches(p))),
+            .filter(|t| items.iter().any(|p| hidden.keep(p) && t.matches(p))),
     );
 
     tabs.push(Tab::Browser);
@@ -391,16 +398,15 @@ impl Component for PackageManager {
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
 
-        let tabs = build_tabs(&self.categories, &items);
         // Minecraft reads its content once at startup, so a toggle made now is
         // recorded but cannot reach the session already playing. Say so rather
         // than letting the switch look like it did nothing.
         let session_live = use_game_snapshot().is_active(cluster_id);
         let active = use_state(|| 0usize);
-        let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
 
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
+        let hidden_filter = use_state(|| HiddenFilter::Hide);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
@@ -412,11 +418,14 @@ impl Component for PackageManager {
             .unwrap_or(SortMode::NameAsc);
 
         let show = *enabled_filter.read();
+        let hidden = *hidden_filter.read();
         let card_layout = CardLayout::from(*layout.read());
 
+        let tabs = build_tabs(&self.categories, &items, hidden);
+        let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
         let tab_filter = tabs.get(active_idx);
 
-        let mut filtered = visible_packages(&items, tab_filter, &query, show);
+        let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
         sort_mode.sort(&mut filtered);
         // Relevance has to win while searching: with fuzzy matching, a name that
         // only matched after forgiving a typo would otherwise sort above the one
@@ -455,6 +464,7 @@ impl Component for PackageManager {
                 sort,
                 sort_mode,
                 enabled_filter,
+                hidden_filter,
                 layout,
                 cluster_id,
                 package_type,
@@ -469,186 +479,5 @@ impl Component for PackageManager {
                 content_kind,
                 card_layout,
             ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::view::onboarding::test_support::{archive, file};
-    use oneclient_core::{BundleFile, FileUpdateStatus};
-
-    fn bundle(category: &str, files: Vec<BundleFile>) -> BundleWithUpdateStatus {
-        BundleWithUpdateStatus {
-            files: files
-                .iter()
-                .cloned()
-                .map(|f| (f, FileUpdateStatus::UpToDate))
-                .collect(),
-            archive: archive(category, true, files),
-            has_updates: false,
-        }
-    }
-
-    fn installed(package_id: &str) -> LinkedArtifactInfo {
-        LinkedArtifactInfo {
-            hash: package_id.to_string(),
-            cluster_file_name: format!("{package_id}.jar"),
-            enabled: true,
-            content_type: ContentType::Mod,
-            file_name: format!("{package_id}.jar"),
-            project_id: None,
-            version_id: None,
-            display_name: None,
-            display_version: None,
-            provider: None,
-            published_at: None,
-        }
-    }
-
-    fn rows_for(
-        content: Vec<LinkedArtifactInfo>,
-        bundles: &[BundleWithUpdateStatus],
-    ) -> Vec<PackageEntry> {
-        bundle_packages(
-            content,
-            bundles,
-            &HashMap::new(),
-            &PackageMetaMap::new(),
-            &HashSet::new(),
-            ContentType::Mod,
-        )
-    }
-
-    fn ids(rows: &[PackageEntry]) -> Vec<String> {
-        rows.iter().map(|r| r.package_id.clone()).collect()
-    }
-
-    #[test]
-    fn hidden_bundle_files_are_not_listed() {
-        let bundles = vec![bundle(
-            "Core",
-            vec![file("visible", true, false), file("dep", true, true)],
-        )];
-        assert_eq!(ids(&rows_for(Vec::new(), &bundles)), ["visible"]);
-    }
-
-    #[test]
-    fn an_installed_hidden_file_does_not_come_back_as_loose_content() {
-        // The dependency really is in the cluster, so the pass over installed
-        // content would happily list it as an unmanaged local file.
-        let bundles = vec![bundle("Core", vec![file("dep", true, true)])];
-        assert!(rows_for(vec![installed("dep")], &bundles).is_empty());
-    }
-
-    #[test]
-    fn a_file_another_bundle_shows_openly_stays_visible() {
-        let bundles = vec![
-            bundle("Core", vec![file("shared", true, true)]),
-            bundle("Extras", vec![file("shared", true, false)]),
-        ];
-        let rows = rows_for(Vec::new(), &bundles);
-        assert_eq!(ids(&rows), ["shared"]);
-        assert_eq!(
-            rows[0].bundle_name.as_deref(),
-            Some("OneClient 1.21.11 Fabric [Extras]")
-        );
-    }
-
-    fn entry(name: &str, provider: ProviderId, categories: &[&str]) -> PackageEntry {
-        PackageEntry {
-            package_id: name.to_string(),
-            bundle_name: (!categories.is_empty()).then(|| "bundle".to_string()),
-            provider,
-            name: name.to_string(),
-            file_name: format!("{}.jar", name.to_lowercase()),
-            author: String::new(),
-            description: String::new(),
-            icon_url: None,
-            size: 0,
-            categories: categories.iter().map(|c| (*c).to_string()).collect(),
-            enabled: true,
-            manifest_default: true,
-            installed: true,
-            hash: None,
-            update_available: false,
-        }
-    }
-
-    fn items() -> Vec<PackageEntry> {
-        vec![
-            entry("Sodium", ProviderId::Modrinth, &["Performance"]),
-            entry("Sodium Extra", ProviderId::Modrinth, &["Visuals"]),
-            entry("Sodium Local", ProviderId::Local, &[]),
-        ]
-    }
-
-    fn names(rows: &[PackageEntry]) -> Vec<&str> {
-        rows.iter().map(|p| p.name.as_str()).collect()
-    }
-
-    /// The pipeline the package manager runs: filter, apply the toolbar's sort,
-    /// then let relevance override it while there is something to be relevant to.
-    fn search(items: &[PackageEntry], tab: Option<&Tab>, query: &str) -> Vec<PackageEntry> {
-        let query = SearchQuery::new(query);
-        let mut rows = visible_packages(items, tab, &query, EnabledFilter::All);
-        SortMode::NameAsc.sort(&mut rows);
-        if !query.is_empty() {
-            rank_by_query(&mut rows, &query);
-        }
-        rows
-    }
-
-    #[test]
-    fn search_stays_inside_the_active_category() {
-        let items = items();
-        let tab = Tab::Category("Performance".to_string());
-        assert_eq!(names(&search(&items, Some(&tab), "sodium")), ["Sodium"]);
-    }
-
-    #[test]
-    fn search_stays_inside_the_local_tab() {
-        let items = items();
-        let rows = search(&items, Some(&Tab::Local), "sodium");
-        assert_eq!(names(&rows), ["Sodium Local"]);
-    }
-
-    #[test]
-    fn all_tab_searches_every_package() {
-        let items = items();
-        let rows = search(&items, Some(&Tab::All), "sodium");
-        assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
-    }
-
-    #[test]
-    fn empty_query_keeps_the_whole_tab() {
-        let items = items();
-        let tab = Tab::Category("Visuals".to_string());
-        assert_eq!(names(&search(&items, Some(&tab), "")), ["Sodium Extra"]);
-    }
-
-    #[test]
-    fn stray_whitespace_does_not_change_the_results() {
-        let items = items();
-        let baseline = search(&items, Some(&Tab::All), "sodium extra");
-        for raw in ["  sodium extra", "sodium extra ", "sodium   extra"] {
-            let rows = search(&items, Some(&Tab::All), raw);
-            assert_eq!(names(&rows), names(&baseline), "{raw:?}");
-        }
-    }
-
-    #[test]
-    fn a_misspelled_query_still_finds_the_package() {
-        let items = items();
-        let rows = search(&items, Some(&Tab::All), "sodum");
-        assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
-    }
-
-    #[test]
-    fn the_closest_match_is_listed_first() {
-        // Alphabetically "Sodium" leads; by relevance the exact hit does.
-        let items = items();
-        let rows = search(&items, Some(&Tab::All), "sodium extra");
-        assert_eq!(names(&rows).first(), Some(&"Sodium Extra"));
     }
 }

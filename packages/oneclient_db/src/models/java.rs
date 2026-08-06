@@ -7,4 +7,5 @@ pub struct JavaVersionRow {
 	pub version: String,
 	pub vendor: String,
 	pub os_arch: String,
+	pub is_jdk: bool,
 }

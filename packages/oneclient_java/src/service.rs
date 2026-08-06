@@ -149,7 +149,7 @@ impl JavaService {
 		let recorded = self.store.latest_by_major(major).await?;
 
 		if let Some(runtime) = &recorded
-			&& checker::is_jdk_executable(&runtime.absolute_path)
+			&& runtime.is_jdk
 		{
 			return Ok(runtime.clone());
 		}
@@ -347,6 +347,7 @@ impl JavaService {
 			vendor: JavaVendor::from_str(&info.vendor)
 				.unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone())),
 			os_arch: info.os_arch.clone(),
+			is_jdk: info.is_jdk,
 		};
 
 		Ok(self.store.upsert(&runtime).await?)

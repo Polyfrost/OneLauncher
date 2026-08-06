@@ -58,6 +58,32 @@ impl PackageProviderRegistry {
         identities: &[FileIdentity],
         ctx: &ContentCtx,
     ) -> ContentResult<VersionLookup> {
+        Ok(self
+            .lookup_identified(identities, ctx)
+            .await?
+            .into_iter()
+            .map(|(sha1, (_, version))| (sha1, version))
+            .collect())
+    }
+
+    /// [`Self::lookup_versions`], keeping the provider that recognised each
+    /// file.
+    ///
+    /// A [`VersionDetail`] names its project but not the site the project is on,
+    /// and the two ids only mean anything together — "sodium" is a Modrinth slug
+    /// and a CurseForge number, and neither resolves against the other. Anything
+    /// that goes on to *record* a match needs the pair, so this is the shape the
+    /// lookup is really in and [`Self::lookup_versions`] is the one dropping
+    /// information.
+    ///
+    /// One request per provider for the whole batch, which is the reason to
+    /// prefer this over [`Self::lookup_version_identity`] in a loop.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn lookup_identified(
+        &self,
+        identities: &[FileIdentity],
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, (ProviderId, VersionDetail)>> {
         if identities.is_empty() {
             return Ok(HashMap::new());
         }
@@ -72,7 +98,7 @@ impl PackageProviderRegistry {
             let provider = self.get(id)?;
             let found = provider.lookup_versions(&enriched, ctx).await?;
             for (sha1, version) in found {
-                merged.entry(sha1).or_insert(version);
+                merged.entry(sha1).or_insert((id, version));
             }
         }
         Ok(merged)

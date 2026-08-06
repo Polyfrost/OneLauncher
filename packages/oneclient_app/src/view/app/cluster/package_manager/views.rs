@@ -459,13 +459,13 @@ fn add_from_file_button(
                     .pick_files()
                     .await
                 {
-                    for handle in handles {
-                        dispatch.import_local_file(
-                            cluster_id,
-                            content_type,
-                            handle.path().to_path_buf(),
-                        );
-                    }
+                    dispatch.import_local_files(
+                        cluster_id,
+                        handles
+                            .iter()
+                            .map(|handle| (content_type, handle.path().to_path_buf()))
+                            .collect(),
+                    );
                 }
             });
         })

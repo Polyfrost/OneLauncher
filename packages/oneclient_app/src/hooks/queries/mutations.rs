@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
-use oneclient_content::packages::{ContentType, PackageStore};
 use oneclient_db::models::{ClusterId, OverrideType};
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
@@ -69,11 +66,6 @@ pub enum ClusterAction {
         /// (write `Enabled` / `Disabled`).
         manifest_default: bool,
     },
-    ImportLocalFile {
-        cluster_id: ClusterId,
-        content_type: ContentType,
-        path: PathBuf,
-    },
     SetDedicatedDir {
         cluster_id: ClusterId,
         dedicated: bool,
@@ -132,17 +124,6 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
-            ClusterAction::ImportLocalFile {
-                cluster_id,
-                content_type,
-                path,
-            } => PackageStore::import_local_file(path, *content_type, *cluster_id, content)
-                .await
-                .map(|row| {
-                    services
-                        .events
-                        .notify("Imported").body(format!("Added {}", row.file_name)).send();
-                }),
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,

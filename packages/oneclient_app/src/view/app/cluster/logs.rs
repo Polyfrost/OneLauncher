@@ -4,6 +4,7 @@ use std::sync::Arc;
 use freya::prelude::*;
 use freya::query::MutationStateData;
 use freya::text_edit::Clipboard;
+use oneclient_common::search::SearchQuery;
 use oneclient_core::{LogFileInfo, LogKind, LogLevel};
 
 use crate::components::{
@@ -366,14 +367,10 @@ impl Component for LogPicker {
         let on_select = self.on_select.clone();
         let is_open = open() && enabled;
 
-        let query = filter.read().to_lowercase();
+        let query = SearchQuery::new(&filter.read());
         let rows: Vec<Element> = files
             .into_iter()
-            .filter(|f| {
-                query.is_empty()
-                    || f.name.to_lowercase().contains(&query)
-                    || kind_badge(f.kind).to_lowercase().contains(&query)
-            })
+            .filter(|f| query.matches(&f.name) || query.matches(kind_badge(f.kind)))
             .map(|file| {
                 let on_select = on_select.clone();
                 let path = file.path.clone();

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
+use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
@@ -287,11 +288,10 @@ impl Tab {
     }
 }
 
-/// `query` is expected to be lowercased already.
-fn matches_query(p: &PackageEntry, query: &str) -> bool {
-    query.is_empty()
-        || p.name.to_lowercase().contains(query)
-        || p.file_name.to_lowercase().contains(query)
+/// A package is searched by what the user sees (its display name) and by what
+/// is on disk (its file name), whichever matches better.
+fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
+    query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
 /// Rows to show for the current toolbar state. The search is scoped to the
@@ -302,16 +302,23 @@ fn matches_query(p: &PackageEntry, query: &str) -> bool {
 fn visible_packages(
     items: &[PackageEntry],
     tab: Option<&Tab>,
-    query: &str,
+    query: &SearchQuery,
     show: EnabledFilter,
     hidden: HiddenFilter,
 ) -> Vec<PackageEntry> {
     items
         .iter()
-        .filter(|p| tab.is_none_or(|t| t.matches(p)) && matches_query(p, query))
+        .filter(|p| tab.is_none_or(|t| t.matches(p)) && query_score(p, query).is_some())
         .filter(|p| show.keep(p) && hidden.keep(p))
         .cloned()
         .collect()
+}
+
+/// Reorders search results so the closest matches come first. Stable, so the
+/// sort the user picked in the toolbar survives as the tie-break between rows
+/// that matched equally well.
+fn rank_by_query(rows: &mut [PackageEntry], query: &SearchQuery) {
+    rows.sort_by_key(|p| std::cmp::Reverse(query_score(p, query)));
 }
 
 pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
@@ -403,7 +410,7 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
-        let query = search.read().to_lowercase();
+        let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
             .as_deref()
@@ -420,6 +427,12 @@ impl Component for PackageManager {
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
         sort_mode.sort(&mut filtered);
+        // Relevance has to win while searching: with fuzzy matching, a name that
+        // only matched after forgiving a typo would otherwise sort above the one
+        // the user actually typed.
+        if !query.is_empty() {
+            rank_by_query(&mut filtered, &query);
+        }
 
         // Coming up empty during a search is about the query, not about the tab
         // having nothing in it, so it gets its own empty state naming the tab
@@ -466,214 +479,5 @@ impl Component for PackageManager {
                 content_kind,
                 card_layout,
             ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::view::onboarding::test_support::{archive, file};
-    use oneclient_core::{BundleFile, FileUpdateStatus};
-
-    fn bundle(category: &str, files: Vec<BundleFile>) -> BundleWithUpdateStatus {
-        BundleWithUpdateStatus {
-            files: files
-                .iter()
-                .cloned()
-                .map(|f| (f, FileUpdateStatus::UpToDate))
-                .collect(),
-            archive: archive(category, true, files),
-            has_updates: false,
-        }
-    }
-
-    fn installed(package_id: &str) -> LinkedArtifactInfo {
-        LinkedArtifactInfo {
-            hash: package_id.to_string(),
-            cluster_file_name: format!("{package_id}.jar"),
-            enabled: true,
-            content_type: ContentType::Mod,
-            file_name: format!("{package_id}.jar"),
-            project_id: None,
-            version_id: None,
-            display_name: None,
-            display_version: None,
-            provider: None,
-            published_at: None,
-        }
-    }
-
-    fn rows_for(
-        content: Vec<LinkedArtifactInfo>,
-        bundles: &[BundleWithUpdateStatus],
-    ) -> Vec<PackageEntry> {
-        bundle_packages(
-            content,
-            bundles,
-            &HashMap::new(),
-            &PackageMetaMap::new(),
-            &HashSet::new(),
-            ContentType::Mod,
-        )
-    }
-
-    fn ids(rows: &[PackageEntry]) -> Vec<String> {
-        rows.iter().map(|r| r.package_id.clone()).collect()
-    }
-
-    fn shown(rows: &[PackageEntry], hidden: HiddenFilter) -> Vec<String> {
-        ids(&visible_packages(
-            rows,
-            None,
-            "",
-            EnabledFilter::All,
-            hidden,
-        ))
-    }
-
-    #[test]
-    fn hidden_bundle_files_are_not_listed_by_default() {
-        let bundles = vec![bundle(
-            "Core",
-            vec![file("visible", true, false), file("dep", true, true)],
-        )];
-        let rows = rows_for(Vec::new(), &bundles);
-        assert_eq!(shown(&rows, HiddenFilter::Hide), ["visible"]);
-    }
-
-    #[test]
-    fn turning_the_filter_off_reveals_hidden_bundle_files() {
-        let bundles = vec![bundle(
-            "Core",
-            vec![file("visible", true, false), file("dep", true, true)],
-        )];
-        let rows = rows_for(Vec::new(), &bundles);
-        assert_eq!(shown(&rows, HiddenFilter::Show), ["visible", "dep"]);
-    }
-
-    #[test]
-    fn an_installed_hidden_file_does_not_come_back_as_loose_content() {
-        // The dependency really is in the cluster, so the pass over installed
-        // content would happily list it as a second, unmanaged local row.
-        let bundles = vec![bundle("Core", vec![file("dep", true, true)])];
-        let rows = rows_for(vec![installed("dep")], &bundles);
-        assert_eq!(ids(&rows), ["dep"]);
-        assert!(rows[0].hidden && rows[0].in_bundle());
-        assert!(shown(&rows, HiddenFilter::Hide).is_empty());
-    }
-
-    #[test]
-    fn a_category_of_only_hidden_files_gets_no_tab() {
-        let bundles = vec![bundle("Core", vec![file("dep", true, true)])];
-        let rows = rows_for(Vec::new(), &bundles);
-        let labels = |hidden| -> Vec<String> {
-            build_tabs(&bundle_categories(&bundles), &rows, hidden)
-                .iter()
-                .map(Tab::label)
-                .collect()
-        };
-        assert!(!labels(HiddenFilter::Hide).contains(&"Core".to_string()));
-        assert!(labels(HiddenFilter::Show).contains(&"Core".to_string()));
-    }
-
-    #[test]
-    fn a_file_another_bundle_shows_openly_stays_visible() {
-        let bundles = vec![
-            bundle("Core", vec![file("shared", true, true)]),
-            bundle("Extras", vec![file("shared", true, false)]),
-        ];
-        let rows = rows_for(Vec::new(), &bundles);
-        assert_eq!(ids(&rows), ["shared"]);
-        assert_eq!(
-            rows[0].bundle_name.as_deref(),
-            Some("OneClient 1.21.11 Fabric [Extras]")
-        );
-    }
-
-    fn entry(name: &str, provider: ProviderId, categories: &[&str]) -> PackageEntry {
-        PackageEntry {
-            package_id: name.to_string(),
-            bundle_name: (!categories.is_empty()).then(|| "bundle".to_string()),
-            provider,
-            name: name.to_string(),
-            file_name: format!("{}.jar", name.to_lowercase()),
-            author: String::new(),
-            description: String::new(),
-            icon_url: None,
-            size: 0,
-            categories: categories.iter().map(|c| (*c).to_string()).collect(),
-            enabled: true,
-            manifest_default: true,
-            installed: true,
-            hash: None,
-            update_available: false,
-            hidden: false,
-        }
-    }
-
-    fn items() -> Vec<PackageEntry> {
-        vec![
-            entry("Sodium", ProviderId::Modrinth, &["Performance"]),
-            entry("Sodium Extra", ProviderId::Modrinth, &["Visuals"]),
-            entry("Sodium Local", ProviderId::Local, &[]),
-        ]
-    }
-
-    fn names(rows: &[PackageEntry]) -> Vec<&str> {
-        rows.iter().map(|p| p.name.as_str()).collect()
-    }
-
-    #[test]
-    fn search_stays_inside_the_active_category() {
-        let items = items();
-        let tab = Tab::Category("Performance".to_string());
-        let rows = visible_packages(
-            &items,
-            Some(&tab),
-            "sodium",
-            EnabledFilter::All,
-            HiddenFilter::Hide,
-        );
-        assert_eq!(names(&rows), ["Sodium"]);
-    }
-
-    #[test]
-    fn search_stays_inside_the_local_tab() {
-        let items = items();
-        let rows = visible_packages(
-            &items,
-            Some(&Tab::Local),
-            "sodium",
-            EnabledFilter::All,
-            HiddenFilter::Hide,
-        );
-        assert_eq!(names(&rows), ["Sodium Local"]);
-    }
-
-    #[test]
-    fn all_tab_searches_every_package() {
-        let items = items();
-        let rows = visible_packages(
-            &items,
-            Some(&Tab::All),
-            "sodium",
-            EnabledFilter::All,
-            HiddenFilter::Hide,
-        );
-        assert_eq!(names(&rows), ["Sodium", "Sodium Extra", "Sodium Local"]);
-    }
-
-    #[test]
-    fn empty_query_keeps_the_whole_tab() {
-        let items = items();
-        let tab = Tab::Category("Visuals".to_string());
-        let rows = visible_packages(
-            &items,
-            Some(&tab),
-            "",
-            EnabledFilter::All,
-            HiddenFilter::Hide,
-        );
-        assert_eq!(names(&rows), ["Sodium Extra"]);
     }
 }

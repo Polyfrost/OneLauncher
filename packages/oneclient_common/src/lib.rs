@@ -11,6 +11,7 @@ pub mod domain;
 pub mod os_ext;
 pub mod paths;
 pub mod patch;
+pub mod search;
 pub mod version;
 
 mod error;
@@ -21,4 +22,5 @@ pub use domain::{
 pub use error::{PathsError, PathsResult};
 pub use os_ext::OsExt;
 pub use patch::Patch;
+pub use search::{MatchScore, SearchQuery, normalize_query};
 pub use version::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};

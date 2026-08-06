@@ -60,7 +60,7 @@ impl PackageProvider for ModrinthProvider {
             let mut params = url.query_pairs_mut();
             params.append_pair("limit", &limit.to_string());
             params.append_pair("offset", &offset.to_string());
-            params.append_pair("query", filters.query.as_deref().unwrap_or_default());
+            params.append_pair("query", &filters.normalized_query());
 
             let mut groups: Vec<Vec<String>> = Vec::new();
             if let Some(content_type) = filters.content_type {

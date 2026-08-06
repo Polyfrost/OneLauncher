@@ -128,10 +128,10 @@ fn main() {
     let mut launch_config = LaunchConfig::new()
         .with_window(window_config)
         .with_gpu_resource_cache_limit(
-            std::env::var("ONECLIENT_GPU_CACHE_MB")
+            std::env::var("ONECLIENT_GPU_CACHE_BYTES")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(32 * 1024 * 1024),
+                .unwrap_or(512 * 1024 * 1024), // 512 MB
         )
         .with_default_font(theme::DEFAULT_FONT);
 

@@ -188,16 +188,6 @@ pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElem
 }
 
 /// Which of several installed versions the game actually loads.
-///
-/// Only worth showing when a package has more than one copy in the cluster —
-/// with a single one "active" says nothing "installed" hasn't.
-///
-/// Reads the artifact's `enabled` flag rather than working the answer out
-/// itself, because
-/// [`reconcile_duplicate_activity`](oneclient_content::packages::reconcile_duplicate_activity)
-/// has already resolved duplicates to the newest copy. Exactly one row in a
-/// duplicated set should read Active; more than one means that pass has not run
-/// since the copies appeared.
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
         ("Active", colors::brand())

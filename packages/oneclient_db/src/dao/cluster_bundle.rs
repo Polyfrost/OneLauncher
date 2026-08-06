@@ -96,20 +96,18 @@ pub async fn get_bundle_tracked(
     .await
 }
 
-pub async fn has_bundle_mapping(
+pub async fn has_bundle_mapping_for_package(
     pool: &SqlitePool,
     cluster_id: i64,
-    bundle_name: &str,
     package_id: &str,
 ) -> Result<bool, sqlx::Error> {
     let row = sqlx::query_scalar!(
         r#"
         SELECT 1 FROM cluster_artifacts
-        WHERE cluster_id = ? AND bundle_name = ? AND package_id = ?
+        WHERE cluster_id = ? AND bundle_name IS NOT NULL AND package_id = ?
         LIMIT 1
         "#,
         cluster_id,
-        bundle_name,
         package_id
     )
     .fetch_optional(pool)

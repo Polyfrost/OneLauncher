@@ -797,7 +797,7 @@ impl Actions {
                 // had leaves the newest live and the rest switched off. Done
                 // before the refresh below so the version list never renders the
                 // moment where both copies read as active.
-                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+                if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
                     cluster_id,
                     &state.services.content(),
                 )
@@ -806,13 +806,6 @@ impl Actions {
                     tracing::warn!(%err, "failed to resolve duplicate package versions");
                 }
 
-                // What the install button turns into is read straight off the
-                // cluster's content, so that is refreshed here and waited for
-                // before the busy flag drops. Left to the `ClustersChanged`
-                // signal alone, the button came back as a live "Install" the
-                // moment the download finished and only grew its "Installed"
-                // badge once an event-pump round trip and a full cluster-query
-                // sweep — network calls included — had gone by.
                 super::invalidate_cluster_content_queries().await;
 
                 // Everything else the install touched is nobody's blocker and

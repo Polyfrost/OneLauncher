@@ -29,7 +29,7 @@ struct Copy {
     published_at: Option<String>,
 }
 
-/// Ensures each project in the cluster has exactly one enabled copy: the newest.
+/// Leaves each project in the cluster with the newest copy.
 ///
 /// A no-op on a cluster with no duplicates, which is every healthy one, so it is
 /// cheap enough to run before a launch and after an install.
@@ -37,40 +37,45 @@ struct Copy {
 pub async fn reconcile_duplicate_activity(
     cluster_id: i64,
     ctx: &ContentCtx,
-) -> ContentResult<()> {
+) -> ContentResult<Vec<String>> {
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let mut switched_off = Vec::new();
 
-    for ((provider, project_id), copies) in group_duplicates(&linked) {
-        let Some(winner) = newest(&copies) else {
+    for hash in duplicates_to_disable(&linked) {
+        tracing::info!(
+            cluster_id,
+            %hash,
+            "resolving duplicate versions of a package to the newest live one"
+        );
+
+        PackageStore::set_artifact_enabled_to(cluster_id, &hash, false, ctx).await?;
+        switched_off.push(hash);
+    }
+
+    Ok(switched_off)
+}
+
+fn duplicates_to_disable(linked: &[LinkedArtifactInfo]) -> Vec<String> {
+    let mut out = Vec::new();
+
+    for (_, copies) in group_duplicates(linked) {
+        let live: Vec<&Copy> = copies.iter().filter(|copy| copy.enabled).collect();
+        if live.len() < 2 {
+            continue;
+        }
+
+        let Some(winner) = newest(live.iter().copied()) else {
             continue;
         };
 
-        for copy in &copies {
-            let should_be_enabled = copy.hash == winner;
-            if copy.enabled == should_be_enabled {
-                continue;
-            }
-
-            tracing::info!(
-                cluster_id,
-                ?provider,
-                project_id,
-                hash = %copy.hash,
-                enabled = should_be_enabled,
-                "resolving duplicate versions of a package to the newest one"
-            );
-
-            PackageStore::set_artifact_enabled_to(
-                cluster_id,
-                &copy.hash,
-                should_be_enabled,
-                ctx,
-            )
-            .await?;
-        }
+        out.extend(
+            live.iter()
+                .filter(|copy| copy.hash != winner)
+                .map(|copy| copy.hash.clone()),
+        );
     }
 
-    Ok(())
+    out
 }
 
 /// Groups the cluster's content by project, keeping only the projects it has
@@ -110,9 +115,9 @@ fn group_duplicates(
 /// loses to any copy that has one — it is usually an older row written before
 /// the field was recorded — and an all-undated group falls back to the first,
 /// which at least makes the choice stable across runs rather than arbitrary.
-fn newest(copies: &[Copy]) -> Option<String> {
+fn newest<'a>(copies: impl IntoIterator<Item = &'a Copy>) -> Option<String> {
     copies
-        .iter()
+        .into_iter()
         .max_by(|a, b| a.published_at.cmp(&b.published_at))
         .map(|copy| copy.hash.clone())
 }
@@ -193,6 +198,54 @@ mod tests {
         assert_eq!(groups.len(), 1, "a single copy is nothing to resolve");
         assert_eq!(groups[0].0.1, "sodium");
         assert_eq!(groups[0].1.len(), 2);
+    }
+
+    #[test]
+    fn the_newest_live_copy_survives_and_the_rest_go_quiet() {
+        let mut disable = duplicates_to_disable(&[
+            info(Some("sodium"), "old", true, Some("2026-01-01T00:00:00Z")),
+            info(Some("sodium"), "new", true, Some("2026-06-01T00:00:00Z")),
+            info(Some("sodium"), "middle", true, Some("2026-03-01T00:00:00Z")),
+        ]);
+        disable.sort();
+        assert_eq!(disable, vec!["middle".to_string(), "old".to_string()]);
+    }
+
+    #[test]
+    fn a_copy_that_is_already_off_is_not_counted_as_a_conflict() {
+        let disable = duplicates_to_disable(&[
+            info(Some("sodium"), "live", true, Some("2026-01-01T00:00:00Z")),
+            info(Some("sodium"), "off", false, Some("2026-06-01T00:00:00Z")),
+        ]);
+
+        assert!(
+            disable.is_empty(),
+            "one live copy is not a duplicate, however many switched-off copies sit beside it"
+        );
+    }
+
+    #[test]
+    fn the_user_disabling_the_newest_copy_is_left_standing() {
+        let disable = duplicates_to_disable(&[
+            info(Some("sodium"), "chosen", true, Some("2026-01-01T00:00:00Z")),
+            info(Some("sodium"), "newest", false, Some("2026-06-01T00:00:00Z")),
+        ]);
+
+        assert!(
+            disable.is_empty(),
+            "picking the older version on purpose must not be undone, and the newest must not be \
+             switched back on"
+        );
+    }
+
+    #[test]
+    fn a_project_with_no_live_copy_at_all_is_left_alone() {
+        let disable = duplicates_to_disable(&[
+            info(Some("sodium"), "a", false, Some("2026-01-01T00:00:00Z")),
+            info(Some("sodium"), "b", false, Some("2026-06-01T00:00:00Z")),
+        ]);
+
+        assert!(disable.is_empty());
     }
 
     #[test]

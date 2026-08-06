@@ -173,6 +173,88 @@ pub async fn install_bundle(
     install_enabled_bundle_files(&archive, cluster_id, skip_compatibility, None, ctx).await
 }
 
+/// Whether a bundle file that is switched off was switched off on purpose.
+fn disable_was_deliberate(hidden: bool, user_override: Option<OverrideType>) -> bool {
+    match user_override {
+        Some(OverrideType::Removed) => true,
+        // Hidden files are dependencies the bundle needs and the user was never
+        // shown, so they follow the bundle rather than standing on their own.
+        // Only an outright removal keeps one off.
+        Some(OverrideType::Disabled) => !hidden,
+        Some(OverrideType::Enabled) | None => false,
+    }
+}
+
+/// Switches bundle content back on where it was left off without saving the choice
+#[tracing::instrument(level = "debug", skip(archives, ctx))]
+pub async fn heal_bundle_activity(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    if tracked.iter().all(|row| row.enabled != 0) {
+        return Ok(());
+    }
+
+    let mut hidden: std::collections::HashMap<(&str, String), bool> =
+        std::collections::HashMap::new();
+    for archive in archives {
+        for file in &archive.manifest.files {
+            hidden.insert(
+                (archive.manifest.name.as_str(), file.kind.package_id()),
+                file.hidden,
+            );
+        }
+    }
+
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+
+    for row in tracked.iter().filter(|row| row.enabled == 0) {
+        let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
+            continue;
+        };
+        let Some(is_hidden) = hidden
+            .get(&(bundle_name.as_str(), package_id.clone()))
+            .copied()
+        else {
+            continue;
+        };
+
+        let user_override = find_override(&overrides, bundle_name, package_id);
+        if disable_was_deliberate(is_hidden, user_override) {
+            continue;
+        }
+
+        tracing::info!(
+            cluster_id,
+            bundle = %bundle_name,
+            package_id,
+            hidden = is_hidden,
+            ?user_override,
+            "re-enabling bundle content that was switched off with nothing recording the choice"
+        );
+
+        // One unrepairable row is not worth failing an install over; the rest of
+        // the cluster still wants fixing.
+        if let Err(err) =
+            PackageStore::set_artifact_enabled_to(cluster_id, &row.hash, true, ctx).await
+        {
+            tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
+            continue;
+        }
+
+        // A hidden file reaching here with a `disabled` row is the one case where
+        // the override is the wrong half. Drop it, or the next pass reads the
+        // same disagreement and the two records never settle.
+        if user_override == Some(OverrideType::Disabled) {
+            bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
+        }
+    }
+
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(archive, progress, ctx), fields(bundle = %archive.manifest.name))]
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
@@ -182,6 +264,7 @@ pub async fn install_enabled_bundle_files(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
     extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
+    heal_bundle_activity(cluster_id, std::slice::from_ref(archive), ctx).await?;
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let bundle_name = archive.manifest.name.clone();
@@ -475,6 +558,51 @@ pub async fn toggle_artifact_enabled(
     Ok(enabled)
 }
 
+/// Puts an artifact into a known enabled state and updates the bundle override
+/// records to match.
+///
+/// The set counterpart to [`toggle_artifact_enabled`], and the one to reach for
+/// whenever the caller already knows the state it wants. Flipping only lands on
+/// the right answer when the current value is known to be the opposite, which is
+/// true of a user pressing a switch and false of everything else: an artifact
+/// that is relinked keeps whatever `enabled` it already had, so a flip applied
+/// to a row that was already correct puts it wrong.
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn set_artifact_enabled_to(
+    cluster_id: i64,
+    hash: &str,
+    enabled: bool,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
+
+    if enabled {
+        on_user_enable_artifact(cluster_id, hash, ctx).await
+    } else {
+        on_user_disable_artifact(cluster_id, hash, ctx).await
+    }
+}
+
+/// [`crate::packages::reconcile_duplicate_activity`] with the bundle half added.
+///
+/// Same split as [`toggle_artifact_enabled`]: `packages` owns the flag and knows
+/// nothing about bundles, and the override that has to move with it is written
+/// here. A bundle copy that loses to a newer one used to be switched off with
+/// nothing recording why, which read as a state nobody chose — and once this
+/// module started repairing exactly that state, the two passes would have spent
+/// every launch undoing each other.
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn reconcile_duplicate_activity(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    for hash in crate::packages::reconcile_duplicate_activity(cluster_id, ctx).await? {
+        on_user_disable_artifact(cluster_id, &hash, ctx).await?;
+    }
+
+    Ok(())
+}
+
 pub async fn on_user_disable_artifact(
     cluster_id: i64,
     hash: &str,
@@ -580,10 +708,9 @@ pub async fn remove_artifact_from_cluster(
                 )
                 .await?;
             } else {
-                let replacement_exists = bundle_dao::has_bundle_mapping(
+                let replacement_exists = bundle_dao::has_bundle_mapping_for_package(
                     &ctx.db,
                     cluster_id,
-                    &bundle_name,
                     &package_id,
                 )
                 .await?;
@@ -661,6 +788,36 @@ mod tests {
             package_id: pid.to_string(),
             override_type: ty.as_str().to_string(),
         }
+    }
+
+    #[test]
+    fn a_disable_with_no_override_behind_it_is_an_accident() {
+        assert!(!disable_was_deliberate(false, None));
+        assert!(!disable_was_deliberate(true, None));
+    }
+
+    #[test]
+    fn a_users_own_disable_is_respected() {
+        assert!(disable_was_deliberate(
+            false,
+            Some(OverrideType::Disabled)
+        ));
+        assert!(disable_was_deliberate(false, Some(OverrideType::Removed)));
+    }
+
+    #[test]
+    fn a_hidden_dependency_cannot_be_disabled_on_its_own() {
+        assert!(
+            !disable_was_deliberate(true, Some(OverrideType::Disabled)),
+            "a hidden file follows its bundle; only removing it keeps it off"
+        );
+        assert!(disable_was_deliberate(true, Some(OverrideType::Removed)));
+    }
+
+    #[test]
+    fn an_opt_in_override_never_reads_as_a_disable() {
+        assert!(!disable_was_deliberate(false, Some(OverrideType::Enabled)));
+        assert!(!disable_was_deliberate(true, Some(OverrideType::Enabled)));
     }
 
     #[test]

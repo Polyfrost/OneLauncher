@@ -62,7 +62,7 @@ pub async fn materialize_content(
     // of one package would otherwise hand the game every enabled copy, and for
     // mods that is a classloader conflict rather than a choice. Resolving to the
     // newest here means the rest are simply not desired.
-    if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+    if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
         cluster.id,
         &services.content(),
     )

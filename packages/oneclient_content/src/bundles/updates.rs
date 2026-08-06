@@ -12,8 +12,8 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, install_package_from_bundle, remove_artifact_from_cluster,
-    toggle_artifact_enabled,
+    BUNDLE_INSTALL_CONCURRENCY, heal_bundle_activity, install_package_from_bundle,
+    remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -382,6 +382,19 @@ pub async fn apply_bundle_updates_with(
 ) -> ContentResult<ApplyBundleUpdatesResult> {
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
+
+    // Before anything is decided. The check below works from the override table
+    // and the manifest defaults and never consults `enabled`, so a cluster
+    // holding content that was switched off with nothing recording the choice
+    // would be read as healthy and left exactly as it is.
+    {
+        let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+        let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
+        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
+            heal_bundle_activity(cluster_id, &archives, ctx).await?;
+        }
+    }
+
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, ctx, &overrides).await?;
 
@@ -547,6 +560,11 @@ pub async fn apply_bundle_updates_with(
 /// Local bookkeeping for an update whose new file is already downloaded and
 /// linked: apply the user's enable/disable choice, then drop the artifact the
 /// update supersedes.
+///
+/// The choice is *set*, not flipped. Linking an artifact leaves an existing row's
+/// `enabled` alone, so re-applying an update to a row that already read correctly
+/// used to turn it into its opposite — which is the "my mods turn themselves off
+/// at random" report.
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn reconcile_update(
     update: &BundlePackageUpdate,
@@ -555,9 +573,8 @@ async fn reconcile_update(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = update.new_file.kind.package_id();
-    if should_be_disabled(&update.bundle_name, &file_id, overrides) {
-        toggle_artifact_enabled(update.cluster_id, hash, ctx).await?;
-    }
+    let enabled = !should_be_disabled(&update.bundle_name, &file_id, overrides);
+    set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash == update.installed_hash {
         return Ok(());
@@ -574,11 +591,8 @@ async fn reconcile_addition(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = addition.new_file.kind.package_id();
-    if should_be_disabled(&addition.bundle_name, &file_id, overrides) {
-        toggle_artifact_enabled(addition.cluster_id, hash, ctx).await?;
-    }
-
-    Ok(())
+    let enabled = !should_be_disabled(&addition.bundle_name, &file_id, overrides);
+    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
 }
 
 fn should_be_disabled(

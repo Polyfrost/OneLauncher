@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT 1 FROM cluster_artifacts\n        WHERE cluster_id = ? AND bundle_name = ? AND package_id = ?\n        LIMIT 1\n        ",
+  "query": "\n        SELECT 1 FROM cluster_artifacts\n        WHERE cluster_id = ? AND bundle_name IS NOT NULL AND package_id = ?\n        LIMIT 1\n        ",
   "describe": {
     "columns": [
       {
@@ -11,11 +11,11 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       false
     ]
   },
-  "hash": "dc93cdd57e23e48f8e3c333db4ec396b0ee319adec619e5a7d147805573ae2b2"
+  "hash": "ab6dcea84a9502d5f8396a207ae613a4c41eb729ca22249f15eb45e6c6030094"
 }

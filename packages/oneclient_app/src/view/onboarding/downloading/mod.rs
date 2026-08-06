@@ -507,9 +507,15 @@ fn build_plans(
     items
         .iter()
         .map(|cb| {
+            let kept = kept_package_ids(cb.cluster.id, &cb.archives, selected);
             let mut overrides = Vec::new();
             for archive in &cb.archives {
-                overrides.extend(archive_overrides(cb.cluster.id, archive, selected));
+                overrides.extend(archive_overrides(
+                    cb.cluster.id,
+                    archive,
+                    selected,
+                    &kept,
+                ));
             }
             ClusterPlan {
                 cluster_id: cb.cluster.id,
@@ -535,10 +541,62 @@ fn cluster_predownloads(versions: &[VersionMetadata], cluster: &Cluster) -> bool
     })
 }
 
+/// Whether a bundle keeps its hidden files: true once anything visible in it was
+/// taken, including a single opted-in extra that would otherwise lose its
+/// dependencies.
+fn bundle_taken(
+    cluster_id: i64,
+    archive: &BundleArchive,
+    selected: &std::collections::HashSet<String>,
+) -> bool {
+    archive.manifest.files.iter().any(|file| {
+        !file.hidden
+            && selected.contains(&pkg_key(
+                cluster_id,
+                &archive.manifest.name,
+                &file.kind.package_id(),
+            ))
+    })
+}
+
+/// Every package id this cluster is keeping, across all of its bundles.
+///
+/// Bundles overlap: the library one pack needs is often the library another
+/// needs too, shipped hidden by both. Deciding each archive on its own meant a
+/// declined bundle recorded its hidden files as removed even when an accepted
+/// bundle right beside it was about to install the very same package — leaving a
+/// `removed` row for something the cluster demonstrably has, which then answered
+/// for it in anything that looks a package up by id.
+fn kept_package_ids(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    selected: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    let mut kept = std::collections::HashSet::new();
+
+    for archive in archives {
+        let takes_hidden = bundle_taken(cluster_id, archive, selected);
+        for file in &archive.manifest.files {
+            let package_id = file.kind.package_id();
+            let wanted = if file.hidden {
+                takes_hidden
+            } else {
+                selected.contains(&pkg_key(cluster_id, &archive.manifest.name, &package_id))
+            };
+            if wanted {
+                kept.insert(package_id);
+            }
+        }
+    }
+
+    kept
+}
+
 fn archive_overrides(
     cluster_id: i64,
     archive: &BundleArchive,
     selected: &std::collections::HashSet<String>,
+    kept_elsewhere: &std::collections::HashSet<String>,
 ) -> Vec<(String, String, OverrideType)> {
     let bundle_name = &archive.manifest.name;
     let wants = |file: &BundleFile| {
@@ -546,19 +604,13 @@ fn archive_overrides(
     };
 
     // Hidden files are dependencies the user never sees, so they follow the
-    // bundle: kept if anything from it was taken (including a single opted-in
-    // extra, which would otherwise lose its dependencies), dropped if not.
-    let bundle_taken = archive
-        .manifest
-        .files
-        .iter()
-        .filter(|f| !f.hidden)
-        .any(wants);
+    // bundle: kept if anything from it was taken, dropped if not.
+    let takes_hidden = bundle_taken(cluster_id, archive, selected);
 
     let mut overrides = Vec::new();
     for file in &archive.manifest.files {
         let wanted = if file.hidden {
-            bundle_taken
+            takes_hidden
         } else {
             wants(file)
         };
@@ -568,8 +620,15 @@ fn archive_overrides(
             (true, true) | (false, false) => continue,
             // Opting into a mod the bundle ships turned off.
             (true, false) => OverrideType::Enabled,
-            // Declined: don't fetch it at all.
-            (false, true) => OverrideType::Removed,
+            // Declined — but only really declined if no bundle the user did take
+            // ships the same package. Recording a removal for something that is
+            // being installed anyway states the opposite of what happens.
+            (false, true) => {
+                if kept_elsewhere.contains(&file.kind.package_id()) {
+                    continue;
+                }
+                OverrideType::Removed
+            }
         };
 
         overrides.push((bundle_name.clone(), file.kind.package_id(), override_type));
@@ -590,30 +649,17 @@ fn rough_download_estimate(
         if !cluster_predownloads(versions, &cb.cluster) {
             continue;
         }
+        // What the cluster is keeping is already the answer to "what gets
+        // downloaded", so the estimate reads it directly rather than
+        // reconstructing it from the overrides. Counted once per package: two
+        // bundles shipping the same library is one download, which is what the
+        // install path does with it too.
+        let kept = kept_package_ids(cb.cluster.id, &cb.archives, selected);
+        let mut counted: std::collections::HashSet<String> = std::collections::HashSet::new();
         for archive in &cb.archives {
-            let dropped: std::collections::HashSet<String> =
-                archive_overrides(cb.cluster.id, archive, selected)
-                    .into_iter()
-                    .filter(|(_, _, ty)| *ty == OverrideType::Removed)
-                    .map(|(_, pid, _)| pid)
-                    .collect();
-            let opted_in: std::collections::HashSet<String> =
-                archive_overrides(cb.cluster.id, archive, selected)
-                    .into_iter()
-                    .filter(|(_, _, ty)| *ty == OverrideType::Enabled)
-                    .map(|(_, pid, _)| pid)
-                    .collect();
-
             for file in &archive.manifest.files {
-                let pid = file.kind.package_id();
-                let installing = if opted_in.contains(&pid) {
-                    true
-                } else if dropped.contains(&pid) {
-                    false
-                } else {
-                    file.enabled
-                };
-                if installing {
+                let package_id = file.kind.package_id();
+                if kept.contains(&package_id) && counted.insert(package_id) {
                     total += file.size;
                 }
             }

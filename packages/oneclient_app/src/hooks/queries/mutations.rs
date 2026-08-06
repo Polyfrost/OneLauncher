@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
 use oneclient_content::packages::{ContentType, PackageStore};
-use oneclient_db::models::{ClusterId, OverrideType};
+use oneclient_db::models::ClusterId;
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
 use super::cluster_content::ClusterContentQuery;
@@ -116,18 +116,12 @@ impl MutationCapability for ClusterMutation {
                 enabled,
                 manifest_default,
             } => {
-                // Matching the manifest default means "no opinion" -> clear the
-                // override. Contradicting it pins the choice in either direction.
-                let override_type = match (*enabled, *manifest_default) {
-                    (true, true) | (false, false) => None,
-                    (true, false) => Some(OverrideType::Enabled),
-                    (false, true) => Some(OverrideType::Disabled),
-                };
-                oneclient_core::set_bundle_package_override(
+                oneclient_core::set_bundle_package_enabled(
                     *cluster_id,
                     bundle_name,
                     package_id,
-                    override_type,
+                    *enabled,
+                    *manifest_default,
                     content,
                 )
                 .await

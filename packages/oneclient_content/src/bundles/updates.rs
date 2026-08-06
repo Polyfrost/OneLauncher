@@ -12,8 +12,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, heal_bundle_activity, install_package_from_bundle,
-    remove_artifact_from_cluster, set_artifact_enabled_to,
+    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, find_user_suppression,
+    heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
+    set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -563,8 +564,15 @@ pub async fn apply_bundle_updates_with(
 ///
 /// The choice is *set*, not flipped. Linking an artifact leaves an existing row's
 /// `enabled` alone, so re-applying an update to a row that already read correctly
-/// used to turn it into its opposite — which is the "my mods turn themselves off
-/// at random" report.
+/// used to turn it into its opposite.
+///
+/// It is also read across bundles. `update.bundle_name` is the bundle that ships
+/// the file *now* — [`check_bundle_updates_inner`] re-resolves a package to
+/// whichever loaded bundle carries it — and a file only reaches here at all
+/// because it passed `effective_enabled` under that bundle, so asking that
+/// bundle alone whether the user objects can only ever answer no. Consulting
+/// only it would forcibly enable every package whose objection was filed while
+/// it lived somewhere else.
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn reconcile_update(
     update: &BundlePackageUpdate,
@@ -573,7 +581,8 @@ async fn reconcile_update(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = update.new_file.kind.package_id();
-    let enabled = !should_be_disabled(&update.bundle_name, &file_id, overrides);
+    let suppression = find_user_suppression(overrides, &file_id);
+    let enabled = !disable_was_deliberate(update.new_file.hidden, suppression);
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash == update.installed_hash {
@@ -591,20 +600,9 @@ async fn reconcile_addition(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = addition.new_file.kind.package_id();
-    let enabled = !should_be_disabled(&addition.bundle_name, &file_id, overrides);
+    let suppression = find_user_suppression(overrides, &file_id);
+    let enabled = !disable_was_deliberate(addition.new_file.hidden, suppression);
     set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
-}
-
-fn should_be_disabled(
-    bundle_name: &str,
-    package_id: &str,
-    overrides: &[ClusterBundleOverrideRow],
-) -> bool {
-    overrides.iter().any(|o| {
-        o.bundle_name == bundle_name
-            && o.package_id == package_id
-            && OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled)
-    })
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]

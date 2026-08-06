@@ -39,17 +39,52 @@ fn find_override(
         .and_then(|o| OverrideType::parse(&o.override_type))
 }
 
-async fn clear_suppressing_override(
+/// The user's standing objection to a package, wherever it happens to be
+/// recorded.
+///
+/// Overrides are stored per bundle, but a package does not stay in one:
+/// `track_bundle_artifact` rewrites `bundle_name` on every install, and the
+/// update flow deliberately re-resolves a package to whichever loaded bundle now
+/// ships it. Asking only the bundle an artifact currently sits under therefore
+/// misses a choice the user made while it sat somewhere else — and reading that
+/// silence as consent is what switches a mod they turned off back on.
+///
+/// `Removed` outranks `Disabled` where a package is spoken for twice. An
+/// `Enabled` opt-in is not an objection and never suppresses.
+///
+/// Deliberately wider than [`find_override`], which answers a different
+/// question: which manifest default one bundle's file should take, where the
+/// bundle is exactly what identifies the file.
+pub(crate) fn find_user_suppression(
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    package_id: &str,
+) -> Option<OverrideType> {
+    let mut found = None;
+
+    for row in overrides.iter().filter(|o| o.package_id == package_id) {
+        match OverrideType::parse(&row.override_type) {
+            Some(OverrideType::Removed) => return Some(OverrideType::Removed),
+            Some(OverrideType::Disabled) => found = Some(OverrideType::Disabled),
+            Some(OverrideType::Enabled) | None => {}
+        }
+    }
+
+    found
+}
+
+/// Drops the user's objections to a package everywhere they were recorded.
+///
+/// The inverse of [`find_user_suppression`], and it has to be: an objection that
+/// counts no matter which bundle wrote it has to be clearable no matter which
+/// bundle wrote it. Clearing only the current bundle's row would leave one
+/// behind that keeps answering "off" to every later question, which is the
+/// stuck state this whole area exists to prevent.
+async fn clear_suppressing_overrides(
     cluster_id: i64,
-    bundle_name: &str,
     package_id: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
-    if let Some(OverrideType::Enabled) = find_override(&overrides, bundle_name, package_id) {
-        return Ok(());
-    }
-    bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
+    bundle_dao::clear_suppressing_overrides(&ctx.db, cluster_id, package_id).await?;
     Ok(())
 }
 
@@ -174,8 +209,11 @@ pub async fn install_bundle(
 }
 
 /// Whether a bundle file that is switched off was switched off on purpose.
-fn disable_was_deliberate(hidden: bool, user_override: Option<OverrideType>) -> bool {
-    match user_override {
+///
+/// `suppression` comes from [`find_user_suppression`], so a choice filed under a
+/// bundle the file has since left still counts.
+pub(crate) fn disable_was_deliberate(hidden: bool, suppression: Option<OverrideType>) -> bool {
+    match suppression {
         Some(OverrideType::Removed) => true,
         // Hidden files are dependencies the bundle needs and the user was never
         // shown, so they follow the bundle rather than standing on their own.
@@ -221,8 +259,11 @@ pub async fn heal_bundle_activity(
             continue;
         };
 
-        let user_override = find_override(&overrides, bundle_name, package_id);
-        if disable_was_deliberate(is_hidden, user_override) {
+        // Across bundles, not just this one. A package that moved bundles keeps
+        // its old override row, and reading only the bundle it sits under today
+        // would take that silence for consent and switch it back on.
+        let suppression = find_user_suppression(&overrides, package_id);
+        if disable_was_deliberate(is_hidden, suppression) {
             continue;
         }
 
@@ -231,7 +272,7 @@ pub async fn heal_bundle_activity(
             bundle = %bundle_name,
             package_id,
             hidden = is_hidden,
-            ?user_override,
+            ?suppression,
             "re-enabling bundle content that was switched off with nothing recording the choice"
         );
 
@@ -245,10 +286,11 @@ pub async fn heal_bundle_activity(
         }
 
         // A hidden file reaching here with a `disabled` row is the one case where
-        // the override is the wrong half. Drop it, or the next pass reads the
-        // same disagreement and the two records never settle.
-        if user_override == Some(OverrideType::Disabled) {
-            bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
+        // the override is the wrong half. Drop it — everywhere, or the copy left
+        // under some other bundle keeps answering "off" and the two records never
+        // settle.
+        if suppression == Some(OverrideType::Disabled) {
+            clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
         }
     }
 
@@ -424,6 +466,15 @@ pub async fn set_bundle_package_override(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     match override_type {
+        // Saying "on" has to mean on. The package manager shows one row per
+        // package however many bundles ship it, so a switch flipped there is a
+        // statement about the package — and leaving an objection standing under
+        // some other bundle would let the next bundle pass read it and undo the
+        // switch the user just flipped.
+        Some(ty @ OverrideType::Enabled) => {
+            clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+            bundle_dao::save_override(&ctx.db, cluster_id, bundle_name, package_id, ty).await?;
+        }
         Some(ty) => {
             bundle_dao::save_override(&ctx.db, cluster_id, bundle_name, package_id, ty).await?;
         }
@@ -435,20 +486,41 @@ pub async fn set_bundle_package_override(
     Ok(())
 }
 
+/// The package manager's switch, for a bundle file the cluster has not installed
+/// (an installed one goes through [`toggle_artifact_enabled`] instead).
+///
+/// Matching the manifest default is "no opinion" and clears the override;
+/// contradicting it pins the choice. Either way, switching a package *on* also
+/// drops any objection filed against it under another bundle — the package
+/// manager shows one row per package however many bundles ship it, so the switch
+/// is a statement about the package, and a row left standing elsewhere would be
+/// read by the next bundle pass and quietly undo it.
+///
+/// Which is why the mapping lives here rather than at the call site: `None`
+/// alone cannot tell "on, and the default agrees" from "off, and the default
+/// agrees", and only the first of those should clear anything.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
     bundle_name: &str,
     package_id: &str,
     enabled: bool,
+    manifest_default: bool,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    let override_type = if enabled {
-        None
-    } else {
-        Some(OverrideType::Disabled)
+    let override_type = match (enabled, manifest_default) {
+        (true, true) | (false, false) => None,
+        (true, false) => Some(OverrideType::Enabled),
+        (false, true) => Some(OverrideType::Disabled),
     };
-    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await
+
+    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await?;
+
+    if enabled {
+        clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+    }
+
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(overrides, ctx), fields(count = overrides.len()))]
@@ -618,8 +690,8 @@ pub async fn on_user_enable_artifact(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
-        && let (Some(bundle_name), Some(package_id)) = (tracked.bundle_name, tracked.package_id) {
-            clear_suppressing_override(cluster_id, &bundle_name, &package_id, ctx).await?;
+        && let Some(package_id) = tracked.package_id {
+            clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
         }
     Ok(())
 }
@@ -715,13 +787,7 @@ pub async fn remove_artifact_from_cluster(
                 )
                 .await?;
                 if !replacement_exists {
-                    clear_suppressing_override(
-                        cluster_id,
-                        &bundle_name,
-                        &package_id,
-                        ctx,
-                    )
-                    .await?;
+                    clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
                 }
             }
         }
@@ -818,6 +884,46 @@ mod tests {
     fn an_opt_in_override_never_reads_as_a_disable() {
         assert!(!disable_was_deliberate(false, Some(OverrideType::Enabled)));
         assert!(!disable_was_deliberate(true, Some(OverrideType::Enabled)));
+    }
+
+    #[test]
+    fn suppression_is_found_under_a_bundle_the_package_has_since_left() {
+        let rows = vec![row("Bundle B", "fabric-api", OverrideType::Disabled)];
+
+        assert_eq!(
+            find_override(&rows, "Bundle C", "fabric-api"),
+            None,
+            "the per-bundle question is still answered per bundle"
+        );
+        assert_eq!(
+            find_user_suppression(&rows, "fabric-api"),
+            Some(OverrideType::Disabled),
+            "the user's choice follows the package, not the bundle it was filed under"
+        );
+    }
+
+    #[test]
+    fn removal_outranks_a_disable_filed_elsewhere() {
+        let rows = vec![
+            row("Bundle A", "yacl", OverrideType::Disabled),
+            row("Bundle B", "yacl", OverrideType::Removed),
+        ];
+
+        assert_eq!(
+            find_user_suppression(&rows, "yacl"),
+            Some(OverrideType::Removed)
+        );
+    }
+
+    #[test]
+    fn an_opt_in_is_not_an_objection() {
+        let rows = vec![
+            row("Bundle A", "sodium", OverrideType::Enabled),
+            row("Bundle B", "lithium", OverrideType::Disabled),
+        ];
+
+        assert_eq!(find_user_suppression(&rows, "sodium"), None);
+        assert_eq!(find_user_suppression(&rows, "unheard-of"), None);
     }
 
     #[test]

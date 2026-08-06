@@ -4,17 +4,14 @@ use cargo_packager_updater::{Config, Update, check_update};
 use oneclient_events::{Choice, EventBus, Prompt};
 use uuid::Uuid;
 
-/// Choice id for the update prompt, so the overlay can recognise it among any
-/// other pending prompt.
+use crate::constants::{RELEASES_URL, UPDATER_ENDPOINT, UPDATER_PUBKEY};
+
 pub const UPDATE_CHOICE_INSTALL: &str = "update.install";
 
-/// The only affirmative answer the update prompt offers; dismissing means "no".
 enum UpdateAnswer {
     Install,
 }
 
-/// The update prompt, shared by the real check and the debug simulation so the
-/// two cannot drift.
 fn update_prompt(version: &str) -> Prompt<UpdateAnswer> {
     Prompt::new(
         "Update available",
@@ -27,13 +24,6 @@ fn update_prompt(version: &str) -> Prompt<UpdateAnswer> {
     .dismiss("Not now")
 }
 
-pub const UPDATER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFGODk3MkMyMjg0MjFDMDUKUldRRkhFSW93bktKSHpkWjNEMXNzaDVINVpCTU8xSnhuK2RnV0dTZ2FkcFJWbG1zUkhGYTNjaUkK";
-
-pub const UPDATER_ENDPOINT: &str =
-    "https://github.com/Polyfrost/OneLauncher/releases/latest/download/latest.json";
-
-pub const RELEASES_URL: &str = "https://github.com/Polyfrost/OneLauncher/releases/latest";
-
 const PROGRESS_STEP: u64 = 256 * 1024;
 
 pub fn spawn_update_check(auto_install: bool) {
@@ -44,10 +34,7 @@ pub fn spawn_update_check(auto_install: bool) {
     });
 }
 
-/// Debug-only: drives the full auto-update UX (prompt, download progress, then the
-/// "restart to apply" notification) against a fake release, without hitting the
-/// network or touching disk. Mirrors [`run_check`] + [`download_and_install`] so the
-/// debug page exercises the real notification path.
+/// Debug-only: drives the full auto-update UX
 pub fn spawn_simulated_update() {
     tokio::spawn(async move {
         if let Err(err) = run_simulated_update().await {
@@ -57,8 +44,8 @@ pub fn spawn_simulated_update() {
 }
 
 async fn run_simulated_update() -> anyhow::Result<()> {
-    const FAKE_VERSION: &str = "9.9.9";
-    const FAKE_TOTAL: u64 = 48 * 1024 * 1024; // arbitrary 48 MiB "download"
+    const FAKE_VERSION: &str = "9999.9999.9999";
+    const FAKE_TOTAL: u64 = 48 * 1024 * 1024; // 48 MiB
 
     let events = crate::launcher::state()?.services.events.clone();
 
@@ -106,7 +93,8 @@ async fn run_check(auto_install: bool) -> anyhow::Result<()> {
     // Detect that case and point the user at the release page instead.
     if !can_self_update() {
         tracing::info!("install is not self-updatable (non-AppImage Linux); notifying only");
-        events.notify("Update available")
+        events
+            .notify("Update available")
             .body(format!(
                 "OneClient {} is available. Download the latest package from {} to update.",
                 update.version, RELEASES_URL
@@ -115,22 +103,24 @@ async fn run_check(auto_install: bool) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    if !auto_install
-        && events.ask(update_prompt(&update.version)).await?.is_none() {
-            tracing::info!("user declined update {}", update.version);
-            return Ok(());
-        }
+    if !auto_install && events.ask(update_prompt(&update.version)).await?.is_none() {
+        tracing::info!("user declined update {}", update.version);
+        return Ok(());
+    }
 
     download_and_install(update, events).await
 }
 
 /// Whether the running install can be updated in place by the bundled updater.
-///
-/// Windows (NSIS) and macOS (.app) installs are always self-updatable. On Linux
-/// only AppImage installs are: cargo-packager-updater replaces the file named by
-/// the `APPIMAGE` env var and rejects every other format, so deb/rpm installs are
-/// not: they run from a package-manager-owned path and never set `APPIMAGE`.
 fn can_self_update() -> bool {
+	if cfg!(debug_assertions) {
+		return false;
+	}
+
+	if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE").is_some_and(|val| val.eq_ignore_ascii_case("1")) {
+		return false;
+	}
+
     #[cfg(target_os = "linux")]
     {
         std::env::var_os("APPIMAGE").is_some()

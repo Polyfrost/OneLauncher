@@ -58,8 +58,9 @@ impl PackageProvider for CurseForgeProvider {
             params.append_pair("index", &filters.offset.unwrap_or(0).to_string());
             params.append_pair("sortField", "6");
             params.append_pair("sortOrder", "desc");
-            if let Some(q) = &filters.query {
-                params.append_pair("searchFilter", q);
+            let query = filters.normalized_query();
+            if !query.is_empty() {
+                params.append_pair("searchFilter", &query);
             }
             if let Some(v) = filters.game_versions.as_ref().and_then(|v| v.first()) {
                 params.append_pair("gameVersion", v);

@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_common::search::normalize_query;
 
 pub const DEFAULT_PAGE_SIZE: usize = 24;
 
@@ -17,6 +18,18 @@ pub struct SearchFilters {
 	pub loaders: Option<Vec<GameLoader>>,
 	pub categories: Option<Vec<String>>,
 	pub sort: Option<SearchSort>,
+}
+
+impl SearchFilters {
+	/// The query as it should go on the wire: no surrounding whitespace, and
+	/// internal runs collapsed to a single space. Providers score the raw string
+	/// they are given, so " sodium " and "sodium" come back ranked differently —
+	/// normalising at the boundary is what stops a stray keystroke from changing
+	/// the results. Empty when there is nothing to search for.
+	#[must_use]
+	pub fn normalized_query(&self) -> String {
+		self.query.as_deref().map(normalize_query).unwrap_or_default()
+	}
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

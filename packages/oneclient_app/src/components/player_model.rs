@@ -106,6 +106,20 @@ impl Component for PlayerModel {
         });
 
         let mut drag = use_state(|| None::<(f32, f32, f32, f32)>);
+        let mut hovering = use_state(|| false);
+
+        // Always derive the cursor from both states instead of setting it per event:
+        // Freya re-emits `pointer enter` on the first move after a press, so a plain
+        // `Grab` there would drop the grabbing cursor as soon as the drag starts.
+        let apply_cursor = move || {
+            Cursor::set(if drag.peek().is_some() {
+                CursorIcon::Grabbing
+            } else if *hovering.peek() {
+                CursorIcon::Grab
+            } else {
+                CursorIcon::default()
+            });
+        };
 
         let mut last_uuid = use_state({
             let u = self.uuid.clone();
@@ -159,16 +173,18 @@ impl Component for PlayerModel {
             .key(src_ptr as u64)
             .width(self.width.clone())
             .height(self.height.clone())
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Grab))
+            .on_pointer_enter(move |_| {
+                hovering.set(true);
+                apply_cursor();
+            })
             .on_pointer_leave(move |_| {
-                if drag.peek().is_none() {
-                    Cursor::set(CursorIcon::default());
-                }
+                hovering.set(false);
+                apply_cursor();
             })
             .on_pointer_down(move |e: Event<PointerEventData>| {
                 let loc = e.global_location();
                 drag.set(Some((loc.x as f32, loc.y as f32, yaw(), pitch())));
-                Cursor::set(CursorIcon::Grabbing);
+                apply_cursor();
             })
             .on_global_pointer_move(move |e: Event<PointerEventData>| {
                 let Some((sx, sy, yaw0, pitch0)) = *drag.read() else {
@@ -187,10 +203,12 @@ impl Component for PlayerModel {
 
                 Platform::get().send(UserEvent::RequestRedraw);
             })
+            // Global so a release outside the widget still ends the drag and,
+            // since the pointer is no longer over us, restores the default cursor.
             .on_global_pointer_press(move |_: Event<PointerEventData>| {
                 if drag.peek().is_some() {
                     drag.set(None);
-                    Cursor::set(CursorIcon::default());
+                    apply_cursor();
                 }
             })
     }
@@ -245,8 +263,8 @@ void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 
             nrm = float3(1.0, 0.0, 0.0);
         }
     } else if (tN == tmin.y) {
-        if (rd.y > 0.0) {            // -Y face (bottom): 180deg from top, flip both axes
-            uv = float2(base.x + d + w + (1.0 - n.x) * w, base.y + (1.0 - n.z) * d);
+		if (rd.y > 0.0) {            // -Y face (bottom): same orientation as the top, shifted by w
+            uv = float2(base.x + d + w + n.x * w, base.y + n.z * d);
             nrm = float3(0.0, -1.0, 0.0);
         } else {                     // +Y face (top)
             uv = float2(base.x + d + n.x * w, base.y + n.z * d);

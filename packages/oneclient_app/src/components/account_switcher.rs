@@ -235,7 +235,7 @@ impl Component for Footer {
         let dispatch = use_dispatch();
         let open_accounts = move |_| {
             dispatch.close_account_switcher();
-            let _ = RouterContext::get().push(Route::Accounts {});
+            let _ = RouterContext::get().push(Route::SettingsAccounts {});
         };
 
         Button::new()

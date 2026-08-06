@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT absolute_path, major, version, vendor, os_arch FROM java_versions \n        ORDER BY major DESC, version DESC\n        ",
+  "query": "\n\t\tSELECT absolute_path, major, version, vendor, os_arch, is_jdk as \"is_jdk: bool\"\n\t\tFROM java_versions\n\t\tWHERE major = ?\n\t\tORDER BY version DESC\n\t\tLIMIT 1\n\t\t",
   "describe": {
     "columns": [
       {
@@ -57,12 +57,24 @@
             "name": "os_arch"
           }
         }
+      },
+      {
+        "name": "is_jdk: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "is_jdk"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -70,5 +82,5 @@
       false
     ]
   },
-  "hash": "c1d3cf930d5f38e8f1046da1a8f895ee1de2d3fe9a40ecb47731618962d2a4ad"
+  "hash": "33771b7003e64c8f19d15d663de773afa568d626c60a37bbc32cc932746ad49b"
 }

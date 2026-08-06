@@ -23,14 +23,16 @@ const MAX_DOWNLOAD_ATTEMPTS: u32 = 3;
 
 /// Whether fetching the same URL again has a realistic chance of working.
 ///
-/// A transport error or a hash mismatch means the bytes arrived wrong, which is
-/// exactly what a retry fixes. Everything else — a 404, a bad URL, a full disk —
-/// will fail the same way every time, and retrying only multiplies the delay
-/// before the user sees the real error.
+/// A transport error, a hash mismatch, or a short body means the bytes arrived
+/// wrong, which is exactly what a retry fixes. Everything else — a 404, a bad
+/// URL, a full disk — will fail the same way every time, and retrying only
+/// multiplies the delay before the user sees the real error.
 fn worth_retrying(err: &RequestError) -> bool {
     matches!(
         err,
-        RequestError::ReqwestError(_) | RequestError::HashMismatch { .. }
+        RequestError::ReqwestError(_)
+            | RequestError::HashMismatch { .. }
+            | RequestError::IncompleteBody { .. }
     )
 }
 
@@ -149,12 +151,24 @@ async fn download_attempt(
 	let request = reqwest::Request::new(Method::GET, url.parse()?);
 	let response = client.send(request).await?;
 
-	// Prefer the manifest size; fall back to Content-Length only when unknown.
-	let total = if expected_size > 0 {
-		expected_size
+	// Without this, an error body is written to disk under the requested file's name.
+	let status = response.status();
+	if !status.is_success() {
+		let bytes = response.bytes().await?;
+		return Err(RequestError::HttpStatus {
+			status: status.as_u16(),
+			url: url.to_string(),
+			snippet: crate::error::body_snippet(&bytes),
+		});
+	}
+
+	// Prefer the manifest size; Content-Length is absent for compressed or chunked bodies.
+	let declared = if expected_size > 0 {
+		Some(expected_size)
 	} else {
-		response.content_length().unwrap_or(0).max(1)
+		response.content_length()
 	};
+	let total = declared.unwrap_or(0).max(1);
 
 	let options = ResponseOptions {
 		notify: notify.cloned(),
@@ -162,10 +176,14 @@ async fn download_attempt(
 	let stream = response.stream(options, events).await?;
 
 	let mut hasher = expected.map(|expected| ChecksumStream::new(expected.algorithm));
+	let mut received = 0u64;
 	{
 		let stream = futures_lite::StreamExt::map(stream, |item| {
-			if let (Ok(chunk), Some(hasher)) = (&item, hasher.as_mut()) {
-				hasher.update(chunk);
+			if let Ok(chunk) = &item {
+				received += chunk.len() as u64;
+				if let Some(hasher) = hasher.as_mut() {
+					hasher.update(chunk);
+				}
 			}
 			item
 		});
@@ -191,6 +209,16 @@ async fn download_attempt(
 				actual,
 			});
 		}
+	} else if let Some(declared) = declared
+		&& received != declared
+	{
+		// With no hash, the byte count is the only evidence the transfer finished.
+		let _ = polyio::remove_file(dest).await;
+		return Err(RequestError::IncompleteBody {
+			source_desc: dest.display().to_string(),
+			expected: declared,
+			actual: received,
+		});
 	}
 
 	Ok(())

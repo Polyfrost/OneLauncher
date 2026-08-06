@@ -2,7 +2,7 @@
 
 <img src=".github/media/RepoBanner.png" alt="Repository Banner" />
 
-# OneLauncher  |  OneClient
+# OneClient  |  OneLauncher
 The monorepo containing the code for OneLauncher, OneClient, and their core backend.
 
 OneClient is a Minecraft client featuring fully 100% open-source components, offering many packaged and pre-configured mods in one click.
@@ -10,23 +10,30 @@ OneLauncher is a WIP Minecraft launcher giving power-users the greatest customiz
 
 </div>
 
-> [!NOTE]
-> This is **OneLauncher/OneClient v2** — a full rewrite in Rust using [Freya](https://freyaui.dev/).
-> All previous web-based (React / Tauri) code has been removed.
+## Installing
 
-## Technologies Used
-- [**Rust**](https://www.rust-lang.org/) (edition 2024)
-- [**Freya**](https://freyaui.dev/) - native GUI framework for Rust
+You can install the latest release of OneClient from our website: [https://polyfrost.org/projects/oneclient](https://polyfrost.org/projects/oneclient)
+as well as our [GitHub releases](https://github.com/Polyfrost/OneLauncher/releases/latest).
+
+| Windows (x86_64) | macOS (Intel & Apple Silicon) | Linux (x86_64)                                          |
+|------------------|-------------------------------|---------------------------------------------------------|
+| Installer 🔄      | DMG 🔄                        | AppImage 🔄                                             |
+|                  | App Bundle 🔄                 | DEB                                                     |
+|                  |                               | RPM                                                     |
+|                  |                               | [AUR](https://aur.archlinux.org/packages/oneclient-bin) |
+
+> 🔄 = Has support for autoupdating built-in
+
 
 ## Contributing
+
 We welcome contributions! Please read our [contributing guidelines](CONTRIBUTING.md) before getting started.
+
 
 ### Requirements
 
-The project targets **Rust edition 2024**, so a recent Rust toolchain is required.
+The project targets **Rust 1.97** or later. You can install Rust via [rustup](https://rustup.rs/).
 
-- Install Rust via [rustup](https://rustup.rs/)
-- Use a toolchain that supports edition 2024 (`rustc` **1.85+**)
 
 ### Building & Running
 
@@ -35,8 +42,9 @@ The project targets **Rust edition 2024**, so a recent Rust toolchain is require
 cargo run -p oneclient_app
 
 # Build a release binary
-cargo build --release -p oneclient_app
+cargo build -p oneclient_app --release
 ```
+
 
 ### Packaging / Releasing
 
@@ -54,20 +62,11 @@ cargo packager --release -p oneclient_app --formats <targets>
 #   Windows: nsis      macOS: app,dmg      Linux: deb,appimage
 ```
 
+
 ### Versioning
 
-The workspace shares a single version, defined in the root [`Cargo.toml`](./Cargo.toml)
-under `[workspace.package]`. Current version: **2.0.0**.
+The workspace shares a single version, defined in the root [`Cargo.toml`](./Cargo.toml) under `[workspace.package]`.
 
-### Project Structure
-
-All crates live under **`packages/`** in a single Cargo workspace.
-
-- [**`oneclient_app/`**](./packages/oneclient_app/) - The Freya desktop application (UI, routes, entry point).
-- [**`oneclient_core/`**](./packages/oneclient_core/) - Launcher core. Contains the entire launcher logic.
-- [**`oneclient_db/`**](./packages/oneclient_db/) - SQLx-based database layer.
-- [**`oneclient_macro/`**](./packages/oneclient_macro/) - Macro definitions to simplify some code.
-- [**`polyio/`**](./packages/polyio/) - PolyIO-rs. Shared IO utilities (archives, files, system helpers).
 
 ## Code signing
 

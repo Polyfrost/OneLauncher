@@ -265,7 +265,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Accounts",
         description: "Manage Minecraft / Microsoft accounts.",
         keywords: &["account", "login", "microsoft", "msa"],
-        route: Route::Accounts {},
+        route: Route::SettingsAccounts {},
     },
     SearchItem {
         id: "nav.changelog",
@@ -325,7 +325,7 @@ impl SettingsTab {
     fn route(self) -> Option<Route> {
         match self {
             Self::MinecraftSettings => Some(Route::SettingsMinecraft {}),
-            Self::Accounts => Some(Route::Accounts {}),
+            Self::Accounts => Some(Route::SettingsAccounts {}),
             Self::LauncherSettings => Some(Route::SettingsLauncher {}),
             Self::Java => Some(Route::SettingsJava {}),
             Self::Storage => Some(Route::SettingsStorage {}),
@@ -371,6 +371,7 @@ pub struct SettingsShell;
 fn route_tab(route: &Route) -> SettingsTab {
     match route {
         Route::SettingsMinecraft {} => SettingsTab::MinecraftSettings,
+        Route::SettingsAccounts {} => SettingsTab::Accounts,
         Route::SettingsLauncher {} => SettingsTab::LauncherSettings,
         Route::SettingsJava {} => SettingsTab::Java,
         Route::SettingsStorage {} => SettingsTab::Storage,

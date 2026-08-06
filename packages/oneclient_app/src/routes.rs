@@ -10,15 +10,16 @@ use crate::layout::SettingsShell;
 use crate::view::{
     NotFound, Startup,
     app::{
-        AccountSkins, Accounts, Clusters, Debug, Home, Stats,
+        AccountSkins, Clusters, Debug, Home, Stats,
         browser::{Browser, BrowserPackage},
         cluster::{
             ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots, ClusterSettings,
             ClusterShaders, ClusterTextures, ProcessLogs,
         },
         settings::{
-            SettingsApis, SettingsAppearance, SettingsChangelog, SettingsDeveloper, SettingsJava,
-            SettingsLanguage, SettingsLauncher, SettingsMinecraft, SettingsStorage,
+            SettingsAccounts, SettingsApis, SettingsAppearance, SettingsChangelog,
+            SettingsDeveloper, SettingsJava, SettingsLanguage, SettingsLauncher, SettingsMinecraft,
+            SettingsStorage,
         },
     },
     onboarding::{
@@ -82,8 +83,6 @@ pub enum Route {
             Browser { cluster_id: i64, package_type: String, pick_cluster: bool },
             #[route("/app/browser/:cluster_id/:package_type/package/:package_id")]
             BrowserPackage { cluster_id: i64, package_type: String, package_id: String },
-            #[route("/app/accounts")]
-            Accounts {},
             #[route("/app/account/skins")]
             AccountSkins {},
             #[route("/app/stats")]
@@ -96,6 +95,8 @@ pub enum Route {
                 SettingsAppearance {},
                 #[route("/app/settings/minecraft")]
                 SettingsMinecraft {},
+                #[route("/app/settings/accounts")]
+                SettingsAccounts {},
                 #[route("/app/settings/launcher")]
                 SettingsLauncher {},
                 #[route("/app/settings/java")]
@@ -143,12 +144,12 @@ impl Route {
             Route::ClusterSettings { .. } => "Cluster Settings".to_string(),
             Route::Browser { .. } => "Browser".to_string(),
             Route::BrowserPackage { .. } => "Browser".to_string(),
-            Route::Accounts { .. } => "Accounts".to_string(),
             Route::AccountSkins { .. } => "Skins".to_string(),
             Route::Stats { .. } => "Statistics".to_string(),
             Route::Debug { .. } => "Debug".to_string(),
             Route::SettingsAppearance { .. } => "Settings".to_string(),
             Route::SettingsMinecraft { .. } => "Minecraft Settings".to_string(),
+            Route::SettingsAccounts { .. } => "Accounts".to_string(),
             Route::SettingsLauncher { .. } => "Launcher Settings".to_string(),
             Route::SettingsJava { .. } => "Java".to_string(),
             Route::SettingsStorage { .. } => "Storage".to_string(),

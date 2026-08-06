@@ -5,9 +5,9 @@ use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use oneclient_auth::{AccountKind, MinecraftAccount};
 use uuid::Uuid;
 
+use super::{section_header, settings_page};
 use crate::components::{
-    Avatar, Button, Icon, IconType, OverlayPopup, PlayerModel, ScrollArea, TextInput,
-    use_microsoft_login,
+    Avatar, Button, Icon, IconType, OverlayPopup, PlayerModel, TextInput, use_microsoft_login,
 };
 use crate::hooks::{
     AddOfflineAccountKeys, RefreshAccountKeys, RemoveAccountKeys, SetDefaultAccountKeys,
@@ -18,10 +18,27 @@ use crate::hooks::{
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-#[derive(PartialEq)]
-pub struct Accounts;
+/// The model is framed by the height of its canvas, so the hero pins both sides
+/// instead of letting it grow with the page.
+///
+/// The SkSL renderer raymarches twelve boxes per fragment, so its cost is linear
+/// in `WIDTH * HEIGHT`. At 160x264 that is ~42k fragments — about 2.2x the old
+/// 116x168 frame, and still under a tenth of the window, so the larger preview is
+/// free in practice.
+///
+/// The shader scales the model off `res.y` alone and only crops horizontally, so
+/// the height is what actually makes the player bigger. The width is kept just
+/// wide enough to clear the arms (~26 model units visible vs ~17 needed) and
+/// otherwise left to the text column.
+const MODEL_WIDTH_PX: f32 = 160.;
+const MODEL_HEIGHT_PX: f32 = 264.;
 
-impl Component for Accounts {
+const AVATAR_SIZE_PX: f32 = 36.;
+
+#[derive(PartialEq)]
+pub struct SettingsAccounts;
+
+impl Component for SettingsAccounts {
     fn render(&self) -> impl IntoElement {
         let accounts_query = use_accounts();
         let default_query = use_current_account();
@@ -93,47 +110,20 @@ impl Component for Accounts {
             rows.push(empty_state());
         }
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::fill())
-            .overflow(Overflow::Clip)
-            .content(Content::Flex)
-            .padding(40.)
-            .spacing(24.)
-            .child(render_panel(default_account))
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .overflow(Overflow::Clip)
-                    .spacing(20.)
-                    .child(
-                        label()
-                            .text("Accounts")
-                            .font_size(32.)
-                            .font_weight(FontWeight::BOLD)
-                            .color(colors::fg_primary()),
-                    )
-                    .child(add_bar(
-                        has_microsoft,
-                        msa.pending,
-                        msa.error.clone(),
-                        move |_| show_offline.set(true),
-                        {
-                            let msa = msa.clone();
-                            move |_| msa.start()
-                        },
-                    ))
-                    .child(
-                        ScrollArea::new()
-                            .width(Size::fill())
-                            .height(Size::flex(1.0))
-                            .spacing(12.)
-                            .children(rows),
-                    ),
-            )
+        settings_page()
+            .child(hero(
+                default_account,
+                has_microsoft,
+                msa.pending,
+                msa.error.clone(),
+                move |_| show_offline.set(true),
+                {
+                    let msa = msa.clone();
+                    move |_| msa.start()
+                },
+            ))
+            .child(section_header("YOUR ACCOUNTS"))
+            .children(rows)
             .maybe_child(show_offline.read().then(|| {
                 offline_dialog(
                     username,
@@ -148,27 +138,146 @@ impl Component for Accounts {
     }
 }
 
-fn render_panel(account: Option<MinecraftAccount>) -> impl IntoElement {
+/// The active account, its model, and the two ways to add another one.
+fn hero(
+    account: Option<MinecraftAccount>,
+    has_microsoft: bool,
+    microsoft_pending: bool,
+    error: Option<String>,
+    on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
+    on_add_microsoft: impl FnMut(Event<PressEventData>) + 'static,
+) -> impl IntoElement {
+    let (name, subtitle) = match &account {
+        Some(account) => (account.username.clone(), kind_label(account.kind)),
+        None => (
+            "No active account".to_string(),
+            "Add an account to start playing",
+        ),
+    };
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(16.)
+        .padding(Gaps::new_all(16.))
+        .corner_radius(CornerRadius::new_all(12.))
+        .background(colors::page_elevated())
+        .child(model_frame(account.as_ref().map(|account| account.id)))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(16.)
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::fill())
+                        .spacing(2.)
+                        .child(
+                            label()
+                                .text("ACTIVE ACCOUNT")
+                                .font_size(11.)
+                                .font_weight(FontWeight::MEDIUM)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            label()
+                                .text(name)
+                                .font_size(24.)
+                                .font_weight(FontWeight::SEMI_BOLD)
+                                .max_lines(1)
+                                .color(colors::fg_primary()),
+                        )
+                        .child(
+                            label()
+                                .text(subtitle)
+                                .font_size(12.)
+                                .color(colors::fg_secondary()),
+                        ),
+                )
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::fill())
+                        .spacing(8.)
+                        .child(
+                            // The bigger model leaves ~245px beside it at the
+                            // 800px minimum, which the two buttons overflow, so
+                            // they wrap onto a second line there and sit side by
+                            // side again once there is room.
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .content(Content::wrap_spacing(8.))
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .primary()
+                                        .enabled(!microsoft_pending)
+                                        .on_press(on_add_microsoft)
+                                        .child(Icon::new(IconType::Globe01).size(16.))
+                                        .text(if microsoft_pending {
+                                            "Signing in..."
+                                        } else {
+                                            "Add Microsoft"
+                                        }),
+                                )
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .enabled(has_microsoft)
+                                        .on_press(on_open_offline)
+                                        .child(Icon::new(IconType::Plus).size(16.))
+                                        .text("Add offline"),
+                                ),
+                        )
+                        .map(error, |el, msg| {
+                            el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
+                        })
+                        .maybe(!has_microsoft, |el| {
+                            el.child(hint_line(
+                                IconType::InfoCircle,
+                                "Add a Microsoft account before creating offline accounts."
+                                    .to_string(),
+                                colors::fg_secondary(),
+                            ))
+                        }),
+                ),
+        )
+        .into_element()
+}
+
+fn model_frame(id: Option<Uuid>) -> impl IntoElement {
     rect()
         .vertical()
-        .width(Size::px(300.))
-        .height(Size::fill())
-        .center()
-        .spacing(16.)
-        .padding(Gaps::new_all(24.))
-        .corner_radius(CornerRadius::new_all(16.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .maybe_child(account.as_ref().map(|account| {
-            PlayerModel::new(account.id)
-                .yaw(-0.5)
-                .width(Size::fill())
-                .height(Size::fill())
-                .into_element()
-        }))
-        .maybe_child(account.as_ref().map(|_| {
+        .cross_align(Alignment::Center)
+        .spacing(6.)
+        .child(
+            rect()
+                .width(Size::px(MODEL_WIDTH_PX))
+                .height(Size::px(MODEL_HEIGHT_PX))
+                .center()
+                .overflow(Overflow::Clip)
+                .corner_radius(CornerRadius::new_all(12.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
+                .child(match id {
+                    Some(id) => PlayerModel::new(id)
+                        .yaw(-0.5)
+                        .width(Size::fill())
+                        .height(Size::fill())
+                        .into_element(),
+                    None => Icon::new(IconType::Users01)
+                        .size(28.)
+                        .color(colors::fg_secondary())
+                        .into_element(),
+                }),
+        )
+        .maybe_child(id.map(|_| {
             label()
-                .text("Drag to rotate the model")
+                .text("Drag to rotate")
                 .font_size(10.)
                 .color(colors::fg_secondary())
                 .into_element()
@@ -188,62 +297,6 @@ where
         } => Some(err.to_string()),
         _ => None,
     }
-}
-
-fn add_bar(
-    has_microsoft: bool,
-    microsoft_pending: bool,
-    error: Option<String>,
-    on_open_offline: impl FnMut(Event<PressEventData>) + 'static,
-    on_add_microsoft: impl FnMut(Event<PressEventData>) + 'static,
-) -> impl IntoElement {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(8.)
-        .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .cross_align(Alignment::Center)
-                .main_align(Alignment::End)
-                .spacing(12.)
-                .child(
-                    Button::new()
-                        .secondary()
-                        .enabled(has_microsoft)
-                        .on_press(on_open_offline)
-                        .child(Icon::new(IconType::Plus).size(16.))
-                        .text("Add offline"),
-                )
-                .child(
-                    Button::new()
-                        .primary()
-                        .enabled(!microsoft_pending)
-                        .on_press(on_add_microsoft)
-                        .child(Icon::new(IconType::Globe01).size(16.))
-                        .text(if microsoft_pending {
-                            "Signing in..."
-                        } else {
-                            "Add Microsoft"
-                        }),
-                ),
-        )
-        .map(error, |el, msg| {
-            el.child(hint_line(IconType::AlertTriangle, msg, colors::danger()))
-        })
-        .maybe(!has_microsoft, |el| {
-            el.child(hint_line(
-                IconType::InfoCircle,
-                "Add a Microsoft account before creating offline accounts.".to_string(),
-                colors::fg_secondary(),
-            ))
-        })
-        .into_element()
 }
 
 fn offline_dialog(
@@ -335,13 +388,23 @@ fn field_label(text: &str) -> impl IntoElement {
         .into_element()
 }
 
+/// The hint sits in whatever is left of the hero beside the model, so the text
+/// has to be free to wrap instead of pushing the row wider.
 fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
     rect()
         .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(6.)
         .child(Icon::new(icon).size(13.).color(color))
-        .child(label().text(text).font_size(12.).color(color))
+        .child(
+            label()
+                .text(text)
+                .font_size(12.)
+                .width(Size::flex(1.0))
+                .color(color),
+        )
         .into_element()
 }
 
@@ -423,7 +486,7 @@ impl Component for AccountRow {
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .content(Content::Flex)
-            .spacing(16.)
+            .spacing(12.)
             .padding(Gaps::new_all(12.))
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
@@ -439,8 +502,8 @@ impl Component for AccountRow {
             })
             .child(
                 Avatar::new(id.to_string())
-                    .width(Size::px(40.))
-                    .height(Size::px(40.)),
+                    .width(Size::px(AVATAR_SIZE_PX))
+                    .height(Size::px(AVATAR_SIZE_PX)),
             )
             .child(
                 rect()
@@ -451,22 +514,26 @@ impl Component for AccountRow {
                         rect()
                             .horizontal()
                             .cross_align(Alignment::Center)
-                            .spacing(8.)
+                            .spacing(6.)
                             .child(
                                 label()
                                     .text(self.username.clone())
-                                    .font_size(16.)
+                                    .font_size(15.)
                                     .font_weight(FontWeight::MEDIUM)
+                                    .max_lines(1)
                                     .color(colors::fg_primary()),
                             )
-                            .child(kind_badge(self.kind))
                             .maybe_child(is_default.then(default_badge))
                             .maybe_child(expired.then(expired_badge)),
                     )
+                    // The kind rides along with the id on the second line: a
+                    // third badge and a full uuid do not both fit beside the
+                    // settings sidebar.
                     .child(
                         label()
-                            .text(id.to_string())
+                            .text(format!("{} · {id}", kind_label(self.kind)))
                             .font_size(11.)
+                            .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -523,21 +590,11 @@ impl Component for AccountRow {
     }
 }
 
-fn kind_badge(kind: AccountKind) -> impl IntoElement {
-    let (icon, text) = match kind {
-        AccountKind::Microsoft => (IconType::Globe01, "Microsoft"),
-        AccountKind::Offline => (IconType::Users01, "Offline"),
-    };
-
-    badge(
-        Icon::new(icon)
-            .size(12.)
-            .color(colors::fg_secondary())
-            .into_element(),
-        text.to_string(),
-        colors::component_border(),
-        colors::fg_secondary(),
-    )
+fn kind_label(kind: AccountKind) -> &'static str {
+    match kind {
+        AccountKind::Microsoft => "Microsoft",
+        AccountKind::Offline => "Offline",
+    }
 }
 
 fn default_badge() -> impl IntoElement {
@@ -589,8 +646,10 @@ fn empty_state() -> Element {
         .vertical()
         .width(Size::fill())
         .center()
-        .padding(Gaps::new_all(48.))
+        .padding(Gaps::new_all(32.))
         .spacing(8.)
+        .corner_radius(CornerRadius::new_all(12.))
+        .background(colors::page_elevated())
         .child(
             Icon::new(IconType::Users01)
                 .size(32.)

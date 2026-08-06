@@ -140,10 +140,19 @@ where
         MutationStateData::Settled { res: Err(err), .. }
         | MutationStateData::Loading {
             res: Some(Err(err)),
-        } => Some(AuthErrorInfo {
-            message: err.to_string(),
-            guidance: err.auth_guidance(),
-        }),
+        } => {
+            // A cancellation is the user's own decision arriving back as an
+            // error. Reporting it would put a red line under a button they
+            // pressed on purpose, and it would still be there when they start
+            // the next sign-in.
+            if err.is_login_cancelled() {
+                return None;
+            }
+            Some(AuthErrorInfo {
+                message: err.to_string(),
+                guidance: err.auth_guidance(),
+            })
+        }
         _ => None,
     }
 }

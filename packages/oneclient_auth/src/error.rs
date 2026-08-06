@@ -106,6 +106,15 @@ pub enum AuthError {
     #[error(transparent)]
     Request(#[from] RequestError),
 
+    /// The user backed out of a Microsoft sign-in that was still running.
+    ///
+    /// An outcome rather than a failure: it exists so the flow has something to
+    /// return when it is torn down mid-handshake, and so callers can tell that
+    /// apart from a sign-in that actually went wrong. Nothing was written by the
+    /// time this is produced.
+    #[error("sign-in was cancelled")]
+    LoginCancelled,
+
     #[error("offline mode requires at least one Microsoft account to be signed in")]
     OfflineRequiresMicrosoft,
 

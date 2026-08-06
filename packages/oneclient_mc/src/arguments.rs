@@ -52,31 +52,49 @@ pub fn java_arguments(
         parsed.push(classpaths.to_string());
     }
 
-    parsed.extend(performance_flags(java_major, java_arch, mem_max));
+    let custom = split_custom_args(&custom_args);
+
+    parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
 
     parsed.push(format!("-Xmx{mem_max}M"));
-    parsed.extend(split_custom_args(&custom_args));
+    parsed.extend(custom);
 
     Ok(parsed)
 }
 
+const ZGC_MIN_HEAP_MB: u32 = 8192;
+
 #[must_use]
-pub fn performance_flags(java_major: u32, java_arch: &str, mem_max: u32) -> Vec<String> {
+pub fn performance_flags(
+    java_major: u32,
+    java_arch: &str,
+    mem_max: u32,
+    custom_args: &[String],
+) -> Vec<String> {
     let mut flags = vec![format!("-Xms{mem_max}M")];
 
-    if (7..=8).contains(&java_major) {
-        flags.push("-XX:+UseG1GC".to_string());
-    } else if java_major >= 21 && is_64_bit(java_arch) {
+    let collector_chosen = custom_args.iter().any(|arg| is_collector_flag(arg));
+
+    let use_zgc =
+        !collector_chosen && java_major >= 21 && is_64_bit(java_arch) && mem_max >= ZGC_MIN_HEAP_MB;
+    let use_g1 = !collector_chosen && !use_zgc && java_major >= 8;
+
+    if (use_zgc || use_g1) && java_major == 24 {
+        flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
+    }
+
+    if use_zgc {
         flags.push("-XX:+UseZGC".to_string());
         if java_major <= 22 {
             flags.push("-XX:+ZGenerational".to_string());
         }
-        if java_major == 24 {
-            flags.push("-XX:+UnlockExperimentalVMOptions".to_string());
-        }
-        if java_major >= 24 {
-            flags.push("-XX:+UseCompactObjectHeaders".to_string());
-        }
+    } else if use_g1 {
+        flags.push("-XX:+UseG1GC".to_string());
+        flags.push("-XX:+ParallelRefProcEnabled".to_string());
+    }
+
+    if (use_zgc || use_g1) && java_major >= 24 && is_64_bit(java_arch) {
+        flags.push("-XX:+UseCompactObjectHeaders".to_string());
     }
 
     // Arrived in 8u20, so Java 7 is the one runtime that would reject it. Where
@@ -87,6 +105,21 @@ pub fn performance_flags(java_major: u32, java_arch: &str, mem_max: u32) -> Vec<
     }
 
     flags
+}
+
+fn is_collector_flag(arg: &str) -> bool {
+    const COLLECTORS: [&str; 8] = [
+        "UseG1GC",
+        "UseZGC",
+        "UseShenandoahGC",
+        "UseParallelGC",
+        "UseParallelOldGC",
+        "UseConcMarkSweepGC",
+        "UseSerialGC",
+        "UseEpsilonGC",
+    ];
+
+    arg.starts_with("-XX:") && COLLECTORS.iter().any(|name| arg.contains(name))
 }
 
 fn is_64_bit(java_arch: &str) -> bool {
@@ -492,7 +525,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{performance_flags, split_custom_args};
+    use super::{ZGC_MIN_HEAP_MB, is_collector_flag, performance_flags, split_custom_args};
 
     #[test]
     fn blank_input_contributes_nothing() {
@@ -521,22 +554,33 @@ mod tests {
         assert_eq!(split_custom_args(r#"-Dempty="""#), vec!["-Dempty="]);
     }
 
-    #[test]
-    fn a_java_8_runtime_gets_g1() {
-        assert_eq!(
-            performance_flags(8, "amd64", 4096),
-            vec!["-Xms4096M", "-XX:+UseG1GC", "-XX:+UseStringDeduplication"]
-        );
+    fn flags(java_major: u32, java_arch: &str, mem_max: u32) -> Vec<String> {
+        performance_flags(java_major, java_arch, mem_max, &[])
+    }
+
+    fn custom(args: &str) -> Vec<String> {
+        split_custom_args(args)
     }
 
     #[test]
-    fn the_versions_told_to_upgrade_get_no_collector() {
+    fn a_java_8_runtime_gets_g1() {
+        let j8 = flags(8, "amd64", 4096);
+        assert_eq!(j8.first().unwrap(), "-Xms4096M");
+        assert!(j8.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(j8.contains(&"-XX:+UseStringDeduplication".to_string()));
+    }
+
+    #[test]
+    fn the_versions_told_to_upgrade_still_get_a_tuned_collector() {
         for major in [9, 11, 17, 20] {
-            let flags = performance_flags(major, "amd64", 4096);
-            assert_eq!(
-                flags,
-                vec!["-Xms4096M", "-XX:+UseStringDeduplication"],
-                "java {major} should get a fixed heap and no collector flag"
+            let flags = flags(major, "amd64", 4096);
+            assert!(
+                flags.contains(&"-XX:+UseG1GC".to_string()),
+                "java {major} should still be tuned, it is what old packs run on"
+            );
+            assert!(
+                !flags.iter().any(|f| f.contains("UseZGC")),
+                "java {major} predates the generational ZGC we would want"
             );
         }
     }
@@ -544,62 +588,171 @@ mod tests {
     #[test]
     fn a_32_bit_runtime_never_gets_zgc() {
         for arch in ["x86", "arm", "i386", "unknown"] {
-            let flags = performance_flags(25, arch, 4096);
+            let flags = flags(25, arch, 16384);
             assert!(
                 !flags.iter().any(|f| f.contains("UseZGC")),
                 "{arch} must not select a collector it cannot load"
             );
-            assert_eq!(flags, vec!["-Xms4096M", "-XX:+UseStringDeduplication"]);
+            assert!(
+                !flags.contains(&"-XX:+UseCompactObjectHeaders".to_string()),
+                "{arch} has no compact headers to enable"
+            );
+            assert!(flags.contains(&"-XX:+UseG1GC".to_string()));
         }
+    }
+
+    #[test]
+    fn a_small_heap_gets_g1_rather_than_zgc() {
+        for mem in [2048, 4096, ZGC_MIN_HEAP_MB - 1] {
+            let flags = flags(21, "amd64", mem);
+            assert!(
+                !flags.iter().any(|f| f.contains("UseZGC")),
+                "{mem}M is not enough heap for ZGC to stay ahead of a modded client"
+            );
+            assert!(flags.contains(&"-XX:+UseG1GC".to_string()));
+        }
+    }
+
+    #[test]
+    fn a_large_heap_still_gets_zgc() {
+        for mem in [ZGC_MIN_HEAP_MB, 12288, 16384] {
+            let flags = flags(21, "amd64", mem);
+            assert!(flags.contains(&"-XX:+UseZGC".to_string()));
+            assert!(
+                !flags.contains(&"-XX:+UseG1GC".to_string()),
+                "only one collector may be selected"
+            );
+        }
+    }
+
+    #[test]
+    fn the_collector_is_selected_but_not_sized() {
+        for mem in [2048, 4096, 8192, 16384] {
+            let flags = flags(17, "amd64", mem);
+            assert_eq!(
+                flags,
+                vec![
+                    format!("-Xms{mem}M"),
+                    "-XX:+UseG1GC".to_string(),
+                    "-XX:+ParallelRefProcEnabled".to_string(),
+                    "-XX:+UseStringDeduplication".to_string(),
+                ],
+                "{mem}M should get no hand-picked sizing"
+            );
+        }
+    }
+
+    #[test]
+    fn a_collector_in_the_custom_arguments_replaces_ours() {
+        for arg in [
+            "-XX:+UseG1GC",
+            "-XX:+UseZGC",
+            "-XX:+UseSerialGC",
+            "-XX:+UseShenandoahGC",
+            "-XX:-UseG1GC",
+        ] {
+            let flags = performance_flags(21, "amd64", 16384, &custom(arg));
+            assert!(
+                !flags.iter().any(|f| is_collector_flag(f)),
+                "{arg} should leave the collector entirely to the user"
+            );
+            assert!(
+                !flags.iter().any(|f| f.starts_with("-XX:G1")),
+                "{arg} should not be tuned for a collector we did not select"
+            );
+            assert_eq!(
+                flags,
+                vec!["-Xms16384M", "-XX:+UseStringDeduplication"],
+                "{arg} should leave only the collector-independent flags"
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_custom_arguments_leave_the_collector_alone() {
+        let flags = performance_flags(21, "amd64", 4096, &custom("-Dfoo=bar -Xss1M"));
+        assert!(flags.contains(&"-XX:+UseG1GC".to_string()));
     }
 
     #[test]
     fn zgc_is_asked_for_a_young_generation_only_before_23() {
-        assert!(performance_flags(21, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
-        assert!(performance_flags(22, "aarch64", 4096).contains(&"-XX:+ZGenerational".to_string()));
-        assert!(!performance_flags(23, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
-        assert!(!performance_flags(25, "amd64", 4096).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(flags(21, "amd64", 16384).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(flags(22, "aarch64", 16384).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(!flags(23, "amd64", 16384).contains(&"-XX:+ZGenerational".to_string()));
+        assert!(!flags(25, "amd64", 16384).contains(&"-XX:+ZGenerational".to_string()));
     }
 
     #[test]
-    fn compact_headers_are_unlocked_only_on_24() {
+    fn compact_headers_arrive_on_24_whichever_collector_is_chosen() {
         for major in [21, 23] {
             assert!(
-                !performance_flags(major, "amd64", 4096)
-                    .contains(&"-XX:+UseCompactObjectHeaders".to_string()),
+                !flags(major, "amd64", 16384).contains(&"-XX:+UseCompactObjectHeaders".to_string()),
                 "java {major} predates compact object headers"
             );
         }
 
-        let j24 = performance_flags(24, "amd64", 4096);
-        let unlock = j24
-            .iter()
-            .position(|f| f == "-XX:+UnlockExperimentalVMOptions")
-            .expect("24 needs the unlock flag");
-        let compact = j24
-            .iter()
-            .position(|f| f == "-XX:+UseCompactObjectHeaders")
-            .expect("24 supports compact headers");
-        assert!(
-            unlock < compact,
-            "the unlock flag must precede the option it unlocks"
-        );
+        for mem in [4096, 16384] {
+            let j24 = flags(24, "amd64", mem);
+            let unlock = j24
+                .iter()
+                .position(|f| f == "-XX:+UnlockExperimentalVMOptions")
+                .expect("24 needs the unlock flag");
+            let compact = j24
+                .iter()
+                .position(|f| f == "-XX:+UseCompactObjectHeaders")
+                .expect("24 supports compact headers");
+            assert!(
+                unlock < compact,
+                "the unlock flag must precede the option it unlocks"
+            );
+        }
 
-        let j25 = performance_flags(25, "amd64", 4096);
-        assert!(j25.contains(&"-XX:+UseCompactObjectHeaders".to_string()));
-        assert!(!j25.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()));
+        let j25_zgc = flags(25, "amd64", 16384);
+        assert!(j25_zgc.contains(&"-XX:+UseCompactObjectHeaders".to_string()));
+        assert!(!j25_zgc.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()));
+
+        assert!(flags(25, "amd64", 4096).contains(&"-XX:+UseCompactObjectHeaders".to_string()));
+    }
+
+    #[test]
+    fn every_experimental_option_sits_after_the_unlock() {
+        const EXPERIMENTAL: [&str; 1] = ["-XX:+UseCompactObjectHeaders"];
+
+        for major in [8, 17, 21, 24, 25] {
+            for mem in [4096, 16384] {
+                let flags = flags(major, "amd64", mem);
+                let Some(unlock) = flags
+                    .iter()
+                    .position(|f| f == "-XX:+UnlockExperimentalVMOptions")
+                else {
+                    assert!(
+                        !flags
+                            .iter()
+                            .any(|f| EXPERIMENTAL.iter().any(|e| f.starts_with(e))
+                                && !(major >= 25 && f == "-XX:+UseCompactObjectHeaders")),
+                        "java {major} at {mem}M emits an experimental option with no unlock"
+                    );
+                    continue;
+                };
+
+                for (i, flag) in flags.iter().enumerate() {
+                    if EXPERIMENTAL.iter().any(|e| flag.starts_with(e)) {
+                        assert!(
+                            unlock < i,
+                            "java {major} at {mem}M puts {flag} before the unlock"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
     fn only_java_7_is_denied_string_deduplication() {
-        assert!(
-            !performance_flags(7, "amd64", 4096)
-                .contains(&"-XX:+UseStringDeduplication".to_string())
-        );
+        assert!(!flags(7, "amd64", 4096).contains(&"-XX:+UseStringDeduplication".to_string()));
         for major in [8, 17, 21, 24, 25] {
             assert!(
-                performance_flags(major, "amd64", 4096)
-                    .contains(&"-XX:+UseStringDeduplication".to_string()),
+                flags(major, "amd64", 4096).contains(&"-XX:+UseStringDeduplication".to_string()),
                 "java {major} should deduplicate strings"
             );
         }
@@ -608,9 +761,9 @@ mod tests {
     #[test]
     fn a_modern_runtime_gets_the_full_set() {
         assert_eq!(
-            performance_flags(25, "aarch64", 4096),
+            flags(25, "aarch64", 16384),
             vec![
-                "-Xms4096M",
+                "-Xms16384M",
                 "-XX:+UseZGC",
                 "-XX:+UseCompactObjectHeaders",
                 "-XX:+UseStringDeduplication"
@@ -622,10 +775,16 @@ mod tests {
     fn every_tier_pins_the_heap_to_the_memory_setting() {
         for major in [8, 17, 21, 25] {
             assert_eq!(
-                performance_flags(major, "amd64", 8192).first().unwrap(),
+                flags(major, "amd64", 8192).first().unwrap(),
                 "-Xms8192M",
                 "java {major} should start at the memory setting"
             );
         }
     }
+
+    #[test]
+    fn a_java_7_runtime_is_left_untouched() {
+        assert_eq!(flags(7, "amd64", 4096), vec!["-Xms4096M"]);
+    }
 }
+

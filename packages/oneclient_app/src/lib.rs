@@ -5,6 +5,7 @@
 
 mod assets;
 mod components;
+pub mod disable;
 pub mod hooks;
 pub mod events;
 mod install;
@@ -26,6 +27,6 @@ pub mod constants;
 pub use assets::AppAssets;
 pub use events::EventPump;
 pub use state::{AppChannel, AppState};
-pub use components::ConfirmLinkOverlay;
+pub use components::{ConfirmLinkOverlay, DisableDependentsOverlay};
 pub use hooks::*;
 pub use routes::{Route, router};

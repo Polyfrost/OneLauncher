@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod dependencies;
+pub mod dependents;
 pub mod error;
 pub mod metadata_cache;
 pub mod modpack;
@@ -20,6 +21,9 @@ pub use metadata_cache::{
 pub use activity::reconcile_duplicate_activity;
 pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
+};
+pub use dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
 };
 pub use file_identity::{curseforge_fingerprint, FileIdentity};
 pub use error::{PackageError, PackageResult};

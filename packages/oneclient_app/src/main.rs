@@ -8,8 +8,9 @@ use freya::prelude::*;
 use freya::radio::use_init_radio_station;
 use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
-    use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay, EventPump,
+    LinkConfirmState, constants, events, router, theme, use_provide_actions,
+    use_provide_disable_confirm, use_provide_link_confirm,
 };
 use tokio::runtime::Builder;
 
@@ -58,10 +59,14 @@ impl App for OneClientApp {
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
 
+        let disable_confirm = use_state(|| None);
+        use_provide_disable_confirm(DisableConfirmState(disable_confirm));
+
         rect()
             .width(Size::fill())
             .height(Size::fill())
             .child(ConfirmLinkOverlay)
+            .child(DisableDependentsOverlay)
             .child(router())
     }
 }

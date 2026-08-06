@@ -8,7 +8,10 @@ mod java;
 mod package_metadata;
 mod setting_profile;
 
-pub use artifact::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow};
+pub use artifact::{
+    ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, ProviderReleaseRow,
+    ReleaseDependencyRow, UnsyncedReleaseRow,
+};
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use package_metadata::PackageMetadataRow;
 pub use bundle::{BundleRow, NewBundle};

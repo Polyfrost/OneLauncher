@@ -3,7 +3,10 @@ use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, toggle_controlled};
-use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
+use crate::disable::{self, BundlePackage, DisableRequest, DisableRoot};
+use crate::hooks::{
+    ClusterAction, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -57,6 +60,16 @@ impl PackageEntry {
 
     pub fn in_bundle(&self) -> bool {
         self.bundle_name.is_some()
+    }
+
+    /// What the row calls the package: its project name when a provider knows
+    /// it, and the file on disk otherwise.
+    pub fn display_title(&self) -> String {
+        if self.is_remote() {
+            self.name.clone()
+        } else {
+            self.file_name.clone()
+        }
     }
 
     /// Whether to mark the row out of date. A bundle package is never marked
@@ -123,10 +136,40 @@ impl Component for PackageRow {
             let hash = item.hash.clone();
             let bundle_name = item.bundle_name.clone();
             let package_id = item.package_id.clone();
+            let name = item.display_title();
+            let provider = item.provider;
             let enabled_now = item.enabled;
             let manifest_default = item.manifest_default;
+            let pending_disable = use_disable_confirm();
             (move |()| {
-                if let Some(h) = &hash {
+                // Switching one off can take other packages with it, so it goes
+                // through the impact check rather than straight to the flag.
+                // Switching one on never does.
+                if enabled_now {
+                    let root = match &hash {
+                        Some(hash) => DisableRoot::Artifact(hash.clone()),
+                        // Nothing is installed for it, so the bundle's own
+                        // record of the choice is all there is to write.
+                        None => DisableRoot::Package(provider, package_id.clone()),
+                    };
+                    let bundle = bundle_name
+                        .as_ref()
+                        .filter(|_| hash.is_none())
+                        .map(|bundle| BundlePackage {
+                            bundle_name: bundle.clone(),
+                            package_id: package_id.clone(),
+                        });
+
+                    disable::request(
+                        DisableRequest {
+                            cluster_id,
+                            name: name.clone(),
+                            root,
+                            bundle,
+                        },
+                        pending_disable,
+                    );
+                } else if let Some(h) = &hash {
                     cluster.mutate(ClusterAction::ToggleArtifact {
                         cluster_id,
                         hash: h.clone(),
@@ -136,7 +179,7 @@ impl Component for PackageRow {
                         cluster_id,
                         bundle_name: bundle.clone(),
                         package_id: package_id.clone(),
-                        enabled: !enabled_now,
+                        enabled: true,
                         manifest_default,
                     });
                 }
@@ -210,11 +253,7 @@ fn grid_card(
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.display_title();
 
     let (bg, border, content_alpha) = if enabled {
         (colors::brand().with_a(38), colors::brand(), 255)
@@ -333,11 +372,7 @@ fn package_info(
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.display_title();
 
     rect()
         .horizontal()

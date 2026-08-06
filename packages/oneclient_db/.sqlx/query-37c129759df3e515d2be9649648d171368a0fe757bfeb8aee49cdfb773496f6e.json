@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\t\t\tUPDATE cluster_artifacts\n\t\t\t\tSET cluster_file_name = ?, enabled = 0\n\t\t\t\tWHERE cluster_id = ? AND hash = ?\n\t\t\t\tRETURNING cluster_id, hash, cluster_file_name, enabled\n\t\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "cluster_file_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_file_name"
+          }
+        }
+      },
+      {
+        "name": "enabled",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "enabled"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "37c129759df3e515d2be9649648d171368a0fe757bfeb8aee49cdfb773496f6e"
+}

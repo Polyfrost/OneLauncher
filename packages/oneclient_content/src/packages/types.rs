@@ -157,6 +157,32 @@ pub enum DependencyKind {
 	Embedded,
 }
 
+impl DependencyKind {
+	/// How the kind is stored in `provider_release_dependencies`. Spelled out
+	/// rather than a discriminant so the table stays readable and a reordering
+	/// of the enum cannot silently reinterpret every stored row.
+	#[must_use]
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Required => "required",
+			Self::Optional => "optional",
+			Self::Incompatible => "incompatible",
+			Self::Embedded => "embedded",
+		}
+	}
+
+	#[must_use]
+	pub fn parse(value: &str) -> Option<Self> {
+		match value {
+			"required" => Some(Self::Required),
+			"optional" => Some(Self::Optional),
+			"incompatible" => Some(Self::Incompatible),
+			"embedded" => Some(Self::Embedded),
+			_ => None,
+		}
+	}
+}
+
 /// A provider-declared relation to another project. At least one of the two ids
 /// is set: Modrinth pins either a project, a specific version, or both, while
 /// CurseForge only ever names the project.

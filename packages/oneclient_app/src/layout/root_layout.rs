@@ -21,6 +21,10 @@ impl Component for RootLayout {
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
 
+        // Here rather than at the app root: answering "Show logs" means
+        // navigating, and the router only exists from this layout inwards.
+        crate::platform::use_tray_bridge();
+
         // macOS draws the corners natively (rounded window + shadow via the
         // window attributes), so Freya must not round on top of it.
         #[cfg(target_os = "macos")]

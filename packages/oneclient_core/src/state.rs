@@ -182,3 +182,20 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 		background.services.events.signal(oneclient_events::Signal::SyncComplete);
 	});
 }
+
+/// Winds the launcher down before the process goes away.
+///
+/// Only the work that has an owner outside this process: the Discord RPC worker
+/// holds a socket the daemon would otherwise have to time out, and the pool is
+/// closed so no connection is dropped part-way through a statement. In-flight
+/// downloads are deliberately left to die with the process — every writer here
+/// goes through a temporary file and a rename, so an abandoned one leaves
+/// nothing half-written, and waiting on a slow mirror would turn "quit" into a
+/// hang.
+///
+/// Safe to call more than once.
+pub async fn shutdown(state: &LauncherState) {
+	tracing::info!("shutting the launcher down");
+	state.discord.shutdown();
+	state.services.db.close().await;
+}

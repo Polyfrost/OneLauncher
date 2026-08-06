@@ -11,7 +11,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::{Platform, spawn_forever};
 use freya::radio::RadioStation;
 use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
 use tokio::sync::mpsc;
@@ -33,6 +33,10 @@ pub struct EventPump {
     pub events: EventReceiver,
     pub signals: mpsc::UnboundedReceiver<PumpSignal>,
     pub station: RadioStation<AppState, AppChannel>,
+    /// The window's handle on itself. Stage changes are folded here, which
+    /// makes this the one place that knows a game has started or stopped
+    /// without subscribing a component to the log-line firehose.
+    pub platform: Platform,
 }
 
 impl EventPump {
@@ -42,6 +46,9 @@ impl EventPump {
         // while hovering.
         let mut paused = false;
         let mut game_flush: Option<tokio::time::Instant> = None;
+        let mut playing: Option<i64> = None;
+        // Only games this session started; see `platform::sync_game_presence`.
+        let mut started_here: HashSet<i64> = HashSet::new();
 
         loop {
             let next_deadline = armed
@@ -109,6 +116,15 @@ impl EventPump {
                     if folded.saw_game_log && game_flush.is_none() {
                         game_flush = Some(tokio::time::Instant::now() + GAME_LOG_FLUSH);
                     }
+                    if folded.saw_stage {
+                        started_here.extend(&folded.started);
+                        playing = crate::platform::sync_game_presence(
+                            &self.platform,
+                            &self.station,
+                            &started_here,
+                            playing,
+                        );
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -152,6 +168,13 @@ impl EventPump {
                     folded.clusters = true;
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
+                    folded.saw_stage = true;
+                    // A game the launcher started passes through the busy
+                    // stages first; one adopted from a previous run is reported
+                    // as `Running` and nothing else.
+                    if stage.is_busy() {
+                        folded.started.push(cluster_id);
+                    }
                     stages.push((cluster_id, stage));
                 }
                 Event::Game(GameEvent::Log { cluster_id, line }) => {
@@ -161,7 +184,10 @@ impl EventPump {
                 Event::Game(GameEvent::Failed {
                     cluster_id,
                     message,
-                }) => failed = Some((cluster_id, message)),
+                }) => {
+                    folded.saw_stage = true;
+                    failed = Some((cluster_id, message));
+                }
                 // The sign-in modal renders this inline rather than as a toast,
                 // so it is lifted out here and never reaches the engine.
                 Event::Progress(ProgressEvent::Update {
@@ -243,6 +269,12 @@ impl EventPump {
 struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
+    /// A launch stage moved, so what the window should be doing may have moved
+    /// with it.
+    saw_stage: bool,
+    /// Clusters seen entering a pre-`Running` stage, which is what tells a
+    /// launch apart from a session adopted at startup.
+    started: Vec<i64>,
     clusters: bool,
     java: bool,
 }

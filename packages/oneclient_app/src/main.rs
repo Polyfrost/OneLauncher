@@ -6,6 +6,7 @@
 
 use freya::prelude::*;
 use freya::radio::use_init_radio_station;
+use oneclient_app::platform::tray::{self, TrayCommand};
 use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
@@ -34,6 +35,7 @@ impl App for OneClientApp {
                     events: events_rx,
                     signals: signals_rx,
                     station,
+                    platform: Platform::get(),
                 }
                 .run(),
             );
@@ -102,7 +104,14 @@ fn main() {
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
         .with_transparency(true)
-        .with_background(Color::TRANSPARENT);
+        .with_background(Color::TRANSPARENT)
+        // The tray keeps the event loop alive past the last window, so closing
+        // the window no longer ends anything by itself. The window is kept and
+        // the quit is run properly instead of being torn down mid-shutdown.
+        .with_on_close(|_, _| {
+            tray::send(TrayCommand::Quit);
+            CloseDecision::KeepOpen
+        });
 
     #[cfg(target_os = "macos")]
     let window_config = window_config
@@ -122,6 +131,7 @@ fn main() {
 
     let mut launch_config = LaunchConfig::new()
         .with_window(window_config)
+        .with_tray(tray::build, tray::handle)
         .with_gpu_resource_cache_limit(
             std::env::var("ONECLIENT_GPU_CACHE_BYTES")
                 .ok()

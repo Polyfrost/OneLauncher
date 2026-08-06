@@ -12,6 +12,32 @@ pub enum ViewLayout {
 	List,
 }
 
+/// What the launcher window does once a game is up.
+///
+/// [`Self::KeepVisible`] is the default because it is what every install
+/// already does; changing it under people on an update would look like a bug.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchBehaviour {
+	#[default]
+	KeepVisible,
+	HideWhilePlaying,
+	CloseLauncher,
+}
+
+impl LaunchBehaviour {
+	pub const ALL: [Self; 3] = [Self::KeepVisible, Self::HideWhilePlaying, Self::CloseLauncher];
+
+	#[must_use]
+	pub fn label(self) -> &'static str {
+		match self {
+			Self::KeepVisible => "Keep visible",
+			Self::HideWhilePlaying => "Hide while playing",
+			Self::CloseLauncher => "Close completely",
+		}
+	}
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct ViewState {
@@ -32,6 +58,7 @@ pub struct LauncherSettings {
 	pub max_concurrent_requests: usize,
 	pub global_game_settings: GameSettingsProfile,
 	pub allow_parallel_running_clusters: bool,
+	pub launch_behaviour: LaunchBehaviour,
 	pub dynamic_background_enabled: bool,
 	pub view_states: BTreeMap<String, ViewState>,
 	pub seen_onboarding: bool,
@@ -67,6 +94,7 @@ impl Default for LauncherSettings {
 			max_concurrent_requests: 25,
 			global_game_settings: GameSettingsProfile::default_global_profile(),
 			allow_parallel_running_clusters: false,
+			launch_behaviour: LaunchBehaviour::default(),
 			dynamic_background_enabled: true,
 			view_states: BTreeMap::new(),
 			seen_onboarding: false,

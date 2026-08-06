@@ -178,6 +178,29 @@ impl GameState {
         matches!(self.stage(cluster_id), Some(s) if s != LaunchStage::Exited)
     }
 
+    /// The cluster the launcher treats as "the game", for the things that can
+    /// only mean one of them: the window's hide-while-playing behaviour and the
+    /// tray's log entry.
+    ///
+    /// Parallel clusters are allowed, so the lowest id wins rather than
+    /// whichever the map happened to yield first — an arbitrary answer that
+    /// changed between calls would flip the window back and forth.
+    #[must_use]
+    pub fn running_cluster(&self) -> Option<i64> {
+        self.running_cluster_where(|_| true)
+    }
+
+    /// Like [`Self::running_cluster`], but only among clusters `is_candidate`
+    /// accepts.
+    #[must_use]
+    pub fn running_cluster_where(&self, is_candidate: impl Fn(i64) -> bool) -> Option<i64> {
+        self.stages
+            .iter()
+            .filter(|(id, stage)| **stage == LaunchStage::Running && is_candidate(**id))
+            .map(|(id, _)| *id)
+            .min()
+    }
+
     #[must_use]
     pub fn logs_for(&self, cluster_id: i64) -> Arc<Vec<Arc<str>>> {
         self.logs.get(&cluster_id).cloned().unwrap_or_default()
@@ -196,6 +219,29 @@ mod tests {
         assert!(game.begin_launch(1));
         assert!(!game.begin_launch(1));
         assert!(game.begin_launch(2));
+    }
+
+    #[test]
+    fn the_live_cluster_is_the_lowest_running_id() {
+        let mut game = GameState::default();
+        assert_eq!(game.running_cluster(), None);
+
+        game.stages.insert(3, LaunchStage::Running);
+        game.stages.insert(1, LaunchStage::Downloading);
+        assert_eq!(game.running_cluster(), Some(3));
+
+        game.stages.insert(1, LaunchStage::Running);
+        assert_eq!(game.running_cluster(), Some(1));
+    }
+
+    #[test]
+    fn a_game_this_session_did_not_start_is_not_the_windows_business() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+        game.stages.insert(2, LaunchStage::Running);
+
+        assert_eq!(game.running_cluster_where(|id| id == 2), Some(2));
+        assert_eq!(game.running_cluster_where(|_| false), None);
     }
 
     #[test]

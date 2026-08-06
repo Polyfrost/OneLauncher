@@ -1,7 +1,8 @@
 use freya::prelude::*;
+use oneclient_core::settings::{LaunchBehaviour, LauncherSettings};
 
 use super::settings_page;
-use crate::components::{IconType, link_button, toggle};
+use crate::components::{Dropdown, IconType, link_button, toggle};
 use crate::hooks::{use_dispatch, use_launcher, use_settings_snapshot};
 use crate::platform;
 use crate::view::app::settings::{section_header, settings_row};
@@ -28,6 +29,7 @@ impl Component for SettingsLauncher {
         let mut first = use_state(|| true);
         {
             let settings = settings.clone();
+            let dispatch = dispatch.clone();
             use_side_effect(move || {
                 let discord = *discord_rpc.read();
                 let crash = *crash_reporting.read();
@@ -47,6 +49,12 @@ impl Component for SettingsLauncher {
 
         settings_page()
             .child(section_header("GENERAL"))
+            .child(settings_row(
+                IconType::Eye,
+                "Launcher Window",
+                "What the window does while a game is running. The tray icon stays either way.",
+                launch_behaviour_field(settings, dispatch),
+            ))
             .child(settings_row(
                 IconType::Link03,
                 "Discord RPC",
@@ -68,4 +76,29 @@ impl Component for SettingsLauncher {
             ))
             .into_element()
     }
+}
+
+/// Dispatched on its own rather than through the mirroring effect above: that
+/// one debounces two toggles against each other, and a dropdown has no
+/// intermediate states to debounce.
+fn launch_behaviour_field(
+    settings: LauncherSettings,
+    dispatch: crate::Actions,
+) -> impl IntoElement {
+    let options: Vec<String> = LaunchBehaviour::ALL
+        .iter()
+        .map(|behaviour| behaviour.label().to_string())
+        .collect();
+
+    Dropdown::new(settings.launch_behaviour.label(), options)
+        .width(Size::px(200.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() else {
+                return;
+            };
+            let mut next = settings.clone();
+            next.launch_behaviour = behaviour;
+            dispatch.set_settings(next);
+        })
 }

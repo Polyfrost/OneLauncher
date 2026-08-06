@@ -5,6 +5,7 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::*;
 use freya::text_edit::Clipboard;
+use oneclient_common::search::{MatchScore, SearchQuery};
 use sysinfo::CpuRefreshKind;
 use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
@@ -265,7 +266,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Accounts",
         description: "Manage Minecraft / Microsoft accounts.",
         keywords: &["account", "login", "microsoft", "msa"],
-        route: Route::Accounts {},
+        route: Route::SettingsAccounts {},
     },
     SearchItem {
         id: "nav.changelog",
@@ -325,7 +326,7 @@ impl SettingsTab {
     fn route(self) -> Option<Route> {
         match self {
             Self::MinecraftSettings => Some(Route::SettingsMinecraft {}),
-            Self::Accounts => Some(Route::Accounts {}),
+            Self::Accounts => Some(Route::SettingsAccounts {}),
             Self::LauncherSettings => Some(Route::SettingsLauncher {}),
             Self::Java => Some(Route::SettingsJava {}),
             Self::Storage => Some(Route::SettingsStorage {}),
@@ -371,6 +372,7 @@ pub struct SettingsShell;
 fn route_tab(route: &Route) -> SettingsTab {
     match route {
         Route::SettingsMinecraft {} => SettingsTab::MinecraftSettings,
+        Route::SettingsAccounts {} => SettingsTab::Accounts,
         Route::SettingsLauncher {} => SettingsTab::LauncherSettings,
         Route::SettingsJava {} => SettingsTab::Java,
         Route::SettingsStorage {} => SettingsTab::Storage,
@@ -390,7 +392,7 @@ impl Component for SettingsShell {
         let changelog_unread = has_unread_changelog();
 
         let search = use_state(String::new);
-        let query = search.read().trim().to_string();
+        let query = SearchQuery::new(&search.read());
         let scroll = use_scroll_controller(ScrollConfig::default);
         SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
 
@@ -419,7 +421,7 @@ impl Component for SettingsShell {
                     .into_element(),
             ]
         } else {
-            search_results(query, search)
+            search_results(&query, search)
         };
 
         rect()
@@ -503,19 +505,35 @@ fn search_box(mut search: State<String>) -> impl IntoElement {
     )
 }
 
-fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
-    let q = query.to_lowercase();
-    let mut matches: Vec<SearchItem> = SEARCH_INDEX
+/// How well a settings entry answers the query. The title is what the user is
+/// looking for, so a hit there outranks one in the blurb or the hidden keywords
+/// however well those scored — a description match is a hint, not the thing.
+fn settings_score(item: &SearchItem, query: &SearchQuery) -> Option<(u8, MatchScore)> {
+    if let Some(score) = query.score(item.title) {
+        return Some((2, score));
+    }
+    if let Some(score) = query.best_score(item.keywords.iter().copied()) {
+        return Some((1, score));
+    }
+    query.score(item.description).map(|score| (0, score))
+}
+
+fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element> {
+    let mut scored: Vec<(u8, MatchScore, SearchItem)> = SEARCH_INDEX
         .iter()
-        .filter(|&item| {
-            item.title.to_lowercase().contains(&q)
-                || item.description.to_lowercase().contains(&q)
-                || item.keywords.iter().any(|k| k.to_lowercase().contains(&q))
-        })
-        .cloned()
+        .filter_map(|item| settings_score(item, query).map(|(f, s)| (f, s, item.clone())))
         .collect();
 
-    matches.sort_by_key(|m| m.title.len());
+    // Best field, then best score, then the shortest title — the entry whose
+    // name is closest to being just the query.
+    scored.sort_by_key(|(field, score, item)| {
+        (
+            std::cmp::Reverse(*field),
+            std::cmp::Reverse(*score),
+            item.title.len(),
+        )
+    });
+    let mut matches: Vec<SearchItem> = scored.into_iter().map(|(_, _, item)| item).collect();
     matches.truncate(SEARCH_RESULTS_MAX);
 
     if matches.is_empty() {

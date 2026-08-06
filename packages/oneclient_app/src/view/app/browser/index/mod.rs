@@ -6,6 +6,7 @@ use freya::animation::{
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::parse_mc_version;
+use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::types::SearchSort;
 use oneclient_content::packages::{ContentType, ProviderId};
@@ -127,9 +128,11 @@ impl Component for Browser {
         };
 
         let mut page_state = page;
+        // Normalised the same way the search key is, so a query that only picked
+        // up a space is not treated as a new search that resets the page.
         let signature = format!(
             "{provider_id:?}|{}|{compat}|{}",
-            debounced_query.read().trim().to_lowercase(),
+            normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
         let mut last_signature = use_state(|| signature.clone());

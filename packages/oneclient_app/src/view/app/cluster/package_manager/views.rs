@@ -101,6 +101,32 @@ impl EnabledFilter {
     }
 }
 
+/// Whether a bundle's hidden files get a row. They are dependencies the bundle
+/// manages on the user's behalf, so the list leaves them out until asked.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum HiddenFilter {
+    Hide,
+    Show,
+}
+
+impl HiddenFilter {
+    const ALL: [HiddenFilter; 2] = [HiddenFilter::Hide, HiddenFilter::Show];
+
+    fn label(self) -> &'static str {
+        match self {
+            HiddenFilter::Hide => "Hide",
+            HiddenFilter::Show => "Show",
+        }
+    }
+
+    pub(super) fn keep(self, p: &PackageEntry) -> bool {
+        match self {
+            HiddenFilter::Hide => !p.hidden,
+            HiddenFilter::Show => true,
+        }
+    }
+}
+
 const FILTER_PANEL_W: f32 = 172.;
 const FILTER_BTN_W: f32 = 34.;
 
@@ -113,6 +139,7 @@ pub(super) fn toolbar_bar(
     sort: State<Option<String>>,
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
+    hidden_filter: State<HiddenFilter>,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
@@ -165,6 +192,7 @@ pub(super) fn toolbar_bar(
             sort,
             current_sort,
             enabled_filter,
+            hidden_filter,
         })
         .child(
             SegmentedControl::new(layout)
@@ -223,6 +251,7 @@ struct FilterButton {
     sort: State<Option<String>>,
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
+    hidden_filter: State<HiddenFilter>,
 }
 
 impl Component for FilterButton {
@@ -232,10 +261,14 @@ impl Component for FilterButton {
         let sort = self.sort;
         let current_sort = self.current_sort;
         let enabled_filter = self.enabled_filter;
+        let hidden_filter = self.hidden_filter;
 
+        // Hiding hidden packages is the default, so it does not count as the
+        // filters being touched.
         let is_open = open();
-        let active =
-            current_sort != SortMode::NameAsc || *enabled_filter.read() != EnabledFilter::All;
+        let active = current_sort != SortMode::NameAsc
+            || *enabled_filter.read() != EnabledFilter::All
+            || *hidden_filter.read() != HiddenFilter::Hide;
 
         let icon_color = if active {
             colors::brand()
@@ -263,6 +296,7 @@ impl Component for FilterButton {
                     sort,
                     current_sort,
                     enabled_filter,
+                    hidden_filter,
                     on_close,
                 }
                 .into_element()
@@ -275,6 +309,7 @@ struct FilterPopover {
     sort: State<Option<String>>,
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
+    hidden_filter: State<HiddenFilter>,
     on_close: EventHandler<()>,
 }
 
@@ -283,6 +318,7 @@ impl Component for FilterPopover {
         let mut sort = self.sort;
         let current_sort = self.current_sort;
         let mut enabled_filter = self.enabled_filter;
+        let mut hidden_filter = self.hidden_filter;
         let backdrop_close = self.on_close.clone();
         let key_close = self.on_close.clone();
 
@@ -295,6 +331,7 @@ impl Component for FilterPopover {
         let progress = fade.read().value();
 
         let show = *enabled_filter.read();
+        let hidden = *hidden_filter.read();
 
         let mut panel = rect()
             .vertical()
@@ -341,6 +378,20 @@ impl Component for FilterPopover {
             let selected = filter == show;
             let on_press: EventHandler<Event<PressEventData>> = (move |_| {
                 enabled_filter.set(filter);
+            })
+            .into();
+            panel = panel.child(ChoiceRow {
+                text: filter.label(),
+                selected,
+                on_press,
+            });
+        }
+
+        panel = panel.child(section_label("Hidden packages"));
+        for filter in HiddenFilter::ALL {
+            let selected = filter == hidden;
+            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+                hidden_filter.set(filter);
             })
             .into();
             panel = panel.child(ChoiceRow {

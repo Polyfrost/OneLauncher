@@ -30,6 +30,7 @@ fn row_to_runtime(row: JavaVersionRow) -> JavaRuntime {
 		version: row.version,
 		vendor: JavaVendor::from_str(&row.vendor).unwrap_or(JavaVendor::Other(row.vendor)),
 		os_arch: row.os_arch,
+		is_jdk: row.is_jdk,
 	}
 }
 
@@ -43,6 +44,7 @@ impl JavaStore for SqlJavaStore {
 			&runtime.version,
 			&runtime.vendor.to_string(),
 			&runtime.os_arch,
+			runtime.is_jdk,
 		)
 		.await
 		.map_err(StoreError::new)?;

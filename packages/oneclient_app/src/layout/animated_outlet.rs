@@ -14,11 +14,15 @@ enum Enter {
     Fade,
 }
 
+/// Every route nested under [`SettingsShell`](crate::layout::SettingsShell). The
+/// shell runs its own content-only transition, so this outlet must stay still for
+/// them — otherwise the sidebar animates along with the page.
 fn is_sidebar_route(route: &Route) -> bool {
     matches!(
         route,
         Route::SettingsAppearance {}
             | Route::SettingsMinecraft {}
+            | Route::SettingsAccounts {}
             | Route::SettingsLauncher {}
             | Route::SettingsJava {}
             | Route::SettingsStorage {}

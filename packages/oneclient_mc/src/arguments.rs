@@ -97,13 +97,6 @@ pub fn performance_flags(
         flags.push("-XX:+UseCompactObjectHeaders".to_string());
     }
 
-    // Arrived in 8u20, so Java 7 is the one runtime that would reject it. Where
-    // the selected collector does not support dedup - anything but G1 before 18
-    // - the JVM ignores the flag instead of refusing to start, verified on 8.
-    if java_major >= 8 {
-        flags.push("-XX:+UseStringDeduplication".to_string());
-    }
-
     flags
 }
 
@@ -567,7 +560,6 @@ mod tests {
         let j8 = flags(8, "amd64", 4096);
         assert_eq!(j8.first().unwrap(), "-Xms4096M");
         assert!(j8.contains(&"-XX:+UseG1GC".to_string()));
-        assert!(j8.contains(&"-XX:+UseStringDeduplication".to_string()));
     }
 
     #[test]
@@ -635,7 +627,6 @@ mod tests {
                     format!("-Xms{mem}M"),
                     "-XX:+UseG1GC".to_string(),
                     "-XX:+ParallelRefProcEnabled".to_string(),
-                    "-XX:+UseStringDeduplication".to_string(),
                 ],
                 "{mem}M should get no hand-picked sizing"
             );
@@ -662,7 +653,7 @@ mod tests {
             );
             assert_eq!(
                 flags,
-                vec!["-Xms16384M", "-XX:+UseStringDeduplication"],
+                vec!["-Xms16384M"],
                 "{arg} should leave only the collector-independent flags"
             );
         }
@@ -748,12 +739,11 @@ mod tests {
     }
 
     #[test]
-    fn only_java_7_is_denied_string_deduplication() {
-        assert!(!flags(7, "amd64", 4096).contains(&"-XX:+UseStringDeduplication".to_string()));
-        for major in [8, 17, 21, 24, 25] {
+    fn string_deduplication_is_never_added() {
+        for major in [7, 8, 17, 21, 24, 25] {
             assert!(
-                flags(major, "amd64", 4096).contains(&"-XX:+UseStringDeduplication".to_string()),
-                "java {major} should deduplicate strings"
+                !flags(major, "amd64", 4096).contains(&"-XX:+UseStringDeduplication".to_string()),
+                "java {major} should not be told to deduplicate strings"
             );
         }
     }
@@ -765,8 +755,7 @@ mod tests {
             vec![
                 "-Xms16384M",
                 "-XX:+UseZGC",
-                "-XX:+UseCompactObjectHeaders",
-                "-XX:+UseStringDeduplication"
+                "-XX:+UseCompactObjectHeaders"
             ]
         );
     }

@@ -186,8 +186,7 @@ impl RequestClient {
             match self.client.execute(active_request).await {
                 Ok(response) => {
                     let status = response.status();
-                    let retryable = status.as_u16() == 429
-                        || matches!(status.as_u16(), 502..=504);
+                    let retryable = status.as_u16() == 429 || status.is_server_error();
 
                     if retryable && cloneable && throttle_retries < MAX_THROTTLE_RETRIES {
                         throttle_retries += 1;
@@ -241,6 +240,19 @@ impl RequestClient {
         events: &EventBus,
     ) -> Result<(), RequestError> {
         let res = self.send(request).await?;
+
+        // Without this, an error body is written to disk under the requested file's name.
+        let status = res.status();
+        if !status.is_success() {
+            let url = res.url().to_string();
+            let bytes = res.bytes().await?;
+            return Err(RequestError::HttpStatus {
+                status: status.as_u16(),
+                url,
+                snippet: body_snippet(&bytes),
+            });
+        }
+
         let size_hint = res.content_length();
         let http_stream = res.stream(options, events).await?;
         let http_stream = std::pin::pin!(http_stream);

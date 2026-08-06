@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use oneclient_events::{
-    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
+    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, Persistence, ProgressEvent,
+    TaskCategory,
 };
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
@@ -76,6 +77,11 @@ impl ClusterUpdateSummary {
     }
 }
 
+/// One notification, as the engine holds it.
+///
+/// Both surfaces read these: the toast stack shows the ones with a live toast,
+/// the notification center shows the ones worth coming back to. Which is which
+/// is [`InboxEntry::persistence`] — see [`InboxEntry::in_center`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct InboxEntry {
     pub level: Level,
@@ -91,6 +97,9 @@ pub struct InboxEntry {
     pub tasks: Vec<TaskView>,
     /// Live transfer stats for grouped downloads (bytes/sec, seconds remaining).
     pub transfer: Option<TransferStats>,
+    /// Whether this outlives its toast. Transient entries are dropped the
+    /// moment their toast goes, so the center only ever holds what matters.
+    pub persistence: Persistence,
 }
 
 /// One row in the expandable task list, an aggregate over all children of a
@@ -113,6 +122,28 @@ pub struct NotificationSpec {
     pub icon: Option<IconType>,
     pub progress: Option<(u64, u64)>,
     pub actions: Vec<NotificationAction>,
+    pub persistence: Persistence,
+}
+
+impl NotificationSpec {
+    /// A bare title and body: no icon, no progress, no actions. The shape the
+    /// engine builds internally, which callers then fill in around.
+    pub fn plain(
+        title: impl Into<String>,
+        body: impl Into<String>,
+        level: Level,
+        persistence: Persistence,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            body: body.into(),
+            level,
+            icon: None,
+            progress: None,
+            actions: Vec::new(),
+            persistence,
+        }
+    }
 }
 
 impl InboxEntry {
@@ -122,6 +153,16 @@ impl InboxEntry {
 
     pub fn click_dismissable(&self) -> bool {
         self.dismissable() && self.actions.is_empty()
+    }
+
+    /// Whether this belongs in the notification center.
+    ///
+    /// Work still in flight is included whatever its persistence says: a
+    /// download is exactly the thing a user opens the center to check on, and
+    /// it is only transient in the sense that nothing is left to review once it
+    /// finishes.
+    pub fn in_center(&self) -> bool {
+        self.persistence.is_persistent() || self.is_loading
     }
 }
 
@@ -401,8 +442,19 @@ impl NotificationState {
         }
     }
 
+    /// Unread entries the center would actually show. A toast the user is
+    /// looking at right now must not also light up the badge that means "you
+    /// missed something".
     pub fn unread_count(inbox: &[InboxEntry]) -> usize {
-        inbox.iter().filter(|entry| !entry.read).count()
+        inbox
+            .iter()
+            .filter(|entry| !entry.read && entry.in_center())
+            .count()
+    }
+
+    /// The entries the notification center renders, newest first.
+    pub fn center_entries(inbox: &[InboxEntry]) -> impl Iterator<Item = &InboxEntry> {
+        inbox.iter().filter(|entry| entry.in_center())
     }
 
     /// Folds one notification into the engine state. Does not build a
@@ -420,10 +472,12 @@ impl NotificationState {
             Event::Notification(Notification::Message(message)) => {
                 let entry_id = self.push_inbox(
                     inbox,
-                    message.title,
-                    message.body,
-                    message.level,
-                    None,
+                    NotificationSpec::plain(
+                        message.title,
+                        message.body,
+                        message.level,
+                        message.persistence,
+                    ),
                     false,
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
@@ -441,8 +495,13 @@ impl NotificationState {
             }) => {
                 self.handle_progress(inbox, id, label, current, total);
             }
-            Event::Progress(ProgressEvent::Complete { id, title, body }) => {
-                self.handle_progress_complete(inbox, id, title, body);
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title,
+                body,
+                persistence,
+            }) => {
+                self.handle_progress_complete(inbox, id, title, body, persistence);
             }
             Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
@@ -467,11 +526,20 @@ impl NotificationState {
         (timers, None)
     }
 
-    pub fn toggle_center(&mut self, _inbox: &mut [InboxEntry], center_open: bool) -> bool {
+    pub fn toggle_center(&mut self, inbox: &mut Vec<InboxEntry>, center_open: bool) -> bool {
         let next = !center_open;
         if next {
-            self.active_toasts.clear();
+            // Opening the center swallows every toast, which for a transient
+            // one is the end of its life: no toast is left to expire and drop
+            // it, so it would sit in the panel it was never meant to reach.
+            let dropped: Vec<u64> = std::mem::take(&mut self.active_toasts)
+                .into_iter()
+                .map(|toast| toast.entry_id)
+                .collect();
             self.pending_timers.clear();
+            for entry_id in dropped {
+                self.drop_if_transient(inbox, entry_id);
+            }
         }
         next
     }
@@ -492,15 +560,15 @@ impl NotificationState {
         else {
             return;
         };
-        let entry = inbox.iter().find(|e| e.id == entry_id);
-        if entry.is_some_and(|e| !e.dismissable()) {
+        if inbox
+            .iter()
+            .find(|e| e.id == entry_id)
+            .is_some_and(|e| !e.dismissable())
+        {
             return;
         }
-        let has_progress = entry.is_some_and(|e| e.progress.is_some());
         self.active_toasts.remove(pos);
-        if !has_progress {
-            self.forget_entry(inbox, entry_id);
-        }
+        self.drop_if_transient(inbox, entry_id);
     }
 
     #[allow(dead_code)]
@@ -509,9 +577,26 @@ impl NotificationState {
             .retain(|toast| toast.toast_id != toast_id);
     }
 
-    pub fn expire_toast(&mut self, _inbox: &[InboxEntry], entry_id: u64) {
+    pub fn expire_toast(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
         self.active_toasts
             .retain(|toast| toast.entry_id != entry_id);
+        self.drop_if_transient(inbox, entry_id);
+    }
+
+    /// The one place a toast ending decides whether anything is left behind.
+    ///
+    /// A transient notification exists for the length of its toast and no
+    /// longer; letting it fall into the center is what buried the failures that
+    /// belong there. Work still in flight is exempt: closing the toast on a
+    /// running download hides the toast, not the download.
+    fn drop_if_transient(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
+        let drop = inbox
+            .iter()
+            .find(|e| e.id == entry_id)
+            .is_some_and(|e| !e.in_center());
+        if drop {
+            self.forget_entry(inbox, entry_id);
+        }
     }
 
     pub fn mark_read(&mut self, inbox: &mut [InboxEntry], entry_id: u64) {
@@ -537,38 +622,14 @@ impl NotificationState {
         self.grouped_entries.retain(|_, &mut v| v != entry_id);
     }
 
+    /// Files a new entry and returns its id. Raises no toast: the progress
+    /// paths arm their own, and which kind depends on what they are reporting.
     fn push_inbox(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
-        title: String,
-        body: String,
-        level: Level,
-        progress: Option<(u64, u64)>,
+        spec: NotificationSpec,
         is_loading: bool,
     ) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        inbox.insert(
-            0,
-            InboxEntry {
-                id,
-                title,
-                body,
-                level,
-                icon: None,
-                progress,
-                is_loading,
-                read: false,
-                created_at: Instant::now(),
-                actions: Vec::new(),
-                tasks: Vec::new(),
-                transfer: None,
-            },
-        );
-        id
-    }
-
-    pub fn push_custom(&mut self, inbox: &mut Vec<InboxEntry>, spec: NotificationSpec) -> u64 {
         let NotificationSpec {
             title,
             body,
@@ -576,9 +637,8 @@ impl NotificationState {
             icon,
             progress,
             actions,
+            persistence,
         } = spec;
-
-        let is_loading = progress.is_some_and(|(current, total)| total == 0 || current < total);
 
         let id = self.next_id;
         self.next_id += 1;
@@ -597,8 +657,16 @@ impl NotificationState {
                 actions,
                 tasks: Vec::new(),
                 transfer: None,
+                persistence,
             },
         );
+        id
+    }
+
+    pub fn push_custom(&mut self, inbox: &mut Vec<InboxEntry>, spec: NotificationSpec) -> u64 {
+        let progress = spec.progress;
+        let is_loading = progress.is_some_and(|(current, total)| total == 0 || current < total);
+        let id = self.push_inbox(inbox, spec, is_loading);
 
         if progress.is_some() {
             self.ensure_progress_toast(id);
@@ -669,10 +737,19 @@ impl NotificationState {
         } else {
             let entry_id = self.push_inbox(
                 inbox,
-                label.clone(),
-                body.clone(),
-                Level::Info,
-                progress,
+                NotificationSpec {
+                    progress,
+                    // Work in flight shows in the center on its own
+                    // (`in_center`); once it is over there is nothing left to
+                    // review, unless a caller replaces it with a result that
+                    // says otherwise.
+                    ..NotificationSpec::plain(
+                        label.clone(),
+                        body.clone(),
+                        Level::Info,
+                        Persistence::Transient,
+                    )
+                },
                 !done,
             );
             self.progress_entries.insert(id, entry_id);
@@ -697,13 +774,22 @@ impl NotificationState {
         id: Uuid,
         title: String,
         body: String,
+        persistence: Persistence,
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            // The card was a download, which is never filed; what it just
+            // became might be.
+            if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+                entry.persistence = persistence;
+            }
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id =
-                self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(
+                inbox,
+                NotificationSpec::plain(title, body, Level::Info, persistence),
+                false,
+            );
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -717,10 +803,12 @@ impl NotificationState {
             GroupedProgressEvent::Start { session_id, title } => {
                 let entry_id = self.push_inbox(
                     inbox,
-                    title.clone(),
-                    "Preparing...".to_string(),
-                    Level::Info,
-                    None,
+                    NotificationSpec::plain(
+                        title.clone(),
+                        "Preparing...",
+                        Level::Info,
+                        Persistence::Transient,
+                    ),
                     true,
                 );
                 self.grouped_entries.insert(session_id, entry_id);
@@ -859,6 +947,7 @@ impl NotificationState {
             icon,
             progress: _,
             actions,
+            persistence,
         } = spec;
 
         match entry_id.and_then(|id| inbox.iter_mut().find(|e| e.id == id)) {
@@ -874,6 +963,9 @@ impl NotificationState {
                 entry.actions = actions;
                 entry.tasks = Vec::new();
                 entry.transfer = None;
+                // The result decides, not the download that produced it: the
+                // progress card was transient, its outcome may not be.
+                entry.persistence = persistence;
                 // The progress toast (if any) is already armed for this entry;
                 // leaving it in `active_toasts` lets the loop give it a dismiss
                 // timer now that it is no longer loading.
@@ -891,6 +983,7 @@ impl NotificationState {
                         icon,
                         progress: None,
                         actions,
+                        persistence,
                     },
                 );
             }
@@ -941,6 +1034,164 @@ fn progress_body(label: &str, current: u64, total: u64) -> String {
 
     let percent = ((current as f64 / total as f64) * 100.0).round() as u64;
     format!("{label} - {percent}%")
+}
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+    use oneclient_events::Message;
+
+    fn message(title: &str, persistence: Persistence) -> Event {
+        Event::Notification(Notification::Message(Message {
+            title: title.into(),
+            body: String::new(),
+            level: Level::Info,
+            persistence,
+        }))
+    }
+
+    /// Raises a notification and returns the entry it created.
+    fn raise(
+        state: &mut NotificationState,
+        inbox: &mut Vec<InboxEntry>,
+        persistence: Persistence,
+    ) -> u64 {
+        state.dispatch(inbox, message("Copied to clipboard", persistence));
+        inbox[0].id
+    }
+
+    #[test]
+    fn a_transient_notification_does_not_outlive_its_toast() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = raise(&mut state, &mut inbox, Persistence::Transient);
+
+        state.expire_toast(&mut inbox, id);
+
+        assert!(inbox.is_empty(), "a toast that timed out leaves nothing behind");
+    }
+
+    #[test]
+    fn a_persistent_notification_is_filed_when_its_toast_goes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = raise(&mut state, &mut inbox, Persistence::Persistent);
+
+        state.expire_toast(&mut inbox, id);
+
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(NotificationState::center_entries(&inbox).count(), 1);
+    }
+
+    /// Closing a toast by hand is not "file this for later" — it is the user
+    /// saying they are done with it.
+    #[test]
+    fn dismissing_a_transient_toast_forgets_it_too() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = raise(&mut state, &mut inbox, Persistence::Transient);
+
+        state.dismiss_toast(&mut inbox, id);
+
+        assert!(inbox.is_empty());
+    }
+
+    /// Opening the center clears the toast stack, which is the one path where
+    /// a transient entry has no toast left to take it away with.
+    #[test]
+    fn opening_the_center_does_not_strand_a_transient_notification() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        raise(&mut state, &mut inbox, Persistence::Transient);
+        raise(&mut state, &mut inbox, Persistence::Persistent);
+
+        assert!(state.toggle_center(&mut inbox, false));
+
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].persistence, Persistence::Persistent);
+    }
+
+    /// The badge means "you missed something", so a toast the user is looking
+    /// at right now must not raise it.
+    #[test]
+    fn a_transient_toast_does_not_light_up_the_unread_badge() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        raise(&mut state, &mut inbox, Persistence::Transient);
+
+        assert_eq!(NotificationState::unread_count(&inbox), 0);
+
+        raise(&mut state, &mut inbox, Persistence::Persistent);
+        assert_eq!(NotificationState::unread_count(&inbox), 1);
+    }
+
+    /// A download is transient, but checking on one is half the reason to open
+    /// the center — so it belongs there right up until it stops running.
+    #[test]
+    fn a_running_download_shows_in_the_center_and_then_stops() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.dispatch(
+            &mut inbox,
+            Event::Progress(ProgressEvent::Update {
+                id,
+                label: "Downloading assets".into(),
+                current: 20,
+                total: 100,
+            }),
+        );
+        assert_eq!(NotificationState::center_entries(&inbox).count(), 1);
+
+        state.dispatch(
+            &mut inbox,
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title: "Downloaded".into(),
+                body: "Done".into(),
+                persistence: Persistence::Transient,
+            }),
+        );
+        let entry_id = inbox[0].id;
+        state.expire_toast(&mut inbox, entry_id);
+
+        assert!(inbox.is_empty());
+    }
+
+    /// The updater's whole point: the download is noise, "restart to apply" is
+    /// the instruction, and it must survive the five seconds it is on screen.
+    #[test]
+    fn a_completion_can_be_worth_keeping_even_when_the_download_was_not() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.dispatch(
+            &mut inbox,
+            Event::Progress(ProgressEvent::Update {
+                id,
+                label: "Downloading OneClient".into(),
+                current: 1,
+                total: 100,
+            }),
+        );
+        state.dispatch(
+            &mut inbox,
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title: "Finished Downloading".into(),
+                body: "Restart to apply.".into(),
+                persistence: Persistence::Persistent,
+            }),
+        );
+
+        let entry_id = inbox[0].id;
+        state.expire_toast(&mut inbox, entry_id);
+
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].title, "Finished Downloading");
+    }
 }
 
 #[cfg(test)]

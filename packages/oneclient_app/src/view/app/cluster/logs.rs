@@ -134,6 +134,10 @@ impl Component for ClusterLogs {
                     .body(format!("{} (copied to clipboard)", result.url))
                     .info()
                     .icon(IconType::LinkExternal01)
+                    // The body is a URL the user uploaded a log in order to
+                    // share; the next clipboard write is all it takes to lose
+                    // it, so the notification is the second copy.
+                    .persistent()
                     .send();
             }
             MutationStateData::Settled { res: Err(err), .. } => {
@@ -143,7 +147,12 @@ impl Component for ClusterLogs {
                 }
 
                 handled_upload.set(Some(msg.clone()));
-                dispatch.notify("Upload failed").body(msg).error().send();
+                dispatch
+                    .notify("Upload failed")
+                    .body(msg)
+                    .error()
+                    .transient()
+                    .send();
             }
             _ => {}
         });

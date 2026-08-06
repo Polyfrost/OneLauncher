@@ -8,7 +8,7 @@ use std::sync::Arc;
 use oneclient_core::LauncherState;
 
 use oneclient_content::packages::PackageStore;
-use oneclient_events::Level;
+use oneclient_events::{Level, Persistence};
 
 use crate::components::IconType;
 use crate::notifications::{
@@ -137,6 +137,9 @@ pub async fn cluster_update_notification(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(vec![summary]),
         }],
+        // Packages moved under the user without them asking, and "View changes"
+        // is only worth offering for as long as it is still reachable.
+        persistence: Persistence::Persistent,
     })
 }
 
@@ -179,6 +182,9 @@ pub async fn combined_cluster_update_spec(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(summaries),
         }],
+        // Same as the single-cluster case: a background sync the user did not
+        // ask for, with changes they may want to look at afterwards.
+        persistence: Persistence::Persistent,
     })
 }
 

@@ -221,6 +221,9 @@ fn notify_conflicts(
             "{bundle_name}: {} config file(s) you edited were left untouched by the update: {listed}{suffix}",
             conflicts.len()
         ))
+        // The update did not do what the bundle asked, and the list of files it
+        // skipped is the only record of where the cluster now differs.
+        .persistent()
         .send();
 }
 

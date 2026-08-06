@@ -720,6 +720,7 @@ impl Component for SidebarInfo {
                     .notify("Copy failed")
                     .body("Could not copy system information to the clipboard.")
                     .error()
+                    .transient()
                     .send();
             } else {
                 dispatch

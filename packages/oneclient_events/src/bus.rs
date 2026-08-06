@@ -2,7 +2,9 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::error::{EventError, EventResult};
-use crate::event::{Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal};
+use crate::event::{
+	Event, GameEvent, LaunchStage, Level, Message, Notification, Persistence, ProgressEvent, Signal,
+};
 use crate::prompt::{Answer, Chosen, Prompt, PromptRequest};
 
 /// The sending half of the event bus.
@@ -62,7 +64,9 @@ impl EventBus {
 				title: title.into(),
 				body: String::new(),
 				level: Level::Info,
+				persistence: Persistence::Transient,
 			},
+			persistence: None,
 		}
 	}
 
@@ -84,11 +88,22 @@ impl EventBus {
 	}
 
 	/// Converts the in-flight progress entry `id` into a finished message.
-	pub fn finish_progress(&self, id: Uuid, title: impl Into<String>, body: impl Into<String>) {
+	///
+	/// `persistence` is spelled out rather than defaulted: a finished download
+	/// is usually nothing, and occasionally the "restart to apply" the whole
+	/// download was for, and only the caller knows which.
+	pub fn finish_progress(
+		&self,
+		id: Uuid,
+		title: impl Into<String>,
+		body: impl Into<String>,
+		persistence: Persistence,
+	) {
 		self.emit(ProgressEvent::Complete {
 			id,
 			title: title.into(),
 			body: body.into(),
+			persistence,
 		});
 	}
 
@@ -172,6 +187,11 @@ impl EventBus {
 pub struct NotificationBuilder<'a> {
 	bus: &'a EventBus,
 	message: Message,
+	/// The caller's explicit choice, resolved against the level in `send`.
+	/// Kept out of `message` so `.error().transient()` and
+	/// `.transient().error()` mean the same thing; a builder where the call
+	/// order silently changes where a notification lands is a trap.
+	persistence: Option<Persistence>,
 }
 
 impl NotificationBuilder<'_> {
@@ -193,7 +213,23 @@ impl NotificationBuilder<'_> {
 		self.level(Level::Error)
 	}
 
-	pub fn send(self) {
+	/// Files this notification in the notification center.
+	pub fn persistent(mut self) -> Self {
+		self.persistence = Some(Persistence::Persistent);
+		self
+	}
+
+	/// Shows this notification and forgets it. Use on an error the user is
+	/// already looking at and can simply retry.
+	pub fn transient(mut self) -> Self {
+		self.persistence = Some(Persistence::Transient);
+		self
+	}
+
+	pub fn send(mut self) {
+		self.message.persistence = self
+			.persistence
+			.unwrap_or_else(|| Persistence::for_level(self.message.level));
 		self.bus.emit(self.message);
 	}
 }
@@ -330,5 +366,49 @@ mod tests {
 		assert_eq!(message.title, "Done");
 		assert_eq!(message.body, "");
 		assert_eq!(message.level, Level::Info);
+		assert_eq!(message.persistence, Persistence::Transient);
+	}
+
+	async fn persistence_of(build: impl FnOnce(&EventBus)) -> Persistence {
+		let (bus, mut rx) = EventBus::channel();
+		build(&bus);
+
+		let Some(Event::Notification(Notification::Message(message))) = rx.recv().await else {
+			panic!("expected a message");
+		};
+		message.persistence
+	}
+
+	/// The default that keeps the center worth opening: an ordinary "done"
+	/// notice is seen and forgotten, a failure is filed.
+	#[tokio::test]
+	async fn the_level_decides_when_the_caller_does_not() {
+		assert_eq!(
+			persistence_of(|bus| bus.notify("Copied").send()).await,
+			Persistence::Transient
+		);
+		assert_eq!(
+			persistence_of(|bus| bus.notify("Install failed").error().send()).await,
+			Persistence::Persistent
+		);
+	}
+
+	/// Both overrides exist because both defaults are wrong somewhere: a failed
+	/// clipboard copy is an error worth no follow-up, and "Update available" is
+	/// an info the user will want to find again.
+	#[tokio::test]
+	async fn an_explicit_choice_wins_whichever_order_it_is_made_in() {
+		assert_eq!(
+			persistence_of(|bus| bus.notify("Copy failed").error().transient().send()).await,
+			Persistence::Transient
+		);
+		assert_eq!(
+			persistence_of(|bus| bus.notify("Copy failed").transient().error().send()).await,
+			Persistence::Transient
+		);
+		assert_eq!(
+			persistence_of(|bus| bus.notify("Update available").persistent().send()).await,
+			Persistence::Persistent
+		);
 	}
 }

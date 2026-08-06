@@ -85,6 +85,7 @@ pub struct Message {
 	pub title: String,
 	pub body: String,
 	pub level: Level,
+	pub persistence: Persistence,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -92,6 +93,49 @@ pub enum Level {
 	#[default]
 	Info,
 	Error,
+}
+
+/// Whether a message is worth keeping once the user has seen it.
+///
+/// Every message is shown the same way — as a toast — so this is not about
+/// visibility. It is about what the notification center is *for*: a place to
+/// come back to when you missed something. "Copied to clipboard" answers a
+/// question the user asked half a second ago and has already had answered;
+/// filing it only buries the install that failed while they were away.
+///
+/// The default is [`Persistence::Transient`], so a new notification has to earn
+/// its place rather than take one by omission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum Persistence {
+	/// Toasted, then forgotten. Confirmations of something the user just did.
+	#[default]
+	Transient,
+	/// Toasted, then filed in the notification center until dismissed.
+	/// Failures, and news about work the user did not start.
+	Persistent,
+}
+
+impl Persistence {
+	/// What a message of this level gets when the caller expresses no opinion.
+	///
+	/// Errors file themselves: an error is by definition something that did not
+	/// happen the way the user wanted, and a toast they were not looking at is
+	/// the one case where "review it later" is the whole point. Anything else
+	/// has to ask for it with [`crate::NotificationBuilder::persistent`], which
+	/// is also why the two are separate axes — a failed clipboard copy is an
+	/// error nobody needs filed, and it says so.
+	#[must_use]
+	pub fn for_level(level: Level) -> Self {
+		match level {
+			Level::Error => Self::Persistent,
+			Level::Info => Self::Transient,
+		}
+	}
+
+	#[must_use]
+	pub fn is_persistent(self) -> bool {
+		matches!(self, Self::Persistent)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,10 +152,15 @@ pub enum ProgressEvent {
 	/// Turn the in-flight [`ProgressEvent::Update`] with this `id` into a
 	/// finished message in place, so a download and its completion notice are
 	/// one card instead of two.
+	///
+	/// Carries its own [`Persistence`] because the card it replaces has none to
+	/// inherit: progress is only ever worth watching live, while what it turns
+	/// into may be the one thing the user has to act on.
 	Complete {
 		id: Uuid,
 		title: String,
 		body: String,
+		persistence: Persistence,
 	},
 
 	/// A tree of related tasks. See [`crate::progress`].

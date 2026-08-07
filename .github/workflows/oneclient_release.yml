@@ -345,6 +345,27 @@ jobs:
           rm -f "$out/OneClient.icns"
           test -f "$out/Assets.car" || { echo "::error::actool produced no Assets.car"; exit 1; }
 
+      - name: (Windows) Bundle VC++ redistributable into the installer
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: python3 distribution/windows/bundle-vcredist.py
+
+      - name: (Windows) Verify bundled redistributable is Microsoft-signed
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $sig = Get-AuthenticodeSignature 'target/vcredist/vc_redist.x64.exe'
+          Write-Host "Authenticode status: $($sig.Status)"
+          Write-Host "Signer: $($sig.SignerCertificate.Subject)"
+          if ($sig.Status -ne 'Valid') {
+            Write-Error "vc_redist.x64.exe signature is $($sig.Status), refusing to bundle it"
+            exit 1
+          }
+          if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            Write-Error "vc_redist.x64.exe is not signed by Microsoft: $($sig.SignerCertificate.Subject)"
+            exit 1
+          }
+
       - name: Package
         shell: bash
         env:

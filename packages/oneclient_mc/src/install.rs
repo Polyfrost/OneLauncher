@@ -18,18 +18,14 @@ use oneclient_common::paths;
 use crate::McCtx;
 use crate::error::{McError, McResult};
 
-/// Asset objects are tiny (median ~10 KiB) and latency-bound, so throughput
-/// scales with how many are in flight, not with bandwidth.
+/// Asset objects are tiny (median ~10 KiB) and latency-bound so throughput
+/// scales with how many are in flight not with bandwidth
 const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
-/// Libraries are larger and fewer; less fan-out is needed to saturate the link.
+/// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
 
-/// Everything a version still needs, with what is already on disk subtracted.
-///
-/// Computed once, up-front, so the size shown before a download starts and the
-/// denominators the progress bars fill against come from the same numbers.
-/// Without it the estimate assumes a full download while the bars discover
-/// their own total as files are added, so neither matches reality.
+/// Computed up-front so the pre-download size estimate and the progress-bar
+/// denominators come from the same numbers
 #[derive(Debug, Default)]
 pub struct DownloadPlan {
     pub assets: Vec<(String, Asset)>,
@@ -55,17 +51,9 @@ fn asset_object_path(dir: &Path, name: &str, hash: &str, legacy: bool) -> PathBu
     }
 }
 
-/// Whether `path` is present and as long as the manifest promised.
-///
-/// `exists()` and `metadata()` are the same `stat` syscall, so checking the
-/// length costs nothing over the presence check it replaces — and it catches the
-/// truncated files an interrupted download leaves behind, which is what nearly
-/// all download corruption looks like in practice. Comparing content instead
-/// would mean reading and hashing every one of ~5000 assets on every launch;
-/// that belongs behind an explicit repair action, not in the launch path.
-///
-/// An `expected` of 0 means the manifest did not say, so presence is all there
-/// is to go on.
+/// Size not hash catches interrupted-download truncation without reading
+/// ~5000 assets per launch
+/// `expected` of 0 means the manifest gave no size
 fn matches_expected_size(path: &Path, expected: u64) -> bool {
     match std::fs::metadata(path) {
         Ok(meta) => expected == 0 || meta.len() == expected,
@@ -73,8 +61,8 @@ fn matches_expected_size(path: &Path, expected: u64) -> bool {
     }
 }
 
-/// The artifact size a library's manifest entry promises, or 0 when it carries
-/// no artifact metadata (maven-coordinate libraries from loader manifests).
+/// 0 when the entry carries no artifact metadata (maven-coordinate libraries
+/// from loader manifests)
 fn library_artifact_size(lib: &Library) -> u64 {
     lib.downloads
         .as_ref()
@@ -98,9 +86,8 @@ fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
         .map_or(0, |native| u64::from(native.size))
 }
 
-/// Stats every candidate file, so it runs on the blocking pool. An asset index
-/// is thousands of entries. Doing it here also means the download fan-outs no
-/// longer stat each file from inside a concurrency slot.
+/// Stats thousands of files so it runs on the blocking pool and keeps the
+/// download fan-outs from stat-ing inside a concurrency slot
 #[tracing::instrument(skip_all, level = "debug")]
 pub async fn plan_downloads(
     version: &VersionInfo,
@@ -151,7 +138,7 @@ pub async fn plan_downloads(
             }
 
             // A library whose coordinates don't resolve is kept in the plan so the
-            // download path still reports it as a failure rather than skipping it.
+            // download path still reports it as a failure rather than skipping it
             let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
                 plan.libraries.push(lib);
                 continue;
@@ -185,39 +172,25 @@ pub async fn plan_downloads(
     .map_err(Into::into)
 }
 
-/// What a hash-level sweep of the installed game files found.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct VerifyReport {
-    /// Files present on disk that were read and hashed.
     pub checked: usize,
-    /// Files whose contents did not match the manifest and were removed.
+    /// Mismatched the manifest and were removed
     pub corrupt: usize,
-    /// Files the manifest lists that were not on disk at all.
     pub missing: usize,
 }
 
 impl VerifyReport {
-    /// Whether anything needs re-downloading.
     #[must_use]
     pub fn needs_repair(&self) -> bool {
         self.corrupt > 0 || self.missing > 0
     }
 }
 
-/// Reads and hashes every installed game file, deleting the ones that do not
-/// match the manifest.
-///
-/// This is the expensive counterpart to the size check the launch path uses:
-/// it reads every asset and library off disk, which is why it belongs behind an
-/// explicit user action rather than in the pre-launch flow. Size catches the
-/// truncation an interrupted download leaves; only hashing catches a file whose
-/// bytes went bad some other way — a failing disk, a half-synced cloud folder,
-/// an antivirus rewrite, or a partial file written before the launcher started
-/// publishing downloads by rename.
-///
-/// Nothing is re-downloaded here. Corrupt files are removed so that the normal
-/// download path, which already knows how to fetch and verify exactly what is
-/// missing, repairs them on the next prepare.
+/// Expensive reads every asset and library so it belongs behind an explicit
+/// user action not the launch path
+/// Nothing is re-downloaded here corrupt files are deleted so the next prepare
+/// refetches them
 #[tracing::instrument(skip(progress, version, assets_index), fields(version_id = %version.id), level = "debug")]
 pub async fn verify_game_files(
     progress: &GroupedProgressSession,
@@ -234,8 +207,6 @@ pub async fn verify_game_files(
     };
     let lib_dir = paths::libraries_dir()?;
 
-    // Assets are content-addressed by their own hash; libraries and the client
-    // carry theirs in the manifest.
     let mut targets: Vec<(PathBuf, String)> = Vec::new();
 
     for (name, asset) in assets_index.objects {
@@ -255,8 +226,8 @@ pub async fn verify_game_files(
         let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
             continue;
         };
-        // Only libraries whose manifest entry carries a hash can be checked;
-        // maven-coordinate entries from loader manifests publish none.
+        // Only libraries whose manifest entry carries a hash can be checked
+        // maven-coordinate entries from loader manifests publish none
         if let Some(artifact) = lib
             .downloads
             .as_ref()
@@ -281,9 +252,8 @@ pub async fn verify_game_files(
     let started = std::time::Instant::now();
     let child_for_progress = child.clone();
 
-    // One blocking task for the whole sweep rather than one per file: hashing
-    // thousands of small assets is dominated by per-file overhead, and a
-    // spawn_blocking dispatch each would cost more than the hashing itself.
+    // One blocking task for the whole sweep a spawn_blocking per small asset
+    // would cost more than the hashing itself
     let report = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
 
@@ -311,16 +281,16 @@ pub async fn verify_game_files(
                     }
                 }
                 Err(err) => {
-                    // Unreadable is as good as corrupt: the game cannot use it
-                    // either. Removing it lets the download path replace it.
+                    // Unreadable is as good as corrupt removing it lets the
+                    // download path replace it
                     tracing::warn!(path = %path.display(), "could not hash: {err}");
                     report.corrupt += 1;
                     let _ = std::fs::remove_file(path);
                 }
             }
 
-            // Reporting every file would emit thousands of events; the child's
-            // own sampling is per-call, so throttle here instead.
+            // The child's sampling is per-call so throttle here or this emits
+            // thousands of events
             if index % 64 == 0 {
                 child_for_progress.set_progress(index as u64, Some(total.max(1)));
             }
@@ -365,8 +335,8 @@ pub async fn download_minecraft(
         "planned minecraft download"
     );
 
-    // Reserve each category's real total before any child appears, so the bars
-    // start at the right denominator instead of growing towards it.
+    // Reserve each category's real total before any child appears so the bars
+    // start at the right denominator instead of growing towards it
     progress.expect(
         TaskCategory::Assets,
         plan.assets.len() as u64,
@@ -411,24 +381,14 @@ pub async fn download_minecraft(
     Ok(())
 }
 
-/// What the user chose to do about files that could not be downloaded.
 enum IncompleteInstall {
     LaunchAnyway,
 }
 
-/// Asks whether to launch with files missing, when some could not be fetched.
-///
-/// Individual assets and libraries are downloaded concurrently and their
-/// failures counted rather than propagated, so that one unreachable file does
-/// not abandon the other four thousand. That count used to be logged and
-/// dropped, which meant an install that had visibly failed still went on to
-/// launch a game with missing textures, sounds, or a library the loader needs —
-/// and the user's only clue was a crash later.
-///
-/// Each of these already survived every retry `oneclient_net` makes, so this is
-/// not a transient blip. It is still the user's call: a
-/// handful of missing assets is often survivable, and refusing to launch would
-/// strand someone offline who just wants to play.
+/// Download failures are counted not propagated so one unreachable file does
+/// not abandon the other four thousand
+/// They already survived every retry but it stays the user's call refusing to
+/// launch would strand offline players
 #[tracing::instrument(skip(ctx), level = "debug")]
 pub async fn confirm_incomplete_install(
     ctx: &McCtx,
@@ -447,9 +407,6 @@ pub async fn confirm_incomplete_install(
     );
 
     let body = match (failed_assets, failed_libraries) {
-        // Libraries are on the classpath, so a missing one usually means the
-        // game will not start at all. Say so rather than implying it is as
-        // survivable as a missing sound file.
         (0, libraries) => format!(
             "{libraries} librar{} could not be downloaded after several attempts. \
              The game will most likely fail to start without {}.",
@@ -487,9 +444,8 @@ pub async fn confirm_incomplete_install(
                 Ok(())
             }
         },
-        // Dismissed, or the prompt could not be delivered. Both mean nobody
-        // agreed to launch a broken install, so the safe reading is to stop —
-        // a headless caller with no UI attached should not silently opt in.
+        // Dismissed or undeliverable nobody agreed to launch a broken install
+        // and a headless caller must not silently opt in
         Ok(None) => Err(McError::IncompleteInstallCancelled { failed }),
         Err(err) => {
             tracing::warn!("could not ask about the incomplete install: {err}");
@@ -656,8 +612,8 @@ pub async fn download_assets(
 
     polyio::create_dir_all(&dir).await?;
 
-    // Objects are sharded into 256 fixed subdirectories; creating them once
-    // here saves a blocking-pool round trip on every one of the ~5000 files.
+    // Objects are sharded into 256 fixed subdirectories creating them once
+    // here saves a blocking-pool round trip on every one of the ~5000 files
     if !legacy {
         let dir = dir.clone();
         tokio::task::spawn_blocking(move || {
@@ -737,11 +693,8 @@ pub async fn download_client(
         .join(&version.id)
         .join(format!("{}.jar", version.id));
 
-    // A size check, not a hash: this runs on every launch, and re-reading the
-    // whole ~25 MiB jar to hash it costs more than everything else in the
-    // pre-launch check combined. The jar is only ever published by a rename
-    // after its hash matched, so a wrong-but-right-length jar is not a state the
-    // launcher can produce.
+    // Size not hash the jar is only published by rename after its hash
+    // matched so a wrong-but-right-length jar is unreachable
     let expected_size = u64::from(client.size);
     if !force
         && let Ok(meta) = polyio::stat(&path).await
@@ -796,14 +749,8 @@ pub fn libraries_missing(
     Ok(false)
 }
 
-/// Whether the assets tree this version needs is absent.
-///
-/// The index names every asset the version expects and lives inside the assets
-/// directory, so checking both catches a deleted index and a deleted assets
-/// tree — the second being the case users actually hit.
-///
-/// Takes its paths rather than resolving them, so it can be tested without the
-/// process-global launcher directory.
+/// Takes its paths rather than resolving them so it can be tested without the
+/// process-global launcher directory
 fn assets_tree_missing(index: &Path, objects: &Path) -> bool {
     if !index.is_file() {
         tracing::warn!(path = %index.display(), "assets index is missing; will repair");
@@ -818,19 +765,9 @@ fn assets_tree_missing(index: &Path, objects: &Path) -> bool {
     false
 }
 
-/// Whether anything the game needs to start is absent, so the launch path can
-/// repair before it tries rather than fail part-way through.
-///
-/// A cluster marked `Ready` skips preparation entirely on every later launch,
-/// so nothing re-checks its files. Delete the assets directory out from under a
-/// ready cluster and the launcher walks straight into an error naming a path
-/// inside its own metadata folder — which tells the user nothing they can act
-/// on. Checking here turns that into an automatic repair.
-///
-/// Only the coarse checks belong here: the assets tree as a whole, the client
-/// jar, and the classpath libraries. Verifying the ~5000 individual asset
-/// objects is the job of `download_minecraft`'s plan once a repair starts, and
-/// doing it on every launch would cost far more than it saves.
+/// A `Ready` cluster skips preparation so nothing else re-checks its files
+/// this turns a deleted assets tree into an automatic repair
+/// Coarse checks only per-object verification belongs to `download_minecraft`'s plan
 #[tracing::instrument(skip(version_info), level = "debug")]
 pub fn game_files_missing(
     version_info: &VersionInfo,
@@ -899,8 +836,7 @@ pub async fn download_libraries(
         let progress = progress.clone();
 
         async move {
-            // Rule evaluation and the on-disk check already happened in
-            // `plan_downloads`; everything here is known to need fetching.
+            // Rules and the on-disk check already ran in `plan_downloads`
             let artifact_path = interfrost::utils::get_path_from_artifact(&lib.name)
                 .map_err(|_| McError::LibraryPath(lib.name.clone()))?;
             let path = lib_dir.join(&artifact_path);
@@ -1181,8 +1117,6 @@ mod tests {
         dir
     }
 
-    /// Lays out the assets tree a ready cluster is expected to have, returning
-    /// the index file and objects directory that `game_files_missing` checks.
     fn install_assets(dir: &Path) -> (PathBuf, PathBuf) {
         let indexes = dir.join("assets").join("indexes");
         let objects = dir.join("assets").join("objects");
@@ -1207,9 +1141,6 @@ mod tests {
 
     #[test]
     fn a_deleted_assets_directory_asks_for_a_repair() {
-        // The reported failure: a cluster marked Ready whose assets tree was
-        // deleted underneath it. Nothing re-checked it, so the launch walked
-        // into "No such file or directory" on the launcher's own metadata path.
         let dir = scratch("assets-deleted");
         let (index, objects) = install_assets(&dir);
         std::fs::remove_dir_all(dir.join("assets")).unwrap();
@@ -1232,9 +1163,8 @@ mod tests {
 
     #[test]
     fn an_index_that_is_a_directory_is_not_mistaken_for_a_file() {
-        // `create_dir_all` on a path that should hold a file is a shape the
-        // launcher has produced before; `is_file` has to be the check, not
-        // `exists`.
+        // The launcher has produced this shape before so the check must be
+        // `is_file` not `exists`
         let dir = scratch("assets-index-dir");
         let (index, objects) = install_assets(&dir);
         std::fs::remove_file(&index).unwrap();
@@ -1260,8 +1190,6 @@ mod tests {
     fn size_check_rejects_a_truncated_file() {
         let dir = scratch("size-short");
         let file = dir.join("object.bin");
-        // What a dropped connection used to leave behind, and what every later
-        // launch used to skip over because the path merely existed.
         std::fs::write(&file, b"0123").unwrap();
 
         assert!(!matches_expected_size(&file, 10));
@@ -1278,8 +1206,8 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// A context whose bus is drained by the test, so `ask` has somebody to
-    /// talk to. No request is ever sent through the client.
+    /// The bus is drained by the test so `ask` has somebody to talk to no
+    /// request is ever sent through the client
     fn test_ctx() -> (McCtx, tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>) {
         let (events, rx) = oneclient_events::EventBus::channel();
         let net = oneclient_net::RequestClient::new(oneclient_net::NetConfig::default())
@@ -1313,7 +1241,6 @@ mod tests {
         else {
             panic!("expected a prompt");
         };
-        // Assets alone should not claim the game will fail to start.
         assert!(request.body.contains("3 game assets"), "{}", request.body);
         request
             .reply
@@ -1335,8 +1262,6 @@ mod tests {
         else {
             panic!("expected a prompt");
         };
-        // Missing libraries are a classpath problem, so the wording should be
-        // blunter than it is for assets.
         assert!(
             request.body.contains("fail to start"),
             "{}",
@@ -1354,8 +1279,6 @@ mod tests {
     #[tokio::test]
     async fn a_bus_with_nobody_listening_cancels_rather_than_launching() {
         let (ctx, rx) = test_ctx();
-        // A headless run with no UI attached: nobody can agree to a broken
-        // install, so it must not proceed by default.
         drop(rx);
 
         let err = confirm_incomplete_install(&ctx, 1, 1)
@@ -1373,8 +1296,7 @@ mod tests {
         let file = dir.join("object.bin");
         std::fs::write(&file, b"anything").unwrap();
 
-        // Maven-coordinate libraries carry no artifact metadata, so presence is
-        // all there is to check.
+        // Maven-coordinate libraries carry no artifact metadata
         assert!(matches_expected_size(&file, 0));
         assert!(!matches_expected_size(&dir.join("nope.bin"), 0));
 

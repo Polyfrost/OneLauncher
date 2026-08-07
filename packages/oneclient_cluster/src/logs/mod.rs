@@ -12,10 +12,7 @@ pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_
 pub use mclogs::upload_log_at;
 pub use parse::parse_level;
 
-/// What a listed file is.
-///
-/// There is no launcher variant: the launcher's own logs are not a cluster's
-/// business, and live in the log console instead.
+/// No launcher variant on purpose the launcher's own logs live in the log console
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LogKind {
     Game { cluster_id: i64 },
@@ -25,8 +22,6 @@ pub enum LogKind {
 }
 
 impl LogKind {
-    /// Whether this is a crash report, which the logs page lists separately
-    /// from the run-of-the-mill output.
     pub fn is_crash_report(self) -> bool {
         matches!(self, Self::CrashReport)
     }

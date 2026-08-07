@@ -159,7 +159,7 @@ pub async fn import_game_dir(
             let cluster = state.clusters.get(*new_cluster_id).await?;
             let dir = cluster.dir()?;
             polyio::create_dir_all(&dir).await?;
-            // Mark dedicated so game_dir() resolves to this cluster's own dir.
+            // Mark dedicated so game_dir() resolves to this cluster's own dir
             polyio::write(cluster.dedicated_marker()?, Vec::new()).await?;
             dir
         }

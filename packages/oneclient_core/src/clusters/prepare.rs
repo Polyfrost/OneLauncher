@@ -18,11 +18,6 @@ use oneclient_common::paths;
 use crate::state::{LauncherServices, LauncherState};
 use crate::{GameError, LauncherResult};
 
-/// Locks the metadata store, then prepares the cluster.
-///
-/// Was `ClusterManager::prepare`, which only existed to take that lock before
-/// delegating here. It lives with `prepare` rather than with cluster records,
-/// because the metadata store is a download concern.
 #[tracing::instrument(skip(state, shared_progress))]
 pub async fn prepare_cluster_locked(
     state: &Arc<LauncherState>,
@@ -107,9 +102,9 @@ pub async fn prepare_cluster(
 
 const JRE_ESTIMATE_BYTES: u64 = 45_000_000;
 
-/// Bytes the game install still needs. Falls back to the manifest's full size
-/// when the asset index isn't cached yet, which is also the case where nothing
-/// is on disk, so the full size is the right answer anyway.
+/// Bytes the game install still needs
+/// Falls back to the manifest's full size
+/// when the asset index isn't cached which is also when nothing is on disk
 async fn game_download_bytes(services: &LauncherServices, info: &VersionInfo) -> u64 {
     let Some(assets_index) = cached_assets_index(info).await else {
         let client = info
@@ -127,8 +122,8 @@ async fn game_download_bytes(services: &LauncherServices, info: &VersionInfo) ->
     };
 
     let _ = services;
-    // The estimate runs before a Java runtime is resolved, so rules are checked
-    // against the host architecture. That only shifts natives-related edge cases.
+    // Runs before a Java runtime is resolved so rules are checked against the
+    // host architecture only natives-related edge cases shift
     match game::plan_downloads(info, assets_index, std::env::consts::ARCH, false, false).await {
         Ok(plan) => plan.total_bytes(),
         Err(err) => {

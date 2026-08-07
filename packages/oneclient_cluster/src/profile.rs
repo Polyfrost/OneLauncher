@@ -17,13 +17,12 @@ pub struct GameSettingsProfile {
 	pub hook_wrapper: Option<String>,
 	pub hook_post: Option<String>,
 	pub os_extra: Option<SettingsOsExtra>,
-	/// What to do when a package installed from the browser has a newer
-	/// version. Bundle content is never touched by this.
+	/// Never applies to bundle content
 	pub browser_update_mode: Option<PackageUpdateMode>,
 }
 
-// `Resolution` moved to oneclient_common: the launch-argument builder needs it
-// too, and that crate cannot depend on the launcher settings.
+// `Resolution` lives in oneclient_common the launch-argument builder needs it
+// and cannot depend on the launcher settings
 pub use oneclient_common::Resolution;
 pub use oneclient_common::domain::PackageUpdateMode;
 
@@ -129,8 +128,8 @@ impl GameSettingsProfile {
 				.os_extra
 				.map(|json| serde_json::from_str(&json))
 				.transpose()?,
-			// An unrecognised value inherits rather than errors: a profile
-			// written by a newer build must not make the cluster unloadable.
+			// Unrecognised values inherit rather than error so a profile from a
+			// newer build cannot make the cluster unloadable
 			browser_update_mode: row
 				.browser_update_mode
 				.as_deref()

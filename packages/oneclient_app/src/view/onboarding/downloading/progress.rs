@@ -94,7 +94,7 @@ pub(super) struct ProgressView<'a> {
     pub(super) stage: &'a DownloadStage,
     pub(super) agg: &'a GroupedAgg,
     pub(super) activity: &'a str,
-    /// `None` until the meter has two samples to work from.
+    /// `None` until the meter has two samples to work from
     pub(super) transfer: Option<TransferStats>,
     pub(super) total_estimate: u64,
     pub(super) elapsed_secs: Option<u64>,
@@ -249,8 +249,7 @@ fn build_stats(view: StatsView) -> Option<Element> {
     if finished {
         parts.push("Complete".to_string());
     } else {
-        // Both readings come off the same smoothed rate, so the countdown and
-        // the throughput beside it always agree.
+        // Both readings come off the same smoothed rate so they always agree
         match transfer.and_then(|t| t.eta_secs) {
             Some(remaining) => parts.push(format!(
                 "~{} left",

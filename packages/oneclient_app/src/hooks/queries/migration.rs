@@ -19,9 +19,8 @@ impl QueryCapability for MigrationQuery {
             return Ok(None);
         };
 
-        // remote cluster migrations run on startup (so before we even get to launcher migrations)
-		// this pretty much tries to migrate the source instance to the latest version in the migration chain,
-		// so that we can import it into the correct cluster
+        // Runs before launcher migrations walks the source instance up the
+        // migration chain so it can be imported into the correct cluster
         let rules = crate::launcher::state()?.versions.migrations().await;
         if !rules.is_empty() {
             for instance in &mut detection.instances {

@@ -102,10 +102,7 @@ impl Component for LoadingBackdrop {
         let pan_x = cx * sw * PARALLAX_STRENGTH;
         let pan_y = cy * sh * PARALLAX_STRENGTH;
 
-        // Left at the default edge on purpose: this is the same full-screen art
-        // the home background shows next, so asking for the same variant means
-        // the onboarding download is the one home renders instead of it having
-        // to fetch the same picture again at a different size.
+        // Default edge on purpose home shows the same art next so the same variant avoids a second fetch
         let art = match clusters.get(current) {
             Some(cluster) => DynamicArt::for_cluster(cluster),
             None => DynamicArt::fallback(),

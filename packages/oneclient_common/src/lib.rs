@@ -1,10 +1,5 @@
-//! The vocabulary every other OneClient crate is allowed to depend on.
-//!
-//! This crate is a leaf: it knows about the filesystem layout, the target
-//! platform, Minecraft version strings and the content-type taxonomy, and
-//! nothing else. It must never gain a dependency on the database, the network
-//! stack, or any launcher subsystem. Everything above it depends on it, so a
-//! back-edge here would recreate the monolith the split is undoing.
+//! Leaf crate must never depend on the database network stack or any
+//! launcher subsystem or the dependency graph cycles back into a monolith
 
 pub mod constants;
 pub mod domain;

@@ -478,8 +478,7 @@ impl From<CfDependency> for VersionDependency {
         Self {
             project_id: Some(d.mod_id.to_string()),
             version_id: None,
-            // 1 embedded library, 2 optional, 3 required, 4 tool, 5 incompatible,
-            // 6 include.
+            // CF relationType 1 embedded 2 optional 3 required 4 tool 5 incompatible 6 include
             kind: match d.relation_type {
                 3 => DependencyKind::Required,
                 5 => DependencyKind::Incompatible,
@@ -733,8 +732,8 @@ fn cf_loader_type(loader: GameLoader) -> Option<u8> {
 mod tests {
     use super::*;
 
-    /// Guards the camelCase contract; the relation type is a bare number, so a
-    /// mismap here quietly turns required libraries into optional ones.
+    /// relationType is a bare number
+    /// a mismap quietly turns required libraries into optional ones
     #[test]
     fn file_carries_its_dependencies() {
         let raw = serde_json::json!({

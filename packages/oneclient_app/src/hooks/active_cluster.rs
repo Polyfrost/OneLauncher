@@ -15,14 +15,11 @@ pub fn use_active_cluster_id() -> State<Option<ClusterId>> {
     consume_root_context::<ActiveClusterState>().0
 }
 
-/// Drives the startup splash "curtain": a full-screen cover that stays up after
-/// the router leaves the Startup route until the home view's clusters/art have
-/// settled, then fades out, so the app never reveals a half-populated home.
+/// Startup curtain stays up past the Startup route until home content settles
+/// so the app never reveals a half-populated home
 #[derive(Clone, Copy)]
 pub struct SplashState {
-    /// The curtain is covering the screen (raised when heading into Home).
     pub active: State<bool>,
-    /// Home content (clusters + background) has finished loading.
     pub home_ready: State<bool>,
 }
 
@@ -89,20 +86,17 @@ pub fn use_browser_state_store() -> State<HashMap<String, BrowserUiState>> {
 #[derive(Clone)]
 pub struct OnboardingSelectionState {
     pub selected: State<HashSet<String>>,
-    /// Set once the user changes the selection themselves. Until then the shell
-    /// keeps re-deriving `selected` from the catalog, so a bundle list that
-    /// settles late still gets the right defaults.
+    /// Until set the shell keeps re-deriving `selected` from the catalog so a
+    /// late-settling bundle list still gets the right defaults
     pub user_touched: State<bool>,
-    /// Bundle categories the user had in their v1 install, once the migration
-    /// step has been answered. `None` means "no migration decision yet".
+    /// `None` means "no migration decision yet"
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
     pub predownload: State<bool>,
     pub setup_started: State<bool>,
-    /// v1-migration: source folder to import files from (`None` = don't import).
+    /// `None` = don't import
     pub import_folder: State<Option<String>>,
-    /// v1-migration: import into the matching cluster's own dir instead of shared.
     pub import_dedicated: State<bool>,
 }
 

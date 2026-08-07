@@ -1,8 +1,4 @@
-//! Lists the JDK packages each vendor currently publishes.
-//!
-//! Needs only a network client, no database or launcher state. That is the
-//! point of `JavaStore` being a port: the vendor providers are exercisable on
-//! their own.
+//! Lists the JDK packages each vendor currently publishes
 
 use std::env;
 

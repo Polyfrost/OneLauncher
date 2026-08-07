@@ -5,7 +5,6 @@ pub type McResult<T> = Result<T, McError>;
 
 #[derive(Debug, Error)]
 pub enum McError {
-	// --- content ---
 	#[error("no client download exists for version {0}")]
 	NoClientDownload(String),
 
@@ -15,7 +14,6 @@ pub enum McError {
 	#[error("invalid game version {0}")]
 	InvalidVersion(String),
 
-	// --- manifests ---
 	#[error("failed to fetch metadata")]
 	FetchError,
 
@@ -34,15 +32,13 @@ pub enum McError {
 	#[error("no matching version found")]
 	NoMatchingVersion,
 
-	/// Files could not be downloaded and the user chose not to launch anyway.
 	#[error("cancelled: {failed} file(s) could not be downloaded")]
 	IncompleteInstallCancelled { failed: usize },
 
-	/// A Mojang response was well-formed JSON but not what the API documents.
+	/// A Mojang response was well-formed JSON but not what the API documents
 	#[error("minecraft: {0}")]
 	Minecraft(String),
 
-	// --- plumbing ---
 	#[error("failed to parse metadata: {0}")]
 	ParseError(#[from] serde_json::Error),
 
@@ -63,8 +59,7 @@ pub enum McError {
 }
 
 impl McError {
-	/// Whether this is the user's environment rather than a launcher bug.
-	/// The composition layer turns this into a Sentry policy.
+	/// Environment fault rather than a launcher bug drives Sentry policy upstream
 	#[must_use]
 	pub fn is_transient(&self) -> bool {
 		match self {

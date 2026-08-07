@@ -78,7 +78,7 @@ impl ContextMenu {
 
 impl PartialEq for ContextMenu {
     fn eq(&self, _other: &Self) -> bool {
-        // the menu is rebuilt from scratch whenever it is reopened (kind of a bad idea but who cares lol)
+        // Always unequal the menu is rebuilt from scratch whenever it is reopened
         false
     }
 }

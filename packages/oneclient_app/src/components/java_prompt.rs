@@ -14,8 +14,7 @@ pub struct JavaPromptOverlay;
 
 impl Component for JavaPromptOverlay {
     fn render(&self) -> impl IntoElement {
-        // Hooks must run unconditionally, before any early return, so the hook
-        // count stays stable whether or not a Java prompt is pending.
+        // Hooks must run unconditionally before any early return to keep the hook count stable
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
         let mut show_manager = use_state(|| false);
@@ -24,14 +23,12 @@ impl Component for JavaPromptOverlay {
             return rect().into_element();
         };
 
-        // Identified by the choices it offers rather than a prompt-kind enum.
+        // Identified by the choices it offers rather than a prompt-kind enum
         if !prompt.has_choice(JAVA_CHOICE_DOWNLOAD) {
             return rect().into_element();
         }
 
-        // The vendor list needs a major to highlight. It is not on the prompt (the
-        // core only sends display text) so recover it from the folder choice's dialog
-        // title, which the core builds from the same number.
+        // The prompt carries no major so recover it from the folder choice's dialog title
         let major = prompt
             .choice(JAVA_CHOICE_FOLDER)
             .and_then(|choice| match &choice.input {
@@ -42,13 +39,11 @@ impl Component for JavaPromptOverlay {
             })
             .unwrap_or(0);
 
-        // Download opens the install manager with the required major highlighted.
         if *show_manager.read() {
             let install = dispatch.clone();
             return JavaInstallManager::new()
                 .suggested(Some(major))
                 .on_install(move |(vendor, _row_major): (JavaVendor, u32)| {
-                    // The launch needs `major`; the manager only picks the vendor.
                     install.answer_prompt(
                         Answer::new(JAVA_CHOICE_DOWNLOAD).with_selection(vendor.to_string()),
                     );

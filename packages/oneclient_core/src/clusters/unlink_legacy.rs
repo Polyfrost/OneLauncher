@@ -24,18 +24,8 @@ pub struct SweepReport {
 	pub skipped: usize,
 }
 
-/// Clears out the content links older launchers wrote into cluster folders.
-///
-/// Deliberately **not** automatic. The rule it applies — "this file's hash
-/// matches a cached artifact, so it is one of ours" — is true during the
-/// transition and false afterwards, once the cluster folder becomes the stash
-/// for the user's own content. Running it on a schedule would need a flag to
-/// stop it running twice, and that flag would be one more thing to get out of
-/// step with the disk it describes. Instead the Storage settings page reports
-/// what is there and the user asks for it.
-///
-/// Nothing depends on this having run: [`crate::game::materialize_content`]
-/// ignores leftovers either way. This only reclaims the space.
+/// User-triggered only the "hash matches a cached artifact so it is ours" rule
+/// is true during the transition and false once cluster folders hold user content
 #[tracing::instrument(skip(state))]
 pub async fn unlink_legacy_cluster_content(state: &LauncherState) -> LauncherResult<SweepReport> {
 	let mut report = SweepReport::default();
@@ -65,7 +55,6 @@ pub async fn unlink_legacy_cluster_content(state: &LauncherState) -> LauncherRes
 	Ok(report)
 }
 
-/// Deletes launcher-owned files out of a shared cluster's content folders.
 async fn sweep_shared(state: &LauncherState, cluster_root: &Path, report: &mut SweepReport) {
 	for content_type in SWEPT_TYPES {
 		let dir = cluster_root.join(content_type.folder_name());
@@ -79,8 +68,7 @@ async fn sweep_shared(state: &LauncherState, cluster_root: &Path, report: &mut S
 				continue;
 			};
 
-			// A symlink here is unambiguously one of ours: this is where the old
-			// scheme put them, and nothing else writes links into these folders.
+			// A symlink here is unambiguously ours nothing else writes links here
 			if file_type.is_symlink() {
 				polyio::remove_file(&path).await.ok();
 				report.removed += 1;
@@ -97,9 +85,8 @@ async fn sweep_shared(state: &LauncherState, cluster_root: &Path, report: &mut S
 						report.removed += 1;
 					}
 				}
-				// The cache row points at this very file — an artifact adopted by
-				// an older recovery pass, which stored content in place instead of
-				// in the cache. Deleting it would destroy the only copy.
+				// Cache row points at this very file (older recovery pass stored it
+				// in place) deleting it would destroy the only copy
 				Some(CacheMatch::IsTheArtifact) => {
 					tracing::debug!(
 						path = %path.display(),
@@ -113,8 +100,7 @@ async fn sweep_shared(state: &LauncherState, cluster_root: &Path, report: &mut S
 	}
 }
 
-/// Gives a dedicated cluster's already-materialized content a manifest, so later
-/// launches can tell it apart from the user's own files.
+/// Writes a manifest so later launches can tell adopted content from user files
 async fn adopt_dedicated(
 	state: &LauncherState,
 	cluster: &crate::clusters::Cluster,
@@ -164,9 +150,9 @@ async fn adopt_dedicated(
 }
 
 enum CacheMatch {
-	/// The cache holds this content at its own path; the cluster copy is a link.
+	/// Cache holds this content at its own path the cluster copy is a link
 	Elsewhere,
-	/// The artifact row points at this exact file.
+	/// The artifact row points at this exact file
 	IsTheArtifact,
 }
 

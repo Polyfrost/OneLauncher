@@ -1,9 +1,4 @@
-//! The live launcher log console, in a window of its own.
-//!
-//! Freya gives every window its own component tree, so this one shares nothing
-//! with the main window — no radio station, no query storage. All it needs is
-//! the process-wide channel in [`oneclient_core::logger::console`], and that
-//! channel only carries anything while this window is up.
+//! Its own Freya window sharing no radio station or query storage with the main one all it needs is the process-wide channel in [`oneclient_core::logger::console`]
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -20,18 +15,10 @@ use crate::theme::colors;
 
 const WINDOW_TITLE: &str = "OneClient — Log Console";
 
-/// How many lines the console keeps.
-///
-/// Old lines are dropped from the front rather than kept forever: this window
-/// can be left open for an entire session, and a launcher that leaks memory
-/// while you watch it for leaks is not much use.
+/// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;
 
-/// Where the console window is in its lifecycle.
-///
-/// `Opening` is not set by the task that asks for the window but cleared by the
-/// window itself, so a task cancelled mid-launch — the settings page being
-/// navigated away from, say — cannot strand the state.
+/// `Opening` is cleared by the window itself not the task that asks for it so a cancelled launch cannot strand the state
 enum ConsoleWindow {
     Closed,
     Opening,
@@ -40,7 +27,6 @@ enum ConsoleWindow {
 
 static CONSOLE_WINDOW: Mutex<ConsoleWindow> = Mutex::new(ConsoleWindow::Closed);
 
-/// Opens the log console, or focuses it if it is already up.
 pub fn open_log_console() {
     {
         let mut state = CONSOLE_WINDOW.lock().expect("console window state");
@@ -54,8 +40,7 @@ pub fn open_log_console() {
         }
     }
 
-    // Taken here, in the caller's scope: the future below runs detached, and
-    // `Platform::get()` needs a component scope to resolve against.
+    // Taken in the caller's scope the future below runs detached and `Platform::get()` needs a component scope
     let platform = Platform::get();
     spawn(async move {
         platform.launch_window(window_config()).await;
@@ -72,8 +57,7 @@ fn window_config() -> WindowConfig {
         .with_size(1000., 640.)
         .with_min_size(520., 320.)
         .with_background(colors::page())
-        // Native decorations, unlike the main window's custom titlebar. This is
-        // a developer tool, and a second bespoke titlebar is not worth the code.
+        // Native decorations a developer tool is not worth a second bespoke titlebar
         .with_decorations(true)
         .with_window_handle(|window| {
             *CONSOLE_WINDOW.lock().expect("console window state") =
@@ -93,11 +77,7 @@ impl App for LogConsoleApp {
     }
 }
 
-/// The lowest severity the console shows.
-///
-/// A floor rather than an exact match, unlike the cluster logs page: when you
-/// are watching a stream go past, "warnings and worse" is the question you
-/// actually have.
+/// A floor rather than an exact match unlike the cluster logs page
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Severity {
     All,
@@ -142,9 +122,7 @@ impl Component for LogConsole {
 
         use_hook(move || {
             spawn(async move {
-                // The subscription lives in this task and nowhere else, so when
-                // the window closes and its tree is dropped the receiver goes
-                // with it and capture switches itself off.
+                // The subscription lives only in this task so closing the window drops the receiver and switches capture off
                 let mut subscription = console::subscribe();
                 tracing::info!("live log console attached");
 
@@ -208,8 +186,7 @@ fn push(entries: &mut State<VecDeque<ConsoleLine>>, line: ConsoleLine) {
     entries.push_back(line);
 }
 
-/// What of the captured lines to show. Purely local: nothing here changes what
-/// the launcher records.
+/// Purely local nothing here changes what the launcher records
 fn view_row(
     search: State<String>,
     severity: State<Severity>,
@@ -268,11 +245,7 @@ fn view_row(
         .into_element()
 }
 
-/// The `EnvFilter` directives the whole launcher is running under.
-///
-/// This is the half that matters: the view filter above can only narrow what
-/// was already captured, whereas applying here reloads the subscriber's filter,
-/// so a target the launcher was not recording at all starts arriving.
+/// Applying reloads the subscriber's filter so a target the launcher was not recording at all starts arriving
 fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> impl IntoElement {
     let apply = move |_| match logger::set_filter(&directives.read()) {
         Ok(()) => error.set(None),

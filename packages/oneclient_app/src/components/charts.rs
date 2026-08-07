@@ -22,7 +22,6 @@ impl ValueUnit {
 const DEFAULT_HEIGHT: f32 = 150.;
 const Y_AXIS_WIDTH: f32 = 44.;
 
-/// Slice colors, cycled when there are more slices than entries.
 pub const SLICE_COLORS: [Color; 10] = [
     Color::from_rgb(43, 75, 255),
     Color::from_rgb(27, 217, 106),
@@ -41,11 +40,9 @@ pub fn slice_color(i: usize) -> Color {
 }
 
 const PIE_SIZE: f32 = 190.;
-/// Inner hole as a fraction of the radius, making it a donut.
+/// Fraction of the radius
 const PIE_HOLE: f32 = 0.58;
 
-/// A donut chart. Hovering a slice reports it via `on_hover` so callers can
-/// sync an external legend; the hovered slice is also expanded slightly.
 pub struct PieChart {
     values: Vec<i64>,
     labels: Vec<String>,
@@ -70,7 +67,6 @@ impl PieChart {
         self
     }
 
-    /// Shares the hovered slice index with the caller (e.g. to highlight a legend row).
     pub fn hovered(mut self, hovered: State<Option<usize>>) -> Self {
         self.hovered = Some(hovered);
         self
@@ -114,7 +110,6 @@ impl Component for PieChart {
             paint.set_anti_alias(true);
             paint.set_style(PaintStyle::Fill);
 
-            // With nothing recorded, draw an empty track so the ring is still there.
             if total <= 0 {
                 paint.set_color(SkColor::from(colors::component_bg_hover()));
                 ctx.canvas.draw_circle((cx, cy), radius - 5.0, &paint);
@@ -130,7 +125,6 @@ impl Component for PieChart {
                     continue;
                 }
                 let sweep = (v as f32 / total as f32) * 360.0;
-                // Grow the hovered slice a touch, and dim the rest.
                 let is_active = Some(i) == active;
                 let r = if is_active { radius } else { radius - 5.0 };
                 let color = slice_color(i);
@@ -151,7 +145,6 @@ impl Component for PieChart {
                 start += sweep;
             }
 
-            // Punch the donut hole using the card background.
             paint.set_color(SkColor::from(colors::page_elevated()));
             ctx.canvas
                 .draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
@@ -189,8 +182,7 @@ impl Component for PieChart {
                     .height(Size::fill())
                     .position(Position::new_absolute())
                     .interactive(false)
-                    // The canvas defaults to auto-sizing and has no children, so
-                    // without an explicit size it measures 0x0 and draws nothing.
+                    // Childless canvas auto-sizes to 0x0 without an explicit size
                     .child(canvas(render_cb).width(Size::fill()).height(Size::fill())),
             )
             .child(
@@ -199,11 +191,9 @@ impl Component for PieChart {
                     .height(Size::fill())
                     .position(Position::new_absolute())
                     .interactive(false)
-                    // Sibling absolute rects on an equal layer paint in undefined
-                    // order, so pin the readout above the canvas.
+                    // Sibling absolute rects on an equal layer paint in undefined order
                     .layer(Layer::Relative(1))
                     .center()
-                    // Keeps the readout inside the donut hole (Gaps is vertical, horizontal).
                     .padding(Gaps::new_symmetric(0., size * 0.25))
                     .child(
                         rect()
@@ -235,7 +225,6 @@ impl Component for PieChart {
     }
 }
 
-/// Maps a pointer position inside the chart box to a slice index.
 fn slice_at(values: &[i64], x: f32, y: f32, size: f32) -> Option<usize> {
     let total: i64 = values.iter().sum();
     if total <= 0 {
@@ -251,7 +240,7 @@ fn slice_at(values: &[i64], x: f32, y: f32, size: f32) -> Option<usize> {
         return None;
     }
 
-    // Angle measured clockwise from 12 o'clock, matching the drawing order.
+    // Clockwise from 12 o'clock matching the drawing order
     let mut angle = dy.atan2(dx).to_degrees() + 90.0;
     if angle < 0.0 {
         angle += 360.0;
@@ -451,15 +440,13 @@ impl Component for BarChart {
     }
 }
 
-/// How many bars to skip between shown labels so text never overlaps.
-/// Derived from the measured plot width: a wider chart (e.g. maximised window)
-/// fits more labels and returns a smaller stride.
+/// Bars to skip between shown labels derived from measured plot width
 fn label_stride(labels: &[String], plot_width: f32, gap: f32) -> usize {
     let n = labels.len();
     if n == 0 {
         return 1;
     }
-    // Before the first measurement, thin conservatively to avoid an overlap flash.
+    // Before the first measurement thin conservatively to avoid an overlap flash
     if plot_width <= 0.0 {
         return (n / 12).max(1);
     }
@@ -470,7 +457,7 @@ fn label_stride(labels: &[String], plot_width: f32, gap: f32) -> usize {
         .max()
         .unwrap_or(0)
         .max(1);
-    // ~6.2px per char at font_size 10, plus breathing room between labels.
+    // ~6.2px per char at font_size 10
     let slot_px = max_chars as f32 * 6.2 + gap.max(8.0) + 8.0;
     let max_labels = (plot_width / slot_px).floor().max(1.0) as usize;
 

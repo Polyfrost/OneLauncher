@@ -16,8 +16,7 @@ const ENVIRONMENT: &str = if cfg!(debug_assertions) {
     "production"
 };
 
-/// `before_send` hook: drop any event a log call explicitly opted out of by
-/// setting the `sentry` field to `false`, e.g.
+/// `before_send` hook drops events whose log call set `sentry = false`
 ///
 /// ```ignore
 /// tracing::error!(sentry = false, "handled MSA failure, don't report as a crash");
@@ -94,8 +93,7 @@ mod tests {
         assert!(init(false).is_none());
     }
 
-    /// Build an event the way `sentry-tracing` would, given the value of a
-    /// `sentry` field on the log call (or `None` for no such field).
+    /// Builds an event the way `sentry-tracing` would
     fn event_with_sentry_field(value: Option<bool>) -> Event<'static> {
         let mut event = Event::default();
         if let Some(value) = value {

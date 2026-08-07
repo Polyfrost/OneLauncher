@@ -6,22 +6,14 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{IOError, PolyIOResult};
 
-/// Smallest write buffer. HTTP chunks already arrive at ~16 KiB, so anything
-/// below this is buffering that was already the right size.
+/// HTTP chunks already arrive at ~16 KiB
 const MIN_WRITE_BUFFER: usize = 16 * 1024;
-/// Largest write buffer, for multi-megabyte downloads.
 const MAX_WRITE_BUFFER: usize = 256 * 1024;
-/// Used when the response has no length: assume something mid-sized.
+/// Used when the response has no length
 const DEFAULT_WRITE_BUFFER: usize = 64 * 1024;
 
-/// Picks a write buffer that fits the file rather than a fixed large one.
-///
-/// This is a memory-footprint choice, not a throughput one: measured against
-/// the real asset-size distribution, 64 KiB / 256 KiB / file-sized all write at
-/// the same rate (~200 MB/s, ~25x faster than the download feeding them), so
-/// the buffer is nowhere near the critical path. What a fixed 256 KiB *does*
-/// cost is 8 MiB of buffers across 32 concurrent asset downloads, each holding
-/// a ~10 KiB object.
+/// Sizing the buffer to the file is a memory-footprint choice not a throughput
+/// one a fixed 256 KiB costs ~8 MiB across 32 concurrent small-asset downloads
 fn write_buffer_size(size_hint: Option<u64>) -> usize {
 	match size_hint {
 		Some(0) | None => DEFAULT_WRITE_BUFFER,
@@ -29,7 +21,6 @@ fn write_buffer_size(size_hint: Option<u64>) -> usize {
 	}
 }
 
-/// Returns a stream over the entries within a directory.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -46,7 +37,6 @@ pub async fn read_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<tokio::
 		})
 }
 
-/// Creates a directory if they are missing.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -66,7 +56,6 @@ pub async fn create_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
 		})
 }
 
-/// Recursively creates a directory and all of its parent components if they are missing.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -82,7 +71,6 @@ pub async fn create_dir_all(path: impl AsRef<std::path::Path>) -> PolyIOResult<(
 		})
 }
 
-/// Removes a directory at this path, after removing all its contents. Use carefully!
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -99,10 +87,8 @@ pub async fn remove_dir_all(path: impl AsRef<std::path::Path>) -> PolyIOResult<(
 		})
 }
 
-/// Removes an empty directory, failing if anything is still in it.
-///
-/// The refusal is the point: it makes "remove this if it is empty" a single
-/// atomic step, with no read-then-delete window for something to appear in.
+/// Fails if the directory is non-empty making "remove if empty" atomic with no
+/// read-then-delete window
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -119,7 +105,6 @@ pub async fn remove_dir(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
 		})
 }
 
-/// Checks if a path exists
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -135,7 +120,6 @@ pub async fn try_exists(path: impl AsRef<std::path::Path>) -> PolyIOResult<bool>
         })
 }
 
-/// Creates a future which will open a gzip compressed file for reading and read the entire contents into a string and return said string.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -153,7 +137,6 @@ pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResul
 	Ok(dst)
 }
 
-/// Creates a future which will open a file for reading and read the entire contents into a string and return said string.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -170,7 +153,6 @@ pub async fn read_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResult<S
 		})
 }
 
-/// Asynchronously reads the entire contents of a file into a bytes vector.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -187,7 +169,6 @@ pub async fn read(path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<u8>> {
 		})
 }
 
-/// Asynchronously read a file as JSON and return the deserialized object
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -203,7 +184,6 @@ pub async fn read_json<T: DeserializeOwned>(
         })
 }
 
-/// Asynchrously write to a file.
 #[tracing::instrument(
     level = "debug",
     skip(path, data),
@@ -223,7 +203,6 @@ pub async fn write(
 		})
 }
 
-/// Asynchronously write buffered data to a file, creating it if it does not exist.
 #[tracing::instrument(
     level = "debug",
     skip(path, f),
@@ -249,19 +228,11 @@ where
 	Ok(())
 }
 
-/// Streams `stream` into `path`, which only ever appears complete.
+/// Streams into a scratch sibling renamed over `path` on success so `path`
+/// never holds a truncated file and an existing good file survives a failure
 ///
-/// The bytes go to a sibling scratch file that is renamed over `path` once the
-/// stream ends cleanly, so a dropped connection cannot leave a truncated file
-/// sitting at the real path where every later `exists()` check would mistake it
-/// for a finished download. On any error the scratch file is removed and
-/// whatever was already at `path` is left untouched — a failed re-download of a
-/// good file is a no-op rather than a deletion.
-///
-/// Unlike [`write_atomic`] this deliberately does not fsync: that would be the
-/// single most expensive operation in a five-thousand-file asset download, and
-/// nothing here needs to survive power loss. A crash can still leave a short
-/// file behind, which the caller's size check catches on the next run.
+/// Unlike [`write_atomic`] this deliberately does not fsync too expensive
+/// across thousands of asset downloads and nothing here must survive power loss
 #[tracing::instrument(
     level = "debug",
     skip(path, stream),
@@ -311,7 +282,6 @@ where
     Ok(())
 }
 
-/// Asynchronously write json to a file, creating it if it does not exist.
 #[tracing::instrument(
     level = "debug",
     skip(path, data),
@@ -329,13 +299,11 @@ pub async fn write_json<T: Serialize>(
     ).await
 }
 
-/// Counter for [`temp_sibling`] names, so two concurrent atomic writes to the
-/// same path can't pick the same scratch file.
+/// Keeps two concurrent atomic writes to the same path off the same scratch file
 static ATOMIC_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// A scratch path next to `path`, so the subsequent rename stays within one
-/// filesystem. A temp dir would not: `rename` across mount points fails with
-/// `EXDEV`, which is exactly the case on Linux where `/tmp` is often a tmpfs.
+/// Sibling rather than temp dir `rename` across mount points fails with
+/// `EXDEV` and `/tmp` is often a separate tmpfs on Linux
 fn temp_sibling(path: &Path) -> PathBuf {
 	let n = ATOMIC_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
 	let stem = path
@@ -350,13 +318,8 @@ fn temp_sibling(path: &Path) -> PathBuf {
 	}
 }
 
-/// Writes a file such that a reader only ever sees the old contents or the
-/// complete new ones, never a half-written file.
-///
-/// Writes to a sibling scratch file, fsyncs it, then renames over `path`.
-/// Without the fsync the rename can land before the data does, so a crash
-/// leaves a correctly-named zero-length file, worse than the torn write this
-/// is meant to prevent. Parent directories are created if missing.
+/// Readers see either the old contents or the complete new ones
+/// The fsync before the rename stops a crash leaving a correctly-named zero-length file
 #[tracing::instrument(
     level = "debug",
     skip(path, data),
@@ -403,7 +366,6 @@ pub async fn write_atomic(
 	Ok(())
 }
 
-/// [`write_atomic`] for a serializable value, mirroring [`write_json`].
 #[tracing::instrument(
     level = "debug",
     skip(path, data),
@@ -421,15 +383,10 @@ pub async fn write_json_atomic<T: Serialize>(
 	write_atomic(path, bytes).await
 }
 
-/// Canonicalises `path` and returns it only if it lies under one of `roots`.
-///
-/// This is the guard for paths that arrive from outside (a log or screenshot
-/// the UI asked to open) so that `../` cannot walk out of the launcher's own
-/// directories. Returns `Ok(None)` when the path resolves outside every root;
-/// `Err` only when `path` itself cannot be canonicalised.
-///
-/// Roots that cannot be canonicalised (typically because they don't exist yet)
-/// are skipped rather than treated as a match.
+/// Traversal guard for externally supplied paths
+/// `Ok(None)` when the path resolves outside every root
+/// `Err` only when `path` cannot be canonicalised
+/// Roots that cannot be canonicalised (e.g. not yet created) are skipped
 #[tracing::instrument(
     level = "debug",
     skip(path, roots),
@@ -439,9 +396,8 @@ pub fn ensure_under<R: AsRef<Path>>(
 	path: impl AsRef<Path>,
 	roots: impl IntoIterator<Item = R>,
 ) -> PolyIOResult<Option<PathBuf>> {
-	// `canonicalize` rather than `std::fs::canonicalize`: on Windows the latter
-	// returns a `\\?\` UNC path while the roots are plain paths, so `starts_with`
-	// would never match and every path would look like an escape.
+	// Not `std::fs::canonicalize` its Windows `\\?\` UNC output would never
+	// `starts_with` the plain-path roots so everything would look like an escape
 	let canon = crate::canonicalize(path)?;
 
 	for root in roots {
@@ -455,11 +411,9 @@ pub fn ensure_under<R: AsRef<Path>>(
 	Ok(None)
 }
 
-/// Recursively copies `src` into `dst`, creating directories as needed.
-///
-/// Entries named in `exclude_top` are skipped, but only at the top level; a
-/// nested directory of the same name is still copied. Symlinks are followed,
-/// copied as their target's contents.
+/// `exclude_top` applies only at the top level a nested directory of the same
+/// name is still copied
+/// Symlinks are followed and copied as their contents
 #[tracing::instrument(level = "debug", skip(exclude_top))]
 pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIOResult<()> {
 	let mut stack: Vec<(PathBuf, PathBuf, bool)> =
@@ -498,7 +452,6 @@ pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIORes
 	Ok(())
 }
 
-/// Whether `dir` is a directory containing at least one entry.
 pub async fn dir_has_content(dir: &Path) -> bool {
 	if !dir.is_dir() {
 		return false;
@@ -510,7 +463,7 @@ pub async fn dir_has_content(dir: &Path) -> bool {
 	}
 }
 
-/// Renames a file or directory to a new name, replacing the original file if `to` already exists.
+/// Replaces `to` if it already exists
 #[tracing::instrument(
     level = "debug",
     skip(from, to),
@@ -534,7 +487,7 @@ pub async fn rename(
 		})
 }
 
-/// Copies the contents of one file to another. This function will also copy the permission bits of the original file to the destination file. This function will overwrite the contents of to.
+/// Also copies permission bits and overwrites `to`
 #[tracing::instrument(
     level = "debug",
     skip(from, to),
@@ -558,7 +511,6 @@ pub async fn copy(
 		})
 }
 
-/// Removes a file from the filesystem.
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -574,10 +526,7 @@ pub async fn remove_file(path: impl AsRef<std::path::Path>) -> PolyIOResult<()> 
 		})
 }
 
-/// Queries metadata about a path without following symlinks.
-///
-/// Unlike [`stat`], if `path` is a symlink this returns metadata about the
-/// link itself, not its target.
+/// Unlike [`stat`] returns metadata about the link itself not its target
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -593,11 +542,7 @@ pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> PolyIOResult
 		})
 }
 
-/// Links a file `link` to `original`.
-///
-/// On Unix this creates a symlink. On Windows it creates a hard link
-/// instead (both paths must then live on the same volume). Either way the
-/// caller gets a file at `link` that shares the contents of `original`.
+/// Symlink on Unix hard link on Windows so both paths must be on one volume
 #[tracing::instrument(
     level = "debug",
     skip(original, link),
@@ -624,11 +569,9 @@ pub async fn symlink_file(
 	})
 }
 
-/// Links a directory `link` to `original`.
-///
-/// On Windows this creates a directory *junction* (a reparse point), which
-/// needs no elevated privilege unlike a real directory symlink. On Unix it
-/// creates an ordinary directory symlink. Remove it with [`remove_symlink_dir`].
+/// Windows gets a junction which needs no elevated privilege unlike a real
+/// directory symlink
+/// Remove with [`remove_symlink_dir`]
 #[tracing::instrument(
     level = "debug",
     skip(original, link),
@@ -664,10 +607,7 @@ pub async fn symlink_dir(
 		})
 }
 
-/// Removes a directory link created by [`symlink_dir`].
-///
-/// On Windows a junction must be removed with `remove_dir` rather than
-/// `remove_file`; this handles the platform difference.
+/// A Windows junction must be removed with `remove_dir` not `remove_file`
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -688,19 +628,17 @@ pub async fn remove_symlink_dir(path: impl AsRef<std::path::Path>) -> PolyIOResu
 	})
 }
 
-/// Creates a temporary directory.
 #[tracing::instrument(level = "debug")]
 pub async fn tempdir() -> PolyIOResult<TempDir> {
 	Ok(TempDir::new().await?)
 }
 
-/// Creates a temporary file.
 #[tracing::instrument(level = "debug")]
 pub async fn tempfile() -> PolyIOResult<TempFile> {
 	Ok(TempFile::new().await?)
 }
 
-/// Sanitises every component of a path and normalises separators to `/`.
+/// Sanitises every component and normalises separators to `/`
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -715,7 +653,6 @@ pub fn sanitize_path(path: impl AsRef<std::path::Path>) -> PathBuf {
 		.collect()
 }
 
-/// Returns file metadata
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -730,12 +667,9 @@ mod tests {
 
 	#[test]
 	fn write_buffer_fits_the_file() {
-		// A typical Minecraft asset object.
 		assert_eq!(write_buffer_size(Some(10_217)), MIN_WRITE_BUFFER);
 		assert_eq!(write_buffer_size(Some(1)), MIN_WRITE_BUFFER);
-		// Mid-sized files get exactly what they need.
 		assert_eq!(write_buffer_size(Some(64 * 1024)), 64 * 1024);
-		// Large downloads are capped rather than matched.
 		assert_eq!(write_buffer_size(Some(25_000_000)), MAX_WRITE_BUFFER);
 		assert_eq!(write_buffer_size(Some(u64::MAX)), MAX_WRITE_BUFFER);
 	}
@@ -778,7 +712,6 @@ mod tests {
 
 		assert_eq!(std::fs::read(&target).unwrap(), b"new-and-longer");
 
-		// The scratch sibling must not survive a successful write.
 		let leftovers: Vec<_> = std::fs::read_dir(&dir)
 			.unwrap()
 			.flatten()
@@ -790,8 +723,6 @@ mod tests {
 		std::fs::remove_dir_all(&dir).unwrap();
 	}
 
-	/// Builds a stream that yields `chunks` and then fails, standing in for a
-	/// connection dropped part-way through a download.
 	fn failing_stream(
 		chunks: Vec<&'static [u8]>,
 	) -> impl futures_lite::Stream<Item = Result<bytes::Bytes, IOError>> + Unpin + Send {
@@ -822,7 +753,6 @@ mod tests {
 
 		assert_eq!(std::fs::read(&target).unwrap(), b"hello world");
 
-		// A successful write must not leave its scratch sibling behind either.
 		let leftovers: Vec<_> = std::fs::read_dir(&dir)
 			.unwrap()
 			.flatten()
@@ -843,8 +773,6 @@ mod tests {
 			.await
 			.expect_err("a dropped stream must fail");
 
-		// The whole point: no truncated file at the real path for a later
-		// `exists()` check to mistake for a finished download.
 		assert!(!target.exists(), "left a truncated file at the destination");
 
 		let leftovers: Vec<_> = std::fs::read_dir(&dir)
@@ -867,7 +795,6 @@ mod tests {
 			.await
 			.expect_err("a dropped stream must fail");
 
-		// A failed repair must not be worse than no repair.
 		assert_eq!(std::fs::read(&target).unwrap(), b"known-good");
 
 		std::fs::remove_dir_all(&dir).unwrap();
@@ -897,7 +824,6 @@ mod tests {
 		let file = outside.join("auth.json");
 		std::fs::write(&file, b"").unwrap();
 
-		// The classic shape: a path that only escapes once resolved.
 		let sneaky = root.join("..").join("secrets").join("auth.json");
 		assert_eq!(ensure_under(&sneaky, [&root]).unwrap(), None);
 

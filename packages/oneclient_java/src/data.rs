@@ -12,9 +12,6 @@ pub struct JavaRuntime {
 	pub version: String,
 	pub vendor: JavaVendor,
 	pub os_arch: String,
-	/// Whether this is a development kit rather than a bare runtime image, as
-	/// the probe reported it when the runtime was recorded (see
-	/// [`crate::JavaCheckInfo::is_jdk`]).
 	pub is_jdk: bool,
 }
 
@@ -26,26 +23,17 @@ pub struct JavaPackage {
 	pub java_version: Vec<u32>,
 	pub vendor: JavaVendor,
 	pub archive: PackageArchive,
-	/// What the vendor promises the archive hashes to. Every vendor publishes
-	/// one, in its own algorithm — SHA-256 for Adoptium, Corretto and Zulu,
-	/// SHA-1 for Liberica — so this carries the algorithm with it.
-	///
-	/// `None` only when a vendor's metadata omitted or malformed it. A runtime
-	/// that cannot be verified is still worth installing (the alternative is a
-	/// launcher that cannot start the game at all), so this degrades to an
-	/// unverified download rather than a hard failure.
+	/// Algorithm varies per vendor
+	/// `None` when vendor metadata omitted or malformed it
+	/// installs unverified rather than failing
 	pub checksum: Option<Checksum>,
-	/// Archive size in bytes when the vendor publishes it, for progress bars
-	/// that would otherwise wait on `Content-Length`.
+	/// Bytes when the vendor publishes it
 	pub size: Option<u64>,
 }
 
 impl JavaPackage {
-	/// Drops a checksum the vendor returned in an unusable shape.
-	///
-	/// A vendor that starts sending an empty string or a placeholder would
-	/// otherwise make every runtime install fail with what looks to the user
-	/// like a corrupt download, three retries deep.
+	/// Drops malformed vendor checksums which would otherwise make every
+	/// install fail as a corrupt download
 	#[must_use]
 	pub fn with_checksum(mut self, checksum: Option<Checksum>) -> Self {
 		self.checksum = checksum.filter(|sum| {

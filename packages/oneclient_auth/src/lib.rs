@@ -1,9 +1,6 @@
-//! Microsoft/Xbox/Minecraft authentication and the launcher's credentials store.
-//!
-//! The whole surface is [`AuthService`], which owns the credentials store, the
-//! in-flight browser logins and the per-account refresh guards. Construct one
-//! in the composition layer and pass it down; nothing in here reaches for a
-//! global or a database. Accounts are persisted to `auth.json`.
+//! Construct [`AuthService`] in the composition layer and pass it down nothing
+//! in here reaches for a global or a database
+//! Accounts persist to `auth.json`
 
 mod data;
 mod diagnostics;

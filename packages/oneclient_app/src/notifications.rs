@@ -23,17 +23,12 @@ pub struct NotificationAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum NotificationActionKind {
-    /// Opens the changes modal for every cluster touched by one sync. Kept as a
-    /// list so a batch sync stays a single "View changes" action instead of one
-    /// button per cluster.
+    /// A list so a batch sync stays a single "View changes" action not one button per cluster
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
 }
 
-/// The stale browser packages of the cluster being launched.
-///
-/// Carries the core updates whole rather than a display projection: the modal's
-/// Update button hands one straight back to the apply path, and a trimmed copy
-/// would have to be re-looked-up to find the version it is meant to install.
+/// Carries core updates whole not a display projection the modal's Update button
+/// hands one straight back to the apply path
 #[derive(Clone, Debug, PartialEq)]
 pub struct PackageUpdateGroup {
     pub cluster_id: ClusterId,
@@ -41,13 +36,11 @@ pub struct PackageUpdateGroup {
     pub packages: Vec<BrowserPackageUpdate>,
 }
 
-/// One changed package in a cluster update, carrying enough identity to
-/// resolve a pretty display name through the package-meta cache in the UI.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterUpdateItem {
     pub provider: ProviderId,
     pub project_id: Option<String>,
-    /// Name shown when the meta cache has no entry (file name / package id).
+    /// Used when the meta cache has no entry (file name / package id)
     pub fallback: String,
 }
 
@@ -89,12 +82,11 @@ pub struct InboxEntry {
     pub created_at: Instant,
     pub actions: Vec<NotificationAction>,
     pub tasks: Vec<TaskView>,
-    /// Live transfer stats for grouped downloads (bytes/sec, seconds remaining).
+    /// Bytes/sec and seconds remaining for grouped downloads
     pub transfer: Option<TransferStats>,
 }
 
-/// One row in the expandable task list, an aggregate over all children of a
-/// single [`TaskCategory`] (e.g. all libraries collapse into one "Libraries" row).
+/// One aggregate row per [`TaskCategory`] (all libraries collapse into one "Libraries" row)
 #[derive(Clone, Debug, PartialEq)]
 pub struct TaskView {
     pub label: String,
@@ -138,12 +130,10 @@ pub struct PendingPrompt {
     pub question: String,
     pub choices: Vec<Choice>,
     pub dismiss: Option<String>,
-    /// Taken when answered, so a second answer cannot fire the oneshot twice.
+    /// Taken when answered so a second answer cannot fire the oneshot twice
     pub reply_tx: Option<oneshot::Sender<Option<Answer>>>,
 }
 
-/// The renderable half of a [`PendingPrompt`]: everything except the reply
-/// channel, which cannot be cloned into the snapshot.
 #[derive(Clone, Debug)]
 pub struct PendingPromptView {
     pub title: String,
@@ -153,9 +143,7 @@ pub struct PendingPromptView {
 }
 
 impl PendingPromptView {
-    /// Whether this prompt offers a choice with the given id. Lets a
-    /// specialised overlay (the Java one) recognise a prompt it knows how to
-    /// render richly, without the event layer naming the subsystem.
+    /// Lets a specialised overlay recognise a prompt without the event layer naming it
     pub fn has_choice(&self, id: &str) -> bool {
         self.choices.iter().any(|choice| choice.id == id)
     }
@@ -199,14 +187,12 @@ pub struct NotificationState {
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
-    /// Resumes the launch that opened the update modal. Held here rather than
-    /// by the launch task because every way the modal can end — the last row
-    /// answered, "Not now", Escape, the scrim — goes through this state, and
-    /// each of them has to let the game start.
+    /// Resumes the launch that opened the update modal
+    /// Held here not by the launch task
+    /// because every way the modal can end goes through this state
     package_updates_done: Option<oneshot::Sender<()>>,
 }
 
-/// Fixed display order for the category rows.
 const CATEGORY_ORDER: [TaskCategory; 7] = [
     TaskCategory::Java,
     TaskCategory::Client,
@@ -231,15 +217,13 @@ struct GroupedTasks {
     done_units: HashMap<TaskCategory, u64>,
     done_count: HashMap<TaskCategory, u64>,
     seen_count: HashMap<TaskCategory, u64>,
-    /// Expected counts/bytes announced up-front so totals don't climb mid-download.
+    /// Expected counts/bytes announced up-front so totals don't climb mid-download
     reserved_count: HashMap<TaskCategory, u64>,
     reserved_units: HashMap<TaskCategory, u64>,
-    /// Transfer rate and ETA for this group's downloads.
     meter: TransferMeter,
 }
 
 impl GroupedTasks {
-    /// Aggregate live + finished children into one row per category, in display order.
     fn task_list(&self) -> Vec<TaskView> {
         CATEGORY_ORDER
             .iter()
@@ -259,7 +243,6 @@ impl GroupedTasks {
                 let live_current: u64 = live.iter().map(|c| c.current.min(c.total)).sum();
                 let live_total: u64 = live.iter().map(|c| c.total).sum();
 
-                // Surface the most advanced phase among live children; default Downloading.
                 let phase = live
                     .iter()
                     .map(|c| c.phase)
@@ -270,8 +253,7 @@ impl GroupedTasks {
                     label: cat.label().to_string(),
                     phase,
                     current: done_units + live_current,
-                    // Reserved total keeps the denominator stable while children are
-                    // still being added; fall back to what we've actually seen.
+                    // Reserved total keeps the denominator stable while children are still added
                     total: reserved_units.max(done_units + live_total),
                     done_count,
                     total_count,
@@ -280,7 +262,6 @@ impl GroupedTasks {
             .collect()
     }
 
-    /// Which coarse group is currently downloading, for the notification body.
     fn active_body(&self) -> Option<&'static str> {
         let mut minecraft = false;
         let mut packages = false;
@@ -318,7 +299,6 @@ impl NotificationState {
         }
     }
 
-    /// Entry ids with a toast currently showing.
     #[must_use]
     pub fn active_toast_entry_ids(&self) -> Vec<u64> {
         self.active_toasts.iter().map(|t| t.entry_id).collect()
@@ -335,11 +315,8 @@ impl NotificationState {
         self.cluster_update = None;
     }
 
-    /// Opens the pre-launch update modal, with `done` as the launch's
-    /// continuation.
-    ///
-    /// Nothing to show is answered immediately rather than left pending: a
-    /// launch must never be able to wait on a modal that was never drawn.
+    /// `done` is the launch's continuation it fires immediately when there is nothing
+    /// to show so a launch never waits on a modal that was never drawn
     pub fn open_package_updates(
         &mut self,
         groups: Vec<PackageUpdateGroup>,
@@ -357,8 +334,7 @@ impl NotificationState {
             return;
         }
 
-        // A second modal would strand the first launch, so hand the old
-        // continuation back before taking the new one.
+        // A second modal would strand the first launch so release the old continuation first
         self.finish_package_updates();
         self.package_updates = Some(groups);
         self.package_updates_done = done;
@@ -368,10 +344,7 @@ impl NotificationState {
         self.finish_package_updates();
     }
 
-    /// Drops one package from the open modal, closing it once the user has
-    /// answered for every row. Applying and skipping are the same thing here:
-    /// both are answers, and neither should leave a row the user has already
-    /// dealt with sitting in the list.
+    /// Applying and skipping are both answers either drops the row and can close the modal
     pub fn resolve_package_update(&mut self, cluster_id: ClusterId, hash: &str) {
         let Some(groups) = self.package_updates.as_mut() else {
             return;
@@ -389,14 +362,11 @@ impl NotificationState {
         }
     }
 
-    /// Closes the modal and releases the launch waiting on it. Safe to call
-    /// when nothing is open; that is what makes every exit path able to call it
-    /// without first checking which one it is.
+    /// Safe to call when nothing is open so every exit path can call it unconditionally
     fn finish_package_updates(&mut self) {
         self.package_updates = None;
         if let Some(done) = self.package_updates_done.take() {
-            // The launch task is gone if this fails, which is not this layer's
-            // problem: there is simply nothing left to resume.
+            // A send failure means the launch task is gone nothing left to resume
             let _ = done.send(());
         }
     }
@@ -405,10 +375,9 @@ impl NotificationState {
         inbox.iter().filter(|entry| !entry.read).count()
     }
 
-    /// Folds one notification into the engine state. Does not build a
-    /// [`NotificationSnapshot`]: during a download this runs tens of thousands
-    /// of times, and every snapshot deep-clones the whole inbox only for the
-    /// caller to discard all but the last. Callers snapshot once, after draining.
+    /// Deliberately does not snapshot this runs tens of thousands of times per download
+    /// and each snapshot deep-clones the inbox
+    /// Callers snapshot once after draining
     pub fn dispatch(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
@@ -428,9 +397,7 @@ impl NotificationState {
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
-            // The Microsoft login renders its own progress in the sign-in
-            // modal, so it must not also become a toast. This is a front-end
-            // policy decision about a progress id the core merely names.
+            // The sign-in modal renders this progress itself it must not also become a toast
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}
             Event::Progress(ProgressEvent::Update {
@@ -447,8 +414,7 @@ impl NotificationState {
             Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
             }
-            // Signals and game events drive the snapshot directly in the
-            // runtime loop; they never become inbox entries.
+            // Handled directly by the runtime loop they never become inbox entries
             Event::Signal(_) | Event::Game(_) => {}
             Event::Notification(Notification::Prompt(request)) => {
                 let pending_prompt = Some(PendingPrompt {
@@ -682,15 +648,12 @@ impl NotificationState {
         self.update_inbox_entry(inbox, entry_id, label, body, progress, !done);
         self.ensure_progress_toast(entry_id);
 
-        // The id->entry mapping is kept even once `done`, so a later
-        // `ProgressComplete` can convert this same card into its finished state (see
-        // `handle_progress_complete`). It is cleaned up when the entry is dismissed
-        // or the engine is reset.
+        // The id->entry mapping is kept even once `done` so a later `ProgressComplete`
+        // can convert this same card into its finished state
     }
 
-    /// Convert an in-flight progress card into a finished message in place. Used so an
-    /// operation and its "done" notice stay a single notification. Falls back to a fresh
-    /// message if the progress entry is already gone (e.g. dismissed mid-flight).
+    /// Converts the in-flight card in place so an operation and its "done" notice stay one
+    /// notification falls back to a fresh message if the entry was dismissed mid-flight
     fn handle_progress_complete(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
@@ -830,11 +793,9 @@ impl NotificationState {
         }
     }
 
-    /// Converts a still-open grouped-progress entry into its finished state,
-    /// reusing the same inbox id. `spec: None` forgets the entry entirely (used
-    /// when a sync completed with nothing to show). This lets a download progress
-    /// notification morph into a "view changes" notification without ever
-    /// becoming a second entry.
+    /// Reuses the same inbox id so a progress card morphs into its result instead of
+    /// becoming a second entry
+    /// `spec: None` forgets the entry entirely
     pub fn finish_grouped_as_actions(
         &mut self,
         inbox: &mut Vec<InboxEntry>,
@@ -845,7 +806,6 @@ impl NotificationState {
         let entry_id = self.grouped_entries.remove(&session_id);
 
         let Some(spec) = spec else {
-            // Nothing changed: drop the progress entry if one was created.
             if let Some(entry_id) = entry_id {
                 self.forget_entry(inbox, entry_id);
             }
@@ -874,14 +834,11 @@ impl NotificationState {
                 entry.actions = actions;
                 entry.tasks = Vec::new();
                 entry.transfer = None;
-                // The progress toast (if any) is already armed for this entry;
-                // leaving it in `active_toasts` lets the loop give it a dismiss
-                // timer now that it is no longer loading.
+                // Keeping it in `active_toasts` lets the loop arm a dismiss timer
+                // now that the entry is no longer loading
                 self.ensure_progress_toast(entry.id);
             }
             None => {
-                // Progress entry never materialised (e.g. no downloads happened);
-                // fall back to a fresh notification so the result still shows.
                 self.push_custom(
                     inbox,
                     NotificationSpec {
@@ -915,7 +872,7 @@ impl NotificationState {
         let completed: u64 = tasks.iter().map(|t| t.current.min(t.total)).sum();
         let total: u64 = tasks.iter().map(|t| t.total).sum::<u64>().max(1);
 
-        // Below 1 B/s the estimate is noise, not information.
+        // Below 1 B/s the estimate is noise
         let transfer = group
             .meter
             .sample(completed, total)

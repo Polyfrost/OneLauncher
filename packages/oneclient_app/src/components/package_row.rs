@@ -44,12 +44,9 @@ pub struct PackageEntry {
     pub installed: bool,
     pub hash: Option<String>,
     pub manifest_default: bool,
-    /// The bundle ships this as a private dependency. Only ever set for bundle
-    /// rows, and only surfaced when the user asks for hidden packages.
+    /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
-    /// The launch-time check found a newer version for this artifact. Only ever
-    /// set for browser-installed content: bundle packages report their staleness
-    /// through the bundle update flow instead.
+    /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
 }
 
@@ -62,9 +59,7 @@ impl PackageEntry {
         self.bundle_name.is_some()
     }
 
-    /// Whether to mark the row out of date. A bundle package is never marked
-    /// here even if a row somehow says so, so the two update flows cannot
-    /// contradict each other on screen.
+    /// Bundle packages are never marked here so the two update flows cannot contradict
     pub fn is_outdated(&self) -> bool {
         self.update_available && self.is_remote() && !self.in_bundle()
     }
@@ -463,8 +458,6 @@ pub fn provider_badge(provider: ProviderId) -> Element {
     )
 }
 
-/// Says the installed version is behind the provider's newest compatible one.
-/// The update itself is offered by the launch-time modal, not from here.
 fn outdated_badge() -> Element {
     accent_badge(
         Icon::new(IconType::RefreshCw01)

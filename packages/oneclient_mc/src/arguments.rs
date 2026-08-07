@@ -122,12 +122,8 @@ fn is_64_bit(java_arch: &str) -> bool {
     )
 }
 
-/// Splits a user-entered JVM argument string into individual arguments.
-///
-/// Whitespace-separated, with double quotes for values that contain spaces
-/// (`-Dfoo="a b"`), which is what people expect from every other launcher.
-/// Pushing the whole string as one argv entry, as this used to, means the JVM
-/// sees a single unrecognised option as soon as there is more than one.
+/// Whitespace-separated double quotes for values containing spaces
+/// Must not be passed as one argv entry or the JVM sees one unrecognised option
 fn split_custom_args(raw: &str) -> Vec<String> {
     let mut args = Vec::new();
     let mut current = String::new();

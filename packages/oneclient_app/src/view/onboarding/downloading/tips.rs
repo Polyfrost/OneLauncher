@@ -35,8 +35,7 @@ fn parse_funfacts(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Loads onboarding tips (remote with backup fallback) and returns a single
-/// stable random tip for the lifetime of the component.
+/// One stable random tip for the lifetime of the component
 pub(super) fn use_onboarding_tip() -> String {
     let mut tips = use_state(|| {
         ONBOARDING_TIPS_BACKUP

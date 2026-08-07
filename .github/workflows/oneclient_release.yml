@@ -345,25 +345,28 @@ jobs:
           rm -f "$out/OneClient.icns"
           test -f "$out/Assets.car" || { echo "::error::actool produced no Assets.car"; exit 1; }
 
-      - name: (Windows) Bundle VC++ redistributable into the installer
+      - name: (Windows) Stage app-local VC++ runtime
         if: matrix.platform == 'windows-latest'
         shell: bash
-        run: python3 distribution/windows/bundle-vcredist.py
+        run: python3 distribution/windows/bundle-crt.py
 
-      - name: (Windows) Verify bundled redistributable is Microsoft-signed
+      - name: (Windows) Verify staged runtime is Microsoft-signed
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $sig = Get-AuthenticodeSignature 'target/vcredist/vc_redist.x64.exe'
-          Write-Host "Authenticode status: $($sig.Status)"
-          Write-Host "Signer: $($sig.SignerCertificate.Subject)"
-          if ($sig.Status -ne 'Valid') {
-            Write-Error "vc_redist.x64.exe signature is $($sig.Status), refusing to bundle it"
-            exit 1
-          }
-          if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
-            Write-Error "vc_redist.x64.exe is not signed by Microsoft: $($sig.SignerCertificate.Subject)"
-            exit 1
+          $dlls = @(Get-ChildItem 'target/crt/*.dll')
+          if ($dlls.Count -eq 0) { Write-Error 'no CRT DLLs staged'; exit 1 }
+          foreach ($dll in $dlls) {
+            $sig = Get-AuthenticodeSignature $dll.FullName
+            Write-Host "$($dll.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') {
+              Write-Error "$($dll.Name) signature is $($sig.Status), refusing to ship it"
+              exit 1
+            }
+            if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+              Write-Error "$($dll.Name) is not signed by Microsoft"
+              exit 1
+            }
           }
 
       - name: Package
@@ -440,6 +443,33 @@ jobs:
         id: win_installer
         shell: bash
         run: echo "path=$(ls ${{ steps.outdir.outputs.dir }}/*-setup.exe | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: (Windows) Smoke-test installer layout
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = 'C:\oneclient-smoke'
+          Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
+          $exe = Resolve-Path '${{ steps.win_installer.outputs.path }}'
+          # NSIS: /S is silent, /D= sets the install dir and must be the last arg.
+          $p = Start-Process -FilePath $exe -ArgumentList '/S', "/D=$dest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "installer exited $($p.ExitCode)"; exit 1 }
+
+          Write-Host '--- installed layout ---'
+          Get-ChildItem -Recurse $dest | ForEach-Object { Write-Host $_.FullName }
+
+          if (-not (Test-Path "$dest\oneclient_app.exe")) {
+            Write-Error "oneclient_app.exe is not at the root of $dest"
+            exit 1
+          }
+          foreach ($dll in @(Get-ChildItem 'target/crt/*.dll')) {
+            if (-not (Test-Path (Join-Path $dest $dll.Name))) {
+              Write-Error "$($dll.Name) did not land beside oneclient_app.exe — cargo-packager put resources elsewhere, so app-local CRT loading will not work"
+              exit 1
+            }
+          }
+          Write-Host "OK: $($(Get-ChildItem 'target/crt/*.dll').Count) CRT DLLs sit beside oneclient_app.exe"
 
       - name: (Windows) Upload unsigned installer artifact
         if: matrix.platform == 'windows-latest'

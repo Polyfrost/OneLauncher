@@ -10,8 +10,7 @@ pub mod updates;
 
 mod file_identity;
 
-// Re-exported so `oneclient_core::packages::ContentType` keeps working; the
-// types themselves now live in the leaf vocabulary crate.
+// Re-exported so `oneclient_core::packages::ContentType` keeps working
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
 pub use metadata_cache::{
     CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,

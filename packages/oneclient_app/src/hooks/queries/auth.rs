@@ -160,8 +160,7 @@ impl MutationCapability for FinishMicrosoftLoginMutation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CancelMicrosoftLoginMutation;
 
-/// Drops a pending browser login server-side when the user cancels before the
-/// flow reaches the point of no return. Keyed by the session's CSRF state token.
+/// Keyed by the session's CSRF state token
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CancelMicrosoftLoginKeys {
     pub state_token: String,
@@ -354,12 +353,8 @@ pub fn use_refresh_all_accounts() -> UseMutation<RefreshAllAccountsMutation> {
     use_mutation(Mutation::new(RefreshAllAccountsMutation))
 }
 
-/// Whether the mutation has yet to produce a settled result.
-///
-/// True *before* it has ever been run as well as while it is running —
-/// `MutationStateData::Pending` means "has not loaded yet", not "in progress".
-/// For driving a button's label or disabled state, use [`mutation_is_running`];
-/// this one reads as "no result to show yet".
+/// True before it has ever been run as well as while running For button
+/// disabled state use [`mutation_is_running`] instead
 pub fn mutation_is_pending<M: MutationCapability>(mutation: &UseMutation<M>) -> bool {
     matches!(
         &*mutation.read().state(),
@@ -367,7 +362,6 @@ pub fn mutation_is_pending<M: MutationCapability>(mutation: &UseMutation<M>) -> 
     )
 }
 
-/// Whether the mutation is actually in flight right now.
 pub fn mutation_is_running<M: MutationCapability>(mutation: &UseMutation<M>) -> bool {
     mutation.read().state().is_loading()
 }

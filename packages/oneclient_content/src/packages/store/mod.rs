@@ -106,13 +106,9 @@ impl PackageStore {
         Ok(artifact)
     }
 
-    /// Records that a cluster wants this artifact.
-    ///
-    /// Nothing is written to the cluster or game folder here. The artifact stays
-    /// in the cache and is materialized into the game directory at launch, which
-    /// is the only moment the launcher can be sure no game is holding the files
-    /// open. See [`crate::packages::store::manifest`] for why the folder is not
-    /// kept in sync eagerly.
+    /// Writes nothing to disk
+    /// the artifact is materialized into the game directory at launch the only
+    /// moment no game is holding the files open
     #[tracing::instrument(level = "debug", skip(artifact, cluster, ctx))]
     pub async fn link_artifact(
         artifact: &ArtifactRow,
@@ -183,19 +179,11 @@ impl PackageStore {
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
-    /// Flips an artifact's enabled flag, returning the new state.
-    ///
-    /// The flag is all that is recorded. Minecraft reads its mods once at
-    /// startup and holds the jars open for the rest of the session, so there is
-    /// no useful moment to rewrite the folder other than the next launch — and
-    /// on Windows a running game makes it impossible anyway. Disabling makes a
-    /// best-effort attempt to drop the file now purely so the folder matches
-    /// what the user just did; whether it lands changes nothing.
-    ///
-    /// Storage only: bundle override bookkeeping is composed on top by
-    /// [`crate::bundles::toggle_artifact_enabled`], because that is the layer that
-    /// knows about bundles. Calling up into `bundles` from here would make the two
-    /// modules mutually recursive.
+    /// Only the flag is recorded
+    /// the folder is rewritten at the next launch since a running game holds
+    /// its jars open
+    /// Storage only bundle override bookkeeping lives in
+    /// [`crate::bundles::toggle_artifact_enabled`] to avoid mutual recursion
     pub async fn set_artifact_enabled(
         cluster_id: i64,
         hash: &str,
@@ -204,10 +192,7 @@ impl PackageStore {
         Self::write_artifact_enabled(cluster_id, hash, None, ctx).await
     }
 
-    /// Puts an artifact into a known enabled state rather than flipping it.
-    ///
-    /// Returns the state it ended in, which is the requested one unless the
-    /// link was already there.
+    /// Returns the state it ended in which is the requested one unless the link was already there
     #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn set_artifact_enabled_to(
         cluster_id: i64,
@@ -218,7 +203,7 @@ impl PackageStore {
         Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
     }
 
-    /// `target` of `None` means "the opposite of whatever it is now".
+    /// `target` of `None` means "the opposite of whatever it is now"
     async fn write_artifact_enabled(
         cluster_id: i64,
         hash: &str,

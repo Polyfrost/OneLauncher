@@ -1,5 +1,4 @@
 fn main() {
-    // Embeds the app icon and VERSIONINFO into the Windows executable.
     #[cfg(windows)]
     {
         let mut res = winresource::WindowsResource::new();

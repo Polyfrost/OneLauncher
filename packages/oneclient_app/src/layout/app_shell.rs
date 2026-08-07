@@ -43,10 +43,7 @@ impl Component for AppShell {
         let browser_state = use_state(HashMap::new);
         use_provide_browser_state(BrowserStateStore(browser_state));
 
-        // Window-wide file drops. `FileDrop` bubbles, so anything a dedicated
-        // drop zone doesn't claim with `stop_propagation()` ends up here and the
-        // user gets asked where it should go. Only the overlay reads these, so
-        // hovering a file doesn't re-render the shell.
+        // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);
         let mut drop_pending = use_state(Vec::<PathBuf>::new);
 
@@ -259,8 +256,6 @@ pub(crate) fn appshell_overlay() -> Rect {
 
 pub const HOME_BACKGROUND_ASSET: &str = "backgrounds/CavesAndCliffs.jpg";
 
-/// The cluster the home background is drawn from: the active one, or the first
-/// in the list before anything is active.
 fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Cluster> {
     active
         .and_then(|id| clusters.iter().find(|c| c.id == id))
@@ -273,25 +268,15 @@ fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
         .preview_edge(ART_PREVIEW_EDGE)
 }
 
-/// Loads the home background art as soon as the launcher is up, rather than
-/// when Home mounts.
-///
-/// The art is three async hops deep — the cluster list, then the version
-/// manifest holding its url, then the image itself — and none of them start
-/// until something subscribes. Mounted at the root, they overlap the rest of
-/// startup while the splash curtain is still up; left to Home, they run after
-/// it has lifted and show as the built-in fallback lingering on screen.
-///
-/// The queries are global and outlive this component's subscription, so Home
-/// finds them already settled and renders the real art on its first frame.
+/// Warms the home art at the root so its three async hops overlap startup behind the
+/// splash left to Home the fallback lingers on screen after the curtain lifts
 #[derive(PartialEq, Clone, Copy)]
 pub struct HomeArtPrefetch;
 
 impl Component for HomeArtPrefetch {
     fn render(&self) -> impl IntoElement {
-        // Before the launcher is ready every query errors out, and a settled
-        // error is not retried until a new subscriber mounts. Waiting means the
-        // inner component's hooks run once, when they can actually succeed.
+        // Before the launcher is ready every query errors and a settled error is not
+        // retried until a new subscriber mounts
         if !use_launcher().ready {
             return rect().into_element();
         }
@@ -308,8 +293,7 @@ impl Component for HomeArtWarm {
         let art = {
             let reader = clusters_query.read();
             let state = reader.state();
-            // No active cluster this early, so this is the first in the list —
-            // the same one `AppHomeBackground` picks.
+            // No active cluster this early so this picks the same one `AppHomeBackground` will
             let clusters = state.ok().map_or(&[][..], Vec::as_slice);
             home_art(home_cluster(clusters, None))
         };
@@ -330,8 +314,7 @@ impl Component for AppHomeBackground {
         let launcher = use_launcher();
         let splash = use_splash();
 
-        // Once the cluster list has settled and the startup fetch is done, the
-        // home view is populated, so let the splash curtain fade out.
+        // The home view is populated once these settle which releases the splash curtain
         let clusters_settled = matches!(
             &*clusters_query.read().state(),
             QueryStateData::Settled { .. }

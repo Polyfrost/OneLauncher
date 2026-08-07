@@ -58,17 +58,13 @@ impl Component for Startup {
                 Route::Home {}
             };
 
-            // Onboarding needs the bundle catalog before it can render its steps,
-            // so gate it on the fetch. Returning users go straight to the app and
-            // let the bundle download finish in the background.
+            // Onboarding needs the bundle catalog before it can render its steps so gate it on the fetch
             let heading_to_onboarding = matches!(
                 destination,
                 Route::OnboardingWelcome { .. } | Route::OnboardingTerms { .. }
             );
             if !heading_to_onboarding || !launcher.fetching {
-                // Heading into Home: raise the splash curtain so the hard route
-                // swap is hidden until Home's clusters/art have settled, then it
-                // fades out. Onboarding animates itself, so skip the curtain.
+                // Raise the splash curtain so the hard route swap is hidden until Home settles onboarding animates itself
                 if !heading_to_onboarding {
                     let mut active = splash.active;
                     let mut home_ready = splash.home_ready;

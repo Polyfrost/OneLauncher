@@ -1,7 +1,3 @@
-//! Discord rich presence.
-//!
-//! A leaf: it takes a presence to show and nothing else.
-
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 

@@ -50,7 +50,6 @@ pub fn use_version_metadata(
     let versions_query = use_versions();
 
     let major = major?;
-    // Borrowed, not cloned: the manifest is long and this runs per render.
     let reader = versions_query.read();
     let state = reader.state();
     let list = state.ok()?;

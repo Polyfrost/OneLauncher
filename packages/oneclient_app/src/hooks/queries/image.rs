@@ -35,10 +35,8 @@ impl QueryCapability for CachedImageQuery {
     }
 }
 
-/// The bytes of a cached image, once they are there.
-///
-/// The url comes back with them because callers key their image handle on it;
-/// a stale url paired with fresh bytes renders the wrong picture for a frame.
+/// Returns the url alongside the bytes callers key their image handle on it
+/// and a stale url with fresh bytes renders the wrong picture for a frame
 pub fn loaded_image(url: Option<&str>, query: &UseQuery<CachedImageQuery>) -> Option<(String, Bytes)> {
     let url = url?;
     let bytes = super::state::settled_or_loading(query)?;

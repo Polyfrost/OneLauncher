@@ -168,8 +168,8 @@ impl CredentialsStore {
         Ok(Some(id))
     }
 
-    /// The current account as stored. Never touches the network: callers that
-    /// need a usable token go through [`crate::AuthService::account_for_launch`].
+    /// Never touches the network callers that need a usable token go through
+    /// [`crate::AuthService::account_for_launch`]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn default_account(&mut self) -> AuthResult<Option<MinecraftAccount>> {
         let Some(id) = self.resolve_default_id().await? else {
@@ -187,10 +187,8 @@ impl CredentialsStore {
     }
 }
 
-/// Whether a renewal failure was the network rather than a rejected token.
-///
-/// A transient failure must keep the existing (possibly stale) token: throwing
-/// it away because Wi-Fi dropped would sign the user out of a working account.
+/// A transient failure must keep the existing token discarding it because
+/// Wi-Fi dropped would sign the user out of a working account
 pub(crate) fn is_transient_auth_error(err: &AuthError) -> bool {
     matches!(
         err,

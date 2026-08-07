@@ -37,8 +37,7 @@ use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::theme::colors;
 use crate::ui::{border_all_color, entrance_motion_layer};
 
-/// Number of onboarding steps. The v1-migration step only exists (and is only
-/// counted) when old launcher data was detected.
+/// The v1-migration step only exists and is only counted when old launcher data was detected
 pub fn onboarding_total(has_migration: bool) -> usize {
     if has_migration { 8 } else { 7 }
 }

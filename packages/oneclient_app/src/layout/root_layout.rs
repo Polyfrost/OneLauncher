@@ -21,15 +21,12 @@ impl Component for RootLayout {
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
 
-        // macOS draws the corners natively (rounded window + shadow via the
-        // window attributes), so Freya must not round on top of it.
+        // macOS rounds the window natively so Freya must not round on top of it
         #[cfg(target_os = "macos")]
         let corner = 0.;
 
-        // Other platforms are borderless: Freya rounds, squared when maximized so
-        // there's no gap to the screen edge. No reactive maximized signal exists,
-        // so mirror it: root_size changes on every maximize/restore/resize, which
-        // re-runs the effect to re-query.
+        // Elsewhere the window is borderless and squared when maximized
+        // No reactive maximized signal exists so root_size changes stand in as the trigger
         #[cfg(not(target_os = "macos"))]
         let corner = {
             let root_size = Platform::get().root_size;
@@ -72,8 +69,7 @@ impl Component for RootLayout {
             .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
-            // Last of the prompt overlays: it renders whatever the two above
-            // did not claim, so no prompt can reach the user as silence.
+            // Must stay last it renders whatever the overlays above did not claim
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(PackageUpdatePopup)

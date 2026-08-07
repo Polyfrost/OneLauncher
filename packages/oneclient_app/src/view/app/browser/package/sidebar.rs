@@ -27,8 +27,7 @@ pub(super) fn sidebar(
     };
 
     let project_id = project.id.clone();
-    // Nothing to do when the cluster already has exactly this version, and
-    // nothing to do twice while the install that was just started is running.
+    // Nothing to do when this version is already there or while an install is running
     let have_latest = match (&installed, &latest_version) {
         (Some(installed), Some(latest)) => installed.is_version(latest),
         _ => false,
@@ -48,10 +47,6 @@ pub(super) fn sidebar(
                 .overflow(Overflow::Clip)
                 .background(PANEL_BG)
                 .border(border_all_color(1., colors::component_border()))
-                // The badge rides on the artwork here for the same reason it
-                // does on a listing card: it belongs to the package, and it
-                // used to sit in a strip of its own between the card and the
-                // install button.
                 .child(
                     rect()
                         .width(Size::fill())
@@ -151,8 +146,7 @@ pub(super) fn sidebar(
         .into_element()
 }
 
-/// The package's own page on the provider's site. Modrinth doesn't hand one
-/// out, so it's rebuilt from the slug; CurseForge already lists it as "Website".
+/// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
 fn provider_project_url(project: &ProjectDetail) -> Option<String> {
     match project.provider {
         ProviderId::Modrinth => Some(format!(
@@ -170,8 +164,7 @@ fn provider_project_url(project: &ProjectDetail) -> Option<String> {
     }
 }
 
-/// "Mod on Modrinth", linking out to the package's page there when the provider
-/// has one. Plain text otherwise, so a local package doesn't look clickable.
+/// Plain text when the provider has no page so a local package doesn't look clickable
 #[derive(PartialEq)]
 struct ProviderTag {
     text: String,
@@ -225,8 +218,7 @@ fn card(title: &str, rows: Vec<Element>) -> impl IntoElement {
     card_spaced(title, rows, 10.)
 }
 
-/// `card` with the gap between rows chosen by the caller: a list of one-line
-/// links reads better tight than the multi-line author and detail rows do.
+/// `card` with a caller-chosen row gap one-line link lists read better tight
 fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElement {
     rect()
         .vertical()

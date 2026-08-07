@@ -36,7 +36,6 @@ impl OverlayPopup {
         self
     }
 
-    /// Whether to darken everything behind the popup
     pub fn backdrop(mut self, backdrop: bool) -> Self {
         self.backdrop = backdrop;
         self

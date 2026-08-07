@@ -42,12 +42,8 @@ pub async fn list_all(
 	.await
 }
 
-/// Records a pending update.
-///
-/// A row that already names the same `latest_version_id` keeps its `skipped`
-/// flag: the user has answered for that version and re-running the check is not
-/// a reason to ask again. A different `latest_version_id` is a new question, so
-/// the flag resets.
+/// Re-upserting the same `latest_version_id` keeps `skipped` a different one
+/// resets it since it is a new question for the user
 #[allow(clippy::too_many_arguments)]
 pub async fn upsert(
 	pool: &SqlitePool,
@@ -143,11 +139,8 @@ pub async fn delete(pool: &SqlitePool, cluster_id: i64, hash: &str) -> Result<()
 	Ok(())
 }
 
-/// Drops rows for hashes the latest check did not report.
-///
-/// A package that was updated, removed, or turned out to be current again must
-/// stop being marked out of date, and the check only tells us what *is* stale.
-/// Passing an empty list clears the cluster.
+/// Drops rows for hashes the latest check did not report an empty list clears
+/// the cluster
 pub async fn retain_hashes(
 	pool: &SqlitePool,
 	cluster_id: i64,
@@ -187,8 +180,7 @@ mod tests {
 			.await
 			.expect("in-memory sqlite");
 		sqlx::migrate!().run(&pool).await.expect("migrations run");
-		// Runtime query, not the macro: the offline cache is generated for the
-		// library only, and a fixture is not worth a `--all-targets` prepare.
+		// Runtime query not the macro the offline cache is library-only
 		sqlx::query(
 			r#"
 			INSERT INTO clusters (id, name, folder_name, mc_version)

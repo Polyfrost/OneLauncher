@@ -1,10 +1,3 @@
-//! What the launcher is using the disk for, and what of it can be reclaimed.
-//!
-//! Backs the Storage settings page. Everything here is read-only except the two
-//! cleanup entry points at the bottom, which exist so the destructive work is
-//! something the user asks for after seeing a number, rather than something that
-//! happens quietly at startup and has to be gated against running twice.
-
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +10,6 @@ use oneclient_content::packages::store::{
     find_unreferenced_files, remove_unreferenced_files,
 };
 
-/// Content folders an older launcher would have written links into.
 const LEGACY_TYPES: [ContentType; 4] = [
     ContentType::Mod,
     ContentType::ResourcePack,
@@ -25,17 +17,14 @@ const LEGACY_TYPES: [ContentType; 4] = [
     ContentType::DataPack,
 ];
 
-/// One line on the Storage page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageEntry {
     pub label: String,
     pub bytes: u64,
     pub path: PathBuf,
-    /// How many files it covers, where a count is more meaningful than a size.
     pub files: Option<usize>,
 }
 
-/// Something the user can reclaim, with what it would cost them to do so.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ReclaimableEntry {
     pub bytes: u64,
@@ -52,13 +41,9 @@ impl ReclaimableEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageReport {
     pub total_bytes: u64,
-    /// Minecraft versions, libraries, assets, Java runtimes, logs, image cache.
     pub categories: Vec<StorageEntry>,
-    /// Per-cluster usage, largest first.
     pub clusters: Vec<StorageEntry>,
-    /// Cached package files no artifact row points at.
     pub unreferenced_cache: ReclaimableEntry,
-    /// Content links an older launcher wrote into cluster folders.
     pub legacy_cluster_content: ReclaimableEntry,
 }
 
@@ -109,18 +94,13 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
     })
 }
 
-/// Measures the content files sitting in cluster folders.
-///
-/// Everything here is a leftover: content is materialized into the game
-/// directory from the cache now, so a jar or pack in a cluster's own folder was
-/// put there by a launcher version that worked differently. They are inert —
-/// `restore_stashed` ignores them — so this is space, not correctness.
+/// Content is materialized from the cache now so anything in a cluster's own
+/// folder is an inert leftover from an older launcher space not correctness
 async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<ReclaimableEntry> {
     let mut found = ReclaimableEntry::default();
 
     for cluster in state.clusters.list().await? {
-        // A dedicated cluster's folder *is* its game directory, so content there
-        // is exactly where it belongs.
+        // A dedicated cluster's folder *is* its game directory so content there belongs
         if cluster.uses_dedicated_dir() {
             continue;
         }
@@ -181,11 +161,8 @@ async fn entry(label: &str, path: PathBuf) -> StorageEntry {
     }
 }
 
-/// Total size of everything under `root`, following nothing.
-///
-/// Links are counted as the few bytes the link itself takes rather than the size
-/// of what they point at, so a materialized game directory does not appear to
-/// double the size of the package cache.
+/// Links are not followed so a materialized game directory does not appear to
+/// double the size of the package cache
 pub async fn dir_size(root: impl AsRef<Path>) -> u64 {
     let mut total = 0;
     let mut stack = vec![root.as_ref().to_path_buf()];
@@ -215,11 +192,8 @@ pub async fn dir_size(root: impl AsRef<Path>) -> u64 {
     total
 }
 
-/// Whether the page is showing made-up numbers.
-///
-/// The cleanup actions refuse to run while it is: the buttons would be acting
-/// on a report that has nothing to do with what is actually on disk, and the
-/// only thing they could delete is the user's real data.
+/// Cleanup refuses to run while fixture numbers are shown the report bears no
+/// relation to disk so the only thing it could delete is the user's real data
 fn showing_fixture() -> bool {
     #[cfg(debug_assertions)]
     {
@@ -230,7 +204,6 @@ fn showing_fixture() -> bool {
     false
 }
 
-/// Deletes cached package files that no artifact refers to.
 pub async fn clean_unreferenced_cache(state: &LauncherState) -> LauncherResult<u64> {
     if showing_fixture() {
         tracing::info!("fixture storage report is active; skipping cache cleanup");
@@ -241,7 +214,6 @@ pub async fn clean_unreferenced_cache(state: &LauncherState) -> LauncherResult<u
     Ok(report.bytes_freed)
 }
 
-/// Clears the content links older launchers wrote into cluster folders.
 pub async fn clean_legacy_cluster_content(state: &LauncherState) -> LauncherResult<usize> {
     if showing_fixture() {
         tracing::info!("fixture storage report is active; skipping leftover cleanup");
@@ -252,16 +224,9 @@ pub async fn clean_legacy_cluster_content(state: &LauncherState) -> LauncherResu
     Ok(report.removed)
 }
 
-/// Stand-in reports for working on the Storage page.
-///
-/// Set `ONECLIENT_FAKE_STORAGE` to one of `empty`, `clean` or `full` to make
-/// [`storage_report`] return a fixture instead of scanning the disk. Debug
-/// builds only, and read on every refresh so the scenario can be changed
-/// without a rebuild.
-///
-/// The three cover the states worth looking at: a fresh install with nothing
-/// anywhere, a well-used install with nothing to reclaim, and one with plenty
-/// to reclaim so the cleanup buttons are live.
+/// Set `ONECLIENT_FAKE_STORAGE` to `empty` `clean` or `full` to return a fixture
+/// instead of scanning disk
+/// Read on every refresh so no rebuild is needed
 #[cfg(debug_assertions)]
 fn fixture_report() -> Option<StorageReport> {
     let scenario = std::env::var("ONECLIENT_FAKE_STORAGE").ok()?;
@@ -343,7 +308,6 @@ fn fixture_report() -> Option<StorageReport> {
     Some(report)
 }
 
-/// Renders a byte count the way the settings page shows it.
 #[must_use]
 pub fn format_bytes(bytes: u64) -> String {
     const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
@@ -385,7 +349,6 @@ mod tests {
         assert!(is_content_file(ContentType::Mod, "sodium.jar"));
         assert!(is_content_file(ContentType::Mod, "sodium.jar.disabled"));
         assert!(is_content_file(ContentType::Shader, "BSL.zip"));
-        // A shaderpack's settings sidecar is the user's, not a leftover link.
         assert!(!is_content_file(ContentType::Shader, "BSL.zip.txt"));
         assert!(!is_content_file(ContentType::Mod, "options.txt"));
     }
@@ -403,7 +366,6 @@ mod tests {
 
         assert_eq!(dir_size(dir).await, 1500);
 
-        // A link to a big file must not be counted as that file again.
         polyio::symlink_file(dir.join("a.bin"), dir.join("link.bin"))
             .await
             .unwrap();

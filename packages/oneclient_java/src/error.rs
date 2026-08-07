@@ -61,19 +61,13 @@ pub enum JavaError {
 }
 
 impl JavaError {
-	/// Whether this is an expected outcome or the user's environment, rather
-	/// than a launcher bug.
-	///
-	/// The crate states the fact; turning it into "keep this out of Sentry" is
-	/// a policy the composition layer applies, since nothing down here should
-	/// know that Sentry exists.
+	/// Whether this is an expected outcome or the user's environment rather
+	/// than a launcher bug
+	/// Callers decide what to do with that (e.g. suppress error reporting)
 	#[must_use]
 	pub fn is_transient(&self) -> bool {
 		match self {
-			// Expected outcomes: no build exists for the requested version, or
-			// the user cancelled setup.
 			JavaError::PackageNotFound { .. } | JavaError::Cancelled => true,
-			// Environmental IO (e.g. out of disk while extracting the runtime).
 			JavaError::RuntimeCheckError { source, .. }
 			| JavaError::ArchiveExtract { source, .. } => is_transient_io(source),
 			JavaError::PolyIOError(polyio::IOError::IOError(source))
@@ -92,7 +86,7 @@ fn is_transient_io(error: &std::io::Error) -> bool {
 	if let Some(code) = error.raw_os_error() {
 		#[cfg(unix)]
 		if code == 28 {
-			// ENOSPC: out of disk part-way through extracting a runtime.
+			// ENOSPC
 			return true;
 		}
 		#[cfg(windows)]

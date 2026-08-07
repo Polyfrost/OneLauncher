@@ -32,10 +32,9 @@ pub trait PackageProvider: Send + Sync {
         ctx: &ContentCtx,
     ) -> ContentResult<ProjectDetail>;
 
-    /// Same as [`PackageProvider::get_project`], but guarantees [`ProjectDetail::body`]
-    /// is populated when the provider has one. Only worth calling when the body is
-    /// actually rendered: providers that serve descriptions separately pay an extra
-    /// request here, so install paths should stay on `get_project`.
+    /// Populates [`ProjectDetail::body`]
+    /// Costs an extra request on providers that serve descriptions separately
+    /// so install paths should stay on `get_project`
     async fn get_project_with_body(
         &self,
         project_id: &str,

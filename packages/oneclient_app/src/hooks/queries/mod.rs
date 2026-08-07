@@ -1,11 +1,7 @@
 use crate::hooks::use_settings_snapshot;
 
-/// The cache key for anything fetched from the metadata server.
-///
-/// Not the url itself, just enough of the setting to notice when it changes,
-/// so pointing the launcher at a different meta host refetches instead of
-/// serving the old host's answer. The queries read the real base out of
-/// settings when they run.
+/// Not the url itself just enough to notice when the meta host setting
+/// changes so a different host refetches instead of serving the old answer
 fn use_meta_url_key() -> String {
     use_settings_snapshot()
         .settings

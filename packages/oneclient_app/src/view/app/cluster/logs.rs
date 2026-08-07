@@ -65,10 +65,7 @@ enum Confirm {
     Upload,
 }
 
-/// Which half of the cluster's files the picker is listing.
-///
-/// Crash reports and ordinary logs answer different questions, and a crash
-/// report buried among thirty rotated `.log.gz` files is one nobody finds.
+/// A crash report buried among thirty rotated `.log.gz` files is one nobody finds
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Category {
     Logs,
@@ -131,9 +128,7 @@ impl Component for ClusterLogs {
         let mut selected = use_state(PathBuf::new);
         let mut handled_upload = use_state(|| None::<String>);
 
-        // Reads `category` as well as the query, so switching the picker to
-        // crash reports re-picks a file instead of leaving the viewer on a
-        // selection that is no longer in the list.
+        // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
             let files = visible_files(&logs_query, *category.read());
 
@@ -248,7 +243,6 @@ impl Component for ClusterLogs {
     }
 }
 
-/// The files the picker should be showing right now.
 fn visible_files(query: &UseQuery<ClusterLogsQuery>, category: Category) -> Vec<LogFileInfo> {
     try_cluster_logs(query)
         .unwrap_or_default()
@@ -398,9 +392,7 @@ fn viewer_header(
 struct LogPicker {
     label: String,
     files: Vec<LogFileInfo>,
-    /// Owned by the page rather than by this component: the page filters
-    /// `files` by it and re-picks a selection when it changes, so both have to
-    /// be looking at the same value.
+    /// Owned by the page it filters `files` by this so both must see the same value
     category: State<Category>,
     on_select: EventHandler<PathBuf>,
 }
@@ -417,9 +409,7 @@ impl Component for LogPicker {
         let label_text = self.label.clone();
         let files = self.files.clone();
         let on_select = self.on_select.clone();
-        // Stays usable with an empty list: the category selector lives inside
-        // the panel, so a cluster with no crash reports still needs a way back
-        // to its logs.
+        // Stays usable with an empty list the category selector lives inside the panel
         let is_open = open();
 
         let query = SearchQuery::new(&filter.read());
@@ -507,8 +497,7 @@ impl Component for LogPicker {
                         rect()
                             .margin(Gaps::new(4., 0., 0., 0.))
                             .width(Size::px(320.))
-                            // Room for the category selector above the search
-                            // box, on top of the list's own maximum.
+                            // Room for the category selector above the search box
                             .max_height(Size::px(400.))
                             .layer(Layer::OverlayLevel(12))
                             .vertical()

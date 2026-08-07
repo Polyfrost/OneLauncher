@@ -35,12 +35,8 @@ pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
     }
 }
 
-/// Persists settings to disk.
-///
-/// Prefer [`save_settings_and_apply`] where the services are in reach: this one
-/// leaves the HTTP client on whatever endpoints and API keys it already had, so
-/// a changed CurseForge key or custom endpoint would not take effect until the
-/// next launch.
+/// Prefer [`save_settings_and_apply`] this leaves the HTTP client on its old
+/// endpoints/keys so those changes only take effect on the next launch
 #[tracing::instrument(level = "debug", skip(settings))]
 pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     let path = paths::settings_file()?;
@@ -50,8 +46,6 @@ pub async fn save_settings(settings: &LauncherSettings) -> LauncherResult<()> {
     Ok(())
 }
 
-/// Persists settings and pushes the endpoint/credential subset into the
-/// transport, so an API key or endpoint change applies immediately.
 #[tracing::instrument(level = "debug", skip(services, settings))]
 pub async fn save_settings_and_apply(
     services: &crate::LauncherServices,

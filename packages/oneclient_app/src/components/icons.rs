@@ -38,7 +38,7 @@ impl Icon {
         self
     }
 
-    /// Rotation in degrees, clockwise.
+    /// Degrees clockwise
     pub fn rotate(mut self, degrees: f32) -> Self {
         self.rotation = Some(degrees);
         self
@@ -54,7 +54,6 @@ impl Component for Icon {
             .show_loader(false)
             .width(Size::px(self.size_px))
             .height(Size::px(self.size_px))
-            // .fill(color)
             .map(self.color, |svg, color| svg.color(color))
             .map(self.rotation, |svg, degrees| svg.rotation(degrees))
     }

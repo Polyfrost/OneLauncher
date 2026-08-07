@@ -13,9 +13,8 @@ async fn cluster_lifecycle_with_settings_profile() {
 
 	let global = state.settings.read().global_game_settings.clone();
 
-	// Deliberately not the global default of 4096, so the assertions below
-	// distinguish "the cluster's own profile was used" from "we fell back to
-	// global and happened to match".
+	// Deliberately not the global default of 4096 so the assertions distinguish
+	// "the cluster's own profile was used" from "fell back to global and matched"
 	let cluster = state.clusters.create(
         &global,
         CreateClusterOptions::new("Test Cluster", "1.21.1", GameLoader::Fabric).mem_max(2048),
@@ -83,7 +82,7 @@ async fn cleared_profile_fields_inherit_from_global() {
 		settings.global_game_settings.mem_max = Some(8192);
 	}
 
-	// Read the baseline *after* the write above, so the new cluster inherits it.
+	// Read the baseline *after* the write above so the new cluster inherits it
 	let global = state.settings.read().global_game_settings.clone();
 	let cluster = state.clusters.create(
         &global,

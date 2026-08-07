@@ -113,7 +113,7 @@ fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
 pub fn delete_screenshot(path: &Path) -> ClusterResult<()> {
     let path = ensure_in_clusters(path)?;
 
-    // TODO: maybe async?
+    // TODO maybe async?
     match trash::delete(&path) {
         Ok(()) => Ok(()),
         Err(err) => Err(ScreenshotsError::Trash(err.to_string()).into()),

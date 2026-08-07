@@ -87,7 +87,6 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
             return;
         }
 
-        // open the browser immediately
         platform::open_url(session.auth_url());
         finish.mutate(session.clone());
         pending_login.set(Some(session));
@@ -103,7 +102,7 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
         }
     });
 
-    // is true once the flow has some status updates (just to ensure the user has seen the popup) and the flow is still in progress
+    // True once the flow reports progress ensuring the user has seen the popup
     let locked = status.as_ref().is_some_and(|s| s.current > 0);
     let in_flight = begin.read().state().is_loading() || finish.read().state().is_loading();
     let pending = in_flight && !*cancelled.read();
@@ -141,10 +140,7 @@ where
         | MutationStateData::Loading {
             res: Some(Err(err)),
         } => {
-            // A cancellation is the user's own decision arriving back as an
-            // error. Reporting it would put a red line under a button they
-            // pressed on purpose, and it would still be there when they start
-            // the next sign-in.
+            // Cancellation arrives as an error surfacing it would persist into the next sign-in
             if err.is_login_cancelled() {
                 return None;
             }

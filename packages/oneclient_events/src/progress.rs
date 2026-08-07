@@ -1,9 +1,6 @@
-//! Progress for a tree of related tasks. One session has many children, so a
-//! multi-file download reports as a single aggregate rather than N cards.
-//!
-//! Both handles are RAII: dropping the last one ends the session or finishes
-//! the child, so an early return on an error path cannot leave the UI showing a
-//! task that will never complete.
+//! Both handles are RAII dropping the last one ends the session or finishes
+//! the child so an early return on an error path cannot leave the UI showing a
+//! task that will never complete
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -18,9 +15,8 @@ pub enum GroupedProgressEvent {
         session_id: Uuid,
         title: String,
     },
-    /// Pre-announce how many children (and total bytes) a category will have,
-    /// so the aggregate total is known up-front instead of climbing as each
-    /// child is added during a `buffer_unordered` fan-out.
+    /// Pre-announces a category's children so the aggregate total is known
+    /// up-front instead of climbing during a `buffer_unordered` fan-out
     Expect {
         session_id: Uuid,
         category: TaskCategory,
@@ -75,11 +71,7 @@ impl TaskPhase {
     }
 }
 
-/// Coarse grouping of a grouped-progress child. Drives the notification body text
-/// ("Downloading Minecraft" vs "Downloading Packages") and the per-category task rows.
-///
-/// These are display labels, not a dependency on the subsystems they name. The
-/// event layer must not learn what a Java vendor or a package provider is.
+/// Display labels only not a dependency on the subsystems they name
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum TaskCategory {
     Client,
@@ -106,7 +98,6 @@ impl TaskCategory {
         }
     }
 
-    /// True for everything that is part of the Minecraft install (not user packages).
     #[must_use]
     pub fn is_minecraft(self) -> bool {
         !matches!(self, Self::Packages)
@@ -176,8 +167,7 @@ impl GroupedProgressSession {
         self.inner.session_id
     }
 
-    /// Reserve the expected work for a category before its children are added.
-    /// `count` = number of files, `total` = sum of their sizes in bytes.
+    /// `count` = number of files `total` = sum of their sizes in bytes
     pub fn expect(&self, category: TaskCategory, count: u64, total: u64) {
         if count == 0 {
             return;
@@ -247,9 +237,8 @@ impl GroupedProgressSession {
         self.inner.end();
     }
 
-    /// Consumes the session without emitting an `End` event, returning its id.
-    /// Use when another actor (e.g. the UI bridge) will take over the session's
-    /// notification entry and convert it to a finished state itself.
+    /// Consumes the session without emitting an `End` event
+    /// Use when another actor will take over the session's notification entry
     pub fn detach(self) -> Uuid {
         self.inner.ended.store(true, Ordering::Relaxed);
         self.inner.session_id
@@ -287,10 +276,8 @@ impl GroupedProgressChild {
             return;
         }
 
-        // Prefer the largest known total. Streaming reports Content-Length which is
-        // often missing (1) for compressed/chunked responses; when the child was
-        // created with a real expected size (from a manifest) we must not let that
-        // stale header clobber it, otherwise the download bar reads 100%/frozen.
+        // Prefer the largest known total Content-Length is often missing (1) for
+        // chunked responses and would clobber a real manifest size freezing the bar
         let stored = self.inner.total.load(Ordering::Relaxed);
         let total = total.unwrap_or(0).max(stored).max(1);
         if total > stored {
@@ -325,15 +312,8 @@ impl GroupedProgressChild {
 }
 
 impl Drop for GroupedProgressChild {
-    /// Only the *last* handle finishes the task.
-    ///
-    /// `finished` lives in the shared inner, so finishing on every clone's drop
-    /// ended the task the moment any temporary copy died, and copies are handed
-    /// around routinely (into `ResponseOptions`, into stream closures). A
-    /// download would emit `FinishChild` before its first byte arrived, after
-    /// which every `set_progress` silently no-opped and the UI removed the row.
-    /// The safety net for early returns still works: on an error path the last
-    /// handle goes out of scope too.
+    /// Only the *last* handle finishes the task clones are handed around
+    /// routinely and finishing on any clone's drop would end the task early
     fn drop(&mut self) {
         if Arc::strong_count(&self.inner) == 1 {
             self.finish();
@@ -362,10 +342,6 @@ mod tests {
             .any(|e| matches!(e, GroupedProgressEvent::FinishChild { .. }))
     }
 
-    /// A child handle gets cloned into `ResponseOptions` and into the streaming
-    /// closure. If dropping one of those copies finished the task, the download
-    /// would report completion before its first byte and every later progress
-    /// update would be dropped on the floor.
     #[test]
     fn dropping_a_clone_does_not_finish_the_task() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();

@@ -259,9 +259,7 @@ impl Component for VerifyFilesRow {
             mutation.mutate(ClusterAction::VerifyFiles { cluster_id });
         };
 
-        // The pass reads every installed file, so it is worth saying that it
-        // takes a while — otherwise a button that sits there for a minute reads
-        // as broken rather than busy.
+        // The pass reads every installed file so say it takes a while otherwise the button reads as broken
         let button = Button::new()
             .small()
             .secondary()

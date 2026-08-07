@@ -1,17 +1,6 @@
-//! Which copy wins when a cluster holds several versions of one package.
-//!
-//! Holding more than one is a defect the launcher does not aim for, but nothing
-//! in the schema forbids it: `cluster_artifacts` is unique on `(cluster_id,
-//! hash)`, so two versions are two perfectly legal rows. Until that changes, a
-//! cluster can reach a state where every copy is enabled and the game is handed
-//! three jars of the same mod — which for mods is a classloader conflict, not a
-//! preference.
-//!
-//! The rule here is that the newest copy is the live one and the rest are
-//! switched off. Nothing is unlinked: the older versions stay installed, stay
-//! visible in the package manager, and can be switched back on one at a time.
-//! `enabled` is also what materialization already reads, so enforcing it here
-//! needs no special case at launch.
+//! `cluster_artifacts` is unique on `(cluster_id, hash)` so duplicate versions
+//! of one package are legal rows
+//! the newest stays enabled the rest are switched off rather than unlinked
 
 use std::collections::HashMap;
 
@@ -22,17 +11,12 @@ use crate::error::ContentResult;
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 
-/// One copy of a package, reduced to what picking a winner needs.
 struct Copy {
     hash: String,
     enabled: bool,
     published_at: Option<String>,
 }
 
-/// Leaves each project in the cluster with the newest copy.
-///
-/// A no-op on a cluster with no duplicates, which is every healthy one, so it is
-/// cheap enough to run before a launch and after an install.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn reconcile_duplicate_activity(
     cluster_id: i64,
@@ -78,12 +62,9 @@ fn duplicates_to_disable(linked: &[LinkedArtifactInfo]) -> Vec<String> {
     out
 }
 
-/// Groups the cluster's content by project, keeping only the projects it has
-/// more than one copy of.
-///
-/// Local files and a bundle's external files have no project to group on and
-/// are left out; two of those are two different packages as far as anything
-/// here can tell.
+/// Local files and a bundle's external files have no project to group on so
+/// they are left out
+/// two of those are two packages not two copies
 fn group_duplicates(
     linked: &[LinkedArtifactInfo],
 ) -> Vec<((ProviderId, String), Vec<Copy>)> {
@@ -108,13 +89,8 @@ fn group_duplicates(
     by_project.into_iter().collect()
 }
 
-/// The hash of the newest copy.
-///
-/// `published_at` is written as RFC 3339 by the download path, so the strings
-/// order the same way the timestamps do. A copy the provider gave no date for
-/// loses to any copy that has one — it is usually an older row written before
-/// the field was recorded — and an all-undated group falls back to the first,
-/// which at least makes the choice stable across runs rather than arbitrary.
+/// `published_at` is RFC 3339 so string order matches time order
+/// undated copies lose to dated ones and an all-undated group still picks one
 fn newest<'a>(copies: impl IntoIterator<Item = &'a Copy>) -> Option<String> {
     copies
         .into_iter()

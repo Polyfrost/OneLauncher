@@ -13,10 +13,8 @@ use oneclient_core::LauncherError;
 pub const BROWSE_PAGE_SIZE: usize = DEFAULT_PAGE_SIZE;
 pub const VERSIONS_PAGE_SIZE: usize = 20;
 
-/// A published version list barely moves, and the browser listing now asks for
-/// one per visible card to know what "latest" is. Holding them for a while
-/// keeps scrolling from refiring a request per card every time one comes back
-/// into view.
+/// The listing asks for one per visible card holding them stops scrolling from
+/// refiring a request per card each time it comes back into view
 const VERSIONS_STALE: Duration = Duration::from_secs(5 * 60);
 
 pub fn content_type_for_slug(slug: &str) -> ContentType {
@@ -85,9 +83,8 @@ pub fn use_package_search(
         PackageSearchKeys {
             provider,
             content_type,
-            // Canonical form, because the key is also the cache key: without it
-            // "sodium" and "sodium " are two entries, and adding a trailing
-            // space throws the results away and refetches for nothing.
+            // The key is also the cache key without normalizing "sodium" and
+            // "sodium " are two entries and a trailing space refetches for nothing
             query: normalize_query(&query),
             game_versions,
             loaders,
@@ -245,11 +242,8 @@ pub fn use_package_versions(
     use_package_versions_when(true, provider, project_id, game_version, loader, page)
 }
 
-/// The version list, fetched only when `enabled`.
-///
-/// A listing row keeps its install button after the package is in the cluster,
-/// so the hook still has to run there — but there is nothing left for it to
-/// install, and a request per already-installed row is pure waste.
+/// A listing row keeps its install button once installed so the hook still
+/// runs there but a request per already-installed row is pure waste
 pub fn use_package_versions_when(
     enabled: bool,
     provider: ProviderId,

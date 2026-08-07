@@ -1,13 +1,6 @@
-//! Named settings profiles.
-//!
-//! A profile is a sparse override on the launcher's global baseline: every
-//! `Option` field left `None` inherits the global value, which is why
-//! [`ProfileUpdate`] carries `Patch::Clear`. Clearing a field means "go back to
-//! inheriting" rather than "set to nothing".
-//!
-//! These take the global baseline as a `&GameSettingsProfile` parameter rather
-//! than reading the launcher settings, so this crate does not depend on the
-//! launcher config that embeds it.
+//! A profile is a sparse override on the global baseline a `None` field
+//! inherits so `Patch::Clear` means "inherit again" not "set to nothing"
+//! The baseline is passed in so this crate needn't depend on launcher config
 
 use oneclient_common::patch::Patch;
 use oneclient_db::DbPool;
@@ -33,12 +26,8 @@ pub async fn get_profile_or_default(
 }
 
 #[tracing::instrument(level = "debug", skip(pool, global))]
-/// Resolves the profile a cluster should launch with.
-///
-/// A named profile is a sparse override on the global baseline: any field
-/// left `None` inherits the global value. Falling back to the baseline whole
-/// when the name is missing or unknown keeps a deleted profile from bricking a
-/// cluster.
+/// Falls back to the whole baseline when the name is missing or unknown so a
+/// deleted profile cannot brick a cluster
 pub async fn resolve_cluster_profile(
     pool: &DbPool,
     global: &GameSettingsProfile,

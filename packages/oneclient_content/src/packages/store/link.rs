@@ -24,11 +24,7 @@ pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-/// Deletes `path` if anything is there, symlink or not.
-///
-/// `Path::exists` resolves symlinks, so a link whose artifact was evicted from
-/// the cache reads as absent and the dead link survives every unlink; the
-/// package then keeps showing up in the folder it was removed from.
+/// `Path::exists` resolves symlinks so a link to an evicted artifact reads as absent and survives every unlink
 pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	if polyio::symlink_metadata(path).await.is_err() {
 		return Ok(());
@@ -38,14 +34,8 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-/// Drops a package out of the game folder right now, if that is possible.
-///
-/// Purely an optimisation for what the user sees: removal is a database
-/// operation, and the folder is brought in line at the next launch regardless.
-/// A running game holds its jars open — on Windows that blocks deleting *any*
-/// hard link to them — so failure here is expected and is not an error.
-///
-/// Returns whether anything was actually deleted.
+/// Best-effort only the folder is reconciled at the next launch regardless
+/// A running game holds its jars open which on Windows blocks deletion so failure here is expected
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
 	cluster: &ClusterRow,
@@ -60,9 +50,9 @@ pub async fn try_unlink_materialized(
 		return false;
 	};
 
-	// The shared game dir belongs to whichever cluster played last. Touching a
-	// file we did not put there would delete another cluster's content, or a
-	// file the user placed by hand.
+	// The shared game dir belongs to whichever cluster played last
+	// touching a file we did not put there would delete another cluster's or
+	// the user's content
 	let relative = manifest::entry_path(content_type.folder_name(), file_name);
 	if !loaded.owns(cluster.id, &relative) {
 		return false;
@@ -88,9 +78,6 @@ pub async fn try_unlink_materialized(
 mod tests {
 	use super::*;
 
-	/// A dead link — one whose target was deleted underneath it — has to go.
-	/// `Path::exists` follows the link and reports it absent, which is what let
-	/// these survive every unlink.
 	#[tokio::test]
 	async fn remove_entry_clears_a_dangling_link() {
 		let root = polyio::testing::ScratchDir::new("dangling_link");

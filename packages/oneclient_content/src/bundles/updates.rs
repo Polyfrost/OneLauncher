@@ -360,7 +360,6 @@ pub async fn apply_bundle_updates(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
-    // Manual, single-cluster path: its own short-lived progress notification.
     let session = oneclient_events::GroupedProgressSession::start(
         &ctx.events,
         "Updating bundle content",
@@ -370,10 +369,8 @@ pub async fn apply_bundle_updates(
     result
 }
 
-/// Applies pending bundle updates for one cluster. When `session` is provided,
-/// download progress is reported into that (possibly shared) grouped session, so
-/// a whole batch of clusters can surface as a single notification. The caller
-/// owns the session's lifetime.
+/// The caller owns `session`'s lifetime
+/// sharing one across clusters makes a batch surface as a single notification
 #[tracing::instrument(skip(bundles, ctx, session))]
 pub async fn apply_bundle_updates_with(
     cluster_id: i64,
@@ -384,10 +381,9 @@ pub async fn apply_bundle_updates_with(
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
 
-    // Before anything is decided. The check below works from the override table
-    // and the manifest defaults and never consults `enabled`, so a cluster
-    // holding content that was switched off with nothing recording the choice
-    // would be read as healthy and left exactly as it is.
+    // Must run first
+    // the check below never consults `enabled` so unrecorded disables would
+    // read as healthy and be left untouched
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
@@ -431,13 +427,9 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    // Fetch concurrently, reconcile in order. The install path already fans out
-    // over its files; applying updates one at a time made the same work take
-    // several times longer here than it does during a fresh install.
-    //
-    // Splitting fetch from reconcile is what makes the fan-out safe: no artifact
-    // is unlinked while another package is still downloading, so an update that
-    // supersedes a hash another update is installing can't race it.
+    // Fetch concurrently reconcile in order
+    // splitting the two keeps the fan-out safe since no artifact is unlinked
+    // while another download still needs it
     let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
         |update| async move {
             let child = session.map(|s| {
@@ -558,21 +550,9 @@ pub async fn apply_bundle_updates_with(
     Ok(result)
 }
 
-/// Local bookkeeping for an update whose new file is already downloaded and
-/// linked: apply the user's enable/disable choice, then drop the artifact the
-/// update supersedes.
-///
-/// The choice is *set*, not flipped. Linking an artifact leaves an existing row's
-/// `enabled` alone, so re-applying an update to a row that already read correctly
-/// used to turn it into its opposite.
-///
-/// It is also read across bundles. `update.bundle_name` is the bundle that ships
-/// the file *now* — [`check_bundle_updates_inner`] re-resolves a package to
-/// whichever loaded bundle carries it — and a file only reaches here at all
-/// because it passed `effective_enabled` under that bundle, so asking that
-/// bundle alone whether the user objects can only ever answer no. Consulting
-/// only it would forcibly enable every package whose objection was filed while
-/// it lived somewhere else.
+/// `enabled` is set not flipped and overrides are read across all bundles
+/// packages get re-resolved between bundles so a per-bundle lookup misses
+/// objections filed while the file lived elsewhere
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn reconcile_update(
     update: &BundlePackageUpdate,
@@ -792,19 +772,9 @@ fn bundle_package_key(
     }
 }
 
-/// Bundles that may still take on files the catalog has newly added.
-///
-/// Subscription is deliberately looser than this: a bundle whose mods are all
-/// installed-but-disabled still wants version updates and still owns its files.
-/// New content is different. Removing or disabling everything a bundle ships is
-/// how a user opts out of that bundle, and an absent per-file override is not
-/// consent for a file that did not exist when they opted out — so gating
-/// additions on subscription alone let one catalog addition quietly reinstate a
-/// bundle the user had emptied.
-///
-/// A bundle qualifies while any of it is still live here: a tracked artifact
-/// that is enabled, an enabled artifact that can only have come from this bundle
-/// (the untracked/migrated case), or an explicit opt-in override.
+/// Stricter than subscription
+/// emptying a bundle is how a user opts out and an absent override is not
+/// consent for a file that did not exist back then
 #[tracing::instrument(level = "debug", skip_all)]
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,

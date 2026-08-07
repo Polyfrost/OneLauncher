@@ -279,7 +279,6 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
         .into_element()
 }
 
-/// A right-facing chevron that rotates 90° down when `expanded`, animated.
 #[derive(PartialEq)]
 struct ChevronToggle {
     expanded: bool,

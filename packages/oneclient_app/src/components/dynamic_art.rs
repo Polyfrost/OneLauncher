@@ -9,9 +9,7 @@ use crate::AppAssets;
 use crate::hooks::{loaded_image, use_cached_image, use_version_metadata};
 use crate::layout::HOME_BACKGROUND_ASSET;
 
-/// The size the cluster cards ask for, and so the one variant of a version's
-/// art that is usually already cached by the time anything else wants it.
-/// Full-screen art stands in with it while its own download is in flight.
+/// The size cluster cards request so it is usually already cached when anything else wants it
 pub const ART_PREVIEW_EDGE: u32 = 512;
 
 #[derive(PartialEq, Clone)]
@@ -61,13 +59,7 @@ impl DynamicArt {
         self
     }
 
-    /// Stand in with a smaller variant of the same art until the full-size one
-    /// has downloaded.
-    ///
-    /// A full-size background is a few hundred KB and the cluster cards have
-    /// usually already cached the small one, so this puts the right picture on
-    /// screen right away and sharpens it later, instead of sitting on the
-    /// built-in fallback for the length of a download.
+    /// Stand in with a smaller cached variant until the full-size art downloads
     #[must_use]
     pub fn preview_edge(mut self, preview_edge: u32) -> Self {
         self.preview_edge = Some(preview_edge);
@@ -98,8 +90,7 @@ pub fn use_art_bytes(
 
     let image_query = use_cached_image(art_url.clone(), max_edge);
 
-    // Subscribed unconditionally to keep the hook order stable. Without a
-    // preview size it is the same query as the one above, so it costs nothing.
+    // Subscribed unconditionally to keep hook order stable same query when no preview size
     let preview_edge = preview_edge.unwrap_or(max_edge);
     let preview_query = use_cached_image(art_url.clone(), preview_edge);
 

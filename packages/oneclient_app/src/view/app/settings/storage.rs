@@ -8,7 +8,7 @@ use crate::hooks::{
 };
 use crate::theme::colors;
 
-/// Rows narrower than this would render as a sliver, so they get a floor.
+/// Rows narrower than this would render as a sliver so they get a floor
 const MIN_BAR_FRACTION: f32 = 0.015;
 
 #[derive(PartialEq)]
@@ -16,10 +16,7 @@ pub struct SettingsStorage;
 
 impl Component for SettingsStorage {
     fn render(&self) -> impl IntoElement {
-        // Every hook this component owns, before anything can return early. The
-        // report is absent on the first render while the scan runs, and a hook
-        // called only on the later render would change the hook order between
-        // renders.
+        // Every hook before any early return the report is absent on the first render and a later-only hook would change the hook order
         let report_query = use_storage_report();
 
         let Some(report) = try_storage_report(&report_query) else {
@@ -88,7 +85,6 @@ impl Component for SettingsStorage {
     }
 }
 
-/// The total, sized to be read first.
 fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
     let reclaimable = report.unreferenced_cache.bytes + report.legacy_cluster_content.bytes;
 
@@ -149,12 +145,7 @@ fn hero_placeholder() -> impl IntoElement {
         .into_element()
 }
 
-/// A reclaimable line with its own cleanup button.
-///
-/// A component rather than a plain function because it owns a hook. Each
-/// instance gets its own hook scope, so the button tracks only its own progress
-/// — cleaning the cache does not grey out the leftovers button — and the rows
-/// can be built without constraining where the parent calls them.
+/// A component rather than a function because it owns a hook each instance gets its own scope so a button tracks only its own progress
 #[derive(PartialEq)]
 struct ReclaimRow {
     icon: IconType,
@@ -214,8 +205,6 @@ impl Component for ReclaimRow {
     }
 }
 
-/// One breakdown line: name, a bar showing its share of the largest item, size,
-/// and a way to open it.
 fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement {
     let fraction = if largest == 0 {
         0.0

@@ -1,13 +1,5 @@
-//! What machine we are running on, decided once.
-//!
-//! Each of the four vendors had its own `cfg_select!` pair working this out,
-//! which is how they drifted: Adoptium says `mac` where the rest say `macos`,
-//! Adoptium says `alpine-linux` where Liberica and Zulu say `linux-musl`, and
-//! Adoptium alone spells 32-bit x86 `x32`.
-//!
-//! Detection is shared here. The *naming* stays with each vendor: that part is
-//! not duplication, it is what each API actually expects, and flattening it
-//! would only hide the differences.
+//! Host detection is shared here but the *naming* stays per-vendor
+//! each API spells the same platform differently (e.g. Adoptium `mac`/`alpine-linux`/`x32`)
 
 use crate::data::PackageArchive;
 
@@ -23,8 +15,7 @@ pub enum HostArch {
 pub enum HostOs {
 	Windows,
 	MacOs,
-	/// `musl` distinguishes Alpine-style builds, which several vendors publish
-	/// under a separate name.
+	/// Several vendors publish musl builds under a separate name
 	Linux {
 		musl: bool,
 	},
@@ -37,7 +28,6 @@ pub struct HostTarget {
 }
 
 impl HostTarget {
-	/// The machine this build is running on.
 	pub const CURRENT: Self = Self {
 		arch: cfg_select! {
 			target_arch = "x86" => HostArch::X86,
@@ -55,8 +45,7 @@ impl HostTarget {
 		},
 	};
 
-	/// Pointer width as the vendors spell it. Liberica takes architecture and
-	/// bitness as separate query parameters rather than one combined token.
+	/// Liberica takes architecture and bitness as separate query parameters
 	#[must_use]
 	pub const fn bitness(self) -> &'static str {
 		match self.arch {
@@ -65,7 +54,6 @@ impl HostTarget {
 		}
 	}
 
-	/// Archive format the vendors ship for this platform.
 	#[must_use]
 	pub const fn archive(self) -> PackageArchive {
 		match self.os {

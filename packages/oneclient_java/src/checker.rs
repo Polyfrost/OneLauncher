@@ -12,11 +12,8 @@ pub struct JavaCheckInfo {
     pub version: String,
     pub vendor: String,
     pub os_arch: String,
-    /// Whether this is a development kit rather than a bare runtime image.
-    ///
-    /// Minecraft starts on either, but mod loaders and the game's own tooling
-    /// expect the kit, so the locator prefers one when both satisfy the
-    /// requested major (see [`crate::locate::best_for_major`]).
+    /// Mod loaders and game tooling expect a JDK so the locator prefers one
+    /// when both satisfy the requested major
     pub is_jdk: bool,
 }
 
@@ -68,9 +65,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         return Err(JavaError::InvalidJavaPath { path: absolute_path });
     };
 
-    // Minecraft draws its window through AWT. A headless or hand-jlinked image
-    // without `java.desktop` launches happily and then dies mid-game, so it is
-    // rejected here rather than recorded as usable.
+    // Minecraft needs AWT a headless image launches fine and then dies mid-game
     if !probe_flag(&info, "java.awt") {
         tracing::warn!(
             path = %absolute_path,
@@ -93,7 +88,6 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
     })
 }
 
-/// Reads a boolean the probe printed; anything else counts as `false`.
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
     info.get(key)
         .is_some_and(|value| value.eq_ignore_ascii_case("true"))

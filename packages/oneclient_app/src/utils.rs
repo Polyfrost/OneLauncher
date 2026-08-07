@@ -8,14 +8,12 @@ use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_
 
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
-/// One entry on the versions page. The modern scheme puts a full release in the
-/// first two components (`26.1`, `26.2`), so each minor is its own line; legacy
-/// `1.x` versions keep the whole major (`1.21`) as one line. A line that holds a
-/// single concrete version is presented as that version (see [`line_title`]).
+/// The modern scheme puts a full release in the first two components (`26.1`) so each
+/// minor is its own line legacy `1.x` versions keep the whole major (`1.21`) as one line
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReleaseLine {
     pub major: u32,
-    /// `Some` only for the modern scheme, where the minor is part of the line.
+    /// `Some` only for the modern scheme where the minor is part of the line
     pub minor: Option<u32>,
 }
 
@@ -40,7 +38,7 @@ impl ReleaseLine {
         Self::from_version(&cluster.mc_version)
     }
 
-    /// The generic name of the line: `26.1`, `1.21`.
+    /// The generic name of the line `26.1` `1.21`
     pub fn pretty_name(&self) -> String {
         match self.minor {
             Some(minor) => format!("{}.{minor}", self.major),
@@ -48,8 +46,6 @@ impl ReleaseLine {
         }
     }
 
-    /// Metadata/art lookup key for the line itself, when no single version
-    /// stands in for it.
     fn art_key(&self) -> Option<VersionKey> {
         self.minor.map(|minor| (minor, None))
     }
@@ -59,7 +55,6 @@ fn cluster_key(cluster: &Cluster) -> Option<VersionKey> {
     parse_mc_version(&cluster.mc_version).and_then(|parsed| parsed.key())
 }
 
-/// The one concrete version behind `clusters`, if they all share it.
 fn sole_version_key(clusters: &[Cluster]) -> Option<VersionKey> {
     match version_keys(clusters).as_slice() {
         [only] => Some(*only),
@@ -67,8 +62,7 @@ fn sole_version_key(clusters: &[Cluster]) -> Option<VersionKey> {
     }
 }
 
-/// A line with a single version is shown as that full version (`26.1.2`);
-/// otherwise the generic line name (`1.21`), with the versions in a dropdown.
+/// A line with a single version is shown as that full version (`26.1.2`) else `1.21`
 pub fn line_title(line: ReleaseLine, clusters: &[Cluster]) -> String {
     match sole_version_key(clusters) {
         Some(key) => version_label(line.major, key),
@@ -76,7 +70,6 @@ pub fn line_title(line: ReleaseLine, clusters: &[Cluster]) -> String {
     }
 }
 
-/// Metadata/art key matching [`line_title`].
 pub fn line_art_key(line: ReleaseLine, clusters: &[Cluster]) -> Option<VersionKey> {
     sole_version_key(clusters).or_else(|| line.art_key())
 }
@@ -151,7 +144,7 @@ pub fn resolve_cluster(
         .cloned()
 }
 
-/// The line the page opens on: the active cluster's line, else the newest.
+/// The line the page opens on the active cluster's line else the newest
 pub fn default_line(groups: &ClusterGroups, active: Option<Cluster>) -> Option<ReleaseLine> {
     if let Some(cluster) = active
         && let Some(line) = ReleaseLine::for_cluster(&cluster)
@@ -194,7 +187,6 @@ pub fn version_label(major: u32, (minor, patch): VersionKey) -> String {
     format_mc_version(major, minor, patch)
 }
 
-/// Human-readable byte size (B / KB / MB).
 pub fn format_size(bytes: u64) -> String {
     const KB: f64 = 1024.;
     const MB: f64 = KB * 1024.;
@@ -212,7 +204,7 @@ pub fn format_res((w, h): (u32, u32)) -> String {
     format!("{w}×{h}")
 }
 
-/// `7384` -> `2h 3m`, `540` -> `9m`, `0` -> `0m`.
+/// `7384` -> `2h 3m` `540` -> `9m` `0` -> `0m`
 pub fn format_duration_hm(secs: i64) -> String {
     if secs <= 0 {
         return "0m".to_string();
@@ -226,7 +218,7 @@ pub fn format_duration_hm(secs: i64) -> String {
     }
 }
 
-/// `3723` -> `1h 2m`, `83` -> `1m 23s`, `45` -> `45s`.
+/// `3723` -> `1h 2m` `83` -> `1m 23s` `45` -> `45s`
 pub fn format_duration_hms(secs: i64) -> String {
     if secs <= 0 {
         return "0s".to_string();
@@ -240,7 +232,7 @@ pub fn format_duration_hms(secs: i64) -> String {
     }
 }
 
-/// Compact large counts: `1500` -> `1.5K`, `2_400_000` -> `2.4M`.
+/// `1500` -> `1.5K` `2_400_000` -> `2.4M`
 pub fn abbreviate_number(n: u64) -> String {
     let f = n as f64;
     if f >= 1_000_000.0 {
@@ -252,7 +244,6 @@ pub fn abbreviate_number(n: u64) -> String {
     }
 }
 
-/// English plural suffix: `""` for 1, `"s"` otherwise.
 pub fn plural(n: i64) -> &'static str {
     if n == 1 { "" } else { "s" }
 }
@@ -265,7 +256,7 @@ pub fn capitalize(s: &str) -> String {
     }
 }
 
-/// 24-hour clock label: `9` -> `09:00`.
+/// 24-hour clock label `9` -> `09:00`
 pub fn format_hour(hour: usize) -> String {
     format!("{hour:02}:00")
 }
@@ -274,7 +265,7 @@ pub fn parse_day(date: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()
 }
 
-/// `2026-07-05` -> `Jul 5`.
+/// `2026-07-05` -> `Jul 5`
 pub fn format_day(date: NaiveDate) -> String {
     const MONTHS: [&str; 12] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -289,11 +280,11 @@ pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
 
 fn compare_last_played(a: &Cluster, b: &Cluster) -> Ordering {
     match (a.last_played, b.last_played) {
-        // Most recently played first.
+        // Most recently played first
         (Some(a), Some(b)) => b.cmp(&a),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        // Never played: latest version first (major, then minor).
+        // Never played latest version first (major then minor)
         (None, None) => version_sort_key(b).cmp(&version_sort_key(a)),
     }
 }

@@ -34,8 +34,8 @@ struct Connectivity {
     rx: watch::Receiver<ServiceStatus>,
     notify: Notify,
     started: AtomicBool,
-    /// Debug-only pin. While set, probe results are recorded but never
-    /// published, so the forced status survives a recheck.
+    /// While set probe results are never published so the forced status
+    /// survives a recheck
     forced: RwLock<Option<ServiceStatus>>,
 }
 
@@ -53,9 +53,8 @@ fn connectivity() -> &'static Connectivity {
     })
 }
 
-/// Pins the reported status to `status`, or releases the pin with `None` and
-/// re-probes. Exposed for the debug page: the connectivity banner is otherwise
-/// only reachable by actually taking a service down.
+/// Pins the reported status to `status` or releases the pin with `None` and
+/// re-probes
 pub fn force(status: Option<ServiceStatus>) {
     let conn = connectivity();
     *conn.forced.write().unwrap_or_else(|e| e.into_inner()) = status;
@@ -95,8 +94,8 @@ pub fn note_request_result(success: bool) {
     }
 }
 
-/// Starts the connectivity prober. Idempotent; later calls are ignored, so the
-/// client handed in on the first call is used for the process lifetime.
+/// Idempotent later calls are ignored so the client handed in on the first
+/// call is used for the process lifetime
 pub fn start(client: RequestClient) {
     let conn = connectivity();
     if conn.started.swap(true, Ordering::SeqCst) {

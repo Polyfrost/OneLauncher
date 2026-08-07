@@ -42,11 +42,9 @@ const MAX_TASK_ROWS: usize = 6;
 struct ClusterPlan {
     cluster_id: i64,
     mc_version: String,
-    /// `(bundle_name, package_id, override)` for every file whose fate differs
-    /// from the bundle manifest's default.
+    /// `(bundle_name, package_id, override)` for every file whose fate differs from the manifest default
     overrides: Vec<(String, String, OverrideType)>,
-    /// The manifest's `predownload` flag for this version. Versions without it
-    /// only ever record their package choices here and fetch on first launch.
+    /// Manifest `predownload` flag versions without it fetch on first launch
     predownload: bool,
 }
 
@@ -65,7 +63,7 @@ struct TaskLine {
     category: TaskCategory,
 }
 
-/// Display order for the task rows, mirroring the notification centre.
+/// Display order for the task rows mirroring the notification centre
 const TASK_LANES: [TaskCategory; 7] = [
     TaskCategory::Java,
     TaskCategory::Client,
@@ -99,13 +97,7 @@ impl GroupedAgg {
         }
     }
 
-    /// One lane per category, taken round-robin.
-    ///
-    /// Assets run 32-at-a-time and sort before everything alphabetically, so a
-    /// flat sorted list showed nothing but assets for the whole game download;
-    /// libraries, natives and the client were downloading at the same time and
-    /// never got a row. Round-robin gives every active category a slot before
-    /// any category gets a second one.
+    /// Round-robin assets run 32-at-a-time and sort first so a flat sorted list showed nothing but assets for the whole download
     fn task_list(&self) -> Vec<TaskLine> {
         let mut lanes: Vec<Vec<TaskLine>> = TASK_LANES
             .iter()
@@ -527,9 +519,7 @@ fn build_plans(
         .collect()
 }
 
-/// Whether the manifest asks for this cluster's version to be fetched up front.
-/// Clusters with no manifest row (e.g. seeded from the bundle catalog alone)
-/// are not predownloaded.
+/// Clusters with no manifest row (e.g. seeded from the bundle catalog alone) are not predownloaded
 fn cluster_predownloads(versions: &[VersionMetadata], cluster: &Cluster) -> bool {
     let loader = cluster.mc_loader.to_string();
     versions.iter().any(|m| {
@@ -541,9 +531,7 @@ fn cluster_predownloads(versions: &[VersionMetadata], cluster: &Cluster) -> bool
     })
 }
 
-/// Whether a bundle keeps its hidden files: true once anything visible in it was
-/// taken, including a single opted-in extra that would otherwise lose its
-/// dependencies.
+/// True once anything visible in the bundle was taken including one opted-in extra that would otherwise lose its dependencies
 fn bundle_taken(
     cluster_id: i64,
     archive: &BundleArchive,
@@ -559,14 +547,7 @@ fn bundle_taken(
     })
 }
 
-/// Every package id this cluster is keeping, across all of its bundles.
-///
-/// Bundles overlap: the library one pack needs is often the library another
-/// needs too, shipped hidden by both. Deciding each archive on its own meant a
-/// declined bundle recorded its hidden files as removed even when an accepted
-/// bundle right beside it was about to install the very same package — leaving a
-/// `removed` row for something the cluster demonstrably has, which then answered
-/// for it in anything that looks a package up by id.
+/// Bundles overlap deciding each archive alone recorded a removal for a package an accepted bundle was about to install
 fn kept_package_ids(
     cluster_id: i64,
     archives: &[BundleArchive],
@@ -603,8 +584,7 @@ fn archive_overrides(
         selected.contains(&pkg_key(cluster_id, bundle_name, &file.kind.package_id()))
     };
 
-    // Hidden files are dependencies the user never sees, so they follow the
-    // bundle: kept if anything from it was taken, dropped if not.
+    // Hidden files follow the bundle kept if anything from it was taken dropped if not
     let takes_hidden = bundle_taken(cluster_id, archive, selected);
 
     let mut overrides = Vec::new();
@@ -616,13 +596,11 @@ fn archive_overrides(
         };
 
         let override_type = match (wanted, file.enabled) {
-            // Matches the manifest default; nothing to record.
+            // Matches the manifest default nothing to record
             (true, true) | (false, false) => continue,
-            // Opting into a mod the bundle ships turned off.
+            // Opting into a mod the bundle ships turned off
             (true, false) => OverrideType::Enabled,
-            // Declined — but only really declined if no bundle the user did take
-            // ships the same package. Recording a removal for something that is
-            // being installed anyway states the opposite of what happens.
+            // Only really declined if no bundle the user took ships the same package
             (false, true) => {
                 if kept_elsewhere.contains(&file.kind.package_id()) {
                     continue;
@@ -649,11 +627,7 @@ fn rough_download_estimate(
         if !cluster_predownloads(versions, &cb.cluster) {
             continue;
         }
-        // What the cluster is keeping is already the answer to "what gets
-        // downloaded", so the estimate reads it directly rather than
-        // reconstructing it from the overrides. Counted once per package: two
-        // bundles shipping the same library is one download, which is what the
-        // install path does with it too.
+        // Counted once per package two bundles shipping the same library is one download
         let kept = kept_package_ids(cb.cluster.id, &cb.archives, selected);
         let mut counted: std::collections::HashSet<String> = std::collections::HashSet::new();
         for archive in &cb.archives {
@@ -722,7 +696,6 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) = first {
                 apply_grouped(&mut local, event);
             }
-            // Drain everything already queued in one pass.
             while let Ok(notification) = notif_rx.try_recv() {
                 if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) = notification {
                     apply_grouped(&mut local, event);
@@ -790,10 +763,7 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
 
             let fetch_now = predownload && plan.predownload;
             if let Err(err) = install_one(&plan, fetch_now, &events, &ui_tx).await {
-                // Environmental / expected failures (out of disk, offline, no Java
-                // build for this version, ...) are surfaced to the user but aren't
-                // crashes, so log them at warn! (breadcrumb) instead of error!
-                // (a reported Sentry event). See LauncherError::is_sentry_excluded.
+                // Expected failures (out of disk offline no Java build) are not crashes warn! is a breadcrumb error! reports to Sentry
                 if err.is_sentry_excluded() {
                     tracing::warn!(
                         cluster_id = plan.cluster_id,
@@ -1002,7 +972,7 @@ mod tests {
             .collect()
     }
 
-    /// Manifest row matching `test_support::cluster` (1.21.11 fabric).
+    /// Manifest row matching `test_support::cluster` (1.21.11 fabric)
     fn version_row(predownload: bool) -> VersionMetadata {
         VersionMetadata {
             major_version: 21,
@@ -1027,7 +997,7 @@ mod tests {
         let plans = build_plans(&items(vec![sb.clone()]), &HashSet::new(), &versions());
 
         let ov = &plans[0].overrides;
-        // The hidden dependency must be dropped too, or it installs anyway.
+        // The hidden dependency must be dropped too or it installs anyway
         assert!(ov.contains(&(
             sb.manifest.name.clone(),
             "sb-dep".to_string(),
@@ -1148,7 +1118,7 @@ mod tests {
         let all = items(vec![skyblock()]);
         assert!(build_plans(&all, &HashSet::new(), &versions())[0].predownload);
         assert!(!build_plans(&all, &HashSet::new(), &[version_row(false)])[0].predownload);
-        // A cluster with no manifest row at all is never predownloaded.
+        // A cluster with no manifest row at all is never predownloaded
         assert!(!build_plans(&all, &HashSet::new(), &[])[0].predownload);
     }
 

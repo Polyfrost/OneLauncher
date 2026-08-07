@@ -24,7 +24,7 @@ pub struct RemoteCluster {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Default for every entry in this cluster; an entry's own key wins.
+    /// Default for every entry in this cluster an entry's own key wins
     #[serde(default)]
     pub predownload: Option<bool>,
     #[serde(default)]
@@ -68,15 +68,9 @@ pub struct MigrationTarget {
     pub mc_version: String,
 }
 
-/// Follow the remote migration chain forward from `mc_version` for the given
-/// loader, returning the final target version after every applicable rule has
-/// been applied. Returns the input unchanged when no rule matches.
-///
-/// This mirrors what [`crate::clusters::apply_remote_migrations`] does to
-/// existing cluster rows, so callers that only know an *old* version (e.g. the
-/// OneClient v1 importer) can find the cluster the migrations have already moved
-/// that version to. Multi-hop chains (`a -> b -> c`) are followed; the loop is
-/// bounded by the rule count so a cyclic/self rule can't spin forever.
+/// Returns the input unchanged when no rule matches
+/// Multi-hop chains are
+/// followed the loop is bounded by rule count so cyclic rules can't spin forever
 #[must_use]
 pub fn resolve_migration_chain(
     mc_version: &str,
@@ -113,8 +107,7 @@ pub struct VersionMetadata {
     pub art_url: Option<String>,
     pub long_description: Option<String>,
     pub tags: Vec<String>,
-    /// Whether this version is fetched up front during onboarding, rather than
-    /// on first launch. Cluster rows carry the cluster's own default.
+    /// Fetched up front during onboarding rather than on first launch
     pub predownload: bool,
 }
 
@@ -124,8 +117,7 @@ impl VersionMetadata {
         Some((self.minor_version?, self.patch_version))
     }
 
-    /// The `mc_version` string this row maps to, or `None` for the synthetic
-    /// cluster-level row (which has no minor version of its own).
+    /// `None` for the synthetic cluster-level row which has no minor version
     #[must_use]
     pub fn mc_version(&self) -> Option<String> {
         Some(format_mc_version(
@@ -247,13 +239,10 @@ mod tests {
                 .predownload
         };
 
-        // Cluster default flows down to entries that stay silent.
         assert!(flag(26, None));
         assert!(flag(26, Some(1)));
-        // An entry's own key wins over the cluster default, in both directions.
         assert!(!flag(26, Some(2)));
         assert!(flag(21, Some(11)));
-        // Absent everywhere means off.
         assert!(!flag(21, None));
         assert!(!flag(21, Some(1)));
     }
@@ -336,7 +325,6 @@ mod tests {
             rule("a", "26.1", "fabric", "26.2"),
             rule("b", "26.2", "fabric", "26.1"),
         ];
-        // Must not loop forever; lands on one of the two, bounded by rule count.
         let out = resolve_migration_chain("26.1", GameLoader::Fabric, &cycle);
         assert!(out == "26.1" || out == "26.2");
     }

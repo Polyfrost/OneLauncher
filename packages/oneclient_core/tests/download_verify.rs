@@ -4,8 +4,8 @@ use oneclient_events::{GroupedProgressSession, TaskCategory};
 use polyio::testing::ScratchDir as Scratch;
 use polyio::{Sha1Stream, sha1_bytes, sha1_file};
 
-/// A Minecraft asset object. Objects are content-addressed and immutable, so
-/// this URL/hash pair stays valid.
+/// Minecraft asset objects are content-addressed and immutable so this
+/// URL/hash pair stays valid
 const ASSET_SHA1: &str = "af96f55a90eaf11b327f1b5f8834a051027dc506";
 const ASSET_URL: &str =
     "https://resources.download.minecraft.net/af/af96f55a90eaf11b327f1b5f8834a051027dc506";
@@ -33,7 +33,7 @@ async fn sha1_file_matches_sha1_bytes() {
     let dir = Scratch::new("sha1-file");
     let path = dir.join("payload.bin");
 
-    // Larger than the hashing buffer, so the multi-read path is covered too.
+    // Larger than the hashing buffer so the multi-read path is covered too
     let data: Vec<u8> = (0..600_000u32).map(|i| (i % 253) as u8).collect();
     std::fs::write(&path, &data).unwrap();
 
@@ -49,8 +49,8 @@ async fn sha1_file_handles_empty_file() {
     assert_eq!(sha1_file(&path).await.unwrap(), sha1_bytes(&[]));
 }
 
-/// Serves `body` with a 200, declaring `content_length` however long `body` is —
-/// pass a larger one to imitate a mirror holding the wrong file.
+/// Serves `body` with a 200 declaring `content_length` however long `body` is
+/// pass a larger one to imitate a mirror holding the wrong file
 async fn serve(body: Vec<u8>, content_length: usize) -> String {
     use tokio::io::AsyncWriteExt;
 
@@ -78,8 +78,9 @@ async fn serve(body: Vec<u8>, content_length: usize) -> String {
     format!("http://127.0.0.1:{port}/artifact.jar")
 }
 
-/// Answers the first `failures` requests with `status`, then serves `ok_body`.
-/// Returns the URL and a request counter. `usize::MAX` never recovers.
+/// Answers the first `failures` requests with `status` then serves `ok_body`
+/// Returns the URL and a request counter
+/// `usize::MAX` never recovers
 async fn serve_flaky(
     status: u16,
     reason: &'static str,
@@ -106,7 +107,7 @@ async fn serve_flaky(
                 let served = Arc::clone(&served);
 
                 tokio::spawn(async move {
-                    // Draining the request first, or the client sees a reset.
+                    // Draining the request first or the client sees a reset
                     let mut request = [0u8; 1024];
                     let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut request).await;
 
@@ -139,7 +140,7 @@ async fn download_to_path_never_writes_an_error_response_to_disk() {
     let dir = Scratch::new("download-404");
     let dest = dir.join("artifact.jar");
 
-    // What a CDN answers for a missing object: well-formed, but XML not a jar.
+    // What a CDN answers for a missing object well-formed but XML not a jar
     let (url, served) = serve_flaky(
         404,
         "Not Found",
@@ -166,7 +167,7 @@ async fn download_to_path_never_writes_an_error_response_to_disk() {
     assert!(err.to_string().contains("404"), "{err}");
     assert!(err.to_string().contains("NoSuchKey"), "{err}");
     assert!(!dest.exists(), "an error body must never reach disk");
-    // A 404 answers the same way every time; retrying it only delays the error.
+    // A 404 answers the same way every time retrying it only delays the error
     assert_eq!(served.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
@@ -177,7 +178,7 @@ async fn download_to_path_retries_a_server_error_and_recovers() {
     let dir = Scratch::new("download-500");
     let dest = dir.join("artifact.jar");
 
-    // Unlike a 404, a 500 can succeed on the next attempt.
+    // Unlike a 404 a 500 can succeed on the next attempt
     let (url, served) = serve_flaky(
         500,
         "Internal Server Error",
@@ -212,7 +213,6 @@ async fn download_to_path_rejects_a_body_shorter_than_the_manifest_size() {
     let dir = Scratch::new("download-short");
     let dest = dir.join("artifact.jar");
 
-    // Valid HTTP, just not the file the manifest described.
     let url = serve(vec![7u8; 64], 64).await;
 
     let err = download_to_path(
@@ -268,7 +268,7 @@ async fn download_to_path_keeps_an_unhashed_body_of_unknown_length() {
 
     let url = serve(vec![7u8; 128], 128).await;
 
-    // Nothing declared a size, so there is nothing to check against.
+    // Nothing declared a size so there is nothing to check against
     download_to_path(
         &services.requester,
         &services.events,

@@ -1,13 +1,5 @@
-//! Picking up game sessions that outlived the launcher.
-//!
-//! Games are spawned detached, so closing the launcher no longer takes the game
-//! down with it. That leaves two loose ends to tidy on the next start, both of
-//! them sessions whose row still has no `ended_at`:
-//!
-//! * the game is still running, so re-adopt it and the UI shows it as playing
-//!   with its exit recorded properly when it finally happens;
-//! * the game already exited unobserved, and its log is the only witness, so
-//!   replay it to recover when it ended and which servers it visited.
+//! Games are spawned detached so sessions can outlive the launcher they are
+//! settled on the next start (rows with no `ended_at`)
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -27,12 +19,10 @@ use crate::game::tail::spawn_log_tail;
 use oneclient_events::LaunchStage;
 use crate::state::LauncherState;
 
-/// How often to check whether a re-adopted game is still alive. It is only a
-/// fallback for a process we don't own, so a slow poll is plenty.
+/// Only a fallback for a process we don't own so a slow poll is plenty
 const LIVENESS_POLL: Duration = Duration::from_secs(3);
 
-/// Settle every session left open by a previous launcher run. Safe to call once
-/// at startup, before anything can launch a game.
+/// Call once at startup before anything can launch a game
 #[tracing::instrument(skip(state), level = "debug")]
 pub async fn recover_sessions(state: &Arc<LauncherState>) {
 	let sessions = match session_dao::unfinished_sessions(&state.services.db).await {
@@ -63,9 +53,8 @@ pub async fn recover_sessions(state: &Arc<LauncherState>) {
 		}
 	}
 
-	// Re-adopt the live games first. Reconciling an exited session tears down
-	// its shared game directory, which a still-running cluster may be sharing.
-	// That check reads the live registrations, so they have to go in first.
+	// Live games first reconciling an exited session tears down a shared game
+	// dir and that check reads the live registrations
 	for (cluster, session, started_at, pid) in live {
 		readopt(state, cluster, session, started_at, pid).await;
 	}
@@ -75,15 +64,13 @@ pub async fn recover_sessions(state: &Arc<LauncherState>) {
 	}
 }
 
-/// Resolve a session to its cluster and decide whether its process is alive.
-/// `None` means the session was closed out here and needs no further work.
+/// `None` means the session was closed out here and needs no further work
 async fn classify(
 	state: &Arc<LauncherState>,
 	session: UnfinishedSession,
 ) -> Option<(Cluster, UnfinishedSession, DateTime<Utc>, Option<u32>)> {
 	let cluster_id = session.cluster_id;
 
-	// A session this launcher already owns needs no recovery.
 	if state.games.is_active(cluster_id) {
 		return None;
 	}
@@ -97,8 +84,8 @@ async fn classify(
 		}
 	};
 
-	// The cluster is gone, so there is no log to consult and no playtime worth
-	// attributing. Just close the row so it stops being reconsidered forever.
+	// No cluster means no log and no playtime worth attributing close the row
+	// so it stops being reconsidered forever
 	let Ok(cluster) = state.clusters.get(cluster_id).await else {
 		tracing::warn!(cluster_id, "cluster missing for unfinished session; closing it");
 		close_untraceable(state, &session).await;
@@ -113,8 +100,7 @@ async fn classify(
 	Some((cluster, session, started_at, alive))
 }
 
-/// Close a session we can say nothing about. Ending it at its start time books
-/// no playtime, which beats inventing some.
+/// Ends at the start time which books no playtime rather than inventing some
 async fn close_untraceable(state: &Arc<LauncherState>, session: &UnfinishedSession) {
 	if let Err(err) = session_dao::finish_session_at(
 		&state.services.db,
@@ -128,7 +114,6 @@ async fn close_untraceable(state: &Arc<LauncherState>, session: &UnfinishedSessi
 	}
 }
 
-/// The game is still playing. Wire it back up as though we had launched it.
 #[tracing::instrument(skip(state, cluster, session), fields(cluster_id = cluster.id, pid), level = "debug")]
 async fn readopt(
 	state: &Arc<LauncherState>,
@@ -163,9 +148,8 @@ async fn readopt(
 	let Ok(log_path) = oneclient_cluster::logs::cluster_output_log(&cluster) else {
 		return;
 	};
-	// A re-adopted game is still writing to its log, so its crashes are still
-	// worth reading even though the exit code went with the launcher that
-	// spawned it.
+	// A re-adopted game still writes its log so crashes stay readable even
+	// though the exit code went with the launcher that spawned it
 	let crash_watch = crate::game::diagnosis::CrashWatch::new();
 	let tail = spawn_log_tail(
 		cluster_id,
@@ -178,8 +162,7 @@ async fn readopt(
 	let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
 	state.games.register_kill(cluster_id, kill_tx);
 
-	// The post hook belongs to whichever settings apply now; resolve it up front
-	// so the watcher task doesn't have to reach back into the state.
+	// Resolved up front so the watcher task doesn't reach back into the state
 	let global = state.settings.read().global_game_settings.clone();
 	let post_hook = state.clusters.resolve_settings(&global, &cluster)
 		.await
@@ -209,14 +192,10 @@ async fn readopt(
 			Some(recorder),
 			SessionEnd {
 				started_at,
-				// We watched this one die, so the time is real even though the
-				// exit code went with the launcher that spawned it.
 				ended_at: Utc::now(),
 				outcome: Exit::Inferred,
-				// Only tear down the cluster's running state if it is still
-				// ours. With parallel clusters enabled the user can start a
-				// fresh game on this cluster while the re-adopted one plays on,
-				// and that newer game now owns the slot.
+				// With parallel clusters a newer game may already own this
+				// cluster's slot only tear down if it is still ours
 				owns_slot: state.games.pid(cluster_id) == Some(pid),
 				diagnosis: crash_watch.take(),
 			},
@@ -231,7 +210,6 @@ async fn wait_for_exit(pid: u32, pid_started_at: Option<u64>) {
 	}
 }
 
-/// The game exited while nothing was watching. Rebuild what we can from the log.
 #[tracing::instrument(skip(state, cluster, session), fields(cluster_id = cluster.id), level = "debug")]
 async fn reconcile(
 	state: &Arc<LauncherState>,
@@ -247,9 +225,8 @@ async fn reconcile(
 		.map(|log| log_replay::replay(&log.content, started_at))
 		.unwrap_or_default();
 
-	// Prefer the log's own testimony over the file's mtime: a clean shutdown
-	// says exactly when it happened, and the last timestamped line is the last
-	// proof of life. mtime only helps when nothing in the log carries a time.
+	// Prefer the log's own timestamps over mtime mtime only helps when nothing
+	// in the log carries a time
 	let ended_at = replay
 		.stopped_at
 		.or(replay.last_activity)
@@ -278,9 +255,8 @@ async fn reconcile(
 		return;
 	};
 
-	// Unwinding the shared directory is only safe if nobody is playing in it.
-	// A cluster re-adopted moments ago may share this exact directory, and
-	// clearing its content mid-session would pull the game apart underneath it.
+	// A cluster re-adopted moments ago may share this directory clearing it
+	// mid-session would pull that game apart underneath it
 	let shared_dir_busy = state.games.dir_in_use_by(&cwd, cluster_id).is_some();
 	if shared_dir_busy {
 		tracing::debug!(cluster_id, "shared game dir still in use; skipping exit cleanup");
@@ -291,29 +267,25 @@ async fn reconcile(
 		&cluster,
 		&cwd,
 		cluster.uses_dedicated_dir() || shared_dir_busy,
-		// The post hook is skipped on purpose. It is an *on exit* hook, and the exit
-		// already happened, possibly days ago. Firing it now, during startup, would
-		// surprise anyone whose hook does something real.
+		// Post hook skipped on purpose the exit already happened possibly days
+		// ago so firing it during startup would surprise the user
 		None,
 		Some(recorder),
 		SessionEnd {
 			started_at,
 			ended_at,
 			outcome: Exit::Inferred,
-			// This session is over, but the cluster may have a newer one playing right
-			// now, so only claim the slot if nothing else holds it.
+			// The cluster may have a newer session playing right now so only
+			// claim the slot if nothing else holds it
 			owns_slot: !state.games.is_active(cluster_id),
-			// Nothing was watching this session's log while it ran, so there is
-			// no crash to have recognised.
+			// Nothing watched this log while it ran so no crash was recognised
 			diagnosis: None,
 		},
 	)
 	.await;
 }
 
-/// Rewrite a session's server spans from the log replay, which unlike the live
-/// rows covers the whole session including the part we missed. Returns the
-/// `joined_at` of a span still left open, for the caller to close.
+/// Returns the `joined_at` of a span still left open for the caller to close
 async fn apply_spans(
 	state: &Arc<LauncherState>,
 	session_id: &str,
@@ -324,9 +296,8 @@ async fn apply_spans(
 		.await
 		.unwrap_or_default();
 
-	// A log that yields fewer spans than we already recorded has been rotated or
-	// truncated. Live rows are then the better record; keep them and just report
-	// whichever is still open so it gets closed at the session's end.
+	// Fewer replayed spans than recorded means the log was rotated or truncated
+	// so the live rows are the better record keep them
 	if spans.len() < existing.len() {
 		tracing::debug!(
 			session = %session_id,
@@ -390,9 +361,8 @@ struct SessionLog {
 	modified: Option<DateTime<Utc>>,
 }
 
-/// Read whichever log covers the session. `cluster-output.log` is preferred: the
-/// launcher truncates it at every launch, so it belongs to exactly one session,
-/// whereas `latest.log` is the game's own and may already have been rotated.
+/// `cluster-output.log` is preferred it is truncated at every launch so it
+/// belongs to one session whereas `latest.log` may already have rotated
 async fn read_session_log(cluster: &Cluster) -> Option<SessionLog> {
 	let mut candidates: Vec<PathBuf> = Vec::new();
 	if let Ok(path) = oneclient_cluster::logs::cluster_output_log(cluster) {

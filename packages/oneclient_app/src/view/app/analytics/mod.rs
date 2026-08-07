@@ -19,9 +19,7 @@ pub fn analytics_body(analytics: &Analytics) -> Element {
     analytics_body_inner(analytics, false)
 }
 
-/// `force_all` keeps the sections that are normally hidden for lack of data
-/// (session length, servers) on screen, so the zeroed empty state still shows
-/// the whole layout.
+/// `force_all` keeps the normally-hidden sections (session length servers) on screen
 fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     let stats = &analytics.playtime;
 
@@ -49,10 +47,7 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     root.into_element()
 }
 
-/// Renders the full analytics layout with zeroed data, dimmed behind a scrim
-/// with `note` centered on top. Used by the cluster overview and global
-/// statistics pages when nothing has been recorded yet, so the charts and stats
-/// are always visible without inventing numbers.
+/// Zeroed data behind a scrim with `note` on top so charts stay visible without inventing numbers
 pub fn analytics_placeholder(note: &str) -> Element {
     rect()
         .width(Size::fill())
@@ -88,9 +83,7 @@ pub fn analytics_placeholder(note: &str) -> Element {
         .into_element()
 }
 
-/// Every field zeroed: real, honest "nothing recorded" data rather than
-/// invented numbers. The daily series is a run of zero-second days ending today
-/// so the timeline still renders its columns for each range selector.
+/// A run of zero-second days ending today so the timeline still renders columns for each range
 fn empty_analytics() -> Analytics {
     const EMPTY_DAYS: i64 = 90;
 

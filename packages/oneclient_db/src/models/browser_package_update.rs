@@ -1,10 +1,7 @@
 use sqlx::FromRow;
 
-/// A browser-installed package the last update check found a newer version for.
-///
-/// `hash` is the artifact currently linked into the cluster, which is also the
-/// primary key the package manager renders by, so a row can never be attached
-/// to a file the cluster no longer has.
+/// `hash` is the artifact currently linked into the cluster so a row can never
+/// be attached to a file the cluster no longer has
 #[derive(Debug, Clone, FromRow)]
 pub struct BrowserPackageUpdateRow {
 	pub cluster_id: i64,

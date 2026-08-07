@@ -13,19 +13,15 @@ use crate::resolve::resolve_java_executable;
 use crate::store::JavaStore;
 use crate::vendors::{self, JavaVendor};
 
-/// Choice ids for the "Java required" prompt. Namespaced so a front-end can
-/// tell this prompt apart from any other by looking for one of these ids.
+/// Choice ids for the "Java required" prompt front-ends match on these
 pub const JAVA_CHOICE_DOWNLOAD: &str = "java.download";
 pub const JAVA_CHOICE_FOLDER: &str = "java.folder";
 
-/// Names the kind of selection the Java prompt expects back, so the front-end
-/// knows to show its vendor list rather than some other picker.
+/// Tells the front-end to show its vendor list rather than another picker
 pub const JAVA_VENDOR_HINT: &str = "java-vendor";
 
 pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
-/// What each option on the "Java required" prompt means. Local to this module,
-/// since the event bus only ever sees the choice ids.
 enum JavaPromptAnswer {
 	Download,
 	PickFolder,
@@ -37,12 +33,6 @@ pub struct AvailableJava {
 	pub package: JavaPackage,
 }
 
-/// Everything the Java flows need: somewhere to remember runtimes, a way to
-/// fetch them, and a bus to report progress and ask questions on.
-///
-/// `JavaManager` was a unit struct whose methods each took a `&DbPool` or a
-/// `&LauncherServices`; the state is held here instead, and the store is a port
-/// (see [`crate::JavaStore`]) so this crate never depends on the database.
 pub struct JavaService {
 	store: Arc<dyn JavaStore>,
 	net: RequestClient,
@@ -65,14 +55,11 @@ impl JavaService {
 		&self.events
 	}
 
-	// --- queries -----------------------------------------------------------
-
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn list_runtimes(&self) -> JavaResult<Vec<JavaRuntime>> {
 		Ok(self.store.list().await?)
 	}
 
-	/// The runtime a settings profile points at, if it is still registered.
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn runtime_for_profile(
 		&self,
@@ -109,9 +96,6 @@ impl JavaService {
 		Ok(available)
 	}
 
-	// --- registration ------------------------------------------------------
-
-	/// Re-scans the well-known install locations and records what it finds.
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn rescan(&self) -> JavaResult<()> {
 		self.register_located(&crate::locate::locate_java().await?)
@@ -131,13 +115,8 @@ impl JavaService {
 		Ok(())
 	}
 
-	// --- acquisition -------------------------------------------------------
-
-	/// Finds a usable Java `major`, downloading or asking the user if needed.
-	///
-	/// A JDK is preferred over a JRE of the same major throughout: a recorded
-	/// runtime that turns out to be a bare JRE is kept only as a fallback, so a
-	/// system scan gets its chance to turn up a kit first.
+	/// A recorded JRE is kept only as a fallback so a system scan gets its
+	/// chance to turn up a JDK of the same major first
 	#[tracing::instrument(level = "debug", skip(self, progress))]
 	pub async fn prepare(
 		&self,
@@ -158,8 +137,7 @@ impl JavaService {
 			let located = crate::locate::locate_java().await?;
 			self.register_located(&located).await?;
 
-			// Anything located only displaces what is already recorded when it
-			// is the kit that recording is not.
+			// A located runtime only displaces a recorded one by being a JDK
 			if let Some((path, info)) = crate::locate::best_for_major(&located, major)
 				&& (info.is_jdk || recorded.is_none())
 			{
@@ -205,11 +183,6 @@ impl JavaService {
 		self.register_checked(&executable, Some(major)).await
 	}
 
-	/// Ask the user how to get a missing runtime, then act on the answer.
-	///
-	/// The choice ids stay inside this function: `ask` hands back the
-	/// [`JavaPromptAnswer`] paired with the chosen option, so the vendor never
-	/// has to be named in the event layer.
 	async fn prompt_and_install(
 		&self,
 		major: u32,
@@ -237,8 +210,6 @@ impl JavaService {
 		};
 
 		match chosen.value {
-			// The UI offers a vendor list; picking one installs it directly.
-			// Without a selection we fall back to trying every vendor in turn.
 			JavaPromptAnswer::Download => match chosen.selection() {
 				Some(vendor) => {
 					let vendor = JavaVendor::from_str(vendor)
@@ -257,7 +228,6 @@ impl JavaService {
 		}
 	}
 
-	/// Tries every vendor in turn until one yields a working runtime.
 	#[tracing::instrument(level = "debug", skip(self, progress))]
 	async fn download_and_register(
 		&self,
@@ -299,9 +269,6 @@ impl JavaService {
 		Err(JavaError::PackageNotFound { major })
 	}
 
-	// --- persistence -------------------------------------------------------
-
-	/// Probes `executable`, checks it is the version we expected, and records it.
 	#[tracing::instrument(level = "debug", skip(self))]
 	async fn register_checked(
 		&self,
@@ -323,8 +290,7 @@ impl JavaService {
 		self.persist(executable, &info).await
 	}
 
-	/// Records everything a filesystem scan turned up, skipping anything that
-	/// fails to probe. A broken JDK on the system should not abort the scan.
+	/// Skips anything that fails to probe a broken JDK must not abort the scan
 	#[tracing::instrument(level = "debug", skip_all)]
 	async fn register_located(&self, located: &[(PathBuf, JavaCheckInfo)]) -> JavaResult<()> {
 		for (path, info) in located {
@@ -360,10 +326,8 @@ fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRunti
 		.find(|provider| &provider.vendor() == vendor)
 }
 
-/// Parses the major version out of a `java.version` string.
-///
-/// Java 8 and earlier report `1.8.0_412`, where the major is the *second*
-/// component; 9 and later report `21.0.3`, where it is the first.
+/// Java 8 and earlier report `1.8.0_412` where the major is the *second*
+/// component 9 and later report `21.0.3` where it is the first
 pub(crate) fn parse_major_version(version: &str) -> Result<u32, JavaError> {
 	if let Some(rest) = version.strip_prefix("1.") {
 		let digit = rest.chars().next().ok_or_else(|| JavaError::ParseVersion {

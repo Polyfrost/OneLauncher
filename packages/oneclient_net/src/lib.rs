@@ -1,10 +1,5 @@
-//! HTTP transport for OneClient: one client with retries, throttling and a
-//! global in-flight cap, plus the two things every caller was reimplementing:
-//! ETag-cached fetches and hash-verified downloads.
-//!
-//! Endpoints and credentials arrive as data ([`NetConfig`]) rather than being
-//! looked up, so the transport does not depend on the launcher state that owns
-//! the client.
+//! Endpoints and credentials arrive as data ([`NetConfig`]) so the transport
+//! does not depend on the launcher state that owns the client
 
 mod cache;
 mod config;

@@ -108,9 +108,8 @@ impl Component for PlayerModel {
         let mut drag = use_state(|| None::<(f32, f32, f32, f32)>);
         let mut hovering = use_state(|| false);
 
-        // Always derive the cursor from both states instead of setting it per event:
-        // Freya re-emits `pointer enter` on the first move after a press, so a plain
-        // `Grab` there would drop the grabbing cursor as soon as the drag starts.
+        // Derive from both states Freya re-emits `pointer enter` after a press which
+        // would otherwise drop the grabbing cursor as the drag starts
         let apply_cursor = move || {
             Cursor::set(if drag.peek().is_some() {
                 CursorIcon::Grabbing
@@ -203,8 +202,7 @@ impl Component for PlayerModel {
 
                 Platform::get().send(UserEvent::RequestRedraw);
             })
-            // Global so a release outside the widget still ends the drag and,
-            // since the pointer is no longer over us, restores the default cursor.
+            // Global so a release outside the widget still ends the drag
             .on_global_pointer_press(move |_: Event<PointerEventData>| {
                 if drag.peek().is_some() {
                     drag.set(None);

@@ -12,7 +12,7 @@ use crate::utils::{format_duration_hm, plural};
 
 use super::{card, card_header};
 
-/// Number of servers charted; the rest are grouped into an "Other" slice.
+/// Number of servers charted the rest are grouped into an "Other" slice
 const TOP_SERVERS: usize = 10;
 
 pub(super) fn servers_section(servers: &[ServerStat]) -> Element {
@@ -166,9 +166,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>) -> Element {
     list.into_element()
 }
 
-/// A Component (not a plain builder) because it mounts a `ScrollArea`, whose
-/// hooks run in the caller's render scope. Mounting it conditionally from
-/// `ServersSection` would change that scope's hook count and panic Freya.
+/// A Component not a builder mounting its `ScrollArea` conditionally would change the caller's hook count and panic Freya
 #[derive(PartialEq)]
 struct ServerDetailsPopup {
     servers: Vec<ServerStat>,
@@ -250,8 +248,7 @@ impl Component for ServerDetailsPopup {
     }
 }
 
-/// IP addresses stay masked in the always-visible chart legend; the details
-/// popup reveals them on hover only.
+/// IPs stay masked in the always-visible legend the details popup reveals them on hover
 fn server_label(s: &ServerStat) -> String {
     if s.is_ip {
         return "Direct IP".to_string();

@@ -6,9 +6,8 @@ use sqlx::{Column, Row, ValueRef};
 
 use crate::{DbError, DbPool};
 
-/// sqlx runs SQLite on a worker thread and requires the SQL string to be
-/// `'static`. Intern each distinct console query so repeated runs of the same
-/// text don't leak, while still accepting arbitrary runtime strings.
+/// sqlx requires the SQL string to be `'static` interning stops repeated runs
+/// of the same text from leaking
 fn intern(sql: &str) -> &'static str {
     static CACHE: Mutex<Option<HashSet<&'static str>>> = Mutex::new(None);
 
@@ -24,24 +23,16 @@ fn intern(sql: &str) -> &'static str {
     leaked
 }
 
-/// Outcome of a console query, stringified for display.
 #[derive(Debug, Clone, Default)]
 pub struct ConsoleQueryResult {
-    /// Column headers (empty when the statement returned no rows).
     pub columns: Vec<String>,
-    /// Row cells, already converted to display strings.
     pub rows: Vec<Vec<String>>,
-    /// Rows affected by a non-select statement.
     pub rows_affected: u64,
-    /// Whether the statement returned a result set.
     pub is_select: bool,
 }
 
-/// Execute an arbitrary SQL statement.
-///
-/// Statements that start with a row-returning keyword (`SELECT`, `WITH`,
-/// `PRAGMA`, `EXPLAIN`) are fetched into a table; everything else is executed
-/// and reports `rows_affected`.
+/// Statements starting with `SELECT` `WITH` `PRAGMA` or `EXPLAIN` are fetched
+/// into a table everything else is executed and reports `rows_affected`
 pub async fn run_console_query(pool: &DbPool, sql: &str) -> Result<ConsoleQueryResult, DbError> {
     let sql = intern(sql.trim().trim_end_matches(';').trim());
 
@@ -97,7 +88,7 @@ fn rows_to_result(fetched: &[SqliteRow]) -> ConsoleQueryResult {
     }
 }
 
-/// SQLite is dynamically typed, so probe the raw value and decode accordingly.
+/// SQLite is dynamically typed so probe the raw value and decode accordingly
 fn cell_to_string(row: &SqliteRow, idx: usize) -> String {
     match row.try_get_raw(idx) {
         Ok(raw) if raw.is_null() => return "NULL".to_string(),

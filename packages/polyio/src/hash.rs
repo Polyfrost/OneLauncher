@@ -6,13 +6,9 @@ use digest::Digest;
 
 use crate::{IOError, PolyIOResult};
 
-/// Largest read chunk used when hashing a file. Files smaller than this get a
-/// buffer sized to fit, so hashing a 10 KiB asset doesn't allocate (and zero)
-/// a quarter of a megabyte.
+/// Upper bound only smaller files get a buffer sized to fit
 const MAX_HASH_BUFFER: usize = 256 * 1024;
 
-/// Incremental SHA-1, so a download can be verified from the bytes as they
-/// stream past instead of re-reading the finished file back off disk.
 pub struct Sha1Stream(sha1::Sha1);
 
 impl Sha1Stream {
@@ -37,9 +33,8 @@ impl Default for Sha1Stream {
 	}
 }
 
-/// Hashing is CPU- and syscall-bound, so it runs on the blocking pool: one
-/// dispatch for the whole file rather than one per read, and the digest itself
-/// stays off the async workers that are driving concurrent downloads.
+/// Runs on the blocking pool one dispatch for the whole file keeping the
+/// digest off the async workers driving concurrent downloads
 pub async fn sha1_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
 	let path = path.as_ref().to_path_buf();
 	tokio::task::spawn_blocking(move || sha1_file_sync(&path))
@@ -82,7 +77,6 @@ pub fn sha1_bytes(data: &[u8]) -> String {
 	hasher.finish()
 }
 
-/// Which digest a manifest published its hash in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChecksumAlgorithm {
 	Sha1,
@@ -90,8 +84,8 @@ pub enum ChecksumAlgorithm {
 }
 
 impl ChecksumAlgorithm {
-	/// Length of this digest written as hex, used to tell one apart from
-	/// another when a manifest gives a bare string with no algorithm field.
+	/// Hex length which is how a bare manifest string with no algorithm field
+	/// gets identified
 	#[must_use]
 	pub const fn hex_len(self) -> usize {
 		match self {
@@ -109,11 +103,10 @@ impl ChecksumAlgorithm {
 	}
 }
 
-/// A hash a manifest promised, together with the algorithm it is written in.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Checksum {
 	pub algorithm: ChecksumAlgorithm,
-	/// Always normalized, so comparing two `Checksum`s never trips on case.
+	/// Always normalized (trimmed lowercase)
 	pub hex: String,
 }
 
@@ -136,12 +129,8 @@ impl Checksum {
 		Self::new(ChecksumAlgorithm::Sha256, hex)
 	}
 
-	/// Whether the hash is the right shape for its algorithm.
-	///
-	/// A vendor that starts returning an empty string, a placeholder, or a
-	/// digest in another algorithm would otherwise fail every download with a
-	/// mismatch that looks like corruption. Callers drop malformed checksums and
-	/// download unverified rather than making the runtime uninstallable.
+	/// Whether the hash is the right shape for its algorithm
+	/// Callers drop malformed checksums and download unverified
 	#[must_use]
 	pub fn is_well_formed(&self) -> bool {
 		self.hex.len() == self.algorithm.hex_len()
@@ -154,9 +143,6 @@ impl Checksum {
 	}
 }
 
-/// Incremental hashing in whichever algorithm a [`Checksum`] calls for, so a
-/// download is verified from the bytes as they stream past rather than by
-/// re-reading the finished file.
 pub enum ChecksumStream {
 	Sha1(sha1::Sha1),
 	Sha256(sha2::Sha256),
@@ -187,8 +173,6 @@ impl ChecksumStream {
 	}
 }
 
-/// Canonical form for a hash read from an external manifest, so a comparison
-/// against a locally computed one doesn't fail on case or stray whitespace.
 #[must_use]
 pub fn normalize_hash(hash: &str) -> String {
 	hash.trim().to_ascii_lowercase()
@@ -257,9 +241,6 @@ mod tests {
 
 	#[test]
 	fn a_hash_of_the_wrong_shape_is_not_well_formed() {
-		// What a vendor sending a placeholder, an empty field, or a digest in
-		// another algorithm would look like. Verifying against these would fail
-		// every download with what reads to the user as corruption.
 		assert!(!Checksum::sha256("").is_well_formed());
 		assert!(!Checksum::sha256("n/a").is_well_formed());
 		assert!(!Checksum::sha256("a9993e364706816aba3e25717850c26c9cd0d89d").is_well_formed());

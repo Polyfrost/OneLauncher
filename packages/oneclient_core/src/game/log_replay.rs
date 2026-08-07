@@ -1,24 +1,17 @@
-//! Reconstructing a game session from its log.
-//!
-//! When the launcher is closed while the game keeps playing, nothing observes
-//! the exit. The log is the only witness left, so on the next start we replay
-//! it to recover when the session ended and which servers it visited.
-//!
-//! Minecraft logs a bare wall-clock time (`[12:29:00]`) in the machine's local
-//! zone: no date, no offset. Absolute timestamps therefore have to be rebuilt
-//! by anchoring at the session start and walking forward.
+//! Minecraft logs a bare local wall-clock time (`[12:29:00]`) no date no
+//! offset Absolute timestamps must be rebuilt by anchoring at the session
+//! start and walking forward
 
 use chrono::{DateTime, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use super::session::{ServerJoin, parse_server_join};
 
 /// A backwards jump larger than this means the clock wrapped past midnight
-/// rather than lines merely arriving out of order between threads.
+/// rather than lines merely arriving out of order between threads
 const ROLLOVER_SLACK_SECS: i64 = 12 * 60 * 60;
 
-/// Lines that mean "no longer connected to the server we were tracking".
-/// Absent any of these the span is closed by the next join, or by the session
-/// end. A missing marker costs accuracy, never correctness.
+/// Absent any of these the span is closed by the next join or the session end
+/// so a missing marker costs accuracy never correctness
 const LEAVE_MARKERS: &[&str] = &[
 	"Stopping!",
 	"Stopping worker threads",
@@ -28,19 +21,19 @@ const LEAVE_MARKERS: &[&str] = &[
 	"Disconnected from server",
 ];
 
-/// The clean-shutdown marker. Its timestamp is the truest exit time available.
+/// Clean-shutdown marker its timestamp is the truest exit time available
 const STOP_MARKER: &str = "Stopping!";
 
 pub(crate) fn parse_log_time(line: &str) -> Option<NaiveTime> {
 	let stamp = line.strip_prefix('[')?.split(']').next()?.trim();
 
-	// `%.f` also matches an empty fraction, so this covers `[12:29:00]` and
-	// `[12:29:00.123]` alike.
+	// `%.f` also matches an empty fraction covering both `[12:29:00]` and
+	// `[12:29:00.123]`
 	if let Ok(time) = NaiveTime::parse_from_str(stamp, "%H:%M:%S%.f") {
 		return Some(time);
 	}
 
-	// Some pack-shipped log4j configs prepend the date.
+	// Some pack-shipped log4j configs prepend the date
 	for fmt in ["%Y-%m-%d %H:%M:%S%.f", "%d.%m.%Y %H:%M:%S%.f"] {
 		if let Ok(dt) = NaiveDateTime::parse_from_str(stamp, fmt) {
 			return Some(dt.time());
@@ -58,12 +51,10 @@ fn local_to_utc(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
 	let naive = NaiveDateTime::new(date, time);
 	match Local.from_local_datetime(&naive) {
 		LocalResult::Single(dt) => dt.with_timezone(&Utc),
-		// DST end: the same wall-clock time happens twice. The first is the
-		// better guess for a forward-walking log.
+		// DST end the time happens twice the first fits a forward-walking log
 		LocalResult::Ambiguous(first, _) => first.with_timezone(&Utc),
-		// DST start: this wall-clock time never existed, so step over the gap
-		// rather than reading the local time as if it were UTC, which would be wrong
-		// by the zone's whole offset.
+		// DST start this time never existed so step over the gap rather than
+		// reading it as UTC which would be off by the zone's whole offset
 		LocalResult::None => Local
 			.from_local_datetime(&(naive + chrono::Duration::hours(1)))
 			.earliest()
@@ -72,12 +63,11 @@ fn local_to_utc(date: NaiveDate, time: NaiveTime) -> DateTime<Utc> {
 	}
 }
 
-/// Turns the log's bare times into absolute instants by walking forward from an
-/// anchor and advancing the date whenever the clock wraps.
+/// Turns bare times into absolute instants advancing the date on wrap
 pub(crate) struct LogClock {
 	date: NaiveDate,
-	/// High-water mark, not the previous line: threads interleave, so a line
-	/// may legitimately sit a second behind the one before it.
+	/// High-water mark not the previous line threads interleave so a line
+	/// may legitimately sit behind the one before it
 	peak: NaiveTime,
 }
 
@@ -112,19 +102,17 @@ pub(crate) struct ServerSpan {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct LogReplay {
-	/// Timestamp of the last line carrying one, a lower bound on the exit.
+	/// Timestamp of the last line carrying one a lower bound on the exit
 	pub last_activity: Option<DateTime<Utc>>,
-	/// Set when the game logged a clean shutdown.
 	pub stopped_at: Option<DateTime<Utc>>,
 	pub servers: Vec<ServerSpan>,
 }
 
-/// Walk a whole session log, recovering server spans and the last sign of life.
 pub(crate) fn replay(content: &str, started_at: DateTime<Utc>) -> LogReplay {
 	let mut clock = LogClock::new(started_at);
 	let mut out = LogReplay::default();
-	// Timestamps only appear on the first line of a multi-line entry (stack
-	// traces continue underneath), so carry the last one forward.
+	// Timestamps appear only on the first line of a multi-line entry so carry
+	// the last one forward
 	let mut now = started_at;
 
 	for line in content.lines() {
@@ -231,7 +219,7 @@ mod tests {
 	fn clock_tolerates_out_of_order_threads() {
 		let mut clock = LogClock::new(anchor());
 		clock.absolute(NaiveTime::from_hms_opt(12, 29, 8).unwrap());
-		// A second thread's line lands a second late; this must not add a day.
+		// A second thread's line lands a second late this must not add a day
 		let at = clock.absolute(NaiveTime::from_hms_opt(12, 29, 7).unwrap());
 		assert_eq!(at, local_at(12, 29, 7));
 	}

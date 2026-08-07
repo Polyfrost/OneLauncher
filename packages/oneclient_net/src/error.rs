@@ -1,10 +1,5 @@
-/// Renders an error together with every `source()` beneath it.
-///
-/// `reqwest::Error`'s own `Display` stops at "error sending request for url
-/// (...)". The fact that actually names the failure — a rustls handshake
-/// alert, an untrusted certificate, a DNS lookup failure, `ECONNREFUSED` —
-/// lives further down the chain, so without this every transport failure in a
-/// user report reads identically and is undiagnosable.
+/// `reqwest::Error`'s own `Display` stops at "error sending request for url"
+/// the fact that names the failure lives further down the `source()` chain
 #[must_use]
 pub fn error_chain(err: &dyn std::error::Error) -> String {
     let mut rendered = err.to_string();
@@ -12,7 +7,7 @@ pub fn error_chain(err: &dyn std::error::Error) -> String {
 
     while let Some(cause) = cursor {
         let text = cause.to_string();
-        // hyper and reqwest repeat the same sentence across several layers.
+        // hyper and reqwest repeat the same sentence across several layers
         if !rendered.ends_with(&text) {
             rendered.push_str(": ");
             rendered.push_str(&text);
@@ -53,7 +48,6 @@ pub enum RequestError {
     #[error("Failed to serialize request body: {0}")]
     SerializeError(#[source] serde_json::Error),
 
-    /// A download's contents did not match the hash the manifest promised.
     #[error("{source_desc} has SHA-1 {actual}, expected {expected}")]
     HashMismatch {
         source_desc: String,
@@ -61,8 +55,7 @@ pub enum RequestError {
         actual: String,
     },
 
-    /// A download ended early without the transport reporting an error. Only
-    /// reachable when no hash was supplied; otherwise it fails as a mismatch.
+    /// Only reachable when no hash was supplied otherwise it fails as a mismatch
     #[error("{source_desc} ended after {actual} of {expected} bytes")]
     IncompleteBody {
         source_desc: String,
@@ -81,11 +74,8 @@ pub enum RequestError {
 }
 
 impl RequestError {
-    /// Whether this is the user's environment rather than a launcher bug: offline,
-    /// connection refused, timed out, disk full.
-    ///
-    /// The transport reports the fact; deciding that such errors stay out of
-    /// Sentry is a policy the composition layer applies on top.
+    /// Whether this is the user's environment rather than a launcher bug offline
+    /// connection refused timed out disk full
     #[must_use]
     pub fn is_transient(&self) -> bool {
         match self {
@@ -104,9 +94,8 @@ fn is_transient_io(error: &polyio::IOError) -> bool {
 
     use std::io::ErrorKind;
 
-    // Out of disk space. `ErrorKind::StorageFull` is still unstable, so match the
-    // raw OS codes. They are platform-gated so a Unix errno cannot collide with a
-    // Windows code (112 is the unrelated EHOSTDOWN on Linux).
+    // `ErrorKind::StorageFull` is unstable so match raw OS codes platform-gated
+    // because 112 is the unrelated EHOSTDOWN on Linux
     if let Some(code) = source.raw_os_error() {
         #[cfg(unix)]
         if code == 28 {

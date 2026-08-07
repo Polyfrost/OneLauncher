@@ -101,8 +101,7 @@ impl EnabledFilter {
     }
 }
 
-/// Whether a bundle's hidden files get a row. They are dependencies the bundle
-/// manages on the user's behalf, so the list leaves them out until asked.
+/// Hidden files are dependencies the bundle manages so the list leaves them out until asked
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum HiddenFilter {
     Hide,
@@ -214,9 +213,7 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-/// Shown while this cluster is being played. Enabling or disabling still takes
-/// effect — it is stored, and the folder is brought in line at the next launch
-/// — but the session already running cannot pick it up.
+/// Enabling still stores and applies at the next launch but the running session cannot pick it up
 pub(super) fn running_notice(noun_plural: &'static str) -> Element {
     rect()
         .horizontal()
@@ -263,8 +260,7 @@ impl Component for FilterButton {
         let enabled_filter = self.enabled_filter;
         let hidden_filter = self.hidden_filter;
 
-        // Hiding hidden packages is the default, so it does not count as the
-        // filters being touched.
+        // Hiding hidden packages is the default so it does not count as the filters being touched
         let is_open = open();
         let active = current_sort != SortMode::NameAsc
             || *enabled_filter.read() != EnabledFilter::All
@@ -524,7 +520,6 @@ fn add_from_file_button(
         .text("Add from file")
 }
 
-/// Opens the content browser scoped to this cluster and package type.
 fn open_browser(cluster_id: i64, package_type: &'static str) {
     let _ = RouterContext::get().push(Route::Browser {
         cluster_id,
@@ -546,8 +541,7 @@ pub(super) enum ContentKind {
     Browser,
     Local,
     Other,
-    /// A search returned nothing. `scope` names the tab that was searched when
-    /// it is narrower than "All".
+    /// `scope` names the tab that was searched when it is narrower than "All"
     NoMatches {
         scope: Option<String>,
     },
@@ -638,8 +632,7 @@ impl Component for ContentBox {
 
         let header = (count > 0)
             .then(|| match kind {
-                // The toolbar above already carries a permanent "Add Content"
-                // button, so this list needs no browse action of its own.
+                // The toolbar already carries a permanent "Add Content" button
                 ContentKind::Browser => None,
                 ContentKind::Local => Some(
                     action_header(add_from_file_button(
@@ -656,8 +649,7 @@ impl Component for ContentBox {
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
-        // File drops are handled window-wide by the app shell, which prompts for a
-        // destination, so this box does not claim them.
+        // File drops are handled window-wide by the app shell so this box does not claim them
         rect()
             .vertical()
             .width(Size::fill())
@@ -772,8 +764,7 @@ fn empty_state(noun_plural: &'static str) -> impl IntoElement {
         .into_element()
 }
 
-/// The search only ever looks inside the active tab, so say which one came up
-/// empty and point at the tab that does cover everything.
+/// The search only looks inside the active tab so name it and point at the tab that covers everything
 fn search_empty(noun_plural: &'static str, scope: Option<&str>) -> impl IntoElement {
     let (title, hint) = match scope {
         Some(tab) => (

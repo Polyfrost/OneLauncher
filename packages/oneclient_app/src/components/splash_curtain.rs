@@ -6,9 +6,8 @@ use freya::prelude::*;
 use crate::hooks::use_splash;
 use crate::theme::colors;
 
-/// How long the curtain takes to fade away once home is ready.
 const FADE_MS: u64 = 460;
-/// Safety net: reveal the app even if the "ready" signal never arrives.
+/// Safety net reveal the app even if the "ready" signal never arrives
 const FALLBACK_MS: u64 = 8000;
 
 #[derive(PartialEq)]
@@ -22,8 +21,7 @@ impl Component for SplashCurtain {
             return rect().into_element();
         }
 
-        // Fresh mount whenever the curtain is raised, so `CurtainFade`'s
-        // animation and timers start from the beginning each time.
+        // Fresh mount so `CurtainFade`'s animation and timers restart each time
         CurtainFade.into_element()
     }
 }
@@ -43,7 +41,7 @@ impl Component for CurtainFade {
                 .function(Function::Cubic)
         });
 
-        // Force-reveal after a while if home never reports ready.
+        // Force-reveal after a while if home never reports ready
         use_hook(move || {
             let mut home_ready = splash.home_ready;
             spawn(async move {
@@ -54,7 +52,6 @@ impl Component for CurtainFade {
             });
         });
 
-        // When home is ready, play the fade-out then drop the curtain.
         use_side_effect_with_deps(&ready, move |&ready| {
             if !ready {
                 return;

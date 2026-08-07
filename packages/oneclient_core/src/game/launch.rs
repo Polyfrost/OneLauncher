@@ -62,10 +62,10 @@ pub async fn launch_cluster(
     let game_dir = existing.game_dir()?;
     let dedicated = existing.uses_dedicated_dir();
 
-    // Every cluster without a dedicated folder plays out of the same shared
-    // directory, so a second game there would materialize its content over the
-    // running one's. `dir_in_use_by` waves a cluster past its own session, which
-    // parallel launches make reachable, so the directory is checked outright.
+    // Non-dedicated clusters share one directory so a second game there would
+    // materialize over the running one's
+    // `dir_in_use_by` waves a cluster past
+    // its own session which parallel launches make reachable
     if !dedicated && let Some(other) = state.games.dir_in_use(&game_dir) {
         tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
         let name = running_cluster_name(state, other).await;
@@ -223,19 +223,15 @@ pub async fn launch_cluster(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
-    // The one moment nothing is holding the content open: put what the database
-    // says into the game dir, and clear out what it no longer says. This is
-    // where a package removed or disabled mid-session actually leaves the
-    // folder, for dedicated and shared clusters alike.
+    // The one moment nothing holds the content open so this is where a package
+    // removed or disabled mid-session actually leaves the folder
     if let Err(err) = crate::game::materialize_content(&state.services, &cluster, &cwd).await {
         tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
     }
 
     if !dedicated {
-        // Redirect the shared dir's `logs`/`crash-reports` into this cluster's
-        // own folder so its output is attributable while it plays; unlinked on
-        // exit. Keeps the shared `.minecraft` (and the launcher's own logs dir)
-        // free of another cluster's leftovers.
+        // Redirects the shared dir's `logs`/`crash-reports` into this cluster's
+        // folder so output is attributable unlinked on exit
         crate::game::link_cluster_logs(&cluster, &cwd).await;
     }
 
@@ -311,15 +307,10 @@ pub async fn launch_cluster(
         polyio::create_dir_all(parent).await.ok();
     }
 
-    // The game's output goes straight to the log file rather than through pipes
-    // held by the launcher. A pipe would tie the game's lifetime to ours: once
-    // the launcher exits its read end closes, and the game's next write to a
-    // broken stdout takes it down with us. Writing to a file keeps the two
-    // independent, and the launcher tails that file for the live console.
-    // A cloned handle shares the file offset, so stdout and stderr interleave
-    // into one stream instead of overwriting each other.
-    // `Stdio` needs owned std handles, so the tokio files are unwrapped only
-    // once the async work of opening and cloning them is done.
+    // A file not a pipe a pipe would die with the launcher and take the game's
+    // next stdout write down with it
+    // The cloned handle shares the file offset
+    // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
         Ok(out) => match out.try_clone().await {
             Ok(err) => Ok((out.into_std().await, err.into_std().await)),
@@ -356,8 +347,8 @@ pub async fn launch_cluster(
     let recorder =
         SessionRecorder::start(state, cluster_id, profile.mem_max.unwrap_or(2048), &java).await;
 
-    // Pin the process to the session row so that if the launcher exits before
-    // the game does, the next start can tell whether it is still playing.
+    // Pinned to the session row so that if the launcher exits first the next
+    // start can tell whether the game is still playing
     if let (Some(recorder), Some(pid)) = (recorder.as_ref(), pid) {
         recorder
             .record_process(pid, crate::game::process_start_time(pid))
@@ -424,8 +415,6 @@ pub async fn launch_cluster(
     Ok(LaunchedGame { cluster_id, pid })
 }
 
-/// Names the cluster in the user's way for a refusal they have to act on.
-/// Falls back to the id, which is still better than no answer at all.
 async fn running_cluster_name(state: &Arc<LauncherState>, cluster_id: i64) -> String {
     state
         .clusters
@@ -434,9 +423,8 @@ async fn running_cluster_name(state: &Arc<LauncherState>, cluster_id: i64) -> St
         .map_or_else(|_| format!("Cluster {cluster_id}"), |cluster| cluster.name)
 }
 
-/// Cut the game loose from the launcher's process group / console, so signals
-/// aimed at the launcher (a terminal Ctrl-C, a console window closing) don't
-/// reach the game as collateral.
+/// Cuts the game loose from the launcher's process group/console so signals
+/// aimed at the launcher (Ctrl-C console close) don't reach the game
 fn detach(command: &mut Command) {
     #[cfg(unix)]
     {
@@ -455,18 +443,15 @@ fn detach(command: &mut Command) {
     }
 }
 
-/// How a session ended, as far as anyone could tell.
 pub(crate) enum Exit {
-    /// The launcher was there and saw the process exit.
     Observed {
         code: Option<i64>,
         success: bool,
         display: String,
     },
-    /// Waiting on the process itself failed.
     Failed(String),
-    /// The game exited while the launcher was closed; the time was recovered
-    /// from its log, and the exit code is gone for good.
+    /// Game exited while the launcher was closed time recovered from the log
+    /// exit code unrecoverable
     Inferred,
 }
 
@@ -474,22 +459,17 @@ pub(crate) struct SessionEnd {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub outcome: Exit,
-    /// Whether this session is the one currently holding the cluster's running
-    /// slot. A stale session recovered from the database may share its cluster
-    /// with a game that is playing right now. Booking the old session's
-    /// playtime is right, but clearing that slot would report the live game as
-    /// exited.
+    /// False for a stale session recovered from the database whose cluster has a
+    /// live game book its playtime but clearing the slot would report the live
+    /// game as exited
     pub owns_slot: bool,
-    /// What the game's own output said about why it died, when the launcher
-    /// recognised the cause. `None` for a clean exit, an unrecognised crash, or
-    /// a session recovered after the fact with no log being watched.
+    /// `None` for a clean exit an unrecognised crash or a session recovered
+    /// after the fact with no log watched
     pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
 }
 
-/// Everything that has to happen once a game is gone: clear its running state,
-/// bank the playtime, close the session row, run the post hook and unwind the
-/// shared-directory plumbing. Shared by the live exit path and by recovery of
-/// sessions that outlived the launcher.
+/// Shared by the live exit path and by recovery of sessions that outlived the
+/// launcher
 pub(crate) async fn finalize_session(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
@@ -529,10 +509,8 @@ pub(crate) async fn finalize_session(
     run_hook(post_hook, cwd).await;
 
     if dedicated {
-        // The folder stays materialized between sessions so it remains a real
-        // Minecraft directory for external tools; the next launch reconciles it.
-        // Adopting drop-ins now just means the UI is right the moment the game
-        // closes rather than at the next launch.
+        // The folder stays materialized so it remains a real Minecraft directory
+        // for external tools adopting drop-ins now keeps the UI right on close
         crate::game::import_manual_content(&state.services, cluster, cwd).await;
     } else {
         if let Err(err) = crate::game::dematerialize_content(&state.services, cluster, cwd).await {
@@ -557,25 +535,20 @@ pub(crate) async fn finalize_session(
             .services
             .events
             .notify("Game error").body(format!("{name}: {err}")).error().send(),
-        // Nothing was watching, so there is no crash to report and no news the
-        // user wants a popup about, so the session is just booked and closed.
+        // Nothing was watching so there is no crash to report
         Exit::Inferred => {}
     }
 
-    // Only after the crash notice, and only when the game actually died: a
-    // `ZipException` the game recovered from is not worth interrupting a
-    // finished session over.
+    // Only when the game actually died a `ZipException` it recovered from is not
+    // worth interrupting a finished session over
     if crashed && let Some(diagnosis) = end.diagnosis {
         offer_repair(state, cluster_id, &diagnosis).await;
     }
 }
 
-/// Offers to verify and repair after a crash the launcher recognised.
-///
-/// Asks rather than acting: verification reads every installed file and can
-/// re-download a good part of the game, which is not something to start behind
-/// the user's back the moment they close a crashed session. Declining is a real
-/// answer — the same offer comes back on the next crash.
+/// Asks rather than acting verification can re-download much of the game too
+/// much to start unprompted
+/// The offer returns on the next crash
 #[tracing::instrument(skip(state, diagnosis), level = "debug")]
 pub async fn offer_repair(
     state: &Arc<LauncherState>,
@@ -601,8 +574,7 @@ pub async fn offer_repair(
 
     match answer {
         Ok(Some(_)) => {}
-        // Dismissed, or nobody was there to ask. Neither is consent to spend
-        // several minutes re-downloading the game.
+        // Dismissed or nobody there to ask neither is consent to re-download
         Ok(None) => {
             tracing::info!(cluster_id, "user declined the post-crash repair");
             return;

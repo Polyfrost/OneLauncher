@@ -15,25 +15,16 @@ use crate::game::{
 use crate::state::LauncherState;
 use crate::LauncherResult;
 
-/// What a verify pass found and what it managed to do about it.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClusterVerifyReport {
-    /// Files read and hashed, across game files and installed content.
     pub checked: usize,
-    /// Files whose contents did not match and were removed.
+    /// Mismatched files also deleted from disk
     pub corrupt: usize,
-    /// Files a manifest expected that were not on disk at all.
     pub missing: usize,
-    /// Files that were successfully fetched again.
     pub repaired: usize,
-    /// Content that was corrupt but has no source to re-download from —
-    /// locally imported files, or a version the provider no longer serves.
-    /// Named so the user can replace them by hand.
+    /// Corrupt with no source to re-fetch from named so the user can replace them
     pub unrepairable: Vec<String>,
-    /// The game files were re-downloaded without being counted, because the
-    /// assets index they would have been checked against was itself gone.
-    /// Reported separately so a wholesale reinstall is never described as a
-    /// clean sweep of the handful of files that could still be counted.
+    /// Game files re-downloaded uncounted because the assets index was gone too
     pub reinstalled_game_files: bool,
 }
 
@@ -46,7 +37,6 @@ impl ClusterVerifyReport {
             && !self.reinstalled_game_files
     }
 
-    /// A one-line summary for a notification.
     #[must_use]
     pub fn summary(&self) -> String {
         if self.is_clean() {
@@ -75,18 +65,8 @@ impl ClusterVerifyReport {
     }
 }
 
-/// Verifies every file a cluster installed, and re-downloads what is broken.
-///
-/// Runs in three passes. Game files are hashed against the Mojang manifest and
-/// the bad ones deleted; installed content is hashed against the hash it is
-/// indexed under and the bad ones deleted and re-fetched from the provider that
-/// served them; then the ordinary prepare path runs, which re-downloads exactly
-/// what is now missing using the same verified, retrying download every other
-/// install goes through.
-///
-/// Deleting and re-preparing rather than overwriting in place is deliberate: it
-/// reuses one well-tested download path instead of adding a second one that
-/// would have to be kept in step with it.
+/// Deletes bad files and re-prepares rather than overwriting in place to reuse
+/// the one well-tested download path instead of maintaining a second
 #[tracing::instrument(skip(state), level = "debug")]
 pub async fn verify_cluster_files(
     state: &Arc<LauncherState>,
@@ -125,8 +105,7 @@ async fn run_verify(
     let cluster = state.clusters.get(cluster_id).await?;
     let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
-    // Resolving the version needs the metadata lock, which prepare also takes.
-    // Scope it so it is released before the repair pass below.
+    // Scoped so the metadata lock is released before the repair pass which takes it too
     let (version_info, minecraft_updated) = {
         let mut metadata = state.metadata.lock().await;
         let (version, _index, minecraft_updated) =
@@ -157,15 +136,12 @@ async fn run_verify(
 
     let mut report = ClusterVerifyReport::default();
 
-    // The index is needed to know which assets this version expects. Reading
-    // the cached copy avoids a network round trip; if it is absent or itself
-    // corrupt there is nothing to verify assets against, so skip that part
-    // rather than fail — prepare will fetch it and the assets below.
+    // Absent or corrupt index means nothing to verify assets against so skip
+    // rather than fail prepare fetches it and the assets below
     let assets_index = cached_assets_index(&version_info).await;
 
-    // Library rules are evaluated per architecture, so checking against the
-    // wrong one would verify a different set of libraries than the launch path
-    // installs. Use the runtime this cluster actually launches with.
+    // Library rules are per-architecture use the runtime this cluster launches
+    // with or a different library set than the launch path installs is verified
     let java_arch = {
         let global = state.settings.read().global_game_settings.clone();
         let profile = state.clusters.resolve_settings(&global, &cluster).await?;
@@ -178,16 +154,12 @@ async fn run_verify(
             .map_or_else(|| std::env::consts::ARCH.to_string(), |rt| rt.os_arch)
     };
 
-    // Counted apart from content: these are repaired by the prepare pass below,
-    // whereas content repairs itself as it goes. Adding both into one bucket
-    // would count the content ones twice.
+    // Counted apart from content which repairs itself as it goes one bucket
+    // would count the content ones twice
     let mut game_broken = 0;
 
-    // Without the index there is nothing to check the assets against — and the
-    // index lives inside the assets directory, so its absence usually means
-    // that whole directory is gone. That is precisely the case this repair
-    // exists for, so hand the work to prepare rather than reporting a clean
-    // sweep of the nothing that could be checked.
+    // The index lives in the assets directory so its absence usually means that
+    // whole directory is gone hand the work to prepare
     let reinstalled_game_files = assets_index.is_none();
 
     if let Some(assets_index) = assets_index {
@@ -210,15 +182,8 @@ async fn run_verify(
 
     verify_cluster_content(state, cluster_id, progress, &mut report).await?;
 
-    // Everything corrupt is gone, so a normal prepare sees it as missing and
-    // fetches it back through the verified, retrying download path. A file it
-    // cannot get surfaces as an error rather than a silent gap, so reaching the
-    // line after this means the game files are whole again.
-    //
-    // Note this runs `prepare` directly rather than going through the launch
-    // path, which skips preparing a cluster already marked `Ready` — the very
-    // reason a cluster with deleted files keeps failing to launch instead of
-    // healing itself.
+    // Runs `prepare` directly not the launch path which skips clusters already
+    // marked `Ready` and so never heals one with deleted files
     if game_broken > 0 || reinstalled_game_files {
         prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await?;
         report.repaired += game_broken;
@@ -229,12 +194,8 @@ async fn run_verify(
     Ok(report)
 }
 
-/// Hashes the cluster's installed content against the hashes it is indexed
-/// under, and re-fetches whatever no longer matches.
-///
-/// Content is cached content-addressed, so a file that does not hash to its own
-/// key is unusable by definition: nothing can find it again, and materializing
-/// it into the game folder would put a corrupt mod in front of the game.
+/// The content cache is content-addressed so a file that does not hash to its
+/// own key is unusable nothing can find it again
 async fn verify_cluster_content(
     state: &Arc<LauncherState>,
     cluster_id: i64,
@@ -305,12 +266,8 @@ async fn verify_cluster_content(
     Ok(())
 }
 
-/// Re-downloads one piece of content from the provider that served it.
-///
-/// Failures are recorded rather than propagated: one mod that a provider has
-/// since delisted should not abandon verification of everything else. A locally
-/// imported file has no provider at all, and the user is the only one who can
-/// replace it — so it is named in the report instead of silently vanishing.
+/// Failures are recorded not propagated one delisted mod should not abandon
+/// verification of everything else
 async fn repair_content(
     state: &Arc<LauncherState>,
     link: &oneclient_content::packages::LinkedArtifactInfo,
@@ -332,9 +289,8 @@ async fn repair_content(
         let provider = content.providers.get(provider_id)?;
         let version = provider.get_version(project_id, version_id, &content).await?;
 
-        // The cluster is pinned to one exact file, identified by the hash it is
-        // indexed under. Re-downloading a different file from the same version
-        // would silently change what is installed.
+        // The cluster is pinned to one exact file by hash another file from the
+        // same version would silently change what is installed
         let file = version
             .files
             .iter()
@@ -413,10 +369,6 @@ mod tests {
 
     #[test]
     fn a_wholesale_reinstall_is_not_reported_as_a_clean_sweep() {
-        // The `metadata/assets` case: the index the assets would have been
-        // checked against was gone too, so almost nothing could be counted.
-        // Saying "All 2 files verified" after re-downloading the game would be
-        // actively misleading.
         let report = ClusterVerifyReport {
             checked: 2,
             reinstalled_game_files: true,
@@ -432,9 +384,6 @@ mod tests {
 
     #[test]
     fn content_that_cannot_be_replaced_is_still_reported() {
-        // A locally imported mod has no provider to fetch it from again, so the
-        // user is the only one who can put it back. Saying nothing would leave
-        // them with a cluster that is quietly missing a file.
         let report = ClusterVerifyReport {
             checked: 12,
             corrupt: 1,

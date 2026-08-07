@@ -54,7 +54,6 @@ impl Component for AccountPanel {
         });
         let progress = intro.read().value();
 
-        // active account first, then the rest
         let mut ordered: Vec<MinecraftAccount> = Vec::new();
         if let Some(account) = default_account.clone() {
             ordered.push(account);

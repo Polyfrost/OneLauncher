@@ -13,11 +13,9 @@ use crate::response::{ResponseExt, ResponseOptions};
 
 const MAX_THROTTLE_RETRIES: u32 = 6;
 
-/// Ceiling on requests waiting for response headers. This is a backstop against
-/// a runaway fan-out, not the download throttle. Per-phase concurrency is set
-/// by the callers, and this has to stay above their sum or it becomes the
-/// bottleneck instead. Permits are released once headers arrive, so streaming
-/// bodies don't hold a slot.
+/// Backstop against runaway fan-out not the download throttle
+/// Must stay above the sum of per-phase caller concurrency or it becomes the
+/// bottleneck
 const MAX_INFLIGHT_REQUESTS: usize = 64;
 
 fn retry_after(response: &Response) -> Option<std::time::Duration> {
@@ -85,10 +83,9 @@ fn apply_curseforge_auth(
 pub struct RequestClient {
     client: reqwest::Client,
     semaphore: Arc<Semaphore>,
-    /// Shared across every clone, so a settings save is visible to in-flight
-    /// handles. `ArcSwap` rather than a lock because this is read once per
-    /// outbound request (with 64 in flight a lock would serialise them) and
-    /// written only when the user saves settings.
+    /// Shared across every clone so a settings save is visible to in-flight
+    /// handles
+    /// `ArcSwap` rather than a lock which would serialise requests
     config: Arc<ArcSwap<NetConfig>>,
 }
 
@@ -97,13 +94,11 @@ impl RequestClient {
         &self.client
     }
 
-    /// The endpoint/credential config every request is sent with.
     #[must_use]
     pub fn config(&self) -> arc_swap::Guard<Arc<NetConfig>> {
         self.config.load()
     }
 
-    /// Replaces the config for this client and every clone of it.
     pub fn set_config(&self, config: NetConfig) {
         self.config.store(Arc::new(config));
     }
@@ -120,16 +115,9 @@ impl RequestClient {
                 env!("CARGO_PKG_HOMEPAGE")
             ));
 
-        // reqwest defaults this to `cfg!(feature = "hickory-dns")`, so enabling
-        // the feature turns hickory on for *every* platform. Leaving it unset
-        // on Windows does not opt out — it has to be switched off explicitly.
-        //
-        // It has to be off there because hickory reads UDP responses into a
-        // fixed buffer, and Windows fails an oversized datagram with
-        // WSAEMSGSIZE (10040) instead of truncating it the way Unix does. A DNS
-        // reply that Linux and macOS truncate and retry over TCP is an outright
-        // lookup failure on Windows, so sign-in broke for whichever users had a
-        // resolver returning large enough answers.
+        // Hickory must be explicitly off on Windows it reads UDP into a fixed
+        // buffer and Windows fails oversized datagrams with WSAEMSGSIZE (10040)
+        // instead of truncating breaking sign-in for large DNS replies
         #[cfg(target_os = "windows")]
         {
             builder = builder.no_hickory_dns();
@@ -241,7 +229,7 @@ impl RequestClient {
     ) -> Result<(), RequestError> {
         let res = self.send(request).await?;
 
-        // Without this, an error body is written to disk under the requested file's name.
+        // Without this an error body is written to disk under the requested file's name
         let status = res.status();
         if !status.is_success() {
             let url = res.url().to_string();

@@ -24,12 +24,11 @@ const SWAP_TYPES: [ContentType; 3] = [
 
 const FABRIC_DEP_OVERRIDES: &str = "config/fabric_loader_dependencies.json";
 
-/// One file the database wants in the game directory.
 struct Desired {
     content_type: ContentType,
     file_name: String,
     hash: String,
-    /// Where it lives in the artifact cache.
+    /// Where it lives in the artifact cache
     src: std::path::PathBuf,
 }
 
@@ -39,10 +38,8 @@ impl Desired {
     }
 }
 
-/// Brings the game directory in line with the database, ready for a launch.
-///
-/// Safe to run over a directory left behind by a crashed session, by a
-/// different cluster, or by a launcher version that predates the manifest.
+/// Safe to run over a directory left by a crashed session another cluster or
+/// a launcher version predating the manifest
 #[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id, game_dir = %game_dir.display()), level = "debug")]
 pub async fn materialize_content(
     services: &LauncherServices,
@@ -52,34 +49,29 @@ pub async fn materialize_content(
     let dedicated = cluster.uses_dedicated_dir();
     polyio::create_dir_all(game_dir).await.ok();
 
-    // What we put here last time. In the shared directory this often belongs to
-    // another cluster, which is why every use of it checks the id.
+    // In the shared directory this often belongs to another cluster so every
+    // use of it checks the id
     let previous = manifest::load(game_dir).await;
 
     import_manual_content(services, cluster, game_dir).await;
 
-    // Before the folder is built, not after: a cluster holding several versions
-    // of one package would otherwise hand the game every enabled copy, and for
-    // mods that is a classloader conflict rather than a choice. Resolving to the
-    // newest here means the rest are simply not desired.
+    // Before the folder is built not after handing the game several enabled
+    // versions of one mod is a classloader conflict
     if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
         cluster.id,
         &services.content(),
     )
     .await
     {
-        // A launch is not worth blocking over this. The duplicates were already
-        // there and the game still gets a folder, just an untidy one.
+        // Not worth blocking a launch the duplicates were already there
         tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
     }
 
     let desired = desired_content(services, cluster).await?;
     let desired_paths: HashSet<String> = desired.iter().map(Desired::relative_path).collect();
 
-    // Anything we materialized before and no longer want goes now, while the
-    // game is still closed. This is what lands a package the user removed (or
-    // disabled) during a session, and what clears another cluster's content out
-    // of the shared directory.
+    // While the game is still closed this is what lands a package removed
+    // mid-session and clears another cluster's content from the shared dir
     prune_previous(game_dir, previous.as_ref(), &desired_paths).await;
 
     if !dedicated {
@@ -92,8 +84,8 @@ pub async fn materialize_content(
             let stash = cluster.dir()?.join(content_type.folder_name());
             polyio::create_dir_all(&dir).await.ok();
 
-            // Whatever is still here belongs to whoever played last (or crashed
-            // last), so take it into this cluster rather than deleting it.
+            // Whatever is still here belongs to whoever played (or crashed)
+            // last so take it into this cluster rather than deleting it
             let ours = ours_in_folder(content_type, &linked, previous.as_ref());
             stash_content_files(&dir, &stash, &ours).await;
             ensure_note(&dir, content_type).await;
@@ -109,18 +101,16 @@ pub async fn materialize_content(
     Ok(())
 }
 
-/// Empties the shared game directory after a session.
-///
-/// Only for shared directories: a dedicated cluster's content stays put between
-/// sessions, and [`materialize_content`] reconciles it at the next launch.
+/// Only for shared directories a dedicated cluster's content stays put between
+/// sessions and [`materialize_content`] reconciles it at the next launch
 #[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
 pub async fn dematerialize_content(
     services: &LauncherServices,
     cluster: &Cluster,
     game_dir: &Path,
 ) -> LauncherResult<()> {
-    // Runs first so anything the user dropped in during the session is a tracked
-    // artifact by now, and gets dropped rather than stashed as a loose file.
+    // Runs first so anything dropped in during the session is a tracked artifact
+    // by now and gets dropped rather than stashed as a loose file
     import_manual_content(services, cluster, game_dir).await;
 
     let current = manifest::load(game_dir).await;
@@ -142,7 +132,6 @@ pub async fn dematerialize_content(
     Ok(())
 }
 
-/// The enabled, cached content the database wants materialized.
 async fn desired_content(
     services: &LauncherServices,
     cluster: &Cluster,
@@ -177,10 +166,8 @@ async fn desired_content(
     Ok(desired)
 }
 
-/// Links the wanted content in, returning what actually landed.
-///
-/// Only files that made it are recorded, so a link that failed is never later
-/// mistaken for ours and deleted out from under the user.
+/// Only files that made it are recorded so a failed link is never later
+/// mistaken for ours and deleted out from under the user
 async fn link_desired(game_dir: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
     let mut entries = Vec::with_capacity(desired.len());
 
@@ -205,10 +192,8 @@ async fn link_desired(game_dir: &Path, desired: &[Desired]) -> Vec<ManifestEntry
     entries
 }
 
-/// Deletes everything the previous manifest listed that is not wanted now.
-///
-/// Entries are keyed by path, so a package whose file name is unchanged is left
-/// in place rather than being deleted and relinked on every launch.
+/// Entries are keyed by path so a package whose file name is unchanged is left
+/// in place rather than being deleted and relinked on every launch
 async fn prune_previous(
     game_dir: &Path,
     previous: Option<&MaterializedManifest>,
@@ -234,12 +219,9 @@ async fn prune_previous(
     }
 }
 
-/// The names in one content folder that are the launcher's rather than the
-/// user's: what we materialized last, plus everything the database currently
-/// tracks for this cluster.
-///
-/// The database half covers files just adopted by [`import_manual_content`],
-/// which are the user's in origin but the launcher's to manage from now on.
+/// Names in one folder that are the launcher's not the user's what we
+/// materialized last plus what the database tracks (covering files just
+/// adopted by [`import_manual_content`])
 fn ours_in_folder(
     content_type: ContentType,
     linked: &[oneclient_content::packages::LinkedArtifactInfo],
@@ -312,18 +294,15 @@ pub async fn import_manual_content(
                 continue;
             }
 
-            // Ours, from a previous launch. Either it is still wanted and gets
-            // relinked, or it was removed and `prune_previous` clears it. Taking
-            // it as a user drop-in here would reinstall the package the user
-            // just deleted.
+            // Ours from a previous launch `prune_previous` handles it
+            // Taking it as a user drop-in would reinstall a just-deleted package
             let relative = manifest::entry_path(content_type.folder_name(), name);
             if manifest.as_ref().is_some_and(|m| m.contains(&relative)) {
                 continue;
             }
 
-            // No manifest to consult — a directory written by a launcher version
-            // that predates it. Fall back to asking whether the cache already
-            // holds this exact file, which means the launcher put it here.
+            // No manifest a directory from a launcher version predating it
+            // If the cache holds this exact file the launcher put it here
             if manifest.is_none() && is_cached_artifact(services, &path).await {
                 tracing::debug!(file = name, "discarding stale launcher content in game dir");
                 if let Err(err) = polyio::remove_file(&path).await {
@@ -346,9 +325,8 @@ pub async fn import_manual_content(
     }
 }
 
-/// Whether `path` is a copy of something already in the launcher's artifact
-/// cache, i.e. content the launcher itself put in the game dir rather than
-/// something the user dropped there.
+/// Already in the artifact cache i.e. the launcher put it in the game dir
+/// rather than the user dropping it there
 async fn is_cached_artifact(services: &LauncherServices, path: &Path) -> bool {
     let Ok(hash) = polyio::sha1_file(path).await else {
         return false;
@@ -386,15 +364,9 @@ pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
 
 const EMPTY_NOTE_NAME: &str = "WHY_NOTHING_HERE.txt";
 
-/// Empty a shared content folder without losing anything the game wrote into
-/// it.
-///
-/// Content the launcher owns is dropped, since the cache already holds it.
-/// Everything else (a shaderpack's settings sidecar, an unzipped pack, a stray
-/// config) is *moved* into the cluster's own copy of the folder, and
-/// [`restore_stashed`] links it back on the next launch. That is what keeps
-/// shader configs attached to the cluster they were tuned in instead of being
-/// wiped by the next launch of any cluster.
+/// Launcher-owned content is dropped (the cache has it) everything else
+/// (sidecars unzipped packs stray configs) is *moved* into the cluster folder
+/// so it stays attached to that cluster and [`restore_stashed`] links it back
 async fn stash_content_files(dir: &Path, stash: &Path, ours: &HashSet<String>) {
     let Ok(mut entries) = polyio::read_dir(dir).await else {
         return;
@@ -413,9 +385,8 @@ async fn stash_content_files(dir: &Path, stash: &Path, ours: &HashSet<String>) {
             continue;
         };
 
-        // Ours: either a link we made this launch, or a name the manifest or the
-        // database accounts for (on Windows `symlink_file` hard-links, so ours
-        // is not always a symlink). Either way the cache has it covered.
+        // Ours and the cache has it covered
+        // On Windows `symlink_file` hard-links so ours is not always a symlink
         if file_type.is_symlink() || ours.contains(&name) {
             remove_dir_or_file(&path, file_type).await;
             continue;
@@ -432,10 +403,8 @@ async fn stash_content_files(dir: &Path, stash: &Path, ours: &HashSet<String>) {
     }
 }
 
-/// Link the cluster's stashed leftovers back into the shared folder so the
-/// game finds them where it left them. The game writes straight through the
-/// link, so edits land in the cluster folder even if we never get to run on
-/// exit.
+/// Links stashed leftovers back so the game writes straight through into the
+/// cluster folder even if we never get to run on exit
 async fn restore_stashed(
     stash: &Path,
     dir: &Path,
@@ -458,22 +427,16 @@ async fn restore_stashed(
         let Ok(file_type) = entry.file_type().await else {
             continue;
         };
-        // A link into the artifact cache. Managed content is materialized from
-        // the database further down, not from here.
+        // A link into the artifact cache managed content is materialized from
+        // the database not from here
         if file_type.is_symlink() {
             continue;
         }
 
-        // A bare jar or pack in the stash is not something the stash should ever
-        // hold: the launcher's own content comes from the cache, and a file the
-        // user drops into the game folder is adopted into the cache before it
-        // could land here. What is left is a link written by a launcher version
-        // that put content in cluster folders — often one whose package has since
-        // been removed. Restoring it would put a deleted mod back in the game on
-        // every launch, which is the exact bug this scheme exists to end.
-        //
-        // Left on disk rather than deleted; the Storage settings page reports
-        // them and can clear them out.
+        // A bare jar in the stash is a leftover from the old scheme often with
+        // its package already removed restoring it would put a deleted mod back
+        // every launch
+        // Left on disk for the Storage settings page to clear
         if file_type.is_file() && has_content_extension(content_type, &name) {
             tracing::debug!(
                 file = %name,
@@ -503,7 +466,7 @@ async fn remove_dir_or_file(path: &Path, file_type: FileType) {
     if file_type.is_dir() {
         polyio::remove_dir_all(path).await.ok();
     } else if polyio::remove_file(path).await.is_err() {
-        // A Windows junction has to go through `remove_dir`.
+        // A Windows junction has to go through `remove_dir`
         polyio::remove_symlink_dir(path).await.ok();
     }
 }
@@ -513,8 +476,8 @@ async fn move_entry(src: &Path, dest: &Path) -> LauncherResult<()> {
         polyio::create_dir_all(parent).await.ok();
     }
 
-    // A stash left from an earlier session is always older than what the game
-    // just wrote, so it loses.
+    // A stash from an earlier session is older than what the game just wrote
+    // so it loses
     if let Ok(meta) = polyio::symlink_metadata(dest).await {
         remove_dir_or_file(dest, meta.file_type()).await;
     }
@@ -523,7 +486,7 @@ async fn move_entry(src: &Path, dest: &Path) -> LauncherResult<()> {
         return Ok(());
     }
 
-    // `rename` cannot cross devices; fall back to a copy for plain files.
+    // `rename` cannot cross devices fall back to a copy for plain files
     polyio::copy(src, dest).await?;
     polyio::remove_file(src).await.ok();
     Ok(())
@@ -581,20 +544,17 @@ async fn redirect_dir(shared: &Path, target: &Path) -> LauncherResult<()> {
     polyio::create_dir_all(target).await.ok();
 
     match polyio::symlink_metadata(shared).await {
-        // check if a symlink from a previous launch
         Ok(meta) if meta.file_type().is_symlink() => {
             polyio::remove_symlink_dir(shared).await?;
         }
 
-        // real directory (most likely either done by the user or a tool)
-        // so instead of deleting it we first move the contents of it into the designated
-        // cluster folder
+        // A real directory likely the user's so salvage its contents into the
+        // cluster folder instead of deleting it
         Ok(meta) if meta.is_dir() => {
             move_dir_contents(shared, target).await;
             polyio::remove_dir_all(shared).await.ok();
         }
 
-        // some file, so remove it so the link can take its place.
         Ok(_) => {
             polyio::remove_file(shared).await.ok();
         }
@@ -692,8 +652,8 @@ mod tests {
         )
     }
 
-    /// A shaderpack's settings sidecar has to survive a launch/exit cycle, and
-    /// end up in the cluster rather than the shared dir.
+    /// A shaderpack's settings sidecar has to survive a launch/exit cycle and
+    /// end up in the cluster rather than the shared dir
     #[tokio::test]
     async fn shader_settings_survive_a_session() {
         let root = polyio::testing::ScratchDir::new("shader_settings");
@@ -703,7 +663,6 @@ mod tests {
 
         let ours = names(&["bsl.zip"]);
 
-        // Play: the pack is linked in, the game writes its settings next to it.
         polyio::write(shared.join("bsl.zip"), b"pack".as_slice())
             .await
             .unwrap();
@@ -711,7 +670,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Exit.
         stash_content_files(&shared, &stash, &ours).await;
         assert!(!shared.join("bsl.zip").exists(), "managed pack left behind");
         assert!(!shared.join("bsl.zip.txt").exists(), "sidecar left behind");
@@ -720,14 +678,12 @@ mod tests {
             "BLOOM=off"
         );
 
-        // Next launch.
         restore_stashed(&stash, &shared, ContentType::Shader, &ours).await;
         assert_eq!(
             polyio::read_to_string(shared.join("bsl.zip.txt")).await.unwrap(),
             "BLOOM=off"
         );
 
-        // The game edits its settings through the link we restored.
         polyio::write(stash.join("bsl.zip.txt"), b"BLOOM=on".as_slice())
             .await
             .unwrap();
@@ -739,7 +695,6 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// An unzipped pack is a directory; it moves out and comes back as a link.
     #[tokio::test]
     async fn unpacked_dirs_move_into_the_cluster() {
         let root = polyio::testing::ScratchDir::new("unpacked");
@@ -757,7 +712,7 @@ mod tests {
         restore_stashed(&stash, &shared, ContentType::Shader, &HashSet::new()).await;
         assert!(shared.join("Loose/shaders/final.fsh").exists());
 
-        // Only the link goes, never the stashed original.
+        // Only the link goes never the stashed original
         stash_content_files(&shared, &stash, &HashSet::new()).await;
         assert!(!shared.join("Loose").exists());
         assert!(stash.join("Loose/shaders/final.fsh").exists());
@@ -765,7 +720,6 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// The note explaining the empty folder is ours, and stays put.
     #[tokio::test]
     async fn note_is_never_stashed() {
         let root = polyio::testing::ScratchDir::new("note");
@@ -783,10 +737,10 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// The reported bug. A package removed while the game held it open stays in
-    /// the folder; the next launch has to clear it. `remove_entry` is used
-    /// rather than a link so the file is an ordinary one — which is what a
-    /// managed file looks like on Windows, where `symlink_file` hard-links.
+    /// The reported bug a package removed while the game held it open stays in
+    /// the folder so the next launch must clear it
+    /// An ordinary file is used
+    /// because that is what a managed file looks like on Windows
     #[tokio::test]
     async fn removed_package_is_pruned_at_the_next_launch() {
         let root = polyio::testing::ScratchDir::new("prune_removed");
@@ -809,8 +763,8 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// The shared game dir is reused by every cluster. Whatever the previous
-    /// cluster materialized is ours to clear, not the user's to keep.
+    /// Whatever a previous cluster materialized in the shared dir is ours to
+    /// clear not the user's to keep
     #[tokio::test]
     async fn another_clusters_content_is_cleared_not_stashed() {
         let root = polyio::testing::ScratchDir::new("cross_cluster");
@@ -820,8 +774,6 @@ mod tests {
         let jar = game_dir.join("mods").join("theirs.jar");
         polyio::write(&jar, b"jar".as_slice()).await.unwrap();
 
-        // Cluster 2 launches; cluster 1's manifest is what is on disk, and none
-        // of it is wanted now.
         prune_previous(game_dir, Some(&manifest_of(1, &["mods/theirs.jar"])), &HashSet::new()).await;
 
         assert!(polyio::symlink_metadata(&jar).await.is_err());
@@ -829,8 +781,8 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// A file the user dropped in by hand is not in any manifest, so it is
-    /// stashed into the cluster rather than deleted.
+    /// A hand-dropped file is in no manifest so it is stashed into the cluster
+    /// rather than deleted
     #[tokio::test]
     async fn user_files_are_never_pruned() {
         let root = polyio::testing::ScratchDir::new("user_file");
@@ -847,10 +799,8 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// The reported bug, in its stuck form. A jar left in a cluster folder by an
-    /// older launcher, whose package has since been removed, must not be linked
-    /// back into the game. It is left on disk — the Storage page clears it — but
-    /// it never reaches the session again.
+    /// A jar left in a cluster folder by an older launcher whose package has
+    /// since been removed must not be linked back into the game
     #[tokio::test]
     async fn stray_content_in_the_stash_is_not_restored() {
         let root = polyio::testing::ScratchDir::new("stray_content");
@@ -859,12 +809,11 @@ mod tests {
         polyio::create_dir_all(&shared).await.unwrap();
         polyio::create_dir_all(&stash).await.unwrap();
 
-        // A leftover from the old scheme: an ordinary file (which is what a
-        // Windows hard link looks like) with no database row to explain it.
+        // A leftover from the old scheme an ordinary file (which is what a
+        // Windows hard link looks like) with no database row to explain it
         polyio::write(stash.join("removed.jar"), b"jar".as_slice())
             .await
             .unwrap();
-        // A genuine sidecar, which still has to come back.
         polyio::write(stash.join("options.txt"), b"k=v".as_slice())
             .await
             .unwrap();
@@ -884,13 +833,9 @@ mod tests {
         std::fs::remove_dir_all(root.path()).ok();
     }
 
-    /// The cluster folder is the user's. A full launch/exit cycle may *add* to
-    /// it, never take from it.
-    ///
-    /// Pinned because the two halves are easy to get backwards: `stash` reads
-    /// the game dir and writes the cluster, `restore` reads the cluster and
-    /// writes the game dir. A swapped argument in either would quietly delete a
-    /// user's files, and both take two same-typed `&Path`s.
+    /// Pinned because the halves are easy to swap `stash` reads the game dir
+    /// and writes the cluster `restore` the reverse and both take two
+    /// same-typed `&Path`s a swap would quietly delete a user's files
     #[tokio::test]
     async fn a_session_never_removes_anything_from_the_cluster_folder() {
         let root = polyio::testing::ScratchDir::new("stash_is_sacred");
@@ -899,7 +844,6 @@ mod tests {
         polyio::create_dir_all(&shared).await.unwrap();
         polyio::create_dir_all(&stash).await.unwrap();
 
-        // Everything a cluster folder might legitimately be holding.
         polyio::write(stash.join("options.txt"), b"k=v".as_slice())
             .await
             .unwrap();
@@ -911,7 +855,6 @@ mod tests {
             .await
             .unwrap();
 
-        // And something in the game dir that is ours to clear.
         polyio::write(shared.join("managed.jar"), b"jar".as_slice())
             .await
             .unwrap();
@@ -920,7 +863,6 @@ mod tests {
 
         let before = dir_entries(&stash).await;
 
-        // Launch, then exit, then launch again.
         stash_content_files(&shared, &stash, &ours).await;
         restore_stashed(&stash, &shared, ContentType::Mod, &ours).await;
         stash_content_files(&shared, &stash, &ours).await;
@@ -960,8 +902,8 @@ mod tests {
         let ours = ours_in_folder(ContentType::Mod, &linked, Some(&manifest));
 
         assert!(ours.contains("from_manifest.jar"));
-        // Scoped to the folder: a shaderpack entry must not make a mod of the
-        // same name look managed.
+        // Scoped to the folder a shaderpack entry must not make a mod of the
+        // same name look managed
         assert!(!ours.contains("bsl.zip"));
     }
 }

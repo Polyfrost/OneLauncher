@@ -20,9 +20,7 @@ use crate::{
 const TOAST_W: f32 = 300.;
 const TRAVEL: f32 = 320.;
 const TTL_MS: f32 = 5000.;
-/// Toasts sit below the navbar rather than on top of it: the startup/bundle-sync
-/// progress toast is on screen exactly when Home first appears, and at any
-/// smaller offset its card covered the nav links and account controls.
+/// Below the navbar a smaller offset let the startup progress toast cover the nav links
 const TOP_PX: f32 = crate::theme::NAVBAR_HEIGHT_PX + 12.;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -61,7 +59,7 @@ pub struct Toasts;
 impl Component for Toasts {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
-        // How many toasts the pointer is over; while any is hovered, every toast's timer pauses.
+        // While any toast is hovered every toast's timer pauses
         let hovering = use_state(|| 0usize);
 
         let entries: Vec<InboxEntry> = snapshot
@@ -99,7 +97,6 @@ impl Component for Toasts {
 #[derive(PartialEq)]
 struct ToastCard {
     entry: InboxEntry,
-    /// Shared across every toast: how many of them the pointer is currently over.
     hovering: State<usize>,
     key: DiffKey,
 }
@@ -129,7 +126,6 @@ impl Component for ToastCard {
             AnimNum::new(0., 1.).time(260).ease(Ease::Out)
         });
 
-        // Hovering any toast freezes this bar where it is; leaving runs out the remaining TTL.
         let paused = *self.hovering.read() > 0;
         let mut was_paused = use_state(|| false);
         let mut from_pct = use_state(|| 100.);
@@ -166,7 +162,7 @@ impl Component for ToastCard {
         let opacity = fade.read().value();
         let ttl_pct = ttl_bar_anim.read().value();
 
-        // A card can be unmounted while hovered (dismissing it), which emits no `out` event.
+        // A card can be unmounted while hovered which emits no `out` event
         let mut hovering = self.hovering;
         let hover_flag = use_hook(|| Rc::new(Cell::new(false)));
         let (over_flag, out_flag, drop_flag) =
@@ -195,8 +191,8 @@ impl Component for ToastCard {
             .width(Size::px(TOAST_W))
             .offset_x(offset)
             .opacity(opacity)
-            // `over`/`out` rather than `enter`/`leave`: the latter are exclusive to the deepest
-            // node, so moving onto the close button would count as leaving the toast.
+            // `enter`/`leave` are exclusive to the deepest node so the close button would
+            // read as leaving the toast
             .on_pointer_over(move |_| {
                 if over_flag.replace(true) {
                     return;

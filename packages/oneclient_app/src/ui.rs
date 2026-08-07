@@ -28,12 +28,8 @@ pub fn fmt_date(ts: chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M").to_string()
 }
 
-/// How long ago, for a timestamp shown next to something that happened.
-///
-/// Nothing re-renders on a timer, so the shortest band is a whole minute: a
-/// seconds counter would freeze at whatever it read when the row was drawn and
-/// quietly lie from then on. The version this replaced had a seconds band and
-/// no callers.
+/// Shortest band is a minute nothing re-renders on a timer so a seconds counter
+/// would freeze at whatever it read when the row was drawn
 pub fn relative_time(created_at: Instant) -> String {
     let secs = created_at.elapsed().as_secs();
     match secs {
@@ -44,10 +40,7 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
-/// A one-pixel rule in the component-border colour.
-///
-/// Returns the `Rect` rather than an `Element` so a caller that wants it inset
-/// or rounded can say so without copying the whole thing out again.
+/// Returns the `Rect` not an `Element` so callers can inset or round it
 pub fn divider() -> Rect {
     rect()
         .width(Size::fill())
@@ -55,8 +48,6 @@ pub fn divider() -> Rect {
         .background(theme::colors::component_border())
 }
 
-/// A quiet line of text centred in a fixed block: "nothing here yet", or a
-/// failure where a chart would otherwise be.
 pub fn centered_note(text: &str) -> Element {
     rect()
         .width(Size::fill())
@@ -71,10 +62,7 @@ pub fn centered_note(text: &str) -> Element {
         .into_element()
 }
 
-/// How many columns no wider than `max_col` fit across `width`.
-///
-/// One column until the grid has measured itself, so the first frame renders
-/// something rather than dividing by an unknown.
+/// Returns 1 until the grid has measured itself so the first frame still renders
 pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
     if width <= 0. {
         return 1;
@@ -82,13 +70,8 @@ pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
     (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
 }
 
-/// Lays `items` out in `cols` equal columns, filling row by row.
-///
-/// There is no wrapping flex row to lean on, so the split is done here from the
-/// width the grid last measured. It reports its own size back through `width`,
-/// which the caller feeds to [`grid_columns_for_width`] on the next render.
-/// Short final rows are padded with empty flex cells so their tiles keep the
-/// column width instead of stretching across the row.
+/// Reports its measured size back through `width` for [`grid_columns_for_width`]
+/// Short final rows are padded with empty flex cells so tiles keep the column width
 pub fn flow_grid(items: Vec<Element>, cols: usize, mut width: State<f32>, gap: f32) -> Element {
     let cols = cols.max(1);
 

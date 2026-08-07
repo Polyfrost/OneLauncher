@@ -10,8 +10,7 @@ const ORGANIZATION: &str = "Polyfrost";
 
 #[cfg(not(debug_assertions))]
 const APPLICATION: &str = "OneClient";
-// Dev builds use a separate launcher dir (e.g. `oneclient-dev`) so a running
-// dev environment never touches prod data.
+// Separate dir so a running dev environment never touches prod data
 #[cfg(debug_assertions)]
 const APPLICATION: &str = "OneClient-dev";
 
@@ -70,8 +69,7 @@ pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
 	Ok(launcher_dir()?.join(".minecraft"))
 }
 
-/// Marks a cluster folder as being its own game directory rather than playing
-/// out of the shared `.minecraft`.
+/// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
 
 pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
@@ -82,11 +80,8 @@ pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
 	cluster_dir(folder_name).is_ok_and(|dir| dir.join(DEDICATED_MARKER).exists())
 }
 
-/// Where a cluster's game actually runs.
-///
-/// Lives here rather than on `Cluster` because the content layer has to resolve
-/// it from a bare `ClusterRow` too, and a second copy of the marker-file rule is
-/// exactly the kind of drift that leaves files behind.
+/// Lives here not on `Cluster` so the content layer can resolve it from a bare
+/// `ClusterRow` without duplicating the marker-file rule
 pub fn cluster_game_dir(folder_name: &str) -> PathsResult<PathBuf> {
 	if cluster_uses_dedicated_dir(folder_name) {
 		cluster_dir(folder_name)

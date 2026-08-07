@@ -5,11 +5,8 @@ use crate::error::{EventError, EventResult};
 use crate::event::{Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal};
 use crate::prompt::{Answer, Chosen, Prompt, PromptRequest};
 
-/// The sending half of the event bus.
-///
-/// Cheap to clone, since `UnboundedSender` is refcounted internally and every
-/// clone feeds the same channel. Hand clones to subsystems rather than wrapping
-/// this in an `Arc`.
+/// Cheap to clone every clone feeds the same channel
+/// Hand clones to subsystems rather than wrapping this in an `Arc`
 #[derive(Clone, Debug)]
 pub struct EventBus {
 	tx: mpsc::UnboundedSender<Event>,
@@ -23,35 +20,25 @@ impl EventBus {
 		Self { tx }
 	}
 
-	/// Creates a bus and its receiver. The owner of the receiver is the UI.
 	#[must_use]
 	pub fn channel() -> (Self, EventReceiver) {
 		let (tx, rx) = mpsc::unbounded_channel();
 		(Self::new(tx), rx)
 	}
 
-	/// The one primitive every other method goes through.
-	///
-	/// A closed bus is logged rather than returned: emitting is called from
-	/// deep inside download loops where there is nothing useful to do about a
-	/// UI that has already shut down. Use [`EventBus::ask`] when you need to
-	/// know whether the other end is alive.
+	/// A closed bus is logged rather than returned use [`EventBus::ask`] when
+	/// you need to know whether the other end is alive
 	pub fn emit(&self, event: impl Into<Event>) {
 		if let Err(err) = self.tx.send(event.into()) {
 			tracing::debug!("dropping event, bus is closed: {err}");
 		}
 	}
 
-	/// Whether the receiving end is still up.
 	#[must_use]
 	pub fn is_open(&self) -> bool {
 		!self.tx.is_closed()
 	}
 
-	// --- notifications -----------------------------------------------------
-
-	/// Starts building a notification. Nothing is emitted until `.send()`.
-	///
 	/// ```ignore
 	/// events.notify("Install failed").body(err.to_string()).error().send();
 	/// ```
@@ -66,14 +53,7 @@ impl EventBus {
 		}
 	}
 
-	// --- progress ----------------------------------------------------------
-
-	/// Reports progress for a single task. Repeated calls with the same `id`
-	/// replace one another.
-	///
-	/// Not a builder: this runs tens of thousands of times during a download,
-	/// and the argument list is short enough that a builder would only add
-	/// ceremony to a hot path.
+	/// Repeated calls with the same `id` replace one another
 	pub fn progress(&self, id: Uuid, label: impl Into<String>, current: u64, total: u64) {
 		self.emit(ProgressEvent::Update {
 			id,
@@ -83,7 +63,6 @@ impl EventBus {
 		});
 	}
 
-	/// Converts the in-flight progress entry `id` into a finished message.
 	pub fn finish_progress(&self, id: Uuid, title: impl Into<String>, body: impl Into<String>) {
 		self.emit(ProgressEvent::Complete {
 			id,
@@ -91,8 +70,6 @@ impl EventBus {
 			body: body.into(),
 		});
 	}
-
-	// --- game --------------------------------------------------------------
 
 	pub fn game_stage(&self, cluster_id: i64, stage: LaunchStage) {
 		self.emit(GameEvent::Stage { cluster_id, stage });
@@ -112,19 +89,11 @@ impl EventBus {
 		});
 	}
 
-	// --- signals -----------------------------------------------------------
-
 	pub fn signal(&self, signal: Signal) {
 		self.emit(signal);
 	}
 
-	// --- prompts -----------------------------------------------------------
-
-	/// Asks the user a question and waits for the answer.
-	///
-	/// Returns `Ok(None)` when the prompt was dismissed. The caller's own value
-	/// for the chosen option comes back in [`Chosen::value`]; the untyped choice
-	/// id never escapes this function.
+	/// Returns `Ok(None)` when the prompt was dismissed
 	#[tracing::instrument(level = "debug", skip_all, fields(title = %prompt.title))]
 	pub async fn ask<T>(&self, prompt: Prompt<T>) -> EventResult<Option<Chosen<T>>> {
 		let Prompt {
@@ -147,8 +116,7 @@ impl EventBus {
 			})))
 			.map_err(|_| EventError::BusClosed)?;
 
-		// A dropped sender means the UI went away without answering, which is
-		// indistinguishable from a dead bus as far as the caller is concerned.
+		// A dropped sender means the UI went away without answering
 		let Some(answer) = reply_rx.await.map_err(|_| EventError::BusClosed)? else {
 			return Ok(None);
 		};
@@ -222,8 +190,6 @@ mod tests {
 			.dismiss("Cancel")
 	}
 
-	/// The whole point of the redesign: the caller gets its own enum back, not
-	/// a string it has to re-match.
 	#[tokio::test]
 	async fn ask_maps_the_answer_back_to_the_callers_value() {
 		let (bus, mut rx) = EventBus::channel();
@@ -280,8 +246,6 @@ mod tests {
 		assert!(task.await.unwrap().unwrap().is_none());
 	}
 
-	/// A front-end answering with a choice that was never offered is a bug, and
-	/// must not be silently folded into "the user cancelled".
 	#[tokio::test]
 	async fn unknown_choice_is_an_error_not_a_dismissal() {
 		let (bus, mut rx) = EventBus::channel();
@@ -298,8 +262,6 @@ mod tests {
 		);
 	}
 
-	/// Dropping the UI mid-prompt must unblock the waiting task rather than
-	/// hanging it forever.
 	#[tokio::test]
 	async fn dropping_the_receiver_unblocks_the_asker() {
 		let (bus, rx) = EventBus::channel();

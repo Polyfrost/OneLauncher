@@ -4,7 +4,7 @@ use sqlx::FromRow;
 pub enum OverrideType {
     Removed,
     Disabled,
-    /// Opt-in: install a file the bundle manifest ships with `enabled: false`.
+    /// Opt-in install a file the bundle manifest ships with `enabled: false`
     Enabled,
 }
 

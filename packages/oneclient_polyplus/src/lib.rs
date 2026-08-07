@@ -1,8 +1,3 @@
-//! Poly+ playtime reporting.
-//!
-//! Opens a websocket to the Poly+ backend for the signed-in account and keeps
-//! it alive while the user plays. Depends only on the auth service.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -66,10 +61,7 @@ enum Event {
     Message(Option<Message>),
 }
 
-/// Starts the Poly+ playtime reporter.
-///
-/// Takes the state it needs rather than reaching for a global; idempotent, so
-/// the first caller's handle is the one used for the process lifetime.
+/// Idempotent the first caller's handle is used for the process lifetime
 pub fn start(auth: Arc<oneclient_auth::AuthService>) {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
@@ -111,9 +103,8 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
             env!("CARGO_PKG_HOMEPAGE")
         ));
 
-    // Same WSAEMSGSIZE problem as the main client; see `oneclient_net::service`.
-    // The `hickory-dns` feature is enabled workspace-wide, so every builder is
-    // opted in unless it says otherwise.
+    // Same WSAEMSGSIZE problem as the main client see `oneclient_net::service`
+    // `hickory-dns` is enabled workspace-wide so opt out explicitly
     #[cfg(target_os = "windows")]
     {
         builder = builder.no_hickory_dns();
@@ -188,12 +179,7 @@ async fn run_session(
     .await
 }
 
-/// Keeps the playtime socket alive, stopping when `should_stop` says the
-/// session is no longer valid or the server hangs up.
-///
-/// Takes a predicate rather than the launcher state: this is a websocket ping
-/// loop, and whether the signed-in account changed is the caller's business.
-/// It also means the loop is testable without standing up a launcher.
+/// Returns when `should_stop` reports the session invalid or the server hangs up
 async fn pump<F, Fut>(
     websocket: &mut reqwest_websocket::WebSocket,
     ping_interval: Duration,

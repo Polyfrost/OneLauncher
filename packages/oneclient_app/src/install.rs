@@ -1,8 +1,3 @@
-//! Shared helpers for content installs and the notifications they raise.
-//!
-//! Lifted out of the bridge runtime so the actions layer can use them without
-//! the command loop existing.
-
 use std::sync::Arc;
 
 use oneclient_core::LauncherState;
@@ -16,8 +11,7 @@ use crate::notifications::{
     NotificationSpec, PackageUpdateGroup,
 };
 
-/// Names a cluster for a notification or modal header, falling back rather than
-/// failing: a missing row is not a reason to lose the whole message.
+/// Falls back to a placeholder a missing row must not lose the whole message
 pub async fn cluster_display_name(
     cluster_id: i64,
     services: &oneclient_core::LauncherServices,
@@ -28,8 +22,6 @@ pub async fn cluster_display_name(
         .unwrap_or_else(|_| "Cluster".to_string())
 }
 
-/// Turns the launching cluster's pending browser updates into what the modal
-/// renders. `None` when there is nothing to offer.
 pub async fn package_update_group(
     cluster_id: i64,
     updates: &[oneclient_core::BrowserPackageUpdate],
@@ -140,10 +132,7 @@ pub async fn cluster_update_notification(
     })
 }
 
-/// Builds a single notification summarising a batch bundle sync. Every changed
-/// cluster rides along on one "View changes" action so the notification keeps
-/// exactly two buttons no matter how many clusters moved; the modal does the
-/// per-cluster breakdown. `None` when nothing changed.
+/// All clusters share one "View changes" action so the notification keeps exactly two buttons
 pub async fn combined_cluster_update_spec(
     changed: &[(i64, oneclient_core::ApplyBundleUpdatesResult)],
     services: &oneclient_core::LauncherServices,
@@ -182,23 +171,17 @@ pub async fn combined_cluster_update_spec(
     })
 }
 
-/// An install's outcome together with the progress session it ran under.
-///
-/// The session is detached rather than finished so the caller can convert that
-/// same notification into the "Installed" / "Install failed" result, instead of
-/// leaving a finished progress card and raising a second notification beside it.
-/// `session_id` is `None` when the install never got as far as downloading.
+/// The session is detached not finished so the caller can reuse its notification
+/// as the "Installed" / "Install failed" result
+/// `session_id` is `None` if no download ran
 pub struct PackageInstall {
     pub session_id: Option<uuid::Uuid>,
     pub result: anyhow::Result<String>,
-    /// Required dependencies pulled in alongside the package, by display name.
     pub dependencies: Vec<String>,
-    /// Required dependencies that couldn't be resolved or downloaded. The
-    /// package still installs; the caller says so in the notification.
+    /// Unresolved or failed dependencies the package still installs
     pub missing_dependencies: Vec<String>,
 }
 
-/// "Added Sodium with 2 dependencies. Could not add: Fabric API."
 pub fn install_body(name: &str, dependencies: &[String], missing: &[String]) -> String {
     let mut body = format!("Added {name}");
 
@@ -253,8 +236,7 @@ pub async fn install_package(
         Err(err) => return PackageInstall::failed(err),
     };
 
-    // Worked out before the session starts so its children can be announced up
-    // front; a failure here leaves the package itself installable.
+    // Resolved before the session starts so its children can be announced up front
     let mut resolution = oneclient_content::packages::DependencyResolution::default();
     if oneclient_content::packages::resolves_dependencies(project.content_type) {
         match oneclient_content::packages::resolve_required(
@@ -292,8 +274,7 @@ pub async fn install_package(
     let mut installed_dependencies = Vec::new();
     let mut missing_dependencies = resolution.unresolved;
 
-    // Dependencies go in first so the package is never sitting in a cluster
-    // without them, however the run ends.
+    // Dependencies first so the package is never in a cluster without them however the run ends
     for dependency in &resolution.install {
         let child = session.child(
             dependency.project.name.clone(),

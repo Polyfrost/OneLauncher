@@ -17,9 +17,8 @@ struct OneClientApp;
 
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
-        // The station holds all app state, and radio state is `!Send`, so
-        // everything that writes it runs on the UI thread. `spawn_forever`, not
-        // `spawn`: these must outlive any component scope.
+        // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
+        // rather than `spawn` because these must outlive any component scope
         let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
 
         let actions = use_hook(move || {
@@ -27,8 +26,7 @@ impl App for OneClientApp {
             let (events_bus, events_rx) = oneclient_events::EventBus::channel();
             let actions = Actions::new(station, signals_tx);
 
-            // Started first so nothing emitted during startup waits on a
-            // consumer, though the bus is unbounded either way.
+            // Started first so nothing emitted during startup waits on a consumer
             spawn_forever(
                 EventPump {
                     events: events_rx,
@@ -41,10 +39,8 @@ impl App for OneClientApp {
             let startup = actions.clone();
             spawn_forever(async move {
                 match events::start_launcher(station, events_bus).await {
-                    // Chained rather than called alongside: `sync_bundles` needs
-                    // the launcher handle, and it sets `syncing_bundles` before
-                    // spawning its work, so firing it early would both fail and
-                    // leave the flag stuck, disabling every launch button.
+                    // Must follow startup `sync_bundles` needs the launcher handle and firing
+                    // it early leaves `syncing_bundles` stuck disabling every launch button
                     Ok(()) => startup.sync_bundles(),
                     Err(err) => events::report_startup_failure(&station, &err),
                 }
@@ -70,8 +66,7 @@ fn main() {
     let mut builder = Builder::new_multi_thread();
     builder.enable_all().max_blocking_threads(64);
 
-    // Debug builds emit unoptimized async code, which can cause stack overflows in some cases.
-	// Default stack size is 2MB, so we'll increase it to 3MB for debug builds
+    // Debug builds emit unoptimized async code that can overflow the default 2MB stack
     #[cfg(debug_assertions)]
     builder.thread_stack_size(3 * 1024 * 1024);
 
@@ -126,7 +121,7 @@ fn main() {
             std::env::var("ONECLIENT_GPU_CACHE_BYTES")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(512 * 1024 * 1024), // 512 MB
+                .unwrap_or(512 * 1024 * 1024),
         )
         .with_default_font(theme::DEFAULT_FONT);
 

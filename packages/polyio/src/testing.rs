@@ -1,23 +1,13 @@
-//! Helpers for tests. Gated behind the `testing` feature so they stay out of
-//! release builds; enable it as a dev-dependency.
-
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// A uniquely-named directory under the system temp dir, removed when dropped.
-///
-/// Prefer this over a bare `std::env::temp_dir().join(...)`: hand-rolled
-/// versions of this leak their directory on every run, because there is nothing
-/// to remove it once the test finishes.
-///
-/// The name embeds the process id and a counter, so concurrent tests (and
-/// concurrent *runs*) cannot collide.
+/// A uniquely-named directory under the system temp dir removed when dropped
 #[derive(Debug)]
 pub struct ScratchDir(PathBuf);
 
 impl ScratchDir {
-	/// Creates the directory. `tag` is only there to make a stray directory
-	/// identifiable if a test aborts hard enough to skip the destructor.
+	/// `tag` only makes a leaked directory identifiable if the destructor is
+	/// skipped
 	#[must_use]
 	pub fn new(tag: &str) -> Self {
 		static COUNTER: AtomicU64 = AtomicU64::new(0);

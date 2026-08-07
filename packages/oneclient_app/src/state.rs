@@ -1,13 +1,5 @@
-//! The app's own state, held in a freya-radio station.
-//!
-//! One struct republished over a `watch` channel woke every consumer on every
-//! change (a toast timer tick re-rendering components that only read
-//! `data_dir`) and deep-cloned the whole notification inbox on publish, tens of
-//! thousands of times during a download.
-//!
-//! [`AppChannel`] gives per-concern subscription instead, and because the
-//! station only requires `'static`, this owns [`NotificationState`] outright
-//! rather than cloning a snapshot out of it on every event.
+//! [`AppChannel`] gives per-concern subscription a single `watch` channel woke every
+//! consumer and deep-cloned the inbox on every event
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -19,23 +11,15 @@ use oneclient_events::LaunchStage;
 
 use crate::notifications::{InboxEntry, NotificationState, PendingPrompt};
 
-/// What a component can subscribe to. Writing through a channel wakes only the
-/// components that asked for it.
+/// Writing through a channel wakes only the components that subscribed to it
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum AppChannel {
-    /// Startup progress and the resolved data directory.
     Launcher,
-    /// Launcher settings and their save state.
     Settings,
-    /// Inbox, toasts and the pending prompt.
     Notifications,
-    /// Per-cluster launch stage and live log lines.
     Game,
-    /// Whether the account switcher popover is open.
     AccountSwitcher,
-    /// Live progress of an in-flight Microsoft sign-in.
     MicrosoftLogin,
-    /// Packages currently being installed into a cluster.
     Installs,
 }
 
@@ -45,17 +29,12 @@ impl RadioChannel<AppState> for AppChannel {}
 pub struct AppState {
     pub launcher: LauncherInit,
     pub settings: SettingsState,
-    /// The notification engine itself, not a snapshot of it.
-    ///
-    /// Both the event pump and UI actions fold into this, so it has to live where
-    /// both can reach it, and nothing has to clone the inbox per event.
+    /// The engine itself not a snapshot both the pump and UI actions fold into it
     pub notifications: NotificationState,
-    /// Held beside the engine because it folds events into the inbox by `&mut`
-    /// reference; keeping them together lets the engine stay a plain
-    /// state machine with no channels of its own.
+    /// Held beside the engine which folds events into it by `&mut` so the engine
+    /// stays a plain state machine with no channels of its own
     pub inbox: Vec<InboxEntry>,
     pub prompt: Option<PendingPrompt>,
-    /// Whether the notification centre panel is open.
     pub center_open: bool,
     pub game: GameState,
     pub account_switcher_open: bool,
@@ -63,8 +42,7 @@ pub struct AppState {
     pub installs: InstallState,
 }
 
-/// Package installs that are in flight, so the button that started one can stay
-/// disabled until it lands — and come back if it failed.
+/// In-flight installs so the button that started one stays disabled until it lands
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InstallState {
     pending: HashSet<(i64, ProviderId, String)>,
@@ -91,8 +69,7 @@ impl InstallState {
 pub struct LauncherInit {
     pub ready: bool,
     pub fetching: bool,
-    /// True while the background cluster-bundle download is running. Launch is
-    /// disabled until it clears.
+    /// Launch is disabled until this clears
     pub syncing_bundles: bool,
     pub error: Option<String>,
     pub data_dir: String,
@@ -115,9 +92,8 @@ pub struct SettingsState {
     pub error: Option<String>,
 }
 
-/// Live progress of an in-flight Microsoft sign-in, rendered inside the sign-in
-/// modal rather than as a toast. UI state: the core reports this as ordinary
-/// progress and has no opinion about where it is shown.
+/// Rendered inside the sign-in modal rather than as a toast the core reports it
+/// as ordinary progress and has no opinion about where it is shown
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LoginProgress {
     pub label: String,
@@ -130,11 +106,8 @@ pub struct GameState {
     pub stages: HashMap<i64, LaunchStage>,
     pub error: Option<String>,
     pub logs: HashMap<i64, Arc<Vec<Arc<str>>>>,
-    /// Clusters whose launch was started from the UI but has not been answered
-    /// by core yet.
-    ///
-    /// Core takes a few hundred ms to report [`LaunchStage::Checking`], and
-    /// every click that lands in that window used to spawn its own game.
+    /// Launches started from the UI but not yet answered by core which takes a few
+    /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
 }
 
@@ -144,8 +117,7 @@ impl GameState {
         self.stages.get(&cluster_id).copied()
     }
 
-    /// Claims the launch for this cluster, returning false if one is already in
-    /// flight — the re-entrancy guard behind the button's disabled state.
+    /// Returns false if a launch is already in flight the re-entrancy guard
     pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
         if self.is_active(cluster_id) || self.is_launch_pending(cluster_id) {
             return false;
@@ -223,7 +195,7 @@ mod tests {
         game.begin_launch(1);
         assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
 
-        // Held past a failure, which parks the stage at `Exited`.
+        // Held past a failure which parks the stage at `Exited`
         game.stages.insert(1, LaunchStage::Exited);
         assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
 

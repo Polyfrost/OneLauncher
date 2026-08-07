@@ -150,7 +150,6 @@ impl ScrollArea {
         self
     }
 
-    /// Called every render
     pub fn on_ctx(mut self, handler: impl FnMut(ScrollAreaCtx) + 'static) -> Self {
         self.on_ctx = Some(EventHandler::new(handler));
         self
@@ -237,7 +236,6 @@ impl ScrollArea {
         let mut drag_start_x = use_state::<Option<(f32, f32)>>(|| None);
         let mut shift_held = use_state(|| false);
 
-        // used to jump to the top when the reset key changes
         let reset_key = self.reset_key;
         let mut last_reset = use_state(|| reset_key);
         if reset_key.is_some() && *last_reset.peek() != reset_key {
@@ -327,7 +325,6 @@ impl ScrollArea {
             let do_h = h_delta != 0.0 && can_scroll_h;
             let do_v = v_delta != 0.0 && can_scroll_v;
 
-            // check if scrollable
             if !do_h && !do_v {
                 return;
             }

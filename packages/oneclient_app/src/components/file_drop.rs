@@ -1,14 +1,5 @@
-//! Window-wide file drops.
-//!
-//! [`FileDropOverlay`] is mounted by the app shell and owns every drop: while
-//! files hover the window it shows a veil, and once they land it asks which
-//! cluster they belong to and what each one should be installed as. No view
-//! handles drops itself, so dropping on the mods page and dropping on the home
-//! screen behave identically.
-//!
-//! Freya emits one `FileDrop` event per file, all within the same batch, so the
-//! shell handler accumulates them and the prompt's first render already sees
-//! the whole drop.
+//! Freya emits one `FileDrop` event per file within a single batch so the shell
+//! handler accumulates them before the prompt first renders
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -32,16 +23,13 @@ const FILE_ROW_H: f32 = 34.;
 const FILE_LIST_MAX_ROWS: usize = 5;
 const TYPE_DROPDOWN_W: f32 = 108.;
 
-/// Content types a dropped entry can be imported as. Worlds are directories and
-/// modpacks/datapacks have no view of their own, so they're deliberately absent.
+/// Worlds are directories and modpacks/datapacks have no view so both are excluded
 const IMPORTABLE: [ContentType; 3] = [
     ContentType::Mod,
     ContentType::ResourcePack,
     ContentType::Shader,
 ];
 
-/// Names that give away a shaderpack. Only a starting guess; every row has a
-/// dropdown, so a wrong sniff costs the user one click.
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
 
 fn content_label(content_type: ContentType) -> &'static str {
@@ -62,9 +50,7 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-/// Best guess at what a dropped entry is. A `.jar` is only ever a mod;
-/// everything else is ambiguous, so the page the drop landed on wins, then a
-/// name sniff, then the most common case.
+/// Precedence `.jar` is always a mod then the current route then a name sniff
 fn infer_content_type(path: &Path, route_type: Option<ContentType>) -> ContentType {
     if extension(path).as_deref() == Some("jar") {
         return ContentType::Mod;
@@ -89,11 +75,7 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
     }
 }
 
-/// Renders the shell's drop affordance and, once files land, the prompt asking
-/// where they should go.
-///
-/// The state lives in the shell (which owns the bubbling `on_file_drop`
-/// handler) and is passed down so the shell itself never re-renders on hover.
+/// State lives in the shell (owner of the bubbling `on_file_drop`) so it never re-renders on hover
 #[derive(PartialEq)]
 pub struct FileDropOverlay {
     pub hovering: State<bool>,
@@ -120,7 +102,6 @@ impl Component for FileDropOverlay {
     }
 }
 
-/// The full-window "drop anywhere" affordance shown while files are dragged over.
 #[derive(PartialEq)]
 struct DropVeil;
 
@@ -140,7 +121,7 @@ impl Component for DropVeil {
             .position(Position::new_global().top(0.).left(0.))
             .width(Size::window_percent(100.))
             .height(Size::window_percent(100.))
-            // Purely decorative: the drop must reach the shell handler beneath.
+            // Purely decorative the drop must reach the shell handler beneath
             .interactive(false)
             .center()
             .opacity(progress)
@@ -181,7 +162,6 @@ impl Component for DropVeil {
     }
 }
 
-/// Brand-tinted circle holding an icon, used by the veil card and the dialog header.
 fn icon_badge(icon: IconType, size: f32, icon_size: f32) -> impl IntoElement {
     rect()
         .width(Size::px(size))
@@ -211,8 +191,7 @@ impl Component for DropPrompt {
         let target = route_target(&route);
         let initial_cluster = target.map(|(id, _)| id).or(*active_cluster.peek());
         let selected_cluster = use_state(move || initial_cluster);
-        // Only the rows the user actually changed. Everything else falls back to
-        // the inferred type, so a second drop landing mid-prompt still gets one.
+        // Absent entries fall back to the inferred type covering drops landing mid-prompt
         let overrides = use_state(HashMap::<PathBuf, ContentType>::new);
 
         let clusters: Vec<Cluster> = settled_or_loading(&clusters_query).unwrap_or_default();
@@ -267,7 +246,7 @@ fn dialog_header(title: String, subtitle: String) -> impl IntoElement {
         .horizontal()
         .width(Size::fill())
         // Without Content::Flex the flexed text column doesn't resolve and the
-        // badge stops centring against it.
+        // badge stops centring against it
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(12.)
@@ -327,7 +306,7 @@ fn prompt_body(
     dispatch: crate::Actions,
     mut pending: State<Vec<PathBuf>>,
 ) -> Element {
-    // The remembered cluster may have been deleted while the prompt was open.
+    // The remembered cluster may have been deleted while the prompt was open
     let cluster_id = selected_cluster
         .read()
         .filter(|id| clusters.iter().any(|c| c.id == *id))

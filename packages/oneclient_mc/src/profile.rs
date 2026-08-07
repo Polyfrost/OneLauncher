@@ -244,11 +244,8 @@ pub async fn fetch_logged_in_profile(
     Ok(profile)
 }
 
-/// How long a cached profile is served without revalidating.
-///
-/// The alternative is a Mojang round trip before the first avatar can paint on
-/// every cold start. Skins change rarely, so this trades a bounded amount of
-/// staleness for startup that doesn't wait on the network.
+/// Served without revalidating so cold start doesn't wait on a Mojang round
+/// trip before the first avatar paints
 const PROFILE_CACHE_TTL_HOURS: i64 = 6;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -276,7 +273,6 @@ async fn fetch_profile_view(
     Ok(PlayerProfileView::from(summary))
 }
 
-/// Resolves a player's public profile preferring on-disk cache
 #[tracing::instrument(level = "debug", skip(client, access_token))]
 pub async fn fetch_player_profile_view(
     client: &RequestClient,

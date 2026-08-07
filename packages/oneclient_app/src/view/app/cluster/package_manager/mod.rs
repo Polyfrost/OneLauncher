@@ -71,14 +71,8 @@ pub fn use_content_meta(
     out
 }
 
-/// Builds the rows for one content type.
-///
-/// `stale` is the set of artifact hashes the last browser update check found a
-/// newer version for. Bundle-provided rows are built before it is consulted and
-/// never carry the flag, so the two update flows cannot both claim a package.
-///
-/// Rows for a bundle's hidden files are included and flagged; whether they
-/// reach the screen is [`HiddenFilter`]'s call.
+/// `stale` is the artifact hashes with a newer version bundle rows never carry it so the two update flows cannot both claim a package
+/// Hidden bundle files get flagged rows [`HiddenFilter`] decides whether they show
 pub fn bundle_packages(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
@@ -96,9 +90,7 @@ pub fn bundle_packages(
         by_hash.insert(info.hash.as_str(), info);
     }
 
-    // A package another bundle ships as a normal, user-facing file. Hidden is a
-    // per-bundle property, so one bundle carrying a mod as a private dependency
-    // must not suppress the bundle that offers it openly.
+    // Hidden is per-bundle so one bundle carrying a mod as a private dependency must not suppress a bundle that offers it openly
     let mut shown_elsewhere: HashSet<String> = HashSet::new();
     for bundle in bundles {
         for (file, _status) in &bundle.files {
@@ -119,8 +111,7 @@ pub fn bundle_packages(
                 continue;
             }
             let pid = file.kind.package_id();
-            // Let the bundle that lists it openly own the row, whatever the
-            // iteration order happens to be.
+            // Let the bundle that lists it openly own the row whatever the iteration order
             if file.hidden && shown_elsewhere.contains(&pid) {
                 continue;
             }
@@ -162,10 +153,7 @@ pub fn bundle_packages(
                 meta,
                 file.display_name(),
                 false,
-                // Emitted as an ordinary row carrying the flag rather than
-                // dropped here: the row is what `HiddenFilter` filters on, and
-                // the id counting as seen keeps the loose-content pass below
-                // from resurrecting the installed artifact as a local file.
+                // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
                 file.hidden,
             ));
         }
@@ -278,27 +266,20 @@ impl Tab {
 
     pub(super) fn matches(&self, p: &PackageEntry) -> bool {
         match self {
-            // Every package assigned to the cluster, regardless of origin.
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            // Browser = remote provider content that is NOT provided by a bundle.
             Tab::Browser => p.is_remote() && !p.in_bundle(),
             Tab::Local => !p.is_remote(),
         }
     }
 }
 
-/// A package is searched by what the user sees (its display name) and by what
-/// is on disk (its file name), whichever matches better.
 fn query_score(p: &PackageEntry, query: &SearchQuery) -> Option<MatchScore> {
     query.best_score([p.name.as_str(), p.file_name.as_str()])
 }
 
-/// Rows to show for the current toolbar state. The search is scoped to the
-/// active tab: a package has to belong to the tab *and* match the query, so
-/// typing in a category never pulls in packages from another one. `Tab::All`
-/// admits everything, which keeps a search from there a search over the whole
-/// cluster.
+/// Search is scoped to the active tab a package must match the tab *and* the query
+/// `Tab::All` searches the whole cluster
 fn visible_packages(
     items: &[PackageEntry],
     tab: Option<&Tab>,
@@ -314,9 +295,7 @@ fn visible_packages(
         .collect()
 }
 
-/// Reorders search results so the closest matches come first. Stable, so the
-/// sort the user picked in the toolbar survives as the tie-break between rows
-/// that matched equally well.
+/// Stable so the toolbar's sort survives as the tie-break between equally good matches
 fn rank_by_query(rows: &mut [PackageEntry], query: &SearchQuery) {
     rows.sort_by_key(|p| std::cmp::Reverse(query_score(p, query)));
 }
@@ -332,8 +311,7 @@ pub fn bundle_categories(bundles: &[BundleWithUpdateStatus]) -> Vec<String> {
     cats
 }
 
-/// `hidden` is applied here too, so a category whose only members are hidden
-/// bundle dependencies does not offer a tab that leads to an empty list.
+/// `hidden` applies here too so a category of only hidden dependencies offers no tab
 fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilter) -> Vec<Tab> {
     let mut cats: Vec<String> = categories.to_vec();
     for item in items.iter().filter(|p| hidden.keep(p)) {
@@ -344,7 +322,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         }
     }
 
-    // Category tabs are hidden when empty; All + Browser + Local are always shown.
+    // Category tabs are hidden when empty All + Browser + Local are always shown
     let mut tabs: Vec<Tab> = vec![Tab::All];
     tabs.extend(
         cats.into_iter()
@@ -398,9 +376,7 @@ impl Component for PackageManager {
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
 
-        // Minecraft reads its content once at startup, so a toggle made now is
-        // recorded but cannot reach the session already playing. Say so rather
-        // than letting the switch look like it did nothing.
+        // Minecraft reads its content once at startup so a toggle now cannot reach the running session
         let session_live = use_game_snapshot().is_active(cluster_id);
         let active = use_state(|| 0usize);
 
@@ -427,16 +403,12 @@ impl Component for PackageManager {
 
         let mut filtered = visible_packages(&items, tab_filter, &query, show, hidden);
         sort_mode.sort(&mut filtered);
-        // Relevance has to win while searching: with fuzzy matching, a name that
-        // only matched after forgiving a typo would otherwise sort above the one
-        // the user actually typed.
+        // Relevance has to win while searching a fuzzy typo match would otherwise outrank the exact one
         if !query.is_empty() {
             rank_by_query(&mut filtered, &query);
         }
 
-        // Coming up empty during a search is about the query, not about the tab
-        // having nothing in it, so it gets its own empty state naming the tab
-        // that was searched.
+        // Coming up empty during a search is about the query not the tab so it gets its own empty state
         let content_kind = if filtered.is_empty() && !query.is_empty() {
             ContentKind::NoMatches {
                 scope: match tab_filter {

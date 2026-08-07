@@ -8,10 +8,9 @@ use crate::data::java_executable_relative_path;
 use crate::error::JavaResult;
 use crate::service::parse_major_version;
 
-/// A `java` executable found on this machine and what probing it reported.
 pub type LocatedJava = (PathBuf, JavaCheckInfo);
 
-/// Every usable installation on this machine, best first.
+/// Best first
 #[tracing::instrument(level = "debug")]
 pub async fn locate_java() -> JavaResult<Vec<LocatedJava>> {
 	let paths = internal_locate_java();
@@ -36,10 +35,8 @@ pub async fn locate_java() -> JavaResult<Vec<LocatedJava>> {
 	Ok(valid)
 }
 
-/// The best installation satisfying `major`, if this machine has one.
-///
-/// The version requirement is a filter rather than part of the ranking, so a
-/// newer JDK can never stand in for the major that was actually asked for.
+/// `major` is a filter not a ranking input
+/// a newer JDK never stands in for the requested major
 #[must_use]
 pub fn best_for_major(candidates: &[LocatedJava], major: u32) -> Option<&LocatedJava> {
 	candidates
@@ -48,18 +45,14 @@ pub fn best_for_major(candidates: &[LocatedJava], major: u32) -> Option<&Located
 		.min_by(|(_, a), (_, b)| compare_candidates(a, b))
 }
 
-/// Best first: a JDK beats a JRE, and between two of a kind the newer wins.
-///
-/// A kit is preferred outright rather than only as a tie-break on version,
-/// since a JRE is missing tooling that mod loaders reach for, whereas an older
-/// patch level of the same major is merely older.
+/// Best first a JDK beats a JRE outright then the newer version wins
 fn compare_candidates(a: &JavaCheckInfo, b: &JavaCheckInfo) -> Ordering {
 	b.is_jdk
 		.cmp(&a.is_jdk)
 		.then_with(|| version_key(b).cmp(&version_key(a)))
 }
 
-/// `java.version` as numbers, so `21.0.10` sorts above `21.0.9`.
+/// Numeric so `21.0.10` sorts above `21.0.9`
 fn version_key(info: &JavaCheckInfo) -> (u32, Vec<u32>) {
 	let major = parse_major_version(&info.version).unwrap_or(0);
 	let parts = info

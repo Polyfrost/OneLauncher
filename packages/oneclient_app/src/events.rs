@@ -1,12 +1,5 @@
-//! Drains the core's event stream into the radio station.
-//!
-//! An event drain, the toast expiry timers, and the game-log flush. It runs
-//! under freya's `spawn`, not `tokio::spawn`, because radio state is `!Send`.
-//!
-//! The batching matters. During a download the core emits tens of thousands of
-//! progress events, and a radio write wakes every subscriber to that channel, so
-//! events are drained into a batch, folded, and written once per channel rather
-//! than once per event.
+//! Runs under freya's `spawn` not `tokio::spawn` radio state is `!Send`
+//! Events are batched and folded because a radio write wakes every subscriber
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -20,13 +13,9 @@ use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress};
 
-/// How long game log lines accumulate before being written.
-///
-/// A launch emits lines continuously; without this every line would wake the
-/// log view.
+/// Quiet period before log lines are written without it every line wakes the log view
 const GAME_LOG_FLUSH: Duration = Duration::from_millis(120);
 
-/// Cap on how many queued events are folded into a single write.
 const COALESCE_BUDGET: usize = 1024;
 
 pub struct EventPump {
@@ -38,8 +27,7 @@ pub struct EventPump {
 impl EventPump {
     pub async fn run(mut self) {
         let mut armed: HashMap<u64, ToastTimer> = HashMap::new();
-        // Hovering any toast pauses every toast, including ones that arrive
-        // while hovering.
+        // Hovering any toast pauses every toast including ones arriving while hovering
         let mut paused = false;
         let mut game_flush: Option<tokio::time::Instant> = None;
 
@@ -86,8 +74,7 @@ impl EventPump {
 
                     if game_flush.is_some_and(|d| d <= now) {
                         game_flush = None;
-                        // Nothing to write: log lines were folded in as they
-                        // arrived; this only ends the quiet period.
+                        // Lines were already folded in on arrival this only ends the quiet period
                         self.station.write_channel(AppChannel::Game);
                     }
                 }
@@ -133,7 +120,6 @@ impl EventPump {
         }
     }
 
-    /// Folds a batch of events into the station, one write per channel touched.
     fn apply(&mut self, batch: Vec<Event>) -> Folded {
         let mut folded = Folded::default();
         let mut engine_events = Vec::new();
@@ -162,8 +148,7 @@ impl EventPump {
                     cluster_id,
                     message,
                 }) => failed = Some((cluster_id, message)),
-                // The sign-in modal renders this inline rather than as a toast,
-                // so it is lifted out here and never reaches the engine.
+                // Lifted out so it never reaches the engine the sign-in modal renders it inline
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -247,8 +232,6 @@ struct Folded {
     java: bool,
 }
 
-/// Arms a timer for every toast that should have one, and drops timers for
-/// toasts that have gone.
 fn reconcile(
     station: &RadioStation<AppState, AppChannel>,
     armed: &mut HashMap<u64, ToastTimer>,
@@ -268,7 +251,6 @@ fn reconcile(
     armed.retain(|id, _| want.contains(id));
 }
 
-/// A toast's time-to-live, which hovering pauses and un-hovering resumes.
 enum ToastTimer {
     Running(tokio::time::Instant),
     Paused(Duration),
@@ -283,7 +265,7 @@ impl ToastTimer {
         }
     }
 
-    /// The instant this toast expires, or `None` while paused.
+    /// `None` while paused
     fn deadline(&self) -> Option<tokio::time::Instant> {
         match self {
             Self::Running(deadline) => Some(*deadline),
@@ -306,7 +288,6 @@ impl ToastTimer {
     }
 }
 
-/// Builds the view the prompt overlays render.
 #[must_use]
 pub fn prompt_view(state: &AppState) -> Option<PendingPromptView> {
     state.prompt.as_ref().map(|prompt| PendingPromptView {
@@ -317,8 +298,6 @@ pub fn prompt_view(state: &AppState) -> Option<PendingPromptView> {
     })
 }
 
-/// Everything the app needs before the UI can do anything: build the launcher,
-/// publish the handle, then start the background work.
 pub async fn start_launcher(
     station: RadioStation<AppState, AppChannel>,
     events: oneclient_events::EventBus,
@@ -359,7 +338,6 @@ pub async fn start_launcher(
     Ok(())
 }
 
-/// Records a startup failure where the user can see it.
 pub fn report_startup_failure(
     station: &RadioStation<AppState, AppChannel>,
     err: &anyhow::Error,

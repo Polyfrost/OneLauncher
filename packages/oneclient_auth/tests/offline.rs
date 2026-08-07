@@ -2,7 +2,6 @@ use chrono::{TimeDelta, Utc};
 use oneclient_auth::{AccountKind, CredentialsStore, offline_account, offline_uuid};
 use uuid::Uuid;
 
-// fake launcher dir because yes
 fn isolate_launcher_dir() {
     oneclient_common::paths::set_launcher_dir(
         std::env::temp_dir().join(format!("oneclient-auth-test-{}", Uuid::new_v4())),

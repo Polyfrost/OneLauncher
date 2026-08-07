@@ -1,14 +1,7 @@
-//! Everything the UI can ask for.
+//! Core operations go onto freya's UI-thread executor radio state is `!Send`
 //!
-//! A method per operation, each free to return a result. Core operations go
-//! onto freya's UI-thread executor, since radio state is `!Send` and anything
-//! that writes it must run there; pure UI toggles write it immediately.
-//!
-//! Always `spawn_forever`, never `spawn`. Freya's `spawn` binds a task to the
-//! calling component's scope and cancels it on unmount; these are started from
-//! event handlers, so a launch kicked off from a panel that then re-renders
-//! would have its log tail and exit watcher killed underneath it. The work is
-//! app-scoped, not component-scoped.
+//! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
+//! the calling component unmounts this work is app-scoped not component-scoped
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -33,38 +26,25 @@ use crate::notifications::{
 };
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
-/// How long the launch button stays disabled after a click, at minimum.
-///
-/// Over-disabling is the cheaper mistake: a button that is dead for two seconds
-/// after a failed launch beats one that lets a second game start.
+/// Over-disabling is the cheaper mistake a dead button beats a second game
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
 
-/// How long the pre-launch update check may take before the launch goes ahead
-/// without it.
-///
-/// Mirrors `oneclient_net`'s reachability probe rather than reqwest's own
-/// per-request timeouts, which are minutes long and sized for downloads. This
-/// one sits between the user pressing Play and the game starting.
+/// Mirrors `oneclient_net`'s reachability probe not reqwest's per-request
+/// timeouts which are minutes long This sits between Play and the game
 const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(8);
 
-/// What a launch should do about the updates its check turned up.
 #[derive(Debug, Clone, PartialEq)]
 enum LaunchUpdatePlan {
-    /// Launch straight away. The cache has still been written.
     Nothing,
     Apply(Vec<oneclient_core::BrowserPackageUpdate>),
     Prompt(Vec<oneclient_core::BrowserPackageUpdate>),
 }
 
-/// Decides what a launch does with its pending updates.
-///
-/// Pure, and deliberately separate from the work it describes: the mode is the
-/// one piece of this flow with three-way behaviour worth pinning down in tests,
-/// and none of it needs a launcher, a database or a provider to be true.
+/// Kept pure and separate from the work it describes so the three-way mode is
+/// testable without a launcher database or provider
 ///
 /// `pending` has already had declined versions filtered out by
-/// `BrowserUpdateCheck::pending`, so nothing here re-asks a question the user
-/// has answered.
+/// `BrowserUpdateCheck::pending`
 fn plan_launch_updates(
     mode: PackageUpdateMode,
     pending: Vec<oneclient_core::BrowserPackageUpdate>,
@@ -74,22 +54,17 @@ fn plan_launch_updates(
     }
 
     match mode {
-        // The check ran and the cache was written before this point; skipping
-        // is only ever about what the user is shown.
+        // The cache was already written skipping only affects what is shown
         PackageUpdateMode::Skip => LaunchUpdatePlan::Nothing,
         PackageUpdateMode::Automatic => LaunchUpdatePlan::Apply(pending),
         PackageUpdateMode::Prompt => LaunchUpdatePlan::Prompt(pending),
     }
 }
 
-/// Asks the event pump to do something it alone owns.
-///
-/// The pump holds the toast timers, so an action that adds or removes a toast
-/// has to tell it to re-arm; and hover-pause is a property of the timers, not of
-/// any state a component reads.
+/// The pump alone owns the toast timers so adding or removing a toast has to
+/// tell it to re-arm hover-pause is a timer property not component state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PumpSignal {
-    /// The notification engine changed; re-arm toast timers.
     Reconcile,
     PauseToasts,
     ResumeToasts,
@@ -114,7 +89,6 @@ impl Actions {
         let _ = self.pump.send(signal);
     }
 
-    /// Folds a change into the notification engine, then re-arms toast timers.
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
         {
             let mut guard = self.station.clone().write_channel(AppChannel::Notifications);
@@ -130,8 +104,6 @@ impl Actions {
             .settings
             .error = error;
     }
-
-    // --- launcher settings -------------------------------------------------
 
     pub fn reload_settings(&self) {
         let station = self.station;
@@ -178,8 +150,6 @@ impl Actions {
         });
     }
 
-    /// Applies a settings change in memory and publishes it, returning the
-    /// snapshot to persist.
     fn mutate_settings(&self, mutate: impl FnOnce(&mut LauncherSettings)) -> Option<LauncherSettings> {
         let state = launcher::state().ok()?;
         let updated = {
@@ -214,8 +184,7 @@ impl Actions {
         self.persist(updated);
     }
 
-    /// Not persisted: "seen" versions are only used to decide whether to show
-    /// the changelog this run, and the next real save carries them along.
+    /// Not persisted the next real save carries the seen versions along
     pub fn record_seen_version(&self, version: impl Into<String>) {
         let version = version.into();
         self.mutate_settings(|settings| {
@@ -254,8 +223,6 @@ impl Actions {
             self.persist(updated);
         }
     }
-
-    // --- settings profiles -------------------------------------------------
 
     pub fn save_global_profile(&self, profile: GameSettingsProfile) {
         let actions = self.clone();
@@ -411,8 +378,7 @@ impl Actions {
                 tracing::error!("failed to set loader version: {err:#}");
                 return;
             }
-            // Best effort: the cluster is still usable if the stage reset fails,
-            // it just will not re-download on next launch.
+            // Best effort on failure the cluster just will not re-download
             let _ = state
                 .clusters
                 .set_stage(cluster_id, ClusterStage::NotReady)
@@ -420,8 +386,6 @@ impl Actions {
             super::invalidate_cluster_queries().await;
         });
     }
-
-    // --- migration ---------------------------------------------------------
 
     pub fn import_launcher(
         &self,
@@ -451,8 +415,6 @@ impl Actions {
             }
         });
     }
-
-    // --- java --------------------------------------------------------------
 
     pub fn install_java_runtime(&self, vendor: oneclient_java::JavaVendor, major: u32) {
         spawn_forever(async move {
@@ -500,8 +462,6 @@ impl Actions {
             }
         });
     }
-
-    // --- notifications (pure UI) -------------------------------------------
 
     pub fn toggle_notification_center(&self) {
         self.with_engine(|state| {
@@ -568,8 +528,8 @@ impl Actions {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
 
-    /// Hovering any toast pauses every toast, including ones that arrive while
-    /// hovering, which is why this is a pump signal rather than a state flag.
+    /// Hovering any toast pauses every toast including ones arriving while
+    /// hovering hence a pump signal rather than a state flag
     pub fn pause_toasts(&self) {
         self.nudge(PumpSignal::PauseToasts);
     }
@@ -623,7 +583,6 @@ impl Actions {
         });
     }
 
-    /// Debug-only: drives a fake progress notification through the real path.
     pub fn send_test_progress(&self, current: u64, total: u64) {
         let Ok(state) = launcher::state() else { return };
         let id = uuid::Uuid::from_u128(0x0CE0_0CE0_0CE0_0CE0_0CE0_0CE0_0CE0_0CE0);
@@ -633,19 +592,8 @@ impl Actions {
             .progress(id, "Downloading assets", current, total);
     }
 
-    // --- game --------------------------------------------------------------
-
-    /// The Play button. Starts a launch, at most one per cluster.
-    ///
-    /// The pending flag is raised synchronously, before the first `await`, so
-    /// the button is already disabled by the time a second click of a
-    /// double-click could be dispatched; waiting for core to report `Checking`
-    /// left a few hundred ms where every click spawned its own game. The claim
-    /// itself is the guard, so a click that bypasses the disabled attribute
-    /// (keyboard activation, replayed events) is dropped here too. It also
-    /// covers the pre-launch work in [`launch`], which the core does not own —
-    /// otherwise the update modal could sit open above a Play button still
-    /// inviting a second press.
+    /// The pending flag is raised synchronously before the first `await` the
+    /// claim itself is the guard against a double-click spawning two games
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         let claimed = self
             .station
@@ -663,8 +611,8 @@ impl Actions {
             let started = Instant::now();
             launch(&actions, cluster_id).await;
 
-            // A launch that fails instantly would hand the button back inside
-            // the same click burst, so hold it for the floor either way.
+            // An instant failure would hand the button back inside the same
+            // click burst so hold it for the floor either way
             if let Some(remaining) = LAUNCH_HOLD.checked_sub(started.elapsed()) {
                 tokio::time::sleep(remaining).await;
             }
@@ -690,8 +638,6 @@ impl Actions {
             .game
             .error = None;
     }
-
-    // --- content -----------------------------------------------------------
 
     pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
         spawn_forever(async move {
@@ -761,8 +707,8 @@ impl Actions {
             )
             .await;
 
-            // The download already raised a progress notification; the outcome
-            // replaces it in place rather than arriving as a second one.
+            // Replaces the download's progress notification in place rather
+            // than arriving as a second one
             let spec = match &install.result {
                 Ok(name) => NotificationSpec {
                     title: "Installed".to_string(),
@@ -793,10 +739,8 @@ impl Actions {
             });
 
             if install.result.is_ok() {
-                // Installing a second version of something the cluster already
-                // had leaves the newest live and the rest switched off. Done
-                // before the refresh below so the version list never renders the
-                // moment where both copies read as active.
+                // Before the refresh below so the version list never renders
+                // the moment where both copies read as active
                 if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
                     cluster_id,
                     &state.services.content(),
@@ -808,8 +752,6 @@ impl Actions {
 
                 super::invalidate_cluster_content_queries().await;
 
-                // Everything else the install touched is nobody's blocker and
-                // catches up on the usual signal.
                 state
                     .services
                     .events
@@ -820,15 +762,11 @@ impl Actions {
         });
     }
 
-    /// Drops one installed version of a browsed package.
+    /// Shares the installs channel with [`Self::install_package`] so every row's
+    /// button reads as busy while one is being acted on
     ///
-    /// Shares the installs channel with [`Self::install_package`] so the whole
-    /// project reads as busy while this runs: the version list has a button per
-    /// row, and none of them should be pressable while one is being acted on.
-    ///
-    /// The removal is recorded as a bundle override when a bundle owns the
-    /// artifact — the same thing the package manager's remove does. Without it
-    /// the next sync puts the version straight back.
+    /// Recorded as a bundle override when a bundle owns the artifact otherwise
+    /// the next sync puts the version straight back
     pub fn remove_package_version(
         &self,
         cluster_id: ClusterId,
@@ -874,9 +812,8 @@ impl Actions {
                 Ok(()) => {
                     events.notify("Removed").body(display_name).send();
 
-                    // Same reasoning as the install path: what the row turns
-                    // back into is read straight off the cluster's content, so
-                    // that is refreshed before the busy flag drops.
+                    // The row's next state is read off the cluster's content
+                    // so refresh that before the busy flag drops
                     super::invalidate_cluster_content_queries().await;
                     events.signal(oneclient_events::Signal::ClustersChanged);
                 }
@@ -960,11 +897,8 @@ impl Actions {
         });
     }
 
-    /// Syncs the bundle catalog and brings every cluster up to date.
-    ///
-    /// `syncing_bundles` gates every launch button, so the flag must not be
-    /// raised unless this can actually clear it, hence the readiness check before
-    /// the write rather than inside the task.
+    /// `syncing_bundles` gates every launch button so the readiness check must
+    /// happen before the flag is raised not inside the task
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
             Ok(state) => state,
@@ -993,10 +927,8 @@ impl Actions {
                 tracing::error!("bundle cluster provisioning failed: {err:#}");
             }
 
-            // One shared grouped session for the whole batch, so every cluster's
-            // downloads surface as a single "update in progress" notification.
-            // `detach` hands that entry over so it can be converted to the
-            // finished "view changes" state in place rather than replaced.
+            // One grouped session for the batch so all downloads surface as a
+            // single notification `detach` lets it be converted in place
             let session = oneclient_events::GroupedProgressSession::start(
                 &state.services.events,
                 "Updating mods",
@@ -1025,24 +957,11 @@ impl Actions {
         });
     }
 
-    // --- browser package updates -------------------------------------------
-
-    /// Brings the launching cluster's browser-installed packages up to date,
-    /// or asks about them, before the game starts.
+    /// The check runs and the cache is written whatever the mode says keeping
+    /// the package manager's "Update available" markers honest
     ///
-    /// The check runs and the cache is written whatever the mode says — that is
-    /// what keeps the "Update available" markers in the package manager honest
-    /// for users who never want the modal. The mode only decides what the user
-    /// sees and whether anything is installed.
-    ///
-    /// Returns once the launch may proceed. In `Prompt` mode that means once
-    /// the user has answered every row or dismissed the modal; the applies
-    /// themselves complete before their rows disappear, so nothing is still
-    /// downloading into the cluster when the game starts.
-    ///
-    /// Never fails the launch. An unreachable provider, a check that runs long,
-    /// a failed install: all of them log and let the game start on what is
-    /// already installed.
+    /// Returns once the launch may proceed nothing is still downloading then
+    /// Never fails the launch every error logs and lets the game start
     async fn resolve_package_updates_before_launch(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
@@ -1050,11 +969,8 @@ impl Actions {
     ) {
         let content = state.services.content();
 
-        // Bounded because this sits between the user pressing Play and the game
-        // starting. A network that hangs rather than refuses would otherwise
-        // hold the launch for reqwest's own much longer timeouts, so the check
-        // gets the same budget the reachability probe uses and the launch
-        // continues on whatever is already installed.
+        // Bounded a hanging network would otherwise hold the launch for
+        // reqwest's much longer timeouts
         let check = match tokio::time::timeout(
             UPDATE_CHECK_BUDGET,
             oneclient_core::refresh_browser_package_updates(cluster_id, &content),
@@ -1099,9 +1015,8 @@ impl Actions {
         }
     }
 
-    /// The launching cluster's effective mode, with the usual profile-over-
-    /// global inheritance. Anything unreadable falls back to the default rather
-    /// than blocking the launch on a settings lookup.
+    /// Anything unreadable falls back to the default rather than blocking the
+    /// launch on a settings lookup
     async fn cluster_update_mode(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
@@ -1122,8 +1037,7 @@ impl Actions {
             .unwrap_or_default()
     }
 
-    /// Installs every pending update, in one grouped progress notification so
-    /// the pre-launch pause has something to show for itself.
+    /// One grouped progress notification so the pre-launch pause shows something
     async fn apply_updates_for_launch(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
@@ -1150,8 +1064,8 @@ impl Actions {
             match oneclient_core::apply_browser_package_update(update, Some(&child), &content).await
             {
                 Ok(_) => applied += 1,
-                // One package failing is not a reason to hold the game back;
-                // the cache row survives, so the next launch offers it again.
+                // Not a reason to hold the game back the cache row survives
+                // so the next launch offers it again
                 Err(err) => tracing::warn!(
                     package = %update.display_name,
                     error = %err,
@@ -1184,7 +1098,6 @@ impl Actions {
         }
     }
 
-    /// Opens the modal and waits for the user to be done with it.
     async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
         let (done, wait) = tokio::sync::oneshot::channel();
 
@@ -1193,12 +1106,10 @@ impl Actions {
             state.center_open = false;
         });
 
-        // An error means the modal state was replaced or torn down, which is
-        // equally a reason to stop waiting and get on with the launch.
+        // A replaced or torn-down modal is equally a reason to stop waiting
         let _ = wait.await;
     }
 
-    /// Applies one update from the modal, then drops that row from it.
     pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
         let actions = self.clone();
         spawn_forever(async move {
@@ -1252,8 +1163,7 @@ impl Actions {
                     .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
             });
 
-            // A failed update stays in the list: the row is still out of date,
-            // and the user may want to try again.
+            // A failed update stays in the list so the user can retry
             if result.is_ok() {
                 actions.with_engine(|app| {
                     app.notifications
@@ -1264,8 +1174,8 @@ impl Actions {
         });
     }
 
-    /// Declines one update. The package stays marked out of date; only the
-    /// modal stops asking, and only for this version.
+    /// The package stays marked out of date only the modal stops asking and
+    /// only for this version
     pub fn skip_package_update(&self, cluster_id: ClusterId, hash: impl Into<String>) {
         let hash = hash.into();
         let actions = self.clone();
@@ -1289,19 +1199,14 @@ impl Actions {
     }
 }
 
-/// The launch itself. Failures are reported as game events, so the caller only
-/// has to know that the attempt is over.
-///
-/// Everything before [`oneclient_core::launch_cluster`] is pre-launch work the
-/// core does not own: renewing the account token, and bringing
-/// browser-installed packages up to date.
+/// Failures are reported as game events so the caller only has to know the
+/// attempt is over Everything before `launch_cluster` is pre-launch work
 async fn launch(actions: &Actions, cluster_id: ClusterId) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
 
     events.game_stage(cluster_id, oneclient_events::LaunchStage::Checking);
 
-    // Renews a lapsed token before launching.
     let account = match state.auth.default_account_for_launch().await {
         Ok(account) => account,
         Err(err) => {
@@ -1318,18 +1223,15 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
-    // Before the game process, never after: Minecraft reads its mods once at
-    // startup, so an update applied to a live session would do nothing until
-    // the next launch anyway.
+    // Before the game process never after Minecraft reads its mods once at
+    // startup
     actions
         .resolve_package_updates_before_launch(&state, cluster_id)
         .await;
 
     if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
-        // A launch that failed because a file simply is not there is the one
-        // failure the launcher can fix by itself. Showing the user a path inside
-        // our own metadata folder and stopping leaves them with nothing to act
-        // on, so repair first and only report if that does not help.
+        // A missing file is the one failure the launcher can fix itself and a
+        // path inside our metadata folder gives the user nothing to act on
         if err.indicates_missing_files() {
             repair_and_relaunch(&state, cluster_id, &account, err).await;
             return;
@@ -1339,12 +1241,8 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     }
 }
 
-/// Runs a verify-and-repair pass, then tries the launch once more.
-///
-/// Only ever one retry: if the game still cannot start after every file has
-/// been hashed and the broken ones re-downloaded, the problem is not missing
-/// files, and trying again would just spend another few minutes to show the
-/// same error.
+/// Only ever one retry if the game still will not start after a full rehash and
+/// repair the problem is not missing files
 async fn repair_and_relaunch(
     state: &std::sync::Arc<oneclient_core::LauncherState>,
     cluster_id: ClusterId,
@@ -1366,8 +1264,8 @@ async fn repair_and_relaunch(
         Ok(report) => report,
         Err(repair_err) => {
             tracing::error!(cluster_id, "repair failed: {repair_err:#}");
-            // The original failure is what the user was trying to do, so lead
-            // with it; the repair failure explains why it was not fixed.
+            // Lead with the original failure the repair failure explains why
+            // it was not fixed
             events.game_failed(
                 cluster_id,
                 format!("{original:#} (repair also failed: {repair_err:#})"),

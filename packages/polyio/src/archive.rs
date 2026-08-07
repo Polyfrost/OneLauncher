@@ -8,7 +8,6 @@ use tokio_util::compat::TokioAsyncWriteCompatExt;
 
 use crate::{IOError, PolyIOResult};
 
-/// Reads a zip archive from a byte array
 #[tracing::instrument(skip(data, f), level = "debug")]
 pub async fn read_zip_entries_bytes<F>(data: Vec<u8>, mut f: F) -> PolyIOResult<()>
 where
@@ -38,7 +37,6 @@ where
 	Ok(())
 }
 
-/// Reads a zip archive from a byte array and returns a stream of entries.
 #[tracing::instrument(skip(data), level = "debug")]
 pub fn stream_zip_entries_bytes(
 	data: Vec<u8>,
@@ -64,7 +62,6 @@ pub fn stream_zip_entries_bytes(
 	}
 }
 
-/// Unzips a zip archive from a byte array
 #[tracing::instrument(
     level = "debug",
     skip(data, dest_path),
@@ -79,7 +76,6 @@ pub async fn unzip_bytes(
 	unzip_bytes_filtered(data, None::<fn(&str) -> bool>, dest_path).await
 }
 
-/// Unzips a zip archive from a byte array
 #[tracing::instrument(
     level = "debug",
     skip(data, filter_entries, dest_path),
@@ -148,7 +144,6 @@ pub async fn extract_zip(
 	.await
 }
 
-/// Unzips a zip archive from a file
 #[tracing::instrument(
     level = "debug",
     skip(zip_path, dest_path, filter_entries, modify_entry_name),
@@ -206,11 +201,8 @@ pub async fn extract_zip_filtered(
 	Ok(())
 }
 
-/// Reads the bytes of every non-directory zip entry whose name passes `filter`.
-///
-/// Returns `(entry_name, bytes)` pairs. Each matching entry is read fully into
-/// memory, so this is meant for small files (e.g. bundle config overrides), not
-/// large archives.
+/// Each matching entry is read fully into memory so this is for small files
+/// not large archives
 #[tracing::instrument(
     level = "debug",
     skip(zip_path, filter),
@@ -245,7 +237,7 @@ pub async fn read_zip_file_entries(
 	Ok(out)
 }
 
-/// Returns a zip file entry's bytes without reading the entire file into memory.
+/// Returns a zip file entry's bytes without reading the entire file into memory
 #[tracing::instrument(
     level = "debug",
     skip(reader)

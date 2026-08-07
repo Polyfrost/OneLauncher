@@ -34,7 +34,6 @@ impl UpdateTab {
         }
     }
 
-    /// Empty-state copy; the tab labels don't read as sentences on their own.
     fn empty_text(self) -> &'static str {
         match self {
             UpdateTab::Updates => "Nothing was updated.",
@@ -68,7 +67,6 @@ impl UpdateTab {
     }
 }
 
-/// One cluster's resolved package names for the active tab.
 struct ClusterGroup {
     cluster_id: i64,
     cluster_name: String,
@@ -86,9 +84,7 @@ impl Component for ClusterUpdatePopup {
 
         let summaries = snapshot.cluster_update.clone();
 
-        // Resolve pretty display names through the package-meta cache. Hooks
-        // must run unconditionally, so gather ids (empty when no summary) and
-        // query every remote provider before the early return below.
+        // Hooks must run unconditionally so query every provider before the early return below
         let all_items: Vec<&ClusterUpdateItem> = summaries
             .iter()
             .flatten()
@@ -170,8 +166,7 @@ fn content(
     let total: usize = summaries.iter().map(|s| s.total()).sum();
     let active_tab = *active.read();
 
-    // A batch sync can touch several clusters; a single-cluster update keeps the
-    // plain wording and the "Open cluster" shortcut in the footer.
+    // A batch sync can touch several clusters single-cluster keeps the footer shortcut
     let single = match summaries {
         [only] => Some((only.cluster_id, only.cluster_name.clone())),
         _ => None,
@@ -189,8 +184,7 @@ fn content(
         ),
     };
 
-    // Tab row: every category always shown with a count pill, even at zero, so
-    // the modal shape stays stable across clusters.
+    // Every category is shown even at zero so the modal shape stays stable
     let tabs = TabBar::new()
         .width(Size::fill())
         .height(Size::px(30.))
@@ -203,8 +197,7 @@ fn content(
                 .on_press(move |_| *set.write() = tab)
         }));
 
-    // Clusters with nothing in the active category drop out, so the list never
-    // shows an empty section header.
+    // Clusters empty in the active category drop out avoiding empty section headers
     let groups: Vec<ClusterGroup> = summaries
         .iter()
         .filter_map(|summary| {
@@ -344,9 +337,7 @@ fn change_list(
     scroll.into_element()
 }
 
-/// Section header naming the cluster a run of changes belongs to. Pressing it
-/// jumps straight to that cluster, which is the multi-cluster stand-in for the
-/// footer's "Open cluster" shortcut.
+/// Multi-cluster stand-in for the footer's "Open cluster" shortcut
 fn cluster_header(
     group: &ClusterGroup,
     first: bool,

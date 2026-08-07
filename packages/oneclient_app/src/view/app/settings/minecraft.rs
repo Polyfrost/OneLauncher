@@ -178,9 +178,7 @@ fn build_update(
     }
 }
 
-/// Dispatched on its own rather than folded into [`build_update`]: that effect
-/// mirrors text fields on every keystroke, and a dropdown has no intermediate
-/// states to debounce.
+/// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states
 fn update_mode_field(
     selected: PackageUpdateMode,
     dispatch: crate::Actions,

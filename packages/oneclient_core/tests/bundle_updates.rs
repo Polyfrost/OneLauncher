@@ -26,8 +26,7 @@ fn managed_file(enabled: bool) -> BundleFile {
     }
 }
 
-/// A file the catalog added after the cluster was last synced: nothing on the
-/// cluster tracks it, so it has no override either.
+/// Added by the catalog after the last sync untracked so it has no override
 fn newly_shipped_file() -> BundleFile {
     BundleFile {
         enabled: true,
@@ -129,7 +128,6 @@ async fn mod_still_in_manifest_is_not_removed() {
     assert!(check.updates_available.is_empty());
 }
 
-/// behaviour the disabled-mod case must not be allowed to imitate.
 #[tokio::test]
 async fn mod_dropped_from_manifest_is_removed() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
@@ -251,9 +249,9 @@ async fn emptied_bundle_does_not_take_on_new_catalog_files() {
     .unwrap();
     let cluster_id = cluster_with_tracked_mod(&state).await;
 
-    // The user disabled everything this bundle shipped, which is how you opt out
-    // of it. The newcomer has no override of its own precisely because it did not
-    // exist yet, and that absence must not read as consent.
+    // Disabling everything is how you opt out
+    // The newcomer lacks an override only
+    // because it did not exist yet that absence must not read as consent
     artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
         .await
         .unwrap();

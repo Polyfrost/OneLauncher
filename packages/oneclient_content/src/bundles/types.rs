@@ -109,13 +109,11 @@ pub struct BundlePackageRemoval {
     pub hash: String,
     pub package_id: String,
     pub bundle_name: String,
-    /// Provider of the installed artifact being removed, resolved from the
-    /// linked-artifact row at check time. `None` for external/local files.
+    /// `None` for external/local files
     pub provider: Option<ProviderId>,
-    /// Remote project id of the installed artifact, for meta-cache lookups.
     pub project_id: Option<String>,
-    /// Best-effort human name (display name / file name) captured at check
-    /// time, used as fallback when meta cache has no entry.
+    /// Captured at check time
+    /// fallback when the meta cache has no entry
     pub display_name: Option<String>,
 }
 

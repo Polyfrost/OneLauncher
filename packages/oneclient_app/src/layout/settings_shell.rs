@@ -51,9 +51,8 @@ struct SearchItem {
     route: Route,
 }
 
-// TODO: Replace this with inventory crate or something
+// TODO Replace this with inventory crate or something
 const SEARCH_INDEX: &[SearchItem] = &[
-    // Launcher
     SearchItem {
         id: "launcher.discord_rpc",
         icon: IconType::Link03,
@@ -70,7 +69,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["data dir", "directory", "folder", "open"],
         route: Route::SettingsLauncher {},
     },
-    // Appearance
     SearchItem {
         id: "appearance.accent_color",
         icon: IconType::PaintPour,
@@ -103,7 +101,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["reduce motion", "animations", "effects"],
         route: Route::SettingsAppearance {},
     },
-    // APIs
     SearchItem {
         id: "apis.modrinth_key",
         icon: IconType::Key01,
@@ -128,7 +125,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["endpoint", "api", "backend", "url"],
         route: Route::SettingsApis {},
     },
-    // Minecraft settings
     SearchItem {
         id: "minecraft.force_fullscreen",
         icon: IconType::Maximize01,
@@ -177,7 +173,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["hook", "command", "post exit", "postexit"],
         route: Route::SettingsMinecraft {},
     },
-    // Java (routing only, page isn't built from settings_row_focus yet)
+    // Java routing only the page is not built from settings_row_focus yet
     SearchItem {
         id: "java.install",
         icon: IconType::Download01,
@@ -194,7 +190,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["java", "runtime", "custom", "folder", "path"],
         route: Route::SettingsJava {},
     },
-    // Storage
     SearchItem {
         id: "storage.usage",
         icon: IconType::Database01,
@@ -214,7 +209,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         ],
         route: Route::SettingsStorage {},
     },
-    // Language
     SearchItem {
         id: "language.select",
         icon: IconType::Globe01,
@@ -226,7 +220,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         ],
         route: Route::SettingsLanguage {},
     },
-    // Developer
     SearchItem {
         id: "developer.compat_only",
         icon: IconType::SearchMd,
@@ -259,7 +252,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["debug", "page"],
         route: Route::SettingsDeveloper {},
     },
-    // Navigation-level items
     SearchItem {
         id: "nav.accounts",
         icon: IconType::Users01,
@@ -505,9 +497,7 @@ fn search_box(mut search: State<String>) -> impl IntoElement {
     )
 }
 
-/// How well a settings entry answers the query. The title is what the user is
-/// looking for, so a hit there outranks one in the blurb or the hidden keywords
-/// however well those scored — a description match is a hint, not the thing.
+/// A title hit outranks a keyword or description hit however well those scored
 fn settings_score(item: &SearchItem, query: &SearchQuery) -> Option<(u8, MatchScore)> {
     if let Some(score) = query.score(item.title) {
         return Some((2, score));
@@ -524,8 +514,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
         .filter_map(|item| settings_score(item, query).map(|(f, s)| (f, s, item.clone())))
         .collect();
 
-    // Best field, then best score, then the shortest title — the entry whose
-    // name is closest to being just the query.
+    // Shortest title last it is the entry closest to being just the query
     scored.sort_by_key(|(field, score, item)| {
         (
             std::cmp::Reverse(*field),
@@ -621,9 +610,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
     out
 }
 
-/// True when the newest changelog entry is newer than the one the user last read.
-/// While the changelog is still loading or failed to load we show no dot rather
-/// than guessing.
+/// False while the changelog is loading or failed rather than guessing
 fn has_unread_changelog() -> bool {
     let settings = use_settings_snapshot().settings;
     let query = use_changelog();

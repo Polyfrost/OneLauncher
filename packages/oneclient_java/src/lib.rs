@@ -1,9 +1,5 @@
-//! Locating, probing and installing Java runtimes.
-//!
-//! [`JavaService`] is the entry point. It takes a [`JavaStore`] rather than a
-//! database handle, so this crate has no schema dependency: the launcher wires
-//! up a SQLite-backed implementation, while tests and examples use
-//! [`MemoryJavaStore`].
+//! [`JavaService`] takes a [`JavaStore`] rather than a database handle so this
+//! crate has no schema dependency
 
 mod checker;
 mod data;

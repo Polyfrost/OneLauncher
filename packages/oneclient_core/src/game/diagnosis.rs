@@ -1,27 +1,20 @@
-//! Reading a crash out of the game's own output.
-//!
-//! Minecraft's exit code says only that it died. The log says why, and some of
-//! the reasons are ones the launcher can fix — so it is worth reading rather
-//! than handing the user a stack trace and an exit status.
+//! Minecraft's exit code says only that it died the log says why and some
+//! reasons are ones the launcher can fix
 
 use std::sync::{Arc, Mutex};
 
-/// A crash cause the launcher recognises and can act on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrashDiagnosis {
-    /// The JVM could not read a jar: truncated, wrong bytes, or not a zip at
-    /// all. On the classpath this is nearly always a damaged library or mod,
-    /// which is exactly what verification repairs.
+    /// A jar the JVM could not read on the classpath this is nearly always a
+    /// damaged library or mod which verification repairs
     CorruptArchive {
-        /// The jar named in the message, when the JVM included one. Several of
-        /// these messages carry no path at all, so this is a bonus rather than
-        /// something to depend on.
+        /// Many of these messages carry no path so this is a bonus rather than
+        /// something to depend on
         file: Option<String>,
     },
 }
 
 impl CrashDiagnosis {
-    /// What to tell the user, phrased as the problem rather than the exception.
     #[must_use]
     pub fn body(&self) -> String {
         match self {
@@ -37,11 +30,8 @@ impl CrashDiagnosis {
     }
 }
 
-/// Signatures that all mean "a jar could not be read".
-///
-/// `ZipException` is the JVM's own; the other two are what the launcher and the
-/// `java -jar` front-end print for the same underlying damage. They share a
-/// remedy, so they share a diagnosis.
+/// Different sources printing the same underlying damage they share a remedy
+/// so they share a diagnosis
 const CORRUPT_ARCHIVE_MARKERS: [&str; 4] = [
     "java.util.zip.ZipException",
     "java.util.zip.ZipError",
@@ -49,10 +39,8 @@ const CORRUPT_ARCHIVE_MARKERS: [&str; 4] = [
     "zip END header not found",
 ];
 
-/// Reads one log line, returning a diagnosis when it recognises the failure.
-///
-/// Runs against every line the game prints, so it stays a handful of substring
-/// scans rather than anything that has to parse the line.
+/// Runs against every line the game prints so it stays substring scans rather
+/// than anything that parses the line
 #[must_use]
 pub fn diagnose(line: &str) -> Option<CrashDiagnosis> {
     if !CORRUPT_ARCHIVE_MARKERS
@@ -67,11 +55,8 @@ pub fn diagnose(line: &str) -> Option<CrashDiagnosis> {
     })
 }
 
-/// Pulls a jar path out of a line, when the message happens to carry one.
-///
-/// `ZipFile` reports "error in opening zip file" with no path on some JVMs and
-/// with a full path on others, so this is opportunistic: naming the file is a
-/// better message, but not naming it still leads to the same repair.
+/// Opportunistic some JVMs omit the path entirely and a missing name still
+/// leads to the same repair
 fn jar_in(line: &str) -> Option<String> {
     let token = line
         .split(|c: char| c.is_whitespace() || c == '(' || c == ')')
@@ -79,8 +64,8 @@ fn jar_in(line: &str) -> Option<String> {
 
     let token = token.trim_end_matches(['.', ',', ':']);
 
-    // The full path is noise in a notification; the file name is what the user
-    // recognises and what they would go looking for.
+    // The full path is noise in a notification the file name is what the user
+    // recognises
     let name = token
         .rsplit(['/', '\\'])
         .next()
@@ -90,11 +75,8 @@ fn jar_in(line: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-/// Remembers the first recognised crash cause seen in a session's output.
-///
-/// The first rather than the last: a corrupt jar tends to cascade into pages of
-/// unrelated failures, and the earliest recognised line is the closest thing to
-/// a root cause the log offers.
+/// Keeps the first recognised cause not the last a corrupt jar cascades into
+/// unrelated failures so the earliest line is closest to the root cause
 #[derive(Clone, Default)]
 pub(crate) struct CrashWatch {
     found: Arc<Mutex<Option<CrashDiagnosis>>>,
@@ -106,8 +88,7 @@ impl CrashWatch {
     }
 
     pub(crate) fn observe(&self, line: &str) {
-        // Cheap rejection first: almost every line is ordinary game output, and
-        // this runs on all of them.
+        // Cheap rejection first this runs on every line the game prints
         if self.found.lock().is_ok_and(|found| found.is_some()) {
             return;
         }
@@ -132,7 +113,6 @@ mod tests {
 
     #[test]
     fn a_zip_exception_is_recognised() {
-        // What the JVM prints when a jar on the classpath is damaged.
         let diagnosis = diagnose("java.util.zip.ZipException: error in opening zip file");
         assert_eq!(
             diagnosis,
@@ -173,8 +153,7 @@ mod tests {
 
     #[test]
     fn ordinary_game_output_is_not_a_crash() {
-        // This runs against every line the game prints, so a false positive
-        // would nag the user into re-downloading the game for nothing.
+        // A false positive would nag the user into re-downloading for nothing
         for line in [
             "[Render thread/INFO]: Setting user: Dev",
             "[main/INFO]: Loading 42 mods",
@@ -188,8 +167,6 @@ mod tests {
 
     #[test]
     fn the_watch_keeps_the_first_cause_not_the_last() {
-        // A corrupt jar cascades, so the earliest recognised line is the one
-        // closest to the root cause.
         let watch = CrashWatch::new();
 
         watch.observe("[main/INFO]: Loading mods");

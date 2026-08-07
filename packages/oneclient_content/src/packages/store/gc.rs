@@ -10,12 +10,7 @@ use oneclient_common::paths;
 
 use super::paths::{artifact_absolute_path, relative_cache_path};
 
-/// How recently a cache file must have been touched to be spared.
-///
-/// A download lands in the cache *before* its row is inserted, so an in-flight
-/// fetch looks exactly like an orphan. Orphans are permanent and cost nothing to
-/// collect later, whereas deleting a half-written download costs the user the
-/// transfer — so the sweep stays well clear of anything recent.
+/// A download lands in the cache before its row is inserted so an in-flight fetch looks exactly like an orphan
 const RECENT_GRACE: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -25,13 +20,9 @@ pub struct GcReport {
 	pub bytes_freed: u64,
 }
 
-/// Drops an artifact and its cached file if no cluster refers to it.
-///
-/// Returns whether it went. A package still installed somewhere else is left
-/// alone, which is what makes this safe to call on every removal.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn evict_if_unused(hash: &str, ctx: &ContentCtx) -> ContentResult<bool> {
-	// Read the row first: once it is deleted there is no way back to the file.
+	// Read the row first once it is deleted there is no way back to the file
 	let row = artifact_dao::get_artifact_by_hash(&ctx.db, hash).await?;
 
 	if !artifact_dao::delete_artifact_if_unused(&ctx.db, hash).await? {
@@ -47,12 +38,6 @@ pub async fn evict_if_unused(hash: &str, ctx: &ContentCtx) -> ContentResult<bool
 	Ok(true)
 }
 
-/// Drops every artifact no cluster refers to any more, and its cached file.
-///
-/// Safe to run unattended: the database is asked which artifacts are unused, so
-/// there is no guessing from the filesystem. Runs at startup, which is what
-/// reclaims the space freed by deleting a cluster or by a bundle update swapping
-/// one version for the next.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn collect_unused_artifacts(ctx: &ContentCtx) -> ContentResult<GcReport> {
 	let mut report = GcReport::default();
@@ -60,9 +45,8 @@ pub async fn collect_unused_artifacts(ctx: &ContentCtx) -> ContentResult<GcRepor
 	for row in artifact_dao::list_unused_artifacts(&ctx.db).await? {
 		let path = artifact_absolute_path(&row.path).ok();
 
-		// An install inserts the artifact row and then links it to its cluster.
-		// Between the two it looks unused, so anything freshly downloaded is left
-		// for the next sweep rather than pulled out from under an install.
+		// An install inserts the row then links it
+		// in between it looks unused
 		if let Some(path) = &path
 			&& is_recent(path).await
 		{
@@ -91,10 +75,6 @@ pub async fn collect_unused_artifacts(ctx: &ContentCtx) -> ContentResult<GcRepor
 	Ok(report)
 }
 
-/// What [`remove_unreferenced_files`] would delete, without deleting it.
-///
-/// The Storage page shows this so the user is agreeing to a number rather than
-/// to a promise.
 pub async fn find_unreferenced_files(ctx: &ContentCtx) -> ContentResult<Vec<(PathBuf, u64)>> {
 	let cache_root = paths::packages_cache_dir()?;
 	if !polyio::try_exists(&cache_root).await.unwrap_or(false) {
@@ -106,10 +86,8 @@ pub async fn find_unreferenced_files(ctx: &ContentCtx) -> ContentResult<Vec<(Pat
 		.into_iter()
 		.collect();
 
-	// A populated cache with nothing in the artifacts table is not a cache full
-	// of garbage — it is a database that has lost its index and has not been
-	// reconstructed yet. Reading it the other way would offer to wipe every
-	// package the user has.
+	// An empty artifacts table means a lost index not a cache full of garbage
+	// the other reading would offer to wipe every package the user has
 	if known.is_empty() {
 		tracing::debug!("no artifacts indexed; treating the package cache as fully referenced");
 		return Ok(Vec::new());
@@ -131,11 +109,7 @@ pub async fn find_unreferenced_files(ctx: &ContentCtx) -> ContentResult<Vec<(Pat
 	Ok(found)
 }
 
-/// Deletes cached files that no artifact row points at.
-///
-/// User-initiated only. Unlike [`collect_unused_artifacts`] this reasons from
-/// the filesystem rather than from the database, so it is the half that can
-/// misread an install whose database has been reset but not yet reconstructed.
+/// Reasons from the filesystem not the database so it can misread an install whose database was reset
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn remove_unreferenced_files(ctx: &ContentCtx) -> ContentResult<GcReport> {
 	let cache_root = paths::packages_cache_dir()?;
@@ -170,8 +144,6 @@ async fn remove_cached_file(path: &Path) {
 	}
 }
 
-/// Walks back up `<content>/<provider>/<project>/<version>/` removing the
-/// directories a deleted file has left empty, stopping at the cache root.
 async fn prune_empty_parents(file: &Path, root: &Path) {
 	let mut dir = file.parent().map(Path::to_path_buf);
 
@@ -180,8 +152,7 @@ async fn prune_empty_parents(file: &Path, root: &Path) {
 			return;
 		}
 
-		// `remove_dir` refuses a non-empty directory, which is exactly the stop
-		// condition — no need to read the entries first.
+		// `remove_dir` refuses a non-empty directory which is exactly the stop condition
 		if polyio::remove_dir(&current).await.is_err() {
 			return;
 		}
@@ -192,7 +163,7 @@ async fn prune_empty_parents(file: &Path, root: &Path) {
 
 async fn is_recent(path: &Path) -> bool {
 	let Ok(meta) = polyio::stat(path).await else {
-		// Cannot tell how old it is, so leave it be.
+		// Cannot tell how old it is so leave it be
 		return true;
 	};
 
@@ -275,8 +246,6 @@ mod tests {
 		std::fs::remove_dir_all(root.path()).ok();
 	}
 
-	/// A download writes its file before inserting the row, so a fresh
-	/// unreferenced file is very likely one in flight.
 	#[tokio::test]
 	async fn fresh_files_are_spared() {
 		let root = polyio::testing::ScratchDir::new("gc_recent");

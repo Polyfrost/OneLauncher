@@ -33,9 +33,8 @@ pub enum MinecraftAuthError {
         source: serde_json::Error,
         status_code: reqwest::StatusCode,
     },
-    // `source` is rendered through `error_chain` rather than with `{source}`:
-    // reqwest's `Display` names only the URL, and the cause we need to tell
-    // apart (certificate, handshake, DNS, refused) is under it.
+    // Rendered via `error_chain` reqwest's `Display` names only the URL and the
+    // cause we need (certificate handshake DNS refused) is under it
     #[error("failed to request using HTTP during MSA step {step:?}: {}", oneclient_net::error_chain(source))]
     RequestError {
         step: MinecraftAuthStep,
@@ -106,12 +105,8 @@ pub enum AuthError {
     #[error(transparent)]
     Request(#[from] RequestError),
 
-    /// The user backed out of a Microsoft sign-in that was still running.
-    ///
-    /// An outcome rather than a failure: it exists so the flow has something to
-    /// return when it is torn down mid-handshake, and so callers can tell that
-    /// apart from a sign-in that actually went wrong. Nothing was written by the
-    /// time this is produced.
+    /// An outcome rather than a failure nothing was written by the time this is
+    /// produced
     #[error("sign-in was cancelled")]
     LoginCancelled,
 

@@ -41,9 +41,8 @@ impl RecoveryReport {
 pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<RecoveryReport> {
 	let mut report = RecoveryReport::default();
 
-	// Hold the provisioning lock across the whole scan+adopt so a concurrent
-	// cluster create (folder-on-disk written before its DB row commits) can't be
-	// misclassified as an orphan and adopted into a duplicate row.
+	// Held across the whole scan+adopt so a concurrent cluster create (folder
+	// written before its DB row commits) isn't misclassified as an orphan
 	let _guard = state.clusters.provisioning_guard().await;
 
 	let clusters_dir = paths::clusters_dir()?;
@@ -235,12 +234,8 @@ async fn adopt_cluster(
 	Ok(())
 }
 
-/// Adopts the content sitting in a rediscovered cluster's folders.
-///
-/// Files are taken *into the artifact cache* rather than indexed where they lie.
-/// An artifact's `path` has to resolve to the cache, because that is the only
-/// place the launcher materializes content from; a row pointing back into a
-/// cluster folder would break the moment that folder was tidied.
+/// Files are taken into the artifact cache not indexed in place the cache is
+/// the only place content is materialized from so in-place rows break on tidy-up
 #[tracing::instrument(level = "debug", skip(state, report))]
 async fn relink_cluster_files(
 	state: &LauncherState,
@@ -282,8 +277,8 @@ async fn relink_cluster_files(
 				}
 			};
 
-			// `import_local_file` links under the artifact's own name, which is
-			// the `.disabled` spelling for a file the user had switched off.
+			// `import_local_file` links under the artifact's own name which is
+			// the `.disabled` spelling for a file the user had switched off
 			if !enabled {
 				artifact_dao::update_cluster_artifact(pool, cluster_id, &row.hash, &base_name, 0)
 					.await?;

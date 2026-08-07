@@ -11,12 +11,9 @@ use crate::packages::types::{
 	DependencyKind, ProjectDetail, ReleaseType, VersionDependency, VersionDetail, VersionSummary,
 };
 
-/// How far the transitive walk goes. Real graphs are two or three deep; the cap
-/// is only here so a provider serving a cycle can't spin forever.
+/// Caps the transitive walk so a provider serving a cycle can't spin forever
 const MAX_DEPTH: usize = 4;
 
-/// How many of a project's versions to consider when picking one. The providers
-/// already filter by game version and loader, so the answer is near the top.
 const VERSION_WINDOW: usize = 50;
 
 #[derive(Debug, Clone)]
@@ -27,11 +24,9 @@ pub struct ResolvedDependency {
 
 #[derive(Debug, Clone, Default)]
 pub struct DependencyResolution {
-	/// Dependencies that need installing, ordered breadth-first from the root.
-	/// Already-present ones are filtered out.
+	/// Ordered breadth-first from the root
+	/// already-present ones are filtered out
 	pub install: Vec<ResolvedDependency>,
-	/// Required dependencies that couldn't be resolved, by whatever id the
-	/// provider gave for them. The caller decides how loud to be about these.
 	pub unresolved: Vec<String>,
 }
 
@@ -41,8 +36,6 @@ impl DependencyResolution {
 	}
 }
 
-/// Collects the required dependencies of `root` that `cluster_id` doesn't
-/// already have, transitively.
 #[tracing::instrument(level = "debug", skip(root, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
 pub async fn resolve_required(
 	provider_id: ProviderId,
@@ -58,8 +51,7 @@ pub async fn resolve_required(
 	let provider = ctx.providers.get(provider_id)?;
 	let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
 
-	// Seeded with what the cluster already has so an installed library is never
-	// fetched twice, plus the root itself against self-referencing graphs.
+	// Seeded with installed projects and the root against refetches and self-referencing graphs
 	let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
 	seen.insert(root.project_id.clone());
 
@@ -91,8 +83,7 @@ pub async fn resolve_required(
 			}
 		};
 
-		// A version-pinned dependency only reveals its project once fetched, so
-		// the second dedupe check has to happen here rather than up front.
+		// A version-pinned dependency only reveals its project once fetched so dedupe again here
 		if !seen.insert(resolved.version.project_id.clone()) {
 			continue;
 		}
@@ -126,9 +117,8 @@ async fn resolve_one(
 	cluster: &ClusterRow,
 	ctx: &ContentCtx,
 ) -> ContentResult<Option<ResolvedDependency>> {
-	// A pinned version wins outright: the author named that exact file, so it is
-	// used even when a newer one exists. Both providers ignore the project id
-	// argument when the version id is known.
+	// A pinned version wins even when newer exists
+	// providers ignore the project id once the version id is known
 	let version = match &dep.version_id {
 		Some(version_id) => {
 			provider
@@ -154,11 +144,7 @@ async fn resolve_one(
 	Ok(Some(ResolvedDependency { project, version }))
 }
 
-/// Picks the newest release of `project_id` that fits the cluster, falling back
-/// to the newest prerelease when that's all there is.
-///
-/// Shared with the browser update check, which asks the same question of an
-/// already-installed package: "what would we install for this cluster today?".
+/// Falls back to the newest prerelease when no release fits the cluster
 pub(crate) async fn pick_version(
 	provider: &dyn PackageProvider,
 	project_id: &str,
@@ -180,8 +166,7 @@ pub(crate) async fn pick_version(
 		.await?
 		.items;
 
-	// Resource packs, shaders and datapacks declare no loader, so a
-	// loader-filtered query comes back empty even though they fit the cluster.
+	// Resource packs shaders and datapacks declare no loader so a loader-filtered query is empty
 	if candidates.is_empty() && loader_filter.is_some() {
 		candidates = provider
 			.list_versions(project_id, Some(&cluster.mc_version), None, 0, VERSION_WINDOW, ctx)
@@ -198,7 +183,7 @@ fn choose_version(
 	loader: GameLoader,
 ) -> Option<VersionSummary> {
 	candidates.retain(|version| fits_cluster(version, cluster, loader));
-	// Neither provider promises an order, so sort rather than trust the page.
+	// Neither provider promises an order so sort rather than trust the page
 	candidates.sort_by_key(|version| std::cmp::Reverse(version.published));
 
 	candidates
@@ -208,8 +193,8 @@ fn choose_version(
 		.cloned()
 }
 
-/// Mirrors the compatibility check the store applies at install time, so a
-/// version that would be rejected there is never picked here.
+/// Mirrors the store's install-time compatibility check
+/// must stay in sync with it
 fn fits_cluster(version: &VersionSummary, cluster: &ClusterRow, loader: GameLoader) -> bool {
 	if !version.game_versions.is_empty()
 		&& !version
@@ -236,8 +221,7 @@ async fn installed_project_ids(
 		.collect())
 }
 
-/// Dependencies only make sense for content the loader reads out of the cluster;
-/// a modpack brings its own file list.
+/// False for modpacks they bring their own file list
 pub fn resolves_dependencies(content_type: ContentType) -> bool {
 	!matches!(content_type, ContentType::Modpack)
 }

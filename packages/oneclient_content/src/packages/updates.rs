@@ -1,21 +1,9 @@
-//! Update checking for packages the user installed from the browser.
+//! Bundle-tracked artifacts are skipped
+//! [`crate::bundles::updates`] owns those files and the two flows would fight
+//! over the same artifact
 //!
-//! "Browser installed" means a remote provider release that no bundle claims.
-//! Bundles have their own update flow in [`crate::bundles::updates`] and own the
-//! files they ship; touching one from here would have the two fight over the
-//! same artifact, so anything with a bundle tracking row is skipped outright.
-//!
-//! The check answers the same question the installer asks — "what would we
-//! install for this cluster today?" — by reusing
-//! [`crate::packages::dependencies::pick_version`], and calls the package stale
-//! when the answer is not the version that is already there.
-//!
-//! Results are cached in `browser_package_updates` so the package manager can
-//! mark a row out of date without a round trip, and still knows after a
-//! restart. The cache is only ever *narrowed* by a check that actually reached
-//! the provider: a package whose lookup failed keeps whatever the last
-//! successful run recorded, which is what makes an offline launch a no-op
-//! rather than a mass "everything is up to date".
+//! The `browser_package_updates` cache is only narrowed by a check that reached
+//! the provider so an offline run is a no-op rather than "all up to date"
 
 use std::collections::HashSet;
 
@@ -34,15 +22,14 @@ use crate::packages::dependencies::pick_version;
 use crate::packages::store::{PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::LinkedArtifactInfo;
 
-/// How many projects to ask about at once. Matches the bundle installer's
-/// fan-out; the providers are the bottleneck, not us.
+/// Matches the bundle installer's fan-out
+/// the providers are the bottleneck
 const UPDATE_CHECK_CONCURRENCY: usize = 6;
 
-/// A browser-installed package with a newer version available.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserPackageUpdate {
 	pub cluster_id: i64,
-	/// The artifact currently linked into the cluster.
+	/// The artifact currently linked into the cluster
 	pub hash: String,
 	pub provider: ProviderId,
 	pub project_id: String,
@@ -50,9 +37,9 @@ pub struct BrowserPackageUpdate {
 	pub installed_version_name: String,
 	pub latest_version_id: String,
 	pub latest_version_name: String,
-	/// Best display name known locally, for a UI that has no meta cache entry.
+	/// Local fallback for a UI with no meta cache entry
 	pub display_name: String,
-	/// The user has already declined this exact newer version.
+	/// The user has already declined this exact newer version
 	pub skipped: bool,
 }
 
@@ -73,25 +60,22 @@ impl BrowserPackageUpdate {
 	}
 }
 
-/// One pass of the check over a cluster.
 #[derive(Debug, Clone, Default)]
 pub struct BrowserUpdateCheck {
 	pub cluster_id: i64,
 	pub updates: Vec<BrowserPackageUpdate>,
-	/// Artifacts the providers could not be asked about this run. Their cached
-	/// rows are preserved rather than treated as "no longer stale".
+	/// Unreachable this run
+	/// their cached rows are preserved not cleared
 	pub unchecked: Vec<String>,
 }
 
 impl BrowserUpdateCheck {
-	/// Updates the user has not already declined — what the modal shows.
 	#[must_use]
 	pub fn pending(&self) -> Vec<BrowserPackageUpdate> {
 		self.updates.iter().filter(|u| !u.skipped).cloned().collect()
 	}
 }
 
-/// A browser-installed package, i.e. one candidate for this check.
 struct Candidate {
 	hash: String,
 	provider: ProviderId,
@@ -101,12 +85,7 @@ struct Candidate {
 	display_version: String,
 }
 
-/// Every artifact in the cluster that came from a remote provider and that no
-/// bundle claims.
-///
-/// A missing bundle tracking row is the data-layer marker for "the user added
-/// this themselves"; the package manager's `External` tab is the same rule
-/// spelled out in the UI.
+/// A missing bundle tracking row is the marker for "the user added this themselves"
 fn browser_installed(
 	linked: &[LinkedArtifactInfo],
 	bundle_hashes: &HashSet<String>,
@@ -134,12 +113,8 @@ fn browser_installed(
 		.collect()
 }
 
-/// Asks every provider what the newest compatible version of each
-/// browser-installed package is.
-///
-/// Never fails because one project could not be reached: that project lands in
-/// [`BrowserUpdateCheck::unchecked`] and the run continues. The whole call only
-/// errors when the cluster itself cannot be read.
+/// An unreachable project lands in [`BrowserUpdateCheck::unchecked`]
+/// only an unreadable cluster errors
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn check_browser_package_updates(
 	cluster_id: i64,
@@ -202,12 +177,9 @@ pub async fn check_browser_package_updates(
 					skipped: skipped.contains(&key),
 				});
 			}
-			// Up to date, or the provider has nothing that fits this cluster any
-			// more. Either way there is nothing to offer.
 			Ok(None) => {}
 			Err(err) => {
-				// Offline is the common case and says nothing about the
-				// launcher, so it stays at debug; anything else is worth seeing.
+				// Offline is the common case and says nothing about the launcher
 				if err.is_transient() {
 					tracing::debug!(
 						project_id = %candidate.project_id,
@@ -229,8 +201,7 @@ pub async fn check_browser_package_updates(
 	Ok(check)
 }
 
-/// The newest compatible version id and name, or `None` when the installed one
-/// is already it.
+/// `None` when the installed version is already the newest compatible one
 async fn latest_for(
 	candidate: &Candidate,
 	cluster: &ClusterRow,
@@ -254,11 +225,8 @@ async fn latest_for(
 	Ok(Some((latest.version_id, name)))
 }
 
-/// Runs the check and writes what it found into the cache table.
-///
-/// Rows the check did not report are dropped, so a package that was updated or
-/// removed stops being marked stale — except for the ones it could not reach,
-/// which keep their last known state.
+/// Unreported rows are dropped except unreachable ones which keep their last
+/// known state
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn refresh_browser_package_updates(
 	cluster_id: i64,
@@ -284,8 +252,7 @@ pub async fn refresh_browser_package_updates(
 		)
 		.await?;
 		keep.push(row.hash.clone());
-		// The row is the authority on `skipped`: it knows whether the user has
-		// already answered for this exact version.
+		// The row is the authority on `skipped` for this exact version
 		stored.push(BrowserPackageUpdate::from_row(row));
 	}
 
@@ -298,7 +265,7 @@ pub async fn refresh_browser_package_updates(
 	})
 }
 
-/// What the last check recorded for one cluster. Never touches the network.
+/// Never touches the network
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn cached_browser_package_updates(
 	cluster_id: i64,
@@ -311,11 +278,9 @@ pub async fn cached_browser_package_updates(
 		.collect())
 }
 
-/// Records that the user does not want this particular newer version.
-///
-/// The row stays: the package is still out of date and the package manager
-/// still says so. Only the modal stops asking, and only until a version newer
-/// than the declined one appears.
+/// The row stays and the package still reads as out of date
+/// only the modal stops asking until a newer version than the declined one
+/// appears
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn skip_browser_package_update(
 	cluster_id: i64,
@@ -326,18 +291,14 @@ pub async fn skip_browser_package_update(
 	Ok(())
 }
 
-/// Installs the newer version and drops the one it supersedes.
-///
-/// Download first, unlink second: a failed download leaves the cluster exactly
-/// as it was rather than with nothing installed.
+/// Download first unlink second so a failed download leaves the cluster as it was
 #[tracing::instrument(level = "debug", skip(update, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
 pub async fn apply_browser_package_update(
 	update: &BrowserPackageUpdate,
 	child: Option<&GroupedProgressChild>,
 	ctx: &ContentCtx,
 ) -> ContentResult<String> {
-	// Refuse to touch anything a bundle owns, however this was called. The
-	// check already filters these out; this is the invariant, not a retry.
+	// Never touch anything a bundle owns however this was called
 	if bundle_dao::get_bundle_tracked(&ctx.db, update.cluster_id, &update.hash)
 		.await?
 		.is_some()
@@ -356,9 +317,9 @@ pub async fn apply_browser_package_update(
 		.get_version(&update.project_id, &update.latest_version_id, ctx)
 		.await?;
 
-	// The check already established this version fits the cluster, and a
-	// provider that disagrees at install time would strand the user on a build
-	// they cannot move off. Compatibility is not re-litigated here.
+	// Compatibility is not re-checked
+	// a provider disagreeing at install time would strand the user on a build
+	// they cannot move off
 	let installed = PackageStore::install_to_cluster(
 		update.provider,
 		&project,
@@ -375,11 +336,8 @@ pub async fn apply_browser_package_update(
 		.await?
 		.map(|link| link.enabled != 0);
 
-	// Everything else of this project goes, not just the artifact the check
-	// happened to record. A cluster that already held two versions would
-	// otherwise come out of an update holding two again, and the recorded hash
-	// can itself be stale if the user installed a version by hand since the
-	// check ran.
+	// Everything else of this project goes not just the recorded hash which can
+	// be stale if the user installed a version by hand since the check ran
 	unlink_other_versions(
 		update.cluster_id,
 		update.provider,
@@ -389,16 +347,15 @@ pub async fn apply_browser_package_update(
 	)
 	.await?;
 
-	// Nothing moved: the provider handed back the file that is already linked.
-	// Leave the link, and its enabled flag, exactly as they were.
+	// Provider handed back the already-linked file
+	// leave the link untouched
 	if installed.hash == update.hash {
 		update_dao::delete(&ctx.db, update.cluster_id, &update.hash).await?;
 		return Ok(installed.hash);
 	}
 
-	// A package the user had switched off stays off across an update; being out
-	// of date is not a reason to turn it back on. The fresh link starts enabled,
-	// so this is a toggle rather than a set.
+	// A package switched off stays off
+	// the fresh link starts enabled so this is a toggle rather than a set
 	if enabled_before == Some(false) {
 		PackageStore::set_artifact_enabled(update.cluster_id, &installed.hash, ctx).await?;
 	}
@@ -408,12 +365,8 @@ pub async fn apply_browser_package_update(
 	Ok(installed.hash)
 }
 
-/// Drops every other version of `project_id` the cluster holds.
-///
-/// An update is a replacement, so what it leaves behind is exactly one artifact
-/// per project. Bundle-owned copies are stepped over rather than removed: this
-/// flow refuses to touch them at all, and unlinking one here would have the next
-/// bundle sync put it straight back.
+/// Bundle-owned copies are stepped over
+/// unlinking one here would have the next bundle sync put it straight back
 #[tracing::instrument(level = "debug", skip(ctx))]
 async fn unlink_other_versions(
 	cluster_id: i64,
@@ -455,11 +408,9 @@ async fn unlink_other_versions(
 	Ok(())
 }
 
-/// Drops the artifact an applied update replaced.
-///
-/// Deliberately not `bundles::remove_artifact_from_cluster`: that one also
-/// reconciles bundle overrides, which cannot apply to a package no bundle
-/// provides, and `packages` must not depend on `bundles`.
+/// Not `bundles::remove_artifact_from_cluster`
+/// `packages` must not depend on `bundles` and its override reconciliation
+/// does not apply here
 #[tracing::instrument(level = "debug", skip(ctx))]
 async fn unlink_superseded(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
 	let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;

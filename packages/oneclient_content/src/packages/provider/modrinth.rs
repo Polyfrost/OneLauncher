@@ -424,9 +424,8 @@ struct ModrinthProject {
 #[derive(Deserialize)]
 struct ModrinthGalleryItem {
     url: String,
-    /// The image as it was uploaded. `url` is Modrinth's own re-encoded copy,
-    /// small enough to look soft once it is blown up to fill a gallery tile, so
-    /// this is preferred where the API hands it out.
+    /// Original upload
+    /// `url` is Modrinth's re-encoded copy and looks soft when scaled up
     #[serde(default)]
     raw_url: Option<String>,
     #[serde(default)]
@@ -691,8 +690,7 @@ fn parse_release_type(s: &str) -> ReleaseType {
 mod tests {
     use super::*;
 
-    /// Guards the field names against the shape Modrinth actually serves; a
-    /// rename here silently empties the dependency list.
+    /// A field rename here silently empties the dependency list
     #[test]
     fn version_carries_its_dependencies() {
         let raw = serde_json::json!({

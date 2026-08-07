@@ -117,9 +117,7 @@ fn navbar_center() -> impl IntoElement {
         })
 }
 
-/// Browsing always happens for some cluster, so the navbar picks the one the
-/// shell has active and falls back to the most recently played one. With no
-/// clusters at all there is nothing to browse for, so it points at Versions.
+/// Falls back active cluster then most recently played then Versions when none exist
 fn browse_target() -> Route {
     let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
     let active = *use_active_cluster_id().read();
@@ -178,8 +176,8 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .spacing(2.)
             .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            // TODO: Hacky workaround for weird freya measurement bug, where if a rectangle has a transparent background (so in dec = 0), it will be measured weirdly.
-            // This basically fools freya into thinking it indeed has a box and properly handles pointer events
+            // TODO workaround for a Freya measurement bug a fully transparent background
+            // measures wrongly so give it alpha 0 red to keep pointer events working
             .background(Color::RED.with_a(0))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
@@ -230,18 +228,15 @@ impl Component for NavbarRight {
             .map(|account| account.id.to_string())
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
 
-        // open notification center
         let notif_dispatch = dispatch.clone();
         let open_notifications = move |_| {
             notif_dispatch.toggle_notification_center();
         };
 
-        // open account switcher
         let open_account_switcher = move |_| {
             dispatch.toggle_account_switcher();
         };
 
-        // open settings
         let open_settings = |_| {
             let _ = RouterContext::get().push(Route::SettingsLauncher {});
         };

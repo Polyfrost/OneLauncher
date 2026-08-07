@@ -44,18 +44,17 @@ const IMPORT_EXCLUDE_TOP: &[&str] = &[
 
 pub fn old_root() -> Option<PathBuf> {
     let base = directories::BaseDirs::new().map(|d| {
-        // Windows: `%APPDATA%\.minecraft` (data_dir is Roaming).
+        // Windows `%APPDATA%\.minecraft` (data_dir is Roaming)
         #[cfg(target_os = "windows")]
         {
             d.data_dir().join(".minecraft")
         }
-        // macOS: `~/Library/Application Support/minecraft`, no leading dot.
+        // macOS `~/Library/Application Support/minecraft` no leading dot
         #[cfg(target_os = "macos")]
         {
             d.data_dir().join("minecraft")
         }
-        // Linux and friends: `~/.minecraft`. Not data_dir(), which is
-        // `~/.local/share`.
+        // Linux `~/.minecraft` not data_dir() (`~/.local/share`)
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             d.home_dir().join(".minecraft")

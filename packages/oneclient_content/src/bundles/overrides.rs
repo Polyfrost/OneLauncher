@@ -105,18 +105,15 @@ async fn sync_bundle_overrides_at(
         }
 
         match disk_sha1 {
-            // Nothing on disk -> copy from bundle
             None => {
                 if write_override(&dest, &bytes, rel).await {
                     report.written.push(rel.to_string());
                     next.insert(rel.to_string(), new_sha1);
                 }
             }
-            // Already matches the bundle -> so just record it in the lock
             Some(disk) if disk == new_sha1 => {
                 next.insert(rel.to_string(), new_sha1);
             }
-            // Untouched -< safe to update
             Some(disk) if base.as_deref() == Some(disk.as_str()) => {
                 if write_override(&dest, &bytes, rel).await {
                     report.written.push(rel.to_string());
@@ -125,7 +122,6 @@ async fn sync_bundle_overrides_at(
                     next.insert(rel.to_string(), disk);
                 }
             }
-            // Differs from both the bundle and the base -> conflict
             Some(_) => {
                 if let Some(b) = base {
                     if b != new_sha1 {
@@ -133,12 +129,10 @@ async fn sync_bundle_overrides_at(
                     }
                     next.insert(rel.to_string(), b);
                 }
-                // untracked and untouched
             }
         }
     }
 
-    // delete files the bundle no longer ships, but only if they were unmodified locally
     for (rel, base_sha1) in &previous {
         if next.contains_key(rel) {
             continue;
@@ -467,7 +461,6 @@ mod tests {
         .await;
         sync(&v1, root.path()).await;
 
-        // User modified kept.toml; gone.toml untouched.
         polyio::write(root.join("config/kept.toml"), b"edited")
             .await
             .unwrap();

@@ -19,13 +19,8 @@ impl VersionsManager {
         }
     }
 
-    /// Seeds the manifest from the last synced copy on disk.
-    ///
-    /// Without this the manifest is empty until the network answers, and
-    /// everything read off it — a version's art, name, description — waits on a
-    /// request that, for a returning user, ends in a 304 and the very same file.
-    /// The UI would rather render slightly stale metadata now and pick up the
-    /// sync when it lands.
+    /// Seeds from the last synced copy on disk so the UI renders stale metadata
+    /// immediately instead of blocking on a request that usually 304s
     #[must_use]
     pub async fn from_cache() -> Self {
         let manifest = Self::cached_manifest()

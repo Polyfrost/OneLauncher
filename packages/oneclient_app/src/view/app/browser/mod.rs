@@ -17,12 +17,9 @@ use crate::ui::border_all_color;
 
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
 
-/// How a browsed package is already present in the cluster.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {
-    /// Installed on its own.
     Manual,
-    /// Comes from one of the cluster's bundles.
     Bundled,
 }
 
@@ -34,8 +31,7 @@ impl InstallSource {
         }
     }
 
-    /// Bundled reads blue rather than green: the package is there, but the
-    /// cluster's bundle put it there, not the user.
+    /// Bundled reads blue rather than green the cluster's bundle put it there not the user
     fn color(self) -> Color {
         match self {
             Self::Manual => colors::success(),
@@ -44,32 +40,22 @@ impl InstallSource {
     }
 }
 
-/// One version of a browsed package that the cluster has.
 #[derive(Clone, PartialEq)]
 pub(crate) struct InstalledVersion {
     pub version_id: String,
-    /// The artifact to remove. `None` when a bundle names this version but
-    /// nothing is linked yet, which is a state the user cannot act on.
+    /// The artifact to remove
+    /// `None` when a bundle names this version but nothing is linked
     pub hash: Option<String>,
-    /// Whether the game loads this one. Only meaningful alongside a `hash`;
-    /// a bundle pin with nothing linked is neither on nor off, and the badge
-    /// that reads this never renders for one.
+    /// Only meaningful alongside a `hash` a bundle pin with nothing linked is neither on nor off
     pub enabled: bool,
     pub source: InstallSource,
 }
 
-/// A browsed package the cluster already has.
-///
-/// More than one version is not a state the launcher aims for, but nothing
-/// stops a cluster reaching it, so this holds every one it finds rather than an
-/// arbitrary winner — the version list marks each of them.
+/// Holds every version found rather than an arbitrary winner a cluster can end up with more than one
 #[derive(Clone, PartialEq)]
 pub(crate) struct Installed {
-    /// How the package as a whole got here, for the badge on cards and the
-    /// sidebar. A bundle claiming the project wins over a hand-installed copy.
+    /// A bundle claiming the project wins over a hand-installed copy
     pub source: InstallSource,
-    /// Every version in the cluster the provider recorded one for, in the order
-    /// the cluster reports them.
     pub versions: Vec<InstalledVersion>,
 }
 
@@ -82,19 +68,13 @@ impl Installed {
         self.versions.iter().find(|v| v.version_id == version_id)
     }
 
-    /// Whether the cluster holds more than one copy of this package.
-    ///
-    /// Counts linked artifacts only: a bundle pin the cluster never downloaded
-    /// is listed as a version but is not a second copy of anything.
+    /// Counts linked artifacts only a bundle pin the cluster never downloaded is not a second copy
     pub fn is_duplicated(&self) -> bool {
         self.versions.iter().filter(|v| v.hash.is_some()).count() > 1
     }
 }
 
-/// Indexes what the cluster already has by the project it came from, so a
-/// search result can tell at a glance whether it's in there and how it got
-/// there. Local files have no project to match a search result against and
-/// are left out, as are a bundle's external (non-provider) files.
+/// Local files and a bundle's external files are left out they have no project id to match against
 pub(crate) fn installed_map(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
@@ -106,9 +86,7 @@ pub(crate) fn installed_map(
             continue;
         };
 
-        // The entry is created even for an artifact with no recorded version:
-        // the package is in the cluster either way, and the card badge only
-        // asks that much. It just cannot be tied to a row in the version list.
+        // Created even without a recorded version the package is in the cluster it just cannot be tied to a version row
         let installed = map.entry((provider, project_id)).or_insert(Installed {
             source: InstallSource::Manual,
             versions: Vec::new(),
@@ -124,11 +102,8 @@ pub(crate) fn installed_map(
         }
     }
 
-    // Bundle membership wins: a bundle's files land in the cluster as ordinary
-    // content, so they'd otherwise read as hand-installed. The version on disk
-    // is the truth when there is one; the manifest's pin is the fallback, and
-    // is deliberately not added alongside a linked version — a pin the cluster
-    // has not downloaded is not something the user has installed.
+    // Bundle membership wins a bundle's files would otherwise read as hand-installed
+    // The manifest pin is only a fallback for a missing linked version
     for bundle in bundles {
         for (file, _status) in &bundle.files {
             if let BundleFileKind::Managed {
@@ -175,9 +150,7 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
     badge(installed, font_size, installed.color().with_a(38), None)
 }
 
-/// The same badge sat on top of a card's artwork. The faint tint the in-card
-/// badge uses has nothing to read against there, so this one brings its own
-/// backdrop and outlines itself to stay legible over whatever the image is.
+/// Brings its own backdrop and outline so it stays legible over card artwork
 pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElement {
     badge(
         installed,
@@ -187,7 +160,7 @@ pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElem
     )
 }
 
-/// Which of several installed versions the game actually loads.
+/// Which of several installed versions the game actually loads
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
         ("Active", colors::brand())
@@ -195,8 +168,7 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         ("Inactive", colors::fg_secondary())
     };
 
-    // No icon, unlike the source badges it sits beside: three pills in a row
-    // all wearing a tick reads as decoration rather than as three facts.
+    // No icon three pills in a row all wearing a tick reads as decoration
     rect()
         .horizontal()
         .cross_align(Alignment::Center)

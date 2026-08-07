@@ -13,6 +13,6 @@ pub struct SettingProfileRow {
 	pub hook_wrapper: Option<String>,
 	pub hook_post: Option<String>,
 	pub os_extra: Option<String>,
-	/// `PackageUpdateMode::as_str`; NULL inherits the global setting.
+	/// `PackageUpdateMode::as_str` NULL inherits the global setting
 	pub browser_update_mode: Option<String>,
 }

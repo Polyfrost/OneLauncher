@@ -1,15 +1,5 @@
-//! The fallback renderer for prompts nothing else claims.
-//!
-//! [`Prompt`](oneclient_events::Prompt) lets any part of the core ask the user a
-//! question, and two overlays render particular ones richly: the Java one and
-//! the updater's. Everything else used to render as nothing at all — the core
-//! would sit on `ask()` forever waiting for a reply no one could give, and
-//! because the app holds a single pending prompt at a time, the stuck one also
-//! kept every later prompt (the Java one included) from appearing.
-//!
-//! So this is a safety net, not a style: anything not claimed above is rendered
-//! from the prompt's own choices, and a new prompt in the core needs no UI work
-//! to be answerable.
+//! Fallback renderer for prompts no dedicated overlay claims
+//! Without it an unrendered prompt leaves the core blocked on `ask()` blocking all later prompts
 
 use freya::prelude::*;
 use oneclient_events::{Answer, ChoiceInput, ChoiceStyle};
@@ -24,8 +14,6 @@ use crate::updater::UPDATE_CHOICE_INSTALL;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
-/// Prompts with an overlay of their own, recognised the same way those overlays
-/// recognise themselves: by the choice they offer.
 fn claimed_elsewhere(prompt: &PendingPromptView) -> bool {
     prompt.has_choice(JAVA_CHOICE_DOWNLOAD) || prompt.has_choice(UPDATE_CHOICE_INSTALL)
 }
@@ -35,8 +23,7 @@ pub struct GenericPromptOverlay;
 
 impl Component for GenericPromptOverlay {
     fn render(&self) -> impl IntoElement {
-        // Hooks run unconditionally, before any early return, so the hook count
-        // stays stable whether or not a prompt is pending.
+        // Hooks run unconditionally before any early return to keep the hook count stable
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
 
@@ -79,9 +66,7 @@ impl Component for GenericPromptOverlay {
             };
 
             buttons = buttons.child(button.on_press(move |_| match &input {
-                // A folder choice cannot be answered until the user has picked
-                // one, so the answer is sent from the dialog's callback rather
-                // than from the press.
+                // Answered from the dialog callback not the press since no folder is picked yet
                 Some(ChoiceInput::Folder { title }) => {
                     let dispatch = dispatch.clone();
                     let title = title.clone();
@@ -97,9 +82,7 @@ impl Component for GenericPromptOverlay {
                         }
                     });
                 }
-                // A selection needs a picker only the prompt's own overlay could
-                // supply. Answering without one is still better than leaving the
-                // core waiting forever; the caller sees `selection() == None`.
+                // No picker here answering with `selection() == None` beats blocking the core
                 Some(ChoiceInput::Selection { hint }) => {
                     tracing::warn!(
                         choice = id,
@@ -179,10 +162,6 @@ mod tests {
 
     #[test]
     fn every_other_prompt_falls_through_to_the_generic_overlay() {
-        // The bug this overlay exists for: a prompt whose choices no overlay
-        // recognised rendered as nothing, the core waited on `ask()` forever,
-        // and the stuck prompt blocked every later one. Any new prompt in the
-        // core has to land here without UI work.
         for choices in [
             vec![Choice::new("launch", "Launch anyway")],
             vec![Choice::primary("verify", "Verify and repair")],

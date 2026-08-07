@@ -1,17 +1,11 @@
 use oneclient_common::constants;
 
-/// Endpoint and credential settings the transport needs.
-///
-/// The composition layer pushes these down; the transport never looks anything
-/// up. Reaching for the CurseForge key through global state would make the HTTP
-/// client depend on the object that owns it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NetConfig {
 	pub curseforge_api_key: String,
 	pub modrinth_api_key: Option<String>,
-	/// Base for the metadata API (`meta.polyfrost.org`).
 	pub metadata_api_url: String,
-	/// Base for static assets; never has a trailing slash.
+	/// Never has a trailing slash
 	pub meta_url_base: String,
 }
 
@@ -27,9 +21,8 @@ impl Default for NetConfig {
 }
 
 impl NetConfig {
-	/// Applies user overrides, falling back to the built-in defaults for any
-	/// that are absent or blank. Blank is treated as absent so clearing a field
-	/// in the settings UI restores the default rather than sending an empty key.
+	/// Blank is treated as absent so clearing a field in the settings UI
+	/// restores the default rather than sending an empty key
 	#[must_use]
 	pub fn with_overrides(
 		mut self,
@@ -52,7 +45,6 @@ impl NetConfig {
 		self
 	}
 
-	/// Headers Modrinth needs, if a token is configured.
 	#[must_use]
 	pub fn modrinth_headers(&self) -> Vec<(String, String)> {
 		match &self.modrinth_api_key {

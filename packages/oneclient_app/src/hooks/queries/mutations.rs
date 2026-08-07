@@ -24,12 +24,8 @@ pub async fn invalidate_cluster_queries() {
     QueriesStorage::<LoaderVersionsQuery>::try_invalidate_all().await;
 }
 
-/// Just the query that decides whether a cluster already has a package.
-///
-/// Split out of [`invalidate_cluster_queries`] so an install can wait for
-/// exactly this before it stops calling itself busy. The full sweep reaches the
-/// network several times over, and waiting for all of it would trade one stale
-/// button for a slower one.
+/// Split out of [`invalidate_cluster_queries`] so an install can wait for just
+/// this before dropping its busy flag the full sweep hits the network
 pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
 }
@@ -64,9 +60,8 @@ pub enum ClusterAction {
         bundle_name: String,
         package_id: String,
         enabled: bool,
-        /// The bundle manifest's `enabled` flag, so we know whether the user's
-        /// choice matches the default (clear the override) or contradicts it
-        /// (write `Enabled` / `Disabled`).
+        /// Manifest default matching it clears the override contradicting it
+        /// writes `Enabled` / `Disabled`
         manifest_default: bool,
     },
     ImportLocalFile {
@@ -78,7 +73,6 @@ pub enum ClusterAction {
         cluster_id: ClusterId,
         dedicated: bool,
     },
-    /// Rehash every installed file and re-download whatever no longer matches.
     VerifyFiles {
         cluster_id: ClusterId,
     },
@@ -95,10 +89,8 @@ impl MutationCapability for ClusterMutation {
         let content = &state.services.content();
         let result = match keys {
             ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                // Recorded in the database and applied to the game folder at the
-                // next launch, whether or not a session is live: Minecraft reads
-                // its mods once at startup, so there is nothing a mid-session
-                // write could achieve.
+                // Applied to the game folder at next launch never mid-session
+                // Minecraft reads its mods once at startup
                 oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
                     .await
                     .map(|_| ())
@@ -154,9 +146,8 @@ impl MutationCapability for ClusterMutation {
                 })
             }
             ClusterAction::VerifyFiles { cluster_id } => {
-                // Reports its own outcome rather than going through the generic
-                // failure toast: a verify that finds nothing wrong is a useful
-                // result the user asked for, not a silent no-op.
+                // Reports its own outcome not the generic failure toast a
+                // verify that finds nothing wrong is still a useful result
                 match oneclient_core::verify_cluster_files(&state, *cluster_id).await {
                     Ok(report) => {
                         let notify = services.events.notify("Verification complete");

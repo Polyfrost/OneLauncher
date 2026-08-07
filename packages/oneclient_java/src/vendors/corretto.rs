@@ -57,13 +57,8 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
                 continue;
             };
 
-            // Prefer the exact versioned URL the index names over the `latest`
-            // redirect. Both resolve to the same build today, but `latest` is
-            // resolved at download time: if Corretto publishes a new build in
-            // the window between listing and downloading, the redirect moves and
-            // the checksum from this index no longer describes those bytes. The
-            // download would then fail as corrupt, three retries deep, for a
-            // file that is perfectly intact.
+            // Prefer the versioned URL the `latest` redirect resolves at
+            // download time and can move away from this index's checksum
             let download_url = entry
                 .get("resource")
                 .and_then(Value::as_str)
@@ -115,7 +110,7 @@ const CORRETTO_ARCH: &str = match HostTarget::CURRENT.arch {
     HostArch::Aarch64 => "aarch64",
 };
 
-/// Corretto publishes no separate musl build, so Alpine gets the glibc one.
+/// Corretto publishes no separate musl build so Alpine gets the glibc one
 const CORRETTO_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Windows => "windows",
     HostOs::MacOs => "macos",

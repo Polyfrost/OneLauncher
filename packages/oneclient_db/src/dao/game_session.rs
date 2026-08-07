@@ -40,8 +40,7 @@ pub async fn finish_session(
 	finish_session_at(pool, started_at, &Utc::now().to_rfc3339(), exit_code).await
 }
 
-/// Close a session at an explicit time. Used when the exit time is inferred
-/// from the game's log rather than observed live.
+/// For exit times inferred from the game's log rather than observed live
 pub async fn finish_session_at(
 	pool: &SqlitePool,
 	started_at: &str,
@@ -107,7 +106,6 @@ pub async fn insert_server_join(
 	insert_server_join_at(pool, session_started_at, address, port, &Utc::now().to_rfc3339()).await
 }
 
-/// Record a join at an explicit time, for spans replayed out of a game log.
 pub async fn insert_server_join_at(
 	pool: &SqlitePool,
 	session_started_at: &str,
@@ -134,7 +132,6 @@ pub async fn finish_server(pool: &SqlitePool, joined_at: &str) -> Result<(), sql
 	finish_server_at(pool, joined_at, &Utc::now().to_rfc3339()).await
 }
 
-/// Close a server span at an explicit time, for spans replayed out of a log.
 pub async fn finish_server_at(
 	pool: &SqlitePool,
 	joined_at: &str,
@@ -192,7 +189,7 @@ pub async fn list_session_servers(
 	.await
 }
 
-/// Drop every server span of a session, so a log replay can rewrite them from scratch.
+/// Lets a log replay rewrite a session's server spans from scratch
 pub async fn delete_session_servers(
 	pool: &SqlitePool,
 	session_started_at: &str,

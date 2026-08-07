@@ -17,8 +17,7 @@ struct ZuluPackage {
 	download_url: String,
 	name: String,
 	java_version: Vec<u32>,
-	/// Only present because `include_fields` asks for it; Azul omits it from
-	/// the default projection.
+	/// Only present because `include_fields` asks for it
 	#[serde(default)]
 	sha256_hash: Option<String>,
 	#[serde(default)]
@@ -65,15 +64,14 @@ fn zulu_url(major: Option<u32>) -> JavaResult<Url> {
         q.append_pair("os", ZULU_OS)
             .append_pair("arch", ZULU_ARCH)
             .append_pair("archive_type", "zip")
-            // Kits only, never a bare runtime image.
+            // Kits only never a bare runtime image
             .append_pair("java_package_type", "jdk")
             .append_pair("javafx_bundled", "false")
             .append_pair("release_status", "ga")
             .append_pair("availability_types", "CA")
             .append_pair("certifications", "tck")
             .append_pair("latest", "true")
-            // Azul's default projection omits the hash, so a download could
-            // only ever be verified by asking for it explicitly.
+            // Azul's default projection omits the hash
             .append_pair("include_fields", "sha256_hash,size")
             .append_pair("page", "1")
             .append_pair("page_size", "100");

@@ -11,9 +11,8 @@ use crate::LauncherResult;
 
 pub mod console;
 
-/// The launcher's own crates. These are the ones anyone reading a log actually
-/// wants to hear from, so they get an explicit directive instead of falling
-/// back to the base level.
+/// The launcher's own crates given an explicit directive rather than falling
+/// back to the base level
 const APP_TARGETS: &[&str] = &[
     "oneclient_app",
     "oneclient_auth",
@@ -31,12 +30,8 @@ const APP_TARGETS: &[&str] = &[
     "polyio",
 ];
 
-/// Dependencies that talk on every request, query, redraw or DNS lookup.
-///
-/// The release base level already covers them, but the debug filter raises the
-/// base to `info` so that an unfamiliar crate misbehaving still shows up — and
-/// that would let this lot back in. A log drowned in `hyper` connection
-/// bookkeeping helps nobody, so they are pinned regardless of the base.
+/// Pinned regardless of the base level because the debug filter raises the base
+/// to `info` and that would otherwise let this lot flood the log
 const NOISY_TARGETS: &[&str] = &[
     "calloop",
     "freya_core",
@@ -52,8 +47,7 @@ const NOISY_TARGETS: &[&str] = &[
     "reqwest",
     "rustls",
     "smithay_client_toolkit",
-    // Only `sqlx::query`: `sqlx` proper reports pool and migration problems we
-    // do want, it is the statement-per-line log that is unreadable.
+    // Only `sqlx::query` `sqlx` proper reports pool and migration problems we want
     "sqlx::query",
     "tokio_util",
     "tower",
@@ -62,14 +56,12 @@ const NOISY_TARGETS: &[&str] = &[
     "zbus",
 ];
 
-/// Directives for a normal run: our crates at `info`, everything else silent
-/// unless it is a warning.
 pub fn default_directives() -> String {
     directives("info", "warn")
 }
 
-/// Directives for "Log Debug Info": our crates at `debug`, and a raised base so
-/// an unlisted dependency's `info` still reaches the log.
+/// Raises the base level too so an unlisted dependency's `info` still reaches
+/// the log
 pub fn debug_directives() -> String {
     directives("debug", "info")
 }
@@ -85,8 +77,8 @@ fn directives(app_level: &str, base_level: &str) -> String {
     out
 }
 
-/// The filter layer sits directly on the [`Registry`], so that is the subscriber
-/// type the reload handle is parameterised over.
+/// The filter layer sits directly on the [`Registry`] so that is the subscriber
+/// type the reload handle is parameterised over
 type FilterHandle = reload::Handle<EnvFilter, Registry>;
 
 static FILTER: OnceLock<FilterHandle> = OnceLock::new();
@@ -101,17 +93,13 @@ pub enum FilterError {
     NotInitialized,
 }
 
-/// The directives currently in force, for anything that wants to show them.
 pub fn active_directives() -> String {
     ACTIVE_DIRECTIVES.lock().clone()
 }
 
-/// Swap the active filter without restarting the launcher.
-///
-/// This is what makes the live console worth having: a developer can widen the
-/// filter, watch the noise, and narrow it again in the same session. A string
-/// that fails to parse leaves the previous filter in place rather than blanking
-/// the log.
+/// Swaps the active filter without restarting
+/// Unparseable directives leave the previous filter in place rather than
+/// blanking the log
 pub fn set_filter(directives: &str) -> Result<(), FilterError> {
     let filter =
         EnvFilter::try_new(directives).map_err(|err| FilterError::Invalid(err.to_string()))?;
@@ -137,9 +125,8 @@ pub fn init() -> LauncherResult<()> {
 }
 
 pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
-    // `RUST_LOG` wins outright rather than being merged in: someone who set it
-    // asked for exactly those directives, and appending ours would quietly
-    // override the targets they care about.
+    // `RUST_LOG` wins outright rather than merging appending ours would quietly
+    // override the targets the user asked for
     let directives = std::env::var(EnvFilter::DEFAULT_ENV)
         .ok()
         .filter(|value| !value.trim().is_empty())

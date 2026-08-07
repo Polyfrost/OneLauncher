@@ -38,7 +38,7 @@ impl Component for Clusters {
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let groups = group_clusters_by_release(&clusters);
-        // Newest version first.
+        // Newest version first
         let lines: Vec<ReleaseLine> = groups.keys().rev().copied().collect();
 
         if lines.is_empty() {
@@ -309,8 +309,7 @@ fn tags_row(tags: &[String]) -> Option<Element> {
     )
 }
 
-/// Only shown when the line holds more than one version; a single-version line
-/// already names it on the card and in the heading.
+/// A single-version line already names it on the card and in the heading
 fn version_rows(
     line: ReleaseLine,
     keys: &[VersionKey],

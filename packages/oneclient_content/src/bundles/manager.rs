@@ -127,10 +127,6 @@ impl BundlesManager {
         Ok(true)
     }
 
-    /// Seeds the in-memory manifest cache for an archive already on disk.
-    ///
-    /// For callers that put a bundle there themselves (the dev helpers) and would
-    /// otherwise pay a re-read on first use.
     pub async fn cache_archive_manifest(
         &self,
         path: std::path::PathBuf,
@@ -239,12 +235,10 @@ impl BundlesManager {
         Ok(())
     }
 
-    /// Fetches the bundle catalog, deferring the ETag commit.
-    ///
-    /// The catalog is only half the payload: each entry then has to download.
-    /// Committing the ETag here would make the next sync answer 304 and skip
-    /// bundles that never actually arrived, so [`BundlesManager::sync`] writes
-    /// it only once every bundle has landed.
+    /// Defers the ETag commit
+    /// bundles download after the catalog so an early ETag would 304 past
+    /// bundles that never arrived
+    /// `sync` commits it once all land
     #[tracing::instrument(level = "debug", skip(ctx))]
     async fn fetch_manifest(
         ctx: &ContentCtx,

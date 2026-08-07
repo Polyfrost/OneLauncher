@@ -24,7 +24,7 @@ struct LibericaRelease {
     #[serde(rename = "buildVersion", default)]
     build_version: u32,
     version: String,
-    /// Liberica is the one vendor that publishes SHA-1 rather than SHA-256.
+    /// Liberica is the one vendor that publishes SHA-1 rather than SHA-256
     #[serde(default)]
     sha1: Option<String>,
     #[serde(default)]
@@ -92,14 +92,14 @@ fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
         let mut q = url.query_pairs_mut();
         q.append_pair("os", LIBERICA_OS)
             .append_pair("arch", LIBERICA_ARCH)
-            // Kits only, never a bare runtime image.
+            // Kits only never a bare runtime image
             .append_pair("bundle-type", "jdk")
             .append_pair("bitness", LIBERICA_BITNESS)
             .append_pair("package-type", LIBERICA_PACKAGE)
             .append_pair("installation-type", "archive")
             .append_pair(
                 "fields",
-                // `sha1` and `size` are only returned when named here.
+                // `sha1` and `size` are only returned when named here
                 "downloadUrl,filename,featureVersion,updateVersion,buildVersion,version,sha1,size",
             )
             .append_pair("output", "json");
@@ -110,8 +110,8 @@ fn liberica_url(major: Option<u32>) -> JavaResult<Url> {
     Ok(url)
 }
 
-/// Liberica takes architecture family and bitness as separate parameters, so
-/// x86/x86_64 collapse to `x86` and both ARM variants to `arm`.
+/// Liberica takes architecture family and bitness as separate parameters so
+/// x86/x86_64 collapse to `x86` and both ARM variants to `arm`
 const LIBERICA_ARCH: &str = match HostTarget::CURRENT.arch {
     HostArch::X86 | HostArch::X86_64 => "x86",
     HostArch::Arm | HostArch::Aarch64 => "arm",

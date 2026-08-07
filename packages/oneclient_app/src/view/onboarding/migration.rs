@@ -26,8 +26,7 @@ fn migrated_categories(source: &[SourceInstance]) -> Vec<String> {
     categories
 }
 
-/// Whether a new cluster exists matching this source instance's version+loader
-/// (needed for the "dedicated dir" import option to have a target).
+/// Needed for the "dedicated dir" import option to have a target
 pub(crate) fn matching_new_cluster_id(
     instance: &SourceInstance,
     new: &[ClusterBundles],
@@ -47,12 +46,11 @@ impl Component for OnboardingMigration {
         let bundles_query = use_onboarding_bundles();
         let selection = use_onboarding_selection();
         let mut categories = selection.migrated_categories;
-        // Shared across the flow; the file import is dispatched later, on Setup.
+        // Shared across the flow the file import is dispatched later on Setup
         let mut import_folder = selection.import_folder;
         let import_dedicated = selection.import_dedicated;
 
-        // No detection yet -> render nothing meaningful; the shell only routes
-        // here when a source was detected, so this is a transient loading state.
+        // The shell only routes here when a source was detected so this is transient
         let Some(detection) = migration_detection(&migration_query) else {
             return rect()
                 .width(Size::fill())
@@ -92,7 +90,7 @@ impl Component for OnboardingMigration {
             .width(Size::fill())
             .spacing(16.)
             .child(heading)
-            // "Don't import files" is the default choice, pinned above the list.
+            // "Don't import files" is the default choice pinned above the list
             .maybe_child(any_importable.then(|| {
                 import_choice_card(
                     "Don't import files",
@@ -226,10 +224,7 @@ fn import_body(
         .into_element()
 }
 
-/// A detected source instance rendered as a card. Shows version + categories
-/// (always-reselected info); when the instance has a game dir it also acts as
-/// the file-import selector and, when selected, exposes the shared/dedicated
-/// target choice inline.
+/// When the instance has a game dir it also acts as the file-import selector and exposes the shared/dedicated target choice
 fn version_card(
     instance: &SourceInstance,
     selected: bool,
@@ -283,7 +278,7 @@ fn version_card(
                     colors::fg_secondary()
                 })),
         )
-        // Selection affordance only when the instance actually has files.
+        // Selection affordance only when the instance actually has files
         .maybe_child(importable.then(|| {
             if selected {
                 Icon::new(IconType::Check).size(18.).into_element()
@@ -314,7 +309,6 @@ fn version_card(
             .on_press(move |_| on_select(()));
     }
 
-    // When this version is the chosen import, offer where its files should go.
     if selected {
         let mut targets = rect()
             .vertical()
@@ -348,7 +342,7 @@ fn version_card(
     card.into_element()
 }
 
-/// A standalone import choice with no associated version (e.g. "Don't import").
+/// A standalone import choice with no associated version (e.g. "Don't import")
 fn import_choice_card(
     title: &str,
     subtitle: &str,
@@ -408,8 +402,7 @@ fn import_choice_card(
         .into_element()
 }
 
-/// Custom nav: like `onboarding_nav` but the Next button runs `on_next` (which
-/// applies the migration + navigates) instead of a plain route replace.
+/// Like `onboarding_nav` but Next runs `on_next` (apply migration + navigate) instead of a plain route replace
 fn migration_nav(next_enabled: bool, on_next: impl FnMut() + 'static) -> impl IntoElement {
     let mut on_next = on_next;
     rect()

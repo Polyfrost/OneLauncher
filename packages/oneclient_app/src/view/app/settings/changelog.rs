@@ -22,9 +22,7 @@ impl Component for SettingsChangelog {
         let mut marked = use_state(|| None::<String>);
         let installed_version = env!("CARGO_PKG_VERSION").to_string();
 
-        // Opening this page counts as reading the changelog, so clear the sidebar
-        // dot once the newest entry is known. `marked` keeps us from re-sending the
-        // command while the settings snapshot catches up.
+        // Opening this page counts as reading it `marked` avoids re-sending while the settings snapshot catches up
         if let Some(latest) = latest_changelog_version(&query) {
             let already_marked = marked.peek().as_deref() == Some(latest.as_str());
             let already_seen = settings.seen_changelog_version.as_deref() == Some(latest.as_str());
@@ -74,8 +72,7 @@ impl Component for SettingsChangelog {
     }
 }
 
-/// Chevron angle for a collapsed card: `ChevronDown` swung a quarter turn
-/// anticlockwise points right.
+/// `ChevronDown` swung a quarter turn anticlockwise points right
 const CHEVRON_CLOSED_DEG: f32 = -90.;
 
 #[derive(PartialEq)]
@@ -91,9 +88,7 @@ impl Component for ReleaseCard {
         let mut open = use_state(|| self.initially_open);
         let is_open = *open.read();
 
-        // One chevron that swings between pointing right (collapsed) and down
-        // (expanded), so the arrow tracks the section instead of cutting to a
-        // different glyph that did not follow the state.
+        // One chevron that swings so the arrow tracks the section instead of cutting to a different glyph
         let swing = use_animation_with_dependencies(&is_open, |conf, open| {
             conf.on_creation(OnCreation::Run);
             conf.on_change(OnChange::Rerun);

@@ -1,12 +1,4 @@
-//! The launch-time "these packages are out of date" modal.
-//!
-//! Only ever shows packages the user installed from the browser; bundle content
-//! has its own flow and is never listed here.
-//!
-//! Every row carries its own dropdown, so a user who wants a single mod moved
-//! forward is not made to take the rest with it. Nothing happens until Proceed:
-//! the choices are collected first and applied in one pass, which is why the
-//! rows stay put while they are being answered.
+//! Only lists packages installed from the browser bundle content has its own flow
 
 use std::collections::HashMap;
 
@@ -30,12 +22,7 @@ const CHOICE_DROPDOWN_W: f32 = 150.;
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
-/// What Proceed should do with one row.
-///
-/// The two skips differ only in whether the answer outlives the modal: a plain
-/// skip leaves the package stale and it is offered again next launch, while
-/// [`RowChoice::SkipVersion`] records that this exact version was declined and
-/// stops it being raised until a newer one appears.
+/// `Skip` is re-offered next launch `SkipVersion` persists the decline until a newer version
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum RowChoice {
     #[default]
@@ -60,7 +47,6 @@ impl RowChoice {
     }
 }
 
-/// Identifies a row across the whole modal, which may span several clusters.
 type RowKey = (ClusterId, String);
 
 fn row_key(update: &BrowserPackageUpdate) -> RowKey {
@@ -75,15 +61,12 @@ impl Component for PackageUpdatePopup {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
 
-        // Only the rows the user actually touched. Everything absent is an
-        // Update, so a group that arrives while the modal is open still gets a
-        // sensible default without being reconciled into the map.
+        // Absent entries default to Update so groups arriving mid-modal need no reconciliation
         let choices = use_state(HashMap::<RowKey, RowChoice>::new);
 
         let groups = snapshot.package_updates.clone();
 
-        // Hooks run unconditionally, so the meta lookup is built from a possibly
-        // empty id list and happens before the early return below.
+        // Hooks run unconditionally so this must precede the early return below
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
             let ids: Vec<String> = groups
@@ -233,8 +216,6 @@ fn content(
                                     RowChoice::Update => {
                                         proceed_dispatch.apply_package_update(update.clone());
                                     }
-                                    // Nothing to record: the package stays
-                                    // stale and is offered again next launch.
                                     RowChoice::Skip => {}
                                     RowChoice::SkipVersion => proceed_dispatch
                                         .skip_package_update(
@@ -349,8 +330,6 @@ impl Component for UpdateRow {
         let mut choices = self.choices;
         let key = row_key(&update);
 
-        // "1.0.2 to 1.1.0" when both are known; a provider that records neither
-        // still gets a usable row rather than an empty line.
         let versions = match (
             update.installed_version_name.is_empty(),
             update.latest_version_name.is_empty(),

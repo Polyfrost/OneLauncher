@@ -21,11 +21,7 @@ pub struct SearchFilters {
 }
 
 impl SearchFilters {
-	/// The query as it should go on the wire: no surrounding whitespace, and
-	/// internal runs collapsed to a single space. Providers score the raw string
-	/// they are given, so " sodium " and "sodium" come back ranked differently —
-	/// normalising at the boundary is what stops a stray keystroke from changing
-	/// the results. Empty when there is nothing to search for.
+	/// Providers rank the raw string so " sodium " and "sodium" score differently
 	#[must_use]
 	pub fn normalized_query(&self) -> String {
 		self.query.as_deref().map(normalize_query).unwrap_or_default()
@@ -155,8 +151,7 @@ pub struct VersionDetail {
 	pub published: DateTime<Utc>,
 	pub downloads: u64,
 	pub files: Vec<VersionFile>,
-	/// What the provider says this version needs alongside it. Only
-	/// [`DependencyKind::Required`] entries are pulled in automatically.
+	/// Only [`DependencyKind::Required`] entries are pulled in automatically
 	#[serde(default)]
 	pub dependencies: Vec<VersionDependency>,
 }
@@ -170,9 +165,7 @@ pub enum DependencyKind {
 	Embedded,
 }
 
-/// A provider-declared relation to another project. At least one of the two ids
-/// is set: Modrinth pins either a project, a specific version, or both, while
-/// CurseForge only ever names the project.
+/// At least one id is set Modrinth may pin a version CurseForge only names the project
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionDependency {
 	pub project_id: Option<String>,
@@ -240,7 +233,6 @@ pub struct LinkedArtifactInfo {
 	pub display_name: Option<String>,
 	pub display_version: Option<String>,
 	pub provider: Option<ProviderId>,
-	/// When the provider published this version, RFC 3339. Ordering two copies
-	/// of one project by recency is the only thing that reads it.
+	/// Provider publish time RFC 3339
 	pub published_at: Option<String>,
 }

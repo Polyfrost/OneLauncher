@@ -302,13 +302,8 @@ fn xerr(code: u64) -> MinecraftAuthError {
     }
 }
 
-/// Which layer of the connection failed.
-///
-/// reqwest reports every one of these as a connect error, so the text of the
-/// source chain is the only thing that separates "your antivirus is
-/// intercepting TLS" from "your DNS is broken" — and they need different
-/// instructions. A wrong guess here costs the user a wasted support round, so
-/// anything unrecognised falls back to the generic advice.
+/// reqwest reports all of these as a connect error so the source chain text is
+/// the only thing separating them anything unrecognised falls back to Generic
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NetworkFailure {
     Certificate,
@@ -320,8 +315,8 @@ enum NetworkFailure {
 fn classify_network_failure(err: &reqwest::Error) -> NetworkFailure {
     let chain = oneclient_net::error_chain(err).to_ascii_lowercase();
 
-    // Certificate before handshake: a rejected certificate also aborts the
-    // handshake, and the certificate wording is the more specific of the two.
+    // Certificate before handshake a rejected certificate also aborts the
+    // handshake and the certificate wording is the more specific of the two
     const CERTIFICATE: &[&str] = &[
         "invalid peer certificate",
         "unknownissuer",

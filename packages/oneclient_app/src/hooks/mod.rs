@@ -62,8 +62,6 @@ use crate::state::{
 use freya::prelude::*;
 use freya::radio::use_radio;
 
-/// Publishes the actions handle so components can reach it without prop
-/// drilling. Provided once, at the root.
 pub fn use_provide_actions(actions: &Actions) {
     let actions = actions.clone();
     use_provide_root_context(move || actions.clone());
@@ -73,10 +71,8 @@ pub fn use_dispatch() -> Actions {
     consume_root_context::<Actions>()
 }
 
-/// Subscribes to one concern of the app state.
-///
-/// Each of these wakes its component only when *that* channel is written, so a
-/// toast timer tick does not re-render a component that reads only `data_dir`.
+/// Wakes its component only when that channel is written so a toast tick does
+/// not re-render a component reading only `data_dir`
 pub fn use_launcher() -> LauncherInit {
     use_radio(AppChannel::Launcher).read().launcher.clone()
 }
@@ -85,11 +81,8 @@ pub fn use_settings_snapshot() -> SettingsState {
     use_radio(AppChannel::Settings).read().settings.clone()
 }
 
-/// Derives the render view from the engine.
-///
-/// Built on read rather than published on write: during a download the engine
-/// changes tens of thousands of times, and cloning the inbox each time was the
-/// snapshot channel's main cost.
+/// Built on read not published on write cloning the inbox on every one of a
+/// download's tens of thousands of engine changes was the channel's main cost
 pub fn use_notifications_snapshot() -> NotificationSnapshot {
     let radio = use_radio(AppChannel::Notifications);
     let state = radio.read();

@@ -3,12 +3,6 @@ use crate::packages::PackageError;
 
 pub type ContentResult<T> = Result<T, ContentError>;
 
-/// The crate's error, funnelling the two subsystem errors plus plumbing.
-///
-/// `PackageError` and `BundleError` stay distinct because they describe
-/// different failures (a provider rejecting a request versus a bundle manifest
-/// not matching what is on disk) and callers inside each subsystem still return
-/// their own.
 #[derive(Debug, thiserror::Error)]
 pub enum ContentError {
 	#[error(transparent)]
@@ -44,15 +38,11 @@ pub enum ContentError {
 	#[error("Invalid URL: {0}")]
 	Url(#[from] url::ParseError),
 
-	/// A value that came out of the database or a manifest did not match the
-	/// shape the code expects: an unknown content type, a loader id with no
-	/// matching variant.
 	#[error("invalid content data: {reason}")]
 	InvalidData { reason: String },
 }
 
 impl ContentError {
-	/// Whether this is the user's environment rather than a launcher bug.
 	#[must_use]
 	pub fn is_transient(&self) -> bool {
 		match self {

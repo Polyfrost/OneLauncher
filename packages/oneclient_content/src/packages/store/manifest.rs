@@ -9,7 +9,7 @@ const MANIFEST_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestEntry {
-	/// Slash-separated, relative to the game directory, e.g. `mods/sodium.jar`.
+	/// Slash-separated relative to the game directory e.g. `mods/sodium.jar`
 	pub path: String,
 	pub hash: String,
 }
@@ -17,9 +17,7 @@ pub struct ManifestEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterializedManifest {
 	pub version: u32,
-	/// Which cluster last materialized into this directory. The shared
-	/// `.minecraft` is used by every non-dedicated cluster in turn, so a
-	/// manifest found there often belongs to somebody else.
+	/// The shared `.minecraft` is used by every non-dedicated cluster in turn so this often is not us
 	pub cluster_id: i64,
 	pub entries: Vec<ManifestEntry>,
 }
@@ -44,10 +42,7 @@ impl MaterializedManifest {
 		self.entries.iter().any(|e| e.path == relative_path)
 	}
 
-	/// Whether this manifest lists `relative_path` as belonging to `cluster_id`.
-	///
-	/// The cluster check is what makes it safe to delete out of the shared game
-	/// directory: another cluster's live content is never listed under ours.
+	/// The cluster check is what makes deleting out of the shared game directory safe
 	#[must_use]
 	pub fn owns(&self, cluster_id: i64, relative_path: &str) -> bool {
 		self.cluster_id == cluster_id && self.contains(relative_path)
@@ -59,11 +54,8 @@ pub fn manifest_path(game_dir: &Path) -> PathBuf {
 	game_dir.join(MANIFEST_NAME)
 }
 
-/// Reads the manifest, or `None` when there is none or it cannot be understood.
-///
-/// A manifest we cannot parse is treated as absent rather than as an error: the
-/// worst case is that one session's links get stashed as user content, which is
-/// recoverable, whereas refusing to launch over it is not.
+/// An unparseable manifest reads as `None` not an error
+/// stashing links as user content is recoverable refusing to launch is not
 pub async fn load(game_dir: &Path) -> Option<MaterializedManifest> {
 	let raw = polyio::read_to_string(manifest_path(game_dir)).await.ok()?;
 
@@ -101,7 +93,6 @@ pub async fn clear(game_dir: &Path) {
 	polyio::remove_file(manifest_path(game_dir)).await.ok();
 }
 
-/// Builds the relative path a content file is materialized at.
 #[must_use]
 pub fn entry_path(content_folder: &str, file_name: &str) -> String {
 	format!("{content_folder}/{file_name}")
@@ -126,8 +117,6 @@ mod tests {
 		let manifest = manifest();
 
 		assert!(manifest.owns(7, "mods/sodium.jar"));
-		// The shared game dir is reused; another cluster's launch must not treat
-		// this entry as its own to delete.
 		assert!(!manifest.owns(8, "mods/sodium.jar"));
 		assert!(!manifest.owns(7, "mods/iris.jar"));
 	}

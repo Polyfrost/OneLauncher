@@ -68,8 +68,7 @@ fn encode_package_id(provider: ProviderId, id: &str) -> String {
 pub struct Browser {
     pub cluster_id: i64,
     pub package_type: String,
-    /// Entered from the navbar rather than from a cluster's content page, so
-    /// the cluster it browses for is picked here instead of being decided.
+    /// Entered from the navbar so the cluster to install into is picked here
     pub pick_cluster: bool,
 }
 
@@ -104,7 +103,7 @@ impl Component for Browser {
             });
         }
 
-        // Debounce the search query so typing doesn't fire a request per keystroke.
+        // Debounce the search query so typing doesn't fire a request per keystroke
         let debounced_query = use_debounced(
             query.read().clone(),
             Duration::from_millis(SEARCH_DEBOUNCE_MS),
@@ -128,8 +127,7 @@ impl Component for Browser {
         };
 
         let mut page_state = page;
-        // Normalised the same way the search key is, so a query that only picked
-        // up a space is not treated as a new search that resets the page.
+        // Normalised like the search key so a query differing only by a space does not reset the page
         let signature = format!(
             "{provider_id:?}|{}|{compat}|{}",
             normalize_query(&debounced_query.read()).to_lowercase(),
@@ -166,9 +164,7 @@ impl Component for Browser {
         let pending = search_pending(&search);
         let current_page = *page.read();
 
-        // A page switch re-runs the search, which reports no total until it
-        // settles. Holding the last count keeps the pager in place — disabled
-        // while the page loads — instead of dropping out and back in.
+        // A page switch reports no total until it settles holding the last count keeps the pager in place
         let live_pages = (total > 0).then(|| total.div_ceil(BROWSE_PAGE_SIZE).max(1));
         let mut settled_pages = use_state(|| live_pages);
         if !pending {
@@ -298,7 +294,7 @@ fn page_title(
         )
         .maybe_child(match picker {
             Some(picker) => Some(picker.into_element()),
-            // Without the picker the cluster is fixed, so it's just a subtitle.
+            // Without the picker the cluster is fixed so it's just a subtitle
             None => cluster_name.map(|name| {
                 label()
                     .text(format!("for {name}"))
@@ -309,8 +305,7 @@ fn page_title(
         })
 }
 
-/// The version's display name from the manifest ("Tricky Trials"), falling back
-/// to the bare version while the manifest hasn't arrived or doesn't cover it.
+/// Falls back to the bare version while the manifest hasn't arrived or doesn't cover it
 fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
     parse_mc_version(&cluster.mc_version)
         .and_then(|parsed| {
@@ -325,8 +320,7 @@ fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
         .unwrap_or_else(|| cluster.mc_version.clone())
 }
 
-/// Switches which cluster the browser installs into. The choice lives in the
-/// route, so going back and forward keeps the cluster that was being browsed.
+/// The choice lives in the route so back and forward keep the cluster being browsed
 #[derive(PartialEq)]
 struct ClusterPicker {
     cluster_id: i64,

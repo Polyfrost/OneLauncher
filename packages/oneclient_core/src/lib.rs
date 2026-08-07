@@ -46,7 +46,6 @@ pub use oneclient_cluster::logs::{
     LogFileInfo, LogKind, LogLevel, LogLine, LogsError, MclogsUploadResponse, ReadOptions,
     delete_log_at, list_cluster_logs, read_log_at, upload_log_at,
 };
-// Minecraft metadata moved to `oneclient_mc`; kept re-exported for the app.
 pub use oneclient_mc::{McError as MetadataError, MetadataStore};
 pub use migration::{
     detect as detect_migration, import_game_dir as import_migration_game_dir, ImportTarget,

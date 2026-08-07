@@ -4,7 +4,6 @@ use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::LauncherError;
 use oneclient_mc::{self as minecraft, PlayerProfileView};
 
-// image cache
 const PROFILE_STALE: Duration = Duration::from_secs(30 * 60);
 const PROFILE_CLEAN: Duration = Duration::from_secs(2 * 60 * 60);
 
@@ -31,7 +30,7 @@ impl QueryCapability for FetchPlayerProfileQuery {
         Ok(minecraft::fetch_player_profile_view(client, &keys.uuid, access_token.as_deref()).await?)
     }
 
-    // TODO: Cache
+    // TODO Cache
     // fn matches(&self, keys: &Self::Keys) -> bool {
     //     keys.uuid.as_deref().is_some_and(|id| !id.is_empty())
     // }

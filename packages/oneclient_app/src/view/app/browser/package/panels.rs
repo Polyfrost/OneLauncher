@@ -200,9 +200,7 @@ fn version_row(
     cluster_id: i64,
     dispatch: Actions,
     installed: Option<InstalledVersion>,
-    // Whether the cluster has more than one version of this package, which is
-    // the only situation where saying which one is live tells the user
-    // anything.
+    // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
     installing: bool,
 ) -> impl IntoElement {
@@ -275,11 +273,7 @@ fn version_row(
         ))
 }
 
-/// Install, or remove the version that is already there.
-///
-/// A bundle that names this version without the cluster having linked anything
-/// yet leaves nothing to press: there is no artifact to remove, and installing
-/// it by hand would make a copy the bundle does not own.
+/// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it
 #[allow(clippy::too_many_arguments)]
 fn version_button(
     installed: Option<InstalledVersion>,

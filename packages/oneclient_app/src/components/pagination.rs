@@ -37,8 +37,7 @@ impl Pagination {
         self
     }
 
-    /// Greys out every control without unmounting the pager, for callers that
-    /// are still loading the page the user just asked for.
+    /// Greys out controls without unmounting the pager
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self

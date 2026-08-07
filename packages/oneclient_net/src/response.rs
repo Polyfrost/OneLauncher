@@ -4,7 +4,6 @@ use uuid::Uuid;
 use crate::error::RequestError;
 use oneclient_events::{GroupedProgressChild, EventBus};
 
-/// Minimum gap between progress events emitted for a single response body.
 const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
 #[derive(Clone, Default)]
@@ -49,20 +48,13 @@ impl ResponseNotifyOptions {
         self
     }
 
-    /// The grouped child these options report against, if any. Lets a caller
-    /// driving the download set phases and finish the child without having to
-    /// keep a second copy of it alongside the options.
     #[must_use]
     pub fn child(&self) -> Option<&GroupedProgressChild> {
         self.child.as_ref()
     }
 
-    /// Fixes the standalone notification's id, so a caller that sends the same
-    /// request more than once keeps updating one notification.
-    ///
-    /// Without this a retried download opens a fresh entry in the UI on every
-    /// attempt, and a flaky connection reads as several stalled installs rather
-    /// than one that is recovering.
+    /// Pins the standalone notification id so a retried request keeps updating
+    /// one notification instead of opening a fresh UI entry per attempt
     #[must_use]
     pub fn pinned(mut self) -> Self {
         if self.standalone_label.is_some() && self.standalone_id.is_none() {
@@ -117,10 +109,8 @@ impl ResponseExt for Response {
         }
 
         let events = events.clone();
-        // A chunk arrives every few KiB; forwarding one event per chunk buries the
-        // UI in tens of thousands of updates per download session, all of which
-        // collapse into the same repainted progress bar. Sample instead, and
-        // always emit the last one so the bar lands on complete.
+        // One event per chunk would bury the UI in tens of thousands of updates
+        // so sample the last one always emits so the bar lands on complete
         let mut last_emit: Option<std::time::Instant> = None;
         let stream = futures_lite::StreamExt::map(self.bytes_stream(), move |item| {
             match item {

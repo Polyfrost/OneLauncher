@@ -24,14 +24,8 @@ impl QueryCapability for StorageReportQuery {
     }
 }
 
-/// How long a scan stays good for.
-///
-/// The report walks every file under the launcher directory, which on a
-/// well-used install is tens of thousands of them. `stale_time` defaults to
-/// zero, meaning the scan would re-run every single time the page is mounted —
-/// so leaving the page and coming back would rescan the whole tree. Disk usage
-/// does not move on its own, and the page has a refresh button for when the
-/// user knows it has.
+/// The report walks tens of thousands of files and the default zero stale time
+/// would rescan the whole tree on every mount The page has a refresh button
 const STORAGE_STALE_TIME: Duration = Duration::from_secs(120);
 
 pub fn use_storage_report() -> UseQuery<StorageReportQuery> {
@@ -48,9 +42,7 @@ pub async fn invalidate_storage_queries() {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StorageAction {
-    /// Delete cached package files no artifact refers to.
     CleanUnreferencedCache,
-    /// Clear content links older launchers wrote into cluster folders.
     CleanLegacyClusterContent,
 }
 

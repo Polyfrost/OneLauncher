@@ -17,29 +17,28 @@ fn probe(pid: u32) -> Option<(System, Pid)> {
 	Some((sys, pid))
 }
 
-/// Process start time in unix seconds. Pids get recycled, this pins identity.
+/// Unix seconds Pids get recycled so this is what pins process identity
 pub fn process_start_time(pid: u32) -> Option<u64> {
 	let (sys, pid) = probe(pid)?;
 	Some(sys.process(pid)?.start_time())
 }
 
-/// Whether `pid` is still the process we launched. A matching pid whose start
-/// time differs is a recycled pid belonging to someone else, never ours.
+/// A matching pid whose start time differs is a recycled pid belonging to
+/// someone else never ours
 pub fn is_process_alive(pid: u32, started_at: Option<u64>) -> bool {
 	let Some(actual) = process_start_time(pid) else {
 		return false;
 	};
 	match started_at {
 		Some(expected) => actual == expected,
-		// Pre-migration sessions have no recorded start time. Liveness alone is
-		// a weaker signal, but treating the game as running is the safer error:
-		// worst case the exit time is recovered on a later start.
+		// Pre-migration sessions have no recorded start time assuming running
+		// is the safer error as the exit time is recovered on a later start
 		None => true,
 	}
 }
 
-/// Ask a process to exit. Used for games re-adopted after a launcher restart,
-/// where no `Child` handle survives to kill through.
+/// For games re-adopted after a launcher restart where no `Child` handle
+/// survives to kill through
 pub fn kill_process(pid: u32) -> bool {
 	let Some((sys, pid)) = probe(pid) else {
 		return false;
@@ -47,7 +46,7 @@ pub fn kill_process(pid: u32) -> bool {
 	let Some(process) = sys.process(pid) else {
 		return false;
 	};
-	// Prefer a graceful terminate so the game can save and shut down cleanly.
+	// Prefer a graceful terminate so the game can save before shutting down
 	process
 		.kill_with(Signal::Term)
 		.unwrap_or_else(|| process.kill())
@@ -118,8 +117,8 @@ impl GameProcessManager {
         self.dirs.lock().unwrap().insert(cluster_id, dir);
     }
 
-    /// Like [`Self::dir_in_use_by`], but counts a cluster's own session too. The
-    /// shared game directory holds one game at a time, whoever it belongs to.
+    /// Like [`Self::dir_in_use_by`] but counts a cluster's own session too the
+    /// shared game directory holds one game at a time whoever it belongs to
     pub fn dir_in_use(&self, dir: &Path) -> Option<i64> {
         self.dirs
             .lock()

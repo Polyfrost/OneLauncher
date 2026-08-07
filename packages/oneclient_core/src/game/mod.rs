@@ -12,8 +12,6 @@ pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
     cluster_analytics, global_analytics,
 };
-// Minecraft content lives in `oneclient_mc` now; re-exported so the rest of the
-// launcher keeps addressing it through `game::`.
 pub use oneclient_mc::{
     append_profile_game_arguments, classpaths, download_to_path, fetch_bytes_verified,
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,

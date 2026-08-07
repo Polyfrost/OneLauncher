@@ -1,9 +1,5 @@
-//! The database side of [`oneclient_java::JavaStore`].
-//!
-//! `oneclient_java` defines what it needs; this maps it onto the launcher's
-//! `java_versions` table. Keeping the adapter here rather than the trait there
-//! lets the Java crate build without sqlx, and lets its tests run against
-//! `MemoryJavaStore` instead of a real database file.
+//! The adapter lives here rather than in `oneclient_java` so that crate builds
+//! without sqlx and can test against `MemoryJavaStore`
 
 use std::str::FromStr;
 
@@ -21,8 +17,6 @@ impl SqlJavaStore {
 	}
 }
 
-/// The one place a stored row becomes a domain value. Keeping it here spares
-/// `JavaRuntime` from knowing the database's row type.
 fn row_to_runtime(row: JavaVersionRow) -> JavaRuntime {
 	JavaRuntime {
 		absolute_path: row.absolute_path,

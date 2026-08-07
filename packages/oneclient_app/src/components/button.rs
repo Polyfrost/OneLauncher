@@ -26,7 +26,6 @@ pub enum ButtonSize {
     Icon,
 }
 
-/// How much a disabled button is faded out.
 const DISABLED_OPACITY: f32 = 0.5;
 
 struct ButtonColors {
@@ -198,8 +197,7 @@ impl Button {
         self
     }
 
-    /// The name a button carrying only an icon goes by, since there is no label
-    /// for accessibility to read out.
+    /// Accessible name for icon-only buttons which have no label to read out
     pub fn alt(mut self, alt: impl Into<Box<str>>) -> Self {
         self.alt = Some(alt.into());
         self

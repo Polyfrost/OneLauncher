@@ -234,7 +234,6 @@ fn redirect_page_html(page: RedirectPage) -> String {
     let (accent, glyph, heading, detail) = match page {
         RedirectPage::Waiting => (
             "#2567d8",
-            // Spinning ring.
             r#"<div class="ring"></div>"#,
             "Signing you in",
             "Finish signing in with Microsoft in this window.",

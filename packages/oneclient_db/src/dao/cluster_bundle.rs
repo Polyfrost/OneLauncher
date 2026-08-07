@@ -189,10 +189,7 @@ pub async fn remove_override(
     Ok(())
 }
 
-/// Drops every objection the cluster holds against a package, under any bundle.
-///
-/// Opt-in (`enabled`) rows are left alone: they say the opposite thing, and
-/// clearing an objection is not a reason to forget one.
+/// Opt-in (`enabled`) rows are left alone they say the opposite thing
 pub async fn clear_suppressing_overrides(
     pool: &SqlitePool,
     cluster_id: i64,

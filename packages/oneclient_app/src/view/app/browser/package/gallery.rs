@@ -1,10 +1,4 @@
-//! The package page's gallery tab.
-//!
-//! Laid out like the cluster's screenshots: a grid of tiles that open into a
-//! full-window viewer with arrows between them. The difference is where the
-//! pixels come from — these are remote images behind the shared image cache
-//! rather than files on disk, so a tile and the opened view ask the cache for
-//! the same url at two different sizes instead of sharing one decode.
+//! Remote images behind the shared image cache a tile and the opened view ask for the same url at two different sizes
 
 use super::*;
 
@@ -15,14 +9,12 @@ use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
 use crate::theme::colors;
 use crate::ui::{border_all_color, flow_grid, grid_columns_for_width};
 
-/// How wide a tile is allowed to get before the grid takes another column.
+/// How wide a tile is allowed to get before the grid takes another column
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
 
-/// Downscale ceilings handed to the image cache. A tile never shows more than
-/// its own width, and asking for the full thing there was what made the grid
-/// slow to fill; the opened view is the one that needs the detail.
+/// Downscale ceilings for the image cache full-size tiles made the grid slow to fill
 const TILE_EDGE: u32 = 640;
 const FULL_EDGE: u32 = 2048;
 
@@ -159,8 +151,6 @@ impl Component for GalleryTile {
     }
 }
 
-/// The opened image, filling the window with the rest of the gallery a key
-/// press away.
 #[derive(PartialEq)]
 struct GalleryViewer {
     images: Vec<GalleryImage>,
@@ -204,10 +194,7 @@ impl Component for GalleryViewer {
                     .aspect_ratio(AspectRatio::Min)
                     .into_element()
             }))
-            // The tile's smaller copy is already cached, but this one is a
-            // fresh fetch at full size, so the first moment of the opened view
-            // says so rather than showing an empty frame. Only while it is
-            // still working: a fetch that failed is not loading.
+            // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
             .maybe_child(query_is_busy(&query).then(|| {
                 label()
                     .text("Loading image...")

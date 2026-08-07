@@ -34,7 +34,7 @@ pub fn spawn_update_check(auto_install: bool) {
     });
 }
 
-/// Debug-only: drives the full auto-update UX
+/// Debug-only drives the full auto-update UX
 pub fn spawn_simulated_update() {
     tokio::spawn(async move {
         if let Err(err) = run_simulated_update().await {
@@ -45,7 +45,7 @@ pub fn spawn_simulated_update() {
 
 async fn run_simulated_update() -> anyhow::Result<()> {
     const FAKE_VERSION: &str = "9999.9999.9999";
-    const FAKE_TOTAL: u64 = 48 * 1024 * 1024; // 48 MiB
+    const FAKE_TOTAL: u64 = 48 * 1024 * 1024;
 
     let events = crate::launcher::state()?.services.events.clone();
 
@@ -77,7 +77,7 @@ async fn run_simulated_update() -> anyhow::Result<()> {
 async fn run_check(auto_install: bool) -> anyhow::Result<()> {
     let events = crate::launcher::state()?.services.events.clone();
 
-    // `check_update` performs a blocking HTTP request, so offload it to a thread pool.
+    // `check_update` performs a blocking HTTP request so offload it to a thread pool
     let Some(update) = tokio::task::spawn_blocking(check_for_update).await?? else {
         tracing::info!("no update available");
         return Ok(());
@@ -85,12 +85,8 @@ async fn run_check(auto_install: bool) -> anyhow::Result<()> {
 
     tracing::info!("update available: {}", update.version);
 
-    // The bundled self-updater can only replace an AppImage in place: on Linux
-    // cargo-packager-updater rejects every format except AppImage and locates the
-    // target via the `APPIMAGE` env var. deb/rpm installs run from a package-managed
-    // path (e.g. /usr/bin) we can't overwrite without root. Attempting an install
-    // would fail with a permission error, or clobber the system binary if elevated.
-    // Detect that case and point the user at the release page instead.
+    // cargo-packager-updater can only replace an AppImage in place deb/rpm installs live
+    // under a package-managed path that an install would fail on or clobber
     if !can_self_update() {
         tracing::info!("install is not self-updatable (non-AppImage Linux); notifying only");
         events
@@ -111,7 +107,6 @@ async fn run_check(auto_install: bool) -> anyhow::Result<()> {
     download_and_install(update, events).await
 }
 
-/// Whether the running install can be updated in place by the bundled updater.
 fn can_self_update() -> bool {
 	if cfg!(debug_assertions) {
 		return false;
@@ -175,8 +170,7 @@ async fn download_and_install(update: Update, events: EventBus) -> anyhow::Resul
 
         update.install(bytes)?;
 
-        // Convert the same download card into its finished state instead of emitting a
-        // second notification, so the user sees one notification through to completion.
+        // Converts the same download card into its finished state rather than adding a second
         events.finish_progress(
             progress_id,
             "Finished Downloading",

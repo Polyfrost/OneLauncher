@@ -10,12 +10,9 @@ use crate::theme::colors;
 const BAR_HEIGHT: f32 = 34.;
 const AMBER: Color = Color::from_rgb(191, 122, 26);
 
-/// `Layer::RelativeOverlay(n)` resolves to `n * (i16::MAX / 16)`, so any `n`
-/// past 16 pins to `i16::MAX`. Children resolve to `parent + 1`, which saturates
-/// to the *same* layer — and a layer is an unordered set, so the bar's own
-/// background painted over its contents about as often as not. That is what
-/// made the message and the close button come and go. 14 keeps the bar above
-/// every popup while leaving its children room to sit in front of it.
+/// `Layer::RelativeOverlay(n)` saturates at `n = 16` putting children on the same
+/// (unordered) layer as the bar background
+/// 14 leaves headroom above every popup
 const BAR_LAYER: u8 = 14;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -131,8 +128,7 @@ impl Component for StatusBanner {
 
         let mut close_hover = use_state(|| false);
 
-        // Pressing close unmounts the banner from under the pointer, so there is
-        // no `leave` to put the cursor back.
+        // Close unmounts the banner from under the pointer so no `leave` fires
         use_drop(|| Cursor::set(CursorIcon::default()));
 
         let close = issue.closeable().then(|| {
@@ -161,10 +157,8 @@ impl Component for StatusBanner {
                 .into_element()
         });
 
-        // The message is centred by a flex spacer on each side, and the close
-        // button rides the end of the trailing one. It used to be absolutely
-        // positioned, which pinned it to the top of the content box — inside the
-        // bar's horizontal padding, so it sat high and well short of the edge.
+        // Flex spacers centre the message absolute positioning pinned the close button
+        // to the top of the content box inside the bar's padding
         let leading = rect().width(Size::flex(1.0)).height(Size::fill());
 
         let message = rect()

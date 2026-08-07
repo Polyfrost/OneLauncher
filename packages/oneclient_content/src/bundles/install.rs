@@ -39,22 +39,11 @@ fn find_override(
         .and_then(|o| OverrideType::parse(&o.override_type))
 }
 
-/// The user's standing objection to a package, wherever it happens to be
-/// recorded.
-///
-/// Overrides are stored per bundle, but a package does not stay in one:
-/// `track_bundle_artifact` rewrites `bundle_name` on every install, and the
-/// update flow deliberately re-resolves a package to whichever loaded bundle now
-/// ships it. Asking only the bundle an artifact currently sits under therefore
-/// misses a choice the user made while it sat somewhere else — and reading that
-/// silence as consent is what switches a mod they turned off back on.
-///
-/// `Removed` outranks `Disabled` where a package is spoken for twice. An
-/// `Enabled` opt-in is not an objection and never suppresses.
-///
-/// Deliberately wider than [`find_override`], which answers a different
-/// question: which manifest default one bundle's file should take, where the
-/// bundle is exactly what identifies the file.
+/// Searches all bundles
+/// a package's `bundle_name` is rewritten on every install so a choice filed
+/// under its old bundle still counts
+/// `Removed` outranks `Disabled`
+/// `Enabled` never suppresses
 pub(crate) fn find_user_suppression(
     overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
     package_id: &str,
@@ -72,13 +61,8 @@ pub(crate) fn find_user_suppression(
     found
 }
 
-/// Drops the user's objections to a package everywhere they were recorded.
-///
-/// The inverse of [`find_user_suppression`], and it has to be: an objection that
-/// counts no matter which bundle wrote it has to be clearable no matter which
-/// bundle wrote it. Clearing only the current bundle's row would leave one
-/// behind that keeps answering "off" to every later question, which is the
-/// stuck state this whole area exists to prevent.
+/// Clears across all bundles
+/// a row left behind under another bundle would keep answering "off" forever
 async fn clear_suppressing_overrides(
     cluster_id: i64,
     package_id: &str,
@@ -208,22 +192,18 @@ pub async fn install_bundle(
     install_enabled_bundle_files(&archive, cluster_id, skip_compatibility, None, ctx).await
 }
 
-/// Whether a bundle file that is switched off was switched off on purpose.
-///
-/// `suppression` comes from [`find_user_suppression`], so a choice filed under a
-/// bundle the file has since left still counts.
+/// `suppression` comes from [`find_user_suppression`] so a choice filed under a
+/// bundle the file has since left still counts
 pub(crate) fn disable_was_deliberate(hidden: bool, suppression: Option<OverrideType>) -> bool {
     match suppression {
         Some(OverrideType::Removed) => true,
-        // Hidden files are dependencies the bundle needs and the user was never
-        // shown, so they follow the bundle rather than standing on their own.
-        // Only an outright removal keeps one off.
+        // Hidden files are never-shown dependencies
+        // they follow the bundle so only an outright removal keeps one off
         Some(OverrideType::Disabled) => !hidden,
         Some(OverrideType::Enabled) | None => false,
     }
 }
 
-/// Switches bundle content back on where it was left off without saving the choice
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
@@ -259,9 +239,9 @@ pub async fn heal_bundle_activity(
             continue;
         };
 
-        // Across bundles, not just this one. A package that moved bundles keeps
-        // its old override row, and reading only the bundle it sits under today
-        // would take that silence for consent and switch it back on.
+        // Across bundles
+        // a package that moved keeps its old override row and reading only its
+        // current bundle would switch it back on
         let suppression = find_user_suppression(&overrides, package_id);
         if disable_was_deliberate(is_hidden, suppression) {
             continue;
@@ -276,8 +256,7 @@ pub async fn heal_bundle_activity(
             "re-enabling bundle content that was switched off with nothing recording the choice"
         );
 
-        // One unrepairable row is not worth failing an install over; the rest of
-        // the cluster still wants fixing.
+        // One unrepairable row must not fail the whole install
         if let Err(err) =
             PackageStore::set_artifact_enabled_to(cluster_id, &row.hash, true, ctx).await
         {
@@ -285,10 +264,8 @@ pub async fn heal_bundle_activity(
             continue;
         }
 
-        // A hidden file reaching here with a `disabled` row is the one case where
-        // the override is the wrong half. Drop it — everywhere, or the copy left
-        // under some other bundle keeps answering "off" and the two records never
-        // settle.
+        // Drop the stale override everywhere or a copy under another bundle
+        // keeps answering "off" and the two records never settle
         if suppression == Some(OverrideType::Disabled) {
             clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
         }
@@ -315,9 +292,9 @@ pub async fn install_enabled_bundle_files(
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
     let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    // "Already installed" is what the database says, not what is on disk right
-    // now: content lives in the cache between sessions, so probing the folder
-    // would report every package as missing and reinstall the whole bundle.
+    // "Already installed" means the database not disk
+    // content lives in the cache between sessions so probing the folder would
+    // reinstall everything
     for info in &linked {
         if let Some(pid) = &info.project_id {
             linked_projects.insert(pid.as_str());
@@ -401,8 +378,7 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
-/// How many bundle packages are fetched at once. Kept modest because each one
-/// also costs a provider API call, and those are rate limited per-minute.
+/// Kept modest each fetch also costs a provider API call rate limited per-minute
 pub(crate) const BUNDLE_INSTALL_CONCURRENCY: usize = 6;
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
@@ -466,11 +442,8 @@ pub async fn set_bundle_package_override(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     match override_type {
-        // Saying "on" has to mean on. The package manager shows one row per
-        // package however many bundles ship it, so a switch flipped there is a
-        // statement about the package — and leaving an objection standing under
-        // some other bundle would let the next bundle pass read it and undo the
-        // switch the user just flipped.
+        // The UI shows one row per package across bundles so an objection left
+        // under another bundle would let the next pass undo this switch
         Some(ty @ OverrideType::Enabled) => {
             clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
             bundle_dao::save_override(&ctx.db, cluster_id, bundle_name, package_id, ty).await?;
@@ -486,19 +459,10 @@ pub async fn set_bundle_package_override(
     Ok(())
 }
 
-/// The package manager's switch, for a bundle file the cluster has not installed
-/// (an installed one goes through [`toggle_artifact_enabled`] instead).
-///
-/// Matching the manifest default is "no opinion" and clears the override;
-/// contradicting it pins the choice. Either way, switching a package *on* also
-/// drops any objection filed against it under another bundle — the package
-/// manager shows one row per package however many bundles ship it, so the switch
-/// is a statement about the package, and a row left standing elsewhere would be
-/// read by the next bundle pass and quietly undo it.
-///
-/// Which is why the mapping lives here rather than at the call site: `None`
-/// alone cannot tell "on, and the default agrees" from "off, and the default
-/// agrees", and only the first of those should clear anything.
+/// For bundle files the cluster has not installed
+/// installed ones go through [`toggle_artifact_enabled`]
+/// Matching the manifest default clears the override
+/// switching *on* also drops objections filed under other bundles
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
@@ -608,11 +572,6 @@ pub async fn on_user_remove_artifact(
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
-/// Flips an artifact's enabled state and updates the bundle override records.
-///
-/// The composition point between the two layers: `PackageStore` does the
-/// storage half and knows nothing about bundles; this adds the bookkeeping that
-/// only makes sense once bundles exist.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn toggle_artifact_enabled(
     cluster_id: i64,
@@ -630,15 +589,10 @@ pub async fn toggle_artifact_enabled(
     Ok(enabled)
 }
 
-/// Puts an artifact into a known enabled state and updates the bundle override
-/// records to match.
-///
-/// The set counterpart to [`toggle_artifact_enabled`], and the one to reach for
-/// whenever the caller already knows the state it wants. Flipping only lands on
-/// the right answer when the current value is known to be the opposite, which is
-/// true of a user pressing a switch and false of everything else: an artifact
-/// that is relinked keeps whatever `enabled` it already had, so a flip applied
-/// to a row that was already correct puts it wrong.
+/// Prefer this over [`toggle_artifact_enabled`] unless the current value is
+/// known to be the opposite
+/// a relinked artifact keeps its old `enabled` so a flip on an already-correct
+/// row puts it wrong
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_artifact_enabled_to(
     cluster_id: i64,
@@ -655,14 +609,9 @@ pub async fn set_artifact_enabled_to(
     }
 }
 
-/// [`crate::packages::reconcile_duplicate_activity`] with the bundle half added.
-///
-/// Same split as [`toggle_artifact_enabled`]: `packages` owns the flag and knows
-/// nothing about bundles, and the override that has to move with it is written
-/// here. A bundle copy that loses to a newer one used to be switched off with
-/// nothing recording why, which read as a state nobody chose — and once this
-/// module started repairing exactly that state, the two passes would have spent
-/// every launch undoing each other.
+/// Writes the override alongside the flag
+/// without it the losing bundle copy looks disabled-by-nobody and
+/// heal_bundle_activity re-enables it every launch
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn reconcile_duplicate_activity(
     cluster_id: i64,
@@ -733,9 +682,8 @@ pub async fn remove_artifact_from_cluster(
 ) -> ContentResult<()> {
     let bundle_data = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?;
 
-    // Everything needed for the eager folder cleanup is looked up first, but
-    // none of it is allowed to block the removal itself. A package whose
-    // artifact row has gone missing still has to be removable.
+    // Looked up first but never allowed to block removal
+    // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
@@ -746,22 +694,19 @@ pub async fn remove_artifact_from_cluster(
         .into_iter()
         .find(|l| l.hash == hash);
 
-    // The database first, and unconditionally. Removal used to delete the file
-    // before dropping the row, so a jar held open by a running game — on Windows
-    // that blocks deleting every hard link to it — failed the whole operation
-    // and left the package installed. Dropping the row always succeeds, and the
-    // game folder is rebuilt from the database at the next launch.
+    // Database first unconditionally
+    // on Windows a jar held open by a running game blocks deleting every hard
+    // link which used to fail the whole removal
+    // The folder is rebuilt from the database at the next launch
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
-    // Then a best-effort pass at the folder so it matches straight away when
-    // nothing is holding the file. Failure here is not an error.
+    // Best-effort folder cleanup failure here is not an error
     if let (Some(content_type), Some(link)) = (target, link) {
         try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
     }
 
-    // The cache is where the package actually lives, so it goes too once the
-    // last cluster stops asking for it. Still installed elsewhere means still
-    // needed, which `evict_if_unused` checks for us.
+    // The package actually lives in the cache
+    // `evict_if_unused` drops it only once no other cluster still needs it
     if let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
@@ -940,7 +885,6 @@ mod tests {
             find_override(&rows, "Bundle B", "pkg-2"),
             Some(OverrideType::Disabled)
         );
-        // Same package id under a different bundle must not collide.
         assert_eq!(find_override(&rows, "Bundle B", "pkg-1"), None);
         assert_eq!(find_override(&rows, "Bundle A", "pkg-3"), None);
     }

@@ -288,9 +288,7 @@ impl Component for ClusterUpdateSimulator {
 
 type ClusterUpdatePreset = fn() -> Vec<ClusterUpdateSummary>;
 
-/// Each preset pins down one variation the changes modal has to handle: the
-/// singular/plural copy, an empty category tab, the single- vs multi-cluster
-/// footer, per-tab cluster grouping, and header overflow.
+/// Each preset pins one variation plural copy empty category tab single- vs multi-cluster footer grouping header overflow
 const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
     (
         "1 cluster · all categories",
@@ -407,8 +405,7 @@ fn cluster_update_items(names: &[impl AsRef<str>]) -> Vec<ClusterUpdateItem> {
         .collect()
 }
 
-/// Mirrors the copy the bridge builds for real syncs so the simulated
-/// notification is indistinguishable from the real one.
+/// Mirrors the copy the bridge builds so the simulated notification matches the real one
 fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSummary>) {
     if summaries.is_empty() {
         return;
@@ -480,9 +477,7 @@ impl Component for LauncherUpdateSimulator {
     }
 }
 
-/// Pins `oneclient_net::status` so the connectivity banner can be looked at
-/// without unplugging anything. Each preset is one banner the bar knows how to
-/// draw; the bar itself picks the first active issue.
+/// Pins `oneclient_net::status` so the connectivity banner can be seen without unplugging anything
 #[derive(PartialEq)]
 struct StatusBarSimulator;
 
@@ -594,9 +589,7 @@ struct AuthGuidancePreview;
 impl Component for AuthGuidancePreview {
     fn render(&self) -> impl IntoElement {
         let samples = preview_samples();
-        // Index 0 is the no-error state; the rest line up with `samples`, so a
-        // dropdown holds all ~16 cases in one row instead of six rows of
-        // full-width buttons.
+        // Index 0 is the no-error state the rest line up with `samples`
         let mut choice = use_state(|| 0usize);
         let mut open = use_state(|| false);
 
@@ -661,14 +654,7 @@ impl Component for AuthGuidancePreview {
     }
 }
 
-/// Breaks an installation on purpose, so the repair paths can be driven without
-/// waiting for a genuinely bad connection.
-///
-/// The presets are grouped by *which layer is supposed to catch them*, because
-/// that is the thing worth testing: same-length corruption is invisible to the
-/// launch-time size check and only the hashing pass finds it, truncation is
-/// caught cheaply on the next launch, and a deleted assets tree is the case that
-/// used to surface as a raw "No such file or directory".
+/// Presets are grouped by which layer should catch them same-length corruption only the hashing pass finds truncation the launch-time size check
 #[derive(PartialEq)]
 struct CorruptionSimulator;
 
@@ -846,11 +832,7 @@ impl Component for CorruptionSimulator {
     }
 }
 
-/// Raises the genuine "some files could not be downloaded" prompt.
-///
-/// Calls the same function the download path calls, rather than rebuilding the
-/// copy here — a simulated modal that has drifted from the real one is worse
-/// than no simulator at all.
+/// Calls the same function the download path calls so the simulated modal cannot drift from the real one
 fn prompt_button(
     text: &'static str,
     icon: IconType,
@@ -877,13 +859,8 @@ fn prompt_button(
         })
 }
 
-/// Raises the post-crash repair offer, as if the game had just died on a
-/// `java.util.zip.ZipException`.
-///
-/// Accepting really does run the verify pass, so this exercises the whole path
-/// and not just the copy. To test the detection itself rather than the offer,
-/// corrupt some libraries above and launch the game — the JVM will raise the
-/// real exception and the log watcher will read it out of the output.
+/// Accepting really runs the verify pass
+/// To test detection itself corrupt libraries above and launch the game
 fn crash_repair_button(
     text: &'static str,
     jar: Option<&'static str>,
@@ -1123,8 +1100,6 @@ fn split_csv(raw: &str) -> Vec<String> {
         .collect()
 }
 
-/// The debug page's rule: the shared one, but inset and rounded to sit
-/// between its loose stacks of rows rather than butt up against them.
 fn divider() -> impl IntoElement {
     crate::ui::divider()
         .margin(Gaps::new_symmetric(8., 0.))
@@ -1147,36 +1122,6 @@ fn section(title: &'static str, rows: Vec<Element>) -> impl IntoElement {
         .children(rows)
         .into_element()
 }
-
-// fn field_row(label_text: &'static str, value: &'static str) -> impl IntoElement {
-//     rect()
-//         .horizontal()
-//         .width(Size::fill())
-//         .cross_align(Alignment::Center)
-//         .spacing(12.)
-//         .child(
-//             label()
-//                 .text(label_text)
-//                 .width(Size::px(80.))
-//                 .font_size(13.)
-//                 .color(colors::fg_secondary()),
-//         )
-//         .child(
-//             rect()
-//                 .width(Size::flex(1.0))
-//                 .padding(Gaps::new_symmetric(7., 12.))
-//                 .corner_radius(CornerRadius::new_all(8.))
-//                 .background(colors::component_bg())
-//                 .border(border_all_color(1., colors::component_border()))
-//                 .child(
-//                     label()
-//                         .text(value)
-//                         .font_size(12.)
-//                         .color(colors::fg_primary()),
-//                 ),
-//         )
-//         .into_element()
-// }
 
 fn toggle_row(title: &'static str, on: State<bool>) -> Element {
     rect()

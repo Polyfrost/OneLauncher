@@ -41,10 +41,6 @@ pub struct LauncherState {
 }
 
 impl LauncherServices {
-	/// What the content crate needs: db, client, bus and the provider registry.
-	///
-	/// Unlike [`LauncherServices::mc`] this is the whole of `LauncherServices`; the
-	/// packages and bundles code uses all four fields.
 	#[must_use]
 	pub fn content(&self) -> oneclient_content::ContentCtx {
 		oneclient_content::ContentCtx::new(
@@ -55,10 +51,7 @@ impl LauncherServices {
 		)
 	}
 
-	/// The subset the Minecraft content crate needs: a client and a bus.
-	///
-	/// Both are refcounted handles, so this is cheap enough to build per call
-	/// rather than store alongside the fields it is made of.
+	/// Both fields are refcounted handles so building this per call is cheap
 	#[must_use]
 	pub fn mc(&self) -> oneclient_mc::McCtx {
 		oneclient_mc::McCtx::new(self.requester.clone(), self.events.clone())
@@ -66,20 +59,15 @@ impl LauncherServices {
 }
 
 impl LauncherState {
-	/// Builds the launcher's services and returns the handle.
-	///
-	/// Construction has no side effects beyond opening the database and reading
-	/// settings: the background startup work is [`run_startup_tasks`], which the
-	/// caller kicks off when it is ready. That split is why the state can be
-	/// constructed twice, or in a test only once.
+	/// No side effects beyond opening the database and reading settings the
+	/// background startup work is [`run_startup_tasks`] which the caller runs
     #[tracing::instrument(skip(events))]
 	pub async fn new(events: EventBus) -> LauncherResult<Arc<Self>> {
         let services = LauncherServices {
 			events,
 			db: oneclient_db::connect(paths::database_file()?).await?,
-			// Built with defaults because loading settings needs the event bus,
-			// which is already inside `services`. The user's endpoints and keys
-			// are pushed in immediately below, before anything makes a request.
+			// Defaults because loading settings needs the event bus already inside
+			// `services` Real config is pushed in below before any request
 			requester: RequestClient::new(oneclient_net::NetConfig::default())?,
 			packages: PackageProviderRegistry::new(),
 		};
@@ -118,11 +106,6 @@ impl LauncherState {
 	}
 }
 
-/// Reconstructs anything missing from disk, adopts orphaned game sessions, then
-/// syncs the remote catalogs.
-///
-/// Split out so constructing a `LauncherState` is just construction. The caller
-/// decides when, and whether, this runs.
 pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 	let background = Arc::clone(state);
 	tokio::spawn(async move {
@@ -164,15 +147,9 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 				background.services.events.signal(oneclient_events::Signal::ClustersChanged);
 			}
 
-			// Last, so it runs against a database that recovery, bundle tracking
-			// and provisioning have all finished settling. Judging an artifact
-			// unused before the rows that use it have been restored would evict
-			// content that is very much still wanted.
-			//
-			// Only the row-driven half runs unattended. Deciding from the
-			// filesystem which cached files nothing points at is the half that can
-			// misread a half-reconstructed install, so it lives behind the Storage
-			// settings page where the user sees what it proposes to delete.
+			// Must run last judging an artifact unused before recovery bundle
+			// tracking and provisioning have restored their rows would evict
+			// content still in use Only the row-driven half runs unattended
 			if let Err(err) =
 				oneclient_content::packages::store::collect_unused_artifacts(&content).await
 			{

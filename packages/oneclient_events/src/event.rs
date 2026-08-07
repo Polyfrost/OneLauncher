@@ -3,35 +3,19 @@ use uuid::Uuid;
 use crate::progress::GroupedProgressEvent;
 use crate::prompt::PromptRequest;
 
-/// Everything the core tells the UI about.
-///
-/// One channel carries all of it, so ordering between a progress update and the
-/// notification that follows it is preserved.
-///
-/// The split between [`Event::Notification`] and [`Event::Progress`] is the
-/// difference between an opinion and a fact. A notification is the core saying
-/// "tell the user this", so it is user-facing by definition. Progress is the
-/// core stating that some work is 40% done; whether that becomes a toast, a bar
-/// in a modal, or nothing at all is the front-end's call.
-///
-/// That is also why nothing here names a screen or a surface. Progress that
-/// should not become a toast simply never reaches the global bus: whoever
-/// starts the work hands it a bus they own (see [`crate::EventBus::channel`]),
-/// and the core never learns who is listening.
+/// One channel carries all of it so ordering between a progress update and the
+/// notification that follows it is preserved
+/// Nothing here names a screen or a surface rendering is entirely the
+/// front-end's call
 #[derive(Debug)]
 pub enum Event {
-	/// Something to put in front of the user: a message, or a question.
 	Notification(Notification),
-	/// Work happening, with a completion fraction. Carries no display opinion.
 	Progress(ProgressEvent),
-	/// A running Minecraft instance.
 	Game(GameEvent),
-	/// State changed elsewhere; whoever caches it should refetch.
+	/// State changed elsewhere whoever caches it should refetch
 	Signal(Signal),
 }
 
-/// Something the notification layer owns: a message to show, or a question that
-/// blocks the emitting task until answered.
 #[derive(Debug)]
 pub enum Notification {
 	Message(Message),
@@ -96,8 +80,7 @@ pub enum Level {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgressEvent {
-	/// A single task's progress, keyed by `id` so repeated updates replace one
-	/// another rather than stacking up.
+	/// Keyed by `id` so repeated updates replace one another rather than stack
 	Update {
 		id: Uuid,
 		label: String,
@@ -105,16 +88,14 @@ pub enum ProgressEvent {
 		total: u64,
 	},
 
-	/// Turn the in-flight [`ProgressEvent::Update`] with this `id` into a
-	/// finished message in place, so a download and its completion notice are
-	/// one card instead of two.
+	/// Turns the in-flight [`ProgressEvent::Update`] with this `id` into a
+	/// finished message in place rather than emitting a second card
 	Complete {
 		id: Uuid,
 		title: String,
 		body: String,
 	},
 
-	/// A tree of related tasks. See [`crate::progress`].
 	Grouped(GroupedProgressEvent),
 }
 
@@ -141,12 +122,10 @@ impl LaunchStage {
 	}
 }
 
-/// Fire-and-forget notices that something changed. Carry no payload beyond
-/// what the consumer needs to decide what to invalidate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Signal {
 	ClustersChanged,
 	JavaChanged,
-	/// Initial background sync finished.
+	/// Initial background sync finished
 	SyncComplete,
 }

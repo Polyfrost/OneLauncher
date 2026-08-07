@@ -17,7 +17,7 @@ use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
-/// Diameter of the round install button.
+/// Diameter of the round install button
 const INSTALL_BUTTON: f32 = 30.;
 
 fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
@@ -137,9 +137,7 @@ impl Component for PackageCard {
                     .corner_radius(CornerRadius::new(10., 10., 0., 0.))
                     .overflow(Overflow::Clip)
                     .child(PackageBanner::new(icon_url, BANNER_H))
-                    // Sat in the banner's top-left corner rather than down in
-                    // the footer: it is the first thing worth knowing about a
-                    // result, and the opposite corner is the install button's.
+                    // Top-left of the banner the first thing worth knowing about a result and the opposite corner is the install button's
                     .maybe_child(self.installed.map(|installed| {
                         rect()
                             .position(Position::new_absolute().top(8.).left(8.))
@@ -298,9 +296,7 @@ impl Component for ListRow {
                                     .color(colors::fg_secondary()),
                             )
                             .child(Icon::new(item.provider).size(12.))
-                            // Beside the attribution rather than out at the far
-                            // right, where it drifted away from the package it
-                            // describes and crowded the install button.
+                            // Beside the attribution rather than far right where it drifted from the package and crowded the install button
                             .maybe_child(
                                 self.installed.map(|installed| {
                                     installed_badge(installed, 10.).into_element()
@@ -317,9 +313,7 @@ impl Component for ListRow {
                     ),
             )
             .child(downloads_row(item.downloads))
-            // Kept in place once the package is in the cluster, rather than
-            // dropped: a row that loses its button leaves the ones around it
-            // looking misaligned. Disabled says the same thing and holds still.
+            // Kept once installed rather than dropped a row that loses its button leaves its neighbours misaligned
             .child(InstallButton::new(
                 &self.item,
                 self.cluster_id,
@@ -329,17 +323,14 @@ impl Component for ListRow {
     }
 }
 
-/// Installs a listing entry's latest compatible version without making the user
-/// open its page first. Same version pick and same dispatch as the install
-/// button on the package page.
+/// Same version pick and dispatch as the install button on the package page
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
     content_type: ContentType,
-    /// The cluster already has this one, so there is nothing left to press.
-    /// Callers that hide the button entirely in that case pass `false`.
+    /// Cluster already has this one callers that hide the button entirely pass `false`
     installed: bool,
 }
 
@@ -365,8 +356,7 @@ impl Component for InstallButton {
         let compat = *use_browser_compat().read();
         let cluster = use_cluster(cluster_id);
 
-        // The same narrowing the package page does before calling the first
-        // entry of the list "latest", so both agree on what gets installed.
+        // The same narrowing the package page does so both agree on what "latest" installs
         let (game_version, loader) = match (compat, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
@@ -387,14 +377,11 @@ impl Component for InstallButton {
         ));
         let latest = versions.first().map(|v| v.version_id.clone());
 
-        // Nothing to start twice while the install that was just kicked off is
-        // still running, and nothing to start before the version list arrives.
+        // Nothing to start twice while an install is running or before versions arrive
         let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
 
         rect()
-            // The card behind this is one big press target. A press on the
-            // button is not a press on the card, so it stops here rather than
-            // opening the package page on top of the install.
+            // The card behind is one big press target stop here so the package page doesn't open on top of the install
             .on_all_press(|e: Event<PressEventData>| e.stop_propagation())
             .child(
                 Button::new()

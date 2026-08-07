@@ -18,16 +18,10 @@ use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
 use crate::stage::ClusterStage;
 
-/// Cluster records: create, read, update, delete, and the settings profile each
-/// one points at.
-///
-/// An instance rather than a bag of associated functions, so the creation lock
-/// lives with the thing it protects instead of on the launcher state. Matches
-/// `BundlesManager`, `VersionsManager`, `JavaService` and `AuthService`.
 pub struct ClusterManager {
 	db: DbPool,
 	/// Serialises creation so two concurrent creates cannot resolve to the same
-	/// folder name and race each other onto disk.
+	/// folder name and race each other onto disk
 	provisioning: Mutex<()>,
 }
 
@@ -40,12 +34,8 @@ impl ClusterManager {
 		}
 	}
 
-	/// Holds the creation lock for the caller.
-	///
-	/// Startup recovery scans the clusters directory and adopts orphan folders;
-	/// it must hold this across the whole scan, or a concurrent create (whose
-	/// folder lands on disk before its row commits) gets adopted into a duplicate
-	/// row.
+	/// Orphan-folder recovery must hold this across its whole scan or a
+	/// concurrent create's folder is adopted into a duplicate row
 	pub async fn provisioning_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
 		self.provisioning.lock().await
 	}
@@ -81,7 +71,7 @@ impl ClusterManager {
 		self.create_core(global, options).await
 	}
 
-	/// Create a cluster for a version/loader that doesn't exist yet, and provision it.
+	/// Returns `None` if a cluster for this version/loader already exists
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn create_provisioned(
 		&self,
@@ -102,8 +92,7 @@ impl ClusterManager {
 		self.create_core(global, options).await.map(Some)
 	}
 
-	/// Folder-resolve + insert core shared by `create` and `create_provisioned`.
-	/// Callers MUST hold `self.provisioning`; this does not lock.
+	/// Callers MUST hold `self.provisioning` this does not lock
 	#[tracing::instrument(level = "debug", skip(self, global))]
 	async fn create_core(
 		&self,
@@ -198,8 +187,8 @@ impl ClusterManager {
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]
-	/// `is_running` is passed in rather than looked up: whether a game process
-	/// is alive belongs to the game lifecycle, not to cluster records.
+	/// `is_running` is passed in because process liveness belongs to the game
+	/// lifecycle not to cluster records
 	pub async fn set_dedicated_dir(
 		&self,
 		cluster_id: ClusterId,

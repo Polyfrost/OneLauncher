@@ -39,15 +39,15 @@ impl MigrationSource {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceInstance {
-    /// Source-local identifier (v1: the cluster row id). Purely informational.
+    /// Source-local identifier (v1 the cluster row id)
+    /// Purely informational
     pub instance_id: i64,
     pub folder_name: String,
     pub mc_version: String,
-	/// Used for any "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
+	/// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
     pub target_mc_version: Option<String>,
     pub mc_loader: GameLoader,
-    /// Bundle categories the user had installed on this instance, e.g.
-    /// `["HUD", "Performance"]`. Empty when the source has no category concept.
+    /// Empty when the source has no category concept
     pub categories: Vec<String>,
     pub has_game_dir: bool,
 }
@@ -66,13 +66,12 @@ impl SourceInstance {
     }
 }
 
-/// Where an imported game directory should land in *this* launcher.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportTarget {
-    /// Copy into the shared `<launcher_dir>/.minecraft`.
+    /// Copy into the shared `<launcher_dir>/.minecraft`
     Shared,
-    /// Copy into a specific new cluster's own folder and mark it dedicated so
-    /// `Cluster::game_dir()` resolves there instead of the shared dir.
+    /// Copy into the new cluster's own folder and mark it dedicated so
+    /// `Cluster::game_dir()` resolves there instead of the shared dir
     Dedicated { new_cluster_id: i64 },
 }
 

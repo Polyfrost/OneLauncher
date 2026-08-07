@@ -24,11 +24,7 @@ pub async fn install_package(
 
 	let major = package.java_version.first().copied().unwrap_or(0);
 
-	// When a caller owns a grouped session (onboarding, cluster prepare) the
-	// runtime is one of that session's tasks. Only a standalone install (from
-	// settings, say) gets its own notification.
-	// No size in the package metadata; the child picks up its real total from
-	// Content-Length as soon as the response headers land.
+	// 0 means unknown the real total comes from Content-Length once headers land
 	let expected_size = package.size.unwrap_or(0);
 	let child = progress.map(|session| {
 		session.child(
@@ -55,12 +51,6 @@ pub async fn install_package(
 		);
 	}
 
-	// A runtime is the largest single file the launcher downloads, so it is the
-	// most likely to be interrupted — and it used to be the one download with no
-	// verification at all. Now it is hashed from the bytes in flight against the
-	// vendor's own checksum, retried on a dropped connection, and only published
-	// to `archive_path` once it matches, so extraction never sees a partial
-	// archive.
 	oneclient_net::download_verified(
 		net,
 		events,

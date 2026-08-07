@@ -149,7 +149,7 @@ struct OptionalMod {
     provider: ProviderId,
     fallback_name: String,
     size: u64,
-    /// `(cluster_id, bundle_name)` pairs this mod is available from.
+    /// `(cluster_id, bundle_name)` pairs this mod is available from
     locations: Vec<(i64, String)>,
 }
 
@@ -255,8 +255,7 @@ impl Component for OnboardingBundles {
         let opt_ins = opt_in_bundles(&clusters);
         let extras = optional_mods(&clusters);
 
-        // These are hooks, so they run every render regardless of whether there
-        // are any extras to show yet.
+        // Hooks so they run every render regardless of whether there are extras yet
         let (mr_ids, cf_ids) = collect_ids(&extras);
         let mr_meta = package_meta_batch(&use_package_meta_batch(ProviderId::Modrinth, mr_ids));
         let cf_meta = package_meta_batch(&use_package_meta_batch(ProviderId::CurseForge, cf_ids));

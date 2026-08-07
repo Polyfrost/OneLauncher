@@ -1,57 +1,39 @@
-//! Asking the user a question and getting a typed answer back.
-//!
-//! The previous design had one closed `UserChoice` enum listing every answer
-//! any prompt could produce, including `Install { vendor: JavaVendor }`, which
-//! meant the event layer depended on the Java subsystem that depended on it.
-//!
-//! Here a prompt carries its own [`Choice`] list. The wire format is untyped
-//! (a choice id plus optional collected input), but [`Prompt<T>`] pairs each
-//! choice with a caller-defined value and hands that value back, so call sites
-//! match on their own enum rather than on strings.
+//! A prompt carries its own [`Choice`] list
+//! The wire format is untyped (a choice id plus optional collected input) but
+//! [`Prompt<T>`] pairs each choice with a caller-defined value keeping this
+//! crate free of any dependency on the subsystems that raise prompts
 
 use std::path::{Path, PathBuf};
 
 use tokio::sync::oneshot;
 
-/// How prominently the UI should render a choice. Only a hint; the event layer
-/// has no business knowing what a button looks like.
+/// Only a hint the event layer has no business knowing what a button looks like
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChoiceStyle {
-	/// The recommended action.
 	Primary,
 	#[default]
 	Secondary,
-	/// Destructive; render with a warning treatment.
 	Danger,
 }
 
-/// Something the UI must collect from the user before the choice can be
-/// answered. Without this a prompt could only return "which button", and
-/// answers like "…and here is the folder they picked" would have no home.
+/// Something the UI must collect before the choice can be answered
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChoiceInput {
-	/// Open a directory picker. `title` is the dialog's title.
 	Folder { title: String },
-	/// Collect a caller-defined selection, e.g. a Java vendor chosen from a
-	/// list the UI fetches live. `hint` names the kind of thing being picked so
-	/// the front-end can route to the right picker; its meaning belongs to
-	/// whoever built the prompt.
+	/// `hint` names the kind of thing being picked so the front-end can route to
+	/// the right picker its meaning belongs to whoever built the prompt
 	Selection { hint: String },
 }
 
-/// What the UI collected for a [`ChoiceInput`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputValue {
 	Folder(PathBuf),
 	Selection(String),
 }
 
-/// One answer the user can give.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choice {
-	/// Stable identifier, matched when the answer comes back. A `&'static str`
-	/// rather than a `String` because every id in practice is a literal, and it
-	/// keeps `Choice` cheap to clone onto the wire.
+	/// Stable identifier matched when the answer comes back
 	pub id: &'static str,
 	pub label: String,
 	pub style: ChoiceStyle,
@@ -84,7 +66,6 @@ impl Choice {
 		self
 	}
 
-	/// Require a directory before this choice can be answered.
 	#[must_use]
 	pub fn picks_folder(mut self, title: impl Into<String>) -> Self {
 		self.input = Some(ChoiceInput::Folder {
@@ -93,7 +74,6 @@ impl Choice {
 		self
 	}
 
-	/// Require a caller-defined selection before this choice can be answered.
 	#[must_use]
 	pub fn picks_selection(mut self, hint: impl Into<String>) -> Self {
 		self.input = Some(ChoiceInput::Selection { hint: hint.into() });
@@ -101,8 +81,6 @@ impl Choice {
 	}
 }
 
-/// A question, its answers, and what each answer means to the caller.
-///
 /// ```ignore
 /// enum JavaAnswer { Download, PickFolder }
 ///
@@ -137,22 +115,19 @@ impl<T> Prompt<T> {
 		}
 	}
 
-	/// Add a choice and the value returned if the user picks it.
 	pub fn option(mut self, choice: Choice, value: T) -> Self {
 		self.options.push((choice, value));
 		self
 	}
 
-	/// Offer an explicit way out, labelled `label`. Dismissing resolves the
-	/// prompt to `Ok(None)`; a prompt without this can still be dismissed by
-	/// closing it, so callers must always handle `None`.
+	/// A prompt without this can still be dismissed by closing it so callers
+	/// must always handle `None`
 	pub fn dismiss(mut self, label: impl Into<String>) -> Self {
 		self.dismiss = Some(label.into());
 		self
 	}
 }
 
-/// What the user picked: the caller's own value, plus anything the UI collected.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Chosen<T> {
 	pub value: T,
@@ -160,7 +135,6 @@ pub struct Chosen<T> {
 }
 
 impl<T> Chosen<T> {
-	/// The directory picked for a [`ChoiceInput::Folder`] choice.
 	pub fn folder(&self) -> Option<&Path> {
 		match &self.input {
 			Some(InputValue::Folder(path)) => Some(path),
@@ -168,7 +142,6 @@ impl<T> Chosen<T> {
 		}
 	}
 
-	/// The selection made for a [`ChoiceInput::Selection`] choice.
 	pub fn selection(&self) -> Option<&str> {
 		match &self.input {
 			Some(InputValue::Selection(value)) => Some(value),
@@ -177,8 +150,7 @@ impl<T> Chosen<T> {
 	}
 }
 
-/// The untyped prompt as it crosses the bus. The UI renders `choices` and
-/// replies with the id of the one picked; `T` never leaves the caller's crate.
+/// The untyped prompt as it crosses the bus `T` never leaves the caller's crate
 #[derive(Debug)]
 pub struct PromptRequest {
 	pub title: String,
@@ -188,7 +160,7 @@ pub struct PromptRequest {
 	pub reply: oneshot::Sender<Option<Answer>>,
 }
 
-/// The UI's reply. `None` on the wire means dismissed.
+/// `None` on the wire means dismissed
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answer {
 	pub id: &'static str,

@@ -15,7 +15,7 @@ pub(crate) struct ServerJoin {
 	pub port: Option<u16>,
 }
 
-/// The session row's identity: its `started_at`, which is the primary key.
+/// The session row's `started_at` which is its primary key
 pub(crate) type SessionId = String;
 
 pub(crate) fn parse_server_join(line: &str) -> Option<ServerJoin> {
@@ -88,8 +88,8 @@ impl SessionRecorder {
 		})
 	}
 
-	/// Re-attach to a session row left open by a previous launcher run, so a
-	/// game that outlived the launcher keeps recording into the same session.
+	/// Re-attaches to a row left open by a previous launcher run so a game that
+	/// outlived the launcher keeps recording into the same session
 	pub(crate) fn resume(db: DbPool, session_started_at: SessionId, open_server: Option<String>) -> Self {
 		Self {
 			session_started_at,
@@ -98,16 +98,16 @@ impl SessionRecorder {
 		}
 	}
 
-	/// When the session row says it began. Playtime is measured against this so
-	/// it agrees with the session span analytics reads back out of the row.
+	/// Playtime is measured against this so it agrees with the session span
+	/// analytics reads back out of the row
 	pub(crate) fn started_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
 		chrono::DateTime::parse_from_rfc3339(&self.session_started_at)
 			.ok()
 			.map(|at| at.with_timezone(&chrono::Utc))
 	}
 
-	/// Remember which OS process backs this session. Without it, a launcher
-	/// restart cannot tell a live game from one that exited unobserved.
+	/// Without this a launcher restart cannot tell a live game from one that
+	/// exited unobserved
 	#[tracing::instrument(skip(self), level = "debug")]
 	pub(crate) async fn record_process(&self, pid: u32, pid_started_at: Option<u64>) {
 		if let Err(err) = session_dao::set_session_process(
@@ -160,8 +160,8 @@ impl SessionRecorder {
 		}
 	}
 
-	/// Close the session. The time is explicit because an exit is not always
-	/// observed as it happens; one recovered from a log ended in the past.
+	/// The time is explicit because an exit is not always observed as it happens
+	/// one recovered from a log ended in the past
 	#[tracing::instrument(skip(self), fields(exit_code), level = "debug")]
 	pub(crate) async fn finish_at(self, ended_at: &str, exit_code: Option<i64>) {
 		if let Some(open) = self.open_server.lock().await.take()

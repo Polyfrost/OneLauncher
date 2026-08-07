@@ -13,9 +13,7 @@ pub fn is_bundle_syncing() -> bool {
     BUNDLE_SYNCING.load(Ordering::Relaxed)
 }
 
-/// Syncs every cluster's bundle content. When `session` is provided, all cluster
-/// downloads report into that one grouped session so they appear as a single
-/// notification the caller can later convert to its finished state.
+/// `session` when given groups every cluster's downloads into one notification
 #[tracing::instrument(skip_all)]
 pub async fn sync_all_cluster_bundles(
     bundles: &BundlesManager,

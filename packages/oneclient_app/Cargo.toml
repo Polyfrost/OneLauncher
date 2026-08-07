@@ -77,6 +77,7 @@ icons = [
   "icons/icon.icns",
   "icons/icon.ico",
 ]
+resources = [{ src = "icons/generated/Assets.car", target = "Assets.car" }]
 
 [package.metadata.packager.macos]
 minimum-system-version = "10.14"

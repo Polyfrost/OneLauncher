@@ -328,6 +328,23 @@ jobs:
             exit 1
           }
 
+      - name: (macOS) Compile app icon catalog
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="packages/oneclient_app/icons/generated"
+          mkdir -p "$out"
+          xcrun actool packages/oneclient_app/icons/OneClient.icon \
+            --compile "$out" \
+            --app-icon OneClient \
+            --output-partial-info-plist "$out/partial.plist" \
+            --platform macosx \
+            --minimum-deployment-target 26.0 \
+            --errors --warnings --notices
+          rm -f "$out/OneClient.icns"
+          test -f "$out/Assets.car" || { echo "::error::actool produced no Assets.car"; exit 1; }
+
       - name: Package
         shell: bash
         env:

@@ -77,7 +77,11 @@ icons = [
   "icons/icon.icns",
   "icons/icon.ico",
 ]
-resources = [{ src = "icons/generated/Assets.car", target = "Assets.car" }]
+resources = [
+  { src = "icons/generated/Assets.car", target = "Assets.car" },
+  # >>> CRT_RESOURCES >>>
+  # <<< CRT_RESOURCES <<<
+]
 
 [package.metadata.packager.macos]
 minimum-system-version = "10.14"
@@ -104,6 +108,7 @@ Section "-OneClientTauriMigration"
   Delete /REBOOTOK "$INSTDIR\\OneClient.exe"
 SectionEnd
 
+; >>> VC_REDIST_SECTION >>>
 Section "-VCRedist"
   SetRegView 64
   ReadRegDWORD $R0 HKLM "SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\X64" "Installed"
@@ -115,14 +120,13 @@ Section "-VCRedist"
     Goto vcredist_done
   ${EndIf}
 
-  ; >>> VC_REDIST_INSTALL >>>
   ${If} $PassiveMode != 1
-    MessageBox MB_OK|MB_ICONEXCLAMATION "OneClient needs the Microsoft Visual C++ Redistributable (x64) 14.40 or newer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this installer again."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "This build of OneClient needs the Microsoft Visual C++ Redistributable (x64) 14.40 or newer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this installer again."
   ${EndIf}
-  ; <<< VC_REDIST_INSTALL <<<
 
   vcredist_done:
 SectionEnd
+; <<< VC_REDIST_SECTION <<<
 """
 
 [package.metadata.packager.deb]

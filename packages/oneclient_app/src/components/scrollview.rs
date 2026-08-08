@@ -5,6 +5,49 @@ use crate::theme::colors;
 
 const LAZY_OVERSCAN: i64 = 3;
 
+// `freya-winit` collapses winit's `MouseScrollDelta` into a bare `f64` before
+// the event reaches us, pre-multiplying each variant by its own constant and
+// keeping no record of which one it was. Mirrored here so the two can be told
+// apart and undone; keep in sync with `freya-winit`'s renderer.
+const FREYA_LINE_SPEED: f64 = 53.0;
+const FREYA_PIXEL_SPEED: f64 = 2.0;
+
+/// A pre-multiplied line delta is an exact multiple of [`FREYA_LINE_SPEED`];
+/// the tolerance only absorbs float noise, it must stay far too tight for a
+/// pixel delta to land inside it by chance.
+const LINE_DELTA_TOLERANCE: f64 = 1e-6;
+
+/// How far one wheel line scrolls. Matches what a wheel did before deltas were
+/// normalized, which is also roughly what macOS itself does per notch.
+const LINE_SCROLL: f64 = 53.0;
+
+/// Pixel deltas come from a trackpad, where the platform convention is for the
+/// content to track the fingers exactly.
+const PIXEL_SCROLL: f64 = 1.0;
+
+/// Wheels report lines and trackpads report *physical* pixels, and the renderer
+/// hands both to us as one pre-scaled number, so each has to be recovered
+/// before it can be scaled into the layout units the offsets use. The pixel
+/// case is the one that hurts: without dividing out the scale factor a retina
+/// trackpad scrolls four layout units per point of finger travel.
+pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
+    if delta == 0.0 {
+        return 0.0;
+    }
+
+    let lines = (delta / FREYA_LINE_SPEED).round();
+    if lines != 0.0 && (delta - lines * FREYA_LINE_SPEED).abs() <= LINE_DELTA_TOLERANCE {
+        return (lines * LINE_SCROLL) as f32;
+    }
+
+    let scale_factor = if scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+    (delta / (FREYA_PIXEL_SPEED * scale_factor) * PIXEL_SCROLL) as f32
+}
+
 pub(crate) fn scroll_pos_from_wheel(wheel: f32, inner: f32, viewport: f32, current: f32) -> i32 {
     if viewport >= inner {
         return 0;
@@ -226,6 +269,10 @@ impl ScrollArea {
         let internal = use_scroll_controller(ScrollConfig::default);
         let mut controller = self.controller.unwrap_or(internal);
 
+        // Peeked, not read: pixel deltas arrive in physical pixels, and the
+        // scroll offsets below are in layout units.
+        let scale_factor = Platform::get().scale_factor;
+
         let mut viewport_h = use_state(|| 0f32);
         let mut viewport_w = use_state(|| 0f32);
         let mut viewport_top = use_state(|| 0f32);
@@ -310,17 +357,21 @@ impl ScrollArea {
 
         let on_wheel = move |e: Event<WheelEventData>| {
             let shift = *shift_held.read();
+            let scale = *scale_factor.peek();
+
+            let delta_x = normalize_wheel_delta(e.delta_x, scale);
+            let delta_y = normalize_wheel_delta(e.delta_y, scale);
 
             let h_delta = if horizontal {
-                if shift && e.delta_x == 0.0 {
-                    e.delta_y
+                if shift && delta_x == 0.0 {
+                    delta_y
                 } else {
-                    e.delta_x
+                    delta_x
                 }
             } else {
                 0.0
             };
-            let v_delta = if horizontal && shift { 0.0 } else { e.delta_y };
+            let v_delta = if horizontal && shift { 0.0 } else { delta_y };
 
             let do_h = h_delta != 0.0 && can_scroll_h;
             let do_v = v_delta != 0.0 && can_scroll_v;
@@ -337,14 +388,14 @@ impl ScrollArea {
 
             if do_h {
                 let cur_x = corrected_scroll(content_w, vp_w, *scroll_x.read());
-                let new_x = scroll_pos_from_wheel(h_delta as f32, content_w, vp_w, cur_x);
+                let new_x = scroll_pos_from_wheel(h_delta, content_w, vp_w, cur_x);
                 scroll_x.set(new_x as f32);
             }
 
             if do_v {
                 let (_, cur_y) = controller.into();
                 let current = corrected_scroll(ct_h, vp_h, cur_y as f32);
-                let new_y = scroll_pos_from_wheel(v_delta as f32, ct_h, vp_h, current);
+                let new_y = scroll_pos_from_wheel(v_delta, ct_h, vp_h, current);
                 if new_y != cur_y {
                     controller.scroll_to_y(new_y);
                 }
@@ -583,5 +634,55 @@ impl Component for ScrollThumb {
                     .corner_radius(CornerRadius::new_all(12.))
                     .background(color.with_a(160)),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What `freya-winit` hands us for a wheel of `lines` notches.
+    fn wheel(lines: f32) -> f64 {
+        lines as f64 * FREYA_LINE_SPEED
+    }
+
+    /// What `freya-winit` hands us for `points` of finger travel on a trackpad
+    /// at the given scale factor.
+    fn trackpad(points: f64, scale_factor: f64) -> f64 {
+        points * scale_factor * FREYA_PIXEL_SPEED
+    }
+
+    #[test]
+    fn wheel_lines_are_unaffected_by_the_scale_factor() {
+        for scale_factor in [1.0, 1.5, 2.0] {
+            assert_eq!(normalize_wheel_delta(wheel(1.), scale_factor), 53.);
+            assert_eq!(normalize_wheel_delta(wheel(-3.), scale_factor), -159.);
+        }
+    }
+
+    #[test]
+    fn trackpad_points_scroll_one_to_one() {
+        for scale_factor in [1.0, 2.0] {
+            assert_eq!(
+                normalize_wheel_delta(trackpad(10., scale_factor), scale_factor),
+                10.
+            );
+            assert_eq!(
+                normalize_wheel_delta(trackpad(-2.5, scale_factor), scale_factor),
+                -2.5
+            );
+        }
+    }
+
+    #[test]
+    fn sub_pixel_trackpad_deltas_survive() {
+        let delta = normalize_wheel_delta(trackpad(0.25, 2.0), 2.0);
+        assert_eq!(delta, 0.25);
+    }
+
+    #[test]
+    fn zero_and_degenerate_scale_factors_are_handled() {
+        assert_eq!(normalize_wheel_delta(0., 2.0), 0.);
+        assert_eq!(normalize_wheel_delta(trackpad(10., 1.0), 0.0), 10.);
     }
 }

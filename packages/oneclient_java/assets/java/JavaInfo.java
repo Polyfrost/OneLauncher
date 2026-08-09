@@ -1,3 +1,6 @@
+import java.io.File;
+import java.util.Locale;
+
 public final class JavaInfo {
     private static final String[] CHECKED_PROPERTIES = new String[] {"os.arch", "java.version", "java.vendor", "java.home"};
 
@@ -15,6 +18,7 @@ public final class JavaInfo {
         }
 
         System.out.println("java.awt=" + hasClass("java.awt.Toolkit"));
+        System.out.println("java.awt.natives=" + hasAwtNatives());
         System.out.println("java.jdk=" + hasCompiler());
 
         System.exit(returnCode);
@@ -28,6 +32,48 @@ public final class JavaInfo {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    private static boolean hasAwtNatives() {
+        try {
+            String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+            String[] required;
+
+            if (os.contains("win")) {
+                required = new String[] {"awt.dll", "fontmanager.dll"};
+            } else if (os.contains("mac") || os.contains("darwin")) {
+                required = new String[] {"libawt_lwawt.dylib", "libfontmanager.dylib"};
+            } else {
+                required = new String[] {"libawt_xawt.so", "libfontmanager.so"};
+            }
+
+            for (String name : required) {
+                if (!findNative(name)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private static boolean findNative(String name) {
+        File home = new File(System.getProperty("java.home", "."));
+        File[] roots = new File[] {
+            new File(home, "lib"),
+            new File(home, "bin"),
+            new File(new File(home, "lib"), System.getProperty("os.arch", "")),
+        };
+
+        for (File root : roots) {
+            if (new File(root, name).isFile()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static boolean hasCompiler() {

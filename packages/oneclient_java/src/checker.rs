@@ -26,7 +26,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .arg("-cp")
         .arg(temp_dir)
         .arg("JavaInfo")
-        .env_remove("_JAVA_OPTIONS");
+        .env_remove("_JAVA_OPTIONS")
+        .env_remove("JAVA_TOOL_OPTIONS")
+        .env_remove("JDK_JAVA_OPTIONS");
 
     let program = command.as_std().get_program().to_string_lossy();
     let args: Vec<String> = command
@@ -66,10 +68,12 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
     };
 
     // Minecraft needs AWT a headless image launches fine and then dies mid-game
-    if !probe_flag(&info, "java.awt") {
+    if !has_usable_awt(&info) {
         tracing::warn!(
             path = %absolute_path,
-            "java installation has no java.awt support"
+            classes = probe_flag(&info, "java.awt"),
+            natives = probe_flag(&info, "java.awt.natives"),
+            "java installation has no usable java.awt support"
         );
         return Err(JavaError::MissingAwtSupport { path: absolute_path });
     }
@@ -86,6 +90,10 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             .unwrap_or_else(|| String::from("unknown")),
         is_jdk: probe_flag(&info, "java.jdk"),
     })
+}
+
+fn has_usable_awt(info: &HashMap<String, String>) -> bool {
+    probe_flag(info, "java.awt") && probe_flag(info, "java.awt.natives")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
@@ -131,5 +139,23 @@ mod tests {
     fn a_flag_is_read_regardless_of_case() {
         assert!(probe_flag(&info(&[("java.awt", "TRUE")]), "java.awt"));
         assert!(!probe_flag(&info(&[("java.awt", "false")]), "java.awt"));
+    }
+
+    #[test]
+    fn awt_classes_without_their_natives_are_not_usable() {
+        assert!(!has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "false"),
+        ])));
+    }
+
+    #[test]
+    fn awt_needs_both_halves() {
+        assert!(has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "true"),
+        ])));
+        assert!(!has_usable_awt(&info(&[("java.awt", "true")])));
+        assert!(!has_usable_awt(&info(&[("java.awt.natives", "true")])));
     }
 }

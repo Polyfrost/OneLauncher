@@ -19,6 +19,7 @@ public final class JavaInfo {
 
         System.out.println("java.awt=" + hasClass("java.awt.Toolkit"));
         System.out.println("java.awt.natives=" + hasAwtNatives());
+        System.out.println("java.awt.link=" + awtLinks());
         System.out.println("java.jdk=" + hasCompiler());
 
         System.exit(returnCode);
@@ -74,6 +75,17 @@ public final class JavaInfo {
         }
 
         return false;
+    }
+
+    private static boolean awtLinks() {
+        try {
+            java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().getClass();
+            return true;
+        } catch (LinkageError broken) {
+            return false;
+        } catch (Throwable ignored) {
+            return true;
+        }
     }
 
     private static boolean hasCompiler() {

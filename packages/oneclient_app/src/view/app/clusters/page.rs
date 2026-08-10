@@ -171,114 +171,121 @@ impl Component for Clusters {
                             ),
                     )
                     .child(match cluster {
-                        Some(cluster) => detail_sidebar(
+                        Some(cluster) => DetailSidebar {
                             line,
-                            cluster,
-                            &clusters_for_line,
+                            cluster_id: cluster.id,
+                            clusters_for_line,
                             selected_version,
                             selected_loader,
-                        ),
+                        }
+                        .into_element(),
                         None => sidebar_error(),
                     }),
             )
     }
 }
 
-fn detail_sidebar(
+#[derive(PartialEq)]
+struct DetailSidebar {
     line: ReleaseLine,
-    cluster: Cluster,
-    clusters_for_line: &[Cluster],
+    cluster_id: i64,
+    clusters_for_line: Vec<Cluster>,
     selected_version: State<Option<VersionKey>>,
     selected_loader: State<Option<GameLoader>>,
-) -> Element {
-    let active_id = use_active_cluster_id();
-    let dispatch = use_dispatch();
-    let game = use_game_snapshot();
-    let launcher = use_launcher();
-    let syncing = launcher.fetching || launcher.syncing_bundles;
-    let keys = version_keys(clusters_for_line);
-    let loaders = loaders_for_line(clusters_for_line);
-    let cluster_id = cluster.id;
-    let version_title = line_title(line, clusters_for_line);
-    let version_value = *selected_version.read();
-    let loader_value = *selected_loader.read();
+}
 
-    let metadata = use_version_metadata(Some(line.major), version_value, loader_value);
+impl Component for DetailSidebar {
+    fn render(&self) -> impl IntoElement {
+        let active_id = use_active_cluster_id();
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let launcher = use_launcher();
 
-    let heading = metadata
-        .as_ref()
-        .map(|m| m.name.clone())
-        .unwrap_or_else(|| format!("Version {version_title}"));
-    let description = metadata
-        .as_ref()
-        .and_then(|m| m.long_description.clone())
-        .unwrap_or_else(|| PLACEHOLDER_VERSION_INFO.to_string());
-    let tags = metadata
-        .as_ref()
-        .map(|m| m.tags.clone())
-        .unwrap_or_default();
+        let clusters_for_line = self.clusters_for_line.as_slice();
+        let syncing = launcher.fetching || launcher.syncing_bundles;
+        let keys = version_keys(clusters_for_line);
+        let loaders = loaders_for_line(clusters_for_line);
+        let version_title = line_title(self.line, clusters_for_line);
+        let version_value = (self.selected_version)();
+        let loader_value = (self.selected_loader)();
 
-    rect()
-        .width(Size::px(SIDEBAR_WIDTH_PX))
-        .min_width(Size::px(SIDEBAR_WIDTH_PX))
-        .height(Size::fill())
-        .vertical()
-        .spacing(8.)
-        .padding(8.)
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .overflow(Overflow::Clip)
-        .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
-            ClusterLandscapeArt::for_version(line.major, version_value, loader_value, false),
-        ))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .height(Size::flex(1.0))
-                .content(Content::Flex)
-                .padding(Gaps::new_all(8.))
-                .spacing(8.)
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::fill())
-                        .height(Size::flex(1.0))
-                        .spacing(4.)
-                        .child(
-                            label()
-                                .text(heading)
-                                .font_size(24.)
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .color(colors::fg_primary()),
-                        )
-                        .maybe_child(tags_row(&tags))
-                        .child(
-                            label()
-                                .text(description)
-                                .font_size(12.)
-                                .color(colors::fg_secondary()),
-                        )
-                        .children(version_rows(line, &keys, version_value, selected_version))
-                        .children(loader_rows(&loaders, loader_value, selected_loader)),
-                )
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::fill())
-                        .content(Content::Flex)
-                        .main_align(Alignment::Center)
-                        .spacing(8.)
-                        .child(play_button(
-                            cluster_id,
-                            dispatch,
-                            launch_button_state(&game, cluster_id, syncing),
-                        ))
-                        .child(view_button(cluster_id, active_id)),
-                ),
-        )
-        .into_element()
+        let metadata = use_version_metadata(Some(self.line.major), version_value, loader_value);
+
+        let heading = metadata
+            .as_ref()
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| format!("Version {version_title}"));
+        let description = metadata
+            .as_ref()
+            .and_then(|m| m.long_description.clone())
+            .unwrap_or_else(|| PLACEHOLDER_VERSION_INFO.to_string());
+        let tags = metadata
+            .as_ref()
+            .map(|m| m.tags.clone())
+            .unwrap_or_default();
+
+        rect()
+            .width(Size::px(SIDEBAR_WIDTH_PX))
+            .min_width(Size::px(SIDEBAR_WIDTH_PX))
+            .height(Size::fill())
+            .vertical()
+            .spacing(8.)
+            .padding(8.)
+            .corner_radius(CornerRadius::new_all(12.))
+            .background(colors::page_elevated())
+            .border(border_all_color(1., colors::component_border()))
+            .overflow(Overflow::Clip)
+            .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
+                ClusterLandscapeArt::for_version(self.line.major, version_value, loader_value, false),
+            ))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .content(Content::Flex)
+                    .padding(Gaps::new_all(8.))
+                    .spacing(8.)
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::fill())
+                            .height(Size::flex(1.0))
+                            .spacing(4.)
+                            .child(
+                                label()
+                                    .text(heading)
+                                    .font_size(24.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .color(colors::fg_primary()),
+                            )
+                            .maybe_child(tags_row(&tags))
+                            .child(
+                                label()
+                                    .text(description)
+                                    .font_size(12.)
+                                    .color(colors::fg_secondary()),
+                            )
+                            .children(version_rows(self.line, &keys, version_value, self.selected_version))
+                            .children(loader_rows(&loaders, loader_value, self.selected_loader)),
+                    )
+                    .child(
+                        rect()
+                            .horizontal()
+                            .width(Size::fill())
+                            .content(Content::Flex)
+                            .main_align(Alignment::Center)
+                            .spacing(8.)
+                            .child(play_button(
+                                self.cluster_id,
+                                dispatch,
+                                launch_button_state(&game, self.cluster_id, syncing),
+                            ))
+                            .child(view_button(self.cluster_id, active_id)),
+                    ),
+            )
+            .into_element()
+    }
 }
 
 fn tags_row(tags: &[String]) -> Option<Element> {

@@ -18,13 +18,12 @@ struct OneClientApp;
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
         // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
-        // rather than `spawn` because these must outlive any component scope
         let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
             let (events_bus, events_rx) = oneclient_events::EventBus::channel();
-            let actions = Actions::new(station, signals_tx);
+            let actions = Actions::new(station, signals_tx, events_bus.clone());
 
             // Started first so nothing emitted during startup waits on a consumer
             spawn_forever(

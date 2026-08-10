@@ -14,6 +14,7 @@ mod transfer;
 mod layout;
 mod notifications;
 pub mod platform;
+pub mod recovery;
 mod routes;
 pub mod theme;
 mod ui;

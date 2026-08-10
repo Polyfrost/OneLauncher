@@ -323,6 +323,7 @@ pub async fn start_launcher(
             fetching: true,
             syncing_bundles: true,
             error: None,
+            snapshots: 0,
             data_dir,
         };
     }
@@ -345,11 +346,17 @@ pub fn report_startup_failure(
     let message = err.to_string();
     tracing::error!("launcher init failed: {err:#}");
 
+    let data_dir = oneclient_common::paths::launcher_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+
     let mut station = *station;
-    station
-        .write_channel(AppChannel::Launcher)
-        .launcher
-        .error = Some(message.clone());
+    {
+        let mut guard = station.write_channel(AppChannel::Launcher);
+        guard.launcher.error = Some(message.clone());
+        guard.launcher.data_dir = data_dir;
+        guard.launcher.snapshots = crate::recovery::snapshots().len();
+    }
 
     let mut guard = station.write_channel(AppChannel::Notifications);
     let AppState {

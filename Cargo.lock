@@ -4704,6 +4704,7 @@ dependencies = [
 name = "oneclient_db"
 version = "2.2.1"
 dependencies = [
+ "async-tempfile",
  "chrono",
  "dunce",
  "serde",

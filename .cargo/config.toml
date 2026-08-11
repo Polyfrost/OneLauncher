@@ -1,0 +1,7 @@
+# Linux and Macos by default have 8MB of stack storage.
+# Windows has 1MB, it isn't enough, so it's changed to 8MB also.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/STACK:8388608"]

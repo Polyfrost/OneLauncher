@@ -247,7 +247,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
-        .padding(Gaps::new(12., 20., 12., 20.))
+        .padding(Gaps::new(12., 20., 0., 20.))
         .spacing(12.)
         .child(
             label()

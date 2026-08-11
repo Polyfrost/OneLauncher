@@ -2,20 +2,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
-use freya::query::{MutationStateData, UseQuery};
-use freya::text_edit::Clipboard;
+use freya::query::UseQuery;
 use oneclient_common::search::SearchQuery;
 use oneclient_core::{LogFileInfo, LogKind, LogLevel};
 
-use crate::components::upload_mclogs::UploadToMclogs;
+use crate::components::upload_mclogs::{UploadToMclogs, use_mclogs_feedback};
 use crate::components::{
     Button, Icon, IconType, LogViewer, OverlayPopup, ScrollArea, Segment, SegmentedControl,
     TextInput, open_folder_button,
 };
 use crate::hooks::{
     ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
-    invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_dispatch,
-    use_log_action, use_log_content, use_upload_log,
+    invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_log_action,
+    use_log_content, use_upload_log,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -30,7 +29,7 @@ const PICKER_ROW_SPACING: f32 = 2.;
 const PICKER_LIST_MAX_H: f32 = 300.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LevelFilter {
+pub enum LevelFilter {
     All,
     Error,
     Warn,
@@ -39,7 +38,7 @@ enum LevelFilter {
 }
 
 impl LevelFilter {
-    fn to_level(self) -> Option<LogLevel> {
+    pub fn to_level(self) -> Option<LogLevel> {
         match self {
             Self::All => None,
             Self::Error => Some(LogLevel::Error),
@@ -49,7 +48,7 @@ impl LevelFilter {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Self::All => "All",
             Self::Error => "Errors",
@@ -68,7 +67,7 @@ pub enum Confirm {
 
 /// A crash report buried among thirty rotated `.log.gz` files is one nobody finds
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Category {
+pub enum Category {
     Logs,
     CrashReports,
 }
@@ -121,13 +120,13 @@ impl Component for ClusterLogs {
         let logs_query = use_cluster_logs(cluster_id);
         let upload = use_upload_log();
         let action = use_log_action();
-        let dispatch = use_dispatch();
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
         let category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
-        let mut handled_upload = use_state(|| None::<String>);
+
+        use_mclogs_feedback(upload);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
@@ -153,36 +152,6 @@ impl Component for ClusterLogs {
                     selected.set(file.path.clone());
                 }
             }
-        });
-
-        use_side_effect(move || match &*upload.read().state() {
-            MutationStateData::Settled {
-                res: Ok(result), ..
-            } => {
-                if handled_upload.peek().as_deref() == Some(result.url.as_str()) {
-                    return;
-                }
-
-                handled_upload.set(Some(result.url.clone()));
-                let _ = Clipboard::set(result.url.clone());
-
-                dispatch
-                    .notify("Uploaded to mclo.gs")
-                    .body(format!("{} (copied to clipboard)", result.url))
-                    .info()
-                    .icon(IconType::LinkExternal01)
-                    .send();
-            }
-            MutationStateData::Settled { res: Err(err), .. } => {
-                let msg = err.to_string();
-                if handled_upload.peek().as_deref() == Some(msg.as_str()) {
-                    return;
-                }
-
-                handled_upload.set(Some(msg.clone()));
-                dispatch.notify("Upload failed").body(msg).error().send();
-            }
-            _ => {}
         });
 
         let selected_path = selected.read().clone();
@@ -244,7 +213,7 @@ impl Component for ClusterLogs {
     }
 }
 
-fn visible_files(query: &UseQuery<ClusterLogsQuery>, category: Category) -> Vec<LogFileInfo> {
+pub fn visible_files(query: &UseQuery<ClusterLogsQuery>, category: Category) -> Vec<LogFileInfo> {
     try_cluster_logs(query)
         .unwrap_or_default()
         .into_iter()
@@ -322,7 +291,7 @@ fn top_bar(
         .into_element()
 }
 
-fn viewer_header(
+pub fn viewer_header(
     search: State<String>,
     level: State<LevelFilter>,
     confirm: State<Option<Confirm>>,
@@ -620,7 +589,7 @@ impl Component for PickerRow {
     }
 }
 
-fn confirm_overlay(
+pub fn confirm_overlay(
     kind: Confirm,
     mut confirm: State<Option<Confirm>>,
     action: UseLogAction,

@@ -2,7 +2,7 @@ use super::*;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use oneclient_core::clusters::Cluster;
 
@@ -11,7 +11,28 @@ use crate::hooks::use_settings_snapshot;
 use crate::layout::gradient_overlay_radial;
 use crate::theme::colors;
 
-const BACKDROP_INTERVAL_SECS: u64 = 12;
+pub(super) const BACKDROP_INTERVAL_SECS: u64 = 12;
+
+const ROTATION_PERIOD: Duration = Duration::from_secs(BACKDROP_INTERVAL_SECS);
+
+fn since_epoch() -> Duration {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+}
+
+/// Rotation step derived from the wall clock rather than from mount time so
+/// every rotating element lands on the same value
+pub(super) fn rotation_tick() -> usize {
+    (since_epoch().as_secs() / BACKDROP_INTERVAL_SECS) as usize
+}
+
+/// Time left until the next wall-clock boundary keeps independently spawned
+/// timers waking together no matter when their component mounted
+pub(super) fn next_rotation_delay() -> Duration {
+    let into_period = since_epoch().as_nanos() % ROTATION_PERIOD.as_nanos();
+    ROTATION_PERIOD - Duration::from_nanos(into_period as u64)
+}
 
 const PARALLAX_SCALE: f32 = 1.10;
 const PARALLAX_STRENGTH: f32 = 0.008;
@@ -28,7 +49,10 @@ impl Component for LoadingBackdrop {
     fn render(&self) -> impl IntoElement {
         let clusters = &self.clusters;
         let count = clusters.len().max(1);
-        let mut index = use_state(|| 0usize);
+        // Offset against the shared tick so the first art shown is still the
+        // first cluster
+        let start = use_hook(rotation_tick);
+        let mut tick = use_state(rotation_tick);
 
         let stop = use_hook(|| Arc::new(AtomicBool::new(false)));
 
@@ -46,20 +70,19 @@ impl Component for LoadingBackdrop {
 
                 spawn(async move {
                     loop {
-                        tokio::time::sleep(Duration::from_secs(BACKDROP_INTERVAL_SECS)).await;
+                        tokio::time::sleep(next_rotation_delay()).await;
 
                         if stop.load(Ordering::Relaxed) {
                             break;
                         }
 
-                        let next = (*index.peek() + 1) % count;
-                        index.set(next);
+                        tick.set(rotation_tick());
                     }
                 });
             }
         });
 
-        let current = *index.read() % count;
+        let current = (*tick.read()).wrapping_sub(start) % count;
 
         let parallax_enabled = use_settings_snapshot().settings.dynamic_background_enabled;
 

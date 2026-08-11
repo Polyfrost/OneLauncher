@@ -7,6 +7,7 @@ use freya::text_edit::Clipboard;
 use oneclient_common::search::SearchQuery;
 use oneclient_core::{LogFileInfo, LogKind, LogLevel};
 
+use crate::components::upload_mclogs::UploadToMclogs;
 use crate::components::{
     Button, Icon, IconType, LogViewer, OverlayPopup, ScrollArea, Segment, SegmentedControl,
     TextInput, open_folder_button,
@@ -60,7 +61,7 @@ impl LevelFilter {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Confirm {
+pub enum Confirm {
     Clear,
     Upload,
 }
@@ -324,7 +325,7 @@ fn top_bar(
 fn viewer_header(
     search: State<String>,
     level: State<LevelFilter>,
-    mut confirm: State<Option<Confirm>>,
+    confirm: State<Option<Confirm>>,
     has_log: bool,
 ) -> impl IntoElement {
     let search_input = {
@@ -367,12 +368,7 @@ fn viewer_header(
                 .into_element(),
         )
         .child(
-            Button::new()
-                .secondary()
-                .enabled(has_log)
-                .on_press(move |_| confirm.set(Some(Confirm::Upload)))
-                .child(Icon::new(IconType::LinkExternal01).size(15.))
-                .text("Upload to mclo.gs"),
+            UploadToMclogs::new(has_log, confirm)
         );
 
     rect()

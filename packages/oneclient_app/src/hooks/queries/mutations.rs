@@ -11,21 +11,34 @@ use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
     ClusterProfileQuery, ClusterSettingsQuery, GameProfileQuery, ListNamedProfilesQuery,
 };
-use super::versions::{LoaderVersionsQuery, VersionsMetadataQuery};
+
+async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
+    let started = std::time::Instant::now();
+    fut.await;
+    tracing::debug!(
+        target: "oneclient_app::perf",
+        step,
+        ms = started.elapsed().as_millis() as u64,
+        "invalidate step"
+    );
+}
 
 pub async fn invalidate_cluster_queries() {
-    QueriesStorage::<ListClustersQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundlesWithStatusQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundleOverridesQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundleUpdatesQuery>::try_invalidate_all().await;
-    QueriesStorage::<PackageUpdatesQuery>::try_invalidate_all().await;
-    QueriesStorage::<VersionsMetadataQuery>::try_invalidate_all().await;
-    QueriesStorage::<LoaderVersionsQuery>::try_invalidate_all().await;
+    let started = std::time::Instant::now();
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::try_invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::try_invalidate_all()).await;
+    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::try_invalidate_all()).await;
+    timed("clusters", QueriesStorage::<ListClustersQuery>::try_invalidate_all()).await;
+    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::try_invalidate_all()).await;
+    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::try_invalidate_all()).await;
+    tracing::debug!(
+        target: "oneclient_app::perf",
+        ms = started.elapsed().as_millis() as u64,
+        "cluster queries invalidated"
+    );
 }
 
 /// Split out of [`invalidate_cluster_queries`] so an install can wait for just
-/// this before dropping its busy flag the full sweep hits the network
 pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
 }
@@ -84,6 +97,7 @@ impl MutationCapability for ClusterMutation {
     type Keys = ClusterAction;
 
     async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+        let started = std::time::Instant::now();
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
         let content = &state.services.content();
@@ -165,6 +179,12 @@ impl MutationCapability for ClusterMutation {
                 }
             }
         };
+        tracing::debug!(
+            target: "oneclient_app::perf",
+            ms = started.elapsed().as_millis() as u64,
+            ok = result.is_ok(),
+            "cluster action ran"
+        );
         result.map_err(|e| e.to_string())
     }
 

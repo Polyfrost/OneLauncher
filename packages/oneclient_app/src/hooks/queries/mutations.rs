@@ -39,6 +39,7 @@ pub async fn invalidate_cluster_queries() {
 }
 
 /// Split out of [`invalidate_cluster_queries`] so an install can wait for just
+/// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
 }

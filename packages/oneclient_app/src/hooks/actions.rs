@@ -439,11 +439,13 @@ impl Actions {
             let events = state.services.events.clone();
             match state.java.install_runtime_from(&vendor, major).await {
                 Ok(_) => events.signal(oneclient_events::Signal::JavaChanged),
-                Err(err) => events
-                    .notify("Java install failed")
-                    .body(err.to_string())
-                    .error()
-                    .send(),
+                Err(err) => {
+                    events
+                        .notify("Java install failed")
+                        .body(err.to_string())
+                        .error()
+                        .send()
+                },
             }
         });
     }

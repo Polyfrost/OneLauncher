@@ -10,11 +10,13 @@ use crate::error::JavaResult;
 mod adoptium;
 mod corretto;
 mod liberica;
+mod microsoft;
 mod zulu;
 
 pub use adoptium::AdoptiumRuntimeProvider;
 pub use corretto::CorrettoRuntimeProvider;
 pub use liberica::LibericaRuntimeProvider;
+pub use microsoft::MicrosoftRuntimeProvider;
 use serde::{Deserialize, Deserializer, Serialize};
 pub use zulu::ZuluRuntimeProvider;
 
@@ -24,6 +26,7 @@ pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
+        Box::new(MicrosoftRuntimeProvider),
     ]
 }
 

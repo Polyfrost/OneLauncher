@@ -1,8 +1,10 @@
+use std::path::Path;
+
 use freya::prelude::*;
-use oneclient_java::{JavaRuntime, JavaVendor};
+use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 
 use super::settings_page;
-use crate::components::{Button, Icon, IconType, JavaInstallManager, ScrollArea};
+use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -14,15 +16,17 @@ pub struct SettingsJava;
 impl Component for SettingsJava {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let removing_dispatch = dispatch.clone();
         let runtimes_query = use_java_runtimes();
         let runtimes = java_runtimes(&runtimes_query);
         let mut show_manager = use_state(|| false);
+        let pending_remove = use_state(|| None::<PendingRemove>);
 
         let mut shell = settings_page()
             .child(section_header("ADD RUNTIME"))
             .child(AddRow { show_manager }.into_element())
             .child(section_header("INSTALLED RUNTIMES"))
-            .child(runtimes_table(runtimes));
+            .child(runtimes_table(runtimes, pending_remove));
 
         if *show_manager.read() {
             shell = shell.child(
@@ -34,6 +38,11 @@ impl Component for SettingsJava {
                     .on_close(move |()| show_manager.set(false))
                     .into_element(),
             );
+        }
+
+        let pending = pending_remove.read().clone();
+        if let Some(target) = pending {
+            shell = shell.child(confirm_remove_modal(removing_dispatch, pending_remove, target))
         }
 
         shell.into_element()
@@ -84,7 +93,10 @@ impl Component for AddRow {
     }
 }
 
-fn runtimes_table(runtimes: Vec<JavaRuntime>) -> impl IntoElement {
+fn runtimes_table(
+    runtimes: Vec<JavaRuntime>,
+    pending_remove: State<Option<PendingRemove>>,
+) -> impl IntoElement {
     if runtimes.is_empty() {
         return rect()
             .width(Size::fill())
@@ -115,6 +127,7 @@ fn runtimes_table(runtimes: Vec<JavaRuntime>) -> impl IntoElement {
             RuntimeRow {
                 runtime,
                 last: idx + 1 == count,
+                pending_remove
             }
             .into_element(),
         );
@@ -164,11 +177,11 @@ fn table_header() -> impl IntoElement {
 struct RuntimeRow {
     runtime: JavaRuntime,
     last: bool,
+    pending_remove: State<Option<PendingRemove>>
 }
 
 impl Component for RuntimeRow {
     fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
         let runtime = &self.runtime;
         let path = runtime.absolute_path.clone();
 
@@ -226,7 +239,7 @@ impl Component for RuntimeRow {
                             ),
                     ),
             )
-            .child(remove_button(dispatch, path))
+            .child(remove_button(self.pending_remove, path))
     }
 }
 
@@ -234,11 +247,110 @@ fn path_content_width(path: &str) -> f32 {
     (path.chars().count() as f32 * 7.0).max(1.0)
 }
 
-fn remove_button(dispatch: Actions, path: String) -> impl IntoElement {
+/// `managed` is settled when the row is clicked rather than while rendering so
+/// the modal never touches the filesystem mid-frame
+#[derive(Clone, PartialEq)]
+struct PendingRemove {
+    path: String,
+    /// Whether the files live in OneClient's own java dir, which is the only
+    /// case where removal takes them off disk
+    managed: bool,
+}
+
+fn confirm_remove_modal(
+    dispatch: Actions,
+    mut pending: State<Option<PendingRemove>>,
+    target: PendingRemove,
+) -> impl IntoElement {
+    let PendingRemove { path, managed } = target;
+    let remove_path = path.clone();
+
+    let consequence = if managed {
+        "OneClient installed this runtime, so removing it deletes its files from disk."
+    } else {
+        "You added this runtime from your own folder, so only the list entry goes. The files stay where they are."
+    };
+
+    let confirm = if managed {
+        Button::new().danger().text("Remove and delete files")
+    } else {
+        Button::new().primary().text("Remove from list")
+    };
+
+     OverlayPopup::new()
+        .on_close(move |()| pending.set(None))
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(440.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(CornerRadius::new_all(14.))
+                        .background(colors::page_elevated())
+                        .child(
+                            label()
+                                .text("Remove Java Runtime?")
+                                .font_size(16.)
+                                .font_weight(FontWeight::SEMI_BOLD)
+                                .color(colors::fg_primary()),
+                        )
+                        .child(
+                            label()
+                                .text(consequence)
+                                .font_size(12.)
+                                .max_lines(4)
+                                .width(Size::fill())
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            label()
+                                .text(path)
+                                .font_size(12.)
+                                .max_lines(3)
+                                .width(Size::fill())
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .on_press(move |_| pending.set(None))
+                                        .text("Cancel"),
+                                )
+                                .child(confirm.on_press(move |_| {
+                                    dispatch.remove_java_runtime(remove_path.clone());
+                                    pending.set(None);
+                                })),
+                        ),
+                )
+        )
+        .into_element()
+}
+
+fn remove_button(
+    mut pending_remove: State<Option<PendingRemove>>,
+    path: String,
+) -> impl IntoElement {
     Button::new()
         .ghost()
         .small()
-        .on_press(move |_| dispatch.remove_java_runtime(path.clone()))
+        .on_press(move |_| {
+            pending_remove.set(Some(PendingRemove {
+                managed: is_launcher_managed(Path::new(&path)),
+                path: path.clone(),
+            }));
+        })
         .child(
             Icon::new(IconType::Trash01)
                 .size(14.)

@@ -123,6 +123,13 @@ fn managed_install_root(executable: &Path) -> JavaResult<Option<PathBuf>> {
 	}
 }
 
+/// Whether [`remove_installed_package`] would take this runtime's files with
+/// it so the UI can say up front what removing it costs
+#[must_use]
+pub fn is_launcher_managed(executable: &Path) -> bool {
+	managed_install_root(executable).is_ok_and(|root| root.is_some())
+}
+
 /// Only ever touches OneClient's own java dir a runtime the user added from
 /// their own folder is left on disk untouched
 #[tracing::instrument(level = "debug")]
@@ -287,6 +294,19 @@ mod tests {
 			.join(executable.strip_prefix(&elsewhere).unwrap());
 
 		assert_eq!(managed_install_root(&sneaky).unwrap(), None);
+
+		std::fs::remove_dir_all(&elsewhere).unwrap();
+	}
+
+	#[test]
+	fn the_managed_flag_matches_what_removal_would_actually_delete() {
+		let java_dir = java_dir();
+		let (_, ours) = install_runtime(&java_dir);
+		let elsewhere = java_dir.parent().unwrap().join("flagged-jdk");
+		let (_, theirs) = install_runtime(&elsewhere);
+
+		assert!(is_launcher_managed(&ours));
+		assert!(!is_launcher_managed(&theirs));
 
 		std::fs::remove_dir_all(&elsewhere).unwrap();
 	}

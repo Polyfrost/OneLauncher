@@ -8,11 +8,11 @@ use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
     vec![
+        (JavaVendor::Microsoft, "Microsoft Build of OpenJDK"),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
         (JavaVendor::Liberica, "BellSoft Liberica"),
-        (JavaVendor::Microsoft, "Microsoft Build of OpenJDK"),
     ]
 }
 

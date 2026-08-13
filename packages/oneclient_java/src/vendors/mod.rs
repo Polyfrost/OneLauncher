@@ -22,11 +22,11 @@ pub use zulu::ZuluRuntimeProvider;
 
 pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
     vec![
+		Box::new(MicrosoftRuntimeProvider),
         Box::new(ZuluRuntimeProvider),
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
-        Box::new(MicrosoftRuntimeProvider),
     ]
 }
 

@@ -3,11 +3,14 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
+use oneclient_common::{PackageUpdateMode, Patch};
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
-use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::{BrowserPackageUpdate, ProfileUpdate};
 use oneclient_db::models::ClusterId;
+use skia_safe::utils::text_utils::Align;
 
-use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::toggle::ToggleControlled;
+use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox, checkbox_labeled, toggle_controlled};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -65,6 +68,37 @@ impl Component for PackageUpdatePopup {
         let choices = use_state(HashMap::<RowKey, RowChoice>::new);
 
         let groups = snapshot.package_updates.clone();
+
+        // let groups = Some(vec![PackageUpdateGroup {
+        //     cluster_id: 1,
+        //     cluster_name: "Debug Cluster".to_string(),
+        //     packages: vec![
+        //         BrowserPackageUpdate {
+        //             cluster_id: 1,
+        //             hash: "fake-hash-1".to_string(),
+        //             provider: ProviderId::Local,
+        //             project_id: "fake-1".to_string(),
+        //             installed_version_id: "1".to_string(),
+        //             installed_version_name: "1.0.0".to_string(),
+        //             latest_version_id: "2".to_string(),
+        //             latest_version_name: "1.1.0".to_string(),
+        //             display_name: "Sodium".to_string(),
+        //             skipped: false,
+        //         },
+        //         BrowserPackageUpdate {
+        //             cluster_id: 1,
+        //             hash: "fake-hash-2".to_string(),
+        //             provider: ProviderId::Local,
+        //             project_id: "fake-2".to_string(),
+        //             installed_version_id: "3".to_string(),
+        //             installed_version_name: "0.9.1".to_string(),
+        //             latest_version_id: "4".to_string(),
+        //             latest_version_name: "1.0.0".to_string(),
+        //             display_name: "Iris Shaders".to_string(),
+        //             skipped: false,
+        //         },
+        //     ],
+        // }]);
 
         // Hooks run unconditionally so this must precede the early return below
         let mut meta = MetaMap::new();
@@ -141,7 +175,10 @@ fn content(
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let proceed_dispatch = dispatch.clone();
+    let dsa_dispatch = dispatch.clone();
     let total: usize = groups.iter().map(|group| group.packages.len()).sum();
+
+    let dont_show_again = use_state(|| false);
 
     let subtitle = match groups {
         [only] => format!(
@@ -194,40 +231,67 @@ fn content(
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
-                .main_align(Alignment::End)
+                .main_align(Alignment::SpaceBetween)
                 .spacing(8.)
                 .child(
-                    Button::new()
-                        .ghost()
-                        .on_press(move |_| dismiss.close_package_updates())
-                        .text("Cancel"),
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .main_align(Alignment::Start)
+                        .cross_align(Alignment::Center)
+                        .spacing(6.)
+                        .child(
+                            checkbox_labeled(dont_show_again, "Don't show again?")
+                        )
                 )
                 .child(
-                    Button::new()
-                        .primary()
-                        .on_press(move |_| {
-                            let answers = choices.read();
-                            for update in &all {
-                                match answers
-                                    .get(&row_key(update))
-                                    .copied()
-                                    .unwrap_or_default()
-                                {
-                                    RowChoice::Update => {
-                                        proceed_dispatch.apply_package_update(update.clone());
+                    rect()
+                        .width(Size::fill())
+                        .direction(Direction::Horizontal)
+                        .cross_align(Alignment::Center)
+                        .main_align(Alignment::End)
+                        .child(
+                            Button::new()
+                                .ghost()
+                                .on_press(move |_| dismiss.close_package_updates())
+                                .text("Cancel"),
+                        )
+                        .child(
+                            Button::new()
+                                .primary()
+                                .on_press(move |_| {
+                                    let choice = match *dont_show_again.peek() {
+                                        true => PackageUpdateMode::Automatic,
+                                        false => PackageUpdateMode::Prompt,
+                                    };
+
+                                    dsa_dispatch.update_global_profile(ProfileUpdate {
+                                        browser_update_mode: Patch::Set(choice),
+                                        ..Default::default()
+                                    });
+
+                                    let answers = choices.read();
+                                    for update in &all {
+                                        match answers
+                                            .get(&row_key(update))
+                                            .copied()
+                                            .unwrap_or_default()
+                                        {
+                                            RowChoice::Update => {
+                                                proceed_dispatch.apply_package_update(update.clone());
+                                            }
+                                            RowChoice::Skip => {}
+                                            RowChoice::SkipVersion => proceed_dispatch
+                                                .skip_package_update(
+                                                    update.cluster_id,
+                                                    update.hash.clone(),
+                                                ),
+                                        }
                                     }
-                                    RowChoice::Skip => {}
-                                    RowChoice::SkipVersion => proceed_dispatch
-                                        .skip_package_update(
-                                            update.cluster_id,
-                                            update.hash.clone(),
-                                        ),
-                                }
-                            }
-                            proceed_dispatch.close_package_updates();
-                        })
-                        .child(Icon::new(IconType::DownloadCloud02).size(15.))
-                        .text("Proceed"),
+                                    proceed_dispatch.close_package_updates();
+                                })
+                                .child(Icon::new(IconType::DownloadCloud02).size(15.))
+                                .text("Proceed"),
+                        )
                 ),
         )
 }

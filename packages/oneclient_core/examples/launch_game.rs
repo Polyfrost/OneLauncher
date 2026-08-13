@@ -9,7 +9,7 @@ use oneclient_common::domain::GameLoader;
 async fn main() -> LauncherResult<()> {
     dev::initialize().await?;
     let state = dev::ephemeral_state().await?;
-
+    
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mc_version = args.first().map(String::as_str).unwrap_or("1.21.4");
     let loader = args

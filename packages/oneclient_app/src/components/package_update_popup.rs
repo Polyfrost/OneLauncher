@@ -69,37 +69,6 @@ impl Component for PackageUpdatePopup {
 
         let groups = snapshot.package_updates.clone();
 
-        // let groups = Some(vec![PackageUpdateGroup {
-        //     cluster_id: 1,
-        //     cluster_name: "Debug Cluster".to_string(),
-        //     packages: vec![
-        //         BrowserPackageUpdate {
-        //             cluster_id: 1,
-        //             hash: "fake-hash-1".to_string(),
-        //             provider: ProviderId::Local,
-        //             project_id: "fake-1".to_string(),
-        //             installed_version_id: "1".to_string(),
-        //             installed_version_name: "1.0.0".to_string(),
-        //             latest_version_id: "2".to_string(),
-        //             latest_version_name: "1.1.0".to_string(),
-        //             display_name: "Sodium".to_string(),
-        //             skipped: false,
-        //         },
-        //         BrowserPackageUpdate {
-        //             cluster_id: 1,
-        //             hash: "fake-hash-2".to_string(),
-        //             provider: ProviderId::Local,
-        //             project_id: "fake-2".to_string(),
-        //             installed_version_id: "3".to_string(),
-        //             installed_version_name: "0.9.1".to_string(),
-        //             latest_version_id: "4".to_string(),
-        //             latest_version_name: "1.0.0".to_string(),
-        //             display_name: "Iris Shaders".to_string(),
-        //             skipped: false,
-        //         },
-        //     ],
-        // }]);
-
         // Hooks run unconditionally so this must precede the early return below
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {

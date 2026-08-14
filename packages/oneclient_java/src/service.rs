@@ -64,6 +64,14 @@ impl JavaService {
 		Ok(self.store.list().await?)
 	}
 
+	/// Checks if file wasn't deleted manually
+	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn has_vendor_runtime(&self, vendor: &JavaVendor) -> JavaResult<bool> {
+		Ok(self.list_runtimes().await?.iter().any(|runtime| {
+			&runtime.vendor == vendor && Path::new(&runtime.absolute_path).is_file()
+		}))
+	}
+
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn runtime_for_profile(
 		&self,
@@ -138,6 +146,20 @@ impl JavaService {
 
 		available.sort_by_key(|entry| std::cmp::Reverse(entry.major));
 		Ok(available)
+	}
+
+	/// `None` when the vendor publishes nothing for this major on this host
+	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn latest_package(
+		&self,
+		vendor: &JavaVendor,
+		major: u32,
+	) -> JavaResult<Option<JavaPackage>> {
+		let Some(provider) = provider_for_vendor(vendor) else {
+			return Ok(None);
+		};
+
+		provider.latest_package_by_major(major, &self.net).await
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]

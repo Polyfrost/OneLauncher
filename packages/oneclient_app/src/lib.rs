@@ -12,6 +12,7 @@ mod launcher;
 pub mod state;
 mod transfer;
 mod layout;
+pub mod microsoft_java;
 mod notifications;
 pub mod platform;
 pub mod recovery;

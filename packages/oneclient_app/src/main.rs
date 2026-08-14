@@ -8,8 +8,8 @@ use freya::prelude::*;
 use freya::radio::use_init_radio_station;
 use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
-    use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, microsoft_java,
+    router, theme, use_provide_actions, use_provide_link_confirm,
 };
 use tokio::runtime::Builder;
 
@@ -40,7 +40,11 @@ impl App for OneClientApp {
                 match events::start_launcher(station, events_bus).await {
                     // Must follow startup `sync_bundles` needs the launcher handle and firing
                     // it early leaves `syncing_bundles` stuck disabling every launch button
-                    Ok(()) => startup.sync_bundles(),
+                    Ok(()) => {
+                        startup.sync_bundles();
+                        // Waits for the startup sync itself
+                        microsoft_java::spawn_offer(&startup);
+                    }
                     Err(err) => events::report_startup_failure(&station, &err),
                 }
             });

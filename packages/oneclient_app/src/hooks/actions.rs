@@ -232,6 +232,14 @@ impl Actions {
         }
     }
 
+    pub fn skip_microsoft_java_prompt(&self) {
+        if let Some(updated) =
+            self.mutate_settings(|settings| settings.skip_microsoft_java_prompt = true)
+        {
+            self.persist(updated);
+        }
+    }
+
     pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.accepted_tos_version = terms_version;

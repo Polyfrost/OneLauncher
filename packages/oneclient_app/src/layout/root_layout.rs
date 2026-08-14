@@ -3,8 +3,8 @@ use freya::router::*;
 
 use crate::components::{
     AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay,
-    NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
-    UpdatePromptOverlay,
+    MicrosoftJavaPromptOverlay, NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar,
+    Toasts, UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_splash};
 use crate::layout::HomeArtPrefetch;
@@ -69,6 +69,7 @@ impl Component for RootLayout {
             .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
+            .child(MicrosoftJavaPromptOverlay)
             // Must stay last it renders whatever the overlays above did not claim
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)

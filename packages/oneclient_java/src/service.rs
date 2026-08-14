@@ -64,6 +64,20 @@ impl JavaService {
 		Ok(self.store.list().await?)
 	}
 
+	/// Checks if file wasn't deleted manually
+	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn has_vendor_runtime(
+		&self,
+		vendor: &JavaVendor,
+		major: Option<u32>,
+	) -> JavaResult<bool> {
+		Ok(self.list_runtimes().await?.iter().any(|runtime| {
+			&runtime.vendor == vendor
+				&& major.is_none_or(|major| runtime.major == major)
+				&& Path::new(&runtime.absolute_path).is_file()
+		}))
+	}
+
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn runtime_for_profile(
 		&self,
@@ -140,6 +154,20 @@ impl JavaService {
 		Ok(available)
 	}
 
+	/// `None` when the vendor publishes nothing for this major on this host
+	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn latest_package(
+		&self,
+		vendor: &JavaVendor,
+		major: u32,
+	) -> JavaResult<Option<JavaPackage>> {
+		let Some(provider) = provider_for_vendor(vendor) else {
+			return Ok(None);
+		};
+
+		provider.latest_package_by_major(major, &self.net).await
+	}
+
 	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn rescan(&self) -> JavaResult<()> {
 		self.register_located(&crate::locate::locate_java().await?)
@@ -169,14 +197,7 @@ impl JavaService {
 		auto_install: bool,
 		progress: Option<&GroupedProgressSession>,
 	) -> JavaResult<JavaRuntime> {
-		let recorded = loop {
-			let Some(runtime) = self.store.latest_by_major(major).await? else {
-				break None;
-			};
-			if let Some(valid) = self.revalidate(runtime).await? {
-				break Some(valid);
-			}
-		};
+		let recorded = self.best_recorded_for_major(major).await?;
 
 		if let Some(runtime) = &recorded
 			&& runtime.is_jdk
@@ -205,6 +226,28 @@ impl JavaService {
 		}
 
 		self.prompt_and_install(major, progress).await
+	}
+
+	#[tracing::instrument(level = "debug", skip(self))]
+	async fn best_recorded_for_major(&self, major: u32) -> JavaResult<Option<JavaRuntime>> {
+		let preferred = vendors::default_vendor();
+
+		let mut candidates: Vec<JavaRuntime> = self
+			.list_runtimes()
+			.await?
+			.into_iter()
+			.filter(|runtime| runtime.major == major)
+			.collect();
+
+		candidates.sort_by(|a, b| pick_order(b, &preferred).cmp(&pick_order(a, &preferred)));
+
+		for candidate in candidates {
+			if let Some(valid) = self.revalidate(candidate).await? {
+				return Ok(Some(valid));
+			}
+		}
+
+		Ok(None)
 	}
 
 	#[tracing::instrument(skip(self, progress))]
@@ -372,6 +415,25 @@ impl JavaService {
 	}
 }
 
+/// Ranked highest-first the default vendor beats every other, a kit beats a
+/// runtime of the same vendor, and only then does the newest build win
+fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, Vec<u32>) {
+	(
+		&runtime.vendor == preferred,
+		runtime.is_jdk,
+		version_key(&runtime.version),
+	)
+}
+
+/// `21.0.9` sorts above `21.0.12` as text which is backwards so the components
+/// are compared as numbers Legacy `1.8.0_412` keeps its build as the last one
+fn version_key(version: &str) -> Vec<u32> {
+	version
+		.split(|c: char| !c.is_ascii_digit())
+		.filter_map(|part| part.parse().ok())
+		.collect()
+}
+
 fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRuntimeProvider>> {
 	vendors::runtime_providers()
 		.into_iter()
@@ -416,5 +478,70 @@ mod tests {
 	fn garbage_is_rejected_rather_than_defaulted() {
 		assert!(parse_major_version("not-a-version").is_err());
 		assert!(parse_major_version("1.x").is_err());
+	}
+
+	fn runtime(vendor: JavaVendor, version: &str, is_jdk: bool) -> JavaRuntime {
+		JavaRuntime {
+			absolute_path: format!("/java/{vendor}-{version}/bin/java"),
+			major: parse_major_version(version).unwrap(),
+			version: version.to_string(),
+			vendor,
+			os_arch: "x64".to_string(),
+			is_jdk,
+			probe_version: PROBE_VERSION,
+		}
+	}
+
+	/// Highest first the same way `best_recorded_for_major` sorts
+	fn best(mut candidates: Vec<JavaRuntime>, preferred: &JavaVendor) -> JavaRuntime {
+		candidates.sort_by(|a, b| pick_order(b, preferred).cmp(&pick_order(a, preferred)));
+		candidates.remove(0)
+	}
+
+	#[test]
+	fn patch_numbers_are_compared_as_numbers_not_as_text() {
+		assert!(version_key("21.0.12") > version_key("21.0.9"));
+		assert_eq!(version_key("1.8.0_412"), vec![1, 8, 0, 412]);
+	}
+
+	#[test]
+	fn the_default_vendor_wins_even_against_a_newer_build() {
+		let picked = best(
+			vec![
+				runtime(JavaVendor::Zulu, "21.0.99", true),
+				runtime(JavaVendor::Microsoft, "21.0.1", true),
+			],
+			&JavaVendor::Microsoft,
+		);
+
+		assert_eq!(picked.vendor, JavaVendor::Microsoft);
+	}
+
+	#[test]
+	fn a_kit_beats_a_runtime_of_the_same_vendor() {
+		let picked = best(
+			vec![
+				runtime(JavaVendor::Microsoft, "21.0.5", false),
+				runtime(JavaVendor::Microsoft, "21.0.2", true),
+			],
+			&JavaVendor::Microsoft,
+		);
+
+		assert!(picked.is_jdk);
+	}
+
+	/// Nothing from the preferred vendor means the ranking falls through to the
+	/// newest build rather than to whatever the store happened to return
+	#[test]
+	fn without_the_default_vendor_the_newest_build_wins() {
+		let picked = best(
+			vec![
+				runtime(JavaVendor::Zulu, "21.0.9", true),
+				runtime(JavaVendor::Adoptium, "21.0.12", true),
+			],
+			&JavaVendor::Microsoft,
+		);
+
+		assert_eq!(picked.version, "21.0.12");
 	}
 }

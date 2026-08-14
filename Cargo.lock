@@ -4746,6 +4746,7 @@ dependencies = [
  "async-trait",
  "async_zip",
  "futures-lite",
+ "futures-util",
  "oneclient_common",
  "oneclient_events",
  "oneclient_net",

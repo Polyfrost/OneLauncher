@@ -151,6 +151,35 @@ async fn cached_assets_index(
     polyio::read_json(&path).await.ok()
 }
 
+#[tracing::instrument(level = "debug", skip(state))]
+pub async fn required_java_major(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+) -> LauncherResult<Option<u32>> {
+    let cluster = state.clusters.get(cluster_id).await?;
+    let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
+
+    let info = {
+        let mut metadata = state.metadata.lock().await;
+        let (version, _index, _updated) =
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
+                .await
+                .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+        let loader_version = get_loader_version(
+            &mut metadata,
+            &state.services.mc(),
+            &mc_version,
+            cluster.mc_loader,
+            cluster.mc_loader_version.as_deref(),
+        )
+        .await?;
+        download_version_info(&state.services.mc(), None, &version, loader_version.as_ref(), false)
+            .await?
+    };
+
+    Ok(info.java_version.map(|java| java.major_version))
+}
+
 #[tracing::instrument(level = "debug", skip(state, bundles))]
 pub async fn estimate_cluster_download(
     state: &Arc<LauncherState>,

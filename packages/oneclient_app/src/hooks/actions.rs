@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
+use oneclient_cluster::profiles::list_named_profiles;
 use oneclient_cluster::{
-    ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
+    Cluster, ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_core::settings::LauncherSettings;
@@ -59,6 +60,26 @@ fn plan_launch_updates(
         PackageUpdateMode::Automatic => LaunchUpdatePlan::Apply(pending),
         PackageUpdateMode::Prompt => LaunchUpdatePlan::Prompt(pending),
     }
+}
+
+/// Names the clusters that pinned `java_path` to this runtime by hand
+fn clusters_pinned_to_java(
+    profiles: &[GameSettingsProfile],
+    clusters: &[Cluster],
+    absolute_path: &str,
+) -> Vec<String> {
+    profiles
+        .iter()
+        .filter(|profile| profile.java_path.as_deref() == Some(absolute_path))
+        .map(|profile| {
+            clusters
+                .iter()
+                .find(|cluster| {
+                    cluster.setting_profile_name.as_deref() == Some(profile.name.as_str())
+                })
+                .map_or_else(|| profile.name.clone(), |cluster| cluster.name.clone())
+        })
+        .collect()
 }
 
 /// The pump alone owns the toast timers so adding or removing a toast has to
@@ -228,6 +249,13 @@ impl Actions {
 
     pub fn mark_onboarding_seen(&self) {
         if let Some(updated) = self.mutate_settings(|settings| settings.seen_onboarding = true) {
+            self.persist(updated);
+        }
+    }
+
+    pub fn skip_microsoft_java(&self) {
+        if let Some(updated) = self.mutate_settings(|settings| settings.skip_microsoft_java = true)
+        {
             self.persist(updated);
         }
     }
@@ -473,6 +501,29 @@ impl Actions {
         let path = path.into();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            // Checks if the jdk is pinned to the cluster
+            match (
+                list_named_profiles(&state.services.db).await,
+                state.clusters.list().await,
+            ) {
+                (Ok(profiles), Ok(clusters)) => {
+                    let pinned = clusters_pinned_to_java(&profiles, &clusters, &path);
+                    if !pinned.is_empty() {
+                        events
+                            .notify("Cannot remove this JDK")
+                            .body(format!("It is used by cluster: {}", pinned.join(", ")))
+                            .error()
+                            .send();
+                        return;
+                    }
+                }
+                (Err(err), _) | (_, Err(err)) => {
+                    tracing::error!("could not check whether the java runtime is in use: {err:#}");
+                }
+            }
+
             match state.java.remove_runtime(&path).await {
                 Ok(()) => super::invalidate_java_queries().await,
                 Err(err) => tracing::error!("failed to remove java runtime: {err:#}"),
@@ -1240,6 +1291,8 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
+    crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
+
     // Before the game process never after Minecraft reads its mods once at
     // startup
     actions
@@ -1405,5 +1458,89 @@ mod tests {
                 "{mode:?} must not hold a launch up over an empty list",
             );
         }
+    }
+
+    const JDK_25: &str = r"C:\jdk-25\bin\javaw.exe";
+
+    fn profile(name: &str, java_path: Option<&str>) -> GameSettingsProfile {
+        GameSettingsProfile {
+            name: name.into(),
+            java_path: java_path.map(Into::into),
+            ..GameSettingsProfile::default_global_profile()
+        }
+    }
+
+    fn cluster(id: i64, name: &str, profile_name: Option<&str>) -> Cluster {
+        Cluster {
+            id,
+            name: name.into(),
+            folder_name: name.into(),
+            setting_profile_name: profile_name.map(Into::into),
+            mc_version: "26.2".into(),
+            mc_loader: oneclient_common::domain::GameLoader::default(),
+            mc_loader_version: None,
+            stage: ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: Duration::ZERO,
+            linked_modpack_hash: None,
+        }
+    }
+
+    #[test]
+    fn a_runtime_nobody_pinned_is_free_to_go() {
+        let profiles = vec![profile("26.2 Fabric", None)];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+
+        assert!(clusters_pinned_to_java(&profiles, &clusters, JDK_25).is_empty());
+    }
+
+    #[test]
+    fn a_pinned_runtime_is_reported_under_its_cluster_name() {
+        let profiles = vec![profile("26.2 Fabric", Some(JDK_25))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["26.2 Fabric".to_string()],
+        );
+    }
+
+    #[test]
+    fn only_the_runtime_being_removed_counts() {
+        let profiles = vec![
+            profile("21 pinned", Some(r"C:\jdk-21\bin\javaw.exe")),
+            profile("25 pinned", Some(JDK_25)),
+        ];
+        let clusters = vec![
+            cluster(1, "Old pack", Some("21 pinned")),
+            cluster(2, "New pack", Some("25 pinned")),
+        ];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["New pack".to_string()],
+        );
+    }
+
+    #[test]
+    fn every_cluster_holding_the_runtime_is_named() {
+        let profiles = vec![profile("a", Some(JDK_25)), profile("b", Some(JDK_25))];
+        let clusters = vec![cluster(1, "Alpha", Some("a")), cluster(2, "Beta", Some("b"))];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["Alpha".to_string(), "Beta".to_string()],
+        );
+    }
+
+    #[test]
+    fn a_profile_no_cluster_claims_falls_back_to_its_own_name() {
+        let profiles = vec![profile("orphaned", Some(JDK_25))];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &[], JDK_25),
+            vec!["orphaned".to_string()],
+        );
     }
 }

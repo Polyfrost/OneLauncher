@@ -253,9 +253,8 @@ impl Actions {
         }
     }
 
-    pub fn skip_microsoft_java_prompt(&self) {
-        if let Some(updated) =
-            self.mutate_settings(|settings| settings.skip_microsoft_java_prompt = true)
+    pub fn skip_microsoft_java(&self) {
+        if let Some(updated) = self.mutate_settings(|settings| settings.skip_microsoft_java = true)
         {
             self.persist(updated);
         }
@@ -1291,6 +1290,8 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         );
         return;
     };
+
+    crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
     // Before the game process never after Minecraft reads its mods once at
     // startup

@@ -30,6 +30,15 @@ pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
     ]
 }
 
+// For making sure microsoft jdk provider is first
+#[must_use]
+pub fn default_vendor() -> JavaVendor {
+    runtime_providers()
+        .first()
+        .expect("the provider list is never empty")
+        .vendor()
+}
+
 #[async_trait::async_trait]
 pub trait JavaRuntimeProvider: Send + Sync {
 	fn vendor(&self) -> JavaVendor;

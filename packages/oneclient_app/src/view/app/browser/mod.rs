@@ -397,6 +397,7 @@ mod tests {
             display_version: None,
             provider: Some(ProviderId::Modrinth),
             published_at: None,
+            seen_status: oneclient_core::SeenStatus::Seen,
         }
     }
 

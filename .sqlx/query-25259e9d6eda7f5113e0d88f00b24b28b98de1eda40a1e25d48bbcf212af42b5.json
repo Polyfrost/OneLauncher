@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT cluster_id, hash, cluster_file_name, enabled\n\t\tFROM cluster_artifacts\n\t\tWHERE cluster_id = ?\n\t\t",
+  "query": "\n\t\tINSERT INTO cluster_artifacts (cluster_id, hash, cluster_file_name, enabled)\n\t\tVALUES (?, ?, ?, 1)\n\t\tON CONFLICT(cluster_id, hash) DO UPDATE SET\n\t\t\tcluster_file_name = excluded.cluster_file_name\n\t\tRETURNING cluster_id, hash, cluster_file_name, enabled, seen_status\n\t\t",
   "describe": {
     "columns": [
       {
@@ -46,17 +46,29 @@
             "name": "enabled"
           }
         }
+      },
+      {
+        "name": "seen_status",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "seen_status"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
+      false,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "e372eec993f6e82238fe95b1c74dbb377ee08e44c7e8c3b5eaa6f3b8b229fddf"
+  "hash": "25259e9d6eda7f5113e0d88f00b24b28b98de1eda40a1e25d48bbcf212af42b5"
 }

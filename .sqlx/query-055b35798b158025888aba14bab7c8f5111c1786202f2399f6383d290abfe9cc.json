@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT DISTINCT ca.cluster_id, ca.hash, ca.cluster_file_name, ca.enabled\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ?\n\t\t\tAND pr.provider = ?\n\t\t\tAND pr.project_id = ?\n\t\t\tAND ca.hash <> ?\n\t\t",
+  "query": "\n\t\tSELECT cluster_id, hash, cluster_file_name, enabled, seen_status\n\t\tFROM cluster_artifacts\n\t\tWHERE cluster_id = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -46,17 +46,29 @@
             "name": "enabled"
           }
         }
+      },
+      {
+        "name": "seen_status",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "seen_status"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "bbbc24e8d4f13a39ebce8e8598f4adbc864909984313ea1c065ba226465b23ca"
+  "hash": "055b35798b158025888aba14bab7c8f5111c1786202f2399f6383d290abfe9cc"
 }

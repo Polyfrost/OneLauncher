@@ -243,6 +243,9 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        seen_status: installed_info
+            .map(|i| i.seen_status)
+            .unwrap_or_default(),
     }
 }
 

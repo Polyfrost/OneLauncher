@@ -28,7 +28,7 @@ pub use oneclient_content::bundles::{
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
     set_bundle_package_overrides,
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile,
-    BundleFileKind, BundleManifest, BundlesManager, BundleUpdateCheckResult,
+    BundleFileKind, BundleManifest, BundleOptionalPackage, BundlesManager, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, get_bundles_with_update_status,
     remove_artifact_from_cluster, toggle_artifact_enabled,
 };

@@ -22,7 +22,8 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::launcher;
 use crate::notifications::{
-    ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
+    ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
+    PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
@@ -541,6 +542,131 @@ impl Actions {
         self.with_engine(|state| state.notifications.close_cluster_update());
     }
 
+    pub fn open_optional_mods(&self, groups: Vec<OptionalModsGroup>) {
+        self.with_engine(|state| state.notifications.open_optional_mods(groups));
+    }
+
+    pub fn close_optional_mods(&self) {
+        self.with_engine(|state| state.notifications.close_optional_mods());
+    }
+
+    pub fn decline_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
+        self.close_optional_mods();
+        if mods.is_empty() {
+            return;
+        }
+
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let content = state.services.content();
+
+            for (cluster_id, (bundle_name, package_id)) in &mods {
+                if let Err(err) = oneclient_core::set_bundle_package_override(
+                    *cluster_id,
+                    bundle_name,
+                    package_id,
+                    Some(oneclient_db::models::OverrideType::Disabled),
+                    &content,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        cluster_id,
+                        %bundle_name,
+                        %package_id,
+                        error = %err,
+                        "failed to record a declined optional mod, it will be offered again"
+                    );
+                }
+            }
+        });
+    }
+
+    pub fn enable_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
+        self.close_optional_mods();
+        if mods.is_empty() {
+            return;
+        }
+
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let content = state.services.content();
+
+            let mut clusters: Vec<ClusterId> = Vec::new();
+            let mut failed = 0usize;
+            for (cluster_id, (bundle_name, package_id)) in &mods {
+                match oneclient_core::set_bundle_package_enabled(
+                    *cluster_id,
+                    bundle_name,
+                    package_id,
+                    true,
+                    false,
+                    &content,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        if !clusters.contains(cluster_id) {
+                            clusters.push(*cluster_id);
+                        }
+                    }
+                    Err(err) => {
+                        failed += 1;
+                        tracing::warn!(
+                            cluster_id,
+                            %bundle_name,
+                            %package_id,
+                            error = %err,
+                            "failed to opt in to an optional mod"
+                        );
+                    }
+                }
+            }
+
+            let mut installed = 0usize;
+            for cluster_id in &clusters {
+                match oneclient_core::apply_bundle_updates(
+                    *cluster_id,
+                    state.bundles.as_ref(),
+                    &content,
+                )
+                .await
+                {
+                    Ok(result) => {
+                        installed += result.additions_applied.len();
+                        failed += result.additions_failed.len();
+                    }
+                    Err(err) => {
+                        tracing::warn!(cluster_id, error = %err, "failed to install optional mods");
+                    }
+                }
+            }
+
+            super::invalidate_cluster_queries().await;
+
+            let events = state.services.events.clone();
+            if installed > 0 {
+                events
+                    .notify("Mods added")
+                    .body(format!(
+                        "{installed} mod{} will load at the next launch",
+                        if installed == 1 { "" } else { "s" }
+                    ))
+                    .send();
+            }
+            if failed > 0 {
+                events
+                    .notify("Some mods were not added")
+                    .body(format!(
+                        "{failed} mod{} could not be installed",
+                        if failed == 1 { "" } else { "s" }
+                    ))
+                    .error()
+                    .send();
+            }
+        });
+    }
+
     pub fn close_package_updates(&self) {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
@@ -909,7 +1035,9 @@ impl Actions {
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
                     .await
             {
+                let optional = crate::install::optional_mod_groups(&spec);
                 actions.push_notification(spec);
+                actions.open_optional_mods(optional);
             }
         });
     }
@@ -967,10 +1095,15 @@ impl Actions {
             super::invalidate_cluster_queries().await;
 
             let spec = crate::install::combined_cluster_update_spec(&changed, &state.services).await;
+            let optional = spec
+                .as_ref()
+                .map(crate::install::optional_mod_groups)
+                .unwrap_or_default();
             actions.with_engine(|app| {
                 app.notifications
                     .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
             });
+            actions.open_optional_mods(optional);
         });
     }
 

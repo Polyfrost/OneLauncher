@@ -25,9 +25,9 @@ pub use manager::{Bundle, BundlesManager};
 pub use manifest::BundleManifest as RemoteBundleManifest;
 pub use runtime::{is_bundle_syncing, sync_all_cluster_bundles};
 pub use types::{
-    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleManifest,
-    BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
-    BundleWithUpdateStatus, FileUpdateStatus,
+    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleOptionalPackage,
+    BundleManifest, BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate,
+    BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
 };
 pub use updates::{
     apply_bundle_updates, check_bundle_updates, get_bundles_with_update_status,

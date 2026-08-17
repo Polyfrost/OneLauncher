@@ -130,6 +130,15 @@ pub struct BundleUpdateCheckResult {
     pub updates_available: Vec<BundlePackageUpdate>,
     pub removals_available: Vec<BundlePackageRemoval>,
     pub additions_available: Vec<BundlePackageAddition>,
+    pub optional_available: Vec<BundleOptionalPackage>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BundleOptionalPackage {
+    pub cluster_id: i64,
+    pub bundle_name: String,
+    pub package_id: String,
+    pub file: BundleFile,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -137,6 +146,7 @@ pub struct ApplyBundleUpdatesResult {
     pub updates_applied: Vec<BundlePackageUpdate>,
     pub removals_applied: Vec<BundlePackageRemoval>,
     pub additions_applied: Vec<BundlePackageAddition>,
+    pub optional_available: Vec<BundleOptionalPackage>,
     pub updates_failed: Vec<String>,
     pub removals_failed: Vec<String>,
     pub additions_failed: Vec<String>,

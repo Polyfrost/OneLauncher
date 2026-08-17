@@ -36,12 +36,15 @@ pub struct PackageUpdateGroup {
     pub packages: Vec<BrowserPackageUpdate>,
 }
 
+pub type OptionalModRef = (String, String);
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterUpdateItem {
     pub provider: ProviderId,
     pub project_id: Option<String>,
     /// Used when the meta cache has no entry (file name / package id)
     pub fallback: String,
+    pub offer: Option<OptionalModRef>,
 }
 
 impl ClusterUpdateItem {
@@ -50,7 +53,37 @@ impl ClusterUpdateItem {
             provider: ProviderId::Local,
             project_id: None,
             fallback: name.into(),
+            offer: None,
         }
+    }
+}
+
+/// Mods a bundle ships switched off by default and has never been asked about
+/// Split out per cluster the prompt only ever acts on these and never touches
+/// the rest of the summary
+#[derive(Clone, Debug, PartialEq)]
+pub struct OptionalModsGroup {
+    pub cluster_id: ClusterId,
+    pub cluster_name: String,
+    pub mods: Vec<ClusterUpdateItem>,
+}
+
+impl OptionalModsGroup {
+    pub fn from_summary(summary: &ClusterUpdateSummary) -> Option<Self> {
+        if summary.optional.is_empty() {
+            return None;
+        }
+        Some(Self {
+            cluster_id: summary.cluster_id,
+            cluster_name: summary.cluster_name.clone(),
+            mods: summary.optional.clone(),
+        })
+    }
+
+    pub fn offers(&self) -> impl Iterator<Item = (ClusterId, OptionalModRef)> + '_ {
+        self.mods
+            .iter()
+            .filter_map(move |item| item.offer.clone().map(|reference| (self.cluster_id, reference)))
     }
 }
 
@@ -60,6 +93,7 @@ pub struct ClusterUpdateSummary {
     pub cluster_name: String,
     pub updated: Vec<ClusterUpdateItem>,
     pub added: Vec<ClusterUpdateItem>,
+    pub optional: Vec<ClusterUpdateItem>,
     pub removed: Vec<ClusterUpdateItem>,
 }
 
@@ -167,6 +201,7 @@ pub struct NotificationSnapshot {
     pub center_open: bool,
     pub pending_prompt: Option<PendingPromptView>,
     pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    pub optional_mods: Option<Vec<OptionalModsGroup>>,
     pub package_updates: Option<Vec<PackageUpdateGroup>>,
     pub active_toast_entry_ids: Vec<u64>,
 }
@@ -186,6 +221,7 @@ pub struct NotificationState {
     grouped_tasks: HashMap<Uuid, GroupedTasks>,
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
+    optional_mods: Option<Vec<OptionalModsGroup>>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
     /// Resumes the launch that opened the update modal
     /// Held here not by the launch task
@@ -294,6 +330,7 @@ impl NotificationState {
             center_open,
             pending_prompt,
             cluster_update: self.cluster_update.clone(),
+            optional_mods: self.optional_mods.clone(),
             package_updates: self.package_updates.clone(),
             active_toast_entry_ids: self.active_toasts.iter().map(|t| t.entry_id).collect(),
         }
@@ -315,8 +352,21 @@ impl NotificationState {
         self.cluster_update = None;
     }
 
-    /// `done` is the launch's continuation it fires immediately when there is nothing
-    /// to show so a launch never waits on a modal that was never drawn
+    pub fn open_optional_mods(&mut self, groups: Vec<OptionalModsGroup>) {
+        let groups: Vec<OptionalModsGroup> = groups
+            .into_iter()
+            .filter(|group| !group.mods.is_empty())
+            .collect();
+        if groups.is_empty() {
+            return;
+        }
+        self.optional_mods = Some(groups);
+    }
+
+    pub fn close_optional_mods(&mut self) {
+        self.optional_mods = None;
+    }
+
     pub fn open_package_updates(
         &mut self,
         groups: Vec<PackageUpdateGroup>,

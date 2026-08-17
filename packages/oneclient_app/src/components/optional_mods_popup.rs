@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use freya::prelude::*;
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
+use oneclient_db::models::OptionalModStatus;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{
@@ -187,7 +188,7 @@ fn mod_list(groups: &[OptionalModsGroup], meta: &MetaMap) -> impl IntoElement {
         }
 
         for item in &group.mods {
-            list = list.child(mod_row(resolve_name(item, meta)));
+            list = list.child(mod_row(resolve_name(item, meta), item.status));
         }
     }
 
@@ -198,7 +199,14 @@ fn mod_list(groups: &[OptionalModsGroup], meta: &MetaMap) -> impl IntoElement {
         .child(list)
 }
 
-fn mod_row(name: String) -> impl IntoElement {
+/// `Skipped` never reaches this prompt today, so every rendered badge reads
+/// "New" the arm is kept because the distinction is wanted later
+fn mod_row(name: String, status: Option<OptionalModStatus>) -> impl IntoElement {
+    let accent = match status {
+        Some(OptionalModStatus::Skipped) => colors::fg_primary_disabled(),
+        _ => colors::brand(),
+    };
+
     rect()
         .horizontal()
         .width(Size::fill())
@@ -208,7 +216,7 @@ fn mod_row(name: String) -> impl IntoElement {
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
         .content(Content::Flex)
-        .child(Icon::new(IconType::Plus).size(14.).color(colors::brand()))
+        .child(Icon::new(IconType::Plus).size(14.).color(accent))
         .child(
             label()
                 .text(name)
@@ -217,6 +225,27 @@ fn mod_row(name: String) -> impl IntoElement {
                 .max_lines(1)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
+        )
+        .maybe_child(status.map(status_badge))
+}
+
+fn status_badge(status: OptionalModStatus) -> impl IntoElement {
+    let (text, foreground) = match status {
+        OptionalModStatus::New => ("New", colors::brand()),
+        OptionalModStatus::Skipped => ("Skipped", colors::fg_secondary()),
+    };
+
+    rect()
+        .padding(Gaps::new_symmetric(2., 7.))
+        .corner_radius(CornerRadius::new_all(6.))
+        .background(colors::component_border())
+        .child(
+            label()
+                .text(text)
+                .font_size(10.5)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .max_lines(1)
+                .color(foreground),
         )
 }
 

@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
+use oneclient_db::models::OptionalModStatus;
 
 use oneclient_auth::preview_samples;
 use oneclient_core::simulate::Damage;
@@ -435,14 +436,19 @@ fn preset_summary(
 fn cluster_update_items(names: &[impl AsRef<str>]) -> Vec<ClusterUpdateItem> {
     names
         .iter()
-        .map(|name| ClusterUpdateItem {
+        .enumerate()
+        .map(|(index, name)| ClusterUpdateItem {
             offer: Some(("simulated-bundle".to_string(), name.as_ref().to_string())),
+            status: Some(if index % 2 == 0 {
+                OptionalModStatus::New
+            } else {
+                OptionalModStatus::Skipped
+            }),
             ..ClusterUpdateItem::from_name(name.as_ref())
         })
         .collect()
 }
 
-/// Mirrors the copy the bridge builds so the simulated notification matches the real one
 fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSummary>) {
     if summaries.is_empty() {
         return;
@@ -479,7 +485,8 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
         })
         .send();
 
-    dispatch.open_optional_mods(optional);
+    // No continuation the real prompt is raised by a launch, which waits on one
+    dispatch.open_optional_mods(optional, None);
 }
 
 #[derive(PartialEq)]

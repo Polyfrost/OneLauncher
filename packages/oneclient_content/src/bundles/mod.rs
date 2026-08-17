@@ -2,6 +2,7 @@ mod error;
 mod install;
 mod manager;
 mod manifest;
+mod optional;
 mod overrides;
 mod polymrpack;
 mod runtime;
@@ -22,6 +23,9 @@ pub use install::{
     set_bundle_package_override, set_bundle_package_overrides,
 };
 pub use manager::{Bundle, BundlesManager};
+pub use optional::{
+    PendingOptionalMod, pending_optional_mods, resolve_optional_mods, skip_optional_mods,
+};
 pub use manifest::BundleManifest as RemoteBundleManifest;
 pub use runtime::{is_bundle_syncing, sync_all_cluster_bundles};
 pub use types::{

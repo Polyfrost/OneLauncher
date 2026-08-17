@@ -49,12 +49,14 @@ pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdate
             project_id: Some(project_id.clone()),
             fallback: file.display_name(),
             offer: None,
+            status: None,
         },
         oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
             provider: oneclient_content::packages::ProviderId::Local,
             project_id: None,
             fallback: file.display_name(),
             offer: None,
+            status: None,
         },
     }
 }
@@ -94,6 +96,7 @@ async fn cluster_update_summary(
                 .clone()
                 .unwrap_or_else(|| r.package_id.clone()),
             offer: None,
+            status: None,
         })
         .collect();
     let optional: Vec<ClusterUpdateItem> = result
@@ -219,24 +222,35 @@ pub async fn combined_cluster_update_spec(
     })
 }
 
-pub fn optional_mod_groups(spec: &NotificationSpec) -> Vec<OptionalModsGroup> {
-    spec.actions
+pub async fn pending_optional_group(
+    cluster_id: i64,
+    pending: &[oneclient_core::PendingOptionalMod],
+    services: &oneclient_core::LauncherServices,
+) -> Option<OptionalModsGroup> {
+    if pending.is_empty() {
+        return None;
+    }
+
+    let mods: Vec<ClusterUpdateItem> = pending
         .iter()
-        .flat_map(|action| match &action.kind {
-            NotificationActionKind::OpenClusterUpdate(summaries) => summaries.as_slice(),
+        .map(|entry| ClusterUpdateItem {
+            offer: Some((entry.bundle_name.clone(), entry.package_id.clone())),
+            status: Some(entry.status),
+            ..item_from_bundle_file(&entry.file)
         })
-        .filter_map(OptionalModsGroup::from_summary)
-        .collect()
+        .collect();
+
+    Some(OptionalModsGroup {
+        cluster_id,
+        cluster_name: cluster_display_name(cluster_id, services).await,
+        mods,
+    })
 }
 
-/// The session is detached not finished so the caller can reuse its notification
-/// as the "Installed" / "Install failed" result
-/// `session_id` is `None` if no download ran
 pub struct PackageInstall {
     pub session_id: Option<uuid::Uuid>,
     pub result: anyhow::Result<String>,
     pub dependencies: Vec<String>,
-    /// Unresolved or failed dependencies the package still installs
     pub missing_dependencies: Vec<String>,
 }
 

@@ -25,6 +25,7 @@ pub use oneclient_content::bundles::{
     apply_bundle_updates, check_bundle_updates, effective_enabled, install_bundle,
     install_cluster_bundles,
     install_package_from_bundle, is_bundle_syncing, list_cluster_bundle_overrides,
+    pending_optional_mods, resolve_optional_mods, skip_optional_mods, PendingOptionalMod,
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
     set_bundle_package_overrides,
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile,

@@ -5,8 +5,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
-use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
+use oneclient_db::models::{
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType,
+};
 use tokio::sync::Mutex as AsyncMutex;
 
 use futures_util::StreamExt;
@@ -416,11 +419,7 @@ pub async fn apply_bundle_updates_with(
         "applying bundle updates"
     );
 
-    let mut result = ApplyBundleUpdatesResult {
-        // Carried straight through, nothing here is applied
-        optional_available: check.optional_available,
-        ..Default::default()
-    };
+    let mut result = ApplyBundleUpdatesResult::default();
 
     for removal in check.removals_available {
         match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
@@ -532,6 +531,11 @@ pub async fn apply_bundle_updates_with(
         }
     }
 
+    let applied_something =
+        !result.updates_applied.is_empty() || !result.additions_applied.is_empty();
+    result.optional_available =
+        settle_optional_offers(cluster_id, check.optional_available, applied_something, ctx).await;
+
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
@@ -567,9 +571,79 @@ pub async fn apply_bundle_updates_with(
     Ok(result)
 }
 
-/// `enabled` is set not flipped and overrides are read across all bundles
-/// packages get re-resolved between bundles so a per-bundle lookup misses
-/// objections filed while the file lived elsewhere
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id, offers = offers.len()))]
+async fn settle_optional_offers(
+    cluster_id: i64,
+    offers: Vec<BundleOptionalPackage>,
+    applied_something: bool,
+    ctx: &ContentCtx,
+) -> Vec<BundleOptionalPackage> {
+    let queued = match optional_dao::list_pending(&ctx.db, cluster_id).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::warn!(
+                cluster_id,
+                error = %err,
+                "could not read the optional mod queue, leaving it untouched"
+            );
+            return offers;
+        }
+    };
+
+    let has_new_offer = offers
+        .iter()
+        .any(|offer| !queued.iter().any(|row| row.package_id == offer.package_id));
+
+    if applied_something || has_new_offer {
+        queue_optional_offers(cluster_id, &offers, ctx).await;
+    }
+
+    let skipped: HashSet<&str> = queued
+        .iter()
+        .filter(|row| row.status() == OptionalModStatus::Skipped)
+        .map(|row| row.package_id.as_str())
+        .collect();
+
+    offers
+        .into_iter()
+        .filter(|offer| !skipped.contains(offer.package_id.as_str()))
+        .collect()
+}
+
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id, offers = offers.len()))]
+async fn queue_optional_offers(
+    cluster_id: i64,
+    offers: &[BundleOptionalPackage],
+    ctx: &ContentCtx,
+) {
+    for offer in offers {
+        if let Err(err) = optional_dao::queue(
+            &ctx.db,
+            cluster_id,
+            &offer.bundle_name,
+            &offer.package_id,
+            &offer.file.kind.bundle_version_id(),
+        )
+        .await
+        {
+            tracing::warn!(
+                cluster_id,
+                package_id = %offer.package_id,
+                error = %err,
+                "failed to queue an optional mod offer"
+            );
+        }
+    }
+
+    let offered: Vec<String> = offers
+        .iter()
+        .map(|offer| offer.package_id.clone())
+        .collect();
+    if let Err(err) = optional_dao::retain(&ctx.db, cluster_id, &offered).await {
+        tracing::warn!(cluster_id, error = %err, "failed to prune stale optional mod offers");
+    }
+}
+
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn reconcile_update(
     update: &BundlePackageUpdate,

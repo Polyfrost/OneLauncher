@@ -6,7 +6,7 @@ use oneclient_events::{
 };
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
-use oneclient_db::models::ClusterId;
+use oneclient_db::models::{ClusterId, OptionalModStatus};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -45,6 +45,7 @@ pub struct ClusterUpdateItem {
     /// Used when the meta cache has no entry (file name / package id)
     pub fallback: String,
     pub offer: Option<OptionalModRef>,
+    pub status: Option<OptionalModStatus>,
 }
 
 impl ClusterUpdateItem {
@@ -54,13 +55,11 @@ impl ClusterUpdateItem {
             project_id: None,
             fallback: name.into(),
             offer: None,
+            status: None,
         }
     }
 }
 
-/// Mods a bundle ships switched off by default and has never been asked about
-/// Split out per cluster the prompt only ever acts on these and never touches
-/// the rest of the summary
 #[derive(Clone, Debug, PartialEq)]
 pub struct OptionalModsGroup {
     pub cluster_id: ClusterId,
@@ -227,6 +226,7 @@ pub struct NotificationState {
     /// Held here not by the launch task
     /// because every way the modal can end goes through this state
     package_updates_done: Option<oneshot::Sender<()>>,
+    optional_mods_done: Option<oneshot::Sender<()>>,
 }
 
 const CATEGORY_ORDER: [TaskCategory; 7] = [
@@ -352,19 +352,37 @@ impl NotificationState {
         self.cluster_update = None;
     }
 
-    pub fn open_optional_mods(&mut self, groups: Vec<OptionalModsGroup>) {
+    pub fn open_optional_mods(
+        &mut self,
+        groups: Vec<OptionalModsGroup>,
+        done: Option<oneshot::Sender<()>>,
+    ) {
         let groups: Vec<OptionalModsGroup> = groups
             .into_iter()
             .filter(|group| !group.mods.is_empty())
             .collect();
+
         if groups.is_empty() {
+            if let Some(done) = done {
+                let _ = done.send(());
+            }
             return;
         }
+
+        self.finish_optional_mods();
         self.optional_mods = Some(groups);
+        self.optional_mods_done = done;
     }
 
-    pub fn close_optional_mods(&mut self) {
+    pub fn hide_optional_mods(&mut self) {
         self.optional_mods = None;
+    }
+
+    pub fn finish_optional_mods(&mut self) {
+        self.optional_mods = None;
+        if let Some(done) = self.optional_mods_done.take() {
+            let _ = done.send(());
+        }
     }
 
     pub fn open_package_updates(

@@ -73,6 +73,21 @@ pub async fn hide_bundles_not_in(
     Ok(result.rows_affected())
 }
 
+pub async fn list_delisted_names_for_version_loader(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT name FROM bundles \
+         WHERE mc_version = ? AND mc_loader = ? AND hidden = 1 AND name IS NOT NULL",
+    )
+    .bind(mc_version)
+    .bind(mc_loader)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn list_visible_for_version_loader(
     pool: &SqlitePool,
     mc_version: &str,

@@ -130,14 +130,13 @@ impl Component for PackageCard {
             .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(
                 rect()
                     .margin(Gaps::new_all(1.))
                     .corner_radius(CornerRadius::new(10., 10., 0., 0.))
                     .overflow(Overflow::Clip)
                     .child(PackageBanner::new(icon_url, BANNER_H))
-                    // Top-left of the banner the first thing worth knowing about a result and the opposite corner is the install button's
                     .maybe_child(self.installed.map(|installed| {
                         rect()
                             .position(Position::new_absolute().top(8.).left(8.))
@@ -268,7 +267,7 @@ impl Component for ListRow {
             .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
             .child(
                 rect()
@@ -313,7 +312,6 @@ impl Component for ListRow {
                     ),
             )
             .child(downloads_row(item.downloads))
-            // Kept once installed rather than dropped a row that loses its button leaves its neighbours misaligned
             .child(InstallButton::new(
                 &self.item,
                 self.cluster_id,
@@ -323,7 +321,6 @@ impl Component for ListRow {
     }
 }
 
-/// Same version pick and dispatch as the install button on the package page
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
@@ -382,7 +379,7 @@ impl Component for InstallButton {
 
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
-            .on_all_press(|e: Event<PressEventData>| e.stop_propagation())
+            .on_press(|e: Event<PressEventData>| e.stop_propagation())
             .child(
                 Button::new()
                     .primary()

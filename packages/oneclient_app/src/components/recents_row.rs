@@ -172,7 +172,7 @@ impl Component for ClusterCard {
                             .y(0.)
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
-                    .on_all_press(on_press)
+                    .on_press(on_press)
                     .child(
                         rect()
                             .width(Size::fill())
@@ -280,7 +280,7 @@ impl Component for OtherVersionsTile {
                     .y(0.)
                     .color(Color::from_af32rgb(0.3, 0, 0, 0)),
             )
-            .on_all_press(|_| {
+            .on_press(|_| {
                 let _ = RouterContext::get().push(Route::Clusters {});
             })
             .child(

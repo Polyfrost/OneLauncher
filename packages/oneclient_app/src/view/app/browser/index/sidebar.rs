@@ -105,7 +105,7 @@ impl Component for CategoryRow {
                 hovering.set(false);
                 Cursor::set(CursorIcon::default());
             })
-            .on_all_press(move |_| on_toggle.call(()))
+            .on_press(move |_| on_toggle.call(()))
             .child(
                 label()
                     .text(capitalize(&self.name))

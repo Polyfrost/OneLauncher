@@ -2,8 +2,9 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::*;
 
-use super::app_shell::{appshell_overlay, back_button, hides_overlay};
+use super::app_shell::{appshell_overlay, back_button, hides_overlay, navigate_back};
 use crate::Route;
+use crate::hooks::use_overlay_claims;
 use crate::theme;
 use crate::ui::entrance_motion_layer;
 
@@ -46,6 +47,23 @@ fn is_cluster_route(route: &Route) -> bool {
     )
 }
 
+/// Checks if it should go back to home or somewhere else
+fn escape_exits_section(route: &Route) -> bool {
+    is_cluster_route(route) || is_sidebar_route(route)
+}
+
+/// Escape belongs to whatever the user is typing in before it belongs to the
+/// router so a search field does not throw the page away mid-word
+fn is_text_entry(role: AccessibilityRole) -> bool {
+    matches!(
+        role,
+        AccessibilityRole::TextInput
+            | AccessibilityRole::MultilineTextInput
+            | AccessibilityRole::SearchInput
+            | AccessibilityRole::PasswordInput
+    )
+}
+
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if (is_sidebar_route(from) && is_sidebar_route(to))
         || (is_cluster_route(from) && is_cluster_route(to))
@@ -65,8 +83,46 @@ impl Component for AnimatedAppOutlet {
     fn render(&self) -> impl IntoElement {
         let mut router = use_animated_router::<Route>();
 
-        let history = use_previous_and_current(use_route::<Route>());
+        let route = use_route::<Route>();
+        let at_home = matches!(&route, Route::Home {});
+        let exits_section = escape_exits_section(&route);
+        let history = use_previous_and_current(route);
         let back_title = history.read().0.title();
+
+        let platform = Platform::get();
+        let focused_node = platform.focused_accessibility_node;
+        let focused_id = platform.focused_accessibility_id;
+
+        let key_claims = use_overlay_claims();
+        let pointer_claims = key_claims.clone();
+
+        let on_global_key = move |e: Event<KeyboardEventData>| {
+            if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
+                return;
+            }
+
+            if is_text_entry(focused_node.peek().role()) {
+                focused_id.peek().request_unfocus();
+                return;
+            }
+
+            if exits_section {
+                let _ = RouterContext::get().push(Route::Home {});
+            } else {
+                navigate_back(at_home);
+            }
+        };
+
+        let on_global_pointer = move |e: Event<PointerEventData>| {
+            if pointer_claims.any() {
+                return;
+            }
+            match e.button() {
+                Some(MouseButton::Back) => navigate_back(at_home),
+                Some(MouseButton::Forward) => RouterContext::get().go_forward(),
+                _ => {}
+            }
+        };
 
         let anim = use_animation(|_conf| {
             AnimNum::new(0., 1.)
@@ -159,6 +215,8 @@ impl Component for AnimatedAppOutlet {
             .width(Size::fill())
             .height(Size::fill())
             .overflow(Overflow::Clip)
+            .on_global_key_down(on_global_key)
+            .on_global_pointer_press(on_global_pointer)
             .maybe_child(overlay)
             .child(column)
     }

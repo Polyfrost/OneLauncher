@@ -18,9 +18,22 @@ enum Entry {
     Separator,
 }
 
+fn separator(item_width: Option<f32>) -> Rect {
+    let mut sep = rect()
+        .height(Size::px(1.))
+        .margin(Gaps::new_symmetric(4., 0.))
+        .background(MENU_BORDER);
+    if let Some(w) = item_width {
+        sep = sep.width(Size::px(w));
+    }
+    sep
+}
+
 pub struct ContextMenu {
     x: f32,
     y: f32,
+    upwards: bool,
+    title: Option<String>,
     entries: Vec<Entry>,
     on_close: EventHandler<()>,
 }
@@ -30,9 +43,21 @@ impl ContextMenu {
         Self {
             x,
             y,
+            upwards: false,
+            title: None,
             entries: Vec::new(),
             on_close: (|()| {}).into(),
         }
+    }
+
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn open_upwards(mut self) -> Self {
+        self.upwards = true;
+        self
     }
 
     pub fn on_close(mut self, on_close: impl Into<EventHandler<()>>) -> Self {
@@ -78,7 +103,6 @@ impl ContextMenu {
 
 impl PartialEq for ContextMenu {
     fn eq(&self, _other: &Self) -> bool {
-        // Always unequal the menu is rebuilt from scratch whenever it is reopened
         false
     }
 }
@@ -88,6 +112,7 @@ impl Component for ContextMenu {
         let on_close = self.on_close.clone();
 
         let mut width = use_state(|| 0f32);
+        let mut height = use_state(|| 0f32);
 
         let item_width = {
             let w = *width.read();
@@ -95,18 +120,26 @@ impl Component for ContextMenu {
         };
 
         let mut list = rect().vertical().spacing(4.);
+
+        if let Some(title) = &self.title {
+            list = list
+                .child(
+                    // Asymmetric on purpose
+                    rect().padding(Gaps::new(6., 8., 4., 8.)).child(
+                        label()
+                            .text(title.clone())
+                            .font_size(11.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .color(colors::fg_secondary()),
+                    ),
+                )
+                .child(separator(item_width));
+        }
+
         for entry in &self.entries {
             list = match entry {
-                Entry::Separator => {
-                    let mut sep = rect()
-                        .height(Size::px(1.))
-                        .margin(Gaps::new_symmetric(4., 0.))
-                        .background(MENU_BORDER);
-                    if let Some(w) = item_width {
-                        sep = sep.width(Size::px(w));
-                    }
-                    list.child(sep)
-                }
+                Entry::Separator => list.child(separator(item_width)),
                 Entry::Action {
                     icon,
                     label,
@@ -133,6 +166,11 @@ impl Component for ContextMenu {
             }
         });
 
+        let measured = *height.read();
+        let flips = self.upwards && measured > 0. && self.y - measured >= 0.;
+        let top = if flips { self.y - measured } else { self.y };
+        let placed = !self.upwards || measured > 0.;
+
         let panel = rect()
             .vertical()
             .padding(Gaps::new_all(6.))
@@ -144,11 +182,18 @@ impl Component for ContextMenu {
                 bottom: 1.,
                 left: 1.,
             }))
+            .opacity(if placed { 1. } else { 0. })
+            .on_sized(move |e: Event<SizedEventData>| {
+                let measured = e.data().area.height();
+                if (measured - *height.peek()).abs() > 0.5 {
+                    height.set(measured);
+                }
+            })
             .child(list);
 
         OverlayPopup::new()
-            .backdrop(false)
-            .position(Position::new_global().top(self.y).left(self.x))
+            .backdrop(true)
+            .position(Position::new_global().top(top).left(self.x))
             .on_close(move |_| on_close.call(()))
             .child(panel.into_element())
     }

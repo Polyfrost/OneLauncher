@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_core::ScreenshotInfo;
 
-use crate::components::{Button, Icon, IconType, LocalImage, OverlayPopup};
+use crate::components::{Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup};
 use crate::hooks::{ScreenshotAction, use_dispatch, use_screenshot_action};
 use crate::theme::colors;
 use crate::ui::fmt_date;
@@ -37,6 +37,7 @@ impl Component for ScreenshotViewer {
             let start = self.start.min(len.saturating_sub(1));
             move || start
         });
+        let mut menu = use_state(|| None::<(f32, f32)>);
 
         if len == 0 {
             return rect().into_element();
@@ -50,6 +51,7 @@ impl Component for ScreenshotViewer {
         let close = self.on_close.clone();
         let scrim_close = self.on_close.clone();
         let delete_close = self.on_close.clone();
+        let menu_delete_close = self.on_close.clone();
 
         let has_prev = idx > 0;
         let has_next = idx + 1 < len;
@@ -60,6 +62,41 @@ impl Component for ScreenshotViewer {
         let copy_path = info.path.clone();
         let copy_dispatch = dispatch.clone();
         let delete_path = info.path.clone();
+
+        let menu_overlay = (*menu.read()).map(|(x, y)| {
+            let open_path = info.path.clone();
+            let copy_path = info.path.clone();
+            let copy_dispatch = dispatch.clone();
+            let delete_path = info.path.clone();
+            let delete_close = menu_delete_close.clone();
+
+            // Nested inside this viewer's popup, so it has to be raised above it
+            ContextMenu::new(x, y)
+                .overlay_level(16)
+                .on_close(move |_| menu.set(None))
+                .action(IconType::Folder, "Open in folder", move |()| {
+                    if let Some(dir) = open_path.parent() {
+                        crate::platform::open_url(&dir.to_string_lossy());
+                    }
+                })
+                .action(IconType::Copy01, "Copy", move |()| {
+                    crate::platform::copy_image_to_clipboard(copy_path.clone());
+                    copy_dispatch
+                        .notify("Copied to clipboard")
+                        .body("Screenshot copied to your clipboard.")
+                        .info()
+                        .icon(IconType::ClipboardCheck)
+                        .send();
+                })
+                .separator()
+                .danger_action(IconType::Trash01, "Delete", move |()| {
+                    action.mutate(ScreenshotAction::Delete {
+                        path: delete_path.clone(),
+                    });
+                    delete_close.call(());
+                })
+                .into_element()
+        });
 
         OverlayPopup::new()
             .on_close(move |_| scrim_close.call(()))
@@ -100,6 +137,14 @@ impl Component for ScreenshotViewer {
                                         rect()
                                             .width(Size::flex(1.0))
                                             .height(Size::fill())
+                                            .on_secondary_down(move |e: Event<PressEventData>| {
+                                                if let PressEventData::Mouse(m) = e.data() {
+                                                    menu.set(Some((
+                                                        m.global_location.x as f32,
+                                                        m.global_location.y as f32,
+                                                    )));
+                                                }
+                                            })
                                             .child(preview),
                                     )
                                     .child(chevron_btn(
@@ -163,6 +208,7 @@ impl Component for ScreenshotViewer {
                             ),
                     ),
             )
+            .maybe_child(menu_overlay)
             .into_element()
     }
 }

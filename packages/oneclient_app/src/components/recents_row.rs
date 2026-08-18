@@ -293,9 +293,6 @@ impl Component for OtherVersionsTile {
     }
 }
 
-/// `n` cards occupy `n` gaps (n-1 between cards one before the tile) so `n * (MIN + GAP) + MORE`
-/// must fit
-/// Always returns at least 1 the card carries no `min_width` and just renders narrower
 fn recent_card_slots_for_width(row_width_px: f32) -> usize {
     if !row_width_px.is_finite() {
         return 1;

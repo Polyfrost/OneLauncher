@@ -90,8 +90,8 @@ pub fn try_log_content(query: &UseQuery<LogContentQuery>) -> Option<Vec<LogLine>
 }
 
 pub async fn invalidate_logs_queries() {
-    QueriesStorage::<ClusterLogsQuery>::try_invalidate_all().await;
-    QueriesStorage::<LogContentQuery>::try_invalidate_all().await;
+    QueriesStorage::<ClusterLogsQuery>::invalidate_all().await;
+    QueriesStorage::<LogContentQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

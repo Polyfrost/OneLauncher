@@ -111,11 +111,7 @@ impl Component for PackageRow {
             CardLayout::Grid => 52.,
         };
         let icon_query = use_cached_image(item.icon_url.clone(), 256);
-        let icon = if item.is_remote() {
-            remote_icon(&item.icon_url, &icon_query, icon_size)
-        } else {
-            local_icon(icon_size)
-        };
+        let icon = package_icon(&item.icon_url, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
             let hash = item.hash.clone();
@@ -208,11 +204,7 @@ fn grid_card(
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     let (bg, border, content_alpha) = if enabled {
         (colors::brand().with_a(38), colors::brand(), 255)
@@ -331,11 +323,7 @@ fn package_info(
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     rect()
         .horizontal()
@@ -402,7 +390,7 @@ fn package_info(
         .into_element()
 }
 
-fn remote_icon(
+fn package_icon(
     icon_url: &Option<String>,
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
@@ -417,12 +405,9 @@ fn remote_icon(
             .corner_radius(CornerRadius::new_all(8.))
             .into_element(),
 
-        None => icon_box(IconType::DotsGrid, size),
+        None if icon_url.is_some() => icon_box(IconType::DotsGrid, size),
+        None => icon_box(IconType::HelpCircle, size),
     }
-}
-
-fn local_icon(size: f32) -> Element {
-    icon_box(IconType::HelpCircle, size)
 }
 
 fn icon_box(icon: IconType, size: f32) -> Element {

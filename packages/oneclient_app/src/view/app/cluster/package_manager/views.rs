@@ -53,13 +53,7 @@ impl SortMode {
     }
 
     pub(super) fn sort(self, rows: &mut [PackageEntry]) {
-        let title = |p: &PackageEntry| {
-            if p.is_remote() {
-                p.name.to_lowercase()
-            } else {
-                p.file_name.to_lowercase()
-            }
-        };
+        let title = |p: &PackageEntry| p.name.to_lowercase();
 
         match self {
             SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
@@ -506,13 +500,13 @@ fn add_from_file_button(
                     .pick_files()
                     .await
                 {
-                    for handle in handles {
-                        dispatch.import_local_file(
-                            cluster_id,
-                            content_type,
-                            handle.path().to_path_buf(),
-                        );
-                    }
+                    dispatch.import_local_files(
+                        cluster_id,
+                        handles
+                            .iter()
+                            .map(|handle| (handle.path().to_path_buf(), content_type))
+                            .collect(),
+                    );
                 }
             });
         })

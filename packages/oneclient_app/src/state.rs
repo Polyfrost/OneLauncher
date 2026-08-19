@@ -73,6 +73,8 @@ pub struct LauncherInit {
     pub syncing_bundles: bool,
     pub error: Option<String>,
     pub data_dir: String,
+    /// Restorable database snapshots, for the startup failure screen
+    pub snapshots: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

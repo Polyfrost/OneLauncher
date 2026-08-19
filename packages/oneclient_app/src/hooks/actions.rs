@@ -74,15 +74,32 @@ pub enum PumpSignal {
 pub struct Actions {
     station: RadioStation<AppState, AppChannel>,
     pump: mpsc::UnboundedSender<PumpSignal>,
+    events: oneclient_events::EventBus,
 }
 
 impl Actions {
     #[must_use]
+    pub fn station(&self) -> RadioStation<AppState, AppChannel> {
+        self.station
+    }
+
+    /// A channel handle, so a clone still feeds the pump set up at launch
+    #[must_use]
+    pub fn events(&self) -> oneclient_events::EventBus {
+        self.events.clone()
+    }
+
+    #[must_use]
     pub fn new(
         station: RadioStation<AppState, AppChannel>,
         pump: mpsc::UnboundedSender<PumpSignal>,
+        events: oneclient_events::EventBus,
     ) -> Self {
-        Self { station, pump }
+        Self {
+            station,
+            pump,
+            events,
+        }
     }
 
     fn nudge(&self, signal: PumpSignal) {

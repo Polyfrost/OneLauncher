@@ -41,7 +41,9 @@ pub enum JavaError {
 	#[error("selected path is not a valid java installation: {path}")]
 	InvalidJavaPath { path: String },
 
-	#[error("java installation at '{path}' is missing java.awt (the java.desktop module)")]
+	#[error(
+		"java installation at '{path}' has no usable java.awt (the java.desktop module or its native libraries are missing)"
+	)]
 	MissingAwtSupport { path: String },
 
 	#[error("selected java is version {found}, but version {expected} is required")]
@@ -61,6 +63,16 @@ pub enum JavaError {
 }
 
 impl JavaError {
+	#[must_use]
+	pub fn is_invalid_installation(&self) -> bool {
+		matches!(
+			self,
+			JavaError::InvalidJavaPath { .. }
+				| JavaError::MissingAwtSupport { .. }
+				| JavaError::ParseVersion { .. }
+		)
+	}
+
 	/// Whether this is an expected outcome or the user's environment rather
 	/// than a launcher bug
 	/// Callers decide what to do with that (e.g. suppress error reporting)

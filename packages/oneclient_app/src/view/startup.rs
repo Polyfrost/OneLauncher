@@ -7,7 +7,53 @@ use crate::hooks::{
     terms_document, terms_is_loading, use_launcher, use_notifications_snapshot, use_settings_snapshot,
     use_splash, use_terms,
 };
+use crate::hooks::use_dispatch;
+use crate::components::Button;
 use crate::theme::colors;
+
+#[derive(PartialEq)]
+struct RecoveryActions {
+    snapshots: usize,
+}
+
+impl Component for RecoveryActions {
+    fn render(&self) -> impl IntoElement {
+        let actions = use_dispatch();
+        let snapshots = self.snapshots;
+
+        let restore = actions.clone();
+
+        let mut row = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .secondary()
+                    .small()
+                    .on_press(|_| crate::recovery::open_data_folder())
+                    .text("Open data folder"),
+            );
+
+        if snapshots > 0 {
+            row = row.child(
+                Button::new()
+                    .primary()
+                    .small()
+                    .on_press(move |_| crate::recovery::restore_latest(&restore))
+                    .text("Restore last backup"),
+            );
+        }
+
+        row.child(
+            Button::new()
+                .danger()
+                .small()
+                .on_press(move |_| crate::recovery::reset(&actions))
+                .text("Reset database"),
+        )
+    }
+}
 
 #[derive(PartialEq)]
 pub struct Startup;
@@ -153,9 +199,25 @@ impl Component for Startup {
                 label()
                     .text(detail)
                     .font_size(12.)
-                    .max_lines(1)
+                    .max_lines(if is_error { 4 } else { 1 })
                     .color(colors::fg_secondary().with_a(180)),
             );
+        }
+
+        if is_error {
+            content = content
+                .child(rect().height(Size::px(6.)))
+                .child(RecoveryActions { snapshots: launcher.snapshots })
+                .child(
+                    label()
+                        .text(format!(
+                            "Your data stays in {}. Nothing here deletes it.",
+                            launcher.data_dir
+                        ))
+                        .font_size(11.)
+                        .max_lines(2)
+                        .color(colors::fg_secondary().with_a(130)),
+                );
         }
 
         let content = content

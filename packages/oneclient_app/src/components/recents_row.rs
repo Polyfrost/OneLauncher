@@ -193,7 +193,7 @@ impl Component for ClusterCard {
                                     .padding(Gaps::new_symmetric(12., 24.))
                                     .main_align(Alignment::End)
                                     .cross_align(Alignment::Start)
-                                    .layer(Layer::Relative(3))
+                                    .layer(Layer::Relative(4))
                                     .background(
                                         LinearGradient::new()
                                             .angle(0.0)
@@ -213,7 +213,7 @@ impl Component for ClusterCard {
                                     .width(Size::fill())
                                     .height(Size::fill())
                                     .position(Position::new_absolute())
-                                    .layer(Layer::Relative(5))
+                                    .layer(Layer::Relative(7))
                                     .background(if *hovering.read() {
                                         Color::from_af32rgb(0.2, 0, 0, 0)
                                     } else {

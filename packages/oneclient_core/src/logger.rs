@@ -56,6 +56,36 @@ const NOISY_TARGETS: &[&str] = &[
     "zbus",
 ];
 
+/// Whether `target` belongs to one of [`APP_TARGETS`] rather than a dependency
+fn is_app_target(target: &str) -> bool {
+    APP_TARGETS.iter().any(|app| {
+        target
+            .strip_prefix(app)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+    })
+}
+
+fn sentry_event_filter(metadata: &tracing::Metadata<'_>) -> sentry_tracing::EventFilter {
+    dependency_filter(*metadata.level(), metadata.target())
+        .unwrap_or_else(|| sentry_tracing::default_event_filter(metadata))
+}
+
+/// `None` when the target is one of ours, meaning the default filter decides
+fn dependency_filter(
+    level: tracing::Level,
+    target: &str,
+) -> Option<sentry_tracing::EventFilter> {
+    if is_app_target(target) {
+        return None;
+    }
+
+    Some(match level {
+        // Kept as context for a report of ours, but never a report of its own
+        tracing::Level::ERROR => sentry_tracing::EventFilter::Breadcrumb,
+        _ => sentry_tracing::EventFilter::Ignore,
+    })
+}
+
 pub fn default_directives() -> String {
     directives("info", "warn")
 }
@@ -146,7 +176,7 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
 
     let stdout_layer = tracing_subscriber::fmt::layer().with_writer(io::stdout);
 
-    let sentry_layer = sentry_tracing::layer();
+    let sentry_layer = sentry_tracing::layer().event_filter(sentry_event_filter);
 
     #[cfg(debug_assertions)]
     {

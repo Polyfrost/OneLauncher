@@ -30,7 +30,7 @@ pub async fn connect(database_path: impl AsRef<Path>) -> Result<DbPool, DbError>
         .connect_with(options)
         .await?;
 
-    sqlx::migrate!().run(&pool).await?;
+    crate::migrate::run(&pool, database_path).await?;
 
     tracing::info!("database ready");
 

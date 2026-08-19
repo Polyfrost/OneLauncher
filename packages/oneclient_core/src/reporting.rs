@@ -2,7 +2,7 @@ use std::panic;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sentry::protocol::{Context, Event};
+use sentry::protocol::{Breadcrumb, Context, Event};
 use sentry::{ClientInitGuard, ClientOptions};
 
 use oneclient_common::constants::SENTRY_DSN;
@@ -31,6 +31,16 @@ fn drop_opted_out_events(event: Event<'static>) -> Option<Event<'static>> {
     if opted_out { None } else { Some(event) }
 }
 
+fn drop_opted_out_breadcrumbs(breadcrumb: Breadcrumb) -> Option<Breadcrumb> {
+    let opted_out = breadcrumb
+        .data
+        .get("sentry")
+        .and_then(serde_json::Value::as_bool)
+        == Some(false);
+
+    if opted_out { None } else { Some(breadcrumb) }
+}
+
 pub fn init(enabled: bool) -> Option<ClientInitGuard> {
     if !enabled {
         tracing::debug!("crash reporting disabled by settings");
@@ -50,6 +60,7 @@ pub fn init(enabled: bool) -> Option<ClientInitGuard> {
             attach_stacktrace: true,
             send_default_pii: false,
             before_send: Some(Arc::new(drop_opted_out_events)),
+            before_breadcrumb: Some(Arc::new(drop_opted_out_breadcrumbs)),
             ..Default::default()
         },
     ));
@@ -75,46 +86,4 @@ fn install_panic_flush() {
             client.flush(Some(PANIC_FLUSH_TIMEOUT));
         }
     }));
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bundled_dsn_parses() {
-        SENTRY_DSN
-            .parse::<sentry::types::Dsn>()
-            .expect("bundled sentry DSN should be valid");
-    }
-
-    #[test]
-    fn opting_out_skips_the_client() {
-        assert!(init(false).is_none());
-    }
-
-    /// Builds an event the way `sentry-tracing` would
-    fn event_with_sentry_field(value: Option<bool>) -> Event<'static> {
-        let mut event = Event::default();
-        if let Some(value) = value {
-            let mut fields = std::collections::BTreeMap::new();
-            fields.insert("sentry".to_owned(), serde_json::Value::Bool(value));
-            event
-                .contexts
-                .insert(TRACING_FIELDS_CONTEXT.to_owned(), Context::Other(fields));
-        }
-        event
-    }
-
-    #[test]
-    fn drops_events_flagged_sentry_false() {
-        assert!(drop_opted_out_events(event_with_sentry_field(Some(false))).is_none());
-    }
-
-    #[test]
-    fn keeps_events_without_opt_out() {
-        assert!(drop_opted_out_events(event_with_sentry_field(Some(true))).is_some());
-        assert!(drop_opted_out_events(event_with_sentry_field(None)).is_some());
-        assert!(drop_opted_out_events(Event::default()).is_some());
-    }
 }

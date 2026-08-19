@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tINSERT INTO java_versions (absolute_path, major, version, vendor, os_arch, is_jdk)\n\t\tVALUES (?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(absolute_path) DO UPDATE SET\n\t\t\tmajor = excluded.major,\n\t\t\tversion = excluded.version,\n\t\t\tvendor = excluded.vendor,\n\t\t\tos_arch = excluded.os_arch,\n\t\t\tis_jdk = excluded.is_jdk\n\t\tRETURNING absolute_path, major, version, vendor, os_arch, is_jdk as \"is_jdk: bool\"\n\t\t",
+  "query": "\n        SELECT absolute_path, major, version, vendor, os_arch, is_jdk as \"is_jdk: bool\", probe_version\n        FROM java_versions\n        WHERE absolute_path = ?\n        ",
   "describe": {
     "columns": [
       {
@@ -68,12 +68,24 @@
             "name": "is_jdk"
           }
         }
+      },
+      {
+        "name": "probe_version",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "probe_version"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 6
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -82,5 +94,5 @@
       false
     ]
   },
-  "hash": "010f5dcda59ec32eaad1b9c3e2e9807f547a1376372c8b201653a36d6dd14cbc"
+  "hash": "331bee3da454f39a8a2cc8ed4e5338b743a7cd033fdef023c4b3b93827248be1"
 }

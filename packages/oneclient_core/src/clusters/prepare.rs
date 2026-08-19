@@ -88,7 +88,16 @@ pub async fn prepare_cluster(
     }
 
     if let Err(err) = result {
-        tracing::error!(cluster_id, error = %err, "cluster preparation failed");
+        if err.is_cancelled() {
+            tracing::info!(
+                cluster_id,
+                sentry = false,
+                error = %err,
+                "cluster preparation cancelled by the user"
+            );
+        } else {
+            tracing::error!(cluster_id, error = %err, "cluster preparation failed");
+        }
         if !continuing {
             let _ = state.clusters.set_stage(cluster_id, ClusterStage::NotReady).await;
         }

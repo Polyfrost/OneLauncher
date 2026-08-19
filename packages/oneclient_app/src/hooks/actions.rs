@@ -232,6 +232,17 @@ impl Actions {
         }
     }
 
+    pub fn reset_onboarding(&self) {
+        if let Some(updated) = self.mutate_settings(|settings| {
+            settings.seen_onboarding = false;
+            settings.accepted_tos_version = 0;
+            settings.accepted_privacy_version = 0;
+            settings.seen_versions.clear();
+        }) {
+            self.persist(updated);
+        }
+    }
+
     pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.accepted_tos_version = terms_version;

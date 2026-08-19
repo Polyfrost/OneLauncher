@@ -1,12 +1,13 @@
 use std::path::Path;
 
-use oneclient_db::models::ClusterRow;
+use oneclient_db::models::{ArtifactRow, ClusterRow};
 
 use oneclient_common::domain::ContentType;
 use oneclient_common::paths;
 use crate::error::ContentResult;
 
 use super::manifest;
+use super::paths::artifact_absolute_path;
 
 #[tracing::instrument(level = "debug")]
 pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
@@ -46,6 +47,8 @@ pub async fn try_unlink_materialized(
 		return false;
 	};
 
+	let _guard = manifest::lock().await;
+
 	let Some(mut loaded) = manifest::load(&game_dir).await else {
 		return false;
 	};
@@ -74,9 +77,103 @@ pub async fn try_unlink_materialized(
 	true
 }
 
+#[tracing::instrument(level = "debug", skip(cluster, artifact), fields(cluster_id = cluster.id, hash = %artifact.hash))]
+pub async fn try_link_materialized(
+	cluster: &ClusterRow,
+	artifact: &ArtifactRow,
+	file_name: &str,
+) -> bool {
+	let Some(content_type) = ContentType::from_repr(artifact.content_type as u8) else {
+		return false;
+	};
+
+	if !content_type.reloads_in_game() {
+		return false;
+	}
+
+	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+		return false;
+	};
+
+	let Ok(src) = artifact_absolute_path(&artifact.path) else {
+		return false;
+	};
+
+	if !polyio::try_exists(&src).await.unwrap_or(false) {
+		tracing::warn!(hash = %artifact.hash, "cached artifact missing; leaving it to the next launch");
+		return false;
+	}
+
+	let _guard = manifest::lock().await;
+
+	let Some(mut loaded) = manifest::load(&game_dir).await else {
+		return false;
+	};
+
+	if loaded.cluster_id != cluster.id {
+		return false;
+	}
+
+	let relative = manifest::entry_path(content_type.folder_name(), file_name);
+	let dest = game_dir.join(content_type.folder_name()).join(file_name);
+
+	if let Err(err) = link_or_copy(&src, &dest).await {
+		tracing::debug!(
+			file = file_name,
+			error = %err,
+			"could not add the pack to the running game; it goes in at the next launch"
+		);
+		return false;
+	}
+
+	loaded.entries.retain(|entry| entry.path != relative);
+	loaded.entries.push(manifest::ManifestEntry {
+		path: relative,
+		hash: artifact.hash.clone(),
+	});
+	manifest::save(&game_dir, &loaded).await;
+
+	true
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn cluster() -> ClusterRow {
+		ClusterRow {
+			id: 1,
+			name: "Test".into(),
+			folder_name: "test".into(),
+			setting_profile_name: None,
+			mc_version: "1.21.1".into(),
+			mc_loader: 0,
+			stage: 0,
+			mc_loader_version: None,
+			created_at: None,
+			last_played: None,
+			overall_played: None,
+			linked_modpack_hash: None,
+		}
+	}
+
+	fn artifact(content_type: ContentType) -> ArtifactRow {
+		ArtifactRow {
+			hash: "abc".into(),
+			content_type: content_type as i64,
+			path: "packages/whatever".into(),
+			file_name: "thing".into(),
+			size_bytes: None,
+		}
+	}
+
+	#[tokio::test]
+	async fn a_mod_is_never_added_to_a_running_game() {
+		assert!(!try_link_materialized(&cluster(), &artifact(ContentType::Mod), "sodium.jar").await);
+		assert!(
+			!try_link_materialized(&cluster(), &artifact(ContentType::World), "world.zip").await
+		);
+	}
 
 	#[tokio::test]
 	async fn remove_entry_clears_a_dangling_link() {

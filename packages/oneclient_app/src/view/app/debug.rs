@@ -6,6 +6,7 @@ use oneclient_auth::preview_samples;
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
+use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
 use crate::notifications::{
@@ -22,6 +23,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
+		let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -97,7 +99,7 @@ impl Component for Debug {
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(vec![
+                        vec![action_row(&dispatch, vec![
                             ("Open Dev Tools", IconType::CodeSnippet02),
                             ("Open Onboarding", IconType::Rocket02),
                             ("Open Launcher Data", IconType::Folder),
@@ -1142,7 +1144,7 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
         .into_element()
 }
 
-fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
+fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Element {
     let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
 
     for (text, icon) in buttons {
@@ -1152,6 +1154,7 @@ fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
             .text(text);
 
         if text == "Open Onboarding" {
+			dispatch.reset_onboarding();
             button = button.on_press(|_| {
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });

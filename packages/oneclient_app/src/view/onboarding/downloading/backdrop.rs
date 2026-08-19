@@ -21,14 +21,10 @@ fn since_epoch() -> Duration {
         .unwrap_or(Duration::ZERO)
 }
 
-/// Rotation step derived from the wall clock rather than from mount time so
-/// every rotating element lands on the same value
 pub(super) fn rotation_tick() -> usize {
     (since_epoch().as_secs() / BACKDROP_INTERVAL_SECS) as usize
 }
 
-/// Time left until the next wall-clock boundary keeps independently spawned
-/// timers waking together no matter when their component mounted
 pub(super) fn next_rotation_delay() -> Duration {
     let into_period = since_epoch().as_nanos() % ROTATION_PERIOD.as_nanos();
     ROTATION_PERIOD - Duration::from_nanos(into_period as u64)

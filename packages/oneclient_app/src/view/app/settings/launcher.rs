@@ -1,9 +1,11 @@
 use freya::prelude::*;
+use freya::router::RouterContext;
 
 use super::settings_page;
-use crate::components::{IconType, link_button, toggle};
+use crate::components::{Button, IconType, link_button, toggle};
 use crate::hooks::{use_dispatch, use_launcher, use_settings_snapshot};
 use crate::platform;
+use crate::routes::Route;
 use crate::view::app::settings::{section_header, settings_row};
 
 #[derive(PartialEq)]
@@ -45,6 +47,20 @@ impl Component for SettingsLauncher {
         let folder = data_dir.clone();
         let open_folder = link_button().on_press(move |_| platform::open_url(&folder));
 
+        // The only way back for someone who declined during onboarding
+        let consent_summary = if settings.declined_tos {
+            "Declined. Polyfrost services stay off until you accept and restart OneClient."
+        } else {
+            "Accepted. Review them again at any time."
+        };
+        let review_terms = Button::new()
+            .secondary()
+            .small()
+            .on_press(|_| {
+                let _ = RouterContext::get().replace(Route::OnboardingTerms {});
+            })
+            .text("Review");
+
         settings_page()
             .child(section_header("GENERAL"))
             .child(settings_row(
@@ -58,6 +74,12 @@ impl Component for SettingsLauncher {
                 "Crash Reporting",
                 "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
                 toggle(crash_reporting),
+            ))
+            .child(settings_row(
+                IconType::File02,
+                "Terms & Privacy",
+                consent_summary,
+                review_terms,
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(settings_row(

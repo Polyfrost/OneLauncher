@@ -135,6 +135,14 @@ pub async fn check_service_status(requester: &RequestClient) -> ServiceStatus {
 
     let mc_auth_up = reachable(client, MC_AUTH_URL).await;
 
+    if oneclient_common::consent::blocks_url(POLYFROST_STATUS_URL) {
+        return ServiceStatus {
+            online: true,
+            mc_auth_up,
+            polyfrost_up: true,
+        };
+    }
+
     let polyfrost_up = match client
         .get(POLYFROST_STATUS_URL)
         .timeout(PROBE_TIMEOUT)

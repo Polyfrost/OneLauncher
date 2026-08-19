@@ -1,6 +1,7 @@
 //! Leaf crate must never depend on the database network stack or any
 //! launcher subsystem or the dependency graph cycles back into a monolith
 
+pub mod consent;
 pub mod constants;
 pub mod domain;
 pub mod os_ext;

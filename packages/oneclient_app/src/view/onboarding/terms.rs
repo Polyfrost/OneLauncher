@@ -35,6 +35,7 @@ impl Component for OnboardingTerms {
 
         let accepted = use_state(|| false);
         let tab = use_state(|| LegalTab::Terms);
+        let confirming_decline = use_state(|| false);
 
         let returning = settings.seen_onboarding;
         let next = if returning {
@@ -74,6 +75,8 @@ impl Component for OnboardingTerms {
             fallback_body(error.as_deref(), query)
         };
 
+        let deciding = *confirming_decline.read();
+
         let content = rect()
             .vertical()
             .width(Size::fill())
@@ -85,17 +88,40 @@ impl Component for OnboardingTerms {
             .maybe_child(tabs)
             .child(body)
             .child(link_row(terms_url, privacy_url))
-            .child(accept_row(accepted))
+            .child(if deciding {
+                decline_warning()
+            } else {
+                accept_row(accepted)
+            })
             .into_element();
 
-        onboarding_page(
-            onboarding_illustration(IconType::File02),
-            content,
-            terms_nav(back, *accepted.read() && !loading, move || {
-                dispatch.accept_tos(terms_version, privacy_version);
-                let _ = RouterContext::get().replace(next.clone());
-            }),
-        )
+        let nav = if deciding {
+            decline_nav(
+                move || {
+                    let mut confirming = confirming_decline;
+                    confirming.set(false);
+                },
+                move || {
+                    dispatch.decline_tos();
+                    let _ = RouterContext::get().replace(Route::Home {});
+                },
+            )
+        } else {
+            terms_nav(
+                back,
+                *accepted.read() && !loading,
+                move || {
+                    let mut confirming = confirming_decline;
+                    confirming.set(true);
+                },
+                move || {
+                    dispatch.accept_tos(terms_version, privacy_version);
+                    let _ = RouterContext::get().replace(next.clone());
+                },
+            )
+        };
+
+        onboarding_page(onboarding_illustration(IconType::File02), content, nav)
     }
 }
 
@@ -234,7 +260,7 @@ fn external_link_button(text: &'static str, url: String) -> impl IntoElement {
         .child(Icon::new(IconType::LinkExternal01).size(14.))
 }
 
-fn accept_row(accepted: State<bool>) -> impl IntoElement {
+fn accept_row(accepted: State<bool>) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -259,7 +285,7 @@ fn accept_row(accepted: State<bool>) -> impl IntoElement {
                 )
                 .child(
                     label()
-                        .text("Required to use OneClient.")
+                        .text("Required for Poly+, downloads and updates.")
                         .font_size(11.)
                         .color(colors::fg_secondary()),
                 ),
@@ -268,11 +294,62 @@ fn accept_row(accepted: State<bool>) -> impl IntoElement {
         .into_element()
 }
 
+fn decline_warning() -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .padding(Gaps::new_symmetric(14., 16.))
+        .corner_radius(CornerRadius::new_all(12.))
+        .background(colors::page_elevated())
+        .border(border_all_color(1., colors::danger()))
+        .child(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    Icon::new(IconType::AlertTriangle)
+                        .size(18.)
+                        .color(colors::code_warn()),
+                )
+                .child(
+                    label()
+                        .text("Continue without accepting?")
+                        .font_size(14.)
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .child(
+            label()
+                .text(
+                    "OneClient stops contacting Polyfrost entirely: no Poly+, no crash reports, \
+                     and no version, mod or bundle downloads. Instances you have already \
+                     installed keep working, and signing in to Minecraft still works.",
+                )
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            label()
+                .text(
+                    "You can accept later under Settings > Launcher. That takes effect after a \
+                     restart.",
+                )
+                .font_size(11.)
+                .color(colors::fg_secondary().with_a(180)),
+        )
+        .into_element()
+}
+
 fn terms_nav(
     back: Option<Route>,
     next_enabled: bool,
+    on_decline: impl FnMut() + 'static,
     on_next: impl FnMut() + 'static,
-) -> impl IntoElement {
+) -> Element {
+    let mut on_decline = on_decline;
     let mut on_next = on_next;
     rect()
         .horizontal()
@@ -293,12 +370,47 @@ fn terms_nav(
         }))
         .child(
             Button::new()
+                .secondary()
+                .width(Size::px(128.))
+                .on_press(move |_| on_decline())
+                .text("Decline"),
+        )
+        .child(
+            Button::new()
                 .primary()
                 .width(Size::px(140.))
                 .enabled(next_enabled)
                 .on_press(move |_| on_next())
                 .text("Next")
                 .child(Icon::new(IconType::ArrowRight).size(16.)),
+        )
+        .into_element()
+}
+
+fn decline_nav(on_cancel: impl FnMut() + 'static, on_confirm: impl FnMut() + 'static) -> Element {
+    let mut on_cancel = on_cancel;
+    let mut on_confirm = on_confirm;
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .main_align(Alignment::End)
+        .cross_align(Alignment::Center)
+        .spacing(12.)
+        .padding(Gaps::new(0., 40., 32., 40.))
+        .child(
+            Button::new()
+                .secondary()
+                .width(Size::px(128.))
+                .on_press(move |_| on_cancel())
+                .text("Go back"),
+        )
+        .child(
+            Button::new()
+                .danger()
+                .width(Size::px(220.))
+                .on_press(move |_| on_confirm())
+                .text("Decline and continue"),
         )
         .into_element()
 }

@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use oneclient_db::models::{ArtifactRow, ClusterRow};
 
@@ -9,23 +10,37 @@ use crate::error::ContentResult;
 use super::manifest;
 use super::paths::artifact_absolute_path;
 
+/// so a rerun that died mid-way leaves atleast one stale file, that next rerun clears anyways
+fn staging_path(dest: &Path) -> PathBuf {
+	let mut name = OsString::from(".");
+	name.push(dest.file_name().unwrap_or_else(|| "entry".as_ref()));
+	name.push(".oneclient-tmp");
+
+	dest.with_file_name(name)
+}
+
+/// written to a staging name and renamed into place so the destination is never missing even for a moment
 #[tracing::instrument(level = "debug")]
 pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
 	if let Some(parent) = dest.parent() {
 		polyio::create_dir_all(parent).await?;
 	}
 
-	remove_entry(dest).await?;
+	let staging = staging_path(dest);
+	remove_entry(&staging).await?;
 
-	if polyio::symlink_file(src, dest).await.is_ok() {
-		return Ok(());
+	if polyio::symlink_file(src, &staging).await.is_err() {
+		polyio::copy(src, &staging).await?;
 	}
 
-	polyio::copy(src, dest).await?;
+	if let Err(err) = polyio::rename(&staging, dest).await {
+		remove_entry(&staging).await.ok();
+		return Err(err.into());
+	}
+
 	Ok(())
 }
 
-/// `Path::exists` resolves symlinks so a link to an evicted artifact reads as absent and survives every unlink
 pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	if polyio::symlink_metadata(path).await.is_err() {
 		return Ok(());
@@ -35,8 +50,6 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-/// Best-effort only the folder is reconciled at the next launch regardless
-/// A running game holds its jars open which on Windows blocks deletion so failure here is expected
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
 	cluster: &ClusterRow,
@@ -195,6 +208,61 @@ mod tests {
 
 		remove_entry(&link).await.unwrap();
 		assert!(polyio::symlink_metadata(&link).await.is_err());
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	#[tokio::test]
+	async fn replacing_a_pack_leaves_only_the_pack() {
+		let root = polyio::testing::ScratchDir::new("atomic_replace");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		let old = dir.join("old.zip");
+		let new = dir.join("new.zip");
+		polyio::write(&old, b"old".as_slice()).await.unwrap();
+		polyio::write(&new, b"new".as_slice()).await.unwrap();
+
+		let packs = dir.join("resourcepacks");
+		let dest = packs.join("pack.zip");
+
+		link_or_copy(&old, &dest).await.unwrap();
+		link_or_copy(&new, &dest).await.unwrap();
+
+		assert_eq!(polyio::read_to_string(&dest).await.unwrap(), "new");
+
+		let mut names = Vec::new();
+		let mut entries = polyio::read_dir(&packs).await.unwrap();
+		while let Ok(Some(entry)) = entries.next_entry().await {
+			names.push(entry.file_name().to_string_lossy().into_owned());
+		}
+
+		assert_eq!(names, vec!["pack.zip".to_string()]);
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	/// A crash between the write and the rename must not wedge the next attempt
+	#[tokio::test]
+	async fn a_stale_staging_file_is_cleared() {
+		let root = polyio::testing::ScratchDir::new("stale_staging");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		let src = dir.join("src.zip");
+		let dest = dir.join("pack.zip");
+		polyio::write(&src, b"real".as_slice()).await.unwrap();
+		polyio::write(staging_path(&dest), b"junk".as_slice())
+			.await
+			.unwrap();
+
+		link_or_copy(&src, &dest).await.unwrap();
+
+		assert_eq!(polyio::read_to_string(&dest).await.unwrap(), "real");
+		assert!(
+			polyio::symlink_metadata(staging_path(&dest)).await.is_err(),
+			"the staging file is consumed by the rename"
+		);
 
 		std::fs::remove_dir_all(root.path()).ok();
 	}

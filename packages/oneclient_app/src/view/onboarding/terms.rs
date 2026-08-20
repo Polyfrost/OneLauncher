@@ -285,7 +285,7 @@ fn accept_row(accepted: State<bool>) -> Element {
                 )
                 .child(
                     label()
-                        .text("Required for Poly+ and crash reporting.")
+                        .text("Required for world hosting, socials, nametag indicator, and more.")
                         .font_size(11.)
                         .color(colors::fg_secondary()),
                 ),
@@ -324,9 +324,9 @@ fn decline_warning() -> Element {
         .child(
             label()
                 .text(
-                    "Poly+ turns off and crash reports stop being sent. Your instances keep \
-                     working and keep updating: mod bundles and Minecraft versions still \
-                     download, and signing in to Minecraft is unaffected.",
+                    "This will disable access to world hosting, \
+                     all social features, the OneClient nametag indicator, \
+                     and more.",
                 )
                 .font_size(12.)
                 .color(colors::fg_secondary()),

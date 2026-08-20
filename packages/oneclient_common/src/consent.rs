@@ -3,6 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Hosts that are out of bounds for someone who didn't accept TOS
 const GATED_DOMAINS: &[&str] = &["polyfrost.org", "sentry.io"];
 
+/// Hosts that are allowed even if someone didn't accept TOS
+const ALLOWED_HOSTS: &[&str] = &[
+	"data-v2.polyfrost.org",
+	"meta.polyfrost.org",
+	"status.polyfrost.org",
+];
+
 static DECLINED: AtomicBool = AtomicBool::new(false);
 
 pub fn init(declined: bool) {
@@ -24,11 +31,6 @@ pub fn blocks_url(url: &str) -> bool {
 }
 
 #[must_use]
-pub fn blocks_host(host: &str) -> bool {
-	declined() && is_gated_host(host)
-}
-
-#[must_use]
 pub fn is_gated_url(url: &str) -> bool {
 	url::Url::parse(url)
 		.ok()
@@ -39,6 +41,10 @@ pub fn is_gated_url(url: &str) -> bool {
 #[must_use]
 pub fn is_gated_host(host: &str) -> bool {
 	let host = host.trim_end_matches('.').to_ascii_lowercase();
+
+	if ALLOWED_HOSTS.contains(&host.as_str()) {
+		return false;
+	}
 
 	GATED_DOMAINS
 		.iter()
@@ -54,9 +60,6 @@ mod tests {
 		for host in [
 			"polyfrost.org",
 			"plus.polyfrost.org",
-			"meta.polyfrost.org",
-			"data-v2.polyfrost.org",
-			"status.polyfrost.org",
 			"PLUS.POLYFROST.ORG",
 			"plus.polyfrost.org.",
 			"o4511714343124992.ingest.us.sentry.io",
@@ -79,6 +82,32 @@ mod tests {
 			"evil-sentry.io.attacker.com",
 		] {
 			assert!(!is_gated_host(host), "unexpected gate on {host}");
+		}
+	}
+
+	#[test]
+	fn lets_the_exempt_hosts_through() {
+		for url in [
+			"https://data-v2.polyfrost.org/oneclient/bundles/metadata.json",
+			"https://data-v2.polyfrost.org/oneclient/versions/art/Tricky_Trials.jpg",
+			"https://data-v2.polyfrost.org/oneclient/tos.json",
+			"https://meta.polyfrost.org/fabric/v2/manifest.json",
+			"https://status.polyfrost.org/index.json",
+			"https://META.POLYFROST.ORG./minecraft/v1/manifest.json",
+		] {
+			assert!(!is_gated_url(url), "unexpected gate on {url}");
+		}
+	}
+
+	#[test]
+	fn the_exemption_is_the_exact_host_and_nothing_near_it() {
+		for host in [
+			"plus.polyfrost.org",
+			"evil.data-v2.polyfrost.org",
+			"meta.polyfrost.org.evil.polyfrost.org",
+			"status.polyfrost.org.evil.polyfrost.org",
+		] {
+			assert!(is_gated_host(host), "expected {host} to stay gated");
 		}
 	}
 

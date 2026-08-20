@@ -142,9 +142,7 @@ impl RequestClient {
         let mut retries = 0;
         let mut throttle_retries = 0u32;
 
-        if let Some(host) = request.request.url().host_str()
-            && oneclient_common::consent::blocks_host(host)
-        {
+        if oneclient_common::consent::blocks_url(request.request.url().as_str()) {
             let url = request.request.url().to_string();
             tracing::debug!(%url, "request withheld: terms and privacy policy declined");
             return Err(RequestError::ConsentRequired { url });

@@ -49,7 +49,7 @@ impl Component for SettingsLauncher {
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {
-            "Declined. Polyfrost services stay off until you accept and restart OneClient."
+            "Declined. Poly+ and crash reporting stay off until you accept and restart OneClient."
         } else {
             "Accepted. Review them again at any time."
         };

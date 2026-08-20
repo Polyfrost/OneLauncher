@@ -556,6 +556,10 @@ impl Actions {
 
     pub fn decline_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
         self.close_optional_mods();
+        self.record_skipped_optional_mods(mods);
+    }
+
+    pub fn record_skipped_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
         if mods.is_empty() {
             return;
         }

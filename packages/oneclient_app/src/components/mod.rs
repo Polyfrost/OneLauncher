@@ -64,6 +64,7 @@ pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;
 pub use overlay_popup::OverlayPopup;
 pub use package_row::{CardLayout, PackageEntry, PackageRow, provider_badge};
+pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;

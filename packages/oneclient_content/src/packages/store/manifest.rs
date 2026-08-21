@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const MANIFEST_NAME: &str = ".oneclient-materialized.json";
+pub const MODS_MANIFEST_NAME: &str = ".oneclient-mods.json";
+pub const GLOBAL_MANIFEST_NAME: &str = ".oneclient-global.json";
 
 const MANIFEST_VERSION: u32 = 1;
 
@@ -50,14 +52,14 @@ impl MaterializedManifest {
 }
 
 #[must_use]
-pub fn manifest_path(game_dir: &Path) -> PathBuf {
-	game_dir.join(MANIFEST_NAME)
+pub fn manifest_path(dir: &Path, name: &str) -> PathBuf {
+	dir.join(name)
 }
 
 /// An unparseable manifest reads as `None` not an error
 /// stashing links as user content is recoverable refusing to launch is not
-pub async fn load(game_dir: &Path) -> Option<MaterializedManifest> {
-	let raw = polyio::read_to_string(manifest_path(game_dir)).await.ok()?;
+pub async fn load(dir: &Path, name: &str) -> Option<MaterializedManifest> {
+	let raw = polyio::read_to_string(manifest_path(dir, name)).await.ok()?;
 
 	match serde_json::from_str::<MaterializedManifest>(&raw) {
 		Ok(manifest) if manifest.version == MANIFEST_VERSION => Some(manifest),
@@ -75,7 +77,7 @@ pub async fn load(game_dir: &Path) -> Option<MaterializedManifest> {
 	}
 }
 
-pub async fn save(game_dir: &Path, manifest: &MaterializedManifest) {
+pub async fn save(dir: &Path, name: &str, manifest: &MaterializedManifest) {
 	let body = match serde_json::to_vec_pretty(manifest) {
 		Ok(body) => body,
 		Err(err) => {
@@ -84,18 +86,23 @@ pub async fn save(game_dir: &Path, manifest: &MaterializedManifest) {
 		}
 	};
 
-	if let Err(err) = polyio::write(manifest_path(game_dir), body).await {
+	if let Err(err) = polyio::write(manifest_path(dir, name), body).await {
 		tracing::warn!(error = %err, "failed to write materialized manifest");
 	}
 }
 
-pub async fn clear(game_dir: &Path) {
-	polyio::remove_file(manifest_path(game_dir)).await.ok();
+pub async fn clear(dir: &Path, name: &str) {
+	polyio::remove_file(manifest_path(dir, name)).await.ok();
 }
 
 #[must_use]
 pub fn entry_path(content_folder: &str, file_name: &str) -> String {
 	format!("{content_folder}/{file_name}")
+}
+
+// whether this cluster keeps its mods in its own folder rather than in the game directory
+pub async fn mods_live_in_cluster(cluster_dir: &Path) -> bool {
+	load(cluster_dir, MODS_MANIFEST_NAME).await.is_some()
 }
 
 #[cfg(test)]
@@ -127,15 +134,40 @@ mod tests {
 		let dir = root.path();
 		polyio::create_dir_all(dir).await.unwrap();
 
-		assert!(load(dir).await.is_none(), "no manifest yet");
+		assert!(load(dir, MANIFEST_NAME).await.is_none(), "no manifest yet");
 
-		save(dir, &manifest()).await;
-		let loaded = load(dir).await.expect("manifest should load");
+		save(dir, MANIFEST_NAME, &manifest()).await;
+		let loaded = load(dir, MANIFEST_NAME).await.expect("manifest should load");
 		assert_eq!(loaded.cluster_id, 7);
 		assert!(loaded.contains("mods/sodium.jar"));
 
-		clear(dir).await;
-		assert!(load(dir).await.is_none(), "cleared manifest should be gone");
+		clear(dir, MANIFEST_NAME).await;
+		assert!(
+			load(dir, MANIFEST_NAME).await.is_none(),
+			"cleared manifest should be gone"
+		);
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	#[tokio::test]
+	async fn the_two_manifests_do_not_collide() {
+		let root = polyio::testing::ScratchDir::new("manifest_two_names");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		save(dir, MODS_MANIFEST_NAME, &manifest()).await;
+
+		assert!(
+			load(dir, MODS_MANIFEST_NAME).await.is_some(),
+			"the mods manifest is there"
+		);
+		assert!(
+			load(dir, MANIFEST_NAME).await.is_none(),
+			"and it is not mistaken for the game-dir one"
+		);
+
+		clear(dir, MODS_MANIFEST_NAME).await;
 
 		std::fs::remove_dir_all(root.path()).ok();
 	}
@@ -145,11 +177,11 @@ mod tests {
 		let root = polyio::testing::ScratchDir::new("manifest_garbage");
 		let dir = root.path();
 		polyio::create_dir_all(dir).await.unwrap();
-		polyio::write(manifest_path(dir), b"not json".as_slice())
+		polyio::write(manifest_path(dir, MANIFEST_NAME), b"not json".as_slice())
 			.await
 			.unwrap();
 
-		assert!(load(dir).await.is_none());
+		assert!(load(dir, MANIFEST_NAME).await.is_none());
 
 		std::fs::remove_dir_all(root.path()).ok();
 	}

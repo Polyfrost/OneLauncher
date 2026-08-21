@@ -607,7 +607,34 @@ pub async fn symlink_dir(
 		})
 }
 
-/// A Windows junction must be removed with `remove_dir` not `remove_file`
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn read_link(path: impl AsRef<std::path::Path>) -> PolyIOResult<std::path::PathBuf> {
+	let path = path.as_ref();
+
+	let target = tokio::fs::read_link(path)
+		.await
+		.map_err(|e| IOError::PathIOError {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})?;
+
+	#[cfg(windows)]
+	{
+		let text = target.to_string_lossy().into_owned();
+		for prefix in [r"\??\", r"\\?\"] {
+			if let Some(rest) = text.strip_prefix(prefix) {
+				return Ok(std::path::PathBuf::from(rest));
+			}
+		}
+	}
+
+	Ok(target)
+}
+
 #[tracing::instrument(
     level = "debug",
     skip(path),

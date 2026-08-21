@@ -34,31 +34,53 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-/// Best-effort only the folder is reconciled at the next launch regardless
-/// A running game holds its jars open which on Windows blocks deletion so failure here is expected
+fn materialized_root(
+	cluster: &ClusterRow,
+	content_type: ContentType,
+) -> Option<(std::path::PathBuf, &'static str)> {
+	if content_type.is_global() {
+		return paths::shared_minecraft_dir()
+			.ok()
+			.map(|dir| (dir, manifest::GLOBAL_MANIFEST_NAME));
+	}
+
+	if content_type == ContentType::Mod {
+		return paths::cluster_dir(&cluster.folder_name)
+			.ok()
+			.map(|dir| (dir, manifest::MODS_MANIFEST_NAME));
+	}
+
+	paths::cluster_game_dir(&cluster.folder_name)
+		.ok()
+		.map(|dir| (dir, manifest::MANIFEST_NAME))
+}
+
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
 	cluster: &ClusterRow,
 	content_type: ContentType,
 	file_name: &str,
 ) -> bool {
-	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+	let Some((root, manifest_name)) = materialized_root(cluster, content_type) else {
 		return false;
 	};
 
-	let Some(mut loaded) = manifest::load(&game_dir).await else {
+	let Some(mut loaded) = manifest::load(&root, manifest_name).await else {
 		return false;
 	};
 
-	// The shared game dir belongs to whichever cluster played last
-	// touching a file we did not put there would delete another cluster's or
-	// the user's content
 	let relative = manifest::entry_path(content_type.folder_name(), file_name);
-	if !loaded.owns(cluster.id, &relative) {
+	let ours = if content_type.is_global() {
+		loaded.contains(&relative)
+	} else {
+		loaded.owns(cluster.id, &relative)
+	};
+
+	if !ours {
 		return false;
 	}
 
-	let path = game_dir.join(content_type.folder_name()).join(file_name);
+	let path = root.join(&relative);
 	if let Err(err) = remove_entry(&path).await {
 		tracing::debug!(
 			file = file_name,
@@ -69,7 +91,7 @@ pub async fn try_unlink_materialized(
 	}
 
 	loaded.entries.retain(|entry| entry.path != relative);
-	manifest::save(&game_dir, &loaded).await;
+	manifest::save(&root, manifest_name, &loaded).await;
 
 	true
 }

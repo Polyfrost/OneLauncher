@@ -6,16 +6,12 @@ use crate::LauncherResult;
 use crate::state::LauncherState;
 use oneclient_common::domain::ContentType;
 use oneclient_common::paths;
+use oneclient_content::packages::store::manifest;
 use oneclient_content::packages::store::{
     find_unreferenced_files, remove_unreferenced_files,
 };
 
-const LEGACY_TYPES: [ContentType; 4] = [
-    ContentType::Mod,
-    ContentType::ResourcePack,
-    ContentType::Shader,
-    ContentType::DataPack,
-];
+const LEGACY_TYPES: [ContentType; 2] = [ContentType::Mod, ContentType::DataPack];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageEntry {
@@ -94,8 +90,6 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
     })
 }
 
-/// Content is materialized from the cache now so anything in a cluster's own
-/// folder is an inert leftover from an older launcher space not correctness
 async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<ReclaimableEntry> {
     let mut found = ReclaimableEntry::default();
 
@@ -108,7 +102,13 @@ async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<Reclaim
             continue;
         };
 
+        let mods_live_here = manifest::mods_live_in_cluster(&root).await;
+
         for content_type in LEGACY_TYPES {
+            if content_type == ContentType::Mod && mods_live_here {
+                continue;
+            }
+
             let dir = root.join(content_type.folder_name());
             let Ok(mut entries) = polyio::read_dir(&dir).await else {
                 continue;

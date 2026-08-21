@@ -10,12 +10,16 @@ use oneclient_content::packages::store::manifest::{
 };
 use oneclient_content::packages::store::artifact_absolute_path;
 
-const SWEPT_TYPES: [ContentType; 4] = [
-	ContentType::Mod,
-	ContentType::ResourcePack,
-	ContentType::Shader,
-	ContentType::DataPack,
-];
+const SWEPT_TYPES: [ContentType; 2] = [ContentType::Mod, ContentType::DataPack];
+const SWEPT_TYPES_REDIRECTED: [ContentType; 1] = [ContentType::DataPack];
+
+async fn swept_types(cluster_root: &Path) -> &'static [ContentType] {
+	if manifest::mods_live_in_cluster(cluster_root).await {
+		&SWEPT_TYPES_REDIRECTED
+	} else {
+		&SWEPT_TYPES
+	}
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SweepReport {
@@ -24,8 +28,6 @@ pub struct SweepReport {
 	pub skipped: usize,
 }
 
-/// User-triggered only the "hash matches a cached artifact so it is ours" rule
-/// is true during the transition and false once cluster folders hold user content
 #[tracing::instrument(skip(state))]
 pub async fn unlink_legacy_cluster_content(state: &LauncherState) -> LauncherResult<SweepReport> {
 	let mut report = SweepReport::default();
@@ -36,10 +38,12 @@ pub async fn unlink_legacy_cluster_content(state: &LauncherState) -> LauncherRes
 			continue;
 		};
 
+		let swept = swept_types(&cluster_root).await;
+
 		if dedicated {
-			adopt_dedicated(state, &cluster, &cluster_root, &mut report).await;
+			adopt_dedicated(state, &cluster, &cluster_root, swept, &mut report).await;
 		} else {
-			sweep_shared(state, &cluster_root, &mut report).await;
+			sweep_shared(state, &cluster_root, swept, &mut report).await;
 		}
 	}
 
@@ -55,8 +59,13 @@ pub async fn unlink_legacy_cluster_content(state: &LauncherState) -> LauncherRes
 	Ok(report)
 }
 
-async fn sweep_shared(state: &LauncherState, cluster_root: &Path, report: &mut SweepReport) {
-	for content_type in SWEPT_TYPES {
+async fn sweep_shared(
+	state: &LauncherState,
+	cluster_root: &Path,
+	swept: &[ContentType],
+	report: &mut SweepReport,
+) {
+	for content_type in swept {
 		let dir = cluster_root.join(content_type.folder_name());
 		let Ok(mut entries) = polyio::read_dir(&dir).await else {
 			continue;
@@ -105,9 +114,13 @@ async fn adopt_dedicated(
 	state: &LauncherState,
 	cluster: &crate::clusters::Cluster,
 	cluster_root: &Path,
+	swept: &[ContentType],
 	report: &mut SweepReport,
 ) {
-	if manifest::load(cluster_root).await.is_some() {
+	if manifest::load(cluster_root, manifest::MANIFEST_NAME)
+		.await
+		.is_some()
+	{
 		return;
 	}
 
@@ -126,7 +139,7 @@ async fn adopt_dedicated(
 
 	let mut entries = Vec::new();
 	for link in linked {
-		if !link.enabled || !SWEPT_TYPES.contains(&link.content_type) {
+		if !link.enabled || !swept.contains(&link.content_type) {
 			continue;
 		}
 
@@ -146,7 +159,12 @@ async fn adopt_dedicated(
 	}
 
 	report.adopted += entries.len();
-	manifest::save(cluster_root, &MaterializedManifest::new(cluster.id, entries)).await;
+	manifest::save(
+		cluster_root,
+		manifest::MANIFEST_NAME,
+		&MaterializedManifest::new(cluster.id, entries),
+	)
+	.await;
 }
 
 enum CacheMatch {

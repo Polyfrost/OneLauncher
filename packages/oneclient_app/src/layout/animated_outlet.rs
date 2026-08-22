@@ -65,8 +65,19 @@ impl Component for AnimatedAppOutlet {
     fn render(&self) -> impl IntoElement {
         let mut router = use_animated_router::<Route>();
 
-        let history = use_previous_and_current(use_route::<Route>());
-        let back_title = history.read().0.title();
+        let route = use_route::<Route>();
+        let mut origin_route = use_state(|| route.clone());
+        let mut last_route = use_state(|| route.clone());
+
+        use_side_effect_with_deps(&route, move |current| {
+            let prev = last_route.peek().clone();
+            if !(is_sidebar_route(&prev) && is_sidebar_route(current)) {
+                origin_route.set(prev);
+            }
+            last_route.set(current.clone());
+        });
+
+        let back_title = origin_route.read().title();
 
         let anim = use_animation(|_conf| {
             AnimNum::new(0., 1.)

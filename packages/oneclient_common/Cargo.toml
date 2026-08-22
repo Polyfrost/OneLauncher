@@ -21,3 +21,5 @@ directories.workspace = true
 serde.workspace = true
 strum.workspace = true
 thiserror.workspace = true
+
+url.workspace = true

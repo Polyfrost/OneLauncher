@@ -244,9 +244,38 @@ impl Actions {
     }
 
     pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
-        if let Some(updated) = self.mutate_settings(|settings| {
+        let mut was_declined = false;
+
+        let Some(updated) = self.mutate_settings(|settings| {
+            was_declined = settings.declined_tos;
             settings.accepted_tos_version = terms_version;
             settings.accepted_privacy_version = privacy_version;
+            settings.declined_tos = false;
+        }) else {
+            return;
+        };
+
+        self.persist(updated);
+
+        if was_declined {
+            self.notify("Restart to finish")
+                .body(
+                    "Thanks. OneClient reconnects to Polyfrost services the next time you start \
+                     it.",
+                )
+                .icon(IconType::RefreshCw01)
+                .send();
+        }
+    }
+
+    pub fn decline_tos(&self) {
+        oneclient_common::consent::decline();
+
+        if let Some(updated) = self.mutate_settings(|settings| {
+            settings.declined_tos = true;
+            settings.accepted_tos_version = 0;
+            settings.accepted_privacy_version = 0;
+            settings.seen_onboarding = true;
         }) {
             self.persist(updated);
         }

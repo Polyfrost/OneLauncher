@@ -1,5 +1,6 @@
 mod analytics;
 mod error;
+mod heal;
 mod launch;
 mod log_replay;
 mod process;
@@ -21,6 +22,7 @@ pub mod diagnosis;
 
 pub use diagnosis::{CrashDiagnosis, diagnose};
 pub use error::GameError;
+pub use heal::clear_zeroed_files;
 pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
 pub use process::{
     GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,

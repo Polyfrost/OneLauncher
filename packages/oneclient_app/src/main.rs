@@ -98,10 +98,12 @@ fn main() {
         .with_transparency(true)
         .with_background(Color::TRANSPARENT);
 
+    let start_maximized = settings.start_maximized;
+
     #[cfg(target_os = "macos")]
     let window_config = window_config
         .with_decorations(true)
-        .with_window_attributes(|attrs, _| {
+        .with_window_attributes(move |attrs, _| {
             use freya::winit::platform::macos::WindowAttributesExtMacOS;
             attrs
                 .with_title_hidden(true)
@@ -109,10 +111,13 @@ fn main() {
                 .with_titlebar_buttons_hidden(true)
                 .with_fullsize_content_view(true)
 				.with_has_shadow(true)
+                .with_maximized(start_maximized)
         });
 
     #[cfg(not(target_os = "macos"))]
-    let window_config = window_config.with_decorations(false);
+    let window_config = window_config
+        .with_decorations(false)
+        .with_window_attributes(move |attrs, _| attrs.with_maximized(start_maximized));
 
     let mut launch_config = LaunchConfig::new()
         .with_window(window_config)

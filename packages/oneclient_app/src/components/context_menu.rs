@@ -23,6 +23,7 @@ pub struct ContextMenu {
     y: f32,
     entries: Vec<Entry>,
     on_close: EventHandler<()>,
+    overlay_level: Option<u8>,
 }
 
 impl ContextMenu {
@@ -32,11 +33,17 @@ impl ContextMenu {
             y,
             entries: Vec::new(),
             on_close: (|()| {}).into(),
+            overlay_level: None,
         }
     }
 
     pub fn on_close(mut self, on_close: impl Into<EventHandler<()>>) -> Self {
         self.on_close = on_close.into();
+        self
+    }
+
+    pub fn overlay_level(mut self, level: u8) -> Self {
+        self.overlay_level = Some(level);
         self
     }
 
@@ -146,11 +153,16 @@ impl Component for ContextMenu {
             }))
             .child(list);
 
-        OverlayPopup::new()
+        let mut popup = OverlayPopup::new()
             .backdrop(false)
             .position(Position::new_global().top(self.y).left(self.x))
-            .on_close(move |_| on_close.call(()))
-            .child(panel.into_element())
+            .on_close(move |_| on_close.call(()));
+
+        if let Some(level) = self.overlay_level {
+            popup = popup.overlay_level(level);
+        }
+
+        popup.child(panel.into_element())
     }
 }
 

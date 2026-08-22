@@ -5,12 +5,16 @@ use freya::{
 
 const SCRIM_ALPHA: f32 = 90.;
 
+/// Overlay level of a top level popup. Its scrim sits two levels below it.
+const BASE_LEVEL: u8 = 12;
+
 #[derive(PartialEq)]
 pub struct OverlayPopup {
     children: Vec<Element>,
     on_close: Option<EventHandler<()>>,
     position: Position,
     backdrop: bool,
+    overlay_level: u8,
     key: DiffKey,
 }
 
@@ -27,12 +31,19 @@ impl OverlayPopup {
             on_close: None,
             position: Position::new_global().top(0.).left(0.),
             backdrop: true,
+            overlay_level: BASE_LEVEL,
             key: DiffKey::None,
         }
     }
 
     pub fn position(mut self, position: Position) -> Self {
         self.position = position;
+        self
+    }
+
+    // has to be raised on top of the ss viewer (previously context menu and image viewer were at the same level)
+    pub fn overlay_level(mut self, level: u8) -> Self {
+        self.overlay_level = level;
         self
     }
 
@@ -83,7 +94,7 @@ impl Component for OverlayPopup {
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
-                    .layer(Layer::OverlayLevel(10))
+                    .layer(Layer::OverlayLevel(self.overlay_level.saturating_sub(2)))
                     .background(Color::from_argb(alpha, 0, 0, 0))
                     .on_press(move |_| {
                         if let Some(on_close) = scrim_close.as_ref() {
@@ -98,7 +109,7 @@ impl Component for OverlayPopup {
                     .a11y_focusable(true)
                     .a11y_auto_focus(true)
                     .a11y_role(AccessibilityRole::Dialog)
-                    .layer(Layer::OverlayLevel(12))
+                    .layer(Layer::OverlayLevel(self.overlay_level))
                     .on_global_key_down(move |e: Event<KeyboardEventData>| {
                         if e.key == Key::Named(NamedKey::Escape)
                             && let Some(on_close) = key_close.as_ref()

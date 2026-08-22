@@ -6,7 +6,7 @@ use oneclient_events::Level;
 
 use crate::{
     ui::{divider, relative_time},
-    components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea},
+    components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
@@ -382,18 +382,12 @@ fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
 fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
-        let bar = rect()
-            .width(Size::fill())
-            .height(Size::px(6.))
-            .corner_radius(CornerRadius::new_all(50.))
-            .background(colors::brand().with_a(128))
-            .child(
-                rect()
-                    .width(Size::percent(frac * 100.0))
-                    .height(Size::px(6.))
-                    .corner_radius(CornerRadius::new_all(50.))
-                    .background(colors::brand()),
-            );
+        let bar = progress_track(
+            frac * 100.0,
+            6.,
+            colors::brand(),
+            colors::brand().with_a(128),
+        );
 
         return rect()
             .vertical()

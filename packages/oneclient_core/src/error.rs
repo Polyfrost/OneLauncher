@@ -39,6 +39,9 @@ pub enum LauncherError {
     UrlError(#[from] url::ParseError),
 
     #[error(transparent)]
+    NetworkError(#[from] reqwest::Error),
+
+    #[error(transparent)]
     EventError(#[from] oneclient_events::EventError),
 
     #[error(transparent)]
@@ -103,7 +106,7 @@ impl LauncherError {
     }
 
     /// Whether the install is missing pieces and so is worth repairing
-     #[must_use]
+    #[must_use]
     pub fn indicates_missing_files(&self) -> bool {
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(self);
 
@@ -181,8 +184,9 @@ impl SentryExclusion for reqwest::Error {
 impl SentryExclusion for polyio::IOError {
     fn is_sentry_excluded(&self) -> bool {
         match self {
-            polyio::IOError::IOError(source)
-            | polyio::IOError::PathIOError { source, .. } => source.is_sentry_excluded(),
+            polyio::IOError::IOError(source) | polyio::IOError::PathIOError { source, .. } => {
+                source.is_sentry_excluded()
+            }
             _ => false,
         }
     }
@@ -205,8 +209,7 @@ mod tests {
 
     #[test]
     fn a_missing_asset_directory_asks_for_a_repair() {
-        let path =
-            "/Users/someone/Library/Application Support/org.Polyfrost.OneClient-dev/metadata/assets";
+        let path = "/Users/someone/Library/Application Support/org.Polyfrost.OneClient-dev/metadata/assets";
         let err = not_found(path);
 
         assert!(err.indicates_missing_files(), "{err}");
@@ -225,12 +228,8 @@ mod tests {
 
     #[test]
     fn dismissing_a_dialog_is_a_cancellation_not_a_failure() {
-        assert!(
-            LauncherError::JavaError(oneclient_java::JavaError::Cancelled).is_cancelled()
-        );
-        assert!(
-            LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled).is_cancelled()
-        );
+        assert!(LauncherError::JavaError(oneclient_java::JavaError::Cancelled).is_cancelled());
+        assert!(LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled).is_cancelled());
     }
 
     /// The whole point of the split anything that is not a dismissal keeps
@@ -271,8 +270,6 @@ mod tests {
         }
 
         assert!(!LauncherError::NotInitialized.indicates_missing_files());
-        assert!(
-            !LauncherError::Minecraft("bad manifest".into()).indicates_missing_files()
-        );
+        assert!(!LauncherError::Minecraft("bad manifest".into()).indicates_missing_files());
     }
 }

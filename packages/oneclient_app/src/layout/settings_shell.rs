@@ -204,8 +204,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Free up space",
         description: "Remove cached packages and leftovers nothing is using.",
         keywords: &[
-            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan",
-            "leftover",
+            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan", "leftover",
         ],
         route: Route::SettingsStorage {},
     },
@@ -274,6 +273,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
 pub enum SettingsTab {
     MinecraftSettings,
     Accounts,
+    SkinChanger,
     LauncherSettings,
     Java,
     Storage,
@@ -288,6 +288,7 @@ impl SettingsTab {
     fn label(self) -> &'static str {
         match self {
             Self::MinecraftSettings => "Minecraft settings",
+            Self::SkinChanger => "Skins",
             Self::Accounts => "Accounts",
             Self::LauncherSettings => "Launcher settings",
             Self::Java => "Java",
@@ -304,6 +305,7 @@ impl SettingsTab {
         match self {
             Self::MinecraftSettings => IconType::Sliders04,
             Self::Accounts => IconType::Users01,
+            Self::SkinChanger => IconType::Users01,
             Self::LauncherSettings => IconType::Rocket02,
             Self::Java => IconType::CodeSnippet02,
             Self::Storage => IconType::Database01,
@@ -318,6 +320,7 @@ impl SettingsTab {
     fn route(self) -> Option<Route> {
         match self {
             Self::MinecraftSettings => Some(Route::SettingsMinecraft {}),
+            Self::SkinChanger => Some(Route::SettingsSkinChanger {}),
             Self::Accounts => Some(Route::SettingsAccounts {}),
             Self::LauncherSettings => Some(Route::SettingsLauncher {}),
             Self::Java => Some(Route::SettingsJava {}),
@@ -350,7 +353,11 @@ const GROUPS: &[SettingsGroup] = &[
     },
     SettingsGroup {
         label: "GAME SETTINGS",
-        tabs: &[SettingsTab::MinecraftSettings, SettingsTab::Accounts],
+        tabs: &[
+            SettingsTab::MinecraftSettings,
+            SettingsTab::Accounts,
+            SettingsTab::SkinChanger,
+        ],
     },
     SettingsGroup {
         label: "ABOUT",
@@ -364,6 +371,7 @@ pub struct SettingsShell;
 fn route_tab(route: &Route) -> SettingsTab {
     match route {
         Route::SettingsMinecraft {} => SettingsTab::MinecraftSettings,
+        Route::SettingsSkinChanger {} => SettingsTab::SkinChanger,
         Route::SettingsAccounts {} => SettingsTab::Accounts,
         Route::SettingsLauncher {} => SettingsTab::LauncherSettings,
         Route::SettingsJava {} => SettingsTab::Java,

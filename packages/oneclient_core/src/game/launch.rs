@@ -626,6 +626,15 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+
+    #[cfg(target_os = "linux")]
+    {
+        command.env("DRI_PRIME", "1");
+        command.env("__NV_PRIME_RENDER_OFFLOAD", "1");
+        command.env("__VK_LAYER_NV_optimus", "NVIDIA_only");
+        command.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia");
+    }
+
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {
             if let Some((key, value)) = pair.split_once('=') {

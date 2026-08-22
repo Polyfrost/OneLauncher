@@ -13,8 +13,6 @@ use oneclient_core::LauncherError;
 pub const BROWSE_PAGE_SIZE: usize = DEFAULT_PAGE_SIZE;
 pub const VERSIONS_PAGE_SIZE: usize = 20;
 
-/// The listing asks for one per visible card holding them stops scrolling from
-/// refiring a request per card each time it comes back into view
 const VERSIONS_STALE: Duration = Duration::from_secs(5 * 60);
 
 pub fn content_type_for_slug(slug: &str) -> ContentType {
@@ -242,8 +240,6 @@ pub fn use_package_versions(
     use_package_versions_when(true, provider, project_id, game_version, loader, page)
 }
 
-/// A listing row keeps its install button once installed so the hook still
-/// runs there but a request per already-installed row is pure waste
 pub fn use_package_versions_when(
     enabled: bool,
     provider: ProviderId,
@@ -252,20 +248,15 @@ pub fn use_package_versions_when(
     loader: Option<GameLoader>,
     page: usize,
 ) -> UseQuery<PackageVersionsQuery> {
-    use_query(
-        Query::new(
-            PackageVersionsKeys {
-                provider,
-                project_id,
-                game_version,
-                loader,
-                page,
-            },
-            PackageVersionsQuery,
-        )
-        .enable(enabled)
-        .stale_time(VERSIONS_STALE),
-    )
+    let keys = enabled.then_some(PackageVersionsKeys {
+        provider,
+        project_id,
+        game_version,
+        loader,
+        page,
+    });
+
+    use_query(Query::new(keys, PackageVersionsQuery).stale_time(VERSIONS_STALE))
 }
 
 pub fn version_list(query: &UseQuery<PackageVersionsQuery>) -> Vec<VersionSummary> {

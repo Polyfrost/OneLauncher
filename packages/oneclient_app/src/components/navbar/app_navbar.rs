@@ -88,16 +88,21 @@ fn navbar_center() -> impl IntoElement {
         .width(Size::flex(1.0))
         .main_align(Alignment::Center)
         .cross_align(Alignment::Center)
-        .spacing(48.)
+        .spacing(36.)
         .child(NavLink {
             active: route == Route::Home {},
-            target: Route::Home {},
+            target: NavTarget::Route(Route::Home {}),
             nav_label: "Home",
         })
         .child(NavLink {
             active: route == Route::Clusters {},
-            target: Route::Clusters {},
+            target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
+        })
+        .child(NavLink {
+            active: false,
+            target: NavTarget::External("https://store.polyfrost.org"),
+            nav_label: "Cosmetics",
         })
         .child(NavLink {
             active: matches!(
@@ -107,12 +112,12 @@ fn navbar_center() -> impl IntoElement {
                     ..
                 }
             ),
-            target: browse_target,
+            target: NavTarget::Route(browse_target),
             nav_label: "Browse",
         })
         .child(NavLink {
             active: route == Route::Stats {},
-            target: Route::Stats {},
+            target: NavTarget::Route(Route::Stats {}),
             nav_label: "Stats",
         })
 }
@@ -136,10 +141,16 @@ fn browse_target() -> Route {
     }
 }
 
+#[derive(PartialEq, Clone)]
+enum NavTarget {
+    Route(Route),
+    External(&'static str),
+}
+
 #[derive(PartialEq)]
 struct NavLink {
     active: bool,
-    target: Route,
+    target: NavTarget,
     nav_label: &'static str,
 }
 
@@ -184,7 +195,12 @@ impl Component for NavLink {
             .a11y_role(AccessibilityRole::Button)
             .on_all_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
-                let _ = RouterContext::get().push(target.clone());
+                match &target {
+                    NavTarget::Route(route) => {
+                        let _ = RouterContext::get().push(route.clone());
+                    }
+                    NavTarget::External(url) => crate::platform::open_url(url),
+                }
             })
             .on_pointer_over(move |_| hovering.set(true))
             .on_pointer_out(move |_| hovering.set(false))

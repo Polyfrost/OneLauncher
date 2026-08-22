@@ -6,7 +6,9 @@ use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterPatch;
-use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
+use oneclient_db::models::{
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType, SeenStatus,
+};
 use tokio::sync::Mutex as AsyncMutex;
 
 use futures_util::StreamExt;
@@ -564,6 +566,7 @@ async fn reconcile_update(
     let suppression = find_user_suppression(overrides, &file_id);
     let enabled = !disable_was_deliberate(update.new_file.hidden, suppression);
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
+    artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated).await?;
 
     if hash == update.installed_hash {
         return Ok(());
@@ -582,7 +585,11 @@ async fn reconcile_addition(
     let file_id = addition.new_file.kind.package_id();
     let suppression = find_user_suppression(overrides, &file_id);
     let enabled = !disable_was_deliberate(addition.new_file.hidden, suppression);
-    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
+    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await?;
+
+    artifact_dao::set_seen_status(&ctx.db, addition.cluster_id, hash, SeenStatus::New).await?;
+
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]

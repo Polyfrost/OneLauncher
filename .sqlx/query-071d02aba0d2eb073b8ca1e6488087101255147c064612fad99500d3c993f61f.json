@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT cluster_id, hash, cluster_file_name, enabled\n\t\tFROM cluster_artifacts\n\t\tWHERE cluster_id = ? AND hash = ?\n\t\t",
+  "query": "\n\t\tSELECT cluster_id, hash, cluster_file_name, enabled, seen_status\n\t\tFROM cluster_artifacts\n\t\tWHERE cluster_id = ? AND hash = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,17 @@
             "name": "enabled"
           }
         }
+      },
+      {
+        "name": "seen_status",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "seen_status"
+          }
+        }
       }
     ],
     "parameters": {
@@ -55,8 +66,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "b5935e0e5d751a7d33e898f7cc1e0f985a66434365f0939f7572434af40e43af"
+  "hash": "071d02aba0d2eb073b8ca1e6488087101255147c064612fad99500d3c993f61f"
 }

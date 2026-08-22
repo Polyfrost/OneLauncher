@@ -5,8 +5,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
-use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
+use oneclient_db::models::{
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType,
+};
 use tokio::sync::Mutex as AsyncMutex;
 
 use futures_util::StreamExt;
@@ -19,9 +22,9 @@ use crate::bundles::install::{
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{
-    ApplyBundleUpdatesResult, BundleArchive, BundleFileKind, BundlePackageAddition,
-    BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult, BundleWithUpdateStatus,
-    FileUpdateStatus, external_bundle_key, managed_bundle_key,
+    ApplyBundleUpdatesResult, BundleArchive, BundleFileKind, BundleOptionalPackage,
+    BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
+    BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
 use oneclient_common::domain::{GameLoader, ProviderId};
 use crate::packages::store::PackageStore;
@@ -306,6 +309,7 @@ async fn check_bundle_updates_inner(
     .await?;
 
     let mut additions_available = Vec::new();
+    let mut optional_available = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
     for hash in all_installed_external_hashes {
         planned_addition_keys.insert(external_bundle_key(&hash));
@@ -321,9 +325,6 @@ async fn check_bundle_updates_inner(
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
                 .copied();
-            if !crate::bundles::effective_enabled(file, user_override) {
-                continue;
-            }
 
             let file_key = match &file.kind {
                 BundleFileKind::Managed {
@@ -334,6 +335,20 @@ async fn check_bundle_updates_inner(
                 BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
             };
             if planned_addition_keys.contains(&file_key) {
+                continue;
+            }
+
+            if !crate::bundles::effective_enabled(file, user_override) {
+                if user_override.is_none() && !file.hidden {
+                    optional_available.push(BundleOptionalPackage {
+                        cluster_id,
+                        bundle_name: archive.manifest.name.clone(),
+                        package_id: file_id,
+                        file: file.clone(),
+                    });
+
+                    planned_addition_keys.insert(file_key);
+                }
                 continue;
             }
 
@@ -351,6 +366,7 @@ async fn check_bundle_updates_inner(
         updates_available,
         removals_available,
         additions_available,
+        optional_available,
     })
 }
 
@@ -515,6 +531,11 @@ pub async fn apply_bundle_updates_with(
         }
     }
 
+    let applied_something =
+        !result.updates_applied.is_empty() || !result.additions_applied.is_empty();
+    result.optional_available =
+        settle_optional_offers(cluster_id, check.optional_available, applied_something, ctx).await;
+
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
@@ -550,9 +571,79 @@ pub async fn apply_bundle_updates_with(
     Ok(result)
 }
 
-/// `enabled` is set not flipped and overrides are read across all bundles
-/// packages get re-resolved between bundles so a per-bundle lookup misses
-/// objections filed while the file lived elsewhere
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id, offers = offers.len()))]
+async fn settle_optional_offers(
+    cluster_id: i64,
+    offers: Vec<BundleOptionalPackage>,
+    applied_something: bool,
+    ctx: &ContentCtx,
+) -> Vec<BundleOptionalPackage> {
+    let queued = match optional_dao::list_pending(&ctx.db, cluster_id).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::warn!(
+                cluster_id,
+                error = %err,
+                "could not read the optional mod queue, leaving it untouched"
+            );
+            return offers;
+        }
+    };
+
+    let has_new_offer = offers
+        .iter()
+        .any(|offer| !queued.iter().any(|row| row.package_id == offer.package_id));
+
+    if applied_something || has_new_offer {
+        queue_optional_offers(cluster_id, &offers, ctx).await;
+    }
+
+    let skipped: HashSet<&str> = queued
+        .iter()
+        .filter(|row| row.status() == OptionalModStatus::Skipped)
+        .map(|row| row.package_id.as_str())
+        .collect();
+
+    offers
+        .into_iter()
+        .filter(|offer| !skipped.contains(offer.package_id.as_str()))
+        .collect()
+}
+
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id, offers = offers.len()))]
+async fn queue_optional_offers(
+    cluster_id: i64,
+    offers: &[BundleOptionalPackage],
+    ctx: &ContentCtx,
+) {
+    for offer in offers {
+        if let Err(err) = optional_dao::queue(
+            &ctx.db,
+            cluster_id,
+            &offer.bundle_name,
+            &offer.package_id,
+            &offer.file.kind.bundle_version_id(),
+        )
+        .await
+        {
+            tracing::warn!(
+                cluster_id,
+                package_id = %offer.package_id,
+                error = %err,
+                "failed to queue an optional mod offer"
+            );
+        }
+    }
+
+    let offered: Vec<String> = offers
+        .iter()
+        .map(|offer| offer.package_id.clone())
+        .collect();
+    if let Err(err) = optional_dao::retain(&ctx.db, cluster_id, &offered).await {
+        tracing::warn!(cluster_id, error = %err, "failed to prune stale optional mod offers");
+    }
+}
+
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = update.cluster_id, bundle = %update.bundle_name, new_version = %update.new_version_id))]
 async fn reconcile_update(
     update: &BundlePackageUpdate,
@@ -565,11 +656,11 @@ async fn reconcile_update(
     let enabled = !disable_was_deliberate(update.new_file.hidden, suppression);
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
-    if hash == update.installed_hash {
-        return Ok(());
+    if hash != update.installed_hash {
+        remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, ctx).await?;
     }
 
-    remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, ctx).await
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip_all, fields(cluster_id = addition.cluster_id, bundle = %addition.bundle_name))]
@@ -582,7 +673,9 @@ async fn reconcile_addition(
     let file_id = addition.new_file.kind.package_id();
     let suppression = find_user_suppression(overrides, &file_id);
     let enabled = !disable_was_deliberate(addition.new_file.hidden, suppression);
-    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
+    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await?;
+
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
@@ -744,6 +837,7 @@ pub async fn apply_bundle_updates_for_all_clusters(
                 if !result.updates_applied.is_empty()
                     || !result.additions_applied.is_empty()
                     || !result.removals_applied.is_empty()
+                    || !result.optional_available.is_empty()
                 {
                     changed.push((cluster.id, result));
                 }

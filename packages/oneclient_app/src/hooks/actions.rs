@@ -22,7 +22,8 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::launcher;
 use crate::notifications::{
-    ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
+    ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
+    PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
@@ -552,6 +553,151 @@ impl Actions {
         self.with_engine(|state| state.notifications.close_cluster_update());
     }
 
+    pub fn open_optional_mods(
+        &self,
+        groups: Vec<OptionalModsGroup>,
+        done: Option<tokio::sync::oneshot::Sender<()>>,
+    ) {
+        self.with_engine(move |state| state.notifications.open_optional_mods(groups, done));
+    }
+
+    pub fn close_optional_mods(&self) {
+        self.with_engine(|state| state.notifications.finish_optional_mods());
+    }
+
+    pub fn decline_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
+        self.close_optional_mods();
+        self.record_skipped_optional_mods(mods);
+    }
+
+    pub fn record_skipped_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
+        if mods.is_empty() {
+            return;
+        }
+
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let content = state.services.content();
+
+            for (cluster_id, package_ids) in group_by_cluster(&mods) {
+                if let Err(err) =
+                    oneclient_core::skip_optional_mods(cluster_id, &package_ids, &content).await
+                {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "failed to record skipped optional mods, they will come back as new"
+                    );
+                }
+            }
+        });
+    }
+
+    /// Holds the launch until the mods are actually on disk Minecraft reads
+    /// `mods/` once at startup, so finishing after the process starts is useless
+    pub fn enable_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
+        if mods.is_empty() {
+            self.close_optional_mods();
+            return;
+        }
+
+        // Off screen straight away, but the launch keeps waiting until the
+        // install below is done
+        self.with_engine(|state| state.notifications.hide_optional_mods());
+        let actions = self.clone();
+
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                actions.close_optional_mods();
+                return;
+            };
+            let content = state.services.content();
+
+            let mut clusters: Vec<ClusterId> = Vec::new();
+            let mut failed = 0usize;
+            for (cluster_id, (bundle_name, package_id)) in &mods {
+                match oneclient_core::set_bundle_package_enabled(
+                    *cluster_id,
+                    bundle_name,
+                    package_id,
+                    true,
+                    false,
+                    &content,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        if !clusters.contains(cluster_id) {
+                            clusters.push(*cluster_id);
+                        }
+                    }
+                    Err(err) => {
+                        failed += 1;
+                        tracing::warn!(
+                            cluster_id,
+                            %bundle_name,
+                            %package_id,
+                            error = %err,
+                            "failed to opt in to an optional mod"
+                        );
+                    }
+                }
+            }
+
+            let mut installed = 0usize;
+            for cluster_id in &clusters {
+                match oneclient_core::apply_bundle_updates(
+                    *cluster_id,
+                    state.bundles.as_ref(),
+                    &content,
+                )
+                .await
+                {
+                    Ok(result) => {
+                        installed += result.additions_applied.len();
+                        failed += result.additions_failed.len();
+                    }
+                    Err(err) => {
+                        tracing::warn!(cluster_id, error = %err, "failed to install optional mods");
+                    }
+                }
+            }
+
+            for (cluster_id, package_ids) in group_by_cluster(&mods) {
+                if let Err(err) =
+                    oneclient_core::resolve_optional_mods(cluster_id, &package_ids, &content).await
+                {
+                    tracing::warn!(cluster_id, error = %err, "failed to clear answered offers");
+                }
+            }
+
+            super::invalidate_cluster_queries().await;
+
+            let events = state.services.events.clone();
+            if installed > 0 {
+                events
+                    .notify("Mods added")
+                    .body(format!(
+                        "{installed} mod{} added",
+                        if installed == 1 { "" } else { "s" }
+                    ))
+                    .send();
+            }
+            if failed > 0 {
+                events
+                    .notify("Some mods were not added")
+                    .body(format!(
+                        "{failed} mod{} could not be installed",
+                        if failed == 1 { "" } else { "s" }
+                    ))
+                    .error()
+                    .send();
+            }
+
+            actions.close_optional_mods();
+        });
+    }
+
     pub fn close_package_updates(&self) {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
@@ -920,6 +1066,8 @@ impl Actions {
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
                     .await
             {
+                // The offers are queued by the sync itself and raised at launch
+                // this path only reports what changed
                 actions.push_notification(spec);
             }
         });
@@ -1126,6 +1274,46 @@ impl Actions {
         }
     }
 
+    async fn resolve_optional_mods_before_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+    ) {
+        let pending = match oneclient_core::pending_optional_mods(
+            cluster_id,
+            state.bundles.as_ref(),
+            &state.services.content(),
+        )
+        .await
+        {
+            Ok(pending) => pending,
+            Err(err) => {
+                tracing::warn!(
+                    cluster_id,
+                    error = %err,
+                    "could not read queued optional mods, launching anyway"
+                );
+                return;
+            }
+        };
+
+        // `pending_optional_mods` already drops everything the player turned
+        // down, so an empty list here means there is nothing left to ask
+        let Some(group) =
+            crate::install::pending_optional_group(cluster_id, &pending, &state.services).await
+        else {
+            return;
+        };
+
+        let (done, wait) = tokio::sync::oneshot::channel();
+        self.with_engine(move |state| {
+            state.notifications.open_optional_mods(vec![group], Some(done));
+            state.center_open = false;
+        });
+
+        let _ = wait.await;
+    }
+
     async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
         let (done, wait) = tokio::sync::oneshot::channel();
 
@@ -1134,7 +1322,6 @@ impl Actions {
             state.center_open = false;
         });
 
-        // A replaced or torn-down modal is equally a reason to stop waiting
         let _ = wait.await;
     }
 
@@ -1227,8 +1414,19 @@ impl Actions {
     }
 }
 
-/// Failures are reported as game events so the caller only has to know the
-/// attempt is over Everything before `launch_cluster` is pre-launch work
+fn group_by_cluster(mods: &[(ClusterId, OptionalModRef)]) -> Vec<(ClusterId, Vec<String>)> {
+    let mut grouped: Vec<(ClusterId, Vec<String>)> = Vec::new();
+
+    for (cluster_id, (_bundle_name, package_id)) in mods {
+        match grouped.iter_mut().find(|(id, _)| id == cluster_id) {
+            Some((_, package_ids)) => package_ids.push(package_id.clone()),
+            None => grouped.push((*cluster_id, vec![package_id.clone()])),
+        }
+    }
+
+    grouped
+}
+
 async fn launch(actions: &Actions, cluster_id: ClusterId) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
@@ -1255,6 +1453,11 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     // startup
     actions
         .resolve_package_updates_before_launch(&state, cluster_id)
+        .await;
+
+    // After the updates so the player never faces two modals at once
+    actions
+        .resolve_optional_mods_before_launch(&state, cluster_id)
         .await;
 
     if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {

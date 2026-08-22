@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE cluster_optional_mods SET seen_status = ?\n            WHERE cluster_id = ? AND package_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "e03d85ee97b3a632d5946019865d9efb5d665e521519d05b16a4b66b066987ca"
+}

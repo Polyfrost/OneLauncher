@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
+use oneclient_db::models::OptionalModStatus;
 
 use oneclient_auth::preview_samples;
 use oneclient_core::simulate::Damage;
@@ -11,6 +12,7 @@ use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialo
 use crate::hooks::use_dispatch;
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
+    OptionalModsGroup,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -211,6 +213,7 @@ impl Component for ClusterUpdateSimulator {
         let updated = use_state(|| "Sodium 0.5 → 0.6, Iris 1.7 → 1.8".to_string());
         let added = use_state(|| "Lithium".to_string());
         let removed = use_state(|| "OptiFine".to_string());
+        let optional = use_state(|| "Lithium".to_string());
 
         let simulate = dispatch.clone();
 
@@ -220,7 +223,7 @@ impl Component for ClusterUpdateSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed cluster, opened into the changes modal.")
+                    .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed cluster, opened into the changes modal. Anything listed under Optional also raises the \"Optional mods available\" prompt, exactly as the real sync does. Optional mods are not installed, so they are independent of Added rather than a subset of it.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -259,6 +262,11 @@ impl Component for ClusterUpdateSimulator {
                         rect().width(Size::flex(1.0)).child(
                             TextInput::new(removed).placeholder("Removed (comma separated)"),
                         ),
+                    )
+                    .child(
+                        rect().width(Size::flex(1.0)).child(
+                            TextInput::new(optional).placeholder("Optional (comma separated)"),
+                        ),
                     ),
             )
             .child(
@@ -273,6 +281,7 @@ impl Component for ClusterUpdateSimulator {
                             updated: cluster_update_items(&split_csv(&updated.read())),
                             added: cluster_update_items(&split_csv(&added.read())),
                             removed: cluster_update_items(&split_csv(&removed.read())),
+                            optional: cluster_update_items(&split_csv(&optional.read()))
                         };
                         send_cluster_update(&simulate, vec![summary]);
                     }),
@@ -291,7 +300,7 @@ impl Component for ClusterUpdateSimulator {
 type ClusterUpdatePreset = fn() -> Vec<ClusterUpdateSummary>;
 
 /// Each preset pins one variation plural copy empty category tab single- vs multi-cluster footer grouping header overflow
-const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
+const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 7] = [
     (
         "1 cluster · all categories",
         IconType::DownloadCloud02,
@@ -302,6 +311,7 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
                 &["Sodium 0.5 → 0.6", "Iris 1.7 → 1.8", "Patcher 1.8 → 1.9"],
                 &["Lithium", "FerriteCore"],
                 &["OptiFine"],
+                &["Distant Horizons"],
             )]
         },
     ),
@@ -317,10 +327,11 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
             ],
             &[],
             &[],
+            &[],
         )]
     }),
     ("1 cluster · single change", IconType::Plus, || {
-        vec![preset_summary(1, "PolyBlock", &[], &["Lithium"], &[])]
+        vec![preset_summary(1, "PolyBlock", &[], &["Lithium"], &[], &[])]
     }),
     ("3 clusters · mixed", IconType::DotsGrid, || {
         vec![
@@ -330,15 +341,16 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
                 &["Sodium 0.5 → 0.6", "Iris 1.7 → 1.8"],
                 &["Lithium"],
                 &[],
+                &[],
             ),
-            preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"]),
-            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[]),
+            preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"], &[]),
+            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[], &[]),
         ]
     }),
     ("2 clusters · removals only", IconType::Trash01, || {
         vec![
-            preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"]),
-            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"]),
+            preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"], &[]),
+            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"], &[]),
         ]
     }),
     ("6 clusters · long names", IconType::Database01, || {
@@ -355,9 +367,30 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 6] = [
                     ]),
                     added: cluster_update_items(&[format!("Lithium {i}")]),
                     removed: Vec::new(),
+                    optional: Vec::new(),
                 }
             })
             .collect()
+    }),
+    ("2 clusters · offers only", IconType::Plus, || {
+        vec![
+            preset_summary(
+                1,
+                "PolyBlock",
+                &[],
+                &[],
+                &[],
+                &["Lithium", "FerriteCore"],
+            ),
+            preset_summary(
+                2,
+                "Skyblock",
+                &[],
+                &["Skytils"],
+                &[],
+                &["Skytils"],
+            ),
+        ]
     }),
 ];
 
@@ -390,6 +423,7 @@ fn preset_summary(
     updated: &[&str],
     added: &[&str],
     removed: &[&str],
+    optional: &[&str],
 ) -> ClusterUpdateSummary {
     ClusterUpdateSummary {
         cluster_id,
@@ -397,17 +431,26 @@ fn preset_summary(
         updated: cluster_update_items(updated),
         added: cluster_update_items(added),
         removed: cluster_update_items(removed),
+        optional: cluster_update_items(optional)
     }
 }
 
 fn cluster_update_items(names: &[impl AsRef<str>]) -> Vec<ClusterUpdateItem> {
     names
         .iter()
-        .map(|name| ClusterUpdateItem::from_name(name.as_ref()))
+        .enumerate()
+        .map(|(index, name)| ClusterUpdateItem {
+            offer: Some(("simulated-bundle".to_string(), name.as_ref().to_string())),
+            status: Some(if index % 2 == 0 {
+                OptionalModStatus::New
+            } else {
+                OptionalModStatus::Skipped
+            }),
+            ..ClusterUpdateItem::from_name(name.as_ref())
+        })
         .collect()
 }
 
-/// Mirrors the copy the bridge builds so the simulated notification matches the real one
 fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSummary>) {
     if summaries.is_empty() {
         return;
@@ -429,6 +472,11 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
         ),
     };
 
+    let optional: Vec<OptionalModsGroup> = summaries
+        .iter()
+        .filter_map(OptionalModsGroup::from_summary)
+        .collect();
+
     dispatch
         .notify(title)
         .body(body)
@@ -438,6 +486,9 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
             kind: NotificationActionKind::OpenClusterUpdate(summaries),
         })
         .send();
+
+    // No continuation the real prompt is raised by a launch, which waits on one
+    dispatch.open_optional_mods(optional, None);
 }
 
 #[derive(PartialEq)]

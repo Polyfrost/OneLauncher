@@ -67,6 +67,7 @@ pub async fn install_package(
 	if let Some(child) = &child {
 		child.set_phase(TaskPhase::Extracting);
 	}
+	//events.notify("Extracting package...").body(format!("{} {}", package.vendor, major)).send();
 
 	match package.archive {
 		PackageArchive::Zip => polyio::extract_zip(&archive_path, &extract_root).await?,

@@ -20,7 +20,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
-use crate::launcher;
+use crate::{invalidate_java_queries, launcher};
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
 };
@@ -449,7 +449,10 @@ impl Actions {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
             match state.java.install_runtime_from(&vendor, major).await {
-                Ok(_) => events.signal(oneclient_events::Signal::JavaChanged),
+                Ok(_) => {
+                    events.signal(oneclient_events::Signal::JavaChanged);
+                    invalidate_java_queries().await
+                },
                 Err(err) => events
                     .notify("Java install failed")
                     .body(err.to_string())

@@ -680,6 +680,14 @@ impl Actions {
             .await
             {
                 Ok(row) => {
+                    oneclient_content::packages::PackageStore::sync_live_content(
+                        cluster_id,
+                        &row,
+                        &state.services.content(),
+                    )
+                    .await
+                    .ok();
+
                     events
                         .notify("Imported")
                         .body(format!("Added {}", row.file_name))

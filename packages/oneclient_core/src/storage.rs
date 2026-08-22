@@ -1,21 +1,25 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::LauncherResult;
+use crate::clusters::Cluster;
 use crate::state::LauncherState;
 use oneclient_common::domain::ContentType;
 use oneclient_common::paths;
+use oneclient_content::packages::store::manifest;
 use oneclient_content::packages::store::{
     find_unreferenced_files, remove_unreferenced_files,
 };
+use oneclient_events::EventBus;
 
-const LEGACY_TYPES: [ContentType; 4] = [
-    ContentType::Mod,
-    ContentType::ResourcePack,
-    ContentType::Shader,
-    ContentType::DataPack,
-];
+const LEGACY_TYPES: [ContentType; 2] = [ContentType::Mod, ContentType::DataPack];
+
+// stable id for the storage scan's progress
+pub const STORAGE_SCAN_PROGRESS: Uuid =
+    Uuid::from_u128(0x5354_4F52_4147_4500_0000_0000_0000_0001);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageEntry {
@@ -56,51 +60,97 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
 
     let launcher = paths::launcher_dir()?;
 
-    let mut categories = vec![
-        entry("Packages", paths::packages_cache_dir()?).await,
-        entry("Minecraft versions", paths::versions_dir()?).await,
-        entry("Libraries", paths::libraries_dir()?).await,
-        entry("Assets", paths::assets_dir()?).await,
-        entry("Natives", paths::natives_dir()?).await,
-        entry("Java runtimes", paths::java_dir()?).await,
-        entry("Shared game directory", paths::shared_minecraft_dir()?).await,
-        entry("Logs", paths::logs_dir()?).await,
-        entry("Image cache", paths::images_cache_dir()?).await,
-        entry("Bundles", paths::bundles_dir()?).await,
+    let category_dirs = [
+        ("Packages", paths::packages_cache_dir()?),
+        ("Minecraft versions", paths::versions_dir()?),
+        ("Libraries", paths::libraries_dir()?),
+        ("Assets", paths::assets_dir()?),
+        ("Natives", paths::natives_dir()?),
+        ("Java runtimes", paths::java_dir()?),
+        ("Shared game directory", paths::shared_minecraft_dir()?),
+        ("Logs", paths::logs_dir()?),
+        ("Image cache", paths::images_cache_dir()?),
+        ("Bundles", paths::bundles_dir()?),
     ];
+
+    let cluster_list = state.clusters.list().await?;
+
+    let mut steps = ScanSteps {
+        events: &state.services.events,
+        done: 0,
+        total: (category_dirs.len() + cluster_list.len() + 3) as u64,
+    };
+
+    let mut seen = SeenFiles::default();
+
+    let mut categories = Vec::new();
+    for (label, path) in category_dirs {
+        steps.begin(label);
+        categories.push(entry(label, path, &mut seen).await);
+    }
     categories.sort_by_key(|entry| std::cmp::Reverse(entry.bytes));
 
     let mut clusters = Vec::new();
-    for cluster in state.clusters.list().await? {
+    for cluster in &cluster_list {
+        steps.begin(&cluster.name);
         let Ok(dir) = cluster.dir() else {
             continue;
         };
-        clusters.push(entry(&cluster.name, dir).await);
+        clusters.push(entry(&cluster.name, dir, &mut seen).await);
     }
     clusters.sort_by_key(|entry| std::cmp::Reverse(entry.bytes));
 
+    steps.begin("unreferenced cache files");
     let unreferenced = find_unreferenced_files(&state.services.content()).await?;
     let unreferenced_cache = ReclaimableEntry {
         bytes: unreferenced.iter().map(|(_, size)| size).sum(),
         files: unreferenced.len(),
     };
 
+    steps.begin("leftover cluster content");
+    let legacy = legacy_cluster_content(&cluster_list).await;
+
+    steps.begin("total size");
+    let total_bytes = dir_size(launcher).await;
+
     Ok(StorageReport {
-        total_bytes: dir_size(launcher).await,
+        total_bytes,
         categories,
         clusters,
         unreferenced_cache,
-        legacy_cluster_content: legacy_cluster_content(state).await?,
+        legacy_cluster_content: legacy,
     })
 }
 
-/// Content is materialized from the cache now so anything in a cluster's own
-/// folder is an inert leftover from an older launcher space not correctness
-async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<ReclaimableEntry> {
+struct ScanSteps<'a> {
+    events: &'a EventBus,
+    done: u64,
+    total: u64,
+}
+
+impl ScanSteps<'_> {
+    fn begin(&mut self, label: &str) {
+        self.events.progress(
+            STORAGE_SCAN_PROGRESS,
+            format!("Measuring {label}"),
+            self.done,
+            self.total,
+        );
+        self.done += 1;
+    }
+}
+
+impl Drop for ScanSteps<'_> {
+    fn drop(&mut self) {
+        self.events
+            .progress(STORAGE_SCAN_PROGRESS, "Done", self.total, self.total);
+    }
+}
+
+async fn legacy_cluster_content(clusters: &[Cluster]) -> ReclaimableEntry {
     let mut found = ReclaimableEntry::default();
 
-    for cluster in state.clusters.list().await? {
-        // A dedicated cluster's folder *is* its game directory so content there belongs
+    for cluster in clusters {
         if cluster.uses_dedicated_dir() {
             continue;
         }
@@ -108,7 +158,13 @@ async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<Reclaim
             continue;
         };
 
+        let mods_live_here = manifest::mods_live_in_cluster(&root).await;
+
         for content_type in LEGACY_TYPES {
+            if content_type == ContentType::Mod && mods_live_here {
+                continue;
+            }
+
             let dir = root.join(content_type.folder_name());
             let Ok(mut entries) = polyio::read_dir(&dir).await else {
                 continue;
@@ -136,7 +192,7 @@ async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<Reclaim
         }
     }
 
-    Ok(found)
+    found
 }
 
 fn is_content_file(content_type: ContentType, name: &str) -> bool {
@@ -152,18 +208,20 @@ fn is_content_file(content_type: ContentType, name: &str) -> bool {
     }
 }
 
-async fn entry(label: &str, path: PathBuf) -> StorageEntry {
+async fn entry(label: &str, path: PathBuf, seen: &mut SeenFiles) -> StorageEntry {
     StorageEntry {
         label: label.to_string(),
-        bytes: dir_size(&path).await,
+        bytes: dir_size_seen(&path, seen).await,
         path,
         files: None,
     }
 }
 
-/// Links are not followed so a materialized game directory does not appear to
-/// double the size of the package cache
 pub async fn dir_size(root: impl AsRef<Path>) -> u64 {
+    dir_size_seen(root, &mut SeenFiles::default()).await
+}
+
+async fn dir_size_seen(root: impl AsRef<Path>, seen: &mut SeenFiles) -> u64 {
     let mut total = 0;
     let mut stack = vec![root.as_ref().to_path_buf()];
 
@@ -183,7 +241,9 @@ pub async fn dir_size(root: impl AsRef<Path>) -> u64 {
 
             if file_type.is_dir() {
                 stack.push(entry.path());
-            } else if let Ok(meta) = entry.metadata().await {
+            } else if let Ok(meta) = entry.metadata().await
+                && seen.first_sighting(&entry.path()).await
+            {
                 total += meta.len();
             }
         }
@@ -192,8 +252,37 @@ pub async fn dir_size(root: impl AsRef<Path>) -> u64 {
     total
 }
 
-/// Cleanup refuses to run while fixture numbers are shown the report bears no
-/// relation to disk so the only thing it could delete is the user's real data
+#[derive(Default)]
+struct SeenFiles(HashSet<(u64, u64)>);
+
+impl SeenFiles {
+    async fn first_sighting(&mut self, path: &Path) -> bool {
+        match file_identity(path).await {
+            Some(id) => self.0.insert(id),
+            None => true,
+        }
+    }
+}
+
+async fn file_identity(path: &Path) -> Option<(u64, u64)> {
+    if !can_be_materialized(path) {
+        return None;
+    }
+
+    polyio::file_id(path).await.ok()
+}
+
+fn can_be_materialized(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    let lower = name.to_lowercase();
+    let lower = lower.trim_end_matches(".disabled");
+
+    lower.ends_with(".jar") || lower.ends_with(".zip")
+}
+
 fn showing_fixture() -> bool {
     #[cfg(debug_assertions)]
     {
@@ -359,20 +448,45 @@ mod tests {
         let dir = root.path();
         polyio::create_dir_all(dir.join("nested")).await.unwrap();
 
-        polyio::write(dir.join("a.bin"), vec![0u8; 1000]).await.unwrap();
-        polyio::write(dir.join("nested").join("b.bin"), vec![0u8; 500])
+        polyio::write(dir.join("a.jar"), vec![0u8; 1000]).await.unwrap();
+        polyio::write(dir.join("nested").join("b.jar"), vec![0u8; 500])
             .await
             .unwrap();
 
         assert_eq!(dir_size(dir).await, 1500);
 
-        polyio::symlink_file(dir.join("a.bin"), dir.join("link.bin"))
+        polyio::symlink_file(dir.join("a.jar"), dir.join("link.jar"))
             .await
             .unwrap();
         assert_eq!(
             dir_size(dir).await,
             1500,
             "a link is not another copy of its target"
+        );
+
+        std::fs::remove_dir_all(root.path()).ok();
+    }
+
+    #[tokio::test]
+    async fn a_file_in_two_folders_is_paid_for_once() {
+        let root = polyio::testing::ScratchDir::new("shared_size");
+        let dir = root.path();
+        let store = dir.join("store");
+        let cluster = dir.join("cluster");
+        polyio::create_dir_all(&store).await.unwrap();
+        polyio::create_dir_all(&cluster).await.unwrap();
+
+        polyio::write(store.join("mod.jar"), vec![0u8; 1000]).await.unwrap();
+        polyio::symlink_file(store.join("mod.jar"), cluster.join("mod.jar"))
+            .await
+            .unwrap();
+
+        let mut seen = SeenFiles::default();
+        assert_eq!(dir_size_seen(&store, &mut seen).await, 1000);
+        assert_eq!(
+            dir_size_seen(&cluster, &mut seen).await,
+            0,
+            "the cache already paid for it"
         );
 
         std::fs::remove_dir_all(root.path()).ok();

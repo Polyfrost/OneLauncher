@@ -90,6 +90,22 @@ pub fn cluster_game_dir(folder_name: &str) -> PathsResult<PathBuf> {
 	}
 }
 
+pub fn cluster_mods_dir(folder_name: &str) -> PathsResult<PathBuf> {
+	Ok(cluster_dir(folder_name)?.join(ContentType::Mod.folder_name()))
+}
+
+pub fn shared_mods_dir() -> PathsResult<PathBuf> {
+	Ok(shared_minecraft_dir()?.join(ContentType::Mod.folder_name()))
+}
+
+pub fn global_content_dir(content_type: ContentType) -> PathsResult<PathBuf> {
+	Ok(shared_minecraft_dir()?.join(content_type.folder_name()))
+}
+
+pub fn shared_mods_link(folder_name: &str) -> PathsResult<PathBuf> {
+	Ok(shared_mods_dir()?.join(folder_name))
+}
+
 pub fn packages_cache_dir() -> PathsResult<PathBuf> {
 	Ok(launcher_dir()?.join("metadata").join("packages"))
 }

@@ -21,6 +21,7 @@ pub enum AppChannel {
     AccountSwitcher,
     MicrosoftLogin,
     Installs,
+    StorageScan,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -40,6 +41,7 @@ pub struct AppState {
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub storage_scan: Option<StorageScanProgress>,
 }
 
 /// In-flight installs so the button that started one stays disabled until it lands
@@ -98,6 +100,13 @@ pub struct SettingsState {
 /// as ordinary progress and has no opinion about where it is shown
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LoginProgress {
+    pub label: String,
+    pub current: u64,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageScanProgress {
     pub label: String,
     pub current: u64,
     pub total: u64,

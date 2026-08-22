@@ -1,5 +1,6 @@
 use futures_util::StreamExt;
 use oneclient_db::dao::artifact as artifact_dao;
+use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
@@ -624,12 +625,45 @@ pub async fn reconcile_duplicate_activity(
     Ok(())
 }
 
+// which clusters have to record what the user just did
+async fn override_scope(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<i64>> {
+    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
+        .is_some_and(ContentType::is_global);
+
+    if !global {
+        return Ok(vec![cluster_id]);
+    }
+
+    let mut ids: Vec<i64> = cluster_dao::list_all(&ctx.db)
+        .await?
+        .into_iter()
+        .map(|row| row.id)
+        .collect();
+
+    if !ids.contains(&cluster_id) {
+        ids.push(cluster_id);
+    }
+
+    Ok(ids)
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn on_user_disable_artifact(
     cluster_id: i64,
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Disabled).await
+    for id in override_scope(cluster_id, hash, ctx).await? {
+        handle_user_artifact_action(id, hash, ctx, OverrideType::Disabled).await?;
+    }
+
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -638,10 +672,13 @@ pub async fn on_user_enable_artifact(
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
-        && let Some(package_id) = tracked.package_id {
-            clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-        }
+    for id in override_scope(cluster_id, hash, ctx).await? {
+        if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, id, hash).await?
+            && let Some(package_id) = tracked.package_id {
+                clear_suppressing_overrides(id, &package_id, ctx).await?;
+            }
+    }
+
     Ok(())
 }
 

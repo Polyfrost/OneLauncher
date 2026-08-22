@@ -397,9 +397,11 @@ impl NotificationState {
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
-            // The sign-in modal renders this progress itself it must not also become a toast
+            
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}
+            Event::Progress(ProgressEvent::Update { id, .. })
+                if id == oneclient_core::storage::STORAGE_SCAN_PROGRESS => {}
             Event::Progress(ProgressEvent::Update {
                 id,
                 label,

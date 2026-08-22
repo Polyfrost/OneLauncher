@@ -6,7 +6,7 @@ use crate::components::{
     NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
     UpdatePromptOverlay,
 };
-use crate::hooks::{SplashState, use_provide_splash};
+use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 use crate::layout::HomeArtPrefetch;
 use crate::routes::Route;
 use crate::theme;
@@ -20,6 +20,7 @@ impl Component for RootLayout {
         let active = use_state(|| false);
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
+        use_provide_overlay_claims();
 
         // macOS rounds the window natively so Freya must not round on top of it
         #[cfg(target_os = "macos")]

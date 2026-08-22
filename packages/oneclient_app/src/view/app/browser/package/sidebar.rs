@@ -209,7 +209,7 @@ impl Component for ProviderTag {
                     })
                     .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
                     .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+                    .on_press(move |_| confirm.set(Some(url.clone())))
             })
     }
 }
@@ -304,7 +304,7 @@ impl Component for AuthorRow {
                     .a11y_role(AccessibilityRole::Button)
                     .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
                     .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+                    .on_press(move |_| confirm.set(Some(url.clone())))
             })
             .maybe(interactive && focused, |el| {
                 el.border(border_all_color(1., colors::brand()))
@@ -442,7 +442,7 @@ impl Component for LinkRow {
             })
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| confirm.set(Some(url.clone())))
+            .on_press(move |_| confirm.set(Some(url.clone())))
             .child(
                 Icon::new(IconType::Link03)
                     .size(14.)

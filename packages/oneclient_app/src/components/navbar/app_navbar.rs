@@ -182,7 +182,7 @@ impl Component for NavLink {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_all_press(move |e: Event<PressEventData>| {
+            .on_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
                 let _ = RouterContext::get().push(target.clone());
             })

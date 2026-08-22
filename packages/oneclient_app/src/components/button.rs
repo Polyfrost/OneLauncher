@@ -330,7 +330,7 @@ impl Component for Button {
                     Cursor::set(CursorIcon::default());
                 })
                 .map(on_press.clone(), |rect, handler| {
-                    rect.on_all_press(move |event: Event<PressEventData>| {
+                    rect.on_press(move |event: Event<PressEventData>| {
                         handler.call(event);
                     })
                 });

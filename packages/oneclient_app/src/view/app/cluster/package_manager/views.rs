@@ -9,7 +9,7 @@ use crate::components::{
     Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
     Segment, SegmentedControl, TabBar, TabItem, TextInput,
 };
-use crate::hooks::use_dispatch;
+use crate::hooks::{use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -311,6 +311,8 @@ struct FilterPopover {
 
 impl Component for FilterPopover {
     fn render(&self) -> impl IntoElement {
+        use_overlay_claim();
+
         let mut sort = self.sort;
         let current_sort = self.current_sort;
         let mut enabled_filter = self.enabled_filter;
@@ -474,7 +476,7 @@ impl Component for ChoiceRow {
             })
             .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
             .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(self.on_press.clone())
+            .on_press(self.on_press.clone())
             .child(
                 label()
                     .text(text)

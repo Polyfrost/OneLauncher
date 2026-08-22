@@ -807,7 +807,7 @@ impl Component for SidebarItem {
                 Cursor::set(CursorIcon::default());
             })
             .map(route, |el, route| {
-                el.on_all_press(move |_| {
+                el.on_press(move |_| {
                     let _ = RouterContext::get().push(route.clone());
                 })
             });

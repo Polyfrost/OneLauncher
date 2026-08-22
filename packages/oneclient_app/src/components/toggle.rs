@@ -111,7 +111,7 @@ impl Component for Switch {
             .maybe(!disabled, |el| {
                 el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
                     .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| {
+                    .on_press(move |_| {
                         on_press.call(());
                     })
             })

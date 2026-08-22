@@ -51,7 +51,8 @@ pub use queries::{
     use_package_project, use_package_search, use_package_versions, use_package_versions_when,
     use_player_profile,
     use_player_skin, use_provider_versions, use_refresh_account, use_refresh_all_accounts,
-    use_remove_account, use_screenshot_action, use_set_default_account, use_terms, use_upload_log,
+    use_remove_account, use_screenshot_action, use_screenshot_folder_watch, use_set_default_account,
+    use_terms, use_upload_log,
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
 

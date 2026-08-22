@@ -106,9 +106,27 @@ impl LauncherState {
 	}
 }
 
+/// Java archives are the only downloads big enough for a leaked scratch file to
+/// matter and they land flat in the java dir so this needs no recursion
+async fn sweep_java_scratch_files() {
+	let dir = match paths::java_dir() {
+		Ok(dir) => dir,
+		Err(err) => {
+			tracing::warn!("could not resolve the java dir to sweep: {err:#}");
+			return;
+		}
+	};
+
+	if let Err(err) = polyio::sweep_temp_files(&dir).await {
+		tracing::warn!("java scratch file sweep failed: {err:#}");
+	}
+}
+
 pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 	let background = Arc::clone(state);
 	tokio::spawn(async move {
+			sweep_java_scratch_files().await;
+
 			let recovery = match crate::recovery::reconstruct_from_disk(&background).await {
 				Ok(report) => report,
 				Err(err) => {

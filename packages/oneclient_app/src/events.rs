@@ -335,7 +335,7 @@ pub async fn start_launcher(
     }
 
     crate::hooks::invalidate_profile_queries().await;
-    crate::updater::spawn_update_check(auto_update);
+    crate::updater::spawn_update_check(auto_update, state.services.events.clone());
     Ok(())
 }
 

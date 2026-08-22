@@ -3,6 +3,7 @@ mod active_cluster_panel;
 mod avatar;
 mod button;
 mod charts;
+mod checkbox;
 mod cluster_landscape_art;
 mod cluster_update_popup;
 mod context_menu;
@@ -43,6 +44,10 @@ pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
+#[allow(unused_imports)]
+pub use checkbox::{
+    checkbox, checkbox_controlled, checkbox_controlled_labeled, checkbox_disabled, checkbox_labeled,
+};
 pub use cluster_landscape_art::ClusterLandscapeArt;
 pub use cluster_update_popup::ClusterUpdatePopup;
 pub use context_menu::ContextMenu;

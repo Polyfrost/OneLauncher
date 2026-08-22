@@ -100,6 +100,7 @@ pub async fn try_unlink_materialized(
 mod tests {
 	use super::*;
 
+	#[cfg(not(windows))]
 	#[tokio::test]
 	async fn remove_entry_clears_a_dangling_link() {
 		let root = polyio::testing::ScratchDir::new("dangling_link");
@@ -117,6 +118,27 @@ mod tests {
 			polyio::symlink_metadata(&link).await.is_ok(),
 			"but the link itself is still there"
 		);
+
+		remove_entry(&link).await.unwrap();
+		assert!(polyio::symlink_metadata(&link).await.is_err());
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	#[cfg(windows)]
+	#[tokio::test]
+	async fn remove_entry_clears_a_hard_link() {
+		let root = polyio::testing::ScratchDir::new("hard_link");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		let target = dir.join("target.jar");
+		let link = dir.join("link.jar");
+		polyio::write(&target, b"jar".as_slice()).await.unwrap();
+		polyio::symlink_file(&target, &link).await.unwrap();
+		polyio::remove_file(&target).await.unwrap();
+
+		assert!(link.exists(), "the link is still holding the file");
 
 		remove_entry(&link).await.unwrap();
 		assert!(polyio::symlink_metadata(&link).await.is_err());

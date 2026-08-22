@@ -569,9 +569,70 @@ pub async fn symlink_file(
 	})
 }
 
-/// Windows gets a junction which needs no elevated privilege unlike a real
-/// directory symlink
-/// Remove with [`remove_symlink_dir`]
+// what a file is on disk rather than what it is called
+#[cfg(windows)]
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn file_id(path: impl AsRef<std::path::Path>) -> PolyIOResult<(u64, u64)> {
+	use std::os::windows::io::AsRawHandle;
+
+	use windows_sys::Win32::Storage::FileSystem::{
+		BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+	};
+
+	let path = path.as_ref().to_path_buf();
+	let display = path.to_string_lossy().to_string();
+
+	tokio::task::spawn_blocking(move || {
+		let file = std::fs::File::open(&path)?;
+		let mut info = BY_HANDLE_FILE_INFORMATION {
+			dwFileAttributes: 0,
+			ftCreationTime: unsafe { std::mem::zeroed() },
+			ftLastAccessTime: unsafe { std::mem::zeroed() },
+			ftLastWriteTime: unsafe { std::mem::zeroed() },
+			dwVolumeSerialNumber: 0,
+			nFileSizeHigh: 0,
+			nFileSizeLow: 0,
+			nNumberOfLinks: 0,
+			nFileIndexHigh: 0,
+			nFileIndexLow: 0,
+		};
+
+		let filled = unsafe {
+			GetFileInformationByHandle(file.as_raw_handle().cast(), std::ptr::from_mut(&mut info))
+		};
+
+		if filled == 0 {
+			return Err(std::io::Error::last_os_error());
+		}
+
+		let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+		Ok((u64::from(info.dwVolumeSerialNumber), index))
+	})
+	.await
+	.map_err(std::io::Error::other)?
+	.map_err(|e| IOError::PathIOError {
+		source: e,
+		path: display,
+	})
+}
+
+#[cfg(not(windows))]
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn file_id(path: impl AsRef<std::path::Path>) -> PolyIOResult<(u64, u64)> {
+	use std::os::unix::fs::MetadataExt;
+
+	let meta = stat(path).await?;
+	Ok((meta.dev(), meta.ino()))
+}
+
 #[tracing::instrument(
     level = "debug",
     skip(original, link),

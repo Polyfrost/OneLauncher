@@ -87,8 +87,6 @@ reqwest = {version = "=0.13.3", default-features = false, features = [
   "gzip",
   "brotli",
   "form",
-  "hickory-dns", # Without this reqwest sees only the HTTP_PROXY/HTTPS_PROXY env vars, and  # ignores the proxy configured in Windows Internet Options or macOS network  # preferences — which is how school and workplace networks are set up. Those
-  # users could reach every service in a browser but not from here.
   "system-proxy",
 ]}
 reqwest-websocket = {version = "=0.6.0"}

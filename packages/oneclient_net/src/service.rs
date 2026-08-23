@@ -115,18 +115,7 @@ impl RequestClient {
                 env!("CARGO_PKG_HOMEPAGE")
             ));
 
-        // Hickory must be explicitly off on Windows it reads UDP into a fixed
-        // buffer and Windows fails oversized datagrams with WSAEMSGSIZE (10040)
-        // instead of truncating breaking sign-in for large DNS replies
-        #[cfg(target_os = "windows")]
-        {
-            builder = builder.no_hickory_dns();
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            builder = builder.hickory_dns(true);
-        }
+        builder = builder.no_hickory_dns();
 
         let client = builder.build()?;
 

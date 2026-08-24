@@ -93,7 +93,7 @@ fn low_space_warning(path: &Path) -> Option<String> {
 	))
 }
 
-fn available_space(path: &Path) -> Option<u64> {
+pub(crate) fn available_space(path: &Path) -> Option<u64> {
 	let target = polyio::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 
 	sysinfo::Disks::new_with_refreshed_list()

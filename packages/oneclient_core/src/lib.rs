@@ -12,6 +12,7 @@ mod java_store;
 pub mod logger;
 pub mod migration;
 pub mod recovery;
+pub mod relocate;
 pub mod reporting;
 pub mod settings;
 pub mod storage;

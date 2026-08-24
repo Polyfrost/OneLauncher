@@ -45,6 +45,7 @@ pub struct LauncherSettings {
 	pub custom_api_endpoint: Option<String>,
 	pub custom_meta_url_base: Option<String>,
 	pub data_dir: Option<PathBuf>,
+	pub previous_data_dir: Option<PathBuf>,
 }
 
 impl LauncherSettings {
@@ -81,6 +82,7 @@ impl Default for LauncherSettings {
 			custom_api_endpoint: None,
 			custom_meta_url_base: None,
 			data_dir: None,
+			previous_data_dir: None,
 		}
 	}
 }

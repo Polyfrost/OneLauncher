@@ -81,17 +81,15 @@ impl Component for SetupLocation {
                     .spacing(8.)
                     .child(
                         label()
-                            .text("Where should OneClient live?")
-                            .font_size(30.)
+                            .text("Choose a folder location for OneClient")
+                            .font_size(26.)
                             .font_weight(FontWeight::BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(
-                                "Minecraft versions, mods and your worlds go here. Expect several \
-                                 gigabytes. Your settings and sign-in stay on this drive either \
-                                 way.",
+                                "Any content downloaded via OneClient (such as Minecraft versions, mods, your worlds) will go in this folder. Make sure you have sufficient storage in your chosen disk.",
                             )
                             .font_size(14.)
                             .color(colors::fg_secondary()),

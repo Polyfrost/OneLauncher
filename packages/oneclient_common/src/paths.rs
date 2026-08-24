@@ -1,4 +1,4 @@
-use directories::ProjectDirs;
+use directories::{BaseDirs, ProjectDirs};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -10,11 +10,13 @@ const ORGANIZATION: &str = "Polyfrost";
 
 #[cfg(not(debug_assertions))]
 const APPLICATION: &str = "OneClient";
-// Separate dir so a running dev environment never touches prod data
+
 #[cfg(debug_assertions)]
 const APPLICATION: &str = "OneClient-dev";
 
-static PROJECT_DIRS: OnceLock<ProjectDirs> = OnceLock::new();
+const SETTINGS_FILE: &str = "settings.json";
+
+static DEFAULT_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CONFIG_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 static DATA_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
 
@@ -27,16 +29,37 @@ pub fn set_data_dir(dir: PathBuf) {
 	let _ = DATA_DIR_OVERRIDE.set(dir);
 }
 
-fn project_dirs() -> PathsResult<&'static ProjectDirs> {
-	if let Some(dirs) = PROJECT_DIRS.get() {
-		return Ok(dirs);
+fn organization_dir() -> PathsResult<PathBuf> {
+	BaseDirs::new()
+		.map(|dirs| dirs.data_dir().join(ORGANIZATION))
+		.ok_or(PathsError::DataDirUnavailable)
+}
+
+fn legacy_dir() -> Option<PathBuf> {
+	ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
+		.map(|dirs| dirs.data_local_dir().to_path_buf())
+}
+
+fn resolve_default_dir() -> PathsResult<PathBuf> {
+	if let Some(legacy) = legacy_dir()
+		&& legacy.join(SETTINGS_FILE).is_file()
+	{
+		return Ok(legacy);
 	}
 
-	let dirs = ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
-		.ok_or(PathsError::DataDirUnavailable)?;
+	Ok(organization_dir()?.join(APPLICATION))
+}
 
-	let _ = PROJECT_DIRS.set(dirs);
-	PROJECT_DIRS.get().ok_or(PathsError::DataDirUnavailable)
+fn default_dir() -> PathsResult<&'static Path> {
+	if let Some(dir) = DEFAULT_DIR.get() {
+		return Ok(dir);
+	}
+
+	let _ = DEFAULT_DIR.set(resolve_default_dir()?);
+	DEFAULT_DIR
+		.get()
+		.map(PathBuf::as_path)
+		.ok_or(PathsError::DataDirUnavailable)
 }
 
 pub fn config_dir() -> PathsResult<&'static Path> {
@@ -44,7 +67,7 @@ pub fn config_dir() -> PathsResult<&'static Path> {
 		return Ok(dir);
 	}
 
-	Ok(project_dirs()?.data_local_dir())
+	default_dir()
 }
 
 pub fn data_dir() -> PathsResult<&'static Path> {
@@ -55,12 +78,20 @@ pub fn data_dir() -> PathsResult<&'static Path> {
 	config_dir()
 }
 
+#[must_use]
+pub fn picker_start_dir() -> Option<PathBuf> {
+	organization_dir()
+		.ok()
+		.filter(|dir| dir.is_dir())
+		.or_else(|| data_dir().ok().map(Path::to_path_buf))
+}
+
 pub fn database_file() -> PathsResult<PathBuf> {
 	Ok(data_dir()?.join("user_data.db"))
 }
 
 pub fn settings_file() -> PathsResult<PathBuf> {
-	Ok(config_dir()?.join("settings.json"))
+	Ok(config_dir()?.join(SETTINGS_FILE))
 }
 
 pub fn damaged_settings_file() -> PathsResult<PathBuf> {
@@ -167,4 +198,45 @@ pub fn package_version_dir(
 		.join(provider.dir_name())
 		.join(project_id)
 		.join(version_id))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::ffi::OsStr;
+
+	#[test]
+	fn the_launcher_sits_one_level_under_the_organization_folder() {
+		let organization = organization_dir().expect("a home directory");
+		assert_eq!(organization.file_name(), Some(OsStr::new(ORGANIZATION)));
+
+		let app = organization.join(APPLICATION);
+		let tail: Vec<&OsStr> = app.iter().rev().take(2).collect();
+
+		assert_eq!(
+			tail,
+			vec![OsStr::new(APPLICATION), OsStr::new(ORGANIZATION)],
+			"every Polyfrost product shares one folder and takes a single name inside it"
+		);
+	}
+
+	#[cfg(windows)]
+	#[test]
+	fn a_windows_install_roams_with_the_user() {
+		let organization = organization_dir().expect("a home directory");
+
+		assert!(
+			organization.iter().any(|part| part == OsStr::new("Roaming")),
+			"settings and saves follow the user between machines; Local would strand them"
+		);
+	}
+
+	#[test]
+	fn a_debug_build_never_shares_a_folder_with_a_release_one() {
+		assert_eq!(APPLICATION, if cfg!(debug_assertions) {
+			"OneClient-dev"
+		} else {
+			"OneClient"
+		});
+	}
 }

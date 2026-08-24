@@ -98,7 +98,14 @@ fn main() {
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
-    if let Some(dir) = settings.data_dir.clone() {
+    let abandoned_move = settings
+        .data_dir
+        .clone()
+        .filter(|dir| oneclient_core::relocate::incomplete(dir));
+
+    if let Some(dir) = settings.data_dir.clone()
+        && abandoned_move.is_none()
+    {
         oneclient_common::paths::set_data_dir(dir);
     }
 
@@ -108,6 +115,13 @@ fn main() {
         oneclient_core::logger::init()
     }
     .expect("Failed to initialize logger");
+
+    if let Some(dir) = abandoned_move {
+        tracing::error!(
+            path = %dir.display(),
+            "a move of the game data folder never finished; staying on the old folder"
+        );
+    }
 
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 

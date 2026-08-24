@@ -84,9 +84,17 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
-    let needs_location = oneclient_common::paths::settings_file()
+    // no settings file is the sign of a fresh install, but not proof of one
+    let never_set_up = oneclient_common::paths::settings_file()
         .map(|path| !path.exists())
         .unwrap_or(false);
+    let has_database = oneclient_common::paths::database_file()
+        .map(|path| path.exists())
+        .unwrap_or(false);
+    let was_damaged = oneclient_common::paths::damaged_settings_file()
+        .map(|path| path.exists())
+        .unwrap_or(false);
+    let needs_location = never_set_up && !has_database && !was_damaged;
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 

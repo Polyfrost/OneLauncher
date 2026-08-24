@@ -63,6 +63,10 @@ pub fn settings_file() -> PathsResult<PathBuf> {
 	Ok(config_dir()?.join("settings.json"))
 }
 
+pub fn damaged_settings_file() -> PathsResult<PathBuf> {
+	Ok(config_dir()?.join("settings.json.corrupt"))
+}
+
 pub fn auth_file() -> PathsResult<PathBuf> {
 	Ok(config_dir()?.join("auth.json"))
 }

@@ -160,9 +160,12 @@ impl Component for ToastCard {
 
         let offset = slide.read().value();
         let opacity = fade.read().value();
-        let ttl_pct = ttl_bar_anim.read().value();
+        let ttl_pct = if crate::motion::animations_enabled() {
+            ttl_bar_anim.read().value()
+        } else {
+            100.
+        };
 
-        // A card can be unmounted while hovered which emits no `out` event
         let mut hovering = self.hovering;
         let hover_flag = use_hook(|| Rc::new(Cell::new(false)));
         let (over_flag, out_flag, drop_flag) =

@@ -18,7 +18,7 @@ impl Component for OnboardingPreferences {
         let mut reduce_motion = use_onboarding_selection().reduce_motion;
 
         let animations_on = use_state({
-            let v = !*reduce_motion.peek();
+            let v = settings.animations_enabled;
             move || v
         });
         use_side_effect(move || {
@@ -32,13 +32,15 @@ impl Component for OnboardingPreferences {
 
         let mut first = use_state(|| true);
         use_side_effect(move || {
-            let enabled = *parallax_on.read();
+            let parallax = *parallax_on.read();
+            let animations = *animations_on.read();
             if *first.peek() {
                 first.set(false);
                 return;
             }
             let mut next = settings.clone();
-            next.dynamic_background_enabled = enabled;
+            next.dynamic_background_enabled = parallax;
+            next.animations_enabled = animations;
             dispatch.set_settings(next);
         });
 

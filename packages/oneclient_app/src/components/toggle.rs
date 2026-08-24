@@ -18,6 +18,7 @@ pub fn toggle(value: State<bool>) -> impl IntoElement {
     }
 }
 
+#[allow(dead_code)]
 pub fn toggle_disabled(value: State<bool>) -> impl IntoElement {
     Switch {
         value,

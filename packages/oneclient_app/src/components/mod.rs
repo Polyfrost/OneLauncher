@@ -76,6 +76,6 @@ pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};
 pub use text_input::{TextInput, validate_number};
 pub use toasts::Toasts;
-pub use toggle::{toggle, toggle_controlled, toggle_disabled};
+pub use toggle::{toggle, toggle_controlled};
 pub use update_prompt::UpdatePromptOverlay;
 pub use version_card::VersionCard;

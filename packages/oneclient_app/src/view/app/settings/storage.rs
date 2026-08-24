@@ -35,6 +35,8 @@ impl Component for SettingsStorage {
 
         let mut page = settings_page()
             .child(hero(&report, refresh.into_element()))
+            .child(section_header("LOCATION"))
+            .child(location_row())
             .child(section_header("FREE UP SPACE"))
             .child(
                 ReclaimRow {
@@ -127,6 +129,45 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
                 ),
         )
         .child(refresh)
+        .into_element()
+}
+
+fn location_row() -> Element {
+    let Ok(dir) = oneclient_common::paths::data_dir() else {
+        return rect().into_element();
+    };
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(16.)
+        .padding(Gaps::new_symmetric(12., 16.))
+        .corner_radius(CornerRadius::new_all(12.))
+        .background(colors::page_elevated())
+        .child(Icon::new(IconType::Folder))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(2.)
+                .child(
+                    label()
+                        .text("Game data folder")
+                        .font_size(16.)
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(dir.display().to_string())
+                        .font_size(12.)
+                        .max_lines(2)
+                        .color(colors::fg_secondary()),
+                ),
+        )
+        .child(open_folder_button(dir.to_path_buf()))
         .into_element()
 }
 

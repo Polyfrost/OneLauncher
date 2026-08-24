@@ -69,12 +69,11 @@ impl InstallState {
 pub struct LauncherInit {
     pub ready: bool,
     pub fetching: bool,
-    /// Launch is disabled until this clears
     pub syncing_bundles: bool,
     pub error: Option<String>,
     pub data_dir: String,
-    /// Restorable database snapshots, for the startup failure screen
     pub snapshots: usize,
+    pub needs_location: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

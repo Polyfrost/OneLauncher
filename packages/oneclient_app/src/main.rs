@@ -6,19 +6,29 @@
 
 use freya::prelude::*;
 use freya::radio::use_init_radio_station;
-use oneclient_app::state::{AppChannel, AppState};
+use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
     use_provide_actions, use_provide_link_confirm,
 };
 use tokio::runtime::Builder;
 
-struct OneClientApp;
+struct OneClientApp {
+    needs_location: bool,
+}
 
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
+        let needs_location = self.needs_location;
+
         // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
-        let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
+        let station = use_init_radio_station::<AppState, AppChannel>(move || AppState {
+            launcher: LauncherInit {
+                needs_location,
+                ..LauncherInit::default()
+            },
+            ..AppState::default()
+        });
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -35,15 +45,17 @@ impl App for OneClientApp {
                 .run(),
             );
 
-            let startup = actions.clone();
-            spawn_forever(async move {
-                match events::start_launcher(station, events_bus).await {
-                    // Must follow startup `sync_bundles` needs the launcher handle and firing
-                    // it early leaves `syncing_bundles` stuck disabling every launch button
-                    Ok(()) => startup.sync_bundles(),
-                    Err(err) => events::report_startup_failure(&station, &err),
-                }
-            });
+            if !needs_location {
+                let startup = actions.clone();
+                spawn_forever(async move {
+                    match events::start_launcher(station, events_bus).await {
+                        // Must follow startup `sync_bundles` needs the launcher handle and firing
+                        // it early leaves `syncing_bundles` stuck disabling every launch button
+                        Ok(()) => startup.sync_bundles(),
+                        Err(err) => events::report_startup_failure(&station, &err),
+                    }
+                });
+            }
 
             actions
         });
@@ -72,7 +84,15 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
+    let needs_location = oneclient_common::paths::settings_file()
+        .map(|path| !path.exists())
+        .unwrap_or(false);
+
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
+
+    if let Some(dir) = settings.data_dir.clone() {
+        oneclient_common::paths::set_data_dir(dir);
+    }
 
     if settings.log_debug {
         oneclient_core::logger::init_debug()
@@ -87,7 +107,7 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    let window_config = WindowConfig::new_app(OneClientApp)
+    let window_config = WindowConfig::new_app(OneClientApp { needs_location })
         .with_title(constants::WINDOW_TITLE)
         .with_app_id(constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(

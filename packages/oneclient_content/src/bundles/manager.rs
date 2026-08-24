@@ -37,7 +37,7 @@ impl Bundle {
         let loader = GameLoader::from_repr(row.mc_loader as u8)
             .ok_or(BundleError::InvalidLoader(row.mc_loader))?;
 
-        let launcher_dir = paths::launcher_dir()?;
+        let launcher_dir = paths::data_dir()?;
         let path = launcher_dir.join(&row.disk_path);
 
         Ok(Self {
@@ -207,7 +207,7 @@ impl BundlesManager {
         let meta = polymrpack::read_meta_from_archive(&disk_path).await?;
 
         let relative_disk_path = disk_path
-            .strip_prefix(paths::launcher_dir()?)
+            .strip_prefix(paths::data_dir()?)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| disk_path.to_string_lossy().into_owned());
 

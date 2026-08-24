@@ -11,12 +11,13 @@ use crate::components::{
     validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, mutation_is_running, try_game_profile,
-    use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions,
-    use_settings_snapshot,
+    ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
+    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
+    use_loader_versions, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
+use crate::ui::centered_note;
 use crate::view::app::settings::{section_header, settings_row};
 
 use super::cluster_not_found;
@@ -52,7 +53,14 @@ impl Component for ClusterSettings {
             return cluster_not_found();
         };
 
-        let profile = try_game_profile(&profile_query).unwrap_or_else(|| global.clone());
+        let Some(profile) = try_game_profile(&profile_query) else {
+            let note = match query_error(&profile_query) {
+                Some(err) => format!("Could not load these settings: {err}"),
+                None => "Loading settings...".to_string(),
+            };
+            return cluster_content().child(centered_note(&note)).into_element();
+        };
+
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 

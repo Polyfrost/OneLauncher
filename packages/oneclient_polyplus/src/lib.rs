@@ -90,8 +90,7 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
 }
 
 fn build_client() -> Result<reqwest::Client, reqwest::Error> {
-    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-    let mut builder = reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .tcp_keepalive(Some(Duration::from_secs(15)))
         .connect_timeout(Duration::from_secs(10))
         // reqwest-websocket only supports Http <1.1
@@ -103,14 +102,7 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
             env!("CARGO_PKG_HOMEPAGE")
         ));
 
-    // Same WSAEMSGSIZE problem as the main client see `oneclient_net::service`
-    // `hickory-dns` is enabled workspace-wide so opt out explicitly
-    #[cfg(target_os = "windows")]
-    {
-        builder = builder.no_hickory_dns();
-    }
-
-    builder.build()
+    builder.no_hickory_dns().build()
 }
 
 fn base_url() -> &'static str {

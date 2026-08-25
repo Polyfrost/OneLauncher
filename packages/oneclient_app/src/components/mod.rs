@@ -37,6 +37,7 @@ mod toasts;
 mod toggle;
 mod update_prompt;
 mod version_card;
+pub mod upload_mclogs;
 
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;

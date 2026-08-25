@@ -11,7 +11,7 @@ use oneclient_events::Level;
 
 use crate::{
     ui::{divider},
-    components::{Button, ButtonSize, Icon, IconType},
+    components::{Button, ButtonSize, Icon, IconType, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
@@ -440,19 +440,13 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                             .color(colors::fg_secondary()),
                     )
                     .child(
-                        rect()
-                            .width(Size::fill())
-                            .height(Size::px(6.))
-                            .margin(Gaps::new(8., 0., 0., 0.))
-                            .corner_radius(CornerRadius::new_all(50.))
-                            .background(colors::brand().with_a(128))
-                            .child(
-                                rect()
-                                    .width(Size::percent(frac * 100.0))
-                                    .height(Size::px(6.))
-                                    .corner_radius(CornerRadius::new_all(50.))
-                                    .background(colors::brand()),
-                            ),
+                        progress_track(
+                            frac * 100.0,
+                            6.,
+                            colors::brand(),
+                            colors::brand().with_a(128),
+                        )
+                        .margin(Gaps::new(8., 0., 0., 0.)),
                     ),
             ),
     )

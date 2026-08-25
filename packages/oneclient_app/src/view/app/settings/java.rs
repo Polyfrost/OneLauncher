@@ -4,6 +4,7 @@ use oneclient_java::{JavaRuntime, JavaVendor};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
+use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -18,10 +19,40 @@ impl Component for SettingsJava {
         let runtimes = java_runtimes(&runtimes_query);
         let mut show_manager = use_state(|| false);
 
+        fn invalidate_runtimes(dispatch: Actions) {
+            spawn(async move {
+                invalidate_java_queries().await;
+                dispatch
+                    .notify("Java runtimes refreshed")
+                    .body("The installed runtime list is up to date")
+                    .info()
+                    .send();
+            });
+        }
+
+        let refresh_dispatch = dispatch.clone();
+
         let mut shell = settings_page()
             .child(section_header("ADD RUNTIME"))
             .child(AddRow { show_manager }.into_element())
-            .child(section_header("INSTALLED RUNTIMES"))
+            .child(
+                rect()
+                    .width(Size::Fill)
+                    .direction(Direction::Horizontal)
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("INSTALLED RUNTIMES"))
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .small()
+                            .enabled(false) // disabled for now
+                            .on_press(move |_| {
+                                invalidate_runtimes(refresh_dispatch.clone());
+                            })
+                            .child(label().text("Refresh"))
+                    )
+            )
             .child(runtimes_table(runtimes));
 
         if *show_manager.read() {

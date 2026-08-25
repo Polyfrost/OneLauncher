@@ -36,6 +36,7 @@ pub struct PackageEntry {
     pub name: String,
     pub file_name: String,
     pub author: String,
+    pub version: Option<String>,
     pub description: String,
     pub icon_url: Option<String>,
     pub size: u64,
@@ -55,11 +56,18 @@ impl PackageEntry {
         self.provider != ProviderId::Local
     }
 
+    pub fn title(&self) -> &str {
+        if self.is_remote() {
+            &self.name
+        } else {
+            &self.file_name
+        }
+    }
+
     pub fn in_bundle(&self) -> bool {
         self.bundle_name.is_some()
     }
 
-    /// Bundle packages are never marked here so the two update flows cannot contradict
     pub fn is_outdated(&self) -> bool {
         self.update_available && self.is_remote() && !self.in_bundle()
     }
@@ -208,11 +216,7 @@ fn grid_card(
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.title().to_string();
 
     let (bg, border, content_alpha) = if enabled {
         (colors::brand().with_a(38), colors::brand(), 255)
@@ -331,11 +335,7 @@ fn package_info(
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.title().to_string();
 
     rect()
         .horizontal()

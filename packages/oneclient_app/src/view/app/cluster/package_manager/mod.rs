@@ -216,14 +216,13 @@ fn make_row(
         .map(|p| p.author.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
+    let version = installed_info
+        .and_then(|i| i.display_version.clone())
+        .filter(|v| !v.is_empty());
     let description = m
         .map(|p| p.summary.clone())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            installed_info
-                .and_then(|i| i.display_version.clone())
-                .map(|v| format!("Version {v}"))
-        })
+        .or_else(|| version.as_ref().map(|v| format!("Version {v}")))
         .unwrap_or_default();
 
     PackageEntry {
@@ -233,6 +232,7 @@ fn make_row(
         name,
         file_name,
         author,
+        version,
         description,
         icon_url: m.and_then(|p| p.icon_url.clone()),
         size,
@@ -243,6 +243,119 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+    }
+}
+
+fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String> {
+    match item.provider {
+        ProviderId::Modrinth => Some(format!(
+            "https://modrinth.com/{}/{}",
+            content_type.modrinth_type(),
+            item.package_id
+        )),
+        ProviderId::CurseForge => Some(format!(
+            "https://www.curseforge.com/projects/{}",
+            item.package_id
+        )),
+        ProviderId::Local => None,
+    }
+}
+
+// name of a mod | url if exists | version/bundle if exists | authors if exists | enabled/disabled
+const EXPORT_ROW_FORMAT: &str =
+    "- {name}[ | {url}][ | {version|bundle}][ | by {authors}][ | {status}]";
+
+fn fill_placeholders(segment: &str, fields: &[(&str, &str)]) -> (String, bool) {
+    let mut out = String::new();
+    let mut missing = false;
+    let mut rest = segment;
+
+    while let Some(start) = rest.find('{') {
+        let Some(len) = rest[start..].find('}') else {
+            break;
+        };
+        let end = start + len;
+        out.push_str(&rest[..start]);
+
+        let mut value = None;
+        let mut known = false;
+        for name in rest[start + 1..end].split('|') {
+            if let Some((_, found)) = fields.iter().find(|(field, _)| *field == name) {
+                known = true;
+                if !found.is_empty() {
+                    value = Some(*found);
+                    break;
+                }
+            }
+        }
+
+        match value {
+            Some(found) => out.push_str(found),
+            None if known => missing = true,
+            None => out.push_str(&rest[start..=end]),
+        }
+
+        rest = &rest[end + 1..];
+    }
+
+    out.push_str(rest);
+    (out, missing)
+}
+
+fn render_export_row(format: &str, fields: &[(&str, &str)]) -> String {
+    let mut out = String::new();
+    let mut rest = format;
+
+    while let Some(start) = rest.find('[') {
+        let Some(len) = rest[start..].find(']') else {
+            break;
+        };
+        let end = start + len;
+        out.push_str(&fill_placeholders(&rest[..start], fields).0);
+        if let (group, false) = fill_placeholders(&rest[start + 1..end], fields) {
+            out.push_str(&group);
+        }
+        rest = &rest[end + 1..];
+    }
+
+    out.push_str(&fill_placeholders(rest, fields).0);
+    out.trim().to_string()
+}
+
+fn export_line(item: &PackageEntry, content_type: ContentType) -> String {
+    let url = package_url(item, content_type).unwrap_or_default();
+    render_export_row(
+        EXPORT_ROW_FORMAT,
+        &[
+            ("name", item.title()),
+            ("url", &url),
+            ("version", item.version.as_deref().unwrap_or_default()),
+            ("bundle", item.bundle_name.as_deref().unwrap_or_default()),
+            ("authors", &item.author),
+            ("status", if item.enabled { "enabled" } else { "disabled" }),
+        ],
+    )
+}
+
+pub(super) struct PackageExport {
+    pub(super) text: String,
+    pub(super) count: usize,
+}
+
+fn export_packages(
+    items: &[PackageEntry],
+    content_type: ContentType,
+    hidden: HiddenFilter,
+) -> PackageExport {
+    let mut rows: Vec<&PackageEntry> = items.iter().filter(|p| hidden.keep(p)).collect();
+    rows.sort_by_key(|p| p.title().to_lowercase());
+    PackageExport {
+        count: rows.len(),
+        text: rows
+            .iter()
+            .map(|p| export_line(p, content_type))
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
@@ -440,6 +553,7 @@ impl Component for PackageManager {
                 layout,
                 cluster_id,
                 package_type,
+                export_packages(&items, content_type, hidden),
             ))
             .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
             .child(ContentBox::new(

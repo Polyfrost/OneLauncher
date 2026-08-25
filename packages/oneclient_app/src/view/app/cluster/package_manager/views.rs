@@ -2,6 +2,7 @@ use super::*;
 
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
@@ -53,13 +54,7 @@ impl SortMode {
     }
 
     pub(super) fn sort(self, rows: &mut [PackageEntry]) {
-        let title = |p: &PackageEntry| {
-            if p.is_remote() {
-                p.name.to_lowercase()
-            } else {
-                p.file_name.to_lowercase()
-            }
-        };
+        let title = |p: &PackageEntry| p.title().to_lowercase();
 
         match self {
             SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
@@ -142,6 +137,7 @@ pub(super) fn toolbar_bar(
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
+    export: PackageExport,
 ) -> impl IntoElement {
     let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -201,6 +197,14 @@ pub(super) fn toolbar_bar(
                 .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
                 .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
         )
+        .maybe_child((export.count > 0).then(|| {
+            CopyListButton {
+                text: export.text,
+                count: export.count,
+                package_type,
+            }
+            .into_element()
+        }))
         .child(
             Button::new()
                 .primary()
@@ -213,7 +217,51 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-/// Enabling still stores and applies at the next launch but the running session cannot pick it up
+#[derive(PartialEq)]
+struct CopyListButton {
+    text: String,
+    count: usize,
+    package_type: &'static str,
+}
+
+impl Component for CopyListButton {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let text = self.text.clone();
+        let count = self.count;
+        let package_type = self.package_type;
+
+        Button::new()
+            .secondary()
+            .icon()
+            .width(Size::px(FILTER_BTN_W))
+            .height(Size::px(34.))
+            .on_press(move |_| {
+                let noun = format!("{package_type}{}", utils::plural(count as i64));
+                if let Err(err) = Clipboard::set(text.clone()) {
+                    tracing::warn!("clipboard copy failed: {err:?}");
+                    dispatch
+                        .notify("Copy failed")
+                        .body(format!("Could not copy your {noun} to the clipboard."))
+                        .error()
+                        .send();
+                } else {
+                    dispatch
+                        .notify("Copied to clipboard")
+                        .body(format!("{count} {noun} copied to your clipboard."))
+                        .info()
+                        .icon(IconType::ClipboardCheck)
+                        .send();
+                }
+            })
+            .child(
+                Icon::new(IconType::Copy01)
+                    .size(16.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
 pub(super) fn running_notice(noun_plural: &'static str) -> Element {
     rect()
         .horizontal()

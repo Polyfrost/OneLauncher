@@ -113,6 +113,7 @@ dunce = {version = "=1.0.5"}
 htmd = {version = "=0.5.4"}
 indicatif = {version = "=0.18.4", features = ["tokio"]}
 junction = {version = "=2.0.0"}
+notify = {version = "=8.2.0"}
 parking_lot = {version = "=0.12.5"}
 rand = {version = "=0.10.1"}
 regex = {version = "=1.12.3"}
@@ -135,8 +136,8 @@ syn = {version = "=2.0.117"}
 thiserror = {version = "=2.0.18"}
 
 # ui
-freya = {version = "=0.5.0-rc.1", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"]}
-freya-skia-safe = "=0.98.1" # required for the SKSL player renderer
+freya = {version = "=0.5.0-rc.4", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"]}
+freya-skia-safe = "=0.99.1" # required for the SKSL player renderer
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}
 
 [profile.release]

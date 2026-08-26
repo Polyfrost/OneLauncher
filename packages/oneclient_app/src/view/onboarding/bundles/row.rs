@@ -105,8 +105,7 @@ impl Component for OnboardingModCard {
             .border(border_all_color(1.5, border))
             .content(Content::Flex)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |_| on_toggle.call(()))
             .child(header)
             .child(

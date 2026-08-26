@@ -203,6 +203,13 @@ impl Component for RuntimeRow {
         let runtime = &self.runtime;
         let path = runtime.absolute_path.clone();
 
+        // so the scrollarea becomes bigger when horizontal scroll bar is visible (then it won't obscure the file path)
+        let mut viewport_w = use_state(|| 0f32);
+        let content_w = path_content_width(&runtime.absolute_path);
+        let measured_w = *viewport_w.read();
+        let has_scrollbar = measured_w <= 0. || measured_w < content_w;
+        let path_height = if has_scrollbar { 28. } else { 18. };
+
         fn cell(text: String, width: Size) -> impl IntoElement {
             rect()
                 .width(width)
@@ -240,12 +247,19 @@ impl Component for RuntimeRow {
             .child(
                 rect()
                     .width(Size::flex(1.0))
+                    .height(Size::px(path_height))
                     .overflow(Overflow::Clip)
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        let w = e.area.width();
+                        if (*viewport_w.read() - w).abs() > 0.5 {
+                            viewport_w.set(w);
+                        }
+                    })
                     .child(
                         ScrollArea::new()
-                            .horizontal(path_content_width(&runtime.absolute_path))
+                            .horizontal(content_w)
                             .width(Size::fill())
-                            .height(Size::px(18.))
+                            .height(Size::px(path_height))
                             .show_scrollbar(false)
                             .child(
                                 label()

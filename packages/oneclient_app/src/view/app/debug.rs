@@ -472,7 +472,14 @@ impl Component for LauncherUpdateSimulator {
                             .secondary()
                             .child(Icon::new(IconType::RefreshCw01).size(16.))
                             .text("Check for Updates Now")
-                            .on_press(|_| crate::updater::spawn_update_check(false)),
+                            .on_press(|_| {
+                                if let Ok(state) = crate::launcher::state() {
+                                    crate::updater::spawn_update_check(
+                                        false,
+                                        state.services.events.clone(),
+                                    );
+                                }
+                            }),
                     ),
             )
             .into_element()

@@ -9,7 +9,7 @@ use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
     Segment, SegmentedControl, open_folder_button,
 };
-use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_view_state};
+use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
@@ -39,6 +39,8 @@ impl Component for ClusterScreenshots {
         let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
 
         let query = use_cluster_screenshots(self.cluster_id);
+        // Otherwise a screenshot taken in game only shows up on the next visit
+        use_screenshot_folder_watch(folder.clone(), query);
         let action = use_screenshot_action();
 
         let shots = try_cluster_screenshots(&query).unwrap_or_default();
@@ -443,14 +445,9 @@ impl Component for ScreenshotTile {
             .background(CARD_BG)
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {
@@ -538,14 +535,9 @@ impl Component for ScreenshotRow {
                     colors::component_border()
                 },
             ))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {

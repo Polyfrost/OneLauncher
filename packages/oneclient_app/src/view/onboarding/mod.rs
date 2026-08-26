@@ -260,8 +260,7 @@ pub(crate) fn choice_row_sized(
         .corner_radius(CornerRadius::new_all(8.))
         .border(border_all_color(1., border_color))
         .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_press(()))
         .child(
             rect()
@@ -316,8 +315,7 @@ pub(crate) fn version_chip(
         .background(bg)
         .border(border_all_color(1.5, border))
         .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_press(()))
         .child(
             label()

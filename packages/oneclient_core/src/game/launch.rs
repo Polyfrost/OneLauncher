@@ -655,6 +655,7 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) {
     };
 
     command.current_dir(cwd);
+    oneclient_common::process::no_window(command.as_std_mut());
     if let Err(err) = command.status().await {
         tracing::warn!("hook '{hook}' failed: {err}");
     }

@@ -63,5 +63,46 @@ fn validate_executable(path: &Path) -> JavaResult<PathBuf> {
 		});
 	}
 
-	Ok(path.to_path_buf())
+	Ok(prefer_javaw(path))
+}
+
+#[must_use]
+pub fn prefer_javaw(path: impl AsRef<Path>) -> PathBuf {
+	let path = path.as_ref();
+
+	#[cfg(windows)]
+	if path.file_name().is_some_and(|name| name == "java.exe") {
+		let javaw = path.with_file_name("javaw.exe");
+		if javaw.is_file() {
+			return javaw;
+		}
+	}
+
+	path.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::prefer_javaw;
+
+	#[test]
+	fn prefers_the_windowless_twin() {
+		let dir = std::env::temp_dir().join("oneclient-prefer-javaw");
+		std::fs::create_dir_all(&dir).unwrap();
+		std::fs::write(dir.join("java.exe"), b"").unwrap();
+		std::fs::write(dir.join("javaw.exe"), b"").unwrap();
+
+		let picked = prefer_javaw(dir.join("java.exe"));
+		let expected = if cfg!(windows) { "javaw.exe" } else { "java.exe" };
+		assert_eq!(picked.file_name().unwrap(), expected);
+
+		// A lone `java.exe` has nothing to swap to
+		std::fs::remove_file(dir.join("javaw.exe")).unwrap();
+		assert_eq!(
+			prefer_javaw(dir.join("java.exe")).file_name().unwrap(),
+			"java.exe"
+		);
+
+		std::fs::remove_dir_all(&dir).unwrap();
+	}
 }

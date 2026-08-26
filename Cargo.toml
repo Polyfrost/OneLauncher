@@ -136,8 +136,8 @@ syn = {version = "=2.0.117"}
 thiserror = {version = "=2.0.18"}
 
 # ui
-freya = {version = "=0.5.0-rc.1", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"]}
-freya-skia-safe = "=0.98.1" # required for the SKSL player renderer
+freya = {version = "=0.5.0-rc.4", features = ["engine", "winit", "router", "remote-asset", "sdk", "markdown", "query", "radio", "titlebar"]}
+freya-skia-safe = "=0.99.1" # required for the SKSL player renderer
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}
 
 [profile.release]

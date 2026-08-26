@@ -164,10 +164,6 @@ impl Component for NavLink {
         let target = self.target.clone();
         let nav_label = self.nav_label;
 
-        use_drop(move || {
-            Cursor::set(CursorIcon::default());
-        });
-
         let color = if active || hovering() || focused().is_focused() {
             theme::colors::fg_primary()
         } else {
@@ -204,8 +200,7 @@ impl Component for NavLink {
             })
             .on_pointer_over(move |_| hovering.set(true))
             .on_pointer_out(move |_| hovering.set(false))
-            .on_pointer_enter(move |_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(move |_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .child(
                 label()
                     .text(nav_label)

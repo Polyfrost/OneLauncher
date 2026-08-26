@@ -445,14 +445,9 @@ impl Component for ScreenshotTile {
             .background(CARD_BG)
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {
@@ -540,14 +535,9 @@ impl Component for ScreenshotRow {
                     colors::component_border()
                 },
             ))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {

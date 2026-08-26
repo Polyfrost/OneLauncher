@@ -39,8 +39,7 @@ fn language_row(
         .padding(Gaps::new_symmetric(12., 16.))
         .corner_radius(CornerRadius::new_all(12.))
         .background(colors::page_elevated())
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| *selected.write() = index)
         .child(
             rect()

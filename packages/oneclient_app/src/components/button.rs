@@ -251,10 +251,6 @@ impl Component for Button {
 
         let cursor_icon = self.cursor_icon;
 
-        use_drop(move || {
-            Cursor::set(CursorIcon::default());
-        });
-
         let palette = variant_colors(self.variant);
 
         let background = if !enabled() {
@@ -329,21 +325,14 @@ impl Component for Button {
                     hovering.set(false);
                     pressing.set(false);
                 })
-                .on_pointer_enter(move |_| {
-                    Cursor::set(cursor_icon);
-                })
-                .on_pointer_leave(move |_| {
-                    Cursor::set(CursorIcon::default());
-                })
+                .cursor(cursor_icon)
                 .map(on_press.clone(), |rect, handler| {
                     rect.on_all_press(move |event: Event<PressEventData>| {
                         handler.call(event);
                     })
                 });
         } else {
-            rect = rect
-                .on_pointer_enter(move |_| Cursor::set(CursorIcon::NotAllowed))
-                .on_pointer_leave(move |_| Cursor::set(CursorIcon::default()));
+            rect = rect.cursor(CursorIcon::NotAllowed);
         }
 
         rect

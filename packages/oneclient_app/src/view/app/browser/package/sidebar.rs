@@ -207,8 +207,7 @@ impl Component for ProviderTag {
                     .maybe(focused, |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .cursor(CursorIcon::Pointer)
                     .on_all_press(move |_| confirm.set(Some(url.clone())))
             })
     }
@@ -302,8 +301,7 @@ impl Component for AuthorRow {
                 el.a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .cursor(CursorIcon::Pointer)
                     .on_all_press(move |_| confirm.set(Some(url.clone())))
             })
             .maybe(interactive && focused, |el| {
@@ -440,8 +438,7 @@ impl Component for LinkRow {
             .maybe(focused, |el| {
                 el.border(border_all_color(1., colors::brand()))
             })
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_all_press(move |_| confirm.set(Some(url.clone())))
             .child(
                 Icon::new(IconType::Link03)

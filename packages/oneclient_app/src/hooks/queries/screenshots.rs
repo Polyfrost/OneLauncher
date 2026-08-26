@@ -179,8 +179,8 @@ pub fn try_cluster_screenshots(
 }
 
 pub async fn invalidate_screenshots_queries() {
-    QueriesStorage::<ClusterScreenshotsQuery>::try_invalidate_all().await;
-    QueriesStorage::<LocalImageQuery>::try_invalidate_all().await;
+    QueriesStorage::<ClusterScreenshotsQuery>::invalidate_all().await;
+    QueriesStorage::<LocalImageQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

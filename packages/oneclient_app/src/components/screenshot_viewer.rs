@@ -191,8 +191,7 @@ fn chevron_btn(
     }
 
     base.background(Color::from_argb(140, 0, 0, 0))
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(on_press)
         .child(Icon::new(icon).size(26.).color(colors::fg_primary()))
         .into_element()

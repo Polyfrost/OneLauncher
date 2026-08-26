@@ -207,8 +207,7 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                 .horizontal()
                 .cross_align(Alignment::Center)
                 .spacing(6.)
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
                     let now = !*expanded.peek();
                     expanded.set(now);

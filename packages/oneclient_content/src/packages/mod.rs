@@ -9,6 +9,7 @@ pub mod types;
 pub mod updates;
 
 mod file_identity;
+mod markdown;
 
 // Re-exported so `oneclient_core::packages::ContentType` keeps working
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};

@@ -222,13 +222,29 @@ impl JavaService {
 		vendor: &JavaVendor,
 		major: u32,
 	) -> JavaResult<JavaRuntime> {
+		self.install_vendor_runtime(vendor, major, None).await
+	}
+
+	#[tracing::instrument(level = "debug", skip(self, progress))]
+	async fn install_vendor_runtime(
+		&self,
+		vendor: &JavaVendor,
+		major: u32,
+		progress: Option<&GroupedProgressSession>,
+	) -> JavaResult<JavaRuntime> {
 		let provider = provider_for_vendor(vendor).ok_or(JavaError::PackageNotFound { major })?;
 		let package = provider
 			.latest_package_by_major(major, &self.net)
 			.await?
 			.ok_or(JavaError::PackageNotFound { major })?;
+
+		let owned = progress.is_none().then(|| {
+			GroupedProgressSession::start(&self.events, format!("Installing Java {major}"))
+		});
+		let session = progress.or(owned.as_ref()).expect("session present");
+
 		let executable = provider
-			.install_package(&package, &self.net, &self.events, None)
+			.install_package(&package, &self.net, &self.events, Some(session))
 			.await?;
 
 		self.register_checked(&executable, Some(major)).await
@@ -265,7 +281,7 @@ impl JavaService {
 				Some(vendor) => {
 					let vendor = JavaVendor::from_str(vendor)
 						.unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
-					self.install_runtime_from(&vendor, major).await
+					self.install_vendor_runtime(&vendor, major, progress).await
 				}
 				None => self.download_and_register(major, progress).await,
 			},

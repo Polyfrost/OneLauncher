@@ -1,13 +1,17 @@
-use std::path::PathBuf;
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use bytes::Bytes;
+use freya::prelude::{spawn, use_hook};
 use freya::query::{
     Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
+use notify::{EventKind, RecursiveMode, Watcher};
 use oneclient_core::{LauncherError, ScreenshotInfo};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, mpsc};
 
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
@@ -82,6 +86,90 @@ pub fn use_local_image(path: PathBuf, max_edge: u32) -> UseQuery<LocalImageQuery
         LocalImageKeys { path, max_edge },
         LocalImageQuery,
     ))
+}
+
+const WATCH_QUIET: Duration = Duration::from_millis(400);
+
+pub fn use_screenshot_folder_watch(
+    folder: Option<PathBuf>,
+    query: UseQuery<ClusterScreenshotsQuery>,
+) {
+    use_hook(move || {
+        let Some(folder) = folder else {
+            return;
+        };
+
+        spawn(async move {
+            if let Err(err) = watch_folder(&folder, query).await {
+                tracing::warn!(
+                    folder = %folder.display(),
+                    error = %err,
+                    "not watching the screenshot folder; the list will refresh on re-entry only"
+                );
+            }
+        });
+    });
+}
+
+async fn watch_folder(
+    folder: &Path,
+    query: UseQuery<ClusterScreenshotsQuery>,
+) -> notify::Result<()> {
+    // If there is no screenshots folder it creates it
+    std::fs::create_dir_all(folder)?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        match event {
+            Ok(event) if touches_image(&event) => {
+                let _ = tx.send(());
+            }
+            Ok(_) => {}
+            Err(err) => tracing::debug!(error = %err, "screenshot watcher reported an error"),
+        }
+    })?;
+    watcher.watch(folder, RecursiveMode::NonRecursive)?;
+
+    let mut pending = false;
+    loop {
+        tokio::select! {
+            biased;
+
+            event = rx.recv() => {
+                if event.is_none() {
+                    return Ok(());
+                }
+                pending = true;
+            }
+
+            () = quiet_period(pending) => {
+                pending = false;
+                query.invalidate();
+            }
+        }
+    }
+}
+
+async fn quiet_period(pending: bool) {
+    if pending {
+        tokio::time::sleep(WATCH_QUIET).await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
+fn touches_image(event: &notify::Event) -> bool {
+    if matches!(event.kind, EventKind::Access(_)) {
+        return false;
+    }
+
+    event.paths.iter().any(|path| {
+        path.extension().and_then(OsStr::to_str).is_some_and(|ext| {
+            ["png", "jpg", "jpeg"]
+                .iter()
+                .any(|known| ext.eq_ignore_ascii_case(known))
+        })
+    })
 }
 
 pub fn try_cluster_screenshots(

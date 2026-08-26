@@ -204,8 +204,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Free up space",
         description: "Remove cached packages and leftovers nothing is using.",
         keywords: &[
-            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan",
-            "leftover",
+            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan", "leftover",
         ],
         route: Route::SettingsStorage {},
     },
@@ -576,7 +575,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .on_press(move |_| {
                     set_pending_setting_focus(id);
                     search.set(String::new());
-                    let _ = RouterContext::get().push(route.clone());
+                    let _ = RouterContext::get().replace(route.clone());
                 })
                 .child(Icon::new(item.icon))
                 .child(
@@ -808,7 +807,7 @@ impl Component for SidebarItem {
             })
             .map(route, |el, route| {
                 el.on_all_press(move |_| {
-                    let _ = RouterContext::get().push(route.clone());
+                    let _ = RouterContext::get().replace(route.clone());
                 })
             });
 

@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use freya::prelude::*;
 
 use crate::{
-    components::{Icon, IconType},
+    components::{Icon, IconTint, IconType},
     theme::colors,
 };
 
@@ -272,6 +272,12 @@ impl Component for Button {
         } else {
             palette.disabled_foreground
         };
+
+        // Child icons would otherwise inherit this through a `styled` event that lands a couple of
+        // frames after the button paints, so hand it straight to them instead
+        let mut icon_tint = use_state(|| foreground);
+        icon_tint.set_if_modified(foreground);
+        use_hook(|| provide_context(IconTint(icon_tint)));
 
         let border_color = if !enabled() {
             palette.border

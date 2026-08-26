@@ -15,7 +15,7 @@ homepage = "https://polyfrost.org/projects/oneclient"
 license = "GPL-3.0-only"
 readme = "README.md"
 repository = "https://github.com/Polyfrost/OneLauncher"
-version = "2.2.2"
+version = "2.2.3"
 
 [workspace.dependencies]
 # core
@@ -87,8 +87,6 @@ reqwest = {version = "=0.13.3", default-features = false, features = [
   "gzip",
   "brotli",
   "form",
-  "hickory-dns", # Without this reqwest sees only the HTTP_PROXY/HTTPS_PROXY env vars, and  # ignores the proxy configured in Windows Internet Options or macOS network  # preferences — which is how school and workplace networks are set up. Those
-  # users could reach every service in a browser but not from here.
   "system-proxy",
 ]}
 reqwest-websocket = {version = "=0.6.0"}
@@ -115,6 +113,7 @@ dunce = {version = "=1.0.5"}
 htmd = {version = "=0.5.4"}
 indicatif = {version = "=0.18.4", features = ["tokio"]}
 junction = {version = "=2.0.0"}
+notify = {version = "=8.2.0"}
 parking_lot = {version = "=0.12.5"}
 rand = {version = "=0.10.1"}
 regex = {version = "=1.12.3"}

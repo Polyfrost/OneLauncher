@@ -304,8 +304,7 @@ fn version_card(
     if importable {
         card = card
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |_| on_select(()));
     }
 
@@ -368,8 +367,7 @@ fn import_choice_card(
         .background(bg)
         .border(border_all_color(1., border_color))
         .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_press(()))
         .child(
             rect()

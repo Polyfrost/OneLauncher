@@ -225,8 +225,7 @@ fn grid_card(
         let package_id = item.package_id.clone();
         let package_type_owned = package_type.to_string();
         rect()
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |e: Event<PressEventData>| {
                 e.stop_propagation();
                 let _ = RouterContext::get().push(Route::BrowserPackage {
@@ -307,8 +306,7 @@ fn grid_card(
         .background(bg)
         .border(border_all_color(1.5, border))
         .content(Content::Flex)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_toggle.call(()))
         .child(header)
         .child(
@@ -344,15 +342,13 @@ fn package_info(
         .spacing(12.)
         .content(Content::Flex)
         .maybe(remote, |el| {
-            el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| {
-                    let _ = RouterContext::get().push(Route::BrowserPackage {
-                        cluster_id,
-                        package_type: package_type.clone(),
-                        package_id: format!("{}:{}", provider as u8, package_id),
-                    });
-                })
+            el.cursor(CursorIcon::Pointer).on_press(move |_| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                });
+            })
         })
         .child(icon)
         .child(
@@ -528,15 +524,10 @@ fn remove_button(
             Color::TRANSPARENT
         })
         .maybe(enabled, |el| {
-            el.on_pointer_enter(move |_| {
-                hovering.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovering.set(false);
-                Cursor::set(CursorIcon::default());
-            })
-            .on_press(move |_| on_remove())
+            el.cursor(CursorIcon::Pointer)
+                .on_pointer_enter(move |_| hovering.set(true))
+                .on_pointer_leave(move |_| hovering.set(false))
+                .on_press(move |_| on_remove())
         })
         .child(Icon::new(IconType::Trash01).size(14.).color(color))
         .into_element()

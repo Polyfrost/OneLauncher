@@ -184,8 +184,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
                 el.border(border_all_color(1., colors::brand()))
             })
             .maybe(!disabled, |el| {
-                el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                el.cursor(CursorIcon::Pointer)
                     .on_all_press(move |_| *selected.write() = value)
             })
             .maybe_child(self.icon.map(|icon| {

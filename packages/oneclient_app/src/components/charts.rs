@@ -357,11 +357,8 @@ impl Component for BarChart {
                     .width(Size::flex(1.0))
                     .height(Size::fill())
                     .main_align(Alignment::End)
-                    .on_pointer_enter(move |_| {
-                        *hovered.write() = Some(i);
-                        Cursor::set(CursorIcon::Pointer);
-                    })
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .cursor(CursorIcon::Pointer)
+                    .on_pointer_enter(move |_| *hovered.write() = Some(i))
                     .child(
                         rect()
                             .width(Size::fill())

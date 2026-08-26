@@ -155,8 +155,7 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .maybe(enabled, |el| {
-                el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                el.cursor(CursorIcon::Pointer)
                     .on_press(move |_| page.set(target))
             })
             .child(Icon::new(icon).size(14.).color(if enabled {

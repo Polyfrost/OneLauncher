@@ -484,8 +484,7 @@ fn search_box(mut search: State<String>) -> impl IntoElement {
             .padding(Gaps::new_symmetric(2., 2.))
             .corner_radius(CornerRadius::new_all(6.))
             .background(Color::TRANSPARENT)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |_| search.set(String::new()))
             .child(
                 Icon::new(IconType::XClose)
@@ -570,8 +569,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .padding(Gaps::new_symmetric(12., 16.))
                 .corner_radius(CornerRadius::new_all(12.))
                 .background(colors::page_elevated())
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
                     set_pending_setting_focus(id);
                     search.set(String::new());
@@ -735,10 +733,6 @@ impl Component for SidebarInfo {
             }
         };
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .vertical()
             .width(Size::fill())
@@ -750,8 +744,7 @@ impl Component for SidebarInfo {
                     .into_iter()
                     .map(|item| label().text(item).into_element()),
             )
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(copy_to_clipboard)
     }
 }
@@ -797,14 +790,9 @@ impl Component for SidebarItem {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(move |_| {
-                *hovering.write() = true;
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                *hovering.write() = false;
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| *hovering.write() = true)
+            .on_pointer_leave(move |_| *hovering.write() = false)
             .map(route, |el, route| {
                 el.on_all_press(move |_| {
                     let _ = RouterContext::get().replace(route.clone());

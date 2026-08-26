@@ -301,14 +301,9 @@ impl Component for ServerRow {
             } else {
                 Color::TRANSPARENT
             })
-            .on_pointer_enter(move |_| {
-                *hovered.write() = true;
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                *hovered.write() = false;
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| *hovered.write() = true)
+            .on_pointer_leave(move |_| *hovered.write() = false)
             .child(
                 rect()
                     .horizontal()

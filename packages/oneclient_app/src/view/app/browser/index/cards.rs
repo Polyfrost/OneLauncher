@@ -106,10 +106,6 @@ impl Component for PackageCard {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .vertical()
             .width(Size::flex(1.0))
@@ -128,8 +124,7 @@ impl Component for PackageCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(
                 rect()
@@ -240,10 +235,6 @@ impl Component for ListRow {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .horizontal()
             .width(Size::fill())
@@ -266,8 +257,7 @@ impl Component for ListRow {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
             .child(

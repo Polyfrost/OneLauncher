@@ -229,9 +229,7 @@ pub(super) fn nav_button(
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .maybe(enabled, |el| {
-            el.on_press(on_press)
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            el.on_press(on_press).cursor(CursorIcon::Pointer)
         })
         .child(Icon::new(icon).size(14.).color(color))
         .into_element()

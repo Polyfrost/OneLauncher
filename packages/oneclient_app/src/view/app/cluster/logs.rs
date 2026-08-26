@@ -424,8 +424,7 @@ impl Component for LogPicker {
                             colors::component_border()
                         },
                     ))
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .cursor(CursorIcon::Pointer)
                     .on_all_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         open.toggle();
@@ -553,14 +552,9 @@ impl Component for PickerRow {
             } else {
                 Color::TRANSPARENT
             })
-            .on_pointer_enter(move |_| {
-                hovering.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovering.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovering.set(true))
+            .on_pointer_leave(move |_| hovering.set(false))
             .on_all_press(self.on_press.clone())
             .child(
                 rect()

@@ -86,10 +86,6 @@ impl Component for GalleryTile {
         let mut hovered = use_state(|| false);
         let on_open = self.on_open.clone();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         let preview = rect()
             .width(Size::fill())
             .height(Size::px(TILE_PREVIEW_H))
@@ -124,14 +120,9 @@ impl Component for GalleryTile {
                 .alignment(BorderAlignment::Inner),
             )
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_open.call(()))
             .child(preview)
             .maybe(self.image.title.is_some(), |el| {
@@ -279,8 +270,7 @@ fn chevron_btn(
     }
 
     base.background(Color::from_argb(140, 0, 0, 0))
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(on_press)
         .child(Icon::new(icon).size(26.).color(colors::fg_primary()))
         .into_element()

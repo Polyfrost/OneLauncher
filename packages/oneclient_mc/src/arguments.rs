@@ -64,6 +64,8 @@ pub fn java_arguments(
 
 const ZGC_MIN_HEAP_MB: u32 = 8192;
 
+const INITIAL_HEAP_MB: u32 = 512;
+
 #[must_use]
 pub fn performance_flags(
     java_major: u32,
@@ -71,7 +73,7 @@ pub fn performance_flags(
     mem_max: u32,
     custom_args: &[String],
 ) -> Vec<String> {
-    let mut flags = vec![format!("-Xms{mem_max}M")];
+    let mut flags = vec![format!("-Xms{}M", mem_max.min(INITIAL_HEAP_MB))];
 
     let collector_chosen = custom_args.iter().any(|arg| is_collector_flag(arg));
 
@@ -554,7 +556,7 @@ mod tests {
     #[test]
     fn a_java_8_runtime_gets_g1() {
         let j8 = flags(8, "amd64", 4096);
-        assert_eq!(j8.first().unwrap(), "-Xms4096M");
+        assert_eq!(j8.first().unwrap(), "-Xms512M");
         assert!(j8.contains(&"-XX:+UseG1GC".to_string()));
     }
 
@@ -620,7 +622,7 @@ mod tests {
             assert_eq!(
                 flags,
                 vec![
-                    format!("-Xms{mem}M"),
+                    "-Xms512M".to_string(),
                     "-XX:+UseG1GC".to_string(),
                     "-XX:+ParallelRefProcEnabled".to_string(),
                 ],
@@ -649,7 +651,7 @@ mod tests {
             );
             assert_eq!(
                 flags,
-                vec!["-Xms16384M"],
+                vec!["-Xms512M"],
                 "{arg} should leave only the collector-independent flags"
             );
         }
@@ -749,7 +751,7 @@ mod tests {
         assert_eq!(
             flags(25, "aarch64", 16384),
             vec![
-                "-Xms16384M",
+                "-Xms512M",
                 "-XX:+UseZGC",
                 "-XX:+UseCompactObjectHeaders"
             ]
@@ -757,19 +759,32 @@ mod tests {
     }
 
     #[test]
-    fn every_tier_pins_the_heap_to_the_memory_setting() {
+    fn every_tier_starts_small_and_grows_into_the_memory_setting() {
         for major in [8, 17, 21, 25] {
             assert_eq!(
                 flags(major, "amd64", 8192).first().unwrap(),
-                "-Xms8192M",
-                "java {major} should start at the memory setting"
+                "-Xms512M",
+                "java {major} should not commit the ceiling up front"
             );
         }
     }
 
     #[test]
+    fn a_tiny_profile_never_starts_above_its_ceiling() {
+        assert_eq!(
+            flags(21, "amd64", 256),
+            vec![
+                "-Xms256M",
+                "-XX:+UseG1GC",
+                "-XX:+ParallelRefProcEnabled",
+            ],
+            "a start size above the maximum is refused by the JVM outright"
+        );
+    }
+
+    #[test]
     fn a_java_7_runtime_is_left_untouched() {
-        assert_eq!(flags(7, "amd64", 4096), vec!["-Xms4096M"]);
+        assert_eq!(flags(7, "amd64", 4096), vec!["-Xms512M"]);
     }
 }
 

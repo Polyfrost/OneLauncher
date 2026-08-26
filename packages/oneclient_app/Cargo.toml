@@ -38,6 +38,8 @@ uuid.workspace = true
 bytes.workspace = true
 sysinfo.workspace = true
 
+notify.workspace = true
+
 anyhow.workspace = true
 regex.workspace = true
 

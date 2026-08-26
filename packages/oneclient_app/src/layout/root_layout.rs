@@ -8,6 +8,7 @@ use crate::components::{
 };
 use crate::hooks::{SplashState, use_provide_splash};
 use crate::layout::HomeArtPrefetch;
+use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::colors;
@@ -75,6 +76,7 @@ impl Component for RootLayout {
             .child(PackageUpdatePopup)
             .child(StatusBar)
             .child(SplashCurtain)
+            .child(AnimationClockDriver)
             .child(HomeArtPrefetch)
     }
 }

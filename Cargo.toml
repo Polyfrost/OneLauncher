@@ -113,6 +113,7 @@ dunce = {version = "=1.0.5"}
 htmd = {version = "=0.5.4"}
 indicatif = {version = "=0.18.4", features = ["tokio"]}
 junction = {version = "=2.0.0"}
+notify = {version = "=8.2.0"}
 parking_lot = {version = "=0.12.5"}
 rand = {version = "=0.10.1"}
 regex = {version = "=1.12.3"}

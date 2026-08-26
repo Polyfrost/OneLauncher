@@ -9,7 +9,7 @@ use crate::components::{
     Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
     Segment, SegmentedControl, open_folder_button,
 };
-use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_view_state};
+use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
@@ -39,6 +39,8 @@ impl Component for ClusterScreenshots {
         let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
 
         let query = use_cluster_screenshots(self.cluster_id);
+        // Otherwise a screenshot taken in game only shows up on the next visit
+        use_screenshot_folder_watch(folder.clone(), query);
         let action = use_screenshot_action();
 
         let shots = try_cluster_screenshots(&query).unwrap_or_default();

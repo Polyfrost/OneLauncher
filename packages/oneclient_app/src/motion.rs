@@ -22,6 +22,8 @@ impl Component for AnimationClockDriver {
     }
 }
 
-pub fn animations_enabled() -> bool {
-    AnimationClock::get().speed() <= AnimationClock::MAX_SPEED
+/// Read from the setting rather than the clock so a component re-renders when the preference is
+/// toggled, and so it never reads the one frame of stale speed before the driver above applies it
+pub fn use_animations_enabled() -> bool {
+    use_settings_snapshot().settings.animations_enabled
 }

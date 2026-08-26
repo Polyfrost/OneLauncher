@@ -49,7 +49,7 @@ pub use context_menu::ContextMenu;
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use file_drop::FileDropOverlay;
-pub use icons::{Icon, IconType};
+pub use icons::{Icon, IconTint, IconType};
 pub use java_install_manager::JavaInstallManager;
 pub use generic_prompt::GenericPromptOverlay;
 pub use java_prompt::JavaPromptOverlay;

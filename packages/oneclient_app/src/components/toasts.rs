@@ -13,13 +13,15 @@ use crate::{
     ui::{divider},
     components::{Button, ButtonSize, Icon, IconType},
     hooks::{use_dispatch, use_notifications_snapshot},
+    motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
 };
 
 const TOAST_W: f32 = 300.;
 const TRAVEL: f32 = 320.;
-const TTL_MS: f32 = 5000.;
+const TTL_MS: f32 = crate::notifications::MESSAGE_TOAST_TTL.as_millis() as f32;
+const TTL_STEP: std::time::Duration = std::time::Duration::from_millis(100);
 /// Below the navbar a smaller offset let the startup progress toast cover the nav links
 const TOP_PX: f32 = crate::theme::NAVBAR_HEIGHT_PX + 12.;
 
@@ -126,21 +128,40 @@ impl Component for ToastCard {
             AnimNum::new(0., 1.).time(260).ease(Ease::Out)
         });
 
+        let animations = use_animations_enabled();
         let paused = *self.hovering.read() > 0;
         let mut was_paused = use_state(|| false);
         let mut from_pct = use_state(|| 100.);
         let mut run_start = use_state(Instant::now);
+        let mut wall_pct = use_state(|| 100.);
 
         if paused != *was_paused.peek() {
             if paused {
-                let elapsed_pct = run_start.peek().elapsed().as_secs_f32() * 1000. / TTL_MS * 100.;
-                let remaining = *from_pct.peek() - elapsed_pct;
-                from_pct.set(remaining.clamp(0., 100.));
+                let remaining = remaining_pct(*from_pct.peek(), *run_start.peek());
+                from_pct.set(remaining);
+                wall_pct.set(remaining);
             } else {
                 run_start.set(Instant::now());
             }
             was_paused.set(paused);
         }
+
+        let mut ticker = use_state(|| None::<OwnedTaskHandle>);
+        use_side_effect_with_deps(&(animations, paused), move |&(animations, paused)| {
+            if animations || paused {
+                ticker.set(None);
+                return;
+            }
+            let handle = spawn(async move {
+                let platform = Platform::get();
+                loop {
+                    wall_pct.set(remaining_pct(*from_pct.peek(), *run_start.peek()));
+                    platform.send(UserEvent::RequestRedraw);
+                    tokio::time::sleep(TTL_STEP).await;
+                }
+            });
+            ticker.set(Some(handle.owned()));
+        });
 
         let ttl_bar_anim =
             use_animation_with_dependencies(&(paused, *from_pct.peek()), |conf, deps| {
@@ -160,10 +181,10 @@ impl Component for ToastCard {
 
         let offset = slide.read().value();
         let opacity = fade.read().value();
-        let ttl_pct = if crate::motion::animations_enabled() {
+        let ttl_pct = if animations {
             ttl_bar_anim.read().value()
         } else {
-            100.
+            *wall_pct.read()
         };
 
         let mut hovering = self.hovering;
@@ -218,6 +239,11 @@ impl Component for ToastCard {
             })
             .child(card)
     }
+}
+
+fn remaining_pct(from_pct: f32, run_start: Instant) -> f32 {
+    let elapsed_pct = run_start.elapsed().as_secs_f32() * 1000. / TTL_MS * 100.;
+    (from_pct - elapsed_pct).clamp(0., 100.)
 }
 
 fn toast_shell(entry: &InboxEntry) -> Rect {

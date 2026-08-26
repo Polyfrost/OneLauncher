@@ -213,8 +213,19 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-/// Enabling still stores and applies at the next launch but the running session cannot pick it up
 pub(super) fn running_notice(noun_plural: &'static str) -> Element {
+    notice_bar(format!(
+        "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
+    ))
+}
+
+pub(super) fn global_notice(noun_plural: &'static str) -> Element {
+    notice_bar(format!(
+        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
+    ))
+}
+
+fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -233,9 +244,7 @@ pub(super) fn running_notice(noun_plural: &'static str) -> Element {
         )
         .child(
             label()
-                .text(format!(
-                    "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
-                ))
+                .text(text)
                 .font_size(12.)
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),

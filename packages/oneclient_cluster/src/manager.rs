@@ -13,7 +13,7 @@ use crate::error::ClusterResult;
 use oneclient_db::DbPool;
 use tokio::sync::Mutex;
 
-use crate::cluster::Cluster;
+use crate::cluster::{Cluster, remove_mods_link};
 use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
 use crate::stage::ClusterStage;
@@ -159,6 +159,8 @@ impl ClusterManager {
 		if !cluster_dao::delete_by_id(&self.db, cluster_id).await? {
 			return Err(ClusterError::NotFound(cluster_id));
 		}
+
+		remove_mods_link(&cluster.folder_name).await;
 
 		if remove_files {
 			let path = cluster.dir()?;

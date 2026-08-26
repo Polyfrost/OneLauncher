@@ -70,6 +70,59 @@ pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<
 	Ok(true)
 }
 
+use crate::models::GlobalArtifactRow;
+
+/// One row per hash across every cluster for content that is installed globally
+///
+/// `enabled` is the OR over the clusters: one cluster still having a pack on is
+/// enough to keep it in the folder, because there is one folder and it can only
+/// have one answer
+///
+/// Switching a pack off still reaches every cluster it goes through
+/// [`set_enabled_for_hash`], which leaves no row for this to read as on
+///
+/// Written with the runtime-checked builder rather than `query!` so it needs no
+/// entry in the offline cache
+pub async fn list_global_artifacts(
+	pool: &SqlitePool,
+	content_type: i64,
+) -> Result<Vec<GlobalArtifactRow>, sqlx::Error> {
+	sqlx::query_as::<_, GlobalArtifactRow>(
+		r#"
+		SELECT
+			ca.hash AS hash,
+			MIN(ca.cluster_file_name) AS file_name,
+			MAX(ca.enabled) AS enabled
+		FROM cluster_artifacts ca
+		JOIN artifacts a ON a.hash = ca.hash
+		WHERE a.content_type = ?
+		GROUP BY ca.hash
+		"#,
+	)
+	.bind(content_type)
+	.fetch_all(pool)
+	.await
+}
+
+/// Sets the flag on every cluster that has this artifact
+///
+/// Globally installed content has one folder so writing only the row of
+/// whichever cluster the user happened to be looking at would leave the rest
+/// disagreeing with what is on disk
+pub async fn set_enabled_for_hash(
+	pool: &SqlitePool,
+	hash: &str,
+	enabled: i64,
+) -> Result<u64, sqlx::Error> {
+	let result = sqlx::query("UPDATE cluster_artifacts SET enabled = ? WHERE hash = ?")
+		.bind(enabled)
+		.bind(hash)
+		.execute(pool)
+		.await?;
+
+	Ok(result.rows_affected())
+}
+
 pub async fn list_unused_artifacts(pool: &SqlitePool) -> Result<Vec<ArtifactRow>, sqlx::Error> {
 	sqlx::query_as::<_, ArtifactRow>(
 		r#"

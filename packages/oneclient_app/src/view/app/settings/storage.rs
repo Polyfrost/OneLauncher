@@ -5,7 +5,9 @@ use super::{section_header, settings_page};
 use crate::components::{Button, Icon, IconType, open_folder_button};
 use crate::hooks::{
     StorageAction, mutation_is_running, try_storage_report, use_storage_action, use_storage_report,
+    use_storage_scan_progress,
 };
+use crate::state::StorageScanProgress;
 use crate::theme::colors;
 
 /// Rows narrower than this would render as a sliver so they get a floor
@@ -18,10 +20,11 @@ impl Component for SettingsStorage {
     fn render(&self) -> impl IntoElement {
         // Every hook before any early return the report is absent on the first render and a later-only hook would change the hook order
         let report_query = use_storage_report();
+        let scan = use_storage_scan_progress();
 
         let Some(report) = try_storage_report(&report_query) else {
             return settings_page()
-                .child(hero_placeholder())
+                .child(scan_card(scan.as_ref()))
                 .into_element();
         };
 
@@ -33,8 +36,13 @@ impl Component for SettingsStorage {
             })
             .child(label().text("Refresh"));
 
-        let mut page = settings_page()
-            .child(hero(&report, refresh.into_element()))
+        let mut page = settings_page().child(hero(&report, refresh.into_element()));
+
+        if scan.is_some() {
+            page = page.child(scan_card(scan.as_ref()));
+        }
+
+        page = page
             .child(section_header("FREE UP SPACE"))
             .child(
                 ReclaimRow {
@@ -130,18 +138,47 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
         .into_element()
 }
 
-fn hero_placeholder() -> impl IntoElement {
-    rect()
+// the first-load placeholder and the strip shown while a refresh rescans
+fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
+    let counting = scan.filter(|scan| scan.total > 0);
+    let fraction = counting.map_or(0.0, |scan| scan.current as f32 / scan.total as f32);
+
+    let mut header = rect()
+        .horizontal()
         .width(Size::fill())
-        .padding(Gaps::new_symmetric(20., 16.))
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(12.)
+        .child(
+            rect().width(Size::flex(1.0)).child(
+                label()
+                    .text(scan.map_or_else(
+                        || "Measuring disk usage…".to_string(),
+                        |scan| format!("{}…", scan.label),
+                    ))
+                    .font_size(14.)
+                    .color(colors::fg_secondary()),
+            ),
+        );
+
+    if let Some(scan) = counting {
+        header = header.child(
+            label()
+                .text(format!("{} / {}", scan.current, scan.total))
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        );
+    }
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .padding(Gaps::new_symmetric(16., 16.))
         .corner_radius(CornerRadius::new_all(12.))
         .background(colors::page_elevated())
-        .child(
-            label()
-                .text("Measuring disk usage…")
-                .font_size(16.)
-                .color(colors::fg_secondary()),
-        )
+        .child(header)
+        .child(proportion_bar(fraction, colors::brand()))
         .into_element()
 }
 

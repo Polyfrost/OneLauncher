@@ -239,6 +239,10 @@ impl PackageStore {
         )
         .await?;
 
+        if content_type.is_global() {
+            artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
+        }
+
         if !enabled {
             link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
             if link.cluster_file_name != file_name {

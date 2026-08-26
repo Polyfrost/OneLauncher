@@ -56,6 +56,12 @@ impl ContentType {
         }
     }
 
+    // installed once for the whole launcher rather than per cluster
+    #[must_use]
+    pub const fn is_global(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
     pub fn from_folder_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "mods" | "mod" => Some(Self::Mod),

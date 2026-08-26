@@ -441,6 +441,11 @@ impl Component for PackageManager {
                 cluster_id,
                 package_type,
             ))
+            .maybe_child(
+                content_type
+                    .is_global()
+                    .then(|| views::global_notice(noun_plural)),
+            )
             .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
             .child(ContentBox::new(
                 filtered,

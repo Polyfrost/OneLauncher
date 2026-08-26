@@ -1,18 +1,3 @@
-//! An image element that scales the way a browser's `max-width: 100%` does.
-//!
-//! None of freya's four [`AspectRatio`] modes can express it, which is why this
-//! element exists instead of a call into `freya::elements::image`:
-//!
-//! - `Fit` keeps the natural size, so a 1920px banner runs past the panel. This
-//!   is what `freya-markdown` uses, and it is the bug we are here to fix.
-//! - `Min` scales to fit the bounds, which blows an 88x31 badge up to the full
-//!   panel width, and lets the *available height* pick the scale — measured in a
-//!   300x60 panel a 600x200 banner comes out 180x60 instead of 300x100. In a
-//!   column you scroll, height is not a real constraint and must not decide.
-//! - `Max` crops, `None` stretches.
-//!
-//! Clamping the ratio at `1.` on the width axis alone is the whole fix.
-
 use std::any::Any;
 use std::borrow::Cow;
 use std::rc::Rc;
@@ -27,11 +12,8 @@ use super::super::local_image::decode;
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 
-/// Descriptions are read at panel width, so anything past this is memory spent
-/// on pixels nobody sees. The launcher's image service downscales on fetch.
 const MAX_EDGE: u32 = 1600;
 
-/// An image from a markdown document, fetched through the launcher's own cache.
 #[derive(PartialEq)]
 pub struct MarkdownImage {
     url: String,
@@ -52,8 +34,6 @@ impl Component for MarkdownImage {
         let query = use_cached_image(Some(self.url.clone()), MAX_EDGE);
         let loaded = loaded_image(Some(&self.url), &query);
 
-        // Decoding is not free, and a render happens for every unrelated state
-        // change in the panel keep the handle until the bytes actually change
         let mut cache = use_state(|| None::<(usize, ImageHandle)>);
         let holder = loaded.and_then(|(_, bytes)| {
             let ptr = bytes.as_ptr() as usize;
@@ -75,8 +55,6 @@ impl Component for MarkdownImage {
                 .a11y_role(AccessibilityRole::Image)
                 .a11y_alt(self.alt.clone())
                 .into_element(),
-            // No spinner: descriptions are read top to bottom, and a loader that
-            // resizes into an image shoves the text around while it is read
             None if self.alt.is_empty() => rect().into_element(),
             None => label()
                 .text(self.alt.clone())
@@ -86,15 +64,12 @@ impl Component for MarkdownImage {
     }
 }
 
-/// Builder for [`ScaledImageElement`].
 #[derive(Clone)]
 pub struct ScaledImage {
     key: DiffKey,
     element: ScaledImageElement,
 }
 
-/// Scales a decoded image down to the width it is given, never past its natural
-/// size, with the height following along.
 #[derive(Clone, PartialEq)]
 pub struct ScaledImageElement {
     accessibility: AccessibilityData,
@@ -185,7 +160,6 @@ impl ElementExt for ScaledImageElement {
         if self.image_handle != other.image_handle {
             diff.insert(DiffModifies::STYLE);
 
-            // A different image of the same size keeps the layout it had
             if self.image_handle.image.dimensions() != other.image_handle.image.dimensions() {
                 diff.insert(DiffModifies::LAYOUT);
             }
@@ -224,8 +198,6 @@ impl ElementExt for ScaledImageElement {
         let available =
             (*context.area_size - context.torin_node.margin.into()).max(Size2D::zero());
 
-        // `max-width: 100%`: shrink to the width on offer, never grow past the
-        // natural size, and leave the height out of it entirely
         let ratio = (available.width / natural.width).min(1.);
         let ratio = if ratio.is_finite() && ratio > 0. {
             ratio
@@ -290,14 +262,11 @@ mod tests {
 
     use super::*;
 
-    /// A solid opaque image of the given size, decoded already — no PNG fixture
-    /// and no image loading in the way of a layout assertion.
     fn handle(width: u32, height: u32) -> ImageHandle {
         let pixels = Bytes::from(vec![200u8; (width * height * 4) as usize]);
         ImageHandle::from_rgba(width, height, pixels, AlphaType::Opaque).expect("rgba handle")
     }
 
-    /// The measured size of the single image in a panel of the given size.
     fn measured(panel: (f32, f32), image: (u32, u32)) -> Size2D {
         let app = move || {
             rect()
@@ -317,9 +286,6 @@ mod tests {
         .size
     }
 
-    /// Markdown images can sit inside a paragraph, where they are laid out as
-    /// inline placeholders rather than ordinary children. The clamp has to hold
-    /// there too, or a banner in a paragraph escapes the panel again.
     #[test]
     fn scales_an_image_inlined_in_a_paragraph() {
         let app = || {
@@ -355,8 +321,6 @@ mod tests {
         assert_eq!(measured((300., 400.), (88, 31)), Size2D::new(88., 31.));
     }
 
-    /// `AspectRatio::Min` gives 180x60 here, because the available height gets a
-    /// vote. In a column you scroll, it must not.
     #[test]
     fn short_panel_does_not_shrink_the_width() {
         assert_eq!(measured((300., 60.), (600, 200)), Size2D::new(300., 100.));

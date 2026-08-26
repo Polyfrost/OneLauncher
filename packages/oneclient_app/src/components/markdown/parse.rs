@@ -1,17 +1,5 @@
-//! Markdown to a small tree of blocks, ready to be turned into elements.
-//!
-//! Ported from `freya-markdown`, keeping its structure so the two render the
-//! same documents, with three differences:
-//!
-//! - a hard break is a line break, not a space (upstream turns `<br>` and
-//!   trailing double spaces into a space, so the lines run together);
-//! - code blocks keep their line breaks (upstream trims every text event, which
-//!   glues the lines of a fenced block together);
-//! - HTML is reduced to the text inside it rather than printed as raw tags.
-
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
-/// A top-level piece of a document.
 #[derive(Clone, PartialEq)]
 pub enum Block {
     Heading {
@@ -44,21 +32,18 @@ pub enum Block {
     Rule,
 }
 
-/// A list, numbered when `start` is set.
 #[derive(Clone, PartialEq)]
 pub struct List {
     pub start: Option<u64>,
     pub items: Vec<ListItem>,
 }
 
-/// A list item's own content plus the lists nested underneath it.
 #[derive(Clone, PartialEq)]
 pub struct ListItem {
     pub content: Vec<Inline>,
     pub nested_lists: Vec<List>,
 }
 
-/// A piece of a paragraph: styled text, an image, or a link flowing with the text.
 #[derive(Clone, PartialEq)]
 pub enum Inline {
     Span(TextSpan),
@@ -73,7 +58,6 @@ pub enum Inline {
     },
 }
 
-/// A run of text sharing one style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextSpan {
     pub text: String,
@@ -100,11 +84,6 @@ pub fn parse(content: &str) -> Vec<Block> {
     Walker::default().walk(Parser::new_ext(content, options))
 }
 
-/// The parser's running state.
-///
-/// Markdown nests, but the element tree we build is flat, so where a piece of
-/// text lands depends on which constructs are open: a span inside a link inside
-/// a list item belongs to the link, not to the item.
 #[derive(Default)]
 struct Walker {
     blocks: Vec<Block>,
@@ -154,8 +133,6 @@ impl Walker {
                 Event::Code(code) => self.code(&code),
                 Event::SoftBreak => self.break_of(" "),
                 Event::HardBreak => self.break_of("\n"),
-                // Tags are dropped, but the text they wrapped arrives as its own
-                // events and survives
                 Event::InlineHtml(_) => {}
                 Event::Html(html) => self.html_block(&html),
                 Event::Rule => self.blocks.push(Block::Rule),
@@ -173,16 +150,12 @@ impl Walker {
                 self.spans.clear();
             }
             Tag::Paragraph => {
-                // Paragraphs inside a blockquote or a list item belong to their
-                // parent, and only a bare one opens a block of its own
                 if !self.in_blockquote && self.items.is_empty() {
                     self.in_paragraph = true;
                     self.spans.clear();
                     self.content.clear();
                 }
             }
-            // The language is parsed but unused: freya's `code-editor` feature,
-            // the only thing that could highlight it, is not enabled here
             Tag::CodeBlock(_) => {
                 self.in_code_block = true;
                 self.code.clear();
@@ -283,7 +256,6 @@ impl Walker {
                 headers: std::mem::take(&mut self.headers),
                 rows: std::mem::take(&mut self.rows),
             }),
-            // The head holds its cells directly, without a row around them
             TagEnd::TableHead => self.headers = std::mem::take(&mut self.row),
             TagEnd::TableRow => {
                 let row = std::mem::take(&mut self.row);
@@ -336,8 +308,6 @@ impl Walker {
         }
     }
 
-    /// Files a finished image where the surrounding constructs say it belongs,
-    /// falling back to a block of its own when nothing is open.
     fn place(&mut self, inline: Inline, as_block: impl FnOnce(String, String) -> Block) {
         if self.in_link {
             self.link_content.push(inline);
@@ -355,7 +325,6 @@ impl Walker {
 
     fn text(&mut self, text: &str) {
         if self.in_code_block {
-            // No trimming: a fenced block's line breaks are its content
             self.code.push_str(text);
             return;
         }
@@ -395,7 +364,6 @@ impl Walker {
         self.push_span(TextSpan::new(text));
     }
 
-    /// Block-level HTML: keep whatever text it wrapped, drop the markup.
     fn html_block(&mut self, html: &str) {
         let text = strip_tags(html);
         if text.trim().is_empty() {
@@ -424,7 +392,6 @@ impl Walker {
     }
 }
 
-/// Drops everything between `<` and `>`, keeping the text around it.
 fn strip_tags(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -433,7 +400,6 @@ fn strip_tags(html: &str) -> String {
         out.push_str(&rest[..open]);
         match rest[open..].find('>') {
             Some(close) => rest = &rest[open + close + 1..],
-            // An unclosed `<` is text, not markup
             None => {
                 out.push_str(&rest[open..]);
                 return out;
@@ -498,9 +464,6 @@ mod tests {
         assert_eq!(paragraph_text(&blocks("<div>\nhello\n</div>")[0]).trim(), "hello");
     }
 
-    /// Even a lone image is wrapped in a paragraph by CommonMark, so every image
-    /// a description contains reaches the renderer as paragraph content — which
-    /// is why the scaling has to hold for inline placeholders.
     #[test]
     fn images_arrive_as_paragraph_content() {
         assert_eq!(paragraph_text(&blocks("![alt](a.png)")[0]), "[img:alt]");

@@ -1,11 +1,3 @@
-//! Our own markdown renderer.
-//!
-//! Freya's `MarkdownViewer` draws images at their natural size, so a banner in a
-//! mod description runs past the panel, and nothing in its API can intervene:
-//! the `inline_element` hook only sees raw HTML, and images go straight to a
-//! private `render_image`. See [`image`] for why the fix reaches all the way
-//! down to a custom element, and [`parse`] for the bugs fixed on the way.
-
 use std::borrow::Cow;
 
 use freya::prelude::*;
@@ -15,7 +7,6 @@ mod image;
 mod parse;
 mod render;
 
-/// Colors and sizes for [`Markdown`], mirroring the fields freya's viewer themes.
 #[derive(Clone, PartialEq)]
 pub struct MarkdownStyle {
     pub color: Color,
@@ -64,7 +55,6 @@ impl MarkdownStyle {
     }
 }
 
-/// Renders a markdown document.
 #[derive(PartialEq)]
 pub struct Markdown {
     content: String,

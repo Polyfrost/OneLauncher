@@ -1,8 +1,3 @@
-//! Blocks to freya elements.
-//!
-//! Shapes, paddings and spacings are lifted from `freya-markdown` so switching
-//! renderers does not restyle anything except the images.
-
 use freya::prelude::*;
 
 use super::MarkdownStyle;
@@ -10,8 +5,6 @@ use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
 use crate::hooks::LinkConfirmState;
 
-/// `key` keeps the diffing stable when a document re-renders: without it the
-/// blocks are matched by position and an edit near the top rebuilds the rest.
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
     match block {
         Block::Heading { level, spans } => {
@@ -72,7 +65,6 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
     }
 }
 
-/// One styled run of text.
 fn styled_span(span: &TextSpan, text_color: Color, code_color: Color) -> Span<'static> {
     let mut styled = Span::new(span.text.clone());
     if span.bold {
@@ -101,8 +93,6 @@ fn render_spans(
     )
 }
 
-/// A paragraph's mixed content: text flows as spans, images and links are
-/// inlined as child elements between them.
 fn render_content(content: &[Inline], base_font_size: f32, style: &MarkdownStyle) -> Paragraph {
     let mut result = paragraph().font_size(base_font_size);
 
@@ -162,9 +152,6 @@ fn render_list(list: &List, style: &MarkdownStyle) -> Rect {
         }))
 }
 
-/// Deliberately not freya's `Table`, which paints itself from its own theme.
-/// The launcher registers no freya theme, so that table comes out light-on-light
-/// against a dark panel — this one uses the colors the caller already passes.
 fn render_table(
     headers: &[Vec<TextSpan>],
     rows: &[Vec<Vec<TextSpan>>],
@@ -212,11 +199,6 @@ fn table_row(cells: &[Vec<TextSpan>], style: &MarkdownStyle, header: bool) -> Re
         }))
 }
 
-/// A link from a markdown document.
-///
-/// Deliberately not freya's `Link`, which calls `open::that` on press: these
-/// URLs come from whoever wrote the mod description, so they go through the
-/// launcher's own confirmation overlay instead.
 #[derive(PartialEq)]
 struct MarkdownLink {
     url: String,
@@ -251,8 +233,6 @@ impl MarkdownLink {
 
 impl Component for MarkdownLink {
     fn render(&self) -> impl IntoElement {
-        // The overlay is provided at the app root, but a document rendered
-        // outside it still has to do something sane rather than panic
         let pending = try_consume_root_context::<LinkConfirmState>().map(|state| state.0);
         let mut hovering = use_state(|| false);
 
@@ -268,7 +248,6 @@ impl Component for MarkdownLink {
                 Inline::Image { url, alt } => {
                     text.child(MarkdownImage::new(url.clone(), alt.clone()))
                 }
-                // Markdown cannot nest a link inside a link render the text
                 Inline::Link { content, .. } => content.iter().fold(text, |text, item| match item {
                     Inline::Span(span) => {
                         text.span(styled_span(span, self.style.color_link, self.style.color_code))

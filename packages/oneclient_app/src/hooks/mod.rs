@@ -108,6 +108,13 @@ pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
 }
 
+pub fn use_pending_launch() -> Option<String> {
+    use_radio(AppChannel::PendingLaunch)
+        .read()
+        .pending_launch
+        .clone()
+}
+
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {
     use_radio(AppChannel::MicrosoftLogin)
         .read()

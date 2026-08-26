@@ -235,6 +235,7 @@ fn cluster_header(
 ) -> impl IntoElement {
     let (launch_label, launch_enabled) = launch_state;
     let kill_dispatch = dispatch.clone();
+    let shortcut_dispatch = dispatch.clone();
     rect()
         .horizontal()
         .content(Content::Flex)
@@ -269,6 +270,13 @@ fn cluster_header(
                 .cross_align(Alignment::Center)
                 .spacing(10.)
                 .maybe_child(folder.map(crate::components::open_folder_button))
+                .child(
+                    Button::new()
+                        .secondary()
+                        .icon()
+                        .on_press(move |_| shortcut_dispatch.create_cluster_shortcut(cluster_id))
+                        .child(Icon::new(IconType::Rocket02).size(16.)),
+                )
                 .maybe(running, |el| {
                     el.child(
                         Button::new()

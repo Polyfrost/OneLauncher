@@ -4,10 +4,12 @@
 #![recursion_limit = "256"]
 
 mod assets;
+pub mod cli;
 mod components;
 pub mod hooks;
 pub mod events;
 mod install;
+pub mod ipc;
 mod launcher;
 pub mod state;
 mod transfer;
@@ -15,8 +17,10 @@ mod layout;
 mod motion;
 mod notifications;
 pub mod platform;
+pub mod protocol;
 pub mod recovery;
 mod routes;
+pub mod shortcut;
 pub mod theme;
 mod ui;
 pub mod updater;

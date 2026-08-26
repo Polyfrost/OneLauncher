@@ -21,6 +21,7 @@ pub enum AppChannel {
     AccountSwitcher,
     MicrosoftLogin,
     Installs,
+    PendingLaunch,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -40,6 +41,7 @@ pub struct AppState {
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub pending_launch: Option<String>,
 }
 
 /// In-flight installs so the button that started one stays disabled until it lands

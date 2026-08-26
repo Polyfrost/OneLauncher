@@ -122,7 +122,7 @@ impl Component for LocalImage {
     }
 }
 
-fn decode(bytes: &Bytes) -> Option<ImageHandle> {
+pub(super) fn decode(bytes: &Bytes) -> Option<ImageHandle> {
     let data = unsafe { SkData::new_bytes(bytes) };
     let img = SkImage::from_encoded(data)?;
     Some(ImageHandle::new(img, bytes.clone()))

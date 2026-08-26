@@ -25,12 +25,12 @@ async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
 
 pub async fn invalidate_cluster_queries() {
     let started = std::time::Instant::now();
-    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::try_invalidate_all()).await;
-    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::try_invalidate_all()).await;
-    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::try_invalidate_all()).await;
-    timed("clusters", QueriesStorage::<ListClustersQuery>::try_invalidate_all()).await;
-    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::try_invalidate_all()).await;
-    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::try_invalidate_all()).await;
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
+    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
+    timed("clusters", QueriesStorage::<ListClustersQuery>::invalidate_all()).await;
+    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
+    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::invalidate_all()).await;
     tracing::debug!(
         target: "oneclient_app::perf",
         ms = started.elapsed().as_millis() as u64,
@@ -41,15 +41,15 @@ pub async fn invalidate_cluster_queries() {
 /// Split out of [`invalidate_cluster_queries`] so an install can wait for just
 /// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
-    QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
+    QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
 }
 
 pub async fn invalidate_profile_queries() {
-    QueriesStorage::<ListNamedProfilesQuery>::try_invalidate_all().await;
-    QueriesStorage::<GameProfileQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterProfileQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterSettingsQuery>::try_invalidate_all().await;
-    QueriesStorage::<ListClustersQuery>::try_invalidate_all().await;
+    QueriesStorage::<ListNamedProfilesQuery>::invalidate_all().await;
+    QueriesStorage::<GameProfileQuery>::invalidate_all().await;
+    QueriesStorage::<ClusterProfileQuery>::invalidate_all().await;
+    QueriesStorage::<ClusterSettingsQuery>::invalidate_all().await;
+    QueriesStorage::<ListClustersQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

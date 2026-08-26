@@ -3,7 +3,9 @@ use oneclient_common::Patch;
 use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
-use crate::components::{Dropdown, Icon, IconType, TextInput, toggle, validate_number};
+use crate::components::{
+    Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
+};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -92,7 +94,7 @@ impl Component for SettingsMinecraft {
             .child(settings_row(
                 IconType::Database01,
                 "Memory",
-                "The amount of memory in megabytes allocated for the game.",
+                "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
                 memory_field(memory),
             ))
             .child(settings_row(
@@ -237,21 +239,3 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
         .into_element()
 }
 
-fn memory_field(memory: State<String>) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .child(
-            TextInput::new(memory)
-                .width(Size::px(90.))
-                .placeholder("4096")
-                .on_validate(validate_number)
-                .trailing(
-                    label()
-                        .text("MB")
-                        .font_size(12.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-}

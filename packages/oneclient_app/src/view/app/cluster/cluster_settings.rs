@@ -7,8 +7,8 @@ use oneclient_core::settings::{
 };
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled,
-    validate_number,
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
+    toggle_controlled, validate_number,
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
@@ -363,21 +363,12 @@ impl Component for MemoryRow {
         })
         .into();
 
-        let control = TextInput::new(memory)
-            .width(Size::px(90.))
-            .placeholder("4096")
-            .on_validate(validate_number)
-            .trailing(
-                label()
-                    .text("MB")
-                    .font_size(12.)
-                    .color(colors::fg_secondary()),
-            );
+        let control = memory_field(memory);
 
         settings_row(
             IconType::Database01,
             "Memory",
-            "The amount of memory in megabytes allocated for the game.",
+            "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
             override_cell(control, overridden, on_reset),
         )
     }

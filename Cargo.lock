@@ -4472,6 +4472,8 @@ dependencies = [
  "bytes 1.11.1",
  "cargo-packager-updater",
  "chrono",
+ "directories",
+ "dunce",
  "freya",
  "freya-skia-safe",
  "image",
@@ -4490,6 +4492,7 @@ dependencies = [
  "oneclient_net",
  "oneclient_polyplus",
  "open",
+ "percent-encoding",
  "polyio",
  "regex",
  "rfd",
@@ -4499,6 +4502,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid 1.23.1",
+ "windows 0.62.2",
  "winresource",
 ]
 

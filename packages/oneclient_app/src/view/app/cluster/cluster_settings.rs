@@ -70,29 +70,6 @@ impl Component for ClusterSettings {
                     .width(Size::fill())
                     .height(Size::fill())
                     .spacing(4.)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
-                    .child(section_header("LOADER"))
-                    .child(
-                        LoaderRow {
-                            cluster_id,
-                            loader,
-                            selected: cluster.mc_loader_version.clone(),
-                            versions,
-                        }
-                        .into_element(),
-                    )
-                    .child(section_header("JAVA"))
-                    .child(
-                        JavaRow {
-                            cluster_id,
-                            value: profile.java_path.clone(),
-                            global: global.java_path.clone(),
-                            runtimes,
-                        }
-                        .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -118,6 +95,38 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(
+                        LoaderRow {
+                            cluster_id,
+                            loader,
+                            selected: cluster.mc_loader_version.clone(),
+                            versions,
+                        }
+                        .into_element(),
+                    )
+                    .child(
+                        DedicatedDirRow {
+                            cluster_id,
+                            dedicated: cluster.uses_dedicated_dir(),
+                        }
+                        .into_element(),
+                    )
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("JAVA"))
+                    .child(
+                        JavaRow {
+                            cluster_id,
+                            value: profile.java_path.clone(),
+                            global: global.java_path.clone(),
+                            runtimes,
+                        }
+                        .into_element(),
+                    )
+                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
+                    .child(section_header("PROCESS"))
+                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
+                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
+                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
                     .child(section_header("CONTENT"))
                     .child(
                         BrowserUpdateModeRow {
@@ -127,18 +136,6 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(section_header("DIRECTORY"))
-                    .child(
-                        DedicatedDirRow {
-                            cluster_id,
-                            dedicated: cluster.uses_dedicated_dir(),
-                        }
-                        .into_element(),
-                    )
-                    .child(section_header("PROCESS"))
-                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )

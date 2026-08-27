@@ -623,8 +623,6 @@ impl Actions {
             .progress(id, "Downloading assets", current, total);
     }
 
-    /// The pending flag is raised synchronously before the first `await` the
-    /// claim itself is the guard against a double-click spawning two games
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         let claimed = self
             .station

@@ -21,6 +21,7 @@ pub enum AppChannel {
     AccountSwitcher,
     MicrosoftLogin,
     Installs,
+    PendingLaunch,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -40,6 +41,7 @@ pub struct AppState {
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub pending_launch: Option<String>,
 }
 
 /// In-flight installs so the button that started one stays disabled until it lands
@@ -103,6 +105,21 @@ pub struct LoginProgress {
     pub total: u64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LaunchBlock {
+    Starting(i64),
+    Running(i64),
+}
+
+impl LaunchBlock {
+    #[must_use]
+    pub fn cluster_id(self) -> i64 {
+        match self {
+            Self::Starting(id) | Self::Running(id) => id,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GameState {
     pub stages: HashMap<i64, LaunchStage>,
@@ -121,11 +138,39 @@ impl GameState {
 
     /// Returns false if a launch is already in flight the re-entrancy guard
     pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
-        if self.is_active(cluster_id) || self.is_launch_pending(cluster_id) {
+        if self.block_for(cluster_id).is_some() {
             return false;
         }
         self.pending.insert(cluster_id);
         true
+    }
+
+    fn block_for(&self, cluster_id: i64) -> Option<LaunchBlock> {
+        if self.is_running(cluster_id) {
+            Some(LaunchBlock::Running(cluster_id))
+        } else if self.is_active(cluster_id) || self.is_launch_pending(cluster_id) {
+            Some(LaunchBlock::Starting(cluster_id))
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn launch_block(&self, cluster_id: i64, parallel: bool) -> Option<LaunchBlock> {
+        if let Some(block) = self.block_for(cluster_id) {
+            return Some(block);
+        }
+
+        if parallel {
+            return None;
+        }
+
+        self.stages
+            .keys()
+            .chain(self.pending.iter())
+            .copied()
+            .filter(|id| *id != cluster_id)
+            .find_map(|id| self.block_for(id))
     }
 
     pub fn finish_launch(&mut self, cluster_id: i64) {
@@ -187,6 +232,43 @@ mod tests {
         assert!(game.begin_launch(1));
         game.finish_launch(1);
         assert!(game.begin_launch(1));
+    }
+
+    #[test]
+    fn a_shortcut_is_told_which_cluster_is_in_the_way() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+
+        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Running(1)));
+        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Running(1)));
+        assert_eq!(game.launch_block(2, true), None);
+    }
+
+    #[test]
+    fn a_game_that_is_still_coming_up_still_blocks() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Downloading);
+
+        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+    }
+
+    #[test]
+    fn a_claim_with_no_stage_yet_blocks_too() {
+        let mut game = GameState::default();
+        game.begin_launch(1);
+
+        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+    }
+
+    #[test]
+    fn an_exited_game_is_out_of_the_way() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Exited);
+
+        assert_eq!(game.launch_block(2, false), None);
+        assert_eq!(game.launch_block(1, false), None);
     }
 
     #[test]

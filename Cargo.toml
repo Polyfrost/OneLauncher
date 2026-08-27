@@ -124,6 +124,7 @@ serde_json = {version = "=1.0.150"}
 serde_repr = {version = "=0.1.20"}
 sysinfo = {version = "=0.39.5"}
 trash = {version = "=5.2.6"}
+percent-encoding = {version = "=2.3.2"}
 url = {version = "=2.5.8", features = ["serde"]}
 uuid = {version = "=1.23.1", features = ["serde", "v4"]}
 

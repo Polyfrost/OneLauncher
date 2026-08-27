@@ -7,7 +7,7 @@ use crate::components::{
     UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_splash};
-use crate::layout::HomeArtPrefetch;
+use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
@@ -78,5 +78,6 @@ impl Component for RootLayout {
             .child(SplashCurtain)
             .child(AnimationClockDriver)
             .child(HomeArtPrefetch)
+            .child(PendingLaunchDriver)
     }
 }

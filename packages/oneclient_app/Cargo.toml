@@ -42,6 +42,9 @@ notify.workspace = true
 
 anyhow.workspace = true
 regex.workspace = true
+directories.workspace = true
+dunce.workspace = true
+percent-encoding.workspace = true
 
 cargo-packager-updater = "=0.2.3"
 
@@ -58,6 +61,12 @@ freya.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Registry",
+] }
+
 [target.'cfg(windows)'.build-dependencies]
 winresource = "=0.1.31"
 
@@ -71,6 +80,7 @@ homepage = "https://polyfrost.org/projects/oneclient"
 long-description = "Next-generation open source Minecraft launcher"
 formats = ["nsis", "app", "dmg", "deb", "appimage"]
 binaries = [{ path = "oneclient_app", main = true }]
+deep-link-protocols = [{ schemes = ["oneclient"] }]
 icons = [
   "icons/32x32.png",
   "icons/64x64.png",

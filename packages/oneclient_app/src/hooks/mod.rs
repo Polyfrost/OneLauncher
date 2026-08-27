@@ -2,6 +2,7 @@ mod active_cluster;
 mod debounce;
 mod actions;
 mod queries;
+mod shortcut_actions;
 mod view_state;
 
 pub use debounce::use_debounced;

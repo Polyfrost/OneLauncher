@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use super::ShortcutRequest;
-use super::content::{info_plist, shell_script};
+use crate::file_content::{info_plist, shell_script};
 
 pub const EXTENSION: &str = "app";
 

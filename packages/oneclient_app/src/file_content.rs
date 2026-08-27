@@ -49,6 +49,21 @@ pub fn desktop_entry(name: &str, exe: &Path, folder: &str, icon: &str) -> String
     )
 }
 
+pub fn url_handler_entry(exe: &Path, scheme: &str, icon: &str) -> String {
+    let exec = desktop_exec_arg(&exe.to_string_lossy());
+
+    format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=OneClient\n\
+         Exec={exec} %u\n\
+         Icon={icon}\n\
+         Terminal=false\n\
+         NoDisplay=true\n\
+         MimeType=x-scheme-handler/{scheme};\n"
+    )
+}
+
 pub fn sh_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
@@ -143,6 +158,28 @@ mod tests {
             "oneclient_app",
         );
         assert!(entry.contains(r#"Exec="/opt/One Client/oneclient_app" --launch "my pack""#));
+    }
+
+    #[test]
+    fn the_url_handler_quotes_an_install_path_with_a_space() {
+        let entry = url_handler_entry(
+            &PathBuf::from("/opt/One Client/oneclient_app"),
+            "oneclient",
+            "oneclient_app",
+        );
+        assert!(entry.contains(r#"Exec="/opt/One Client/oneclient_app" %u"#));
+        assert!(entry.contains("MimeType=x-scheme-handler/oneclient;"));
+    }
+
+    #[test]
+    fn the_url_handler_keeps_the_field_code_outside_the_quoted_path() {
+        let entry = url_handler_entry(
+            &PathBuf::from("/usr/bin/oneclient_app"),
+            "oneclient",
+            "oneclient_app",
+        );
+        assert!(entry.contains(r#"Exec="/usr/bin/oneclient_app" %u"#));
+        assert!(!entry.contains("%%u"));
     }
 
     #[test]

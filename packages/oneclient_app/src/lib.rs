@@ -8,6 +8,7 @@ pub mod cli;
 mod components;
 pub mod hooks;
 pub mod events;
+pub(crate) mod file_content;
 mod install;
 pub mod ipc;
 mod launcher;

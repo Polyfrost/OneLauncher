@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::ShortcutRequest;
-use super::content::desktop_entry;
+use crate::file_content::desktop_entry;
 
 pub const EXTENSION: &str = "desktop";
 

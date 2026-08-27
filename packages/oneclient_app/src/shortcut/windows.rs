@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 use super::ShortcutRequest;
-use super::content::url_shortcut;
+use crate::file_content::url_shortcut;
 use crate::protocol;
 
 pub const EXTENSION: &str = "url";

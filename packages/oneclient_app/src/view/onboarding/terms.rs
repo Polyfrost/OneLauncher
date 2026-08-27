@@ -2,7 +2,9 @@ use freya::prelude::*;
 use freya::query::UseQuery;
 use freya::router::RouterContext;
 
-use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, toggle};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, ScrollArea, Segment, SegmentedControl, toggle,
+};
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
     use_migration, use_settings_snapshot, use_terms,
@@ -12,6 +14,8 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
+
+const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 #[derive(Clone, Copy, PartialEq)]
 enum LegalTab {
@@ -75,8 +79,6 @@ impl Component for OnboardingTerms {
             fallback_body(error.as_deref(), query)
         };
 
-        let deciding = *confirming_decline.read();
-
         let content = rect()
             .vertical()
             .width(Size::fill())
@@ -88,40 +90,36 @@ impl Component for OnboardingTerms {
             .maybe_child(tabs)
             .child(body)
             .child(link_row(terms_url, privacy_url))
-            .child(if deciding {
-                decline_warning()
-            } else {
-                accept_row(accepted)
-            })
+            .child(accept_row(accepted))
             .into_element();
 
-        let nav = if deciding {
-            decline_nav(
-                move || {
-                    let mut confirming = confirming_decline;
-                    confirming.set(false);
-                },
-                move || {
-                    dispatch.decline_tos();
-                    let _ = RouterContext::get().replace(Route::Home {});
-                },
-            )
-        } else {
-            terms_nav(
-                back,
-                *accepted.read() && !loading,
-                move || {
-                    let mut confirming = confirming_decline;
-                    confirming.set(true);
-                },
-                move || {
-                    dispatch.accept_tos(terms_version, privacy_version);
-                    let _ = RouterContext::get().replace(next.clone());
-                },
-            )
-        };
+        let accept_dispatch = dispatch.clone();
+        let nav = terms_nav(back, !loading, move || {
+            if *accepted.read() {
+                accept_dispatch.accept_tos(terms_version, privacy_version);
+                let _ = RouterContext::get().replace(next.clone());
+            } else {
+                let mut confirming = confirming_decline;
+                confirming.set(true);
+            }
+        });
 
-        onboarding_page(onboarding_illustration(IconType::File02), content, nav)
+        let modal = confirming_decline.read().then(|| {
+            decline_modal(confirming_decline, move || {
+                dispatch.decline_tos();
+                let _ = RouterContext::get().replace(Route::Home {});
+            })
+        });
+
+        rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .child(onboarding_page(
+                onboarding_illustration(IconType::File02),
+                content,
+                nav,
+            ))
+            .maybe_child(modal)
     }
 }
 
@@ -294,62 +292,11 @@ fn accept_row(accepted: State<bool>) -> Element {
         .into_element()
 }
 
-fn decline_warning() -> Element {
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(8.)
-        .padding(Gaps::new_symmetric(14., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::danger()))
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(
-                    Icon::new(IconType::AlertTriangle)
-                        .size(18.)
-                        .color(colors::code_warn()),
-                )
-                .child(
-                    label()
-                        .text("Continue without accepting?")
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                ),
-        )
-        .child(
-            label()
-                .text(
-                    "This will disable access to world hosting, \
-                     all social features, the OneClient nametag indicator, \
-                     and more.",
-                )
-                .font_size(12.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            label()
-                .text(
-                    "You can accept later under Settings > Launcher. That takes effect after a \
-                     restart.",
-                )
-                .font_size(11.)
-                .color(colors::fg_secondary().with_a(180)),
-        )
-        .into_element()
-}
-
 fn terms_nav(
     back: Option<Route>,
     next_enabled: bool,
-    on_decline: impl FnMut() + 'static,
     on_next: impl FnMut() + 'static,
 ) -> Element {
-    let mut on_decline = on_decline;
     let mut on_next = on_next;
     rect()
         .horizontal()
@@ -370,13 +317,6 @@ fn terms_nav(
         }))
         .child(
             Button::new()
-                .secondary()
-                .width(Size::px(128.))
-                .on_press(move |_| on_decline())
-                .text("Decline"),
-        )
-        .child(
-            Button::new()
                 .primary()
                 .width(Size::px(140.))
                 .enabled(next_enabled)
@@ -387,30 +327,88 @@ fn terms_nav(
         .into_element()
 }
 
-fn decline_nav(on_cancel: impl FnMut() + 'static, on_confirm: impl FnMut() + 'static) -> Element {
-    let mut on_cancel = on_cancel;
+fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) -> Element {
     let mut on_confirm = on_confirm;
+    let mut confirming = confirming;
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .main_align(Alignment::End)
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .padding(Gaps::new(0., 40., 32., 40.))
+    OverlayPopup::new()
+        .on_close(move |_| confirming.set(false))
         .child(
-            Button::new()
-                .secondary()
-                .width(Size::px(128.))
-                .on_press(move |_| on_cancel())
-                .text("Go back"),
-        )
-        .child(
-            Button::new()
-                .danger()
-                .width(Size::px(220.))
-                .on_press(move |_| on_confirm())
-                .text("Decline and continue"),
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(460.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(CornerRadius::new_all(14.))
+                        .background(CARD_BG)
+                        .border(border_all_color(1., colors::danger()))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .cross_align(Alignment::Center)
+                                .spacing(10.)
+                                .child(
+                                    Icon::new(IconType::AlertTriangle)
+                                        .size(20.)
+                                        .color(colors::code_warn()),
+                                )
+                                .child(
+                                    label()
+                                        .text("Continue without accepting?")
+                                        .font_size(16.)
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_primary()),
+                                ),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "This will disable access to world hosting, \
+                                     all social features, the OneClient nametag indicator, \
+                                     and more.",
+                                )
+                                .font_size(12.)
+                                .width(Size::fill())
+                                .max_lines(4)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "You can accept later under Settings > Launcher. That takes \
+                                     effect after a restart.",
+                                )
+                                .font_size(11.)
+                                .width(Size::fill())
+                                .max_lines(3)
+                                .color(colors::fg_secondary().with_a(180)),
+                        )
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .on_press(move |_| confirming.set(false))
+                                        .text("Close"),
+                                )
+                                .child(
+                                    Button::new()
+                                        .danger()
+                                        .on_press(move |_| on_confirm())
+                                        .text("Decline"),
+                                ),
+                        ),
+                ),
         )
         .into_element()
 }

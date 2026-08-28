@@ -4,7 +4,7 @@ use freya::prelude::*;
 use freya::text_edit::Clipboard;
 use regex::Regex;
 
-use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
+use crate::components::{ScrollArea, ScrollAreaCtx, auto_scroll_toggle, corrected_scroll};
 use crate::theme::{self, colors};
 
 const LINE_H: f32 = 16.;
@@ -264,34 +264,6 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
                 .cross_align(Alignment::Center)
                 .maybe_child(streaming.then(|| auto_scroll_toggle(auto_scroll))),
         )
-        .into_element()
-}
-
-fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
-    let on = *auto_scroll.read();
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(6.)
-        .padding(Gaps::new_symmetric(5., 10.))
-        .corner_radius(CornerRadius::new_all(7.))
-        .background(if on {
-            colors::brand().with_a(40)
-        } else {
-            colors::component_bg()
-        })
-        .cursor(CursorIcon::Pointer)
-        .on_press(move |_| auto_scroll.toggle())
-        .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
-        .child(label().text("Auto-scroll").font_size(11.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
         .into_element()
 }
 

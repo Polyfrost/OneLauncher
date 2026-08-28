@@ -167,7 +167,7 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                         }
                     }
                 },
-                Event::Signal(_) => {}
+                Event::Signal(_) | Event::Chat(_) => {}
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     mp.suspend(|| tracing::info!(cluster_id, ?stage, "game stage"));
                 }

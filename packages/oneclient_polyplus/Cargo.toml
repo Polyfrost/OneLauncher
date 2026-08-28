@@ -16,6 +16,8 @@ path = "src/lib.rs"
 [dependencies]
 oneclient_auth.workspace = true
 oneclient_common.workspace = true
+oneclient_events.workspace = true
+oneclient_net.workspace = true
 polyio.workspace = true
 
 reqwest.workspace = true
@@ -24,6 +26,7 @@ tokio.workspace = true
 futures-util.workspace = true
 
 bytes.workspace = true
+chrono.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -397,6 +397,7 @@ impl NotificationState {
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
+            Event::Chat(_) => {}
             // The sign-in modal renders this progress itself it must not also become a toast
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}

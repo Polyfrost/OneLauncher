@@ -8,8 +8,8 @@ use crate::{
     Route,
     components::{Avatar, Icon, IconType},
     hooks::{
-        settled_or_loading, try_default_account, use_active_cluster_id, use_clusters,
-        use_current_account, use_dispatch, use_notifications_snapshot,
+        settled_or_loading, try_default_account, use_active_cluster_id, use_chat_snapshot,
+        use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
     utils::sort_clusters_for_home,
@@ -234,10 +234,18 @@ impl Component for NavbarRight {
         let current_account = use_current_account();
         let dispatch = use_dispatch();
         let unread = use_notifications_snapshot().unread_count();
+        let unread_chats = use_chat_snapshot().unread_count() > 0;
+
+        let has_account =
+            settled_or_loading(&current_account).is_none_or(|account| account.is_some());
 
         let account_uuid = try_default_account(&current_account)
             .map(|account| account.id.to_string())
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
+
+        let open_messages = |_| {
+            let _ = RouterContext::get().push(Route::Chat {});
+        };
 
         let notif_dispatch = dispatch.clone();
         let open_notifications = move |_| {
@@ -260,6 +268,13 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button()
+                    .alt("Messages")
+                    .enabled(has_account)
+                    .child(messages_icon(unread_chats))
+                    .on_press(open_messages),
+            )
+            .child(
+                super::navbar_button()
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
@@ -280,6 +295,23 @@ impl Component for NavbarRight {
             )
             .child(super::window_controls())
     }
+}
+
+fn messages_icon(unread: bool) -> impl IntoElement {
+    rect()
+        .width(Size::px(20.))
+        .height(Size::px(20.))
+        .child(Icon::new(IconType::MessageTextSquare01).size(20.))
+        .maybe_child(unread.then(|| {
+            rect()
+                .position(Position::new_absolute().top(-2.).right(-2.))
+                .width(Size::px(8.))
+                .height(Size::px(8.))
+                .corner_radius(CornerRadius::from(4.))
+                .background(theme::colors::brand())
+                .layer(Layer::Relative(3))
+                .into_element()
+        }))
 }
 
 fn notification_bell(unread: usize) -> impl IntoElement {

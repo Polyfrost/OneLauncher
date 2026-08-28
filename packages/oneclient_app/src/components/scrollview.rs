@@ -1,9 +1,38 @@
 #![allow(dead_code)]
 use freya::prelude::*;
 
+use crate::components::{Icon, IconType};
 use crate::theme::colors;
 
 const LAZY_OVERSCAN: i64 = 3;
+
+pub fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
+    let on = *auto_scroll.read();
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(6.)
+        .padding(Gaps::new_symmetric(5., 10.))
+        .corner_radius(CornerRadius::new_all(7.))
+        .background(if on {
+            colors::brand().with_a(40)
+        } else {
+            colors::component_bg()
+        })
+        .cursor(CursorIcon::Pointer)
+        .on_press(move |_| auto_scroll.toggle())
+        .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
+            colors::brand()
+        } else {
+            colors::fg_secondary()
+        }))
+        .child(label().text("Auto-scroll").font_size(11.).color(if on {
+            colors::brand()
+        } else {
+            colors::fg_secondary()
+        }))
+        .into_element()
+}
 
 pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
     if delta == 0.0 {
@@ -264,11 +293,20 @@ impl ScrollArea {
 
         let reset_key = self.reset_key;
         let mut last_reset = use_state(|| reset_key);
+        let mut reset_fired = false;
         if reset_key.is_some() && *last_reset.peek() != reset_key {
             last_reset.set(reset_key);
             controller.scroll_to_y(0);
             scroll_x.set_if_modified(0.);
+            reset_fired = true;
         }
+
+        let mut was_sticking = use_state(|| stick_bottom);
+        if stick_bottom && !*was_sticking.peek() && !reset_fired {
+            let target = -((*content_h.peek() - *viewport_h.peek()).max(0.));
+            controller.scroll_to_y(target as i32);
+        }
+        was_sticking.set_if_modified(stick_bottom);
 
         let (_, scrolled_y) = controller.into();
         let vp_h = *viewport_h.read();

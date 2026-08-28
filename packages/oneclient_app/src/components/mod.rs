@@ -73,7 +73,7 @@ pub use progress_track::progress_track;
 pub use recents_row::RecentsRow;
 pub use screenshot_viewer::ScreenshotViewer;
 pub(crate) use scrollview::corrected_scroll;
-pub use scrollview::{ScrollArea, ScrollAreaCtx};
+pub use scrollview::{ScrollArea, ScrollAreaCtx, auto_scroll_toggle};
 pub use segmented_control::{Segment, SegmentedControl};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;

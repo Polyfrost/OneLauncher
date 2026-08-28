@@ -4,6 +4,7 @@
 #![recursion_limit = "256"]
 
 mod assets;
+pub mod chat;
 mod components;
 pub mod hooks;
 pub mod events;

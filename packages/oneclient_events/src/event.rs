@@ -12,6 +12,7 @@ pub enum Event {
 	Notification(Notification),
 	Progress(ProgressEvent),
 	Game(GameEvent),
+	Chat(ChatEvent),
 	/// State changed elsewhere whoever caches it should refetch
 	Signal(Signal),
 }
@@ -49,6 +50,12 @@ impl From<ProgressEvent> for Event {
 impl From<GameEvent> for Event {
 	fn from(value: GameEvent) -> Self {
 		Self::Game(value)
+	}
+}
+
+impl From<ChatEvent> for Event {
+	fn from(value: ChatEvent) -> Self {
+		Self::Chat(value)
 	}
 }
 
@@ -120,6 +127,38 @@ impl LaunchStage {
 	pub fn is_busy(self) -> bool {
 		matches!(self, Self::Checking | Self::Downloading | Self::Launching)
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChatEvent {
+	MessageReceived {
+		group_id: i32,
+		message_id: i64,
+		sender: Uuid,
+		content: String,
+	},
+
+	MessageEdited {
+		group_id: i32,
+		message_id: i64,
+		content: String,
+	},
+
+	MessageDeleted {
+		group_id: i32,
+		message_id: i64,
+	},
+
+	PresenceChanged {
+		player: Uuid,
+		online: bool,
+	},
+
+	RosterChanged,
+
+	ConnectionChanged {
+		connected: bool,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

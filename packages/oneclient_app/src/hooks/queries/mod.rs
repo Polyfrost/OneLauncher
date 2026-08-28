@@ -13,6 +13,7 @@ mod analytics;
 mod auth;
 mod bundles;
 mod changelog;
+mod chat;
 mod cluster_content;
 mod clusters;
 mod image;
@@ -53,6 +54,10 @@ pub use bundles::{
 };
 pub use changelog::{
     changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version, use_changelog,
+};
+pub use chat::{
+    BlockedPlayersQuery, FriendRequests, FriendRequestsQuery, FriendsQuery,
+    invalidate_chat_queries, use_blocked_players, use_friend_requests, use_friends,
 };
 pub use cluster_content::{cluster_content_items, use_cluster_content};
 pub use clusters::{use_cluster, use_clusters};

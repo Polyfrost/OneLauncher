@@ -9,6 +9,7 @@ use oneclient_common::domain::ProviderId;
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
 
+use crate::chat::ChatState;
 use crate::notifications::{InboxEntry, NotificationState, PendingPrompt};
 
 /// Writing through a channel wakes only the components that subscribed to it
@@ -21,6 +22,7 @@ pub enum AppChannel {
     AccountSwitcher,
     MicrosoftLogin,
     Installs,
+    Chat,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -40,6 +42,7 @@ pub struct AppState {
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub chat: ChatState,
 }
 
 /// In-flight installs so the button that started one stays disabled until it lands

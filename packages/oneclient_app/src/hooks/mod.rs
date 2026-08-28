@@ -1,8 +1,11 @@
 mod active_cluster;
 mod debounce;
 mod actions;
+mod chat;
 mod queries;
 mod view_state;
+
+pub use chat::resync_chat;
 
 pub use debounce::use_debounced;
 pub use view_state::{PersistedView, use_view_state};
@@ -27,8 +30,10 @@ pub use queries::{
     UseStorageAction, UseUploadLog,
     VERSIONS_PAGE_SIZE, accounts_have_microsoft, bundle_overrides_map, bundles_with_status_items,
     category_list, changelog_error, changelog_groups, changelog_is_loading, cluster_content_items,
-    content_type_for_slug, has_migration_data, invalidate_cluster_content_queries,
-    invalidate_cluster_queries, invalidate_java_queries,
+    BlockedPlayersQuery, FriendRequests, FriendRequestsQuery, FriendsQuery,
+    content_type_for_slug, has_migration_data, invalidate_chat_queries,
+    invalidate_cluster_content_queries, invalidate_cluster_queries, invalidate_java_queries,
+    use_blocked_players, use_friend_requests, use_friends,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
     invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
     java_runtimes, latest_changelog_version, loaded_image, loader_versions,
@@ -56,6 +61,7 @@ pub use queries::{
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
 
+use crate::chat::ChatState;
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
     AppChannel, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
@@ -106,6 +112,10 @@ pub fn use_game_snapshot() -> GameState {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_chat_snapshot() -> ChatState {
+    use_radio(AppChannel::Chat).read().chat.clone()
 }
 
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {

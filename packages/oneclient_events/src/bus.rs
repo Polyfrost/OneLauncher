@@ -2,7 +2,9 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use crate::error::{EventError, EventResult};
-use crate::event::{Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal};
+use crate::event::{
+	ChatEvent, Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
+};
 use crate::prompt::{Answer, Chosen, Prompt, PromptRequest};
 
 /// Cheap to clone every clone feeds the same channel
@@ -87,6 +89,10 @@ impl EventBus {
 			cluster_id,
 			message: message.into(),
 		});
+	}
+
+	pub fn chat(&self, event: ChatEvent) {
+		self.emit(event);
 	}
 
 	pub fn signal(&self, signal: Signal) {

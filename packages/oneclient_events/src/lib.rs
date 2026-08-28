@@ -13,7 +13,7 @@ pub mod prompt;
 pub use bus::{EventBus, EventReceiver, NotificationBuilder};
 pub use error::{EventError, EventResult};
 pub use event::{
-	Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
+	ChatEvent, Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
 };
 pub use progress::{
 	GroupedProgressChild, GroupedProgressEvent, GroupedProgressSession, TaskCategory, TaskPhase,

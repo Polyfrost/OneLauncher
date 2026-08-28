@@ -20,9 +20,10 @@ use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, use_active_cluster_id, use_clusters,
-    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
-    use_provide_browser_state, use_splash,
+    ActiveClusterState, BrowserCompatState, BrowserStateStore, settled_or_loading,
+    use_active_cluster_id, use_clusters, use_current_account, use_dispatch, use_game_snapshot,
+    use_launcher, use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
+    use_splash,
 };
 use crate::theme::colors;
 use oneclient_events::LaunchStage;
@@ -42,6 +43,11 @@ impl Component for AppShell {
 
         let browser_state = use_state(HashMap::new);
         use_provide_browser_state(BrowserStateStore(browser_state));
+
+        let dispatch = use_dispatch();
+        if let Some(account) = settled_or_loading(&use_current_account()) {
+            dispatch.sync_chat_owner(account.map(|account| account.id));
+        }
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);

@@ -4768,9 +4768,12 @@ version = "2.2.3"
 dependencies = [
  "async-tungstenite",
  "bytes 1.11.1",
+ "chrono",
  "futures-util",
  "oneclient_auth",
  "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
  "polyio",
  "rand 0.10.1",
  "reqwest 0.13.3",

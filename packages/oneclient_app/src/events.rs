@@ -6,9 +6,12 @@ use std::time::Duration;
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
-use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
+use oneclient_events::{
+    ChatEvent, Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal,
+};
 use tokio::sync::mpsc;
 
+use crate::chat::ChatMessage;
 use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress};
@@ -128,9 +131,11 @@ impl EventPump {
         let mut failed: Option<(i64, String)> = None;
         let mut login: Option<Option<LoginProgress>> = None;
         let mut sync_complete = false;
+        let mut chat_events: Vec<ChatEvent> = Vec::new();
 
         for event in batch {
             match event {
+                Event::Chat(event) => chat_events.push(event),
                 Event::Signal(Signal::ClustersChanged) => folded.clusters = true,
                 Event::Signal(Signal::JavaChanged) => folded.java = true,
                 Event::Signal(Signal::SyncComplete) => {
@@ -184,6 +189,50 @@ impl EventPump {
             }
         }
 
+        if !chat_events.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::Chat);
+            for event in chat_events {
+                match event {
+                    ChatEvent::MessageReceived {
+                        group_id,
+                        message_id,
+                        sender,
+                        content,
+                    } => {
+                        guard.chat.upsert(
+                            group_id,
+                            ChatMessage {
+                                id: message_id,
+                                sender,
+                                content: content.clone(),
+                                sent_at: Some(chrono::Utc::now().fixed_offset()),
+                                edited: false,
+                            },
+                        );
+                        let unread = guard.chat.active != Some(group_id);
+                        guard.chat.note_activity(group_id, content, unread);
+                    }
+                    ChatEvent::MessageEdited {
+                        group_id,
+                        message_id,
+                        content,
+                    } => guard.chat.edit(group_id, message_id, content),
+                    ChatEvent::MessageDeleted {
+                        group_id,
+                        message_id,
+                    } => guard.chat.remove(group_id, message_id),
+                    ChatEvent::PresenceChanged { player, online } => {
+                        guard.chat.set_presence(player, online);
+                    }
+                    ChatEvent::RosterChanged => folded.chat_roster = true,
+                    ChatEvent::ConnectionChanged { connected } => {
+                        guard.chat.connected = connected;
+                        folded.chat_reconnected |= connected;
+                    }
+                }
+            }
+        }
+
         if sync_complete {
             self.station
                 .write_channel(AppChannel::Launcher)
@@ -219,6 +268,13 @@ impl EventPump {
         if folded.java {
             spawn_forever(async move { crate::hooks::invalidate_java_queries().await });
         }
+        if folded.chat_roster {
+            spawn_forever(async move { crate::hooks::invalidate_chat_queries().await });
+        }
+        if folded.chat_reconnected {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::resync_chat(station).await });
+        }
 
         folded
     }
@@ -230,6 +286,8 @@ struct Folded {
     saw_game_log: bool,
     clusters: bool,
     java: bool,
+    chat_roster: bool,
+    chat_reconnected: bool,
 }
 
 fn reconcile(
@@ -305,7 +363,11 @@ pub async fn start_launcher(
     let state = crate::launcher::install(oneclient_core::LauncherState::new(events).await?);
 
     oneclient_net::status::start(state.services.requester.clone());
-    oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
+    oneclient_polyplus::start(
+        std::sync::Arc::clone(&state.auth),
+        state.services.requester.clone(),
+        state.services.events.clone(),
+    );
     oneclient_core::run_startup_tasks(&state);
 
     let data_dir = oneclient_common::paths::launcher_dir()

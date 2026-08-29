@@ -17,6 +17,24 @@ pub(super) fn navbar_button() -> Button {
 }
 
 pub fn window_controls() -> impl IntoElement {
+    controls(|| {
+        crate::view::chat::close_chat_window();
+        close_active_window();
+    })
+}
+
+pub fn secondary_window_controls(close: impl Fn() + 'static) -> impl IntoElement {
+    controls(close)
+}
+
+fn close_active_window() {
+    let platform = Platform::get();
+    Platform::get().with_window(None, move |window| {
+        platform.close_window(window.id());
+    });
+}
+
+fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
     let minimize = |_| {
         Platform::get().with_window(None, |win| {
             win.set_minimized(true);
@@ -29,12 +47,7 @@ pub fn window_controls() -> impl IntoElement {
         });
     };
 
-    let close = |_| {
-        let platform = Platform::get();
-        Platform::get().with_window(None, move |window| {
-            platform.close_window(window.id());
-        });
-    };
+    let close = move |_| on_close();
 
     rect()
         .horizontal()

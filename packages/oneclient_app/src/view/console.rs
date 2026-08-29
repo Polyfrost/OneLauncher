@@ -1,10 +1,9 @@
 //! Its own Freya window sharing no radio station or query storage with the main one all it needs is the process-wide channel in [`oneclient_core::logger::console`]
 
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use freya::prelude::*;
-use freya::winit::window::WindowId;
 use oneclient_core::logger;
 use oneclient_core::logger::console::{self, ConsoleLine};
 use tokio::sync::broadcast::error::RecvError;
@@ -12,37 +11,28 @@ use tracing::Level;
 
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
 use crate::theme::colors;
+use crate::view::single_window::{Claim, SingleWindow};
 
 const WINDOW_TITLE: &str = "OneClient — Log Console";
 
 /// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;
 
-/// `Opening` is cleared by the window itself not the task that asks for it so a cancelled launch cannot strand the state
-enum ConsoleWindow {
-    Closed,
-    Opening,
-    Open(WindowId),
-}
-
-static CONSOLE_WINDOW: Mutex<ConsoleWindow> = Mutex::new(ConsoleWindow::Closed);
+static CONSOLE_WINDOW: SingleWindow = SingleWindow::new();
 
 pub fn open_log_console() {
-    {
-        let mut state = CONSOLE_WINDOW.lock().expect("console window state");
-        match *state {
-            ConsoleWindow::Open(id) => {
-                Platform::get().focus_window(Some(id));
-                return;
-            }
-            ConsoleWindow::Opening => return,
-            ConsoleWindow::Closed => *state = ConsoleWindow::Opening,
+    let opening = match CONSOLE_WINDOW.claim() {
+        Claim::Focus(id) => {
+            Platform::get().focus_window(Some(id));
+            return;
         }
-    }
+        Claim::Busy => return,
+        Claim::Launch(guard) => guard,
+    };
 
-    // Taken in the caller's scope the future below runs detached and `Platform::get()` needs a component scope
     let platform = Platform::get();
-    spawn(async move {
+    spawn_forever(async move {
+        let _opening = opening;
         platform.launch_window(window_config()).await;
     });
 }
@@ -59,12 +49,9 @@ fn window_config() -> WindowConfig {
         .with_background(colors::page())
         // Native decorations a developer tool is not worth a second bespoke titlebar
         .with_decorations(true)
-        .with_window_handle(|window| {
-            *CONSOLE_WINDOW.lock().expect("console window state") =
-                ConsoleWindow::Open(window.id());
-        })
+        .with_window_handle(|window| CONSOLE_WINDOW.opened(window.id()))
         .with_on_close(|_, _| {
-            *CONSOLE_WINDOW.lock().expect("console window state") = ConsoleWindow::Closed;
+            CONSOLE_WINDOW.forget();
             CloseDecision::Close
         })
 }

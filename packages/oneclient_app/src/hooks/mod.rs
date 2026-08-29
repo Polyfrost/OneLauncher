@@ -61,21 +61,34 @@ pub use queries::{
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
 
-use crate::chat::ChatState;
+use crate::chat::{ChatInbox, ChatThread};
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
-    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
+    AppChannel, AppState, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
 };
 use freya::prelude::*;
-use freya::radio::use_radio;
+use freya::radio::{RadioStation, use_radio};
+
+pub fn use_provide_station() -> RadioStation<AppState, AppChannel> {
+    let contexts = GlobalContexts::get();
+    let station = use_hook(move || {
+        contexts.get_context_or_insert(|| {
+            RadioStation::<AppState, AppChannel>::create_global(AppState::default())
+        })
+    });
+
+    use_provide_context(|| station);
+    station
+}
 
 pub fn use_provide_actions(actions: &Actions) {
     let actions = actions.clone();
-    use_provide_root_context(move || actions.clone());
+    let contexts = GlobalContexts::get();
+    use_hook(move || contexts.insert_context(actions));
 }
 
 pub fn use_dispatch() -> Actions {
-    consume_root_context::<Actions>()
+    GlobalContexts::get().get_context::<Actions>()
 }
 
 /// Wakes its component only when that channel is written so a toast tick does
@@ -114,8 +127,20 @@ pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
 }
 
-pub fn use_chat_snapshot() -> ChatState {
-    use_radio(AppChannel::Chat).read().chat.clone()
+pub fn use_chat_inbox() -> ChatInbox {
+    use_radio(AppChannel::Chat).read().chat.inbox()
+}
+
+pub fn use_chat_thread(group_id: i32) -> ChatThread {
+    use_radio(AppChannel::Chat).read().chat.thread(group_id)
+}
+
+pub fn use_chat_unread() -> bool {
+    use_radio(AppChannel::Chat).read().chat.has_unread()
+}
+
+pub fn use_chat_error() -> Option<String> {
+    use_radio(AppChannel::Chat).read().chat.error.clone()
 }
 
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {

@@ -5,11 +5,9 @@
 #![recursion_limit = "256"]
 
 use freya::prelude::*;
-use freya::radio::use_init_radio_station;
-use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
-    use_provide_actions, use_provide_link_confirm,
+    use_provide_actions, use_provide_link_confirm, use_provide_station,
 };
 use tokio::runtime::Builder;
 
@@ -18,7 +16,7 @@ struct OneClientApp;
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
         // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
-        let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
+        let station = use_provide_station();
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -100,7 +98,11 @@ fn main() {
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
         .with_transparency(true)
-        .with_background(Color::TRANSPARENT);
+        .with_background(Color::TRANSPARENT)
+        .with_on_close(|mut ctx, _| {
+            oneclient_app::close_chat_window_in(&mut ctx);
+            CloseDecision::Close
+        });
 
     #[cfg(target_os = "macos")]
     let window_config = window_config

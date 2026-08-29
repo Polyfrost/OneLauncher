@@ -45,12 +45,20 @@ fn clear_error(station: Station) {
     guard.chat.error = None;
 }
 
-fn request_open(station: Station, group_id: i32) {
-    station
-        .clone()
-        .write_channel(AppChannel::Chat)
-        .chat
-        .open_request = Some(group_id);
+fn select_group(station: Station, group_id: i32) {
+    let mut guard = station.clone().write_channel(AppChannel::Chat);
+    guard.chat.active = Some(group_id);
+    guard.chat.mark_read(group_id);
+}
+
+async fn load_group(station: Station, group_id: i32) {
+    load_messages(station, group_id).await;
+    mark_read(station, group_id).await;
+}
+
+async fn open_group(station: Station, group_id: i32) {
+    select_group(station, group_id);
+    load_group(station, group_id).await;
 }
 
 async fn roster_change(station: Station, result: Result<(), PlusError>) {
@@ -220,24 +228,8 @@ impl Actions {
 
     pub fn open_conversation(&self, group_id: i32) {
         let station = self.station();
-        {
-            let mut guard = station.clone().write_channel(AppChannel::Chat);
-            guard.chat.active = Some(group_id);
-            guard.chat.mark_read(group_id);
-        }
-
-        spawn_forever(async move {
-            load_messages(station, group_id).await;
-            mark_read(station, group_id).await;
-        });
-    }
-
-    pub fn close_conversation(&self) {
-        self.station()
-            .clone()
-            .write_channel(AppChannel::Chat)
-            .chat
-            .active = None;
+        select_group(station, group_id);
+        spawn_forever(async move { load_group(station, group_id).await });
     }
 
     pub fn load_older_messages(&self, group_id: i32) {
@@ -327,19 +319,11 @@ impl Actions {
             match client.open_direct_message(player).await {
                 Ok(summary) => {
                     load_conversations(station).await;
-                    request_open(station, summary.id);
+                    open_group(station, summary.id).await;
                 }
                 Err(err) => report(station, &err),
             }
         });
-    }
-
-    pub fn consume_open_request(&self) {
-        self.station()
-            .clone()
-            .write_channel(AppChannel::Chat)
-            .chat
-            .take_open_request();
     }
 
     pub fn create_chat_group(&self, name: impl Into<String>, members: Vec<Uuid>) {
@@ -354,7 +338,7 @@ impl Actions {
             match client.create_group(&name, &members).await {
                 Ok(summary) => {
                     load_conversations(station).await;
-                    request_open(station, summary.id);
+                    open_group(station, summary.id).await;
                 }
                 Err(err) => report(station, &err),
             }
@@ -448,11 +432,15 @@ impl Actions {
             return;
         }
 
+        if owner.is_none() {
+            crate::view::chat::close_chat_window();
+        }
+
         spawn_forever(async move {
             oneclient_polyplus::forget_token().await;
-            crate::hooks::invalidate_chat_queries().await;
 
             if owner.is_some() {
+                crate::hooks::invalidate_chat_queries().await;
                 resync_chat(station).await;
             }
         });

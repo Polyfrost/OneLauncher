@@ -1,13 +1,16 @@
 use freya::prelude::*;
-use freya::router::RouterContext;
 use uuid::Uuid;
 
 use oneclient_polyplus::GroupKind;
 
-use crate::chat::{ChatConversation, ChatState};
+use oneclient_polyplus::{BlockedPlayer, Friend};
+
+use crate::chat::{ChatConversation, ChatInbox};
 use crate::components::{Button, Icon, IconType, ScrollArea};
-use crate::hooks::{settled_or_loading, use_chat_snapshot, use_current_account, use_dispatch};
-use crate::routes::Route;
+use crate::hooks::{
+    settled_or_loading, use_blocked_players, use_chat_inbox, use_current_account, use_dispatch,
+    use_friend_requests, use_friends,
+};
 use crate::theme::colors;
 
 use super::common::{
@@ -17,102 +20,79 @@ use super::people::{NewGroupDialog, PeopleDialog};
 use super::thread::ThreadView;
 
 #[derive(PartialEq)]
-pub struct Chat;
+pub(super) struct ChatSurface;
 
-impl Component for Chat {
+impl Component for ChatSurface {
     fn render(&self) -> impl IntoElement {
-        chat_layout(None)
-    }
-}
+        let chat = use_chat_inbox();
+        let dispatch = use_dispatch();
 
-#[derive(PartialEq)]
-pub struct ChatThread {
-    pub group_id: i32,
-}
+        let account = settled_or_loading(&use_current_account());
+        if let Some(account) = account.clone() {
+            dispatch.sync_chat_owner(account.map(|account| account.id));
+        }
 
-impl Component for ChatThread {
-    fn render(&self) -> impl IntoElement {
-        chat_layout(Some(self.group_id))
-    }
-}
+        let own_id = account
+            .flatten()
+            .map(|account| account.id)
+            .unwrap_or_else(Uuid::nil);
 
-fn chat_layout(group_id: Option<i32>) -> Element {
-    let chat = use_chat_snapshot();
-    let dispatch = use_dispatch();
+        use_hook({
+            let dispatch = dispatch.clone();
+            move || dispatch.refresh_chat()
+        });
 
-    let account = settled_or_loading(&use_current_account());
-    if let Some(account) = account.clone() {
-        dispatch.sync_chat_owner(account.map(|account| account.id));
-    }
+        refetch_on_focus(&dispatch);
 
-    let own_id = account
-        .flatten()
-        .map(|account| account.id)
-        .unwrap_or_else(Uuid::nil);
+        let mut people_open = use_state(|| false);
+        let mut group_open = use_state(|| false);
 
-    use_hook({
-        let dispatch = dispatch.clone();
-        move || dispatch.refresh_chat()
-    });
+        let friends: Vec<Friend> = settled_or_loading(&use_friends()).unwrap_or_default();
+        let requests = settled_or_loading(&use_friend_requests()).unwrap_or_default();
+        let blocked: Vec<BlockedPlayer> =
+            settled_or_loading(&use_blocked_players()).unwrap_or_default();
 
-    refetch_on_focus(&dispatch);
+        let group_friends = friends.clone();
 
-    let mut people_open = use_state(|| false);
-    let mut group_open = use_state(|| false);
-
-    if let Some(target) = chat.open_request {
-        dispatch.consume_open_request();
-        people_open.set(false);
-        group_open.set(false);
-        let _ = RouterContext::get().push(Route::ChatThread { group_id: target });
-    }
-
-    if let Some(group_id) = group_id
-        && chat.active != Some(group_id)
-    {
-        dispatch.open_conversation(group_id);
-    }
-
-    if group_id.is_none() && chat.active.is_some() {
-        dispatch.close_conversation();
-    }
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .height(Size::fill())
-        .content(Content::Flex)
-        .overflow(Overflow::Clip)
-        .child(sidebar(
-            &chat,
-            group_id,
-            own_id,
-            EventHandler::new(move |_| people_open.set(true)),
-            EventHandler::new(move |_| group_open.set(true)),
-        ))
-        .child(
-            match group_id.and_then(|id| chat.conversation(id).cloned()) {
-                Some(conversation) => ThreadView {
-                    conversation,
-                    own_id,
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .content(Content::Flex)
+            .overflow(Overflow::Clip)
+            .child(sidebar(
+                &chat,
+                own_id,
+                EventHandler::new(move |_| people_open.set(true)),
+                EventHandler::new(move |_| group_open.set(true)),
+            ))
+            .child(
+                match chat.active.and_then(|id| chat.conversation(id).cloned()) {
+                    Some(conversation) => ThreadView {
+                        conversation,
+                        own_id,
+                    }
+                    .into_element(),
+                    None => empty_state(&chat),
+                },
+            )
+            .maybe_child(people_open().then(|| {
+                PeopleDialog {
+                    friends,
+                    requests,
+                    blocked,
+                    on_close: EventHandler::new(move |_| people_open.set(false)),
                 }
-                .into_element(),
-                None => empty_state(&chat),
-            },
-        )
-        .maybe_child(people_open().then(|| {
-            PeopleDialog {
-                on_close: EventHandler::new(move |_| people_open.set(false)),
-            }
-            .into_element()
-        }))
-        .maybe_child(group_open().then(|| {
-            NewGroupDialog {
-                on_close: EventHandler::new(move |_| group_open.set(false)),
-            }
-            .into_element()
-        }))
-        .into_element()
+                .into_element()
+            }))
+            .maybe_child(group_open().then(|| {
+                NewGroupDialog {
+                    friends: group_friends,
+                    on_close: EventHandler::new(move |_| group_open.set(false)),
+                }
+                .into_element()
+            }))
+    }
 }
 
 fn refetch_on_focus(dispatch: &crate::hooks::Actions) {
@@ -127,21 +107,31 @@ fn refetch_on_focus(dispatch: &crate::hooks::Actions) {
 }
 
 fn sidebar(
-    chat: &ChatState,
-    active: Option<i32>,
+    chat: &ChatInbox,
     own_id: Uuid,
     on_people: EventHandler<Event<PressEventData>>,
     on_new_group: EventHandler<Event<PressEventData>>,
 ) -> Element {
-    let conversations = chat.conversations().to_vec();
+    let conversations = chat.conversations.clone();
+    let active = chat.active;
 
-    rect()
+    crate::ui::glass_panel()
         .vertical()
         .width(Size::px(SIDEBAR_WIDTH_PX))
         .height(Size::fill())
         .content(Content::Flex)
         .overflow(Overflow::Clip)
-        .background(colors::page_elevated())
+        .border(
+            Border::new()
+                .fill(colors::component_border())
+                .width(BorderWidth {
+                    top: 0.,
+                    right: 1.,
+                    bottom: 0.,
+                    left: 0.,
+                })
+                .alignment(BorderAlignment::Inner),
+        )
         .child(
             rect()
                 .horizontal()
@@ -152,7 +142,7 @@ fn sidebar(
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Messages")
+                        .text("Conversations")
                         .font_size(20.)
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary())
@@ -213,6 +203,7 @@ struct ConversationRow {
 
 impl Component for ConversationRow {
     fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
         let counterpart = self.conversation.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
 
@@ -245,9 +236,7 @@ impl Component for ConversationRow {
             .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
             .background(background)
             .cursor(CursorIcon::Pointer)
-            .on_all_press(move |_| {
-                let _ = RouterContext::get().push(Route::ChatThread { group_id });
-            })
+            .on_all_press(move |_| dispatch.open_conversation(group_id))
             .maybe_child(counterpart.map(player_avatar))
             .child(
                 rect()
@@ -289,8 +278,8 @@ impl Component for ConversationRow {
     }
 }
 
-fn empty_state(chat: &ChatState) -> Element {
-    let message = if chat.conversations().is_empty() {
+fn empty_state(chat: &ChatInbox) -> Element {
+    let message = if chat.conversations.is_empty() {
         "No conversations yet. Add a friend to start talking."
     } else {
         "Pick a conversation to start reading."

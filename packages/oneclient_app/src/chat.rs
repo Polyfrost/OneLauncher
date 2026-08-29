@@ -83,12 +83,34 @@ pub struct PendingMessage {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatInbox {
+    pub conversations: Vec<ChatConversation>,
+    pub active: Option<i32>,
+    pub connected: bool,
+    pub error: Option<String>,
+}
+
+impl ChatInbox {
+    #[must_use]
+    pub fn conversation(&self, group_id: i32) -> Option<&ChatConversation> {
+        self.conversations
+            .iter()
+            .find(|conversation| conversation.id == group_id)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatThread {
+    pub messages: Arc<Vec<ChatMessage>>,
+    pub pending: Vec<PendingMessage>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ChatState {
     pub connected: bool,
     pub status: AsyncStatus,
     pub error: Option<String>,
     pub active: Option<i32>,
-    pub open_request: Option<i32>,
     pub owner: Option<Uuid>,
     conversations: Vec<ChatConversation>,
     messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
@@ -127,6 +149,31 @@ impl ChatState {
             .iter()
             .filter(|conversation| conversation.unread)
             .count()
+    }
+
+    #[must_use]
+    pub fn has_unread(&self) -> bool {
+        self.conversations
+            .iter()
+            .any(|conversation| conversation.unread)
+    }
+
+    #[must_use]
+    pub fn inbox(&self) -> ChatInbox {
+        ChatInbox {
+            conversations: self.conversations.clone(),
+            active: self.active,
+            connected: self.connected,
+            error: self.error.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn thread(&self, group_id: i32) -> ChatThread {
+        ChatThread {
+            messages: self.messages_for(group_id),
+            pending: self.pending_for(group_id).to_vec(),
+        }
     }
 
     #[must_use]
@@ -222,10 +269,6 @@ impl ChatState {
 
     pub fn set_presence(&mut self, player: Uuid, online: bool) {
         self.presence.insert(player, online);
-    }
-
-    pub fn take_open_request(&mut self) -> Option<i32> {
-        self.open_request.take()
     }
 
     pub fn mark_read(&mut self, group_id: i32) {

@@ -8,7 +8,7 @@ use crate::{
     Route,
     components::{Avatar, Icon, IconType},
     hooks::{
-        settled_or_loading, try_default_account, use_active_cluster_id, use_chat_snapshot,
+        settled_or_loading, try_default_account, use_active_cluster_id, use_chat_unread,
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
@@ -234,7 +234,7 @@ impl Component for NavbarRight {
         let current_account = use_current_account();
         let dispatch = use_dispatch();
         let unread = use_notifications_snapshot().unread_count();
-        let unread_chats = use_chat_snapshot().unread_count() > 0;
+        let unread_chats = use_chat_unread();
 
         let has_account =
             settled_or_loading(&current_account).is_none_or(|account| account.is_some());
@@ -243,9 +243,7 @@ impl Component for NavbarRight {
             .map(|account| account.id.to_string())
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
 
-        let open_messages = |_| {
-            let _ = RouterContext::get().push(Route::Chat {});
-        };
+        let open_messages = |_| crate::view::chat::open_chat_window();
 
         let notif_dispatch = dispatch.clone();
         let open_notifications = move |_| {

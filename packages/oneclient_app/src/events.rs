@@ -132,9 +132,13 @@ impl EventPump {
         let mut login: Option<Option<LoginProgress>> = None;
         let mut sync_complete = false;
         let mut chat_events: Vec<ChatEvent> = Vec::new();
+        let mut presence: Vec<(uuid::Uuid, bool)> = Vec::new();
 
         for event in batch {
             match event {
+                Event::Chat(ChatEvent::PresenceChanged { player, online }) => {
+                    presence.push((player, online));
+                }
                 Event::Chat(event) => chat_events.push(event),
                 Event::Signal(Signal::ClustersChanged) => folded.clusters = true,
                 Event::Signal(Signal::JavaChanged) => folded.java = true,
@@ -209,8 +213,9 @@ impl EventPump {
                                 edited: false,
                             },
                         );
-                        let unread = guard.chat.active != Some(group_id);
-                        guard.chat.note_activity(group_id, content, unread);
+                        let viewing = crate::view::chat::is_chat_window_open()
+                            && guard.chat.active == Some(group_id);
+                        guard.chat.note_activity(group_id, content, !viewing);
                     }
                     ChatEvent::MessageEdited {
                         group_id,
@@ -221,15 +226,20 @@ impl EventPump {
                         group_id,
                         message_id,
                     } => guard.chat.remove(group_id, message_id),
-                    ChatEvent::PresenceChanged { player, online } => {
-                        guard.chat.set_presence(player, online);
-                    }
+                    ChatEvent::PresenceChanged { .. } => {}
                     ChatEvent::RosterChanged => folded.chat_roster = true,
                     ChatEvent::ConnectionChanged { connected } => {
                         guard.chat.connected = connected;
                         folded.chat_reconnected |= connected;
                     }
                 }
+            }
+        }
+
+        if !presence.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::ChatPresence);
+            for (player, online) in presence {
+                guard.chat.set_presence(player, online);
             }
         }
 

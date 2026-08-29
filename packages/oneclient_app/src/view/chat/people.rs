@@ -8,10 +8,7 @@ use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, RelationshipKind}
 use crate::components::{
     Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem, TextInput,
 };
-use crate::hooks::{
-    Actions, FriendRequests, settled_or_loading, use_blocked_players, use_chat_snapshot,
-    use_dispatch, use_friend_requests, use_friends,
-};
+use crate::hooks::{Actions, FriendRequests, use_chat_error, use_dispatch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -31,25 +28,28 @@ enum PeopleTab {
 
 #[derive(PartialEq)]
 pub(super) struct PeopleDialog {
+    pub friends: Vec<Friend>,
+    pub requests: FriendRequests,
+    pub blocked: Vec<BlockedPlayer>,
     pub on_close: EventHandler<()>,
 }
 
 impl Component for PeopleDialog {
     fn render(&self) -> impl IntoElement {
-        let chat = use_chat_snapshot();
+        let error = use_chat_error();
         let mut tab = use_state(|| PeopleTab::Friends);
 
-        let friends = settled_or_loading(&use_friends()).unwrap_or_default();
-        let requests = settled_or_loading(&use_friend_requests()).unwrap_or_default();
-        let blocked = settled_or_loading(&use_blocked_players()).unwrap_or_default();
+        let friends = &self.friends;
+        let requests = &self.requests;
+        let blocked = &self.blocked;
 
         let pending = requests.incoming.len() + requests.outgoing.len();
         let active = *tab.read();
 
         let body = match active {
-            PeopleTab::Friends => friends_list(&friends),
-            PeopleTab::Requests => requests_list(&requests),
-            PeopleTab::Blocked => blocked_list(&blocked),
+            PeopleTab::Friends => friends_list(friends, self.on_close.clone()),
+            PeopleTab::Requests => requests_list(requests),
+            PeopleTab::Blocked => blocked_list(blocked),
         };
 
         let close = self.on_close.clone();
@@ -92,9 +92,9 @@ impl Component for PeopleDialog {
                         .height(Size::flex(1.0))
                         .child(body),
                 )
-                .maybe_child(chat.error.as_ref().map(|error| {
+                .maybe_child(error.map(|error| {
                     label()
-                        .text(error.clone())
+                        .text(error)
                         .font_size(11.)
                         .color(colors::danger())
                 }))
@@ -148,7 +148,7 @@ fn send_request(dispatch: &Actions, mut draft: State<String>) {
     draft.set(String::new());
 }
 
-fn friends_list(friends: &[Friend]) -> Element {
+fn friends_list(friends: &[Friend], on_message: EventHandler<()>) -> Element {
     if friends.is_empty() {
         return hint("No friends yet. Add one by username above.").into_element();
     }
@@ -164,6 +164,7 @@ fn friends_list(friends: &[Friend]) -> Element {
                     FriendRow {
                         player: friend.player,
                         best: friend.kind == RelationshipKind::BestFriend,
+                        on_message: on_message.clone(),
                     }
                     .into_element()
                 })
@@ -176,6 +177,7 @@ fn friends_list(friends: &[Friend]) -> Element {
 struct FriendRow {
     player: Uuid,
     best: bool,
+    on_message: EventHandler<()>,
 }
 
 impl Component for FriendRow {
@@ -186,6 +188,7 @@ impl Component for FriendRow {
 
         let remove = dispatch.clone();
         let block = dispatch.clone();
+        let on_message = self.on_message.clone();
 
         person_row(
             self.player,
@@ -197,7 +200,10 @@ impl Component for FriendRow {
                 .secondary()
                 .small()
                 .text("Message")
-                .on_press(move |_| dispatch.start_direct_message(player)),
+                .on_press(move |_| {
+                    dispatch.start_direct_message(player);
+                    on_message.call(());
+                }),
         )
         .child(
             Button::new()
@@ -378,6 +384,7 @@ fn person_row(player: Uuid, name: String, note: Option<String>) -> Rect {
 
 #[derive(PartialEq)]
 pub(super) struct NewGroupDialog {
+    pub friends: Vec<Friend>,
     pub on_close: EventHandler<()>,
 }
 
@@ -387,7 +394,7 @@ impl Component for NewGroupDialog {
         let name = use_state(String::new);
         let mut picked = use_state(HashSet::<Uuid>::new);
 
-        let friends = settled_or_loading(&use_friends()).unwrap_or_default();
+        let friends = &self.friends;
         let chosen = picked.read().clone();
 
         let title = name.read().clone();

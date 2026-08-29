@@ -61,7 +61,7 @@ pub use log_viewer::LogViewer;
 pub use memory_field::memory_field;
 pub use microsoft_login::use_microsoft_login;
 pub(crate) use microsoft_login::login_dialog;
-pub(crate) use navbar::window_controls;
+pub(crate) use navbar::{secondary_window_controls, window_controls};
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;
 pub use overlay_popup::OverlayPopup;

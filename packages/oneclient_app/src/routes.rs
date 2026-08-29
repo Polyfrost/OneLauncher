@@ -10,7 +10,7 @@ use crate::layout::SettingsShell;
 use crate::view::{
     NotFound, Startup,
     app::{
-        AccountSkins, Chat, ChatThread, Clusters, Debug, Home, Stats,
+        AccountSkins, Clusters, Debug, Home, Stats,
         browser::{Browser, BrowserPackage},
         cluster::{
             ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots, ClusterSettings,
@@ -57,10 +57,6 @@ pub enum Route {
         #[layout(AppShell)]
             #[route("/app")]
             Home {},
-            #[route("/app/chat")]
-            Chat {},
-            #[route("/app/chat/:group_id")]
-            ChatThread { group_id: i32 },
             #[route("/app/clusters")]
             Clusters {},
 
@@ -137,7 +133,6 @@ impl Route {
             Route::OnboardingBundles { .. } => "Mods".to_string(),
             Route::OnboardingDownloading { .. } => "Finishing".to_string(),
             Route::Home { .. } => "Home".to_string(),
-            Route::Chat { .. } | Route::ChatThread { .. } => "Messages".to_string(),
             Route::Clusters { .. } => "Versions".to_string(),
             Route::ClusterOverview { .. } => "Cluster".to_string(),
             Route::ClusterLogs { .. } => "Cluster Logs".to_string(),

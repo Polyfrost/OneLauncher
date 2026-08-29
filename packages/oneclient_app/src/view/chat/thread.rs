@@ -5,7 +5,7 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, PendingMessage};
 use crate::components::{Button, Icon, IconType, ScrollArea, TextInput, auto_scroll_toggle};
-use crate::hooks::{Actions, use_chat_snapshot, use_dispatch};
+use crate::hooks::{Actions, use_chat_thread, use_dispatch};
 use crate::theme::colors;
 
 use super::common::{clock, use_player_name};
@@ -23,15 +23,15 @@ pub(super) struct ThreadView {
 
 impl Component for ThreadView {
     fn render(&self) -> impl IntoElement {
-        let chat = use_chat_snapshot();
         let dispatch = use_dispatch();
 
         let group_id = self.conversation.id;
         let own_id = self.own_id;
         let is_group = self.conversation.kind == GroupKind::Group;
 
-        let messages = chat.messages_for(group_id);
-        let pending = chat.pending_for(group_id).to_vec();
+        let thread = use_chat_thread(group_id);
+        let messages = thread.messages;
+        let pending = thread.pending;
         let exhausted = messages.len() < FIRST_PAGE;
 
         let mut pinned = use_state(|| true);
@@ -81,7 +81,6 @@ impl Component for ThreadView {
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .stick_bottom(*pinned.read())
-                    .reset_key(group_id as u64)
                     .on_user_scroll(move |_| {
                         pinned.set_if_modified(false);
                         may_page.set_if_modified(true);

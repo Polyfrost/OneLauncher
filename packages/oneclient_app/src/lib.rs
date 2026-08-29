@@ -32,3 +32,4 @@ pub use state::{AppChannel, AppState};
 pub use components::ConfirmLinkOverlay;
 pub use hooks::*;
 pub use routes::{Route, router};
+pub use view::chat::close_chat_window_in;

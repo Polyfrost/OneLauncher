@@ -30,11 +30,18 @@ enum Outcome {
     Connected,
     NoAccount,
     Failed,
+    Restart,
 }
 
 enum Frame {
     Ping,
+    Restart,
     Message(Option<Message>),
+}
+
+enum Ended {
+    Closed,
+    Restart,
 }
 
 pub(crate) fn spawn(client: Arc<PlusClient>) {
@@ -50,12 +57,24 @@ pub(crate) fn spawn(client: Arc<PlusClient>) {
         let mut delay = RECONNECT_DELAY;
 
         loop {
-            delay = match session(&client, &socket).await {
-                Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
+            let mut restart = client.restart_signal();
+
+            let outcome = session(&client, &socket, &mut restart).await;
+            let restarted = matches!(outcome, Outcome::Restart);
+
+            delay = match outcome {
+                Outcome::Restart | Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
                 Outcome::Failed => (delay * 2).min(MAX_RECONNECT_DELAY),
             };
 
-            tokio::time::sleep(delay).await;
+            if restarted {
+                continue;
+            }
+
+            tokio::select! {
+                () = tokio::time::sleep(delay) => {}
+                _ = restart.changed() => {}
+            }
         }
     });
 }
@@ -75,7 +94,11 @@ fn build_socket_client() -> Result<reqwest::Client, reqwest::Error> {
     builder.no_hickory_dns().build()
 }
 
-async fn session(client: &PlusClient, socket: &reqwest::Client) -> Outcome {
+async fn session(
+    client: &PlusClient,
+    socket: &reqwest::Client,
+    restart: &mut tokio::sync::watch::Receiver<u64>,
+) -> Outcome {
     let account = match current_account(&client.auth).await {
         Ok(Some(account)) => account,
         Ok(None) => return Outcome::NoAccount,
@@ -87,9 +110,14 @@ async fn session(client: &PlusClient, socket: &reqwest::Client) -> Outcome {
 
     let id = account.id;
     let mut connected = false;
+    let mut restarted = false;
 
-    match run_session(client, socket, &account, &mut connected).await {
-        Ok(()) => tracing::info!("[plus] session for {id} ended"),
+    match run_session(client, socket, &account, &mut connected, restart).await {
+        Ok(Ended::Closed) => tracing::info!("[plus] session for {id} ended"),
+        Ok(Ended::Restart) => {
+            restarted = true;
+            tracing::info!("[plus] restarting the session for {id}");
+        }
         Err(err) => {
             if err.is_unauthorized() {
                 client.forget_token().await;
@@ -102,9 +130,12 @@ async fn session(client: &PlusClient, socket: &reqwest::Client) -> Outcome {
         client
             .events
             .chat(ChatEvent::ConnectionChanged { connected: false });
-        Outcome::Connected
-    } else {
-        Outcome::Failed
+    }
+
+    match (restarted, connected) {
+        (true, _) => Outcome::Restart,
+        (_, true) => Outcome::Connected,
+        _ => Outcome::Failed,
     }
 }
 
@@ -113,7 +144,8 @@ async fn run_session(
     socket: &reqwest::Client,
     account: &MinecraftAccount,
     connected: &mut bool,
-) -> Result<(), PlusError> {
+    restart: &mut tokio::sync::watch::Receiver<u64>,
+) -> Result<Ended, PlusError> {
     let token = client.authorize().await?;
 
     let mut websocket = socket
@@ -137,6 +169,7 @@ async fn run_session(
         &client.events,
         PING_INTERVAL,
         account_id,
+        restart,
         || account_changed(&client.auth, account_id),
     )
     .await
@@ -147,8 +180,9 @@ async fn pump<F, Fut>(
     events: &EventBus,
     ping_interval: Duration,
     account_id: Uuid,
+    restart: &mut tokio::sync::watch::Receiver<u64>,
     should_stop: F,
-) -> Result<(), PlusError>
+) -> Result<Ended, PlusError>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = bool>,
@@ -160,6 +194,7 @@ where
     loop {
         let frame = tokio::select! {
             _ = ping.tick() => Frame::Ping,
+            _ = restart.changed() => Frame::Restart,
             message = websocket.try_next() => Frame::Message(message?),
         };
 
@@ -167,11 +202,12 @@ where
             Frame::Ping => {
                 if should_stop().await {
                     tracing::info!("[plus] default account changed, ending session for {account_id}");
-                    break;
+                    return Ok(Ended::Restart);
                 }
 
                 websocket.send(Message::Ping(Bytes::new())).await?;
             }
+            Frame::Restart => return Ok(Ended::Restart),
             Frame::Message(Some(Message::Text(payload))) => dispatch(events, &payload),
             Frame::Message(Some(Message::Close { code, reason })) => {
                 tracing::info!("[plus] websocket closed by the server: {code:?} {reason}");
@@ -182,7 +218,7 @@ where
         }
     }
 
-    Ok(())
+    Ok(Ended::Closed)
 }
 
 fn dispatch(events: &EventBus, payload: &str) {
@@ -369,6 +405,9 @@ mod tests {
         let mut websocket = connect(&url).await;
         let (events, _receiver) = EventBus::channel();
 
+        let restart = tokio::sync::watch::Sender::new(0u64);
+        let mut quiet = restart.subscribe();
+
         let pumped = tokio::time::timeout(
             Duration::from_secs(10),
             pump(
@@ -376,13 +415,17 @@ mod tests {
                 &events,
                 Duration::from_millis(50),
                 Uuid::nil(),
+                &mut quiet,
                 || async { false },
             ),
         )
         .await
         .expect("pump should return once the server closes the socket");
 
-        pumped.expect("pump should treat a server close as a clean end");
+        assert!(matches!(
+            pumped.expect("pump should treat a server close as a clean end"),
+            Ended::Closed
+        ));
         assert_eq!(pings.load(Ordering::SeqCst), 3);
     }
 

@@ -75,6 +75,7 @@ pub struct PlusClient {
     auth: Arc<oneclient_auth::AuthService>,
     events: EventBus,
     token: RwLock<Option<String>>,
+    restart: tokio::sync::watch::Sender<u64>,
 }
 
 impl PlusClient {
@@ -88,6 +89,7 @@ impl PlusClient {
             auth,
             events,
             token: RwLock::new(None),
+            restart: tokio::sync::watch::Sender::new(0),
         }
     }
 
@@ -117,6 +119,16 @@ impl PlusClient {
     pub(crate) async fn forget_token(&self) {
         self.token.write().await.take();
     }
+
+    pub(crate) fn request_restart(&self) {
+        self.restart.send_modify(|generation| {
+            *generation = generation.wrapping_add(1);
+        });
+    }
+
+    pub(crate) fn restart_signal(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.restart.subscribe()
+    }
 }
 
 pub fn start(
@@ -141,6 +153,12 @@ pub fn client() -> Option<Arc<PlusClient>> {
 pub async fn forget_token() {
     if let Some(client) = client() {
         client.forget_token().await;
+    }
+}
+
+pub fn restart_session() {
+    if let Some(client) = client() {
+        client.request_restart();
     }
 }
 

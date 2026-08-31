@@ -8,7 +8,8 @@ use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, RelationshipKind}
 use crate::components::{
     Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem, TextInput,
 };
-use crate::hooks::{Actions, FriendRequests, use_chat_error, use_dispatch};
+use crate::chat::FriendRequests;
+use crate::hooks::{Actions, use_chat_error, use_dispatch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -37,6 +38,7 @@ pub(super) struct PeopleDialog {
 impl Component for PeopleDialog {
     fn render(&self) -> impl IntoElement {
         let error = use_chat_error();
+        let retry = use_dispatch();
         let mut tab = use_state(|| PeopleTab::Friends);
 
         let friends = &self.friends;
@@ -93,10 +95,27 @@ impl Component for PeopleDialog {
                         .child(body),
                 )
                 .maybe_child(error.map(|error| {
-                    label()
-                        .text(error)
-                        .font_size(11.)
-                        .color(colors::danger())
+                    rect()
+                        .horizontal()
+                        .width(Size::fill())
+                        .spacing(8.)
+                        .content(Content::Flex)
+                        .cross_align(Alignment::Center)
+                        .child(
+                            label()
+                                .text(error)
+                                .font_size(11.)
+                                .color(colors::danger())
+                                .width(Size::flex(1.0))
+                                .max_lines(2),
+                        )
+                        .child(
+                            Button::new()
+                                .ghost()
+                                .small()
+                                .text("Try again")
+                                .on_press(move |_| retry.reload_roster()),
+                        )
                 }))
                 .into_element(),
         )

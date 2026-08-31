@@ -104,6 +104,10 @@ impl EventPump {
                 signal = self.signals.recv() => {
                     let Some(signal) = signal else { break };
                     match signal {
+                        PumpSignal::Chat(job) => {
+                            let station = self.station;
+                            spawn_forever(job.run(station));
+                        }
                         PumpSignal::Reconcile => reconcile(&self.station, &mut armed, paused),
                         PumpSignal::PauseToasts => {
                             paused = true;
@@ -213,7 +217,12 @@ impl EventPump {
                                 edited: false,
                             },
                         );
-                        let viewing = crate::view::chat::is_chat_window_open()
+
+                        if guard.chat.conversation(group_id).is_none() {
+                            folded.chat_unknown_group = true;
+                        }
+
+                        let viewing = crate::view::chat::is_chat_window_focused()
                             && guard.chat.active == Some(group_id);
                         guard.chat.note_activity(group_id, content, !viewing);
                     }
@@ -279,7 +288,12 @@ impl EventPump {
             spawn_forever(async move { crate::hooks::invalidate_java_queries().await });
         }
         if folded.chat_roster {
-            spawn_forever(async move { crate::hooks::invalidate_chat_queries().await });
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::load_roster(station).await });
+        }
+        if folded.chat_unknown_group {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::load_conversations(station).await });
         }
         if folded.chat_reconnected {
             let station = self.station;
@@ -297,6 +311,7 @@ struct Folded {
     clusters: bool,
     java: bool,
     chat_roster: bool,
+    chat_unknown_group: bool,
     chat_reconnected: bool,
 }
 

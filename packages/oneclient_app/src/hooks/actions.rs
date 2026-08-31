@@ -63,11 +63,12 @@ fn plan_launch_updates(
 
 /// The pump alone owns the toast timers so adding or removing a toast has to
 /// tell it to re-arm hover-pause is a timer property not component state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PumpSignal {
     Reconcile,
     PauseToasts,
     ResumeToasts,
+    Chat(super::chat::ChatJob),
 }
 
 #[derive(Clone)]
@@ -102,7 +103,7 @@ impl Actions {
         }
     }
 
-    fn nudge(&self, signal: PumpSignal) {
+    pub(super) fn nudge(&self, signal: PumpSignal) {
         let _ = self.pump.send(signal);
     }
 

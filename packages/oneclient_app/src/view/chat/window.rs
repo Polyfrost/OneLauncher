@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use freya::prelude::*;
 use freya::winit::dpi::{PhysicalPosition, PhysicalSize};
 
@@ -18,6 +20,8 @@ const WINDOW_HEIGHT_PX: f64 = 620.;
 const WINDOW_GAP_PX: f64 = 12.;
 
 static CHAT_WINDOW: SingleWindow = SingleWindow::new();
+
+static CHAT_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 pub fn open_chat_window() {
     let opening = match CHAT_WINDOW.claim() {
@@ -50,8 +54,12 @@ pub fn open_chat_window() {
     });
 }
 
-pub fn is_chat_window_open() -> bool {
-    CHAT_WINDOW.is_open()
+pub(super) fn set_chat_focus(focused: bool) {
+    CHAT_FOCUSED.store(focused, Ordering::Relaxed);
+}
+
+pub fn is_chat_window_focused() -> bool {
+    CHAT_WINDOW.is_open() && CHAT_FOCUSED.load(Ordering::Relaxed)
 }
 
 pub fn close_chat_window_in(ctx: &mut RendererContext<'_>) {

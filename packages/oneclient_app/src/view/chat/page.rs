@@ -3,13 +3,10 @@ use uuid::Uuid;
 
 use oneclient_polyplus::GroupKind;
 
-use oneclient_polyplus::{BlockedPlayer, Friend};
-
 use crate::chat::{ChatConversation, ChatInbox};
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::{
-    settled_or_loading, use_blocked_players, use_chat_inbox, use_current_account, use_dispatch,
-    use_friend_requests, use_friends,
+    settled_or_loading, use_chat_inbox, use_chat_roster, use_current_account, use_dispatch,
 };
 use crate::theme::colors;
 
@@ -42,17 +39,13 @@ impl Component for ChatSurface {
             move || dispatch.refresh_chat()
         });
 
-        refetch_on_focus(&dispatch);
+        track_focus(&dispatch);
 
         let mut people_open = use_state(|| false);
         let mut group_open = use_state(|| false);
 
-        let friends: Vec<Friend> = settled_or_loading(&use_friends()).unwrap_or_default();
-        let requests = settled_or_loading(&use_friend_requests()).unwrap_or_default();
-        let blocked: Vec<BlockedPlayer> =
-            settled_or_loading(&use_blocked_players()).unwrap_or_default();
-
-        let group_friends = friends.clone();
+        let roster = use_chat_roster();
+        let group_friends = roster.friends.clone();
 
         rect()
             .horizontal()
@@ -78,9 +71,9 @@ impl Component for ChatSurface {
             )
             .maybe_child(people_open().then(|| {
                 PeopleDialog {
-                    friends,
-                    requests,
-                    blocked,
+                    friends: roster.friends,
+                    requests: roster.requests,
+                    blocked: roster.blocked,
                     on_close: EventHandler::new(move |_| people_open.set(false)),
                 }
                 .into_element()
@@ -95,9 +88,11 @@ impl Component for ChatSurface {
     }
 }
 
-fn refetch_on_focus(dispatch: &crate::hooks::Actions) {
+fn track_focus(dispatch: &crate::hooks::Actions) {
     let focused = *Platform::get().is_app_focused.read();
     let mut was_focused = use_state(|| focused);
+
+    super::window::set_chat_focus(focused);
 
     if focused && !*was_focused.peek() {
         dispatch.sync_chat();

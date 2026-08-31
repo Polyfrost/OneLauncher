@@ -23,6 +23,7 @@ pub enum AppChannel {
     MicrosoftLogin,
     Installs,
     Chat,
+    ChatRoster,
     ChatPresence,
 }
 

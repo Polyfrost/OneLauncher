@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
-use crate::chat::{ChatConversation, ChatMessage, PendingMessage};
+use crate::chat::{ChatConversation, ChatMessage, PendingMessage, ThreadStatus};
 use crate::components::{Button, Icon, IconType, ScrollArea, TextInput, auto_scroll_toggle};
 use crate::hooks::{Actions, use_chat_thread, use_dispatch};
 use crate::theme::colors;
@@ -13,7 +13,6 @@ use super::common::{clock, use_player_name};
 const BUBBLE_RADIUS_PX: f32 = 12.;
 const BUBBLE_MAX_PERCENT: f32 = 74.;
 const PAGE_TRIGGER_PX: f32 = 240.;
-const FIRST_PAGE: usize = 50;
 
 #[derive(PartialEq)]
 pub(super) struct ThreadView {
@@ -32,7 +31,13 @@ impl Component for ThreadView {
         let thread = use_chat_thread(group_id);
         let messages = thread.messages;
         let pending = thread.pending;
-        let exhausted = messages.len() < FIRST_PAGE;
+        let exhausted = thread.complete;
+        let empty = messages.is_empty() && pending.is_empty();
+
+        let failure = match &thread.status {
+            ThreadStatus::Error(message) => Some(message.clone()),
+            _ => None,
+        };
 
         let mut pinned = use_state(|| true);
         let mut may_page = use_state(|| false);
@@ -76,8 +81,18 @@ impl Component for ThreadView {
                 own_id,
                 pinned,
             })
-            .child(
-                ScrollArea::new()
+            .child(match (empty, &thread.status) {
+                (true, ThreadStatus::Loading) => {
+                    thread_notice("Loading messages…", colors::fg_secondary(), None)
+                }
+                (true, ThreadStatus::Error(message)) => thread_notice(
+                    message.clone(),
+                    colors::danger(),
+                    Some(EventHandler::new(move |_| {
+                        paging.reload_conversation(group_id);
+                    })),
+                ),
+                _ => ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .stick_bottom(*pinned.read())
@@ -103,13 +118,87 @@ impl Component for ThreadView {
                             .padding(Gaps::new(16., 20., 8., 20.))
                             .spacing(8.)
                             .children(rows),
-                    ),
-            )
-            .child(Composer {
-                group_id,
-                on_sent: EventHandler::new(move |_| pinned.set(true)),
+                    )
+                    .into_element(),
             })
+            .child(failure.filter(|_| !empty).map_or_else(
+                || {
+                    rect()
+                        .width(Size::fill())
+                        .height(Size::px(0.))
+                        .into_element()
+                },
+                |message| {
+                    thread_banner(
+                        message,
+                        EventHandler::new(move |_| dispatch.reload_conversation(group_id)),
+                    )
+                },
+            ))
+            .child(
+                Composer {
+                    group_id,
+                    on_sent: EventHandler::new(move |_| pinned.set(true)),
+                    key: DiffKey::None,
+                }
+                .key(group_id),
+            )
     }
+}
+
+fn thread_notice(
+    text: impl Into<String>,
+    color: Color,
+    on_retry: Option<EventHandler<Event<PressEventData>>>,
+) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .height(Size::flex(1.0))
+        .center()
+        .padding(Gaps::new_all(24.))
+        .spacing(12.)
+        .child(
+            label()
+                .text(text.into())
+                .font_size(13.)
+                .color(color)
+                .max_lines(3),
+        )
+        .maybe_child(on_retry.map(|on_retry| {
+            Button::new()
+                .secondary()
+                .small()
+                .text("Try again")
+                .on_press(on_retry)
+        }))
+        .into_element()
+}
+
+fn thread_banner(message: String, on_retry: EventHandler<Event<PressEventData>>) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .padding(Gaps::new(8., 20., 0., 20.))
+        .spacing(8.)
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .child(
+            label()
+                .text(message)
+                .font_size(11.)
+                .color(colors::danger())
+                .width(Size::flex(1.0))
+                .max_lines(2),
+        )
+        .child(
+            Button::new()
+                .ghost()
+                .small()
+                .text("Try again")
+                .on_press(on_retry),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]
@@ -323,6 +412,13 @@ fn submit_draft(
 struct Composer {
     group_id: i32,
     on_sent: EventHandler<()>,
+    key: DiffKey,
+}
+
+impl KeyExt for Composer {
+    fn write_key(&mut self) -> &mut DiffKey {
+        &mut self.key
+    }
 }
 
 impl Component for Composer {
@@ -379,5 +475,9 @@ impl Component for Composer {
                     .font_size(11.)
                     .color(colors::danger())
             }))
+    }
+
+    fn render_key(&self) -> DiffKey {
+        self.key.clone().or(self.default_key())
     }
 }

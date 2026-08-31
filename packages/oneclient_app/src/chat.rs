@@ -4,9 +4,24 @@ use std::sync::Arc;
 use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
 
-use oneclient_polyplus::{GroupKind, GroupMessage, GroupSummary};
+use oneclient_polyplus::{
+    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
+};
 
 use crate::state::AsyncStatus;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FriendRequests {
+    pub incoming: Vec<FriendRequest>,
+    pub outgoing: Vec<FriendRequest>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatRoster {
+    pub friends: Vec<Friend>,
+    pub requests: FriendRequests,
+    pub blocked: Vec<BlockedPlayer>,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChatConversation {
@@ -100,9 +115,19 @@ impl ChatInbox {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub enum ThreadStatus {
+    #[default]
+    Idle,
+    Loading,
+    Error(String),
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ChatThread {
     pub messages: Arc<Vec<ChatMessage>>,
     pub pending: Vec<PendingMessage>,
+    pub status: ThreadStatus,
+    pub complete: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -116,6 +141,9 @@ pub struct ChatState {
     messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
     pending: HashMap<i32, Vec<PendingMessage>>,
     presence: HashMap<Uuid, bool>,
+    roster: ChatRoster,
+    threads: HashMap<i32, ThreadStatus>,
+    complete: HashMap<i32, bool>,
 }
 
 impl ChatState {
@@ -169,11 +197,42 @@ impl ChatState {
     }
 
     #[must_use]
+    pub fn roster(&self) -> ChatRoster {
+        self.roster.clone()
+    }
+
+    pub fn set_roster(&mut self, roster: ChatRoster) {
+        self.roster = roster;
+    }
+
+    #[must_use]
     pub fn thread(&self, group_id: i32) -> ChatThread {
         ChatThread {
             messages: self.messages_for(group_id),
             pending: self.pending_for(group_id).to_vec(),
+            status: self
+                .threads
+                .get(&group_id)
+                .cloned()
+                .unwrap_or(ThreadStatus::Idle),
+            complete: self.complete.get(&group_id).copied().unwrap_or(false),
         }
+    }
+
+    pub fn begin_thread_load(&mut self, group_id: i32) {
+        self.threads.insert(group_id, ThreadStatus::Loading);
+    }
+
+    pub fn settle_thread_load(&mut self, group_id: i32) {
+        self.threads.insert(group_id, ThreadStatus::Idle);
+    }
+
+    pub fn fail_thread_load(&mut self, group_id: i32, message: String) {
+        self.threads.insert(group_id, ThreadStatus::Error(message));
+    }
+
+    pub fn set_history_complete(&mut self, group_id: i32, complete: bool) {
+        self.complete.insert(group_id, complete);
     }
 
     #[must_use]
@@ -295,6 +354,17 @@ impl ChatState {
     pub fn finish_send(&mut self, group_id: i32, key: Uuid, message: ChatMessage) {
         self.discard_pending(group_id, key);
         self.upsert(group_id, message);
+    }
+
+    pub fn begin_retry(&mut self, group_id: i32, key: Uuid) -> Option<String> {
+        let pending = self
+            .pending
+            .get_mut(&group_id)?
+            .iter_mut()
+            .find(|pending| pending.key == key)?;
+
+        pending.failed = false;
+        Some(pending.content.clone())
     }
 
     pub fn fail_send(&mut self, group_id: i32, key: Uuid) {
@@ -451,6 +521,19 @@ mod tests {
     }
 
     #[test]
+    fn retrying_clears_the_failed_marker_so_discard_is_out_of_reach() {
+        let mut chat = ChatState::default();
+        let key = Uuid::from_u128(7);
+
+        chat.begin_send(1, key, "hi".into());
+        chat.fail_send(1, key);
+
+        assert_eq!(chat.begin_retry(1, key).as_deref(), Some("hi"));
+        assert!(!chat.pending_for(1)[0].failed);
+        assert!(chat.begin_retry(1, Uuid::from_u128(8)).is_none());
+    }
+
+    #[test]
     fn switching_accounts_drops_the_previous_inbox() {
         let mut chat = ChatState::default();
         let first = Uuid::from_u128(1);
@@ -480,6 +563,32 @@ mod tests {
 
         assert!(!chat.set_owner(Some(account)));
         assert_eq!(chat.conversations().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_load_is_reported_on_the_thread_not_the_inbox() {
+        let mut chat = ChatState::default();
+
+        chat.begin_thread_load(1);
+        assert_eq!(chat.thread(1).status, ThreadStatus::Loading);
+
+        chat.fail_thread_load(1, "offline".into());
+        assert_eq!(chat.thread(1).status, ThreadStatus::Error("offline".into()));
+        assert!(chat.error.is_none());
+
+        chat.settle_thread_load(1);
+        assert_eq!(chat.thread(1).status, ThreadStatus::Idle);
+    }
+
+    #[test]
+    fn exhausted_history_latches_per_conversation() {
+        let mut chat = ChatState::default();
+
+        assert!(!chat.thread(1).complete);
+
+        chat.set_history_complete(1, true);
+        assert!(chat.thread(1).complete);
+        assert!(!chat.thread(2).complete);
     }
 
     #[test]

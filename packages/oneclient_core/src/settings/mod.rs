@@ -1,6 +1,6 @@
 mod launcher;
 
-pub use launcher::{LauncherSettings, ViewLayout, ViewState};
+pub use launcher::{DEFAULT_GRID_COLUMNS, LauncherSettings, ViewLayout, ViewState};
 pub use oneclient_cluster::{
 	GameSettingsProfile, PackageUpdateMode, ProfileUpdate, SettingsOsExtra,
 };
@@ -8,8 +8,6 @@ pub use oneclient_common::Resolution;
 
 pub mod store;
 
-/// Pushed down by the composition layer on every settings change so the HTTP
-/// client never reaches back into global settings (and thus into its own owner)
 #[must_use]
 pub fn net_config(settings: &LauncherSettings) -> oneclient_net::NetConfig {
 	oneclient_net::NetConfig::default().with_overrides(

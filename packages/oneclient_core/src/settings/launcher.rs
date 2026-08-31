@@ -12,12 +12,25 @@ pub enum ViewLayout {
 	List,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub const DEFAULT_GRID_COLUMNS: u8 = 3;
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct ViewState {
 	pub layout: ViewLayout,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub sort: Option<String>,
+	pub columns: u8,
+}
+
+impl Default for ViewState {
+	fn default() -> Self {
+		Self {
+			layout: ViewLayout::default(),
+			sort: None,
+			columns: DEFAULT_GRID_COLUMNS,
+		}
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

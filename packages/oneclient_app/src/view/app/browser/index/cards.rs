@@ -31,9 +31,10 @@ pub(super) fn grid_row(
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    metrics: GridMetrics,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
-    let fill = GRID_COLUMNS - row.len();
+    let fill = metrics.cols.saturating_sub(row.len());
     let installed: Vec<Option<InstallSource>> = row
         .iter()
         .map(|item| installed_for(installed, item))
@@ -42,14 +43,14 @@ pub(super) fn grid_row(
     rect()
         .horizontal()
         .width(Size::fill())
-        .height(Size::px(CARD_H))
+        .height(Size::px(metrics.card_h))
         .spacing(GRID_SPACING)
         .content(Content::Flex)
         .children(
             row.into_iter()
                 .zip(installed)
                 .map(move |(item, installed)| {
-                    PackageCard::new(item, cluster_id, package_type.clone(), installed)
+                    PackageCard::new(item, cluster_id, package_type.clone(), installed, metrics)
                         .into_element()
                 }),
         )
@@ -76,6 +77,7 @@ struct PackageCard {
     cluster_id: i64,
     package_type: String,
     installed: Option<InstallSource>,
+    metrics: GridMetrics,
 }
 
 impl PackageCard {
@@ -84,12 +86,14 @@ impl PackageCard {
         cluster_id: i64,
         package_type: String,
         installed: Option<InstallSource>,
+        metrics: GridMetrics,
     ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
             installed,
+            metrics,
         }
     }
 }
@@ -109,7 +113,7 @@ impl Component for PackageCard {
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .height(Size::px(CARD_H))
+            .height(Size::px(self.metrics.card_h))
             .corner_radius(CornerRadius::new_all(10.))
             .background(CARD_BG)
             .border(border_all_color(
@@ -131,7 +135,7 @@ impl Component for PackageCard {
                     .margin(Gaps::new_all(1.))
                     .corner_radius(CornerRadius::new(10., 10., 0., 0.))
                     .overflow(Overflow::Clip)
-                    .child(PackageBanner::new(icon_url, BANNER_H))
+                    .child(PackageBanner::new(icon_url, self.metrics.banner_h))
                     // Top-left of the banner the first thing worth knowing about a result and the opposite corner is the install button's
                     .maybe_child(self.installed.map(|installed| {
                         rect()

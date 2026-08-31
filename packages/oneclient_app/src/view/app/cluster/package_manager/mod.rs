@@ -16,7 +16,6 @@ const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
 const CARD_GRID_H: f32 = 148.;
 const GRID_GAP: f32 = 10.;
-const GRID_MIN_W: f32 = 260.;
 const LAZY_OVERSCAN: i64 = 2;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
@@ -386,6 +385,7 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
+        let grid_columns = view.columns;
         let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
@@ -438,6 +438,7 @@ impl Component for PackageManager {
                 enabled_filter,
                 hidden_filter,
                 layout,
+                grid_columns,
                 cluster_id,
                 package_type,
             ))
@@ -450,6 +451,7 @@ impl Component for PackageManager {
                 cluster_id,
                 content_kind,
                 card_layout,
+                *grid_columns.read(),
             ))
     }
 }

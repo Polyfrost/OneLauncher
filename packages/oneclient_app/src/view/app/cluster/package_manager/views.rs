@@ -1,4 +1,4 @@
-use super::*;
+﻿use super::*;
 
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
@@ -7,7 +7,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput,
+    Segment, SegmentedControl, TabBar, TabItem, TextInput, columns_for_items, grid_columns_picker,
 };
 use crate::hooks::use_dispatch;
 use crate::routes::Route;
@@ -140,6 +140,7 @@ pub(super) fn toolbar_bar(
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
     layout: State<ViewLayout>,
+    grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
 ) -> impl IntoElement {
@@ -193,6 +194,10 @@ pub(super) fn toolbar_bar(
             enabled_filter,
             hidden_filter,
         })
+        .maybe_child(
+            (*layout.read() == ViewLayout::Grid)
+                .then(|| grid_columns_picker(grid_columns, 34.).into_element()),
+        )
         .child(
             SegmentedControl::new(layout)
                 .height(34.)
@@ -540,7 +545,6 @@ pub(super) enum ContentKind {
     Browser,
     Local,
     Other,
-    /// `scope` names the tab that was searched when it is narrower than "All"
     NoMatches {
         scope: Option<String>,
     },
@@ -555,6 +559,7 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    grid_columns: u8,
 }
 
 impl ContentBox {
@@ -567,6 +572,7 @@ impl ContentBox {
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
+        grid_columns: u8,
     ) -> Self {
         Self {
             items,
@@ -576,6 +582,7 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
+            grid_columns,
         }
     }
 }
@@ -589,6 +596,7 @@ impl Component for ContentBox {
         let noun_plural = self.noun_plural;
         let kind = &self.kind;
         let layout = self.layout;
+        let grid_columns = self.grid_columns;
 
         let dispatch = use_dispatch();
 
@@ -613,7 +621,7 @@ impl Component for ContentBox {
                 .width(Size::fill())
                 .height(Size::fill())
                 .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, ctx).into_element()
+                    grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
                 })
                 .into_element(),
         });
@@ -678,11 +686,11 @@ fn grid_content(
     items: &[PackageEntry],
     package_type: &'static str,
     cluster_id: i64,
+    grid_columns: u8,
     ctx: ScrollAreaCtx,
 ) -> impl IntoElement {
     let count = items.len();
-    let cols =
-        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 3);
+    let cols = columns_for_items(grid_columns, count);
     let rows_total = count.div_ceil(cols);
     let slot = CARD_GRID_H + GRID_GAP;
 

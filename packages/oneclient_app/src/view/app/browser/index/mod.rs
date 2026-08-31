@@ -16,6 +16,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
+    cell_width, columns_for_items, grid_columns_picker,
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
@@ -43,14 +44,23 @@ use skeletons::{SkeletonListRow, skeleton_grid_row};
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
-const GRID_COLUMNS: usize = 3;
 const SCROLLBAR_GUTTER: f32 = 18.;
 const CARD_H: f32 = 240.;
 const BANNER_H: f32 = 100.;
+const CARD_TEXT_H: f32 = CARD_H - BANNER_H;
+const BANNER_RATIO: f32 = 0.35;
+const BANNER_MAX_H: f32 = 200.;
 const LIST_ROW_H: f32 = 78.;
 const GRID_SPACING: f32 = 12.;
 const LIST_SPACING: f32 = 8.;
 const SEARCH_DEBOUNCE_MS: u64 = 250;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct GridMetrics {
+    pub cols: usize,
+    pub card_h: f32,
+    pub banner_h: f32,
+}
 
 fn type_title(package_type: &str) -> &'static str {
     match package_type {
@@ -84,7 +94,9 @@ impl Component for Browser {
 
         let query = use_state(|| saved.query.clone());
         let provider = use_state(|| saved.provider);
-        let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
+        let view = use_view_state(&format!("browser.{package_type}"));
+        let view_mode = view.layout;
+        let grid_columns = view.columns;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
         let page = use_state(|| saved.page);
@@ -178,6 +190,21 @@ impl Component for Browser {
 
         let mode = *view_mode.read();
 
+        let mut grid_width = use_state(|| 0f32);
+        let grid_items = if packages.is_empty() {
+            BROWSE_PAGE_SIZE
+        } else {
+            packages.len()
+        };
+        let cols = columns_for_items(*grid_columns.read(), grid_items);
+        let card_w = cell_width(
+            (*grid_width.read() - SCROLLBAR_GUTTER).max(0.),
+            cols,
+            GRID_SPACING,
+        );
+        let banner_h = (card_w * BANNER_RATIO).clamp(BANNER_H, BANNER_MAX_H);
+        let card_h = banner_h + CARD_TEXT_H;
+
         let fade_dep = (current_page, packages.is_empty(), pending, mode);
         let fade = use_animation_with_dependencies(&fade_dep, |conf, _| {
             conf.on_creation(OnCreation::Run);
@@ -198,10 +225,21 @@ impl Component for Browser {
             match mode {
                 ViewLayout::Grid => {
                     let rows: Vec<Vec<ProjectSummary>> =
-                        packages.chunks(GRID_COLUMNS).map(|c| c.to_vec()).collect();
+                        packages.chunks(cols).map(|c| c.to_vec()).collect();
 
-                    sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
-                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed).into_element()
+                    sa.lazy(rows.len(), card_h, GRID_SPACING, move |i| {
+                        grid_row(
+                            rows[i].clone(),
+                            cluster_id,
+                            &pkg,
+                            &installed,
+                            GridMetrics {
+                                cols,
+                                card_h,
+                                banner_h,
+                            },
+                        )
+                        .into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(packages.len(), LIST_ROW_H, LIST_SPACING, move |i| {
@@ -211,9 +249,14 @@ impl Component for Browser {
         } else if pending {
             match mode {
                 ViewLayout::Grid => {
-                    let rows = BROWSE_PAGE_SIZE.div_ceil(GRID_COLUMNS);
-                    sa.lazy(rows, CARD_H, GRID_SPACING, |_| {
-                        skeleton_grid_row().into_element()
+                    let rows = BROWSE_PAGE_SIZE.div_ceil(cols);
+                    sa.lazy(rows, card_h, GRID_SPACING, move |_| {
+                        skeleton_grid_row(GridMetrics {
+                            cols,
+                            card_h,
+                            banner_h,
+                        })
+                        .into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(BROWSE_PAGE_SIZE, LIST_ROW_H, LIST_SPACING, |_| {
@@ -240,7 +283,7 @@ impl Component for Browser {
                     package_type: package_type.clone(),
                 }),
             ))
-            .child(controls(provider, query, view_mode))
+            .child(controls(provider, query, view_mode, grid_columns))
             .child(
                 rect()
                     .horizontal()
@@ -265,7 +308,13 @@ impl Component for Browser {
                                     .width(Size::fill())
                                     .height(Size::flex(1.0))
                                     .child(results)
-                                    .opacity(fade_opacity),
+                                    .opacity(fade_opacity)
+                                    .on_sized(move |event: Event<SizedEventData>| {
+                                        let w = event.data().area.width();
+                                        if (w - *grid_width.peek()).abs() > 0.5 {
+                                            *grid_width.write() = w;
+                                        }
+                                    }),
                             )
                             .maybe_child(pages.map(|pages| {
                                 Pagination::new(page, pages)
@@ -379,6 +428,7 @@ fn controls(
     provider: State<ProviderId>,
     query: State<String>,
     view_mode: State<ViewLayout>,
+    grid_columns: State<u8>,
 ) -> impl IntoElement {
     rect()
         .horizontal()
@@ -387,6 +437,10 @@ fn controls(
         .spacing(12.)
         .content(Content::Flex)
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(
+            (*view_mode.read() == ViewLayout::Grid)
+                .then(|| grid_columns_picker(grid_columns, 30.).into_element()),
+        )
         .child(
             SegmentedControl::new(view_mode)
                 .equal_width(30.)

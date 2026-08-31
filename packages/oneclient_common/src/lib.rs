@@ -3,6 +3,7 @@
 
 pub mod constants;
 pub mod domain;
+pub mod memory;
 pub mod os_ext;
 pub mod paths;
 pub mod patch;
@@ -15,6 +16,7 @@ pub use domain::{
     ContentType, GameLoader, HashAlgorithm, PackageUpdateMode, ProviderId, Resolution,
 };
 pub use error::{PathsError, PathsResult};
+pub use memory::{default_mem_max, default_mem_max_for_total, total_ram_mb};
 pub use os_ext::OsExt;
 pub use patch::Patch;
 pub use search::{MatchScore, SearchQuery, normalize_query};

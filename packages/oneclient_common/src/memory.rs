@@ -1,6 +1,6 @@
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 
-const SMALL_SYSTEM_MB: u32 = 7 * 1024;
+const SMALL_SYSTEM_MB: u32 = 11 * 1024;
 
 const SMALL_SYSTEM_HEAP_MB: u32 = 2048;
 const DEFAULT_HEAP_MB: u32 = 4096;
@@ -38,8 +38,9 @@ mod tests {
     fn small_systems_get_2gb() {
         assert_eq!(default_mem_max_for_total(3987), 2048); // 4GB
         assert_eq!(default_mem_max_for_total(6060), 2048); // 6GB
-        assert_eq!(default_mem_max_for_total(7167), 2048);
-        assert_eq!(default_mem_max_for_total(7168), 4096); // 8GB
+        assert_eq!(default_mem_max_for_total(7900), 2048); // 8GB
+        assert_eq!(default_mem_max_for_total(11263), 2048);
+        assert_eq!(default_mem_max_for_total(11264), 4096); // 12GB
         assert_eq!(default_mem_max_for_total(16290), 4096); // 16GB
     }
 }

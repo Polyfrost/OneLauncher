@@ -100,7 +100,9 @@ impl Component for Startup {
             let stale = settings.settings.accepted_tos_version < required_terms
                 || settings.settings.accepted_privacy_version < required_privacy;
 
-            let destination = if !settings.settings.seen_onboarding {
+            let destination = if settings.settings.declined_tos {
+                Route::Home {}
+            } else if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
             } else if stale {
                 Route::OnboardingTerms {}

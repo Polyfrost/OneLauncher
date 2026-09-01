@@ -13,7 +13,7 @@ use tracing::Level;
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
 use crate::theme::colors;
 
-const WINDOW_TITLE: &str = "OneClient — Log Console";
+const WINDOW_TITLE: &str = "OneClient - Log Console";
 
 /// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;

@@ -1,6 +1,6 @@
 use super::*;
 
-use crate::components::Button;
+use crate::components::{Button, progress_track};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{format_duration_hms, format_size};
@@ -388,20 +388,4 @@ impl Component for ActivityIndicator {
                     .color(colors::fg_primary()),
             )
     }
-}
-
-fn progress_track(pct: f32, height: f32, fill: Color, bg: Color) -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(height))
-        .corner_radius(CornerRadius::new_all(height / 2.))
-        .background(bg)
-        .child(
-            rect()
-                .width(Size::percent(pct.clamp(0.0, 100.0)))
-                .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(height / 2.))
-                .background(fill),
-        )
-        .into_element()
 }

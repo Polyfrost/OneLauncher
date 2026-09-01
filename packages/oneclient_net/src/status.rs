@@ -6,7 +6,7 @@ use tokio::sync::{Notify, watch};
 
 use crate::service::RequestClient;
 
-const CONNECTIVITY_URL: &str = "https://www.gstatic.com/generate_204";
+const CONNECTIVITY_URL: &str = "https://cp.cloudflare.com/generate_204";
 const MC_AUTH_URL: &str = "https://api.minecraftservices.com/";
 const POLYFROST_STATUS_URL: &str = "https://status.polyfrost.org/index.json";
 

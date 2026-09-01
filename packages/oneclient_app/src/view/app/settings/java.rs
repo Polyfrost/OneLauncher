@@ -4,6 +4,7 @@ use oneclient_java::{JavaRuntime, JavaVendor};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
+use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -18,10 +19,40 @@ impl Component for SettingsJava {
         let runtimes = java_runtimes(&runtimes_query);
         let mut show_manager = use_state(|| false);
 
+        fn invalidate_runtimes(dispatch: Actions) {
+            spawn(async move {
+                invalidate_java_queries().await;
+                dispatch
+                    .notify("Java runtimes refreshed")
+                    .body("The installed runtime list is up to date")
+                    .info()
+                    .send();
+            });
+        }
+
+        let refresh_dispatch = dispatch.clone();
+
         let mut shell = settings_page()
             .child(section_header("ADD RUNTIME"))
             .child(AddRow { show_manager }.into_element())
-            .child(section_header("INSTALLED RUNTIMES"))
+            .child(
+                rect()
+                    .width(Size::Fill)
+                    .direction(Direction::Horizontal)
+                    .main_align(Alignment::SpaceBetween)
+                    .cross_align(Alignment::Center)
+                    .child(section_header("INSTALLED RUNTIMES"))
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .small()
+                            .enabled(false) // disabled for now
+                            .on_press(move |_| {
+                                invalidate_runtimes(refresh_dispatch.clone());
+                            })
+                            .child(label().text("Refresh"))
+                    )
+            )
             .child(runtimes_table(runtimes));
 
         if *show_manager.read() {
@@ -172,6 +203,13 @@ impl Component for RuntimeRow {
         let runtime = &self.runtime;
         let path = runtime.absolute_path.clone();
 
+        // so the scrollarea becomes bigger when horizontal scroll bar is visible (then it won't obscure the file path)
+        let mut viewport_w = use_state(|| 0f32);
+        let content_w = path_content_width(&runtime.absolute_path);
+        let measured_w = *viewport_w.read();
+        let has_scrollbar = measured_w <= 0. || measured_w < content_w;
+        let path_height = if has_scrollbar { 28. } else { 18. };
+
         fn cell(text: String, width: Size) -> impl IntoElement {
             rect()
                 .width(width)
@@ -209,12 +247,19 @@ impl Component for RuntimeRow {
             .child(
                 rect()
                     .width(Size::flex(1.0))
+                    .height(Size::px(path_height))
                     .overflow(Overflow::Clip)
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        let w = e.area.width();
+                        if (*viewport_w.read() - w).abs() > 0.5 {
+                            viewport_w.set(w);
+                        }
+                    })
                     .child(
                         ScrollArea::new()
-                            .horizontal(path_content_width(&runtime.absolute_path))
+                            .horizontal(content_w)
                             .width(Size::fill())
-                            .height(Size::px(18.))
+                            .height(Size::px(path_height))
                             .show_scrollbar(false)
                             .child(
                                 label()

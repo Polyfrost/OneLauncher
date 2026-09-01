@@ -26,9 +26,9 @@ fn update_prompt(version: &str) -> Prompt<UpdateAnswer> {
 
 const PROGRESS_STEP: u64 = 256 * 1024;
 
-pub fn spawn_update_check(auto_install: bool) {
+pub fn spawn_update_check(auto_install: bool, events: EventBus) {
     tokio::spawn(async move {
-        if let Err(err) = run_check(auto_install).await {
+        if let Err(err) = run_check(auto_install, events).await {
             tracing::warn!("update check failed: {err:#}");
         }
     });
@@ -74,9 +74,7 @@ async fn run_simulated_update() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_check(auto_install: bool) -> anyhow::Result<()> {
-    let events = crate::launcher::state()?.services.events.clone();
-
+async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
     // `check_update` performs a blocking HTTP request so offload it to a thread pool
     let Some(update) = tokio::task::spawn_blocking(check_for_update).await?? else {
         tracing::info!("no update available");

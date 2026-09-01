@@ -73,6 +73,8 @@ impl LauncherState {
 		};
 
         let settings = store::load_settings(Some(&services.events)).await;
+
+		oneclient_common::consent::init(settings.declined_tos);
 		services
 			.requester
 			.set_config(crate::settings::net_config(&settings));

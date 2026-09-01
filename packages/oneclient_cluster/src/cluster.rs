@@ -86,6 +86,14 @@ impl Cluster {
 		paths::cluster_uses_dedicated_dir(&self.folder_name)
 	}
 
+	pub fn provisioned_marker(&self) -> ClusterResult<PathBuf> {
+		Ok(self.dir()?.join(paths::PROVISIONED_MARKER))
+	}
+
+	pub fn is_provisioned(&self) -> bool {
+		paths::cluster_is_provisioned(&self.folder_name)
+	}
+
 	pub fn game_dir(&self) -> ClusterResult<PathBuf> {
 		Ok(paths::cluster_game_dir(&self.folder_name)?)
 	}

@@ -1,10 +1,9 @@
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::*;
-use oneclient_common::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
-use crate::hooks::{use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
+use crate::hooks::{use_cluster, use_dispatch, use_game_snapshot, use_launcher};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
@@ -105,20 +104,9 @@ impl Component for ClusterShell {
         let show_game_log = game.is_active(cluster_id);
         let launch_state = launch_button_state(&game, cluster_id, syncing);
 
-        // Queried unconditionally the shell can mount before the cluster list settles
-        // and a conditional hook would change this component's hook count mid-life
-        let parsed = cluster.as_ref().and_then(|c| parse_mc_version(&c.mc_version));
-        let metadata = use_version_metadata(
-            parsed.as_ref().map(|p| p.major),
-            parsed.and_then(|p| p.key()),
-            cluster.as_ref().map(|c| c.mc_loader),
-        );
-
         let header = cluster.as_ref().map(|cluster| {
-            let title = format!("{} {}", cluster.mc_loader, cluster.mc_version);
-            let subtitle = metadata
-                .and_then(|m| m.long_description)
-                .unwrap_or_else(|| cluster.name.clone());
+            let title = cluster.name.clone();
+            let subtitle = format!("{} {}", cluster.mc_loader, cluster.mc_version);
             cluster_header(
                 title,
                 subtitle,
@@ -253,6 +241,8 @@ fn cluster_header(
                         .text(title)
                         .font_size(28.)
                         .font_weight(FontWeight::BOLD)
+                        .max_lines(1)
+                        .width(Size::fill())
                         .color(colors::fg_primary()),
                 )
                 .child(
@@ -260,6 +250,8 @@ fn cluster_header(
                         .text(subtitle)
                         .font_size(12.)
                         .font_weight(FontWeight::MEDIUM)
+                        .max_lines(1)
+                        .width(Size::fill())
                         .color(colors::fg_secondary()),
                 ),
         )

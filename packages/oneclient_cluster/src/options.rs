@@ -10,6 +10,8 @@ pub struct CreateClusterOptions {
 	pub mc_loader: GameLoader,
 	pub mc_loader_version: Option<String>,
 	pub mem_max: Option<u32>,
+	#[serde(default)]
+	pub dedicated: bool,
 }
 
 impl CreateClusterOptions {
@@ -20,11 +22,17 @@ impl CreateClusterOptions {
 			mc_loader,
 			mc_loader_version: None,
 			mem_max: None,
+			dedicated: false,
 		}
 	}
 
 	pub fn mem_max(mut self, megabytes: u32) -> Self {
 		self.mem_max = Some(megabytes);
+		self
+	}
+
+	pub fn dedicated(mut self, dedicated: bool) -> Self {
+		self.dedicated = dedicated;
 		self
 	}
 

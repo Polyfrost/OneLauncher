@@ -27,6 +27,7 @@ async fn main() -> LauncherResult<()> {
             mc_loader: loader,
             mc_loader_version: loader_version.map(str::to_string),
             mem_max: None,
+            dedicated: false,
         },
     )
     .await?;

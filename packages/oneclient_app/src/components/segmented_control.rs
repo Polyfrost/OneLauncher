@@ -39,6 +39,7 @@ pub struct SegmentedControl<T: Copy + PartialEq + 'static> {
     icon_size: Option<f32>,
     tint_icons: bool,
     equal_width: Option<f32>,
+    fill: bool,
     disabled: bool,
 }
 
@@ -51,6 +52,7 @@ impl<T: Copy + PartialEq + 'static> SegmentedControl<T> {
             icon_size: None,
             tint_icons: true,
             equal_width: None,
+            fill: false,
             disabled: false,
         }
     }
@@ -90,6 +92,11 @@ impl<T: Copy + PartialEq + 'static> SegmentedControl<T> {
         self.equal_width = Some(width);
         self
     }
+
+    pub fn fill(mut self) -> Self {
+        self.fill = true;
+        self
+    }
 }
 
 impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
@@ -99,6 +106,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
         let icon_size = self.icon_size;
         let tint = self.tint_icons;
         let equal_width = self.equal_width;
+        let fill = self.fill;
         let disabled = self.disabled;
 
         rect()
@@ -110,6 +118,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
             .corner_radius(CornerRadius::new_all(9.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
+            .maybe(fill, |el| el.width(Size::fill()).content(Content::Flex))
             .children(self.segments.iter().map(move |seg| {
                 SegmentButton {
                     selected,
@@ -120,6 +129,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
                     icon_size,
                     tint,
                     equal_width,
+                    fill,
                     disabled,
                 }
                 .into_element()
@@ -137,6 +147,7 @@ struct SegmentButton<T: Copy + PartialEq + 'static> {
     icon_size: Option<f32>,
     tint: bool,
     equal_width: Option<f32>,
+    fill: bool,
     disabled: bool,
 }
 
@@ -150,6 +161,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
         let is_selected = self.is_selected;
         let disabled = self.disabled;
         let equal_width = self.equal_width;
+        let fill = self.fill;
         let focused = focus().is_focused();
 
         let content_color = if disabled {
@@ -169,10 +181,13 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             .a11y_id(a11y_id)
             .a11y_focusable(!disabled)
             .a11y_role(AccessibilityRole::Button)
-            .map(equal_width, |el, w| {
+            .maybe(fill, |el| {
+                el.width(Size::flex(1.0)).main_align(Alignment::Center)
+            })
+            .map(equal_width.filter(|_| !fill), |el, w| {
                 el.width(Size::px(w)).main_align(Alignment::Center)
             })
-            .maybe(equal_width.is_none(), |el| {
+            .maybe(equal_width.is_none() && !fill, |el| {
                 el.padding(Gaps::new_symmetric(0., 12.))
             })
             .background(if is_selected {

@@ -5,6 +5,7 @@ use oneclient_db::dao::{applied_migration as migration_dao, cluster as cluster_d
 use oneclient_db::models::ClusterRow;
 
 use crate::LauncherResult;
+use oneclient_cluster::ClusterIdentity;
 use oneclient_common::domain::GameLoader;
 use crate::state::LauncherState;
 use crate::versions::RemoteMigration;
@@ -62,47 +63,68 @@ async fn apply_rule(state: &LauncherState, rule: &RemoteMigration) -> LauncherRe
         return Ok(false);
     }
 
-    let Some(source) =
-        cluster_dao::find_by_version_loader(db, &rule.from.mc_version, loader as i64).await?
-    else {
-        migration_dao::mark_applied(db, &rule.id).await?;
-        return Ok(false);
-    };
-
-    if cluster_dao::find_by_version_loader(db, &rule.to.mc_version, loader as i64)
+    let sources: Vec<ClusterRow> = cluster_dao::list_all(db)
         .await?
-        .is_some()
-    {
-        tracing::warn!(
-            migration_id = %rule.id,
-            from = %rule.from.mc_version,
-            to = %rule.to.mc_version,
-            "target cluster already exists; skipping migration"
-        );
+        .into_iter()
+        .filter(|row| row.mc_version == rule.from.mc_version && row.mc_loader == loader as i64)
+        .collect();
+
+    if sources.is_empty() {
+        migration_dao::mark_applied(db, &rule.id).await?;
         return Ok(false);
     }
 
-    if crate::game::is_running(state, source.id) {
+    if let Some(running) = sources
+        .iter()
+        .find(|source| crate::game::is_running(state, source.id))
+    {
         tracing::info!(
             migration_id = %rule.id,
-            cluster_id = source.id,
+            cluster_id = running.id,
             "cluster is running; deferring migration"
         );
         return Ok(false);
     }
 
-    migrate_cluster(state, rule, &source).await?;
+    let mut migrated = 0;
+    let mut failed = 0;
 
-    migration_dao::mark_applied(db, &rule.id).await?;
-    tracing::info!(
-        migration_id = %rule.id,
-        cluster_id = source.id,
-        from = %rule.from.mc_version,
-        to = %rule.to.mc_version,
-        "migrated cluster"
-    );
+    for source in &sources {
+        match migrate_cluster(state, rule, source).await {
+            Ok(()) => {
+                migrated += 1;
+                tracing::info!(
+                    migration_id = %rule.id,
+                    cluster_id = source.id,
+                    from = %rule.from.mc_version,
+                    to = %rule.to.mc_version,
+                    "migrated cluster"
+                );
+            }
+            Err(err) => {
+                failed += 1;
+                tracing::warn!(
+                    migration_id = %rule.id,
+                    cluster_id = source.id,
+                    error = %err,
+                    "failed to migrate cluster; leaving it on the old version"
+                );
+            }
+        }
+    }
 
-    Ok(true)
+    if failed == 0 {
+        migration_dao::mark_applied(db, &rule.id).await?;
+    } else {
+        tracing::warn!(
+            migration_id = %rule.id,
+            migrated,
+            failed,
+            "migration incomplete; keeping the rule pending for the next start"
+        );
+    }
+
+    Ok(migrated > 0)
 }
 
 async fn migrate_cluster(
@@ -148,7 +170,16 @@ async fn migrate_cluster(
     )
     .await
     {
-        Ok(_) => Ok(()),
+        Ok(_) => {
+            ClusterIdentity::amend(folder_for_db, |identity| {
+                identity.mc_version = to.clone();
+                if let Some(name) = &new_name {
+                    identity.name = name.clone();
+                }
+            })
+            .await;
+            Ok(())
+        }
         Err(err) => {
             if let Some((old_dir, new_dir)) = renamed
                 && let Err(rollback) = polyio::rename(&new_dir, &old_dir).await

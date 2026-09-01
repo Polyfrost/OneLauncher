@@ -4,7 +4,9 @@ use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, us
 use oneclient_content::packages::{ContentType, PackageStore};
 use oneclient_db::models::ClusterId;
 
-use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
+use super::bundles::{
+    BundleOverridesQuery, BundleUpdatesQuery, BundledTargetsQuery, BundlesWithStatusQuery,
+};
 use super::cluster_content::ClusterContentQuery;
 use super::clusters::ListClustersQuery;
 use super::package_updates::PackageUpdatesQuery;
@@ -29,6 +31,7 @@ pub async fn invalidate_cluster_queries() {
     timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
     timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
     timed("clusters", QueriesStorage::<ListClustersQuery>::invalidate_all()).await;
+    timed("bundled_targets", QueriesStorage::<BundledTargetsQuery>::invalidate_all()).await;
     timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
     timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::invalidate_all()).await;
     tracing::debug!(

@@ -72,12 +72,33 @@ pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
 /// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
 
+pub const PROVISIONED_MARKER: &str = ".provisioned";
+
+pub const CLUSTER_METADATA_DIR: &str = ".oneclient";
+pub const CLUSTER_IDENTITY_FILE: &str = "cluster.json";
+
+pub const DELETING_SUFFIX: &str = ".deleting";
+
+pub fn is_deleting_folder(folder_name: &str) -> bool {
+	folder_name.ends_with(DELETING_SUFFIX)
+}
+
 pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
 	Ok(clusters_dir()?.join(folder_name))
 }
 
+pub fn cluster_identity_file(folder_name: &str) -> PathsResult<PathBuf> {
+	Ok(cluster_dir(folder_name)?
+		.join(CLUSTER_METADATA_DIR)
+		.join(CLUSTER_IDENTITY_FILE))
+}
+
 pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
 	cluster_dir(folder_name).is_ok_and(|dir| dir.join(DEDICATED_MARKER).exists())
+}
+
+pub fn cluster_is_provisioned(folder_name: &str) -> bool {
+	cluster_dir(folder_name).is_ok_and(|dir| dir.join(PROVISIONED_MARKER).exists())
 }
 
 /// Lives here not on `Cluster` so the content layer can resolve it from a bare

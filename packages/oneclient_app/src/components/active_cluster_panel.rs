@@ -3,9 +3,8 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType};
-use oneclient_common::parse_mc_version;
 
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
@@ -50,15 +49,6 @@ impl Component for ActiveClusterPanel {
         let p = intro.get().value();
         let slide_x = (p - 1.0) * 48.0;
 
-        let parsed = active
-            .as_ref()
-            .and_then(|c| parse_mc_version(&c.mc_version));
-        let metadata = use_version_metadata(
-            parsed.as_ref().map(|p| p.major),
-            parsed.and_then(|p| p.key()),
-            active.as_ref().map(|c| c.mc_loader),
-        );
-
         let Some(cluster) = active else {
             return rect()
                 .vertical()
@@ -72,10 +62,8 @@ impl Component for ActiveClusterPanel {
                 );
         };
 
-        let title = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let subtitle = metadata
-            .map(|m| m.name)
-            .unwrap_or_else(|| cluster.name.clone());
+        let title = cluster.name.clone();
+        let subtitle = format!("{} {}", cluster.mc_version, cluster.mc_loader);
         let cluster_id = cluster.id;
 
         rect()
@@ -90,6 +78,8 @@ impl Component for ActiveClusterPanel {
                     .text(title)
                     .font_size(56.)
                     .line_height(1.1)
+                    .max_lines(2)
+                    .width(Size::fill())
                     .font_weight(FontWeight::BOLD)
                     .color(colors::fg_primary()),
             )

@@ -3,7 +3,8 @@ use oneclient_db::models::{ClusterId, ClusterPatch, NewCluster};
 
 use oneclient_common::domain::ContentType;
 use crate::profiles::{
-	create_profile_from_global, resolve_cluster_profile, update_named_profile,
+	create_profile_from_global, delete_named_profile, resolve_cluster_profile,
+	update_named_profile,
 };
 use oneclient_common::patch::Patch;
 use crate::profile::GameSettingsProfile;
@@ -15,8 +16,18 @@ use tokio::sync::Mutex;
 
 use crate::cluster::Cluster;
 use crate::error::ClusterError;
+use crate::identity::ClusterIdentity;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
 use crate::stage::ClusterStage;
+
+const MAX_NAME_CHARS: usize = 100;
+const MAX_FOLDER_CHARS: usize = 40;
+const FOLDER_FALLBACK: &str = "cluster";
+
+const WINDOWS_RESERVED_STEMS: [&str; 24] = [
+	"CON", "PRN", "AUX", "NUL", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+	"COM8", "COM9", "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
 
 pub struct ClusterManager {
 	db: DbPool,
@@ -40,10 +51,16 @@ impl ClusterManager {
 		self.provisioning.lock().await
 	}
 
-	pub fn sanitize_name(name: &str) -> String {
-		let mut name = name.to_string();
-		name.retain(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')'));
-		name.trim().to_string()
+	pub fn normalize_name(name: &str) -> ClusterResult<String> {
+		let cleaned: String = name.chars().filter(|c| !c.is_control()).collect();
+		let trimmed = cleaned.trim();
+
+		if trimmed.is_empty() {
+			return Err(ClusterError::EmptyName);
+		}
+
+		let capped: String = trimmed.chars().take(MAX_NAME_CHARS).collect();
+		Ok(capped.trim_end().to_string())
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]
@@ -89,7 +106,19 @@ impl ClusterManager {
 		{
 			return Ok(None);
 		}
-		self.create_core(global, options).await.map(Some)
+
+		let cluster = self.create_core(global, options).await?;
+		mark_provisioned(&cluster).await;
+		Ok(Some(cluster))
+	}
+
+	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn ensure_provisioned(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+		let cluster = self.get(cluster_id).await?;
+		if !cluster.is_provisioned() {
+			mark_provisioned(&cluster).await;
+		}
+		Ok(())
 	}
 
 	/// Callers MUST hold `self.provisioning` this does not lock
@@ -99,12 +128,11 @@ impl ClusterManager {
 		global: &GameSettingsProfile,
 		options: CreateClusterOptions,
 	) -> ClusterResult<Cluster> {
-		let name = Self::sanitize_name(&options.name);
-		if name.is_empty() {
-			return Err(ClusterError::EmptyName);
-		}
+		let name = Self::normalize_name(&options.name)?;
 
-		let folder_name = resolve_unique_folder_name(&name).await?;
+		let fallback = format!("{} {}", options.mc_version, options.mc_loader);
+		let folder_name =
+			resolve_unique_folder_name(&self.db, &folder_base(&name, &fallback)).await?;
 		let cluster_path = oneclient_common::paths::clusters_dir()?.join(&folder_name);
 
 		match create_inner(&self.db, global, &options, &name, &folder_name, &cluster_path).await {
@@ -126,25 +154,38 @@ impl ClusterManager {
 		cluster_id: ClusterId,
 		update: ClusterUpdate,
 	) -> ClusterResult<Cluster> {
-		let _ = self.get(cluster_id).await?;
+		let existing = self.get(cluster_id).await?;
 
 		if let Patch::Set(ref profile_name) = update.setting_profile_name {
 			ensure_profile_exists(&self.db, profile_name).await?;
 		}
 
-		let name = update.name.as_deref().map(Self::sanitize_name);
-		if name.as_deref().is_some_and(str::is_empty) {
-			return Err(ClusterError::EmptyName);
+		let name = update
+			.name
+			.as_deref()
+			.map(Self::normalize_name)
+			.transpose()?;
+
+		if name.is_some() && existing.is_provisioned() {
+			return Err(ClusterError::Provisioned);
 		}
 
 		let patch = ClusterPatch {
-			name,
+			name: name.clone(),
 			setting_profile_name: update.setting_profile_name.into_db_patch(),
 			mc_loader_version: update.mc_loader_version.into_db_patch(),
 			linked_modpack_hash: update.linked_modpack_hash.into_db_patch(),
 		};
 
 		let row = cluster_dao::update(&self.db, cluster_id, &patch).await?;
+
+		if let Some(name) = name {
+			ClusterIdentity::amend(&existing.folder_name, |identity| {
+				identity.name = name.clone();
+			})
+			.await;
+		}
+
 		Cluster::try_from_row(row)
 	}
 
@@ -156,8 +197,18 @@ impl ClusterManager {
 	) -> ClusterResult<()> {
 		let cluster = self.get(cluster_id).await?;
 
+		if cluster.is_provisioned() {
+			return Err(ClusterError::Provisioned);
+		}
+
 		if !cluster_dao::delete_by_id(&self.db, cluster_id).await? {
 			return Err(ClusterError::NotFound(cluster_id));
+		}
+
+		if let Some(profile_name) = cluster.setting_profile_name.as_deref()
+			&& profile_name == cluster.folder_name
+		{
+			discard_orphaned_profile(&self.db, profile_name).await;
 		}
 
 		if remove_files {
@@ -207,6 +258,12 @@ impl ClusterManager {
 		} else if marker.exists() {
 			polyio::remove_file(&marker).await.ok();
 		}
+
+		ClusterIdentity::amend(&cluster.folder_name, |identity| {
+			identity.dedicated = dedicated;
+		})
+		.await;
+
 		Ok(())
 	}
 
@@ -288,10 +345,28 @@ async fn create_inner(
 	polyio::create_dir_all(cluster_path).await?;
 	ensure_content_dirs(cluster_path).await?;
 
+	if options.dedicated {
+		polyio::write(
+			cluster_path.join(oneclient_common::paths::DEDICATED_MARKER),
+			b"",
+		)
+		.await?;
+	}
+
+	ClusterIdentity {
+		name: name.to_string(),
+		mc_version: options.mc_version.clone(),
+		mc_loader: options.mc_loader,
+		mc_loader_version: options.mc_loader_version.clone(),
+		dedicated: options.dedicated,
+	}
+	.write(folder_name)
+	.await?;
+
 	let profile = create_profile_from_global(
 		db,
 		global,
-		name,
+		folder_name,
 		options.mem_max,
 		None,
 	)
@@ -322,26 +397,114 @@ async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> Clust
 	Ok(())
 }
 
-#[tracing::instrument(level = "debug")]
-async fn resolve_unique_folder_name(name: &str) -> ClusterResult<String> {
-	let cluster_dir = oneclient_common::paths::clusters_dir()?;
-	let mut folder_name = name.to_string();
-	let mut path = cluster_dir.join(&folder_name);
+async fn mark_provisioned(cluster: &Cluster) {
+	let Ok(marker) = cluster.provisioned_marker() else {
+		return;
+	};
 
-	if path.exists() {
-		let mut which = 1;
-		loop {
-			let candidate = format!("{folder_name} ({which})");
-			path = cluster_dir.join(&candidate);
-			if !path.exists() {
-				folder_name = candidate;
-				break;
+	if let Err(err) = polyio::write(&marker, b"").await {
+		tracing::warn!(
+			folder = %cluster.folder_name,
+			error = %err,
+			"could not mark the cluster as a default instance"
+		);
+	}
+}
+
+#[tracing::instrument(level = "debug", skip(db))]
+async fn resolve_unique_folder_name(db: &DbPool, base: &str) -> ClusterResult<String> {
+	let cluster_dir = oneclient_common::paths::clusters_dir()?;
+	let mut candidate = base.to_string();
+	let mut which = 1;
+
+	loop {
+		let free = !oneclient_common::paths::is_deleting_folder(&candidate)
+			&& !cluster_dir.join(&candidate).exists()
+			&& !profile_dao::is_reserved_global_name(&candidate)
+			&& cluster_dao::get_by_folder_name(db, &candidate).await?.is_none();
+
+		if free {
+			return Ok(candidate);
+		}
+
+		candidate = format!("{base} ({which})");
+		which += 1;
+	}
+}
+
+fn folder_base(name: &str, fallback: &str) -> String {
+	let from_name = sanitize_folder_component(name);
+	if !from_name.is_empty() {
+		return from_name;
+	}
+
+	let from_fallback = sanitize_folder_component(fallback);
+	if !from_fallback.is_empty() {
+		return from_fallback;
+	}
+
+	FOLDER_FALLBACK.to_string()
+}
+
+fn sanitize_folder_component(value: &str) -> String {
+	let kept: String = value
+		.chars()
+		.filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')'))
+		.take(MAX_FOLDER_CHARS)
+		.collect();
+
+	let mut trimmed = kept.trim().trim_end_matches(['.', ' ']).trim().to_string();
+
+	if is_reserved_device_name(&trimmed) {
+		trimmed.push('_');
+	}
+
+	trimmed
+}
+
+fn is_reserved_device_name(value: &str) -> bool {
+	if value.is_empty() {
+		return false;
+	}
+
+	let stem = value.split('.').next().unwrap_or(value).trim();
+	WINDOWS_RESERVED_STEMS
+		.iter()
+		.any(|reserved| reserved.eq_ignore_ascii_case(stem))
+}
+
+#[tracing::instrument(level = "debug", skip(db))]
+async fn discard_orphaned_profile(db: &DbPool, profile_name: &str) {
+	if profile_dao::is_reserved_global_name(profile_name) {
+		return;
+	}
+
+	match cluster_dao::list_all(db).await {
+		Ok(rows) => {
+			let still_used = rows
+				.iter()
+				.any(|row| row.setting_profile_name.as_deref() == Some(profile_name));
+			if still_used {
+				return;
 			}
-			which += 1;
+		}
+		Err(err) => {
+			tracing::warn!(
+				profile = profile_name,
+				error = %err,
+				"could not confirm the profile is unused; leaving it in place"
+			);
+			return;
 		}
 	}
 
-	Ok(folder_name)
+	if let Err(err) = delete_named_profile(db, profile_name).await {
+		tracing::warn!(
+			profile = profile_name,
+			error = %err,
+			"failed to remove the cluster's settings profile"
+		);
+	}
 }
 
 #[tracing::instrument(level = "debug")]

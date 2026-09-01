@@ -6,6 +6,7 @@ use oneclient_core::{
     BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError,
     get_bundles_with_update_status, list_cluster_bundle_overrides,
 };
+use oneclient_common::domain::GameLoader;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone, Debug)]
@@ -50,6 +51,27 @@ pub fn onboarding_bundles_items(
     query: &UseQuery<OnboardingBundlesQuery>,
 ) -> Option<Vec<ClusterBundles>> {
     super::state::settled_or_loading(query)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BundledTargetsQuery;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct BundledTargetsKeys;
+
+impl QueryCapability for BundledTargetsQuery {
+    type Ok = Vec<(String, GameLoader)>;
+    type Err = LauncherError;
+    type Keys = BundledTargetsKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        oneclient_core::bundled_version_targets(&state).await
+    }
+}
+
+pub fn use_bundled_targets() -> UseQuery<BundledTargetsQuery> {
+    use_query(Query::new(BundledTargetsKeys, BundledTargetsQuery))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -48,8 +48,8 @@ pub use auth::{
 };
 pub use bundles::{
     ClusterBundles, OnboardingBundlesQuery, bundle_overrides_map, bundles_with_status_items,
-    onboarding_bundles_items, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
-    use_onboarding_bundles,
+    onboarding_bundles_items, use_bundle_overrides, use_bundle_updates, use_bundled_targets,
+    use_bundles_with_status, use_onboarding_bundles,
 };
 pub use changelog::{
     changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version, use_changelog,

@@ -4,6 +4,7 @@
 
 mod cluster;
 mod error;
+mod identity;
 mod manager;
 mod options;
 mod profile;
@@ -15,6 +16,7 @@ pub mod screenshots;
 
 pub use cluster::{Cluster, ClusterLinkTarget};
 pub use error::{ClusterError, ClusterResult};
+pub use identity::ClusterIdentity;
 pub use manager::ClusterManager;
 pub use options::{ClusterUpdate, CreateClusterOptions};
 pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};

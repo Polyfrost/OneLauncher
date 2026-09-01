@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use oneclient_db::dao::{bundle as bundle_dao, cluster as cluster_dao};
+use oneclient_db::dao::bundle as bundle_dao;
 
 use oneclient_common::domain::GameLoader;
 use crate::state::LauncherState;
@@ -9,6 +9,35 @@ use crate::LauncherResult;
 
 use oneclient_cluster::Cluster;
 use oneclient_cluster::CreateClusterOptions;
+
+async fn default_for(
+    state: &LauncherState,
+    mc_version: &str,
+    loader: GameLoader,
+) -> Option<i64> {
+    let clusters = state.clusters.list().await.ok()?;
+
+    clusters
+        .into_iter()
+        .filter(|cluster| cluster.mc_version == mc_version && cluster.mc_loader == loader)
+        .map(|cluster| cluster.id)
+        .min()
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn bundled_version_targets(
+    state: &LauncherState,
+) -> LauncherResult<Vec<(String, GameLoader)>> {
+    let groups = bundle_dao::list_distinct_version_loaders(&state.services.db).await?;
+
+    Ok(groups
+        .into_iter()
+        .filter_map(|group| {
+            GameLoader::from_repr(group.mc_loader as u8)
+                .map(|loader| (group.mc_version, loader))
+        })
+        .collect())
+}
 
 #[tracing::instrument(skip(state))]
 pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
@@ -25,14 +54,8 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
             continue;
         };
 
-        if cluster_dao::find_by_version_loader(
-            &state.services.db,
-            &group.mc_version,
-            group.mc_loader,
-        )
-        .await?
-        .is_some()
-        {
+        if let Some(existing) = default_for(state, &group.mc_version, loader).await {
+            state.clusters.ensure_provisioned(existing).await.ok();
             continue;
         }
 
@@ -95,10 +118,8 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
 
         let mc_version = format_mc_version(entry.major_version, minor, entry.patch_version);
 
-        if cluster_dao::find_by_version_loader(&state.services.db, &mc_version, loader as i64)
-            .await?
-            .is_some()
-        {
+        if let Some(existing) = default_for(state, &mc_version, loader).await {
+            state.clusters.ensure_provisioned(existing).await.ok();
             continue;
         }
 

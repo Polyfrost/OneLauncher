@@ -64,8 +64,11 @@ pub enum ClusterError {
 	#[error("cluster {0} is already running")]
 	AlreadyRunning(i64),
 
-	#[error("cluster name is empty after sanitization")]
+	#[error("cluster name cannot be empty")]
 	EmptyName,
+
+	#[error("this version's default instance cannot be renamed or deleted")]
+	Provisioned,
 
 	#[error("unknown loader id {0} in database")]
 	InvalidLoader(i64),

@@ -7,10 +7,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use freya::prelude::spawn_forever;
+use freya::prelude::{State, spawn_forever};
 use freya::radio::RadioStation;
 use oneclient_cluster::{
-    ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
+    ClusterStage, ClusterUpdate, CreateClusterOptions, GameSettingsProfile, PackageUpdateMode,
+    ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_core::settings::LauncherSettings;
@@ -412,6 +413,122 @@ impl Actions {
                 .set_stage(cluster_id, ClusterStage::NotReady)
                 .await;
             super::invalidate_cluster_queries().await;
+        });
+    }
+
+    pub fn create_cluster(
+        &self,
+        options: CreateClusterOptions,
+        mut active: State<Option<ClusterId>>,
+    ) {
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+            let global = state.settings.read().global_game_settings.clone();
+
+            match state.clusters.create(&global, options).await {
+                Ok(cluster) => {
+                    events
+                        .notify("Instance created")
+                        .body(format!("{} is ready to set up.", cluster.name))
+                        .send();
+                    super::invalidate_cluster_queries().await;
+                    *active.write() = Some(cluster.id);
+                    events.signal(oneclient_events::Signal::ClustersChanged);
+                }
+                Err(err) => events
+                    .notify("Could not create instance")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+        });
+    }
+
+    pub fn duplicate_cluster(
+        &self,
+        cluster_id: ClusterId,
+        name: impl Into<String>,
+        dedicated: bool,
+        mut active: State<Option<ClusterId>>,
+    ) {
+        let name = name.into();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            match oneclient_core::duplicate_cluster(&state, cluster_id, &name, dedicated).await {
+                Ok(cluster) => {
+                    events
+                        .notify("Instance duplicated")
+                        .body(format!("{} now has its own copy of the mod list.", cluster.name))
+                        .send();
+                    super::invalidate_cluster_queries().await;
+                    *active.write() = Some(cluster.id);
+                    events.signal(oneclient_events::Signal::ClustersChanged);
+                }
+                Err(err) => events
+                    .notify("Could not duplicate instance")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+        });
+    }
+
+    pub fn rename_cluster(&self, cluster_id: ClusterId, name: impl Into<String>) {
+        let name = name.into();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            let update = ClusterUpdate {
+                name: Some(name),
+                ..ClusterUpdate::default()
+            };
+
+            match state.clusters.update(cluster_id, update).await {
+                Ok(_) => {
+                    super::invalidate_cluster_queries().await;
+                    events.signal(oneclient_events::Signal::ClustersChanged);
+                }
+                Err(err) => events
+                    .notify("Could not rename instance")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+        });
+    }
+
+    pub fn delete_cluster(&self, cluster_id: ClusterId, mut active: State<Option<ClusterId>>) {
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            if state.games.is_active(cluster_id) {
+                events
+                    .notify("Instance is running")
+                    .body("Close the game before deleting this instance.")
+                    .error()
+                    .send();
+                return;
+            }
+
+            match oneclient_core::delete_cluster(&state, cluster_id).await {
+                Ok(_) => {
+                    if *active.peek() == Some(cluster_id) {
+                        *active.write() = None;
+                    }
+                    super::invalidate_cluster_queries().await;
+                    events.signal(oneclient_events::Signal::ClustersChanged);
+                }
+                Err(err) => events
+                    .notify("Could not delete instance")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
         });
     }
 

@@ -6,18 +6,21 @@ use oneclient_core::settings::{
     GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
 };
 
+use freya::router::RouterContext;
+
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
+    Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, TextInput, memory_field, toggle,
     toggle_controlled, validate_number,
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
-    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
-    use_loader_versions, use_settings_snapshot,
+    try_game_profile, use_active_cluster_id, use_cluster_mutation, use_dispatch, use_game_profile,
+    use_java_runtimes, use_loader_versions, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
+use crate::routes::Route;
 use crate::theme::colors;
-use crate::ui::centered_note;
+use crate::ui::{border_all_color, centered_note};
 use crate::view::app::settings::{section_header, settings_row};
 
 use super::cluster_not_found;
@@ -70,6 +73,24 @@ impl Component for ClusterSettings {
                     .width(Size::fill())
                     .height(Size::fill())
                     .spacing(4.)
+                    .child(section_header("INSTANCE"))
+                    .children(if cluster.is_provisioned() {
+                        vec![default_instance_row()]
+                    } else {
+                        vec![
+                            NameRow {
+                                cluster_id,
+                                name: cluster.name.clone(),
+                            }
+                            .into_element(),
+                            DeleteRow {
+                                cluster_id,
+                                name: cluster.name.clone(),
+                                dedicated: cluster.uses_dedicated_dir(),
+                            }
+                            .into_element(),
+                        ]
+                    })
                     .child(section_header("LOADER"))
                     .child(
                         LoaderRow {
@@ -282,6 +303,203 @@ impl Component for VerifyFilesRow {
              re-download anything corrupt or missing. Takes a few minutes.",
             button,
         )
+    }
+}
+
+fn default_instance_row() -> Element {
+    settings_row(
+        IconType::InfoCircle,
+        "Default Instance",
+        "This version's default instance stays as it is. Duplicate it from the Versions page \
+         to get a copy you can rename, remod and delete.",
+        rect(),
+    )
+    .into_element()
+}
+
+#[derive(PartialEq)]
+struct NameRow {
+    cluster_id: i64,
+    name: String,
+}
+
+impl Component for NameRow {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let cluster_id = self.cluster_id;
+        let current = self.name.clone();
+
+        let mut text = use_state({
+            let initial = current.clone();
+            move || initial
+        });
+        let mut last_seen = use_state({
+            let initial = current.clone();
+            move || initial
+        });
+
+        if *last_seen.read() != current {
+            last_seen.set(current.clone());
+            text.set(current.clone());
+        }
+
+        let trimmed = text.read().trim().to_string();
+        let dirty = !trimmed.is_empty() && trimmed != current;
+
+        settings_row(
+            IconType::Pencil01,
+            "Name",
+            "What this instance is called in your list.",
+            rect()
+                .horizontal()
+                .spacing(8.)
+                .cross_align(Alignment::Center)
+                .child(TextInput::new(text).width(Size::px(220.)))
+                .child(
+                    Button::new()
+                        .primary()
+                        .small()
+                        .enabled(dirty)
+                        .on_press(move |_| {
+                            if dirty {
+                                dispatch.rename_cluster(cluster_id, trimmed.clone());
+                            }
+                        })
+                        .text("Save"),
+                ),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct DeleteRow {
+    cluster_id: i64,
+    name: String,
+    dedicated: bool,
+}
+
+impl Component for DeleteRow {
+    fn render(&self) -> impl IntoElement {
+        let mut confirming = use_state(|| false);
+
+        rect()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Trash01,
+                "Delete Instance",
+                "Deletes this instance, its settings and its folder. Downloaded mods stay in the shared cache.",
+                Button::new()
+                    .danger()
+                    .small()
+                    .on_press(move |_| {
+                        *confirming.write() = true;
+                    })
+                    .text("Delete"),
+            ))
+            .maybe_child(confirming.read().then(|| {
+                DeleteConfirm {
+                    cluster_id: self.cluster_id,
+                    name: self.name.clone(),
+                    dedicated: self.dedicated,
+                    confirming,
+                }
+                .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
+struct DeleteConfirm {
+    cluster_id: i64,
+    name: String,
+    dedicated: bool,
+    confirming: State<bool>,
+}
+
+fn delete_warning(dedicated: bool) -> &'static str {
+    if dedicated {
+        "This instance's folder is deleted, including its worlds, options and configs. \
+         Downloaded mods stay in the shared cache. Other instances of this version are \
+         not affected."
+    } else {
+        "This instance's folder is deleted, including its mod list. Worlds and options in \
+         the shared game folder are kept, and other instances of this version are not \
+         affected."
+    }
+}
+
+impl Component for DeleteConfirm {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let active = use_active_cluster_id();
+        let cluster_id = self.cluster_id;
+
+        let mut confirming = self.confirming;
+
+        let confirm = move |_| {
+            dispatch.delete_cluster(cluster_id, active);
+            *confirming.write() = false;
+            let _ = RouterContext::get().push(Route::Clusters {});
+        };
+
+        OverlayPopup::new()
+            .on_close(move |()| {
+                let mut confirming = confirming;
+                *confirming.write() = false;
+            })
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(420.))
+                            .max_width(Size::window_percent(90.))
+                            .spacing(14.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(CornerRadius::new_all(14.))
+                            .background(colors::page_elevated())
+                            .border(border_all_color(1., colors::component_border()))
+                            .child(
+                                label()
+                                    .text(format!("Delete {}?", self.name))
+                                    .font_size(16.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(delete_warning(self.dedicated))
+                                    .font_size(12.)
+                                    .max_lines(5)
+                                    .width(Size::fill())
+                                    .color(colors::fg_secondary()),
+                            )
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .main_align(Alignment::End)
+                                    .spacing(8.)
+                                    .child(
+                                        Button::new()
+                                            .secondary()
+                                            .text("Cancel")
+                                            .on_press(move |_| {
+                                                *confirming.write() = false;
+                                            }),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .danger()
+                                            .text("Delete")
+                                            .on_press(confirm),
+                                    ),
+                            ),
+                    ),
+            )
     }
 }
 

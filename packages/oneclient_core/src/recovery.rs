@@ -12,6 +12,7 @@ use oneclient_content::packages::PackageStore;
 use polyio::sha1_file;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_common::paths;
+use oneclient_cluster::ClusterIdentity;
 use oneclient_cluster::profiles::create_profile_from_global;
 use crate::state::LauncherState;
 use oneclient_common::version::parse_mc_version;
@@ -46,6 +47,8 @@ pub async fn reconstruct_from_disk(state: &LauncherState) -> LauncherResult<Reco
 	let _guard = state.clusters.provisioning_guard().await;
 
 	let clusters_dir = paths::clusters_dir()?;
+	sweep_deleting_folders(&clusters_dir).await;
+
 	let orphans = orphan_cluster_folders(&state.services.db, &clusters_dir).await?;
 	if orphans.is_empty() {
 		return Ok(report);
@@ -88,11 +91,28 @@ async fn orphan_cluster_folders(
 ) -> LauncherResult<Vec<String>> {
 	let mut orphans = Vec::new();
 	for name in list_dir_names(clusters_dir).await? {
+		if paths::is_deleting_folder(&name) {
+			continue;
+		}
+
 		if cluster_dao::get_by_folder_name(pool, &name).await?.is_none() {
 			orphans.push(name);
 		}
 	}
 	Ok(orphans)
+}
+
+#[tracing::instrument(level = "debug")]
+async fn sweep_deleting_folders(clusters_dir: &Path) {
+	let Ok(names) = list_dir_names(clusters_dir).await else {
+		return;
+	};
+
+	for name in names.into_iter().filter(|n| paths::is_deleting_folder(n)) {
+		if let Err(err) = polyio::remove_dir_all(clusters_dir.join(&name)).await {
+			tracing::warn!(folder = %name, error = %err, "failed to finish an interrupted delete");
+		}
+	}
 }
 
 #[tracing::instrument(level = "debug", skip(pool))]
@@ -202,10 +222,23 @@ async fn adopt_cluster(
 	folder_name: &str,
 	report: &mut RecoveryReport,
 ) -> LauncherResult<()> {
-	let (name, mc_version, loader) = parse_folder_identity(folder_name);
+	let (name, mc_version, loader, loader_version) =
+		match ClusterIdentity::read(folder_name).await {
+			Some(identity) => (
+				identity.name,
+				identity.mc_version,
+				identity.mc_loader,
+				identity.mc_loader_version,
+			),
+			None => {
+				let (name, mc_version, loader) = parse_folder_identity(folder_name);
+				(name, mc_version, loader, None)
+			}
+		};
 
 	let global = state.settings.read().global_game_settings.clone();
-	let profile = create_profile_from_global(&state.services.db, &global, &name, None, None).await?;
+	let profile =
+		create_profile_from_global(&state.services.db, &global, folder_name, None, None).await?;
 
 	let row = cluster_dao::insert(
 		&state.services.db,
@@ -214,7 +247,7 @@ async fn adopt_cluster(
 			folder_name,
 			mc_version: &mc_version,
 			mc_loader: loader as i64,
-			mc_loader_version: None,
+			mc_loader_version: loader_version.as_deref(),
 			setting_profile_name: Some(&profile.name),
 			stage: ClusterStage::NotReady as i64,
 		},

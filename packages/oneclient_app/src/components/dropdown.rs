@@ -15,6 +15,7 @@ pub struct Dropdown {
     on_select: Option<EventHandler<usize>>,
     width: Size,
     height: Size,
+    max_lines: Option<usize>,
     key: DiffKey,
 }
 
@@ -26,19 +27,23 @@ impl Dropdown {
             on_select: None,
             width: Size::px(72.),
             height: Size::px(24.),
+            max_lines: None,
             key: DiffKey::None,
         }
     }
 
-    #[allow(dead_code)]
     pub fn width(mut self, width: impl Into<Size>) -> Self {
         self.width = width.into();
         self
     }
 
-    #[allow(dead_code)]
     pub fn height(mut self, height: impl Into<Size>) -> Self {
         self.height = height.into();
+        self
+    }
+
+    pub fn max_lines(mut self, max_lines: impl Into<Option<usize>>) -> Self {
+        self.max_lines = max_lines.into();
         self
     }
 
@@ -139,6 +144,7 @@ impl Component for Dropdown {
                         label()
                             .text(selected)
                             .font_size(12.)
+                            .max_lines(self.max_lines)
                             .color(colors::fg_primary()),
                     )
                     .child(

@@ -123,7 +123,8 @@ impl Component for ClusterCard {
         let eased = stagger_eased(self.progress, self.index, self.items);
         let rise = (1.0 - eased) * CARD_RISE_PX;
 
-        let title = format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader);
+        let title = self.cluster.name.clone();
+        let subtitle = format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader);
 
         let cluster_id = self.cluster.id;
         let on_press = move |_| {
@@ -206,7 +207,18 @@ impl Component for ClusterCard {
                                             .text(title)
                                             .font_size(32.)
                                             .font_weight(FontWeight::SEMI_BOLD)
+                                            .max_lines(1)
+                                            .width(Size::fill())
                                             .color(colors::fg_primary()),
+                                    )
+                                    .child(
+                                        label()
+                                            .text(subtitle)
+                                            .font_size(13.)
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .max_lines(1)
+                                            .width(Size::fill())
+                                            .color(colors::fg_secondary()),
                                     ),
                             )
                             .child(

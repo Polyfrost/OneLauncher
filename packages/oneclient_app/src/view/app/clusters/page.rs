@@ -1,27 +1,65 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_common::VersionKey;
-use oneclient_core::clusters::Cluster;
 use oneclient_common::domain::GameLoader;
+use oneclient_common::parse_mc_version;
+use oneclient_core::clusters::Cluster;
 
 use crate::components::{
-    Button, ClusterLandscapeArt, Dropdown, Icon, IconType, ScrollArea, VersionCard,
+    ART_PREVIEW_EDGE, Button, ClusterCreateDialog, ClusterLandscapeArt, DynamicArt, Icon, IconType,
+    ScrollArea, origin_badge,
 };
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
+use crate::hooks::{
+    settled_or_loading, use_active_cluster_id, use_bundled_targets, use_clusters, use_dispatch,
+    use_game_snapshot, use_launcher, use_version_metadata,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::{
-    ReleaseLine, default_line, default_loader, default_version_key, group_clusters_by_release,
-    line_title, loaders_for_line, resolve_cluster, version_keys, version_label,
-};
+use crate::utils::{format_duration_hm, sort_clusters_for_home};
 use crate::view::app::launch_button_state;
 
 const GRID_GAP_PX: f32 = 12.;
-const MIN_CARD_WIDTH_PX: f32 = 280.;
+const MIN_CARD_WIDTH_PX: f32 = 260.;
 const SIDEBAR_WIDTH_PX: f32 = 300.;
-const CARD_HEIGHT_PX: f32 = 146.;
+const CARD_HEIGHT_PX: f32 = 240.;
+const ACTION_HEIGHT_PX: f32 = 32.;
 const PLACEHOLDER_VERSION_INFO: &str = "Placeholder version info";
+
+#[derive(Clone, Copy, PartialEq)]
+enum DialogRequest {
+    Create,
+    Duplicate(i64),
+}
+
+pub fn version_targets(
+    bundled: &[(String, GameLoader)],
+    clusters: &[Cluster],
+) -> Vec<(String, GameLoader)> {
+    let mut targets: Vec<(String, GameLoader)> = Vec::new();
+
+    let owned = clusters
+        .iter()
+        .map(|cluster| (cluster.mc_version.clone(), cluster.mc_loader));
+
+    for target in bundled.iter().cloned().chain(owned) {
+        if !targets.contains(&target) {
+            targets.push(target);
+        }
+    }
+
+    targets.sort_by(|a, b| {
+        let key = |version: &str| {
+            parse_mc_version(version)
+                .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
+                .unwrap_or((0, 0, 0))
+        };
+        key(&b.0)
+            .cmp(&key(&a.0))
+            .then_with(|| a.1.to_string().cmp(&b.1.to_string()))
+    });
+
+    targets
+}
 
 #[derive(PartialEq)]
 pub struct Clusters;
@@ -29,19 +67,19 @@ pub struct Clusters;
 impl Component for Clusters {
     fn render(&self) -> impl IntoElement {
         let clusters_query = use_clusters();
+        let bundled_query = use_bundled_targets();
         let active_id = use_active_cluster_id();
-        let mut selected_line = use_state(|| None::<ReleaseLine>);
-        let mut selected_version = use_state(|| None::<VersionKey>);
-        let mut selected_loader = use_state(|| None::<GameLoader>);
         let mut grid_columns = use_state(|| 2_usize);
+        let selected_id = use_state(|| None::<i64>);
+        let dialog = use_state(|| None::<DialogRequest>);
 
-        let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
+        let clusters =
+            sort_clusters_for_home(settled_or_loading(&clusters_query).unwrap_or_default());
+        let bundled: Vec<(String, GameLoader)> =
+            settled_or_loading(&bundled_query).unwrap_or_default();
+        let targets = version_targets(&bundled, &clusters);
 
-        let groups = group_clusters_by_release(&clusters);
-        // Newest version first
-        let lines: Vec<ReleaseLine> = groups.keys().rev().copied().collect();
-
-        if lines.is_empty() {
+        if clusters.is_empty() && targets.is_empty() {
             return rect()
                 .vertical()
                 .width(Size::fill())
@@ -64,46 +102,29 @@ impl Component for Clusters {
                 );
         }
 
-        let active_cluster = active_id
-            .read()
-            .and_then(|id| clusters.iter().find(|c| c.id == id).cloned());
-
-        if selected_line.read().is_none() {
-            *selected_line.write() = default_line(&groups, active_cluster.clone());
-        }
-
-        let line = (*selected_line.read())
-            .filter(|l| groups.contains_key(l))
-            .unwrap_or(lines[0]);
-
-        if *selected_line.read() != Some(line) {
-            *selected_line.write() = Some(line);
-        }
-
-        let clusters_for_line = groups.get(&line).cloned().unwrap_or_default();
-
-        if selected_version.read().is_none() {
-            let preferred = active_cluster
-                .as_ref()
-                .and_then(|c| oneclient_common::parse_mc_version(&c.mc_version))
-                .and_then(|p| p.key());
-            *selected_version.write() = default_version_key(&clusters_for_line, preferred);
-        }
-
-        if selected_loader.read().is_none() {
-            let preferred = active_cluster.as_ref().map(|c| c.mc_loader);
-            *selected_loader.write() = default_loader(&clusters_for_line, preferred);
-        }
-
-        let cluster = resolve_cluster(
-            &clusters_for_line,
-            *selected_version.read(),
-            *selected_loader.read(),
-        )
-        .or_else(|| clusters_for_line.first().cloned());
+        let find = |id: i64| clusters.iter().find(|c| c.id == id).cloned();
+        let selected = (*selected_id.read())
+            .and_then(find)
+            .or_else(|| active_id.read().and_then(find))
+            .or_else(|| clusters.first().cloned());
 
         let columns = *grid_columns.read();
-        let grid_rows = chunk_lines(&lines, columns);
+
+        let mut tiles: Vec<Element> = clusters
+            .iter()
+            .map(|cluster| {
+                InstanceCard {
+                    cluster: cluster.clone(),
+                    selected: selected.as_ref().map(|c| c.id) == Some(cluster.id),
+                    selected_id,
+                }
+                .into_element()
+            })
+            .collect();
+
+        tiles.push(NewInstanceCard { dialog }.into_element());
+
+        let rows: Vec<Vec<Element>> = tiles.chunks(columns).map(<[Element]>::to_vec).collect();
 
         rect()
             .vertical()
@@ -138,28 +159,14 @@ impl Component for Clusters {
                                     .width(Size::fill())
                                     .height(Size::fill())
                                     .spacing(GRID_GAP_PX)
-                                    .children(grid_rows.into_iter().map(|row| {
+                                    .children(rows.into_iter().map(|row| {
                                         let row_len = row.len();
                                         rect()
                                             .horizontal()
                                             .width(Size::fill())
                                             .content(Content::Flex)
                                             .spacing(GRID_GAP_PX)
-                                            .children(row.into_iter().map(|line| {
-                                                let list =
-                                                    groups.get(&line).cloned().unwrap_or_default();
-                                                let selected = *selected_line.read() == Some(line);
-                                                let mut selected_line = selected_line;
-                                                let mut selected_version = selected_version;
-                                                let mut selected_loader = selected_loader;
-
-                                                VersionCard::new(line, &list, selected, move |_| {
-                                                    *selected_line.write() = Some(line);
-                                                    *selected_version.write() = None;
-                                                    *selected_loader.write() = None;
-                                                })
-                                                .into_element()
-                                            }))
+                                            .children(row)
                                             .children((row_len..columns).map(|_| {
                                                 rect()
                                                     .width(Size::flex(1.0))
@@ -170,59 +177,233 @@ impl Component for Clusters {
                                     })),
                             ),
                     )
-                    .child(match cluster {
-                        Some(cluster) => DetailSidebar {
-                            line,
-                            cluster_id: cluster.id,
-                            clusters_for_line,
-                            selected_version,
-                            selected_loader,
-                        }
-                        .into_element(),
+                    .child(match selected.clone() {
+                        Some(cluster) => DetailSidebar { cluster, dialog }.into_element(),
                         None => sidebar_error(),
                     }),
+            )
+            .maybe_child((*dialog.read()).map(|request| {
+                let mut dialog = dialog;
+                let close = move |()| {
+                    *dialog.write() = None;
+                };
+
+                match request {
+                    DialogRequest::Create => {
+                        ClusterCreateDialog::new(targets.clone(), close).into_element()
+                    }
+                    DialogRequest::Duplicate(source_id) => {
+                        let source = clusters.iter().find(|c| c.id == source_id);
+                        match source {
+                            Some(source) => ClusterCreateDialog::new(targets.clone(), close)
+                                .duplicating(
+                                    source_id,
+                                    source.mc_version.clone(),
+                                    source.mc_loader,
+                                )
+                                .into_element(),
+                            None => rect().into_element(),
+                        }
+                    }
+                }
+            }))
+    }
+}
+
+#[derive(PartialEq)]
+struct InstanceCard {
+    cluster: Cluster,
+    selected: bool,
+    selected_id: State<Option<i64>>,
+}
+
+impl Component for InstanceCard {
+    fn render(&self) -> impl IntoElement {
+        let mut hovering = use_state(|| false);
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+
+        let cluster_id = self.cluster.id;
+        let selected = self.selected;
+        let hovered = *hovering.read();
+        let focused = focus().is_focused();
+
+        let mut selected_id = self.selected_id;
+
+        let opacity = if selected {
+            1.0
+        } else if hovered || focused {
+            0.85
+        } else {
+            0.6
+        };
+
+        let border_color = if selected || focused {
+            colors::brand()
+        } else if hovered {
+            colors::component_border_hover()
+        } else {
+            colors::component_border()
+        };
+
+        rect()
+            .key(cluster_id)
+            .width(Size::flex(1.0))
+            .height(Size::px(CARD_HEIGHT_PX))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .cursor(CursorIcon::Pointer)
+            .on_all_press(move |_| {
+                *selected_id.write() = Some(cluster_id);
+            })
+            .on_pointer_enter(move |_| {
+                *hovering.write() = true;
+            })
+            .on_pointer_leave(move |_| {
+                *hovering.write() = false;
+            })
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .overflow(Overflow::Clip)
+                    .corner_radius(CornerRadius::new_all(12.))
+                    .opacity(opacity)
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .position(Position::new_absolute())
+                            .child(
+                                DynamicArt::for_cluster(&self.cluster).max_edge(ART_PREVIEW_EDGE),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .padding(Gaps::new_symmetric(12., 16.))
+                            .main_align(Alignment::SpaceBetween)
+                            .cross_align(Alignment::Start)
+                            .corner_radius(CornerRadius::new_all(12.))
+                            .border(
+                                border_all_color(1., border_color)
+                                    .alignment(BorderAlignment::Inner),
+                            )
+                            .layer(Layer::Relative(3))
+                            .background(
+                                LinearGradient::new()
+                                    .angle(0.)
+                                    .stop((Color::from_af32rgb(0.8, 0, 0, 0), 0.))
+                                    .stop((Color::from_af32rgb(0.3, 0, 0, 0), 20.))
+                                    .stop((Color::from_af32rgb(0.3, 0, 0, 0), 60.))
+                                    .stop((Color::from_af32rgb(0.8, 0, 0, 0), 100.)),
+                            )
+                            .child(origin_badge(&self.cluster))
+                            .child(
+                                label()
+                                    .text(self.cluster.name.clone())
+                                    .font_size(32.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .max_lines(1)
+                                    .width(Size::fill())
+                                    .color(colors::fg_primary()),
+                            ),
+                    ),
+            )
+    }
+}
+
+#[derive(PartialEq)]
+struct NewInstanceCard {
+    dialog: State<Option<DialogRequest>>,
+}
+
+impl Component for NewInstanceCard {
+    fn render(&self) -> impl IntoElement {
+        let mut hovering = use_state(|| false);
+        let mut dialog = self.dialog;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        rect()
+            .vertical()
+            .width(Size::flex(1.0))
+            .height(Size::px(CARD_HEIGHT_PX))
+            .center()
+            .spacing(8.)
+            .corner_radius(CornerRadius::new_all(12.))
+            .background(if *hovering.read() {
+                colors::component_bg_hover()
+            } else {
+                colors::component_bg()
+            })
+            .border(border_all_color(
+                if focused { 2. } else { 1. },
+                if focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Button)
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| {
+                *hovering.write() = true;
+            })
+            .on_pointer_leave(move |_| {
+                *hovering.write() = false;
+            })
+            .on_all_press(move |_| {
+                *dialog.write() = Some(DialogRequest::Create);
+            })
+            .child(Icon::new(IconType::Plus).size(28.))
+            .child(
+                label()
+                    .text("New instance")
+                    .font_size(13.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_secondary()),
             )
     }
 }
 
 #[derive(PartialEq)]
 struct DetailSidebar {
-    line: ReleaseLine,
-    cluster_id: i64,
-    clusters_for_line: Vec<Cluster>,
-    selected_version: State<Option<VersionKey>>,
-    selected_loader: State<Option<GameLoader>>,
+    cluster: Cluster,
+    dialog: State<Option<DialogRequest>>,
 }
 
 impl Component for DetailSidebar {
     fn render(&self) -> impl IntoElement {
-        let active_id = use_active_cluster_id();
+        let mut active_id = use_active_cluster_id();
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
 
-        let clusters_for_line = self.clusters_for_line.as_slice();
+        let cluster = &self.cluster;
+        let cluster_id = cluster.id;
         let syncing = launcher.fetching || launcher.syncing_bundles;
-        let keys = version_keys(clusters_for_line);
-        let loaders = loaders_for_line(clusters_for_line);
-        let version_title = line_title(self.line, clusters_for_line);
-        let version_value = (self.selected_version)();
-        let loader_value = (self.selected_loader)();
+        let (launch_label, launch_enabled) = launch_button_state(&game, cluster_id, syncing);
 
-        let metadata = use_version_metadata(Some(self.line.major), version_value, loader_value);
+        let parsed = parse_mc_version(&cluster.mc_version);
+        let major = parsed.as_ref().map(|p| p.major);
+        let key = parsed.and_then(|p| p.key());
+        let metadata = use_version_metadata(major, key, Some(cluster.mc_loader));
 
-        let heading = metadata
-            .as_ref()
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| format!("Version {version_title}"));
         let description = metadata
             .as_ref()
             .and_then(|m| m.long_description.clone())
             .unwrap_or_else(|| PLACEHOLDER_VERSION_INFO.to_string());
-        let tags = metadata
-            .as_ref()
-            .map(|m| m.tags.clone())
-            .unwrap_or_default();
+        let tags = metadata.as_ref().map(|m| m.tags.clone()).unwrap_or_default();
+
+        let mut dialog = self.dialog;
 
         rect()
             .width(Size::px(SIDEBAR_WIDTH_PX))
@@ -235,9 +416,17 @@ impl Component for DetailSidebar {
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
-            .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
-                ClusterLandscapeArt::for_version(self.line.major, version_value, loader_value, false),
-            ))
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .max_height(Size::px(140.))
+                    .child(ClusterLandscapeArt::for_version(
+                        major.unwrap_or(0),
+                        key,
+                        Some(cluster.mc_loader),
+                        false,
+                    )),
+            )
             .child(
                 rect()
                     .vertical()
@@ -254,10 +443,19 @@ impl Component for DetailSidebar {
                             .spacing(4.)
                             .child(
                                 label()
-                                    .text(heading)
+                                    .text(cluster.name.clone())
                                     .font_size(24.)
                                     .font_weight(FontWeight::SEMI_BOLD)
+                                    .max_lines(2)
+                                    .width(Size::fill())
                                     .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(format!("{} {}", cluster.mc_loader, cluster.mc_version))
+                                    .font_size(12.)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .color(colors::fg_secondary()),
                             )
                             .maybe_child(tags_row(&tags))
                             .child(
@@ -266,25 +464,79 @@ impl Component for DetailSidebar {
                                     .font_size(12.)
                                     .color(colors::fg_secondary()),
                             )
-                            .children(version_rows(self.line, &keys, version_value, self.selected_version))
-                            .children(loader_rows(&loaders, loader_value, self.selected_loader)),
+                            .child(
+                                label()
+                                    .text(instance_meta(cluster))
+                                    .font_size(11.)
+                                    .color(colors::fg_secondary()),
+                            ),
                     )
                     .child(
                         rect()
-                            .horizontal()
+                            .vertical()
                             .width(Size::fill())
-                            .content(Content::Flex)
-                            .main_align(Alignment::Center)
                             .spacing(8.)
-                            .child(play_button(
-                                self.cluster_id,
-                                dispatch,
-                                launch_button_state(&game, self.cluster_id, syncing),
-                            ))
-                            .child(view_button(self.cluster_id, active_id)),
+                            .child(
+                                Button::new()
+                                    .primary()
+                                    .width(Size::fill())
+                                    .enabled(launch_enabled)
+                                    .on_press(move |_| {
+                                        if launch_enabled {
+                                            dispatch.launch_cluster(cluster_id);
+                                        }
+                                    })
+                                    .text(launch_label),
+                            )
+                            .child(
+                                rect()
+                                    .horizontal()
+                                    .width(Size::fill())
+                                    .content(Content::Flex)
+                                    .spacing(8.)
+                                    .child(
+                                        Button::new()
+                                            .secondary()
+                                            .width(Size::flex(9.))
+                                            .height(Size::px(ACTION_HEIGHT_PX))
+                                            .on_press(move |_| {
+                                                *active_id.write() = Some(cluster_id);
+                                                let _ = RouterContext::get()
+                                                    .push(Route::ClusterOverview { cluster_id });
+                                            })
+                                            .text("View")
+                                            .child(Icon::new(IconType::ArrowRight).size(14.)),
+                                    )
+                                    .child(
+                                        Button::new()
+                                            .secondary()
+                                            .icon()
+                                            .on_press(move |_| {
+                                                *dialog.write() =
+                                                    Some(DialogRequest::Duplicate(cluster_id));
+                                            })
+                                            .alt("Duplicate this instance")
+                                            .child(Icon::new(IconType::Copy01).size(14.)),
+                                    ),
+                            ),
                     ),
             )
             .into_element()
+    }
+}
+
+fn instance_meta(cluster: &Cluster) -> String {
+    let played = format_duration_hm(cluster.overall_played.as_secs() as i64);
+
+    let folder = if cluster.uses_dedicated_dir() {
+        "separate folder"
+    } else {
+        "shared folder"
+    };
+
+    match cluster.last_played {
+        Some(_) => format!("{played} played · {folder}"),
+        None => format!("Never played · {folder}"),
     }
 }
 
@@ -316,111 +568,6 @@ fn tags_row(tags: &[String]) -> Option<Element> {
     )
 }
 
-/// A single-version line already names it on the card and in the heading
-fn version_rows(
-    line: ReleaseLine,
-    keys: &[VersionKey],
-    selected: Option<VersionKey>,
-    mut selected_version: State<Option<VersionKey>>,
-) -> Option<Element> {
-    if keys.len() <= 1 {
-        return None;
-    }
-
-    let options: Vec<String> = keys.iter().map(|k| version_label(line.major, *k)).collect();
-    let current = selected
-        .and_then(|s| keys.iter().position(|k| *k == s))
-        .unwrap_or(0);
-    let keys = keys.to_vec();
-
-    Some(info_row(
-        "Version",
-        Dropdown::new(options[current].clone(), options)
-            .on_select(move |idx: usize| {
-                if let Some(key) = keys.get(idx).copied() {
-                    *selected_version.write() = Some(key);
-                }
-            })
-            .into_element(),
-    ))
-}
-
-fn loader_rows(
-    loaders: &[GameLoader],
-    selected: Option<GameLoader>,
-    mut selected_loader: State<Option<GameLoader>>,
-) -> Option<Element> {
-    if loaders.len() <= 1 {
-        return None;
-    }
-
-    let options: Vec<String> = loaders.iter().map(|l| l.to_string()).collect();
-    let current = selected
-        .and_then(|s| loaders.iter().position(|l| *l == s))
-        .unwrap_or(0);
-    let loaders = loaders.to_vec();
-
-    Some(info_row(
-        "Mod Loader",
-        Dropdown::new(options[current].clone(), options)
-            .on_select(move |idx: usize| {
-                if let Some(loader) = loaders.get(idx).copied() {
-                    *selected_loader.write() = Some(loader);
-                }
-            })
-            .into_element(),
-    ))
-}
-
-fn info_row(label_text: impl Into<String>, control: impl IntoElement) -> Element {
-    let label_text = label_text.into();
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .main_align(Alignment::SpaceBetween)
-        .padding(Gaps::new_symmetric(4.0, 0.0))
-        .child(
-            label()
-                .text(label_text)
-                .font_size(12.)
-                .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_primary()),
-        )
-        .child(control)
-        .into_element()
-}
-
-fn play_button(
-    cluster_id: i64,
-    dispatch: crate::Actions,
-    state: (&'static str, bool),
-) -> impl IntoElement {
-    let (label, enabled) = state;
-    Button::new()
-        .primary()
-        .width(Size::flex(1.))
-        .enabled(enabled)
-        .on_press(move |_| {
-            if enabled {
-                dispatch.launch_cluster(cluster_id);
-            }
-        })
-        .text(label)
-}
-
-fn view_button(cluster_id: i64, mut active_id: State<Option<i64>>) -> impl IntoElement {
-    Button::new()
-        .secondary()
-        .width(Size::flex(1.))
-        .on_press(move |_| {
-            *active_id.write() = Some(cluster_id);
-            let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
-        })
-        .text("View")
-        .child(Icon::new(IconType::ArrowRight).size(14.))
-}
-
 fn page_header() -> impl IntoElement {
     rect()
         .vertical()
@@ -435,9 +582,8 @@ fn page_header() -> impl IntoElement {
         .child(
             label()
                 .text(
-                    "Something something in corporate style fashion about picking your \
-                     preferred gamemodes and versions and optionally loader so that oneclient \
-                     can pick something for them",
+                    "Every version you can play, plus any instances you set up yourself. \
+                     Make more than one for the same version to keep separate sets of mods.",
                 )
                 .font_size(12.)
                 .font_weight(FontWeight::MEDIUM)
@@ -457,22 +603,11 @@ fn sidebar_error() -> Element {
         .background(colors::component_bg())
         .child(
             label()
-                .text("Could not resolve a cluster for this version.")
-                .font_size(14.)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            label()
-                .text("Try selecting a different version or mod loader.")
+                .text("Select an instance to see its details.")
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )
         .into_element()
-}
-
-fn chunk_lines(lines: &[ReleaseLine], columns: usize) -> Vec<Vec<ReleaseLine>> {
-    let columns = columns.max(1);
-    lines.chunks(columns).map(|chunk| chunk.to_vec()).collect()
 }
 
 fn grid_columns_for_width(available_width_px: f32) -> usize {

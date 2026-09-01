@@ -37,7 +37,8 @@ pub use tos::{fetch_terms, TermsDocument};
 pub use oneclient_discord::{DiscordRpc, Presence};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
-    ensure_from_bundles, ensure_from_versions, estimate_cluster_download,
+    bundled_version_targets, delete_cluster, duplicate_cluster, ensure_from_bundles,
+    ensure_from_versions, estimate_cluster_download,
 };
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{GameError, LaunchedGame, get_loader_versions, launch_cluster};

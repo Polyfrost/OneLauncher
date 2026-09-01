@@ -44,7 +44,11 @@ impl ImageCacheStore {
             return Ok(bytes);
         }
 
-        let raw = download(net, url).await?;
+        // icon unpacked for a jar is already on disk
+        let raw = match paths::local_image_path(url) {
+            Some(source) => Bytes::from(polyio::read(&source).await?),
+            None => download(net, url).await?,
+        };
         let bytes = downscale_if_oversized(raw, max_edge).await;
 
         if let Some(parent) = path.parent() {

@@ -4582,6 +4582,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
+ "toml",
  "tracing",
  "url",
  "uuid 1.23.1",

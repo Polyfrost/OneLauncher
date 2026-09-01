@@ -1,6 +1,3 @@
-//! Freya emits one `FileDrop` event per file within a single batch so the shell
-//! handler accumulates them before the prompt first renders
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -330,9 +327,7 @@ fn prompt_body(
 
     let import_list = resolved.clone();
     let import = move |_| {
-        for (path, content_type) in &import_list {
-            dispatch.import_local_file(cluster_id, *content_type, path.clone());
-        }
+        dispatch.import_local_files(cluster_id, import_list.clone());
         pending.set(Vec::new());
     };
 

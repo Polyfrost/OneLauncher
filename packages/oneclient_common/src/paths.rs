@@ -10,7 +10,7 @@ const ORGANIZATION: &str = "Polyfrost";
 
 #[cfg(not(debug_assertions))]
 const APPLICATION: &str = "OneClient";
-// Separate dir so a running dev environment never touches prod data
+
 #[cfg(debug_assertions)]
 const APPLICATION: &str = "OneClient-dev";
 
@@ -104,6 +104,22 @@ pub fn bundles_dir() -> PathsResult<PathBuf> {
 
 pub fn images_cache_dir() -> PathsResult<PathBuf> {
 	Ok(caches_dir()?.join("images"))
+}
+
+pub const LOCAL_IMAGE_SCHEME: &str = "local:";
+
+pub fn local_icons_dir() -> PathsResult<PathBuf> {
+	Ok(images_cache_dir()?.join("local"))
+}
+
+pub fn local_image_path(reference: &str) -> Option<PathBuf> {
+	let name = reference.strip_prefix(LOCAL_IMAGE_SCHEME)?;
+
+	if name.is_empty() || name.contains(['/', '\\']) || name.contains("..") {
+		return None;
+	}
+
+	Some(local_icons_dir().ok()?.join(name))
 }
 
 pub fn profiles_cache_dir() -> PathsResult<PathBuf> {

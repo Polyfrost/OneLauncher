@@ -306,7 +306,7 @@ fn xerr(code: u64) -> MinecraftAuthError {
 fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
     match failure {
         NetworkFailure::Certificate => AuthErrorGuidance::new(
-            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection — usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
+            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection - usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
             &[
                 "Turn off HTTPS/SSL scanning in your antivirus (often called \"encrypted connection scanning\", \"web shield\", or \"SSL interception\")",
                 "Temporarily disable your VPN or proxy and try signing in again",

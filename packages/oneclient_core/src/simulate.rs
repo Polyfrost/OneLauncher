@@ -1,7 +1,3 @@
-//! Deliberately damaging an installation so repair paths can be exercised
-//! Each mode breaks files differently because the launcher catches different
-//! damage at different layers
-
 use std::path::{Path, PathBuf};
 
 use oneclient_content::packages::PackageStore;
@@ -15,8 +11,6 @@ use crate::LauncherResult;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SimulationReport {
     pub affected: usize,
-    /// Capped sample not the full list 50 damaged assets must not become a
-    /// 50-line toast
     pub samples: Vec<String>,
 }
 
@@ -51,9 +45,7 @@ impl SimulationReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Damage {
-    /// Same length wrong bytes passes a size check fails a hash check
     Corrupt,
-    /// Half length as an interrupted write would leave it
     Truncate,
     Delete,
 }

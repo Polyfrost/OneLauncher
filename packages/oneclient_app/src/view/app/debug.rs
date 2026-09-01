@@ -767,7 +767,7 @@ impl Component for CorruptionSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching — which is the point.")
+                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching - which is the point.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )

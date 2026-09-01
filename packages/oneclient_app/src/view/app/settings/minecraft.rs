@@ -10,6 +10,11 @@ use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
 
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+use crate::components::toggle_controlled;
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+use oneclient_core::settings::SettingsOsExtra;
+
 #[derive(PartialEq)]
 pub struct SettingsMinecraft;
 
@@ -77,7 +82,7 @@ impl Component for SettingsMinecraft {
             batched.update_global_profile(update);
         });
 
-        settings_page()
+        let page = settings_page()
             .child(section_header("GAME"))
             .child(settings_row(
                 IconType::Maximize01,
@@ -112,7 +117,7 @@ impl Component for SettingsMinecraft {
                 "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
                 update_mode_field(
                     profile.browser_update_mode.unwrap_or_default(),
-                    dispatch,
+                    dispatch.clone(),
                 ),
             ))
             .child(section_header("PROCESS"))
@@ -139,9 +144,42 @@ impl Component for SettingsMinecraft {
                 TextInput::new(post_exit_command)
                     .placeholder("echo 'Game exited'")
                     .width(Size::px(220.)),
-            ))
-            .into_element()
+            ));
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let page = page
+            .child(section_header("GRAPHICS"))
+            .child(discrete_gpu_row(profile.os_extra.clone(), dispatch));
+
+        page.into_element()
     }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn discrete_gpu_row(
+    os_extra: Option<SettingsOsExtra>,
+    dispatch: crate::Actions,
+) -> impl IntoElement {
+    let current = os_extra.unwrap_or_default();
+    let on = current.use_discrete_gpu.unwrap_or(false);
+
+    let on_toggle: EventHandler<()> = (move |()| {
+        dispatch.update_global_profile(ProfileUpdate {
+            os_extra: Patch::Set(SettingsOsExtra {
+                use_discrete_gpu: Some(!on),
+                ..current.clone()
+            }),
+            ..Default::default()
+        });
+    })
+    .into();
+
+    settings_row(
+        IconType::Rocket02,
+        "Use Discrete GPU",
+        "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
+        toggle_controlled(on, on_toggle),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

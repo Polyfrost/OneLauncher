@@ -628,12 +628,7 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
 
     #[cfg(target_os = "linux")]
-    {
-        command.env("DRI_PRIME", "1");
-        command.env("__NV_PRIME_RENDER_OFFLOAD", "1");
-        command.env("__VK_LAYER_NV_optimus", "NVIDIA_only");
-        command.env("__GLX_VENDOR_LIBRARY_NAME", "nvidia");
-    }
+    apply_discrete_gpu(command, profile);
 
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {
@@ -641,6 +636,36 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
                 command.env(key, value);
             }
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn apply_discrete_gpu(command: &mut Command, profile: &GameSettingsProfile) {
+    let requested = profile
+        .os_extra
+        .as_ref()
+        .and_then(|extra| extra.use_discrete_gpu)
+        .unwrap_or(false);
+
+    if !requested {
+        return;
+    }
+
+    let gpus = crate::game::gpu::detect();
+    let env = crate::game::gpu::offload_env(&gpus);
+
+    if env.is_empty() {
+        tracing::info!(
+            gpus = gpus.len(),
+            "discrete GPU was requested but nothing here is a valid offload target; \
+             leaving the renderer alone"
+        );
+        return;
+    }
+
+    for (key, value) in env {
+        tracing::debug!(key, value, "offloading the game to the discrete GPU");
+        command.env(key, value);
     }
 }
 

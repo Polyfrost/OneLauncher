@@ -6,6 +6,7 @@ use oneclient_auth::preview_samples;
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
+use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
 use crate::hooks::use_dispatch;
 use crate::notifications::{
@@ -22,6 +23,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
+		let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -97,7 +99,7 @@ impl Component for Debug {
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(vec![
+                        vec![action_row(&dispatch, vec![
                             ("Open Dev Tools", IconType::CodeSnippet02),
                             ("Open Onboarding", IconType::Rocket02),
                             ("Open Launcher Data", IconType::Folder),
@@ -470,7 +472,14 @@ impl Component for LauncherUpdateSimulator {
                             .secondary()
                             .child(Icon::new(IconType::RefreshCw01).size(16.))
                             .text("Check for Updates Now")
-                            .on_press(|_| crate::updater::spawn_update_check(false)),
+                            .on_press(|_| {
+                                if let Ok(state) = crate::launcher::state() {
+                                    crate::updater::spawn_update_check(
+                                        false,
+                                        state.services.events.clone(),
+                                    );
+                                }
+                            }),
                     ),
             )
             .into_element()
@@ -758,7 +767,7 @@ impl Component for CorruptionSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching — which is the point.")
+                    .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching - which is the point.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -1142,7 +1151,7 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
         .into_element()
 }
 
-fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
+fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Element {
     let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
 
     for (text, icon) in buttons {
@@ -1152,6 +1161,7 @@ fn action_row(buttons: Vec<(&'static str, IconType)>) -> Element {
             .text(text);
 
         if text == "Open Onboarding" {
+			dispatch.reset_onboarding();
             button = button.on_press(|_| {
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });

@@ -20,7 +20,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
-use crate::launcher;
+use crate::{invalidate_java_queries, launcher};
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
 };
@@ -232,10 +232,50 @@ impl Actions {
         }
     }
 
-    pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
+    pub fn reset_onboarding(&self) {
         if let Some(updated) = self.mutate_settings(|settings| {
+            settings.seen_onboarding = false;
+            settings.accepted_tos_version = 0;
+            settings.accepted_privacy_version = 0;
+            settings.seen_versions.clear();
+        }) {
+            self.persist(updated);
+        }
+    }
+
+    pub fn accept_tos(&self, terms_version: u32, privacy_version: u32) {
+        let mut was_declined = false;
+
+        let Some(updated) = self.mutate_settings(|settings| {
+            was_declined = settings.declined_tos;
             settings.accepted_tos_version = terms_version;
             settings.accepted_privacy_version = privacy_version;
+            settings.declined_tos = false;
+        }) else {
+            return;
+        };
+
+        self.persist(updated);
+
+        if was_declined {
+            self.notify("Restart to finish")
+                .body(
+                    "Thanks. OneClient reconnects to Polyfrost services the next time you start \
+                     it.",
+                )
+                .icon(IconType::RefreshCw01)
+                .send();
+        }
+    }
+
+    pub fn decline_tos(&self) {
+        oneclient_common::consent::decline();
+
+        if let Some(updated) = self.mutate_settings(|settings| {
+            settings.declined_tos = true;
+            settings.accepted_tos_version = 0;
+            settings.accepted_privacy_version = 0;
+            settings.seen_onboarding = true;
         }) {
             self.persist(updated);
         }
@@ -438,7 +478,10 @@ impl Actions {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
             match state.java.install_runtime_from(&vendor, major).await {
-                Ok(_) => events.signal(oneclient_events::Signal::JavaChanged),
+                Ok(_) => {
+                    events.signal(oneclient_events::Signal::JavaChanged);
+                    invalidate_java_queries().await
+                },
                 Err(err) => events
                     .notify("Java install failed")
                     .body(err.to_string())

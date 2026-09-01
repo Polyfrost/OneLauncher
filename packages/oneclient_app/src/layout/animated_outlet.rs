@@ -86,8 +86,19 @@ impl Component for AnimatedAppOutlet {
         let route = use_route::<Route>();
         let at_home = matches!(&route, Route::Home {});
         let exits_section = escape_exits_section(&route);
-        let history = use_previous_and_current(route);
-        let back_title = history.read().0.title();
+
+        let mut origin_route = use_state(|| route.clone());
+        let mut last_route = use_state(|| route.clone());
+
+        use_side_effect_with_deps(&route, move |current| {
+            let prev = last_route.peek().clone();
+            if !(is_sidebar_route(&prev) && is_sidebar_route(current)) {
+                origin_route.set(prev);
+            }
+            last_route.set(current.clone());
+        });
+
+        let back_title = origin_route.read().title();
 
         let platform = Platform::get();
         let focused_node = platform.focused_accessibility_node;

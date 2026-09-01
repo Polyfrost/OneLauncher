@@ -517,7 +517,7 @@ version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "435a87a52755b8f27fcf321ac4f04b2802e337c8c4872923137471ec39c37532"
 dependencies = [
- "event-listener 5.4.2",
+ "event-listener",
  "event-listener-strategy",
  "futures-core",
  "pin-project-lite",
@@ -586,7 +586,7 @@ version = "3.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290f7f2596bd5b78a9fec8088ccd89180d7f9f55b94b0576823bbbdc72ee8311"
 dependencies = [
- "event-listener 5.4.2",
+ "event-listener",
  "event-listener-strategy",
  "pin-project-lite",
 ]
@@ -604,7 +604,7 @@ dependencies = [
  "async-task",
  "blocking",
  "cfg-if",
- "event-listener 5.4.2",
+ "event-listener",
  "futures-lite",
  "rustix 1.1.4",
 ]
@@ -702,15 +702,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tungstenite",
-]
-
-[[package]]
-name = "async-watch"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a078faf4e27c0c6cc0efb20e5da59dcccc04968ebf2801d8e0b2195124cdcdb2"
-dependencies = [
- "event-listener 2.5.3",
 ]
 
 [[package]]
@@ -873,6 +864,12 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "beul"
@@ -1142,7 +1139,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eec09acab5c2227aba2e592d431708305bdeb6d507703f6cd8983fb57b6c5ef7"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "cargo-packager-utils",
  "ctor 0.2.9",
  "dirs",
@@ -1479,21 +1476,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "critical-section"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
-
-[[package]]
-name = "crossbeam-channel"
-version = "0.5.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -1873,18 +1855,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
-name = "enum-as-inner"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e6a265c649f3f5979b601d26f1d05ada116434c87741c9493cb56218f76cbc"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "enumflags2"
 version = "0.7.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1968,12 +1938,6 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "2.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
-
-[[package]]
-name = "event-listener"
 version = "5.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
@@ -1988,7 +1952,7 @@ version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
- "event-listener 5.4.2",
+ "event-listener",
  "pin-project-lite",
 ]
 
@@ -2129,9 +2093,9 @@ dependencies = [
 
 [[package]]
 name = "freya"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d58881053a1b879450514b0cd59031e85057226c77bdf7432265873bd3830e61"
+checksum = "7a0902ffd592df176d3088ad001788f9a9438c21c40b4cbdec4dc3ef8bd16247"
 dependencies = [
  "cfg-if",
  "freya-android",
@@ -2153,9 +2117,9 @@ dependencies = [
 
 [[package]]
 name = "freya-android"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfded12bc5487ac3bc4dc45e38daa2d27abfd5ff7d888680e929ddf5ea44cbed"
+checksum = "fe3befea9d845539f4428f232ec6b1661a54e974a6e7b852f82fef90d994ccba"
 dependencies = [
  "freya-components",
  "freya-core",
@@ -2167,9 +2131,9 @@ dependencies = [
 
 [[package]]
 name = "freya-animation"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d436ad6d8565b1e42f75eb7d1ec2d914c69475793d104e2eca0ba72d0a4b2cb5"
+checksum = "d9f9429ff1e0a793068ebdd4be84c03e722fdfb3d20c8bf3a63a7a875ba0a6de"
 dependencies = [
  "async-io",
  "easer",
@@ -2178,9 +2142,9 @@ dependencies = [
 
 [[package]]
 name = "freya-clipboard"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "133c38b53ab539439d29930a1fe0628180df844457430a8b53863815a22d924e"
+checksum = "c8b2076b0a2d040ef2153cdd624dba28a6f4fabd64ca6182b128f642e2423b32"
 dependencies = [
  "copypasta",
  "freya-core",
@@ -2188,9 +2152,9 @@ dependencies = [
 
 [[package]]
 name = "freya-components"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c4874a0c79b5d1248f4dc70aa99a488c2b8721f0548980fa338bfb56f661d5d"
+checksum = "bd20c885e7e29f43e0279affea98ae3e1392c9d9f07a09b0ce0fc65d46fc09dc"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -2204,7 +2168,6 @@ dependencies = [
  "freya-core",
  "freya-edit",
  "freya-engine",
- "freya-icons",
  "freya-router",
  "freya-sdk",
  "open",
@@ -2217,12 +2180,11 @@ dependencies = [
 
 [[package]]
 name = "freya-core"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "849fbf97eb9e5c842d63d1fe9291a31fcaacb6dba26d4d9ef230d17c08800fc7"
+checksum = "4ee644e4c5b4686b4cf59463347df7b64d9eb057c4a251e4528e90a1ecbf707d"
 dependencies = [
  "accesskit",
- "async-watch",
  "bitflags 2.13.1",
  "bytes 1.11.1",
  "cursor-icon",
@@ -2247,9 +2209,9 @@ dependencies = [
 
 [[package]]
 name = "freya-edit"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05f8a3e6e18118ed1f3c240789a0d79b899ab6881542c5c67d8b8f4db3cb7e3f"
+checksum = "b0e20601f2d927591cace6bdaf731397908105a572eeaa934b387471bc6cd3b1"
 dependencies = [
  "bitflags 2.13.1",
  "freya-clipboard",
@@ -2262,27 +2224,18 @@ dependencies = [
 
 [[package]]
 name = "freya-engine"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48a6a6f340133481eb2bfe9dd4a18e3ff409288fcce3c0ae44421766403b3a6"
+checksum = "95c5ba0dae520d78222758cffdcb335ba9cac6f846721b544fe216d894866b8c"
 dependencies = [
  "freya-skia-safe",
 ]
 
 [[package]]
-name = "freya-icons"
-version = "0.5.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de6fb3ee664cab1d601d32265218792e86870e9d0adb4dfc00982da7e97706b1"
-dependencies = [
- "bytes 1.11.1",
-]
-
-[[package]]
 name = "freya-markdown"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4f0cbfd1fe4380c8a6a3ba046186c8a2297d16d982d531b05b9be456649b9b5"
+checksum = "94eb6ca3e8f9f18654ff14589c94155d7fa60c697dcbbbf0f02cb0a9e72e538c"
 dependencies = [
  "freya-components",
  "freya-core",
@@ -2292,9 +2245,9 @@ dependencies = [
 
 [[package]]
 name = "freya-performance-plugin"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ece11eccfdbdb4ce337dd6989545ffada4331d8f5b277c18755c9d4342ff800"
+checksum = "e2c69c000dd001e2df79a8b9ad0977cc0f835c494d2e17a2848b80495c293fce"
 dependencies = [
  "freya-core",
  "freya-engine",
@@ -2303,9 +2256,9 @@ dependencies = [
 
 [[package]]
 name = "freya-query"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c64093d04e01793f4dfa4f2534d0eb560a02e4a341417fda8db1186fb1c629ce"
+checksum = "9db86c4a0dea3ce04df0defa4ce62dad8e7c32bad05090e3644ff6d2f2e0655e"
 dependencies = [
  "async-io",
  "freya-core",
@@ -2314,18 +2267,18 @@ dependencies = [
 
 [[package]]
 name = "freya-radio"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3df935a2d24b8bbdbcaed0b0faf156c6aa86722b42e67b54cac3db7fa8d570ae"
+checksum = "35a2458e07d312a2365951a216a8fa14a604159f8ae7702a7ccb2ffbc3fccf0a"
 dependencies = [
  "freya-core",
 ]
 
 [[package]]
 name = "freya-router"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2a12fd1d5f42737ff2b73821ce9ef5b219b58e77c60efe72e304989e6cd85da"
+checksum = "f26a8c7b3b3c6432de8d90c01821f5206ab6d6c2c8417fe7b873d7a6586e7580"
 dependencies = [
  "freya-core",
  "freya-router-macro",
@@ -2336,9 +2289,9 @@ dependencies = [
 
 [[package]]
 name = "freya-router-macro"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd179a428cb960df4bd43f8f50bbe5c57c92b86e9875734dfbf2bd6074ceb446"
+checksum = "105a54bccebe377d4ce12066813737a0f86e1cc587cdc98c4df92fe48c800be4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2348,9 +2301,9 @@ dependencies = [
 
 [[package]]
 name = "freya-sdk"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a78c948db33b22f1804566b5399f210beb8009ddc7ad42d78f50d944eda51663"
+checksum = "0fe2c1e80db9c6c782536bf1e8f8e4859ed43359e7c0775c619be8826e16dd18"
 dependencies = [
  "async-io",
  "freya-core",
@@ -2358,9 +2311,9 @@ dependencies = [
 
 [[package]]
 name = "freya-skia-bindings"
-version = "0.98.1"
+version = "0.99.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e3b9c668f9711350e499fc1f07724f6e66f92379cdbda8f2ba61c3373c857f7"
+checksum = "6e65f9ff56a7d08451c839386a86842f065552c561041d0cdcc213390a2361a2"
 dependencies = [
  "bindgen",
  "cc",
@@ -2375,11 +2328,11 @@ dependencies = [
 
 [[package]]
 name = "freya-skia-safe"
-version = "0.98.1"
+version = "0.99.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6498ad326bbce161e52567f10f38e53a106bed1e8d575396fce28f5d67a5d311"
+checksum = "567c808eff01a4ad7d9d3dc42ce0fb4335dce76a2398d0cd18f1357bf2450c81"
 dependencies = [
- "base64",
+ "base64 0.23.1",
  "bitflags 2.13.1",
  "freya-skia-bindings",
  "freya-skia-svg-macros",
@@ -2399,9 +2352,9 @@ dependencies = [
 
 [[package]]
 name = "freya-winit"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "273f5eaae2f6561d86c67285c56cd098bceec322169eddfae36e9dce3d52a270"
+checksum = "5f3e4172e15aa5bd524db527733fec0ba9ac3e4191388064c9ff0d4f5a23e091"
 dependencies = [
  "accesskit",
  "accesskit_winit",
@@ -2442,6 +2395,15 @@ name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
+
+[[package]]
+name = "fsevent-sys"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "futures"
@@ -2826,52 +2788,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "hickory-proto"
-version = "0.25.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8a6fe56c0038198998a6f217ca4e7ef3a5e51f46163bd6dd60b5c71ca6c6502"
-dependencies = [
- "async-trait",
- "cfg-if",
- "data-encoding",
- "enum-as-inner",
- "futures-channel",
- "futures-io",
- "futures-util",
- "idna",
- "ipnet",
- "once_cell",
- "rand 0.9.5",
- "ring",
- "thiserror 2.0.18",
- "tinyvec",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "hickory-resolver"
-version = "0.25.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc62a9a99b0bfb44d2ab95a7208ac952d31060efc16241c87eaf36406fecf87a"
-dependencies = [
- "cfg-if",
- "futures-util",
- "hickory-proto",
- "ipconfig",
- "moka",
- "once_cell",
- "parking_lot",
- "rand 0.9.5",
- "resolv-conf",
- "smallvec",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "hkdf"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3045,7 +2961,7 @@ version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes 1.11.1",
  "futures-channel",
  "futures-util",
@@ -3295,6 +3211,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "inotify"
+version = "0.11.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cc00ea907cab49550b7da656f80ebb97be1b997d931fbcd28d39734e17ce592"
+dependencies = [
+ "bitflags 2.13.1",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
+name = "inotify-sys"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c033f80b2c113cdf91ab7a33faa9cbc014726dcad99880c8609af2a370edf37d"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "interfrost"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3324,19 +3260,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2b3ea6ff95e175473f8ffe6a7eb7c00d054240321b84c57051175fe3c1e075e"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "ipconfig"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d40460c0ce33d6ce4b0630ad68ff63d6661961c48b6dba35e5a4d81cfb48222"
-dependencies = [
- "socket2 0.6.5",
- "widestring",
- "windows-registry",
- "windows-result 0.4.1",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3492,6 +3415,26 @@ name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
+
+[[package]]
+name = "kqueue"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d763e5b24120b4ddf50de6c92308156765aabfbbccebf401da7cff2d70a41ea"
+dependencies = [
+ "kqueue-sys",
+ "libc",
+]
+
+[[package]]
+name = "kqueue-sys"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
+dependencies = [
+ "bitflags 2.13.1",
+ "libc",
+]
 
 [[package]]
 name = "language-tags"
@@ -3814,23 +3757,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moka"
-version = "0.12.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "957228ad12042ee839f93c8f257b62b4c0ab5eaae1d4fa60de53b27c9d7c5046"
-dependencies = [
- "crossbeam-channel",
- "crossbeam-epoch",
- "crossbeam-utils",
- "equivalent",
- "parking_lot",
- "portable-atomic",
- "smallvec",
- "tagptr",
- "uuid 1.23.1",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3946,6 +3872,33 @@ name = "noop_proc_macro"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
+
+[[package]]
+name = "notify"
+version = "8.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
+dependencies = [
+ "bitflags 2.13.1",
+ "fsevent-sys",
+ "inotify",
+ "kqueue",
+ "libc",
+ "log",
+ "mio",
+ "notify-types",
+ "walkdir",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "notify-types"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
+dependencies = [
+ "bitflags 2.13.1",
+]
 
 [[package]]
 name = "ntapi"
@@ -4509,14 +4462,10 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-dependencies = [
- "critical-section",
- "portable-atomic",
-]
 
 [[package]]
 name = "oneclient_app"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4527,6 +4476,7 @@ dependencies = [
  "freya-skia-safe",
  "image",
  "mimalloc",
+ "notify",
  "oneclient_auth",
  "oneclient_cluster",
  "oneclient_common",
@@ -4554,9 +4504,9 @@ dependencies = [
 
 [[package]]
 name = "oneclient_auth"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "chrono",
  "md-5 0.10.6",
  "oneclient_common",
@@ -4578,7 +4528,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_cluster"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "bytes 1.11.1",
  "chrono",
@@ -4601,18 +4551,19 @@ dependencies = [
 
 [[package]]
 name = "oneclient_common"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "directories",
  "interfrost",
  "serde",
  "strum",
  "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]
 name = "oneclient_content"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "async-trait",
  "async_zip",
@@ -4638,7 +4589,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_core"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "async-compression",
  "async-stream",
@@ -4646,7 +4597,7 @@ dependencies = [
  "async-trait",
  "async-tungstenite",
  "async_zip",
- "base64",
+ "base64 0.22.1",
  "bytes 1.11.1",
  "chrono",
  "digest 0.10.7",
@@ -4702,7 +4653,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_db"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "async-tempfile",
  "chrono",
@@ -4717,7 +4668,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_discord"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "chrono",
  "discord-rich-presence",
@@ -4729,7 +4680,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_events"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "thiserror 2.0.18",
  "tokio",
@@ -4739,7 +4690,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_java"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "astral-tokio-tar",
  "async-tempfile",
@@ -4761,7 +4712,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_macro"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4770,9 +4721,9 @@ dependencies = [
 
 [[package]]
 name = "oneclient_mc"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "chrono",
  "futures-util",
  "interfrost",
@@ -4792,7 +4743,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_net"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -4814,7 +4765,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_polyplus"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "async-tungstenite",
  "bytes 1.11.1",
@@ -4945,9 +4896,9 @@ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
 name = "pathgraph"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4520bda5a6ac05d6f8f051eb65cdc647dda6a05cdbb1eb5c65e246423fb060b"
+checksum = "e2f33d657119e71a8b28da5c8d52ade41672d873c292ae5bf4833b8fa658c86a"
 
 [[package]]
 name = "percent-encoding"
@@ -5092,7 +5043,7 @@ checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
 name = "polyio"
-version = "2.2.2"
+version = "2.2.3"
 dependencies = [
  "astral-tokio-tar",
  "async-compression",
@@ -5373,9 +5324,9 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "ragnarok"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa4dfe7f0fbe3c9d24c9bf9de10b58d44941633e5bfe7937cebb248119e8cad"
+checksum = "5c5bbbde00035bdece3362a320eb982f23a57f82bf5f480a74f6aec4aaa01203"
 dependencies = [
  "euclid",
  "hotpath",
@@ -5632,7 +5583,7 @@ version = "0.12.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes 1.11.1",
  "futures-channel",
  "futures-core",
@@ -5676,14 +5627,13 @@ version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes 1.11.1",
  "encoding_rs",
  "futures-channel",
  "futures-core",
  "futures-util",
  "h2",
- "hickory-resolver",
  "http 1.5.0",
  "http-body",
  "http-body-util",
@@ -5694,7 +5644,6 @@ dependencies = [
  "log",
  "mime",
  "mime_guess",
- "once_cell",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
@@ -5735,12 +5684,6 @@ dependencies = [
  "tungstenite",
  "web-sys",
 ]
-
-[[package]]
-name = "resolv-conf"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e061d1b48cb8d38042de4ae0a7a6401009d6143dc80d2e2d6f31f0bdd6470c7"
 
 [[package]]
 name = "rfd"
@@ -6536,14 +6479,14 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes 1.11.1",
  "cfg-if",
  "chrono",
  "crc",
  "crossbeam-queue",
  "either",
- "event-listener 5.4.2",
+ "event-listener",
  "futures-core",
  "futures-intrusive",
  "futures-io",
@@ -6642,7 +6585,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
 dependencies = [
  "atoi",
- "base64",
+ "base64 0.22.1",
  "bitflags 2.13.1",
  "byteorder",
  "chrono",
@@ -6862,12 +6805,6 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
-
-[[package]]
-name = "tagptr"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "tar"
@@ -7189,9 +7126,9 @@ checksum = "7d56353a2a665ad0f41a421187180aab746c8c325620617ad883a99a1cbe66d2"
 
 [[package]]
 name = "torin"
-version = "0.5.0-rc.1"
+version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bfa551add6f7c4eee4c7b4b92610b1559d677fc2518802d3b7265be2e53ef43"
+checksum = "e4fb54c965056694c8616b9e0a6dfa151207c3599cd0c18f93acdb7172949bee"
 dependencies = [
  "euclid",
  "itertools 0.14.0",
@@ -7477,7 +7414,7 @@ version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "log",
  "percent-encoding",
  "rustls",
@@ -7493,7 +7430,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e994ba84b0bd1b1b0cf92878b7ef898a5c1760108fe7b6010327e274917a808c"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "http 1.5.0",
  "httparse",
  "log",
@@ -7897,12 +7834,6 @@ name = "whoami"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "998767ef88740d1f5b0682a9c53c24431453923962269c2db68ee43788c5a40d"
-
-[[package]]
-name = "widestring"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
 
 [[package]]
 name = "winapi"
@@ -8561,7 +8492,7 @@ dependencies = [
  "async-trait",
  "blocking",
  "enumflags2",
- "event-listener 5.4.2",
+ "event-listener",
  "futures-core",
  "futures-lite",
  "hex",

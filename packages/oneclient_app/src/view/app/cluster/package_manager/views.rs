@@ -474,8 +474,7 @@ impl Component for ChoiceRow {
             .maybe(focused, |el| {
                 el.border(crate::ui::border_all_color(1., colors::brand()))
             })
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(self.on_press.clone())
             .child(
                 label()

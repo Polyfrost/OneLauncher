@@ -35,6 +35,9 @@ pub enum PlusError {
         body: String,
     },
 
+    #[error("Poly+ is off because the Terms of Service and Privacy Policy were declined")]
+    ConsentRequired,
+
     #[error(transparent)]
     Request(#[from] reqwest::Error),
 
@@ -67,6 +70,11 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
         return;
     }
 
+    if plus_blocked() {
+        tracing::info!("[plus] playtime reporting stays off: terms and privacy policy declined");
+        return;
+    }
+
     tokio::spawn(async move {
         let client = match build_client() {
             Ok(client) => client,
@@ -79,6 +87,15 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
         let mut delay = RECONNECT_DELAY;
 
         loop {
+            // Consent can only be withdrawn while the launcher is up, never
+            // restored, so ending the task is final rather than a pause
+            if plus_blocked() {
+                tracing::info!(
+                    "[plus] ending playtime reporting: terms and privacy policy declined"
+                );
+                return;
+            }
+
             delay = match session(&auth, &client).await {
                 Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
                 Outcome::Failed => (delay * 2).min(MAX_RECONNECT_DELAY),
@@ -89,9 +106,12 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
     });
 }
 
+fn plus_blocked() -> bool {
+    oneclient_common::consent::blocks_url(base_url())
+}
+
 fn build_client() -> Result<reqwest::Client, reqwest::Error> {
-    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-    let mut builder = reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .tcp_keepalive(Some(Duration::from_secs(15)))
         .connect_timeout(Duration::from_secs(10))
         // reqwest-websocket only supports Http <1.1
@@ -103,14 +123,7 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
             env!("CARGO_PKG_HOMEPAGE")
         ));
 
-    // Same WSAEMSGSIZE problem as the main client see `oneclient_net::service`
-    // `hickory-dns` is enabled workspace-wide so opt out explicitly
-    #[cfg(target_os = "windows")]
-    {
-        builder = builder.no_hickory_dns();
-    }
-
-    builder.build()
+    builder.no_hickory_dns().build()
 }
 
 fn base_url() -> &'static str {
@@ -173,8 +186,8 @@ async fn run_session(
     tracing::info!("[plus] playtime websocket connected for {}", account.id);
 
     let account_id = account.id;
-    pump(&mut websocket, PING_INTERVAL, account_id, || {
-        account_changed(auth, account_id)
+    pump(&mut websocket, PING_INTERVAL, account_id, || async move {
+        plus_blocked() || account_changed(auth, account_id).await
     })
     .await
 }
@@ -203,9 +216,7 @@ where
         match event {
             Event::Ping => {
                 if should_stop().await {
-                    tracing::info!(
-                        "[plus] default account changed, ending playtime session for {account_id}"
-                    );
+                    tracing::info!("[plus] ending playtime session for {account_id}");
                     break;
                 }
 
@@ -227,6 +238,10 @@ async fn login(
     client: &reqwest::Client,
     account: &MinecraftAccount,
 ) -> Result<String, PlusError> {
+    if plus_blocked() {
+        return Err(PlusError::ConsentRequired);
+    }
+
     let server_id = generate_server_id();
 
     let join = client

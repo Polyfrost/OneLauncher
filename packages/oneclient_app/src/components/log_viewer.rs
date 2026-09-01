@@ -247,7 +247,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
-        .padding(Gaps::new(12., 20., 12., 20.))
+        .padding(Gaps::new(12., 20., 0., 20.))
         .spacing(12.)
         .child(
             label()
@@ -280,8 +280,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         } else {
             colors::component_bg()
         })
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| auto_scroll.toggle())
         .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
             colors::brand()

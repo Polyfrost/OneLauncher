@@ -247,8 +247,6 @@ fn path_content_width(path: &str) -> f32 {
     (path.chars().count() as f32 * 7.0).max(1.0)
 }
 
-/// `managed` is settled when the row is clicked rather than while rendering so
-/// the modal never touches the filesystem mid-frame
 #[derive(Clone, PartialEq)]
 struct PendingRemove {
     path: String,

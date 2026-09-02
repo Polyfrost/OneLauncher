@@ -255,7 +255,7 @@ fn build_stats(view: StatsView) -> Option<Element> {
                 "~{} left",
                 format_duration_hms(remaining as i64)
             )),
-            None => parts.push("~— left".to_string()),
+            None => parts.push("~- left".to_string()),
         }
 
         if let Some(speed) = transfer.map(|t| t.speed_bps).filter(|s| *s >= 1.0) {

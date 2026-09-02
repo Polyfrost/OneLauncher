@@ -18,7 +18,7 @@ on:
 # NOTE: CARGO_PACKAGER_SIGN_PRIVATE_KEY* are deliberately NOT declared at
 # workflow level. Swatinem/rust-cache folds every `CARGO*`-prefixed environment
 # variable into its cache key, so a workflow-level declaration gave this workflow
-# a cache namespace that the nightly workflow could never populate — every
+# a cache namespace that the nightly workflow could never populate - every
 # release built the whole dependency graph from scratch. They are scoped to the
 # individual steps that actually need them instead.
 
@@ -113,7 +113,7 @@ jobs:
           # already shipped. A *draft* is a previous failed/partial run of this
           # same workflow, so reuse it.
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists on origin — OneClient $VERSION has already been released. Re-run with a bump, or bump the version in Cargo.toml."
+            echo "::error::Tag $TAG already exists on origin - OneClient $VERSION has already been released. Re-run with a bump, or bump the version in Cargo.toml."
             exit 1
           fi
 
@@ -123,7 +123,7 @@ jobs:
             RELEASE_EXISTS=1
           fi
           if [ "$RELEASE_EXISTS" = "1" ] && [ "$IS_DRAFT" != "true" ]; then
-            echo "::error::Release $TAG already exists and is published — refusing to overwrite OneClient $VERSION. Re-run with a bump, or bump the version in Cargo.toml."
+            echo "::error::Release $TAG already exists and is published - refusing to overwrite OneClient $VERSION. Re-run with a bump, or bump the version in Cargo.toml."
             exit 1
           fi
 
@@ -189,7 +189,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      # Pin to the commit `prepare` resolved — with `bump` that is the version
+      # Pin to the commit `prepare` resolved - with `bump` that is the version
       # commit it just pushed, which github.sha would not point at.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -465,7 +465,7 @@ jobs:
           }
           foreach ($dll in @(Get-ChildItem 'target/crt/*.dll')) {
             if (-not (Test-Path (Join-Path $dest $dll.Name))) {
-              Write-Error "$($dll.Name) did not land beside oneclient_app.exe — cargo-packager put resources elsewhere, so app-local CRT loading will not work"
+              Write-Error "$($dll.Name) did not land beside oneclient_app.exe - cargo-packager put resources elsewhere, so app-local CRT loading will not work"
               exit 1
             }
           }
@@ -524,7 +524,7 @@ jobs:
           # Identify the single updater artifact for this platform (the file with a
           # sibling .sig): -setup.exe (nsis), *.app.tar.gz (app), *.AppImage (appimage).
           # NOTE: nullglob is on, so an unmatched glob expands to nothing. Use arrays
-          # rather than `ls <glob> | head` — the latter falls back to listing the cwd
+          # rather than `ls <glob> | head` - the latter falls back to listing the cwd
           # when nothing matches, silently picking an unrelated file.
           fmt=""; ext=""; matches=()
           case "$OS_KEY" in

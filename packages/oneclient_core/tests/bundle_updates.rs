@@ -358,3 +358,81 @@ async fn opting_a_single_file_in_keeps_the_bundle_live() {
         "an explicit opt-in is consent, even with the rest of the bundle disabled"
     );
 }
+
+async fn seed_delisted_bundle(state: &LauncherState) {
+    oneclient_db::dao::bundle::upsert_bundle(
+        &state.services.db,
+        oneclient_db::models::NewBundle {
+            remote_path: "bundles/delisted.mrpack",
+            mc_version: MC_VERSION,
+            mc_loader: GameLoader::Fabric as i64,
+            file_name: "delisted.mrpack",
+            name: Some(BUNDLE),
+            version_id: Some("1"),
+            category: Some("test"),
+            loader_version: Some("0.16.0"),
+            disk_path: "bundles/delisted.mrpack",
+            hidden: true,
+            etag: None,
+            synced_at: None,
+        },
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn delisted_bundle_content_is_removed() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_delisted_bundle(&state).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        check.removals_available.len(),
+        1,
+        "content exclusive to a bundle the catalog dropped should be removed"
+    );
+    assert_eq!(check.removals_available[0].package_id, PROJECT_ID);
+}
+
+#[tokio::test]
+async fn delisted_bundle_content_another_bundle_still_ships_is_kept() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_delisted_bundle(&state).await;
+    let mut successor = manifest(vec![managed_file(true)]);
+    successor.name = "Successor Bundle".to_string();
+    oneclient_core::dev::seed_bundle_archive(&state, successor)
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert!(
+        check.removals_available.is_empty(),
+        "a mod another live bundle still ships is not exclusive: {:?}",
+        check.removals_available
+    );
+}
+
+#[tokio::test]
+async fn tracked_bundle_that_never_synced_is_not_removed() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    assert!(
+        check.removals_available.is_empty(),
+        "an absent catalog is not a delisting and must not take content down: {:?}",
+        check.removals_available
+    );
+}

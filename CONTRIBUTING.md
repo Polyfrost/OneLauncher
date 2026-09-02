@@ -32,7 +32,7 @@ To find an issue that interests you, you can browse through our [existing issues
 #### Making Changes Locally
 
 This project is a pure Rust [`Cargo`] workspace (edition 2024). Make sure you have a
-recent Rust toolchain (`rustc` **1.85+**) installed before proceeding — the easiest way
+recent Rust toolchain (`rustc` **1.85+**) installed before proceeding - the easiest way
 is via [rustup].
 
 To make changes locally, follow these steps:

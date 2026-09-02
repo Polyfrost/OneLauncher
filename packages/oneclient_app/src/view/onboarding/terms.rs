@@ -2,7 +2,9 @@ use freya::prelude::*;
 use freya::query::UseQuery;
 use freya::router::RouterContext;
 
-use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, toggle};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, ScrollArea, Segment, SegmentedControl, toggle,
+};
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
     use_migration, use_settings_snapshot, use_terms,
@@ -12,6 +14,8 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
+
+const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 #[derive(Clone, Copy, PartialEq)]
 enum LegalTab {
@@ -35,6 +39,7 @@ impl Component for OnboardingTerms {
 
         let accepted = use_state(|| false);
         let tab = use_state(|| LegalTab::Terms);
+        let confirming_decline = use_state(|| false);
 
         let returning = settings.seen_onboarding;
         let next = if returning {
@@ -88,14 +93,33 @@ impl Component for OnboardingTerms {
             .child(accept_row(accepted))
             .into_element();
 
-        onboarding_page(
-            onboarding_illustration(IconType::File02),
-            content,
-            terms_nav(back, *accepted.read() && !loading, move || {
-                dispatch.accept_tos(terms_version, privacy_version);
+        let accept_dispatch = dispatch.clone();
+        let nav = terms_nav(back, !loading, move || {
+            if *accepted.read() {
+                accept_dispatch.accept_tos(terms_version, privacy_version);
                 let _ = RouterContext::get().replace(next.clone());
-            }),
-        )
+            } else {
+                let mut confirming = confirming_decline;
+                confirming.set(true);
+            }
+        });
+
+        let modal = confirming_decline.read().then(|| {
+            decline_modal(confirming_decline, move || {
+                dispatch.decline_tos();
+                let _ = RouterContext::get().replace(Route::Home {});
+            })
+        });
+
+        rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .child(onboarding_page(
+                onboarding_illustration(IconType::File02),
+                content,
+                nav,
+            ))
+            .maybe_child(modal)
     }
 }
 
@@ -234,7 +258,7 @@ fn external_link_button(text: &'static str, url: String) -> impl IntoElement {
         .child(Icon::new(IconType::LinkExternal01).size(14.))
 }
 
-fn accept_row(accepted: State<bool>) -> impl IntoElement {
+fn accept_row(accepted: State<bool>) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -259,7 +283,7 @@ fn accept_row(accepted: State<bool>) -> impl IntoElement {
                 )
                 .child(
                     label()
-                        .text("Required to use OneClient.")
+                        .text("Required for world hosting, socials, nametag indicator, and more.")
                         .font_size(11.)
                         .color(colors::fg_secondary()),
                 ),
@@ -272,7 +296,7 @@ fn terms_nav(
     back: Option<Route>,
     next_enabled: bool,
     on_next: impl FnMut() + 'static,
-) -> impl IntoElement {
+) -> Element {
     let mut on_next = on_next;
     rect()
         .horizontal()
@@ -299,6 +323,92 @@ fn terms_nav(
                 .on_press(move |_| on_next())
                 .text("Next")
                 .child(Icon::new(IconType::ArrowRight).size(16.)),
+        )
+        .into_element()
+}
+
+fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) -> Element {
+    let mut on_confirm = on_confirm;
+    let mut confirming = confirming;
+
+    OverlayPopup::new()
+        .on_close(move |_| confirming.set(false))
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(460.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(CornerRadius::new_all(14.))
+                        .background(CARD_BG)
+                        .border(border_all_color(1., colors::danger()))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .cross_align(Alignment::Center)
+                                .spacing(10.)
+                                .child(
+                                    Icon::new(IconType::AlertTriangle)
+                                        .size(20.)
+                                        .color(colors::code_warn()),
+                                )
+                                .child(
+                                    label()
+                                        .text("Continue without accepting?")
+                                        .font_size(16.)
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_primary()),
+                                ),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "This will disable access to world hosting, \
+                                     all social features, the OneClient nametag indicator, \
+                                     and more.",
+                                )
+                                .font_size(12.)
+                                .width(Size::fill())
+                                .max_lines(4)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "You can accept later under Settings > Launcher. That takes \
+                                     effect after a restart.",
+                                )
+                                .font_size(11.)
+                                .width(Size::fill())
+                                .max_lines(3)
+                                .color(colors::fg_secondary().with_a(180)),
+                        )
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .on_press(move |_| confirming.set(false))
+                                        .text("Close"),
+                                )
+                                .child(
+                                    Button::new()
+                                        .danger()
+                                        .on_press(move |_| on_confirm())
+                                        .text("Decline"),
+                                ),
+                        ),
+                ),
         )
         .into_element()
 }

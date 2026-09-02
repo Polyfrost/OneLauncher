@@ -78,6 +78,8 @@ fn main() {
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
+    oneclient_common::consent::init(settings.declined_tos);
+
     if settings.log_debug {
         oneclient_core::logger::init_debug()
     } else {

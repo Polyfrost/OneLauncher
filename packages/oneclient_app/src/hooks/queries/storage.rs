@@ -5,6 +5,7 @@ use freya::query::{
     use_mutation, use_query,
 };
 use oneclient_core::LauncherError;
+use oneclient_core::relocate::{Leftovers, discard_leftovers, leftovers};
 use oneclient_core::storage::{StorageReport, storage_report};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -81,4 +82,63 @@ pub type UseStorageAction = UseMutation<StorageActionMutation>;
 
 pub fn use_storage_action() -> UseStorageAction {
     use_mutation(Mutation::new(StorageActionMutation))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeftoversKeys;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeftoversQuery;
+
+impl QueryCapability for LeftoversQuery {
+    type Ok = Option<Leftovers>;
+    type Err = LauncherError;
+    type Keys = LeftoversKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        Ok(leftovers(&state).await)
+    }
+}
+
+pub fn use_leftovers() -> UseQuery<LeftoversQuery> {
+    use_query(Query::new(LeftoversKeys, LeftoversQuery).stale_time(STORAGE_STALE_TIME))
+}
+
+pub fn try_leftovers(query: &UseQuery<LeftoversQuery>) -> Option<Leftovers> {
+    super::state::settled_or_loading(query).flatten()
+}
+
+pub async fn invalidate_leftovers_queries() {
+    QueriesStorage::<LeftoversQuery>::invalidate_all().await;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DiscardLeftoversKeys;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DiscardLeftoversMutation;
+
+impl MutationCapability for DiscardLeftoversMutation {
+    type Ok = u64;
+    type Err = String;
+    type Keys = DiscardLeftoversKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state().map_err(|err| err.to_string())?;
+        discard_leftovers(&state).await
+    }
+
+    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
+        if result.is_ok() {
+            invalidate_leftovers_queries().await;
+            invalidate_storage_queries().await;
+        }
+    }
+}
+
+pub type UseDiscardLeftovers = UseMutation<DiscardLeftoversMutation>;
+
+pub fn use_discard_leftovers() -> UseDiscardLeftovers {
+    use_mutation(Mutation::new(DiscardLeftoversMutation))
 }

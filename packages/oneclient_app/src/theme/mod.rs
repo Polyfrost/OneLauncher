@@ -5,6 +5,7 @@ use crate::AppAssets;
 pub mod colors;
 
 pub const NAVBAR_HEIGHT_PX: f32 = 80.;
+pub const HOME_PADDING_PX: f32 = 48.;
 pub const DEFAULT_FONT: &str = "Poppins";
 pub const MONO_FONT: &str = "JetBrains Mono";
 

@@ -97,14 +97,9 @@ impl Component for CategoryRow {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(move |_| {
-                hovering.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovering.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovering.set(true))
+            .on_pointer_leave(move |_| hovering.set(false))
             .on_all_press(move |_| on_toggle.call(()))
             .child(
                 label()

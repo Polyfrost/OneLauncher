@@ -7,16 +7,17 @@ use oneclient_core::settings::{
 };
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled,
-    validate_number,
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
+    toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, mutation_is_running, try_game_profile,
-    use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions,
-    use_settings_snapshot,
+    ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
+    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
+    use_loader_versions, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
+use crate::ui::centered_note;
 use crate::view::app::settings::{section_header, settings_row};
 
 use super::cluster_not_found;
@@ -52,7 +53,14 @@ impl Component for ClusterSettings {
             return cluster_not_found();
         };
 
-        let profile = try_game_profile(&profile_query).unwrap_or_else(|| global.clone());
+        let Some(profile) = try_game_profile(&profile_query) else {
+            let note = match query_error(&profile_query) {
+                Some(err) => format!("Could not load these settings: {err}"),
+                None => "Loading settings...".to_string(),
+            };
+            return cluster_content().child(centered_note(&note)).into_element();
+        };
+
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
@@ -355,21 +363,12 @@ impl Component for MemoryRow {
         })
         .into();
 
-        let control = TextInput::new(memory)
-            .width(Size::px(90.))
-            .placeholder("4096")
-            .on_validate(validate_number)
-            .trailing(
-                label()
-                    .text("MB")
-                    .font_size(12.)
-                    .color(colors::fg_secondary()),
-            );
+        let control = memory_field(memory);
 
         settings_row(
             IconType::Database01,
             "Memory",
-            "The amount of memory in megabytes allocated for the game.",
+            "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
             override_cell(control, overridden, on_reset),
         )
     }

@@ -12,6 +12,7 @@ mod launcher;
 pub mod state;
 mod transfer;
 mod layout;
+mod motion;
 mod notifications;
 pub mod platform;
 pub mod recovery;

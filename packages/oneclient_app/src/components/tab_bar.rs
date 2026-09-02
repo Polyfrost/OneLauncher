@@ -184,8 +184,7 @@ impl Component for TabButton {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()));
+            .cursor(CursorIcon::Pointer);
 
         if let Some(handler) = self.on_press.clone() {
             el = el.on_all_press(move |e| handler.call(e));

@@ -4,7 +4,7 @@ use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::storage::format_bytes;
 
 use crate::Route;
-use crate::components::{Button, Icon, IconType};
+use crate::components::{Button, Icon, IconType, progress_track};
 use crate::hooks::{Actions, use_dispatch, use_relocation};
 use crate::theme::colors;
 use crate::ui::{note, path_block};
@@ -49,7 +49,12 @@ fn copying(plan: &RelocationPlan, copied: u64, total: u64) -> Element {
         .child(heading(IconType::FolderDownload, "Moving your data folder", colors::fg_primary()))
         .child(path_block("From", &plan.from))
         .child(path_block("To", &plan.to))
-        .child(progress_track(copied as f32 / total as f32 * 100.))
+        .child(progress_track(
+            copied as f32 / total as f32 * 100.,
+            6.,
+            colors::brand(),
+            colors::component_bg(),
+        ))
         .child(
             label()
                 .text(format!(
@@ -160,21 +165,6 @@ fn heading(icon: IconType, title: &'static str, tint: Color) -> impl IntoElement
                 .font_size(18.)
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
-        )
-}
-
-fn progress_track(pct: f32) -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .height(Size::px(6.))
-        .corner_radius(CornerRadius::new_all(3.))
-        .background(colors::component_bg())
-        .child(
-            rect()
-                .width(Size::percent(pct.clamp(0.0, 100.0)))
-                .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(3.))
-                .background(colors::brand()),
         )
 }
 

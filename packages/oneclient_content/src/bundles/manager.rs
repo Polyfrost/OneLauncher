@@ -95,6 +95,11 @@ impl BundlesManager {
             .map(|entry| entry.remote_path)
             .collect();
 
+        if remote_paths.is_empty() {
+            tracing::error!("bundle catalog listed no bundles; keeping the previous catalog");
+            return Ok(false);
+        }
+
         bundle_dao::hide_bundles_not_in(&ctx.db, &remote_paths).await?;
 
         let bundles_root = paths::bundles_dir()?;

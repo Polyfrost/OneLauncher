@@ -50,6 +50,20 @@ impl Component for SettingsLauncher {
             });
         }
 
+        // The only way back for someone who declined during onboarding
+        let consent_summary = if settings.declined_tos {
+            "Declined. Poly+ and crash reporting stay off until you accept and restart OneClient."
+        } else {
+            "Accepted. Review them again at any time."
+        };
+        let review_terms = Button::new()
+            .secondary()
+            .small()
+            .on_press(|_| {
+                let _ = RouterContext::get().replace(Route::OnboardingTerms {});
+            })
+            .text("Review");
+
         settings_page()
             .child(section_header("GENERAL"))
             .child(settings_row(
@@ -63,6 +77,12 @@ impl Component for SettingsLauncher {
                 "Crash Reporting",
                 "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
                 toggle(crash_reporting),
+            ))
+            .child(settings_row(
+                IconType::File02,
+                "Terms & Privacy",
+                consent_summary,
+                review_terms,
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())

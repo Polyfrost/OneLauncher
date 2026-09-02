@@ -47,12 +47,16 @@ impl App for OneClientApp {
 
             if !needs_location {
                 let startup = actions.clone();
+                let rescue_bus = events_bus.clone();
                 spawn_forever(async move {
                     match events::start_launcher(station, events_bus).await {
                         // Must follow startup `sync_bundles` needs the launcher handle and firing
                         // it early leaves `syncing_bundles` stuck disabling every launch button
                         Ok(()) => startup.sync_bundles(),
-                        Err(err) => events::report_startup_failure(&station, &err),
+                        Err(err) => {
+                            events::report_startup_failure(&station, &err);
+                            oneclient_app::updater::spawn_update_check(false, rescue_bus);
+                        }
                     }
                 });
             }
@@ -97,6 +101,8 @@ fn main() {
     let needs_location = never_set_up && !has_database && !was_damaged;
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
+
+    oneclient_common::consent::init(settings.declined_tos);
 
     let abandoned_move = settings
         .data_dir

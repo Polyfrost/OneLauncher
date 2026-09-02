@@ -8,8 +8,12 @@ use crate::hooks::{
     use_splash, use_terms,
 };
 use crate::hooks::use_dispatch;
-use crate::components::Button;
+use crate::components::{Button, progress_track};
 use crate::theme::colors;
+
+/// Startup is a sequence of boolean gates, not measurable work, so the bar steps
+/// once per gate the launcher clears instead of tracking bytes
+const STARTUP_STEPS: u8 = 3;
 
 #[derive(PartialEq)]
 struct RecoveryActions {
@@ -101,7 +105,9 @@ impl Component for Startup {
             let stale = settings.settings.accepted_tos_version < required_terms
                 || settings.settings.accepted_privacy_version < required_privacy;
 
-            let destination = if !settings.settings.seen_onboarding {
+            let destination = if settings.settings.declined_tos {
+                Route::Home {}
+            } else if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
             } else if stale {
                 Route::OnboardingTerms {}
@@ -129,11 +135,13 @@ impl Component for Startup {
 
         let active = notifications.inbox.iter().find(|entry| entry.is_loading);
 
-        let (message, detail): (String, Option<String>) =
+        let (message, detail, step): (String, Option<String>, u8) =
             if let Some(err) = launcher.error.as_deref() {
+                let step = if launcher.ready { 2 } else { 1 };
                 (
                     "Couldn't start OneClient".to_string(),
                     Some(err.to_string()),
+                    step,
                 )
             } else if let Some(entry) = active {
                 let detail = entry
@@ -142,11 +150,11 @@ impl Component for Startup {
                     .find(|t| t.total == 0 || t.current < t.total)
                     .map(|t| t.label.clone())
                     .or_else(|| entry.progress.map(|(c, t)| format!("{c} / {t}")));
-                (entry.title.clone(), detail)
+                (entry.title.clone(), detail, 3)
             } else if launcher.ready {
-                ("Fetching versions and bundles...".to_string(), None)
+                ("Fetching versions and bundles...".to_string(), None, 2)
             } else {
-                ("Starting OneClient...".to_string(), None)
+                ("Starting OneClient...".to_string(), None, 1)
             };
 
         let is_error = launcher.error.is_some();
@@ -160,6 +168,15 @@ impl Component for Startup {
         } else {
             colors::brand()
         };
+
+        let filled = f32::from(step) / f32::from(STARTUP_STEPS + 1) * 100.;
+
+        let progress = rect().width(Size::px(288.)).child(progress_track(
+            filled,
+            4.,
+            dot_color,
+            colors::fg_primary().with_a(30),
+        ));
 
         let loading_row = rect()
             .horizontal()
@@ -197,7 +214,8 @@ impl Component for Startup {
                     .color(colors::fg_primary().with_a(140)),
             )
             .child(rect().height(Size::px(14.)))
-            .child(loading_row);
+            .child(loading_row)
+            .child(progress);
 
         if let Some(detail) = detail {
             content = content.child(

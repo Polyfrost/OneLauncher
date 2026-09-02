@@ -16,7 +16,7 @@ inputs:
   cache-namespace:
     description: >
       Cache namespace. Workflows that compile with different profile settings
-      MUST use different namespaces — cargo fingerprints every dependency by its
+      MUST use different namespaces - cargo fingerprints every dependency by its
       profile, so sharing one would mean each workflow evicts artifacts the other
       cannot use.
     required: false

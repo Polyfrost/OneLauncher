@@ -19,11 +19,11 @@ impl CrashDiagnosis {
     pub fn body(&self) -> String {
         match self {
             Self::CorruptArchive { file: Some(file) } => format!(
-                "The game could not read {file} — the file is damaged. \
+                "The game could not read {file} - the file is damaged. \
                  Verifying will re-download anything that does not match."
             ),
             Self::CorruptArchive { file: None } => "The game could not read one of its \
-                 library or mod files — it is damaged. Verifying will re-download \
+                 library or mod files - it is damaged. Verifying will re-download \
                  anything that does not match."
                 .to_string(),
         }

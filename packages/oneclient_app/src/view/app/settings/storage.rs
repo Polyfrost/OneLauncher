@@ -267,7 +267,7 @@ fn largest(entries: &[StorageEntry]) -> Option<u64> {
 
 fn unused_cache_description(entry: &ReclaimableEntry) -> String {
     if entry.is_empty() {
-        return "Nothing here — every cached file belongs to an installed package.".to_string();
+        return "Nothing here - every cached file belongs to an installed package.".to_string();
     }
 
     format!(
@@ -280,7 +280,7 @@ fn unused_cache_description(entry: &ReclaimableEntry) -> String {
 
 fn legacy_content_description(entry: &ReclaimableEntry) -> String {
     if entry.is_empty() {
-        return "Nothing here — no cluster folder is holding old content.".to_string();
+        return "Nothing here - no cluster folder is holding old content.".to_string();
     }
 
     format!(

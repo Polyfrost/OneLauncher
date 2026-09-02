@@ -25,8 +25,6 @@ impl QueryCapability for StorageReportQuery {
     }
 }
 
-/// The report walks tens of thousands of files and the default zero stale time
-/// would rescan the whole tree on every mount The page has a refresh button
 const STORAGE_STALE_TIME: Duration = Duration::from_secs(120);
 
 pub fn use_storage_report() -> UseQuery<StorageReportQuery> {
@@ -38,7 +36,7 @@ pub fn try_storage_report(query: &UseQuery<StorageReportQuery>) -> Option<Storag
 }
 
 pub async fn invalidate_storage_queries() {
-    QueriesStorage::<StorageReportQuery>::try_invalidate_all().await;
+    QueriesStorage::<StorageReportQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -112,7 +110,7 @@ pub fn try_leftovers(query: &UseQuery<LeftoversQuery>) -> Option<Leftovers> {
 }
 
 pub async fn invalidate_leftovers_queries() {
-    QueriesStorage::<LeftoversQuery>::try_invalidate_all().await;
+    QueriesStorage::<LeftoversQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

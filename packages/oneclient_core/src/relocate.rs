@@ -1,9 +1,9 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use oneclient_content::packages::store::{manifest, remove_entry};
 use oneclient_db::DbPool;
-use oneclient_events::EventBus;
 use sqlx::Acquire;
 
 use oneclient_common::paths;
@@ -14,6 +14,28 @@ use crate::settings::store::save_settings;
 use crate::storage::{dir_size, format_bytes};
 
 pub const IN_PROGRESS_MARKER: &str = ".oneclient_migrating";
+
+static IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+#[must_use]
+pub fn in_progress() -> bool {
+	IN_PROGRESS.load(Ordering::SeqCst)
+}
+
+struct InProgress;
+
+impl InProgress {
+	fn begin() -> Self {
+		IN_PROGRESS.store(true, Ordering::SeqCst);
+		Self
+	}
+}
+
+impl Drop for InProgress {
+	fn drop(&mut self) {
+		IN_PROGRESS.store(false, Ordering::SeqCst);
+	}
+}
 
 const HEADROOM: f64 = 1.05;
 
@@ -109,10 +131,13 @@ pub async fn plan(state: &LauncherState, picked: &Path) -> Result<RelocationPlan
 	})
 }
 
-#[tracing::instrument(skip(state, plan), fields(from = %plan.from.display(), to = %plan.to.display()))]
+/// `on_copied` is handed the bytes written and the total to write, throttled to
+/// one call per [`REPORT_EVERY`] bytes plus a final one when the tree lands
+#[tracing::instrument(skip(state, plan, on_copied), fields(from = %plan.from.display(), to = %plan.to.display()))]
 pub async fn relocate(
 	state: &LauncherState,
 	plan: &RelocationPlan,
+	mut on_copied: impl FnMut(u64, u64),
 ) -> Result<RelocationOutcome, String> {
 	if let Some(reason) = busy_reason(state) {
 		return Err(reason);
@@ -126,10 +151,8 @@ pub async fn relocate(
 		return Err(reason);
 	}
 
-	let events = &state.services.events;
-	let progress = uuid::Uuid::new_v4();
+	let _in_progress = InProgress::begin();
 
-	events.progress(progress, "Preparing to move", 0, 1);
 	drop_materialized_content(state).await;
 
 	let skip = skipped_names(&plan.from);
@@ -144,7 +167,7 @@ pub async fn relocate(
 		.await
 		.map_err(|err| format!("Couldn't write to {}: {err}", plan.to.display()))?;
 
-	let copied = match write_everything(state, plan, &found, events, progress).await {
+	let copied = match write_everything(state, plan, &found, &mut on_copied).await {
 		Ok(copied) => copied,
 		Err(err) => {
 			abandon(&plan.to).await;
@@ -161,14 +184,10 @@ pub async fn relocate(
 		return Err(err);
 	}
 
-	events.finish_progress(
-		progress,
-		"Game data moved",
-		format!(
-			"{} now lives in {}. Restart OneClient to start using it.",
-			format_bytes(copied),
-			plan.to.display()
-		),
+	tracing::info!(
+		bytes = copied,
+		path = %plan.to.display(),
+		"the game data moved; a restart picks up the new folder"
 	);
 
 	Ok(RelocationOutcome {
@@ -398,8 +417,7 @@ async fn copy_tree(
 	from: &Path,
 	to: &Path,
 	found: &Found,
-	events: &EventBus,
-	progress: uuid::Uuid,
+	on_copied: &mut impl FnMut(u64, u64),
 ) -> Result<u64, String> {
 	for relative in &found.dirs {
 		let dir = to.join(relative);
@@ -438,11 +456,11 @@ async fn copy_tree(
 
 		if copied - reported >= REPORT_EVERY {
 			reported = copied;
-			events.progress(progress, "Moving game data", copied, found.total);
+			on_copied(copied, found.total);
 		}
 	}
 
-	events.progress(progress, "Moving game data", copied, found.total.max(copied));
+	on_copied(copied, found.total.max(copied));
 	Ok(copied)
 }
 
@@ -450,10 +468,9 @@ async fn write_everything(
 	state: &LauncherState,
 	plan: &RelocationPlan,
 	found: &Found,
-	events: &EventBus,
-	progress: uuid::Uuid,
+	on_copied: &mut impl FnMut(u64, u64),
 ) -> Result<u64, String> {
-	let copied = copy_tree(&plan.from, &plan.to, found, events, progress).await?;
+	let copied = copy_tree(&plan.from, &plan.to, found, on_copied).await?;
 
 	if copied != found.total {
 		return Err(format!(

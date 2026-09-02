@@ -70,10 +70,10 @@ pub use logs::{
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use storage::{
-    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery, RelocateMutation,
-    StorageAction, StorageActionMutation, StorageReportQuery, UseDiscardLeftovers, UseRelocate,
+    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery,
+    StorageAction, StorageActionMutation, StorageReportQuery, UseDiscardLeftovers,
     UseStorageAction, invalidate_leftovers_queries, invalidate_storage_queries, try_leftovers,
-    try_storage_report, use_discard_leftovers, use_leftovers, use_relocate, use_storage_action,
+    try_storage_report, use_discard_leftovers, use_leftovers, use_storage_action,
     use_storage_report,
 };
 pub use mutations::{

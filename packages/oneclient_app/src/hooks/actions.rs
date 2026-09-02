@@ -13,6 +13,7 @@ use oneclient_cluster::{
     ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
 use oneclient_db::models::ClusterId;
@@ -24,7 +25,7 @@ use crate::{invalidate_java_queries, launcher};
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus};
+use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
@@ -928,7 +929,68 @@ impl Actions {
         });
     }
 
-    /// `syncing_bundles` gates every launch button so the readiness check must
+    /// App-scoped on purpose: the copy has to outlive the settings page, which
+    /// unmounts as soon as the router swaps to the move screen
+    pub fn relocate(&self, plan: RelocationPlan) {
+        let state = match launcher::state() {
+            Ok(state) => state,
+            Err(err) => {
+                tracing::error!("move skipped, launcher not ready: {err:#}");
+                self.write_relocation(RelocationState {
+                    plan: Some(plan),
+                    result: Some(Err(format!("OneClient is not ready yet: {err}"))),
+                    ..RelocationState::default()
+                });
+                return;
+            }
+        };
+
+        self.write_relocation(RelocationState {
+            plan: Some(plan.clone()),
+            ..RelocationState::default()
+        });
+
+        let mut station = self.station;
+        spawn_forever(async move {
+            // The copy is on this thread's executor, so it can write the count
+            // straight into the channel the move screen reads
+            let result = oneclient_core::relocate::relocate(&state, &plan, |copied, total| {
+                let mut guard = station.write_channel(AppChannel::Relocation);
+                guard.relocation.copied = copied;
+                guard.relocation.total = total;
+            })
+            .await;
+
+            if let Err(message) = &result {
+                tracing::error!("moving the data folder failed: {message}");
+            }
+
+            let moved = result.is_ok();
+            station
+                .write_channel(AppChannel::Relocation)
+                .relocation
+                .result = Some(result);
+
+            if moved {
+                super::invalidate_leftovers_queries().await;
+            }
+        });
+    }
+
+    /// Leaves the move screen, which only the user can do and only once the
+    /// copy has settled
+    pub fn end_relocation(&self) {
+        self.write_relocation(RelocationState::default());
+    }
+
+    fn write_relocation(&self, relocation: RelocationState) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Relocation)
+            .relocation = relocation;
+    }
+
+	/// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {

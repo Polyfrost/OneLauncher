@@ -5,9 +5,7 @@ use freya::query::{
     use_mutation, use_query,
 };
 use oneclient_core::LauncherError;
-use oneclient_core::relocate::{
-    Leftovers, RelocationOutcome, RelocationPlan, discard_leftovers, leftovers, relocate,
-};
+use oneclient_core::relocate::{Leftovers, discard_leftovers, leftovers};
 use oneclient_core::storage::{StorageReport, storage_report};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -115,32 +113,6 @@ pub fn try_leftovers(query: &UseQuery<LeftoversQuery>) -> Option<Leftovers> {
 
 pub async fn invalidate_leftovers_queries() {
     QueriesStorage::<LeftoversQuery>::try_invalidate_all().await;
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RelocateMutation;
-
-impl MutationCapability for RelocateMutation {
-    type Ok = RelocationOutcome;
-    type Err = String;
-    type Keys = RelocationPlan;
-
-    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = crate::launcher::state().map_err(|err| err.to_string())?;
-        relocate(&state, keys).await
-    }
-
-    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if result.is_ok() {
-            invalidate_leftovers_queries().await;
-        }
-    }
-}
-
-pub type UseRelocate = UseMutation<RelocateMutation>;
-
-pub fn use_relocate() -> UseRelocate {
-    use_mutation(Mutation::new(RelocateMutation))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

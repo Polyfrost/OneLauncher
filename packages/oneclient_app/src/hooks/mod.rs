@@ -31,9 +31,9 @@ pub use queries::{
     invalidate_cluster_queries, invalidate_java_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
     invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
-    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery, RelocateMutation,
-    UseDiscardLeftovers, UseRelocate, invalidate_leftovers_queries, mutation_ok, try_leftovers,
-    use_discard_leftovers, use_leftovers, use_relocate,
+    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery,
+    UseDiscardLeftovers, invalidate_leftovers_queries, mutation_ok, try_leftovers,
+    use_discard_leftovers, use_leftovers,
     java_runtimes, latest_changelog_version, loaded_image, loader_versions,
     login_code_already_handled, migration_detection,
     mutation_error, mutation_is_pending, mutation_is_running, onboarding_bundles_items, package_meta_batch,
@@ -60,7 +60,8 @@ pub use queries::{
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
-    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
+    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
+    SettingsState,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -78,6 +79,10 @@ pub fn use_dispatch() -> Actions {
 /// not re-render a component reading only `data_dir`
 pub fn use_launcher() -> LauncherInit {
     use_radio(AppChannel::Launcher).read().launcher.clone()
+}
+
+pub fn use_relocation() -> RelocationState {
+    use_radio(AppChannel::Relocation).read().relocation.clone()
 }
 
 pub fn use_settings_snapshot() -> SettingsState {

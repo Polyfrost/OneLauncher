@@ -138,7 +138,17 @@ fn main() {
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
         .with_transparency(true)
-        .with_background(Color::TRANSPARENT);
+        .with_background(Color::TRANSPARENT)
+        // A half-copied data folder is unrecoverable, so the window refuses to
+        // close while one is being moved; the move screen says as much
+        .with_on_close(|_, _| {
+            if oneclient_core::relocate::in_progress() {
+                tracing::warn!("close request ignored, the data folder is still being moved");
+                CloseDecision::KeepOpen
+            } else {
+                CloseDecision::Close
+            }
+        });
 
     #[cfg(target_os = "macos")]
     let window_config = window_config

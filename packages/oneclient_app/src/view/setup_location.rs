@@ -8,6 +8,7 @@ use crate::hooks::{use_dispatch, use_launcher};
 use crate::routes::Route;
 use crate::state::AppChannel;
 use crate::theme::colors;
+use crate::ui::note;
 use crate::view::onboarding::choice_row;
 
 #[derive(PartialEq)]
@@ -176,20 +177,4 @@ fn browse(
             }
         }
     });
-}
-
-fn note(message: String, accent: Color) -> impl IntoElement {
-    rect()
-        .width(Size::fill())
-        .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
-        .background(accent.with_a(30))
-        .child(
-            label()
-                .text(message)
-                .font_size(12.)
-                .max_lines(4)
-                .color(colors::fg_primary()),
-        )
-        .into_element()
 }

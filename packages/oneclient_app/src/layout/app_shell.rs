@@ -10,8 +10,8 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    ART_PREVIEW_EDGE, AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup,
-    ScrollArea,
+    ART_PREVIEW_EDGE, AppNavbar, CrashDialog, DynamicArt, FileDropOverlay, Icon, IconType,
+    OverlayPopup, ScrollArea,
 };
 use crate::layout::AnimatedAppOutlet;
 use crate::theme;
@@ -91,6 +91,12 @@ impl Component for AppShell {
                 game.error
                     .clone()
                     .map(|message| LaunchErrorDialog { message }.into_element()),
+            )
+            .maybe_child(
+                game.crash
+                    .clone()
+                    .filter(|_| game.error.is_none())
+                    .map(|crash| CrashDialog { crash }.into_element()),
             )
     }
 }

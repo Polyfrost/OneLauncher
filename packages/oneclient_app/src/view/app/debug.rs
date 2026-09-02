@@ -826,16 +826,19 @@ impl Component for CorruptionSimulator {
                     .horizontal()
                     .width(Size::fill())
                     .spacing(12.)
-                    .child(crash_repair_button(
-                        "Crash repair prompt (named jar)",
-                        Some("fabric-loader-0.15.11.jar"),
+                    .child(crash_dialog_button(
+                        "Crash: damaged jar",
+                        Some(oneclient_core::game::CrashDiagnosis::CorruptArchive {
+                            file: Some("fabric-loader-0.15.11.jar".to_string()),
+                        }),
                         cluster_id,
                     ))
-                    .child(crash_repair_button(
-                        "Crash repair prompt (no jar named)",
-                        None,
+                    .child(crash_dialog_button(
+                        "Crash: out of memory",
+                        Some(oneclient_core::game::CrashDiagnosis::OutOfMemory),
                         cluster_id,
-                    )),
+                    ))
+                    .child(crash_dialog_button("Crash: data only", None, cluster_id)),
             )
             .into_element()
     }
@@ -868,11 +871,9 @@ fn prompt_button(
         })
 }
 
-/// Accepting really runs the verify pass
-/// To test detection itself corrupt libraries above and launch the game
-fn crash_repair_button(
+fn crash_dialog_button(
     text: &'static str,
-    jar: Option<&'static str>,
+    diagnosis: Option<oneclient_core::game::CrashDiagnosis>,
     cluster_id: State<String>,
 ) -> impl IntoElement {
     Button::new()
@@ -881,17 +882,67 @@ fn crash_repair_button(
         .text(text)
         .on_press(move |_| {
             let target = cluster_id.read().trim().parse::<i64>().unwrap_or(1);
+            let diagnosis = diagnosis.clone();
             spawn(async move {
                 let Ok(state) = crate::launcher::state() else {
                     return;
                 };
-                let diagnosis = oneclient_core::game::CrashDiagnosis::CorruptArchive {
-                    file: jar.map(str::to_string),
-                };
-                oneclient_core::game::offer_repair(&state, target, &diagnosis).await;
+
+                let document = SAMPLE_CRASH_LOG.join("\n");
+                let fixes = oneclient_core::game::crashdata::current()
+                    .matches(&document)
+                    .into_iter()
+                    .map(|hit| oneclient_events::CrashFix {
+                        text: hit.text,
+                        kind: hit.kind,
+                    })
+                    .collect();
+
+                let name = state
+                    .clusters
+                    .get(target)
+                    .await
+                    .map_or_else(|_| format!("Cluster {target}"), |cluster| cluster.name);
+
+                state
+                    .services
+                    .events
+                    .game_crashed(oneclient_events::GameCrash {
+                        cluster_id: target,
+                        cluster_name: name.clone(),
+                        title: diagnosis.as_ref().map_or_else(
+                            || format!("{name} crashed"),
+                            oneclient_core::game::CrashDiagnosis::title,
+                        ),
+                        exit: "exit code: 1".to_string(),
+                        played_secs: 252,
+                        cause: diagnosis
+                            .as_ref()
+                            .map(oneclient_core::game::CrashDiagnosis::body),
+                        remedy: diagnosis
+                            .as_ref()
+                            .and_then(oneclient_core::game::CrashDiagnosis::remedy),
+                        fixes,
+                        excerpt: SAMPLE_CRASH_LOG
+                            .iter()
+                            .map(|line| (*line).to_string())
+                            .collect(),
+                        game_dir: oneclient_common::paths::shared_minecraft_dir()
+                            .ok()
+                            .map(|dir| dir.to_string_lossy().to_string()),
+                    });
             });
         })
 }
+
+const SAMPLE_CRASH_LOG: &[&str] = &[
+    "[12:04:11] [main/INFO]: Loading 42 mods",
+    "[12:04:12] [main/ERROR]: Unable to launch",
+    "java.lang.NullPointerException: Initializing game",
+    "\tat net.minecraft.client.Minecraft.displayGuiScreen(Minecraft.java)",
+    "\tat io.github.moulberry.notenoughupdates.NotEnoughUpdates.onTick",
+    "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+];
 
 fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();
@@ -1155,14 +1206,16 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
     let mut row = rect().horizontal().width(Size::fill()).spacing(12.);
 
     for (text, icon) in buttons {
+        let onboarding_dispatch = dispatch.clone();
+
         let mut button = Button::new()
             .secondary()
             .child(Icon::new(icon).size(16.))
             .text(text);
 
         if text == "Open Onboarding" {
-			dispatch.reset_onboarding();
-            button = button.on_press(|_| {
+            button = button.on_press(move |_| {
+                onboarding_dispatch.reset_onboarding();
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

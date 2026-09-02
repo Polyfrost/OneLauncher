@@ -177,6 +177,16 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                 Event::Game(GameEvent::Failed { cluster_id, message }) => {
                     mp.suspend(|| tracing::error!(cluster_id, "launch failed: {message}"));
                 }
+                Event::Game(GameEvent::Crashed(crash)) => {
+                    mp.suspend(|| {
+                        tracing::error!(
+                            cluster_id = crash.cluster_id,
+                            fixes = crash.fixes.len(),
+                            "{}",
+                            crash.title
+                        );
+                    });
+                }
                 // No TTY dialog here answer `None` so the waiting task fails
                 // cleanly instead of hanging on a prompt nobody can answer
                 Event::Notification(Notification::Prompt(request)) => {

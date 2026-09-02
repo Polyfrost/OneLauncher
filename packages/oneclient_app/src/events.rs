@@ -126,6 +126,7 @@ impl EventPump {
         let mut stages: Vec<(i64, LaunchStage)> = Vec::new();
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
+        let mut crashed: Option<oneclient_events::GameCrash> = None;
         let mut login: Option<Option<LoginProgress>> = None;
         let mut sync_complete = false;
 
@@ -148,6 +149,7 @@ impl EventPump {
                     cluster_id,
                     message,
                 }) => failed = Some((cluster_id, message)),
+                Event::Game(GameEvent::Crashed(crash)) => crashed = Some(*crash),
                 // Lifted out so it never reaches the engine the sign-in modal renders it inline
                 Event::Progress(ProgressEvent::Update {
                     id,
@@ -165,12 +167,13 @@ impl EventPump {
             }
         }
 
-        if !stages.is_empty() || !logs.is_empty() || failed.is_some() {
+        if !stages.is_empty() || !logs.is_empty() || failed.is_some() || crashed.is_some() {
             let mut guard = self.station.write_channel(AppChannel::Game);
             for (cluster_id, stage) in stages {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
+                    guard.game.crash = None;
                     guard.game.logs.insert(cluster_id, std::sync::Arc::new(Vec::new()));
                 }
             }
@@ -181,6 +184,10 @@ impl EventPump {
             if let Some((cluster_id, message)) = failed {
                 guard.game.stages.insert(cluster_id, LaunchStage::Exited);
                 guard.game.error = Some(message);
+            }
+            if let Some(crash) = crashed {
+                guard.game.stages.insert(crash.cluster_id, LaunchStage::Exited);
+                guard.game.crash = Some(std::sync::Arc::new(crash));
             }
         }
 

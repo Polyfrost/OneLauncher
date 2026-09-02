@@ -104,6 +104,45 @@ pub enum GameEvent {
 	Stage { cluster_id: i64, stage: LaunchStage },
 	Log { cluster_id: i64, line: String },
 	Failed { cluster_id: i64, message: String },
+	Crashed(Box<GameCrash>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrashRemedy {
+	VerifyFiles,
+	RaiseMemory,
+	OpenJavaSettings,
+}
+
+impl CrashRemedy {
+	#[must_use]
+	pub fn label(self) -> &'static str {
+		match self {
+			Self::VerifyFiles => "Verify & repair",
+			Self::RaiseMemory => "Memory settings",
+			Self::OpenJavaSettings => "Java settings",
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrashFix {
+	pub text: String,
+	pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameCrash {
+	pub cluster_id: i64,
+	pub cluster_name: String,
+	pub title: String,
+	pub exit: String,
+	pub played_secs: u64,
+	pub cause: Option<String>,
+	pub remedy: Option<CrashRemedy>,
+	pub fixes: Vec<CrashFix>,
+	pub excerpt: Vec<String>,
+	pub game_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

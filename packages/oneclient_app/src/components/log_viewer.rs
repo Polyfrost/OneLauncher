@@ -73,7 +73,7 @@ impl WidthCache {
     }
 }
 
-fn clean_line(raw: &str) -> String {
+pub fn clean_line(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut chars = raw.chars();
     let mut col = 0usize;

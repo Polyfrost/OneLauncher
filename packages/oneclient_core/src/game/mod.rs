@@ -17,11 +17,13 @@ pub use oneclient_mc::{
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,
     processor_arguments,
 };
+pub mod crashdata;
 pub mod diagnosis;
 
+pub use crashdata::CrashData;
 pub use diagnosis::{CrashDiagnosis, diagnose};
 pub use error::GameError;
-pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
+pub use launch::{LaunchedGame, is_running, launch_cluster, repair_cluster};
 pub use process::{
     GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
 };

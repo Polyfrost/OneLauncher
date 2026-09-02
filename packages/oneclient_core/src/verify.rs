@@ -22,6 +22,7 @@ pub struct ClusterVerifyReport {
     pub corrupt: usize,
     pub missing: usize,
     pub repaired: usize,
+    pub refetched: usize,
     /// Corrupt with no source to re-fetch from named so the user can replace them
     pub unrepairable: Vec<String>,
     /// Game files re-downloaded uncounted because the assets index was gone too
@@ -40,6 +41,12 @@ impl ClusterVerifyReport {
     #[must_use]
     pub fn summary(&self) -> String {
         if self.is_clean() {
+            if self.refetched > 0 {
+                return format!(
+                    "All {} files verified, {} refetched.",
+                    self.checked, self.refetched
+                );
+            }
             return format!("All {} files verified.", self.checked);
         }
 
@@ -56,6 +63,9 @@ impl ClusterVerifyReport {
         }
         if self.repaired > 0 {
             parts.push(format!("{} repaired", self.repaired));
+        }
+        if self.refetched > 0 {
+            parts.push(format!("{} refetched", self.refetched));
         }
         if !self.unrepairable.is_empty() {
             parts.push(format!("{} could not be replaced", self.unrepairable.len()));
@@ -175,6 +185,7 @@ async fn run_verify(
         report.checked += game.checked;
         report.corrupt += game.corrupt;
         report.missing += game.missing;
+        report.refetched += game.unverifiable;
         game_broken = game.corrupt + game.missing;
     } else {
         tracing::warn!("assets index is missing; re-downloading the game files wholesale");
@@ -184,7 +195,7 @@ async fn run_verify(
 
     // Runs `prepare` directly not the launch path which skips clusters already
     // marked `Ready` and so never heals one with deleted files
-    if game_broken > 0 || reinstalled_game_files {
+    if game_broken > 0 || report.refetched > 0 || reinstalled_game_files {
         prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await?;
         report.repaired += game_broken;
     }
@@ -356,6 +367,7 @@ mod tests {
             corrupt: 3,
             missing: 1,
             repaired: 4,
+            refetched: 0,
             unrepairable: Vec::new(),
             reinstalled_game_files: false,
         };
@@ -365,6 +377,18 @@ mod tests {
             report.summary(),
             "Checked 5123 files: 3 corrupt, 1 missing, 4 repaired."
         );
+    }
+
+    #[test]
+    fn hashless_loader_libraries_are_reported_as_refetched() {
+        let report = ClusterVerifyReport {
+            checked: 131,
+            refetched: 8,
+            ..Default::default()
+        };
+
+        assert!(report.is_clean());
+        assert_eq!(report.summary(), "All 131 files verified, 8 refetched.");
     }
 
     #[test]

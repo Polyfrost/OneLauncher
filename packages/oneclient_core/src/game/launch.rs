@@ -375,9 +375,11 @@ pub async fn launch_cluster(
     let post_hook = profile.hook_post.clone();
     tokio::spawn(async move {
         let cluster = cluster;
+        let mut killed = false;
         let status = tokio::select! {
             status = child.wait() => status,
             _ = kill_rx => {
+                killed = true;
                 let _ = child.start_kill();
                 child.wait().await
             }
@@ -386,6 +388,7 @@ pub async fn launch_cluster(
         tail.stop().await;
 
         let outcome = match status {
+            Ok(_) if killed => Exit::Killed,
             Ok(status) => Exit::Observed {
                 code: status.code().map(i64::from),
                 success: status.success(),
@@ -407,6 +410,7 @@ pub async fn launch_cluster(
                 outcome,
                 owns_slot: true,
                 diagnosis: crash_watch.take(),
+                watch: Some(crash_watch),
             },
         )
         .await;
@@ -450,22 +454,17 @@ pub(crate) enum Exit {
         display: String,
     },
     Failed(String),
-    /// Game exited while the launcher was closed time recovered from the log
-    /// exit code unrecoverable
     Inferred,
+    Killed,
 }
 
 pub(crate) struct SessionEnd {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub outcome: Exit,
-    /// False for a stale session recovered from the database whose cluster has a
-    /// live game book its playtime but clearing the slot would report the live
-    /// game as exited
     pub owns_slot: bool,
-    /// `None` for a clean exit an unrecognised crash or a session recovered
-    /// after the fact with no log watched
     pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
+    pub watch: Option<crate::game::diagnosis::CrashWatch>,
 }
 
 /// Shared by the live exit path and by recovery of sessions that outlived the
@@ -501,7 +500,7 @@ pub(crate) async fn finalize_session(
     if let Some(recorder) = recorder {
         let code = match &end.outcome {
             Exit::Observed { code, .. } => *code,
-            Exit::Failed(_) | Exit::Inferred => None,
+            Exit::Failed(_) | Exit::Inferred | Exit::Killed => None,
         };
         recorder.finish_at(&end.ended_at.to_rfc3339(), code).await;
     }
@@ -520,14 +519,23 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
-    let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
+    let crashed = matches!(
+        end.outcome,
+        Exit::Observed { success: false, .. } | Exit::Failed(_)
+    );
 
-    match end.outcome {
+    let display = match &end.outcome {
+        Exit::Observed { display, .. } => display.clone(),
+        Exit::Failed(err) => err.clone(),
+        Exit::Inferred | Exit::Killed => String::new(),
+    };
+
+    match &end.outcome {
         Exit::Observed { success: true, .. } => state
             .services
             .events
             .notify("Game closed").body(format!("{name} exited")).send(),
-        Exit::Observed { display, .. } => state
+        Exit::Observed { .. } => state
             .services
             .events
             .notify("Game crashed").body(format!("{name} exited with {display}")).error().send(),
@@ -535,56 +543,83 @@ pub(crate) async fn finalize_session(
             .services
             .events
             .notify("Game error").body(format!("{name}: {err}")).error().send(),
-        // Nothing was watching so there is no crash to report
+        Exit::Killed => state
+            .services
+            .events
+            .notify("Game stopped").body(format!("{name} was closed from the launcher")).send(),
         Exit::Inferred => {}
     }
 
-    // Only when the game actually died a `ZipException` it recovered from is not
-    // worth interrupting a finished session over
-    if crashed && let Some(diagnosis) = end.diagnosis {
-        offer_repair(state, cluster_id, &diagnosis).await;
+    if crashed {
+        report_crash(state, cluster, cwd, &display, played, &end).await;
     }
 }
 
-/// Asks rather than acting verification can re-download much of the game too
-/// much to start unprompted
-/// The offer returns on the next crash
-#[tracing::instrument(skip(state, diagnosis), level = "debug")]
-pub async fn offer_repair(
+async fn report_crash(
     state: &Arc<LauncherState>,
-    cluster_id: i64,
-    diagnosis: &crate::game::diagnosis::CrashDiagnosis,
+    cluster: &Cluster,
+    cwd: &Path,
+    display: &str,
+    played: Duration,
+    end: &SessionEnd,
 ) {
-    enum Answer {
-        Verify,
+    let document = end.watch.as_ref().map(|watch| watch.document());
+    let fixes: Vec<oneclient_events::CrashFix> = document
+        .as_deref()
+        .map(|document| {
+            crate::game::crashdata::current()
+                .matches(document)
+                .into_iter()
+                .map(|hit| oneclient_events::CrashFix {
+                    text: hit.text,
+                    kind: hit.kind,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if fixes.is_empty() && end.diagnosis.is_none() {
+        tracing::debug!(
+            cluster_id = cluster.id,
+            "crash not recognised, leaving it to the toast"
+        );
+        return;
     }
 
-    let answer = state
+    let title = end.diagnosis.as_ref().map_or_else(
+        || format!("{} crashed", cluster.name),
+        crate::game::diagnosis::CrashDiagnosis::title,
+    );
+
+    state
         .services
         .events
-        .ask(
-            oneclient_events::Prompt::new("A damaged file crashed the game", diagnosis.body())
-                .option(
-                    oneclient_events::Choice::primary("verify", "Verify and repair"),
-                    Answer::Verify,
-                )
-                .dismiss("Not now"),
-        )
-        .await;
+        .game_crashed(oneclient_events::GameCrash {
+            cluster_id: cluster.id,
+            cluster_name: cluster.name.clone(),
+            title,
+            exit: display.to_string(),
+            played_secs: played.as_secs(),
+            cause: end
+                .diagnosis
+                .as_ref()
+                .map(crate::game::diagnosis::CrashDiagnosis::body),
+            remedy: end
+                .diagnosis
+                .as_ref()
+                .and_then(crate::game::diagnosis::CrashDiagnosis::remedy),
+            fixes,
+            excerpt: end
+                .watch
+                .as_ref()
+                .map(super::diagnosis::CrashWatch::excerpt)
+                .unwrap_or_default(),
+            game_dir: Some(cwd.to_string_lossy().to_string()),
+        });
+}
 
-    match answer {
-        Ok(Some(_)) => {}
-        // Dismissed or nobody there to ask neither is consent to re-download
-        Ok(None) => {
-            tracing::info!(cluster_id, "user declined the post-crash repair");
-            return;
-        }
-        Err(err) => {
-            tracing::warn!(cluster_id, "could not offer a post-crash repair: {err}");
-            return;
-        }
-    }
-
+#[tracing::instrument(skip(state), level = "debug")]
+pub async fn repair_cluster(state: &Arc<LauncherState>, cluster_id: i64) {
     match crate::verify::verify_cluster_files(state, cluster_id).await {
         Ok(report) => {
             state

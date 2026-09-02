@@ -699,6 +699,22 @@ impl Actions {
             .error = None;
     }
 
+    pub fn dismiss_game_crash(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .crash = None;
+    }
+
+    pub fn repair_cluster(&self, cluster_id: ClusterId) {
+        self.dismiss_game_crash();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            oneclient_core::game::repair_cluster(&state, cluster_id).await;
+        });
+    }
+
     pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };

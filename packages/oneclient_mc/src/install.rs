@@ -178,12 +178,13 @@ pub struct VerifyReport {
     /// Mismatched the manifest and were removed
     pub corrupt: usize,
     pub missing: usize,
+    pub unverifiable: usize,
 }
 
 impl VerifyReport {
     #[must_use]
     pub fn needs_repair(&self) -> bool {
-        self.corrupt > 0 || self.missing > 0
+        self.corrupt > 0 || self.missing > 0 || self.unverifiable > 0
     }
 }
 
@@ -208,6 +209,7 @@ pub async fn verify_game_files(
     let lib_dir = paths::libraries_dir()?;
 
     let mut targets: Vec<(PathBuf, String)> = Vec::new();
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
 
     for (name, asset) in assets_index.objects {
         let path = asset_object_path(&asset_dir, &name, &asset.hash, legacy);
@@ -235,6 +237,8 @@ pub async fn verify_game_files(
             && !artifact.sha1.is_empty()
         {
             targets.push((lib_dir.join(&artifact_path), artifact.sha1.clone()));
+        } else {
+            unverifiable.push(lib_dir.join(&artifact_path));
         }
     }
 
@@ -256,6 +260,18 @@ pub async fn verify_game_files(
     // would cost more than the hashing itself
     let report = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
+
+        for path in &unverifiable {
+            if !path.is_file() {
+                report.missing += 1;
+                continue;
+            }
+            if let Err(err) = std::fs::remove_file(path) {
+                tracing::error!(path = %path.display(), "could not remove: {err}");
+                continue;
+            }
+            report.unverifiable += 1;
+        }
 
         for (index, (path, expected)) in targets.iter().enumerate() {
             if !path.is_file() {
@@ -307,6 +323,7 @@ pub async fn verify_game_files(
         checked = report.checked,
         corrupt = report.corrupt,
         missing = report.missing,
+        unverifiable = report.unverifiable,
         elapsed_ms = started.elapsed().as_millis() as u64,
         "verified game files"
     );

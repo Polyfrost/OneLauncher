@@ -107,6 +107,7 @@ pub struct LoginProgress {
 pub struct GameState {
     pub stages: HashMap<i64, LaunchStage>,
     pub error: Option<String>,
+    pub crash: Option<Arc<oneclient_events::GameCrash>>,
     pub logs: HashMap<i64, Arc<Vec<Arc<str>>>>,
     /// Launches started from the UI but not yet answered by core which takes a few
     /// hundred ms every click in that window otherwise spawns its own game

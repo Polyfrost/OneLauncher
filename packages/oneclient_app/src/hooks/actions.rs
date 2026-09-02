@@ -482,11 +482,13 @@ impl Actions {
                     events.signal(oneclient_events::Signal::JavaChanged);
                     invalidate_java_queries().await
                 },
-                Err(err) => events
+                Err(err) => {
+					events
                     .notify("Java install failed")
                     .body(err.to_string())
                     .error()
-                    .send(),
+                    .send()
+				}
             }
         });
     }

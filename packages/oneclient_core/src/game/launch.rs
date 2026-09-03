@@ -11,6 +11,7 @@ use crate::ClusterStage;
 use oneclient_auth::MinecraftAccount;
 use crate::clusters::Cluster;
 use oneclient_discord::Presence;
+use crate::game::diagnosis::{CrashDiagnosis, CrashWatch};
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
 use crate::game::GameError;
@@ -18,7 +19,7 @@ use oneclient_mc::{
     self as arguments, download_minecraft, download_version_info, get_loader_version,
     game_files_missing, resolve_minecraft_version,
 };
-use oneclient_events::{GroupedProgressSession, LaunchStage};
+use oneclient_events::{CrashRemedy, GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
 use crate::state::LauncherState;
 use crate::LauncherResult;
@@ -359,7 +360,7 @@ pub async fn launch_cluster(
         .as_ref()
         .and_then(SessionRecorder::started_at)
         .unwrap_or_else(Utc::now);
-    let crash_watch = crate::game::diagnosis::CrashWatch::new();
+    let crash_watch = CrashWatch::new();
     let tail = spawn_log_tail(
         cluster_id,
         log_path,
@@ -447,6 +448,8 @@ fn detach(command: &mut Command) {
     }
 }
 
+const STARTUP_WINDOW: Duration = Duration::from_secs(120);
+
 pub(crate) enum Exit {
     Observed {
         code: Option<i64>,
@@ -463,8 +466,8 @@ pub(crate) struct SessionEnd {
     pub ended_at: DateTime<Utc>,
     pub outcome: Exit,
     pub owns_slot: bool,
-    pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
-    pub watch: Option<crate::game::diagnosis::CrashWatch>,
+    pub diagnosis: Option<CrashDiagnosis>,
+    pub watch: Option<CrashWatch>,
 }
 
 /// Shared by the live exit path and by recovery of sessions that outlived the
@@ -519,18 +522,25 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
-    let crashed = matches!(
-        end.outcome,
-        Exit::Observed { success: false, .. } | Exit::Failed(_)
-    );
+    let died_starting = played < STARTUP_WINDOW;
+    let crashed = match &end.outcome {
+        Exit::Observed { success, .. } => {
+            !success
+                || (died_starting && end.diagnosis.as_ref().is_some_and(CrashDiagnosis::is_fatal))
+        }
+        Exit::Failed(_) => true,
+        Exit::Inferred => end.diagnosis.is_some(),
+        Exit::Killed => false,
+    };
 
     let display = match &end.outcome {
-        Exit::Observed { display, .. } => display.clone(),
+        Exit::Observed { success: false, display, .. } => display.clone(),
         Exit::Failed(err) => err.clone(),
-        Exit::Inferred | Exit::Killed => String::new(),
+        Exit::Observed { .. } | Exit::Inferred | Exit::Killed => String::new(),
     };
 
     match &end.outcome {
+        Exit::Observed { success: true, .. } if crashed => {}
         Exit::Observed { success: true, .. } => state
             .services
             .events
@@ -563,33 +573,27 @@ async fn report_crash(
     played: Duration,
     end: &SessionEnd,
 ) {
-    let document = end.watch.as_ref().map(|watch| watch.document());
-    let fixes: Vec<oneclient_events::CrashFix> = document
-        .as_deref()
-        .map(|document| {
-            crate::game::crashdata::current()
-                .matches(document)
-                .into_iter()
-                .map(|hit| oneclient_events::CrashFix {
-                    text: hit.text,
-                    kind: hit.kind,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let watch = end.watch.as_ref();
+    let diagnosis = end.diagnosis.as_ref();
 
-    if fixes.is_empty() && end.diagnosis.is_none() {
+    let reported = watch.is_some_and(CrashWatch::reported_crash);
+    let suspects = watch.map(CrashWatch::suspects).unwrap_or_default();
+    let excerpt = watch.map(CrashWatch::excerpt).unwrap_or_default();
+    let document = watch.map(CrashWatch::document).unwrap_or_default();
+    let fixes = crate::game::crashdata::fixes_for(&document);
+
+    if diagnosis.is_none()
+        && !reported
+        && suspects.is_empty()
+        && !crate::game::crashdata::has_solution(&fixes)
+    {
         tracing::debug!(
             cluster_id = cluster.id,
-            "crash not recognised, leaving it to the toast"
+            suggestions = fixes.len(),
+            "no recognised cause, leaving it to the toast"
         );
         return;
     }
-
-    let title = end.diagnosis.as_ref().map_or_else(
-        || format!("{} crashed", cluster.name),
-        crate::game::diagnosis::CrashDiagnosis::title,
-    );
 
     state
         .services
@@ -597,23 +601,19 @@ async fn report_crash(
         .game_crashed(oneclient_events::GameCrash {
             cluster_id: cluster.id,
             cluster_name: cluster.name.clone(),
-            title,
+            title: diagnosis.map_or_else(
+                || format!("{} crashed", cluster.name),
+                CrashDiagnosis::title,
+            ),
             exit: display.to_string(),
             played_secs: played.as_secs(),
-            cause: end
-                .diagnosis
-                .as_ref()
-                .map(crate::game::diagnosis::CrashDiagnosis::body),
-            remedy: end
-                .diagnosis
-                .as_ref()
-                .and_then(crate::game::diagnosis::CrashDiagnosis::remedy),
+            cause: diagnosis.map(CrashDiagnosis::body),
+            remedy: diagnosis
+                .and_then(CrashDiagnosis::remedy)
+                .or_else(|| (!suspects.is_empty()).then_some(CrashRemedy::OpenMods)),
+            suspects,
             fixes,
-            excerpt: end
-                .watch
-                .as_ref()
-                .map(super::diagnosis::CrashWatch::excerpt)
-                .unwrap_or_default(),
+            excerpt,
             game_dir: Some(cwd.to_string_lossy().to_string()),
         });
 }

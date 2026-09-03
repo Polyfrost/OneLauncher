@@ -112,6 +112,7 @@ pub enum CrashRemedy {
 	VerifyFiles,
 	RaiseMemory,
 	OpenJavaSettings,
+	OpenMods,
 }
 
 impl CrashRemedy {
@@ -121,6 +122,7 @@ impl CrashRemedy {
 			Self::VerifyFiles => "Verify & repair",
 			Self::RaiseMemory => "Memory settings",
 			Self::OpenJavaSettings => "Java settings",
+			Self::OpenMods => "Open mods",
 		}
 	}
 }
@@ -139,6 +141,7 @@ pub struct GameCrash {
 	pub exit: String,
 	pub played_secs: u64,
 	pub cause: Option<String>,
+	pub suspects: Vec<String>,
 	pub remedy: Option<CrashRemedy>,
 	pub fixes: Vec<CrashFix>,
 	pub excerpt: Vec<String>,

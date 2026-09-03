@@ -7,6 +7,8 @@ use crate::ui::border_all_color;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
+const LINK_CONFIRM_LEVEL: u8 = 16;
+
 #[derive(PartialEq)]
 pub struct ConfirmLinkOverlay;
 
@@ -20,6 +22,7 @@ impl Component for ConfirmLinkOverlay {
         let open_url = url.clone();
 
         OverlayPopup::new()
+            .level(LINK_CONFIRM_LEVEL)
             .on_close(move |_| pending.set(None))
             .child(
                 rect()

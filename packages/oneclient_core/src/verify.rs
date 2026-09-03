@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use oneclient_cluster::ClusterError;
@@ -172,8 +173,10 @@ async fn run_verify(
     // whole directory is gone hand the work to prepare
     let reinstalled_game_files = assets_index.is_none();
 
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
+
     if let Some(assets_index) = assets_index {
-        let game = verify_game_files(
+        let (game, stale) = verify_game_files(
             progress,
             &version_info,
             assets_index,
@@ -185,8 +188,8 @@ async fn run_verify(
         report.checked += game.checked;
         report.corrupt += game.corrupt;
         report.missing += game.missing;
-        report.refetched += game.unverifiable;
         game_broken = game.corrupt + game.missing;
+        unverifiable = stale;
     } else {
         tracing::warn!("assets index is missing; re-downloading the game files wholesale");
     }
@@ -195,14 +198,90 @@ async fn run_verify(
 
     // Runs `prepare` directly not the launch path which skips clusters already
     // marked `Ready` and so never heals one with deleted files
-    if game_broken > 0 || report.refetched > 0 || reinstalled_game_files {
-        prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await?;
+    if game_broken > 0 || !unverifiable.is_empty() || reinstalled_game_files {
+        let staged = stage_aside(unverifiable).await;
+        let prepared =
+            prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await;
+        report.refetched = settle_staged(staged).await;
+        prepared?;
         report.repaired += game_broken;
     }
 
     report.reinstalled_game_files = reinstalled_game_files;
 
     Ok(report)
+}
+
+fn staged_path(path: &std::path::Path) -> Option<PathBuf> {
+    let mut aside = path.file_name()?.to_os_string();
+    aside.push(".stale");
+
+    Some(path.with_file_name(aside))
+}
+
+async fn reclaim_orphans(paths: &[PathBuf]) {
+    for path in paths {
+        let Some(aside) = staged_path(path) else {
+            continue;
+        };
+
+        if polyio::stat(&aside).await.is_err() {
+            continue;
+        }
+
+        let recovered = if polyio::stat(path).await.is_ok() {
+            polyio::remove_file(&aside).await
+        } else {
+            polyio::rename(&aside, path).await
+        };
+
+        match recovered {
+            Ok(()) => {
+                tracing::info!(path = %path.display(), "reclaimed a copy left by an interrupted verify");
+            }
+            Err(err) => {
+                tracing::warn!(path = %aside.display(), "could not reclaim a staged copy: {err}");
+            }
+        }
+    }
+}
+
+async fn stage_aside(paths: Vec<PathBuf>) -> Vec<(PathBuf, PathBuf)> {
+    reclaim_orphans(&paths).await;
+
+    let mut staged = Vec::with_capacity(paths.len());
+
+    for path in paths {
+        let Some(aside) = staged_path(&path) else {
+            continue;
+        };
+
+        match polyio::rename(&path, &aside).await {
+            Ok(()) => staged.push((path, aside)),
+            Err(err) => {
+                tracing::warn!(path = %path.display(), "could not stage for a refetch: {err}");
+            }
+        }
+    }
+
+    staged
+}
+
+async fn settle_staged(staged: Vec<(PathBuf, PathBuf)>) -> usize {
+    let mut refetched = 0;
+
+    for (path, aside) in staged {
+        if polyio::stat(&path).await.is_ok() {
+            refetched += 1;
+            if let Err(err) = polyio::remove_file(&aside).await {
+                tracing::warn!(path = %aside.display(), "could not drop the staged copy: {err}");
+            }
+        } else if let Err(err) = polyio::rename(&aside, &path).await {
+            tracing::error!(path = %path.display(), "could not restore after a failed refetch: {err}");
+        }
+    }
+
+    refetched
 }
 
 /// The content cache is content-addressed so a file that does not hash to its

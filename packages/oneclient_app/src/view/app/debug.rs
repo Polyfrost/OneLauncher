@@ -3,6 +3,7 @@ use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 
 use oneclient_auth::preview_samples;
+use oneclient_core::game::{CrashDiagnosis, crashdata, suspected_mods};
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
@@ -828,14 +829,14 @@ impl Component for CorruptionSimulator {
                     .spacing(12.)
                     .child(crash_dialog_button(
                         "Crash: damaged jar",
-                        Some(oneclient_core::game::CrashDiagnosis::CorruptArchive {
+                        Some(CrashDiagnosis::CorruptArchive {
                             file: Some("fabric-loader-0.15.11.jar".to_string()),
                         }),
                         cluster_id,
                     ))
                     .child(crash_dialog_button(
                         "Crash: out of memory",
-                        Some(oneclient_core::game::CrashDiagnosis::OutOfMemory),
+                        Some(CrashDiagnosis::OutOfMemory),
                         cluster_id,
                     ))
                     .child(crash_dialog_button("Crash: data only", None, cluster_id)),
@@ -873,7 +874,7 @@ fn prompt_button(
 
 fn crash_dialog_button(
     text: &'static str,
-    diagnosis: Option<oneclient_core::game::CrashDiagnosis>,
+    diagnosis: Option<CrashDiagnosis>,
     cluster_id: State<String>,
 ) -> impl IntoElement {
     Button::new()
@@ -888,15 +889,8 @@ fn crash_dialog_button(
                     return;
                 };
 
-                let document = SAMPLE_CRASH_LOG.join("\n");
-                let fixes = oneclient_core::game::crashdata::current()
-                    .matches(&document)
-                    .into_iter()
-                    .map(|hit| oneclient_events::CrashFix {
-                        text: hit.text,
-                        kind: hit.kind,
-                    })
-                    .collect();
+                let fixes = crashdata::fixes_for(&SAMPLE_CRASH_LOG.join("\n"));
+                let diagnosis = diagnosis.as_ref();
 
                 let name = state
                     .clusters
@@ -910,18 +904,16 @@ fn crash_dialog_button(
                     .game_crashed(oneclient_events::GameCrash {
                         cluster_id: target,
                         cluster_name: name.clone(),
-                        title: diagnosis.as_ref().map_or_else(
-                            || format!("{name} crashed"),
-                            oneclient_core::game::CrashDiagnosis::title,
-                        ),
+                        title: diagnosis
+                            .map_or_else(|| format!("{name} crashed"), CrashDiagnosis::title),
                         exit: "exit code: 1".to_string(),
                         played_secs: 252,
-                        cause: diagnosis
-                            .as_ref()
-                            .map(oneclient_core::game::CrashDiagnosis::body),
-                        remedy: diagnosis
-                            .as_ref()
-                            .and_then(oneclient_core::game::CrashDiagnosis::remedy),
+                        cause: diagnosis.map(CrashDiagnosis::body),
+                        suspects: SAMPLE_CRASH_LOG
+                            .iter()
+                            .find_map(|line| suspected_mods(line))
+                            .unwrap_or_default(),
+                        remedy: diagnosis.and_then(CrashDiagnosis::remedy),
                         fixes,
                         excerpt: SAMPLE_CRASH_LOG
                             .iter()
@@ -942,6 +934,7 @@ const SAMPLE_CRASH_LOG: &[&str] = &[
     "\tat net.minecraft.client.Minecraft.displayGuiScreen(Minecraft.java)",
     "\tat io.github.moulberry.notenoughupdates.NotEnoughUpdates.onTick",
     "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+    "\tSuspected Mods: NotEnoughUpdates (notenoughupdates), Minecraft (minecraft)",
 ];
 
 fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {

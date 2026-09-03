@@ -199,7 +199,7 @@ pub async fn verify_game_files(
     assets_index: AssetsIndex,
     java_arch: &str,
     minecraft_updated: bool,
-) -> McResult<VerifyReport> {
+) -> McResult<(VerifyReport, Vec<PathBuf>)> {
     let legacy = version.assets == "legacy";
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
@@ -258,20 +258,18 @@ pub async fn verify_game_files(
 
     // One blocking task for the whole sweep a spawn_blocking per small asset
     // would cost more than the hashing itself
-    let report = tokio::task::spawn_blocking(move || {
+    let (report, stale) = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
+        let mut stale: Vec<PathBuf> = Vec::new();
 
-        for path in &unverifiable {
-            if !path.is_file() {
+        for path in unverifiable {
+            if path.is_file() {
+                stale.push(path);
+            } else {
                 report.missing += 1;
-                continue;
             }
-            if let Err(err) = std::fs::remove_file(path) {
-                tracing::error!(path = %path.display(), "could not remove: {err}");
-                continue;
-            }
-            report.unverifiable += 1;
         }
+        report.unverifiable = stale.len();
 
         for (index, (path, expected)) in targets.iter().enumerate() {
             if !path.is_file() {
@@ -312,7 +310,7 @@ pub async fn verify_game_files(
             }
         }
 
-        report
+        (report, stale)
     })
     .await
     .map_err(std::io::Error::other)?;
@@ -328,7 +326,7 @@ pub async fn verify_game_files(
         "verified game files"
     );
 
-    Ok(report)
+    Ok((report, stale))
 }
 
 #[tracing::instrument(skip_all)]

@@ -21,7 +21,7 @@ pub mod crashdata;
 pub mod diagnosis;
 
 pub use crashdata::CrashData;
-pub use diagnosis::{CrashDiagnosis, diagnose};
+pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use launch::{LaunchedGame, is_running, launch_cluster, repair_cluster};
 pub use process::{

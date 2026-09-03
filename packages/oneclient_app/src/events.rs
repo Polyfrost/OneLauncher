@@ -173,7 +173,14 @@ impl EventPump {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
-                    guard.game.crash = None;
+                    if guard
+                        .game
+                        .crash
+                        .as_ref()
+                        .is_some_and(|crash| crash.cluster_id == cluster_id)
+                    {
+                        guard.game.crash = None;
+                    }
                     guard.game.logs.insert(cluster_id, std::sync::Arc::new(Vec::new()));
                 }
             }

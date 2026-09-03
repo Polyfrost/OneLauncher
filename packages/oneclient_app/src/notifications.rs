@@ -263,30 +263,22 @@ impl GroupedTasks {
     }
 
     fn active_body(&self) -> Option<String> {
-        let mut minecraft = false;
-        let mut packages = false;
-        for child in self.children.values() {
-            if child.category.is_minecraft() {
-                minecraft = true;
-            } else {
-                packages = true;
-            }
+        if self.children.is_empty() {
+            return None;
         }
 
-        let scope = if minecraft {
-            "Minecraft"
-        } else if packages {
-            "Packages"
-        } else {
-            return None;
-        };
+        let minecraft = self
+            .children
+            .values()
+            .any(|child| child.category.is_minecraft());
 
+        let scope = if minecraft { "Minecraft" } else { "Packages" };
         let phase = self
             .children
             .values()
-            .filter(|c| c.category.is_minecraft() == minecraft)
-            .map(|c| c.phase)
-            .find(|p| *p != "Downloading")
+            .filter(|child| child.category.is_minecraft() == minecraft)
+            .map(|child| child.phase)
+            .find(|phase| *phase != "Downloading")
             .unwrap_or("Downloading");
 
         Some(format!("{phase} {scope}"))

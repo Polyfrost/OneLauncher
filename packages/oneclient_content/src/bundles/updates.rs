@@ -13,9 +13,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, find_user_suppression,
+    BUNDLE_INSTALL_CONCURRENCY, ShippedPackages, disable_was_deliberate, find_user_suppression,
     heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
-    set_artifact_enabled_to,
+    shipped_packages,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -399,13 +399,17 @@ pub async fn apply_bundle_updates_with(
     // Must run first
     // the check below never consults `enabled` so unrecorded disables would
     // read as healthy and be left untouched
-    {
+    let shipped = {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
-            heal_bundle_activity(cluster_id, &archives, ctx).await?;
+        match bundles.archives_for(ctx, &cluster.mc_version, loader).await {
+            Ok(archives) => {
+                heal_bundle_activity(cluster_id, &archives, ctx).await?;
+                shipped_packages(&archives)
+            }
+            Err(_) => ShippedPackages::default(),
         }
-    }
+    };
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, ctx, &overrides).await?;
@@ -478,7 +482,7 @@ pub async fn apply_bundle_updates_with(
 
     for (update, installed) in fetched_updates {
         match installed {
-            Ok(hash) => match reconcile_update(&update, &hash, &overrides, ctx).await {
+            Ok(hash) => match reconcile_update(&update, &hash, &overrides, &shipped, ctx).await {
                 Ok(()) => result.updates_applied.push(update),
                 Err(err) => result.updates_failed.push(err.to_string()),
             },
@@ -521,7 +525,7 @@ pub async fn apply_bundle_updates_with(
         let file_id = addition.new_file.kind.package_id();
         match installed {
             Ok(hash) => {
-                match reconcile_addition(&addition, &hash, &overrides, ctx).await {
+                match reconcile_addition(&addition, &hash, &overrides, &shipped, ctx).await {
                     Ok(()) => result.additions_applied.push(addition),
                     Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
                 }
@@ -573,12 +577,22 @@ async fn reconcile_update(
     update: &BundlePackageUpdate,
     hash: &str,
     overrides: &[ClusterBundleOverrideRow],
+    shipped: &ShippedPackages,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = update.new_file.kind.package_id();
-    let suppression = find_user_suppression(overrides, &file_id);
+
+    let tracked_bundle = bundle_dao::get_bundle_tracked(&ctx.db, update.cluster_id, &update.installed_hash)
+        .await?
+        .and_then(|row| row.bundle_name);
+    let mut owning = vec![update.bundle_name.as_str()];
+    if let Some(name) = tracked_bundle.as_deref() {
+        owning.push(name);
+    }
+
+    let suppression = find_user_suppression(overrides, &file_id, &owning, shipped);
     let enabled = !disable_was_deliberate(update.new_file.hidden, suppression);
-    set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
+    PackageStore::set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash == update.installed_hash {
         return Ok(());
@@ -592,12 +606,19 @@ async fn reconcile_addition(
     addition: &BundlePackageAddition,
     hash: &str,
     overrides: &[ClusterBundleOverrideRow],
+    shipped: &ShippedPackages,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let file_id = addition.new_file.kind.package_id();
-    let suppression = find_user_suppression(overrides, &file_id);
+    let suppression = find_user_suppression(
+        overrides,
+        &file_id,
+        &[addition.bundle_name.as_str()],
+        shipped,
+    );
     let enabled = !disable_was_deliberate(addition.new_file.hidden, suppression);
-    set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
+    PackageStore::set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await?;
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]

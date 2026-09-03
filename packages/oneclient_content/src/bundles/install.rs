@@ -39,6 +39,21 @@ fn find_override(
         .and_then(|o| OverrideType::parse(&o.override_type))
 }
 
+pub(crate) type ShippedPackages = std::collections::HashSet<(String, String)>;
+
+pub(crate) fn shipped_packages(archives: &[BundleArchive]) -> ShippedPackages {
+    archives
+        .iter()
+        .flat_map(|archive| {
+            archive
+                .manifest
+                .files
+                .iter()
+                .map(move |file| (archive.manifest.name.clone(), file.kind.package_id()))
+        })
+        .collect()
+}
+
 /// Searches all bundles
 /// a package's `bundle_name` is rewritten on every install so a choice filed
 /// under its old bundle still counts
@@ -47,10 +62,17 @@ fn find_override(
 pub(crate) fn find_user_suppression(
     overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
     package_id: &str,
+    owning_bundles: &[&str],
+    shipped: &ShippedPackages,
 ) -> Option<OverrideType> {
     let mut found = None;
 
     for row in overrides.iter().filter(|o| o.package_id == package_id) {
+        if !owning_bundles.contains(&row.bundle_name.as_str())
+            && shipped.contains(&(row.bundle_name.clone(), package_id.to_string()))
+        {
+            continue;
+        }
         match OverrideType::parse(&row.override_type) {
             Some(OverrideType::Removed) => return Some(OverrideType::Removed),
             Some(OverrideType::Disabled) => found = Some(OverrideType::Disabled),
@@ -227,6 +249,7 @@ pub async fn heal_bundle_activity(
     }
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let shipped = shipped_packages(archives);
 
     for row in tracked.iter().filter(|row| row.enabled == 0) {
         let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
@@ -242,7 +265,8 @@ pub async fn heal_bundle_activity(
         // Across bundles
         // a package that moved keeps its old override row and reading only its
         // current bundle would switch it back on
-        let suppression = find_user_suppression(&overrides, package_id);
+        let suppression =
+            find_user_suppression(&overrides, package_id, &[bundle_name.as_str()], &shipped);
         if disable_was_deliberate(is_hidden, suppression) {
             continue;
         }
@@ -267,7 +291,7 @@ pub async fn heal_bundle_activity(
         // Drop the stale override everywhere or a copy under another bundle
         // keeps answering "off" and the two records never settle
         if suppression == Some(OverrideType::Disabled) {
-            clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+            bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
         }
     }
 
@@ -831,6 +855,13 @@ mod tests {
         assert!(!disable_was_deliberate(true, Some(OverrideType::Enabled)));
     }
 
+    fn ships(pairs: &[(&str, &str)]) -> ShippedPackages {
+        pairs
+            .iter()
+            .map(|(b, p)| ((*b).to_string(), (*p).to_string()))
+            .collect()
+    }
+
     #[test]
     fn suppression_is_found_under_a_bundle_the_package_has_since_left() {
         let rows = vec![row("Bundle B", "fabric-api", OverrideType::Disabled)];
@@ -841,9 +872,26 @@ mod tests {
             "the per-bundle question is still answered per bundle"
         );
         assert_eq!(
-            find_user_suppression(&rows, "fabric-api"),
+            find_user_suppression(&rows, "fabric-api", &["Bundle C"], &ships(&[])),
             Some(OverrideType::Disabled),
             "the user's choice follows the package, not the bundle it was filed under"
+        );
+    }
+
+    #[test]
+    fn a_decline_in_another_bundle_that_still_ships_it_is_not_about_this_copy() {
+        let rows = vec![row("SkyBlock", "fabric-api", OverrideType::Removed)];
+        let shipped = ships(&[("SkyBlock", "fabric-api"), ("HUD", "fabric-api")]);
+
+        assert_eq!(
+            find_user_suppression(&rows, "fabric-api", &["HUD"], &shipped),
+            None,
+            "declining SkyBlock's copy must not keep HUD's copy off"
+        );
+        assert_eq!(
+            find_user_suppression(&rows, "fabric-api", &["SkyBlock"], &shipped),
+            Some(OverrideType::Removed),
+            "the bundle the choice was filed under still owns it"
         );
     }
 
@@ -855,7 +903,7 @@ mod tests {
         ];
 
         assert_eq!(
-            find_user_suppression(&rows, "yacl"),
+            find_user_suppression(&rows, "yacl", &["Bundle A"], &ships(&[])),
             Some(OverrideType::Removed)
         );
     }
@@ -867,8 +915,14 @@ mod tests {
             row("Bundle B", "lithium", OverrideType::Disabled),
         ];
 
-        assert_eq!(find_user_suppression(&rows, "sodium"), None);
-        assert_eq!(find_user_suppression(&rows, "unheard-of"), None);
+        assert_eq!(
+            find_user_suppression(&rows, "sodium", &["Bundle A"], &ships(&[])),
+            None
+        );
+        assert_eq!(
+            find_user_suppression(&rows, "unheard-of", &["Bundle A"], &ships(&[])),
+            None
+        );
     }
 
     #[test]

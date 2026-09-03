@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE setting_profiles\n\t\tSET mem_max = ?\n\t\tWHERE mem_max = ?\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "756a83e9d46e8f0450c172efb35f6fa42554910d9b7e7c09c4a593c96dec3b2a"
+}

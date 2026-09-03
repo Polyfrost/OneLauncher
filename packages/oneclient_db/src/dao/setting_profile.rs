@@ -43,6 +43,24 @@ pub async fn get_by_name(pool: &SqlitePool, name: &str) -> DbResult<Option<Setti
     Ok(row)
 }
 
+pub async fn replace_mem_max(pool: &SqlitePool, from: u32, to: u32) -> DbResult<u64> {
+    let (from, to) = (i64::from(from), i64::from(to));
+
+    let result = sqlx::query!(
+        r#"
+		UPDATE setting_profiles
+		SET mem_max = ?
+		WHERE mem_max = ?
+		"#,
+        to,
+        from,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
 pub async fn upsert(
     pool: &SqlitePool,
     row: &SettingProfileRow,
@@ -105,4 +123,61 @@ pub async fn delete_by_name(pool: &SqlitePool, name: &str) -> Result<(), DbError
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        sqlx::migrate!().run(&pool).await.expect("migrations run");
+        pool
+    }
+
+    async fn seed(pool: &SqlitePool, name: &str, mem_max: Option<i64>) {
+        upsert(
+            pool,
+            &SettingProfileRow {
+                name: name.into(),
+                java_path: None,
+                resolution: None,
+                force_fullscreen: None,
+                mem_max,
+                launch_args: None,
+                launch_env: None,
+                hook_pre: None,
+                hook_wrapper: None,
+                hook_post: None,
+                os_extra: None,
+                browser_update_mode: None,
+            },
+        )
+        .await
+        .expect("insert profile");
+    }
+
+    #[tokio::test]
+    async fn only_the_legacy_heap_is_replaced() {
+        let pool = pool().await;
+        seed(&pool, "stale", Some(4096)).await;
+        seed(&pool, "also stale", Some(4096)).await;
+        seed(&pool, "chosen", Some(8192)).await;
+        seed(&pool, "inherits", None).await;
+
+        let replaced = replace_mem_max(&pool, 4096, 3072).await.expect("replace");
+        assert_eq!(replaced, 2);
+
+        let mem_max = |name: &'static str| {
+            let pool = pool.clone();
+            async move { get_by_name(&pool, name).await.unwrap().unwrap().mem_max }
+        };
+
+        assert_eq!(mem_max("stale").await, Some(3072));
+        assert_eq!(mem_max("also stale").await, Some(3072));
+        assert_eq!(mem_max("chosen").await, Some(8192));
+        assert_eq!(mem_max("inherits").await, None);
+    }
 }

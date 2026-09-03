@@ -20,6 +20,8 @@ pub struct ViewState {
 	pub sort: Option<String>,
 }
 
+pub const SETTINGS_VERSION: u32 = 2;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct LauncherSettings {
@@ -59,7 +61,7 @@ impl LauncherSettings {
 impl Default for LauncherSettings {
 	fn default() -> Self {
 		Self {
-			settings_version: 1,
+			settings_version: SETTINGS_VERSION,
 			log_debug: false,
 			auto_update: true,
 			crash_reporting: true,

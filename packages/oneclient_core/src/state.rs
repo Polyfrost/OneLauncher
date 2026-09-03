@@ -72,7 +72,11 @@ impl LauncherState {
 			packages: PackageProviderRegistry::new(),
 		};
 
-        let settings = store::load_settings(Some(&services.events)).await;
+        let mut settings = store::load_settings(Some(&services.events)).await;
+		if let Err(err) = store::migrate(&services.db, &mut settings).await {
+			tracing::error!("settings migration failed, retrying next start: {err}");
+		}
+
 		services
 			.requester
 			.set_config(crate::settings::net_config(&settings));

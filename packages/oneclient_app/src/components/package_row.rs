@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
+use oneclient_core::SeenStatus;
 
 use crate::components::{Icon, IconType, toggle_controlled};
 use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
@@ -44,10 +45,9 @@ pub struct PackageEntry {
     pub installed: bool,
     pub hash: Option<String>,
     pub manifest_default: bool,
-    /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
-    /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
+    pub seen_status: SeenStatus,
 }
 
 impl PackageEntry {
@@ -62,6 +62,14 @@ impl PackageEntry {
     /// Bundle packages are never marked here so the two update flows cannot contradict
     pub fn is_outdated(&self) -> bool {
         self.update_available && self.is_remote() && !self.in_bundle()
+    }
+
+    pub fn recency_badge(&self) -> Option<Element> {
+        match self.seen_status {
+            SeenStatus::New => Some(new_badge()),
+            SeenStatus::Updated => Some(updated_badge()),
+            SeenStatus::Seen => None,
+        }
     }
 }
 
@@ -277,7 +285,8 @@ fn grid_card(
                         .cross_align(Alignment::Center)
                         .spacing(6.)
                         .child(badge)
-                        .maybe_child(item.is_outdated().then(outdated_badge)),
+                        .maybe_child(item.is_outdated().then(outdated_badge))
+                        .maybe_child(item.recency_badge()),
                 ),
         )
         .into_element();
@@ -374,7 +383,8 @@ fn package_info(
                         } else {
                             local_badge()
                         })
-                        .maybe_child(item.is_outdated().then(outdated_badge)),
+                        .maybe_child(item.is_outdated().then(outdated_badge))
+                        .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
                     el.child(
@@ -462,6 +472,28 @@ fn outdated_badge() -> Element {
             .into_element(),
         "Update available".to_string(),
         colors::brand(),
+    )
+}
+
+fn new_badge() -> Element {
+    accent_badge(
+        Icon::new(IconType::Plus)
+            .size(12.)
+            .color(colors::success())
+            .into_element(),
+        "New".to_string(),
+        colors::success(),
+    )
+}
+
+fn updated_badge() -> Element {
+    accent_badge(
+        Icon::new(IconType::RefreshCcw02)
+            .size(12.)
+            .color(colors::success())
+            .into_element(),
+        "Updated".to_string(),
+        colors::success(),
     )
 }
 

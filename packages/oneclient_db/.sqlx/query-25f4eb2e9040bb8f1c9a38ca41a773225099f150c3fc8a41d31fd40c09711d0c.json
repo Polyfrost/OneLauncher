@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tINSERT INTO cluster_artifacts (cluster_id, hash, cluster_file_name, enabled)\n\t\tVALUES (?, ?, ?, 1)\n\t\tON CONFLICT(cluster_id, hash) DO UPDATE SET\n\t\t\tcluster_file_name = excluded.cluster_file_name\n\t\tRETURNING cluster_id, hash, cluster_file_name, enabled\n\t\t",
+  "query": "\n\t\tSELECT DISTINCT ca.cluster_id, ca.hash, ca.cluster_file_name, ca.enabled, ca.seen_status\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ?\n\t\t\tAND pr.provider = ?\n\t\t\tAND pr.project_id = ?\n\t\t\tAND ca.hash <> ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -46,17 +46,29 @@
             "name": "enabled"
           }
         }
+      },
+      {
+        "name": "seen_status",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "seen_status"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 4
     },
     "nullable": [
+      false,
       false,
       false,
       false,
       false
     ]
   },
-  "hash": "24209a44c9a51e8a318b080aa0c79a00a6002a35b47ec3723e3aa6a327cb7f51"
+  "hash": "25f4eb2e9040bb8f1c9a38ca41a773225099f150c3fc8a41d31fd40c09711d0c"
 }

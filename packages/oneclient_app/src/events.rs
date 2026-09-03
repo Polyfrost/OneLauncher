@@ -304,6 +304,16 @@ pub async fn start_launcher(
 ) -> Result<(), anyhow::Error> {
     let state = crate::launcher::install(oneclient_core::LauncherState::new(events).await?);
 
+    match oneclient_content::packages::PackageStore::retire_seen_badges(&state.services.content())
+        .await
+    {
+        Ok(cleared) if cleared > 0 => {
+            tracing::debug!(cleared, "retired package badges from the previous session");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(%err, "failed to retire package badges"),
+    }
+
     oneclient_net::status::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);

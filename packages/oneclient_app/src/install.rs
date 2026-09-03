@@ -8,7 +8,7 @@ use oneclient_events::Level;
 use crate::components::IconType;
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
-    NotificationSpec, PackageUpdateGroup,
+    NotificationSpec, OptionalModsGroup, PackageUpdateGroup,
 };
 
 /// Falls back to a placeholder a missing row must not lose the whole message
@@ -48,12 +48,23 @@ pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdate
             provider: *provider,
             project_id: Some(project_id.clone()),
             fallback: file.display_name(),
+            offer: None,
+            status: None,
         },
         oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
             provider: oneclient_content::packages::ProviderId::Local,
             project_id: None,
             fallback: file.display_name(),
+            offer: None,
+            status: None,
         },
+    }
+}
+
+fn item_from_optional(package: &oneclient_core::BundleOptionalPackage) -> ClusterUpdateItem {
+    ClusterUpdateItem {
+        offer: Some((package.bundle_name.clone(), package.package_id.clone())),
+        ..item_from_bundle_file(&package.file)
     }
 }
 
@@ -84,10 +95,17 @@ async fn cluster_update_summary(
                 .display_name
                 .clone()
                 .unwrap_or_else(|| r.package_id.clone()),
+            offer: None,
+            status: None,
         })
         .collect();
+    let optional: Vec<ClusterUpdateItem> = result
+        .optional_available
+        .iter()
+        .map(item_from_optional)
+        .collect();
 
-    if updated.is_empty() && added.is_empty() && removed.is_empty() {
+    if updated.is_empty() && added.is_empty() && removed.is_empty() && optional.is_empty() {
         return None;
     }
 
@@ -103,6 +121,7 @@ async fn cluster_update_summary(
         updated,
         added,
         removed,
+        optional,
     })
 }
 
@@ -113,14 +132,31 @@ pub async fn cluster_update_notification(
 ) -> Option<NotificationSpec> {
     let summary = cluster_update_summary(cluster_id, result, services).await?;
     let total = summary.total();
-    let body = format!(
-        "{total} package{} changed in {}",
-        if total == 1 { "" } else { "s" },
-        summary.cluster_name
-    );
+    // A bundle can offer an opt-in mod without changing anything else
+    // "0 packages changed" would be both wrong and alarming
+    let (title, body) = if total == 0 {
+        let offers = summary.optional.len();
+        (
+            "Optional mods available",
+            format!(
+                "{offers} optional mod{} in {}",
+                if offers == 1 { "" } else { "s" },
+                summary.cluster_name
+            ),
+        )
+    } else {
+        (
+            "Cluster updated",
+            format!(
+                "{total} package{} changed in {}",
+                if total == 1 { "" } else { "s" },
+                summary.cluster_name
+            ),
+        )
+    };
 
     Some(NotificationSpec {
-        title: "Cluster updated".to_string(),
+        title: title.to_string(),
         body,
         level: Level::Info,
         icon: Some(IconType::DownloadCloud02),
@@ -152,14 +188,29 @@ pub async fn combined_cluster_update_spec(
     }
 
     let cluster_count = summaries.len();
-    let body = format!(
-        "{total_changes} package{} updated across {cluster_count} cluster{}",
-        if total_changes == 1 { "" } else { "s" },
-        if cluster_count == 1 { "" } else { "s" }
-    );
+    let (title, body) = if total_changes == 0 {
+        let offers: usize = summaries.iter().map(|s| s.optional.len()).sum();
+        (
+            "Optional mods available",
+            format!(
+                "{offers} optional mod{} across {cluster_count} cluster{}",
+                if offers == 1 { "" } else { "s" },
+                if cluster_count == 1 { "" } else { "s" }
+            ),
+        )
+    } else {
+        (
+            "Mods updated",
+            format!(
+                "{total_changes} package{} updated across {cluster_count} cluster{}",
+                if total_changes == 1 { "" } else { "s" },
+                if cluster_count == 1 { "" } else { "s" }
+            ),
+        )
+    };
 
     Some(NotificationSpec {
-        title: "Mods updated".to_string(),
+        title: title.to_string(),
         body,
         level: Level::Info,
         icon: Some(IconType::DownloadCloud02),
@@ -171,14 +222,35 @@ pub async fn combined_cluster_update_spec(
     })
 }
 
-/// The session is detached not finished so the caller can reuse its notification
-/// as the "Installed" / "Install failed" result
-/// `session_id` is `None` if no download ran
+pub async fn pending_optional_group(
+    cluster_id: i64,
+    pending: &[oneclient_core::PendingOptionalMod],
+    services: &oneclient_core::LauncherServices,
+) -> Option<OptionalModsGroup> {
+    if pending.is_empty() {
+        return None;
+    }
+
+    let mods: Vec<ClusterUpdateItem> = pending
+        .iter()
+        .map(|entry| ClusterUpdateItem {
+            offer: Some((entry.bundle_name.clone(), entry.package_id.clone())),
+            status: Some(entry.status),
+            ..item_from_bundle_file(&entry.file)
+        })
+        .collect();
+
+    Some(OptionalModsGroup {
+        cluster_id,
+        cluster_name: cluster_display_name(cluster_id, services).await,
+        mods,
+    })
+}
+
 pub struct PackageInstall {
     pub session_id: Option<uuid::Uuid>,
     pub result: anyhow::Result<String>,
     pub dependencies: Vec<String>,
-    /// Unresolved or failed dependencies the package still installs
     pub missing_dependencies: Vec<String>,
 }
 

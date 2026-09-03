@@ -29,3 +29,18 @@ pub struct ClusterArtifactRow {
 	pub cluster_file_name: String,
 	pub enabled: i64,
 }
+
+#[derive(Debug, Clone, FromRow)]
+pub struct LinkedArtifactRow {
+	pub hash: String,
+	pub cluster_file_name: String,
+	pub enabled: i64,
+	pub content_type: i64,
+	pub file_name: String,
+	pub provider: Option<i64>,
+	pub project_id: Option<String>,
+	pub version_id: Option<String>,
+	pub display_name: Option<String>,
+	pub display_version: Option<String>,
+	pub published_at: Option<String>,
+}

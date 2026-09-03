@@ -1,5 +1,7 @@
 mod analytics;
 mod error;
+#[cfg(any(target_os = "linux", test))]
+mod gpu;
 mod launch;
 mod log_replay;
 mod process;

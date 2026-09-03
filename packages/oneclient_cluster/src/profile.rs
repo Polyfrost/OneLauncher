@@ -37,14 +37,17 @@ cfg_select! {
 	}
 	not(any(target_os = "windows", target_os = "macos")) => {
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+		#[serde(default)]
 		pub struct SettingsOsExtra {
 			pub enable_gamemode: Option<bool>,
+			pub use_discrete_gpu: Option<bool>,
 		}
 
 		impl Default for SettingsOsExtra {
 			fn default() -> Self {
 				Self {
 					enable_gamemode: Some(true),
+					use_discrete_gpu: Some(false),
 				}
 			}
 		}

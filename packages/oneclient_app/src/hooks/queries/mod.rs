@@ -40,7 +40,7 @@ pub use auth::{
     CancelMicrosoftLoginMutation, FinishMicrosoftLoginMutation, RefreshAccountKeys,
     RemoveAccountKeys, SetDefaultAccountKeys, UseRefreshAccount, UseRemoveAccount,
     UseSetDefaultAccount, accounts_have_microsoft, login_code_already_handled, mutation_error,
-    mutation_is_pending, mutation_is_running, reset_login_code_dedup, try_account, try_accounts, try_default_account,
+    mutation_is_pending, mutation_is_running, mutation_ok, reset_login_code_dedup, try_account, try_accounts, try_default_account,
     use_account, use_accounts, use_add_microsoft_account, use_add_offline_account,
     use_begin_microsoft_login, use_cancel_microsoft_login, use_current_account,
     use_default_account, use_finish_microsoft_login, use_refresh_account, use_refresh_all_accounts,
@@ -68,8 +68,11 @@ pub use logs::{
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use storage::{
-    StorageAction, StorageActionMutation, StorageReportQuery, UseStorageAction,
-    invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
+    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery,
+    StorageAction, StorageActionMutation, StorageReportQuery, UseDiscardLeftovers,
+    UseStorageAction, invalidate_leftovers_queries, invalidate_storage_queries, try_leftovers,
+    try_storage_report, use_discard_leftovers, use_leftovers, use_storage_action,
+    use_storage_report,
 };
 pub use mutations::{
     ClusterAction, invalidate_cluster_content_queries, invalidate_cluster_queries,

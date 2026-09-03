@@ -331,7 +331,7 @@ fn offline_dialog(
                                 .child(field_label("UUID"))
                                 .child(
                                     label()
-                                        .text(uuid_preview.unwrap_or_else(|| "—".to_string()))
+                                        .text(uuid_preview.unwrap_or_else(|| "-".to_string()))
                                         .font_size(12.)
                                         .color(colors::fg_secondary()),
                                 ),

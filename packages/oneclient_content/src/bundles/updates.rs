@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
@@ -85,6 +86,20 @@ async fn check_bundle_updates_inner(
         .into_iter()
         .filter(|name| !loaded_bundle_names.contains(name))
         .collect();
+
+    let delisted_bundles: HashSet<String> = if unavailable_tracked.is_empty() {
+        HashSet::new()
+    } else {
+        bundle_catalog_dao::list_delisted_names_for_version_loader(
+            &ctx.db,
+            &cluster.mc_version,
+            loader as i64,
+        )
+        .await?
+        .into_iter()
+        .filter(|name| unavailable_tracked.contains(name))
+        .collect()
+    };
 
     let overrides_map: HashMap<(String, String), OverrideType> = overrides
         .iter()
@@ -211,7 +226,7 @@ async fn check_bundle_updates_inner(
         let Some(bundle_name) = &bundle_pkg.bundle_name else {
             continue;
         };
-        if unavailable_tracked.contains(bundle_name) {
+        if unavailable_tracked.contains(bundle_name) && !delisted_bundles.contains(bundle_name) {
             continue;
         }
 

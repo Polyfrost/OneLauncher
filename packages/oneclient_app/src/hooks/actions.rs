@@ -3,8 +3,9 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
@@ -33,6 +34,25 @@ const LAUNCH_HOLD: Duration = Duration::from_secs(2);
 /// Mirrors `oneclient_net`'s reachability probe not reqwest's per-request
 /// timeouts which are minutes long This sits between Play and the game
 const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(8);
+const BUNDLE_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
+const BUNDLE_SYNC_BUDGET: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Default)]
+struct BundleCheckLog {
+    checked_at: HashMap<ClusterId, Instant>,
+}
+
+impl BundleCheckLog {
+    fn due(&self, cluster_id: ClusterId, now: Instant) -> bool {
+        self.checked_at
+            .get(&cluster_id)
+            .is_none_or(|last| now.duration_since(*last) >= BUNDLE_CHECK_INTERVAL)
+    }
+
+    fn record(&mut self, cluster_id: ClusterId, now: Instant) {
+        self.checked_at.insert(cluster_id, now);
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 enum LaunchUpdatePlan {
@@ -76,6 +96,7 @@ pub struct Actions {
     station: RadioStation<AppState, AppChannel>,
     pump: mpsc::UnboundedSender<PumpSignal>,
     events: oneclient_events::EventBus,
+    bundle_checks: Arc<Mutex<BundleCheckLog>>,
 }
 
 impl Actions {
@@ -100,11 +121,27 @@ impl Actions {
             station,
             pump,
             events,
+            bundle_checks: Arc::new(Mutex::new(BundleCheckLog::default())),
         }
     }
 
     fn nudge(&self, signal: PumpSignal) {
         let _ = self.pump.send(signal);
+    }
+
+    fn bundle_check_due(&self, cluster_id: ClusterId) -> bool {
+        self.bundle_checks
+            .lock()
+            .unwrap()
+            .due(cluster_id, Instant::now())
+    }
+
+    fn record_bundle_checks(&self, cluster_ids: impl IntoIterator<Item = ClusterId>) {
+        let now = Instant::now();
+        let mut log = self.bundle_checks.lock().unwrap();
+        for cluster_id in cluster_ids {
+            log.record(cluster_id, now);
+        }
     }
 
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
@@ -950,6 +987,8 @@ impl Actions {
                 }
             };
 
+            actions.record_bundle_checks([cluster_id]);
+
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
@@ -1065,6 +1104,10 @@ impl Actions {
             .await;
             let session_id = session.detach();
 
+            if let Ok(clusters) = state.clusters.list().await {
+                actions.record_bundle_checks(clusters.iter().map(|cluster| cluster.id));
+            }
+
             actions
                 .station
                 .clone()
@@ -1079,6 +1122,68 @@ impl Actions {
                     .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
             });
         });
+    }
+
+    async fn resolve_bundle_updates_before_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+    ) {
+        if !self.bundle_check_due(cluster_id) {
+            tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
+            return;
+        }
+
+        let content = state.services.content();
+
+        match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => tracing::warn!(
+                cluster_id,
+                error = %err,
+                "bundle catalog sync failed, launching against the cached catalog"
+            ),
+            Err(_elapsed) => tracing::debug!(
+                cluster_id,
+                "bundle catalog sync exceeded its launch budget"
+            ),
+        }
+
+        let applied = oneclient_core::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &content,
+        )
+        .await;
+
+        self.record_bundle_checks([cluster_id]);
+
+        let result = match applied {
+            Ok(result) => result,
+            Err(err) => {
+                tracing::warn!(
+                    cluster_id,
+                    error = %err,
+                    "bundle update failed, launching anyway"
+                );
+                return;
+            }
+        };
+
+        if result.updates_applied.is_empty()
+            && result.additions_applied.is_empty()
+            && result.removals_applied.is_empty()
+        {
+            return;
+        }
+
+        super::invalidate_cluster_queries().await;
+
+        if let Some(spec) =
+            crate::install::cluster_update_notification(cluster_id, &result, &state.services).await
+        {
+            self.push_notification(spec);
+        }
     }
 
     /// The check runs and the cache is written whatever the mode says keeping
@@ -1350,6 +1455,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     // Before the game process never after Minecraft reads its mods once at
     // startup
     actions
+        .resolve_bundle_updates_before_launch(&state, cluster_id)
+        .await;
+    actions
         .resolve_package_updates_before_launch(&state, cluster_id)
         .await;
 
@@ -1501,6 +1609,41 @@ mod tests {
             plan_launch_updates(PackageUpdateMode::default(), vec![update("a")]),
             LaunchUpdatePlan::Prompt(vec![update("a")]),
         );
+    }
+
+    #[test]
+    fn a_cluster_that_was_never_checked_is_due() {
+        assert!(BundleCheckLog::default().due(1, Instant::now()));
+    }
+
+    #[test]
+    fn a_relaunch_inside_the_window_reuses_the_last_check() {
+        let mut log = BundleCheckLog::default();
+        let now = Instant::now();
+        log.record(1, now);
+
+        assert!(!log.due(1, now));
+        assert!(!log.due(1, now + BUNDLE_CHECK_INTERVAL / 2));
+    }
+
+    #[test]
+    fn the_window_reopens_once_the_interval_has_passed() {
+        let mut log = BundleCheckLog::default();
+        let now = Instant::now();
+        log.record(1, now);
+
+        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL));
+        assert!(log.due(1, now + BUNDLE_CHECK_INTERVAL * 2));
+    }
+
+    #[test]
+    fn clusters_are_throttled_independently() {
+        let mut log = BundleCheckLog::default();
+        let now = Instant::now();
+        log.record(1, now);
+
+        assert!(!log.due(1, now));
+        assert!(log.due(2, now));
     }
 
     #[test]

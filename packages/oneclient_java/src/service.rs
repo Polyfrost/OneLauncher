@@ -72,22 +72,14 @@ impl JavaService {
 		let Some(path) = java_path else {
 			return Ok(None);
 		};
-		let path = crate::resolve::prefer_javaw(path);
-		let Some(runtime) = self.store.get_by_path(&path.to_string_lossy()).await? else {
+		let Some(runtime) = self.store.get_by_path(path).await? else {
 			return Ok(None);
 		};
 		self.revalidate(runtime).await
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]
-	async fn revalidate(&self, mut runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
-		let preferred = crate::resolve::prefer_javaw(&runtime.absolute_path);
-		if preferred.as_path() != Path::new(&runtime.absolute_path) {
-			self.store.delete_by_path(&runtime.absolute_path).await?;
-			runtime.absolute_path = preferred.to_string_lossy().into_owned();
-			runtime.probe_version = 0;
-		}
-
+	async fn revalidate(&self, runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
 		if runtime.probe_version == PROBE_VERSION {
 			if Path::new(&runtime.absolute_path).is_file() {
 				return Ok(Some(runtime));
@@ -382,9 +374,7 @@ impl JavaService {
 
 	async fn persist(&self, executable: &Path, info: &JavaCheckInfo) -> JavaResult<JavaRuntime> {
 		let runtime = JavaRuntime {
-			absolute_path: crate::resolve::prefer_javaw(executable)
-				.to_string_lossy()
-				.into_owned(),
+			absolute_path: executable.to_string_lossy().into_owned(),
 			major: parse_major_version(&info.version)?,
 			version: info.version.clone(),
 			vendor: JavaVendor::from_str(&info.vendor)

@@ -9,7 +9,6 @@ const MANIFEST_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManifestEntry {
-	/// Slash-separated relative to the game directory e.g. `mods/sodium.jar`
 	pub path: String,
 	pub hash: String,
 }
@@ -17,7 +16,6 @@ pub struct ManifestEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterializedManifest {
 	pub version: u32,
-	/// The shared `.minecraft` is used by every non-dedicated cluster in turn so this often is not us
 	pub cluster_id: i64,
 	pub entries: Vec<ManifestEntry>,
 }
@@ -91,6 +89,12 @@ pub async fn save(game_dir: &Path, manifest: &MaterializedManifest) {
 
 pub async fn clear(game_dir: &Path) {
 	polyio::remove_file(manifest_path(game_dir)).await.ok();
+}
+
+static MANIFEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub async fn lock() -> tokio::sync::MutexGuard<'static, ()> {
+	MANIFEST_LOCK.lock().await
 }
 
 #[must_use]

@@ -213,8 +213,19 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-/// Enabling still stores and applies at the next launch but the running session cannot pick it up
-pub(super) fn running_notice(noun_plural: &'static str) -> Element {
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
+    let text = match content_type {
+        ContentType::ResourcePack => format!(
+            "Minecraft is running. Your {noun_plural} are added right away, open Options → Resource Packs in game to turn them on."
+        ),
+        ContentType::Shader => format!(
+            "Minecraft is running. Your {noun_plural} are added right away, open the shader pack screen in game to turn them on."
+        ),
+        _ => format!(
+            "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
+        ),
+    };
+
     rect()
         .horizontal()
         .width(Size::fill())
@@ -233,9 +244,7 @@ pub(super) fn running_notice(noun_plural: &'static str) -> Element {
         )
         .child(
             label()
-                .text(format!(
-                    "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
-                ))
+                .text(text)
                 .font_size(12.)
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),

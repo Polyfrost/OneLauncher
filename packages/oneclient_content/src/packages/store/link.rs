@@ -1,30 +1,46 @@
-use std::path::Path;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
-use oneclient_db::models::ClusterRow;
+use oneclient_db::models::{ArtifactRow, ClusterRow};
 
 use oneclient_common::domain::ContentType;
 use oneclient_common::paths;
 use crate::error::ContentResult;
 
 use super::manifest;
+use super::paths::artifact_absolute_path;
 
+/// so a rerun that died mid-way leaves atleast one stale file, that next rerun clears anyways
+fn staging_path(dest: &Path) -> PathBuf {
+	let mut name = OsString::from(".");
+	name.push(dest.file_name().unwrap_or_else(|| "entry".as_ref()));
+	name.push(".oneclient-tmp");
+
+	dest.with_file_name(name)
+}
+
+/// written to a staging name and renamed into place so the destination is never missing even for a moment
 #[tracing::instrument(level = "debug")]
 pub async fn link_or_copy(src: &Path, dest: &Path) -> ContentResult<()> {
 	if let Some(parent) = dest.parent() {
 		polyio::create_dir_all(parent).await?;
 	}
 
-	remove_entry(dest).await?;
+	let staging = staging_path(dest);
+	remove_entry(&staging).await?;
 
-	if polyio::symlink_file(src, dest).await.is_ok() {
-		return Ok(());
+	if polyio::symlink_file(src, &staging).await.is_err() {
+		polyio::copy(src, &staging).await?;
 	}
 
-	polyio::copy(src, dest).await?;
+	if let Err(err) = polyio::rename(&staging, dest).await {
+		remove_entry(&staging).await.ok();
+		return Err(err.into());
+	}
+
 	Ok(())
 }
 
-/// `Path::exists` resolves symlinks so a link to an evicted artifact reads as absent and survives every unlink
 pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	if polyio::symlink_metadata(path).await.is_err() {
 		return Ok(());
@@ -34,8 +50,6 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-/// Best-effort only the folder is reconciled at the next launch regardless
-/// A running game holds its jars open which on Windows blocks deletion so failure here is expected
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
 	cluster: &ClusterRow,
@@ -45,6 +59,8 @@ pub async fn try_unlink_materialized(
 	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
 		return false;
 	};
+
+	let _guard = manifest::lock().await;
 
 	let Some(mut loaded) = manifest::load(&game_dir).await else {
 		return false;
@@ -74,9 +90,103 @@ pub async fn try_unlink_materialized(
 	true
 }
 
+#[tracing::instrument(level = "debug", skip(cluster, artifact), fields(cluster_id = cluster.id, hash = %artifact.hash))]
+pub async fn try_link_materialized(
+	cluster: &ClusterRow,
+	artifact: &ArtifactRow,
+	file_name: &str,
+) -> bool {
+	let Some(content_type) = ContentType::from_repr(artifact.content_type as u8) else {
+		return false;
+	};
+
+	if !content_type.reloads_in_game() {
+		return false;
+	}
+
+	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+		return false;
+	};
+
+	let Ok(src) = artifact_absolute_path(&artifact.path) else {
+		return false;
+	};
+
+	if !polyio::try_exists(&src).await.unwrap_or(false) {
+		tracing::warn!(hash = %artifact.hash, "cached artifact missing; leaving it to the next launch");
+		return false;
+	}
+
+	let _guard = manifest::lock().await;
+
+	let Some(mut loaded) = manifest::load(&game_dir).await else {
+		return false;
+	};
+
+	if loaded.cluster_id != cluster.id {
+		return false;
+	}
+
+	let relative = manifest::entry_path(content_type.folder_name(), file_name);
+	let dest = game_dir.join(content_type.folder_name()).join(file_name);
+
+	if let Err(err) = link_or_copy(&src, &dest).await {
+		tracing::debug!(
+			file = file_name,
+			error = %err,
+			"could not add the pack to the running game; it goes in at the next launch"
+		);
+		return false;
+	}
+
+	loaded.entries.retain(|entry| entry.path != relative);
+	loaded.entries.push(manifest::ManifestEntry {
+		path: relative,
+		hash: artifact.hash.clone(),
+	});
+	manifest::save(&game_dir, &loaded).await;
+
+	true
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn cluster() -> ClusterRow {
+		ClusterRow {
+			id: 1,
+			name: "Test".into(),
+			folder_name: "test".into(),
+			setting_profile_name: None,
+			mc_version: "1.21.1".into(),
+			mc_loader: 0,
+			stage: 0,
+			mc_loader_version: None,
+			created_at: None,
+			last_played: None,
+			overall_played: None,
+			linked_modpack_hash: None,
+		}
+	}
+
+	fn artifact(content_type: ContentType) -> ArtifactRow {
+		ArtifactRow {
+			hash: "abc".into(),
+			content_type: content_type as i64,
+			path: "packages/whatever".into(),
+			file_name: "thing".into(),
+			size_bytes: None,
+		}
+	}
+
+	#[tokio::test]
+	async fn a_mod_is_never_added_to_a_running_game() {
+		assert!(!try_link_materialized(&cluster(), &artifact(ContentType::Mod), "sodium.jar").await);
+		assert!(
+			!try_link_materialized(&cluster(), &artifact(ContentType::World), "world.zip").await
+		);
+	}
 
 	#[tokio::test]
 	async fn remove_entry_clears_a_dangling_link() {
@@ -98,6 +208,61 @@ mod tests {
 
 		remove_entry(&link).await.unwrap();
 		assert!(polyio::symlink_metadata(&link).await.is_err());
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	#[tokio::test]
+	async fn replacing_a_pack_leaves_only_the_pack() {
+		let root = polyio::testing::ScratchDir::new("atomic_replace");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		let old = dir.join("old.zip");
+		let new = dir.join("new.zip");
+		polyio::write(&old, b"old".as_slice()).await.unwrap();
+		polyio::write(&new, b"new".as_slice()).await.unwrap();
+
+		let packs = dir.join("resourcepacks");
+		let dest = packs.join("pack.zip");
+
+		link_or_copy(&old, &dest).await.unwrap();
+		link_or_copy(&new, &dest).await.unwrap();
+
+		assert_eq!(polyio::read_to_string(&dest).await.unwrap(), "new");
+
+		let mut names = Vec::new();
+		let mut entries = polyio::read_dir(&packs).await.unwrap();
+		while let Ok(Some(entry)) = entries.next_entry().await {
+			names.push(entry.file_name().to_string_lossy().into_owned());
+		}
+
+		assert_eq!(names, vec!["pack.zip".to_string()]);
+
+		std::fs::remove_dir_all(root.path()).ok();
+	}
+
+	/// A crash between the write and the rename must not wedge the next attempt
+	#[tokio::test]
+	async fn a_stale_staging_file_is_cleared() {
+		let root = polyio::testing::ScratchDir::new("stale_staging");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		let src = dir.join("src.zip");
+		let dest = dir.join("pack.zip");
+		polyio::write(&src, b"real".as_slice()).await.unwrap();
+		polyio::write(staging_path(&dest), b"junk".as_slice())
+			.await
+			.unwrap();
+
+		link_or_copy(&src, &dest).await.unwrap();
+
+		assert_eq!(polyio::read_to_string(&dest).await.unwrap(), "real");
+		assert!(
+			polyio::symlink_metadata(staging_path(&dest)).await.is_err(),
+			"the staging file is consumed by the rename"
+		);
 
 		std::fs::remove_dir_all(root.path()).ok();
 	}

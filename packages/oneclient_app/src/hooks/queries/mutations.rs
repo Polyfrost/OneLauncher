@@ -104,8 +104,6 @@ impl MutationCapability for ClusterMutation {
         let content = &state.services.content();
         let result = match keys {
             ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                // Applied to the game folder at next launch never mid-session
-                // Minecraft reads its mods once at startup
                 oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
                     .await
                     .map(|_| ())
@@ -137,13 +135,21 @@ impl MutationCapability for ClusterMutation {
                 cluster_id,
                 content_type,
                 path,
-            } => PackageStore::import_local_file(path, *content_type, *cluster_id, content)
+            } => match PackageStore::import_local_file(path, *content_type, *cluster_id, content)
                 .await
-                .map(|row| {
+            {
+                Ok(row) => {
+                    PackageStore::sync_live_content(*cluster_id, &row, content)
+                        .await
+                        .ok();
+
                     services
                         .events
                         .notify("Imported").body(format!("Added {}", row.file_name)).send();
-                }),
+                    Ok(())
+                }
+                Err(err) => Err(err),
+            },
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,

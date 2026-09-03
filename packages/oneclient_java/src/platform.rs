@@ -108,3 +108,52 @@ mod tests {
 		}
 	}
 }
+
+#[cfg(windows)]
+pub async fn prefer_dedicated_gpu(java_path: &std::path::Path) {
+	use std::os::windows::process::CommandExt;
+	const NO_WINDOW: u32 = 0x0800_0000;
+	const KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences";
+
+	let Some(dir) = java_path.parent() else { return };
+
+	for exe in ["javaw.exe", "java.exe"] {
+		let path = dir.join(exe);
+		if !path.exists() {
+			continue;
+		}
+
+		let existing = tokio::process::Command::new("reg")
+			.args(["query", KEY, "/v"])
+			.arg(&path)
+			.creation_flags(NO_WINDOW)
+			.output()
+			.await;
+		if existing.map(|out| out.status.success()).unwrap_or(false) {
+			continue;
+		}
+
+		let added = tokio::process::Command::new("reg")
+			.args(["add", KEY, "/v"])
+			.arg(&path)
+			.args(["/t", "REG_SZ", "/d", "GpuPreference=2;", "/f"])
+			.creation_flags(NO_WINDOW)
+			.output()
+			.await;
+
+		match added {
+			Ok(out) if out.status.success() => {
+				tracing::info!(path = %path.display(), "registered JVM for high-performance GPU");
+			}
+			Ok(out) => tracing::warn!(
+				path = %path.display(),
+				stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+				"could not set GPU preference"
+			),
+			Err(err) => tracing::warn!(%err, "could not run reg.exe"),
+		}
+	}
+}
+
+#[cfg(not(windows))]
+pub async fn prefer_dedicated_gpu(_java_path: &std::path::Path) {}

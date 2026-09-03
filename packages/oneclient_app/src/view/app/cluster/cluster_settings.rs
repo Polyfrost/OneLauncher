@@ -112,7 +112,9 @@ impl Component for ClusterSettings {
                         MemoryRow {
                             cluster_id,
                             value: profile.mem_max,
-                            global: global.mem_max.unwrap_or(4096),
+                            global: global
+                                .mem_max
+                                .unwrap_or_else(oneclient_common::default_mem_max),
                         }
                         .into_element(),
                     )

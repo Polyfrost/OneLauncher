@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea};
+use crate::hooks::use_overlay_claim_when;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -70,6 +71,8 @@ impl Component for Dropdown {
         let on_select = self.on_select.clone();
         let is_open = open();
 
+        use_overlay_claim_when(is_open);
+
         if !is_open && list_size().is_some() {
             let _ = list_size.take();
         }
@@ -108,6 +111,11 @@ impl Component for Dropdown {
 
         rect()
             .width(self.width.clone())
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) {
+                    open.set_if_modified(false);
+                }
+            })
             .child(
                 rect()
                     .width(Size::fill())
@@ -130,7 +138,7 @@ impl Component for Dropdown {
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })
-                    .on_all_press(move |e: Event<PressEventData>| {
+                    .on_press(move |e: Event<PressEventData>| {
                         e.prevent_default();
                         e.stop_propagation();
                         open.toggle();
@@ -237,7 +245,7 @@ impl Component for DropdownOption {
             })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
-            .on_all_press(self.on_press.clone())
+            .on_press(self.on_press.clone())
             .child(
                 label()
                     .text(self.text.clone())

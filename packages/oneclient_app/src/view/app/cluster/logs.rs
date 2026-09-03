@@ -425,7 +425,7 @@ impl Component for LogPicker {
                         },
                     ))
                     .cursor(CursorIcon::Pointer)
-                    .on_all_press(move |e: Event<PressEventData>| {
+                    .on_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         open.toggle();
                     })
@@ -555,7 +555,7 @@ impl Component for PickerRow {
             .cursor(CursorIcon::Pointer)
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
-            .on_all_press(self.on_press.clone())
+            .on_press(self.on_press.clone())
             .child(
                 rect()
                     .vertical()

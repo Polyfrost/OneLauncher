@@ -79,7 +79,7 @@ impl Component for VersionCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_all_press(move |e| on_press.call(e))
+            .on_press(move |e| on_press.call(e))
             .on_pointer_enter(move |_| {
                 *hovering.write() = true;
             })

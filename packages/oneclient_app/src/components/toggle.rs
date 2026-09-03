@@ -106,7 +106,7 @@ impl Component for Switch {
             .a11y_focusable(!disabled)
             .a11y_role(AccessibilityRole::Button)
             .maybe(!disabled, |el| {
-                el.cursor(CursorIcon::Pointer).on_all_press(move |_| {
+                el.cursor(CursorIcon::Pointer).on_press(move |_| {
                     on_press.call(());
                 })
             })

@@ -187,7 +187,7 @@ impl Component for TabButton {
             .cursor(CursorIcon::Pointer);
 
         if let Some(handler) = self.on_press.clone() {
-            el = el.on_all_press(move |e| handler.call(e));
+            el = el.on_press(move |e| handler.call(e));
         }
 
         el.child(

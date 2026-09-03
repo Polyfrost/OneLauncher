@@ -44,6 +44,11 @@ pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
 }
 
+async fn invalidate_enabled_flag_queries() {
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
+}
+
 pub async fn invalidate_profile_queries() {
     QueriesStorage::<ListNamedProfilesQuery>::invalidate_all().await;
     QueriesStorage::<GameProfileQuery>::invalidate_all().await;
@@ -57,9 +62,10 @@ pub struct ClusterMutation;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ClusterAction {
-    ToggleArtifact {
+    SetArtifactEnabled {
         cluster_id: ClusterId,
         hash: String,
+        enabled: bool,
     },
     RemoveArtifact {
         cluster_id: ClusterId,
@@ -103,12 +109,14 @@ impl MutationCapability for ClusterMutation {
         let services = &state.services;
         let content = &state.services.content();
         let result = match keys {
-            ClusterAction::ToggleArtifact { cluster_id, hash } => {
+            ClusterAction::SetArtifactEnabled {
+                cluster_id,
+                hash,
+                enabled,
+            } => {
                 // Applied to the game folder at next launch never mid-session
                 // Minecraft reads its mods once at startup
-                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
-                    .await
-                    .map(|_| ())
+                oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content).await
             }
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
@@ -189,13 +197,17 @@ impl MutationCapability for ClusterMutation {
         result.map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, _keys: &ClusterAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &ClusterAction, result: &Result<(), String>) {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
             state.services.events.notify("Action failed").body(err).error().send();
         }
-        invalidate_cluster_queries().await;
+        if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
+            invalidate_enabled_flag_queries().await;
+        } else {
+            invalidate_cluster_queries().await;
+        }
     }
 }
 

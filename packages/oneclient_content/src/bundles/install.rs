@@ -689,10 +689,7 @@ pub async fn remove_artifact_from_cluster(
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
 
-    let link = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id)
-        .await?
-        .into_iter()
-        .find(|l| l.hash == hash);
+    let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Database first unconditionally
     // on Windows a jar held open by a running game blocks deleting every hard

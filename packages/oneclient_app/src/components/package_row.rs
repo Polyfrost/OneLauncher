@@ -125,9 +125,10 @@ impl Component for PackageRow {
             let manifest_default = item.manifest_default;
             (move |()| {
                 if let Some(h) = &hash {
-                    cluster.mutate(ClusterAction::ToggleArtifact {
+                    cluster.mutate(ClusterAction::SetArtifactEnabled {
                         cluster_id,
                         hash: h.clone(),
+                        enabled: !enabled_now,
                     });
                 } else if let Some(bundle) = &bundle_name {
                     cluster.mutate(ClusterAction::SetBundlePackageEnabled {

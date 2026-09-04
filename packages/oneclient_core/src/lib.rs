@@ -22,7 +22,8 @@ pub mod verify;
 pub mod versions;
 
 pub use oneclient_content::bundles::{
-    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates, effective_enabled,
+    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
+    cluster_has_bundle_content, effective_enabled,
     install_bundle,
     install_cluster_bundles,
     install_package_from_bundle, is_bundle_syncing, list_cluster_bundle_overrides,

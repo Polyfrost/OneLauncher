@@ -68,7 +68,7 @@ impl GameSettingsProfile {
 			java_path: None,
 			resolution: None,
 			force_fullscreen: Some(false),
-			mem_max: Some(4096),
+			mem_max: Some(oneclient_common::default_mem_max()),
 			launch_args: None,
 			launch_env: None,
 			hook_pre: None,

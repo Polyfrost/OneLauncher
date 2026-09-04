@@ -5,7 +5,9 @@ use chrono::{Datelike, NaiveDate};
 use oneclient_core::clusters::Cluster;
 use oneclient_common::domain::GameLoader;
 use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
-use sysinfo::{MemoryRefreshKind, RefreshKind, System};
+
+use oneclient_common::MEMORY_HEADROOM_GB;
+pub use oneclient_common::total_ram_mb;
 
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
@@ -207,19 +209,7 @@ pub fn format_res((w, h): (u32, u32)) -> String {
 
 /// Prevents user from choosing his max amount of ram preset (e.g Someone has 16GB of RAM, 
 /// so the max preset is 16GB - 2GB = 14GB)
-const MEMORY_HEADROOM_GB: u32 = 2;
-const MEMORY_PRESETS_GB: [u32; 10] = [2, 4, 6, 8, 12, 16, 24, 32, 48, 64];
-
-pub fn total_ram_mb() -> u32 {
-    static TOTAL_RAM_MB: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
-
-    *TOTAL_RAM_MB.get_or_init(|| {
-        let system = System::new_with_specifics(
-            RefreshKind::nothing().with_memory(MemoryRefreshKind::nothing().with_ram()),
-        );
-        (system.total_memory() / 1024 / 1024).min(u32::MAX as u64) as u32
-    })
-}
+const MEMORY_PRESETS_GB: [u32; 11] = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
 
 pub fn memory_presets_mb() -> Vec<u32> {
     presets_for_total_gb((total_ram_mb() as f32 / 1024.).round() as u32)
@@ -451,17 +441,17 @@ mod tests {
     fn presets_stop_two_gigabytes_short_of_the_machine() {
         assert_eq!(
             presets_for_total_gb(16),
-            vec![2048, 4096, 6144, 8192, 12288, 14336]
+            vec![2048, 3072, 4096, 6144, 8192, 12288, 14336]
         );
         assert_eq!(
             presets_for_total_gb(32),
-            vec![2048, 4096, 6144, 8192, 12288, 16384, 24576, 30720]
+            vec![2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576, 30720]
         );
     }
 
     #[test]
     fn a_ceiling_landing_on_a_round_step_is_not_repeated() {
-        assert_eq!(presets_for_total_gb(8), vec![2048, 4096, 6144]);
+        assert_eq!(presets_for_total_gb(8), vec![2048, 3072, 4096, 6144]);
     }
 
     #[test]

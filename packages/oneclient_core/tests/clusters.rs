@@ -13,11 +13,12 @@ async fn cluster_lifecycle_with_settings_profile() {
 
 	let global = state.settings.read().global_game_settings.clone();
 
-	// Deliberately not the global default of 4096 so the assertions distinguish
-	// "the cluster's own profile was used" from "fell back to global and matched"
+	// Deliberately not a value `default_mem_max()` can return so the assertions
+	// distinguish "the cluster's own profile was used" from "fell back to global
+	// and matched"
 	let cluster = state.clusters.create(
         &global,
-        CreateClusterOptions::new("Test Cluster", "1.21.1", GameLoader::Fabric).mem_max(2048),
+        CreateClusterOptions::new("Test Cluster", "1.21.1", GameLoader::Fabric).mem_max(5120),
 	)
 	.await
 	.unwrap();
@@ -31,7 +32,7 @@ async fn cluster_lifecycle_with_settings_profile() {
 	let resolved = state.clusters.resolve_settings(&global, &cluster)
 		.await
 		.unwrap();
-	assert_eq!(resolved.mem_max, Some(2048));
+	assert_eq!(resolved.mem_max, Some(5120));
 
 	state.clusters.update_profile(cluster.id,
 		ProfileUpdate {

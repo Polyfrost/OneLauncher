@@ -3,7 +3,7 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{ART_PREVIEW_EDGE, DynamicArt, Icon, IconType};
+use crate::components::{ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::routes::Route;
 use crate::theme;
@@ -67,7 +67,9 @@ impl Component for RecentsRow {
                     index,
                     items,
                     progress,
+                    key: DiffKey::None,
                 }
+                .key(cluster.id)
                 .into_element()
             }))
             .child(OtherVersionsTile {
@@ -94,11 +96,58 @@ fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
     1.0 - (1.0 - local).powi(3)
 }
 
+fn cluster_menu_entries(cluster_id: i64) -> [(IconType, &'static str, Route); 7] {
+    [
+        (
+            IconType::InfoCircle,
+            "Overview",
+            Route::ClusterOverview { cluster_id },
+        ),
+        (
+            IconType::Terminal,
+            "Logs",
+            Route::ClusterLogs { cluster_id },
+        ),
+        (
+            IconType::Eye,
+            "Screenshots",
+            Route::ClusterScreenshots { cluster_id },
+        ),
+        (
+            IconType::CodeSnippet02,
+            "Mods",
+            Route::ClusterMods { cluster_id },
+        ),
+        (
+            IconType::PaintPour,
+            "Shaders",
+            Route::ClusterShaders { cluster_id },
+        ),
+        (
+            IconType::Colors,
+            "Textures",
+            Route::ClusterTextures { cluster_id },
+        ),
+        (
+            IconType::Settings01,
+            "Settings",
+            Route::ClusterSettings { cluster_id },
+        ),
+    ]
+}
+
 struct ClusterCard {
     cluster: Cluster,
     index: usize,
     items: usize,
     progress: f32,
+    key: DiffKey,
+}
+
+impl KeyExt for ClusterCard {
+    fn write_key(&mut self) -> &mut DiffKey {
+        &mut self.key
+    }
 }
 
 impl PartialEq for ClusterCard {
@@ -115,6 +164,7 @@ impl Component for ClusterCard {
         let mut active_id = use_active_cluster_id();
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
+        let mut menu = use_state(|| None::<(f32, f32)>);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -129,6 +179,19 @@ impl Component for ClusterCard {
         let on_press = move |_| {
             *active_id.write() = Some(cluster_id);
         };
+
+        let menu_overlay = (*menu.read()).map(|(x, y)| {
+            let mut context = ContextMenu::new(x, y)
+                .open_upwards()
+                .title(title.clone())
+                .on_close(move |_| menu.set(None));
+            for (icon, label, route) in cluster_menu_entries(cluster_id) {
+                context = context.action(icon, label, move |()| {
+                    let _ = RouterContext::get().push(route.clone());
+                });
+            }
+            context.into_element()
+        });
 
         rect()
             .key(self.cluster.id)
@@ -174,6 +237,14 @@ impl Component for ClusterCard {
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
                     .on_press(on_press)
+                    .on_secondary_down(move |e: Event<PressEventData>| {
+                        if let PressEventData::Mouse(m) = e.data() {
+                            menu.set(Some((
+                                m.global_location.x as f32,
+                                m.global_location.y as f32,
+                            )));
+                        }
+                    })
                     .child(
                         rect()
                             .width(Size::fill())
@@ -223,6 +294,11 @@ impl Component for ClusterCard {
                             ),
                     ),
             )
+            .maybe_child(menu_overlay)
+    }
+
+    fn render_key(&self) -> DiffKey {
+        self.key.clone().or(self.default_key())
     }
 }
 

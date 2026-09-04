@@ -3,6 +3,8 @@ use freya::{
     prelude::*,
 };
 
+use crate::hooks::use_overlay_claim;
+
 const SCRIM_ALPHA: f32 = 90.;
 
 #[derive(PartialEq)]
@@ -61,6 +63,8 @@ impl KeyExt for OverlayPopup {
 
 impl Component for OverlayPopup {
     fn render(&self) -> impl IntoElement {
+        use_overlay_claim();
+
         let a11y_id = use_a11y();
         let scrim_close = self.on_close.clone();
         let key_close = self.on_close.clone();

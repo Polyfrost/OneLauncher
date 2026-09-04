@@ -14,7 +14,7 @@ use crate::components::{
 use crate::hooks::{
     ClusterLogsQuery, LogAction, UploadLogKeys, UseLogAction, UseUploadLog,
     invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_log_action,
-    use_log_content, use_upload_log,
+    use_log_content, use_overlay_claim_when, use_upload_log,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -377,6 +377,8 @@ impl Component for LogPicker {
         // Stays usable with an empty list the category selector lives inside the panel
         let is_open = open();
 
+        use_overlay_claim_when(is_open);
+
         let query = SearchQuery::new(&filter.read());
         let no_files = files.is_empty();
         let rows: Vec<Element> = files
@@ -402,6 +404,11 @@ impl Component for LogPicker {
 
         rect()
             .width(Size::px(260.))
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) {
+                    open.set_if_modified(false);
+                }
+            })
             .child(
                 rect()
                     .width(Size::fill())
@@ -425,7 +432,7 @@ impl Component for LogPicker {
                         },
                     ))
                     .cursor(CursorIcon::Pointer)
-                    .on_all_press(move |e: Event<PressEventData>| {
+                    .on_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         open.toggle();
                     })
@@ -555,7 +562,7 @@ impl Component for PickerRow {
             .cursor(CursorIcon::Pointer)
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
-            .on_all_press(self.on_press.clone())
+            .on_press(self.on_press.clone())
             .child(
                 rect()
                     .vertical()

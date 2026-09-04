@@ -1,10 +1,15 @@
 mod active_cluster;
 mod debounce;
 mod actions;
+mod overlay_claims;
 mod queries;
 mod view_state;
 
 pub use debounce::use_debounced;
+pub use overlay_claims::{
+    OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
+    use_provide_overlay_claims,
+};
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{

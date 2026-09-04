@@ -1,10 +1,11 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::markdown::normalize_markdown;
 use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
 
 use crate::Actions;
-use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
+use crate::components::{Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl};
 use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -38,9 +39,32 @@ pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElem
 pub(super) fn about_panel(project: &ProjectDetail) -> impl IntoElement {
     let body = match &project.body {
         PackageBody::Raw(md) => md.clone(),
-        PackageBody::Url(url) => format!("{}\n\n[View online]({url})", project.summary),
+        PackageBody::Url(url) => normalize_markdown(&format!(
+            "{}\n\n[View online]({})",
+            project.summary,
+            escape_link_destination(url)
+        )),
     };
     MarkdownPanel { body }.into_element()
+}
+
+fn escape_link_destination(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+
+    for character in url.chars() {
+        match character {
+            '(' => out.push_str("%28"),
+            ')' => out.push_str("%29"),
+            '<' => out.push_str("%3C"),
+            '>' => out.push_str("%3E"),
+            ' ' => out.push_str("%20"),
+            '\\' => out.push_str("%5C"),
+            character if character.is_control() => {}
+            character => out.push(character),
+        }
+    }
+
+    out
 }
 
 #[derive(PartialEq)]
@@ -57,23 +81,21 @@ impl Component for MarkdownPanel {
             .background(PANEL_BG)
             .border(border_all_color(1., colors::component_border()))
             .child(
-                MarkdownViewer::new(self.body.clone())
+                Markdown::new(self.body.clone())
                     .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .color_link(colors::code_info())
-                    .background_code(colors::component_bg())
-                    .color_code(colors::fg_primary())
-                    .background_blockquote(colors::component_bg())
-                    .border_blockquote(colors::brand())
-                    .background_divider(colors::component_border())
-                    .heading_h1(26.)
-                    .heading_h2(22.)
-                    .heading_h3(18.)
-                    .heading_h4(16.)
-                    .heading_h5(14.)
-                    .heading_h6(13.)
-                    .paragraph_size(13.)
-                    .code_font_size(12.),
+                    .style(MarkdownStyle {
+                        color: colors::fg_primary(),
+                        color_link: colors::code_info(),
+                        color_code: colors::fg_primary(),
+                        background_code: colors::component_bg(),
+                        background_blockquote: colors::component_bg(),
+                        border_blockquote: colors::brand(),
+                        background_divider: colors::component_border(),
+                        headings: [26., 22., 18., 16., 14., 13.],
+                        paragraph_size: 13.,
+                        code_font_size: 12.,
+                        ..MarkdownStyle::default()
+                    }),
             )
     }
 }

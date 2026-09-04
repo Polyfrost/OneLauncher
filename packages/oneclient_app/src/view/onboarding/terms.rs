@@ -3,7 +3,8 @@ use freya::query::UseQuery;
 use freya::router::RouterContext;
 
 use crate::components::{
-    Button, Icon, IconType, OverlayPopup, ScrollArea, Segment, SegmentedControl, toggle,
+    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea, Segment,
+    SegmentedControl, toggle,
 };
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
@@ -165,23 +166,21 @@ fn markdown_body(markdown: &str) -> Element {
             .height(Size::flex(1.0))
             .padding(Gaps::new_all(16.))
             .child(
-                MarkdownViewer::new(markdown.to_string())
+                Markdown::new(markdown.to_string())
                     .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .color_link(colors::code_info())
-                    .background_code(colors::component_bg())
-                    .color_code(colors::fg_primary())
-                    .background_blockquote(colors::component_bg())
-                    .border_blockquote(colors::brand())
-                    .background_divider(colors::component_border())
-                    .heading_h1(20.)
-                    .heading_h2(17.)
-                    .heading_h3(15.)
-                    .heading_h4(14.)
-                    .heading_h5(13.)
-                    .heading_h6(12.)
-                    .paragraph_size(13.)
-                    .code_font_size(12.),
+                    .style(MarkdownStyle {
+                        color: colors::fg_primary(),
+                        color_link: colors::code_info(),
+                        color_code: colors::fg_primary(),
+                        background_code: colors::component_bg(),
+                        background_blockquote: colors::component_bg(),
+                        border_blockquote: colors::brand(),
+                        background_divider: colors::component_border(),
+                        headings: [20., 17., 15., 14., 13., 12.],
+                        paragraph_size: 13.,
+                        code_font_size: 12.,
+                        ..MarkdownStyle::default()
+                    }),
             ),
     )
     .into_element()

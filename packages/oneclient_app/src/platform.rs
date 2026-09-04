@@ -1,3 +1,5 @@
+const ALLOWED_URL_SCHEMES: [&str; 3] = ["http", "https", "mailto"];
+
 pub fn focus_window() {
     use freya::prelude::{Platform, WinitPlatformExt};
 
@@ -8,8 +10,32 @@ pub fn focus_window() {
 }
 
 pub fn open_url(url: &str) {
-    if let Err(err) = open::that_detached(url) {
-        tracing::warn!("failed to open url {url}: {err}");
+    if !has_allowed_scheme(url) {
+        tracing::warn!("refused to open url with a disallowed scheme: {url}");
+        return;
+    }
+
+    open_target(url);
+}
+
+/// For paths the launcher itself produced, which carry no url scheme.
+pub fn open_path(path: &str) {
+    open_target(path);
+}
+
+fn has_allowed_scheme(url: &str) -> bool {
+    let Some((scheme, _)) = url.split_once(':') else {
+        return false;
+    };
+
+    ALLOWED_URL_SCHEMES
+        .iter()
+        .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+}
+
+fn open_target(target: &str) {
+    if let Err(err) = open::that_detached(target) {
+        tracing::warn!("failed to open {target}: {err}");
     }
 }
 

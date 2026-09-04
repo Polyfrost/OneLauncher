@@ -57,6 +57,11 @@ image.workspace = true
 
 freya-skia-safe.workspace = true
 freya.workspace = true
+freya-core.workspace = true
+pulldown-cmark.workspace = true
+
+[dev-dependencies]
+freya-testing.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"

@@ -162,7 +162,7 @@ impl Component for ScreenshotViewer {
                                             .secondary()
                                             .on_press(move |_| {
                                                 if let Some(dir) = open_path.parent() {
-                                                    crate::platform::open_url(
+                                                    crate::platform::open_path(
                                                         &dir.to_string_lossy(),
                                                     );
                                                 }
@@ -225,7 +225,7 @@ pub fn screenshot_context_menu(
     ContextMenu::new(x, y)
         .action(IconType::Folder, "Open in folder", move |()| {
             if let Some(dir) = open_path.parent() {
-                crate::platform::open_url(&dir.to_string_lossy());
+                crate::platform::open_path(&dir.to_string_lossy());
             }
         })
         .action(IconType::Copy01, "Copy", move |()| {

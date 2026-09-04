@@ -446,7 +446,7 @@ pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
         .icon()
         .on_press(move |_| {
             std::fs::create_dir_all(&folder).ok();
-            crate::platform::open_url(&folder.to_string_lossy());
+            crate::platform::open_path(&folder.to_string_lossy());
         })
         .child(Icon::new(IconType::Folder).size(16.))
 }

@@ -19,7 +19,7 @@ pub fn open_data_folder() {
         return;
     };
 
-    crate::platform::open_url(&dir.to_string_lossy());
+    crate::platform::open_path(&dir.to_string_lossy());
 }
 
 pub fn restore_latest(actions: &Actions) {

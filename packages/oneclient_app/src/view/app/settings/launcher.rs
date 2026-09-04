@@ -52,7 +52,7 @@ impl Component for SettingsLauncher {
         }
 
         let folder = data_dir.clone();
-        let open_folder = link_button().on_press(move |_| platform::open_url(&folder));
+        let open_folder = link_button().on_press(move |_| platform::open_path(&folder));
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {

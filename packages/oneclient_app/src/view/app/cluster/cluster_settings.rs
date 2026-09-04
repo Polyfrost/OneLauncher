@@ -70,29 +70,6 @@ impl Component for ClusterSettings {
                     .width(Size::fill())
                     .height(Size::fill())
                     .spacing(4.)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
-                    .child(section_header("LOADER"))
-                    .child(
-                        LoaderRow {
-                            cluster_id,
-                            loader,
-                            selected: cluster.mc_loader_version.clone(),
-                            versions,
-                        }
-                        .into_element(),
-                    )
-                    .child(section_header("JAVA"))
-                    .child(
-                        JavaRow {
-                            cluster_id,
-                            value: profile.java_path.clone(),
-                            global: global.java_path.clone(),
-                            runtimes,
-                        }
-                        .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -120,12 +97,13 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(section_header("CONTENT"))
+                    .child(section_header("LOADER"))
                     .child(
-                        BrowserUpdateModeRow {
+                        LoaderRow {
                             cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
+                            loader,
+                            selected: cluster.mc_loader_version.clone(),
+                            versions,
                         }
                         .into_element(),
                     )
@@ -137,10 +115,32 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("JAVA"))
+                    .child(
+                        JavaRow {
+                            cluster_id,
+                            value: profile.java_path.clone(),
+                            global: global.java_path.clone(),
+                            runtimes,
+                        }
+                        .into_element(),
+                    )
+                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("PROCESS"))
                     .child(text_row(cluster_id, TextField::Pre, &profile, &global))
                     .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
                     .child(text_row(cluster_id, TextField::Post, &profile, &global))
+                    .child(section_header("CONTENT"))
+                    .child(
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )

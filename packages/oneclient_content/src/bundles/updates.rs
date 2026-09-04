@@ -577,7 +577,7 @@ async fn reconcile_update(
 ) -> ContentResult<()> {
     let file_id = update.new_file.kind.package_id();
     let suppression = find_user_suppression(overrides, &file_id);
-    let enabled = !disable_was_deliberate(update.new_file.hidden, suppression);
+    let enabled = !disable_was_deliberate(suppression);
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash == update.installed_hash {
@@ -596,7 +596,7 @@ async fn reconcile_addition(
 ) -> ContentResult<()> {
     let file_id = addition.new_file.kind.package_id();
     let suppression = find_user_suppression(overrides, &file_id);
-    let enabled = !disable_was_deliberate(addition.new_file.hidden, suppression);
+    let enabled = !disable_was_deliberate(suppression);
     set_artifact_enabled_to(addition.cluster_id, hash, enabled, ctx).await
 }
 

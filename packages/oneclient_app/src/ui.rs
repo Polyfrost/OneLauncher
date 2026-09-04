@@ -62,15 +62,6 @@ pub fn centered_note(text: &str) -> Element {
         .into_element()
 }
 
-/// Returns 1 until the grid has measured itself so the first frame still renders
-pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
-    if width <= 0. {
-        return 1;
-    }
-    (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
-}
-
-/// Reports its measured size back through `width` for [`grid_columns_for_width`]
 /// Short final rows are padded with empty flex cells so tiles keep the column width
 pub fn flow_grid(items: Vec<Element>, cols: usize, mut width: State<f32>, gap: f32) -> Element {
     let cols = cols.max(1);

@@ -4,15 +4,18 @@ use super::*;
 
 use oneclient_content::packages::types::GalleryImage;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, cell_width, grid_columns_picker, resolved_columns,
+};
+use crate::hooks::{loaded_image, query_is_busy, use_cached_image, use_view_state};
 use crate::theme::colors;
-use crate::ui::{border_all_color, flow_grid, grid_columns_for_width};
+use crate::ui::{border_all_color, flow_grid};
 
-/// How wide a tile is allowed to get before the grid takes another column
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
+const TILE_PREVIEW_RATIO: f32 = TILE_PREVIEW_H / MAX_COL_W;
+const TILE_PREVIEW_MAX_H: f32 = 420.;
 
 /// Downscale ceilings for the image cache full-size tiles made the grid slow to fill
 const TILE_EDGE: u32 = 640;
@@ -32,6 +35,11 @@ impl Component for Gallery {
         let grid_width = use_state(|| 0f32);
         let mut viewing = use_state(|| None::<usize>);
 
+        let grid_columns = use_view_state("browser.gallery").columns;
+        let cols = resolved_columns(*grid_columns.read());
+        let tile_w = cell_width(*grid_width.read(), cols, GRID_GAP);
+        let preview_h = (tile_w * TILE_PREVIEW_RATIO).clamp(TILE_PREVIEW_H, TILE_PREVIEW_MAX_H);
+
         let tiles: Vec<Element> = self
             .images
             .iter()
@@ -40,6 +48,7 @@ impl Component for Gallery {
                 let key = image.url.clone();
                 GalleryTile {
                     image: image.clone(),
+                    preview_h,
                     on_open: (move |()| viewing.set(Some(idx))).into(),
                     key: DiffKey::None,
                 }
@@ -48,11 +57,21 @@ impl Component for Gallery {
             })
             .collect();
 
-        let cols = grid_columns_for_width(*grid_width.read(), MAX_COL_W, GRID_GAP);
         let images = self.images.clone();
 
         rect()
+            .vertical()
             .width(Size::fill())
+            .spacing(10.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .content(Content::Flex)
+                    .child(rect().width(Size::flex(1.0)))
+                    .child(grid_columns_picker(grid_columns, 30.)),
+            )
             .child(flow_grid(tiles, cols, grid_width, GRID_GAP))
             .maybe_child((*viewing.read()).map(|start| {
                 GalleryViewer {
@@ -68,6 +87,7 @@ impl Component for Gallery {
 #[derive(PartialEq)]
 struct GalleryTile {
     image: GalleryImage,
+    preview_h: f32,
     on_open: EventHandler<()>,
     key: DiffKey,
 }
@@ -88,7 +108,7 @@ impl Component for GalleryTile {
 
         let preview = rect()
             .width(Size::fill())
-            .height(Size::px(TILE_PREVIEW_H))
+            .height(Size::px(self.preview_h))
             .center()
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
@@ -104,7 +124,6 @@ impl Component for GalleryTile {
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .max_width(Size::px(MAX_COL_W))
             .corner_radius(CornerRadius::new_all(10.))
             .overflow(Overflow::Clip)
             .background(PANEL_BG)

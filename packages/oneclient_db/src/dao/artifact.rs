@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 
-use crate::models::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow};
+use crate::models::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow, SeenStatus};
 
 pub async fn get_artifact_by_hash(
 	pool: &SqlitePool,
@@ -192,7 +192,7 @@ pub async fn link_cluster_artifact(
 		VALUES (?, ?, ?, 1)
 		ON CONFLICT(cluster_id, hash) DO UPDATE SET
 			cluster_file_name = excluded.cluster_file_name
-		RETURNING cluster_id, hash, cluster_file_name, enabled
+		RETURNING cluster_id, hash, cluster_file_name, enabled, seen_status
 		"#,
 		cluster_id,
 		hash,
@@ -214,7 +214,7 @@ pub async fn list_cluster_artifacts_for_project(
 	sqlx::query_as!(
 		ClusterArtifactRow,
 		r#"
-		SELECT DISTINCT ca.cluster_id, ca.hash, ca.cluster_file_name, ca.enabled
+		SELECT DISTINCT ca.cluster_id, ca.hash, ca.cluster_file_name, ca.enabled, ca.seen_status
 		FROM cluster_artifacts ca
 		JOIN provider_releases pr ON pr.hash = ca.hash
 		WHERE ca.cluster_id = ?
@@ -270,7 +270,7 @@ pub async fn list_cluster_artifacts(
 	sqlx::query_as!(
 		ClusterArtifactRow,
 		r#"
-		SELECT cluster_id, hash, cluster_file_name, enabled
+		SELECT cluster_id, hash, cluster_file_name, enabled, seen_status
 		FROM cluster_artifacts
 		WHERE cluster_id = ?
 		"#,
@@ -288,7 +288,7 @@ pub async fn get_cluster_artifact(
 	sqlx::query_as!(
 		ClusterArtifactRow,
 		r#"
-		SELECT cluster_id, hash, cluster_file_name, enabled
+		SELECT cluster_id, hash, cluster_file_name, enabled, seen_status
 		FROM cluster_artifacts
 		WHERE cluster_id = ? AND hash = ?
 		"#,
@@ -312,7 +312,7 @@ pub async fn update_cluster_artifact(
 		UPDATE cluster_artifacts
 		SET cluster_file_name = ?, enabled = ?
 		WHERE cluster_id = ? AND hash = ?
-		RETURNING cluster_id, hash, cluster_file_name, enabled
+		RETURNING cluster_id, hash, cluster_file_name, enabled, seen_status
 		"#,
 		cluster_file_name,
 		enabled,
@@ -321,4 +321,46 @@ pub async fn update_cluster_artifact(
 	)
 	.fetch_one(pool)
 	.await
+}
+
+pub async fn set_seen_status(
+	pool: &SqlitePool,
+	cluster_id: i64,
+	hash: &str,
+	status: SeenStatus,
+) -> Result<(), sqlx::Error> {
+	let status = status.as_i64();
+
+	let result = sqlx::query!(
+		r#"
+		UPDATE cluster_artifacts
+		SET seen_status = ?
+		WHERE cluster_id = ? AND hash = ?
+		"#,
+		status,
+		cluster_id,
+		hash
+	)
+	.execute(pool)
+	.await?;
+
+	if result.rows_affected() == 0 {
+		tracing::warn!(cluster_id, hash, "no cluster artifact matched the seen status update");
+	}
+
+	Ok(())
+}
+
+pub async fn mark_all_seen(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+	let seen = SeenStatus::Seen.as_i64();
+
+	let result = sqlx::query!(
+		"UPDATE cluster_artifacts SET seen_status = ? WHERE seen_status <> ?",
+		seen,
+		seen
+	)
+	.execute(pool)
+	.await?;
+
+	Ok(result.rows_affected())
 }

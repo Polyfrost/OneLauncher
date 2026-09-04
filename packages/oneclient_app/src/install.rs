@@ -301,7 +301,10 @@ pub async fn install_package(
         child.finish();
 
         match result {
-            Ok(_) => installed_dependencies.push(dependency.project.name.clone()),
+            Ok(artifact) => {
+                mark_new(cluster_id, &artifact.hash, state).await;
+                installed_dependencies.push(dependency.project.name.clone());
+            }
             Err(err) => {
                 tracing::warn!(
                     dependency = %dependency.project.name,
@@ -333,10 +336,22 @@ pub async fn install_package(
 
     child.finish();
 
+    if let Ok(artifact) = &result {
+        mark_new(cluster_id, &artifact.hash, state).await;
+    }
+
     PackageInstall {
         session_id: Some(session.detach()),
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
+    }
+}
+
+async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {
+    if let Err(err) =
+        PackageStore::mark_artifact_new(cluster_id, hash, &state.services.content()).await
+    {
+        tracing::warn!(cluster_id, hash, %err, "failed to badge package as new");
     }
 }

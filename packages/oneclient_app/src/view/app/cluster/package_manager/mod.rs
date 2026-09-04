@@ -243,6 +243,9 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        seen_status: installed_info
+            .map(|i| i.seen_status)
+            .unwrap_or_default(),
     }
 }
 
@@ -375,6 +378,26 @@ impl Component for PackageManager {
         let package_type = self.package_type;
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
+
+        // Cleared once on mount so the rows already rendered keep their badges for this visit
+        use_hook(|| {
+            spawn_forever(async move {
+                let Ok(state) = crate::launcher::state() else {
+                    return;
+                };
+                match oneclient_content::packages::PackageStore::retire_seen_badges(
+                    &state.services.content(),
+                )
+                .await
+                {
+                    Ok(cleared) if cleared > 0 => {
+                        tracing::debug!(cleared, "retired package badges after the list was viewed");
+                    }
+                    Ok(_) => {}
+                    Err(err) => tracing::warn!(%err, "failed to retire package badges"),
+                }
+            });
+        });
 
         // Minecraft reads its content once at startup so a toggle now cannot reach the running session
         let session_live = use_game_snapshot().is_active(cluster_id);

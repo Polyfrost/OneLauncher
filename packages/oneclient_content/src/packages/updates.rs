@@ -13,7 +13,7 @@ use oneclient_common::domain::ProviderId;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::browser_package_update as update_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::{BrowserPackageUpdateRow, ClusterRow};
+use oneclient_db::models::{BrowserPackageUpdateRow, ClusterRow, SeenStatus};
 use oneclient_events::GroupedProgressChild;
 
 use crate::ctx::ContentCtx;
@@ -360,6 +360,14 @@ pub async fn apply_browser_package_update(
 		PackageStore::set_artifact_enabled(update.cluster_id, &installed.hash, ctx).await?;
 	}
 
+	artifact_dao::set_seen_status(
+		&ctx.db,
+		update.cluster_id,
+		&installed.hash,
+		SeenStatus::Updated,
+	)
+	.await?;
+
 	update_dao::delete(&ctx.db, update.cluster_id, &update.hash).await?;
 
 	Ok(installed.hash)
@@ -457,6 +465,7 @@ mod tests {
 			display_version: None,
 			provider,
 			published_at: None,
+			seen_status: SeenStatus::Seen,
 		}
 	}
 

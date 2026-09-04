@@ -13,7 +13,7 @@ pub use link::{link_or_copy, remove_entry, try_unlink_materialized};
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
 use oneclient_db::dao::{artifact as artifact_dao, cluster as cluster_dao};
-use oneclient_db::models::{ArtifactRow, ClusterRow};
+use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use super::error::PackageError;
@@ -157,6 +157,7 @@ impl PackageStore {
             let content_type = ContentType::from_repr(artifact.content_type as u8)
                 .unwrap_or(ContentType::Mod);
             let release = artifact_dao::get_release_by_hash(&ctx.db, &link.hash).await?;
+            let seen_status = link.status();
 
             items.push(LinkedArtifactInfo {
                 hash: link.hash,
@@ -172,10 +173,26 @@ impl PackageStore {
                     .as_ref()
                     .and_then(|r| ProviderId::from_repr(r.provider as u8)),
                 published_at: release.as_ref().and_then(|r| r.published_at.clone()),
+                seen_status,
             });
         }
 
         Ok(items)
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn mark_artifact_new(
+        cluster_id: i64,
+        hash: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        artifact_dao::set_seen_status(&ctx.db, cluster_id, hash, SeenStatus::New).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn retire_seen_badges(ctx: &ContentCtx) -> ContentResult<u64> {
+        Ok(artifact_dao::mark_all_seen(&ctx.db).await?)
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]

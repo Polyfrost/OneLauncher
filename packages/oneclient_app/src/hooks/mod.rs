@@ -3,6 +3,7 @@ mod debounce;
 mod actions;
 mod overlay_claims;
 mod queries;
+mod shortcut_actions;
 mod view_state;
 
 pub use debounce::use_debounced;
@@ -111,6 +112,13 @@ pub fn use_game_snapshot() -> GameState {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_pending_launch() -> Option<String> {
+    use_radio(AppChannel::PendingLaunch)
+        .read()
+        .pending_launch
+        .clone()
 }
 
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {

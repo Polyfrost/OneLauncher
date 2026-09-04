@@ -7,25 +7,31 @@
 use freya::prelude::*;
 use freya::radio::use_init_radio_station;
 use oneclient_app::state::{AppChannel, AppState};
+use oneclient_app::ipc::{self, Claim};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
-    use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, cli, constants, events, platform,
+    router, theme, use_provide_actions, use_provide_link_confirm,
 };
+use std::cell::Cell;
 use tokio::runtime::Builder;
 
-struct OneClientApp;
+struct OneClientApp {
+    boot_launch: Cell<Option<String>>,
+    ipc: Cell<Option<ipc::Listener>>,
+}
 
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
-        // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
         let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
+
+        let boot_launch = self.boot_launch.take();
+        let ipc_listener = self.ipc.take();
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
             let (events_bus, events_rx) = oneclient_events::EventBus::channel();
             let actions = Actions::new(station, signals_tx, events_bus.clone());
 
-            // Started first so nothing emitted during startup waits on a consumer
             spawn_forever(
                 EventPump {
                     events: events_rx,
@@ -39,8 +45,6 @@ impl App for OneClientApp {
             let rescue_bus = events_bus.clone();
             spawn_forever(async move {
                 match events::start_launcher(station, events_bus).await {
-                    // Must follow startup `sync_bundles` needs the launcher handle and firing
-                    // it early leaves `syncing_bundles` stuck disabling every launch button
                     Ok(()) => startup.sync_bundles(),
                     Err(err) => {
                         events::report_startup_failure(&station, &err);
@@ -48,6 +52,21 @@ impl App for OneClientApp {
                     }
                 }
             });
+
+            if let Some(folder) = boot_launch {
+                actions.request_launch_by_folder(folder);
+            }
+
+            if let Some(listener) = ipc_listener {
+                let served = actions.clone();
+                spawn_forever(ipc::serve(listener, move |command| match command {
+                    ipc::IpcCommand::Launch(folder) => {
+                        platform::focus_window();
+                        served.request_launch_by_folder(folder);
+                    }
+                    ipc::IpcCommand::Focus => platform::focus_window(),
+                }));
+            }
 
             actions
         });
@@ -66,6 +85,8 @@ impl App for OneClientApp {
 }
 
 fn main() {
+    let cli = cli::parse();
+
     let mut builder = Builder::new_multi_thread();
     builder.enable_all().max_blocking_threads(64);
 
@@ -75,6 +96,16 @@ fn main() {
 
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
+
+    let mut unprotected = None;
+    let ipc = match rt.block_on(ipc::claim(&cli)) {
+        Claim::Forwarded => return,
+        Claim::Primary(listener) => Some(listener),
+        Claim::Solo(reason) => {
+            unprotected = Some(reason);
+            None
+        }
+    };
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
@@ -87,13 +118,30 @@ fn main() {
     }
     .expect("Failed to initialize logger");
 
+    if let Some(reason) = unprotected {
+        tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");
+    }
+
+    match oneclient_app::shortcut::launcher_exe()
+        .and_then(|exe| oneclient_app::protocol::register(&exe))
+    {
+        Ok(()) => {}
+        Err(err) => tracing::warn!(
+            "could not register the {}:// handler: {err:#}",
+            oneclient_app::protocol::SCHEME
+        ),
+    }
+
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
 
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    let window_config = WindowConfig::new_app(OneClientApp)
+    let window_config = WindowConfig::new_app(OneClientApp {
+        boot_launch: Cell::new(cli.launch),
+        ipc: Cell::new(ipc),
+    })
         .with_title(constants::WINDOW_TITLE)
         .with_app_id(constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(

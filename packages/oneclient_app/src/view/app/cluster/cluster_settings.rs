@@ -70,6 +70,8 @@ impl Component for ClusterSettings {
                     .width(Size::fill())
                     .height(Size::fill())
                     .spacing(4.)
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("LOADER"))
                     .child(
                         LoaderRow {
@@ -250,6 +252,32 @@ impl Component for ToggleRow {
             "Force Fullscreen",
             "Force Minecraft to start in fullscreen mode.",
             override_cell(toggle(state), overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct ShortcutRow {
+    cluster_id: i64,
+}
+
+impl Component for ShortcutRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .on_press(move |_| dispatch.create_cluster_shortcut(cluster_id))
+            .text("Create Shortcut");
+
+        settings_row(
+            IconType::Rocket02,
+            "Desktop Shortcut",
+            "Save a shortcut that starts this version straight from your desktop, \
+             without opening the launcher first.",
+            button,
         )
     }
 }

@@ -3,6 +3,7 @@ mod browser_package_update;
 mod bundle;
 mod cluster;
 mod cluster_bundle;
+mod cluster_optional_mod;
 mod game_session;
 mod java;
 mod package_metadata;
@@ -16,6 +17,7 @@ pub use cluster::{ClusterId, ClusterPatch, ClusterRow, NewCluster};
 pub use cluster_bundle::{
     BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType,
 };
+pub use cluster_optional_mod::{ClusterOptionalModRow, OptionalModStatus};
 pub use game_session::{
     GameSessionId, GameSessionRow, GameSessionServerRow, NewGameSession, ServerJoinCount,
     SessionSpan, UnfinishedSession,

@@ -2,7 +2,7 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay, OptionalModsPopup,
     NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
     UpdatePromptOverlay,
 };
@@ -74,6 +74,7 @@ impl Component for RootLayout {
             // Must stay last it renders whatever the overlays above did not claim
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
+            .child(OptionalModsPopup)
             .child(PackageUpdatePopup)
             .child(StatusBar)
             .child(SplashCurtain)

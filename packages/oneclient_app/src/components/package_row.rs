@@ -13,6 +13,9 @@ use crate::utils::format_size;
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
+pub(crate) const CARD_GRID_H: f32 = 148.;
+pub(crate) const GRID_GAP: f32 = 10.;
+pub(crate) const GRID_MIN_W: f32 = 260.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -122,11 +125,7 @@ impl Component for PackageRow {
             CardLayout::Grid => 52.,
         };
         let icon_query = use_cached_image(item.icon_url.clone(), 256);
-        let icon = if item.is_remote() {
-            remote_icon(&item.icon_url, &icon_query, icon_size)
-        } else {
-            local_icon(icon_size)
-        };
+        let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
             let hash = item.hash.clone();
@@ -177,7 +176,7 @@ impl Component for PackageRow {
                     remove_hover,
                 )
             }
-            CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle),
+            CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle, true),
         }
     }
 }
@@ -210,12 +209,13 @@ fn list_card(
         .into_element()
 }
 
-fn grid_card(
+pub(crate) fn grid_card(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
+    navigable: bool, // if true, it takes the user to the mod page
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
@@ -231,7 +231,7 @@ fn grid_card(
         (CARD_BG, colors::component_border(), 140)
     };
 
-    let badge = if remote {
+    let badge = if remote && navigable {
         let provider = item.provider;
         let package_id = item.package_id.clone();
         let package_type_owned = package_type.to_string();
@@ -247,6 +247,8 @@ fn grid_card(
             })
             .child(provider_badge(item.provider))
             .into_element()
+    } else if remote {
+        provider_badge(item.provider)
     } else {
         local_badge()
     };
@@ -411,6 +413,18 @@ fn package_info(
                 }),
         )
         .into_element()
+}
+
+pub(crate) fn package_icon(
+    item: &PackageEntry,
+    icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
+    size: f32,
+) -> Element {
+    if item.is_remote() {
+        remote_icon(&item.icon_url, icon_query, size)
+    } else {
+        local_icon(size)
+    }
 }
 
 fn remote_icon(

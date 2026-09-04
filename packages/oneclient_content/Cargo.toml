@@ -26,8 +26,8 @@ futures-lite.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
 
-# HTML package descriptions -> markdown
 htmd.workspace = true
+pulldown-cmark.workspace = true
 
 chrono.workspace = true
 reqwest.workspace = true

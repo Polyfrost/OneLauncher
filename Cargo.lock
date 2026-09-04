@@ -2351,6 +2351,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "freya-testing"
+version = "0.5.0-rc.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa3e16eb0522ce2db64df537943329af02978d142f51a75786a02a0cee8f2a10"
+dependencies = [
+ "accesskit",
+ "freya-clipboard",
+ "freya-components",
+ "freya-core",
+ "freya-engine",
+ "futures-channel",
+ "ragnarok",
+ "torin",
+]
+
+[[package]]
 name = "freya-winit"
 version = "0.5.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4475,7 +4491,9 @@ dependencies = [
  "directories",
  "dunce",
  "freya",
+ "freya-core",
  "freya-skia-safe",
+ "freya-testing",
  "image",
  "mimalloc",
  "notify",
@@ -4494,6 +4512,7 @@ dependencies = [
  "open",
  "percent-encoding",
  "polyio",
+ "pulldown-cmark",
  "regex",
  "rfd",
  "rust-embed",
@@ -4581,6 +4600,7 @@ dependencies = [
  "oneclient_events",
  "oneclient_net",
  "polyio",
+ "pulldown-cmark",
  "reqwest 0.13.3",
  "serde",
  "serde_json",

@@ -80,6 +80,12 @@ pub enum PackageBody {
 	Raw(String),
 }
 
+impl PackageBody {
+	pub fn raw(markdown: impl AsRef<str>) -> Self {
+		Self::Raw(crate::packages::markdown::normalize_markdown(markdown.as_ref()))
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectMember {
 	pub name: String,

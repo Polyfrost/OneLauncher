@@ -339,7 +339,7 @@ async fn fetch_body(
 
     match response {
         Ok(response) => match html_to_markdown(&response.data) {
-            Some(markdown) => PackageBody::Raw(markdown),
+            Some(markdown) => PackageBody::raw(markdown),
             None => fallback(),
         },
         Err(err) => {

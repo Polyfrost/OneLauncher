@@ -57,9 +57,10 @@ pub struct ClusterMutation;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ClusterAction {
-    ToggleArtifact {
+    SetArtifactEnabled {
         cluster_id: ClusterId,
         hash: String,
+        enabled: bool,
     },
     RemoveArtifact {
         cluster_id: ClusterId,
@@ -103,12 +104,14 @@ impl MutationCapability for ClusterMutation {
         let services = &state.services;
         let content = &state.services.content();
         let result = match keys {
-            ClusterAction::ToggleArtifact { cluster_id, hash } => {
+            ClusterAction::SetArtifactEnabled {
+                cluster_id,
+                hash,
+                enabled,
+            } => {
                 // Applied to the game folder at next launch never mid-session
                 // Minecraft reads its mods once at startup
-                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
-                    .await
-                    .map(|_| ())
+                oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content).await
             }
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await

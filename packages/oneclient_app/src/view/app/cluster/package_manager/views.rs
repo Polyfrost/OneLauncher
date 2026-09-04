@@ -601,7 +601,7 @@ impl Component for ContentBox {
                     .height(Size::fill())
                     .lazy(count, CARD_H, CARD_SPACING, move |i| {
                         let item = items[i].clone();
-                        let key = item.package_id.clone();
+                        let key = item.row_key();
                         PackageRow::new(item, cluster_id, package_type)
                             .layout(CardLayout::List)
                             .key(key)
@@ -710,7 +710,7 @@ fn grid_content(
             let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
             row = row.child(if idx < count {
                 let item = items[idx].clone();
-                let key = item.package_id.clone();
+                let key = item.row_key();
                 cell.child(
                     PackageRow::new(item, cluster_id, package_type)
                         .layout(CardLayout::Grid)

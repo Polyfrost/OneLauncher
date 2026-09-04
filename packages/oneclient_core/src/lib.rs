@@ -31,7 +31,7 @@ pub use oneclient_content::bundles::{
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile,
     BundleFileKind, BundleManifest, BundlesManager, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, get_bundles_with_update_status,
-    remove_artifact_from_cluster, toggle_artifact_enabled,
+    remove_artifact_from_cluster, set_artifact_enabled_to, toggle_artifact_enabled,
 };
 pub use changelog::{fetch_changelog, parse_changelog, ChangelogGroup};
 pub use tos::{fetch_terms, TermsDocument};

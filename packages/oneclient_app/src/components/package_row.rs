@@ -48,11 +48,27 @@ pub struct PackageEntry {
     pub hidden: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
+    pub display_version: Option<String>,
+    pub duplicate: bool,
 }
 
 impl PackageEntry {
     pub fn is_remote(&self) -> bool {
         self.provider != ProviderId::Local
+    }
+
+    pub fn row_key(&self) -> String {
+        match &self.hash {
+            Some(hash) => format!("{}@{hash}", self.package_id),
+            None => self.package_id.clone(),
+        }
+    }
+
+    fn version_chip(&self) -> Option<Element> {
+        self.duplicate
+            .then(|| self.display_version.clone())
+            .flatten()
+            .map(version_badge)
     }
 
     pub fn in_bundle(&self) -> bool {
@@ -125,9 +141,10 @@ impl Component for PackageRow {
             let manifest_default = item.manifest_default;
             (move |()| {
                 if let Some(h) = &hash {
-                    cluster.mutate(ClusterAction::ToggleArtifact {
+                    cluster.mutate(ClusterAction::SetArtifactEnabled {
                         cluster_id,
                         hash: h.clone(),
+                        enabled: !enabled_now,
                     });
                 } else if let Some(bundle) = &bundle_name {
                     cluster.mutate(ClusterAction::SetBundlePackageEnabled {
@@ -277,6 +294,7 @@ fn grid_card(
                         .cross_align(Alignment::Center)
                         .spacing(6.)
                         .child(badge)
+                        .maybe_child(item.version_chip())
                         .maybe_child(item.is_outdated().then(outdated_badge)),
                 ),
         )
@@ -374,6 +392,7 @@ fn package_info(
                         } else {
                             local_badge()
                         })
+                        .maybe_child(item.version_chip())
                         .maybe_child(item.is_outdated().then(outdated_badge)),
                 )
                 .maybe(!item.author.is_empty(), |el| {
@@ -451,6 +470,16 @@ pub fn provider_badge(provider: ProviderId) -> Element {
     badge(
         Icon::new(provider).size(12.).into_element(),
         provider.to_string(),
+    )
+}
+
+fn version_badge(version: String) -> Element {
+    badge(
+        Icon::new(IconType::Copy01)
+            .size(12.)
+            .color(colors::fg_secondary())
+            .into_element(),
+        version,
     )
 }
 

@@ -81,14 +81,25 @@ pub fn bundle_packages(
     stale: &HashSet<String>,
     content_type: ContentType,
 ) -> Vec<PackageEntry> {
-    let mut by_project: HashMap<&str, &LinkedArtifactInfo> = HashMap::new();
+    let mut by_project: HashMap<&str, Vec<&LinkedArtifactInfo>> = HashMap::new();
     let mut by_hash: HashMap<&str, &LinkedArtifactInfo> = HashMap::new();
+    let mut copy_counts: HashMap<(ProviderId, &str), usize> = HashMap::new();
     for info in &content {
         if let Some(pid) = &info.project_id {
-            by_project.insert(pid.as_str(), info);
+            by_project.entry(pid.as_str()).or_default().push(info);
+            if let Some(provider) = info.provider {
+                *copy_counts.entry((provider, pid.as_str())).or_default() += 1;
+            }
         }
         by_hash.insert(info.hash.as_str(), info);
     }
+
+    let is_duplicate = |info: &LinkedArtifactInfo| match (info.provider, &info.project_id) {
+        (Some(provider), Some(pid)) => copy_counts
+            .get(&(provider, pid.as_str()))
+            .is_some_and(|copies| *copies > 1),
+        _ => false,
+    };
 
     // Hidden is per-bundle so one bundle carrying a mod as a private dependency must not suppress a bundle that offers it openly
     let mut shown_elsewhere: HashSet<String> = HashSet::new();
@@ -102,6 +113,7 @@ pub fn bundle_packages(
 
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    let mut claimed: HashSet<String> = HashSet::new();
 
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
@@ -123,17 +135,11 @@ pub fn bundle_packages(
                 BundleFileKind::Managed { provider, .. } => *provider,
                 BundleFileKind::External(_) => ProviderId::Local,
             };
-            let installed_info = by_project
+            let installed: Vec<&LinkedArtifactInfo> = by_project
                 .get(pid.as_str())
-                .or_else(|| by_hash.get(pid.as_str()))
-                .copied();
-            let ov = overrides
-                .get(&(bundle_name.clone(), pid.clone()))
-                .map(String::as_str);
-            let enabled = match installed_info {
-                Some(info) => info.enabled,
-                None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
-            };
+                .cloned()
+                .or_else(|| by_hash.get(pid.as_str()).map(|info| vec![*info]))
+                .unwrap_or_default();
 
             let categories = if category.is_empty() {
                 Vec::new()
@@ -141,25 +147,54 @@ pub fn bundle_packages(
                 vec![category.clone()]
             };
 
-            rows.push(make_row(
-                pid,
-                Some(bundle_name.clone()),
-                provider,
-                file.size,
-                categories,
-                enabled,
-                file.enabled,
-                installed_info,
-                meta,
-                file.display_name(),
-                false,
-                // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
-                file.hidden,
-            ));
+            if installed.is_empty() {
+                let ov = overrides
+                    .get(&(bundle_name.clone(), pid.clone()))
+                    .map(String::as_str);
+
+                rows.push(make_row(
+                    pid,
+                    Some(bundle_name.clone()),
+                    provider,
+                    file.size,
+                    categories,
+                    oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
+                    file.enabled,
+                    None,
+                    meta,
+                    file.display_name(),
+                    false,
+                    file.hidden,
+                    false,
+                ));
+                continue;
+            }
+
+            for info in installed {
+                claimed.insert(info.hash.clone());
+                rows.push(make_row(
+                    pid.clone(),
+                    Some(bundle_name.clone()),
+                    provider,
+                    file.size,
+                    categories.clone(),
+                    info.enabled,
+                    file.enabled,
+                    Some(info),
+                    meta,
+                    file.display_name(),
+                    false,
+                    file.hidden,
+                    is_duplicate(info),
+                ));
+            }
         }
     }
 
     for info in &content {
+        if claimed.contains(&info.hash) {
+            continue;
+        }
         let in_bundle = info.project_id.as_deref().is_some_and(|p| seen.contains(p))
             || seen.contains(&info.hash);
         if in_bundle {
@@ -183,6 +218,7 @@ pub fn bundle_packages(
                 .unwrap_or_else(|| info.file_name.clone()),
             outdated,
             false,
+            is_duplicate(info),
         ));
     }
 
@@ -203,6 +239,7 @@ fn make_row(
     fallback_name: String,
     update_available: bool,
     hidden: bool,
+    duplicate: bool,
 ) -> PackageEntry {
     let m = meta.get(&(provider, package_id.clone()));
     let name = m
@@ -243,6 +280,8 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        display_version: installed_info.and_then(|i| i.display_version.clone()),
+        duplicate,
     }
 }
 
@@ -252,6 +291,7 @@ pub(super) enum Tab {
     Category(String),
     Browser,
     Local,
+    Duplicates,
 }
 
 impl Tab {
@@ -261,6 +301,7 @@ impl Tab {
             Tab::Category(c) => c.clone(),
             Tab::Browser => "Browser".to_string(),
             Tab::Local => "Local".to_string(),
+            Tab::Duplicates => "Duplicates".to_string(),
         }
     }
 
@@ -270,6 +311,7 @@ impl Tab {
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             Tab::Browser => p.is_remote() && !p.in_bundle(),
             Tab::Local => !p.is_remote(),
+            Tab::Duplicates => p.duplicate,
         }
     }
 }
@@ -332,6 +374,12 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
 
     tabs.push(Tab::Browser);
     tabs.push(Tab::Local);
+    if items
+        .iter()
+        .any(|p| hidden.keep(p) && Tab::Duplicates.matches(p))
+    {
+        tabs.push(Tab::Duplicates);
+    }
     tabs
 }
 

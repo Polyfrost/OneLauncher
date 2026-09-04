@@ -224,11 +224,16 @@ pub async fn heal_bundle_activity(
     }
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
 
     for row in tracked.iter().filter(|row| row.enabled == 0) {
         let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
             continue;
         };
+
+        if crate::packages::has_live_copy(&linked, &row.hash) {
+            continue;
+        }
         let Some(is_hidden) = hidden
             .get(&(bundle_name.as_str(), package_id.clone()))
             .copied()
@@ -576,13 +581,7 @@ pub async fn toggle_artifact_enabled(
     ctx: &ContentCtx,
 ) -> ContentResult<bool> {
     let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
-
-    if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await?;
-    } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await?;
-    }
-
+    settle_artifact_activity(cluster_id, hash, enabled, ctx).await?;
     Ok(enabled)
 }
 
@@ -598,47 +597,64 @@ pub async fn set_artifact_enabled_to(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
-
-    if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await
-    } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await
-    }
+    settle_artifact_activity(cluster_id, hash, enabled, ctx).await
 }
 
-/// Writes the override alongside the flag
-/// without it the losing bundle copy looks disabled-by-nobody and
-/// heal_bundle_activity re-enables it every launch
+async fn settle_artifact_activity(
+    cluster_id: i64,
+    hash: &str,
+    enabled: bool,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    if enabled {
+        for demoted in crate::packages::demote_other_copies(cluster_id, hash, ctx).await? {
+            sync_package_override(cluster_id, &demoted, ctx).await?;
+        }
+    }
+
+    sync_package_override(cluster_id, hash, ctx).await
+}
+
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn reconcile_duplicate_activity(
     cluster_id: i64,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     for hash in crate::packages::reconcile_duplicate_activity(cluster_id, ctx).await? {
-        on_user_disable_artifact(cluster_id, &hash, ctx).await?;
+        sync_package_override(cluster_id, &hash, ctx).await?;
     }
 
     Ok(())
 }
 
-pub async fn on_user_disable_artifact(
-    cluster_id: i64,
-    hash: &str,
-    ctx: &ContentCtx,
-) -> ContentResult<()> {
-    handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Disabled).await
-}
-
 #[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn on_user_enable_artifact(
+async fn sync_package_override(
     cluster_id: i64,
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
-        && let Some(package_id) = tracked.package_id {
-            clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-        }
+    let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await? else {
+        return Ok(());
+    };
+
+    let (Some(bundle_name), Some(package_id)) = (tracked.bundle_name, tracked.package_id) else {
+        return Ok(());
+    };
+
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    if crate::packages::has_live_copy(&linked, hash) {
+        return clear_suppressing_overrides(cluster_id, &package_id, ctx).await;
+    }
+
+    bundle_dao::save_override(
+        &ctx.db,
+        cluster_id,
+        &bundle_name,
+        &package_id,
+        OverrideType::Disabled,
+    )
+    .await?;
+
     Ok(())
 }
 

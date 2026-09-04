@@ -39,6 +39,62 @@ pub async fn reconcile_duplicate_activity(
     Ok(switched_off)
 }
 
+#[must_use]
+pub fn has_live_copy(linked: &[LinkedArtifactInfo], hash: &str) -> bool {
+    copies_of(linked, hash)
+        .into_iter()
+        .any(|copy| copy.enabled)
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn demote_other_copies(
+    cluster_id: i64,
+    keep_hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<String>> {
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let mut demoted = Vec::new();
+
+    for hash in others_to_demote(&linked, keep_hash) {
+        tracing::info!(
+            cluster_id,
+            %hash,
+            %keep_hash,
+            "switching off another copy of a package the user just switched on"
+        );
+
+        PackageStore::set_artifact_enabled_to(cluster_id, &hash, false, ctx).await?;
+        demoted.push(hash);
+    }
+
+    Ok(demoted)
+}
+
+fn others_to_demote(linked: &[LinkedArtifactInfo], keep_hash: &str) -> Vec<String> {
+    copies_of(linked, keep_hash)
+        .into_iter()
+        .filter(|copy| copy.enabled && copy.hash != keep_hash)
+        .map(|copy| copy.hash.clone())
+        .collect()
+}
+
+fn copies_of<'a>(linked: &'a [LinkedArtifactInfo], hash: &str) -> Vec<&'a LinkedArtifactInfo> {
+    let Some(target) = linked.iter().find(|info| info.hash == hash) else {
+        return Vec::new();
+    };
+
+    let (Some(provider), Some(project_id)) = (target.provider, target.project_id.as_deref()) else {
+        return vec![target];
+    };
+
+    linked
+        .iter()
+        .filter(|info| {
+            info.provider == Some(provider) && info.project_id.as_deref() == Some(project_id)
+        })
+        .collect()
+}
+
 fn duplicates_to_disable(linked: &[LinkedArtifactInfo]) -> Vec<String> {
     let mut out = Vec::new();
 
@@ -222,6 +278,60 @@ mod tests {
         ]);
 
         assert!(disable.is_empty());
+    }
+
+    #[test]
+    fn switching_a_copy_on_switches_the_others_off() {
+        let linked = [
+            info(Some("sodium"), "old", true, Some("2026-01-01T00:00:00Z")),
+            info(Some("sodium"), "new", true, Some("2026-06-01T00:00:00Z")),
+            info(Some("iris"), "iris", true, None),
+        ];
+
+        assert_eq!(others_to_demote(&linked, "old"), vec!["new".to_string()]);
+        assert!(
+            others_to_demote(&linked, "iris").is_empty(),
+            "a package with one copy has nothing to demote"
+        );
+    }
+
+    #[test]
+    fn a_copy_that_is_already_off_is_not_demoted_again() {
+        let linked = [
+            info(Some("sodium"), "live", true, None),
+            info(Some("sodium"), "off", false, None),
+        ];
+
+        assert!(others_to_demote(&linked, "live").is_empty());
+    }
+
+    #[test]
+    fn two_local_files_are_not_copies_of_each_other() {
+        let linked = [
+            info(None, "local-1", true, None),
+            info(None, "local-2", true, None),
+        ];
+
+        assert!(others_to_demote(&linked, "local-1").is_empty());
+    }
+
+    #[test]
+    fn a_package_reads_as_live_while_any_copy_is_on() {
+        let linked = [
+            info(Some("sodium"), "live", true, None),
+            info(Some("sodium"), "off", false, None),
+        ];
+
+        assert!(
+            has_live_copy(&linked, "off"),
+            "a surplus copy is not the package being switched off"
+        );
+
+        let all_off = [
+            info(Some("sodium"), "live", false, None),
+            info(Some("sodium"), "off", false, None),
+        ];
+        assert!(!has_live_copy(&all_off, "off"));
     }
 
     #[test]

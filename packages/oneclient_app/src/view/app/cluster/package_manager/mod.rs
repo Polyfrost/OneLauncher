@@ -6,7 +6,7 @@ use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 
-use crate::components::{CardLayout, PackageEntry};
+use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
 use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
@@ -14,9 +14,6 @@ use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, tool
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
-const CARD_GRID_H: f32 = 148.;
-const GRID_GAP: f32 = 10.;
-const GRID_MIN_W: f32 = 260.;
 const LAZY_OVERSCAN: i64 = 2;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;

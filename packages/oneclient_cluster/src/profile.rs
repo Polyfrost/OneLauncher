@@ -27,26 +27,36 @@ pub use oneclient_common::Resolution;
 pub use oneclient_common::domain::PackageUpdateMode;
 
 cfg_select! {
-	target_os = "windows" => {
-		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-		pub struct SettingsOsExtra {}
-	}
-	target_os = "macos" => {
-		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-		pub struct SettingsOsExtra {}
-	}
-	not(any(target_os = "windows", target_os = "macos")) => {
+	target_os = "linux" => {
 		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+		#[serde(default)]
 		pub struct SettingsOsExtra {
 			pub enable_gamemode: Option<bool>,
+			pub use_discrete_gpu: Option<bool>,
+			/// Keys this build has no field for, kept verbatim so a profile edited
+			/// on one OS does not clear another OS's settings
+			#[serde(flatten)]
+			pub unknown: serde_json::Map<String, serde_json::Value>,
 		}
 
 		impl Default for SettingsOsExtra {
 			fn default() -> Self {
 				Self {
 					enable_gamemode: Some(true),
+					use_discrete_gpu: Some(false),
+					unknown: serde_json::Map::new(),
 				}
 			}
+		}
+	}
+	_ => {
+		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+		#[serde(default)]
+		pub struct SettingsOsExtra {
+			/// Keys this build has no field for, kept verbatim so a profile edited
+			/// on one OS does not clear another OS's settings
+			#[serde(flatten)]
+			pub unknown: serde_json::Map<String, serde_json::Value>,
 		}
 	}
 }
@@ -161,5 +171,21 @@ impl GameSettingsProfile {
 				.browser_update_mode
 				.map(|mode| mode.as_str().to_string()),
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn os_extra_keeps_the_keys_this_build_has_no_field_for() {
+		let stored = r#"{"enable_gamemode":true,"use_discrete_gpu":true,"some_other_os_flag":7}"#;
+
+		let extra: SettingsOsExtra = serde_json::from_str(stored).unwrap();
+		let written = serde_json::to_value(&extra).unwrap();
+		let original: serde_json::Value = serde_json::from_str(stored).unwrap();
+
+		assert_eq!(written, original);
 	}
 }

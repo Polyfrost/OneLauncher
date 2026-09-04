@@ -39,7 +39,7 @@ pub fn memory_field(mut memory: State<String>) -> impl IntoElement {
         .child(
             TextInput::new(memory)
                 .width(Size::px(90.))
-                .placeholder("4096")
+                .placeholder(oneclient_common::default_mem_max().to_string())
                 .on_validate(validate_memory)
                 .trailing(
                     label()

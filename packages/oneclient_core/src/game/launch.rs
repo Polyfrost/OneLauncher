@@ -259,7 +259,7 @@ pub async fn launch_cluster(
         &libraries,
         &classpaths,
         &version_name,
-        profile.mem_max.unwrap_or(2048),
+        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,
         java.major,
@@ -349,8 +349,13 @@ pub async fn launch_cluster(
         mc_version: cluster.mc_version.clone(),
     });
 
-    let recorder =
-        SessionRecorder::start(state, cluster_id, profile.mem_max.unwrap_or(2048), &java).await;
+    let recorder = SessionRecorder::start(
+        state,
+        cluster_id,
+        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
+        &java,
+    )
+    .await;
 
     // Pinned to the session row so that if the launcher exits first the next
     // start can tell whether the game is still playing

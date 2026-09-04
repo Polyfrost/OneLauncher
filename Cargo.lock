@@ -4557,6 +4557,7 @@ dependencies = [
  "interfrost",
  "serde",
  "strum",
+ "sysinfo",
  "thiserror 2.0.18",
  "url",
 ]

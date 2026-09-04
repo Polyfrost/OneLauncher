@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT DISTINCT mc_version, mc_loader\n        FROM bundles\n        WHERE hidden = 0\n        ORDER BY mc_version, mc_loader\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "mc_version",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_version"
+          }
+        }
+      },
+      {
+        "name": "mc_loader",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "bundles",
+            "name": "mc_loader"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "d5cfe04a1efe86513c7f3a6bdd6352f1ca512d7ea2ef4ed48c2dd7c44eb11854"
+}

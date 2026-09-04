@@ -1,5 +1,4 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 use std::{fs::Metadata, path::{Path, PathBuf}};
 
 use async_tempfile::{TempDir, TempFile};
@@ -319,94 +318,8 @@ fn temp_sibling(path: &Path) -> PathBuf {
 	}
 }
 
-// Time for a file to be flagged as abandoned
-const STALE_TEMP_AGE: Duration = Duration::from_secs(15 * 60);
-
-fn temp_sibling_pid(name: &str) -> Option<u32> {
-	let inner = name.strip_prefix('.')?.strip_suffix(".tmp")?;
-	let (head, counter) = inner.rsplit_once('.')?;
-	let (stem, pid) = head.rsplit_once('.')?;
-
-	counter.parse::<u64>().ok()?;
-	if stem.is_empty() {
-		return None;
-	}
-
-	pid.parse().ok()
-}
-
-/// Returns the number of bytes reclaimed non-recursive and never an error for a
-/// missing directory
-#[tracing::instrument(
-    level = "debug",
-    skip(dir),
-    fields(dir = %dir.as_ref().display())
-)]
-pub async fn sweep_temp_files(dir: impl AsRef<Path>) -> PolyIOResult<u64> {
-	let dir = dir.as_ref();
-	let path_err = |source| IOError::PathIOError {
-		source,
-		path: dir.to_string_lossy().to_string(),
-	};
-
-	let mut entries = match tokio::fs::read_dir(dir).await {
-		Ok(entries) => entries,
-		// Nothing has ever been written here so there is nothing to sweep
-		Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-		Err(err) => return Err(path_err(err)),
-	};
-
-	let current_pid = std::process::id();
-	let mut files = 0usize;
-	let mut bytes = 0u64;
-
-	while let Some(entry) = entries.next_entry().await.map_err(path_err)? {
-		let name = entry.file_name();
-		let Some(pid) = name.to_str().and_then(temp_sibling_pid) else {
-			continue;
-		};
-
-		if pid == current_pid {
-			continue;
-		}
-
-		let Ok(metadata) = entry.metadata().await else {
-			continue;
-		};
-		if !metadata.is_file() {
-			continue;
-		}
-
-		let stale = metadata
-			.modified()
-			.ok()
-			.and_then(|modified| modified.elapsed().ok())
-			.is_some_and(|age| age >= STALE_TEMP_AGE);
-		if !stale {
-			continue;
-		}
-
-		let size = metadata.len();
-		match tokio::fs::remove_file(entry.path()).await {
-			Ok(()) => {
-				files += 1;
-				bytes += size;
-			}
-			// Another process may have just renamed it out from under us
-			Err(err) => tracing::debug!(
-				path = %entry.path().display(),
-				"could not remove stale scratch file: {err}"
-			),
-		}
-	}
-
-	if files > 0 {
-		tracing::info!(files, bytes, dir = %dir.display(), "removed stale scratch files");
-	}
-
-	Ok(bytes)
-}
-
+/// Readers see either the old contents or the complete new ones
+/// The fsync before the rename stops a crash leaving a correctly-named zero-length file
 #[tracing::instrument(
     level = "debug",
     skip(path, data),
@@ -470,6 +383,10 @@ pub async fn write_json_atomic<T: Serialize>(
 	write_atomic(path, bytes).await
 }
 
+/// Traversal guard for externally supplied paths
+/// `Ok(None)` when the path resolves outside every root
+/// `Err` only when `path` cannot be canonicalised
+/// Roots that cannot be canonicalised (e.g. not yet created) are skipped
 #[tracing::instrument(
     level = "debug",
     skip(path, roots),
@@ -479,6 +396,8 @@ pub fn ensure_under<R: AsRef<Path>>(
 	path: impl AsRef<Path>,
 	roots: impl IntoIterator<Item = R>,
 ) -> PolyIOResult<Option<PathBuf>> {
+	// Not `std::fs::canonicalize` its Windows `\\?\` UNC output would never
+	// `starts_with` the plain-path roots so everything would look like an escape
 	let canon = crate::canonicalize(path)?;
 
 	for root in roots {
@@ -492,6 +411,9 @@ pub fn ensure_under<R: AsRef<Path>>(
 	Ok(None)
 }
 
+/// `exclude_top` applies only at the top level a nested directory of the same
+/// name is still copied
+/// Symlinks are followed and copied as their contents
 #[tracing::instrument(level = "debug", skip(exclude_top))]
 pub async fn copy_dir(src: &Path, dst: &Path, exclude_top: &[&str]) -> PolyIOResult<()> {
 	let mut stack: Vec<(PathBuf, PathBuf, bool)> =
@@ -799,69 +721,6 @@ mod tests {
 		assert!(leftovers.is_empty(), "left scratch files behind: {leftovers:?}");
 
 		std::fs::remove_dir_all(&dir).unwrap();
-	}
-
-	/// Ages a file past [`STALE_TEMP_AGE`] so the sweep treats it as abandoned
-	fn backdate(path: &Path) {
-		let stale = std::time::SystemTime::now() - (STALE_TEMP_AGE + Duration::from_secs(60));
-		let file = std::fs::File::options().write(true).open(path).unwrap();
-		file.set_times(std::fs::FileTimes::new().set_modified(stale))
-			.unwrap();
-	}
-
-	#[test]
-	fn temp_sibling_names_round_trip() {
-		let name = temp_sibling(Path::new("/java/zulu21.zip"));
-		let name = name.file_name().unwrap().to_str().unwrap();
-
-		assert_eq!(temp_sibling_pid(name), Some(std::process::id()));
-
-		// Files polyio did not write
-		assert_eq!(temp_sibling_pid("zulu21.zip"), None);
-		assert_eq!(temp_sibling_pid(".vimrc.tmp"), None);
-		assert_eq!(temp_sibling_pid(".cache.notapid.7.tmp"), None);
-		assert_eq!(temp_sibling_pid(".cache.4242.notacounter.tmp"), None);
-	}
-
-	#[tokio::test]
-	async fn sweep_removes_only_abandoned_scratch_files() {
-		let dir = scratch("sweep");
-
-		let abandoned = dir.join(format!(".zulu21.zip.{}.0.tmp", std::process::id() + 1));
-		std::fs::write(&abandoned, b"half a runtime").unwrap();
-		backdate(&abandoned);
-
-		// Same shape but young enough to still have a writer behind it
-		let in_flight = dir.join(format!(".zulu17.zip.{}.0.tmp", std::process::id() + 2));
-		std::fs::write(&in_flight, b"downloading").unwrap();
-
-		// Ours, however old the launcher has been up
-		let ours = temp_sibling(&dir.join("zulu8.zip"));
-		std::fs::write(&ours, b"mine").unwrap();
-		backdate(&ours);
-
-		// Not a scratch file at all
-		let keep = dir.join("zulu21.zip");
-		std::fs::write(&keep, b"a real archive").unwrap();
-		backdate(&keep);
-
-		let freed = sweep_temp_files(&dir).await.unwrap();
-
-		assert_eq!(freed, "half a runtime".len() as u64);
-		assert!(!abandoned.exists());
-		assert!(in_flight.exists());
-		assert!(ours.exists());
-		assert!(keep.exists());
-
-		std::fs::remove_dir_all(&dir).unwrap();
-	}
-
-	#[tokio::test]
-	async fn sweep_ignores_a_missing_directory() {
-		let dir = scratch("sweep-missing");
-		std::fs::remove_dir_all(&dir).unwrap();
-
-		assert_eq!(sweep_temp_files(&dir).await.unwrap(), 0);
 	}
 
 	fn failing_stream(

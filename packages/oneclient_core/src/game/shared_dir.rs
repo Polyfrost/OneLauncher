@@ -352,7 +352,7 @@ const ALLOWED_SYMLINKS_NAME: &str = "allowed_symlinks.txt";
 
 #[tracing::instrument(level = "debug")]
 pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
-    let root = oneclient_common::paths::data_dir()?;
+    let root = oneclient_common::paths::launcher_dir()?;
     let base = polyio::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     let sep = std::path::MAIN_SEPARATOR;
 

@@ -155,17 +155,7 @@ impl JavaService {
 	#[tracing::instrument(skip(self))]
 	pub async fn remove_runtime(&self, absolute_path: &str) -> JavaResult<()> {
 		self.store.delete_by_path(absolute_path).await?;
-
-		let removed_files =
-			match crate::install::remove_installed_package(Path::new(absolute_path)).await {
-				Ok(removed) => removed,
-				Err(err) => {
-					tracing::warn!("could not remove the installed Java files: {err:#}");
-					false
-				}
-			};
-
-		tracing::info!(removed_files, "removed Java runtime");
+		tracing::info!("removed Java runtime");
 		Ok(())
 	}
 

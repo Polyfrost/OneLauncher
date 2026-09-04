@@ -15,7 +15,7 @@ pub fn snapshots() -> Vec<PathBuf> {
 }
 
 pub fn open_data_folder() {
-    let Ok(dir) = oneclient_common::paths::data_dir() else {
+    let Ok(dir) = oneclient_common::paths::launcher_dir() else {
         return;
     };
 

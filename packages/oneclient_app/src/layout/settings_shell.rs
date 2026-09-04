@@ -65,11 +65,8 @@ const SEARCH_INDEX: &[SearchItem] = &[
         id: "launcher.folder",
         icon: IconType::Folder,
         title: "Launcher Folder",
-        description: "Open the launcher data directory, or move it to another drive.",
-        keywords: &[
-            "data dir", "directory", "folder", "open", "move", "change", "relocate", "location",
-            "drive", "disk",
-        ],
+        description: "Open the launcher data directory.",
+        keywords: &["data dir", "directory", "folder", "open"],
         route: Route::SettingsLauncher {},
     },
     SearchItem {

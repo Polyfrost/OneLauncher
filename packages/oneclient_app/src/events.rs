@@ -308,7 +308,7 @@ pub async fn start_launcher(
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);
 
-    let data_dir = oneclient_common::paths::data_dir()
+    let data_dir = oneclient_common::paths::launcher_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
 
@@ -325,7 +325,6 @@ pub async fn start_launcher(
             error: None,
             snapshots: 0,
             data_dir,
-            needs_location: false,
         };
     }
     {
@@ -347,7 +346,7 @@ pub fn report_startup_failure(
     let message = err.to_string();
     tracing::error!("launcher init failed: {err:#}");
 
-    let data_dir = oneclient_common::paths::data_dir()
+    let data_dir = oneclient_common::paths::launcher_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
 

@@ -1,0 +1,33 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT s.address AS \"address!\", COUNT(*) AS \"joins!: i64\"\n\t\tFROM game_session_servers s\n\t\tJOIN game_sessions g ON g.started_at = s.session_started_at\n\t\tWHERE g.cluster_id = ?\n\t\tGROUP BY s.address\n\t\tORDER BY COUNT(*) DESC\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "address!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_session_servers",
+            "name": "address"
+          }
+        }
+      },
+      {
+        "name": "joins!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "9882797c904aa209f9cd6504ddb938a45c3a1dde7fe82f61aa78012f372a3263"
+}

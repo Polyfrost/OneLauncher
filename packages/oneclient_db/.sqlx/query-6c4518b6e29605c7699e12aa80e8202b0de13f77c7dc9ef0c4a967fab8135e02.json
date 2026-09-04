@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE game_session_servers\n\t\tSET disconnected_at = ?\n\t\tWHERE joined_at = ? AND disconnected_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6c4518b6e29605c7699e12aa80e8202b0de13f77c7dc9ef0c4a967fab8135e02"
+}

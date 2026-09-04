@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT absolute_path, major, version, vendor, os_arch, is_jdk as \"is_jdk: bool\"\n        FROM java_versions\n        WHERE absolute_path = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "absolute_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "absolute_path"
+          }
+        }
+      },
+      {
+        "name": "major",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "major"
+          }
+        }
+      },
+      {
+        "name": "version",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "name": "vendor",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "vendor"
+          }
+        }
+      },
+      {
+        "name": "os_arch",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "os_arch"
+          }
+        }
+      },
+      {
+        "name": "is_jdk: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "is_jdk"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f5992c9cec6a6d7015cda4c04b463bd5fd9c42ac38b434fa8a0c0fe4f7517cf2"
+}

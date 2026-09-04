@@ -102,7 +102,7 @@ async fn rebuild_artifact_cache(pool: &DbPool) -> LauncherResult<usize> {
 		return Ok(0);
 	}
 
-	let launcher_dir = paths::data_dir()?;
+	let launcher_dir = paths::launcher_dir()?;
 	let mut indexed = 0;
 
 	for content_name in list_dir_names(&cache_root).await? {

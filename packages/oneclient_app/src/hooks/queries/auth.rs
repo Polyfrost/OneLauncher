@@ -364,18 +364,6 @@ pub fn mutation_is_running<M: MutationCapability>(mutation: &UseMutation<M>) -> 
     mutation.read().state().is_loading()
 }
 
-pub fn mutation_ok<M>(mutation: &UseMutation<M>) -> Option<M::Ok>
-where
-    M: MutationCapability,
-    M::Ok: Clone,
-{
-    let reader = mutation.read();
-    match &*reader.state() {
-        MutationStateData::Settled { res: Ok(ok), .. } => Some(ok.clone()),
-        _ => None,
-    }
-}
-
 pub fn mutation_error<M>(mutation: &UseMutation<M>) -> Option<M::Err>
 where
     M: MutationCapability,

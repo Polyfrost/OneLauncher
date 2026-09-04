@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, cluster_id, bundle_name, package_id, override_type\n        FROM cluster_bundle_overrides\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_overrides",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "cluster_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_overrides",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "bundle_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_overrides",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "package_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_overrides",
+            "name": "package_id"
+          }
+        }
+      },
+      {
+        "name": "override_type",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_overrides",
+            "name": "override_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c975a1fddfa0442fc400fefd6c0a110da6fb1628894dcecf5ec1c8f9e648cd38"
+}

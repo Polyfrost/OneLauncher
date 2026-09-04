@@ -8,7 +8,7 @@ use crate::layout::RootLayout;
 use crate::layout::SettingsShell;
 
 use crate::view::{
-    NotFound, Relocating, SetupLocation, Startup,
+    NotFound, Startup,
     app::{
         AccountSkins, Clusters, Debug, Home, Stats,
         browser::{Browser, BrowserPackage},
@@ -34,10 +34,6 @@ pub enum Route {
     #[layout(RootLayout)]
         #[route("/")]
         Startup {},
-        #[route("/setup/location")]
-        SetupLocation {},
-        #[route("/moving")]
-        Relocating {},
 
         #[layout(OnboardingShell)]
             #[route("/onboarding")]
@@ -128,8 +124,6 @@ impl Route {
     pub fn title(&self) -> String {
         match self {
             Route::Startup { .. } => "Startup".to_string(),
-            Route::SetupLocation { .. } => "Setup".to_string(),
-            Route::Relocating { .. } => "Moving".to_string(),
             Route::OnboardingWelcome { .. } => "Welcome".to_string(),
             Route::OnboardingTerms { .. } => "Terms & Privacy".to_string(),
             Route::OnboardingMigration { .. } => "Migration".to_string(),

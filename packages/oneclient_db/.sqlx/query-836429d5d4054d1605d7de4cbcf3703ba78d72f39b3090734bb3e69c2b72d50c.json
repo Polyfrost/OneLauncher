@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT OR IGNORE INTO applied_migrations (id, applied_at) VALUES (?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "836429d5d4054d1605d7de4cbcf3703ba78d72f39b3090734bb3e69c2b72d50c"
+}

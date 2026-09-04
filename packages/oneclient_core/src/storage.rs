@@ -54,8 +54,7 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         return Ok(report);
     }
 
-    let data = paths::data_dir()?;
-    let config = paths::config_dir()?;
+    let launcher = paths::launcher_dir()?;
 
     let mut categories = vec![
         entry("Packages", paths::packages_cache_dir()?).await,
@@ -86,13 +85,8 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         files: unreferenced.len(),
     };
 
-    let mut total_bytes = dir_size(data).await;
-    if data != config {
-        total_bytes += dir_size(paths::logs_dir()?).await;
-    }
-
     Ok(StorageReport {
-        total_bytes,
+        total_bytes: dir_size(launcher).await,
         categories,
         clusters,
         unreferenced_cache,

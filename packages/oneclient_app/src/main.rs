@@ -6,29 +6,19 @@
 
 use freya::prelude::*;
 use freya::radio::use_init_radio_station;
-use oneclient_app::state::{AppChannel, AppState, LauncherInit};
+use oneclient_app::state::{AppChannel, AppState};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, constants, events, router, theme,
     use_provide_actions, use_provide_link_confirm,
 };
 use tokio::runtime::Builder;
 
-struct OneClientApp {
-    needs_location: bool,
-}
+struct OneClientApp;
 
 impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
-        let needs_location = self.needs_location;
-
         // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
-        let station = use_init_radio_station::<AppState, AppChannel>(move || AppState {
-            launcher: LauncherInit {
-                needs_location,
-                ..LauncherInit::default()
-            },
-            ..AppState::default()
-        });
+        let station = use_init_radio_station::<AppState, AppChannel>(AppState::default);
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -45,21 +35,19 @@ impl App for OneClientApp {
                 .run(),
             );
 
-            if !needs_location {
-                let startup = actions.clone();
-                let rescue_bus = events_bus.clone();
-                spawn_forever(async move {
-                    match events::start_launcher(station, events_bus).await {
-                        // Must follow startup `sync_bundles` needs the launcher handle and firing
-                        // it early leaves `syncing_bundles` stuck disabling every launch button
-                        Ok(()) => startup.sync_bundles(),
-                        Err(err) => {
-                            events::report_startup_failure(&station, &err);
-                            oneclient_app::updater::spawn_update_check(false, rescue_bus);
-                        }
+            let startup = actions.clone();
+            let rescue_bus = events_bus.clone();
+            spawn_forever(async move {
+                match events::start_launcher(station, events_bus).await {
+                    // Must follow startup `sync_bundles` needs the launcher handle and firing
+                    // it early leaves `syncing_bundles` stuck disabling every launch button
+                    Ok(()) => startup.sync_bundles(),
+                    Err(err) => {
+                        events::report_startup_failure(&station, &err);
+                        oneclient_app::updater::spawn_update_check(false, rescue_bus);
                     }
-                });
-            }
+                }
+            });
 
             actions
         });
@@ -88,32 +76,9 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
-    // no settings file is the sign of a fresh install, but not proof of one
-    let never_set_up = oneclient_common::paths::settings_file()
-        .map(|path| !path.exists())
-        .unwrap_or(false);
-    let has_database = oneclient_common::paths::database_file()
-        .map(|path| path.exists())
-        .unwrap_or(false);
-    let was_damaged = oneclient_common::paths::damaged_settings_file()
-        .map(|path| path.exists())
-        .unwrap_or(false);
-    let needs_location = never_set_up && !has_database && !was_damaged;
-
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
     oneclient_common::consent::init(settings.declined_tos);
-
-    let abandoned_move = settings
-        .data_dir
-        .clone()
-        .filter(|dir| oneclient_core::relocate::incomplete(dir));
-
-    if let Some(dir) = settings.data_dir.clone()
-        && abandoned_move.is_none()
-    {
-        oneclient_common::paths::set_data_dir(dir);
-    }
 
     if settings.log_debug {
         oneclient_core::logger::init_debug()
@@ -122,20 +87,13 @@ fn main() {
     }
     .expect("Failed to initialize logger");
 
-    if let Some(dir) = abandoned_move {
-        tracing::error!(
-            path = %dir.display(),
-            "a move of the game data folder never finished; staying on the old folder"
-        );
-    }
-
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
 
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    let window_config = WindowConfig::new_app(OneClientApp { needs_location })
+    let window_config = WindowConfig::new_app(OneClientApp)
         .with_title(constants::WINDOW_TITLE)
         .with_app_id(constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
@@ -144,17 +102,7 @@ fn main() {
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
         .with_transparency(true)
-        .with_background(Color::TRANSPARENT)
-        // A half-copied data folder is unrecoverable, so the window refuses to
-        // close while one is being moved; the move screen says as much
-        .with_on_close(|_, _| {
-            if oneclient_core::relocate::in_progress() {
-                tracing::warn!("close request ignored, the data folder is still being moved");
-                CloseDecision::KeepOpen
-            } else {
-                CloseDecision::Close
-            }
-        });
+        .with_background(Color::TRANSPARENT);
 
     #[cfg(target_os = "macos")]
     let window_config = window_config

@@ -333,7 +333,8 @@ async fn run_forge_processors(
             .await?
             .ok_or_else(|| GameError::ProcessorMainClass(processor.jar.clone()))?;
 
-        let output = Command::new(&java.absolute_path)
+        let mut command = Command::new(&java.absolute_path);
+        command
             .arg("-cp")
             .arg(game::get_classpath_library(&libraries, &cp)?)
             .arg(&main)
@@ -341,9 +342,10 @@ async fn run_forge_processors(
                 &libraries,
                 &processor.args,
                 data,
-            )?)
-            .output()
-            .await?;
+            )?);
+        oneclient_common::process::no_window(command.as_std_mut());
+
+        let output = command.output().await?;
 
         if !output.status.success() {
             return Err(GameError::ProcessorFailed(

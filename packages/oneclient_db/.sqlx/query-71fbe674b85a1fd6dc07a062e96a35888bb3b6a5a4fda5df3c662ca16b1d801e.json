@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE game_sessions\n\t\tSET pid = ?, pid_started_at = ?\n\t\tWHERE started_at = ?\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "71fbe674b85a1fd6dc07a062e96a35888bb3b6a5a4fda5df3c662ca16b1d801e"
+}

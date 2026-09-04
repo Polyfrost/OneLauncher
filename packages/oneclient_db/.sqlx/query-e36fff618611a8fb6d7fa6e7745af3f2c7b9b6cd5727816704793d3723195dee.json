@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO game_session_servers (session_started_at, address, port, joined_at)\n\t\tVALUES (?, ?, ?, ?)\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "e36fff618611a8fb6d7fa6e7745af3f2c7b9b6cd5727816704793d3723195dee"
+}

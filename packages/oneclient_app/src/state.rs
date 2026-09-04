@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use freya::radio::RadioChannel;
 use oneclient_common::domain::ProviderId;
-use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
 
@@ -22,7 +21,6 @@ pub enum AppChannel {
     AccountSwitcher,
     MicrosoftLogin,
     Installs,
-    Relocation,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -42,21 +40,6 @@ pub struct AppState {
     pub account_switcher_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
-    pub relocation: RelocationState,
-}
-
-/// A move of the data folder owns the whole window while it runs: the router
-/// swaps to [`crate::routes::Route::Relocating`] so nothing else can be touched
-/// until the copy settles
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct RelocationState {
-    /// What is being moved where; cleared when the user leaves the move screen
-    pub plan: Option<RelocationPlan>,
-    /// Bytes written so far and the total to write, reported by the copy itself
-    pub copied: u64,
-    pub total: u64,
-    /// Set once the copy settles, which turns the screen into its result
-    pub result: Option<Result<RelocationOutcome, String>>,
 }
 
 /// In-flight installs so the button that started one stays disabled until it lands
@@ -86,11 +69,12 @@ impl InstallState {
 pub struct LauncherInit {
     pub ready: bool,
     pub fetching: bool,
+    /// Launch is disabled until this clears
     pub syncing_bundles: bool,
     pub error: Option<String>,
     pub data_dir: String,
+    /// Restorable database snapshots, for the startup failure screen
     pub snapshots: usize,
-    pub needs_location: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

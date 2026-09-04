@@ -1,0 +1,146 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT\n\t\t\tcluster_id, hash, provider as \"provider!: i64\", project_id,\n\t\t\tinstalled_version_id, installed_version_name,\n\t\t\tlatest_version_id, latest_version_name,\n\t\t\tdisplay_name, checked_at, skipped\n\t\tFROM browser_package_updates\n\t\tWHERE cluster_id = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "provider!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "installed_version_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "installed_version_id"
+          }
+        }
+      },
+      {
+        "name": "installed_version_name",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "installed_version_name"
+          }
+        }
+      },
+      {
+        "name": "latest_version_id",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "latest_version_id"
+          }
+        }
+      },
+      {
+        "name": "latest_version_name",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "latest_version_name"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "checked_at",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "checked_at"
+          }
+        }
+      },
+      {
+        "name": "skipped",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "browser_package_updates",
+            "name": "skipped"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "271e5a3e03861f3699e3b32dc4a9bb0c0dcb880fcff67a096fa94b236fbe6107"
+}

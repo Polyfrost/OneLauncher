@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO package_metadata (provider, project_id, name, summary, author, icon_url, updated_at)\n\t\tVALUES (?, ?, ?, ?, ?, ?, datetime('now'))\n\t\tON CONFLICT(provider, project_id) DO UPDATE SET\n\t\t\tname = excluded.name,\n\t\t\tsummary = excluded.summary,\n\t\t\tauthor = excluded.author,\n\t\t\ticon_url = excluded.icon_url,\n\t\t\tupdated_at = excluded.updated_at\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "8efa8fcf00c6aca1714253c35f3850f3bf1f02bebabd8239716c2b3f2853dfcd"
+}

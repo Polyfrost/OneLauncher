@@ -157,10 +157,6 @@ impl GameProcessManager {
         self.inner.lock().unwrap().get(&cluster_id).map(|p| p.stage)
     }
 
-    pub fn active_ids(&self) -> Vec<i64> {
-        self.inner.lock().unwrap().keys().copied().collect()
-    }
-
     pub fn running_ids(&self) -> Vec<i64> {
         self.inner
             .lock()

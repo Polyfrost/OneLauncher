@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO artifacts (hash, content_type, path, file_name, size_bytes)\n\t\tVALUES (?, ?, ?, ?, ?)\n\t\tON CONFLICT(hash) DO UPDATE SET\n\t\t\tcontent_type = excluded.content_type,\n\t\t\tpath = excluded.path,\n\t\t\tfile_name = excluded.file_name,\n\t\t\tsize_bytes = COALESCE(excluded.size_bytes, artifacts.size_bytes)\n\t\tRETURNING hash, content_type, path, file_name, size_bytes\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "content_type",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "name": "path",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "path"
+          }
+        }
+      },
+      {
+        "name": "file_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "size_bytes",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "size_bytes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "b115456078000751a19d915b122c489501629742786fd6e00d96650c9f2404b2"
+}

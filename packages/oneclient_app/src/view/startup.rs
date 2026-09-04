@@ -89,11 +89,6 @@ impl Component for Startup {
 
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
-        if launcher.needs_location {
-            let _ = RouterContext::get().replace(Route::SetupLocation {});
-            return rect().into_element();
-        }
-
         if launcher.ready && !terms_is_loading(&terms) {
             let document = terms_document(&terms);
             let required_terms = document.as_ref().map(|doc| doc.version).unwrap_or(1);

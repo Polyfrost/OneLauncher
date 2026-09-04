@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO java_versions (absolute_path, major, version, vendor, os_arch, is_jdk)\n\t\tVALUES (?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(absolute_path) DO UPDATE SET\n\t\t\tmajor = excluded.major,\n\t\t\tversion = excluded.version,\n\t\t\tvendor = excluded.vendor,\n\t\t\tos_arch = excluded.os_arch,\n\t\t\tis_jdk = excluded.is_jdk\n\t\tRETURNING absolute_path, major, version, vendor, os_arch, is_jdk as \"is_jdk: bool\"\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "absolute_path",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "absolute_path"
+          }
+        }
+      },
+      {
+        "name": "major",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "major"
+          }
+        }
+      },
+      {
+        "name": "version",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "name": "vendor",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "vendor"
+          }
+        }
+      },
+      {
+        "name": "os_arch",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "os_arch"
+          }
+        }
+      },
+      {
+        "name": "is_jdk: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "java_versions",
+            "name": "is_jdk"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "010f5dcda59ec32eaad1b9c3e2e9807f547a1376372c8b201653a36d6dd14cbc"
+}

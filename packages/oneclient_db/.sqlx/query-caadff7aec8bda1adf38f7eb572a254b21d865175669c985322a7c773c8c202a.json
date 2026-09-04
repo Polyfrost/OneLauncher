@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO game_sessions (\n\t\t\tcluster_id, started_at, ram_allocated_mb, mods_enabled, java_vendor, java_version\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?)\n\t\tRETURNING\n\t\t\tcluster_id, started_at, ended_at, exit_code,\n\t\t\tram_allocated_mb, mods_enabled, java_vendor, java_version\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "ended_at",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "ended_at"
+          }
+        }
+      },
+      {
+        "name": "exit_code",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "exit_code"
+          }
+        }
+      },
+      {
+        "name": "ram_allocated_mb",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "ram_allocated_mb"
+          }
+        }
+      },
+      {
+        "name": "mods_enabled",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "mods_enabled"
+          }
+        }
+      },
+      {
+        "name": "java_vendor",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "java_vendor"
+          }
+        }
+      },
+      {
+        "name": "java_version",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "game_sessions",
+            "name": "java_version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "caadff7aec8bda1adf38f7eb572a254b21d865175669c985322a7c773c8c202a"
+}

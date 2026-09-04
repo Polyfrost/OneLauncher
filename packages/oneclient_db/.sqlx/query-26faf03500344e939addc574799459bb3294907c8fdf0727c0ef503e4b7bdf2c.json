@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE cluster_artifacts\n        SET\n            bundle_name = ?,\n            bundle_version_id = ?,\n            package_id = ?,\n            installed_at = ?\n        WHERE cluster_id = ? AND hash = ?\n        RETURNING\n            cluster_id, hash, cluster_file_name, enabled,\n            bundle_name, bundle_version_id, package_id, installed_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "cluster_file_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_file_name"
+          }
+        }
+      },
+      {
+        "name": "enabled",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "name": "bundle_name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "bundle_version_id",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "bundle_version_id"
+          }
+        }
+      },
+      {
+        "name": "package_id",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "package_id"
+          }
+        }
+      },
+      {
+        "name": "installed_at",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "installed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "26faf03500344e939addc574799459bb3294907c8fdf0727c0ef503e4b7bdf2c"
+}

@@ -27,12 +27,18 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let start_maximized = use_state({
+            let v = settings.start_maximized;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         {
             let settings = settings.clone();
             use_side_effect(move || {
                 let discord = *discord_rpc.read();
                 let crash = *crash_reporting.read();
+                let maximized = *start_maximized.read();
                 if *first.peek() {
                     first.set(false);
                     return;
@@ -40,6 +46,7 @@ impl Component for SettingsLauncher {
                 let mut next = settings.clone();
                 next.discord_enabled = discord;
                 next.crash_reporting = crash;
+                next.start_maximized = maximized;
                 dispatch.set_settings(next);
             });
         }
@@ -74,6 +81,12 @@ impl Component for SettingsLauncher {
                 "Crash Reporting",
                 "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
                 toggle(crash_reporting),
+            ))
+            .child(settings_row(
+                IconType::Maximize01,
+                "Start Maximized",
+                "Open the launcher window maximized. Applies on restart.",
+                toggle(start_maximized),
             ))
             .child(settings_row(
                 IconType::File02,

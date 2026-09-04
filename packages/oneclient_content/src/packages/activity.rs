@@ -102,6 +102,7 @@ fn newest<'a>(copies: impl IntoIterator<Item = &'a Copy>) -> Option<String> {
 mod tests {
     use super::*;
     use oneclient_common::domain::ContentType;
+    use oneclient_db::models::SeenStatus;
 
     fn info(
         project_id: Option<&str>,
@@ -121,6 +122,7 @@ mod tests {
             display_version: None,
             provider: project_id.map(|_| ProviderId::Modrinth),
             published_at: published_at.map(Into::into),
+            seen_status: SeenStatus::Seen,
         }
     }
 

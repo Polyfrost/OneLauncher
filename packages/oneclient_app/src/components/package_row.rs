@@ -219,11 +219,7 @@ pub(crate) fn grid_card(
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     let (bg, border, content_alpha) = if enabled {
         (colors::brand().with_a(38), colors::brand(), 255)
@@ -345,11 +341,7 @@ fn package_info(
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     rect()
         .horizontal()
@@ -420,18 +412,7 @@ pub(crate) fn package_icon(
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
 ) -> Element {
-    if item.is_remote() {
-        remote_icon(&item.icon_url, icon_query, size)
-    } else {
-        local_icon(size)
-    }
-}
-
-fn remote_icon(
-    icon_url: &Option<String>,
-    icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
-    size: f32,
-) -> Element {
+    let icon_url = &item.icon_url;
     let loaded = loaded_image(icon_url.as_deref(), icon_query);
 
     match loaded {
@@ -442,12 +423,9 @@ fn remote_icon(
             .corner_radius(CornerRadius::new_all(8.))
             .into_element(),
 
-        None => icon_box(IconType::DotsGrid, size),
+        None if icon_url.is_some() => icon_box(IconType::DotsGrid, size),
+        None => icon_box(IconType::HelpCircle, size),
     }
-}
-
-fn local_icon(size: f32) -> Element {
-    icon_box(IconType::HelpCircle, size)
 }
 
 fn icon_box(icon: IconType, size: f32) -> Element {

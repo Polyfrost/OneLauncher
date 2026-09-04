@@ -8,7 +8,7 @@ use oneclient_common::domain::ProviderId;
 use crate::packages::error::PackageError;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::store::artifact_absolute_path;
-use crate::packages::types::{VersionDetail, VersionLookup};
+use crate::packages::types::{ProviderVersionLookup, VersionDetail};
 use crate::ctx::ContentCtx;
 
 #[derive(Clone)]
@@ -57,22 +57,37 @@ impl PackageProviderRegistry {
         &self,
         identities: &[FileIdentity],
         ctx: &ContentCtx,
-    ) -> ContentResult<VersionLookup> {
+    ) -> ContentResult<ProviderVersionLookup> {
         if identities.is_empty() {
             return Ok(HashMap::new());
         }
 
         let mut enriched: Vec<FileIdentity> = identities.to_vec();
-        for identity in &mut enriched {
-            enrich_curseforge_fingerprint(identity, ctx).await?;
-        }
+        let mut merged: ProviderVersionLookup = HashMap::new();
 
-        let mut merged = HashMap::new();
         for id in self.remote_ids() {
+            if id == ProviderId::CurseForge {
+                for identity in enriched
+                    .iter_mut()
+                    .filter(|identity| !merged.contains_key(&identity.sha1))
+                {
+                    if let Err(err) = enrich_curseforge_fingerprint(identity, ctx).await {
+                        tracing::debug!(sha1 = %identity.sha1, "could not fingerprint: {err}");
+                    }
+                }
+            }
+
             let provider = self.get(id)?;
-            let found = provider.lookup_versions(&enriched, ctx).await?;
+            let found = match provider.lookup_versions(&enriched, ctx).await {
+                Ok(found) => found,
+                Err(err) => {
+                    tracing::debug!(provider = ?id, "batch lookup failed: {err}");
+                    continue;
+                }
+            };
+
             for (sha1, version) in found {
-                merged.entry(sha1).or_insert(version);
+                merged.entry(sha1).or_insert((id, version));
             }
         }
         Ok(merged)
@@ -84,19 +99,8 @@ impl PackageProviderRegistry {
         sha1: impl AsRef<str>,
         ctx: &ContentCtx,
     ) -> ContentResult<Option<(ProviderId, VersionDetail)>> {
-        let mut identity = FileIdentity::from_sha1(sha1);
-        enrich_curseforge_fingerprint(&mut identity, ctx).await?;
-
-        for id in self.remote_ids() {
-            let provider = self.get(id)?;
-            let mut found = provider
-                .lookup_versions(std::slice::from_ref(&identity), ctx)
-                .await?;
-            if let Some(version) = found.remove(&identity.sha1) {
-                return Ok(Some((id, version)));
-            }
-        }
-        Ok(None)
+        let identity = FileIdentity::from_sha1(sha1);
+        self.first_match(identity, ctx).await
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx), fields(sha1 = %identity.sha1))]
@@ -105,10 +109,19 @@ impl PackageProviderRegistry {
         identity: &FileIdentity,
         ctx: &ContentCtx,
     ) -> ContentResult<Option<(ProviderId, VersionDetail)>> {
-        let mut identity = identity.clone();
-        enrich_curseforge_fingerprint(&mut identity, ctx).await?;
+        self.first_match(identity.clone(), ctx).await
+    }
 
+    async fn first_match(
+        &self,
+        mut identity: FileIdentity,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Option<(ProviderId, VersionDetail)>> {
         for id in self.remote_ids() {
+            if id == ProviderId::CurseForge {
+                enrich_curseforge_fingerprint(&mut identity, ctx).await?;
+            }
+
             let provider = self.get(id)?;
             let mut found = provider
                 .lookup_versions(std::slice::from_ref(&identity), ctx)
@@ -147,9 +160,15 @@ async fn enrich_curseforge_fingerprint(
         return Ok(());
     }
 
-    let bytes = polyio::read(&path).await?;
-    identity.cf_fingerprint = Some(crate::packages::file_identity::curseforge_fingerprint(
-        &bytes,
-    ));
+    // Whole jar read plus a per byte murmur2 the caller runs on freya's
+    // UI-thread executor so it goes to the blocking pool
+    let fingerprint = tokio::task::spawn_blocking(move || {
+        std::fs::read(&path)
+            .map(|bytes| crate::packages::file_identity::curseforge_fingerprint(&bytes))
+    })
+    .await
+    .map_err(std::io::Error::other)??;
+
+    identity.cf_fingerprint = Some(fingerprint);
     Ok(())
 }

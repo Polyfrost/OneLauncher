@@ -192,6 +192,10 @@ pub async fn fetch_package_meta(
 		);
 	}
 
+	if provider == ProviderId::Local {
+		return Ok(out);
+	}
+
 	let missing: Vec<String> = project_ids
 		.iter()
 		.filter(|id| out.get(*id).is_none_or(|m| m.author.is_empty()))

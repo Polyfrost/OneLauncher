@@ -221,6 +221,7 @@ pub struct ProviderReleaseInfo {
 }
 
 pub type VersionLookup = HashMap<String, VersionDetail>;
+pub type ProviderVersionLookup = HashMap<String, (ProviderId, VersionDetail)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkedArtifactInfo {

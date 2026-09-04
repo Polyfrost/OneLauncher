@@ -14,6 +14,7 @@ use oneclient_cluster::{
     ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_content::packages::{LiveSync, LocalImportReport};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_core::settings::store::{save_global_profile, save_settings_and_apply};
 use oneclient_db::models::ClusterId;
@@ -908,36 +909,43 @@ impl Actions {
     }
 
     pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
+        self.import_local_files(cluster_id, vec![(path, content_type)]);
+    }
+
+    pub fn import_local_files(
+        &self,
+        cluster_id: ClusterId,
+        files: Vec<(PathBuf, ContentType)>,
+    ) {
+        if files.is_empty() {
+            return;
+        }
+
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match oneclient_content::packages::PackageStore::import_local_file(
-                &path,
-                content_type,
+            match oneclient_content::packages::PackageStore::import_local_files(
+                &files,
                 cluster_id,
                 &state.services.content(),
             )
             .await
             {
-                Ok(row) => {
-                    let live = oneclient_content::packages::PackageStore::sync_live_content(
-                        cluster_id,
-                        &row,
-                        &state.services.content(),
-                    )
-                    .await
-                    .unwrap_or(oneclient_content::packages::LiveSync::Skipped);
+                Ok(report) => {
+                    let mut deferred = false;
+                    for row in &report.imported {
+                        let live = oneclient_content::packages::PackageStore::sync_live_content(
+                            cluster_id,
+                            row,
+                            &state.services.content(),
+                        )
+                        .await
+                        .unwrap_or(LiveSync::Skipped);
 
-                    let mut body = format!("Added {}", row.file_name);
-                    if live == oneclient_content::packages::LiveSync::Deferred
-                        && state.games.is_active(cluster_id)
-                    {
-                        body.push_str(
-                            ". Minecraft is running, so it will be there at the next launch",
-                        );
+                        deferred |= live == LiveSync::Deferred;
                     }
 
-                    events.notify("Imported").body(body).send();
+                    notify_import(&events, &report, deferred && state.games.is_active(cluster_id));
                     super::invalidate_cluster_queries().await;
                 }
                 Err(err) => events
@@ -1747,6 +1755,39 @@ async fn repair_and_relaunch(
         tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));
     }
+}
+
+fn notify_import(events: &oneclient_events::EventBus, report: &LocalImportReport, deferred: bool) {
+    let failed = report.failed.len();
+
+    let Some(mut body) = (match report.imported.as_slice() {
+        [] => None,
+        [only] => Some(format!("Added {}", only.file_name)),
+        rows => Some(format!("Added {} files", rows.len())),
+    }) else {
+        let reason = report
+            .failed
+            .first()
+            .map_or_else(|| "Nothing could be read".to_string(), |(_, err)| err.to_string());
+
+        events.notify("Import failed").body(reason).error().send();
+        return;
+    };
+
+    if failed > 0 {
+        body.push_str(&format!(", {failed} could not be read"));
+    }
+
+    if deferred {
+        body.push_str(". Minecraft is running, so it will be there at the next launch");
+    }
+
+    if failed == 0 {
+        events.notify("Imported").body(body).send();
+        return;
+    }
+
+    events.notify("Imported").body(body).error().send();
 }
 
 #[must_use = "the notification is not raised until `.send()` is called"]

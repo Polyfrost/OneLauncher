@@ -330,9 +330,7 @@ fn prompt_body(
 
     let import_list = resolved.clone();
     let import = move |_| {
-        for (path, content_type) in &import_list {
-            dispatch.import_local_file(cluster_id, *content_type, path.clone());
-        }
+        dispatch.import_local_files(cluster_id, import_list.clone());
         pending.set(Vec::new());
     };
 

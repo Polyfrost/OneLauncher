@@ -31,6 +31,19 @@ pub fn use_splash() -> SplashState {
     consume_root_context::<SplashState>()
 }
 
+/// The settings value the window was built from, carried in from startup because
+/// the settings channel is still on its defaults during the first frames
+#[derive(Clone, Copy)]
+pub struct StartMaximizedState(pub bool);
+
+pub fn use_provide_start_maximized(state: StartMaximizedState) {
+    use_provide_root_context(move || state);
+}
+
+pub fn use_start_maximized() -> bool {
+    consume_root_context::<StartMaximizedState>().0
+}
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 

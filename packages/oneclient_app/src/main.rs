@@ -9,14 +9,16 @@ use freya::radio::use_init_radio_station;
 use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, cli, constants, events, platform,
-    router, theme, use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
+    events, platform, router, theme, use_provide_actions, use_provide_link_confirm,
+    use_provide_start_maximized,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
 
 struct OneClientApp {
     needs_location: bool,
+    start_maximized: bool,
     boot_launch: Cell<Option<String>>,
     ipc: Cell<Option<ipc::Listener>>,
 }
@@ -89,6 +91,8 @@ impl App for OneClientApp {
 
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
+
+        use_provide_start_maximized(StartMaximizedState(self.start_maximized));
 
         rect()
             .width(Size::fill())
@@ -182,8 +186,11 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
+    let start_maximized = settings.start_maximized;
+
     let window_config = WindowConfig::new_app(OneClientApp {
         needs_location,
+        start_maximized,
         boot_launch: Cell::new(cli.launch),
         ipc: Cell::new(ipc),
     })
@@ -210,7 +217,7 @@ fn main() {
     #[cfg(target_os = "macos")]
     let window_config = window_config
         .with_decorations(true)
-        .with_window_attributes(|attrs, _| {
+        .with_window_attributes(move |attrs, _| {
             use freya::winit::platform::macos::WindowAttributesExtMacOS;
             attrs
                 .with_title_hidden(true)
@@ -218,10 +225,13 @@ fn main() {
                 .with_titlebar_buttons_hidden(true)
                 .with_fullsize_content_view(true)
 				.with_has_shadow(true)
+                .with_maximized(start_maximized)
         });
 
     #[cfg(not(target_os = "macos"))]
-    let window_config = window_config.with_decorations(false);
+    let window_config = window_config
+        .with_decorations(false)
+        .with_window_attributes(move |attrs, _| attrs.with_maximized(start_maximized));
 
     let mut launch_config = LaunchConfig::new()
         .with_window(window_config)

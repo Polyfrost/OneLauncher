@@ -7,6 +7,8 @@ use crate::components::{
     UpdatePromptOverlay,
 };
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
+#[cfg(not(target_os = "macos"))]
+use crate::hooks::use_start_maximized;
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
@@ -32,7 +34,10 @@ impl Component for RootLayout {
         #[cfg(not(target_os = "macos"))]
         let corner = {
             let root_size = Platform::get().root_size;
-            let mut maximized = use_state(|| false);
+            // Seeded because the query below only answers after the window is visible
+            // which would round the corners of the first frames of a maximized launch
+            let start_maximized = use_start_maximized();
+            let mut maximized = use_state(move || start_maximized);
             let size = *root_size.read();
             let dep = (size.width as i32, size.height as i32);
             use_side_effect_with_deps(&dep, move |_| {

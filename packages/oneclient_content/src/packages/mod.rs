@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod dependencies;
 pub mod error;
+pub mod local_manifest;
 pub mod metadata_cache;
 pub mod modpack;
 pub mod provider;
@@ -21,9 +22,10 @@ pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };
 pub use file_identity::{curseforge_fingerprint, FileIdentity};
+pub use local_manifest::{JarManifest, read_jar_icon, read_jar_manifest};
 pub use error::{PackageError, PackageResult};
 pub use provider::{PackageProvider, PackageProviderRegistry};
-pub use store::{LiveSync, PackageStore};
+pub use store::{LiveSync, LocalImportReport, PackageStore};
 pub use types::*;
 pub use updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,

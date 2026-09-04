@@ -123,6 +123,7 @@ serde = {version = "=1.0.228"}
 serde_json = {version = "=1.0.150"}
 serde_repr = {version = "=0.1.20"}
 sysinfo = {version = "=0.39.5"}
+toml = {version = "=1.1.4", default-features = false, features = ["parse", "serde"]}
 trash = {version = "=5.2.6"}
 url = {version = "=2.5.8", features = ["serde"]}
 uuid = {version = "=1.23.1", features = ["serde", "v4"]}

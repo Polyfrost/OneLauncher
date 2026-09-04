@@ -44,7 +44,11 @@ impl ImageCacheStore {
             return Ok(bytes);
         }
 
-        let raw = download(net, url).await?;
+        // icon unpacked for a jar is already on disk
+        let raw = match paths::local_image_path(url) {
+            Some(source) => Bytes::from(polyio::read(&source).await?),
+            None => download(net, url).await?,
+        };
         let bytes = downscale_if_oversized(raw, max_edge).await;
 
         if let Some(parent) = path.parent() {
@@ -87,8 +91,26 @@ async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
     }
 }
 
+/// Icons come out of user supplied jars so the decoder gets a ceiling rather
+/// than whatever the file's header claims
+const MAX_DECODE_EDGE: u32 = 8192;
+const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
+
 fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
-    let img = image::load_from_memory(bytes).ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_EDGE);
+    limits.max_image_height = Some(MAX_DECODE_EDGE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes));
+    reader.limits(limits);
+
+    let img = reader
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .inspect_err(|err| tracing::warn!("refused to decode an image: {err}"))
+        .ok()?;
     if img.width().max(img.height()) <= max_edge {
         return None;
     }

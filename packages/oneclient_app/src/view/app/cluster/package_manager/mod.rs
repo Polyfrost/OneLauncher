@@ -52,6 +52,14 @@ fn provider_project_ids(
     ids
 }
 
+fn local_project_ids(content: &[LinkedArtifactInfo], content_type: ContentType) -> Vec<String> {
+    content
+        .iter()
+        .filter(|info| info.content_type == content_type && info.provider.is_none())
+        .map(|info| info.hash.clone())
+        .collect()
+}
+
 pub fn use_content_meta(
     content: &[LinkedArtifactInfo],
     bundles: &[BundleWithUpdateStatus],
@@ -65,6 +73,15 @@ pub fn use_content_meta(
             out.insert((provider, project_id), meta);
         }
     }
+
+    let local = use_package_meta_batch(
+        ProviderId::Local,
+        local_project_ids(content, content_type),
+    );
+    for (hash, meta) in package_meta_batch(&local) {
+        out.insert((ProviderId::Local, hash), meta);
+    }
+
     out
 }
 

@@ -794,7 +794,7 @@ impl Component for SidebarItem {
             .on_pointer_enter(move |_| *hovering.write() = true)
             .on_pointer_leave(move |_| *hovering.write() = false)
             .map(route, |el, route| {
-                el.on_all_press(move |_| {
+                el.on_press(move |_| {
                     let _ = RouterContext::get().replace(route.clone());
                 })
             });

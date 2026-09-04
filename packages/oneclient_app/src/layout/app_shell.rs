@@ -600,12 +600,22 @@ pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
         ))
 }
 
+pub(crate) fn navigate_back(at_home: bool) {
+    let router = RouterContext::get();
+    if router.can_go_back() {
+        router.go_back();
+    } else if !at_home {
+        let _ = router.push(Route::Home {});
+    }
+}
+
 pub(crate) fn back_button(destination: &str) -> impl IntoElement {
     Button::new()
         .ghost()
         .small()
         .on_press(|_| {
-            RouterContext::get().go_back();
+            // Only rendered off home so the history-empty fallback is reachable
+            navigate_back(false);
         })
         .margin(Gaps::new(0., 0., 0., 32.))
         .child(Icon::new(IconType::ArrowLeft).size(12.))

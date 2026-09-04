@@ -6,9 +6,9 @@ use oneclient_core::ScreenshotInfo;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
-    Segment, SegmentedControl, cell_width, grid_columns_picker, open_folder_button,
-    resolved_columns,
+    Button, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea, Segment,
+    SegmentedControl, cell_width, grid_columns_picker, open_folder_button, resolved_columns,
+    screenshot_context_menu,
 };
 use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state};
 use crate::layout::cluster_content;
@@ -155,32 +155,8 @@ impl Component for ClusterScreenshots {
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, path)| {
-            let copy_dispatch = menu_dispatch.clone();
-            let open_path = path.clone();
-            let copy_path = path.clone();
-            let delete_path = path.clone();
-            ContextMenu::new(x, y)
+            screenshot_context_menu(x, y, path, action, menu_dispatch.clone(), |()| {})
                 .on_close(move |_| menu.set(None))
-                .action(IconType::Folder, "Open in folder", move |()| {
-                    if let Some(dir) = open_path.parent() {
-                        crate::platform::open_url(&dir.to_string_lossy());
-                    }
-                })
-                .action(IconType::Copy01, "Copy", move |()| {
-                    crate::platform::copy_image_to_clipboard(copy_path.clone());
-                    copy_dispatch
-                        .notify("Copied to clipboard")
-                        .body("Screenshot copied to your clipboard.")
-                        .info()
-                        .icon(IconType::ClipboardCheck)
-                        .send();
-                })
-                .separator()
-                .danger_action(IconType::Trash01, "Delete", move |()| {
-                    action.mutate(ScreenshotAction::Delete {
-                        path: delete_path.clone(),
-                    });
-                })
                 .into_element()
         });
 

@@ -7,6 +7,7 @@ pub mod domain;
 pub mod os_ext;
 pub mod paths;
 pub mod patch;
+pub mod process;
 pub mod search;
 pub mod version;
 

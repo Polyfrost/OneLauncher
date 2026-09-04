@@ -2,7 +2,7 @@ mod launcher;
 
 pub mod data_dir;
 
-pub use launcher::{LauncherSettings, ViewLayout, ViewState};
+pub use launcher::{DEFAULT_GRID_COLUMNS, LauncherSettings, ViewLayout, ViewState};
 pub use oneclient_cluster::{
 	GameSettingsProfile, PackageUpdateMode, ProfileUpdate, SettingsOsExtra,
 };

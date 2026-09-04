@@ -9,7 +9,10 @@ pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
     remove_unreferenced_files,
 };
-pub use link::{link_or_copy, remove_entry, try_unlink_materialized};
+pub use link::{
+    LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
+    try_unlink_materialized,
+};
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
 use oneclient_db::dao::{artifact as artifact_dao, cluster as cluster_dao};
@@ -84,7 +87,7 @@ impl PackageStore {
         force_download: bool,
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
-    ) -> ContentResult<ArtifactRow> {
+    ) -> ContentResult<(ArtifactRow, LiveSync)> {
         tracing::info!("installing package to cluster");
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
@@ -102,25 +105,51 @@ impl PackageStore {
         )
         .await?;
 
-        Self::link_artifact(&artifact, &cluster, None, ctx).await?;
-        Ok(artifact)
+        let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
+
+        let live = if enabled {
+            link::try_link_materialized(&cluster, &artifact, &artifact.file_name).await
+        } else {
+            LiveSync::Skipped
+        };
+
+        Ok((artifact, live))
     }
 
-    /// Writes nothing to disk
-    /// the artifact is materialized into the game directory at launch the only
-    /// moment no game is holding the files open
     #[tracing::instrument(level = "debug", skip(artifact, cluster, ctx))]
     pub async fn link_artifact(
         artifact: &ArtifactRow,
         cluster: &ClusterRow,
         cluster_file_name: Option<&str>,
         ctx: &ContentCtx,
-    ) -> ContentResult<()> {
+    ) -> ContentResult<bool> {
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
-        artifact_dao::link_cluster_artifact(&ctx.db, cluster.id, &artifact.hash, name).await?;
+        let link =
+            artifact_dao::link_cluster_artifact(&ctx.db, cluster.id, &artifact.hash, name).await?;
 
-        Ok(())
+        Ok(link.enabled != 0)
+    }
+
+    #[tracing::instrument(level = "debug", skip(artifact, ctx), fields(hash = %artifact.hash))]
+    pub async fn sync_live_content(
+        cluster_id: i64,
+        artifact: &ArtifactRow,
+        ctx: &ContentCtx,
+    ) -> ContentResult<LiveSync> {
+        let Some(link) =
+            artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, &artifact.hash).await?
+        else {
+            return Ok(LiveSync::Skipped);
+        };
+
+        if link.enabled == 0 {
+            return Ok(LiveSync::Skipped);
+        }
+
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+
+        Ok(link::try_link_materialized(&cluster, artifact, &link.cluster_file_name).await)
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -136,7 +165,9 @@ impl PackageStore {
 
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
-        Self::link_artifact(&artifact, &cluster, cluster_file_name, ctx).await
+        Self::link_artifact(&artifact, &cluster, cluster_file_name, ctx)
+            .await
+            .map(|_| ())
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -196,16 +227,11 @@ impl PackageStore {
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
-    /// Only the flag is recorded
-    /// the folder is rewritten at the next launch since a running game holds
-    /// its jars open
-    /// Storage only bundle override bookkeeping lives in
-    /// [`crate::bundles::toggle_artifact_enabled`] to avoid mutual recursion
     pub async fn set_artifact_enabled(
         cluster_id: i64,
         hash: &str,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
+    ) -> ContentResult<(bool, LiveSync)> {
         Self::write_artifact_enabled(cluster_id, hash, None, ctx).await
     }
 
@@ -217,7 +243,9 @@ impl PackageStore {
         enabled: bool,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
-        Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
+        Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx)
+            .await
+            .map(|(enabled, _)| enabled)
     }
 
     /// `target` of `None` means "the opposite of whatever it is now"
@@ -226,7 +254,7 @@ impl PackageStore {
         hash: &str,
         target: Option<bool>,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
+    ) -> ContentResult<(bool, LiveSync)> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
         let artifact = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
             .await?
@@ -256,14 +284,19 @@ impl PackageStore {
         )
         .await?;
 
-        if !enabled {
+        // Only the enable side has an outcome to report; a pack that is not in
+        // the running folder needs no removing from it
+        let live = if enabled {
+            link::try_link_materialized(&cluster, &artifact, &file_name).await
+        } else {
             link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
             if link.cluster_file_name != file_name {
                 link::try_unlink_materialized(&cluster, content_type, &file_name).await;
             }
-        }
+            LiveSync::Skipped
+        };
 
-        Ok(enabled)
+        Ok((enabled, live))
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]

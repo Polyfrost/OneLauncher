@@ -399,7 +399,6 @@ impl Component for PackageManager {
             });
         });
 
-        // Minecraft reads its content once at startup so a toggle now cannot reach the running session
         let session_live = use_game_snapshot().is_active(cluster_id);
         let active = use_state(|| 0usize);
 
@@ -466,7 +465,7 @@ impl Component for PackageManager {
                 cluster_id,
                 package_type,
             ))
-            .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
+            .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,
                 noun_plural,

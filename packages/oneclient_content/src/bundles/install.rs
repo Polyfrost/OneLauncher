@@ -12,7 +12,7 @@ use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 use oneclient_common::domain::{ContentType, GameLoader};
-use crate::packages::store::{PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
 use crate::ctx::ContentCtx;
 
@@ -109,7 +109,7 @@ pub async fn install_package_from_bundle(
                     .await?
             };
 
-            let artifact = PackageStore::install_to_cluster(
+            let (artifact, _) = PackageStore::install_to_cluster(
                 *provider,
                 &project,
                 &version,
@@ -577,8 +577,8 @@ pub async fn toggle_artifact_enabled(
     cluster_id: i64,
     hash: &str,
     ctx: &ContentCtx,
-) -> ContentResult<bool> {
-    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
+) -> ContentResult<(bool, LiveSync)> {
+    let (enabled, live) = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
 
     if enabled {
         on_user_enable_artifact(cluster_id, hash, ctx).await?;
@@ -586,7 +586,7 @@ pub async fn toggle_artifact_enabled(
         on_user_disable_artifact(cluster_id, hash, ctx).await?;
     }
 
-    Ok(enabled)
+    Ok((enabled, live))
 }
 
 /// Prefer this over [`toggle_artifact_enabled`] unless the current value is

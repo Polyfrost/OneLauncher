@@ -10,7 +10,9 @@ use oneclient_common::domain::ContentType;
 use oneclient_content::packages::store::manifest::{
     self, ManifestEntry, MaterializedManifest,
 };
-use oneclient_content::packages::store::{artifact_absolute_path, link_or_copy, remove_entry};
+use oneclient_content::packages::store::{
+    artifact_absolute_path, link_or_copy, remove_entry, sweep_staging_files,
+};
 use oneclient_content::packages::PackageStore;
 use crate::state::LauncherServices;
 
@@ -49,10 +51,6 @@ pub async fn materialize_content(
     let dedicated = cluster.uses_dedicated_dir();
     polyio::create_dir_all(game_dir).await.ok();
 
-    // In the shared directory this often belongs to another cluster so every
-    // use of it checks the id
-    let previous = manifest::load(game_dir).await;
-
     import_manual_content(services, cluster, game_dir).await;
 
     // Before the folder is built not after handing the game several enabled
@@ -67,8 +65,21 @@ pub async fn materialize_content(
         tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
     }
 
+    // Held from the database snapshot through the save so a package removed
+    // mid-launch is not resurrected by our own write; the two calls above take
+    // it themselves so it cannot be taken any earlier
+    let _manifest = manifest::lock().await;
+
+    // In the shared directory this often belongs to another cluster so every
+    // use of it checks the id
+    let previous = manifest::load(game_dir).await;
+
     let desired = desired_content(services, cluster).await?;
     let desired_paths: HashSet<String> = desired.iter().map(Desired::relative_path).collect();
+
+    for content_type in SWAP_TYPES {
+        sweep_staging_files(&game_dir.join(content_type.folder_name())).await;
+    }
 
     // While the game is still closed this is what lands a package removed
     // mid-session and clears another cluster's content from the shared dir
@@ -111,8 +122,10 @@ pub async fn dematerialize_content(
 ) -> LauncherResult<()> {
     // Runs first so anything dropped in during the session is a tracked artifact
     // by now and gets dropped rather than stashed as a loose file
+    // It loads the manifest itself so the lock comes after it
     import_manual_content(services, cluster, game_dir).await;
 
+    let _manifest = manifest::lock().await;
     let current = manifest::load(game_dir).await;
     let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content())
         .await
@@ -125,6 +138,7 @@ pub async fn dematerialize_content(
 
         let ours = ours_in_folder(content_type, &linked, current.as_ref());
         stash_content_files(&dir, &stash, &ours).await;
+        sweep_staging_files(&dir).await;
         ensure_note(&dir, content_type).await;
     }
 
@@ -261,7 +275,11 @@ pub async fn import_manual_content(
         }
     };
 
-    let manifest = manifest::load(game_dir).await;
+    // Not held across the import loop below, which is long and does not need it
+    let manifest = {
+        let _guard = manifest::lock().await;
+        manifest::load(game_dir).await
+    };
 
     for content_type in SWAP_TYPES {
         let dir = game_dir.join(content_type.folder_name());

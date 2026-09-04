@@ -56,6 +56,11 @@ impl ContentType {
         }
     }
 
+    #[must_use]
+    pub const fn reloads_in_game(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
     pub fn from_folder_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "mods" | "mod" => Some(Self::Mod),

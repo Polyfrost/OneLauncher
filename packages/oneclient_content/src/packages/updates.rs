@@ -320,7 +320,7 @@ pub async fn apply_browser_package_update(
 	// Compatibility is not re-checked
 	// a provider disagreeing at install time would strand the user on a build
 	// they cannot move off
-	let installed = PackageStore::install_to_cluster(
+	let (installed, _) = PackageStore::install_to_cluster(
 		update.provider,
 		&project,
 		&version,

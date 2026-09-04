@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
-use oneclient_content::packages::{ContentType, PackageStore};
+use oneclient_content::packages::LiveSync;
 use oneclient_db::models::ClusterId;
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
@@ -78,11 +76,6 @@ pub enum ClusterAction {
         /// writes `Enabled` / `Disabled`
         manifest_default: bool,
     },
-    ImportLocalFile {
-        cluster_id: ClusterId,
-        content_type: ContentType,
-        path: PathBuf,
-    },
     SetDedicatedDir {
         cluster_id: ClusterId,
         dedicated: bool,
@@ -104,11 +97,17 @@ impl MutationCapability for ClusterMutation {
         let content = &state.services.content();
         let result = match keys {
             ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                // Applied to the game folder at next launch never mid-session
-                // Minecraft reads its mods once at startup
                 oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
                     .await
-                    .map(|_| ())
+                    .map(|(_, live)| {
+                        if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
+                            services
+                                .events
+                                .notify("Saved for the next launch")
+                                .body("Minecraft is running, but this could not be added to the open game.")
+                                .send();
+                        }
+                    })
             }
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
@@ -133,17 +132,6 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
-            ClusterAction::ImportLocalFile {
-                cluster_id,
-                content_type,
-                path,
-            } => PackageStore::import_local_file(path, *content_type, *cluster_id, content)
-                .await
-                .map(|row| {
-                    services
-                        .events
-                        .notify("Imported").body(format!("Added {}", row.file_name)).send();
-                }),
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,

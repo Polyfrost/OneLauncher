@@ -180,9 +180,17 @@ pub struct PackageInstall {
     pub dependencies: Vec<String>,
     /// Unresolved or failed dependencies the package still installs
     pub missing_dependencies: Vec<String>,
+    /// The game is open but could not take the package, so the toast must not
+    /// claim it is there now
+    pub live_deferred: bool,
 }
 
-pub fn install_body(name: &str, dependencies: &[String], missing: &[String]) -> String {
+pub fn install_body(
+    name: &str,
+    dependencies: &[String],
+    missing: &[String],
+    live_deferred: bool,
+) -> String {
     let mut body = format!("Added {name}");
 
     if !dependencies.is_empty() {
@@ -198,6 +206,10 @@ pub fn install_body(name: &str, dependencies: &[String], missing: &[String]) -> 
         body.push_str(&format!(" Could not add: {}.", missing.join(", ")));
     }
 
+    if live_deferred {
+        body.push_str(" Minecraft is running, so it will be there at the next launch.");
+    }
+
     body
 }
 
@@ -208,6 +220,7 @@ impl PackageInstall {
             result: Err(err),
             dependencies: Vec::new(),
             missing_dependencies: Vec::new(),
+            live_deferred: false,
         }
     }
 }
@@ -301,7 +314,7 @@ pub async fn install_package(
         child.finish();
 
         match result {
-            Ok(artifact) => {
+            Ok((artifact, _)) => {
                 mark_new(cluster_id, &artifact.hash, state).await;
                 installed_dependencies.push(dependency.project.name.clone());
             }
@@ -336,7 +349,12 @@ pub async fn install_package(
 
     child.finish();
 
-    if let Ok(artifact) = &result {
+    let live_deferred = matches!(
+        result,
+        Ok((_, oneclient_content::packages::LiveSync::Deferred))
+    ) && state.games.is_active(cluster_id);
+
+    if let Ok((artifact, _)) = &result {
         mark_new(cluster_id, &artifact.hash, state).await;
     }
 
@@ -345,6 +363,7 @@ pub async fn install_package(
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
+        live_deferred,
     }
 }
 

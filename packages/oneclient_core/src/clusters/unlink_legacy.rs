@@ -107,6 +107,8 @@ async fn adopt_dedicated(
 	cluster_root: &Path,
 	report: &mut SweepReport,
 ) {
+	let _manifest = manifest::lock().await;
+
 	if manifest::load(cluster_root).await.is_some() {
 		return;
 	}

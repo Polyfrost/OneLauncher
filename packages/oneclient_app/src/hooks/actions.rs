@@ -712,10 +712,24 @@ impl Actions {
             .await
             {
                 Ok(row) => {
-                    events
-                        .notify("Imported")
-                        .body(format!("Added {}", row.file_name))
-                        .send();
+                    let live = oneclient_content::packages::PackageStore::sync_live_content(
+                        cluster_id,
+                        &row,
+                        &state.services.content(),
+                    )
+                    .await
+                    .unwrap_or(oneclient_content::packages::LiveSync::Skipped);
+
+                    let mut body = format!("Added {}", row.file_name);
+                    if live == oneclient_content::packages::LiveSync::Deferred
+                        && state.games.is_active(cluster_id)
+                    {
+                        body.push_str(
+                            ". Minecraft is running, so it will be there at the next launch",
+                        );
+                    }
+
+                    events.notify("Imported").body(body).send();
                     super::invalidate_cluster_queries().await;
                 }
                 Err(err) => events
@@ -776,6 +790,7 @@ impl Actions {
                         name,
                         &install.dependencies,
                         &install.missing_dependencies,
+                        install.live_deferred,
                     ),
                     level: Level::Info,
                     icon: Some(IconType::Download01),

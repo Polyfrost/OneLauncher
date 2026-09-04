@@ -23,7 +23,7 @@ pub use dependencies::{
 pub use file_identity::{curseforge_fingerprint, FileIdentity};
 pub use error::{PackageError, PackageResult};
 pub use provider::{PackageProvider, PackageProviderRegistry};
-pub use store::PackageStore;
+pub use store::{LiveSync, PackageStore};
 pub use types::*;
 pub use updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,

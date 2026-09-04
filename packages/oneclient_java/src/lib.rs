@@ -18,7 +18,7 @@ pub use data::{JavaPackage, JavaRuntime, PackageArchive, java_executable_relativ
 pub use error::{JavaError, JavaResult};
 pub use install::install_package;
 pub use locate::{LocatedJava, best_for_major, locate_java};
-pub use platform::{HostArch, HostOs, HostTarget};
+pub use platform::{HostArch, HostOs, HostTarget, prefer_dedicated_gpu};
 pub use service::{
 	AvailableJava, INSTALLABLE_MAJORS, JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JAVA_VENDOR_HINT,
 	JavaService,

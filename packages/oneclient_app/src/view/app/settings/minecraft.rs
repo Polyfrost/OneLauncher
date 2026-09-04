@@ -1,11 +1,15 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
+#[cfg(windows)]
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
+#[cfg(windows)]
+use crate::components::toggle_controlled;
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -20,7 +24,8 @@ pub struct SettingsMinecraft;
 
 impl Component for SettingsMinecraft {
     fn render(&self) -> impl IntoElement {
-        let profile = use_settings_snapshot().settings.global_game_settings;
+        let settings = use_settings_snapshot().settings;
+        let profile = settings.global_game_settings.clone();
         let dispatch = use_dispatch();
 
         let fullscreen = use_state({
@@ -146,6 +151,14 @@ impl Component for SettingsMinecraft {
                     .width(Size::px(220.)),
             ));
 
+        #[cfg(windows)]
+        let page = page.child(settings_row(
+            IconType::Rocket02,
+            "Prefer Dedicated GPU",
+            "Ask Windows to run Java on the high-performance GPU.",
+            discrete_gpu_field(settings, dispatch.clone()),
+        ));
+
         #[cfg(target_os = "linux")]
         let page = page
             .child(section_header("GRAPHICS"))
@@ -216,6 +229,20 @@ fn build_update(
         hook_post: command_patch(post),
         ..Default::default()
     }
+}
+
+/// A launcher setting rather than a profile field, so it bypasses [`build_update`]
+#[cfg(windows)]
+fn discrete_gpu_field(settings: LauncherSettings, dispatch: crate::Actions) -> impl IntoElement {
+    let on = settings.use_discrete_gpu;
+    let on_toggle: EventHandler<()> = (move |()| {
+        let mut next = settings.clone();
+        next.use_discrete_gpu = !on;
+        dispatch.set_settings(next);
+    })
+    .into();
+
+    toggle_controlled(on, on_toggle)
 }
 
 /// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states

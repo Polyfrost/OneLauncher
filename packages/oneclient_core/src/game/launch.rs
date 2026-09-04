@@ -294,6 +294,11 @@ pub async fn launch_cluster(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
+    let use_discrete_gpu = state.settings.read().use_discrete_gpu;
+    if use_discrete_gpu {
+        oneclient_java::prefer_dedicated_gpu(std::path::Path::new(&java.absolute_path)).await;
+    }
+
     let mut command = base_command(&profile, &java.absolute_path);
     apply_env(&mut command, &profile);
     command

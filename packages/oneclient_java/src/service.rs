@@ -155,6 +155,7 @@ impl JavaService {
 	#[tracing::instrument(skip(self))]
 	pub async fn remove_runtime(&self, absolute_path: &str) -> JavaResult<()> {
 		self.store.delete_by_path(absolute_path).await?;
+		crate::platform::forget_dedicated_gpu(Path::new(absolute_path)).await;
 		tracing::info!("removed Java runtime");
 		Ok(())
 	}

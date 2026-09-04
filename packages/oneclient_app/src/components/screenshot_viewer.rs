@@ -1,8 +1,15 @@
+use std::path::PathBuf;
+
 use freya::prelude::*;
 use oneclient_core::ScreenshotInfo;
 
-use crate::components::{Button, Icon, IconType, LocalImage, OverlayPopup};
-use crate::hooks::{ScreenshotAction, use_dispatch, use_screenshot_action};
+use crate::components::{
+    Button, ContextMenu, Icon, IconType, LocalImage, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL,
+    OverlayPopup, overlay_is_topmost,
+};
+use crate::hooks::{
+    Actions, ScreenshotAction, UseScreenshotAction, use_dispatch, use_screenshot_action,
+};
 use crate::theme::colors;
 use crate::ui::fmt_date;
 use crate::utils::{format_res, format_size};
@@ -37,6 +44,7 @@ impl Component for ScreenshotViewer {
             let start = self.start.min(len.saturating_sub(1));
             move || start
         });
+        let mut menu = use_state(|| None::<(f32, f32)>);
 
         if len == 0 {
             return rect().into_element();
@@ -50,6 +58,7 @@ impl Component for ScreenshotViewer {
         let close = self.on_close.clone();
         let scrim_close = self.on_close.clone();
         let delete_close = self.on_close.clone();
+        let menu_delete_close = self.on_close.clone();
 
         let has_prev = idx > 0;
         let has_next = idx + 1 < len;
@@ -61,6 +70,23 @@ impl Component for ScreenshotViewer {
         let copy_dispatch = dispatch.clone();
         let delete_path = info.path.clone();
 
+        let menu_overlay = (*menu.read()).map(|(x, y)| {
+            let menu_close = menu_delete_close.clone();
+
+            // Nested inside this viewer's popup, so it has to be raised above it
+            screenshot_context_menu(
+                x,
+                y,
+                info.path.clone(),
+                action,
+                dispatch.clone(),
+                move |()| menu_close.call(()),
+            )
+            .overlay_level(OVERLAY_MAX_LEVEL)
+            .on_close(move |_| menu.set(None))
+            .into_element()
+        });
+
         OverlayPopup::new()
             .on_close(move |_| scrim_close.call(()))
             .child(
@@ -68,10 +94,15 @@ impl Component for ScreenshotViewer {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .on_global_key_down(move |e: Event<KeyboardEventData>| match &e.key {
-                        Key::Named(NamedKey::ArrowLeft) if idx > 0 => index.set(idx - 1),
-                        Key::Named(NamedKey::ArrowRight) if idx + 1 < len => index.set(idx + 1),
-                        _ => {}
+                    .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                        if !overlay_is_topmost(OVERLAY_BASE_LEVEL) {
+                            return;
+                        }
+                        match &e.key {
+                            Key::Named(NamedKey::ArrowLeft) if idx > 0 => index.set(idx - 1),
+                            Key::Named(NamedKey::ArrowRight) if idx + 1 < len => index.set(idx + 1),
+                            _ => {}
+                        }
                     })
                     .child(
                         rect()
@@ -100,6 +131,14 @@ impl Component for ScreenshotViewer {
                                         rect()
                                             .width(Size::flex(1.0))
                                             .height(Size::fill())
+                                            .on_secondary_down(move |e: Event<PressEventData>| {
+                                                if let PressEventData::Mouse(m) = e.data() {
+                                                    menu.set(Some((
+                                                        m.global_location.x as f32,
+                                                        m.global_location.y as f32,
+                                                    )));
+                                                }
+                                            })
                                             .child(preview),
                                     )
                                     .child(chevron_btn(
@@ -163,8 +202,48 @@ impl Component for ScreenshotViewer {
                             ),
                     ),
             )
+            .maybe_child(menu_overlay)
             .into_element()
     }
+}
+
+/// The screenshot menu shown both by the grid and by this viewer, so the two
+/// cannot drift apart
+pub fn screenshot_context_menu(
+    x: f32,
+    y: f32,
+    path: PathBuf,
+    action: UseScreenshotAction,
+    dispatch: Actions,
+    on_deleted: impl Into<EventHandler<()>>,
+) -> ContextMenu {
+    let open_path = path.clone();
+    let copy_path = path.clone();
+    let delete_path = path;
+    let on_deleted = on_deleted.into();
+
+    ContextMenu::new(x, y)
+        .action(IconType::Folder, "Open in folder", move |()| {
+            if let Some(dir) = open_path.parent() {
+                crate::platform::open_url(&dir.to_string_lossy());
+            }
+        })
+        .action(IconType::Copy01, "Copy", move |()| {
+            crate::platform::copy_image_to_clipboard(copy_path.clone());
+            dispatch
+                .notify("Copied to clipboard")
+                .body("Screenshot copied to your clipboard.")
+                .info()
+                .icon(IconType::ClipboardCheck)
+                .send();
+        })
+        .separator()
+        .danger_action(IconType::Trash01, "Delete", move |()| {
+            action.mutate(ScreenshotAction::Delete {
+                path: delete_path.clone(),
+            });
+            on_deleted.call(());
+        })
 }
 
 fn chevron_btn(

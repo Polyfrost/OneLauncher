@@ -1,12 +1,17 @@
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType, OverlayPopup};
+use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::colors;
 
 const MENU_BG: Color = Color::from_rgb(25, 32, 38);
 const MENU_BORDER: Color = Color::from_argb(26, 255, 255, 255);
 const MENU_FG: Color = Color::from_rgb(155, 161, 166);
 const MENU_DANGER: Color = Color::from_rgb(242, 84, 90);
+
+/// Panel padding and border on both axes, which the measured list sits inside of
+const PANEL_INSET: f32 = 14.;
+/// Gap the clamped menu keeps from the window edges
+const EDGE_MARGIN: f32 = 8.;
 
 enum Entry {
     Action {
@@ -33,10 +38,10 @@ pub struct ContextMenu {
     x: f32,
     y: f32,
     upwards: bool,
-    backdrop: bool,
     title: Option<String>,
     entries: Vec<Entry>,
     on_close: EventHandler<()>,
+    overlay_level: u8,
 }
 
 impl ContextMenu {
@@ -45,10 +50,10 @@ impl ContextMenu {
             x,
             y,
             upwards: false,
-            backdrop: false,
             title: None,
             entries: Vec::new(),
             on_close: (|()| {}).into(),
+            overlay_level: OVERLAY_BASE_LEVEL,
         }
     }
 
@@ -62,14 +67,13 @@ impl ContextMenu {
         self
     }
 
-    #[allow(dead_code)]
-    pub fn backdrop(mut self, backdrop: bool) -> Self {
-        self.backdrop = backdrop;
+    pub fn on_close(mut self, on_close: impl Into<EventHandler<()>>) -> Self {
+        self.on_close = on_close.into();
         self
     }
 
-    pub fn on_close(mut self, on_close: impl Into<EventHandler<()>>) -> Self {
-        self.on_close = on_close.into();
+    pub fn overlay_level(mut self, level: u8) -> Self {
+        self.overlay_level = level;
         self
     }
 
@@ -111,6 +115,7 @@ impl ContextMenu {
 
 impl PartialEq for ContextMenu {
     fn eq(&self, _other: &Self) -> bool {
+        // Always unequal the menu is rebuilt from scratch whenever it is reopened
         false
     }
 }
@@ -119,14 +124,10 @@ impl Component for ContextMenu {
     fn render(&self) -> impl IntoElement {
         let on_close = self.on_close.clone();
 
-        let mut width = use_state(|| 0f32);
-        let mut height = use_state(|| 0f32);
-        let mut panel_width = use_state(|| 0f32);
+        let mut size = use_state(Size2D::zero);
 
-        let item_width = {
-            let w = *width.read();
-            (w > 0.).then_some(w)
-        };
+        let measured = *size.read();
+        let item_width = (measured.width > 0.).then_some(measured.width);
 
         let mut list = rect().vertical().spacing(4.);
 
@@ -169,26 +170,27 @@ impl Component for ContextMenu {
         }
 
         let list = list.on_sized(move |e: Event<SizedEventData>| {
-            let measured = e.data().area.width();
-            if (measured - *width.peek()).abs() > 0.5 {
-                width.set(measured);
+            let area = e.data().area.size;
+            let prev = *size.peek();
+            if (area.width - prev.width).abs() > 0.5 || (area.height - prev.height).abs() > 0.5 {
+                size.set(area);
             }
         });
 
-        let platform = Platform::get();
-        // `root_size` is physical while global positions and measured areas are logical
-        let scale = (*platform.scale_factor.read() as f32).max(f32::EPSILON);
-        let root = *platform.root_size.read();
-        let window_width = root.width / scale;
-        let window_height = root.height / scale;
+        let placed = measured.width > 0.;
+        let menu_width = measured.width + PANEL_INSET;
+        let menu_height = measured.height + PANEL_INSET;
 
-        let measured = *height.read();
-        let menu_width = *panel_width.read();
-        let flips = self.upwards && measured > 0. && self.y - measured >= 0.;
-        let top = if flips { self.y - measured } else { self.y };
-        let top = top.min(window_height - measured).max(0.);
-        let left = self.x.min(window_width - menu_width).max(0.);
-        let placed = measured > 0. && menu_width > 0.;
+        let (x, y) = if placed {
+            let top = if self.upwards && self.y - menu_height >= 0. {
+                self.y - menu_height
+            } else {
+                self.y
+            };
+            clamp_to_window(self.x, top, menu_width, menu_height)
+        } else {
+            (self.x, self.y)
+        };
 
         let panel = rect()
             .vertical()
@@ -202,23 +204,35 @@ impl Component for ContextMenu {
                 left: 1.,
             }))
             .opacity(if placed { 1. } else { 0. })
-            .on_sized(move |e: Event<SizedEventData>| {
-                let area = e.data().area;
-                if (area.height() - *height.peek()).abs() > 0.5 {
-                    height.set(area.height());
-                }
-                if (area.width() - *panel_width.peek()).abs() > 0.5 {
-                    panel_width.set(area.width());
-                }
-            })
             .child(list);
 
         OverlayPopup::new()
-            .backdrop(self.backdrop)
-            .position(Position::new_global().top(top).left(left))
+            .backdrop(false)
+            .overlay_level(self.overlay_level)
+            .position(Position::new_global().top(y).left(x))
             .on_close(move |_| on_close.call(()))
             .child(panel.into_element())
     }
+}
+
+/// `root_size` is physical while the press position is logical, so it has to be
+/// scaled down before the two are compared
+fn clamp_to_window(x: f32, y: f32, menu_width: f32, menu_height: f32) -> (f32, f32) {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    if scale <= 0. {
+        return (x, y);
+    }
+
+    let window = *platform.root_size.peek();
+    let clamp = |pos: f32, len: f32, limit: f32| {
+        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
+    };
+
+    (
+        clamp(x, menu_width, window.width / scale),
+        clamp(y, menu_height, window.height / scale),
+    )
 }
 
 #[derive(PartialEq)]

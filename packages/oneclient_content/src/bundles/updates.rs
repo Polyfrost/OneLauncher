@@ -54,6 +54,22 @@ pub async fn check_bundle_updates(
     check_bundle_updates_inner(cluster_id, bundles, ctx, &overrides).await
 }
 
+/// Local only nothing tracked and nothing opted into is a cluster no bundle can
+/// update so the catalog never has to be fetched for it
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn cluster_has_bundle_content(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<bool> {
+    if !bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+        .await?
+        .is_empty()
+    {
+        return Ok(true);
+    }
+
+    Ok(!bundle_dao::list_overrides(&ctx.db, cluster_id)
+        .await?
+        .is_empty())
+}
+
 #[tracing::instrument(level = "debug", skip(bundles, ctx, overrides))]
 async fn check_bundle_updates_inner(
     cluster_id: i64,

@@ -1,3 +1,12 @@
+pub fn focus_window() {
+    use freya::prelude::{Platform, WinitPlatformExt};
+
+    Platform::get().with_window(None, |win| {
+        win.set_minimized(false);
+        win.focus_window();
+    });
+}
+
 pub fn open_url(url: &str) {
     if let Err(err) = open::that_detached(url) {
         tracing::warn!("failed to open url {url}: {err}");

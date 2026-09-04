@@ -44,11 +44,34 @@ pub async fn launch_cluster(
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
     let parallel = state.settings.read().allow_parallel_running_clusters;
-    if !parallel && state.games.is_running(cluster_id) {
-        tracing::warn!(cluster_id, "cluster already running; refusing launch");
+    if !parallel && state.games.is_active(cluster_id) {
+        tracing::warn!(cluster_id, "cluster already launching or running; refusing launch");
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
+    // A parallel attempt shares its entry with the session already under way, so
+    // clearing it here would drop that game's kill sender and pid
+    let adopted = state.games.is_active(cluster_id);
+
+    let result = start(state, cluster_id, account, search_for_java).await;
+
+    if result.is_err() && !adopted {
+        state.games.remove(cluster_id);
+        state
+            .services
+            .events
+            .game_stage(cluster_id, LaunchStage::Exited);
+    }
+
+    result
+}
+
+async fn start(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    account: &MinecraftAccount,
+    search_for_java: bool,
+) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
         state.games.set_stage(cluster_id, s);
@@ -75,6 +98,8 @@ pub async fn launch_cluster(
     if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
         return Err(GameError::DirectoryInUse(other).into());
     }
+
+    state.games.set_dir(cluster_id, game_dir.clone());
 
     let progress = GroupedProgressSession::start(
         &state.services.events,
@@ -343,7 +368,6 @@ pub async fn launch_cluster(
 
     stage(LaunchStage::Running);
     state.games.set_pid(cluster_id, pid);
-    state.games.set_dir(cluster_id, cwd.clone());
     state.discord.set_presence(Presence::Playing {
         cluster: cluster.name.clone(),
         mc_version: cluster.mc_version.clone(),

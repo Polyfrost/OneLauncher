@@ -68,18 +68,6 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         return Err(JavaError::InvalidJavaPath { path: absolute_path });
     };
 
-    // Minecraft needs AWT a headless image launches fine and then dies mid-game
-    if !has_usable_awt(&info) {
-        tracing::warn!(
-            path = %absolute_path,
-            classes = probe_flag(&info, "java.awt"),
-            natives = probe_flag(&info, "java.awt.natives"),
-            links = probe_flag(&info, "java.awt.link"),
-            "java installation has no usable java.awt support"
-        );
-        return Err(JavaError::MissingAwtSupport { path: absolute_path });
-    }
-
     Ok(JavaCheckInfo {
         os_arch: info
             .get("os.arch")
@@ -92,12 +80,6 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             .unwrap_or_else(|| String::from("unknown")),
         is_jdk: probe_flag(&info, "java.jdk"),
     })
-}
-
-fn has_usable_awt(info: &HashMap<String, String>) -> bool {
-    probe_flag(info, "java.awt")
-        && probe_flag(info, "java.awt.natives")
-        && probe_flag(info, "java.awt.link")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
@@ -136,42 +118,12 @@ mod tests {
 
     #[test]
     fn a_flag_the_probe_never_printed_is_false() {
-        assert!(!probe_flag(&info(&[]), "java.awt"));
+        assert!(!probe_flag(&info(&[]), "java.jdk"));
     }
 
     #[test]
     fn a_flag_is_read_regardless_of_case() {
-        assert!(probe_flag(&info(&[("java.awt", "TRUE")]), "java.awt"));
-        assert!(!probe_flag(&info(&[("java.awt", "false")]), "java.awt"));
-    }
-
-    fn awt(classes: &str, natives: &str, link: &str) -> HashMap<String, String> {
-        info(&[
-            ("java.awt", classes),
-            ("java.awt.natives", natives),
-            ("java.awt.link", link),
-        ])
-    }
-
-    #[test]
-    fn a_complete_image_is_usable() {
-        assert!(has_usable_awt(&awt("true", "true", "true")));
-    }
-
-    #[test]
-    fn awt_classes_without_their_natives_are_not_usable() {
-        assert!(!has_usable_awt(&awt("true", "false", "true")));
-    }
-
-    #[test]
-    fn natives_that_refuse_to_link_are_not_usable() {
-        assert!(!has_usable_awt(&awt("true", "true", "false")));
-    }
-
-    #[test]
-    fn every_half_is_required() {
-        assert!(!has_usable_awt(&info(&[("java.awt", "true")])));
-        assert!(!has_usable_awt(&info(&[("java.awt.natives", "true")])));
-        assert!(!has_usable_awt(&info(&[("java.awt.link", "true")])));
+        assert!(probe_flag(&info(&[("java.jdk", "TRUE")]), "java.jdk"));
+        assert!(!probe_flag(&info(&[("java.jdk", "false")]), "java.jdk"));
     }
 }

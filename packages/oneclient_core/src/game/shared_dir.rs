@@ -51,6 +51,8 @@ pub async fn materialize_content(
     let dedicated = cluster.uses_dedicated_dir();
     polyio::create_dir_all(game_dir).await.ok();
 
+    crate::game::heal::clear_zeroed_files(game_dir).await;
+
     import_manual_content(services, cluster, game_dir).await;
 
     // Before the folder is built not after handing the game several enabled

@@ -1212,8 +1212,9 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
             .text(text);
 
         if text == "Open Onboarding" {
-			dispatch.reset_onboarding();
-            button = button.on_press(|_| {
+			let dispatch = dispatch.clone();
+			button = button.on_press(move |_| {
+				dispatch.reset_onboarding();
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

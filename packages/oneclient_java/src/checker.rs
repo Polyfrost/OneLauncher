@@ -95,9 +95,12 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 }
 
 fn has_usable_awt(info: &HashMap<String, String>) -> bool {
+	if !probe_flag(info, "java.awt.link") {
+		tracing::warn!("java.awt.link returned false. ignoring")
+	}
+
     probe_flag(info, "java.awt")
         && probe_flag(info, "java.awt.natives")
-        && probe_flag(info, "java.awt.link")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {

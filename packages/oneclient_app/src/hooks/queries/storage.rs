@@ -63,7 +63,7 @@ impl MutationCapability for StorageActionMutation {
                     .map(|_| ())
             }
             StorageAction::CleanLegacyClusterContent => {
-                oneclient_core::storage::clean_legacy_cluster_content(&state)
+                oneclient_core::storage::clean_cluster_leftovers(&state)
                     .await
                     .map(|_| ())
             }

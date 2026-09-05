@@ -27,9 +27,10 @@ pub use process::{
 };
 pub use reattach::recover_sessions;
 pub use oneclient_mc::{
-    DownloadPlan, confirm_incomplete_install, download_minecraft, download_version_info, get_game_versions,
+    DownloadPlan, NativesReport, PlannedLibrary, check_natives, confirm_incomplete_install,
+    download_minecraft, download_version_info, get_game_versions,
     get_loader_version, get_loader_versions, get_loaders_for_version, is_version_updated,
-    game_files_missing, libraries_missing, plan_downloads, resolve_minecraft_version,
+    game_files_missing, libraries_missing, natives_missing, plan_downloads, resolve_minecraft_version,
     validate_rules,
     verify_game_files,
 };

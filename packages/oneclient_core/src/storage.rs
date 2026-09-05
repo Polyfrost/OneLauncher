@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,7 @@ pub struct StorageReport {
     pub clusters: Vec<StorageEntry>,
     pub unreferenced_cache: ReclaimableEntry,
     pub legacy_cluster_content: ReclaimableEntry,
+    pub unused_natives: ReclaimableEntry,
 }
 
 #[tracing::instrument(skip(state))]
@@ -97,7 +99,94 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         clusters,
         unreferenced_cache,
         legacy_cluster_content: legacy_cluster_content(state).await?,
+        unused_natives: unused_natives(state).await,
     })
+}
+
+async fn natives_in_use(state: &LauncherState) -> Option<HashSet<String>> {
+    let clusters = state.clusters.list().await.ok()?;
+    let metadata = state.metadata.lock().await;
+
+    let mut in_use = HashSet::new();
+    for cluster in clusters {
+        let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
+
+        if cluster.mc_loader == oneclient_common::domain::GameLoader::Vanilla {
+            in_use.insert(mc_version);
+            continue;
+        }
+
+        let resolved = oneclient_mc::get_loader_version_cached(
+            &metadata,
+            &mc_version,
+            cluster.mc_loader,
+            cluster.mc_loader_version.as_deref(),
+        );
+
+        match resolved {
+            Ok(Some(loader)) => {
+                in_use.insert(format!("{mc_version}-{}", loader.id));
+            }
+            Ok(None) | Err(_) => {
+                tracing::info!(
+                    cluster = %cluster.name,
+                    loader = %cluster.mc_loader,
+                    "cannot resolve a loader version from the cached manifest; \
+                     skipping the natives sweep"
+                );
+                return None;
+            }
+        }
+    }
+
+    Some(in_use)
+}
+
+async fn unused_natives_dirs(state: &LauncherState) -> Vec<PathBuf> {
+    if !state.games.active_ids().is_empty() {
+        return Vec::new();
+    }
+
+    let Ok(root) = paths::natives_dir() else {
+        return Vec::new();
+    };
+    let Some(in_use) = natives_in_use(state).await else {
+        return Vec::new();
+    };
+
+    let mut unused = Vec::new();
+    let Ok(mut entries) = polyio::read_dir(&root).await else {
+        return unused;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let Ok(file_type) = entry.file_type().await else {
+            continue;
+        };
+        if !file_type.is_dir() {
+            continue;
+        }
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !in_use.contains(name) {
+            unused.push(path);
+        }
+    }
+
+    unused
+}
+
+async fn unused_natives(state: &LauncherState) -> ReclaimableEntry {
+    let dirs = unused_natives_dirs(state).await;
+
+    let mut found = ReclaimableEntry::default();
+    for dir in &dirs {
+        found.files += 1;
+        found.bytes += dir_size(dir).await;
+    }
+    found
 }
 
 /// Content is materialized from the cache now so anything in a cluster's own
@@ -220,6 +309,27 @@ pub async fn clean_unreferenced_cache(state: &LauncherState) -> LauncherResult<u
     Ok(report.bytes_freed)
 }
 
+pub async fn clean_unused_natives(state: &LauncherState) -> LauncherResult<usize> {
+    if showing_fixture() {
+        tracing::info!("fixture storage report is active; skipping natives cleanup");
+        return Ok(0);
+    }
+
+    let dirs = unused_natives_dirs(state).await;
+    let mut removed = 0;
+    for dir in dirs {
+        match polyio::remove_dir_all(&dir).await {
+            Ok(()) => {
+                tracing::info!(path = %dir.display(), "removed unused natives");
+                removed += 1;
+            }
+            Err(err) => tracing::warn!(path = %dir.display(), "could not remove natives: {err}"),
+        }
+    }
+
+    Ok(removed)
+}
+
 pub async fn clean_legacy_cluster_content(state: &LauncherState) -> LauncherResult<usize> {
     if showing_fixture() {
         tracing::info!("fixture storage report is active; skipping leftover cleanup");
@@ -228,6 +338,12 @@ pub async fn clean_legacy_cluster_content(state: &LauncherState) -> LauncherResu
 
     let report = crate::clusters::unlink_legacy_cluster_content(state).await?;
     Ok(report.removed)
+}
+
+pub async fn clean_cluster_leftovers(state: &LauncherState) -> LauncherResult<usize> {
+    let content = clean_legacy_cluster_content(state).await?;
+    let natives = clean_unused_natives(state).await?;
+    Ok(content + natives)
 }
 
 /// Set `ONECLIENT_FAKE_STORAGE` to `empty` `clean` or `full` to return a fixture
@@ -251,6 +367,7 @@ fn fixture_report() -> Option<StorageReport> {
             clusters: Vec::new(),
             unreferenced_cache: ReclaimableEntry::default(),
             legacy_cluster_content: ReclaimableEntry::default(),
+            unused_natives: ReclaimableEntry::default(),
         },
         "clean" => StorageReport {
             total_bytes: 1_284_000_000,
@@ -271,6 +388,7 @@ fn fixture_report() -> Option<StorageReport> {
             ],
             unreferenced_cache: ReclaimableEntry::default(),
             legacy_cluster_content: ReclaimableEntry::default(),
+            unused_natives: ReclaimableEntry::default(),
         },
         "full" => StorageReport {
             total_bytes: 4_930_000_000,
@@ -299,6 +417,10 @@ fn fixture_report() -> Option<StorageReport> {
             legacy_cluster_content: ReclaimableEntry {
                 bytes: 261_000_000,
                 files: 439,
+            },
+            unused_natives: ReclaimableEntry {
+                bytes: 4_200_000,
+                files: 3,
             },
         },
         other => {

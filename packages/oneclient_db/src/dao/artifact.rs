@@ -1,6 +1,8 @@
 use sqlx::SqlitePool;
 
-use crate::models::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow, SeenStatus};
+use crate::models::{
+	ArtifactRow, ClusterArtifactRow, LinkedArtifactRow, ProviderReleaseRow, SeenStatus,
+};
 
 pub async fn get_artifact_by_hash(
 	pool: &SqlitePool,
@@ -263,16 +265,39 @@ pub async fn unlink_cluster_artifact(
 	Ok(())
 }
 
-pub async fn list_cluster_artifacts(
+/// One artifact can carry several `provider_releases` rows so the release
+/// columns are taken from a single row picked by a total order rather than
+/// grouped which lets SQLite mix columns from different rows
+pub async fn list_cluster_artifacts_detailed(
 	pool: &SqlitePool,
 	cluster_id: i64,
-) -> Result<Vec<ClusterArtifactRow>, sqlx::Error> {
+) -> Result<Vec<LinkedArtifactRow>, sqlx::Error> {
 	sqlx::query_as!(
-		ClusterArtifactRow,
+		LinkedArtifactRow,
 		r#"
-		SELECT cluster_id, hash, cluster_file_name, enabled, seen_status
-		FROM cluster_artifacts
-		WHERE cluster_id = ?
+		SELECT
+			ca.hash AS "hash!: String",
+			ca.cluster_file_name AS "cluster_file_name!: String",
+			ca.enabled AS "enabled!: i64",
+			ca.seen_status AS "seen_status!: i64",
+			a.content_type AS "content_type!: i64",
+			a.file_name AS "file_name!: String",
+			pr.provider AS "provider?: i64",
+			pr.project_id AS "project_id?: String",
+			pr.version_id AS "version_id?: String",
+			pr.display_name AS "display_name?: String",
+			pr.display_version AS "display_version?: String",
+			pr.published_at AS "published_at?: String"
+		FROM cluster_artifacts ca
+		JOIN artifacts a ON a.hash = ca.hash
+		LEFT JOIN provider_releases pr ON pr.rowid = (
+			SELECT rowid
+			FROM provider_releases
+			WHERE hash = ca.hash
+			ORDER BY published_at DESC, provider, project_id, version_id
+			LIMIT 1
+		)
+		WHERE ca.cluster_id = ?
 		"#,
 		cluster_id
 	)
@@ -363,4 +388,122 @@ pub async fn mark_all_seen(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
 	.await?;
 
 	Ok(result.rows_affected())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::dao::cluster as cluster_dao;
+	use crate::models::NewCluster;
+
+	async fn pool() -> SqlitePool {
+		let pool = SqlitePool::connect("sqlite::memory:")
+			.await
+			.expect("in-memory sqlite");
+		sqlx::migrate!().run(&pool).await.expect("migrations run");
+		pool
+	}
+
+	async fn seed_cluster(pool: &SqlitePool) -> i64 {
+		cluster_dao::insert(
+			pool,
+			&NewCluster {
+				name: "26.1 fabric",
+				folder_name: "26.1 fabric",
+				mc_version: "26.1",
+				mc_loader: 1,
+				mc_loader_version: None,
+				setting_profile_name: None,
+				stage: 0,
+			},
+		)
+		.await
+		.expect("insert cluster")
+		.id
+	}
+
+	#[tokio::test]
+	async fn detailed_listing_matches_the_lookups_it_replaced() {
+		let pool = pool().await;
+		let cluster_id = seed_cluster(&pool).await;
+
+		insert_artifact(&pool, "hash_managed", 0, "a/managed.jar", "managed.jar", Some(1))
+			.await
+			.expect("insert managed artifact");
+		insert_artifact(&pool, "hash_local", 0, "a/local.jar", "local.jar", None)
+			.await
+			.expect("insert local artifact");
+
+		for version in ["v1", "v2"] {
+			upsert_provider_release(
+				&pool,
+				1,
+				"sodium",
+				version,
+				"hash_managed",
+				"Sodium",
+				version,
+				None,
+				"[]",
+				"[]",
+			)
+			.await
+			.expect("insert release");
+		}
+
+		link_cluster_artifact(&pool, cluster_id, "hash_managed", "managed.jar")
+			.await
+			.expect("link managed");
+		link_cluster_artifact(&pool, cluster_id, "hash_local", "local.jar")
+			.await
+			.expect("link local");
+		update_cluster_artifact(&pool, cluster_id, "hash_local", "local.jar", 0)
+			.await
+			.expect("disable local");
+
+		let rows = list_cluster_artifacts_detailed(&pool, cluster_id)
+			.await
+			.expect("detailed listing");
+
+		assert_eq!(rows.len(), 2, "one row per link, not per provider release");
+
+		let managed = rows.iter().find(|r| r.hash == "hash_managed").expect("managed row");
+		assert_eq!(managed.file_name, "managed.jar");
+		assert_eq!(managed.enabled, 1);
+		assert_eq!(managed.project_id.as_deref(), Some("sodium"));
+		assert_eq!(managed.provider, Some(1));
+		assert_eq!(managed.version_id.as_deref(), Some("v1"));
+		assert_eq!(
+			managed.display_version.as_deref(),
+			Some("v1"),
+			"every release column comes from the same release row"
+		);
+
+		let local = rows.iter().find(|r| r.hash == "hash_local").expect("local row");
+		assert_eq!(local.enabled, 0);
+		assert!(local.project_id.is_none(), "a local file has no provider columns");
+
+		let mut conn = pool.acquire().await.expect("connection");
+		sqlx::query("PRAGMA foreign_keys = OFF")
+			.execute(&mut *conn)
+			.await
+			.expect("disable foreign keys");
+		sqlx::query!("DELETE FROM artifacts WHERE hash = ?", "hash_local")
+			.execute(&mut *conn)
+			.await
+			.expect("drop artifact row");
+		let orphans: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cluster_artifacts WHERE hash = ?")
+			.bind("hash_local")
+			.fetch_one(&mut *conn)
+			.await
+			.expect("count orphan link");
+		assert_eq!(orphans, 1, "the link must outlive its artifact row");
+		drop(conn);
+
+		let rows = list_cluster_artifacts_detailed(&pool, cluster_id)
+			.await
+			.expect("detailed listing after delete");
+		assert_eq!(rows.len(), 1);
+		assert_eq!(rows[0].hash, "hash_managed");
+	}
 }

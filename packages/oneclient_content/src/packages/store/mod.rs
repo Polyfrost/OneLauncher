@@ -189,40 +189,26 @@ impl PackageStore {
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<Vec<LinkedArtifactInfo>> {
-        let links = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id).await?;
-        let mut items = Vec::with_capacity(links.len());
+        let rows = artifact_dao::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await?;
 
-        for link in links {
-            let Some(artifact) =
-                artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
-            else {
-                continue;
-            };
-
-            let content_type = ContentType::from_repr(artifact.content_type as u8)
-                .unwrap_or(ContentType::Mod);
-            let release = artifact_dao::get_release_by_hash(&ctx.db, &link.hash).await?;
-            let seen_status = link.status();
-
-            items.push(LinkedArtifactInfo {
-                hash: link.hash,
-                cluster_file_name: link.cluster_file_name,
-                enabled: link.enabled != 0,
-                content_type,
-                file_name: artifact.file_name,
-                project_id: release.as_ref().map(|r| r.project_id.clone()),
-                version_id: release.as_ref().map(|r| r.version_id.clone()),
-                display_name: release.as_ref().map(|r| r.display_name.clone()),
-                display_version: release.as_ref().map(|r| r.display_version.clone()),
-                provider: release
-                    .as_ref()
-                    .and_then(|r| ProviderId::from_repr(r.provider as u8)),
-                published_at: release.as_ref().and_then(|r| r.published_at.clone()),
-                seen_status,
-            });
-        }
-
-        Ok(items)
+        Ok(rows
+            .into_iter()
+            .map(|row| LinkedArtifactInfo {
+                hash: row.hash,
+                cluster_file_name: row.cluster_file_name,
+                enabled: row.enabled != 0,
+                content_type: ContentType::from_repr(row.content_type as u8)
+                    .unwrap_or(ContentType::Mod),
+                file_name: row.file_name,
+                project_id: row.project_id,
+                version_id: row.version_id,
+                display_name: row.display_name,
+                display_version: row.display_version,
+                provider: row.provider.and_then(|p| ProviderId::from_repr(p as u8)),
+                published_at: row.published_at,
+                seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
+            })
+            .collect())
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -256,10 +242,8 @@ impl PackageStore {
         hash: &str,
         enabled: bool,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
-        Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx)
-            .await
-            .map(|(enabled, _)| enabled)
+    ) -> ContentResult<(bool, LiveSync)> {
+        Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
     }
 
     /// `target` of `None` means "the opposite of whatever it is now"

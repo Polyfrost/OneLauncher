@@ -135,13 +135,34 @@ pub async fn extract_zip(
 	zip_path: impl AsRef<std::path::Path>,
 	dest_path: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	extract_zip_filtered(
-		zip_path,
-		dest_path,
-		None::<fn(&StoredZipEntry) -> bool>,
-		None::<fn(&str) -> String>,
-	)
+	let zip_path = zip_path.as_ref().to_path_buf();
+	let dest_path = dest_path.as_ref().to_path_buf();
+
+	off_caller_thread(move || async move {
+		extract_zip_filtered(
+			zip_path,
+			dest_path,
+			None::<fn(&StoredZipEntry) -> bool>,
+			None::<fn(&str) -> String>,
+		)
+		.await
+	})
 	.await
+}
+
+/// Inflating an archive is CPU work sitting between short async writes, and
+/// installs are driven from freya's UI-thread executor, so a large extraction
+/// run inline stalls rendering for as long as it takes
+async fn off_caller_thread<F, Fut>(work: F) -> PolyIOResult<()>
+where
+	F: FnOnce() -> Fut + Send + 'static,
+	Fut: std::future::Future<Output = PolyIOResult<()>>,
+{
+	let handle = tokio::runtime::Handle::current();
+
+	tokio::task::spawn_blocking(move || handle.block_on(work()))
+		.await
+		.map_err(std::io::Error::other)?
 }
 
 #[tracing::instrument(
@@ -306,14 +327,20 @@ where
     )
 )]
 pub async fn extract_tar_gz(archive: impl AsRef<std::path::Path>, dest: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
-	crate::create_dir_all(&dest).await?;
+	let archive = archive.as_ref().to_path_buf();
+	let dest = dest.as_ref().to_path_buf();
 
-    let file = tokio::fs::File::open(archive).await?;
-    let buf_reader = tokio::io::BufReader::new(file);
-    let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
+	off_caller_thread(move || async move {
+		crate::create_dir_all(&dest).await?;
 
-    let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
-    tar_archive.unpack(dest).await?;
+		let file = tokio::fs::File::open(archive).await?;
+		let buf_reader = tokio::io::BufReader::new(file);
+		let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
 
-    Ok(())
+		let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
+		tar_archive.unpack(dest).await?;
+
+		Ok(())
+	})
+	.await
 }

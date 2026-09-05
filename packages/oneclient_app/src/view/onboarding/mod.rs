@@ -2,6 +2,7 @@ mod account;
 mod bundles;
 mod downloading;
 mod language;
+mod location;
 mod migration;
 mod preferences;
 mod selection;
@@ -19,6 +20,7 @@ pub use account::OnboardingAccount;
 pub use bundles::OnboardingBundles;
 pub use downloading::{LoadingBackdrop, OnboardingDownloading};
 pub use language::OnboardingLanguage;
+pub use location::OnboardingLocation;
 pub use migration::OnboardingMigration;
 pub(crate) use migration::matching_new_cluster_id;
 pub use preferences::OnboardingPreferences;
@@ -37,18 +39,19 @@ use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::theme::colors;
 use crate::ui::{border_all_color, entrance_motion_layer};
 
-/// The v1-migration step only exists and is only counted when old launcher data was detected
-pub fn onboarding_total(has_migration: bool) -> usize {
-    if has_migration { 8 } else { 7 }
+pub fn onboarding_total(has_migration: bool, picks_location: bool) -> usize {
+    7 + usize::from(has_migration) + usize::from(picks_location)
 }
 
-pub fn onboarding_step_index(route: &Route, has_migration: bool) -> usize {
-    let shift = if has_migration { 1 } else { 0 };
+pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location: bool) -> usize {
+    let location = usize::from(picks_location);
+    let shift = location + usize::from(has_migration);
 
     match route {
         Route::OnboardingWelcome {} => 0,
-        Route::OnboardingTerms {} => 1,
-        Route::OnboardingMigration {} => 2,
+        Route::OnboardingLocation {} => 1,
+        Route::OnboardingTerms {} => 1 + location,
+        Route::OnboardingMigration {} => 2 + location,
         Route::OnboardingLanguage {} => 2 + shift,
         Route::OnboardingAccount {} => 3 + shift,
         Route::OnboardingBundles {} => 4 + shift,
@@ -65,8 +68,13 @@ const SLIDE_DISTANCE: f32 = 44.;
 pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
     let route = use_route::<Route>();
     let migration_query = use_migration();
-    let step = onboarding_step_index(&route, has_migration_data(&migration_query));
-    let reduce_motion = use_onboarding_selection().reduce_motion;
+    let selection = use_onboarding_selection();
+    let step = onboarding_step_index(
+        &route,
+        has_migration_data(&migration_query),
+        *selection.picks_location.read(),
+    );
+    let reduce_motion = selection.reduce_motion;
 
     let direction = use_hook(|| {
         let prev = LAST_STEP.swap(step, Ordering::Relaxed);
@@ -157,6 +165,19 @@ pub(crate) fn onboarding_nav(
     next: Route,
     next_enabled: bool,
 ) -> impl IntoElement {
+    onboarding_nav_action(back, "Next", next_enabled, move |()| {
+        let _ = RouterContext::get().replace(next.clone());
+    })
+}
+
+pub(crate) fn onboarding_nav_action(
+    back: Option<Route>,
+    next_label: &str,
+    next_enabled: bool,
+    on_next: impl FnMut(()) + 'static,
+) -> impl IntoElement {
+    let mut on_next = on_next;
+
     rect()
         .horizontal()
         .width(Size::fill())
@@ -179,10 +200,8 @@ pub(crate) fn onboarding_nav(
                 .primary()
                 .width(Size::px(140.))
                 .enabled(next_enabled)
-                .on_press(move |_| {
-                    let _ = RouterContext::get().replace(next.clone());
-                })
-                .text("Next")
+                .on_press(move |_| on_next(()))
+                .text(next_label.to_string())
                 .child(Icon::new(IconType::ArrowRight).size(16.)),
         )
         .into_element()
@@ -346,4 +365,70 @@ pub(crate) fn step_heading(title: &str, subtitle: &str) -> impl IntoElement {
                 .color(colors::fg_secondary()),
         )
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flow(has_migration: bool, picks_location: bool) -> Vec<Route> {
+        let mut routes = vec![Route::OnboardingWelcome {}];
+
+        if picks_location {
+            routes.push(Route::OnboardingLocation {});
+        }
+
+        routes.push(Route::OnboardingTerms {});
+
+        if has_migration {
+            routes.push(Route::OnboardingMigration {});
+        }
+
+        routes.extend([
+            Route::OnboardingLanguage {},
+            Route::OnboardingAccount {},
+            Route::OnboardingBundles {},
+            Route::OnboardingPreferences {},
+            Route::OnboardingDownloading {},
+        ]);
+
+        routes
+    }
+
+    #[test]
+    fn every_run_numbers_its_steps_one_after_another() {
+        for has_migration in [false, true] {
+            for picks_location in [false, true] {
+                let routes = flow(has_migration, picks_location);
+                let total = onboarding_total(has_migration, picks_location);
+
+                assert_eq!(
+                    routes.len(),
+                    total,
+                    "the bar is drawn out of {total} but the run has {} steps \
+                     (migration: {has_migration}, folder: {picks_location})",
+                    routes.len()
+                );
+
+                for (position, route) in routes.iter().enumerate() {
+                    assert_eq!(
+                        onboarding_step_index(route, has_migration, picks_location),
+                        position,
+                        "{route:?} is numbered off its place in the run \
+                         (migration: {has_migration}, folder: {picks_location})"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_without_the_folder_step_is_numbered_as_it_always_was() {
+        assert_eq!(onboarding_total(false, false), 7);
+        assert_eq!(onboarding_total(true, false), 8);
+        assert_eq!(
+            onboarding_step_index(&Route::OnboardingTerms {}, false, false),
+            1
+        );
+    }
 }

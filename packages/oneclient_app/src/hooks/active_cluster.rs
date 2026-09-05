@@ -111,6 +111,7 @@ pub struct OnboardingSelectionState {
     /// `None` = don't import
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,
+    pub picks_location: State<bool>,
 }
 
 pub fn use_provide_onboarding_selection(state: OnboardingSelectionState) {

@@ -167,8 +167,12 @@ mod tests {
     }
 
     #[test]
-    fn natives_that_refuse_to_link_are_not_usable() {
-        assert!(!has_usable_awt(&awt("true", "true", "false")));
+    fn a_link_probe_that_fails_does_not_rule_the_image_out() {
+        assert!(has_usable_awt(&awt("true", "true", "false")));
+        assert!(has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "true"),
+        ])));
     }
 
     #[test]

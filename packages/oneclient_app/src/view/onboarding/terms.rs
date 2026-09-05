@@ -8,7 +8,7 @@ use crate::components::{
 };
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
-    use_migration, use_settings_snapshot, use_terms,
+    use_migration, use_onboarding_selection, use_settings_snapshot, use_terms,
 };
 use crate::platform::open_url;
 use crate::routes::Route;
@@ -49,7 +49,13 @@ impl Component for OnboardingTerms {
         } else {
             Route::OnboardingLanguage {}
         };
-        let back = (!returning).then_some(Route::OnboardingWelcome {});
+        let back = (!returning).then(|| {
+            if *use_onboarding_selection().picks_location.read() {
+                Route::OnboardingLocation {}
+            } else {
+                Route::OnboardingWelcome {}
+            }
+        });
 
         let terms_version = document.as_ref().map(|doc| doc.version).unwrap_or(1);
         let privacy_version = document

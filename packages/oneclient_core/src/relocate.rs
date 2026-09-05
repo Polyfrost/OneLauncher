@@ -98,7 +98,6 @@ fn ready_to_move(state: &LauncherState) -> Result<PathBuf, String> {
 	Ok(from)
 }
 
-/// `settled` names what the destination is allowed to be holding already
 async fn weigh(
 	state: &LauncherState,
 	from: PathBuf,

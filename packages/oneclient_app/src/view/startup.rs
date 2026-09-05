@@ -90,7 +90,7 @@ impl Component for Startup {
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
         if launcher.needs_location {
-            let _ = RouterContext::get().replace(Route::SetupLocation {});
+            let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             return rect().into_element();
         }
 

@@ -11,8 +11,6 @@ const LOW_SPACE_BYTES: u64 = 5 * 1000 * 1000 * 1000;
 
 const PROBE_NAME: &str = ".oneclient_write_test";
 
-/// What the operating system leaves lying around on its own. A folder holding
-/// nothing else is one the person who picked it would call empty.
 const OS_CLUTTER: &[&str] = &[
 	".DS_Store",
 	".localized",
@@ -31,8 +29,6 @@ pub struct DataDirCheck {
 	pub warning: Option<String>,
 }
 
-/// Whether `dir` holds nothing worth worrying about: a folder that is missing,
-/// unreadable, or carrying only [`OS_CLUTTER`] and `ignored` names counts as empty
 pub async fn looks_empty(dir: &Path, ignored: &[OsString]) -> bool {
 	let Ok(mut entries) = polyio::read_dir(dir).await else {
 		return true;
@@ -67,7 +63,6 @@ pub async fn resolve(picked: &Path) -> PathBuf {
 	}
 }
 
-/// Where the game data sits when nothing is set: alongside the settings
 pub fn default_path() -> Result<PathBuf, String> {
 	paths::config_dir()
 		.map(Path::to_path_buf)
@@ -83,7 +78,6 @@ pub async fn check(picked: &Path) -> Result<DataDirCheck, String> {
 	check_exact(&resolve(picked).await).await
 }
 
-/// Checks the folder handed over rather than one derived from it
 pub async fn check_exact(path: &Path) -> Result<DataDirCheck, String> {
 	let path = path.to_path_buf();
 

@@ -8,7 +8,7 @@ use crate::layout::RootLayout;
 use crate::layout::SettingsShell;
 
 use crate::view::{
-    NotFound, Relocating, SetupLocation, Startup,
+    NotFound, Relocating, Startup,
     app::{
         AccountSkins, Clusters, Debug, Home, Stats,
         browser::{Browser, BrowserPackage},
@@ -24,7 +24,8 @@ use crate::view::{
     },
     onboarding::{
         OnboardingAccount, OnboardingBundles, OnboardingDownloading, OnboardingLanguage,
-        OnboardingMigration, OnboardingPreferences, OnboardingTerms, OnboardingWelcome,
+        OnboardingLocation, OnboardingMigration, OnboardingPreferences, OnboardingTerms,
+        OnboardingWelcome,
     },
 };
 
@@ -34,14 +35,14 @@ pub enum Route {
     #[layout(RootLayout)]
         #[route("/")]
         Startup {},
-        #[route("/setup/location")]
-        SetupLocation {},
         #[route("/moving")]
         Relocating {},
 
         #[layout(OnboardingShell)]
             #[route("/onboarding")]
             OnboardingWelcome {},
+            #[route("/onboarding/location")]
+            OnboardingLocation {},
             #[route("/onboarding/terms")]
             OnboardingTerms {},
             #[route("/onboarding/migration")]
@@ -128,9 +129,9 @@ impl Route {
     pub fn title(&self) -> String {
         match self {
             Route::Startup { .. } => "Startup".to_string(),
-            Route::SetupLocation { .. } => "Setup".to_string(),
             Route::Relocating { .. } => "Moving".to_string(),
             Route::OnboardingWelcome { .. } => "Welcome".to_string(),
+            Route::OnboardingLocation { .. } => "Folder".to_string(),
             Route::OnboardingTerms { .. } => "Terms & Privacy".to_string(),
             Route::OnboardingMigration { .. } => "Migration".to_string(),
             Route::OnboardingLanguage { .. } => "Language".to_string(),

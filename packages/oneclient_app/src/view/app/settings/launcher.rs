@@ -195,9 +195,7 @@ impl Component for DataFolder {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Source {
-    /// Whatever folder the picker comes back with
     Picked,
-    /// The folder OneClient uses when nothing is set
     Default,
 }
 

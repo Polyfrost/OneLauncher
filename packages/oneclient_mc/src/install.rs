@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
-    Asset, AssetsIndex, DownloadType, Library, Os, Version, VersionInfo,
+    Asset, AssetsIndex, DownloadType, Library, LibraryDownload, Os, Version, VersionInfo,
 };
 use interfrost::api::modded::LoaderVersion;
 use reqwest::Method;
@@ -24,13 +24,20 @@ const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
 /// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
 
+#[derive(Debug, Clone)]
+pub struct PlannedLibrary {
+    pub library: Library,
+    pub artifact: bool,
+    pub natives: bool,
+}
+
 /// Computed up-front so the pre-download size estimate and the progress-bar
 /// denominators come from the same numbers
 #[derive(Debug, Default)]
 pub struct DownloadPlan {
     pub assets: Vec<(String, Asset)>,
     pub asset_bytes: u64,
-    pub libraries: Vec<Library>,
+    pub libraries: Vec<PlannedLibrary>,
     pub library_bytes: u64,
     pub client: bool,
     pub client_bytes: u64,
@@ -70,20 +77,72 @@ fn library_artifact_size(lib: &Library) -> u64 {
         .map_or(0, |artifact| u64::from(artifact.size))
 }
 
-fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
-    let Some((os_key, classifiers)) = lib.natives.as_ref().and_then(|natives| {
+fn native_download<'a>(lib: &'a Library, java_arch: &str) -> Option<&'a LibraryDownload> {
+    let (os_key, classifiers) = lib.natives.as_ref().and_then(|natives| {
         Some((
             natives.get(&Os::native_arch(java_arch))?,
             lib.downloads.as_ref()?.classifiers.as_ref()?,
         ))
-    }) else {
-        return 0;
+    })?;
+
+    classifiers.get(&os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH))
+}
+
+fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
+    native_download(lib, java_arch).map_or(0, |native| u64::from(native.size))
+}
+
+const NATIVES_RECEIPTS: &str = ".extracted";
+
+fn natives_receipt(natives_dir: &Path, lib: &Library) -> PathBuf {
+    natives_dir
+        .join(NATIVES_RECEIPTS)
+        .join(polyio::sanitize_path(lib.name.replace(':', "_")))
+}
+
+fn natives_extracted(natives_dir: &Path, lib: &Library, java_arch: &str) -> bool {
+    let Some(native) = native_download(lib, java_arch) else {
+        return true;
     };
 
-    let parsed = os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH);
-    classifiers
-        .get(&parsed)
-        .map_or(0, |native| u64::from(native.size))
+    match std::fs::read_to_string(natives_receipt(natives_dir, lib)) {
+        Ok(recorded) => native.sha1.is_empty() || recorded.trim() == native.sha1,
+        Err(_) => false,
+    }
+}
+
+fn natives_classifier(lib: &Library) -> Option<&str> {
+    lib.name
+        .split(':')
+        .nth(3)
+        .filter(|classifier| classifier.starts_with("natives-"))
+}
+
+/// Pre-LWJGL3 macOS natives jars ship `.jnilib` so a single suffix would read
+/// an intact extraction as empty and repair it on every check
+const NATIVE_SUFFIXES: &[&str] = if cfg!(windows) {
+    &[".dll"]
+} else if cfg!(target_os = "macos") {
+    &[".dylib", ".jnilib"]
+} else {
+    &[".so"]
+};
+
+fn is_native_file(name: &str) -> bool {
+    NATIVE_SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
+}
+
+fn carries_natives(lib: &Library, java_arch: &str) -> bool {
+    native_download(lib, java_arch).is_some() || natives_classifier(lib).is_some()
+}
+
+async fn record_natives(natives_dir: &Path, lib: &Library, sha1: &str) -> McResult<()> {
+    let path = natives_receipt(natives_dir, lib);
+    if let Some(parent) = path.parent() {
+        polyio::create_dir_all(parent).await?;
+    }
+    polyio::write(&path, sha1.as_bytes()).await?;
+    Ok(())
 }
 
 /// Stats thousands of files so it runs on the blocking pool and keeps the
@@ -114,6 +173,7 @@ pub async fn plan_downloads(
 
     let libraries = version.libraries.clone();
     let java_arch = java_arch.to_string();
+    let natives_dir = paths::natives_dir()?.join(&version.id);
 
     tokio::task::spawn_blocking(move || {
         let mut plan = DownloadPlan::default();
@@ -140,19 +200,36 @@ pub async fn plan_downloads(
             // A library whose coordinates don't resolve is kept in the plan so the
             // download path still reports it as a failure rather than skipping it
             let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
-                plan.libraries.push(lib);
+                plan.libraries.push(PlannedLibrary {
+                    library: lib,
+                    artifact: true,
+                    natives: true,
+                });
                 continue;
             };
 
-            if !force
-                && matches_expected_size(&lib_dir.join(&artifact_path), library_artifact_size(&lib))
-            {
+            let artifact = force
+                || !matches_expected_size(
+                    &lib_dir.join(&artifact_path),
+                    library_artifact_size(&lib),
+                );
+            let natives = force || !natives_extracted(&natives_dir, &lib, &java_arch);
+
+            if !artifact && !natives {
                 continue;
             }
 
-            plan.library_bytes += library_artifact_size(&lib);
-            plan.library_bytes += native_download_size(&lib, &java_arch);
-            plan.libraries.push(lib);
+            if artifact {
+                plan.library_bytes += library_artifact_size(&lib);
+            }
+            if natives {
+                plan.library_bytes += native_download_size(&lib, &java_arch);
+            }
+            plan.libraries.push(PlannedLibrary {
+                library: lib,
+                artifact,
+                natives,
+            });
         }
 
         if let Some((path, size)) = client {
@@ -185,6 +262,156 @@ impl VerifyReport {
     pub fn needs_repair(&self) -> bool {
         self.corrupt > 0 || self.missing > 0
     }
+}
+
+const ARCH_SEGMENTS: [&str; 4] = ["x64", "arm64", "x86", "arm32"];
+
+fn arch_segment(java_arch: &str) -> &'static str {
+    match java_arch {
+        "aarch64" => "arm64",
+        "arm" => "arm32",
+        "x86" => "x86",
+        _ => "x64",
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct NativesReport {
+    pub repairable: Vec<String>,
+    pub unsupported: Vec<String>,
+}
+
+impl NativesReport {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.repairable.is_empty() && self.unsupported.is_empty()
+    }
+}
+
+enum JarVerdict {
+    Usable,
+    WrongArch,
+    Unreadable,
+}
+
+async fn inspect_jar(path: &Path, java_arch: &str) -> JarVerdict {
+    let names = match polyio::zip_entry_names(path).await {
+        Ok(names) => names,
+        Err(err) => {
+            tracing::debug!(path = %path.display(), "could not read natives jar: {err}");
+            return JarVerdict::Unreadable;
+        }
+    };
+
+    let natives: Vec<&String> = names
+        .iter()
+        .filter(|name| is_native_file(name))
+        .collect();
+
+    if natives.is_empty() {
+        return JarVerdict::WrongArch;
+    }
+
+    let wanted = arch_segment(java_arch);
+    if natives
+        .iter()
+        .any(|name| name.split('/').any(|part| part == wanted))
+    {
+        return JarVerdict::Usable;
+    }
+
+    if natives
+        .iter()
+        .all(|name| !name.split('/').any(|part| ARCH_SEGMENTS.contains(&part)))
+    {
+        return JarVerdict::Usable;
+    }
+
+    JarVerdict::WrongArch
+}
+
+fn natives_family(lib: &Library) -> String {
+    let parts: Vec<&str> = lib.name.split(':').collect();
+    match parts.as_slice() {
+        [group, artifact, ..] => format!("{group}:{artifact}"),
+        _ => lib.name.clone(),
+    }
+}
+
+async fn any_native_unpacked(natives_dir: &Path) -> bool {
+    let Ok(mut entries) = polyio::read_dir(natives_dir).await else {
+        return false;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if is_native_file(&entry.file_name().to_string_lossy()) {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[tracing::instrument(skip(version), fields(version_id = %version.id), level = "debug")]
+pub async fn check_natives(
+    version: &VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> McResult<NativesReport> {
+    let natives_dir = paths::natives_dir()?.join(&version.id);
+    let lib_dir = paths::libraries_dir()?;
+
+    let host_natives = natives_for_host(version, java_arch, minecraft_updated)?;
+
+    // One scan for the whole sweep the directory is the same for every library
+    let unpacked = any_native_unpacked(&natives_dir).await;
+
+    let mut families: Vec<(String, Vec<JarVerdict>)> = Vec::new();
+    for lib in host_natives {
+        let verdict = if native_download(lib, java_arch).is_some() {
+            if unpacked && natives_extracted(&natives_dir, lib, java_arch) {
+                JarVerdict::Usable
+            } else {
+                JarVerdict::Unreadable
+            }
+        } else {
+            match interfrost::utils::get_path_from_artifact(&lib.name) {
+                Ok(rel) => inspect_jar(&lib_dir.join(&rel), java_arch).await,
+                Err(_) => continue,
+            }
+        };
+
+        let family = natives_family(lib);
+        match families.iter_mut().find(|(name, _)| name == &family) {
+            Some((_, verdicts)) => verdicts.push(verdict),
+            None => families.push((family, vec![verdict])),
+        }
+    }
+
+    let mut report = NativesReport::default();
+    for (family, verdicts) in families {
+        if verdicts.iter().any(|v| matches!(v, JarVerdict::Usable)) {
+            continue;
+        }
+        if verdicts.iter().any(|v| matches!(v, JarVerdict::Unreadable)) {
+            report.repairable.push(family);
+        } else {
+            report.unsupported.push(family);
+        }
+    }
+
+    if !report.repairable.is_empty() {
+        tracing::warn!(libraries = ?report.repairable, "natives are missing or unreadable");
+    }
+    if !report.unsupported.is_empty() {
+        tracing::error!(
+            libraries = ?report.unsupported,
+            platform = %format!("{}-{java_arch}", oneclient_common::constants::TARGET_OS),
+            "natives are installed but hold nothing loadable on this platform"
+        );
+    }
+
+    Ok(report)
 }
 
 /// Expensive reads every asset and library so it belongs behind an explicit
@@ -254,7 +481,7 @@ pub async fn verify_game_files(
 
     // One blocking task for the whole sweep a spawn_blocking per small asset
     // would cost more than the hashing itself
-    let report = tokio::task::spawn_blocking(move || {
+    let mut report = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
 
         for (index, (path, expected)) in targets.iter().enumerate() {
@@ -303,10 +530,25 @@ pub async fn verify_game_files(
 
     child.finish();
 
+    // A version that ships nothing for this platform is a fact about the version
+    // not a verification failure so the rest of the sweep still counts
+    let natives = match check_natives(version, java_arch, minecraft_updated).await {
+        Ok(natives) => natives,
+        Err(err @ McError::NoNativesForPlatform { .. }) => {
+            tracing::error!("{err}");
+            NativesReport::default()
+        }
+        Err(err) => return Err(err),
+    };
+    report.missing += natives.repairable.len();
+    report.checked += natives.repairable.len() + natives.unsupported.len();
+
     tracing::info!(
         checked = report.checked,
         corrupt = report.corrupt,
         missing = report.missing,
+        natives_repairable = natives.repairable.len(),
+        natives_unsupported = natives.unsupported.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "verified game files"
     );
@@ -722,6 +964,86 @@ pub async fn download_client(
     Ok(path)
 }
 
+fn natives_for_host<'a>(
+    version_info: &'a VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> Result<Vec<&'a Library>, McError> {
+    let mut selected = Vec::new();
+    let mut any_declared = false;
+
+    for lib in &version_info.libraries {
+        if natives_classifier(lib).is_some() || lib.natives.is_some() {
+            any_declared = true;
+        }
+
+        if let Some(rules) = &lib.rules
+            && !validate_rules(rules, java_arch, minecraft_updated)
+        {
+            continue;
+        }
+        if !lib.downloadable {
+            continue;
+        }
+        if carries_natives(lib, java_arch) {
+            selected.push(lib);
+        }
+    }
+
+    if any_declared && selected.is_empty() {
+        return Err(McError::NoNativesForPlatform {
+            version: version_info.id.clone(),
+            platform: format!("{}-{java_arch}", oneclient_common::constants::TARGET_OS),
+        });
+    }
+
+    Ok(selected)
+}
+
+#[tracing::instrument(skip(version_info), level = "debug")]
+pub fn natives_missing(
+    version_info: &VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> McResult<bool> {
+    let host_natives = natives_for_host(version_info, java_arch, minecraft_updated)?;
+    let natives_dir = paths::natives_dir()?.join(&version_info.id);
+
+    if !natives_dir.is_dir() {
+        tracing::warn!(path = %natives_dir.display(), "natives directory is missing; will repair");
+        return Ok(true);
+    }
+
+    let lib_dir = paths::libraries_dir()?;
+
+    for lib in host_natives {
+        if native_download(lib, java_arch).is_some() {
+            if !natives_extracted(&natives_dir, lib, java_arch) {
+                tracing::warn!(library = %lib.name, "natives were never extracted; will repair");
+                return Ok(true);
+            }
+            continue;
+        }
+
+        if !lib.include_in_classpath {
+            tracing::error!(
+                library = %lib.name,
+                "a natives jar was dropped from the classpath; the game will not find it"
+            );
+        }
+
+        let Ok(rel) = interfrost::utils::get_path_from_artifact(&lib.name) else {
+            continue;
+        };
+        if !matches_expected_size(&lib_dir.join(&rel), library_artifact_size(lib)) {
+            tracing::warn!(library = %lib.name, "missing or truncated natives jar; will repair");
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 #[tracing::instrument(skip(version_info), level = "debug")]
 pub fn libraries_missing(
     version_info: &VersionInfo,
@@ -746,7 +1068,8 @@ pub fn libraries_missing(
             return Ok(true);
         }
     }
-    Ok(false)
+
+    natives_missing(version_info, java_arch, minecraft_updated)
 }
 
 /// Takes its paths rather than resolving them so it can be tested without the
@@ -811,23 +1134,29 @@ pub async fn download_libraries(
     ctx: &McCtx,
     progress: &GroupedProgressSession,
     version: String,
-    libraries: Vec<Library>,
+    libraries: Vec<PlannedLibrary>,
     java_arch: &str,
 ) -> McResult<usize> {
-    if libraries.is_empty() {
-        return Ok(0);
-    }
-
     let lib_dir = paths::libraries_dir()?;
     let natives_dest = paths::natives_dir()?.join(&version);
     let java_arch = java_arch.to_string();
 
-    polyio::create_dir_all(&lib_dir).await?;
     polyio::create_dir_all(&natives_dest).await?;
+
+    if libraries.is_empty() {
+        return Ok(0);
+    }
+
+    polyio::create_dir_all(&lib_dir).await?;
 
     let started = std::time::Instant::now();
     let count = libraries.len();
-    let requests = stream::iter(libraries.into_iter().map(|lib| {
+    let requests = stream::iter(libraries.into_iter().map(|planned| {
+        let PlannedLibrary {
+            library: lib,
+            artifact: wants_artifact,
+            natives: wants_natives,
+        } = planned;
         let lib_dir = lib_dir.clone();
         let natives_dest = natives_dest.clone();
         let java_arch = java_arch.clone();
@@ -836,13 +1165,16 @@ pub async fn download_libraries(
         let progress = progress.clone();
 
         async move {
-            // Rules and the on-disk check already ran in `plan_downloads`
             let artifact_path = interfrost::utils::get_path_from_artifact(&lib.name)
                 .map_err(|_| McError::LibraryPath(lib.name.clone()))?;
             let path = lib_dir.join(&artifact_path);
 
             tokio::try_join!(
                 async {
+                    if !wants_artifact {
+                        return Ok::<_, McError>(());
+                    }
+
                     if let Some(interfrost::api::minecraft::LibraryDownloads {
                         artifact: Some(ref artifact),
                         ..
@@ -886,40 +1218,37 @@ pub async fn download_libraries(
                     Ok(())
                 },
                 async {
-                    if let Some((os_key, classifiers)) = lib.natives.as_ref().and_then(|natives| {
-                        Some((
-                            natives.get(&Os::native_arch(&java_arch))?,
-                            lib.downloads.as_ref()?.classifiers.as_ref()?,
-                        ))
-                    }) {
-                        let parsed = os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH);
-                        if let Some(native) = classifiers.get(&parsed) {
-                            let data = fetch_bytes_verified(
-                                &requester,
-                                &events,
-                                &progress,
-                                format!("Natives {}", lib_short(&lib.name)),
-                                TaskCategory::Natives,
-                                u64::from(native.size),
-                                &native.url,
-                                &native.sha1,
-                            )
-                            .await?;
+                    if !wants_natives {
+                        return Ok(());
+                    }
 
-                            let extract = progress.child(
-                                format!("Natives {}", lib_short(&lib.name)),
-                                1,
-                                TaskCategory::Natives,
-                            );
-                            extract.set_phase(oneclient_events::TaskPhase::Extracting);
-                            polyio::unzip_bytes_filtered(
-                                data,
-                                Some(|name: &str| !name.starts_with("META-INF")),
-                                &natives_dest,
-                            )
-                            .await?;
-                            extract.finish();
-                        }
+                    if let Some(native) = native_download(&lib, &java_arch) {
+                        let data = fetch_bytes_verified(
+                            &requester,
+                            &events,
+                            &progress,
+                            format!("Natives {}", lib_short(&lib.name)),
+                            TaskCategory::Natives,
+                            u64::from(native.size),
+                            &native.url,
+                            &native.sha1,
+                        )
+                        .await?;
+
+                        let extract = progress.child(
+                            format!("Natives {}", lib_short(&lib.name)),
+                            1,
+                            TaskCategory::Natives,
+                        );
+                        extract.set_phase(oneclient_events::TaskPhase::Extracting);
+                        polyio::unzip_bytes_filtered(
+                            data,
+                            Some(|name: &str| !name.starts_with("META-INF")),
+                            &natives_dest,
+                        )
+                        .await?;
+                        record_natives(&natives_dest, &lib, &native.sha1).await?;
+                        extract.finish();
                     }
 
                     Ok(())
@@ -974,6 +1303,64 @@ pub async fn get_loader_versions(
     Ok(Vec::new())
 }
 
+fn resolve_loader_from_manifest(
+    manifest: &interfrost::api::modded::Manifest,
+    mc_version: &str,
+    loader_version: Option<&str>,
+) -> (bool, Option<LoaderVersion>) {
+    let mut saw_matching_game_version = false;
+
+    for entry in &manifest.game_versions {
+        if entry
+            .id
+            .replace("${interpulse.gameVersion}", mc_version)
+            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
+            != mc_version
+        {
+            continue;
+        }
+
+        saw_matching_game_version = true;
+
+        if let Some(requested) = loader_version {
+            if let Some(found) = entry
+                .loaders
+                .iter()
+                .find(|loader_entry| loader_entry.id == requested)
+            {
+                return (saw_matching_game_version, Some(found.clone()));
+            }
+            continue;
+        }
+
+        if let Some(found) = entry
+            .loaders
+            .iter()
+            .find(|l| l.stable)
+            .or_else(|| entry.loaders.first())
+        {
+            return (saw_matching_game_version, Some(found.clone()));
+        }
+    }
+
+    (saw_matching_game_version, None)
+}
+
+#[tracing::instrument(skip(metadata), level = "debug")]
+pub fn get_loader_version_cached(
+    metadata: &MetadataStore,
+    mc_version: &str,
+    loader: GameLoader,
+    loader_version: Option<&str>,
+) -> McResult<Option<LoaderVersion>> {
+    if loader == GameLoader::Vanilla {
+        return Ok(None);
+    }
+
+    let manifest = metadata.get_modded(loader)?;
+    Ok(resolve_loader_from_manifest(manifest, mc_version, loader_version).1)
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loader_version(
     metadata: &mut MetadataStore,
@@ -986,44 +1373,10 @@ pub async fn get_loader_version(
         return Ok(None);
     }
 
-    let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
-        let mut saw_matching_game_version = false;
-
-        for entry in &manifest.game_versions {
-            if entry
-                .id
-                .replace("${interpulse.gameVersion}", mc_version)
-                .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-                != mc_version
-            {
-                continue;
-            }
-
-            saw_matching_game_version = true;
-
-            if let Some(requested) = loader_version {
-                if let Some(found) = entry
-                    .loaders
-                    .iter()
-                    .find(|loader_entry| loader_entry.id == requested)
-                {
-                    return (saw_matching_game_version, Some(found.clone()));
-                }
-                continue;
-            }
-
-            if let Some(found) = entry
-                .loaders
-                .iter()
-                .find(|l| l.stable)
-                .or_else(|| entry.loaders.first())
-            {
-                return (saw_matching_game_version, Some(found.clone()));
-            }
-        }
-
-        (saw_matching_game_version, None)
-    };
+    let resolve_from_manifest =
+        |manifest: &interfrost::api::modded::Manifest| {
+            resolve_loader_from_manifest(manifest, mc_version, loader_version)
+        };
 
     let mut manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
     let (mut saw_matching, mut resolved) = resolve_from_manifest(manifest);

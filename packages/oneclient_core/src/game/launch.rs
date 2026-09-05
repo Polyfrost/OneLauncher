@@ -234,6 +234,11 @@ async fn start(
             let _ = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await;
         }
         Ok(false) => {}
+        Err(err @ oneclient_mc::McError::NoNativesForPlatform { .. }) => {
+            progress.finish();
+            stage(LaunchStage::Exited);
+            return Err(err.into());
+        }
         Err(err) => tracing::warn!(cluster_id, error = %err, "repair check failed"),
     }
 
@@ -264,6 +269,7 @@ async fn start(
         .join(&version_name)
         .join(format!("{version_name}.jar"));
     let natives = paths::natives_dir()?.join(&version_name);
+    polyio::create_dir_all(&natives).await?;
     let libraries = paths::libraries_dir()?;
     let assets = paths::assets_dir()?;
 

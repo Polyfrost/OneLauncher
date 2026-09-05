@@ -286,6 +286,24 @@ pub async fn read_zip_file_entries(
 	Ok(out)
 }
 
+#[tracing::instrument(
+    level = "debug",
+    skip(zip_path),
+    fields(zip_path = %zip_path.as_ref().display())
+)]
+pub async fn zip_entry_names(
+	zip_path: impl AsRef<std::path::Path>,
+) -> PolyIOResult<Vec<String>> {
+	let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path.as_ref()).await?;
+
+	Ok(reader
+		.file()
+		.entries()
+		.iter()
+		.filter_map(|entry| entry.filename().as_str().ok().map(ToString::to_string))
+		.collect())
+}
+
 /// Returns a zip file entry's bytes without reading the entire file into memory
 #[tracing::instrument(
     level = "debug",

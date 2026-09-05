@@ -6,7 +6,8 @@ java.vendor=Azul Systems, Inc.
 ```
 
 > [!NOTE]
-> `JavaInfo.class` is checked in rather than built, so recompile it against a Java 8
-> target (`javac -source 8 -target 8 JavaInfo.java`) whenever the source changes,
-> and commit both files together. [`checker.rs`](../../src/checker.rs) reads only the
-> `key=value` lines it prints.
+> The checked-in `JavaInfo.class` predates the `java.home`, `java.awt` and `java.jdk`
+> lines and does not print them yet. Recompiling it against a Java 8 target
+> (`javac --release 8 JavaInfo.java`) is what turns the probe-side answers on; until
+> then [`checker.rs`](../../src/checker.rs) falls back to inspecting the installation
+> on disk, which reaches the same verdict for every image seen in the wild.

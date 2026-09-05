@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::relocate::RelocationPlan;
+use oneclient_core::settings::data_dir;
 use oneclient_core::storage::format_bytes;
 
 use super::{section_header, settings_page, settings_row};
@@ -126,6 +127,21 @@ impl Component for DataFolder {
             .on_press(move |_| browse(pending, error, checking))
             .text(if checking_now { "Checking…" } else { "Change…" });
 
+        let mut buttons = Vec::new();
+
+        if !data_dir::is_default(Path::new(&data_dir)) {
+            buttons.push(
+                Button::new()
+                    .secondary()
+                    .small()
+                    .disabled(checking_now)
+                    .on_press(move |_| plan(pending, error, checking, Source::Default))
+                    .text("Reset"),
+            );
+        }
+
+        buttons.push(change);
+
         let mut section = rect()
             .vertical()
             .width(Size::fill())
@@ -134,7 +150,7 @@ impl Component for DataFolder {
                 IconType::Folder,
                 "Launcher Folder",
                 data_dir.clone(),
-                row_actions(PathBuf::from(data_dir), change),
+                row_actions(PathBuf::from(data_dir), buttons),
             ));
 
         if let Some(message) = error.read().clone() {
@@ -161,7 +177,7 @@ impl Component for DataFolder {
                     format_bytes(left.bytes),
                     left.path.display()
                 ),
-                row_actions(left.path, remove),
+                row_actions(left.path, vec![remove]),
             ));
         }
 
@@ -177,31 +193,55 @@ impl Component for DataFolder {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Source {
+    /// Whatever folder the picker comes back with
+    Picked,
+    /// The folder OneClient uses when nothing is set
+    Default,
+}
+
 fn browse(
+    pending: State<Option<RelocationPlan>>,
+    error: State<Option<String>>,
+    checking: State<bool>,
+) {
+    plan(pending, error, checking, Source::Picked);
+}
+
+fn plan(
     mut pending: State<Option<RelocationPlan>>,
     mut error: State<Option<String>>,
     mut checking: State<bool>,
+    source: Source,
 ) {
     if *checking.peek() {
         return;
     }
 
     spawn(async move {
-        let mut dialog =
-            rfd::AsyncFileDialog::new().set_title("Choose where OneClient should store game data");
+        let picked = match source {
+            Source::Picked => {
+                let mut dialog = rfd::AsyncFileDialog::new()
+                    .set_title("Choose where OneClient should store game data");
 
-        if let Some(start) = oneclient_common::paths::picker_start_dir() {
-            dialog = dialog.set_directory(start);
-        }
+                if let Some(start) = oneclient_common::paths::picker_start_dir() {
+                    dialog = dialog.set_directory(start);
+                }
 
-        let Some(handle) = dialog.pick_folder().await else {
-            return;
+                let Some(handle) = dialog.pick_folder().await else {
+                    return;
+                };
+
+                Some(handle.path().to_path_buf())
+            }
+            Source::Default => None,
         };
 
         checking.set(true);
         error.set(None);
 
-        match plan_move(handle.path()).await {
+        match plan_move(picked.as_deref()).await {
             Ok(planned) => pending.set(Some(planned)),
             Err(message) => error.set(Some(message)),
         }
@@ -210,18 +250,27 @@ fn browse(
     });
 }
 
-async fn plan_move(picked: &Path) -> Result<RelocationPlan, String> {
+async fn plan_move(picked: Option<&Path>) -> Result<RelocationPlan, String> {
     let state = crate::launcher::state().map_err(|err| err.to_string())?;
-    oneclient_core::relocate::plan(&state, picked).await
+
+    match picked {
+        Some(picked) => oneclient_core::relocate::plan(&state, picked).await,
+        None => oneclient_core::relocate::plan_default(&state).await,
+    }
 }
 
-fn row_actions(folder: PathBuf, action: Button) -> impl IntoElement {
-    rect()
+fn row_actions(folder: PathBuf, actions: Vec<Button>) -> impl IntoElement {
+    let mut row = rect()
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(8.)
-        .child(open_folder_button(folder))
-        .child(action)
+        .child(open_folder_button(folder));
+
+    for action in actions {
+        row = row.child(action);
+    }
+
+    row
 }
 
 fn confirm_move(

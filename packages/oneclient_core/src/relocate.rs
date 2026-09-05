@@ -64,6 +64,27 @@ pub struct Leftovers {
 }
 
 pub async fn plan(state: &LauncherState, picked: &Path) -> Result<RelocationPlan, String> {
+	let from = ready_to_move(state)?;
+	let checked = data_dir::check(picked).await?;
+
+	weigh(state, from, checked, &[]).await
+}
+
+pub async fn plan_default(state: &LauncherState) -> Result<RelocationPlan, String> {
+	let from = ready_to_move(state)?;
+	let home = data_dir::default_path()?;
+
+	if home == from {
+		return Err("Your game data is already in the default folder.".to_string());
+	}
+
+	let keep = config_owned_names(&home);
+	let checked = data_dir::check_exact(&home).await?;
+
+	weigh(state, from, checked, &keep).await
+}
+
+fn ready_to_move(state: &LauncherState) -> Result<PathBuf, String> {
 	let from = current_dir()?;
 
 	if let Some(reason) = busy_reason(state) {
@@ -74,7 +95,16 @@ pub async fn plan(state: &LauncherState, picked: &Path) -> Result<RelocationPlan
 		return Err(reason);
 	}
 
-	let checked = data_dir::check(picked).await?;
+	Ok(from)
+}
+
+/// `settled` names what the destination is allowed to be holding already
+async fn weigh(
+	state: &LauncherState,
+	from: PathBuf,
+	checked: data_dir::DataDirCheck,
+	settled: &[OsString],
+) -> Result<RelocationPlan, String> {
 	let to = checked.path;
 
 	if to == from {
@@ -83,7 +113,7 @@ pub async fn plan(state: &LauncherState, picked: &Path) -> Result<RelocationPlan
 
 	if to.starts_with(&from) || from.starts_with(&to) {
 		return Err(format!(
-			"Pick a folder outside {} — one cannot hold the other.",
+			"Pick a folder outside {} (one cannot hold the other).",
 			from.display()
 		));
 	}
@@ -95,17 +125,16 @@ pub async fn plan(state: &LauncherState, picked: &Path) -> Result<RelocationPlan
 		));
 	}
 
-	if polyio::dir_has_content(&to).await {
-		return Err(format!("{} is not empty. Pick an empty folder.", to.display()));
-	}
-
 	if let Some(old) = leftovers(state).await {
 		return Err(format!(
-			"Clear the {} still sitting in {} first — OneClient keeps track of one old folder at \
-			 a time.",
+			"Clear the {} still sitting in {} first. OneClient keeps track of one old folder at a time.",
 			format_bytes(old.bytes),
 			old.path.display()
 		));
+	}
+
+	if !data_dir::looks_empty(&to, settled).await {
+		return Err(format!("{} is not empty. Pick an empty folder.", to.display()));
 	}
 
 	let bytes = collect(&from, &skipped_names(&from)).await?.total;
@@ -278,7 +307,7 @@ fn busy_reason(state: &LauncherState) -> Option<String> {
 	}
 
 	Some(format!(
-		"Close Minecraft first — {active} instance{} still open.",
+		"Close Minecraft first. {active} instance{} still open.",
 		if active == 1 { " is" } else { "s are" }
 	))
 }
@@ -403,9 +432,16 @@ async fn collect(root: &Path, skip_top: &[OsString]) -> Result<Found, String> {
 			if file_type.is_dir() {
 				found.dirs.push(relative);
 				stack.push((path, false));
-			} else if let Ok(meta) = entry.metadata().await {
-				found.total += meta.len();
-				found.files.push((relative, meta.len()));
+			} else if file_type.is_file() {
+				if let Ok(meta) = entry.metadata().await {
+					found.total += meta.len();
+					found.files.push((relative, meta.len()));
+				}
+			} else {
+				tracing::debug!(
+					path = %relative.display(),
+					"leaving a socket or pipe behind"
+				);
 			}
 		}
 	}
@@ -725,6 +761,30 @@ mod tests {
 		assert_eq!(found.files.len(), 1);
 		assert_eq!(found.dirs.len(), 1, "the folder itself still has to be made");
 
+		std::fs::remove_dir_all(dir).ok();
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn a_socket_is_walked_past_rather_than_queued_for_copying() {
+		let root = polyio::testing::ScratchDir::new("relocate_socket");
+		let dir = root.path();
+
+		let socket = std::os::unix::net::UnixListener::bind(dir.join("ipc.sock")).unwrap();
+		polyio::write(dir.join("kept.bin"), vec![0u8; 100])
+			.await
+			.unwrap();
+
+		let found = collect(dir, &[]).await.unwrap();
+
+		assert_eq!(
+			found.files.len(),
+			1,
+			"a socket cannot be copied, so it must never reach the copy list"
+		);
+		assert_eq!(found.total, 100, "nor count towards what has to fit");
+
+		drop(socket);
 		std::fs::remove_dir_all(dir).ok();
 	}
 

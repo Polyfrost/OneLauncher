@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use oneclient_common::paths;
@@ -10,23 +11,81 @@ const LOW_SPACE_BYTES: u64 = 5 * 1000 * 1000 * 1000;
 
 const PROBE_NAME: &str = ".oneclient_write_test";
 
+/// What the operating system leaves lying around on its own. A folder holding
+/// nothing else is one the person who picked it would call empty.
+const OS_CLUTTER: &[&str] = &[
+	".DS_Store",
+	".localized",
+	".Spotlight-V100",
+	".Trashes",
+	".fseventsd",
+	"desktop.ini",
+	"Thumbs.db",
+	"$RECYCLE.BIN",
+	"System Volume Information",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataDirCheck {
 	pub path: PathBuf,
 	pub warning: Option<String>,
 }
 
-#[must_use]
-pub fn resolve(picked: &Path) -> PathBuf {
-	if picked.file_name().is_some_and(|name| name == FOLDER_NAME) {
+/// Whether `dir` holds nothing worth worrying about: a folder that is missing,
+/// unreadable, or carrying only [`OS_CLUTTER`] and `ignored` names counts as empty
+pub async fn looks_empty(dir: &Path, ignored: &[OsString]) -> bool {
+	let Ok(mut entries) = polyio::read_dir(dir).await else {
+		return true;
+	};
+
+	while let Ok(Some(entry)) = entries.next_entry().await {
+		let name = entry.file_name();
+
+		if ignored.contains(&name) {
+			continue;
+		}
+
+		let Some(name) = name.to_str() else {
+			return false;
+		};
+
+		if !OS_CLUTTER.iter().any(|junk| junk.eq_ignore_ascii_case(name)) {
+			return false;
+		}
+	}
+
+	true
+}
+
+pub async fn resolve(picked: &Path) -> PathBuf {
+	if picked.file_name().is_some_and(|name| name == FOLDER_NAME)
+		|| looks_empty(picked, &[]).await
+	{
 		picked.to_path_buf()
 	} else {
 		picked.join(FOLDER_NAME)
 	}
 }
 
+/// Where the game data sits when nothing is set: alongside the settings
+pub fn default_path() -> Result<PathBuf, String> {
+	paths::config_dir()
+		.map(Path::to_path_buf)
+		.map_err(|err| format!("Couldn't work out where OneClient keeps its settings: {err}"))
+}
+
+#[must_use]
+pub fn is_default(dir: &Path) -> bool {
+	default_path().is_ok_and(|home| home == dir)
+}
+
 pub async fn check(picked: &Path) -> Result<DataDirCheck, String> {
-	let path = resolve(picked);
+	check_exact(&resolve(picked).await).await
+}
+
+/// Checks the folder handed over rather than one derived from it
+pub async fn check_exact(path: &Path) -> Result<DataDirCheck, String> {
+	let path = path.to_path_buf();
 
 	let existed = polyio::try_exists(&path).await.unwrap_or(false);
 	polyio::create_dir_all(&path)
@@ -107,22 +166,102 @@ pub(crate) fn available_space(path: &Path) -> Option<u64> {
 mod tests {
 	use super::*;
 
-	#[test]
-	fn a_drive_root_gets_a_folder_of_its_own() {
-		let resolved = resolve(Path::new(std::path::MAIN_SEPARATOR_STR));
-		assert_eq!(resolved.file_name().unwrap(), FOLDER_NAME);
+	#[tokio::test]
+	async fn a_folder_with_things_in_it_gets_a_folder_of_its_own() {
+		let root = polyio::testing::ScratchDir::new("data_dir_busy");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+		polyio::write(dir.join("holiday.jpg"), b"mine".as_slice())
+			.await
+			.unwrap();
+
+		assert_eq!(resolve(dir).await, dir.join(FOLDER_NAME));
+
+		std::fs::remove_dir_all(dir).ok();
 	}
 
-	#[test]
-	fn resolving_twice_does_not_nest() {
-		let once = resolve(Path::new("D:/Games"));
-		assert_eq!(resolve(&once), once);
+	#[tokio::test]
+	async fn an_empty_folder_is_used_as_it_stands() {
+		let root = polyio::testing::ScratchDir::new("data_dir_empty");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+
+		assert_eq!(
+			resolve(dir).await,
+			dir.to_path_buf(),
+			"a folder made for this should not get another one inside it"
+		);
+
+		std::fs::remove_dir_all(dir).ok();
+	}
+
+	#[tokio::test]
+	async fn a_folder_the_finder_has_been_in_still_counts_as_empty() {
+		let root = polyio::testing::ScratchDir::new("data_dir_clutter");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+		polyio::write(dir.join(".DS_Store"), b"junk".as_slice())
+			.await
+			.unwrap();
+
+		assert_eq!(
+			resolve(dir).await,
+			dir.to_path_buf(),
+			"the folder looks empty to the person who picked it"
+		);
+
+		std::fs::remove_dir_all(dir).ok();
+	}
+
+	#[tokio::test]
+	async fn resolving_twice_does_not_nest() {
+		let root = polyio::testing::ScratchDir::new("data_dir_nest");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+		polyio::write(dir.join("holiday.jpg"), b"mine".as_slice())
+			.await
+			.unwrap();
+
+		let once = resolve(dir).await;
+		assert_eq!(resolve(&once).await, once);
+
+		std::fs::remove_dir_all(dir).ok();
+	}
+
+	#[tokio::test]
+	async fn the_settings_that_stayed_behind_do_not_make_the_default_folder_look_busy() {
+		let root = polyio::testing::ScratchDir::new("data_dir_settled");
+		let dir = root.path();
+		polyio::create_dir_all(dir).await.unwrap();
+		polyio::write(dir.join("settings.json"), b"{}".as_slice())
+			.await
+			.unwrap();
+
+		let settled = [OsString::from("settings.json")];
+
+		assert!(
+			looks_empty(dir, &settled).await,
+			"moving back in has to be allowed over the settings that never left"
+		);
+
+		polyio::create_dir_all(dir.join("clusters")).await.unwrap();
+
+		assert!(
+			!looks_empty(dir, &settled).await,
+			"game data already sitting there is another matter"
+		);
+
+		std::fs::remove_dir_all(dir).ok();
 	}
 
 	#[tokio::test]
 	async fn a_writable_folder_passes_and_is_not_left_behind() {
 		let root = polyio::testing::ScratchDir::new("data_dir_check");
 		polyio::create_dir_all(root.path()).await.unwrap();
+
+		polyio::write(root.join("holiday.jpg"), b"mine".as_slice())
+			.await
+			.unwrap();
 
 		let checked = check(root.path()).await.unwrap();
 		assert_eq!(checked.path, root.join(FOLDER_NAME));

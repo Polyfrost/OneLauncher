@@ -194,12 +194,9 @@ pub async fn install_bundle(
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
 /// bundle the file has since left still counts
-pub(crate) fn disable_was_deliberate(hidden: bool, suppression: Option<OverrideType>) -> bool {
+pub(crate) fn disable_was_deliberate(suppression: Option<OverrideType>) -> bool {
     match suppression {
-        Some(OverrideType::Removed) => true,
-        // Hidden files are never-shown dependencies
-        // they follow the bundle so only an outright removal keeps one off
-        Some(OverrideType::Disabled) => !hidden,
+        Some(OverrideType::Removed | OverrideType::Disabled) => true,
         Some(OverrideType::Enabled) | None => false,
     }
 }
@@ -243,7 +240,7 @@ pub async fn heal_bundle_activity(
         // a package that moved keeps its old override row and reading only its
         // current bundle would switch it back on
         let suppression = find_user_suppression(&overrides, package_id);
-        if disable_was_deliberate(is_hidden, suppression) {
+        if disable_was_deliberate(suppression) {
             continue;
         }
 
@@ -262,12 +259,6 @@ pub async fn heal_bundle_activity(
         {
             tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
             continue;
-        }
-
-        // Drop the stale override everywhere or a copy under another bundle
-        // keeps answering "off" and the two records never settle
-        if suppression == Some(OverrideType::Disabled) {
-            clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
         }
     }
 
@@ -803,32 +794,32 @@ mod tests {
 
     #[test]
     fn a_disable_with_no_override_behind_it_is_an_accident() {
-        assert!(!disable_was_deliberate(false, None));
-        assert!(!disable_was_deliberate(true, None));
+        assert!(!disable_was_deliberate(None));
     }
 
     #[test]
     fn a_users_own_disable_is_respected() {
-        assert!(disable_was_deliberate(
-            false,
-            Some(OverrideType::Disabled)
-        ));
-        assert!(disable_was_deliberate(false, Some(OverrideType::Removed)));
+        assert!(disable_was_deliberate(Some(OverrideType::Disabled)));
+        assert!(disable_was_deliberate(Some(OverrideType::Removed)));
     }
 
     #[test]
-    fn a_hidden_dependency_cannot_be_disabled_on_its_own() {
+    fn a_hidden_dependency_can_be_disabled_on_its_own() {
+        let file = BundleFile {
+            hidden: true,
+            ..file(true)
+        };
+
         assert!(
-            !disable_was_deliberate(true, Some(OverrideType::Disabled)),
-            "a hidden file follows its bundle; only removing it keeps it off"
+            disable_was_deliberate(Some(OverrideType::Disabled)),
+            "the hidden filter offers the toggle so the choice behind it has to outlive a launch"
         );
-        assert!(disable_was_deliberate(true, Some(OverrideType::Removed)));
+        assert!(!effective_enabled(&file, Some(OverrideType::Disabled)));
     }
 
     #[test]
     fn an_opt_in_override_never_reads_as_a_disable() {
-        assert!(!disable_was_deliberate(false, Some(OverrideType::Enabled)));
-        assert!(!disable_was_deliberate(true, Some(OverrideType::Enabled)));
+        assert!(!disable_was_deliberate(Some(OverrideType::Enabled)));
     }
 
     #[test]

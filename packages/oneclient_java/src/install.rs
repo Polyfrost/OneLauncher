@@ -74,7 +74,15 @@ pub async fn install_package(
 		PackageArchive::TarGz => polyio::extract_tar_gz(&archive_path, &extract_root).await?,
 	}
 
-	let executable = resolve_installed_executable(&extract_root, package);
+	// Walks the extract root and stats candidates, so it stays off the caller's
+	// executor for the same reason the extraction above does
+	let executable = {
+		let extract_root = extract_root.clone();
+		let package = package.clone();
+		tokio::task::spawn_blocking(move || resolve_installed_executable(&extract_root, &package))
+			.await
+			.map_err(|err| polyio::IOError::from(std::io::Error::other(err)))?
+	};
 
 	#[cfg(unix)]
 	{

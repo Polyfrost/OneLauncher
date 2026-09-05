@@ -76,6 +76,136 @@ impl HostTarget {
 	}
 }
 
+#[cfg(windows)]
+const GPU_PREFERENCES_KEY: &str = r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences";
+
+/// A JVM is started through either stub so both are registered
+#[cfg(windows)]
+const GPU_PREFERENCE_EXECUTABLES: [&str; 2] = ["javaw.exe", "java.exe"];
+
+/// Absolute so a `reg.exe` earlier in the search order cannot run in its place
+#[cfg(windows)]
+fn reg_command() -> tokio::process::Command {
+	const NO_WINDOW: u32 = 0x0800_0000;
+
+	let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+	let exe = std::path::Path::new(&system_root)
+		.join("System32")
+		.join("reg.exe");
+
+	let mut command = tokio::process::Command::new(exe);
+	command.creation_flags(NO_WINDOW);
+	command
+}
+
+#[cfg(windows)]
+fn registered_value<'a>(query: &'a str, name: &str) -> Option<&'a str> {
+	query.lines().find_map(|line| {
+		let (value_name, data) = line.split_once("REG_SZ")?;
+		if value_name.trim().eq_ignore_ascii_case(name) {
+			Some(data.trim())
+		} else {
+			None
+		}
+	})
+}
+
+/// Windows writes `GpuPreference=0;` ("let Windows decide") for any app added
+/// through Settings, so only 1 or 2 is a choice worth leaving alone
+#[cfg(windows)]
+fn has_explicit_preference(data: &str) -> bool {
+	data.split(';')
+		.find_map(|part| part.trim().strip_prefix("GpuPreference="))
+		.is_some_and(|preference| matches!(preference.trim(), "1" | "2"))
+}
+
+#[cfg(windows)]
+pub async fn prefer_dedicated_gpu(java_path: &std::path::Path) {
+	let Some(dir) = java_path.parent() else { return };
+
+	let mut targets = Vec::new();
+	for exe in GPU_PREFERENCE_EXECUTABLES {
+		let path = dir.join(exe);
+		if polyio::try_exists(&path).await.unwrap_or(false) {
+			targets.push(path);
+		}
+	}
+
+	if targets.is_empty() {
+		return;
+	}
+
+	// One query for the whole key instead of one per executable
+	let query = match reg_command()
+		.args(["query", GPU_PREFERENCES_KEY])
+		.output()
+		.await
+	{
+		Ok(out) => String::from_utf8_lossy(&out.stdout).into_owned(),
+		Err(err) => {
+			tracing::warn!(%err, "could not run reg.exe");
+			return;
+		}
+	};
+
+	for path in targets {
+		if registered_value(&query, &path.to_string_lossy()).is_some_and(has_explicit_preference) {
+			continue;
+		}
+
+		let added = reg_command()
+			.args(["add", GPU_PREFERENCES_KEY, "/v"])
+			.arg(&path)
+			.args(["/t", "REG_SZ", "/d", "GpuPreference=2;", "/f"])
+			.output()
+			.await;
+
+		match added {
+			Ok(out) if out.status.success() => {
+				tracing::info!(path = %path.display(), "registered JVM for high-performance GPU");
+			}
+			Ok(out) => tracing::warn!(
+				path = %path.display(),
+				stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+				"could not set GPU preference"
+			),
+			Err(err) => tracing::warn!(%err, "could not run reg.exe"),
+		}
+	}
+}
+
+/// Runtimes install into version-stamped folders so without this the key keeps
+/// a dead entry for every upgrade
+#[cfg(windows)]
+pub async fn forget_dedicated_gpu(java_path: &std::path::Path) {
+	let Some(dir) = java_path.parent() else { return };
+
+	for exe in GPU_PREFERENCE_EXECUTABLES {
+		let path = dir.join(exe);
+		let removed = reg_command()
+			.args(["delete", GPU_PREFERENCES_KEY, "/v"])
+			.arg(&path)
+			.arg("/f")
+			.output()
+			.await;
+
+		match removed {
+			Ok(out) if out.status.success() => {
+				tracing::info!(path = %path.display(), "removed GPU preference");
+			}
+			// A value that was never written is reported as an error
+			Ok(_) => {}
+			Err(err) => tracing::warn!(%err, "could not run reg.exe"),
+		}
+	}
+}
+
+#[cfg(not(windows))]
+pub async fn prefer_dedicated_gpu(_java_path: &std::path::Path) {}
+
+#[cfg(not(windows))]
+pub async fn forget_dedicated_gpu(_java_path: &std::path::Path) {}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

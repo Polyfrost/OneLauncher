@@ -106,19 +106,6 @@ impl Component for PlayerModel {
         });
 
         let mut drag = use_state(|| None::<(f32, f32, f32, f32)>);
-        let mut hovering = use_state(|| false);
-
-        // Derive from both states Freya re-emits `pointer enter` after a press which
-        // would otherwise drop the grabbing cursor as the drag starts
-        let apply_cursor = move || {
-            Cursor::set(if drag.peek().is_some() {
-                CursorIcon::Grabbing
-            } else if *hovering.peek() {
-                CursorIcon::Grab
-            } else {
-                CursorIcon::default()
-            });
-        };
 
         let mut last_uuid = use_state({
             let u = self.uuid.clone();
@@ -168,22 +155,21 @@ impl Component for PlayerModel {
             ctx.canvas.draw_rect(SkRect::new(0.0, 0.0, w, h), &paint);
         });
 
-        canvas(render_cb)
-            .key(src_ptr as u64)
+        // `canvas` carries no style data, so the cursor rides on a wrapper `rect` that
+        // covers exactly the same area
+        rect()
             .width(self.width.clone())
             .height(self.height.clone())
-            .on_pointer_enter(move |_| {
-                hovering.set(true);
-                apply_cursor();
-            })
-            .on_pointer_leave(move |_| {
-                hovering.set(false);
-                apply_cursor();
-            })
+            .cursor(CursorIcon::Grab)
+            .child(
+                canvas(render_cb)
+                    .key(src_ptr as u64)
+                    .width(Size::fill())
+                    .height(Size::fill()),
+            )
             .on_pointer_down(move |e: Event<PointerEventData>| {
                 let loc = e.global_location();
                 drag.set(Some((loc.x as f32, loc.y as f32, yaw(), pitch())));
-                apply_cursor();
             })
             .on_global_pointer_move(move |e: Event<PointerEventData>| {
                 let Some((sx, sy, yaw0, pitch0)) = *drag.read() else {
@@ -206,7 +192,6 @@ impl Component for PlayerModel {
             .on_global_pointer_press(move |_: Event<PointerEventData>| {
                 if drag.peek().is_some() {
                     drag.set(None);
-                    apply_cursor();
                 }
             })
     }

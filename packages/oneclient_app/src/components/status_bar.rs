@@ -128,9 +128,6 @@ impl Component for StatusBanner {
 
         let mut close_hover = use_state(|| false);
 
-        // Close unmounts the banner from under the pointer so no `leave` fires
-        use_drop(|| Cursor::set(CursorIcon::default()));
-
         let close = issue.closeable().then(|| {
             rect()
                 .center()
@@ -142,14 +139,9 @@ impl Component for StatusBanner {
                 } else {
                     Color::TRANSPARENT
                 })
-                .on_pointer_enter(move |_| {
-                    close_hover.set(true);
-                    Cursor::set(CursorIcon::Pointer);
-                })
-                .on_pointer_leave(move |_| {
-                    close_hover.set(false);
-                    Cursor::set(CursorIcon::default());
-                })
+                .cursor(CursorIcon::Pointer)
+                .on_pointer_enter(move |_| close_hover.set(true))
+                .on_pointer_leave(move |_| close_hover.set(false))
                 .on_press(move |_| {
                     dismissed.write().insert(issue);
                 })

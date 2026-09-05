@@ -1,6 +1,7 @@
 //! Adapted from Modrinth's `minecraft-auth-errors.ts`
 //! (GPL-3.0)
 
+use oneclient_net::{NetworkFailure, classify_network_failure};
 use reqwest::StatusCode;
 
 use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
@@ -302,62 +303,10 @@ fn xerr(code: u64) -> MinecraftAuthError {
     }
 }
 
-/// reqwest reports all of these as a connect error so the source chain text is
-/// the only thing separating them anything unrecognised falls back to Generic
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NetworkFailure {
-    Certificate,
-    Handshake,
-    Dns,
-    Generic,
-}
-
-fn classify_network_failure(err: &reqwest::Error) -> NetworkFailure {
-    let chain = oneclient_net::error_chain(err).to_ascii_lowercase();
-
-    // Certificate before handshake a rejected certificate also aborts the
-    // handshake and the certificate wording is the more specific of the two
-    const CERTIFICATE: &[&str] = &[
-        "invalid peer certificate",
-        "unknownissuer",
-        "certificate",
-        "certexpired",
-        "notvalidforname",
-    ];
-    const HANDSHAKE: &[&str] = &[
-        "handshake",
-        "received fatal alert",
-        "peer misbehaved",
-        "no cipher suites in common",
-        "protocol version",
-        "unsupported protocol",
-    ];
-    const DNS: &[&str] = &[
-        "dns error",
-        "failed to lookup address",
-        "no record found",
-        "nodename nor servname",
-        "name or service not known",
-        "no such host",
-    ];
-
-    let matches = |markers: &[&str]| markers.iter().any(|marker| chain.contains(marker));
-
-    if matches(CERTIFICATE) {
-        NetworkFailure::Certificate
-    } else if matches(HANDSHAKE) {
-        NetworkFailure::Handshake
-    } else if matches(DNS) {
-        NetworkFailure::Dns
-    } else {
-        NetworkFailure::Generic
-    }
-}
-
 fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
     match failure {
         NetworkFailure::Certificate => AuthErrorGuidance::new(
-            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection — usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
+            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection - usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
             &[
                 "Turn off HTTPS/SSL scanning in your antivirus (often called \"encrypted connection scanning\", \"web shield\", or \"SSL interception\")",
                 "Temporarily disable your VPN or proxy and try signing in again",

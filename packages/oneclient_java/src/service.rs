@@ -22,6 +22,10 @@ pub const JAVA_VENDOR_HINT: &str = "java-vendor";
 
 pub const INSTALLABLE_MAJORS: &[u32] = &[8, 11, 16, 17, 18, 19, 20, 21, 22, 23];
 
+pub const PROBE_VERSION: u32 = 1;
+
+const _: () = assert!(PROBE_VERSION > 0);
+
 enum JavaPromptAnswer {
 	Download,
 	PickFolder,
@@ -68,7 +72,47 @@ impl JavaService {
 		let Some(path) = java_path else {
 			return Ok(None);
 		};
-		Ok(self.store.get_by_path(path).await?)
+		let Some(runtime) = self.store.get_by_path(path).await? else {
+			return Ok(None);
+		};
+		self.revalidate(runtime).await
+	}
+
+	#[tracing::instrument(level = "debug", skip(self))]
+	async fn revalidate(&self, runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
+		if runtime.probe_version == PROBE_VERSION {
+			if Path::new(&runtime.absolute_path).is_file() {
+				return Ok(Some(runtime));
+			}
+
+			tracing::warn!(
+				path = %runtime.absolute_path,
+				"forgetting recorded Java runtime: the executable is gone"
+			);
+			self.store.delete_by_path(&runtime.absolute_path).await?;
+			return Ok(None);
+		}
+
+		match checker::check_java_runtime(runtime.absolute_path.clone()).await {
+			Ok(info) => Ok(Some(
+				self.persist(Path::new(&runtime.absolute_path), &info).await?,
+			)),
+			Err(err) if err.is_invalid_installation() => {
+				tracing::warn!(
+					path = %runtime.absolute_path,
+					"forgetting recorded Java runtime: {err}"
+				);
+				self.store.delete_by_path(&runtime.absolute_path).await?;
+				Ok(None)
+			}
+			Err(err) => {
+				tracing::warn!(
+					path = %runtime.absolute_path,
+					"could not re-probe recorded Java runtime, trusting the record: {err}"
+				);
+				Ok(Some(runtime))
+			}
+		}
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]
@@ -111,7 +155,19 @@ impl JavaService {
 	#[tracing::instrument(skip(self))]
 	pub async fn remove_runtime(&self, absolute_path: &str) -> JavaResult<()> {
 		self.store.delete_by_path(absolute_path).await?;
-		tracing::info!("removed Java runtime");
+
+		crate::platform::forget_dedicated_gpu(Path::new(absolute_path)).await;
+
+		let removed_files =
+			match crate::install::remove_installed_package(Path::new(absolute_path)).await {
+				Ok(removed) => removed,
+				Err(err) => {
+					tracing::warn!("could not remove the installed Java files: {err:#}");
+					false
+				}
+			};
+
+		tracing::info!(removed_files, "removed Java runtime");
 		Ok(())
 	}
 
@@ -125,7 +181,14 @@ impl JavaService {
 		auto_install: bool,
 		progress: Option<&GroupedProgressSession>,
 	) -> JavaResult<JavaRuntime> {
-		let recorded = self.store.latest_by_major(major).await?;
+		let recorded = loop {
+			let Some(runtime) = self.store.latest_by_major(major).await? else {
+				break None;
+			};
+			if let Some(valid) = self.revalidate(runtime).await? {
+				break Some(valid);
+			}
+		};
 
 		if let Some(runtime) = &recorded
 			&& runtime.is_jdk
@@ -171,13 +234,29 @@ impl JavaService {
 		vendor: &JavaVendor,
 		major: u32,
 	) -> JavaResult<JavaRuntime> {
+		self.install_vendor_runtime(vendor, major, None).await
+	}
+
+	#[tracing::instrument(level = "debug", skip(self, progress))]
+	async fn install_vendor_runtime(
+		&self,
+		vendor: &JavaVendor,
+		major: u32,
+		progress: Option<&GroupedProgressSession>,
+	) -> JavaResult<JavaRuntime> {
 		let provider = provider_for_vendor(vendor).ok_or(JavaError::PackageNotFound { major })?;
 		let package = provider
 			.latest_package_by_major(major, &self.net)
 			.await?
 			.ok_or(JavaError::PackageNotFound { major })?;
+
+		let owned = progress.is_none().then(|| {
+			GroupedProgressSession::start(&self.events, format!("Installing Java {major}"))
+		});
+		let session = progress.or(owned.as_ref()).expect("session present");
+
 		let executable = provider
-			.install_package(&package, &self.net, &self.events, None)
+			.install_package(&package, &self.net, &self.events, Some(session))
 			.await?;
 
 		self.register_checked(&executable, Some(major)).await
@@ -214,7 +293,7 @@ impl JavaService {
 				Some(vendor) => {
 					let vendor = JavaVendor::from_str(vendor)
 						.unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
-					self.install_runtime_from(&vendor, major).await
+					self.install_vendor_runtime(&vendor, major, progress).await
 				}
 				None => self.download_and_register(major, progress).await,
 			},
@@ -314,6 +393,7 @@ impl JavaService {
 				.unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone())),
 			os_arch: info.os_arch.clone(),
 			is_jdk: info.is_jdk,
+			probe_version: PROBE_VERSION,
 		};
 
 		Ok(self.store.upsert(&runtime).await?)

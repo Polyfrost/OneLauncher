@@ -26,7 +26,10 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .arg("-cp")
         .arg(temp_dir)
         .arg("JavaInfo")
-        .env_remove("_JAVA_OPTIONS");
+        .env_remove("_JAVA_OPTIONS")
+        .env_remove("JAVA_TOOL_OPTIONS")
+        .env_remove("JDK_JAVA_OPTIONS");
+    oneclient_common::process::no_window(command.as_std_mut());
 
     let program = command.as_std().get_program().to_string_lossy();
     let args: Vec<String> = command
@@ -66,10 +69,13 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
     };
 
     // Minecraft needs AWT a headless image launches fine and then dies mid-game
-    if !probe_flag(&info, "java.awt") {
+    if !has_usable_awt(&info) {
         tracing::warn!(
             path = %absolute_path,
-            "java installation has no java.awt support"
+            classes = probe_flag(&info, "java.awt"),
+            natives = probe_flag(&info, "java.awt.natives"),
+            links = probe_flag(&info, "java.awt.link"),
+            "java installation has no usable java.awt support"
         );
         return Err(JavaError::MissingAwtSupport { path: absolute_path });
     }
@@ -86,6 +92,15 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             .unwrap_or_else(|| String::from("unknown")),
         is_jdk: probe_flag(&info, "java.jdk"),
     })
+}
+
+fn has_usable_awt(info: &HashMap<String, String>) -> bool {
+	if !probe_flag(info, "java.awt.link") {
+		tracing::warn!("java.awt.link returned false. ignoring")
+	}
+
+    probe_flag(info, "java.awt")
+        && probe_flag(info, "java.awt.natives")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
@@ -131,5 +146,39 @@ mod tests {
     fn a_flag_is_read_regardless_of_case() {
         assert!(probe_flag(&info(&[("java.awt", "TRUE")]), "java.awt"));
         assert!(!probe_flag(&info(&[("java.awt", "false")]), "java.awt"));
+    }
+
+    fn awt(classes: &str, natives: &str, link: &str) -> HashMap<String, String> {
+        info(&[
+            ("java.awt", classes),
+            ("java.awt.natives", natives),
+            ("java.awt.link", link),
+        ])
+    }
+
+    #[test]
+    fn a_complete_image_is_usable() {
+        assert!(has_usable_awt(&awt("true", "true", "true")));
+    }
+
+    #[test]
+    fn awt_classes_without_their_natives_are_not_usable() {
+        assert!(!has_usable_awt(&awt("true", "false", "true")));
+    }
+
+    #[test]
+    fn a_link_probe_that_fails_does_not_rule_the_image_out() {
+        assert!(has_usable_awt(&awt("true", "true", "false")));
+        assert!(has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "true"),
+        ])));
+    }
+
+    #[test]
+    fn every_half_is_required() {
+        assert!(!has_usable_awt(&info(&[("java.awt", "true")])));
+        assert!(!has_usable_awt(&info(&[("java.awt.natives", "true")])));
+        assert!(!has_usable_awt(&info(&[("java.awt.link", "true")])));
     }
 }

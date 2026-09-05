@@ -6,7 +6,7 @@ use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 
-use crate::components::{CardLayout, PackageEntry};
+use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
 use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
@@ -14,9 +14,6 @@ use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, tool
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
-const CARD_GRID_H: f32 = 148.;
-const GRID_GAP: f32 = 10.;
-const GRID_MIN_W: f32 = 260.;
 const LAZY_OVERSCAN: i64 = 2;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
@@ -55,6 +52,14 @@ fn provider_project_ids(
     ids
 }
 
+fn local_project_ids(content: &[LinkedArtifactInfo], content_type: ContentType) -> Vec<String> {
+    content
+        .iter()
+        .filter(|info| info.content_type == content_type && info.provider.is_none())
+        .map(|info| info.hash.clone())
+        .collect()
+}
+
 pub fn use_content_meta(
     content: &[LinkedArtifactInfo],
     bundles: &[BundleWithUpdateStatus],
@@ -68,6 +73,15 @@ pub fn use_content_meta(
             out.insert((provider, project_id), meta);
         }
     }
+
+    let local = use_package_meta_batch(
+        ProviderId::Local,
+        local_project_ids(content, content_type),
+    );
+    for (hash, meta) in package_meta_batch(&local) {
+        out.insert((ProviderId::Local, hash), meta);
+    }
+
     out
 }
 
@@ -243,6 +257,9 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        seen_status: installed_info
+            .map(|i| i.seen_status)
+            .unwrap_or_default(),
     }
 }
 
@@ -376,7 +393,26 @@ impl Component for PackageManager {
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
 
-        // Minecraft reads its content once at startup so a toggle now cannot reach the running session
+        // Cleared once on mount so the rows already rendered keep their badges for this visit
+        use_hook(|| {
+            spawn_forever(async move {
+                let Ok(state) = crate::launcher::state() else {
+                    return;
+                };
+                match oneclient_content::packages::PackageStore::retire_seen_badges(
+                    &state.services.content(),
+                )
+                .await
+                {
+                    Ok(cleared) if cleared > 0 => {
+                        tracing::debug!(cleared, "retired package badges after the list was viewed");
+                    }
+                    Ok(_) => {}
+                    Err(err) => tracing::warn!(%err, "failed to retire package badges"),
+                }
+            });
+        });
+
         let session_live = use_game_snapshot().is_active(cluster_id);
         let active = use_state(|| 0usize);
 
@@ -386,6 +422,7 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
+        let grid_columns = view.columns;
         let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
@@ -438,10 +475,11 @@ impl Component for PackageManager {
                 enabled_filter,
                 hidden_filter,
                 layout,
+                grid_columns,
                 cluster_id,
                 package_type,
             ))
-            .maybe_child(session_live.then(|| views::running_notice(noun_plural)))
+            .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,
                 noun_plural,
@@ -450,6 +488,7 @@ impl Component for PackageManager {
                 cluster_id,
                 content_kind,
                 card_layout,
+                *grid_columns.read(),
             ))
     }
 }

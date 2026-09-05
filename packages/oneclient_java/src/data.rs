@@ -13,6 +13,7 @@ pub struct JavaRuntime {
 	pub vendor: JavaVendor,
 	pub os_arch: String,
 	pub is_jdk: bool,
+	pub probe_version: u32,
 }
 
 

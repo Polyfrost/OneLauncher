@@ -38,8 +38,13 @@ uuid.workspace = true
 bytes.workspace = true
 sysinfo.workspace = true
 
+notify.workspace = true
+
 anyhow.workspace = true
 regex.workspace = true
+directories.workspace = true
+dunce.workspace = true
+percent-encoding.workspace = true
 
 cargo-packager-updater = "=0.2.3"
 
@@ -52,9 +57,20 @@ image.workspace = true
 
 freya-skia-safe.workspace = true
 freya.workspace = true
+freya-core.workspace = true
+pulldown-cmark.workspace = true
+
+[dev-dependencies]
+freya-testing.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Win32_Foundation",
+  "Win32_System_Registry",
+] }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "=0.1.31"

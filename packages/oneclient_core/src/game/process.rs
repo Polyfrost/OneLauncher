@@ -157,6 +157,13 @@ impl GameProcessManager {
         self.inner.lock().unwrap().get(&cluster_id).map(|p| p.stage)
     }
 
+    /// Every cluster the manager knows about not just the ones already running
+    /// a launch still resolving its files is as much a reason to leave its
+    /// natives alone as a live game
+    pub fn active_ids(&self) -> Vec<i64> {
+        self.inner.lock().unwrap().keys().copied().collect()
+    }
+
     pub fn running_ids(&self) -> Vec<i64> {
         self.inner
             .lock()

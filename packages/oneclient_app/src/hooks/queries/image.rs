@@ -44,15 +44,12 @@ pub fn loaded_image(url: Option<&str>, query: &UseQuery<CachedImageQuery>) -> Op
 }
 
 pub fn use_cached_image(url: Option<String>, max_edge: u32) -> UseQuery<CachedImageQuery> {
+    let url = url.unwrap_or_default();
+    let keys = (!url.is_empty()).then_some(CachedImageKeys { url, max_edge });
+
     use_query(
-        Query::new(
-            CachedImageKeys {
-                url: url.unwrap_or_default(),
-                max_edge,
-            },
-            CachedImageQuery,
-        )
-        .stale_time(IMAGE_STALE)
-        .clean_time(IMAGE_CLEAN),
+        Query::new(keys, CachedImageQuery)
+            .stale_time(IMAGE_STALE)
+            .clean_time(IMAGE_CLEAN),
     )
 }

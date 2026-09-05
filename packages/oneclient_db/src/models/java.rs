@@ -8,4 +8,5 @@ pub struct JavaVersionRow {
 	pub vendor: String,
 	pub os_arch: String,
 	pub is_jdk: bool,
+	pub probe_version: i64,
 }

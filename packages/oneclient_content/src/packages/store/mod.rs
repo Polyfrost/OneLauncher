@@ -9,22 +9,39 @@ pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
     remove_unreferenced_files,
 };
-pub use link::{link_or_copy, remove_entry, try_unlink_materialized};
+pub use link::{
+    LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
+    try_unlink_materialized,
+};
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
-use oneclient_db::dao::{artifact as artifact_dao, cluster as cluster_dao};
-use oneclient_db::models::{ArtifactRow, ClusterRow};
+use oneclient_db::dao::{
+    artifact as artifact_dao, cluster as cluster_dao, package_metadata as meta_dao,
+};
+use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+// `paths` alone is this module's own cache-path helpers
+use oneclient_common::paths as common_paths;
 use super::error::PackageError;
+use super::file_identity::FileIdentity;
+use super::{local_manifest, metadata_cache};
 use super::types::{CachedArtifact, ProjectDetail, ProviderReleaseInfo, VersionDetail, LinkedArtifactInfo};
 use polyio::{normalize_hash, sha1_file};
 use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct PackageStore;
+
+/// One bad file in a selection must not sink the rest so failures ride along
+/// with the successes instead of replacing them
+#[derive(Debug, Default)]
+pub struct LocalImportReport {
+    pub imported: Vec<ArtifactRow>,
+    pub failed: Vec<(PathBuf, ContentError)>,
+}
 
 impl PackageStore {
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -84,7 +101,7 @@ impl PackageStore {
         force_download: bool,
         child: Option<&GroupedProgressChild>,
         ctx: &ContentCtx,
-    ) -> ContentResult<ArtifactRow> {
+    ) -> ContentResult<(ArtifactRow, LiveSync)> {
         tracing::info!("installing package to cluster");
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
@@ -102,25 +119,51 @@ impl PackageStore {
         )
         .await?;
 
-        Self::link_artifact(&artifact, &cluster, None, ctx).await?;
-        Ok(artifact)
+        let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
+
+        let live = if enabled {
+            link::try_link_materialized(&cluster, &artifact, &artifact.file_name).await
+        } else {
+            LiveSync::Skipped
+        };
+
+        Ok((artifact, live))
     }
 
-    /// Writes nothing to disk
-    /// the artifact is materialized into the game directory at launch the only
-    /// moment no game is holding the files open
     #[tracing::instrument(level = "debug", skip(artifact, cluster, ctx))]
     pub async fn link_artifact(
         artifact: &ArtifactRow,
         cluster: &ClusterRow,
         cluster_file_name: Option<&str>,
         ctx: &ContentCtx,
-    ) -> ContentResult<()> {
+    ) -> ContentResult<bool> {
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
-        artifact_dao::link_cluster_artifact(&ctx.db, cluster.id, &artifact.hash, name).await?;
+        let link =
+            artifact_dao::link_cluster_artifact(&ctx.db, cluster.id, &artifact.hash, name).await?;
 
-        Ok(())
+        Ok(link.enabled != 0)
+    }
+
+    #[tracing::instrument(level = "debug", skip(artifact, ctx), fields(hash = %artifact.hash))]
+    pub async fn sync_live_content(
+        cluster_id: i64,
+        artifact: &ArtifactRow,
+        ctx: &ContentCtx,
+    ) -> ContentResult<LiveSync> {
+        let Some(link) =
+            artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, &artifact.hash).await?
+        else {
+            return Ok(LiveSync::Skipped);
+        };
+
+        if link.enabled == 0 {
+            return Ok(LiveSync::Skipped);
+        }
+
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+
+        Ok(link::try_link_materialized(&cluster, artifact, &link.cluster_file_name).await)
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -136,7 +179,9 @@ impl PackageStore {
 
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
-        Self::link_artifact(&artifact, &cluster, cluster_file_name, ctx).await
+        Self::link_artifact(&artifact, &cluster, cluster_file_name, ctx)
+            .await
+            .map(|_| ())
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -144,51 +189,49 @@ impl PackageStore {
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<Vec<LinkedArtifactInfo>> {
-        let links = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id).await?;
-        let mut items = Vec::with_capacity(links.len());
+        let rows = artifact_dao::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await?;
 
-        for link in links {
-            let Some(artifact) =
-                artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
-            else {
-                continue;
-            };
-
-            let content_type = ContentType::from_repr(artifact.content_type as u8)
-                .unwrap_or(ContentType::Mod);
-            let release = artifact_dao::get_release_by_hash(&ctx.db, &link.hash).await?;
-
-            items.push(LinkedArtifactInfo {
-                hash: link.hash,
-                cluster_file_name: link.cluster_file_name,
-                enabled: link.enabled != 0,
-                content_type,
-                file_name: artifact.file_name,
-                project_id: release.as_ref().map(|r| r.project_id.clone()),
-                version_id: release.as_ref().map(|r| r.version_id.clone()),
-                display_name: release.as_ref().map(|r| r.display_name.clone()),
-                display_version: release.as_ref().map(|r| r.display_version.clone()),
-                provider: release
-                    .as_ref()
-                    .and_then(|r| ProviderId::from_repr(r.provider as u8)),
-                published_at: release.as_ref().and_then(|r| r.published_at.clone()),
-            });
-        }
-
-        Ok(items)
+        Ok(rows
+            .into_iter()
+            .map(|row| LinkedArtifactInfo {
+                hash: row.hash,
+                cluster_file_name: row.cluster_file_name,
+                enabled: row.enabled != 0,
+                content_type: ContentType::from_repr(row.content_type as u8)
+                    .unwrap_or(ContentType::Mod),
+                file_name: row.file_name,
+                project_id: row.project_id,
+                version_id: row.version_id,
+                display_name: row.display_name,
+                display_version: row.display_version,
+                provider: row.provider.and_then(|p| ProviderId::from_repr(p as u8)),
+                published_at: row.published_at,
+                seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
+            })
+            .collect())
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
-    /// Only the flag is recorded
-    /// the folder is rewritten at the next launch since a running game holds
-    /// its jars open
-    /// Storage only bundle override bookkeeping lives in
-    /// [`crate::bundles::toggle_artifact_enabled`] to avoid mutual recursion
+    pub async fn mark_artifact_new(
+        cluster_id: i64,
+        hash: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        artifact_dao::set_seen_status(&ctx.db, cluster_id, hash, SeenStatus::New).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn retire_seen_badges(ctx: &ContentCtx) -> ContentResult<u64> {
+        Ok(artifact_dao::mark_all_seen(&ctx.db).await?)
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn set_artifact_enabled(
         cluster_id: i64,
         hash: &str,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
+    ) -> ContentResult<(bool, LiveSync)> {
         Self::write_artifact_enabled(cluster_id, hash, None, ctx).await
     }
 
@@ -199,7 +242,7 @@ impl PackageStore {
         hash: &str,
         enabled: bool,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
+    ) -> ContentResult<(bool, LiveSync)> {
         Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
     }
 
@@ -209,7 +252,7 @@ impl PackageStore {
         hash: &str,
         target: Option<bool>,
         ctx: &ContentCtx,
-    ) -> ContentResult<bool> {
+    ) -> ContentResult<(bool, LiveSync)> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
         let artifact = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
             .await?
@@ -239,16 +282,23 @@ impl PackageStore {
         )
         .await?;
 
-        if !enabled {
+        // Only the enable side has an outcome to report; a pack that is not in
+        // the running folder needs no removing from it
+        let live = if enabled {
+            link::try_link_materialized(&cluster, &artifact, &file_name).await
+        } else {
             link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
             if link.cluster_file_name != file_name {
                 link::try_unlink_materialized(&cluster, content_type, &file_name).await;
             }
-        }
+            LiveSync::Skipped
+        };
 
-        Ok(enabled)
+        Ok((enabled, live))
     }
 
+    /// Prefer [`Self::import_local_files`] for anything the user selected in one
+    /// go it asks the providers about the whole set in a single request
     #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn import_local_file(
         path: &Path,
@@ -256,48 +306,44 @@ impl PackageStore {
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
-        let file_name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| PackageError::InvalidLocalFile(path.display().to_string()))?
-            .to_string();
-
-        let hash = normalize_hash(&sha1_file(path).await?);
-
-        if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await? {
-            let cluster = Self::get_cluster(cluster_id, ctx).await?;
-            Self::link_artifact(&row, &cluster, None, ctx).await?;
-            return Ok(row);
-        }
-
-        let dest = cache_file_path(
-            content_type,
-            ProviderId::Local,
-            "imported",
-            &hash[..hash.len().min(16)],
-            &file_name,
-        )?;
-        if let Some(parent) = dest.parent() {
-            polyio::create_dir_all(parent).await?;
-        }
-        polyio::copy(path, &dest).await?;
-
-        let size = polyio::stat(&dest).await?.len();
-        let stored_path = relative_cache_path(&dest)?;
-
-        let row = artifact_dao::insert_artifact(
-            &ctx.db,
-            &hash,
-            content_type as i64,
-            &stored_path,
-            &file_name,
-            Some(size as i64),
-        )
-        .await?;
-
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
-        Self::link_artifact(&row, &cluster, None, ctx).await?;
+        let row = store_local_file(path, content_type, &cluster, ctx).await?;
+
+        describe_imports(&[(row.clone(), content_type)], ctx).await;
         Ok(row)
+    }
+
+    /// A whole drop at once so identifying twenty jars costs the two requests
+    /// one jar would rather than forty
+    ///
+    /// A file that cannot be stored is reported rather than returned one
+    /// unreadable jar must not sink the rest of the selection
+    #[tracing::instrument(level = "debug", skip(files, ctx), fields(files = files.len()))]
+    pub async fn import_local_files(
+        files: &[(PathBuf, ContentType)],
+        cluster_id: i64,
+        ctx: &ContentCtx,
+    ) -> ContentResult<LocalImportReport> {
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+
+        let mut report = LocalImportReport::default();
+        let mut stored = Vec::with_capacity(files.len());
+
+        for (path, content_type) in files {
+            match store_local_file(path, *content_type, &cluster, ctx).await {
+                Ok(row) => {
+                    stored.push((row.clone(), *content_type));
+                    report.imported.push(row);
+                }
+                Err(err) => {
+                    tracing::warn!("could not import {}: {err}", path.display());
+                    report.failed.push((path.clone(), err));
+                }
+            }
+        }
+
+        describe_imports(&stored, ctx).await;
+        Ok(report)
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -317,6 +363,215 @@ impl PackageStore {
 
         Self::download_and_cache(provider_id, &project, &version, false, None, ctx).await
     }
+}
+
+/// Copies the file into the cache unless an identical one is already there and
+/// links it to the cluster working out what it is comes after
+async fn store_local_file(
+    path: &Path,
+    content_type: ContentType,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
+) -> ContentResult<ArtifactRow> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| PackageError::InvalidLocalFile(path.display().to_string()))?
+        .to_string();
+
+    let hash = normalize_hash(&sha1_file(path).await?);
+
+    if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await? {
+        PackageStore::link_artifact(&row, cluster, None, ctx).await?;
+        return Ok(row);
+    }
+
+    let dest = cache_file_path(
+        content_type,
+        ProviderId::Local,
+        "imported",
+        &hash[..hash.len().min(16)],
+        &file_name,
+    )?;
+    if let Some(parent) = dest.parent() {
+        polyio::create_dir_all(parent).await?;
+    }
+    polyio::copy(path, &dest).await?;
+
+    let size = polyio::stat(&dest).await?.len();
+    let stored_path = relative_cache_path(&dest)?;
+
+    let row = artifact_dao::insert_artifact(
+        &ctx.db,
+        &hash,
+        content_type as i64,
+        &stored_path,
+        &file_name,
+        Some(size as i64),
+    )
+    .await?;
+
+    PackageStore::link_artifact(&row, cluster, None, ctx).await?;
+    Ok(row)
+}
+
+/// A dropped file arrives as a file name and nothing else so it is worth
+/// finding out what it actually is before it lands in the list
+///
+/// The providers get asked first and for the whole batch at once because a jar
+/// downloaded by hand from Modrinth or CurseForge is the same file the browser
+/// would have installed and deserves the same card an update check included
+/// the jar's own manifest only answers for what neither of them recognises
+///
+/// Never fails an unidentified mod is still a perfectly good import
+#[tracing::instrument(level = "debug", skip(imports, ctx), fields(files = imports.len()))]
+async fn describe_imports(imports: &[(ArtifactRow, ContentType)], ctx: &ContentCtx) {
+    let mut unknown = Vec::new();
+    for (row, content_type) in imports {
+        if !already_described(row, ctx).await {
+            unknown.push((row, *content_type));
+        }
+    }
+
+    if unknown.is_empty() {
+        return;
+    }
+
+    let identities: Vec<FileIdentity> = unknown
+        .iter()
+        .map(|(row, _)| FileIdentity::from_sha1(&row.hash))
+        .collect();
+
+    // Offline or rate limited every jar then falls through to its own manifest
+    let found = ctx
+        .providers
+        .lookup_versions(&identities, ctx)
+        .await
+        .inspect_err(|err| tracing::debug!("provider lookup failed: {err}"))
+        .unwrap_or_default();
+
+    for (row, content_type) in unknown {
+        if let Some((provider, version)) = found.get(&row.hash) {
+            match record_release(*provider, version, &row.hash, ctx).await {
+                Ok(()) => continue,
+                Err(err) => {
+                    tracing::debug!("could not record a release for {}: {err}", row.file_name);
+                }
+            }
+        }
+
+        if let Err(err) = record_manifest(row, content_type, ctx).await {
+            tracing::debug!("could not read {} for metadata: {err}", row.file_name);
+        }
+    }
+}
+
+/// The same file may already have arrived through the browser or an earlier
+/// import and describing it again buys nothing
+async fn already_described(row: &ArtifactRow, ctx: &ContentCtx) -> bool {
+    if artifact_dao::get_release_by_hash(&ctx.db, &row.hash)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    {
+        return true;
+    }
+
+    !metadata_cache::read_cached_package_meta(
+        ctx,
+        ProviderId::Local,
+        std::slice::from_ref(&row.hash),
+    )
+    .await
+    .is_empty()
+}
+
+/// Written exactly as a download would have so the row joins the update flow
+/// rather than sitting outside it
+async fn record_release(
+    provider: ProviderId,
+    version: &VersionDetail,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let published_at = version.published.to_rfc3339();
+
+    artifact_dao::upsert_provider_release(
+        &ctx.db,
+        provider as i64,
+        &version.project_id,
+        &version.version_id,
+        hash,
+        &version.name,
+        &version.version_number,
+        Some(published_at.as_str()),
+        &serde_json::to_string(&version.game_versions)?,
+        &serde_json::to_string(&version.loaders)?,
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Cached under the artifact hash because a mod nobody recognises has no
+/// project id to be keyed by
+async fn record_manifest(
+    row: &ArtifactRow,
+    content_type: ContentType,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    // Only mods carry a loader manifest resource packs and shaders describe
+    // themselves too but in formats that name neither an author nor a mod
+    if content_type != ContentType::Mod {
+        return Ok(());
+    }
+
+    let jar = artifact_absolute_path(&row.path)?;
+    let manifest = local_manifest::read_jar_manifest(&jar).await;
+
+    let icon = match &manifest.icon_entry {
+        Some(entry) => store_local_icon(&row.hash, &jar, entry).await,
+        None => None,
+    };
+
+    // A jar that parsed to nothing still gets a row so `already_described` stops
+    // both providers being asked about it on every later import
+    meta_dao::upsert_package_metadata(
+        &ctx.db,
+        ProviderId::Local as i64,
+        &row.hash,
+        manifest.name.as_deref().unwrap_or(&row.file_name),
+        manifest.description.as_deref().unwrap_or_default(),
+        &manifest.author_line(),
+        icon.as_deref(),
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Kept out of the package cache which the collector sweeps by artifact path
+/// and would take an icon sitting next to its jar for an orphan
+async fn store_local_icon(hash: &str, jar: &std::path::Path, entry: &str) -> Option<String> {
+    let bytes = local_manifest::read_jar_icon(jar, entry).await?;
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let extension = std::path::Path::new(entry)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .filter(|ext| ext.len() <= 4 && ext.chars().all(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or("png")
+        .to_ascii_lowercase();
+    let name = format!("{hash}.{extension}");
+
+    let dir = common_paths::local_icons_dir().ok()?;
+    polyio::create_dir_all(&dir).await.ok()?;
+    polyio::write(dir.join(&name), &bytes).await.ok()?;
+
+    Some(format!("{}{name}", common_paths::LOCAL_IMAGE_SCHEME))
 }
 
 #[tracing::instrument(level = "debug", skip(row, ctx), fields(hash = %row.hash))]

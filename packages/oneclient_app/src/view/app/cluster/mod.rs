@@ -1,4 +1,4 @@
-mod logs;
+pub mod logs;
 mod overview;
 mod package_manager;
 

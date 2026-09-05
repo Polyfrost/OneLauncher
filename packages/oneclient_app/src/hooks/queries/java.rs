@@ -29,7 +29,7 @@ pub fn java_runtimes(query: &UseQuery<ListJavaRuntimesQuery>) -> Vec<JavaRuntime
 }
 
 pub async fn invalidate_java_queries() {
-    QueriesStorage::<ListJavaRuntimesQuery>::try_invalidate_all().await;
+    QueriesStorage::<ListJavaRuntimesQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

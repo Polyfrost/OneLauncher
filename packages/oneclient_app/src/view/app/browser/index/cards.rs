@@ -31,9 +31,10 @@ pub(super) fn grid_row(
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    metrics: GridMetrics,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
-    let fill = GRID_COLUMNS - row.len();
+    let fill = metrics.cols.saturating_sub(row.len());
     let installed: Vec<Option<InstallSource>> = row
         .iter()
         .map(|item| installed_for(installed, item))
@@ -42,14 +43,14 @@ pub(super) fn grid_row(
     rect()
         .horizontal()
         .width(Size::fill())
-        .height(Size::px(CARD_H))
+        .height(Size::px(metrics.card_h))
         .spacing(GRID_SPACING)
         .content(Content::Flex)
         .children(
             row.into_iter()
                 .zip(installed)
                 .map(move |(item, installed)| {
-                    PackageCard::new(item, cluster_id, package_type.clone(), installed)
+                    PackageCard::new(item, cluster_id, package_type.clone(), installed, metrics)
                         .into_element()
                 }),
         )
@@ -76,6 +77,7 @@ struct PackageCard {
     cluster_id: i64,
     package_type: String,
     installed: Option<InstallSource>,
+    metrics: GridMetrics,
 }
 
 impl PackageCard {
@@ -84,12 +86,14 @@ impl PackageCard {
         cluster_id: i64,
         package_type: String,
         installed: Option<InstallSource>,
+        metrics: GridMetrics,
     ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
             installed,
+            metrics,
         }
     }
 }
@@ -106,14 +110,10 @@ impl Component for PackageCard {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .height(Size::px(CARD_H))
+            .height(Size::px(self.metrics.card_h))
             .corner_radius(CornerRadius::new_all(10.))
             .background(CARD_BG)
             .border(border_all_color(
@@ -128,15 +128,14 @@ impl Component for PackageCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(
                 rect()
                     .margin(Gaps::new_all(1.))
                     .corner_radius(CornerRadius::new(10., 10., 0., 0.))
                     .overflow(Overflow::Clip)
-                    .child(PackageBanner::new(icon_url, BANNER_H))
+                    .child(PackageBanner::new(icon_url, self.metrics.banner_h))
                     // Top-left of the banner the first thing worth knowing about a result and the opposite corner is the install button's
                     .maybe_child(self.installed.map(|installed| {
                         rect()
@@ -240,10 +239,6 @@ impl Component for ListRow {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .horizontal()
             .width(Size::fill())
@@ -266,9 +261,8 @@ impl Component for ListRow {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
             .child(
                 rect()
@@ -313,7 +307,6 @@ impl Component for ListRow {
                     ),
             )
             .child(downloads_row(item.downloads))
-            // Kept once installed rather than dropped a row that loses its button leaves its neighbours misaligned
             .child(InstallButton::new(
                 &self.item,
                 self.cluster_id,
@@ -323,7 +316,6 @@ impl Component for ListRow {
     }
 }
 
-/// Same version pick and dispatch as the install button on the package page
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
@@ -382,7 +374,7 @@ impl Component for InstallButton {
 
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
-            .on_all_press(|e: Event<PressEventData>| e.stop_propagation())
+            .on_press(|e: Event<PressEventData>| e.stop_propagation())
             .child(
                 Button::new()
                     .primary()

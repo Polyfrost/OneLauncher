@@ -9,9 +9,12 @@ use polyio::sha1_bytes;
 use oneclient_net::RequestError;
 use oneclient_common::paths;
 use oneclient_net::RequestClient;
-use crate::LauncherResult;
+use crate::{LauncherError, LauncherResult};
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1600;
+
+/// Image urls come from untrusted remote descriptions, so cap what is fetched and decoded.
+const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub struct ImageCacheStore {
@@ -44,7 +47,11 @@ impl ImageCacheStore {
             return Ok(bytes);
         }
 
-        let raw = download(net, url).await?;
+        // icon unpacked for a jar is already on disk
+        let raw = match paths::local_image_path(url) {
+            Some(source) => Bytes::from(polyio::read(&source).await?),
+            None => download(net, url).await?,
+        };
         let bytes = downscale_if_oversized(raw, max_edge).await;
 
         if let Some(parent) = path.parent() {
@@ -87,8 +94,26 @@ async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
     }
 }
 
+/// Icons come out of user supplied jars so the decoder gets a ceiling rather
+/// than whatever the file's header claims
+const MAX_DECODE_EDGE: u32 = 8192;
+const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
+
 fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
-    let img = image::load_from_memory(bytes).ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_EDGE);
+    limits.max_image_height = Some(MAX_DECODE_EDGE);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC);
+
+    let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes));
+    reader.limits(limits);
+
+    let img = reader
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .inspect_err(|err| tracing::warn!("refused to decode an image: {err}"))
+        .ok()?;
     if img.width().max(img.height()) <= max_edge {
         return None;
     }
@@ -110,11 +135,77 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
 
 #[tracing::instrument(level = "debug", skip(net))]
 async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
-    let parsed = url.parse().map_err(RequestError::from)?;
+    let parsed: reqwest::Url = url.parse().map_err(RequestError::from)?;
+
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(refused(url, "unsupported scheme"));
+    }
+    if !is_public_host(&parsed) {
+        return Err(refused(url, "host is not public"));
+    }
+
     let request = reqwest::Request::new(Method::GET, parsed);
-    let res = net.send(request).await?;
-    let bytes = res.bytes().await.map_err(RequestError::from)?;
-    Ok(bytes)
+    let mut res = net.send(request).await?;
+
+    if res
+        .content_length()
+        .is_some_and(|len| len > MAX_IMAGE_BYTES as u64)
+    {
+        return Err(refused(url, "declared body is too large"));
+    }
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = res.chunk().await.map_err(RequestError::from)? {
+        if bytes.len() + chunk.len() > MAX_IMAGE_BYTES {
+            return Err(refused(url, "body is too large"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+
+    Ok(Bytes::from(bytes))
+}
+
+fn refused(url: &str, reason: &str) -> LauncherError {
+    LauncherError::StdIoError(std::io::Error::other(format!(
+        "refused to fetch image {url}: {reason}"
+    )))
+}
+
+fn is_public_host(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return is_public_ip(ip);
+    }
+
+    let host = host.to_ascii_lowercase();
+    host != "localhost" && !host.ends_with(".localhost")
+}
+
+fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(ip) => {
+            !(ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_unspecified()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || ip.octets()[0] == 100 && (ip.octets()[1] & 0xc0) == 0x40)
+        }
+        std::net::IpAddr::V6(ip) => match ip.to_ipv4_mapped() {
+            Some(ip) => is_public_ip(ip.into()),
+            None => {
+                !(ip.is_loopback()
+                    || ip.is_unspecified()
+                    || (ip.segments()[0] & 0xfe00) == 0xfc00
+                    || (ip.segments()[0] & 0xffc0) == 0xfe80)
+            }
+        },
+    }
 }
 
 fn extension_from_url(url: &str) -> Option<String> {

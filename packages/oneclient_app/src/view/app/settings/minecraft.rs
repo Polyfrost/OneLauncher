@@ -1,19 +1,31 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
+#[cfg(windows)]
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{Dropdown, Icon, IconType, TextInput, toggle, validate_number};
+use crate::components::{
+    Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
+};
+#[cfg(windows)]
+use crate::components::toggle_controlled;
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
+
+#[cfg(target_os = "linux")]
+use crate::components::toggle_controlled;
+#[cfg(target_os = "linux")]
+use oneclient_core::settings::SettingsOsExtra;
 
 #[derive(PartialEq)]
 pub struct SettingsMinecraft;
 
 impl Component for SettingsMinecraft {
     fn render(&self) -> impl IntoElement {
-        let profile = use_settings_snapshot().settings.global_game_settings;
+        let settings = use_settings_snapshot().settings;
+        let profile = settings.global_game_settings.clone();
         let dispatch = use_dispatch();
 
         let fullscreen = use_state({
@@ -75,7 +87,7 @@ impl Component for SettingsMinecraft {
             batched.update_global_profile(update);
         });
 
-        settings_page()
+        let page = settings_page()
             .child(section_header("GAME"))
             .child(settings_row(
                 IconType::Maximize01,
@@ -92,7 +104,7 @@ impl Component for SettingsMinecraft {
             .child(settings_row(
                 IconType::Database01,
                 "Memory",
-                "The amount of memory in megabytes allocated for the game.",
+                "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
                 memory_field(memory),
             ))
             .child(settings_row(
@@ -110,7 +122,7 @@ impl Component for SettingsMinecraft {
                 "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
                 update_mode_field(
                     profile.browser_update_mode.unwrap_or_default(),
-                    dispatch,
+                    dispatch.clone(),
                 ),
             ))
             .child(section_header("PROCESS"))
@@ -137,9 +149,50 @@ impl Component for SettingsMinecraft {
                 TextInput::new(post_exit_command)
                     .placeholder("echo 'Game exited'")
                     .width(Size::px(220.)),
-            ))
-            .into_element()
+            ));
+
+        #[cfg(windows)]
+        let page = page.child(settings_row(
+            IconType::Rocket02,
+            "Prefer Dedicated GPU",
+            "Ask Windows to run Java on the high-performance GPU.",
+            discrete_gpu_field(settings, dispatch.clone()),
+        ));
+
+        #[cfg(target_os = "linux")]
+        let page = page
+            .child(section_header("GRAPHICS"))
+            .child(discrete_gpu_row(profile.os_extra.clone(), dispatch));
+
+        page.into_element()
     }
+}
+
+#[cfg(target_os = "linux")]
+fn discrete_gpu_row(
+    os_extra: Option<SettingsOsExtra>,
+    dispatch: crate::Actions,
+) -> impl IntoElement {
+    let current = os_extra.unwrap_or_default();
+    let on = current.use_discrete_gpu.unwrap_or(false);
+
+    let on_toggle: EventHandler<()> = (move |()| {
+        dispatch.update_global_profile(ProfileUpdate {
+            os_extra: Patch::Set(SettingsOsExtra {
+                use_discrete_gpu: Some(!on),
+                ..current.clone()
+            }),
+            ..Default::default()
+        });
+    })
+    .into();
+
+    settings_row(
+        IconType::Rocket02,
+        "Use Discrete GPU",
+        "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
+        toggle_controlled(on, on_toggle),
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -176,6 +229,20 @@ fn build_update(
         hook_post: command_patch(post),
         ..Default::default()
     }
+}
+
+/// A launcher setting rather than a profile field, so it bypasses [`build_update`]
+#[cfg(windows)]
+fn discrete_gpu_field(settings: LauncherSettings, dispatch: crate::Actions) -> impl IntoElement {
+    let on = settings.use_discrete_gpu;
+    let on_toggle: EventHandler<()> = (move |()| {
+        let mut next = settings.clone();
+        next.use_discrete_gpu = !on;
+        dispatch.set_settings(next);
+    })
+    .into();
+
+    toggle_controlled(on, on_toggle)
 }
 
 /// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states
@@ -237,21 +304,3 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
         .into_element()
 }
 
-fn memory_field(memory: State<String>) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .child(
-            TextInput::new(memory)
-                .width(Size::px(90.))
-                .placeholder("4096")
-                .on_validate(validate_number)
-                .trailing(
-                    label()
-                        .text("MB")
-                        .font_size(12.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-}

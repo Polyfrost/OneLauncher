@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
+use oneclient_core::SeenStatus;
 
 use crate::components::{Icon, IconType, toggle_controlled};
 use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
@@ -12,6 +13,9 @@ use crate::utils::format_size;
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
+pub(crate) const CARD_GRID_H: f32 = 148.;
+pub(crate) const GRID_GAP: f32 = 10.;
+pub(crate) const GRID_MIN_W: f32 = 260.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -48,6 +52,8 @@ pub struct PackageEntry {
     pub hidden: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
+    /// Recency badge state cleared once the user views the list
+    pub seen_status: SeenStatus,
 }
 
 impl PackageEntry {
@@ -62,6 +68,14 @@ impl PackageEntry {
     /// Bundle packages are never marked here so the two update flows cannot contradict
     pub fn is_outdated(&self) -> bool {
         self.update_available && self.is_remote() && !self.in_bundle()
+    }
+
+    pub fn recency_badge(&self) -> Option<Element> {
+        match self.seen_status {
+            SeenStatus::New => Some(new_badge()),
+            SeenStatus::Updated => Some(updated_badge()),
+            SeenStatus::Seen => None,
+        }
     }
 }
 
@@ -111,11 +125,7 @@ impl Component for PackageRow {
             CardLayout::Grid => 52.,
         };
         let icon_query = use_cached_image(item.icon_url.clone(), 256);
-        let icon = if item.is_remote() {
-            remote_icon(&item.icon_url, &icon_query, icon_size)
-        } else {
-            local_icon(icon_size)
-        };
+        let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
             let hash = item.hash.clone();
@@ -125,9 +135,10 @@ impl Component for PackageRow {
             let manifest_default = item.manifest_default;
             (move |()| {
                 if let Some(h) = &hash {
-                    cluster.mutate(ClusterAction::ToggleArtifact {
+                    cluster.mutate(ClusterAction::SetArtifactEnabled {
                         cluster_id,
                         hash: h.clone(),
+                        enabled: !enabled_now,
                     });
                 } else if let Some(bundle) = &bundle_name {
                     cluster.mutate(ClusterAction::SetBundlePackageEnabled {
@@ -166,7 +177,7 @@ impl Component for PackageRow {
                     remove_hover,
                 )
             }
-            CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle),
+            CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle, true),
         }
     }
 }
@@ -199,20 +210,17 @@ fn list_card(
         .into_element()
 }
 
-fn grid_card(
+pub(crate) fn grid_card(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
+    navigable: bool, // if true, it takes the user to the mod page
 ) -> Element {
     let remote = item.is_remote();
     let enabled = item.enabled;
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     let (bg, border, content_alpha) = if enabled {
         (colors::brand().with_a(38), colors::brand(), 255)
@@ -220,13 +228,12 @@ fn grid_card(
         (CARD_BG, colors::component_border(), 140)
     };
 
-    let badge = if remote {
+    let badge = if remote && navigable {
         let provider = item.provider;
         let package_id = item.package_id.clone();
         let package_type_owned = package_type.to_string();
         rect()
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |e: Event<PressEventData>| {
                 e.stop_propagation();
                 let _ = RouterContext::get().push(Route::BrowserPackage {
@@ -237,6 +244,8 @@ fn grid_card(
             })
             .child(provider_badge(item.provider))
             .into_element()
+    } else if remote {
+        provider_badge(item.provider)
     } else {
         local_badge()
     };
@@ -275,10 +284,13 @@ fn grid_card(
                 .child(
                     rect()
                         .horizontal()
+                        .width(Size::fill())
                         .cross_align(Alignment::Center)
                         .spacing(6.)
+                        .content(Content::wrap_spacing(4.))
                         .child(badge)
-                        .maybe_child(item.is_outdated().then(outdated_badge)),
+                        .maybe_child(item.is_outdated().then(outdated_badge))
+                        .maybe_child(item.recency_badge()),
                 ),
         )
         .into_element();
@@ -307,8 +319,7 @@ fn grid_card(
         .background(bg)
         .border(border_all_color(1.5, border))
         .content(Content::Flex)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_toggle.call(()))
         .child(header)
         .child(
@@ -331,11 +342,7 @@ fn package_info(
     let provider = item.provider;
     let package_id = item.package_id.clone();
     let package_type = package_type.to_string();
-    let title = if remote {
-        item.name.clone()
-    } else {
-        item.file_name.clone()
-    };
+    let title = item.name.clone();
 
     rect()
         .horizontal()
@@ -344,15 +351,13 @@ fn package_info(
         .spacing(12.)
         .content(Content::Flex)
         .maybe(remote, |el| {
-            el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                .on_press(move |_| {
-                    let _ = RouterContext::get().push(Route::BrowserPackage {
-                        cluster_id,
-                        package_type: package_type.clone(),
-                        package_id: format!("{}:{}", provider as u8, package_id),
-                    });
-                })
+            el.cursor(CursorIcon::Pointer).on_press(move |_| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                });
+            })
         })
         .child(icon)
         .child(
@@ -378,7 +383,8 @@ fn package_info(
                         } else {
                             local_badge()
                         })
-                        .maybe_child(item.is_outdated().then(outdated_badge)),
+                        .maybe_child(item.is_outdated().then(outdated_badge))
+                        .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
                     el.child(
@@ -402,11 +408,12 @@ fn package_info(
         .into_element()
 }
 
-fn remote_icon(
-    icon_url: &Option<String>,
+pub(crate) fn package_icon(
+    item: &PackageEntry,
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
 ) -> Element {
+    let icon_url = &item.icon_url;
     let loaded = loaded_image(icon_url.as_deref(), icon_query);
 
     match loaded {
@@ -417,12 +424,9 @@ fn remote_icon(
             .corner_radius(CornerRadius::new_all(8.))
             .into_element(),
 
-        None => icon_box(IconType::DotsGrid, size),
+        None if icon_url.is_some() => icon_box(IconType::DotsGrid, size),
+        None => icon_box(IconType::HelpCircle, size),
     }
-}
-
-fn local_icon(size: f32) -> Element {
-    icon_box(IconType::HelpCircle, size)
 }
 
 fn icon_box(icon: IconType, size: f32) -> Element {
@@ -466,6 +470,28 @@ fn outdated_badge() -> Element {
             .into_element(),
         "Update available".to_string(),
         colors::brand(),
+    )
+}
+
+fn new_badge() -> Element {
+    accent_badge(
+        Icon::new(IconType::Plus)
+            .size(12.)
+            .color(colors::success())
+            .into_element(),
+        "New".to_string(),
+        colors::success(),
+    )
+}
+
+fn updated_badge() -> Element {
+    accent_badge(
+        Icon::new(IconType::RefreshCcw02)
+            .size(12.)
+            .color(colors::success())
+            .into_element(),
+        "Updated".to_string(),
+        colors::success(),
     )
 }
 
@@ -528,15 +554,10 @@ fn remove_button(
             Color::TRANSPARENT
         })
         .maybe(enabled, |el| {
-            el.on_pointer_enter(move |_| {
-                hovering.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovering.set(false);
-                Cursor::set(CursorIcon::default());
-            })
-            .on_press(move |_| on_remove())
+            el.cursor(CursorIcon::Pointer)
+                .on_pointer_enter(move |_| hovering.set(true))
+                .on_pointer_leave(move |_| hovering.set(false))
+                .on_press(move |_| on_remove())
         })
         .child(Icon::new(IconType::Trash01).size(14.).color(color))
         .into_element()

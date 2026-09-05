@@ -21,16 +21,23 @@ enum UpdateTab {
     Updates,
     Additions,
     Removals,
+    Optional,
 }
 
 impl UpdateTab {
-    const ALL: [UpdateTab; 3] = [UpdateTab::Updates, UpdateTab::Additions, UpdateTab::Removals];
+    const ALL: [UpdateTab; 4] = [
+        UpdateTab::Updates,
+        UpdateTab::Additions,
+        UpdateTab::Removals,
+        UpdateTab::Optional,
+    ];
 
     fn label(self) -> &'static str {
         match self {
             UpdateTab::Updates => "Updated",
             UpdateTab::Additions => "Added",
             UpdateTab::Removals => "Removed",
+            UpdateTab::Optional => "Optional",
         }
     }
 
@@ -39,6 +46,7 @@ impl UpdateTab {
             UpdateTab::Updates => "Nothing was updated.",
             UpdateTab::Additions => "Nothing was added.",
             UpdateTab::Removals => "Nothing was removed.",
+            UpdateTab::Optional => "Nothing optional was offered.",
         }
     }
 
@@ -47,6 +55,7 @@ impl UpdateTab {
             UpdateTab::Updates => IconType::RefreshCw01,
             UpdateTab::Additions => IconType::Plus,
             UpdateTab::Removals => IconType::Trash01,
+            UpdateTab::Optional => IconType::Plus,
         }
     }
 
@@ -55,6 +64,7 @@ impl UpdateTab {
             UpdateTab::Updates => colors::brand(),
             UpdateTab::Additions => colors::success(),
             UpdateTab::Removals => colors::danger(),
+            UpdateTab::Optional => colors::brand(),
         }
     }
 
@@ -63,6 +73,7 @@ impl UpdateTab {
             UpdateTab::Updates => &summary.updated,
             UpdateTab::Additions => &summary.added,
             UpdateTab::Removals => &summary.removed,
+            UpdateTab::Optional => &summary.optional,
         }
     }
 }
@@ -88,7 +99,13 @@ impl Component for ClusterUpdatePopup {
         let all_items: Vec<&ClusterUpdateItem> = summaries
             .iter()
             .flatten()
-            .flat_map(|s| s.updated.iter().chain(&s.added).chain(&s.removed))
+            .flat_map(|s| {
+                s.updated
+                    .iter()
+                    .chain(&s.added)
+                    .chain(&s.removed)
+                    .chain(&s.optional)
+            })
             .collect();
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
@@ -356,8 +373,7 @@ fn cluster_header(
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| open_cluster(&dispatch, cluster_id))
         .child(
             label()

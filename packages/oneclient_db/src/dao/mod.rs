@@ -4,6 +4,7 @@ pub mod browser_package_update;
 pub mod bundle;
 pub mod cluster;
 pub mod cluster_bundle;
+pub mod cluster_optional_mod;
 pub mod game_session;
 pub mod java;
 pub mod package_metadata;

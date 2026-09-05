@@ -481,7 +481,7 @@ struct ModrinthLicense {
 impl ModrinthProject {
     fn into_detail(self) -> ProjectDetail {
         let body = if let Some(raw) = self.body {
-            PackageBody::Raw(raw)
+            PackageBody::raw(raw)
         } else if let Some(url) = self.body_url {
             PackageBody::Url(url)
         } else {

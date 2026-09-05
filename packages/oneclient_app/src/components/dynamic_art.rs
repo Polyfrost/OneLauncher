@@ -90,15 +90,18 @@ pub fn use_art_bytes(
 
     let image_query = use_cached_image(art_url.clone(), max_edge);
 
-    // Subscribed unconditionally to keep hook order stable same query when no preview size
-    let preview_edge = preview_edge.unwrap_or(max_edge);
-    let preview_query = use_cached_image(art_url.clone(), preview_edge);
+    let preview_edge = preview_edge.filter(|edge| *edge != max_edge);
+    let preview_query = match preview_edge {
+        Some(edge) => use_cached_image(art_url.clone(), edge),
+        None => use_cached_image(None, 0),
+    };
 
     let full = loaded_image(art_url.as_deref(), &image_query)
         .map(|(url, bytes)| (format!("{max_edge}|{url}"), bytes));
     let preview = || {
+        let edge = preview_edge?;
         loaded_image(art_url.as_deref(), &preview_query)
-            .map(|(url, bytes)| (format!("{preview_edge}|{url}"), bytes))
+            .map(|(url, bytes)| (format!("{edge}|{url}"), bytes))
     };
 
     full.or_else(preview).unwrap_or_else(|| {

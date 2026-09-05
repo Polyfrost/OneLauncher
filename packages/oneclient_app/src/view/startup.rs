@@ -7,7 +7,57 @@ use crate::hooks::{
     terms_document, terms_is_loading, use_launcher, use_notifications_snapshot, use_settings_snapshot,
     use_splash, use_terms,
 };
+use crate::hooks::use_dispatch;
+use crate::components::{Button, progress_track};
 use crate::theme::colors;
+
+/// Startup is a sequence of boolean gates, not measurable work, so the bar steps
+/// once per gate the launcher clears instead of tracking bytes
+const STARTUP_STEPS: u8 = 3;
+
+#[derive(PartialEq)]
+struct RecoveryActions {
+    snapshots: usize,
+}
+
+impl Component for RecoveryActions {
+    fn render(&self) -> impl IntoElement {
+        let actions = use_dispatch();
+        let snapshots = self.snapshots;
+
+        let restore = actions.clone();
+
+        let mut row = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .secondary()
+                    .small()
+                    .on_press(|_| crate::recovery::open_data_folder())
+                    .text("Open data folder"),
+            );
+
+        if snapshots > 0 {
+            row = row.child(
+                Button::new()
+                    .primary()
+                    .small()
+                    .on_press(move |_| crate::recovery::restore_latest(&restore))
+                    .text("Restore last backup"),
+            );
+        }
+
+        row.child(
+            Button::new()
+                .danger()
+                .small()
+                .on_press(move |_| crate::recovery::reset(&actions))
+                .text("Reset database"),
+        )
+    }
+}
 
 #[derive(PartialEq)]
 pub struct Startup;
@@ -39,6 +89,11 @@ impl Component for Startup {
 
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
+        if launcher.needs_location {
+            let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
+            return rect().into_element();
+        }
+
         if launcher.ready && !terms_is_loading(&terms) {
             let document = terms_document(&terms);
             let required_terms = document.as_ref().map(|doc| doc.version).unwrap_or(1);
@@ -52,20 +107,19 @@ impl Component for Startup {
 
             let destination = if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
+            } else if settings.settings.declined_tos {
+                Route::Home {}
             } else if stale {
                 Route::OnboardingTerms {}
             } else {
                 Route::Home {}
             };
 
-            // Onboarding needs the bundle catalog before it can render its steps so gate it on the fetch
-            let heading_to_onboarding = matches!(
-                destination,
-                Route::OnboardingWelcome { .. } | Route::OnboardingTerms { .. }
-            );
+            let heading_to_onboarding = matches!(destination, Route::OnboardingWelcome { .. });
+            let heading_to_terms = matches!(destination, Route::OnboardingTerms { .. });
             if !heading_to_onboarding || !launcher.fetching {
                 // Raise the splash curtain so the hard route swap is hidden until Home settles onboarding animates itself
-                if !heading_to_onboarding {
+                if !heading_to_onboarding && !heading_to_terms {
                     let mut active = splash.active;
                     let mut home_ready = splash.home_ready;
                     home_ready.set(false);
@@ -78,11 +132,13 @@ impl Component for Startup {
 
         let active = notifications.inbox.iter().find(|entry| entry.is_loading);
 
-        let (message, detail): (String, Option<String>) =
+        let (message, detail, step): (String, Option<String>, u8) =
             if let Some(err) = launcher.error.as_deref() {
+                let step = if launcher.ready { 2 } else { 1 };
                 (
                     "Couldn't start OneClient".to_string(),
                     Some(err.to_string()),
+                    step,
                 )
             } else if let Some(entry) = active {
                 let detail = entry
@@ -91,11 +147,11 @@ impl Component for Startup {
                     .find(|t| t.total == 0 || t.current < t.total)
                     .map(|t| t.label.clone())
                     .or_else(|| entry.progress.map(|(c, t)| format!("{c} / {t}")));
-                (entry.title.clone(), detail)
+                (entry.title.clone(), detail, 3)
             } else if launcher.ready {
-                ("Fetching versions and bundles...".to_string(), None)
+                ("Fetching versions and bundles...".to_string(), None, 2)
             } else {
-                ("Starting OneClient...".to_string(), None)
+                ("Starting OneClient...".to_string(), None, 1)
             };
 
         let is_error = launcher.error.is_some();
@@ -109,6 +165,15 @@ impl Component for Startup {
         } else {
             colors::brand()
         };
+
+        let filled = f32::from(step) / f32::from(STARTUP_STEPS + 1) * 100.;
+
+        let progress = rect().width(Size::px(288.)).child(progress_track(
+            filled,
+            4.,
+            dot_color,
+            colors::fg_primary().with_a(30),
+        ));
 
         let loading_row = rect()
             .horizontal()
@@ -146,16 +211,33 @@ impl Component for Startup {
                     .color(colors::fg_primary().with_a(140)),
             )
             .child(rect().height(Size::px(14.)))
-            .child(loading_row);
+            .child(loading_row)
+            .child(progress);
 
         if let Some(detail) = detail {
             content = content.child(
                 label()
                     .text(detail)
                     .font_size(12.)
-                    .max_lines(1)
+                    .max_lines(if is_error { 4 } else { 1 })
                     .color(colors::fg_secondary().with_a(180)),
             );
+        }
+
+        if is_error {
+            content = content
+                .child(rect().height(Size::px(6.)))
+                .child(RecoveryActions { snapshots: launcher.snapshots })
+                .child(
+                    label()
+                        .text(format!(
+                            "Your data stays in {}. Nothing here deletes it.",
+                            launcher.data_dir
+                        ))
+                        .font_size(11.)
+                        .max_lines(2)
+                        .color(colors::fg_secondary().with_a(130)),
+                );
         }
 
         let content = content

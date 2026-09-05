@@ -6,13 +6,14 @@ use oneclient_core::ScreenshotInfo;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
-    Segment, SegmentedControl, open_folder_button,
+    Button, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea, Segment,
+    SegmentedControl, cell_width, grid_columns_picker, open_folder_button, resolved_columns,
+    screenshot_context_menu,
 };
-use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_view_state};
+use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state};
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
+use crate::ui::{border_all_color, flow_grid, fmt_date};
 use crate::utils::{format_res, format_size};
 
 use super::cluster_not_found;
@@ -22,6 +23,8 @@ const THUMB_EDGE: u32 = 480;
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
+const TILE_PREVIEW_RATIO: f32 = TILE_PREVIEW_H / MAX_COL_W;
+const TILE_PREVIEW_MAX_H: f32 = 420.;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
@@ -39,11 +42,15 @@ impl Component for ClusterScreenshots {
         let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
 
         let query = use_cluster_screenshots(self.cluster_id);
+        // Otherwise a screenshot taken in game only shows up on the next visit
+        use_screenshot_folder_watch(folder.clone(), query);
         let action = use_screenshot_action();
 
         let shots = try_cluster_screenshots(&query).unwrap_or_default();
 
-        let view_mode = use_view_state("cluster.screenshots").layout;
+        let view = use_view_state("cluster.screenshots");
+        let view_mode = view.layout;
+        let grid_columns = view.columns;
         let menu_dispatch = use_dispatch();
 
         let mut edit_mode = use_state(|| false);
@@ -57,10 +64,15 @@ impl Component for ClusterScreenshots {
             &shots,
             folder,
             view_mode,
+            grid_columns,
             edit_mode,
             selected,
             confirm_delete,
         );
+
+        let cols = resolved_columns(*grid_columns.read());
+        let tile_w = cell_width(*grid_width.read(), cols, GRID_GAP);
+        let preview_h = (tile_w * TILE_PREVIEW_RATIO).clamp(TILE_PREVIEW_H, TILE_PREVIEW_MAX_H);
 
         let content: Element = if shots.is_empty() {
             empty_state(query_is_loading(&query))
@@ -96,6 +108,7 @@ impl Component for ClusterScreenshots {
                         info,
                         selected: is_selected,
                         edit_mode: editing,
+                        preview_h,
                         on_activate: on_activate.into(),
                         on_context,
                     }
@@ -113,10 +126,7 @@ impl Component for ClusterScreenshots {
             }
 
             match *view_mode.read() {
-                ViewLayout::Grid => {
-                    let cols = grid_columns_for_width(*grid_width.read(), MAX_COL_W, GRID_GAP);
-                    flow_grid(items, cols, grid_width, GRID_GAP)
-                }
+                ViewLayout::Grid => flow_grid(items, cols, grid_width, GRID_GAP),
                 ViewLayout::List => rect()
                     .vertical()
                     .width(Size::fill())
@@ -145,32 +155,8 @@ impl Component for ClusterScreenshots {
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, path)| {
-            let copy_dispatch = menu_dispatch.clone();
-            let open_path = path.clone();
-            let copy_path = path.clone();
-            let delete_path = path.clone();
-            ContextMenu::new(x, y)
+            screenshot_context_menu(x, y, path, action, menu_dispatch.clone(), |()| {})
                 .on_close(move |_| menu.set(None))
-                .action(IconType::Folder, "Open in folder", move |()| {
-                    if let Some(dir) = open_path.parent() {
-                        crate::platform::open_url(&dir.to_string_lossy());
-                    }
-                })
-                .action(IconType::Copy01, "Copy", move |()| {
-                    crate::platform::copy_image_to_clipboard(copy_path.clone());
-                    copy_dispatch
-                        .notify("Copied to clipboard")
-                        .body("Screenshot copied to your clipboard.")
-                        .info()
-                        .icon(IconType::ClipboardCheck)
-                        .send();
-                })
-                .separator()
-                .danger_action(IconType::Trash01, "Delete", move |()| {
-                    action.mutate(ScreenshotAction::Delete {
-                        path: delete_path.clone(),
-                    });
-                })
                 .into_element()
         });
 
@@ -198,6 +184,7 @@ fn toolbar_row(
     shots: &[ScreenshotInfo],
     folder: Option<PathBuf>,
     view_mode: State<ViewLayout>,
+    grid_columns: State<u8>,
     mut edit_mode: State<bool>,
     mut selected: State<HashSet<PathBuf>>,
     mut confirm_delete: State<bool>,
@@ -265,6 +252,10 @@ fn toolbar_row(
             );
     } else {
         right = right
+            .maybe_child(
+                (*view_mode.read() == ViewLayout::Grid)
+                    .then(|| grid_columns_picker(grid_columns, 36.).into_element()),
+            )
             .child(
                 SegmentedControl::new(view_mode)
                     .equal_width(40.)
@@ -414,6 +405,7 @@ struct ScreenshotTile {
     info: ScreenshotInfo,
     selected: bool,
     edit_mode: bool,
+    preview_h: f32,
     on_activate: EventHandler<()>,
     on_context: EventHandler<(f32, f32)>,
 }
@@ -438,19 +430,13 @@ impl Component for ScreenshotTile {
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .max_width(Size::px(MAX_COL_W))
             .corner_radius(CornerRadius::new_all(10.))
             .background(CARD_BG)
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {
@@ -459,7 +445,7 @@ impl Component for ScreenshotTile {
             })
             .child(preview_box(
                 info.path.clone(),
-                TILE_PREVIEW_H,
+                self.preview_h,
                 info.resolution,
             ))
             .child(
@@ -538,14 +524,9 @@ impl Component for ScreenshotRow {
                     colors::component_border()
                 },
             ))
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_activate.call(()))
             .on_secondary_down(move |e: Event<PressEventData>| {
                 if let PressEventData::Mouse(m) = e.data() {

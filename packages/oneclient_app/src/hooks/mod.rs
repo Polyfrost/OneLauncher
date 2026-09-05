@@ -1,18 +1,25 @@
 mod active_cluster;
 mod debounce;
 mod actions;
+mod overlay_claims;
 mod queries;
+mod shortcut_actions;
 mod view_state;
 
 pub use debounce::use_debounced;
+pub use overlay_claims::{
+    OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
+    use_provide_overlay_claims,
+};
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
     ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, LinkConfirmState,
-    OnboardingSelectionState, SplashState, use_active_cluster_id, use_browser_compat,
-    use_browser_state_store, use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
-    use_provide_browser_compat, use_provide_browser_state, use_provide_link_confirm,
-    use_provide_onboarding_selection, use_provide_splash, use_splash,
+    OnboardingSelectionState, SplashState, StartMaximizedState, use_active_cluster_id,
+    use_browser_compat, use_browser_state_store, use_link_confirm, use_onboarding_selection,
+    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
+    use_provide_link_confirm, use_provide_onboarding_selection, use_provide_splash,
+    use_provide_start_maximized, use_splash, use_start_maximized,
 };
 
 pub use actions::{Actions, NotificationBuilder, PumpSignal};
@@ -31,6 +38,9 @@ pub use queries::{
     invalidate_cluster_queries, invalidate_java_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
     invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
+    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery,
+    UseDiscardLeftovers, invalidate_leftovers_queries, mutation_ok, try_leftovers,
+    use_discard_leftovers, use_leftovers,
     java_runtimes, latest_changelog_version, loaded_image, loader_versions,
     login_code_already_handled, migration_detection,
     mutation_error, mutation_is_pending, mutation_is_running, onboarding_bundles_items, package_meta_batch,
@@ -51,13 +61,15 @@ pub use queries::{
     use_package_project, use_package_search, use_package_versions, use_package_versions_when,
     use_player_profile,
     use_player_skin, use_provider_versions, use_refresh_account, use_refresh_all_accounts,
-    use_remove_account, use_screenshot_action, use_set_default_account, use_terms, use_upload_log,
+    use_remove_account, use_screenshot_action, use_screenshot_folder_watch, use_set_default_account,
+    use_terms, use_upload_log,
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
-    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, SettingsState,
+    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
+    SettingsState,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -75,6 +87,10 @@ pub fn use_dispatch() -> Actions {
 /// not re-render a component reading only `data_dir`
 pub fn use_launcher() -> LauncherInit {
     use_radio(AppChannel::Launcher).read().launcher.clone()
+}
+
+pub fn use_relocation() -> RelocationState {
+    use_radio(AppChannel::Relocation).read().relocation.clone()
 }
 
 pub fn use_settings_snapshot() -> SettingsState {
@@ -105,6 +121,13 @@ pub fn use_game_snapshot() -> GameState {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_pending_launch() -> Option<String> {
+    use_radio(AppChannel::PendingLaunch)
+        .read()
+        .pending_launch
+        .clone()
 }
 
 pub fn use_microsoft_login_status() -> Option<LoginProgress> {

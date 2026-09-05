@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
-use oneclient_content::packages::{ContentType, PackageStore};
+use oneclient_content::packages::LiveSync;
 use oneclient_db::models::ClusterId;
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
@@ -11,31 +9,56 @@ use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
     ClusterProfileQuery, ClusterSettingsQuery, GameProfileQuery, ListNamedProfilesQuery,
 };
-use super::versions::{LoaderVersionsQuery, VersionsMetadataQuery};
+
+async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
+    let started = std::time::Instant::now();
+    fut.await;
+    tracing::debug!(
+        target: "oneclient_app::perf",
+        step,
+        ms = started.elapsed().as_millis() as u64,
+        "invalidate step"
+    );
+}
 
 pub async fn invalidate_cluster_queries() {
-    QueriesStorage::<ListClustersQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundlesWithStatusQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundleOverridesQuery>::try_invalidate_all().await;
-    QueriesStorage::<BundleUpdatesQuery>::try_invalidate_all().await;
-    QueriesStorage::<PackageUpdatesQuery>::try_invalidate_all().await;
-    QueriesStorage::<VersionsMetadataQuery>::try_invalidate_all().await;
-    QueriesStorage::<LoaderVersionsQuery>::try_invalidate_all().await;
+    let started = std::time::Instant::now();
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
+    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
+    timed("clusters", QueriesStorage::<ListClustersQuery>::invalidate_all()).await;
+    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
+    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::invalidate_all()).await;
+    tracing::debug!(
+        target: "oneclient_app::perf",
+        ms = started.elapsed().as_millis() as u64,
+        "cluster queries invalidated"
+    );
 }
 
 /// Split out of [`invalidate_cluster_queries`] so an install can wait for just
-/// this before dropping its busy flag the full sweep hits the network
+/// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
-    QueriesStorage::<ClusterContentQuery>::try_invalidate_all().await;
+    QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
+}
+
+/// Everything [`invalidate_cluster_queries`] does bar the cluster list and the
+/// cached package updates neither of which an enabled flag can move
+/// The bundle queries do move a toggle writes a bundle override and both read
+/// those back
+async fn invalidate_enabled_flag_queries() {
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
+    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
+    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
 }
 
 pub async fn invalidate_profile_queries() {
-    QueriesStorage::<ListNamedProfilesQuery>::try_invalidate_all().await;
-    QueriesStorage::<GameProfileQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterProfileQuery>::try_invalidate_all().await;
-    QueriesStorage::<ClusterSettingsQuery>::try_invalidate_all().await;
-    QueriesStorage::<ListClustersQuery>::try_invalidate_all().await;
+    QueriesStorage::<ListNamedProfilesQuery>::invalidate_all().await;
+    QueriesStorage::<GameProfileQuery>::invalidate_all().await;
+    QueriesStorage::<ClusterProfileQuery>::invalidate_all().await;
+    QueriesStorage::<ClusterSettingsQuery>::invalidate_all().await;
+    QueriesStorage::<ListClustersQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -43,9 +66,10 @@ pub struct ClusterMutation;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ClusterAction {
-    ToggleArtifact {
+    SetArtifactEnabled {
         cluster_id: ClusterId,
         hash: String,
+        enabled: bool,
     },
     RemoveArtifact {
         cluster_id: ClusterId,
@@ -64,11 +88,6 @@ pub enum ClusterAction {
         /// writes `Enabled` / `Disabled`
         manifest_default: bool,
     },
-    ImportLocalFile {
-        cluster_id: ClusterId,
-        content_type: ContentType,
-        path: PathBuf,
-    },
     SetDedicatedDir {
         cluster_id: ClusterId,
         dedicated: bool,
@@ -84,17 +103,26 @@ impl MutationCapability for ClusterMutation {
     type Keys = ClusterAction;
 
     async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+        let started = std::time::Instant::now();
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
         let content = &state.services.content();
         let result = match keys {
-            ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                // Applied to the game folder at next launch never mid-session
-                // Minecraft reads its mods once at startup
-                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
-                    .await
-                    .map(|_| ())
-            }
+            ClusterAction::SetArtifactEnabled {
+                cluster_id,
+                hash,
+                enabled,
+            } => oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content)
+                .await
+                .map(|live| {
+                    if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
+                        services
+                            .events
+                            .notify("Saved for the next launch")
+                            .body("Minecraft is running, but this could not be added to the open game.")
+                            .send();
+                    }
+                }),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
             }
@@ -118,17 +146,6 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
-            ClusterAction::ImportLocalFile {
-                cluster_id,
-                content_type,
-                path,
-            } => PackageStore::import_local_file(path, *content_type, *cluster_id, content)
-                .await
-                .map(|row| {
-                    services
-                        .events
-                        .notify("Imported").body(format!("Added {}", row.file_name)).send();
-                }),
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
@@ -165,16 +182,26 @@ impl MutationCapability for ClusterMutation {
                 }
             }
         };
+        tracing::debug!(
+            target: "oneclient_app::perf",
+            ms = started.elapsed().as_millis() as u64,
+            ok = result.is_ok(),
+            "cluster action ran"
+        );
         result.map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, _keys: &ClusterAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &ClusterAction, result: &Result<(), String>) {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
             state.services.events.notify("Action failed").body(err).error().send();
         }
-        invalidate_cluster_queries().await;
+        if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
+            invalidate_enabled_flag_queries().await;
+        } else {
+            invalidate_cluster_queries().await;
+        }
     }
 }
 

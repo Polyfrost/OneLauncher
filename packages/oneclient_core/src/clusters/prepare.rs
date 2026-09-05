@@ -88,7 +88,16 @@ pub async fn prepare_cluster(
     }
 
     if let Err(err) = result {
-        tracing::error!(cluster_id, error = %err, "cluster preparation failed");
+        if err.is_cancelled() {
+            tracing::info!(
+                cluster_id,
+                sentry = false,
+                error = %err,
+                "cluster preparation cancelled by the user"
+            );
+        } else {
+            tracing::error!(cluster_id, error = %err, "cluster preparation failed");
+        }
         if !continuing {
             let _ = state.clusters.set_stage(cluster_id, ClusterStage::NotReady).await;
         }
@@ -324,7 +333,8 @@ async fn run_forge_processors(
             .await?
             .ok_or_else(|| GameError::ProcessorMainClass(processor.jar.clone()))?;
 
-        let output = Command::new(&java.absolute_path)
+        let mut command = Command::new(&java.absolute_path);
+        command
             .arg("-cp")
             .arg(game::get_classpath_library(&libraries, &cp)?)
             .arg(&main)
@@ -332,9 +342,10 @@ async fn run_forge_processors(
                 &libraries,
                 &processor.args,
                 data,
-            )?)
-            .output()
-            .await?;
+            )?);
+        oneclient_common::process::no_window(command.as_std_mut());
+
+        let output = command.output().await?;
 
         if !output.status.success() {
             return Err(GameError::ProcessorFailed(

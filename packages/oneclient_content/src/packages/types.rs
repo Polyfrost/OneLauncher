@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_common::search::normalize_query;
+use oneclient_db::models::SeenStatus;
 
 pub const DEFAULT_PAGE_SIZE: usize = 24;
 
@@ -77,6 +78,12 @@ pub struct ProjectSummary {
 pub enum PackageBody {
 	Url(String),
 	Raw(String),
+}
+
+impl PackageBody {
+	pub fn raw(markdown: impl AsRef<str>) -> Self {
+		Self::Raw(crate::packages::markdown::normalize_markdown(markdown.as_ref()))
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -220,6 +227,7 @@ pub struct ProviderReleaseInfo {
 }
 
 pub type VersionLookup = HashMap<String, VersionDetail>;
+pub type ProviderVersionLookup = HashMap<String, (ProviderId, VersionDetail)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinkedArtifactInfo {
@@ -235,4 +243,6 @@ pub struct LinkedArtifactInfo {
 	pub provider: Option<ProviderId>,
 	/// Provider publish time RFC 3339
 	pub published_at: Option<String>,
+	/// Drives the new/updated badge in the package manager
+	pub seen_status: SeenStatus,
 }

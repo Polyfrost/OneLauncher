@@ -7,16 +7,17 @@ use oneclient_core::settings::{
 };
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle, toggle_controlled,
-    validate_number,
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
+    toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, mutation_is_running, try_game_profile,
-    use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes, use_loader_versions,
-    use_settings_snapshot,
+    ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
+    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
+    use_loader_versions, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
+use crate::ui::centered_note;
 use crate::view::app::settings::{section_header, settings_row};
 
 use super::cluster_not_found;
@@ -52,7 +53,14 @@ impl Component for ClusterSettings {
             return cluster_not_found();
         };
 
-        let profile = try_game_profile(&profile_query).unwrap_or_else(|| global.clone());
+        let Some(profile) = try_game_profile(&profile_query) else {
+            let note = match query_error(&profile_query) {
+                Some(err) => format!("Could not load these settings: {err}"),
+                None => "Loading settings...".to_string(),
+            };
+            return cluster_content().child(centered_note(&note)).into_element();
+        };
+
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
@@ -62,27 +70,6 @@ impl Component for ClusterSettings {
                     .width(Size::fill())
                     .height(Size::fill())
                     .spacing(4.)
-                    .child(section_header("LOADER"))
-                    .child(
-                        LoaderRow {
-                            cluster_id,
-                            loader,
-                            selected: cluster.mc_loader_version.clone(),
-                            versions,
-                        }
-                        .into_element(),
-                    )
-                    .child(section_header("JAVA"))
-                    .child(
-                        JavaRow {
-                            cluster_id,
-                            value: profile.java_path.clone(),
-                            global: global.java_path.clone(),
-                            runtimes,
-                        }
-                        .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -104,16 +91,19 @@ impl Component for ClusterSettings {
                         MemoryRow {
                             cluster_id,
                             value: profile.mem_max,
-                            global: global.mem_max.unwrap_or(4096),
+                            global: global
+                                .mem_max
+                                .unwrap_or_else(oneclient_common::default_mem_max),
                         }
                         .into_element(),
                     )
-                    .child(section_header("CONTENT"))
+                    .child(section_header("LOADER"))
                     .child(
-                        BrowserUpdateModeRow {
+                        LoaderRow {
                             cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
+                            loader,
+                            selected: cluster.mc_loader_version.clone(),
+                            versions,
                         }
                         .into_element(),
                     )
@@ -125,10 +115,32 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("JAVA"))
+                    .child(
+                        JavaRow {
+                            cluster_id,
+                            value: profile.java_path.clone(),
+                            global: global.java_path.clone(),
+                            runtimes,
+                        }
+                        .into_element(),
+                    )
+                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("PROCESS"))
                     .child(text_row(cluster_id, TextField::Pre, &profile, &global))
                     .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
                     .child(text_row(cluster_id, TextField::Post, &profile, &global))
+                    .child(section_header("CONTENT"))
+                    .child(
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )
@@ -245,6 +257,32 @@ impl Component for ToggleRow {
 }
 
 #[derive(PartialEq)]
+struct ShortcutRow {
+    cluster_id: i64,
+}
+
+impl Component for ShortcutRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .on_press(move |_| dispatch.create_cluster_shortcut(cluster_id))
+            .text("Create Shortcut");
+
+        settings_row(
+            IconType::Rocket02,
+            "Desktop Shortcut",
+            "Save a shortcut that starts this version straight from your desktop, \
+             without opening the launcher first.",
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
 struct VerifyFilesRow {
     cluster_id: i64,
 }
@@ -355,21 +393,12 @@ impl Component for MemoryRow {
         })
         .into();
 
-        let control = TextInput::new(memory)
-            .width(Size::px(90.))
-            .placeholder("4096")
-            .on_validate(validate_number)
-            .trailing(
-                label()
-                    .text("MB")
-                    .font_size(12.)
-                    .color(colors::fg_secondary()),
-            );
+        let control = memory_field(memory);
 
         settings_row(
             IconType::Database01,
             "Memory",
-            "The amount of memory in megabytes allocated for the game.",
+            "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
             override_cell(control, overridden, on_reset),
         )
     }

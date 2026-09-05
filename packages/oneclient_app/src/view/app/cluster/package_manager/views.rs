@@ -7,9 +7,9 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput,
+    Segment, SegmentedControl, TabBar, TabItem, TextInput, grid_columns_picker, resolved_columns,
 };
-use crate::hooks::use_dispatch;
+use crate::hooks::{use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -53,13 +53,7 @@ impl SortMode {
     }
 
     pub(super) fn sort(self, rows: &mut [PackageEntry]) {
-        let title = |p: &PackageEntry| {
-            if p.is_remote() {
-                p.name.to_lowercase()
-            } else {
-                p.file_name.to_lowercase()
-            }
-        };
+        let title = |p: &PackageEntry| p.name.to_lowercase();
 
         match self {
             SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
@@ -140,6 +134,7 @@ pub(super) fn toolbar_bar(
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
     layout: State<ViewLayout>,
+    grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
 ) -> impl IntoElement {
@@ -193,6 +188,10 @@ pub(super) fn toolbar_bar(
             enabled_filter,
             hidden_filter,
         })
+        .maybe_child(
+            (*layout.read() == ViewLayout::Grid)
+                .then(|| grid_columns_picker(grid_columns, 34.).into_element()),
+        )
         .child(
             SegmentedControl::new(layout)
                 .height(34.)
@@ -213,8 +212,19 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-/// Enabling still stores and applies at the next launch but the running session cannot pick it up
-pub(super) fn running_notice(noun_plural: &'static str) -> Element {
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
+    let text = match content_type {
+        ContentType::ResourcePack => format!(
+            "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
+        ),
+        ContentType::Shader => format!(
+            "Minecraft is running. New {noun_plural} usually go in right away, open the shader pack screen in game to turn them on. OneClient tells you when one has to wait for the next launch."
+        ),
+        _ => format!(
+            "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
+        ),
+    };
+
     rect()
         .horizontal()
         .width(Size::fill())
@@ -233,9 +243,7 @@ pub(super) fn running_notice(noun_plural: &'static str) -> Element {
         )
         .child(
             label()
-                .text(format!(
-                    "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
-                ))
+                .text(text)
                 .font_size(12.)
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
@@ -311,6 +319,8 @@ struct FilterPopover {
 
 impl Component for FilterPopover {
     fn render(&self) -> impl IntoElement {
+        use_overlay_claim();
+
         let mut sort = self.sort;
         let current_sort = self.current_sort;
         let mut enabled_filter = self.enabled_filter;
@@ -472,9 +482,8 @@ impl Component for ChoiceRow {
             .maybe(focused, |el| {
                 el.border(crate::ui::border_all_color(1., colors::brand()))
             })
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(self.on_press.clone())
+            .cursor(CursorIcon::Pointer)
+            .on_press(self.on_press.clone())
             .child(
                 label()
                     .text(text)
@@ -506,13 +515,13 @@ fn add_from_file_button(
                     .pick_files()
                     .await
                 {
-                    for handle in handles {
-                        dispatch.import_local_file(
-                            cluster_id,
-                            content_type,
-                            handle.path().to_path_buf(),
-                        );
-                    }
+                    dispatch.import_local_files(
+                        cluster_id,
+                        handles
+                            .iter()
+                            .map(|handle| (handle.path().to_path_buf(), content_type))
+                            .collect(),
+                    );
                 }
             });
         })
@@ -556,6 +565,7 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    grid_columns: u8,
 }
 
 impl ContentBox {
@@ -568,6 +578,7 @@ impl ContentBox {
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
+        grid_columns: u8,
     ) -> Self {
         Self {
             items,
@@ -577,6 +588,7 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
+            grid_columns,
         }
     }
 }
@@ -590,6 +602,7 @@ impl Component for ContentBox {
         let noun_plural = self.noun_plural;
         let kind = &self.kind;
         let layout = self.layout;
+        let grid_columns = self.grid_columns;
 
         let dispatch = use_dispatch();
 
@@ -614,7 +627,7 @@ impl Component for ContentBox {
                 .width(Size::fill())
                 .height(Size::fill())
                 .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, ctx).into_element()
+                    grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
                 })
                 .into_element(),
         });
@@ -679,11 +692,12 @@ fn grid_content(
     items: &[PackageEntry],
     package_type: &'static str,
     cluster_id: i64,
+    grid_columns: u8,
     ctx: ScrollAreaCtx,
 ) -> impl IntoElement {
     let count = items.len();
-    let cols =
-        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 3);
+    let fits = ((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize;
+    let cols = resolved_columns(grid_columns).min(fits.max(1));
     let rows_total = count.div_ceil(cols);
     let slot = CARD_GRID_H + GRID_GAP;
 

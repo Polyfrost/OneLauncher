@@ -7,7 +7,7 @@ use crate::Route;
 use crate::components::OnboardingNavbar;
 use crate::hooks::{
     OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_migration,
-    use_onboarding_bundles, use_provide_onboarding_selection,
+    use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -45,6 +45,9 @@ impl Component for OnboardingShell {
 
         let route = use_route::<Route>();
         let step_index = onboarding_step_index(&route, detected_migration);
+
+        let onboarded = use_settings_snapshot().settings.seen_onboarding;
+        let reconsent = onboarded && matches!(&route, Route::OnboardingTerms {});
 
         let bundles = use_onboarding_bundles();
 
@@ -85,10 +88,10 @@ impl Component for OnboardingShell {
                     .height(Size::fill())
                     .content(Content::Flex)
                     .layer(Layer::Relative(30))
-                    .child(progress_bar(
-                        step_index,
-                        onboarding_total(detected_migration),
-                    ))
+                    .maybe_child((!reconsent).then(|| {
+                        progress_bar(step_index, onboarding_total(detected_migration))
+                            .into_element()
+                    }))
                     .child(OnboardingNavbar)
                     .child(
                         rect()

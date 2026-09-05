@@ -110,14 +110,11 @@ impl Component for Startup {
                 Route::Home {}
             };
 
-            // Onboarding needs the bundle catalog before it can render its steps so gate it on the fetch
-            let heading_to_onboarding = matches!(
-                destination,
-                Route::OnboardingWelcome { .. } | Route::OnboardingTerms { .. }
-            );
+            let heading_to_onboarding = matches!(destination, Route::OnboardingWelcome { .. });
+            let heading_to_terms = matches!(destination, Route::OnboardingTerms { .. });
             if !heading_to_onboarding || !launcher.fetching {
                 // Raise the splash curtain so the hard route swap is hidden until Home settles onboarding animates itself
-                if !heading_to_onboarding {
+                if !heading_to_onboarding && !heading_to_terms {
                     let mut active = splash.active;
                     let mut home_ready = splash.home_ready;
                     home_ready.set(false);

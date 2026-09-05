@@ -85,8 +85,17 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .spacing(16.)
             .child(step_heading(
-                "Terms & Privacy",
-                "Please read and accept these before continuing.",
+                if returning {
+                    "Terms & Privacy updated"
+                } else {
+                    "Terms & Privacy"
+                },
+                if returning {
+                    "We've updated these since you last accepted. Review and accept to carry on \
+                     where you left off."
+                } else {
+                    "Please read and accept these before continuing."
+                },
             ))
             .maybe_child(tabs)
             .child(body)

@@ -27,6 +27,8 @@ enum ConsoleWindow {
 
 static CONSOLE_WINDOW: Mutex<ConsoleWindow> = Mutex::new(ConsoleWindow::Closed);
 
+static PREVIOUS_DIRECTIVES: Mutex<Option<String>> = Mutex::new(None);
+
 pub fn open_log_console() {
     {
         let mut state = CONSOLE_WINDOW.lock().expect("console window state");
@@ -39,6 +41,8 @@ pub fn open_log_console() {
             ConsoleWindow::Closed => *state = ConsoleWindow::Opening,
         }
     }
+
+    raise_to_debug();
 
     // Taken in the caller's scope the future below runs detached and `Platform::get()` needs a component scope
     let platform = Platform::get();
@@ -65,8 +69,31 @@ fn window_config() -> WindowConfig {
         })
         .with_on_close(|_, _| {
             *CONSOLE_WINDOW.lock().expect("console window state") = ConsoleWindow::Closed;
+            restore_directives();
             CloseDecision::Close
         })
+}
+fn raise_to_debug() {
+    let previous = logger::active_directives();
+    if previous != logger::default_directives() {
+        return;
+    }
+
+    if logger::set_filter(&logger::debug_directives()).is_ok() {
+        *PREVIOUS_DIRECTIVES.lock().expect("console directives") = Some(previous);
+    }
+}
+
+fn restore_directives() {
+    let Some(previous) = PREVIOUS_DIRECTIVES.lock().expect("console directives").take() else {
+        return;
+    };
+
+    if logger::active_directives() != logger::debug_directives() {
+        return;
+    }
+
+    let _ = logger::set_filter(&previous);
 }
 
 struct LogConsoleApp;

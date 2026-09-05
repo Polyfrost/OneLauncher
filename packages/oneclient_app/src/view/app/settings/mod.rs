@@ -8,19 +8,21 @@ mod java;
 mod language;
 mod launcher;
 mod minecraft;
+mod skin;
 mod storage;
 
 use freya::prelude::*;
 
 pub use accounts::SettingsAccounts;
 pub use apis::SettingsApis;
+pub use appearance::SettingsAppearance;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
-pub use appearance::SettingsAppearance;
 pub use java::SettingsJava;
 pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
 pub use minecraft::SettingsMinecraft;
+pub use skin::SettingsSkinChanger;
 pub use storage::SettingsStorage;
 
 use crate::{

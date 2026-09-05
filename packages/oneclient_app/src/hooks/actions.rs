@@ -318,7 +318,6 @@ impl Actions {
             settings.declined_tos = true;
             settings.accepted_tos_version = 0;
             settings.accepted_privacy_version = 0;
-            settings.seen_onboarding = true;
         }) {
             self.persist(updated);
         }

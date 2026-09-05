@@ -102,12 +102,13 @@ impl Component for OnboardingTerms {
             .into_element();
 
         let accept_dispatch = dispatch.clone();
+        let accept_next = next.clone();
         let nav = terms_nav(
             back,
             !loading,
             move || {
                 accept_dispatch.accept_tos(terms_version, privacy_version);
-                let _ = RouterContext::get().replace(next.clone());
+                let _ = RouterContext::get().replace(accept_next.clone());
             },
             move || {
                 let mut confirming = confirming_decline;
@@ -116,9 +117,10 @@ impl Component for OnboardingTerms {
         );
 
         let modal = confirming_decline.read().then(|| {
+            let next = next.clone();
             decline_modal(confirming_decline, move || {
                 dispatch.decline_tos();
-                let _ = RouterContext::get().replace(Route::Home {});
+                let _ = RouterContext::get().replace(next.clone());
             })
         });
 

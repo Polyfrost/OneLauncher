@@ -451,7 +451,7 @@ pub async fn set_bundle_package_override(
 }
 
 /// For bundle files the cluster has not installed
-/// installed ones go through [`toggle_artifact_enabled`]
+/// installed ones go through [`set_artifact_enabled_to`]
 /// Matching the manifest default clears the override
 /// switching *on* also drops objections filed under other bundles
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -562,26 +562,7 @@ pub async fn on_user_remove_artifact(
     handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
 }
 
-#[tracing::instrument(level = "debug", skip(ctx))]
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn toggle_artifact_enabled(
-    cluster_id: i64,
-    hash: &str,
-    ctx: &ContentCtx,
-) -> ContentResult<(bool, LiveSync)> {
-    let (enabled, live) = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
-
-    if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await?;
-    } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await?;
-    }
-
-    Ok((enabled, live))
-}
-
-/// Prefer this over [`toggle_artifact_enabled`] unless the current value is
-/// known to be the opposite
+/// The caller passes the value it wants
 /// a relinked artifact keeps its old `enabled` so a flip on an already-correct
 /// row puts it wrong
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -590,14 +571,16 @@ pub async fn set_artifact_enabled_to(
     hash: &str,
     enabled: bool,
     ctx: &ContentCtx,
-) -> ContentResult<()> {
-    PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
+) -> ContentResult<LiveSync> {
+    let (_, live) = PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
 
     if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await
+        on_user_enable_artifact(cluster_id, hash, ctx).await?;
     } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await
+        on_user_disable_artifact(cluster_id, hash, ctx).await?;
     }
+
+    Ok(live)
 }
 
 /// Writes the override alongside the flag
@@ -680,10 +663,7 @@ pub async fn remove_artifact_from_cluster(
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
 
-    let link = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id)
-        .await?
-        .into_iter()
-        .find(|l| l.hash == hash);
+    let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Database first unconditionally
     // on Windows a jar held open by a running game blocks deleting every hard

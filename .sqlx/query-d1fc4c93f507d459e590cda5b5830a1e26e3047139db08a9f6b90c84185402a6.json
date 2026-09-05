@@ -1,0 +1,158 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT\n\t\t\tca.hash AS \"hash!: String\",\n\t\t\tca.cluster_file_name AS \"cluster_file_name!: String\",\n\t\t\tca.enabled AS \"enabled!: i64\",\n\t\t\tca.seen_status AS \"seen_status!: i64\",\n\t\t\ta.content_type AS \"content_type!: i64\",\n\t\t\ta.file_name AS \"file_name!: String\",\n\t\t\tpr.provider AS \"provider?: i64\",\n\t\t\tpr.project_id AS \"project_id?: String\",\n\t\t\tpr.version_id AS \"version_id?: String\",\n\t\t\tpr.display_name AS \"display_name?: String\",\n\t\t\tpr.display_version AS \"display_version?: String\",\n\t\t\tpr.published_at AS \"published_at?: String\"\n\t\tFROM cluster_artifacts ca\n\t\tJOIN artifacts a ON a.hash = ca.hash\n\t\tLEFT JOIN provider_releases pr ON pr.rowid = (\n\t\t\tSELECT rowid\n\t\t\tFROM provider_releases\n\t\t\tWHERE hash = ca.hash\n\t\t\tORDER BY published_at DESC, provider, project_id, version_id\n\t\t\tLIMIT 1\n\t\t)\n\t\tWHERE ca.cluster_id = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash!: String",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "cluster_file_name!: String",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_file_name"
+          }
+        }
+      },
+      {
+        "name": "enabled!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "name": "seen_status!: i64",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "seen_status"
+          }
+        }
+      },
+      {
+        "name": "content_type!: i64",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "content_type"
+          }
+        }
+      },
+      {
+        "name": "file_name!: String",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "file_name"
+          }
+        }
+      },
+      {
+        "name": "provider?: i64",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id?: String",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "version_id?: String",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "display_name?: String",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "name": "display_version?: String",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_version"
+          }
+        }
+      },
+      {
+        "name": "published_at?: String",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "published_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d1fc4c93f507d459e590cda5b5830a1e26e3047139db08a9f6b90c84185402a6"
+}

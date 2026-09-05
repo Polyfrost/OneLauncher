@@ -19,7 +19,6 @@ pub use install::{
     reconcile_duplicate_activity,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_package_enabled,
     set_bundle_package_opt_in,
-    toggle_artifact_enabled,
     set_bundle_package_override, set_bundle_package_overrides,
 };
 pub use manager::{Bundle, BundlesManager};

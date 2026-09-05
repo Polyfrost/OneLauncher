@@ -42,6 +42,17 @@ pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
 }
 
+/// Everything [`invalidate_cluster_queries`] does bar the cluster list and the
+/// cached package updates neither of which an enabled flag can move
+/// The bundle queries do move a toggle writes a bundle override and both read
+/// those back
+async fn invalidate_enabled_flag_queries() {
+    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
+    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
+    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
+    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
+}
+
 pub async fn invalidate_profile_queries() {
     QueriesStorage::<ListNamedProfilesQuery>::invalidate_all().await;
     QueriesStorage::<GameProfileQuery>::invalidate_all().await;
@@ -55,9 +66,10 @@ pub struct ClusterMutation;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ClusterAction {
-    ToggleArtifact {
+    SetArtifactEnabled {
         cluster_id: ClusterId,
         hash: String,
+        enabled: bool,
     },
     RemoveArtifact {
         cluster_id: ClusterId,
@@ -96,19 +108,21 @@ impl MutationCapability for ClusterMutation {
         let services = &state.services;
         let content = &state.services.content();
         let result = match keys {
-            ClusterAction::ToggleArtifact { cluster_id, hash } => {
-                oneclient_core::toggle_artifact_enabled(*cluster_id, hash, content)
-                    .await
-                    .map(|(_, live)| {
-                        if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
-                            services
-                                .events
-                                .notify("Saved for the next launch")
-                                .body("Minecraft is running, but this could not be added to the open game.")
-                                .send();
-                        }
-                    })
-            }
+            ClusterAction::SetArtifactEnabled {
+                cluster_id,
+                hash,
+                enabled,
+            } => oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content)
+                .await
+                .map(|live| {
+                    if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
+                        services
+                            .events
+                            .notify("Saved for the next launch")
+                            .body("Minecraft is running, but this could not be added to the open game.")
+                            .send();
+                    }
+                }),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
             }
@@ -177,13 +191,17 @@ impl MutationCapability for ClusterMutation {
         result.map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, _keys: &ClusterAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &ClusterAction, result: &Result<(), String>) {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
             state.services.events.notify("Action failed").body(err).error().send();
         }
-        invalidate_cluster_queries().await;
+        if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
+            invalidate_enabled_flag_queries().await;
+        } else {
+            invalidate_cluster_queries().await;
+        }
     }
 }
 

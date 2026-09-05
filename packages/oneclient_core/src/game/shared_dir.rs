@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs::FileType;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use oneclient_db::dao::artifact as artifact_dao;
 
@@ -371,13 +371,34 @@ const ALLOWED_SYMLINKS_NAME: &str = "allowed_symlinks.txt";
 #[tracing::instrument(level = "debug")]
 pub async fn write_allowed_symlinks(game_dir: &Path) -> LauncherResult<()> {
     let root = oneclient_common::paths::launcher_dir()?;
-    let base = polyio::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+
+    // Distributions that keep the home directory behind a symlink resolve to a
+    // different prefix than the one the launcher hands the game (Fedora Atomic
+    // and its derivatives put /home behind /var/home), and a prefix the game
+    // does not recognise makes it refuse every linked pack, so allow both
+    let mut roots = vec![root.to_path_buf()];
+    if let Ok(canonical) = polyio::canonicalize(root)
+        && canonical != root
+    {
+        roots.push(canonical);
+    }
+
+    polyio::write(
+        game_dir.join(ALLOWED_SYMLINKS_NAME),
+        allowed_symlinks_body(&roots),
+    )
+    .await?;
+    Ok(())
+}
+
+fn allowed_symlinks_body(roots: &[PathBuf]) -> String {
     let sep = std::path::MAIN_SEPARATOR;
 
-    let body = format!("[prefix]{}{}", base.to_string_lossy(), sep);
-
-    polyio::write(game_dir.join(ALLOWED_SYMLINKS_NAME), body).await?;
-    Ok(())
+    roots
+        .iter()
+        .map(|root| format!("[prefix]{}{}", root.to_string_lossy(), sep))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 const EMPTY_NOTE_NAME: &str = "WHY_NOTHING_HERE.txt";
@@ -650,6 +671,27 @@ async fn sync_fabric_dep_overrides(cluster: &Cluster, game_dir: &Path) -> Launch
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_symlinked_home_gets_both_prefixes() {
+        let body = allowed_symlinks_body(&[
+            PathBuf::from("/home/alex/.local/share/OneClient"),
+            PathBuf::from("/var/home/alex/.local/share/OneClient"),
+        ]);
+
+        let lines: Vec<&str> = body.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("[prefix]/home/alex/"));
+        assert!(lines[1].starts_with("[prefix]/var/home/alex/"));
+        assert!(lines.iter().all(|line| line.ends_with(std::path::MAIN_SEPARATOR)));
+    }
+
+    #[test]
+    fn an_ordinary_home_gets_one_prefix() {
+        let body = allowed_symlinks_body(&[PathBuf::from("/home/alex/.local/share/OneClient")]);
+
+        assert_eq!(body.lines().count(), 1);
+    }
+
 
     use super::*;
 

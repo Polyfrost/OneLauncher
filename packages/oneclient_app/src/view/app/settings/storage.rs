@@ -49,9 +49,13 @@ impl Component for SettingsStorage {
                 ReclaimRow {
                     icon: IconType::Trash01,
                     title: "Leftover cluster content",
-                    description: legacy_content_description(&report.legacy_cluster_content),
+                    description: legacy_content_description(
+                        &report.legacy_cluster_content,
+                        &report.unused_natives,
+                    ),
                     action: StorageAction::CleanLegacyClusterContent,
-                    empty: report.legacy_cluster_content.is_empty(),
+                    empty: report.legacy_cluster_content.is_empty()
+                        && report.unused_natives.is_empty(),
                 }
                 .into_element(),
             )
@@ -73,7 +77,9 @@ impl Component for SettingsStorage {
 }
 
 fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
-    let reclaimable = report.unreferenced_cache.bytes + report.legacy_cluster_content.bytes;
+    let reclaimable = report.unreferenced_cache.bytes
+        + report.legacy_cluster_content.bytes
+        + report.unused_natives.bytes;
 
     let subtitle = if reclaimable > 0 {
         format!("{} can be freed", format_bytes(reclaimable))
@@ -278,17 +284,37 @@ fn unused_cache_description(entry: &ReclaimableEntry) -> String {
     )
 }
 
-fn legacy_content_description(entry: &ReclaimableEntry) -> String {
-    if entry.is_empty() {
-        return "Nothing here - no cluster folder is holding old content.".to_string();
+fn legacy_content_description(
+    content: &ReclaimableEntry,
+    natives: &ReclaimableEntry,
+) -> String {
+    if content.is_empty() && natives.is_empty() {
+        return "Nothing here - no old cluster content and no unused natives.".to_string();
+    }
+
+    let mut parts = Vec::new();
+
+    if !content.is_empty() {
+        parts.push(format!(
+            "{} across {} file{} left in cluster folders by an older version",
+            format_bytes(content.bytes),
+            content.files,
+            plural(content.files as i64)
+        ));
+    }
+
+    if !natives.is_empty() {
+        parts.push(format!(
+            "{} across {} native folder{} no cluster uses any more",
+            format_bytes(natives.bytes),
+            natives.files,
+            plural(natives.files as i64)
+        ));
     }
 
     format!(
-        "{} across {} file{} left in cluster folders by an older version. Already ignored when \
-         you play; this just reclaims the space.",
-        format_bytes(entry.bytes),
-        entry.files,
-        plural(entry.files as i64)
+        "{}. Already ignored when you play; this just reclaims the space.",
+        parts.join(", plus ")
     )
 }
 

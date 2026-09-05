@@ -1273,6 +1273,64 @@ pub async fn get_loader_versions(
     Ok(Vec::new())
 }
 
+fn resolve_loader_from_manifest(
+    manifest: &interfrost::api::modded::Manifest,
+    mc_version: &str,
+    loader_version: Option<&str>,
+) -> (bool, Option<LoaderVersion>) {
+    let mut saw_matching_game_version = false;
+
+    for entry in &manifest.game_versions {
+        if entry
+            .id
+            .replace("${interpulse.gameVersion}", mc_version)
+            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
+            != mc_version
+        {
+            continue;
+        }
+
+        saw_matching_game_version = true;
+
+        if let Some(requested) = loader_version {
+            if let Some(found) = entry
+                .loaders
+                .iter()
+                .find(|loader_entry| loader_entry.id == requested)
+            {
+                return (saw_matching_game_version, Some(found.clone()));
+            }
+            continue;
+        }
+
+        if let Some(found) = entry
+            .loaders
+            .iter()
+            .find(|l| l.stable)
+            .or_else(|| entry.loaders.first())
+        {
+            return (saw_matching_game_version, Some(found.clone()));
+        }
+    }
+
+    (saw_matching_game_version, None)
+}
+
+#[tracing::instrument(skip(metadata), level = "debug")]
+pub fn get_loader_version_cached(
+    metadata: &MetadataStore,
+    mc_version: &str,
+    loader: GameLoader,
+    loader_version: Option<&str>,
+) -> McResult<Option<LoaderVersion>> {
+    if loader == GameLoader::Vanilla {
+        return Ok(None);
+    }
+
+    let manifest = metadata.get_modded(loader)?;
+    Ok(resolve_loader_from_manifest(manifest, mc_version, loader_version).1)
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loader_version(
     metadata: &mut MetadataStore,
@@ -1285,44 +1343,10 @@ pub async fn get_loader_version(
         return Ok(None);
     }
 
-    let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
-        let mut saw_matching_game_version = false;
-
-        for entry in &manifest.game_versions {
-            if entry
-                .id
-                .replace("${interpulse.gameVersion}", mc_version)
-                .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-                != mc_version
-            {
-                continue;
-            }
-
-            saw_matching_game_version = true;
-
-            if let Some(requested) = loader_version {
-                if let Some(found) = entry
-                    .loaders
-                    .iter()
-                    .find(|loader_entry| loader_entry.id == requested)
-                {
-                    return (saw_matching_game_version, Some(found.clone()));
-                }
-                continue;
-            }
-
-            if let Some(found) = entry
-                .loaders
-                .iter()
-                .find(|l| l.stable)
-                .or_else(|| entry.loaders.first())
-            {
-                return (saw_matching_game_version, Some(found.clone()));
-            }
-        }
-
-        (saw_matching_game_version, None)
-    };
+    let resolve_from_manifest =
+        |manifest: &interfrost::api::modded::Manifest| {
+            resolve_loader_from_manifest(manifest, mc_version, loader_version)
+        };
 
     let mut manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
     let (mut saw_matching, mut resolved) = resolve_from_manifest(manifest);

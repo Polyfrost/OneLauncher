@@ -4,7 +4,7 @@ use freya::router::RouterContext;
 
 use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea, Segment,
-    SegmentedControl, toggle,
+    SegmentedControl,
 };
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
@@ -38,7 +38,6 @@ impl Component for OnboardingTerms {
         let error = terms_error(&query);
         let loading = terms_is_loading(&query);
 
-        let accepted = use_state(|| false);
         let tab = use_state(|| LegalTab::Terms);
         let confirming_decline = use_state(|| false);
 
@@ -100,19 +99,21 @@ impl Component for OnboardingTerms {
             .maybe_child(tabs)
             .child(body)
             .child(link_row(terms_url, privacy_url))
-            .child(accept_row(accepted))
             .into_element();
 
         let accept_dispatch = dispatch.clone();
-        let nav = terms_nav(back, !loading, move || {
-            if *accepted.read() {
+        let nav = terms_nav(
+            back,
+            !loading,
+            move || {
                 accept_dispatch.accept_tos(terms_version, privacy_version);
                 let _ = RouterContext::get().replace(next.clone());
-            } else {
+            },
+            move || {
                 let mut confirming = confirming_decline;
                 confirming.set(true);
-            }
-        });
+            },
+        );
 
         let modal = confirming_decline.read().then(|| {
             decline_modal(confirming_decline, move || {
@@ -266,46 +267,14 @@ fn external_link_button(text: &'static str, url: String) -> impl IntoElement {
         .child(Icon::new(IconType::LinkExternal01).size(14.))
 }
 
-fn accept_row(accepted: State<bool>) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .content(Content::Flex)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text("I accept the Terms of Service and Privacy Policy")
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text("Required for world hosting, socials, nametag indicator, and more.")
-                        .font_size(11.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(toggle(accepted))
-        .into_element()
-}
-
 fn terms_nav(
     back: Option<Route>,
-    next_enabled: bool,
-    on_next: impl FnMut() + 'static,
+    accept_enabled: bool,
+    on_accept: impl FnMut() + 'static,
+    on_decline: impl FnMut() + 'static,
 ) -> Element {
-    let mut on_next = on_next;
+    let mut on_accept = on_accept;
+    let mut on_decline = on_decline;
     rect()
         .horizontal()
         .width(Size::fill())
@@ -325,12 +294,20 @@ fn terms_nav(
         }))
         .child(
             Button::new()
+                .secondary()
+                .width(Size::px(140.))
+                .on_press(move |_| on_decline())
+                .text("Decline")
+                .child(Icon::new(IconType::X).size(16.)),
+        )
+        .child(
+            Button::new()
                 .primary()
                 .width(Size::px(140.))
-                .enabled(next_enabled)
-                .on_press(move |_| on_next())
-                .text("Next")
-                .child(Icon::new(IconType::ArrowRight).size(16.)),
+                .enabled(accept_enabled)
+                .on_press(move |_| on_accept())
+                .text("Accept")
+                .child(Icon::new(IconType::Check).size(16.)),
         )
         .into_element()
 }
@@ -407,7 +384,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| confirming.set(false))
-                                        .text("Close"),
+                                        .text("Cancel"),
                                 )
                                 .child(
                                     Button::new()

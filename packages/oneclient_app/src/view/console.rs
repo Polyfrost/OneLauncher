@@ -34,7 +34,7 @@ pub fn open_log_console() {
         let mut state = CONSOLE_WINDOW.lock().expect("console window state");
         match *state {
             ConsoleWindow::Open(id) => {
-                Platform::get().focus_window(Some(id));
+                Platform::get().focus_window(id);
                 return;
             }
             ConsoleWindow::Opening => return,

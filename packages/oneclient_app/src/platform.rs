@@ -3,7 +3,7 @@ const ALLOWED_URL_SCHEMES: [&str; 3] = ["http", "https", "mailto"];
 pub fn focus_window() {
     use freya::prelude::{Platform, WinitPlatformExt};
 
-    Platform::get().with_window(None, |win| {
+    Platform::get().with_window(Platform::window_id(), |win| {
         win.set_minimized(false);
         win.focus_window();
     });

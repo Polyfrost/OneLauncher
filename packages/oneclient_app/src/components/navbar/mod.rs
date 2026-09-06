@@ -18,20 +18,20 @@ pub(super) fn navbar_button() -> Button {
 
 pub fn window_controls() -> impl IntoElement {
     let minimize = |_| {
-        Platform::get().with_window(None, |win| {
+        Platform::get().with_window(Platform::window_id(), |win| {
             win.set_minimized(true);
         });
     };
 
     let maximize = |_| {
-        Platform::get().with_window(None, |win| {
+        Platform::get().with_window(Platform::window_id(), |win| {
             win.set_maximized(!win.is_maximized());
         });
     };
 
     let close = |_| {
         let platform = Platform::get();
-        Platform::get().with_window(None, move |window| {
+        Platform::get().with_window(Platform::window_id(), move |window| {
             platform.close_window(window.id());
         });
     };

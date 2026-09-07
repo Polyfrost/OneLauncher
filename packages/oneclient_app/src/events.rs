@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
-use crate::state::{AppChannel, AppState, LoginProgress};
+use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
 /// Quiet period before log lines are written without it every line wakes the log view
 const GAME_LOG_FLUSH: Duration = Duration::from_millis(120);
@@ -127,6 +127,7 @@ impl EventPump {
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
         let mut login: Option<Option<LoginProgress>> = None;
+        let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
 
         for event in batch {
@@ -148,7 +149,6 @@ impl EventPump {
                     cluster_id,
                     message,
                 }) => failed = Some((cluster_id, message)),
-                // Lifted out so it never reaches the engine the sign-in modal renders it inline
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -156,6 +156,18 @@ impl EventPump {
                     total,
                 }) if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {
                     login = Some((current < total).then(|| LoginProgress {
+                        label: label.clone(),
+                        current,
+                        total,
+                    }));
+                }
+                Event::Progress(ProgressEvent::Update {
+                    id,
+                    ref label,
+                    current,
+                    total,
+                }) if id == oneclient_core::storage::STORAGE_SCAN_PROGRESS => {
+                    storage_scan = Some((current < total).then(|| StorageScanProgress {
                         label: label.clone(),
                         current,
                         total,
@@ -195,6 +207,12 @@ impl EventPump {
             self.station
                 .write_channel(AppChannel::MicrosoftLogin)
                 .microsoft_login = progress;
+        }
+
+        if let Some(progress) = storage_scan {
+            self.station
+                .write_channel(AppChannel::StorageScan)
+                .storage_scan = progress;
         }
 
         if !engine_events.is_empty() {

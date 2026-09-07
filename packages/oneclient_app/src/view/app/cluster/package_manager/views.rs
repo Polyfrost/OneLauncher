@@ -224,7 +224,15 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
     };
+}
 
+pub(super) fn global_notice(noun_plural: &'static str) -> Element {
+    notice_bar(format!(
+        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
+    ))
+}
+
+fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())

@@ -282,17 +282,23 @@ impl PackageStore {
         )
         .await?;
 
-        // Only the enable side has an outcome to report; a pack that is not in
-        // the running folder needs no removing from it
-        let live = if enabled {
-            link::try_link_materialized(&cluster, &artifact, &file_name).await
-        } else {
-            link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
-            if link.cluster_file_name != file_name {
-                link::try_unlink_materialized(&cluster, content_type, &file_name).await;
-            }
-            LiveSync::Skipped
-        };
+      // TODO(merge): Fix this 
+//         if content_type.is_global() {
+//             artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
+//         }
+
+//         if !enabled {
+//         // Only the enable side has an outcome to report; a pack that is not in
+//         // the running folder needs no removing from it
+//         let live = if enabled {
+//             link::try_link_materialized(&cluster, &artifact, &file_name).await
+//         } else {
+//             link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
+//             if link.cluster_file_name != file_name {
+//                 link::try_unlink_materialized(&cluster, content_type, &file_name).await;
+//             }
+//             LiveSync::Skipped
+//         };
 
         Ok((enabled, live))
     }

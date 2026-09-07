@@ -218,7 +218,7 @@ impl Component for AnimatedAppOutlet {
             }
         };
 
-        let overlay = show_overlay.then(|| appshell_overlay().opacity(chrome_opacity));
+        let overlay = show_overlay.then(|| appshell_overlay(chrome_opacity));
 
         let back = (!is_home).then(|| {
             rect()
